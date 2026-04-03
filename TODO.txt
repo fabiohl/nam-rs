@@ -1,0 +1,7 @@
+* Baseado nos documentos de arquitetura, atualizar:
+  * docs/architecture.md
+  * docs/dependencies.md
+  * Cargo.toml
+  * .agents/
+
+* Iniciar a Sprint 1 implementando a Tarefa 1.1.

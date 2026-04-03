@@ -11,7 +11,7 @@
 *.tmp*
 .DS_Store
 Thumbs.db
-repomix-output.xml
+repomix-*.xml
 *.bak
 *.old
 *.swp
