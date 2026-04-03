@@ -1,0 +1,8 @@
+# (c) 2026 Fábio Henrique de Lima Silva. Todos os direitos reservados.
+# Este arquivo é confidencial e propriedade de Fábio Henrique de Lima Silva.
+# O uso não autorizado é estritamente proibido.
+[build]
+rustflags = [
+  "-Ctarget-cpu=x86-64-v3",       # Otimiza o código para a CPUs modernas.
+  "-Clink-arg=-Wl,--gc-sections", # Pede ao "linker" para remover código não utilizado, diminuindo o tamanho.
+]

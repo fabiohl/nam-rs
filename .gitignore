@@ -1,0 +1,24 @@
+# (c) 2026 Fábio Henrique de Lima Silva. Todos os direitos reservados.
+# Este arquivo é confidencial e propriedade de Fábio Henrique de Lima Silva.
+# O uso não autorizado é estritamente proibido.
+
+# Ignorar variáveis de ambiente
+.env
+*.env.*
+
+# Ignorar arquivos temporários
+/tmp.git
+*.tmp*
+.DS_Store
+Thumbs.db
+repomix-output.xml
+*.bak
+*.old
+*.swp
+*.tar
+*.wav
+*.log
+
+# Ignorar artefatos do Rust
+Cargo.lock
+/target

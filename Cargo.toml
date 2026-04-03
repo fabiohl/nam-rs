@@ -1,0 +1,31 @@
+# Copyright 2026 Fábio Henrique de Lima Silva. Todos os direitos reservados.
+# Este arquivo é confidencial e propriedade de Fábio Henrique de Lima Silva. O uso não autorizado é estritamente proibido.
+[package]
+name = "audiorip"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+ctrlc = "3.5.2"
+hound = "3.5.1"
+libc = "0.2.184"
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [
+    "standalone",
+] }
+rtrb = "0.3.3"
+tokio = { version = "1.50.0", features = ["time"] }
+tokio-uring = "0.5.0"
+
+[profile.release]
+strip = true      # Remove symbols (smaller binary)
+lto = "fat"       # Link Time Optimization (slower build, better runtime)
+opt-level = 3     # Maximum optimization level
+codegen-units = 1 # Reduce parallel codegen (slower build, better optimization)
+panic = "abort"   # Abort on panic (smaller binary, no stack unwind)
+
+[profile.dev]
+debug = 1                    # Line tables only (faster than full debug info)
+opt-level = 0                # No optimizations for max build speed
+incremental = true           # Incremental compilation (faster build)
+split-debuginfo = "unpacked" # Faster linking on Linux
