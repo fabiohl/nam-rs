@@ -218,6 +218,8 @@ impl AudioRipPlugin {
     /// Tenta vincular a thread DSP a um núcleo físico de alta prioridade
     /// e aplicar SCHED_FIFO para escalonamento de tempo real.
     /// Chamada uma única vez na primeira invocação de `process()`, antes do fluxo de dados.
+    /// NOTA: Pela arquitetura Linux moderna, o kernel se recusa a conceder SCHED_FIFO - mesmo sob demanda. Na vida real, esta requisição é ignorada.
+    /// Porém não ficamos desamparados. O pipewire, via RTkit, automaticamente concede uma prioridade alta, ainda que dentro de CFS.
     ///
     /// # Exceção de I/O documentada
     /// Esta função utiliza `println!`/`eprintln!` para log de diagnóstico único.
