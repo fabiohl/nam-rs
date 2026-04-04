@@ -80,7 +80,7 @@ Adicionalmente, os modelos do *Tone3000* segregam as categorias computacionais e
 
 ## **Condicionamento de Sinal: O Estágio Numérico Extremamente Preciso**
 
-O roteamento da aplicação exige uma parametrização intocável de ganho numérico de entrada e saída. Não se concebe um mapeamento multiplicador sujo. Quando o usuário invoca o botão de "Input Gain" e "Output Gain", o parâmetro não transita de forma imperfeita. Os ganhos são calculados usando as equações decibéis exatas, garantindo translações de limite superior precisas. A multiplicação vetorial submete toda a janela atômica do PipeWire a um ganho perfeitamente plano: ![][image1], operando na largura simultânea de 256 ou 512 bits antes da predição do vetor de entrada.
+O roteamento da aplicação exige uma parametrização intocável de ganho numérico de entrada e saída. Não se concebe um mapeamento multiplicador sujo. Quando o usuário invoca o botão de "Input Gain" e "Output Gain", o parâmetro não transita de forma imperfeita. Os ganhos são calculados usando as equações decibéis exatas, garantindo translações de limite superior precisas. A multiplicação vetorial submete toda a janela atômica do PipeWire a um ganho perfeitamente plano: ![image1][image1], operando na largura simultânea de 256 ou 512 bits antes da predição do vetor de entrada.
 
 Obs: Tanto o "Input Gain" quanto o "Output Gain" possuem uma lógica similar. Vão do negativo ao positivo em dB similar a um equipamento físico real. Detalhe para o valor “0”, que representa ausência total de ganho, idealmente aplicando true bypass do circuito de ganho em si.
 

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Núcleo DSP de áudio utilizando `nih_plug`.
-//! Contém o callback estrito da thread de Tempo Real/DSP responsável pela captura Bit-Perfect.
-//! Recebe amostras brutas f32 do host PipeWire via backend standalone do `nih_plug`,
-//! intercala-as em blocos alinhados a cache e as empurra para o ring buffer lock-free SPSC
-//! para consumo pela thread de I/O. Zero alocação na heap, zero I/O, zero mutexes
-//! durante o `process()`.
+//! Audio DSP core using `nih_plug`.
+//! Contains the strict Real-Time/DSP thread callback responsible for Bit-Perfect capture.
+//! Receives raw f32 samples from the PipeWire host via the `nih_plug` standalone backend,
+//! interleaves them into cache-aligned blocks, and pushes them to the lock-free SPSC ring buffer
+//! for consumption by the I/O thread. Zero heap allocation, zero I/O, zero mutexes
+//! during `process()`.
 
 use nih_plug::prelude::*;
 use rtrb::Producer;
@@ -15,40 +15,40 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::buffer::{AlignedBlock, AudioMetadata, MAX_BLOCK_SIZE, OVERRUN_COUNT, RingPayload};
 
-/// Limite de tolerância para considerar um sinal de áudio como silêncio absoluto.
-/// Utilizado pelo Noise Gate de Zero-Overhead para suprimir gravação de blocos vazios.
+/// Tolerance threshold for considering an audio signal as absolute silence.
+/// Used by the Zero-Overhead Noise Gate to suppress recording of empty blocks.
 const SILENCE_THRESHOLD: f32 = 1e-6;
 
-/// Armazenamento global para injetar o Producer na instância do plugin criada pelo `nih_plug` standalone.
-/// O padrão `OnceLock<Mutex<Option<...>>>` é utilizado porque o `nih_plug` instancia o plugin
-/// internamente via `Default::default()`, tornando necessário injetar o producer através de um global.
-/// O Mutex é travado apenas uma vez durante `Default::default()`, jamais durante `process()`.
+/// Global storage to inject the Producer into the plugin instance created by `nih_plug` standalone.
+/// The `OnceLock<Mutex<Option<...>>>` pattern is used because `nih_plug` instantiates the plugin
+/// internally via `Default::default()`, making it necessary to inject the producer through a global.
+/// The Mutex is locked only once during `Default::default()`, never during `process()`.
 pub static PRODUCER: OnceLock<Mutex<Option<Producer<RingPayload<MAX_BLOCK_SIZE>>>>> =
     OnceLock::new();
 
-/// Verifica se o bloco de áudio é considerado silencioso.
-/// O uso de iteradores simples em fatias contíguas de memória permite que o LLVM
-/// aplique auto-vetorização (SIMD/AVX2) sem a necessidade de unsafe code ou crates extras.
+/// Checks whether the audio block is considered silent.
+/// Using simple iterators on contiguous memory slices allows the LLVM to apply
+/// auto-vectorization (SIMD/AVX2) without requiring unsafe code or extra crates.
 #[inline(always)]
 fn is_silent(data: &[f32]) -> bool {
     data.iter().all(|&sample| sample.abs() < SILENCE_THRESHOLD)
 }
 
-/// Implementação do plugin AudioRip.
-/// Mantém o producer do ring buffer e rastreia se os metadados do stream já foram enviados.
+/// AudioRip plugin implementation.
+/// Holds the ring buffer producer and tracks whether stream metadata has been sent.
 pub struct AudioRipPlugin {
     params: Arc<AudioRipParams>,
-    /// Producer do ring buffer, injetado via global `PRODUCER` durante `Default::default()`.
+    /// Ring buffer producer, injected via the global `PRODUCER` during `Default::default()`.
     pub producer: Option<Producer<RingPayload<MAX_BLOCK_SIZE>>>,
-    /// Indica se os metadados (sample rate, bit depth, canais) já foram enviados na sessão atual.
+    /// Indicates whether metadata (sample rate, bit depth, channels) has been sent in the current session.
     metadata_sent: bool,
-    /// Indica se a configuração RT da thread (core affinity, scheduler) já foi aplicada.
+    /// Indicates whether the RT thread configuration (core affinity, scheduler) has been applied.
     thread_configured: bool,
 }
 
-/// Parâmetros do plugin AudioRip.
-/// Struct vazia porque o ripper passivo não possui parâmetros expostos ao usuário,
-/// porém o trait `Params` do `nih_plug` exige uma struct de parâmetros.
+/// AudioRip plugin parameters.
+/// Empty struct because the passive ripper has no user-exposed parameters,
+/// but the `nih_plug` `Params` trait requires a parameters struct.
 #[derive(Params)]
 pub struct AudioRipParams {}
 
@@ -91,7 +91,7 @@ impl Plugin for AudioRipPlugin {
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
     type SysExMessage = ();
 
-    // Tipo opaco de tarefa em background — não utilizado; requerido pelo nih_plug.
+    // Opaque background task type — unused; required by nih_plug.
     type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
@@ -104,7 +104,7 @@ impl Plugin for AudioRipPlugin {
         _buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        // Reinicia o estado para nova sessão de captura
+        // Reset state for a new capture session
         self.metadata_sent = false;
         true
     }
@@ -112,7 +112,7 @@ impl Plugin for AudioRipPlugin {
     fn reset(&mut self) {
         self.metadata_sent = false;
 
-        // Empurra o sinal de parada para o Consumidor sem alocar memória na thread DSP
+        // Push the stop signal to the Consumer without allocating memory on the DSP thread
         if let Some(producer) = &mut self.producer {
             let _ = producer.push(RingPayload::StreamStop);
         }
@@ -124,8 +124,8 @@ impl Plugin for AudioRipPlugin {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        // Aplica a configuração RT da thread apenas uma vez, na primeira invocação do callback.
-        // Executa antes de qualquer processamento de dados de áudio.
+        // Apply the RT thread configuration only once, on the first callback invocation.
+        // Runs before any audio data processing.
         if !self.thread_configured {
             self.configure_realtime_thread();
             self.thread_configured = true;
@@ -135,16 +135,16 @@ impl Plugin for AudioRipPlugin {
         let channels = buffer.channels();
         let sample_rate = context.transport().sample_rate;
 
-        // Previne panics downstream se o host passar um buffer vazio/morto momentaneamente
+        // Prevent downstream panics if the host passes an empty/dead buffer momentarily
         if samples == 0 || channels == 0 || sample_rate <= 0.0 {
             return ProcessStatus::Normal;
         }
 
         if let Some(producer) = &mut self.producer {
-            // Envia metadados do stream para a thread I/O no primeiro buffer ou após reset.
-            // Permite que a thread I/O crie um header WAV corretamente formatado.
+            // Send stream metadata to the I/O thread on the first buffer or after reset.
+            // Allows the I/O thread to create a correctly formatted WAV header.
             if !self.metadata_sent {
-                // O nih_plug entrega f32 nativamente; o PipeWire traduz de forma transparente.
+                // nih_plug delivers f32 natively; PipeWire translates transparently.
                 let bit_depth = 32;
                 let channels = channels as u16;
 
@@ -160,20 +160,20 @@ impl Plugin for AudioRipPlugin {
                 self.metadata_sent = true;
             }
 
-            // ⚡ CAMINHO EXTREMAMENTE RÁPIDO: Intercalação de Áudio ⚡
-            // Transpõe arrays não-intercalados do `nih_plug` nativamente para uma
-            // estrutura de blocos lock-free alinhada a 128 bytes. Isso previne bouncing
-            // de cache e jamais toca nos alocadores padrão de memória (`Box`, `Vec`).
+            // ⚡ HOT PATH: Audio Interleaving ⚡
+            // Transposes non-interleaved arrays from `nih_plug` natively into a
+            // 128-byte-aligned lock-free block structure. This prevents cache
+            // bouncing and never touches the default memory allocators (`Box`, `Vec`).
             let mut block = AlignedBlock::<MAX_BLOCK_SIZE>::new();
             let mut block_idx = 0;
 
             for sample_idx in 0..samples {
                 for ch in 0..channels {
                     if block_idx >= MAX_BLOCK_SIZE {
-                        // Bloco cheio — empurra com valid_len exato e inicia um novo.
+                        // Block full — push with exact valid_len and start a new one.
                         block.valid_len = MAX_BLOCK_SIZE;
 
-                        // Noise Gate de Zero-Overhead: submete áudio apenas se não for silêncio absoluto.
+                        // Zero-Overhead Noise Gate: submit audio only if not absolute silence.
                         if !is_silent(&block.data[..block.valid_len])
                             && producer.push(RingPayload::Audio(block)).is_err()
                         {
@@ -184,18 +184,18 @@ impl Plugin for AudioRipPlugin {
                         block_idx = 0;
                     }
 
-                    // Leitura nativa de memória, pass-through bit-perfect para o ringbuffer.
+                    // Native memory read, bit-perfect pass-through to the ring buffer.
                     block.data[block_idx] = buffer.as_slice()[ch][sample_idx];
                     block_idx += 1;
                 }
             }
 
-            // Empurra o bloco residual com a contagem precisa de amostras válidas.
-            // Apenas `valid_len` amostras serão escritas no arquivo WAV pela thread de I/O.
+            // Push the residual block with the precise count of valid samples.
+            // Only `valid_len` samples will be written to the WAV file by the I/O thread.
             if block_idx > 0 {
                 block.valid_len = block_idx;
 
-                // Noise Gate de Zero-Overhead aplicado ao bloco residual.
+                // Zero-Overhead Noise Gate applied to the residual block.
                 if !is_silent(&block.data[..block.valid_len])
                     && producer.push(RingPayload::Audio(block)).is_err()
                 {
@@ -203,8 +203,8 @@ impl Plugin for AudioRipPlugin {
                 }
             }
 
-            // Silencia o buffer ativo para evitar feedback indesejado nos fones do usuário,
-            // já que o nih_plug processa estritamente in-place.
+            // Silence the active buffer to prevent unwanted feedback in the user's headphones,
+            // since nih_plug processes strictly in-place.
             for ch_slice in buffer.as_slice() {
                 ch_slice.fill(0.0);
             }
@@ -215,27 +215,27 @@ impl Plugin for AudioRipPlugin {
 }
 
 impl AudioRipPlugin {
-    /// Tenta vincular a thread DSP a um núcleo físico de alta prioridade
-    /// e aplicar SCHED_FIFO para escalonamento de tempo real.
-    /// Chamada uma única vez na primeira invocação de `process()`, antes do fluxo de dados.
-    /// NOTA: Pela arquitetura Linux moderna, o kernel se recusa a conceder SCHED_FIFO - mesmo sob demanda. Na vida real, esta requisição é ignorada.
-    /// Porém não ficamos desamparados. O pipewire, via RTkit, automaticamente concede uma prioridade alta, ainda que dentro de CFS.
+    /// Attempts to pin the DSP thread to a physical high-priority core
+    /// and apply SCHED_FIFO for real-time scheduling.
+    /// Called only once on the first invocation of `process()`, before the data flow begins.
+    /// NOTE: On modern Linux, the kernel refuses to grant SCHED_FIFO — even on demand. In practice, this request is silently ignored.
+    /// However, we are not left unprotected. PipeWire, via RTkit, automatically grants a high priority within CFS.
     ///
-    /// # Exceção de I/O documentada
-    /// Esta função utiliza `println!`/`eprintln!` para log de diagnóstico único.
-    /// Embora isso envolva locks no stdout/stderr e potencialmente syscalls `write()`,
-    /// a execução ocorre apenas uma vez e antes de qualquer dado de áudio fluir,
-    /// portanto não compromete a latência do processamento em regime permanente.
+    /// # Documented I/O Exception
+    /// This function uses `println!`/`eprintln!` for one-time diagnostic logging.
+    /// Although this involves locks on stdout/stderr and potentially `write()` syscalls,
+    /// it runs only once and before any audio data flows,
+    /// so it does not compromise steady-state processing latency.
     fn configure_realtime_thread(&self) {
         #[cfg(target_os = "linux")]
         {
             unsafe {
                 let thread_id = libc::pthread_self();
 
-                // 1. Core Affinity: Trava a thread no núcleo físico para proteger o Cache L1/L2
+                // 1. Core Affinity: Pin the thread to a physical core to protect L1/L2 Cache
                 let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
                 libc::CPU_ZERO(&mut cpuset);
-                libc::CPU_SET(1, &mut cpuset); // Assumindo Core 1 como núcleo de performance (refinar porque isto não é uma regra imutável!)
+                libc::CPU_SET(1, &mut cpuset); // Assuming Core 1 as performance core (refine as needed — this is not a universal rule!)
 
                 let ret_aff = libc::pthread_setaffinity_np(
                     thread_id,
@@ -247,19 +247,19 @@ impl AudioRipPlugin {
                     eprintln!("Warning: Failed to set CPU affinity (error {}).", ret_aff);
                 }
 
-                // 2. Tempo Real: Aplica SCHED_FIFO para preempção determinística
+                // 2. Real-Time: Apply SCHED_FIFO for deterministic preemption
                 let mut param: libc::sched_param = std::mem::zeroed();
-                param.sched_priority = 90; // Prioridade alta (requer rtprio >= 90 no limits.conf)
+                param.sched_priority = 90; // High priority (requires rtprio >= 90 in limits.conf)
 
                 let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
 
                 if ret_sched == 0 {
                     println!(
-                        "[AudioRip] ⚡ DSP Thread pinada ao Core 1 rodando sob SCHED_FIFO (Prioridade 90)."
+                        "[AudioRip] ⚡ DSP Thread pinned to Core 1 running under SCHED_FIFO (Priority 90)."
                     );
                 }
 
-                // Verifica o estado real da thread após as tentativas de configuração
+                // Verify the actual thread state after the configuration attempts
                 let mut actual_policy = 0;
                 let mut actual_param: libc::sched_param = std::mem::zeroed();
                 let ret_getsched =
@@ -268,21 +268,29 @@ impl AudioRipPlugin {
                 let actual_cpu = libc::sched_getcpu();
 
                 if ret_getsched == 0 {
-                    let policy_str = match actual_policy {
-                        libc::SCHED_FIFO => "SCHED_FIFO",
-                        libc::SCHED_RR => "SCHED_RR",
-                        libc::SCHED_OTHER => "SCHED_OTHER",
-                        libc::SCHED_BATCH => "SCHED_BATCH",
-                        libc::SCHED_IDLE => "SCHED_IDLE",
-                        _ => "UNKNOWN",
+                    let reset_on_fork_flag = 0x40000000;
+                    let has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
+                    let base_policy = actual_policy & !reset_on_fork_flag;
+
+                    let mut policy_str = match base_policy {
+                        libc::SCHED_FIFO => "SCHED_FIFO".to_string(),
+                        libc::SCHED_RR => "SCHED_RR".to_string(),
+                        libc::SCHED_OTHER => "SCHED_OTHER".to_string(),
+                        libc::SCHED_BATCH => "SCHED_BATCH".to_string(),
+                        libc::SCHED_IDLE => "SCHED_IDLE".to_string(),
+                        other => format!("UNKNOWN: {}", other),
                     };
+
+                    if has_reset_on_fork {
+                        policy_str.push_str(" | SCHED_RESET_ON_FORK");
+                    }
                     println!(
-                        "[AudioRip] 🔍 Verificação DSP: Core atual = {}, Política = {}, Prioridade = {}",
+                        "[AudioRip] 🔍 DSP Verification: Current core = {}, Policy = {}, Priority = {}",
                         actual_cpu, policy_str, actual_param.sched_priority
                     );
                 } else {
                     eprintln!(
-                        "[AudioRip] ⚠️ Falha ao verificar parâmetros da thread (error {}).",
+                        "[AudioRip] ⚠️ Failed to verify thread parameters (error {}).",
                         ret_getsched
                     );
                 }
