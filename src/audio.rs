@@ -1,5 +1,5 @@
-// Copyright 2026 Fábio Henrique de Lima Silva. Todos os direitos reservados.
-// Este arquivo é confidencial e propriedade de Fábio Henrique de Lima Silva. O uso não autorizado é estritamente proibido.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Núcleo DSP de áudio utilizando `nih_plug`.
 //! Contém o callback estrito da thread de Tempo Real/DSP responsável pela captura Bit-Perfect.

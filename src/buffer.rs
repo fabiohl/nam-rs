@@ -1,5 +1,5 @@
-// Copyright 2026 Fábio Henrique de Lima Silva. Todos os direitos reservados.
-// Este arquivo é confidencial e propriedade de Fábio Henrique de Lima Silva. O uso não autorizado é estritamente proibido.
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Estruturas de dados para comunicação lock-free entre a thread DSP e a thread de I/O.
 //! Contém buffers alinhados a linhas de cache via const generics para mitigar False Sharing
