@@ -7,19 +7,19 @@ description: Acionado quando algo não funciona como esperado. Atua como um pain
 
 ## When to use this skill
 
-Use esta skill sob a manifestação de um erro ativo, crash, comportamento não-linear de DSP, áudio truncado (clicks/pops) ou impasses de compilação em componentes críticos.
+Use esta skill sob a manifestação de um erro ativo, crash, comportamento não-linear de DSP, áudio truncado com modulação/ringing ou redes neurais resultando em degradação contínua nos cálculos de áudio real-time.
 
 ## Instructions
 
-### 1. Foco em Diagnóstico de Áudio e Alta Performance (Analyze First)
+### 1. Foco em Diagnóstico Inferencia e Otimização Híbrida (Analyze First)
 
-- Não proponha remendos ou mutações na esperança mágica de funcionar em um sistema focado em tempo-real. Cada bit de mudança custa latência.
-- **Falhas no buffer de áudio (Clicks/Pops)**: Resultam em buffer overrun ou underrun. Analise estaticamente a cadência Produtor/Consumidor. O Host PipeWire gerou os buffers tarde demais? O I/O bloqueou o Consumidor causando overrun no Ring Buffer?
-- **Travamentos e CPU 100%**: Reavalie a estratégia de consumo lock-free. Há algum loop ocupado destrutivo (spin loop) sem ceder (yielding) de maneira correta à CPU? Spinlocks estão forçando aquecimento?
-- **Corrupção de WAV**: O arquivo gerado está vazio ou truncado? Verifique o `io_uring` e o Graceful Shutdown. Os arquivos não estão recebendo sync ou não terminam a gravação da formatação header após drain.
+- Não proponha remendos ou mutações na esperança mágica de contornar gargalos matemáticos. Cada alocação onera sub-milissegundos perigosos no PipeWire.
+- **Falhas de Processamento de Janelas e Clicks**: O buffer de pipeline sofre xruns pois os multiplicadores matriciais demoraram demais? O Host mandou parâmetros incompatíveis com as restrições síncronas do NAM-rs? O preditor de branch do processador descarregou o pipeline?
+- **Travamentos e Avaliação de Consumo CPU**: Empregue avaliações focadas se estruturas SPSC estão preenchendo adequadamente as variáveis dinâmicas de DSP. Onde a carga FastMath se atrelou pesadamente na CPU?
+- *Nota vital*: Rotinas contendo resquícios de I/O de arquivos (`io_uring`) e disco de sistema herdados não são aceitas. Investigue o PipeWire puramente operando sobre a infra de Thread de DSP Isolcpus.
 
 ### 2. Intervenção Baseada em Evidências
 
-- Antes de compilar, observe se as dependências C-level de Kernel/PipeWire estão em conflito com std. Em especial manipulação externa de ponteiros e unsafe pointers se integrando ao `nih_plug`.
-- Aplique o patch com estrita observância das regras. Corrija o que estancou sem alocar dentro do callback do áudio de Tempo Real e valide se o seu _fix_ alterou o status macro do lock-free.
-- Após sanado, caso tenha usado blocos simuladores e artefatos logs `println!` na thread RTA só para investigar, VOCÊ DEVE APAGÁ-LOS RIGOROSAMENTE para garantir que tudo retorne a zero atraso/io na via de áudio.
+- Antes de compilar a solução proposta SIMD, observe atentamente os desdobramentos de registros AVX2 ou AVX-512 via `std::simd` usando macros corretos das arquiteturas base const generics (SoA).
+- Aplique correções puristas sem introduzir instancianção de ponteiros `Vec`, `Box`, etc, durante a ativação da submissão DSP.
+- Após sanado, arquivos e linhas de log ou simuladores utilizados unicamente como debulhadores visuais na thread devem ser rigorosamente limpos da codebase.

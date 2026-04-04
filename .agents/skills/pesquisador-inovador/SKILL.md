@@ -7,22 +7,22 @@ description: Use esta habilidade para pensar além, inovar e criar soluções pr
 
 ## When to use this skill
 
-Use quando as tarefas exigirem pesquisa de ponta para ecossistema Linux Audio (PipeWire), Kernel (io_uring), SIMD (DSP algorithms), Lock-Free concurrency ou CLI otimizadas. Proponha implementações de baixíssima latência e altíssima performance (nesta ordem).
+Use quando as tarefas englobarem inovação pesada sobre algoritmos DSP, redes LSTM/WaveNet e contornos macro do tempo de execução PipeWire para o autômato independente NAM-rs. Proponha implementações sub-milisegundo engajando os vetores microarquiteturais da CPU em escala massiva.
 
 ## Instructions
 
-### 1. Performance First
+### 1. Foco em Instruções Paralelas e Matrizes Extremas
 
-- Toda sugestão deve considerar o impacto realístico em processamento matemático, branch prediction, L1/L2 cache locality e latência sub-milisegundo.
-- Analise o uso de `std::simd` (Portable SIMD) para processamento DSP intenso ou detecção numérica rápida de silêncio se for o caso.
-- Considere a otimização extrema nos caminhos de recepção de bytes e nos Ring Buffers (ex: contornando bounds checks sem abrir brechas de segurança, com asserts estáticos).
+- Implementações neurais em software áudio restrito dependem do engajamento denso SIMD em dot-products. Proponha resoluções baseadas unicamente em extensões como Instruções FMA e desvios FastMath.
+- Identifique possíveis desdobramentos temporais vetoriais via `std::simd` otimizando instâncias polinomiais com o menor desvio preditivo na CPU sem comprometer fidelidade orgânica.
+- Avalie se a adoção de superamostradores via matriz Sinc Interporlation (Kaiser Windowing) retém harmônicos limpos sob amostras PCM e em conformidade estrita Lock-Free.
 
-### 2. Linux Kernel e Audio Architecture
+### 2. Aderência Operacional de Tempo Real Linux/Host
 
-- Sugira inovações baseadas ou combináveis com isolamento de Core (Core Affinity), Isolcpus e flags assíncronas de gravação direta via disco (`io_uring`, pre-alocação otimizada como `fallocate`).
-- Mapeie arquiteturas resilientes que suportem perfeitamente o dynamic roteamento no PipeWire (re-roteamento de streams nativo ou mudança abrupta de taxa de bits sem pânicos em lock).
-- Esteja atentos às novidades em toda a stack envolvida (Kernel Linux, Pipewire, etc).
+- Sugestões técnicas atrelam-se integralmente na soberania do Core Affinity para prevenir Core Migrations, aliados ao status privilegiado do escalonador `low latency`.
+- Mapeie a transição paramétrica Tone3000 de forma autônoma: metadados JSON / .NAMB fluem sobre SPSC para auto-rescaler os limites numéricos dBFS vs dBu, permitindo reescalonamento dinâmico estático seguro.
+- Herança de I/O (`io_uring`) pertencem a repositórios descontinuados para o projeto: a pesquisa repousa unicamente no transporte computacional PipeWire via `pipewire-rs`.
 
-### 3. CLI Minimalista e Feedback de Estado
+### 3. Minimalismo Lock-Free de Eventos do Rust
 
-- Adote abordagens "Zero Overhead" e que não oneram IO para imprimir na CLI. A CLI e o backend de tempo real devem estar rigorosamente isolados para não competirem pelos mesmos schedulers críticos da CPU.
+- A CLI CLI em rust opera assíncrona com os comandos do usuário transacionando parâmetros sob um único canal intertravado estrito (Ring Buffer) garantindo isenções totais de locks (Mutex, Spin).

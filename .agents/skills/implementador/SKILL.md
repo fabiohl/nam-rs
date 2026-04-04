@@ -11,21 +11,18 @@ Use esta skill quando for necessário focar em **codificação e execução téc
 
 ## Instructions
 
-### 1. Contexto e Arquitetura
+### 1. Contexto e Padrão Arquitetural Inegociáveis
 
-Antes de implementar qualquer coisa, leia:
+Antes de implementar qualquer funcionalidade, consulte a referência mestra em `docs/NAM-rs-referência.md` e obedeça os ciclos do desenvolvimento em `docs/NAM-rs-sprints.md`. Inúmeras restrições listadas em `.agents/rules/rust.md` precisam ser estritamente consideradas.
 
-- `docs/architecture.md` — Decisões arquiteturais fundamentais do projeto.
-- `.agent/rules/rust.md` — Regras inegociáveis do domínio.
+### 2. Tratativas de Código Nativo e Performance Isolada
 
-### 2. Rust e Áudio
+- A Injeção PipeWire em modo Standalone tem prerrogativas severas.
+- O loop atômico e algorítmico impõe restrições **ZERO** em alocação flutuante dinâmica. Matrizes são implementadas inteiramente através de Estruturas de Arrays (SoA), combinadas a rotinas de _loop unrolling_ instanciadas sobre _const generics_ massivas (como matriz LSTM oculta e CNN temporal paralela).
+- Toda premissa de passagem externa para as instâncias ativas ocorre através estrita e limitadamente pelo Buffer em anel **SPSC 128-byte aligned** (evitando False Sharing vetorial de Core L1/L2).
+- Os desdobramentos lógicos dispensam aproximação padrão em C/rust (`std::math`). Os desvios submetem as interações ao framework de modelamento via FastMath _Minimax_ polinomial.  
 
-- Siga os princípios definidos: **ZERO** alocações na DSP thread, uso estrito de **Ring Buffers SPSC**, alinhamento de cache (128 bytes) para evitar false sharing, e gravação baseada em **`io_uring`**.
-- **Tratamento de erros**: Na thread DSP (Tempo Real) não emita pânico sob nenhuma hipótese; o silêncio lock-free comunicador é preferível a um panic. Na thread de controle e I/O, utilize `anyhow::Result` e contextualize (`.context()`).
-- **Divisão de Responsabilidades**: A separação entre o callback de áudio em tempo real isolado e a thread não em tempo real que descarrega no disco deve ser sagrada. Nenhuma fronteira entre eles pode ser transpassada sem passar estritamente pelo Ring Buffer lock-free.
+### 3. Edge Avançado, AVX512 e Clean Builds
 
-### 3. Bleeding Edge e Construção
-
-- Tire o máximo proveito dos recursos de linguagem recentes (Rust 1.94, `std::simd` se benéfico, async avançado se usado para background, etc).
-- Garanta que todo novo componente se comunique nativamente sem sobrecarga.
-- Garanta que `cargo build` e os devidos `lints.sh` rodarão sempre, corrigindo exhaustivamente falhas e _warnings_.
+- Escreva subrotinas que validem compilamentos simultâneos adaptáveis à CPU Host. Maximize Multi-Target com foco no processador nativo com AVX2 (YMM) ou expansões dinâmicas de 512-bits via extratos microarquiteturais baseados nos ZMM via `std::simd`.
+- O código compilado passa exaustivamente sobre script global `utils/lints.sh`. Corrija avisos para provar segurança estocástica das redes em Rust 2024.

@@ -1,8 +1,2 @@
-Baseado nos documentos de arquitetura que baseiam o novo projeto NAM-rs (@beautifulMentione @beautifulMention), atualizar os seguintes documentos que foram herdados do AudioRip:
-* docs/architecture.md
-* docs/dependencies.md
-* .agents/
-Limite-se a este locais. Ainda estamos construindo as fundações para o NAM-rs. Ainda não mexa os demais artefatos.
-Ignore os arquivos e pastas listadas em @beautifulMention
-
 * Iniciar a Sprint 1 implementando a Tarefa 1.1.
+* Abrir Github oficial

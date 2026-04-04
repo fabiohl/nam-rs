@@ -7,28 +7,26 @@ description: Use esta habilidade atuando como um painel multi-disciplinar (no ca
 
 ## When to use this skill
 
-Use esta skill antes de sair programando, focado em **Definição, Requisitos e Estratégia (Upstream)**. Esta skill gera planos de ação robustos (como `task.md` e `implementation_plan.md`) e destrincha demandas macro em micro-tarefas detalhadas.
-Novas demandas acionadas pelo Agent Manager do Google Antigravity (ou prompt inicial equivalente em outras IDEs) deve acionar esta skill.
+Use esta skill focando em **Planejamento Técnico e Arquitetura Inferencia Inegociável**. A matriz da arquitetura aborda problemas espaciais temporais (DSP) destrinchando as necessidades base do `NAM-rs` em tarefas ágeis via `implementation_plan.md` listando micro passos exatos de refatoração para a linguagem de máquina (SIMD/FMA).
 
 ## Instructions
 
-### 1. Foco em Definição e Requisitos
+### 1. Fundamentos e Diretrizes Analíticas
 
-- Seja visionário e pragmático. Entenda profundamente as necessidades do produto lendo os artefatos:
-  - `docs/architecture.md` — Visão arquitetural e decisões fundamentais do áudio Bit Perfect.
-  - `.agent/rules/rust.md` — Regras inegociáveis de operação e domínio.
-  - `TODO.txt` — Backlog e intenção de sprint atual.
-- Traduza as dores do usuário em "soluções técnicas viáveis e documentadas". A arquitetura de áudio real-time requer planejamento rigoroso de dependências (sem bloqueios mútuos) entre as threads.
+- Carregue o contexto denso proveniente de artefatos essenciais:
+  - `docs/NAM-rs-referência.md` e manifesto `docs/NAM-rs-sprints.md`.
+  - `.agents/rules/rust.md` sobre as condições inegociáveis de código.
 
-### 2. Geração de Artefatos (Planos)
+### 2. Subdivisões do Motor Matemático e Concorrência
 
-- Quebre demandas complexas em passos menores e atômicos criando uma lista de tarefas bem definida.
-- Produza planos claros que possam ser lidos e consumidos pelas personas de negócio ou pela skill `implementador`.
+- Modele requisitos complexos das Redes Neurais convertendo os _models_ Tone3000 nativos suportando implementações `Const Generics`.
+- Ao introduzir um novo fluxo do Host pipewire, proteja o acesso determinístico isolando estritamente em barreiras Single-Producer Single-Consumer (Ring Buffers SPSC).
+- Abstrações não focadas à simulação matemática de amplificadores percussivos (tais quais rotinas herdadas como gravação em HD com _io_uring_ de arquivos) devem ser barradas ou planejados expurgos literais se encontrados.
 
-### 3. Consciência Arquitetural do Projeto
+### 3. Organização do Roteamento Computacional
 
-Toda decisão de nova arquitetura ou plugin desenhada em seu plano deve prever isolamento do Ring Buffer restrito a Produtor Único e Consumidor Único (SPSC), e prever como isso será integrado ao `io_uring`, garantindo resiliência ao Graceful Shutdown.
+- Especifique para a equipe técnica como e em qual parte exata a thread `Audio/DSP` `low latency` deve assimilar bibliotecas externas `fastmath` no lugar do STD base. Descreva os mecanismos dinâmicos contendo multiversioning SIMD compilados pelo `cargo build` e delineados.
 
 ### 4. Atividades finais
 
-Ao final, para concluir, sempre acione a skill `documentador` para garantir que a documentação esteja atualizada e rode os lints via utils/lints.sh e só encerre quando não houver mais nenhum erro.
+- Encerre solicitando à infraestrutura de dev (`lints.sh`) validação do plano macro na base estrita de sintaxe do rust antes de fechar sua sessão com a tag da skill `documentador`.

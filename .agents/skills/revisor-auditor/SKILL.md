@@ -7,47 +7,37 @@ description: Painel de auditores, caçadores de bugs, cientistas, engenheiros s�
 
 ## When to use this skill
 
-Use esta skill para realizar uma varredura proativa de bugs e oportunidades de melhorias no projeto, focando especialmente em gargalos de performance, condições de corrida lock-free, violações de processamento real-time e falhas de alinhamento em memória cache da CPU.
+Use para inspecionar, revisar e diagnosticar estrita aderência arquitetural, focando nos princípios cruciais de Inferencia via FMA (Fused Multiply Action), PipeWire Assíncrono e detecção cirúrgica de violações computacionais e lock-free no buffer macro da thread principal (DSP) do projeto Standalone NAM-rs.
 
 ## Instructions
 
-Entenda os objetivos do projeto e se eles estão sendo alcançados.
-Melhore ao máximo a organização, o código, os comentários e a documentação.
-Se necessário, promova refatorações. Porém cuidado e bom-senso para não quebrar funcionalidades importantes.
-Garanta as melhores práticas de engenharia de software.
+### 1. Ingestão de Referenciais
 
-### 1. Contextualização Antes de Tudo (Read First)
+Revise seu contexto mental sob o manifesto presente nos repositórios como as restrições em `.agents/rules/rust.md` e a arquitetura estática estipulada em `docs/NAM-rs-referência.md`.
 
-Antes de qualquer análise de código, lembre de carregar seu contexto mental lendo `docs/` e os fundamentos em `.agent/rules/`.
+### 2. Subversão Arquitetural Híbrida: O Que Erradicar
 
-### 2. Taxonomia de Bugs: O Que Caçar
+Inspecione linha-de-código detectando categoricamente:
 
-Analise o código, módulo por módulo, rigorosamente contra estas restrições:
+#### 🔴 CRÍTICO — Violações Severas e Predições Daninhas
 
-#### 🔴 CRÍTICO — Riscos e Quebras Arquiteturais
+| Categoria                            | O que verificar                                                                                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Pulo Condicional Desperdiçado**    | Modelos WaveNet ou LSTMs usando loops iterativos que não foram suprimidos via desdobramento (_loop unrolling_ de Const Generics), custando fatias pesadas do Branch Predictor local. |
+| **Latência por Alocação (Box, Vec)** | Instanciações sob a heap dentro da esteira low latency provocando desastre de alocação preempitiva no kernel hospedeiro.                                                             |
+| **Cálculo Matemático Letárgico**     | Submissão aos padrões `std::math` substituindo a velocidade necessária requerida da biblioteca FastMath sobre vetores de instrução _std::simd_.                                      |
+| **Gargalo L1/L2 (False Sharing)**    | Estruturas assíncronas ativas (Parametros Tone3000 de ganho) comunicando sobre structs não separadas geograficamente a 128-bytes no Ring Buffer (_#[repr(align(128))]_).             |
+| **Resquícios Herdados do AudioRip**  | Algoritmos IO persistentes para disco e requisições passivas I/O Uring sendo mantidos ou ressuscitados, onerando o kernel em ações desnecessárias ao NAM-rs Standalone.              |
 
-Exemplos:
+#### 🟠 ALTO — Condicionamentos Inadequados e Falhas de Domínio
 
-| Categoria                               | O que verificar                                                                                                                                           |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Violação do Tempo Real**              | Alocação indireta (ex: Box, Arc, Vec, String, macros format!) ocorrendo na thread DSP ou no callback do nih_plug.                                         |
-| **I/O ou Syscalls no DSP**              | Qualquer operação bloqueante, syscall, I/O síncrono ou semáforo adquirida pelo loop do áudio.                                                             |
-| **Thread arriscada**                    | Thread com risco de preempção forçada, migração de cores ou de congelar o sistema inteiro.                                                                |
-| **Gargalo de Hardware (False Sharing)** | Variáveis ou estruturas sendo processadas simultaneamente inter-threads, e que não estejam rigorosamente alinhadas a 128 bytes por `#[repr(align(128))]`. |
-| **Tratamento Descuidado de Gravação**   | Retornos do subsystema `io_uring` ignorados ou erros silenciados no background, possibilitando geração de um arquivo WAV corrompido ou vazio.             |
-
-#### 🟠 ALTO — Falhas de robustez
-
-Exemplos:
-
-| Categoria                             | O que verificar                                                                                                                                               |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Dados do Cabeçalho WAV incorretos** | O software está deduzindo ou congelando (hardcoding) sample/bit rate no `hound` em vez de inspecionar fisicamente o formato que o Host/PipeWire entrega.      |
-| **Sincronia Inconsistente (SPSC)**    | Uso ambíguo de canais MPSC ou Mutexes no Ring Buffer. Lock corrompido. Buffer Overruns e Underruns omitidos ao usuário na CLI.                                |
-| **Subversão de Sinal SO**             | A aplicação capotando sem fechar de perto os buffers finais, ou o handler de interrupções ignorando que precisa fazer Graceful Shutdown ao receber um CTRL+C. |
+| Categoria                            | O que verificar                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Defasagem Operacional PCM**        | Emuladores não aplicando processamento com isolamentos nativos Superamostrados FIR limitados (Linear Phase Filter), causando _digital aliasing_ fatal pela interface de processamento a 48 kHz base da convolucional externa sob intermédios dinâmicos host (ex: conversões errôneas no Pipewire vindo por 96kHz ou similares). |
+| **Tratativa Abstrata Parametrizada** | Omissão do leitor nativo falhar ao intervir e balancear silenciosa os níveis operacionais brutos ditados pelos limites dBu de entrada do arquivo _.namb_ provido e estático causará sobrecarga destrutiva nas atuações tangente-hiperbólica do som.                                                                             |
 
 E assim por diante, até os "médios" e "baixos".
 
-### 3. Procedimento de Correção
+### 3. Retificações Perfeitas e Bit-Perfect
 
-Estruture em um relatório de artefato as falhas listadas. Na correção destas, aja com precisão cirúrgica sem quebrar as restrições inegociáveis de um audio renderer Bit Perfect. Revalide tudo com script de lint local após finalizar!
+Submeta patches letolizando ineficiências em vetores numéricos puristas. A operação final obriga validação incondicional ao ciclo local `utils/lints.sh`. Tudo deve operar nas janelas perfeccionistas de baixa latência.
