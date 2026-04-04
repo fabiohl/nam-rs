@@ -1,4 +1,4 @@
-* Baseado nos documentos de arquitetura, atualizar:
+* Baseado nos documentos de arquitetura que baseiam o novo projeto NAM-rs, atualizar os seguintes documentos que foram herdados do AudioRip:
   * docs/architecture.md
   * docs/dependencies.md
   * Cargo.toml
