@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 [package]
-name = "audiorip"
-version = "1.0.0"
+name = "nam-rs"
+version = "0.1.0"
 edition = "2024"
 
 [dependencies]
@@ -14,7 +14,7 @@ nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [
     "standalone",
 ] }
 rtrb = "0.3.3"
-tokio = { version = "1.50.0", features = ["time"] }
+tokio = { version = "1.51.0", features = ["time"] }
 tokio-uring = "0.5.0"
 
 [profile.release]
