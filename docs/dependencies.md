@@ -16,7 +16,18 @@ sudo apt install build-essential pkg-config pipewire libpipewire-0.3-dev clang l
 
 ---
 
-## 2. Máquina do Usuário Final (Runtime)
+## 2. Dependências Rust (Cargo.toml)
+
+| Crate                   | Propósito                                                    |
+| ----------------------- | ------------------------------------------------------------ |
+| `anyhow`                | Tratamento de erros ergonômico em toda a aplicação           |
+| `ctrlc`                 | Handler de sinal CTRL+C para shutdown gracioso               |
+| `libc`                  | Chamadas de baixo nível: SCHED_FIFO, Core Affinity, pthread  |
+| `nih_plug` (standalone) | Framework de host PipeWire para o callback DSP de tempo real |
+
+---
+
+## 3. Máquina do Usuário Final (Runtime)
 
 O binário final extraído em modo `--release` encapsula a matemática lógica, mas invoca conexões assíncronas do Host PipeWire no runtime final.
 As dependências restritas do lado do usuário configuram em:
@@ -25,7 +36,7 @@ As dependências restritas do lado do usuário configuram em:
 sudo apt install pipewire
 ```
 
-## 3. Políticas de Baixa Latência
+## 4. Políticas de Baixa Latência
 
 Para que o motor execute inabalável sob modelos NAM severos ("Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário.
 Adicione seu usuário ao grupo de áudio do sistema e edite limits:

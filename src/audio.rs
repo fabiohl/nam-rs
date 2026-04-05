@@ -2,79 +2,43 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Núcleo de processamento de áudio DSP usando `nih_plug`.
-//! Contém o callback estrito da thread de Tempo-Real/DSP responsável pela captura Bit-Perfect.
-//! Recebe amostras f32 brutas do host PipeWire via backend standalone do `nih_plug`,
-//! as intercala em blocos alinhados por cache e as envia para o ring buffer SPSC lock-free
-//! para consumo pela thread de I/O. Zero alocação na heap, zero I/O, zero mutexes
-//! durante o `process()`.
+//! Contém o callback estrito da thread de Tempo-Real/DSP responsável pelo processamento
+//! de inferência neural NAM. Recebe amostras f32 brutas do host PipeWire via backend
+//! standalone do `nih_plug` e as processa em tempo real.
+//! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
+//!
+//! # Estado Atual (pós-Tarefa 1.1)
+//! O motor de inferência neural ainda não foi implementado (Sprints 2-5).
+//! O `process()` opera em modo **pass-through**: o áudio de entrada flui inalterado
+//! para a saída, garantindo que o pipeline PipeWire funcione sem interrupções.
 
 use nih_plug::prelude::*;
-use rtrb::Producer;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 
-use crate::buffer::{AlignedBlock, AudioMetadata, MAX_BLOCK_SIZE, OVERRUN_COUNT, RingPayload};
-
-/// Limiar de tolerância para considerar um sinal de áudio como silêncio absoluto.
-/// Usado pelo Noise Gate de Zero Overhead para suprimir a gravação de blocos vazios.
-const SILENCE_THRESHOLD: f32 = 1e-6;
-
-/// Armazenamento global para injetar o Producer na instância do plugin criada pelo `nih_plug` standalone.
-/// O padrão `OnceLock<Mutex<Option<...>>>` é necessário porque o `nih_plug` instancia o plugin
-/// internamente via `Default::default()`, tornando obrigatória a injeção do producer por um global.
-/// O Mutex é travado apenas uma vez durante o `Default::default()`, nunca durante o `process()`.
-pub static PRODUCER: OnceLock<Mutex<Option<Producer<RingPayload<MAX_BLOCK_SIZE>>>>> =
-    OnceLock::new();
-
-/// Verifica se o bloco de áudio é considerado silêncio.
-/// Usando iteradores simples sobre fatias de memória contígua, o LLVM consegue aplicar
-/// auto-vetorização (SIMD/AVX2) sem necessidade de código unsafe ou crates extras.
-#[inline(always)]
-fn is_silent(data: &[f32]) -> bool {
-    data.iter().all(|&sample| sample.abs() < SILENCE_THRESHOLD)
-}
-
-/// Implementação do plugin AudioRip.
-/// Armazena o producer do ring buffer e rastreia se os metadados do stream já foram enviados.
-pub struct AudioRipPlugin {
-    params: Arc<AudioRipParams>,
-    /// Producer do ring buffer, injetado via global `PRODUCER` durante o `Default::default()`.
-    pub producer: Option<Producer<RingPayload<MAX_BLOCK_SIZE>>>,
-    /// Indica se os metadados (sample rate, bit depth, canais) já foram enviados na sessão atual.
-    metadata_sent: bool,
+/// Implementação do plugin NAM-rs.
+/// Motor de inferência neural para emulação de amplificadores via PipeWire.
+pub struct NamRsPlugin {
+    params: Arc<NamRsParams>,
     /// Indica se a configuração da thread RT (afinidade de núcleo, agendador) já foi aplicada.
     thread_configured: bool,
 }
 
-/// Parâmetros do plugin AudioRip.
-/// Struct vazia porque o capturador passivo não expõe parâmetros ao usuário,
-/// mas o trait `Params` do `nih_plug` exige uma struct de parâmetros.
+/// Parâmetros do plugin NAM-rs.
+/// Será expandido nas Sprints seguintes com Input Gain, Output Gain e seleção de modelo .namb.
 #[derive(Params)]
-pub struct AudioRipParams {}
+pub struct NamRsParams {}
 
-impl Default for AudioRipPlugin {
+impl Default for NamRsPlugin {
     fn default() -> Self {
-        let producer = if let Some(mutex) = PRODUCER.get() {
-            if let Ok(mut guard) = mutex.lock() {
-                guard.take()
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
         Self {
-            params: Arc::new(AudioRipParams {}),
-            producer,
-            metadata_sent: false,
+            params: Arc::new(NamRsParams {}),
             thread_configured: false,
         }
     }
 }
 
-impl Plugin for AudioRipPlugin {
-    const NAME: &'static str = "AudioRip";
+impl Plugin for NamRsPlugin {
+    const NAME: &'static str = "NAM-rs";
     const VENDOR: &'static str = "Fabio Lima";
     const URL: &'static str = "";
     const EMAIL: &'static str = "fabio.henrique.lima.silva@gmail.com";
@@ -104,25 +68,19 @@ impl Plugin for AudioRipPlugin {
         _buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        // Reinicia o estado para uma nova sessão de captura
-        self.metadata_sent = false;
         true
     }
 
     fn reset(&mut self) {
-        self.metadata_sent = false;
-
-        // Envia o sinal de parada ao Consumer sem alocar memória na thread DSP
-        if let Some(producer) = &mut self.producer {
-            let _ = producer.push(RingPayload::StreamStop);
-        }
+        // Sem estado interno a resetar nesta fase.
+        // Será expandido quando o motor de inferência mantiver estados recorrentes (LSTM).
     }
 
     fn process(
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        context: &mut impl ProcessContext<Self>,
+        _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         // Aplica a configuração da thread RT apenas uma vez, na primeira chamada do callback.
         // Executado antes de qualquer processamento de dados de áudio.
@@ -131,90 +89,21 @@ impl Plugin for AudioRipPlugin {
             self.thread_configured = true;
         }
 
-        let samples = buffer.samples();
-        let channels = buffer.channels();
-        let sample_rate = context.transport().sample_rate;
-
-        // Evita panics em cascata caso o host passe um buffer vazio ou inválido momentaneamente
-        if samples == 0 || channels == 0 || sample_rate <= 0.0 {
-            return ProcessStatus::Normal;
-        }
-
-        if let Some(producer) = &mut self.producer {
-            // Envia os metadados do stream à thread de I/O no primeiro buffer ou após um reset.
-            // Permite que a thread de I/O crie um header WAV corretamente formatado.
-            if !self.metadata_sent {
-                // O nih_plug entrega f32 nativamente; o PipeWire traduz de forma transparente.
-                let bit_depth = 32;
-                let channels = channels as u16;
-
-                let meta = AudioMetadata {
-                    sample_rate,
-                    bit_depth,
-                    channels,
-                };
-
-                if producer.push(RingPayload::Metadata(meta)).is_err() {
-                    OVERRUN_COUNT.fetch_add(1, Ordering::Relaxed);
-                }
-                self.metadata_sent = true;
-            }
-
-            // ⚡ CAMINHO QUENTE: Intercalação de Áudio ⚡
-            // Transpõe os arrays não-intercalados do `nih_plug` nativamente para uma
-            // estrutura de bloco lock-free alinhada a 128 bytes. Isso evita o cache
-            // bouncing e nunca acessa os alocadores de memória padrão (`Box`, `Vec`).
-            let mut block = AlignedBlock::<MAX_BLOCK_SIZE>::new();
-            let mut block_idx = 0;
-
-            for sample_idx in 0..samples {
-                for ch in 0..channels {
-                    if block_idx >= MAX_BLOCK_SIZE {
-                        // Bloco cheio — envia com valid_len exato e inicia um novo.
-                        block.valid_len = MAX_BLOCK_SIZE;
-
-                        // Noise Gate de Zero Overhead: envia áudio apenas se não for silêncio absoluto.
-                        if !is_silent(&block.data[..block.valid_len])
-                            && producer.push(RingPayload::Audio(block)).is_err()
-                        {
-                            OVERRUN_COUNT.fetch_add(1, Ordering::Relaxed);
-                        }
-
-                        block = AlignedBlock::<MAX_BLOCK_SIZE>::new();
-                        block_idx = 0;
-                    }
-
-                    // Leitura nativa de memória, passagem bit-perfect para o ring buffer.
-                    block.data[block_idx] = buffer.as_slice()[ch][sample_idx];
-                    block_idx += 1;
-                }
-            }
-
-            // Envia o bloco residual com a contagem precisa de amostras válidas.
-            // Apenas `valid_len` amostras serão escritas no arquivo WAV pela thread de I/O.
-            if block_idx > 0 {
-                block.valid_len = block_idx;
-
-                // Noise Gate de Zero Overhead aplicado ao bloco residual.
-                if !is_silent(&block.data[..block.valid_len])
-                    && producer.push(RingPayload::Audio(block)).is_err()
-                {
-                    OVERRUN_COUNT.fetch_add(1, Ordering::Relaxed);
-                }
-            }
-
-            // Silencia o buffer ativo para evitar feedback indesejado nos fones do usuário,
-            // pois o nih_plug processa estritamente no lugar (in-place).
-            for ch_slice in buffer.as_slice() {
-                ch_slice.fill(0.0);
-            }
-        }
+        // ⚡ PASS-THROUGH: O áudio de entrada flui inalterado para a saída.
+        // O nih_plug opera in-place — entrada e saída compartilham o mesmo buffer.
+        // Não tocar nos dados do buffer significa que a entrada é copiada diretamente
+        // para a saída, comportamento natural de um processador sem efeito aplicado.
+        //
+        // Quando o motor de inferência neural for implementado (Sprints 2-5),
+        // este bloco será substituído pela cadeia de processamento:
+        // Input Gain → Resampler → NAM Inference (WaveNet/LSTM) → Output Gain → Resampler
+        let _ = buffer;
 
         ProcessStatus::Normal
     }
 }
 
-impl AudioRipPlugin {
+impl NamRsPlugin {
     /// Seleciona o núcleo de CPU ideal para fixar a thread RT (core affinity).
     ///
     /// Critérios de seleção (em ordem de desempate):
@@ -403,12 +292,12 @@ impl AudioRipPlugin {
                         policy_str.push_str(" | SCHED_RESET_ON_FORK");
                     }
                     println!(
-                        "[AudioRip] 🔍 Audio/DSP Thread: CPU Core = {}, Policy = {}, Priority = {}",
+                        "[NAM-rs] 🔍 Audio/DSP Thread: CPU Core = {}, Policy = {}, Priority = {}",
                         actual_cpu, policy_str, actual_param.sched_priority
                     );
                 } else {
                     eprintln!(
-                        "[AudioRip] ⚠️ Falha ao verificar parâmetros da thread (erro {}).",
+                        "[NAM-rs] ⚠️ Falha ao verificar parâmetros da thread (erro {}).",
                         ret_getsched
                     );
                 }
