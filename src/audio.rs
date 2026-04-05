@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Audio DSP core using `nih_plug`.
-//! Contains the strict Real-Time/DSP thread callback responsible for Bit-Perfect capture.
-//! Receives raw f32 samples from the PipeWire host via the `nih_plug` standalone backend,
-//! interleaves them into cache-aligned blocks, and pushes them to the lock-free SPSC ring buffer
-//! for consumption by the I/O thread. Zero heap allocation, zero I/O, zero mutexes
-//! during `process()`.
+//! Núcleo de processamento de áudio DSP usando `nih_plug`.
+//! Contém o callback estrito da thread de Tempo-Real/DSP responsável pela captura Bit-Perfect.
+//! Recebe amostras f32 brutas do host PipeWire via backend standalone do `nih_plug`,
+//! as intercala em blocos alinhados por cache e as envia para o ring buffer SPSC lock-free
+//! para consumo pela thread de I/O. Zero alocação na heap, zero I/O, zero mutexes
+//! durante o `process()`.
 
 use nih_plug::prelude::*;
 use rtrb::Producer;
@@ -15,40 +15,40 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::buffer::{AlignedBlock, AudioMetadata, MAX_BLOCK_SIZE, OVERRUN_COUNT, RingPayload};
 
-/// Tolerance threshold for considering an audio signal as absolute silence.
-/// Used by the Zero-Overhead Noise Gate to suppress recording of empty blocks.
+/// Limiar de tolerância para considerar um sinal de áudio como silêncio absoluto.
+/// Usado pelo Noise Gate de Zero Overhead para suprimir a gravação de blocos vazios.
 const SILENCE_THRESHOLD: f32 = 1e-6;
 
-/// Global storage to inject the Producer into the plugin instance created by `nih_plug` standalone.
-/// The `OnceLock<Mutex<Option<...>>>` pattern is used because `nih_plug` instantiates the plugin
-/// internally via `Default::default()`, making it necessary to inject the producer through a global.
-/// The Mutex is locked only once during `Default::default()`, never during `process()`.
+/// Armazenamento global para injetar o Producer na instância do plugin criada pelo `nih_plug` standalone.
+/// O padrão `OnceLock<Mutex<Option<...>>>` é necessário porque o `nih_plug` instancia o plugin
+/// internamente via `Default::default()`, tornando obrigatória a injeção do producer por um global.
+/// O Mutex é travado apenas uma vez durante o `Default::default()`, nunca durante o `process()`.
 pub static PRODUCER: OnceLock<Mutex<Option<Producer<RingPayload<MAX_BLOCK_SIZE>>>>> =
     OnceLock::new();
 
-/// Checks whether the audio block is considered silent.
-/// Using simple iterators on contiguous memory slices allows the LLVM to apply
-/// auto-vectorization (SIMD/AVX2) without requiring unsafe code or extra crates.
+/// Verifica se o bloco de áudio é considerado silêncio.
+/// Usando iteradores simples sobre fatias de memória contígua, o LLVM consegue aplicar
+/// auto-vetorização (SIMD/AVX2) sem necessidade de código unsafe ou crates extras.
 #[inline(always)]
 fn is_silent(data: &[f32]) -> bool {
     data.iter().all(|&sample| sample.abs() < SILENCE_THRESHOLD)
 }
 
-/// AudioRip plugin implementation.
-/// Holds the ring buffer producer and tracks whether stream metadata has been sent.
+/// Implementação do plugin AudioRip.
+/// Armazena o producer do ring buffer e rastreia se os metadados do stream já foram enviados.
 pub struct AudioRipPlugin {
     params: Arc<AudioRipParams>,
-    /// Ring buffer producer, injected via the global `PRODUCER` during `Default::default()`.
+    /// Producer do ring buffer, injetado via global `PRODUCER` durante o `Default::default()`.
     pub producer: Option<Producer<RingPayload<MAX_BLOCK_SIZE>>>,
-    /// Indicates whether metadata (sample rate, bit depth, channels) has been sent in the current session.
+    /// Indica se os metadados (sample rate, bit depth, canais) já foram enviados na sessão atual.
     metadata_sent: bool,
-    /// Indicates whether the RT thread configuration (core affinity, scheduler) has been applied.
+    /// Indica se a configuração da thread RT (afinidade de núcleo, agendador) já foi aplicada.
     thread_configured: bool,
 }
 
-/// AudioRip plugin parameters.
-/// Empty struct because the passive ripper has no user-exposed parameters,
-/// but the `nih_plug` `Params` trait requires a parameters struct.
+/// Parâmetros do plugin AudioRip.
+/// Struct vazia porque o capturador passivo não expõe parâmetros ao usuário,
+/// mas o trait `Params` do `nih_plug` exige uma struct de parâmetros.
 #[derive(Params)]
 pub struct AudioRipParams {}
 
@@ -91,7 +91,7 @@ impl Plugin for AudioRipPlugin {
     const SAMPLE_ACCURATE_AUTOMATION: bool = false;
     type SysExMessage = ();
 
-    // Opaque background task type — unused; required by nih_plug.
+    // Tipo de tarefa em background opaco — não utilizado; exigido pelo nih_plug.
     type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
@@ -104,7 +104,7 @@ impl Plugin for AudioRipPlugin {
         _buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        // Reset state for a new capture session
+        // Reinicia o estado para uma nova sessão de captura
         self.metadata_sent = false;
         true
     }
@@ -112,7 +112,7 @@ impl Plugin for AudioRipPlugin {
     fn reset(&mut self) {
         self.metadata_sent = false;
 
-        // Push the stop signal to the Consumer without allocating memory on the DSP thread
+        // Envia o sinal de parada ao Consumer sem alocar memória na thread DSP
         if let Some(producer) = &mut self.producer {
             let _ = producer.push(RingPayload::StreamStop);
         }
@@ -124,8 +124,8 @@ impl Plugin for AudioRipPlugin {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        // Apply the RT thread configuration only once, on the first callback invocation.
-        // Runs before any audio data processing.
+        // Aplica a configuração da thread RT apenas uma vez, na primeira chamada do callback.
+        // Executado antes de qualquer processamento de dados de áudio.
         if !self.thread_configured {
             self.configure_realtime_thread();
             self.thread_configured = true;
@@ -135,16 +135,16 @@ impl Plugin for AudioRipPlugin {
         let channels = buffer.channels();
         let sample_rate = context.transport().sample_rate;
 
-        // Prevent downstream panics if the host passes an empty/dead buffer momentarily
+        // Evita panics em cascata caso o host passe um buffer vazio ou inválido momentaneamente
         if samples == 0 || channels == 0 || sample_rate <= 0.0 {
             return ProcessStatus::Normal;
         }
 
         if let Some(producer) = &mut self.producer {
-            // Send stream metadata to the I/O thread on the first buffer or after reset.
-            // Allows the I/O thread to create a correctly formatted WAV header.
+            // Envia os metadados do stream à thread de I/O no primeiro buffer ou após um reset.
+            // Permite que a thread de I/O crie um header WAV corretamente formatado.
             if !self.metadata_sent {
-                // nih_plug delivers f32 natively; PipeWire translates transparently.
+                // O nih_plug entrega f32 nativamente; o PipeWire traduz de forma transparente.
                 let bit_depth = 32;
                 let channels = channels as u16;
 
@@ -160,20 +160,20 @@ impl Plugin for AudioRipPlugin {
                 self.metadata_sent = true;
             }
 
-            // ⚡ HOT PATH: Audio Interleaving ⚡
-            // Transposes non-interleaved arrays from `nih_plug` natively into a
-            // 128-byte-aligned lock-free block structure. This prevents cache
-            // bouncing and never touches the default memory allocators (`Box`, `Vec`).
+            // ⚡ CAMINHO QUENTE: Intercalação de Áudio ⚡
+            // Transpõe os arrays não-intercalados do `nih_plug` nativamente para uma
+            // estrutura de bloco lock-free alinhada a 128 bytes. Isso evita o cache
+            // bouncing e nunca acessa os alocadores de memória padrão (`Box`, `Vec`).
             let mut block = AlignedBlock::<MAX_BLOCK_SIZE>::new();
             let mut block_idx = 0;
 
             for sample_idx in 0..samples {
                 for ch in 0..channels {
                     if block_idx >= MAX_BLOCK_SIZE {
-                        // Block full — push with exact valid_len and start a new one.
+                        // Bloco cheio — envia com valid_len exato e inicia um novo.
                         block.valid_len = MAX_BLOCK_SIZE;
 
-                        // Zero-Overhead Noise Gate: submit audio only if not absolute silence.
+                        // Noise Gate de Zero Overhead: envia áudio apenas se não for silêncio absoluto.
                         if !is_silent(&block.data[..block.valid_len])
                             && producer.push(RingPayload::Audio(block)).is_err()
                         {
@@ -184,18 +184,18 @@ impl Plugin for AudioRipPlugin {
                         block_idx = 0;
                     }
 
-                    // Native memory read, bit-perfect pass-through to the ring buffer.
+                    // Leitura nativa de memória, passagem bit-perfect para o ring buffer.
                     block.data[block_idx] = buffer.as_slice()[ch][sample_idx];
                     block_idx += 1;
                 }
             }
 
-            // Push the residual block with the precise count of valid samples.
-            // Only `valid_len` samples will be written to the WAV file by the I/O thread.
+            // Envia o bloco residual com a contagem precisa de amostras válidas.
+            // Apenas `valid_len` amostras serão escritas no arquivo WAV pela thread de I/O.
             if block_idx > 0 {
                 block.valid_len = block_idx;
 
-                // Zero-Overhead Noise Gate applied to the residual block.
+                // Noise Gate de Zero Overhead aplicado ao bloco residual.
                 if !is_silent(&block.data[..block.valid_len])
                     && producer.push(RingPayload::Audio(block)).is_err()
                 {
@@ -203,8 +203,8 @@ impl Plugin for AudioRipPlugin {
                 }
             }
 
-            // Silence the active buffer to prevent unwanted feedback in the user's headphones,
-            // since nih_plug processes strictly in-place.
+            // Silencia o buffer ativo para evitar feedback indesejado nos fones do usuário,
+            // pois o nih_plug processa estritamente no lugar (in-place).
             for ch_slice in buffer.as_slice() {
                 ch_slice.fill(0.0);
             }
@@ -215,18 +215,18 @@ impl Plugin for AudioRipPlugin {
 }
 
 impl AudioRipPlugin {
-    /// Selects the optimal CPU core for RT thread pinning.
+    /// Seleciona o núcleo de CPU ideal para fixar a thread RT (core affinity).
     ///
-    /// Selection criteria (in tiebreaker order):
-    /// 1. Highest `cpu_capacity` from `/sys/devices/system/cpu/cpuN/cpu_capacity`
-    /// 2. Fewest total interrupts from `/proc/interrupts`
-    /// 3. Highest CPU index number (final tiebreaker)
+    /// Critérios de seleção (em ordem de desempate):
+    /// 1. Maior `cpu_capacity` lida de `/sys/devices/system/cpu/cpuN/cpu_capacity`
+    /// 2. Menor total de interrupções lido de `/proc/interrupts`
+    /// 3. Maior índice de CPU (critério final de desempate)
     ///
-    /// Returns the selected CPU index, or `None` if detection fails entirely.
+    /// Retorna o índice do CPU selecionado, ou `None` se a detecção falhar completamente.
     fn select_optimal_cpu() -> Option<usize> {
         use std::fs;
 
-        // Discover available logical CPUs from sysfs
+        // Descobre os CPUs lógicos disponíveis via sysfs
         let cpu_dir = fs::read_dir("/sys/devices/system/cpu").ok()?;
         let mut cpus: Vec<usize> = cpu_dir
             .filter_map(|entry| {
@@ -241,7 +241,7 @@ impl AudioRipPlugin {
         }
         cpus.sort_unstable();
 
-        // 1. Read cpu_capacity for each CPU (default 1024 if missing — ARM DynamIQ / EAS value)
+        // 1. Lê a capacidade de cada CPU (padrão 1024 se ausente — valor ARM DynamIQ / EAS)
         let capacities: Vec<(usize, u64)> = cpus
             .iter()
             .map(|&cpu| {
@@ -254,11 +254,11 @@ impl AudioRipPlugin {
             })
             .collect();
 
-        // 2. Parse total interrupts per CPU from /proc/interrupts
+        // 2. Analisa o total de interrupções por CPU a partir de /proc/interrupts
         let irq_totals = Self::parse_interrupts_per_cpu(cpus.len());
 
-        // 3. Build composite score: (capacity DESC, -total_interrupts, cpu_index DESC)
-        //    We maximize capacity and cpu_index, minimize total_interrupts.
+        // 3. Calcula a pontuação composta: (capacidade DESC, -total_interrupções, índice_cpu DESC)
+        //    Maximizamos capacidade e índice_cpu, minimizamos total_interrupções.
         capacities
             .iter()
             .map(|&(cpu, cap)| {
@@ -266,23 +266,23 @@ impl AudioRipPlugin {
                 (cpu, cap, irqs)
             })
             .max_by(|a, b| {
-                // Primary: highest capacity
+                // Critério primário: maior capacidade
                 a.1.cmp(&b.1)
-                    // Secondary: fewest interrupts (reverse comparison)
+                    // Critério secundário: menos interrupções (comparação invertida)
                     .then_with(|| b.2.cmp(&a.2))
-                    // Tertiary: highest CPU index
+                    // Critério terciário: maior índice de CPU
                     .then_with(|| a.0.cmp(&b.0))
             })
             .map(|(cpu, _, _)| cpu)
     }
 
-    /// Parses `/proc/interrupts` and returns a `Vec` indexed by CPU number
-    /// containing the total interrupt count across all IRQ lines for each CPU.
+    /// Analisa `/proc/interrupts` e retorna um `Vec` indexado pelo número do CPU
+    /// contendo a contagem total de interrupções de todas as linhas de IRQ para cada CPU.
     ///
-    /// Only lines with numeric IRQ identifiers are counted (hardware IRQs).
-    /// System-internal counters (LOC, NMI, RES, CAL, TLB, etc.) are excluded
-    /// because they are inherent to the scheduler and do not represent
-    /// external device load that would interfere with DSP processing.
+    /// Apenas linhas com identificadores numéricos de IRQ são contadas (IRQs de hardware).
+    /// Contadores internos do sistema (LOC, NMI, RES, CAL, TLB, etc.) são excluídos
+    /// porque são inerentes ao agendador e não representam carga de dispositivos externos
+    /// que interfeririam no processamento DSP.
     fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
         use std::fs;
 
@@ -294,13 +294,13 @@ impl AudioRipPlugin {
         };
 
         for line in content.lines().skip(1) {
-            // Skip lines that don't start with a numeric IRQ number
+            // Pula linhas que não começam com um número de IRQ válido
             let trimmed = line.trim_start();
             let irq_end = trimmed.find(':').unwrap_or(0);
             if irq_end == 0 {
                 continue;
             }
-            // Only count hardware IRQ lines (numeric identifiers)
+            // Conta apenas linhas de IRQ de hardware (identificadores numéricos)
             if !trimmed[..irq_end]
                 .trim()
                 .bytes()
@@ -309,7 +309,7 @@ impl AudioRipPlugin {
                 continue;
             }
 
-            // Parse per-CPU counts after the colon
+            // Analisa as contagens por CPU após o dois-pontos
             let after_colon = match trimmed.get(irq_end + 1..) {
                 Some(s) => s,
                 None => continue,
@@ -322,7 +322,7 @@ impl AudioRipPlugin {
                 if let Ok(count) = token.parse::<u64>() {
                     totals[cpu_idx] += count;
                 } else {
-                    // Hit the device description text — stop parsing this line
+                    // Chegou no texto descritivo do dispositivo — para de analisar esta linha
                     break;
                 }
             }
@@ -331,27 +331,29 @@ impl AudioRipPlugin {
         totals
     }
 
-    /// Attempts to pin the DSP thread to the optimal physical core
-    /// and apply SCHED_FIFO for real-time scheduling.
-    /// Called only once on the first invocation of `process()`, before the data flow begins.
-    /// NOTE: On modern Linux, the kernel refuses to grant SCHED_FIFO — even on demand. In practice, this request is silently ignored.
-    /// However, we are not left unprotected. PipeWire, via RTkit, automatically grants a high priority within CFS.
+    /// Tenta fixar a thread DSP no núcleo físico ideal e aplicar SCHED_FIFO para
+    /// agendamento de tempo real. Chamada apenas uma vez na primeira invocação do `process()`,
+    /// antes do fluxo de dados começar.
     ///
-    /// # Documented I/O Exception
-    /// This function uses `println!`/`eprintln!` for one-time diagnostic logging
-    /// and reads `/sys` + `/proc` for CPU topology detection.
-    /// Although this involves I/O syscalls, it runs only once and before any audio data flows,
-    /// so it does not compromise steady-state processing latency.
+    /// NOTA: No Linux moderno, o kernel recusa conceder SCHED_FIFO mesmo sob demanda. Na
+    /// prática, essa solicitação é ignorada silenciosamente. Porém, não ficamos sem proteção:
+    /// o PipeWire, via RTkit, concede automaticamente alta prioridade dentro do CFS.
+    ///
+    /// # Exceção de I/O Documentada
+    /// Esta função usa `println!`/`eprintln!` para log diagnóstico único de inicialização
+    /// e lê `/sys` + `/proc` para detectar a topologia de CPU.
+    /// Embora envolva chamadas de I/O, executa apenas uma vez e antes de qualquer dado de áudio
+    /// fluir, portanto não compromete a latência do processamento em regime estacionário.
     fn configure_realtime_thread(&self) {
         #[cfg(target_os = "linux")]
         {
-            // Select the optimal CPU core dynamically (fallback to CPU 0 if detection fails)
+            // Seleciona dinamicamente o núcleo de CPU ideal (fallback para CPU 0 se a detecção falhar)
             let target_cpu = Self::select_optimal_cpu().unwrap_or(0);
 
             unsafe {
                 let thread_id = libc::pthread_self();
 
-                // 1. Core Affinity: Pin the thread to the optimal core to protect L1/L2 Cache
+                // 1. Afinidade de Núcleo: Fixa a thread no núcleo ideal para proteger o Cache L1/L2
                 let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
                 libc::CPU_ZERO(&mut cpuset);
                 libc::CPU_SET(target_cpu, &mut cpuset);
@@ -364,18 +366,18 @@ impl AudioRipPlugin {
 
                 if ret_aff != 0 {
                     eprintln!(
-                        "Warning: Failed to set CPU affinity to core {} (error {}).",
+                        "Aviso: Falha ao definir afinidade de CPU para o núcleo {} (erro {}).",
                         target_cpu, ret_aff
                     );
                 }
 
-                // 2. Real-Time: Apply SCHED_FIFO for deterministic preemption
+                // 2. Tempo Real: Aplica SCHED_FIFO para preempção determinística
                 let mut param: libc::sched_param = std::mem::zeroed();
-                param.sched_priority = 90; // High priority (requires rtprio >= 90 in limits.conf)
+                param.sched_priority = 90; // Alta prioridade (requer rtprio >= 90 no limits.conf)
 
                 let _ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
 
-                // Verify the actual thread state after the configuration attempts
+                // Verifica o estado real da thread após as tentativas de configuração
                 let mut actual_policy = 0;
                 let mut actual_param: libc::sched_param = std::mem::zeroed();
                 let ret_getsched =
@@ -406,7 +408,7 @@ impl AudioRipPlugin {
                     );
                 } else {
                     eprintln!(
-                        "[AudioRip] ⚠️ Failed to verify thread parameters (error {}).",
+                        "[AudioRip] ⚠️ Falha ao verificar parâmetros da thread (erro {}).",
                         ret_getsched
                     );
                 }
