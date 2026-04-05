@@ -19,4 +19,4 @@ globs: **/*
   * **Rust / SQL / JavaScript / TypeScript / C**: `// SPDX-License-Identifier: MIT OR Apache-2.0`\n  `// Copyright …`
   * **Python / Shell / TOML / ini**: `# SPDX-License-Identifier: MIT OR Apache-2.0`\n  `# Copyright …`
   * **HTML / Markdown / XML**: `<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->`\n  `<!-- Copyright … -->` — em Markdown (`*.md`), prefira omitir o comentário para não poluir a renderização, exceto quando explicitamente solicitado. Arquivos `.md` em `docs/` não carregam copyright obrigatório.
-* **Arquivos Não Aplicáveis**: `Cargo.lock`, arquivos binários e recursos de imagem gerados automaticamente não precisam de cabeçalho.
+* **Arquivos Não Aplicáveis**: `Cargo.lock`, arquivos temporários, arquivos binários e recursos de imagem gerados automaticamente não precisam de cabeçalho.

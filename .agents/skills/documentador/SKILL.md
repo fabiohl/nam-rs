@@ -17,7 +17,6 @@ Antes de consolidar a documentação final ou propor mudanças, identifique quai
 
 ### 2. Sincronização de Conhecimento Rust x DSP
 
-- O projeto **NAM-rs** executa estritamente modelagem sob algoritmos autônomos para Host PipeWire-rs sem instanciar plugins alheios.
 - Qualquer adoção paramétrica inovadora ou refinamento envolvendo superamostragem `Sinc Interporlation` FIR temporal de fase linear, ganhos parametrizados Tone3000 `.namb` ou metadados e rotinas numéricas com AVX-512 devem estar presentes integralmente nas documentações (`docs/architecture.md`).
 - A aplicação suprimiu antigas vias orientadas à persistência e roteamento em discos remotos (ex: AudioRip io_uring). Descarte referências inúteis na arquitetura.
 

@@ -27,7 +27,7 @@ sudo apt install pipewire
 
 ## 3. Políticas de Baixa Latência
 
-Para que o motor execute inabalável nos vetores AVX sem "xruns" sob modelos NAM severos ("Standard"), é fundamental conceder a autorização de políticas mais avançadas ao binário.
+Para que o motor execute inabalável sob modelos NAM severos ("Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário.
 Adicione seu usuário ao grupo de áudio do sistema e edite limits:
 
 1. `sudo usermod -aG audio $USER`

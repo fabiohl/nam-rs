@@ -1,2 +1,5 @@
 * Iniciar a Sprint 1 implementando a Tarefa 1.1.
 * Abrir Github oficial
+* src/audio.rs - fn configure_realtime_thread(&self) - Desempate para core affinity:
+  1. Ordem decrescente de /sys/devices/system/cpu/cpu*/cpu_capacity
+  2. CPU que tenha menos interrupções em /proc/interrupts
