@@ -215,27 +215,146 @@ impl Plugin for AudioRipPlugin {
 }
 
 impl AudioRipPlugin {
-    /// Attempts to pin the DSP thread to a physical high-priority core
+    /// Selects the optimal CPU core for RT thread pinning.
+    ///
+    /// Selection criteria (in tiebreaker order):
+    /// 1. Highest `cpu_capacity` from `/sys/devices/system/cpu/cpuN/cpu_capacity`
+    /// 2. Fewest total interrupts from `/proc/interrupts`
+    /// 3. Highest CPU index number (final tiebreaker)
+    ///
+    /// Returns the selected CPU index, or `None` if detection fails entirely.
+    fn select_optimal_cpu() -> Option<usize> {
+        use std::fs;
+
+        // Discover available logical CPUs from sysfs
+        let cpu_dir = fs::read_dir("/sys/devices/system/cpu").ok()?;
+        let mut cpus: Vec<usize> = cpu_dir
+            .filter_map(|entry| {
+                let name = entry.ok()?.file_name();
+                let name = name.to_str()?;
+                name.strip_prefix("cpu")?.parse::<usize>().ok()
+            })
+            .collect();
+
+        if cpus.is_empty() {
+            return None;
+        }
+        cpus.sort_unstable();
+
+        // 1. Read cpu_capacity for each CPU (default 1024 if missing — ARM DynamIQ / EAS value)
+        let capacities: Vec<(usize, u64)> = cpus
+            .iter()
+            .map(|&cpu| {
+                let path = format!("/sys/devices/system/cpu/cpu{cpu}/cpu_capacity");
+                let cap = fs::read_to_string(path)
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+                    .unwrap_or(1024);
+                (cpu, cap)
+            })
+            .collect();
+
+        // 2. Parse total interrupts per CPU from /proc/interrupts
+        let irq_totals = Self::parse_interrupts_per_cpu(cpus.len());
+
+        // 3. Build composite score: (capacity DESC, -total_interrupts, cpu_index DESC)
+        //    We maximize capacity and cpu_index, minimize total_interrupts.
+        capacities
+            .iter()
+            .map(|&(cpu, cap)| {
+                let irqs = irq_totals.get(cpu).copied().unwrap_or(u64::MAX);
+                (cpu, cap, irqs)
+            })
+            .max_by(|a, b| {
+                // Primary: highest capacity
+                a.1.cmp(&b.1)
+                    // Secondary: fewest interrupts (reverse comparison)
+                    .then_with(|| b.2.cmp(&a.2))
+                    // Tertiary: highest CPU index
+                    .then_with(|| a.0.cmp(&b.0))
+            })
+            .map(|(cpu, _, _)| cpu)
+    }
+
+    /// Parses `/proc/interrupts` and returns a `Vec` indexed by CPU number
+    /// containing the total interrupt count across all IRQ lines for each CPU.
+    ///
+    /// Only lines with numeric IRQ identifiers are counted (hardware IRQs).
+    /// System-internal counters (LOC, NMI, RES, CAL, TLB, etc.) are excluded
+    /// because they are inherent to the scheduler and do not represent
+    /// external device load that would interfere with DSP processing.
+    fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
+        use std::fs;
+
+        let mut totals = vec![0u64; num_cpus];
+
+        let content = match fs::read_to_string("/proc/interrupts") {
+            Ok(c) => c,
+            Err(_) => return totals,
+        };
+
+        for line in content.lines().skip(1) {
+            // Skip lines that don't start with a numeric IRQ number
+            let trimmed = line.trim_start();
+            let irq_end = trimmed.find(':').unwrap_or(0);
+            if irq_end == 0 {
+                continue;
+            }
+            // Only count hardware IRQ lines (numeric identifiers)
+            if !trimmed[..irq_end]
+                .trim()
+                .bytes()
+                .all(|b| b.is_ascii_digit())
+            {
+                continue;
+            }
+
+            // Parse per-CPU counts after the colon
+            let after_colon = match trimmed.get(irq_end + 1..) {
+                Some(s) => s,
+                None => continue,
+            };
+
+            for (cpu_idx, token) in after_colon.split_whitespace().enumerate() {
+                if cpu_idx >= num_cpus {
+                    break;
+                }
+                if let Ok(count) = token.parse::<u64>() {
+                    totals[cpu_idx] += count;
+                } else {
+                    // Hit the device description text — stop parsing this line
+                    break;
+                }
+            }
+        }
+
+        totals
+    }
+
+    /// Attempts to pin the DSP thread to the optimal physical core
     /// and apply SCHED_FIFO for real-time scheduling.
     /// Called only once on the first invocation of `process()`, before the data flow begins.
     /// NOTE: On modern Linux, the kernel refuses to grant SCHED_FIFO — even on demand. In practice, this request is silently ignored.
     /// However, we are not left unprotected. PipeWire, via RTkit, automatically grants a high priority within CFS.
     ///
     /// # Documented I/O Exception
-    /// This function uses `println!`/`eprintln!` for one-time diagnostic logging.
-    /// Although this involves locks on stdout/stderr and potentially `write()` syscalls,
-    /// it runs only once and before any audio data flows,
+    /// This function uses `println!`/`eprintln!` for one-time diagnostic logging
+    /// and reads `/sys` + `/proc` for CPU topology detection.
+    /// Although this involves I/O syscalls, it runs only once and before any audio data flows,
     /// so it does not compromise steady-state processing latency.
     fn configure_realtime_thread(&self) {
         #[cfg(target_os = "linux")]
         {
+            // Select the optimal CPU core dynamically (fallback to CPU 0 if detection fails)
+            let target_cpu = Self::select_optimal_cpu().unwrap_or(0);
+
             unsafe {
                 let thread_id = libc::pthread_self();
 
-                // 1. Core Affinity: Pin the thread to a physical core to protect L1/L2 Cache
+                // 1. Core Affinity: Pin the thread to the optimal core to protect L1/L2 Cache
                 let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
                 libc::CPU_ZERO(&mut cpuset);
-                libc::CPU_SET(1, &mut cpuset); // Assuming Core 1 as performance core (refine as needed — this is not a universal rule!)
+                libc::CPU_SET(target_cpu, &mut cpuset);
 
                 let ret_aff = libc::pthread_setaffinity_np(
                     thread_id,
@@ -244,20 +363,17 @@ impl AudioRipPlugin {
                 );
 
                 if ret_aff != 0 {
-                    eprintln!("Warning: Failed to set CPU affinity (error {}).", ret_aff);
+                    eprintln!(
+                        "Warning: Failed to set CPU affinity to core {} (error {}).",
+                        target_cpu, ret_aff
+                    );
                 }
 
                 // 2. Real-Time: Apply SCHED_FIFO for deterministic preemption
                 let mut param: libc::sched_param = std::mem::zeroed();
                 param.sched_priority = 90; // High priority (requires rtprio >= 90 in limits.conf)
 
-                let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
-
-                if ret_sched == 0 {
-                    println!(
-                        "[AudioRip] ⚡ DSP Thread pinned to Core 1 running under SCHED_FIFO (Priority 90)."
-                    );
-                }
+                let _ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
 
                 // Verify the actual thread state after the configuration attempts
                 let mut actual_policy = 0;
@@ -285,7 +401,7 @@ impl AudioRipPlugin {
                         policy_str.push_str(" | SCHED_RESET_ON_FORK");
                     }
                     println!(
-                        "[AudioRip] 🔍 DSP Verification: Current core = {}, Policy = {}, Priority = {}",
+                        "[AudioRip] 🔍 Audio/DSP Thread: CPU Core = {}, Policy = {}, Priority = {}",
                         actual_cpu, policy_str, actual_param.sched_priority
                     );
                 } else {
