@@ -10,7 +10,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 
 ## 2. Inferência FastMath e Microarquitetura (AVX2 / AVX-512)
 
-- **Supressão Algorítmica Rápida (FMA):** A base abandona o custo letárgico nas Unidades Lógicas (`std::math`) usando `std::simd` para processamento paralelo do polinômio Minimax nas portas lógicas LSTM. Multiplicadores vetoriais processados em "Fused Multiply-Add" reduzem a operação por ciclo massivamente.
+- **Supressão Algorítmica Rápida (FMA):** A base abandona o custo letárgico nas Unidades Lógicas (`std::math`) usando intrinsics `core::arch::x86_64` para processamento paralelo do polinômio Minimax nas portas lógicas LSTM. Multiplicadores vetoriais processados em "Fused Multiply-Add" reduzem a operação por ciclo massivamente.
 - **Paralelismo Avançado Via Multiversioning:** Como vetores espessos ocultos necessitam de banda estendida, a thread dispõe despachos antecipados por meio do branch multiversioning com base numa verificação inicial de capacidade, garantindo total suporte a processamento monumental usando os ZMM Registers estendidos no `AVX-512`.
 - **Arrays Genéricos:** Utiliza SoA com const generics, unrolling loops para resolver gargalos no Branch Predictor (BTB).
 

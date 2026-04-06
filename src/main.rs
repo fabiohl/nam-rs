@@ -11,12 +11,23 @@
 //! - **ZERO LOCKS** na thread DSP (módulo pw_host).
 //! - **ZERO ALOCAÇÕES** na thread DSP (o loop `process()` deve ser zero-allocation).
 
+pub mod math;
 mod pw_host;
 mod spsc;
 
 use std::sync::atomic::Ordering;
 
 fn main() -> anyhow::Result<()> {
+    // Verificando suporte de instruções matemáticas fundamentais de AVX2/FMA
+    #[cfg(target_arch = "x86_64")]
+    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        println!("Engine NAM-rs: AVX2 + FMA ativado computando vetores de 256 bits.");
+    } else {
+        eprintln!(
+            "AVISO CRÍTICO: AVX2 ou FMA não presentes nativamente (X86-64-V3 ausente).\nO rendimento DSP será castigado pelo fallback escalar."
+        );
+    }
+
     // Inicializa as APIs do PipeWire nativo
     pipewire::init();
 
