@@ -2,9 +2,7 @@
 ## Notas deixadas na conclusão da Tarefa 1.1: Fundações Matemáticas
 Nenhuma dependência de std::simd foi adicionada ainda. A feature gate #![feature(portable_simd)] será necessária, ou usar diretamente core::arch::x86_64 para intrinsics.
 O Cargo.toml está enxuto (4 deps). Dependências matemáticas futuras (multiversion para multiversioning SIMD) devem ser adicionadas via cargo add conforme o planejamento da Sprint 2.
-
-## Notas do Planejamento da Tarefa 1.3: PipeWire Host Nativo
-A Tarefa 1.3 foca na remoção total do `nih_plug` e introdução do `pipewire-rs`.
+## Notas deixadas na conclusão da Tarefa 1.3:
 O `process()` pass-through que antes existia no `nih_plug` será repensado como o callback de dados nativo de um Stream do PipeWire.
 Para as próximas tarefas (como a 2.1 e a 4.2), o motor matemático e o reescalonador de ganho deverão ser integrados chamando os módulos específicos de dentro desse contexto RT `lock-free`.
 Certifique-se de que a migração do SPSC consumidor não perca as proteções de concorrência ou desalinhamento com 128 bytes implementadas na Tarefa 1.2.

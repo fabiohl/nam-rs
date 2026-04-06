@@ -22,7 +22,7 @@ use std::sync::atomic::Ordering;
 /// (consumo e produção) na API do WirePlumber, executando o MainLoop até SHUTDOWN.
 pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result<()> {
     // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
-    let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None)? };
+    let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
     let context = pw::context::ContextBox::new(thread_loop.loop_(), None)?;
     let core = context.connect(None)?;
 
