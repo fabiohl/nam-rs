@@ -1,13 +1,10 @@
-# Usando a skill `planejador-arquiteto`, planeje a Tarefa 1.3, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Atualize adequadamente as notas no TODO.txt.
-## Notas deixadas na conclusão da Tarefa 1.1: Construção do Host PipeWire — src/audio.rs
-O plugin agora se chama NamRsPlugin com const NAME = "NAM-rs". Não mais AudioRipPlugin.
-process() é pass-through. O corpo do callback está vazio (exceto a configuração RT na primeira chamada). A Tarefa 1.3 deve inserir a lógica de recepção de parâmetros via SPSC (do lado consumidor) e, futuramente, a cadeia de processamento: Input Gain → Resampler → NAM Inference → Output Gain → Resampler.
-nih_plug ainda é o framework de host. Se a Tarefa 1.3 decidir migrar para pipewire-rs nativo (sem o nih_plug), a refatoração será significativa: descartar toda a trait Plugin, substituir por um MainLoop + Context + callbacks nativos.
-O campo metadata_sent foi removido. A Tarefa 1.3 precisará de seus próprios flags de estado (ex: model_loaded, resampler_ready).
-reset() é no-op. Quando o motor de inferência tiver estados recorrentes (LSTM hidden states), o reset() precisará zerar esses buffers.
-IMPORTANT
-
-# Usando a skill `planejador-arquiteto`, planeje a Tarefa 2.1, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Atualize adequadamente as notas no TODO.txt.
+# Usando a skill `planejador-arquiteto`, planeje a Tarefa 2.1, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Se houver alguma obervação relevante a ser deixada para as próximas tarefas, anote no TODO.txt
 ## Notas deixadas na conclusão da Tarefa 1.1: Fundações Matemáticas
 Nenhuma dependência de std::simd foi adicionada ainda. A feature gate #![feature(portable_simd)] será necessária, ou usar diretamente core::arch::x86_64 para intrinsics.
 O Cargo.toml está enxuto (4 deps). Dependências matemáticas futuras (multiversion para multiversioning SIMD) devem ser adicionadas via cargo add conforme o planejamento da Sprint 2.
+
+## Notas do Planejamento da Tarefa 1.3: PipeWire Host Nativo
+A Tarefa 1.3 foca na remoção total do `nih_plug` e introdução do `pipewire-rs`.
+O `process()` pass-through que antes existia no `nih_plug` será repensado como o callback de dados nativo de um Stream do PipeWire.
+Para as próximas tarefas (como a 2.1 e a 4.2), o motor matemático e o reescalonador de ganho deverão ser integrados chamando os módulos específicos de dentro desse contexto RT `lock-free`.
+Certifique-se de que a migração do SPSC consumidor não perca as proteções de concorrência ou desalinhamento com 128 bytes implementadas na Tarefa 1.2.
