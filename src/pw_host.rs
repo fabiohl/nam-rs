@@ -12,7 +12,7 @@
 //! O callback do Stream opera em modo **pass-through**: o áudio de entrada
 //! flui inalterado para a saída, provando a injeção nula do nó na Session Manager.
 
-use crate::buffer::{ParamPayload, SHUTDOWN};
+use crate::spsc::{ParamPayload, SHUTDOWN};
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;

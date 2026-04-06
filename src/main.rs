@@ -8,11 +8,11 @@
 //! e coordena o shutdown gracioso quando CTRL+C é pressionado.
 //!
 //! # Regras de Arquitetura para Desenvolvedores
-//! - **ZERO LOCKS** na thread DSP (módulo audio).
+//! - **ZERO LOCKS** na thread DSP (módulo pw_host).
 //! - **ZERO ALOCAÇÕES** na thread DSP (o loop `process()` deve ser zero-allocation).
 
-mod audio;
-mod buffer;
+mod pw_host;
+mod spsc;
 
 use std::sync::atomic::Ordering;
 
@@ -23,19 +23,19 @@ fn main() -> anyhow::Result<()> {
     // 1️⃣ Configura o tratamento de shutdown gracioso
     // Um handler de sinal intercepta a intenção de encerramento de forma global.
     ctrlc::set_handler(|| {
-        if buffer::SHUTDOWN.load(Ordering::SeqCst) {
+        if spsc::SHUTDOWN.load(Ordering::SeqCst) {
             // Segundo sinal: aborta imediatamente.
             std::process::exit(1);
         }
-        buffer::SHUTDOWN.store(true, Ordering::SeqCst);
+        spsc::SHUTDOWN.store(true, Ordering::SeqCst);
     })
     .expect("Erro ao configurar handler de Ctrl-C");
 
     // 2️⃣ Inicializa o SPSC Ring Buffer para a comunicação atômica CLI <-> DSP
-    let (_producer, consumer) = buffer::setup_spsc(64);
+    let (_producer, consumer) = spsc::setup_spsc(64);
 
     // 3️⃣ Inicia a topologia PipeWire e bloqueia a thread
-    audio::run_pipewire_host(consumer)?;
+    pw_host::run_pipewire_host(consumer)?;
 
     // Desaloca componentes nativos após graceful shutdown
     unsafe {

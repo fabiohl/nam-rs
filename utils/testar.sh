@@ -7,8 +7,8 @@ set -euo pipefail
 echo "⚙️ Assegurando o qpwgraph rodando..."
 qpwgraph &
 
-echo "⚙️ Compilando o AudioRip..."
+echo "⚙️ Compilando o NAM-rs..."
 cargo build
 
 echo "🚀 Executando..."
-pw-jack target/debug/audiorip --backend jack
+target/debug/nam-rs
