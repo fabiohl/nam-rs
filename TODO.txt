@@ -1,2 +1,7 @@
-# Dar uma revisada (humana) geral no código.
 # Usando a skill `planejador-arquiteto`, planeje a Tarefa 2.1, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Se houver alguma obervação relevante a ser deixada para as próximas tarefas, anote no TODO.txt
+
+Usando a skill `planejador-arquiteto`, vamos questionar alguns pontos identificados aqui. Tudo ancorado na arquitetura final prevista em  e em  - obs: pode edita-los para refletir os eventuais novos direcionamentos.
+- No script helper utils/testar.sh, realmente vamos precisar de um "pw-jack " e de um " --backend jack" na hora de executar?
+- Seria o caso de renomear "src/audio.rs" para "src/pipewire.rs" uma vez que ele basicamente cumpre o papel de concentrar a configuração do host PipeWire e o loop principal da aplicação?
+  Futuramente a raiz do processamento do sinal pode ser organizada em um arquivo src/dsp.rs, sem prejuízo de outros arquivos especializados.
+- Já o src/buffer.rs no momento cumpre apenas o papel de criar um canal de comunicação com a thread DSP. Não seria o caso de renomear isto para um nome mais coerente considerando a arquitetura prevista?

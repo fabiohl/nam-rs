@@ -12,4 +12,3 @@ cargo build
 
 echo "🚀 Executando..."
 pw-jack target/debug/audiorip --backend jack
-# Vide docs/architecture.md - Adento: Porque " target/debug/audiorip --backend jack"?
