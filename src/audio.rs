@@ -49,13 +49,15 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
             },
         )?;
 
+        let target_cpu = select_optimal_cpu().unwrap_or(0);
+
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         let _listener = stream
             .add_local_listener::<()>()
             .process(move |stream: &pw::stream::Stream, _info| {
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
                 if !thread_configured {
-                    configure_realtime_thread();
+                    configure_realtime_thread(target_cpu);
                     thread_configured = true;
                 }
 
@@ -119,11 +121,9 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
 /// Tenta fixar a thread DSP no núcleo físico ideal e aplicar SCHED_FIFO para
 /// agendamento de tempo real. Chamada apenas uma vez na primeira invocação do `process()`,
 /// antes do fluxo de dados começar.
-fn configure_realtime_thread() {
+fn configure_realtime_thread(target_cpu: usize) {
     #[cfg(target_os = "linux")]
     {
-        let target_cpu = select_optimal_cpu().unwrap_or(0);
-
         unsafe {
             let thread_id = libc::pthread_self();
 
@@ -163,22 +163,26 @@ fn configure_realtime_thread() {
                 let has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
                 let base_policy = actual_policy & !reset_on_fork_flag;
 
-                let mut policy_str = match base_policy {
-                    libc::SCHED_FIFO => "SCHED_FIFO".to_string(),
-                    libc::SCHED_RR => "SCHED_RR".to_string(),
-                    libc::SCHED_OTHER => "SCHED_OTHER".to_string(),
-                    libc::SCHED_BATCH => "SCHED_BATCH".to_string(),
-                    libc::SCHED_IDLE => "SCHED_IDLE".to_string(),
-                    other => format!("UNKNOWN: {}", other),
+                let policy_str = match base_policy {
+                    libc::SCHED_FIFO => "SCHED_FIFO",
+                    libc::SCHED_RR => "SCHED_RR",
+                    libc::SCHED_OTHER => "SCHED_OTHER",
+                    libc::SCHED_BATCH => "SCHED_BATCH",
+                    libc::SCHED_IDLE => "SCHED_IDLE",
+                    _ => "UNKNOWN",
                 };
 
                 if has_reset_on_fork {
-                    policy_str.push_str(" | SCHED_RESET_ON_FORK");
+                    println!(
+                        "[NAM-rs] 🔍 Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
+                        actual_cpu, policy_str, actual_param.sched_priority
+                    );
+                } else {
+                    println!(
+                        "[NAM-rs] 🔍 Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
+                        actual_cpu, policy_str, actual_param.sched_priority
+                    );
                 }
-                println!(
-                    "[NAM-rs] 🔍 Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
-                    actual_cpu, policy_str, actual_param.sched_priority
-                );
             }
         }
     }

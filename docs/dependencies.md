@@ -18,12 +18,13 @@ sudo apt install build-essential pkg-config pipewire libpipewire-0.3-dev clang l
 
 ## 2. Dependências Rust (Cargo.toml)
 
-| Crate                   | Propósito                                                    |
-| ----------------------- | ------------------------------------------------------------ |
-| `anyhow`                | Tratamento de erros ergonômico em toda a aplicação           |
-| `ctrlc`                 | Handler de sinal CTRL+C para shutdown gracioso               |
-| `libc`                  | Chamadas de baixo nível: SCHED_FIFO, Core Affinity, pthread  |
-| `nih_plug` (standalone) | Framework de host PipeWire para o callback DSP de tempo real |
+| Crate      | Propósito                                                                 |
+| ---------- | ------------------------------------------------------------------------- |
+| `anyhow`   | Tratamento de erros ergonômico em toda a aplicação                        |
+| `ctrlc`    | Handler de sinal CTRL+C para shutdown gracioso                            |
+| `libc`     | Chamadas de baixo nível: SCHED_FIFO, Core Affinity, pthread               |
+| `pipewire` | Host PipeWire nativo: ThreadLoopBox, StreamBox, Context e callbacks de RT |
+| `rtrb`     | SPSC Ring Buffer lock-free para comunicação CLI → DSP (Tarefa 1.2)        |
 
 ---
 
