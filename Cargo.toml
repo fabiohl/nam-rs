@@ -12,6 +12,7 @@ libc = "0.2.184"
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = [
     "standalone",
 ] }
+rtrb = "0.3.3"
 
 [profile.release]
 strip = true      # Remove symbols (smaller binary)

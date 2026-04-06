@@ -1,10 +1,3 @@
-# Usando a skill `planejador-arquiteto`, planeje a Tarefa 1.2, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Atualize adequadamente as notas no TODO.txt.
-## Notas deixadas na conclusão da Tarefa 1.1: Estabilização Lock-Free — src/buffer.rs
-buffer.rs está praticamente vazio. Contém apenas SHUTDOWN: AtomicBool. Toda a infraestrutura SPSC (ring buffers, payloads alinhados #[repr(align(128))], AlignedBlock) foi removida intencionalmente.
-rtrb foi removido do Cargo.toml. Se a Tarefa 1.2 decidir reusar rtrb para a comunicação CLI → DSP, será necessário readicioná-lo via cargo add rtrb.
-Novo design de payload necessário. O antigo RingPayload era orientado a gravação (Audio, Metadata, StreamStop). O novo payload deve ser orientado a parametrização: input gain, output gain, troca de modelo .namb, metadados Tone3000. Projetar com #[repr(align(128))] para blindagem de False Sharing.
-OVERRUN_COUNT foi removido. Se o novo SPSC precisar de contagem de overruns, criar um novo AtomicU64 com semântica adequada.
-
 # Usando a skill `planejador-arquiteto`, planeje a Tarefa 1.3, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Atualize adequadamente as notas no TODO.txt.
 ## Notas deixadas na conclusão da Tarefa 1.1: Construção do Host PipeWire — src/audio.rs
 O plugin agora se chama NamRsPlugin com const NAME = "NAM-rs". Não mais AudioRipPlugin.
