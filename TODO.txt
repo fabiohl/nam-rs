@@ -1,1 +1,0 @@
-# Usando a skill `planejador-arquiteto`, planeje a Tarefa 2.1, conforme NAM-rs-sprints.md e NAM-rs-referência.md. Se houver alguma obervação relevante a ser deixada para as próximas tarefas, anote no TODO.txt
