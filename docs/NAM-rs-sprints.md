@@ -123,6 +123,12 @@ O motor matemático é recriado nesta etapa sob as diretrizes de instrução vet
 >
 > - **Estabilidade de `core::arch::x86_64`**: A estratégia de usar intrínsecos de baixo nível (`core::arch::x86_64::_mm256_fmadd_ps`) e o canal *Stable* foi validada. Para a futura Tarefa 2.2, o uso de Minimax exigirá de maneira idêntica a confecção de funções `unsafe` explicitamente tipadas e documentadas operando com `__m256` evitando alocações e iteradores genéricos de alta latência.
 > - **Gerenciamento de Escalar**: O loop *tail* nas fatias irregulares não impactou negativamente nos testes de estresse atuais, mas um controle fino da dimensionalidade nos "Const Generics" pode mitigar passagens frequentes por essa cauda de escape.
+> **📋 Notas da Auditoria Sprint 2 (conclusiva) para Sprints futuras:**
+>
+> - **AVX-512 Multiversioning (prioridade: média):** A expansão ZMM 512-bit deve ser adicionada quando WaveNet/LSTM (Sprint 3) criarem consumidores reais de `dot_product` e `simd_tanh`. O multiversioning via `#[target_feature(enable = "avx512f,avx512vl")]` com despacho por ponteiro de função é o caminho previsto. A Sprint 2 atende o entregável primário AVX2 YMM 256-bit conforme critérios documentados.
+> - **Polinômio de grau superior (prioridade: baixa):** O `tanh_poly_5` atual gera erro máximo de ~5e-3. Para modelos "Standard" profundos, um upgrade para `tanh_poly_7` (coefs disponíveis em `math_approx/hyperbolic_trig_approx.hpp`) pode melhorar fidelidade harmônica — 1 FMA adicional por vetor.
+> - **Escolha algorítmica validada:** O NAM-rs usa `math_approx::tanh<5>` (Pade + rsqrt via `_mm256_rsqrt_ps`) ao invés do rational polynomial customizado do `FastMath::Tanh` em `Activation.h`. A escolha é superior para SIMD por evitar `fabsf`/branching no pipeline e aproveitar a instrução HW nativa de rsqrt com refinamento Newton-Raphson.
+> - **Dead-code no release (informativo):** As funções SIMD/FastMath não aparecem no binário release atual por não terem consumidores no `main()`. A Sprint 3 deve integrá-las no callback `process()` do PipeWire.
 
 ### **Sprint 3: Redes Inferenciais \- A Topologia Convolucional e LSTM**
 
