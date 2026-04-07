@@ -122,36 +122,120 @@ O motor matemático é recriado nesta etapa sob as diretrizes de instrução vet
 > **📋 Notas da Auditoria Sprint 2 para esta Sprint (Ref. Tarefa 2.1):**
 >
 > - **Estabilidade de `core::arch::x86_64`**: A estratégia de usar intrínsecos de baixo nível (`core::arch::x86_64::_mm256_fmadd_ps`) e o canal *Stable* foi validada. Para a futura Tarefa 2.2, o uso de Minimax exigirá de maneira idêntica a confecção de funções `unsafe` explicitamente tipadas e documentadas operando com `__m256` evitando alocações e iteradores genéricos de alta latência.
+>
 > - **Gerenciamento de Escalar**: O loop *tail* nas fatias irregulares não impactou negativamente nos testes de estresse atuais, mas um controle fino da dimensionalidade nos "Const Generics" pode mitigar passagens frequentes por essa cauda de escape.
-> **📋 Notas da Auditoria Sprint 2 (conclusiva) para Sprints futuras:**
+>   **📋 Notas da Auditoria Sprint 2 (conclusiva) para Sprints futuras:**
 >
 > - **AVX-512 Multiversioning (prioridade: média):** A expansão ZMM 512-bit deve ser adicionada quando WaveNet/LSTM (Sprint 3) criarem consumidores reais de `dot_product` e `simd_tanh`. O multiversioning via `#[target_feature(enable = "avx512f,avx512vl")]` com despacho por ponteiro de função é o caminho previsto. A Sprint 2 atende o entregável primário AVX2 YMM 256-bit conforme critérios documentados.
+>
 > - **Polinômio de grau superior (prioridade: baixa):** O `tanh_poly_5` atual gera erro máximo de ~5e-3. Para modelos "Standard" profundos, um upgrade para `tanh_poly_7` (coefs disponíveis em `math_approx/hyperbolic_trig_approx.hpp`) pode melhorar fidelidade harmônica — 1 FMA adicional por vetor.
+>
 > - **Escolha algorítmica validada:** O NAM-rs usa `math_approx::tanh<5>` (Pade + rsqrt via `_mm256_rsqrt_ps`) ao invés do rational polynomial customizado do `FastMath::Tanh` em `Activation.h`. A escolha é superior para SIMD por evitar `fabsf`/branching no pipeline e aproveitar a instrução HW nativa de rsqrt com refinamento Newton-Raphson.
+>
 > - **Dead-code no release (informativo):** As funções SIMD/FastMath não aparecem no binário release atual por não terem consumidores no `main()`. A Sprint 3 deve integrá-las no callback `process()` do PipeWire.
 
-### **Sprint 3: Redes Inferenciais \- A Topologia Convolucional e LSTM**
+### **Sprint 3: Redes Inferenciais \- A Topologia Convolucional, LSTM e Integração no PipeWire**
 
-Aqui ocorre a tradução pura da rede computacional do NeuralAudio para a hierarquia SoA em const generics.
+Aqui ocorre a tradução pura da rede computacional do NeuralAudio para a hierarquia SoA em const generics, seguida da integração definitiva no callback de processamento PipeWire.
 
-| Identificador  | Escopo do Módulo Alvo | Especificação Algorítmica e Fontes de Referência                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Critérios de Validação (Testes Automatizados)                                                                                                                                                                                           |
-|:-------------- |:--------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Tarefa 3.1** | src/models/wavenet.rs | Malha CNN Causal Estática: Transpor a matriz do arquivo C++ original de mikeoliphant/NeuralAudio/NeuralAudio/WaveNet.cpp.1 Formatar toda predição para ser operada pelo paradigma DOD em alocações vetoriais planas (SoA) unidimensionais.1 Implementar vetores de leitura compensatória de base exponencial paralelos a dilatação causal.1 Acomodar apenas modelos rígidos de matrizes: "Nano", "Feather", "Lite", e "Standard".4                                                                                        | Assegurar que não ocorre nenhuma alocação de ponteiros na Heap (Vec::new, etc.) internamente no DSP *render loop*.1 Testes locais comparando campos passados com a taxa teórica preestabelecida de 48 kHz.                              |
-| **Tarefa 3.2** | src/models/lstm.rs    | Malha de Células Recorrentes Otimizada: Compreender as diretrizes de atualização vetorial de mikeoliphant/NeuralAudio/NeuralAudio/LSTM.cpp.1 Escrever a lógica das portas de entrada, esquecimento e saída combinando os dados prévios.1 Utilizar a filosofia de *const generics* do Rust (const C: usize, const H: usize) para fixar perfis (1x8, 2x16, etc.) permitindo que o compilador LLVM *unroll* todas as aliterações condicionais dos *loops*, preservando a micro-arquitetura e saúde do BTB de RAM estendida.1 | Utilização da macro cargo bench. Mensurar se o limiar do tráfego das células fechadas LSTM é executado inferior a latências críticas simulando *renders* intensos de modelo 2x16 com vetores massivos, isentos de contaminações de CFS. |
+| Identificador  | Escopo do Módulo Alvo              | Especificação Algorítmica e Fontes de Referência                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Critérios de Validação (Testes Automatizados)                                                                                                                                                                                            |
+|:-------------- |:---------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tarefa 3.1** | src/models/wavenet.rs              | Malha CNN Causal Estática: Transpor a matriz do arquivo C++ original de mikeoliphant/NeuralAudio/NeuralAudio/WaveNet.h.4 Formatar toda predição para ser operada pelo paradigma DOD em alocações vetoriais planas (SoA) unidimensionais.1 Implementar vetores de leitura compensatória de base exponencial paralelos a dilatação causal.1 Acomodar apenas modelos rígidos de matrizes: "Nano", "Feather", "Lite", e "Standard".4                                                                                        | Assegurar que não ocorre nenhuma alocação de ponteiros na Heap (Vec::new, etc.) internamente no DSP *render loop*.1 Testes locais comparando campos passados com a taxa teórica preestabelecida de 48 kHz.                               |
+| **Tarefa 3.2** | src/models/lstm.rs                 | Malha de Células Recorrentes Otimizada: Compreender as diretrizes de atualização vetorial de mikeoliphant/NeuralAudio/NeuralAudio/LSTM.h.4 Escrever a lógica das portas de entrada, esquecimento e saída combinando os dados prévios.1 Utilizar a filosofia de *const generics* do Rust (const C: usize, const H: usize) para fixar perfis (1x8, 2x16, etc.) permitindo que o compilador LLVM *unroll* todas as aliterações condicionais dos *loops*, preservando a micro-arquitetura e saúde do BTB de RAM estendida.1 | Utilização da macro cargo bench. Mensurar se o limiar do tráfego das células fechadas LSTM é executado inferior a latências críticas simulando *renders* intensos de modelo 2x16 com vetores massivos, isentos de contaminações de CFS.  |
+| **Tarefa 3.3** | src/models/mod.rs e src/pw_host.rs | Integração no Callback PipeWire e Prewarm: Definir o trait `NamModel` com métodos `process(&mut self, input: &[f32], output: &mut [f32])` e `prewarm(&mut self, num_samples: usize)`. Substituir o pass-through atual no callback `process()` pelo dispatch para WaveNet/LSTM. Consumir `ParamPayload` do SPSC. Resolver o leak de lifetimes (`std::mem::forget`) via struct `AppState` que ancore Stream + Listener. Executar Prewarm (injeção de zeros) antes da primeira amostra real de áudio.1                     | Modelo carregado processa áudio sem xruns. Prewarm executa antes da conexão PipeWire. O leak intencional de `std::mem::forget` é substituído por ownership explícita. Testes validam que o callback invoca a rede sem alocações na heap. |
 
-### **Sprint 4: Infraestrutura Binária NAMB e Fases de Parametrização Térmica**
+> **📋 Notas Detalhadas da Sprint 3 — Referências de Implementação:**
+>
+> #### Tarefa 3.1 — Mapeamento WaveNet (C++ → Rust)
+>
+> Os seguintes componentes de `WaveNet.h` devem ser transpostos:
+>
+> - **`Conv1DT<InCh, OutCh, KernelSize, DoBias, Dilation>`** → `Conv1d<const IN: usize, const OUT: usize, const K: usize, const D: usize>` — Convolução causal dilatada. A operação central é `weights[k] * input.middleCols(iStart + offset, nCols)` que mapeia para dot_products SIMD sobre buffer contíguo. O offset com dilatação é `Dilation * ((k + 1) - KernelSize)`.
+> - **`DenseLayerT<InSize, OutSize, DoBias>`** → `DenseLayer<const IN: usize, const OUT: usize>` — Camada densa: `output = weights * input + bias`. Mapeia diretamente para `dot_product_avx2` iterando por cada neuronio de saída.
+> - **`WaveNetLayerT<CondSize, Ch, KernelSize, Dilation>`** → Struct que combina conv1D + inputMixin + oneByOne + tanh. A ativação `block = WAVENET_MATH::Tanh(block)` usa diretamente `simd_tanh` da Sprint 2.
+> - **`WaveNetLayerArrayT`** — Tuple variádica com dilatações fixas. Em Rust, usar const generics com arrays fixos em vez de tuples.
+> - **Buffer Circular com Rewind** — Cada layer mantém um `layerBuffer` com posição `bufferStart`. Quando `bufferStart + MAX_FRAMES > buffer.len()`, executa `RewindBuffer()` copiando a cauda do receptive field para o início. Este mecanismo substitui alocações dinâmicas.
+> - **Topologias estáticas** — Standard (16ch/8head, dilatações `[1..512]`×2), Lite (12/6, `[1..64]`+`[128..512,1..64,128..512]`), Feather (8/4, lite dils), Nano (4/2, lite dils). Definidas em `InternalModel.h` L:50–60.
+> - **`WAVENET_MAX_NUM_FRAMES = 64`** — O bloco máximo de processamento por iteração.
+>
+> #### Tarefa 3.2 — Mapeamento LSTM (C++ → Rust)
+>
+> Os seguintes componentes de `LSTM.h` devem ser transpostos:
+>
+> - **`LSTMLayerT<InputSize, HiddenSize>`** — Uma camada LSTM com gates concatenadas `[i|f|g|o]` numa única matriz `(4*H) × (I+H)`. O processamento central é `gates = (inputHiddenWeights * state) + bias`, seguido de avaliações por gate usando `Sigmoid` e `Tanh` da Sprint 2.
+> - **Equações das portas** (LSTM.h L:94-99): `cellState[i] = Sigmoid(gates[f]) * cellState[i] + Sigmoid(gates[i]) * Tanh(gates[g])` e `hidden[i] = Sigmoid(gates[o]) * Tanh(cellState[i])`.
+> - **`LSTMModelT<NumLayers, HiddenSize>`** — Modelo empilhado. Layer 0 tem `InputSize=1`, layers subsequentes `InputSize=HiddenSize`. Head layer: `output = headWeights.dot(lastHidden) + headBias`.
+> - **Perfis suportados** (NeuralModel.cpp L:31-37): `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`.
+> - **LSTM processa por amostra** (não por bloco) — diferença fundamental em relação ao WaveNet. A otimização SIMD se aplica à matrix-vector multiply dos gates, não ao batch de amostras.
+>
+> #### Tarefa 3.3 — Integração e Prewarm
+>
+> - **Prewarm** (NeuralModel.h L:119-132): O C++ executa `Prewarm(2048, 64)` para LSTM e `model->Prewarm()` para WaveNet, injetando zeros para preencher buffers convolucionais e estados recorrentes. Sem isso, as primeiras ~2048 amostras contêm transientes espúrios.
+> - **Lifecycle**: O modelo é carregado e prewarmado **antes** de conectar ao PipeWire. Somente após prewarm o nodo declara `PW_KEY_MEDIA_CLASS`.
+> - **AppState struct**: Substitui os `std::mem::forget(stream)` e `std::mem::forget(_listener)` por ownership explícita, permitindo shutdown limpo e eventual troca de modelo via SPSC.
 
-Integração com catálogos, formatando o processamento logístico e as re-adequações dinâmicas semânticas de hardware orgânico.
+### **Sprint 4: Carregamento de Modelos (.nam / .namb) e Parametrização de Ganho**
 
-| Identificador  | Escopo do Módulo Alvo | Especificação Algorítmica e Fontes de Referência                                                                                                                                                                                                                                                                                                                   | Critérios de Validação (Testes Automatizados)                                                                                                                                                                                                          |
-|:-------------- |:--------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Tarefa 4.1** | src/loader/namb.rs    | Analisador Lexical Determinado: Abster-se do carregamento legado em JSON suportando a estrutura explícita binária Tone3000 .namb do repositório nam-binary-loader.5 Analisar deslocamentos brutos Little-Endian extraindo matrizes flutuantes (Float32) sequencialmente sem percurso dinâmico de chaves ou ponteiros alocados.5 Verificar CRC32 e o Magic Number.5 | Executar rotinas de integração onde arquivos .namb baseados em emulação densa "Standard" extraem corretamente os pesos vetoriais em arrays unidimensionais e são ancorados sem falhas de segmentação de memória.                                       |
-| **Tarefa 4.2** | src/dsp/gain.rs       | Parametrização Dinâmica do Sinal de Ingestão: Interpretar e atuar sobre os 48 bytes de metadados focando na arquitetura de limite rígido orgânico ditado pelos valores de campo paramétrico input\_level\_dbu e output\_level\_dbu.1 Transpor as constantes multiplicadoras convertendo sinal linear dBFS baseados em vetor pré-convolutivo (256 e 512 bit-wide).1 | Validar que matrizes de áudio brutas de ganho agressivo sofram o reescalonamento limpo, extirpando matematicamente perigos nocivos de *digital clipping* nos estáágios primários antes do engajamento em equações não lineares (tangentes limitadas).1 |
+Integração com os formatos de modelo do ecossistema NAM, priorizando o formato `.nam` (JSON) universal seguido da otimização binária `.namb` (Tone3000), e a parametrização de ganho baseada em metadados do modelo.
 
+| Identificador    | Escopo do Módulo Alvo  | Especificação Algorítmica e Fontes de Referência                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Critérios de Validação (Testes Automatizados)                                                                                                                                                                                                               |
+|:---------------- |:---------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tarefa 4.1.1** | src/loader/nam_json.rs | Parser Universal do Formato .nam (JSON): Implementar deserialização do formato .nam que constitui a grande maioria dos modelos disponíveis publicamente. Extrair os campos `architecture` ("WaveNet" ou "LSTM"), `config` (layers, dilations, channels, hidden_size, kernel_size, head_size, head_bias, gated, input_size, condition_size, head_scale), `weights` (array plano de Float32), `sample_rate` e `metadata` (input_level_dbu, output_level_dbu, loudness). Usar `serde_json` para parsing. Toda alocação ocorre fora da thread RT. Referenciar a lógica de `NeuralModel::CreateFromStream()` (NeuralModel.cpp L:129-256).4 | Carregar modelos Standard, Lite, Feather e Nano de fontes públicas Tone3000 e validar que a extração dos pesos produz vetores de tamanho correto conforme a geometria da rede. Verificar que os metadados (sample_rate, dbu) são lidos corretamente.        |
+| **Tarefa 4.1.2** | src/loader/namb.rs     | Analisador Binário Determinístico do Formato .namb: Suportar a estrutura binária Tone3000 do repositório nam-binary-loader.5 Analisar deslocamentos brutos Little-Endian extraindo matrizes flutuantes (Float32) sequencialmente sem percurso dinâmico de chaves ou ponteiros alocados.5 Verificar CRC32 (IEEE 802.3) e o Magic Number (0x4E414D42).5 Compartilhar a mesma struct de saída de pesos da Tarefa 4.1.1 para alimentar as redes da Sprint 3 de forma intercambiável.                                                                                                                                                      | Executar rotinas de integração onde arquivos .namb baseados em emulação densa "Standard" extraem corretamente os pesos vetoriais em arrays unidimensionais e produzem resultado idêntico ao carregamento dos mesmos modelos via parser JSON (Tarefa 4.1.1). |
+| **Tarefa 4.2**   | src/dsp/gain.rs        | Parametrização Dinâmica do Sinal de Ingestão: Interpretar e atuar sobre os metadados focando nos valores de campo paramétrico input\_level\_dbu e output\_level\_dbu.1 A lógica de reescalonamento segue `GetRecommendedInputDBAdjustment()` do C++ (NeuralModel.h L:74-77): `adjustment_dB = audioInputLevelDBu - modelInputLevelDBu`, convertendo para multiplicador linear via `10^(dB/20)`. Transpor as constantes multiplicadoras para vetor SIMD pré-convolutivo (256 e 512 bit-wide).1                                                                                                                                         | Validar que matrizes de áudio brutas de ganho agressivo sofram o reescalonamento limpo, extirpando matematicamente perigos nocivos de *digital clipping* nos estágios primários antes do engajamento em equações não lineares (tangentes limitadas).1       |
+
+> **📋 Notas Detalhadas da Sprint 4 — Referências de Implementação:**
+>
+> #### Tarefa 4.1.1 — Formato .nam JSON
+>
+> A estrutura JSON de um arquivo `.nam` segue o padrão documentado pelo NAM Core:
+>
+> ```json
+> {
+>   "version": "0.5.4",
+>   "architecture": "WaveNet",  // ou "LSTM"
+>   "config": {
+>     "layers": [
+>       {
+>         "input_size": 1, "condition_size": 1, "head_size": 8,
+>         "channels": 16, "kernel_size": 3, "dilations": [1,2,4,8,...,512],
+>         "activation": "Tanh", "gated": false, "head_bias": false
+>       },
+>       { /* segunda layer com head_bias: true */ }
+>     ],
+>     "head": null, "head_scale": 0.02
+>   },
+>   "weights": [0.0123, -0.456, ...],  // array plano de Float32
+>   "sample_rate": 48000,
+>   "metadata": {
+>     "input_level_dbu": 12.0,
+>     "output_level_dbu": 12.0,
+>     "loudness": -18.0
+>   }
+> }
+> ```
+>
+> - A determinação da topologia segue a lógica de `NeuralModel.cpp` L:155-218: verificar `architecture`, depois `config.layers.size() == 2`, `channels`, e padrões de dilatação para classificar como Standard/Lite/Feather/Nano.
+> - **Dependência necessária**: `serde` + `serde_json` (com feature `preserve_order` desabilitada para performance).
+>
+> #### Tarefa 4.1.2 — Formato .namb Binário
+>
+> O formato binário é descrito na Auditoria existente (offsets 0/4/12/24/32). A struct de saída de pesos deve ser **idêntica** à usada pelo parser JSON, permitindo que o mesmo buffer de pesos alimente as redes WaveNet/LSTM indistintamente.
+>
+> - **Dependência necessária**: `crc32fast` para verificação de integridade.
+>
+> #### Tarefa 4.2 — Gain Staging
+>
+> - Referência C++ (NeuralModel.h L:74-81):
+>   - `GetRecommendedInputDBAdjustment() = audioInputLevelDBu - modelInputLevelDBu`
+>   - `GetRecommendedOutputDBAdjustment() = -18 - modelLoudnessDB`
+> - Conversão para multiplicador linear: `gain = 10^(adjustment_dB / 20.0)`
+> - Aplicação via SIMD: `_mm256_mul_ps(input_vector, gain_vector)` **antes** da inferência (input) e **depois** (output).
+>
 > **📋 Notas da Auditoria Sprint 1 para esta Sprint:**
 >
-> - **`ParamPayload::LoadModelPtr(*mut ())` é um placeholder opaco (Tarefa 4.1):** Deve ser substituído por um container tipado que aponte para as estruturas SoA decodificadas do `.namb` sem alocação dinâmica.
-> - **`input_level_dbu` é crítico (Tarefa 4.2):** O campo `input_level_dbu` do cabeçalho `.namb` DEVE ser interpretado e aplicado ao reescalonador pré-convolucional. A omissão deste limiar desalinha a curva não-linear (tanh) e gera distorção digital destrutiva.
+> - **`ParamPayload::LoadModelPtr(*mut ())` é um placeholder opaco (Tarefa 4.1.1/4.1.2):** Deve ser substituído por um container tipado devidamente encapsulando as estruturas SoA decodificadas sem alocação dinâmica.
+> - **`input_level_dbu` é crítico (Tarefa 4.2):** O campo `input_level_dbu` DEVE ser interpretado e aplicado ao reescalonador pré-convolucional. A omissão deste limiar desalinha a curva não-linear (tanh) e gera distorção digital destrutiva.
 
 ### **Sprint 5: Células Superamostradas e Homologação da Estrutura Físico-Química**
 

@@ -15,6 +15,7 @@ Use esta skill focando em **Planejamento Técnico e Arquitetura Inferencia Inego
 
 - Carregue o contexto denso proveniente de artefatos essenciais:
   - `docs/NAM-rs-referência.md` e manifesto `docs/NAM-rs-sprints.md`.
+  - `docs/architecture.md` sobre as definições de arquitetura.
   - `.agents/rules/rust.md` sobre as condições inegociáveis de código.
 
 ### 2. Subdivisões do Motor Matemático e Concorrência

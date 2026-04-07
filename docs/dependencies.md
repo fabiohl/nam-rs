@@ -16,15 +16,26 @@ sudo apt install build-essential pkg-config pipewire libpipewire-0.3-dev clang l
 
 ---
 
-## 2. Dependências Rust (Cargo.toml)
+## 2. Dependências Rust (Cargo.toml) — Estado Atual (pós-Sprint 2)
 
-| Crate      | Propósito                                                                 |
-| ---------- | ------------------------------------------------------------------------- |
-| `anyhow`   | Tratamento de erros ergonômico em toda a aplicação                        |
-| `ctrlc`    | Handler de sinal CTRL+C para shutdown gracioso                            |
-| `libc`     | Chamadas de baixo nível: SCHED_FIFO, Core Affinity, pthread               |
-| `pipewire` | Host PipeWire nativo: ThreadLoopBox, StreamBox, Context e callbacks de RT |
-| `rtrb`     | SPSC Ring Buffer lock-free para comunicação CLI → DSP (Tarefa 1.2)        |
+| Crate      | Versão   | Propósito                                                                 |
+| ---------- | -------- | ------------------------------------------------------------------------- |
+| `anyhow`   | 1.0.102  | Tratamento de erros ergonômico em toda a aplicação                        |
+| `ctrlc`    | 3.5.2    | Handler de sinal CTRL+C para shutdown gracioso                            |
+| `libc`     | 0.2.184  | Chamadas de baixo nível: SCHED_FIFO, Core Affinity, pthread               |
+| `pipewire` | 0.9.2    | Host PipeWire nativo: ThreadLoopBox, StreamBox, Context e callbacks de RT |
+| `rtrb`     | 0.3.3    | SPSC Ring Buffer lock-free para comunicação CLI → DSP                     |
+
+**Total: 5 dependências diretas** — mínimo necessário para a fundação PipeWire + tempo real.
+
+### Dependências Futuras Previstas
+
+| Crate         | Sprint | Propósito                                                    |
+| ------------- | ------ | ------------------------------------------------------------ |
+| `serde`       | 4      | Framework de serialização para parsing do formato `.nam`     |
+| `serde_json`  | 4      | Deserialização JSON do formato `.nam`                        |
+| `crc32fast`   | 4      | Verificação CRC32 IEEE 802.3 do formato binário `.namb`      |
+| `rubato`      | 5      | Conversão de sample rate FIR Sinc polifásico (fase linear)   |
 
 ---
 
@@ -36,6 +47,8 @@ As dependências restritas do lado do usuário configuram em:
 ```bash
 sudo apt install pipewire
 ```
+
+**Requisito de CPU:** Processador x86-64 com suporte nativo a AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). Verificado no startup do aplicativo.
 
 ## 4. Políticas de Baixa Latência
 
@@ -49,3 +62,7 @@ Adicione seu usuário ao grupo de áudio do sistema e edite limits:
 @audio   -  rtprio     95
 @audio   -  memlock    unlimited
 ```
+
+## 5. Flags de Compilação
+
+O projeto é compilado com `target-cpu` otimizado para a microarquitetura `x86-64-v3`. Isso garante que o compilador LLVM emita instruções AVX2/FMA para a CPU do build.
