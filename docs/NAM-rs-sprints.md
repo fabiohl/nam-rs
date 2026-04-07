@@ -173,6 +173,8 @@ Aqui ocorre a tradução pura da rede computacional do NeuralAudio para a hierar
 > - **Prewarm** (NeuralModel.h L:119-132): O C++ executa `Prewarm(2048, 64)` para LSTM e `model->Prewarm()` para WaveNet, injetando zeros para preencher buffers convolucionais e estados recorrentes. Sem isso, as primeiras ~2048 amostras contêm transientes espúrios.
 > - **Lifecycle**: O modelo é carregado e prewarmado **antes** de conectar ao PipeWire. Somente após prewarm o nodo declara `PW_KEY_MEDIA_CLASS`.
 > - **AppState struct**: Substitui os `std::mem::forget(stream)` e `std::mem::forget(_listener)` por ownership explícita, permitindo shutdown limpo e eventual troca de modelo via SPSC.
+>
+> - **Nota (Execução Tarefa 3.3):** Adotou-se o formato de "Lazy Prewarm In-Place". A conexão PipeWire inicializa o node DSP (evitando o travamento principal), e quando a thread DSP recebe o `ParamPayload::LoadModelPtr` via ring-buffer SPSC, executa o prewarm na hora e repassa as amostras. Isso desativa a exigência de um simulacro bloqueante CLI e viabiliza testes orgânicos.
 
 ### **Sprint 4: Carregamento de Modelos (.nam / .namb) e Parametrização de Ganho**
 

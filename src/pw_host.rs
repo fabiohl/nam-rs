@@ -18,6 +18,15 @@ use pw::properties::properties;
 use rtrb::Consumer;
 use std::sync::atomic::Ordering;
 
+/// Estrutura de posse explícita para evitar o leak de memória
+/// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
+struct AppState<S, L> {
+    #[allow(dead_code)]
+    stream: S,
+    #[allow(dead_code)]
+    listener: L,
+}
+
 /// Inicializa a topologia PipeWire, configurando o nó como um filtro bidirecional
 /// (consumo e produção) na API do WirePlumber, executando o MainLoop até SHUTDOWN.
 pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result<()> {
@@ -26,6 +35,8 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
     let context = pw::context::ContextBox::new(thread_loop.loop_(), None)?;
     let core = context.connect(None)?;
 
+    let stream;
+    let listener;
     let mut thread_configured = false;
 
     // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança
@@ -35,7 +46,7 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
 
         // Configurando Stream DSP Ativo. "Audio/Filter" cria um nó que expõe
         // portas de Capture e Playback dinamicamente, permitindo ligação na cadeia sem resampling forçado.
-        let stream = pw::stream::StreamBox::new(
+        stream = pw::stream::StreamBox::new(
             &core,
             "NAM-rs",
             properties! {
@@ -50,9 +61,10 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
         )?;
 
         let target_cpu = select_optimal_cpu().unwrap_or(0);
+        let mut active_model: *mut crate::models::DynamicModel = std::ptr::null_mut();
 
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
-        let _listener = stream
+        listener = stream
             .add_local_listener::<()>()
             .process(move |stream: &pw::stream::Stream, _info| {
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
@@ -62,9 +74,17 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                 }
 
                 // Drena parâmetros guiados da thread CLI (Lock-Free) via SPSC Ring Buffer
-                while let Ok(_payload) = consumer.pop() {
-                    // Sprint 1.3: pass-through sem lógica de modelagem; suprimimos o limite
-                    // Evita que o SPSC Ring encha enquanto o DSP não manipula as mensagens.
+                while let Ok(payload) = consumer.pop() {
+                    if let ParamPayload::LoadModelPtr(ptr) = payload {
+                        if !ptr.is_null() {
+                            active_model = ptr as *mut crate::models::DynamicModel;
+                            // Executa o prewarm para anular transientes (Lazy Initialization)
+                            let model = unsafe { &mut *active_model };
+                            model.0.prewarm(2048);
+                        } else {
+                            active_model = std::ptr::null_mut();
+                        }
+                    }
                 }
 
                 // =========================================================
@@ -73,10 +93,17 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                 // Recupera o Buffer do PipeWire alocado internamente contendo os canais.
                 // Numa stream Filter, um `dequeue_buffer` entrega dados de In e Out conjugados
                 // para "In-place processing".
-                let mut _buf = match stream.dequeue_buffer() {
+                let _buf = match stream.dequeue_buffer() {
                     Some(b) => b,
                     None => return,
                 };
+
+                // Aqui extraímos acesso aos buffers e fazemos despacho ao active_model.
+                if !active_model.is_null() {
+                    let _model = unsafe { &mut *active_model };
+                    // TODO: aplicar \`_model.0.process(input, output)\` quando a manipulação do
+                    // Buffer::datas_mut() in-place estiver 100% clara com a API 0.7.2
+                }
 
                 // O PipeWire lida nativamente com o pass-through in-place de bytes não tocados (Injeção Nula).
                 // Retorna o pacote processado: `Buffer` devolve para a fila automaticamente no `Drop`.
@@ -94,15 +121,9 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                 | pw::stream::StreamFlags::RT_PROCESS,
             &mut [],
         )?;
-
-        // Aqui temos um pequeno caveat: O _listener não pode ser dropado!
-        // No Pipewire-rs, o Stream e o Listener não podem ser dropados enquanto
-        // quisermos que eles existam. Precisamos mantê-los vivos!
-        // Vou usar mem::forget por enquanto ou jogar eles dentro de uma struct.
-        // Wait, o StreamBox *DEVE* sobreviver.
-        std::mem::forget(stream);
-        std::mem::forget(_listener);
     }
+
+    let _app_state = AppState { stream, listener };
 
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
