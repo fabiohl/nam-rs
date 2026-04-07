@@ -8,6 +8,7 @@
 
 # Ignorar arquivos temporários
 /tmp.git
+.git/
 *.tmp*
 .DS_Store
 Thumbs.db
