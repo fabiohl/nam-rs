@@ -6,4 +6,5 @@
 //! Este módulo contém implementações "Zero-Allocation" usando Const Generics
 //! baseadas no modelo "Neural Amp Modeler" original.
 
+pub mod lstm;
 pub mod wavenet;

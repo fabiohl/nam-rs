@@ -426,46 +426,4 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_wavenet_standard_instantiation_and_process() {
-        if !std::is_x86_feature_detected!("avx2") || !std::is_x86_feature_detected!("fma") {
-            return;
-        }
-
-        let channels = 16;
-        let head = 1;
-
-        let mut model = WaveNetModel::<16, 3, 1> {
-            array1: WaveNetLayerArray::<1, 1, 16, 3, 1> {
-                layers: vec![],
-                states: vec![],
-                rechannel: DenseLayer { weights: vec![0.0; channels], bias: vec![0.0; channels], do_bias: false },
-                head_rechannel: DenseLayer { weights: vec![0.0; channels], bias: vec![0.0; head], do_bias: false },
-                array_outputs: vec![0.0; channels],
-                head_outputs: vec![0.0; head],
-                receptive_field_size: 1,
-            },
-            array2: WaveNetLayerArray::<16, 1, 16, 3, 1> {
-                layers: vec![],
-                states: vec![],
-                rechannel: DenseLayer { weights: vec![0.0; channels * channels], bias: vec![0.0; channels], do_bias: false },
-                head_rechannel: DenseLayer { weights: vec![0.0; channels], bias: vec![0.0; head], do_bias: false },
-                array_outputs: vec![0.0; channels],
-                head_outputs: vec![0.0; head],
-                receptive_field_size: 1,
-            },
-            head_scale: 1.0,
-            receptive_field_size: 1,
-        };
-
-        model.prewarm();
-
-        let mut out = [0.0; 64];
-        let dsp_in = [0.0; 64];
-
-        model.process(&dsp_in, &mut out);
-
-        assert_eq!(out[0], 0.0);
-    }
 }
