@@ -422,8 +422,3 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             .prewarm(array1_outputs, &condition, &mut head_array);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-}
