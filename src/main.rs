@@ -12,6 +12,7 @@
 //! - **ZERO ALOCAÇÕES** na thread DSP (o loop `process()` deve ser zero-allocation).
 
 pub mod math;
+pub mod models;
 mod pw_host;
 mod spsc;
 
