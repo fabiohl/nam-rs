@@ -7,10 +7,10 @@
 //! standalone nativo e as processa em tempo real.
 //! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
 //!
-//! # Estado Atual (Tarefa 1.3)
-//! O motor de inferência neural ainda não foi implementado (Sprints 2-5).
-//! O callback do Stream opera em modo **pass-through**: o áudio de entrada
-//! flui inalterado para a saída, provando a injeção nula do nó na Session Manager.
+//! # Estado Atual (Sprint 3)
+//! O motor de inferência neural está integrado: o callback `process()` extrai amostras
+//! do buffer PipeWire e despacha para o modelo ativo (WaveNet/LSTM) via trait `NamModel`.
+//! Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
 
 use crate::spsc::{ParamPayload, SHUTDOWN};
 use pipewire as pw;
@@ -91,22 +91,47 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                 // LÓGICA DSP - TEMPO REAL
                 // =========================================================
                 // Recupera o Buffer do PipeWire alocado internamente contendo os canais.
-                // Numa stream Filter, um `dequeue_buffer` entrega dados de In e Out conjugados
-                // para "In-place processing".
-                let _buf = match stream.dequeue_buffer() {
+                // Numa stream Filter, um `dequeue_buffer` entrega dados de In e Out conjugados.
+                let mut _buf = match stream.dequeue_buffer() {
                     Some(b) => b,
                     None => return,
                 };
 
-                // Aqui extraímos acesso aos buffers e fazemos despacho ao active_model.
-                if !active_model.is_null() {
-                    let _model = unsafe { &mut *active_model };
-                    // TODO: aplicar \`_model.0.process(input, output)\` quando a manipulação do
-                    // Buffer::datas_mut() in-place estiver 100% clara com a API 0.7.2
-                }
+                // Extrai a primeira região de dados do buffer (mono, canal 0).
+                let datas = _buf.datas_mut();
+                if let Some(d) = datas.first_mut() {
+                    let chunk = d.chunk();
+                    let offset = chunk.offset() as usize;
+                    let size = chunk.size() as usize;
 
-                // O PipeWire lida nativamente com o pass-through in-place de bytes não tocados (Injeção Nula).
-                // Retorna o pacote processado: `Buffer` devolve para a fila automaticamente no `Drop`.
+                    if !active_model.is_null()
+                        && size > 0
+                        && let Some(raw_bytes) = d.data()
+                    {
+                        let n_bytes = size.min(raw_bytes.len().saturating_sub(offset));
+                        let n_samples = n_bytes / std::mem::size_of::<f32>();
+
+                        if n_samples > 0 {
+                            let samples = unsafe {
+                                std::slice::from_raw_parts_mut(
+                                    raw_bytes.as_mut_ptr().add(offset).cast::<f32>(),
+                                    n_samples,
+                                )
+                            };
+
+                            // Buffer temporal na stack para saída (Zero-Alloc).
+                            // Máximo razoável para callbacks PipeWire: 2048 amostras.
+                            const MAX_DSP_BUF: usize = 2048;
+                            let mut temp_out = [0.0f32; MAX_DSP_BUF];
+                            let n = n_samples.min(MAX_DSP_BUF);
+
+                            let model = unsafe { &mut *active_model };
+                            model.0.process(&samples[..n], &mut temp_out[..n]);
+                            samples[..n].copy_from_slice(&temp_out[..n]);
+                        }
+                    }
+                }
+                // Buffer devolvido automaticamente ao PipeWire no `Drop`.
             })
             .register()?;
 

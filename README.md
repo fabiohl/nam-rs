@@ -20,7 +20,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 | ------------ | -------------------------------------------------------------------- | ------------ |
 | **Sprint 1** | Purga do I/O legado, SPSC lock-free, Host PipeWire nativo            | ✅ Concluída |
 | **Sprint 2** | Infraestrutura SIMD (dot product AVX2/FMA), FastMath (tanh, sigmoid) | ✅ Concluída |
-| **Sprint 3** | Redes inferenciais (WaveNet + LSTM), integração no callback PipeWire | 🔲 Próxima   |
+| **Sprint 3** | Redes inferenciais (WaveNet + LSTM), integração no callback PipeWire | ✅ Concluída |
 | **Sprint 4** | Carregamento de modelos (.nam JSON / .namb binário), gain staging    | 🔲 Planejada |
 | **Sprint 5** | Resampling FIR Sinc, validação MSE contra referência C++             | 🔲 Planejada |
 
@@ -61,8 +61,8 @@ Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `p
 
 Contribuições são bem-vindas! O projeto está em fase ativa de desenvolvimento. Áreas de interesse:
 
-* Porte das redes WaveNet e LSTM do NeuralAudio (Sprint 3)
 * Parser do formato binário .namb (Sprint 4)
+* Gain staging SIMD (Sprint 4)
 * Resampling FIR de fase linear (Sprint 5)
 * Suporte AVX-512 via multiversioning
 

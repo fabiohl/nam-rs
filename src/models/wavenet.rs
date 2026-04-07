@@ -260,7 +260,9 @@ pub struct WaveNetLayerArray<
 
     /// Conexão transiente de pre-alocação zero-copy ao próximo vetor.
     pub array_outputs: std::vec::Vec<f32>,
-    /// Memória alocada da projeção Linear global.
+    /// Acumulador intermediário CH-sized para contribuições das camadas antes da projeção Head.
+    pub head_accum: std::vec::Vec<f32>,
+    /// Memória alocada da projeção Linear global (HEAD-sized).
     pub head_outputs: std::vec::Vec<f32>,
     /// Tamanho do campo dimensional (receptive field global) para roteamentos.
     pub receptive_field_size: usize,
@@ -274,13 +276,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     /// # Safety
     /// Ponteiros de states iteram internamente sem bounds checks.
     #[cfg(target_arch = "x86_64")]
-    pub unsafe fn process(
-        &mut self,
-        layer_inputs: &[f32],
-        condition: &[f32],
-        head_inputs: &mut [f32],
-    ) {
+    pub unsafe fn process(&mut self, layer_inputs: &[f32], condition: &[f32]) {
         let states_ptr = self.states.as_mut_ptr();
+
+        // Zera o acumulador CH-sized para contribuições das camadas ao head.
+        for v in self.head_accum.iter_mut() {
+            *v = 0.0;
+        }
 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
@@ -297,7 +299,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 if i == last_layer {
                     layer.process(
                         condition,
-                        head_inputs,
+                        &mut self.head_accum[0..CH],
                         &mut self.array_outputs[0..CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
@@ -308,7 +310,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
                     layer.process(
                         condition,
-                        head_inputs,
+                        &mut self.head_accum[0..CH],
                         &mut next_state.layer_buffer[next_start..next_start + CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
@@ -319,13 +321,17 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             }
 
             self.head_rechannel
-                .process(head_inputs, &mut self.head_outputs[0..HEAD]);
+                .process(&self.head_accum[0..CH], &mut self.head_outputs[0..HEAD]);
         }
     }
 
     /// Invoca a transposição artificial do modelo em Pre-warm estabilizando memória temporal.
-    pub fn prewarm(&mut self, layer_inputs: &[f32], condition: &[f32], head_inputs: &mut [f32]) {
+    pub fn prewarm(&mut self, layer_inputs: &[f32], condition: &[f32]) {
         let states_ptr = self.states.as_mut_ptr();
+
+        for v in self.head_accum.iter_mut() {
+            *v = 0.0;
+        }
 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
@@ -343,7 +349,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 if i == last_layer {
                     layer.process(
                         condition,
-                        head_inputs,
+                        &mut self.head_accum[0..CH],
                         &mut self.array_outputs[0..CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
@@ -354,7 +360,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
                     layer.process(
                         condition,
-                        head_inputs,
+                        &mut self.head_accum[0..CH],
                         &mut next_state.layer_buffer[next_start..next_start + CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
@@ -363,7 +369,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             }
 
             self.head_rechannel
-                .process(head_inputs, &mut self.head_outputs[0..HEAD]);
+                .process(&self.head_accum[0..CH], &mut self.head_outputs[0..HEAD]);
         }
     }
 }
@@ -390,20 +396,17 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             let sample = input[i];
             let condition = [sample];
             let layer_inputs_1 = [sample];
-            let mut head_array = [0.0f32; HEAD];
 
             unsafe {
-                self.array1
-                    .process(&layer_inputs_1, &condition, &mut head_array);
+                self.array1.process(&layer_inputs_1, &condition);
 
                 let array1_outputs = &self.array1.array_outputs[0..CH];
-                self.array2
-                    .process(array1_outputs, &condition, &mut head_array);
+                self.array2.process(array1_outputs, &condition);
             }
 
             let mut final_sum = 0.0;
             for j in 0..HEAD {
-                final_sum += self.array2.head_outputs[j];
+                final_sum += self.array1.head_outputs[j] + self.array2.head_outputs[j];
             }
             output[i] = final_sum * self.head_scale;
         }
@@ -413,12 +416,177 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     pub fn prewarm(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
-        let mut head_array = [0.0f32; HEAD];
 
-        self.array1
-            .prewarm(&layer_inputs_1, &condition, &mut head_array);
+        self.array1.prewarm(&layer_inputs_1, &condition);
         let array1_outputs = &self.array1.array_outputs[0..CH];
-        self.array2
-            .prewarm(array1_outputs, &condition, &mut head_array);
+        self.array2.prewarm(array1_outputs, &condition);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Constrói um WaveNetModel<4, 3, 2> mínimo para testes com dados zerados.
+    fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
+        let make_layer = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
+            WaveNetLayer {
+                conv1d: Conv1d {
+                    weights: vec![0.01; 4 * 3 * 4],
+                    bias: vec![0.0; 4],
+                    do_bias: false,
+                    dilation,
+                },
+                input_mixin: DenseLayer {
+                    weights: vec![0.01; 4],
+                    bias: vec![0.0; 4],
+                    do_bias: false,
+                },
+                one_by_one: DenseLayer {
+                    weights: vec![0.01; 4 * 4],
+                    bias: vec![0.0; 4],
+                    do_bias: false,
+                },
+            }
+        };
+
+        let dilations_1 = [1, 2, 4];
+        let dilations_2 = [1, 2, 4];
+
+        let rf1 = *dilations_1.iter().max().unwrap_or(&1) * (3 - 1);
+        let rf2 = *dilations_2.iter().max().unwrap_or(&1) * (3 - 1);
+
+        // Construção manual das arrays com const generics explícitos.
+        let layers_1: Vec<WaveNetLayer<1, 4, 3>> =
+            dilations_1.iter().map(|&d| make_layer(d)).collect();
+        let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
+            .map(|i| WaveNetLayerState::new(4, rf1, i))
+            .collect();
+
+        let array1 = WaveNetLayerArray::<1, 1, 4, 3, 2> {
+            layers: layers_1,
+            states: states_1,
+            rechannel: DenseLayer {
+                weights: vec![0.01; 4],
+                bias: vec![0.0; 4],
+                do_bias: false,
+            },
+            head_rechannel: DenseLayer {
+                weights: vec![0.01; 2 * 4],
+                bias: vec![0.0; 2],
+                do_bias: false,
+            },
+            array_outputs: vec![0.0; 4],
+            head_accum: vec![0.0; 4],
+            head_outputs: vec![0.0; 2],
+            receptive_field_size: rf1,
+        };
+
+        let layers_2: Vec<WaveNetLayer<1, 4, 3>> =
+            dilations_2.iter().map(|&d| make_layer(d)).collect();
+        let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
+            .map(|i| WaveNetLayerState::new(4, rf2, i))
+            .collect();
+
+        let array2 = WaveNetLayerArray::<4, 1, 4, 3, 2> {
+            layers: layers_2,
+            states: states_2,
+            rechannel: DenseLayer {
+                weights: vec![0.01; 4 * 4],
+                bias: vec![0.0; 4],
+                do_bias: false,
+            },
+            head_rechannel: DenseLayer {
+                weights: vec![0.01; 2 * 4],
+                bias: vec![0.0; 2],
+                do_bias: false,
+            },
+            array_outputs: vec![0.0; 4],
+            head_accum: vec![0.0; 4],
+            head_outputs: vec![0.0; 2],
+            receptive_field_size: rf2,
+        };
+
+        WaveNetModel {
+            array1,
+            array2,
+            head_scale: 0.02,
+            receptive_field_size: rf1.max(rf2),
+        }
+    }
+
+    #[test]
+    fn test_wavenet_model_allocation() {
+        let model = build_tiny_wavenet();
+        assert_eq!(model.array1.layers.len(), 3);
+        assert_eq!(model.array2.layers.len(), 3);
+        assert_eq!(model.array1.head_outputs.len(), 2);
+        assert_eq!(model.array2.head_outputs.len(), 2);
+        assert!((model.head_scale - 0.02).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_wavenet_prewarm_no_nan() {
+        let mut model = build_tiny_wavenet();
+        model.prewarm();
+
+        // Verificar que os buffers internos não contêm NaN/Inf após prewarm
+        for state in &model.array1.states {
+            for &v in &state.layer_buffer {
+                assert!(v.is_finite(), "NaN/Inf detectado no array1 após prewarm");
+            }
+        }
+        for state in &model.array2.states {
+            for &v in &state.layer_buffer {
+                assert!(v.is_finite(), "NaN/Inf detectado no array2 após prewarm");
+            }
+        }
+    }
+
+    #[test]
+    fn test_wavenet_process_zeros() {
+        #[cfg(target_arch = "x86_64")]
+        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+            let mut model = build_tiny_wavenet();
+            model.prewarm();
+
+            let input = [0.0f32; 16];
+            let mut output = [0.0f32; 16];
+
+            model.process(&input, &mut output);
+
+            for (i, &v) in output.iter().enumerate() {
+                assert!(v.is_finite(), "Amostra de saída [{}] é NaN/Inf: {}", i, v);
+            }
+        }
+    }
+
+    #[test]
+    fn test_wavenet_process_deterministic() {
+        #[cfg(target_arch = "x86_64")]
+        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+            let mut model_a = build_tiny_wavenet();
+            let mut model_b = build_tiny_wavenet();
+
+            model_a.prewarm();
+            model_b.prewarm();
+
+            let input = [0.1f32; 8];
+            let mut out_a = [0.0f32; 8];
+            let mut out_b = [0.0f32; 8];
+
+            model_a.process(&input, &mut out_a);
+            model_b.process(&input, &mut out_b);
+
+            for i in 0..8 {
+                assert!(
+                    (out_a[i] - out_b[i]).abs() < 1e-6,
+                    "Resultado não-determinístico na amostra [{}]: {} vs {}",
+                    i,
+                    out_a[i],
+                    out_b[i]
+                );
+            }
+        }
     }
 }

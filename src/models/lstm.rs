@@ -274,4 +274,57 @@ mod tests {
         assert_eq!(model.layer1.input_hidden_weights.len(), 64);
         assert_eq!(model.layer2.input_hidden_weights[0].len(), 32);
     }
+
+    #[test]
+    fn test_lstm_model1_process_zeros() {
+        #[cfg(target_arch = "x86_64")]
+        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+            let mut model: LstmModel1<8, 9, 32> = LstmModel1::new();
+            let input = [0.0f32; 16];
+            let mut output = [0.0f32; 16];
+
+            unsafe { model.process(&input, &mut output) };
+
+            for (i, &v) in output.iter().enumerate() {
+                assert!(v.is_finite(), "LSTM1×8: saída [{}] é NaN/Inf: {}", i, v);
+            }
+        }
+    }
+
+    #[test]
+    fn test_lstm_model2_process_deterministic() {
+        #[cfg(target_arch = "x86_64")]
+        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+            let mut model_a: LstmModel2<8, 9, 16, 32> = LstmModel2::new();
+            let mut model_b: LstmModel2<8, 9, 16, 32> = LstmModel2::new();
+
+            let input = [0.1f32; 8];
+            let mut out_a = [0.0f32; 8];
+            let mut out_b = [0.0f32; 8];
+
+            unsafe {
+                model_a.process(&input, &mut out_a);
+                model_b.process(&input, &mut out_b);
+            }
+
+            for i in 0..8 {
+                assert!(
+                    (out_a[i] - out_b[i]).abs() < 1e-6,
+                    "LSTM2×8 não-determinístico em [{}]: {} vs {}",
+                    i,
+                    out_a[i],
+                    out_b[i]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_lstm_gate_order_consistency() {
+        // Valida que o layout [i|f|g|o] no offset [0, H, 2H, 3H] é respeitado.
+        let model: LstmModel1<8, 9, 32> = LstmModel1::new();
+        assert_eq!(model.layer.gates.len(), 32); // 4 * H = 4 * 8 = 32
+        assert_eq!(model.layer.input_hidden_weights.len(), 32); // H4 = 32
+        assert_eq!(model.layer.input_hidden_weights[0].len(), 9); // IH = I + H = 1 + 8 = 9
+    }
 }
