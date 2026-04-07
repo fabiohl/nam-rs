@@ -23,4 +23,4 @@ Antes de consolidar a documentação final ou propor mudanças, identifique quai
 ### 3. Boas Práticas
 
 - Foque na documentação visando a justificação de mitigações de memory cache misses e escalonamentos low latency no Host Linux restrito. Nunca apague arquivos contendo a matriz mental do sistema de tempo real sem realocação sistemática.
-- Nunca edite os arquivos docs/NAM-rs-referência.md e docs/NAM-rs-sprints.md. Eles são documentos mestres mantidos pelo desenvolvedor humano do projeto.
+- Edição dos arquivos docs/NAM-rs-referência.md e docs/NAM-rs-sprints.md só são permitidas se forem cirúrgicas, ou na forma de notas e observações.

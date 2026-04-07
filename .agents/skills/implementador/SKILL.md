@@ -26,3 +26,15 @@ Antes de implementar qualquer funcionalidade, consulte a referência mestra em `
 
 - Escreva subrotinas que validem compilamentos simultâneos adaptáveis à CPU Host. Maximize Multi-Target com foco no processador nativo com AVX2 (YMM) ou expansões dinâmicas de 512-bits via extratos microarquiteturais baseados nos ZMM via `std::simd`.
 - O código compilado passa exaustivamente sobre script global `utils/lints.sh`. Corrija avisos para provar segurança estocástica das redes em Rust 2024.
+
+### 4. Projetos de referência
+
+Muito do trabalho necessário envolverá analisar a implementação (majoritariamente em C++) de um projeto de referência e portar para o NAM-rs (linguagem Rust).
+
+| Repositório GitHub                                     | Pasta local que o espelha                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| <https://github.com/mikeoliphant/NeuralAudio>          | github.com/mikeoliphant/NeuralAudio                           |
+| <https://github.com/p-ranav/argparse>                  | github.com/mikeoliphant/NeuralAudio/Utils/deps/argparse       |
+| <https://github.com/Chowdhury-DSP/math_approx>         | github.com/mikeoliphant/NeuralAudio/deps/math_approx          |
+| <https://github.com/mikeoliphant/NeuralAmpModelerCore> | github.com/mikeoliphant/NeuralAudio/deps/NeuralAmpModelerCore |
+| <https://github.com/mikeoliphant/RTNeural>             | github.com/mikeoliphant/NeuralAudio/deps/RTNeural             |

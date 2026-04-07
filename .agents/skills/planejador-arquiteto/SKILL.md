@@ -27,6 +27,19 @@ Use esta skill focando em **Planejamento Técnico e Arquitetura Inferencia Inego
 
 - Especifique para a equipe técnica como e em qual parte exata a thread `Audio/DSP` `low latency` deve assimilar bibliotecas externas `fastmath` no lugar do STD base. Descreva os mecanismos dinâmicos contendo multiversioning SIMD compilados pelo `cargo build` e delineados.
 
-### 4. Atividades finais
+### 4. Projetos de referência
+
+Muito do trabalho necessário envolverá analisar a implementação (majoritariamente em C++) de um projeto de referência e portar para o NAM-rs (linguagem Rust) - fazendo as devidas adaptações conforme nossas necessidades.
+Segue uma relação (não exaustivas) de projetos de referência identifcados. Eles estão sendo espelhados diretamente do Github.
+
+| Repositório GitHub                                     | Pasta local que o espelha                                     |
+| ------------------------------------------------------ | ------------------------------------------------------------- |
+| <https://github.com/mikeoliphant/NeuralAudio>          | github.com/mikeoliphant/NeuralAudio                           |
+| <https://github.com/p-ranav/argparse>                  | github.com/mikeoliphant/NeuralAudio/Utils/deps/argparse       |
+| <https://github.com/Chowdhury-DSP/math_approx>         | github.com/mikeoliphant/NeuralAudio/deps/math_approx          |
+| <https://github.com/mikeoliphant/NeuralAmpModelerCore> | github.com/mikeoliphant/NeuralAudio/deps/NeuralAmpModelerCore |
+| <https://github.com/mikeoliphant/RTNeural>             | github.com/mikeoliphant/NeuralAudio/deps/RTNeural             |
+
+### 5. Atividades finais
 
 - Encerre solicitando à infraestrutura de dev (`lints.sh`) validação do plano macro na base estrita de sintaxe do rust antes de fechar sua sessão com a tag da skill `documentador`.
