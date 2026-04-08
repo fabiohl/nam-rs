@@ -51,16 +51,18 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // 24: CRC32
     let crc_expected = u32::from_le_bytes(data[24..28].try_into().unwrap());
 
-    // Verificação CRC32 base IEEE 802.3
+    // Verificação CRC32 base IEEE 802.3 sobre o bloco de pesos.
     let mut hasher = Hasher::new();
     hasher.update(&data[weights_offset..]);
-    let _crc_calculated = hasher.finalize();
+    let crc_calculated = hasher.finalize();
 
-    // Em alguns casos, a verificação de integridade CRC também se estende no formato,
-    // podendo falhar se considerarmos apenas os dados a partir de weights.
-    // Estamos implementando a base razoável para validar os pesos extraídos.
-    // Não seremos ríspidos se o CRC falhar na simulação sem ter certeza da janela do original.
-    let _ = crc_expected; // Marcar como usado
+    if crc_calculated != crc_expected {
+        bail!(
+            "Falha na verificação de integridade CRC32: esperado 0x{:08X}, calculado 0x{:08X}. Arquivo possivelmente corrompido.",
+            crc_expected,
+            crc_calculated
+        );
+    }
 
     // 32: Geometria de Referência de Estúdio (48 bytes)
     // Assumimos que o cabeçalho seja estruturado conforme:
@@ -112,7 +114,13 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     })
 }
 
-/// Cria o arranjo vazio compatível com a simetria Standard de WaveNet da inferência.
+/// Cria o arranjo compatível com a simetria Standard de WaveNet da inferência.
+///
+/// **Decisão arquitetural:** Arquivos `.namb` do ecossistema Tone3000 são predominantemente
+/// modelos WaveNet "Standard" (16ch, dilatações `[1..512]`×2). A especificação binária
+/// não transporta explicitamente a topologia no cabeçalho — os pesos são interpretados
+/// diretamente pela geometria fixa. Por isso, hardcodamos a configuração Standard
+/// para garantir intercambiabilidade com o parser JSON (Tarefa 4.1.1).
 fn make_standard_wavenet_config() -> NamConfig {
     let std_dilations = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
@@ -154,38 +162,46 @@ mod tests {
     use super::*;
     use anyhow::Result;
 
-    #[test]
-    fn test_parse_namb_standard() -> Result<()> {
-        let mut sim_data = vec![0u8; 96]; // mock nulo + 16 bytes de pesos
+    /// Constrói um buffer NAMB válido com pesos e CRC32 corretos.
+    fn build_valid_namb(w_floats: &[f32]) -> Vec<u8> {
+        let weights_offset: usize = 80;
+        let total_size = weights_offset + w_floats.len() * 4;
+        let mut sim_data = vec![0u8; total_size];
 
-        // Mágico "NAMB" no literal fatiado:
-        // Citação da Tarefa: 0x4E414D42; O arquivo original constrói LITTLE ENDIAN.
+        // Magic Number
         sim_data[0..4].copy_from_slice(&0x4E414D42u32.to_le_bytes());
-
         // Version = 1
         sim_data[4..6].copy_from_slice(&1u16.to_le_bytes());
-
-        // Offset = 80
-        sim_data[12..16].copy_from_slice(&80u32.to_le_bytes());
-
+        // Offset de pesos
+        sim_data[12..16].copy_from_slice(&(weights_offset as u32).to_le_bytes());
         // Version String @32
         sim_data[32..37].copy_from_slice(b"1.0.0");
-
         // Frequência
         sim_data[64..68].copy_from_slice(&48000.0f32.to_le_bytes());
-
         // Input DBU = 12.0
         sim_data[68..72].copy_from_slice(&12.0f32.to_le_bytes());
-
         // Output DBU = -6.0
         sim_data[72..76].copy_from_slice(&(-6.0f32).to_le_bytes());
 
-        // 16 bytes = 4 f32s a partir do index 80
-        let w_floats = [0.1f32, -0.2f32, 2.5f32, 10.0f32];
+        // Pesos
         for (i, float_val) in w_floats.iter().enumerate() {
-            let offset = 80 + i * 4;
-            sim_data[offset..offset + 4].copy_from_slice(&float_val.to_le_bytes());
+            let off = weights_offset + i * 4;
+            sim_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
         }
+
+        // CRC32 IEEE 802.3 sobre os bytes de pesos
+        let mut hasher = Hasher::new();
+        hasher.update(&sim_data[weights_offset..]);
+        let crc = hasher.finalize();
+        sim_data[24..28].copy_from_slice(&crc.to_le_bytes());
+
+        sim_data
+    }
+
+    #[test]
+    fn test_parse_namb_standard() -> Result<()> {
+        let w_floats = [0.1f32, -0.2f32, 2.5f32, 10.0f32];
+        let sim_data = build_valid_namb(&w_floats);
 
         let parsed = parse_namb(&sim_data)?;
 
@@ -203,5 +219,59 @@ mod tests {
         assert_eq!(parsed.version.as_deref(), Some("1.0.0"));
 
         Ok(())
+    }
+
+    #[test]
+    fn test_reject_truncated_file() {
+        let data = vec![0u8; 40]; // Menor que o cabeçalho mínimo de 80 bytes
+        let result = parse_namb(&data);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("muito pequeno"), "Mensagem inesperada: {msg}");
+    }
+
+    #[test]
+    fn test_reject_invalid_magic() {
+        let w = [1.0f32];
+        let mut data = build_valid_namb(&w);
+        // Corrompe o magic number
+        data[0..4].copy_from_slice(b"XXXX");
+        let result = parse_namb(&data);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("mágica inválida") || msg.contains("Assinatura"),
+            "Mensagem inesperada: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_reject_unsupported_version() {
+        let w = [1.0f32];
+        let mut data = build_valid_namb(&w);
+        // Define versão 99 (não suportada)
+        data[4..6].copy_from_slice(&99u16.to_le_bytes());
+        let result = parse_namb(&data);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("Versão") || msg.contains("não suportada"),
+            "Mensagem inesperada: {msg}"
+        );
+    }
+
+    #[test]
+    fn test_reject_corrupted_crc32() {
+        let w = [1.0f32, 2.0, 3.0, 4.0];
+        let mut data = build_valid_namb(&w);
+        // Corrompe o CRC32 deliberadamente
+        data[24..28].copy_from_slice(&0xDEADBEEFu32.to_le_bytes());
+        let result = parse_namb(&data);
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("CRC32") || msg.contains("integridade"),
+            "Mensagem inesperada: {msg}"
+        );
     }
 }

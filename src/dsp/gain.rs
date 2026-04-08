@@ -86,4 +86,59 @@ mod tests {
             assert_eq!(z, 0.0);
         }
     }
+
+    /// Valida o cálculo combinado de gain staging (user + model metadata).
+    /// Simula a lógica exata de `update_gain_multipliers` de pw_host.rs.
+    #[test]
+    fn test_combined_gain_staging() {
+        // Cenário: usuário define +6dB de input gain,
+        // modelo exige ajuste de -3dB (audioInputDBu - modelInputDBu).
+        // Total = +3dB → multiplicador linear = 10^(3/20) ≈ 1.4125
+        let user_input_db: f32 = 6.0;
+        let model_input_adj_db: f32 = -3.0;
+        let total_db = user_input_db + model_input_adj_db;
+        let gain_linear = 10.0f32.powf(total_db / 20.0);
+
+        let mut buffer = [1.0f32; 16];
+        apply_gain_simd(&mut buffer, gain_linear);
+
+        let expected = 10.0f32.powf(3.0 / 20.0);
+        for &sample in &buffer {
+            assert!(
+                (sample - expected).abs() < 1e-5,
+                "Esperado ~{expected:.5}, obteve {sample:.5}"
+            );
+        }
+    }
+
+    /// Verifica estabilidade com ganho extremo negativo (-60dB ≈ 0.001)
+    /// e positivo (+24dB ≈ 15.85) sem underflow/overflow em Float32.
+    #[test]
+    fn test_extreme_gain_values() {
+        // -60 dB → gain ≈ 0.001
+        let gain_neg60 = 10.0f32.powf(-60.0 / 20.0);
+        assert!(gain_neg60 > 0.0 && gain_neg60.is_finite());
+
+        let mut buffer = [1.0f32; 20];
+        apply_gain_simd(&mut buffer, gain_neg60);
+        for &s in &buffer {
+            assert!(
+                s.is_finite() && s > 0.0 && s < 0.01,
+                "Underflow em -60dB: {s}"
+            );
+        }
+
+        // +24 dB → gain ≈ 15.85
+        let gain_pos24 = 10.0f32.powf(24.0 / 20.0);
+        assert!(gain_pos24 > 10.0 && gain_pos24.is_finite());
+
+        let mut buffer2 = [0.5f32; 20];
+        apply_gain_simd(&mut buffer2, gain_pos24);
+        for &s in &buffer2 {
+            assert!(
+                s.is_finite() && s > 5.0 && s < 10.0,
+                "Overflow em +24dB: {s}"
+            );
+        }
+    }
 }

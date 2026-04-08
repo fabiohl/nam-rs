@@ -7,9 +7,10 @@
 //! standalone nativo e as processa em tempo real.
 //! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
 //!
-//! # Estado Atual (Sprint 3)
+//! # Estado Atual (Sprint 4)
 //! O motor de inferência neural está integrado: o callback `process()` extrai amostras
 //! do buffer PipeWire e despacha para o modelo ativo (WaveNet/LSTM) via trait `NamModel`.
+//! Gain staging SIMD (input/output) é aplicado antes e após a inferência.
 //! Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
 
 use crate::dsp::gain::apply_gain_simd;

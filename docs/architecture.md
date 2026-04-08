@@ -23,25 +23,27 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 - **Purga de I/O de Disco Concluída (Sprint 1):** Toda a infraestrutura de gravação herdada do AudioRip (io_uring, fallocate, headers WAV, tokio-uring) foi extirpada. O NAM-rs é um injetor de modelo, não um capturador multimídia.
 - **Tempo Linear de Sinc FIR (futuro — Sprint 5):** Efetuará superamostragem de Fase Linear endógena para conversão de sample rate.
 
-## 4. Módulos Fonte Atuais (pós-Sprint 3)
+## 4. Módulos Fonte Atuais (pós-Sprint 4)
 
-| Módulo                 | Responsabilidade                                                                                                               |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `src/main.rs`          | Ponto de entrada: detecção AVX2/FMA, inicialização PipeWire nativo (`pipewire::init`), handler CTRL+C, coordenação de shutdown |
-| `src/pw_host.rs`       | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), dispatch NamModel         |
-| `src/spsc.rs`          | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]), setup do Ring Buffer (`rtrb`)                 |
-| `src/math/mod.rs`      | Módulo raiz de operações matemáticas e inferência neural                                                                       |
-| `src/math/simd.rs`     | `dot_product_avx2`: Dot product via AVX2+FMA sobre registradores YMM de 256 bits                                               |
-| `src/math/fastmath.rs` | `simd_tanh` (Padé grau 5 + rsqrt Newton-Raphson), `simd_sigmoid` (via identidade com tanh)                                     |
-| `src/models/mod.rs`    | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                   |
-| `src/models/wavenet.rs`| WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                |
-| `src/models/lstm.rs`   | LSTM recorrente — gates concatenadas [i\|f\|g\|o], 1 e 2 camadas com const generics                                            |
+| Módulo                   | Responsabilidade                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main.rs`            | Ponto de entrada: detecção AVX2/FMA, inicialização PipeWire nativo (`pipewire::init`), handler CTRL+C, coordenação de shutdown       |
+| `src/pw_host.rs`         | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), dispatch NamModel, gain staging |
+| `src/spsc.rs`            | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]), setup do Ring Buffer (`rtrb`)                       |
+| `src/math/mod.rs`        | Módulo raiz de operações matemáticas e inferência neural                                                                             |
+| `src/math/simd.rs`       | `dot_product_avx2`: Dot product via AVX2+FMA sobre registradores YMM de 256 bits                                                     |
+| `src/math/fastmath.rs`   | `simd_tanh` (Padé grau 5 + rsqrt Newton-Raphson), `simd_sigmoid` (via identidade com tanh)                                           |
+| `src/models/mod.rs`      | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                         |
+| `src/models/wavenet.rs`  | WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                      |
+| `src/models/lstm.rs`     | LSTM recorrente — gates concatenadas [i\|f\|g\|o], 1 e 2 camadas com const generics                                                  |
+| `src/loader/mod.rs`      | Módulo raiz de carregamento de modelos NAM (fora da thread RT)                                                                       |
+| `src/loader/nam_json.rs` | Parser do formato `.nam` (JSON) — `serde_json`, classificação de topologia WaveNet/LSTM                                              |
+| `src/loader/namb.rs`     | Parser do formato `.namb` (Tone3000 binário) — CRC32 IEEE 802.3 + Little-Endian                                                      |
+| `src/dsp/mod.rs`         | Módulo raiz DSP para operações pré/pós motor neural                                                                                  |
+| `src/dsp/gain.rs`        | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                               |
 
-## 5. Módulos Futuros (Sprints 4–5)
+## 5. Módulos Futuros (Sprint 5)
 
-| Módulo Planejado         | Sprint | Responsabilidade                                                     |
-| ------------------------ | ------ | -------------------------------------------------------------------- |
-| `src/loader/nam_json.rs` | 4      | Parser do formato `.nam` (JSON) — serde_json                         |
-| `src/loader/namb.rs`     | 4      | Parser do formato `.namb` (Tone3000 binário) — CRC32 + Little-Endian |
-| `src/dsp/gain.rs`        | 4      | Gain staging SIMD baseado em metadados input/output_level_dbu        |
-| `src/dsp/resampler.rs`   | 5      | Conversão de sample rate FIR Sinc de fase linear (rubato/resampler)  |
+| Módulo Planejado       | Sprint | Responsabilidade                                                    |
+| ---------------------- | ------ | ------------------------------------------------------------------- |
+| `src/dsp/resampler.rs` | 5      | Conversão de sample rate FIR Sinc de fase linear (rubato/resampler) |

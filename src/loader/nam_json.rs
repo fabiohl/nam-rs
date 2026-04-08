@@ -211,4 +211,80 @@ mod tests {
         let topo = get_lstm_topology(&parsed);
         assert_eq!(topo, Some((2, 16)));
     }
+
+    /// Helper: gera JSON mínimo de WaveNet com canais e dilatações fornecidos.
+    fn make_wavenet_json(channels: usize, dils_0: &[usize], dils_1: &[usize]) -> String {
+        let d0: Vec<String> = dils_0.iter().map(|d| d.to_string()).collect();
+        let d1: Vec<String> = dils_1.iter().map(|d| d.to_string()).collect();
+        format!(
+            r#"{{
+                "architecture": "WaveNet",
+                "config": {{
+                    "layers": [
+                        {{
+                            "channels": {channels}, "kernel_size": 3,
+                            "dilations": [{}],
+                            "gated": false, "head_bias": false
+                        }},
+                        {{
+                            "channels": {channels}, "kernel_size": 3,
+                            "dilations": [{}],
+                            "gated": false, "head_bias": true
+                        }}
+                    ],
+                    "head": null, "head_scale": 0.02
+                }},
+                "weights": [0.0]
+            }}"#,
+            d0.join(","),
+            d1.join(",")
+        )
+    }
+
+    #[test]
+    fn test_topology_standard() {
+        let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        let json = make_wavenet_json(16, &std_d, &std_d);
+        let parsed = parse_nam_json(&json).unwrap();
+        assert_eq!(
+            get_wavenet_topology(&parsed),
+            Some(NamWavenetTopology::Standard)
+        );
+    }
+
+    #[test]
+    fn test_topology_lite() {
+        let d0 = [1, 2, 4, 8, 16, 32, 64];
+        let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        let json = make_wavenet_json(12, &d0, &d1);
+        let parsed = parse_nam_json(&json).unwrap();
+        assert_eq!(
+            get_wavenet_topology(&parsed),
+            Some(NamWavenetTopology::Lite)
+        );
+    }
+
+    #[test]
+    fn test_topology_nano() {
+        let d0 = [1, 2, 4, 8, 16, 32, 64];
+        let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        let json = make_wavenet_json(4, &d0, &d1);
+        let parsed = parse_nam_json(&json).unwrap();
+        assert_eq!(
+            get_wavenet_topology(&parsed),
+            Some(NamWavenetTopology::Nano)
+        );
+    }
+
+    #[test]
+    fn test_topology_invalid_channels() {
+        let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        let json = make_wavenet_json(10, &std_d, &std_d);
+        let parsed = parse_nam_json(&json).unwrap();
+        assert_eq!(
+            get_wavenet_topology(&parsed),
+            None,
+            "Canais 10 não é uma topologia suportada"
+        );
+    }
 }

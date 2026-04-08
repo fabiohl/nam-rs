@@ -243,6 +243,10 @@ Integração com os formatos de modelo do ecossistema NAM, priorizando o formato
 >
 > - O parser `namb.rs` foi implementado para carregar `.namb` via magic bytes explícitos (`NAMB` Little-Endian), versão e arrasto `IEEE 802.3` CRC32.
 > - Os atributos dinâmicos são estruturados a fim de imitar a topologia do WaveNet "Standard", padronizados pela `make_standard_wavenet_config()` visando alimentar as redes inferenciais de modo transparente conforme a Sprint 3. Usado `crc32fast` para validação básica e acionada checagem unitária estrita.
+>
+> **📋 Notas da Auditoria Sprint 4 (conclusiva) para Sprints futuras:**
+>
+> - **`ParamPayload::LoadModel` usa ponteiro opaco `*mut ()` (prioridade: média):** O campo `ptr: *mut ()` em `ParamPayload::LoadModel` é funcional (cast para `*mut DynamicModel` em `pw_host.rs`), mas deve ser substituído por um container tipado (`Box<DynamicModel>`) quando a Sprint de CLI/UI efetivamente implementar o carregamento de modelos via linha de comando. Isso eliminará o cast unsafe e reforçará a invariante de ownership.
 
 ### **Sprint 5: Células Superamostradas e Homologação da Estrutura Físico-Química**
 
