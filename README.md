@@ -24,6 +24,8 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 | **Sprint 4** | Carregamento de modelos (.nam JSON / .namb binário), gain staging    | ✅ Concluída |
 | **Sprint 5** | Resampling FIR Sinc, validação MSE contra referência C++             | ✅ Concluída |
 
+Agora estamos nos planejando para entrar em beta.
+
 ## 🚀 Guia Rápido
 
 ### Pré-requisitos
@@ -31,8 +33,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 * Ubuntu 26.04+ / Linux kernel 7.0+ com PipeWire 1.6+.
 * Processador x86-64 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015).
 * Toolchain do Rust 1.94+ (`cargo`).
-
-Para dependências de compilação, consulte [docs/dependencies.md](docs/dependencies.md).
+* Pacotes de desenvolvimento: `sudo apt install build-essential pkg-config pipewire libpipewire-0.3-dev clang libclang-dev`
 
 ### Build e Execução
 
@@ -46,6 +47,17 @@ Para iniciar o processamento:
 
 ```bash
 target/release/nam-rs
+```
+
+Para que o motor execute inabalável sob modelos NAM severos ("Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário.
+Adicione seu usuário ao grupo de áudio do sistema e edite limits:
+
+1. `sudo usermod -aG audio $USER`
+2. Crie ou edite o arquivo de limites (ex: `sudo nano /etc/security/limits.d/audio.conf`):
+
+```text
+@audio   -  rtprio     95
+@audio   -  memlock    unlimited
 ```
 
 Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `pw-link` para conectar a entrada de instrumento e a saída para monitores.

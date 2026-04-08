@@ -261,7 +261,6 @@ Assegurar a viabilidade comercial através do confinamento matemático das fatia
 >
 > - **`select_optimal_cpu()` — Robustez (prioridade: baixa):** A seleção de CPU por capacidade + IRQs é funcional, mas opera com `Vec<>` na inicialização (fora da thread RT, sem impacto). Em ambientes sem `/sys/devices/system/cpu/cpuN/cpu_capacity` (containers, VMs), o fallback para 1024 é razoável. Considerar adicionar testes de robustez para esses cenários.
 > - **Testes de Integração PipeWire (prioridade: média):** O teste de unidade SPSC em `spsc.rs` valida concorrência lock-free, mas falta um teste de integração que verifique a injeção nula (pass-through) no PipeWire real, conforme critério da Tarefa 1.3. Isso requer um daemon PipeWire ativo e pode ser implementado como teste condicional (`#[cfg(test)]`) ou como teste de CI com PipeWire em modo headless.
-
 > **✅ Notas de Implementação — Tarefa 5.1 (Sprint 5.1):**
 >
 > **Decisão de versão `rubato`:** Fixado em `0.16.x` (não `2.0.0`). A API 2.0 introduziu dependência
@@ -271,6 +270,7 @@ Assegurar a viabilidade comercial através do confinamento matemático das fatia
 > Configuração: `rubato = { version = "0.16", default-features = false }`.
 >
 > **Implementação bidirecional:** A Tarefa 5.1 entregou **dois** resamplers no mesmo módulo `NamResampler`:
+>
 > - `process_input()`: `pw_rate → 48 kHz` — executado antes da inferência NAM
 > - `process_output()`: `48 kHz → pw_rate` — executado após a inferência, antes de retornar ao PipeWire
 >
@@ -284,18 +284,19 @@ Assegurar a viabilidade comercial através do confinamento matemático das fatia
 >
 > **Integração futura:** detecção automática de rate via callback `param_changed` do PipeWire →
 > `ParamPayload::SetSampleRate(u32)` SPSC → recriação do `NamResampler` na thread DSP.
-
 > **✅ Auditoria Sprint 5 (conclusiva):**
 >
 > Ambas as tarefas da Sprint 5 foram implementadas, testadas e validadas:
 >
 > **Tarefa 5.1 — Resampler FIR Sinc (✅ Completa):**
+>
 > - `NamResampler` bidirecional (input: Nk→48k, output: 48k→Nk) usando `rubato 0.16.x` (Sinc assíncrono).
 > - 7 testes unitários cobrindo bypass, downsample, upsample, roundtrip e resposta ao impulso.
 > - Integração no callback PipeWire: posição correta no fluxo DSP (após gain input → resampler input → inferência NAM → resampler output → gain output).
 > - Bypass automático quando `pw_rate == 48000` (zero overhead).
 >
 > **Tarefa 5.2 — Auditoria de Inferência (✅ Completa):**
+>
 > - `test_wavenet_model_json_parsing`: valida parsing de `.nam` real (BossWN-standard.nam), classificação de topologia Standard, e leitura de metadata.
 > - `test_wavenet_computational_stability`: 4096 blocos × 64 amostras (~5.4s a 48kHz) com verificação de estabilidade FPU (zero NaN/Inf) e cálculo RMS.
 >
