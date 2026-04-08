@@ -11,12 +11,7 @@
 //! - **ZERO LOCKS** na thread DSP (módulo pw_host).
 //! - **ZERO ALOCAÇÕES** na thread DSP (o loop `process()` deve ser zero-allocation).
 
-pub mod dsp;
-pub mod loader;
-pub mod math;
-pub mod models;
-mod pw_host;
-mod spsc;
+use nam_rs::{pw_host, spsc};
 
 use std::sync::atomic::Ordering;
 
