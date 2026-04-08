@@ -8,3 +8,4 @@
 //! evitar qualquer alocação indesejada durante o processamento de áudio.
 
 pub mod nam_json;
+pub mod namb;

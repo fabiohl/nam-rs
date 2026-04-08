@@ -238,6 +238,11 @@ Integração com os formatos de modelo do ecossistema NAM, priorizando o formato
 >
 > - **`ParamPayload::LoadModelPtr(*mut ())` é um placeholder opaco (Tarefa 4.1.1/4.1.2):** Deve ser substituído por um container tipado devidamente encapsulando as estruturas SoA decodificadas sem alocação dinâmica.
 > - **`input_level_dbu` é crítico (Tarefa 4.2):** O campo `input_level_dbu` DEVE ser interpretado e aplicado ao reescalonador pré-convolucional. A omissão deste limiar desalinha a curva não-linear (tanh) e gera distorção digital destrutiva.
+>
+> **✅ Auditoria da Tarefa 4.1.2:**
+>
+> - O parser `namb.rs` foi implementado para carregar `.namb` via magic bytes explícitos (`NAMB` Little-Endian), versão e arrasto `IEEE 802.3` CRC32.
+> - Os atributos dinâmicos são estruturados a fim de imitar a topologia do WaveNet "Standard", padronizados pela `make_standard_wavenet_config()` visando alimentar as redes inferenciais de modo transparente conforme a Sprint 3. Usado `crc32fast` para validação básica e acionada checagem unitária estrita.
 
 ### **Sprint 5: Células Superamostradas e Homologação da Estrutura Físico-Química**
 
