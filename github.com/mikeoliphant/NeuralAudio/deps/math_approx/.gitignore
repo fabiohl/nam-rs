@@ -1,0 +1,10 @@
+.idea/
+.vscode/
+.zed/
+.focus-config
+*.raddbg_project
+
+build*/
+*.zip
+
+.DS_Store
