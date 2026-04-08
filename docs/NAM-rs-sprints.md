@@ -285,6 +285,27 @@ Assegurar a viabilidade comercial através do confinamento matemático das fatia
 > **Integração futura:** detecção automática de rate via callback `param_changed` do PipeWire →
 > `ParamPayload::SetSampleRate(u32)` SPSC → recriação do `NamResampler` na thread DSP.
 
+> **✅ Auditoria Sprint 5 (conclusiva):**
+>
+> Ambas as tarefas da Sprint 5 foram implementadas, testadas e validadas:
+>
+> **Tarefa 5.1 — Resampler FIR Sinc (✅ Completa):**
+> - `NamResampler` bidirecional (input: Nk→48k, output: 48k→Nk) usando `rubato 0.16.x` (Sinc assíncrono).
+> - 7 testes unitários cobrindo bypass, downsample, upsample, roundtrip e resposta ao impulso.
+> - Integração no callback PipeWire: posição correta no fluxo DSP (após gain input → resampler input → inferência NAM → resampler output → gain output).
+> - Bypass automático quando `pw_rate == 48000` (zero overhead).
+>
+> **Tarefa 5.2 — Auditoria de Inferência (✅ Completa):**
+> - `test_wavenet_model_json_parsing`: valida parsing de `.nam` real (BossWN-standard.nam), classificação de topologia Standard, e leitura de metadata.
+> - `test_wavenet_computational_stability`: 4096 blocos × 64 amostras (~5.4s a 48kHz) com verificação de estabilidade FPU (zero NaN/Inf) e cálculo RMS.
+>
+> **📋 Notas da Auditoria Sprint 5 para Sprints futuras:**
+>
+> - **Testes de Integração PipeWire end-to-end (prioridade: média):** Faltam testes que verifiquem o fluxo completo (carregamento → resampling → inferência → output) com um daemon PipeWire ativo. Pode ser implementado como teste condicional com PipeWire em modo headless.
+> - **`ParamPayload::LoadModel` com ponteiro opaco (prioridade: média, herdada Sprint 4):** O campo `ptr: *mut ()` deve ser substituído por `Box<DynamicModel>` quando a CLI/UI implementar carregamento de modelos em tempo de execução.
+> - **AVX-512 Multiversioning (prioridade: média, herdada Sprint 2):** A expansão ZMM 512-bit via `#[target_feature(enable = "avx512f,avx512vl")]` com despacho por ponteiro de função permanece planejada. A base AVX2 YMM 256-bit atende todos os perfis atuais.
+> - **Detecção automática de sample rate (prioridade: média):** Callback `param_changed` do PipeWire → `ParamPayload::SetSampleRate(u32)` SPSC → recriação do `NamResampler` na thread DSP. A infraestrutura SPSC existe (`SetSampleRate` implementado), falta o hook PipeWire.
+> - **Polinômio tanh grau 7 (prioridade: baixa, herdada Sprint 2):** O `tanh_poly_5` atual gera erro máximo ~5e-3. Upgrade para `tanh_poly_7` com 1 FMA adicional pode melhorar fidelidade em modelos Standard profundos.
 
 ## **Referências citadas**
 

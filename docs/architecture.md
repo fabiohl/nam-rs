@@ -43,7 +43,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/dsp/gain.rs`        | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                               |
 | `src/dsp/resampler.rs`   | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz  |
 
-## 6. Gestão de Dependências DSP
+## 5. Gestão de Dependências DSP
 
 ### rubato 0.16.x — Decisão de Versão
 
