@@ -16,15 +16,16 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 ## 🎯 Status do Projeto
 
-| Sprint       | Descrição                                                            | Status       |
-| ------------ | -------------------------------------------------------------------- | ------------ |
-| **Sprint 1** | Purga do I/O legado, SPSC lock-free, Host PipeWire nativo            | ✅ Concluída |
-| **Sprint 2** | Infraestrutura SIMD (dot product AVX2/FMA), FastMath (tanh, sigmoid) | ✅ Concluída |
-| **Sprint 3** | Redes inferenciais (WaveNet + LSTM), integração no callback PipeWire | ✅ Concluída |
-| **Sprint 4** | Carregamento de modelos (.nam JSON / .namb binário), gain staging    | ✅ Concluída |
-| **Sprint 5** | Resampling FIR Sinc, validação MSE contra referência C++             | ✅ Concluída |
+| Sprint       | Descrição                                                            | Status                         |
+| ------------ | -------------------------------------------------------------------- | ------------------------------ |
+| **Sprint 1** | Purga do I/O legado, SPSC lock-free, Host PipeWire nativo            | ✅ Concluída                   |
+| **Sprint 2** | Infraestrutura SIMD (dot product AVX2/FMA), FastMath (tanh, sigmoid) | ✅ Concluída                   |
+| **Sprint 3** | Redes inferenciais (WaveNet + LSTM), integração no callback PipeWire | ✅ Concluída                   |
+| **Sprint 4** | Carregamento de modelos (.nam JSON / .namb binário), gain staging    | ✅ Concluída                   |
+| **Sprint 5** | Resampling FIR Sinc, validação MSE contra referência C++             | ✅ Concluída                   |
+| **Sprint 6** | CLI, Hot-Swap Seguro, AVX-512 e Rate Automático do Daemon PipeWire   | 🔄 Em planejamento (Fase Beta) |
 
-Agora estamos nos planejando para entrar em beta.
+Agora estamos nos planejando para cumprir a Sprint 6 e inaugurar a fase puramente *beta*.
 
 ## 🚀 Guia Rápido
 
