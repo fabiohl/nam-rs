@@ -22,9 +22,17 @@ pub enum ParamPayload {
     InputGain(f32),
     /// Injeta o ganho de saída (Output Gain) em dB.
     OutputGain(f32),
-    /// Aponta para as estruturas matemáticas já decodificadas de um arquivo .namb.
-    /// O ponteiro garante zero alocação (no-heap) e O(1) na thread DSP.
-    LoadModelPtr(*mut ()), // TODO: Substituir por um container estrito na Tarefa 4.1
+    /// Carrega a topologia matemática decodificada informando, simultaneamente, os limiares
+    /// esperados pelo criador do modelo (resolvidos da tag input_level_dbu e loudness).
+    /// O ponteiro garante alocação-zero (no-heap) e inicialização determinística.
+    LoadModel {
+        /// O pointer bruto para a estrutura DynamicModel
+        ptr: *mut (),
+        /// Ajuste de ganho esperado na entrada em dB (audioInputLevelDBu - modelInputLevelDBu)
+        input_db_adj: f32,
+        /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
+        output_db_adj: f32,
+    },
 }
 
 /// Garantir que podemos enviar o ponteiro bruto entre threads sem erro de compilador (unsafe trait).
@@ -70,7 +78,7 @@ mod tests {
                             assert!((-60.0..=24.0).contains(&gain));
                             processed_messages += 1;
                         }
-                        ParamPayload::LoadModelPtr(_ptr) => {
+                        ParamPayload::LoadModel { ptr: _, .. } => {
                             processed_messages += 1;
                         }
                     }
@@ -86,7 +94,11 @@ mod tests {
                 ParamPayload::InputGain(0.0),
                 ParamPayload::OutputGain(-12.5),
                 ParamPayload::InputGain(12.0),
-                ParamPayload::LoadModelPtr(std::ptr::null_mut()),
+                ParamPayload::LoadModel {
+                    ptr: std::ptr::null_mut(),
+                    input_db_adj: 0.0,
+                    output_db_adj: 0.0,
+                },
                 ParamPayload::OutputGain(3.5),
             ];
 

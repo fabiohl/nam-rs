@@ -12,6 +12,7 @@
 //! do buffer PipeWire e despacha para o modelo ativo (WaveNet/LSTM) via trait `NamModel`.
 //! Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
 
+use crate::dsp::gain::apply_gain_simd;
 use crate::spsc::{ParamPayload, SHUTDOWN};
 use pipewire as pw;
 use pw::properties::properties;
@@ -63,6 +64,31 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
         let target_cpu = select_optimal_cpu().unwrap_or(0);
         let mut active_model: *mut crate::models::DynamicModel = std::ptr::null_mut();
 
+        // Variáveis de ganho em decibéis
+        let mut user_input_gain_db: f32 = 0.0;
+        let mut user_output_gain_db: f32 = 0.0;
+        let mut model_input_db_adj: f32 = 0.0;
+        let mut model_output_db_adj: f32 = 0.0;
+
+        // Multiplicadores pré-calculados lineares para inserção no DSP FMA Simd
+        let mut input_gain_mult: f32 = 1.0;
+        let mut output_gain_mult: f32 = 1.0;
+
+        // Função local para recomputar os fatores lineares
+        let update_gain_multipliers =
+            |u_in: f32,
+             u_out: f32,
+             m_in: f32,
+             m_out: f32,
+             out_in_mult: &mut f32,
+             out_out_mult: &mut f32| {
+                let total_in_db = u_in + m_in;
+                *out_in_mult = 10.0f32.powf(total_in_db / 20.0);
+
+                let total_out_db = u_out + m_out;
+                *out_out_mult = 10.0f32.powf(total_out_db / 20.0);
+            };
+
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         listener = stream
             .add_local_listener::<()>()
@@ -74,17 +100,47 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                 }
 
                 // Drena parâmetros guiados da thread CLI (Lock-Free) via SPSC Ring Buffer
+                let mut param_changed = false;
                 while let Ok(payload) = consumer.pop() {
-                    if let ParamPayload::LoadModelPtr(ptr) = payload {
-                        if !ptr.is_null() {
-                            active_model = ptr as *mut crate::models::DynamicModel;
-                            // Executa o prewarm para anular transientes (Lazy Initialization)
-                            let model = unsafe { &mut *active_model };
-                            model.0.prewarm(2048);
-                        } else {
-                            active_model = std::ptr::null_mut();
+                    match payload {
+                        ParamPayload::LoadModel {
+                            ptr,
+                            input_db_adj,
+                            output_db_adj,
+                        } => {
+                            if !ptr.is_null() {
+                                active_model = ptr as *mut crate::models::DynamicModel;
+                                let model = unsafe { &mut *active_model };
+                                model.0.prewarm(2048);
+                                model_input_db_adj = input_db_adj;
+                                model_output_db_adj = output_db_adj;
+                            } else {
+                                active_model = std::ptr::null_mut();
+                                model_input_db_adj = 0.0;
+                                model_output_db_adj = 0.0;
+                            }
+                            param_changed = true;
+                        }
+                        ParamPayload::InputGain(gain_db) => {
+                            user_input_gain_db = gain_db;
+                            param_changed = true;
+                        }
+                        ParamPayload::OutputGain(gain_db) => {
+                            user_output_gain_db = gain_db;
+                            param_changed = true;
                         }
                     }
+                }
+
+                if param_changed {
+                    update_gain_multipliers(
+                        user_input_gain_db,
+                        user_output_gain_db,
+                        model_input_db_adj,
+                        model_output_db_adj,
+                        &mut input_gain_mult,
+                        &mut output_gain_mult,
+                    );
                 }
 
                 // =========================================================
@@ -125,8 +181,15 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                             let mut temp_out = [0.0f32; MAX_DSP_BUF];
                             let n = n_samples.min(MAX_DSP_BUF);
 
+                            // Multiplica buffer SIMD entrada pelo reescalonamento dinâmico do Stage de Ganho
+                            apply_gain_simd(&mut samples[..n], input_gain_mult);
+
                             let model = unsafe { &mut *active_model };
                             model.0.process(&samples[..n], &mut temp_out[..n]);
+
+                            // Multiplica buffer SIMD saída garantindo ausência de clipping final
+                            apply_gain_simd(&mut temp_out[..n], output_gain_mult);
+
                             samples[..n].copy_from_slice(&temp_out[..n]);
                         }
                     }
