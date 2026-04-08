@@ -33,6 +33,10 @@ pub enum ParamPayload {
         /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
         output_db_adj: f32,
     },
+    /// Solicita recriação dos resamplers com nova taxa de amostragem do PipeWire.
+    /// Enviado pela CLI quando o PipeWire negocia um rate diferente do atual.
+    /// A thread DSP recria o `NamResampler` na próxima iteração (fora do caminho hot).
+    SetSampleRate(u32),
 }
 
 /// Garantir que podemos enviar o ponteiro bruto entre threads sem erro de compilador (unsafe trait).
@@ -58,13 +62,14 @@ mod tests {
     #[test]
     fn test_spsc_concurrency() {
         // Configura o SPSC Ring Buffer para testes
-        let (mut producer, mut consumer) = setup_spsc(64);
+        let (mut producer, consumer) = setup_spsc(64);
 
         // Garante que o shutdown inicie limpo
         SHUTDOWN.store(false, Ordering::SeqCst);
 
         // Thread DSP (Consumidor sched_fifo simulado)
         let dsp_handle = thread::spawn(move || {
+            let mut consumer = consumer; // rebind mut: pop() requer &mut self
             let mut processed_messages = 0;
             // Laço de super rotação (semelhante ao DSP real)
             while !SHUTDOWN.load(Ordering::Relaxed) {
@@ -79,6 +84,10 @@ mod tests {
                             processed_messages += 1;
                         }
                         ParamPayload::LoadModel { ptr: _, .. } => {
+                            processed_messages += 1;
+                        }
+                        // SetSampleRate não é enviado neste teste; tratado para exaustão do match.
+                        ParamPayload::SetSampleRate(_) => {
                             processed_messages += 1;
                         }
                     }

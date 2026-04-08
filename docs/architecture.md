@@ -19,17 +19,17 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 ## 3. Gestão e Isolação Temporais
 
 - **SCHED_FIFO e Affinity (implementado — Sprint 1):** A thread principal DSP é ancorada por _Core Affinity_ no _SCHED_FIFO_ (se disponível), desativando a jurisdição do escalonador _CFS_ do SO. O silício não sofrerá instâncias de _Cache Misses_ no L1/L2.
-- **SPSC Ring Buffers (implementado — Sprint 1):** Comunicação parametrizada entre CLI e DSP (input/output gain, troca de modelo .namb) transita via canais SPSC (`rtrb`), com payload `ParamPayload` alinhado a 128 bytes (`#[repr(align(128))]`) para blindar contra _False Sharing_.
+- **SPSC Ring Buffers (implementado — Sprint 1):** Comunicação parametrizada entre CLI e DSP (input/output gain, troca de modelo .namb, taxa de amostragem) transita via canais SPSC (`rtrb`), com payload `ParamPayload` alinhado a 128 bytes (`#[repr(align(128))]`) para blindar contra _False Sharing_.
 - **Purga de I/O de Disco Concluída (Sprint 1):** Toda a infraestrutura de gravação herdada do AudioRip (io_uring, fallocate, headers WAV, tokio-uring) foi extirpada. O NAM-rs é um injetor de modelo, não um capturador multimídia.
-- **Tempo Linear de Sinc FIR (futuro — Sprint 5):** Efetuará superamostragem de Fase Linear endógena para conversão de sample rate.
+- **Tempo Linear de Sinc FIR (implementado — Sprint 5):** `NamResampler` realiza conversão bidirecional de sample rate (`pw_rate→48 kHz` na entrada, `48 kHz→pw_rate` na saída) usando filtro Sinc Kaiser-BlackmanHarris2 com `sinc_len=256`, garantindo isolação total entre o rate do PipeWire e o rate interno dos modelos NAM (48 kHz). Bypass automático quando `pw_rate == 48000`.
 
-## 4. Módulos Fonte Atuais (pós-Sprint 4)
+## 4. Módulos Fonte Atuais (pós-Sprint 5)
 
 | Módulo                   | Responsabilidade                                                                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `src/main.rs`            | Ponto de entrada: detecção AVX2/FMA, inicialização PipeWire nativo (`pipewire::init`), handler CTRL+C, coordenação de shutdown       |
-| `src/pw_host.rs`         | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), dispatch NamModel, gain staging |
-| `src/spsc.rs`            | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]), setup do Ring Buffer (`rtrb`)                       |
+| `src/pw_host.rs`         | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging |
+| `src/spsc.rs`            | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel, SetSampleRate; setup do Ring Buffer (`rtrb`) |
 | `src/math/mod.rs`        | Módulo raiz de operações matemáticas e inferência neural                                                                             |
 | `src/math/simd.rs`       | `dot_product_avx2`: Dot product via AVX2+FMA sobre registradores YMM de 256 bits                                                     |
 | `src/math/fastmath.rs`   | `simd_tanh` (Padé grau 5 + rsqrt Newton-Raphson), `simd_sigmoid` (via identidade com tanh)                                           |
@@ -41,9 +41,53 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/loader/namb.rs`     | Parser do formato `.namb` (Tone3000 binário) — CRC32 IEEE 802.3 + Little-Endian                                                      |
 | `src/dsp/mod.rs`         | Módulo raiz DSP para operações pré/pós motor neural                                                                                  |
 | `src/dsp/gain.rs`        | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                               |
+| `src/dsp/resampler.rs`   | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz  |
 
-## 5. Módulos Futuros (Sprint 5)
+## 6. Gestão de Dependências DSP
 
-| Módulo Planejado       | Sprint | Responsabilidade                                                    |
-| ---------------------- | ------ | ------------------------------------------------------------------- |
-| `src/dsp/resampler.rs` | 5      | Conversão de sample rate FIR Sinc de fase linear (rubato/resampler) |
+### rubato 0.16.x — Decisão de Versão
+
+O crate `rubato` é usado para resampling FIR Sinc de fase linear em `src/dsp/resampler.rs`.
+A versão foi **fixada em `0.16.x`** (não `2.0.0`) pelos seguintes motivos técnicos:
+
+| Critério | rubato 0.16.x | rubato 2.0.0 |
+|---|---|---|
+| **API de buffer** | `Vec<Vec<f32>>` pré-alocados — compatível com zero-alloc RT | Requer `audioadapter` + `audioadapter-buffers` |
+| **Superfície de dep.** | Mínima (sem dependências de wrapper) | +2 crates obrigatórios |
+| **RT-safe** | `process_into_buffer()` sempre disponível | Idem, mas API diferente |
+| **Feature FFT** | Desabilitada (`default-features = false`) | Idem |
+
+**Configuração no Cargo.toml:**
+```toml
+rubato = { version = "0.16", default-features = false }
+# fft_resampler desabilitado: remove dependência RustFFT do binário final
+```
+
+### Fluxo DSP Bidirecional (Sprint 5)
+
+```
+PipeWire Input (Nk Hz)
+    │
+    ▼ apply_gain_simd(input_gain_mult)          — SIMD AVX2, antes do NAM
+    │
+    ▼ NamResampler::process_input(Nk → 48k)    — FIR Sinc Kaiser, ou bypass se Nk=48k
+    │
+    ▼ NamModel::process(48 kHz)                — WaveNet / LSTM inference
+    │
+    ▼ NamResampler::process_output(48k → Nk)   — FIR Sinc Kaiser, ou bypass se Nk=48k
+    │
+    ▼ apply_gain_simd(output_gain_mult)         — SIMD AVX2, após o NAM
+    │
+    ▼ PipeWire Output (Nk Hz)                  — placa de som recebe no rate original
+```
+
+**Parâmetros do filtro Sinc:**
+- `sinc_len = 256` — comprimento do filtro (maior qualidade, menor aliasing)
+- `f_cutoff = 0.95` — corte a 95% do Nyquist (0.95 × fs/2)
+- `oversampling_factor = 128` — superamostragem interna
+- `window = BlackmanHarris2` — atenuação de stop-band > −100 dB
+- `interpolation = Linear` — equilíbrio custo/qualidade para RT
+
+**Plano de migração futura:**
+- `rubato 2.0.0`: considerar quando `audioadapter` estabilizar; a API pública de `NamResampler` não muda.
+- Detecção automática de rate: callback `param_changed` do PipeWire → `SetSampleRate` SPSC → recriação do `NamResampler`.

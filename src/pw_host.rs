@@ -7,13 +7,16 @@
 //! standalone nativo e as processa em tempo real.
 //! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
 //!
-//! # Estado Atual (Sprint 4)
-//! O motor de inferência neural está integrado: o callback `process()` extrai amostras
-//! do buffer PipeWire e despacha para o modelo ativo (WaveNet/LSTM) via trait `NamModel`.
-//! Gain staging SIMD (input/output) é aplicado antes e após a inferência.
+//! # Estado Atual (Sprint 5)
+//! O motor de inferência neural está integrado com resampling bidirecional FIR Sinc:
+//! o callback `process()` aplica `NamResampler::process_input()` (Nk→48k) antes da inferência
+//! e `NamResampler::process_output()` (48k→Nk) após, garantindo que a placa de som receba o
+//! áudio no mesmo rate que enviou. Gain staging SIMD (input/output) envolve o bloco completo.
 //! Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
+//! Quando `pw_rate == 48000` (padrão), o resampler opera em bypass sem overhead.
 
 use crate::dsp::gain::apply_gain_simd;
+use crate::dsp::resampler::NamResampler;
 use crate::spsc::{ParamPayload, SHUTDOWN};
 use pipewire as pw;
 use pw::properties::properties;
@@ -64,6 +67,21 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
 
         let target_cpu = select_optimal_cpu().unwrap_or(0);
         let mut active_model: *mut crate::models::DynamicModel = std::ptr::null_mut();
+
+        // NamResampler bidirecional: converte entre o rate do PipeWire e os 48 kHz do NAM.
+        // Inicializado com 48k (bypass) — rate real será atualizado via SetSampleRate SPSC
+        // quando o PipeWire negociar a taxa de amostragem real do host.
+        let mut resampler = NamResampler::new(48_000, 2048).unwrap_or_else(|e| {
+            eprintln!("[NAM-rs] ⚠️  Falha ao criar NamResampler (usando bypass 48k): {e}");
+            // Fallback: nunca falha no bypass
+            NamResampler::new(48_000, 2048).expect("bypass 48k não pode falhar")
+        });
+
+        // Buffer intermediário 48k para saída do process_input e entrada do process_output (stack).
+        // Dimensionado para MAX_DSP_BUF — o resampler pode expandir/contrair dentro deste limite.
+        const MAX_RESAMP_BUF: usize = 4096;
+        let mut resamp_mid = [0.0f32; MAX_RESAMP_BUF];
+        let mut resamp_out = [0.0f32; MAX_RESAMP_BUF];
 
         // Variáveis de ganho em decibéis
         let mut user_input_gain_db: f32 = 0.0;
@@ -130,6 +148,23 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                             user_output_gain_db = gain_db;
                             param_changed = true;
                         }
+                        ParamPayload::SetSampleRate(new_rate) => {
+                            // Recria o NamResampler com o novo rate (alocação fora do hot path,
+                            // mas dentro do callback — acontece apenas na mudança, não em cada frame).
+                            match NamResampler::new(new_rate, 2048) {
+                                Ok(rs) => {
+                                    resampler = rs;
+                                    println!(
+                                        "[NAM-rs] 🔄 Sample rate atualizado: {} Hz (bypass={})",
+                                        new_rate,
+                                        resampler.is_bypass()
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("[NAM-rs] ⚠️  SetSampleRate({new_rate}): {e}");
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -182,16 +217,31 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                             let mut temp_out = [0.0f32; MAX_DSP_BUF];
                             let n = n_samples.min(MAX_DSP_BUF);
 
-                            // Multiplica buffer SIMD entrada pelo reescalonamento dinâmico do Stage de Ganho
+                            // 1. Aplica ganho de entrada SIMD antes do resampling e inferência
                             apply_gain_simd(&mut samples[..n], input_gain_mult);
 
+                            // 2. Downsample: PW_rate → 48 kHz (ou bypass se já em 48k)
+                            let n_48k = resampler
+                                .process_input(&samples[..n], &mut resamp_mid[..MAX_RESAMP_BUF]);
+
+                            // 3. Inferência NAM a 48 kHz
                             let model = unsafe { &mut *active_model };
-                            model.0.process(&samples[..n], &mut temp_out[..n]);
+                            model
+                                .0
+                                .process(&resamp_mid[..n_48k], &mut temp_out[..n_48k]);
 
-                            // Multiplica buffer SIMD saída garantindo ausência de clipping final
-                            apply_gain_simd(&mut temp_out[..n], output_gain_mult);
+                            // 4. Upsample: 48 kHz → PW_rate (ou bypass se já em 48k)
+                            let n_pw = resampler.process_output(
+                                &temp_out[..n_48k],
+                                &mut resamp_out[..MAX_RESAMP_BUF],
+                            );
 
-                            samples[..n].copy_from_slice(&temp_out[..n]);
+                            // 5. Aplica ganho de saída SIMD após conversão de rate
+                            apply_gain_simd(&mut resamp_out[..n_pw], output_gain_mult);
+
+                            // Copia resultado de volta para o buffer do PipeWire
+                            let n_copy = n_pw.min(n);
+                            samples[..n_copy].copy_from_slice(&resamp_out[..n_copy]);
                         }
                     }
                 }

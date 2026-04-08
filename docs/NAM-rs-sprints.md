@@ -262,6 +262,30 @@ Assegurar a viabilidade comercial através do confinamento matemático das fatia
 > - **`select_optimal_cpu()` — Robustez (prioridade: baixa):** A seleção de CPU por capacidade + IRQs é funcional, mas opera com `Vec<>` na inicialização (fora da thread RT, sem impacto). Em ambientes sem `/sys/devices/system/cpu/cpuN/cpu_capacity` (containers, VMs), o fallback para 1024 é razoável. Considerar adicionar testes de robustez para esses cenários.
 > - **Testes de Integração PipeWire (prioridade: média):** O teste de unidade SPSC em `spsc.rs` valida concorrência lock-free, mas falta um teste de integração que verifique a injeção nula (pass-through) no PipeWire real, conforme critério da Tarefa 1.3. Isso requer um daemon PipeWire ativo e pode ser implementado como teste condicional (`#[cfg(test)]`) ou como teste de CI com PipeWire em modo headless.
 
+> **✅ Notas de Implementação — Tarefa 5.1 (Sprint 5.1):**
+>
+> **Decisão de versão `rubato`:** Fixado em `0.16.x` (não `2.0.0`). A API 2.0 introduziu dependência
+> obrigatória de `audioadapter` + `audioadapter-buffers`, que adiciona +2 crates sem benefício concreto
+> para o modelo RT-safe adotado (buffers pré-alocados `Vec<Vec<f32>>` + `process_into_buffer()` RT-safe).
+> Feature `fft_resampler` desabilitada — o binário final não depende do RustFFT.
+> Configuração: `rubato = { version = "0.16", default-features = false }`.
+>
+> **Implementação bidirecional:** A Tarefa 5.1 entregou **dois** resamplers no mesmo módulo `NamResampler`:
+> - `process_input()`: `pw_rate → 48 kHz` — executado antes da inferência NAM
+> - `process_output()`: `48 kHz → pw_rate` — executado após a inferência, antes de retornar ao PipeWire
+>
+> Com isso, a placa de som recebe o áudio no mesmo rate em que enviou, eliminando decimação implícita
+> com aliasing que ocorreria sem o output resampler.
+>
+> **Parâmetros do filtro Sinc:** `sinc_len=256`, `f_cutoff=0.95`, `oversampling=128`,
+> `window=BlackmanHarris2` (stop-band >−100 dB), `interpolation=Linear` (RT).
+>
+> **Bypass automático:** Quando `pw_rate == 48000`, ambos os resamplers ficam em `None` (zero overhead).
+>
+> **Integração futura:** detecção automática de rate via callback `param_changed` do PipeWire →
+> `ParamPayload::SetSampleRate(u32)` SPSC → recriação do `NamResampler` na thread DSP.
+
+
 ## **Referências citadas**
 
 1. NAM-rs-1  
