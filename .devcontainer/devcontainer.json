@@ -1,0 +1,36 @@
+// https://gemini.google.com/app/382331697c0d262f
+{
+    "name": "NAM-rs Agent Sandbox",
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "rust-analyzer.checkOnSave.command": "clippy",
+                "git.enableCommitSigning": true,
+                "git.autofetch": true
+            },
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "vadimcn.vscode-lldb",
+                "tamasfe.even-better-toml"
+            ]
+        }
+    },
+    "remoteUser": "vscode",
+    "runArgs": [
+        "--cap-add=SYS_NICE",
+        "--security-opt",
+        "seccomp=unconfined"
+    ],
+    "mounts": [
+        "source=/run/user/1000/pipewire-0,target=/tmp/pipewire-0,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached,readonly",
+        "source=${localEnv:HOME}/.gnupg,target=/home/vscode/.gnupg,type=bind,consistency=cached"
+    ],
+    "containerEnv": {
+        "PIPEWIRE_RUNTIME_DIR": "/tmp"
+    },
+    "postCreateCommand": "cargo fetch && chmod a+x utils/*"
+}
