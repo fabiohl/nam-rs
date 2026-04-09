@@ -1,100 +1,6 @@
 # **NAM-rs: Sprints e Tarefas Técnicas**
 
-<https://gemini.google.com/app/317eff259a883f5e>
-
-O projeto NAM-rs emerge como uma resposta arquitetural direta às limitações dos ambientes de execução genéricos baseados em C++ e *frameworks* de plugins universais. O escopo deste documento é estabelecer o planejamento exaustivo para a desconstrução e assimilação do repositório *AudioRip* como fundação de sistema 1, e a transposição cirúrgica do motor de inferência *NeuralAudio* (desenvolvido por Mike Oliphant) para um ecossistema inteiramente escrito em Rust nativo.1 Ao rejeitar abstrações excessivas e focar exclusivamente no servidor de áudio PipeWire, o cliente Standalone NAM-rs capitalizará sobre o paralelismo em nível de instrução (SIMD), o contorno de penalidades de predição de desvio (*branch prediction*), e o isolamento termodinâmico do silício para viabilizar as redes neurais densas do diretório Tone3000.1
-
-Este relatório técnico detalha a microarquitetura, as equações de Processamento Digital de Sinais (DSP), as estratégias de alocação zero de memória e, criticamente, fornece a segmentação do projeto em *Sprints* ágeis. Cada *Sprint* é composta por tarefas técnicas atômicas, precisamente detalhadas e auto-contidas, projetadas especificamente para execução sistemática por entidades de Inteligência Artificial agênticas. O plano estabelece uma trajetória desde a limpeza da herança de I/O do sistema predecessor até a implementação de inferência baseada em registros de 512 bits.
-
-## **A Herança Arquitetural: Desconstrução do AudioRip e Isolamento de Tempo Real**
-
-A primeira premissa de desenvolvimento para o projeto NAM-rs não reside na construção a partir do zero absoluto, mas na assimilação das defesas sistêmicas consolidadas pelo projeto-irmão *AudioRip*.1 O *AudioRip* foi concebido como um motor de captura "Bit Perfect", caracterizado por uma separação geométrica intransponível entre os domínios de tempo real e o sistema operacional subjacente.3 Contudo, a adaptação desse núcleo para atuar como um motor de inferência neural requer um processo agressivo de purga de subsistemas incompatíveis.
-
-O *AudioRip* original alavanca o subsistema de kernel io\_uring e a pré-alocação via fallocate para garantir que o descarregamento assíncrono de dados para o disco não bloqueie as vias de áudio, operando a gravação de cabeçalhos WAV com alta resiliência.3 Como a emulação NAM-rs caracteriza-se como um nó de processamento (inserção de DSP) e não um gravador, a totalidade do módulo src/disk.rs deve ser extirpada.3 Todo código associado à persistência de arquivos, rotinas de *Graceful Shutdown* para sanitização de cabeçalhos de mídia, e laços giratórios (*spin-loops*) voltados para a sincronia de disco serão removidos para garantir que o compilador Rust elimine todas as dependências do io\_uring do binário final.3
-
-O que permanece intacto desta fundação é a estrutura de gestão de fluxo em src/spsc.rs e a topologia do PipeWire em src/pw_host.rs.3 O isolamento da Interface de Linha de Comando (CLI) em relação à thread matemática é regido por Buffers Circulares de Produtor Único e Consumidor Único (SPSC).1 Em um ambiente onde as matrizes de redes neurais consumirão massivamente os caches L1 e L2 do processador, a contenção de memória cruzada é letal. Por este motivo, as estruturas de anel SPSC herdam a macro de compilação que garante o alinhamento físico a 128 bytes.1 Esse distanciamento geográfico erradica as anomalias de "Falso Compartilhamento" (*False Sharing*), impedindo que múltiplos núcleos invalidem as linhas de cache um do outro enquanto a interface deposita informações sobre ganho de entrada ou troca de perfis.1
-
-A integração orgânica com o ecossistema do sistema operacional Ubuntu 26.04+ e o Linux Kernel 7.0+ ocorre por meio do PipeWire e de rotinas pipewire-rs.1 O cliente NAM-rs não é um plug-in parasitário (como os formatos VST3, LV2 ou CLAP); é um cliente nativo do tipo *Standalone*.1 Para inviabilizar instabilidades na matriz PipeWire, o cliente adota um "Ciclo de Vida Latente", em que o módulo de áudio silencia suas portas e recusa-se a declarar a propriedade PW\_KEY\_MEDIA\_CLASS ("Stream/Input/Audio") até que a rede neural seja completamente alocada, decodificada e fixada em memória contígua.1
-
-### **Jurisdição SCHED\_FIFO e Termodinâmica de Afinidade de Núcleo**
-
-A inferência matemática contínua das arquiteturas WaveNet ou LSTM exige garantias estritas que o escalonador *Completely Fair Scheduler* (CFS) do Linux não pode fornecer.1 A natureza de fatiamento de tempo do CFS arruinaria a entrega do pacote de áudio se uma interrupção periférica tomasse precedência.8 A herança do código-fonte src/main.rs estabelece a soberania absoluta utilizando a política intrusiva SCHED\_FIFO.1 Promovida a essa classe de tempo real através de primitivas da libc, a thread de processamento digital não cederá o microprocessador até concluir as multiplicações matriciais.1 É uma regra inegociável da arquitetura "Alocação Zero": a thread de áudio está proibida de instanciar fechamentos, criar objetos Vec, ou modificar Strings no montante (*heap*), pois as interrupções de travamento (*locks*) destruiriam o determinismo do escalonamento.1
-
-Além da precedência de tempo, a proteção do silício contra o aquecimento assíncrono e a latência de transferência de dados é assegurada pela Afinidade de Núcleo (*Core Affinity*) e diretivas de isolcpus.1 Se o kernel Linux arbitrasse a migração do contexto de execução do núcleo zero para o núcleo um, a memória cache daquele novo destino não conteria os imensos tensores paramétricos do modelo de amplificador atualmente carregado.1 Esta "Migração de Núcleo" provocaria milhares de falhas de leitura na memória RAM principal (*Cache Misses*), resultando em distorção não musical imediata. A aplicação da biblioteca core\_affinity afixa inexoravelmente o fluxo de áudio, convertendo a máquina host num condutor eletromotriz livre de preempções.1
-
-## **Microarquitetura SIMD: A Transição do NeuralAudio para Rust**
-
-Com a fundação termodinâmica e de I/O estabelecida, a carga de engenharia primária converge para a refatoração do núcleo matemático desenvolvido originalmente em C++ no repositório *NeuralAudio* de Mike Oliphant.1 O código original fornece topologias estáticas rigorosamente otimizadas para as matrizes dos modelos baseados no NAM Core (Standard, Lite, Feather, Nano), superando a eficiência algorítmica do código de referência.1 A missão do NAM-rs é expurgar as dependências universais dessa biblioteca C++ — como o suporte dinâmico legado do Keras ou a ancoragem na pesada biblioteca de álgebra linear Eigen — instanciando uma base pura e legível no ecossistema Rust através da eficiência extrema do `core::arch::x86_64`.1
-
-A capacidade de transpor uma onda elétrica analógica modelada sem latência repousa primariamente na exploração profunda de instruções Single Instruction, Multiple Data (SIMD) combinadas à instrução de Multiplicação e Adição Fundida (Fused Multiply-Add, FMA).1 O algoritmo NAM é baseado em acumulação de soma de produtos (*Dot Products*). O FMA permite que o processador execute simultaneamente a multiplicação dos pesos convolucionais pela amostra de áudio e adicione o viés (*bias*) em um pulso ininterrupto, sem perder a resolução flutuante por arredondamento numérico na etapa intermediária.1
-
-### **A Otimização Micro-Arquitetural e o Limiar do AVX-512**
-
-O cliente Standalone consolida a base x86-64-v3, forçando compulsoriamente a presença de instruções AVX2 e FMA, utilizando registradores YMM de 256 bits para processar simultaneamente oito variáveis flutuantes de 32 bits (*Float32*).1 Contudo, a escalabilidade máxima voltada a modelos superdensos de estúdio exige a adoção radical do conjunto de instruções AVX-512.1
-
-A implementação do AVX-512 transcende a mera largura do vetor. Através do uso de registradores ZMM estendidos de 512 bits, o processador engole dezesseis variáveis flutuantes em uma única instrução, efetivamente oferecendo um corredor matemático massivo.1 Além da largura dobrada, o AVX-512 expande os registradores arquiteturais lógicos da CPU de 16 para 32, fornecendo uma superfície geográfica de 2 kilobytes de armazenamento operável diretamente no silício.1 A literatura microarquitetural aponta que o aumento no número de registradores físicos anula significativamente a necessidade de o compilador descarregar variáveis intermédias para a memória *Stack*, mantendo as portas LSTM e camadas profundas do WaveNet aquecidas e imediatamente acessíveis.13
-
-Para acomodar hardware legado e processadores de última geração (Intel Xeon, AMD Zen 4/5) em um binário singular e robusto, a arquitetura implementa o roteamento dinâmico via *Multiversioning*.1 A análise de CPUID ocorre uma única vez no estágio de inicialização, antes do áudio fluir, injetando ponteiros de função definitivos.1 Ao expurgar bifurcações condicionais dinâmicas (if/else) das vias críticas com essa injeção, evita-se desviar o fluxo atômico das Unidades Lógicas Aritméticas (ALUs) e preserva-se o valioso Branch Target Buffer (BTB) da microarquitetura, o que anula os perigosos expurgos de *pipeline* (*pipeline flushes*) decorrentes da predição matemática incorreta do processador.1
-
-| Extensão Lógica de Processador   | Registrador Arquitetônico          | Capacidade Flutuante Paralela (Float32) | Resolução de Gargalo Inferencial em Redes Neuras de Áudio                                                                                                                     |
-|:-------------------------------- |:---------------------------------- |:--------------------------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Baseline Secundária (x86-64-v2)  | XMM (128-bit)                      | 4 pistas vetoriais simultâneas          | Altamente propenso a falhas de rendimento (Xruns) ao suportar estruturas "Standard" ou reamostragem em tempo real.  Descartado e não suportado.                               |
-| Otimização Padrão (x86-64-v3)    | YMM (256-bit) e FMA integrados     | 8 pistas vetoriais simultâneas          | Suporta topologias "Lite" e "Feather" estáticas com estabilidade. Duplica rendimento basal pela fusão matemática.1 Linha de base mínima suportada.                            |
-| Estado da Arte Híbrido (AVX-512) | ZMM (512-bit) e FMA vetorial duplo | 16 pistas vetoriais simultâneas         | Resolve os cálculos das matrizes não-esparsas de arquitetura "Standard", reservando ciclos excedentes da CPU para algoritmos FIR de janelamento complexo.1 Upgrade desejável. |
-
-## **FastMath: Erradicação de Sobrecarga Transcendental**
-
-A modelagem paramétrica do comportamento das válvulas de circuitos de ganho recorre continuamente a funções não-lineares, fundamentalmente a tangente hiperbólica (tanh) e a função sigmoide.1 Quando avaliadas através dos cálculos de precisão estrita requeridos pela biblioteca std::math, as instruções microcodificadas drenam dezenas de ciclos de *clock* por cada amostra individual e rapidamente excedem a cota de 1 milissegundo de renderização tolerável.1
-
-A adaptação em Rust reflete diretamente a metodologia empregada no NeuralAudio: a abstenção da perfeição aritmética em favor de polinômios de aproximação "FastMath" do tipo Minimax.1 Descartando alternativas secundárias mais custosas, como a implementação de aproximação dependente do *framework* Eigen (EigenMath), o motor do NAM-rs é moldado sobre pacotes de polinômios interpolados através dos intrínsecos de `core::arch::x86_64`.1 Essa matriz avalia o conjunto inteiro das 8 ou 16 fatias do registrador vetorial através de contornos de predição Minimax, assegurando que o processamento preserve o espectro harmônico de saturação mapeado na rede convolucional, com um coeficiente de erro de distorção não orgânica efetivamente nulo em avaliações de Erro Quadrático Médio.1
-
-## **Transposição Estrutural: Convoluções WaveNet e Topologias LSTM**
-
-A distinção fulcral da conversão de inferências para uma linguagem sistêmica rígida repousa nas estruturas de dados subjacentes. A arquitetura clássica baseada em objetos cria ponteiros dispersos que inviabilizam o rendimento de tempo linear.
-
-### **A Estrutura de Arrays (SoA) em Convoluções Causais Dilatadas**
-
-A base das simulações de alta profundidade ("Standard") no projeto NAM baseia-se na Rede Neural Convolucional unidimensional WaveNet.1 Diferentemente da convolução de imagem que examina vizinhos laterais irrestritos, o domínio do áudio em tempo real depende da causalidade — um estágio da rede jamais pode avaliar o vetor do futuro.17 Simultaneamente, os canais ocultos precisam aumentar o seu campo receptivo exponencialmente, saltando amostras sequenciais num eixo temporal (Dilatação).1 A dilatação é o que permite modelar o *sustain* e a inércia acústica sem processar densas matrizes lineares, oferecendo a reprodução do decaimento das baixas frequências sem incorrer na letargia inerente a um atraso convolutivo IIR.1
-
-No NeuralAudio, as estruturas baseiam-se numa malha estática otimizada, expurgando abstrações dinâmicas universais.4 A injeção dessa arquitetura no Rust adota ativamente o Design Orientado a Dados (DOD).1 Em oposição ao formato Array de Estruturas (AoS), que causa *cache misses* sequenciais à medida que campos de abstração são lidos em vão, a Estrutura de Arrays (SoA) converte os cubos matriciais da WaveNet em alocações vetoriais perfeitamente contínuas e unificadas geograficamente no *heap* virtual subjacente.1 Durante a inferência a quente do PipeWire, as unidades SIMD devoram esses blocos paralelos, alocados previamente para não excederem as janelas sub-milisegundo.
-
-### **Otimização Estática de Arrays LSTM e Const Generics**
-
-Para hardware restrito de palco, as redes Long Short-Term Memory (LSTM) oferecem representações espaciais densas e recorrentes.1 Essas células exigem dependências cruzadas complexas atualizadas a cada estado de áudio (resolução das matrizes baseadas nas equações paramétricas para os portões de esquecimento, entrada e saída — ![image1][image1]).1
-
-A tradução deste *framework* para linguagem de máquina acarreta pesadas perdas em saltos dinâmicos quando codificado trivialmente. O NAM-rs contorna essa premissa instanciando esquemas matemáticos absolutamente estáticos em compilação, refletindo os tamanhos exatos de *array* otimizados (ex: redes 1x16, 2x8 ou 2x16 ocultas) provenientes de arquivos de modelo estabelecidos.1 Utilizando os recursos de tipos constantes genéricos (*const generics*) do Rust — fornecendo os eixos numéricos nas definições primárias do *struct* ou *trait* (const C: usize, const H: usize) —, o compilador LLVM desdobra completamente os anéis lógicos (*loop unrolling*).1 O benefício arquitetural desse desdobramento completo é a erradicação de testes de condicional iterativos. A CPU jamais é induzida a adivinhar dinamicamente quando a fileira de multiplicação terminará, reduzindo severamente a pressão sobre o micro-cache das operações e isolando a via de execução da ramificação matemática imprevisível.1
-
-## **Análise de Metadados e o Ecossistema do Tone3000**
-
-A inferência bruta carece de semântica sem uma parametrização de ambiente acústico adequado. O ecossistema Tone3000 consolida os arquivos modeladores de forma empacotada no modelo de domínio público NAMB.1 Ao contrário do formato tradicional .nam fundado na sintaxe JSON — cuja análise via bibliotecas abstratas como nlohmann/json impõe lentidão para dispositivos com recursos controlados e expõe o sistema a gargalos de alocação 5 —, a formatação binária fornece os arrays neurais flutuantes imediatamente para as camadas espaciais sem conversores.5
-
-| Endereço Serial (Offset) | Comprimento Tipográfico (Bytes) | Assinatura e Metadados do Formato Binário NAMB (Little-Endian)                                                              |
-|:------------------------ |:------------------------------- |:--------------------------------------------------------------------------------------------------------------------------- |
-| **0**                    | 4                               | Validador de Assinatura Mágica do Bloco (0x4E414D42 convertido para "NAMB").5                                               |
-| **4**                    | 2                               | Declaração de Versão Lógica (Estritamente Versão 1 para o formato fundacional).5                                            |
-| **12**                   | 4                               | Offset de Início do Conjunto de Pesos Neurais (*Weights Offset*) apontando geograficamente aos vetores Float32.5            |
-| **24**                   | 4                               | Código Exaustivo de Verificação Cíclica de Redundância (CRC32 base IEEE 802.3).5                                            |
-| **32**                   | 48                              | Geometria de Referência de Estúdio: Versão, Frequência de Amostragem Parametrizada, input\_level\_dbu, output\_level\_dbu.5 |
-
-A dissecação dessa carga transcende a validação de arquitetura (Lineares, LSTM, WaveNet ou predição DSP de condição recursiva).5 O atributo mais crítico absorvido do NAMB reside no campo de metadados paramétricos de engenharia elétrica: input\_level\_dbu.1
-
-A representação do sinal em decibéis em relação à referência *full-scale* (dBFS) nos conversores digitais comerciais mundanos introduz variações espúrias. Na modelagem de valvulados físicos, o ponto de distorção — o "joelho" da transição harmônica para o *clipping* natural e assimétrico — é engatado num nível de excitação elétrica particular ditado pela força em dBu.1 O carregador nativo NAM-rs rastreia proativamente esta variável de limiar e projeta automaticamente a função reescalonadora por cima dos multiplicadores vetoriais.1 Quando o áudio digital atômico transita pela ingestão principal, os tensores já estão silenciosamente corrigidos (multiplicação de pacote a 256 ou 512 bits) por um valor decimal que alinha matematicamente o *Headroom* da placa de som de entrada (como \-18 dBFS equivalente a \+4 dBu) à configuração empírica com que o equipamento foi gravado. Isso evita que transientes soem pálidos (falta de propulsão elétrica) ou rasguem destrutivamente os vetores não-lineares, salvaguardando a precisão harmônica independentemente da placa que hospeda a rede.1
-
-## **Decimação e Reconstrução Oportuna: Interpolação Sinc FIR de Fase Linear**
-
-O vetor determinístico que assola emuladores amadores diz respeito à descompensação de tempo amostral (*aliasing* de frequência). Redes Neurais NAM padrão são massivamente validadas e condicionadas sobre o limiar rígido acústico de 48 kHz.1 Forçar um sinal advindo das rotinas mestre configuradas do PipeWire operando a 96 kHz ou 44.1 kHz nas matrizes densas WaveNet destrói a dependência temporal que a rede absorveu, gerando desvios inaceitáveis no campo harmônico e modulações intermetálicas atípicas.1
-
-Abdicando totalmente da solução amadora de utilizar *resamplers* externos baseados nas requisições obscuras dos sistemas operacionais com taxas passivas, o motor isola a correção topológica **dentro** do fluxo percussivo *SCHED\_FIFO* por meio de uma conversão digital superamostrada polifásica (*Oversampling*) de tempo linear.1 Inspirado na estabilidade inerente à linguagem segura através dos pacotes dedicados como rubato e sua arquitetura síncrona resampler 1, a estrutura internaliza a conversão baseada em Filtros FIR de Fase Linear (*Finite Impulse Response*).
-
-Filtros comuns de resposta infinita (IIR) geram mancha sônica irremediável, destruindo transientes de fase ao introduzir defasagem no agrupamento frontal das ondas (o *Slam* orgânico ou resposta à palhetada visceral do amplificador).1 Ao adotar os métodos analíticos puros da Interpolação Sinc suportados pelo agrupamento e janelamento matemático longo de até 128 instâncias 25 (ex: Janelas de Kaiser que afundam a banda de bloqueio para além de \-100 dB de atenuação 1), o motor assimila sinais na via SIMD de ponto-flutuante e comprime perfeitamente para 48 kHz.1 Após a simulação em hiper-resolução extrair sua matriz não-linear rica em harmônicos, a cascata final repete a superamostragem de fase linear estabilizando de volta para o *PCM* externo, blindando o ecossistema e mitigando integralmente artefatos sônicos. Tudo ocorre sob garantias implacáveis e *lock-free* para que os milissegundos rítmicos do instrumentista sobrevivam imaculados.
-
-É um entregável identificar o local mais adequado para inserir o supersampling de saída de modo a garantir a máxima qualidade - sem prejudicar de qualquer forma o algoritmo nam.
-
-## **Planejamento Estratégico Ágil: Sprints e Tarefas-Técnicas Agênticas (Google Antigravity)**
-
-O plano de engenharia para a implantação do *NAM-rs-1* adota as melhores diretrizes arquiteturais ágeis, quebrando problemas macro de emulação computacional e inteligência de silício em Sprints focadas. Cada Sprint foi segmentada em blocos técnicos atômicos, provendo descrições algorítmicas, origens das seções em código-fonte de referência e testes de avaliação para as Inteligências Artificiais de codificação nativa (como o ecossistema Antigravity). Todo o *pipeline* de desenvolvimento assume controle automatizado visando o reúso das estratégias determinísticas observadas e a erradicação estrita do OOP ineficiente.1
-
-### **Sprint 1: Limpeza Heráldica e Soberania do PipeWire**
+## **Sprint 1: Limpeza Heráldica e Soberania do PipeWire**
 
 A Sprint fundacional é inteiramente voltada a expurgar funcionalidades desnecessárias herdadas do *AudioRip*, isolando e adequando os motores básicos de fluxo contínuo.
 
@@ -110,7 +16,7 @@ A Sprint fundacional é inteiramente voltada a expurgar funcionalidades desneces
 > - **Preparativos para core::arch::x86_64:** Toda a base matemática deve se ancorar exclusivamente nos intrinsics de `core::arch::x86_64` (como `_mm256_fmadd_ps`), erradicando qualquer dependência de `std::simd` para garantir estabilidade no canal Stable. O `Cargo.toml` está enxuto (5 deps); para o multiversioning, no entanto, utilizaremos o próprio suporte nativo de atributos `#[target_feature(enable = "...")]` acoplado com controle de execução para evitar dependências desnecessárias, já que o projeto focará explicitamente em x86_64.
 > - **Callback `process()` pass-through:** O pass-through atual será substituído pelo callback de dados nativo que invoca o motor de inferência WaveNet/LSTM. Qualquer injeção do "Loop do Modelo NAM" dentro do callback `process()` deverá manter-se 100% estática via Const Generics para não incorrer no custo letal para o Branch Target Buffer (BTB).
 
-### **Sprint 2: Fundações Matemáticas de Ponta Flutuante e FastMath**
+## **Sprint 2: Fundações Matemáticas de Ponta Flutuante e FastMath**
 
 O motor matemático é recriado nesta etapa sob as diretrizes de instrução vetorial portátil para contornar instabilidades condicionais de desvio.
 
@@ -134,7 +40,7 @@ O motor matemático é recriado nesta etapa sob as diretrizes de instrução vet
 >
 > - **Dead-code no release (informativo):** As funções SIMD/FastMath não aparecem no binário release atual por não terem consumidores no `main()`. A Sprint 3 deve integrá-las no callback `process()` do PipeWire.
 
-### **Sprint 3: Redes Inferenciais \- A Topologia Convolucional, LSTM e Integração no PipeWire**
+## **Sprint 3: Redes Inferenciais \- A Topologia Convolucional, LSTM e Integração no PipeWire**
 
 Aqui ocorre a tradução pura da rede computacional do NeuralAudio para a hierarquia SoA em const generics, seguida da integração definitiva no callback de processamento PipeWire.
 
@@ -146,7 +52,7 @@ Aqui ocorre a tradução pura da rede computacional do NeuralAudio para a hierar
 
 > **📋 Notas Detalhadas da Sprint 3 — Referências de Implementação:**
 >
-> #### Tarefa 3.1 — Mapeamento WaveNet (C++ → Rust)
+> ### Tarefa 3.1 — Mapeamento WaveNet (C++ → Rust)
 >
 > Os seguintes componentes de `WaveNet.h` devem ser transpostos:
 >
@@ -178,7 +84,7 @@ Aqui ocorre a tradução pura da rede computacional do NeuralAudio para a hierar
 >
 > - **Nota (Execução Tarefa 3.3):** Adotou-se o formato de "Lazy Prewarm In-Place". A conexão PipeWire inicializa o node DSP (evitando o travamento principal), e quando a thread DSP recebe o `ParamPayload::LoadModelPtr` via ring-buffer SPSC, executa o prewarm na hora e repassa as amostras. Isso desativa a exigência de um simulacro bloqueante CLI e viabiliza testes orgânicos.
 
-### **Sprint 4: Carregamento de Modelos (.nam / .namb) e Parametrização de Ganho**
+## **Sprint 4: Carregamento de Modelos (.nam / .namb) e Parametrização de Ganho**
 
 Integração com os formatos de modelo do ecossistema NAM, priorizando o formato `.nam` (JSON) universal seguido da otimização binária `.namb` (Tone3000), e a parametrização de ganho baseada em metadados do modelo.
 
@@ -190,7 +96,7 @@ Integração com os formatos de modelo do ecossistema NAM, priorizando o formato
 
 > **📋 Notas Detalhadas da Sprint 4 — Referências de Implementação:**
 >
-> #### Tarefa 4.1.1 — Formato .nam JSON
+> ### Tarefa 4.1.1 — Formato .nam JSON
 >
 > A estrutura JSON de um arquivo `.nam` segue o padrão documentado pelo NAM Core:
 >
@@ -250,7 +156,7 @@ Integração com os formatos de modelo do ecossistema NAM, priorizando o formato
 >
 > - **`ParamPayload::LoadModel` usa ponteiro opaco `*mut ()` (prioridade: média):** O campo `ptr: *mut ()` em `ParamPayload::LoadModel` é funcional (cast para `*mut DynamicModel` em `pw_host.rs`), mas deve ser substituído por um container tipado (`Box<DynamicModel>`) quando a Sprint de CLI/UI efetivamente implementar o carregamento de modelos via linha de comando. Isso eliminará o cast unsafe e reforçará a invariante de ownership.
 
-### **Sprint 5: Células Superamostradas e Homologação da Estrutura Físico-Química**
+## **Sprint 5: Células Superamostradas e Homologação da Estrutura Físico-Química**
 
 Assegurar a viabilidade comercial através do confinamento matemático das fatias acústicas de *aliasing* por processos de FIR síncronos e testes rigorosos contra C++.
 
@@ -310,7 +216,7 @@ Assegurar a viabilidade comercial através do confinamento matemático das fatia
 > - **Detecção automática de sample rate (prioridade: média):** Callback `param_changed` do PipeWire → `ParamPayload::SetSampleRate(u32)` SPSC → recriação do `NamResampler` na thread DSP. A infraestrutura SPSC existe (`SetSampleRate` implementado), falta o hook PipeWire.
 > - **Polinômio tanh grau 7 (prioridade: baixa, herdada Sprint 2):** O `tanh_poly_5` atual gera erro máximo ~5e-3. Upgrade para `tanh_poly_7` com 1 FMA adicional pode melhorar fidelidade em modelos Standard profundos.
 
-### **Sprint 6: O Caminho para a Fase Beta (Interface nativa, Hot-Swap e Metadados do Host)**
+## **Sprint 6: O Caminho para a Fase Beta (Interface nativa, Hot-Swap e Metadados do Host)**
 
 Esta Sprint concentra-se em garantir que o motor DSP construído de forma limpa e bit-perfect seja totalmente acoplável e consumível pelo usuário final e por configurações de estúdio, substituindo as amarras de "hardcode" por infraestrutura sistêmica adequada.
 
@@ -336,7 +242,7 @@ Esta Sprint concentra-se em garantir que o motor DSP construído de forma limpa 
 > - A macro `define_lstm_process!` unifica dinamicamente a arquitetura de processamento em pipelines FMA, contornando poluição baseada em hard-coded strings.
 > - Adequa-se estritamente ao Rust Edition 2024 encapsulando escopos de verificação CPU `std::is_x86_feature_detected!` associados a subrotinas `unsafe` FFI.
 > - Todos os lints rigorosos passam perfeitamente após estabilizar namespaces redundantes.
-> **✅ Auditoria Conclusiva Sprint 6 (Revisão Geral):**
+>   **✅ Auditoria Conclusiva Sprint 6 (Revisão Geral):**
 >
 > **Status Geral:** Todas as 4 tarefas da Sprint 6 foram implementadas, integradas e validadas. O motor DSP atinge o estado "beta-ready" com a stack completa em operação.
 >
@@ -373,6 +279,246 @@ Esta Sprint concentra-se em garantir que o motor DSP construído de forma limpa 
 > - **Testes de integração PipeWire end-to-end (prioridade: média, herdada Sprint 5):** Faltam testes que verifiquem o fluxo completo com daemon PipeWire ativo.
 > - **Polinômio tanh grau 7 (prioridade: baixa, herdada Sprint 2):** Upgrade de `tanh_poly_5` para `tanh_poly_7` pode melhorar fidelidade em modelos Standard profundos.
 
+---
+
+## Sprint 7 — Model Dispatcher: Inferência Real em Produção
+
+> **Objetivo da Sprint:** Fechar a lacuna funcional crítica identificada na auditoria do Sprint 6: o motor DSP ainda opera em modo pass-through porque `load_and_send_model()` envia `model: None`. Esta sprint implementa o **Model Dispatcher** — a camada de conversão entre `NamModelData` (saída bruta dos parsers JSON/NAMB) e um `Box<DynamicModel>` funcional pronto para injeção na thread DSP via SPSC.
+
+---
+
+### Tarefa 7.1 — Model Dispatcher: Construção e Injeção Real de `DynamicModel`
+
+#### Contexto e Motivação
+
+Após a auditoria do Sprint 6, identificou-se que o pipeline de carregamento de modelos é estruturalmente incompleto:
+
+**Fluxo atual (com lacuna):**
+
+```text
+CLI: model <arquivo.nam>
+  │
+  ▼ load_and_send_model() em src/main.rs
+  │  ┌─ parse_nam_json() → NamModelData ✅
+  │  ├─ extrai metadados (input_level_dbu, loudness) ✅
+  │  └─ push(ParamPayload::LoadModel { model: None, ... }) ← ❌ LACUNA
+  │
+  ▼ pw_host.rs: recebe LoadModel { model: None, ... }
+  │  └─ prewarm() nunca é chamado
+  │  └─ active_model permanece None
+  │
+  ▼ DSP loop: active_model.is_none() → pass-through (zero inferência)
+```
+
+**Fluxo alvo (pós Sprint 7.1):**
+
+```text
+CLI: model <arquivo.nam>
+  │
+  ▼ load_and_send_model() em src/main.rs
+  │  ┌─ parse_nam_json() → NamModelData ✅
+  │  ├─ dispatch_model(&data) → Box<DynamicModel> ← 🆕 NOVO
+  │  └─ push(ParamPayload::LoadModel { model: Some(boxed), ... }) ✅
+  │
+  ▼ pw_host.rs: recebe LoadModel { model: Some(m), ... }
+  │  └─ m.prewarm(2048) ✅
+  │  └─ active_model = Some(m) ✅
+  │
+  ▼ DSP loop: active_model.as_mut().map(|m| m.0.process(...)) ✅
+```
+
+#### Análise Técnica do Problema
+
+O dispatcher de modelos enfrenta um desafio fundamental de monotonicidade: os modelos NAM usam **const generics** para dimensões — `WaveNetModel<CH, K, HEAD>`, `LstmModel1<H, H1_IH, H_H4>` — que são parâmetros em tempo de compilação, não em tempo de execução. A topologia detectada em runtime a partir do JSON (`channels: 16`, `dilations: [1..512]`) precisa ser mapeada para um conjunto **fechado e finito** de tipos concretos, cada um construído com pesos reais.
+
+**Topologias WaveNet suportadas** (detectadas por `get_wavenet_topology()`):
+
+| Topologia  | CH  | K   | HEAD | Alias                    |
+| ---------- | --- | --- | ---- | ------------------------ |
+| `Standard` | 16  | 3   | 8    | `WaveNetModel<16, 3, 8>` |
+| `Lite`     | 12  | 3   | 8    | `WaveNetModel<12, 3, 8>` |
+| `Feather`  | 8   | 3   | 4    | `WaveNetModel<8, 3, 4>`  |
+| `Nano`     | 4   | 3   | 2    | `WaveNetModel<4, 3, 2>`  |
+
+**Topologias LSTM suportadas** (detectadas por `get_lstm_topology()`):
+
+| Topologia      | Alias de tipo                           |
+| -------------- | --------------------------------------- |
+| 1 camada × 8   | `Lstm1x8 = LstmModel1<8, 9, 32>`        |
+| 1 camada × 12  | `Lstm1x12 = LstmModel1<12, 13, 48>`     |
+| 1 camada × 16  | `Lstm1x16 = LstmModel1<16, 17, 64>`     |
+| 1 camada × 24  | `Lstm1x24 = LstmModel1<24, 25, 96>`     |
+| 2 camadas × 8  | `Lstm2x8 = LstmModel2<8, 9, 16, 32>`    |
+| 2 camadas × 12 | `Lstm2x12 = LstmModel2<12, 13, 24, 48>` |
+| 2 camadas × 16 | `Lstm2x16 = LstmModel2<16, 17, 32, 64>` |
+
+#### Estrutura dos Pesos Planificados em `NamModelData.weights: Vec<f32>`
+
+O campo `weights` contém todos os pesos do modelo como uma sequência linear de `f32`, planificados em ordem específica que deve ser lida "cursor-forward" para preencher cada tensor.
+
+**WaveNet — layout de pesos (baseado em NeuralAudio C++):**
+
+Para cada `WaveNetLayerArray` (array1 e array2), na ordem:
+
+1. `rechannel`: pesos `[CH * IN]` + bias `[CH]` (se `do_bias`)
+2. Para cada `WaveNetLayer` na array:
+   - `conv1d.weights`: `[CH * K * CH]` pesos + bias `[CH]` (sempre sem bias)
+   - `input_mixin.weights`: `[CH * COND]` pesos (sem bias)
+   - `one_by_one.weights`: `[CH * CH]` pesos + bias `[CH]` (sem bias)
+3. `head_rechannel.weights`: `[HEAD * CH]` + bias `[HEAD]` (com bias em array2)
+
+**LSTM — layout de pesos:**
+
+Para cada camada LSTM, na ordem:
+
+1. `input_hidden_weights`: matriz `[H4][IH]` — pesos das 4 portas concatenadas
+2. `bias`: vetor `[H4]` — bias das 4 portas concatenadas
+3. (repete para cada camada)
+4. `head_weights`: vetor `[H]`
+5. `head_bias`: escalar `f32`
+
+#### Arquivos Afetados
+
+| Arquivo                    | Tipo de Mudança | Descrição                                                                                                                             |
+| -------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/loader/mod.rs`        | **[MODIFY]**    | Adicionar `pub mod dispatcher;`                                                                                                       |
+| `src/loader/dispatcher.rs` | **[NEW]**       | Função pública `build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>>` + funções privadas de construção por topologia |
+| `src/main.rs`              | **[MODIFY]**    | Integrar `loader::dispatcher::build_model()` em `load_and_send_model()`, substituindo `model: None` por `model: Some(boxed_model)`    |
+
+#### Especificação de Implementação
+
+##### `src/loader/dispatcher.rs` — Novo arquivo
+
+```rust
+// Função pública principal
+pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>>;
+
+// Internamente bifurca por arquitetura:
+// "WaveNet" → build_wavenet(data)
+// "LSTM"    → build_lstm(data)
+// outro     → Err(anyhow!("Arquitetura não suportada: {}", data.architecture))
+
+// Construção WaveNet — cursor-based weight reader:
+fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>>;
+// match get_wavenet_topology(data) {
+//   Some(Standard) → build_wavenet_standard(data)  → WaveNetModel<16,3,8>
+//   Some(Lite)     → build_wavenet_lite(data)      → WaveNetModel<12,3,8>
+//   Some(Feather)  → build_wavenet_feather(data)   → WaveNetModel<8,3,4>
+//   Some(Nano)     → build_wavenet_nano(data)      → WaveNetModel<4,3,2>
+//   None           → Err("topologia WaveNet desconhecida")
+// }
+
+// Construção LSTM — cursor-based weight reader:
+fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>>;
+// match get_lstm_topology(data) {
+//   Some((1, 8))  → Lstm1x8
+//   Some((1, 12)) → Lstm1x12
+//   Some((1, 16)) → Lstm1x16
+//   Some((1, 24)) → Lstm1x24
+//   Some((2, 8))  → Lstm2x8
+//   Some((2, 12)) → Lstm2x12
+//   Some((2, 16)) → Lstm2x16
+//   _             → Err("geometria LSTM não suportada: {num_layers}×{hidden_size}")
+// }
+```
+
+##### Padrão de leitura cursor-forward dos pesos
+
+Criar helper interno para leitura segura e determinística dos pesos:
+
+```rust
+struct WeightCursor<'a> {
+    data: &'a [f32],
+    pos: usize,
+}
+
+impl<'a> WeightCursor<'a> {
+    fn read_slice(&mut self, len: usize) -> anyhow::Result<&'a [f32]>;
+    fn read_f32(&mut self) -> anyhow::Result<f32>;
+}
+```
+
+O `WeightCursor` garante que leituras além dos limites produzem `Err` descritivo, e que ao final da construção, todos os pesos foram consumidos (verificação de exaustão: `cursor.pos == data.weights.len()`).
+
+##### Integração em `src/main.rs`
+
+Em `load_and_send_model()`, substituir o bloco `Ok(model_data) => { ... producer.push(...model: None...) }` por:
+
+```rust
+Ok(model_data) => {
+    // Extrair metadados (código existente)
+    let meta = model_data.metadata.clone().unwrap_or(...);
+    let input_db_adj = ...;
+    let output_db_adj = ...;
+
+    // 🆕 Construir o DynamicModel a partir dos pesos lidos
+    match loader::dispatcher::build_model(&model_data) {
+        Ok(boxed_model) => {
+            if producer.push(ParamPayload::LoadModel {
+                model: Some(boxed_model),
+                input_db_adj,
+                output_db_adj,
+            }).is_ok() {
+                println!("[CLI] Modelo carregado e enviado. ...");
+            } else {
+                println!("[CLI] Falha ao enviar LoadModel (buffer cheio).");
+                // O boxed_model é dropped aqui — ok, estamos na thread CLI.
+            }
+        }
+        Err(e) => {
+            println!("[CLI] Erro ao construir modelo: {}", e);
+        }
+    }
+}
+```
+
+#### Restrições Arquiteturais Críticas
+
+- **Todo o código de construção (`dispatcher.rs`) executa EXCLUSIVAMENTE na thread CLI**, nunca na thread DSP. Alocações com `Box::new()`, `Vec::new()`, `Vec::clone()` são permitidas aqui.
+- A thread DSP só recebe o `Box<DynamicModel>` já construído via SPSC — **zero alocações no caminho RT**.
+- O `Drop` do modelo anterior já é delegado corretamente para a thread GC via `gc_producer` (implementado na Sprint 6.2), este comportamento **não deve ser alterado**.
+- O `WeightCursor` usa `&[f32]` emprestado de `NamModelData.weights` — sem cópia extra além das atribuições ao modelo.
+
+#### Critérios de Aceite
+
+1. **Compilação limpa:** `cargo build` sem erros em todo o projeto após as mudanças.
+2. **Lints:** `utils/lints.sh` passa sem erros ou warnings.
+3. **Testes unitários** em `src/loader/dispatcher.rs`:
+   - `test_build_wavenet_standard()`: constrói `WaveNetModel<16,3,8>` com pesos sintéticos (todos 0.01), verifica processo de prewarm sem NaN/Inf.
+   - `test_build_wavenet_feather()`: idem para `WaveNetModel<8,3,4>`.
+   - `test_build_lstm1x8()`: constrói `Lstm1x8` com pesos sintéticos, verifica que `process()` retorna valores finitos.
+   - `test_build_lstm2x16()`: idem para `Lstm2x16`.
+   - `test_reject_unknown_architecture()`: `build_model()` com `architecture: "ResNet"` retorna `Err`.
+   - `test_reject_weight_underflow()`: `build_model()` com `weights` menores que o necessário para a topologia retorna `Err` descritivo.
+4. **Teste de integração** em `tests/nam_infer_test.rs`:
+   - Verificar que `build_model()` em conjunto com o JSON real do modelo de teste existente produz um `DynamicModel` que, ao ser passado para `model.0.process()` com input de zeros, retorna samples finitas.
+5. **Funcionalidade observável na CLI:** ao executar `target/debug/nam-rs --model tests/fixtures/<arquivo.nam>`, o log deve imprimir `"[CLI] Modelo carregado e enviado"` — não mais `"Payload gerado"` com sentido vago.
+
+#### Verificação de Exaustão de Pesos
+
+Um modelo corrompido ou de outra versão pode ter número incorreto de pesos. Ao final da construção de cada modelo concreto, validar:
+
+```rust
+if cursor.pos != data.weights.len() {
+    bail!(
+        "Modelo com pesos inconsistentes: consumidos {}, total {}", 
+        cursor.pos, data.weights.len()
+    );
+}
+```
+
+Isso previne modelos com pesos extras silenciosamente ignorados (corrupção silenciosa).
+
+#### Referência C++
+
+Implementação de referência em `NeuralAudio`:
+
+- `NeuralModel.cpp` — `GetModel()` L.155–218 via `GetWaveNet()` / `GetLSTM()`
+- `WaveNet.cpp` — `SetWeights()` (leitura cursor-forward de pesos para cada layer)
+- `LSTM.cpp` — `SetWeights()` (pesos de gates + head em sequência)
+
+---
+
 ## **Referências citadas**
 
 1. NAM-rs-1  
@@ -402,8 +548,6 @@ Esta Sprint concentra-se em garantir que o motor DSP construído de forma limpa 
 25. resampler \- Rust \- Docs.rs, acessado em abril 3, 2026, [https://docs.rs/resampler](https://docs.rs/resampler)  
 26. Introducing the NAM Web Player \- TONE3000, acessado em abril 3, 2026, [https://www.tone3000.com/blog/introducing-the-nam-web-player](https://www.tone3000.com/blog/introducing-the-nam-web-player)  
 27. Towards Binary-Valued Gates for Robust LSTM Training \- Proceedings of Machine Learning Research, acessado em abril 3, 2026, [http://proceedings.mlr.press/v80/li18c/li18c.pdf](http://proceedings.mlr.press/v80/li18c/li18c.pdf)
-
-[image1]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAAYCAYAAACmwZ5SAAACnklEQVR4Xu2WW6hNURSGf/d7DrkVb3IpT04eyQlFSZ6kUEpJiRePinRyyV2ihBd5dIsUJS/IJZK7J5eSpJQkeZD4/zPmOnvOYTlr77Wp02599ddeY6w19lxjjjHmAioqKipahMHUQeou9YiakbpLcY267Y29hX3UC2oX9ZWal7pL8Zza5o29gUHUR2p/+D0xdbce86lf1GLvaDUWwvrsFeyF9VtqppzHUedhvbuH6pO6m6KN2g2L/ZJ6Ri1K7qiTU9QbbyyJYs2ilsCS+C+Gn2inXsNmQt9g64TNGyW5IZ5Sl72RTKYWeGMPDKAuht8nYQvsX3N3oeqZ6mxFaKa8o047+0xYUteE6+HUqpo7H930EzadPUeozd5YB8Ngmd/hHeQJNccbC9BO6sXmOvvSYF8brpdTV2vufGbDHtLNnodofHFCC1DMac4+FpYIVUIj3Ic956vlKNL/OYQ6Nmg97KEpkU0vf4P6DhticTL6wcpGi89DQ0ofLlmL6HwfCdtt7e57WMzpwS+KYt6h7jmbyvwzdQkWSzG/UbeQX1ndHKc+eSNs+imIZx0sQee8IzAa5l8JW9SJyLeT2hJdZxTF3Eh9oAaG6zHUddiHzaRgGwF7YX0x9ojKRceIZy/yF6dEqOc1RP6GntOCDsB2N0OfrR3RdUY9MTdQZ6kL1BlY22QJEDoV8jYoQb30A7Wmj7kJW5zu0a55rnhDARpkX2A7oB1SGXsajRkTV8/42CH0waGG10BSKU1I3V3nnPp3CLUCab8JJcAfEUVoOCqJYiv+HEBlYsYoWaoUHaWrnQ9vqcfUdupY6upGf66Btsw7YN/cHd5YwFBYyWkx/ngRZWLGqEoPw+aBTyY2wfrpATXK+YrQuZ3X283wP2JWVLQivwGW7X7A0OxiEQAAAABJRU5ErkJggg==>
 
 [image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAC0AAAAVCAYAAADSM2daAAAC4ElEQVR4Xu2WWahPURSHl1mmKIpE11hCMpbiwZAhSZ48kEIUJSUe5AWZM5RS8iBCGUqSDBkKD+ZZMuYmD0iEUCR+X2vve/fZ/n/dWx6uul99dfZa+567zz77rPU3q6eef05PeVZekaflOtm2MMNZKJ/ID/KMHFFM15qB8mAerAkt5APZO4zby3fytmwQJ4kF8pzsJYfIe/KnHJ7MqQ2d5AXZPU+kNJdbzXfzjuwb4tPkL7k9jOFYiI0N49ayUnaIE0R/8znXklhtWCWX5sGcTfKh+av/LEeH+AT5Q24JYzhhvqBJYcxuMs5fJfcjzu7Xlj3yQB5MaSbfyM3hunMxbV2S60bytXxr1TvLcWBxz+OkwPUQH5DFa8JK8789nCciY6y4c+VoIleYP+CwYsqmyB7JuKn8Kr/JVkm8pvB2vpivq8B486+cHSLJNcajkTJVnpff5RLZsJj+g+nm91ybxTlK/I+r5h8uD79L7pfLknnAOj5msSo4Py/yYBn6yffm/yStHil81I/lKfPjFOHj3GvVO3/RvDxyfNabP2T6VjaaH5OS3JfH8+Bf4KPkH8zOE4Ed8qZ5VUnZJruGax74pTwUxixwXriG5XJ3Mi7Ak1FPqRqlIB/LX2SW+aIvZXGYb/4BpuWvFNyTe3CvnHbykxyUJyJ0Lf6YelyKW+b5yUlsToixuJRx8pEVF7xIdkvGER6Oe1RkceAIkmuZJyJ0MiaUq6W0ZfLU68iaEKNERmj1T2WfJAa0/TbheoZ50wAaFPMjFebNDThWVJ2JVdmMneZtuRw8FF963L2h5h/iM/OWDrR62jpViMpwOeR5xa/CHOo/x5AGxAdJFYrHq7HcJweHMfAm6Aczk1gVvOIjeTCDhVeaL57jwm5x7iIcHXa+lJTJyAbzisJvmVHyZJBuzIPkcN+jeZBmQYuemyfqIjQVfgCNNN+NjsV03aRS3pWrzWvqf8Fi85+gN6x4NuskvwFsnaFXzKirnQAAAABJRU5ErkJggg==>
 
