@@ -63,7 +63,7 @@ cmake "$NEURAL_AUDIO_ROOT" \
     echo ""
     echo "WARN: CMake falhou. Tentando compilação manual..."
     echo ""
-
+    
     # Fallback: compilação manual sem CMake
     INCLUDE_DIRS=(
         "-I$NEURAL_AUDIO_ROOT"
@@ -72,19 +72,25 @@ cmake "$NEURAL_AUDIO_ROOT" \
         "-I$NEURAL_AUDIO_ROOT/deps/RTNeural"
         "-I$NEURAL_AUDIO_ROOT/deps/math_approx/include"
     )
-
+    
     echo "Compilação manual não suportada neste script."
     echo "Configure o NeuralAudio C++ manualmente e reexecute."
     exit 1
 }
 
+echo "Compilando NeuralAudio com cmake --build . ..."
+cmake --build .
+
 echo "[2/3] Compilando golden_gen..."
 # Compilar o gerador customizado
 g++ -std=c++17 -O2 \
     -I"$NEURAL_AUDIO_ROOT" \
+    -I"$NEURAL_AUDIO_ROOT/deps/NeuralAmpModelerCore/Dependencies/nlohmann" \
+    -I"$NEURAL_AUDIO_ROOT/deps/RTNeural" \
     "$SCRIPT_DIR/golden_gen.cpp" \
     -o "$BUILD_DIR/golden_gen" \
-    -L"$BUILD_DIR" -lNeuralAudio \
+    -L"$BUILD_DIR/NeuralAudio" -lNeuralAudio \
+    -L"$BUILD_DIR/NeuralAudio/RTNeural/RTNeural" -lRTNeural \
     -lm \
     2>&1 || {
     echo "ERRO: Compilação de golden_gen falhou."

@@ -30,3 +30,5 @@ scratch/
 /test_*
 !/tests/
 
+# Golden vectors de validação numérica (não ignorar)
+!tests/fixtures/*.bin
