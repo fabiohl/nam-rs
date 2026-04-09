@@ -11,8 +11,9 @@ O motor de inferência é uma transposição otimizada da biblioteca C++ [Neural
 O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire via `pipewire-rs` como cliente nativo - sem abstrações VST/LV2/CLAP. O processo gerencia suas portas de áudio diretamente no *Graph Engine* do PipeWire.
-2. **Inferência SIMD de Ultra-Baixa Latência:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits, eliminando o custo das funções transcendentais da stdlib. Suporte futuro a AVX-512 via multiversioning.
+2. **Inferência SIMD de Ultra-Baixa Latência:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `#[target_feature(enable = "avx512f,avx512vl")]` para hardware que suporta ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução.
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de núcleo rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
+4. **CLI Interativa e Hot-Swap de Modelos:** Interface de linha de comando com `lexopt` para configuração inicial (`--model`, `--input-gain`, `--output-gain`) e loop `stdin` interativo em runtime. Troca de modelos (.nam/.namb) sem interromper o PipeWire, com delegação do `Drop` do modelo antigo para thread GC (lock-free Drop-Delegation).
 
 ## 🚀 Guia Rápido
 

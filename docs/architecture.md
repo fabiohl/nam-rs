@@ -11,37 +11,39 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 ## 2. Inferência FastMath e Microarquitetura (AVX2 / AVX-512)
 
 - **Supressão Algorítmica Rápida (FMA):** A base abandona o custo letárgico nas Unidades Lógicas (`std::math`) usando intrinsics `core::arch::x86_64` para processamento paralelo do polinômio Minimax/Padé nas portas lógicas LSTM e ativações WaveNet. Multiplicadores vetoriais processados em "Fused Multiply-Add" (FMA) reduzem a operação por ciclo massivamente.
-- **Funções de Ativação FastMath:** `simd_tanh` usa polinômio Padé de grau 5 + `_mm256_rsqrt_ps` com refinamento Newton-Raphson. `simd_sigmoid` deriva via identidade `0.5 * (1 + tanh(0.5*x))`. Erro máximo ~5e-3 validado por testes MSE.
-- **Dot Product SIMD:** `dot_product_avx2` processa 8 floats por iteração usando `_mm256_fmadd_ps`, com loop tail escalar para fatias irregulares.
-- **Paralelismo Avançado Via Multiversioning (futuro):** Despacho antecipado via `#[target_feature(enable = "avx512f,avx512vl")]` planejado para quando as redes WaveNet/LSTM criarem consumidores reais das operações SIMD.
+- **Funções de Ativação FastMath:** `simd_tanh` usa polinômio Padé de grau 5 + `_mm256_rsqrt_ps` com refinamento Newton-Raphson. `simd_sigmoid` deriva via identidade `0.5 * (1 + tanh(0.5*x))`. Erro máximo ~5e-3 validado por testes MSE. Variantes AVX-512 (`simd_tanh_avx512`, `simd_sigmoid_avx512`) operam sobre registradores ZMM de 512 bits com `_mm512_rsqrt14_ps`.
+- **Dot Product SIMD:** `dot_product_avx2` processa 8 floats por iteração usando `_mm256_fmadd_ps`; `dot_product_avx512` processa 16 floats com `_mm512_fmadd_ps` + `_mm512_reduce_add_ps`. Loop tail escalar preserva corretude em fatias irregulares.
+- **Multiversioning AVX-512:** Despacho em tempo de execução via `SimdMathConfig::current()` que inspeciona CPUID e injeta ponteiros de função definitivos (`dot_product`, `tanh_slice`, `sigmoid_slice`). Quando AVX-512F + VL presentes, todos os kernels LSTM e FastMath operam sobre ZMM de 512 bits. Macro unificada `define_lstm_process!` parametriza ambas as vias sem duplicação de código.
 - **Arrays Genéricos:** Utiliza SoA com const generics para unrolling de loops, resolvendo gargalos no Branch Predictor (BTB). `WaveNetModel<CH, K, HEAD>` e `LstmModel1<H, H1_IH, H_H4>` com zero-allocation e trait `NamModel`.
 
 ## 3. Gestão e Isolação Temporais
 
 - **SCHED_FIFO e Affinity:** A thread principal DSP é ancorada por _Core Affinity_ no _SCHED_FIFO_ (se disponível), desativando a jurisdição do escalonador _CFS_ do SO. O silício não sofrerá instâncias de _Cache Misses_ no L1/L2.
-- **SPSC Ring Buffers:** Comunicação parametrizada entre CLI e DSP (input/output gain, troca de modelo .namb, taxa de amostragem) transita via canais SPSC (`rtrb`), com payload `ParamPayload` alinhado a 128 bytes (`#[repr(align(128))]`) para blindar contra _False Sharing_.
+- **SPSC Ring Buffers:** Comunicação parametrizada entre CLI e DSP (input/output gain, troca de modelo .nam/.namb, taxa de amostragem) transita via canais SPSC (`rtrb`), com payload `ParamPayload` alinhado a 128 bytes (`#[repr(align(128))]`) para blindar contra _False Sharing_. O campo `LoadModel.model` trafega como `Option<Box<DynamicModel>>` tipado (sem ponteiro opaco `*mut ()`).
+- **Hot-Swap Lock-Free com GC Thread:** Ao trocar o modelo ativo, o `Box<DynamicModel>` obsoleto é enviado para uma segunda fila SPSC GC (produzida na thread DSP, consumida em thread background). O `Drop` ocorre fora do limite `SCHED_FIFO`, garantindo ausência de alocações e liberações de heap no hot path.
 - **Purga de I/O de Disco Concluída:** Toda a infraestrutura de gravação herdada do AudioRip (io_uring, fallocate, headers WAV, tokio-uring) foi extirpada. O NAM-rs é um injetor de modelo, não um capturador multimídia.
 - **Tempo Linear de Sinc FIR:** `NamResampler` realiza conversão bidirecional de sample rate (`pw_rate→48 kHz` na entrada, `48 kHz→pw_rate` na saída) usando filtro Sinc Kaiser-BlackmanHarris2 com `sinc_len=256`, garantindo isolação total entre o rate do PipeWire e o rate interno dos modelos NAM (48 kHz). Bypass automático quando `pw_rate == 48000`.
+- **Detecção Reativa de Sample Rate:** O callback `param_changed` do stream PipeWire detecta alterações de `AudioInfoRaw::rate` e as comunica via `AtomicU32` compartilhado com a thread DSP. No `process()`, a detecção aciona recriação inline do `NamResampler` sem locks. Suporta hot-plug de hardware externo sem falhas de transição.
 
 ## 4. Módulos Fonte Atuais
 
-| Módulo                   | Responsabilidade                                                                                                                                                   |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/main.rs`            | Ponto de entrada: detecção AVX2/FMA, inicialização PipeWire nativo (`pipewire::init`), handler CTRL+C, coordenação de shutdown                                     |
-| `src/pw_host.rs`         | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging      |
-| `src/spsc.rs`            | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel, SetSampleRate; setup do Ring Buffer (`rtrb`) |
-| `src/math/mod.rs`        | Módulo raiz de operações matemáticas e inferência neural                                                                                                           |
-| `src/math/simd.rs`       | `dot_product_avx2`: Dot product via AVX2+FMA sobre registradores YMM de 256 bits                                                                                   |
-| `src/math/fastmath.rs`   | `simd_tanh` (Padé grau 5 + rsqrt Newton-Raphson), `simd_sigmoid` (via identidade com tanh)                                                                         |
-| `src/models/mod.rs`      | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                                                       |
-| `src/models/wavenet.rs`  | WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                                                    |
-| `src/models/lstm.rs`     | LSTM recorrente — gates concatenadas [i\|f\|g\|o], 1 e 2 camadas com const generics                                                                                |
-| `src/loader/mod.rs`      | Módulo raiz de carregamento de modelos NAM (fora da thread RT)                                                                                                     |
-| `src/loader/nam_json.rs` | Parser do formato `.nam` (JSON) — `serde_json`, classificação de topologia WaveNet/LSTM                                                                            |
-| `src/loader/namb.rs`     | Parser do formato `.namb` (Tone3000 binário) — CRC32 IEEE 802.3 + Little-Endian                                                                                    |
-| `src/dsp/mod.rs`         | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                |
-| `src/dsp/gain.rs`        | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                                                             |
-| `src/dsp/resampler.rs`   | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz                                                               |
+| Módulo                   | Responsabilidade                                                                                                                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.rs`            | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo                                |
+| `src/pw_host.rs`         | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging                                 |
+| `src/spsc.rs`            | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel (tipado `Box<DynamicModel>`), SetSampleRate; fila GC secundária (`rtrb`) |
+| `src/math/mod.rs`        | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                      |
+| `src/math/simd.rs`       | `dot_product_avx2` (YMM 256-bit), `dot_product_avx512` (ZMM 512-bit), `SimdMathConfig` (v-table de despacho dinâmico multiversioning)                                                         |
+| `src/math/fastmath.rs`   | `simd_tanh`/`simd_sigmoid` AVX2 (YMM), `simd_tanh_avx512`/`simd_sigmoid_avx512` (ZMM), helpers `tanh_slice_avx2/512`, `sigmoid_slice_avx2/512`                                                |
+| `src/models/mod.rs`      | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                                                                                  |
+| `src/models/wavenet.rs`  | WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                                                                               |
+| `src/models/lstm.rs`     | LSTM recorrente — gates [i\|f\|g\|o], macro `define_lstm_process!` unificando AVX2 e AVX-512, 1 e 2 camadas com const generics, despacho runtime via `is_x86_feature_detected!`               |
+| `src/loader/mod.rs`      | Módulo raiz de carregamento de modelos NAM (fora da thread RT)                                                                                                                                |
+| `src/loader/nam_json.rs` | Parser do formato `.nam` (JSON) — `serde_json`, classificação de topologia WaveNet/LSTM                                                                                                       |
+| `src/loader/namb.rs`     | Parser do formato `.namb` (Tone3000 binário) — CRC32 IEEE 802.3 + Little-Endian                                                                                                               |
+| `src/dsp/mod.rs`         | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                           |
+| `src/dsp/gain.rs`        | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                                                                                        |
+| `src/dsp/resampler.rs`   | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz                                                                                          |
 
 ## 5. Gestão de Dependências DSP
 
@@ -66,7 +68,7 @@ rubato = { version = "0.16", default-features = false }
 
 ### Fluxo DSP Bidirecional
 
-``` text
+```text
 PipeWire Input (Nk Hz)
     │
     ▼ apply_gain_simd(input_gain_mult)          — SIMD AVX2, antes do NAM
@@ -93,4 +95,3 @@ PipeWire Input (Nk Hz)
 **Plano de migração futura:**
 
 - `rubato 2.0.0`: considerar quando `audioadapter` estabilizar; a API pública de `NamResampler` não muda.
-- Detecção automática de rate: callback `param_changed` do PipeWire → `SetSampleRate` SPSC → recriação do `NamResampler`.
