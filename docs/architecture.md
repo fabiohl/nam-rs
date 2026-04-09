@@ -95,3 +95,41 @@ PipeWire Input (Nk Hz)
 **Plano de migração futura:**
 
 - `rubato 2.0.0`: considerar quando `audioadapter` estabilizar; a API pública de `NamResampler` não muda.
+
+## 6. Política de Testes
+
+O projeto adota a convenção idiomática do Rust, com duas camadas complementares:
+
+### 6.1. Testes Unitários Inline (`#[cfg(test)]`)
+
+Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
+
+| Módulo                     | Cobertura                                                       |
+| -------------------------- | --------------------------------------------------------------- |
+| `src/math/fastmath.rs`     | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32` |
+| `src/math/simd.rs`         | `dot_product_avx2`/`avx512`, `SimdMathConfig::current()`        |
+| `src/dsp/gain.rs`          | Gain staging SIMD: dB→linear, vetorização                       |
+| `src/dsp/resampler.rs`     | `NamResampler` bidirecional, bypass em 48 kHz, identidade       |
+| `src/models/wavenet.rs`    | Alocação, prewarm NaN-free, process zeros, determinismo         |
+| `src/models/lstm.rs`       | Alocação, process zeros, determinismo AVX2/AVX-512              |
+| `src/loader/nam_json.rs`   | Parsing JSON, classificação de topologia WaveNet/LSTM           |
+| `src/loader/namb.rs`       | Parsing binário Tone3000, CRC32, header validation              |
+| `src/loader/dispatcher.rs` | WeightCursor, construção por topologia, rejeição de erros       |
+| `src/spsc.rs`              | Concorrência SPSC lock-free, Producer/Consumer multi-thread     |
+
+### 6.2. Testes de Integração (`tests/`)
+
+O diretório `tests/` na raiz do crate contém testes de integração que consomem a API pública `nam_rs::*` como um usuário externo. Estes testes validam o pipeline completo de ponta a ponta:
+
+- **`tests/nam_infer_test.rs`** — Teste de estabilidade computacional de longa duração:
+  - Parsing JSON de modelos reais (`.nam`) via `parse_nam_json`
+  - Classificação topológica (`get_wavenet_topology`)
+  - Construção via `build_model()` (dispatcher completo)
+  - Inferência WaveNet e LSTM com blocos senoidais (~5.4s simulados a 48 kHz)
+  - Validação de finitude (NaN/Inf) em todas as amostras de saída
+
+### 6.3. Convenções e Guardas
+
+- **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte a essas instruções não sofram `SIGILL`.
+- **Modelos de teste opcionais:** Testes de integração que dependem de arquivos `.nam` reais (subdiretório `github.com/`) fazem `if !path.exists() { return; }`, permitindo execução parcial em ambientes sem o repositório NeuralAudio espelhado.
+- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os unitários inline; `cargo test --test nam_infer_test` apenas a integração.

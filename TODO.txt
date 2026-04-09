@@ -1,7 +1,3 @@
-* Posso apagar com segurança a pasta `scratch/` ou ela ainda cumpre um papel importante no projeto?
-* E com relação à pasta `tests/`? Ela está no local mais idiomático para testes no Rust? Ou seria melhor movê-la para a `src/`? Notei que dentro de vários códigos em `src/` tem micro testes. Como tornar isso mais organizado e correto?
-* Atualize docs/architecture.md para refletir uma política de testes mais atualizada.
-
 ## Automatizar mais o processo, sem tantas confirmações! Confinar dentro do docker?
 
 ## Alpha 3: Nova revisão global, desta vez usando Claude Opus
@@ -9,5 +5,5 @@ Usando a skill "revisor-auditor" promova uma detalhado análise com vista a prep
 * A pasta github.com/mikeoliphant/NeuralAudio/ contém a base de código em C++ da implemntação de referência do NAM.
 * Faça uma meticulosa comparação com o nosso projeto em rust (src/*) assegurando que todas as funcionalidades estão implementadas - respeitando o espírito e os objetivos do projeto.
 * Verifique se o código (src/* e tests/*) e a documentação (README.md e docs/*) atuais estão aderentes ao escopo do projeto (docs/NAM-rs-referência.md).
-* Caçar o máximo de testes automatizados bons e realmente úteis - inclusive na internet aberta geral. Verifique se os atuais existentes estão em boa qualidade e se é possível melhorar ou substituir algum deles. Inclusiv os constantes em scratch/ e tests/.
-* A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar ao final uma nova sprint em docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas.
+* Caçar o máximo de testes automatizados bons e realmente úteis - inclusive na internet aberta geral. Verifique se os atuais existentes estão em boa qualidade e se é possível melhorar ou substituir algum deles.
+* A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma nova sprint ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas.
