@@ -7,22 +7,37 @@ description: Use esta habilidade para pensar além, inovar e criar soluções pr
 
 ## When to use this skill
 
-Use quando as tarefas englobarem inovação pesada sobre algoritmos DSP, redes LSTM/WaveNet e contornos macro do tempo de execução PipeWire para o autômato independente NAM-rs. Proponha implementações sub-milisegundo engajando os vetores microarquiteturais da CPU em escala massiva.
+Use quando as tarefas englobarem inovação pesada sobre algoritmos DSP, redes LSTM/WaveNet e contornos macro do tempo de execução PipeWire para o autômato independente NAM-rs. Proponha implementações sub-milissegundo engajando os vetores microarquiteturais da CPU em escala massiva.
+
+## Estado Atual do Projeto (referência obrigatória antes de propor inovações)
+
+O NAM-rs está na **fase Beta (Sprint 8 concluída)**. A infraestrutura RT-safe está funcional:
+
+- **Motor de inferência:** LSTM e WaveNet portados do NeuralAmpModelerCore em C++, rodando a 48 kHz.
+- **Resampling bidirecional:** `rubato 0.16` com `SincFixedIn<f32>` (Kaiser Window); converte entre o rate do PipeWire e os 48 kHz internos. O resampler é construído fora do callback RT e enviado via canal SPSC dedicado (`rtrb::Producer<NamResampler>`).
+- **Concorrência lock-free:** `rtrb` (SPSC Ring Buffer) transporta `ParamPayload` (InputGain, OutputGain, LoadModel, SetSampleRate) e `DynamicModel` para GC. `RtStatusFlags` (AtomicU32 + AtomicBool) comunica status RT→Main sem I/O.
+- **CLI interativa:** implementada com `lexopt`, rodando em thread separada, envia payloads via SPSC. Zero interação com a thread DSP por qualquer outro meio.
+- **Thread DSP:** configurada como `SCHED_FIFO` prioridade 90, fixada em CPU via `pthread_setaffinity_np`. **ZERO** alocação heap, **ZERO** I/O, **ZERO** locks no `process()` callback.
+- **Gain staging:** `apply_gain_simd` usa `std::simd` (x86-64-v3 / AVX2+FMA). Ajuste automático dBu via metadados `.namb` (`input_level_dbu`, `loudness`).
+- **Formatos de modelo:** `.nam` (JSON) e `.namb` (binário com CRC32). Dispatcher em `loader::dispatcher`.
 
 ## Instructions
 
 ### 1. Foco em Instruções Paralelas e Matrizes Extremas
 
-- Implementações neurais em software áudio restrito dependem do engajamento denso SIMD em dot-products. Proponha resoluções baseadas unicamente em extensões como Instruções FMA e desvios FastMath.
-- Identifique possíveis desdobramentos temporais vetoriais via `std::simd` otimizando instâncias polinomiais com o menor desvio preditivo na CPU sem comprometer fidelidade orgânica.
-- Avalie se a adoção de superamostradores via matriz Sinc Interporlation (Kaiser Windowing) retém harmônicos limpos sob amostras PCM e em conformidade estrita Lock-Free.
+- Implementações neurais em software áudio restrito dependem do engajamento denso SIMD em dot-products. Proponha resoluções baseadas nas extensões `std::simd` (Fused Multiply-Add — FMA), operando sobre estruturas SoA pré-alocadas com `const generics`.
+- Identifique possíveis desdobramentos temporais vetoriais via `std::simd` otimizando instâncias polinomiais (FastMath Minimax) com o menor desvio preditivo na CPU sem comprometer fidelidade numérica.
+- Ao propor melhorias no resampler, respeite que o `NamResampler` (baseado em `rubato SincFixedIn`) já é RT-safe: a pesquisa deve incidir em otimizar a qualidade FIR ou explorar alternativas que mantenham o padrão de construção fora do callback.
+- Para AVX-512: use multiversioning via `#[target_feature(enable = "avx512f")]` apenas onde agregar ganho mensurável, sem quebrar o binário em CPUs sem suporte.
 
 ### 2. Aderência Operacional de Tempo Real Linux/Host
 
-- Sugestões técnicas atrelam-se integralmente na soberania do Core Affinity para prevenir Core Migrations, aliados ao status privilegiado do escalonador `low latency`.
-- Mapeie a transição paramétrica Tone3000 de forma autônoma: metadados JSON / .NAMB fluem sobre SPSC para auto-rescaler os limites numéricos dBFS vs dBu, permitindo reescalonamento dinâmico estático seguro.
-- Herança de I/O (`io_uring`) pertencem a repositórios descontinuados para o projeto: a pesquisa repousa unicamente no transporte computacional PipeWire via `pipewire-rs`.
+- Sugestões técnicas atrelam-se integralmente na soberania do Core Affinity (`pthread_setaffinity_np`) para prevenir Core Migrations e preservar o cache L1/L2, aliados ao escalonador `SCHED_FIFO`.
+- Parâmetros Tone3000 (metadados `.namb`: `input_level_dbu`, `loudness`) fluem exclusivamente via SPSC `rtrb` sob o enum `ParamPayload`, permitindo reescalonamento dBu/dBFS sem qualquer acesso concorrente não-atômico.
+- O projeto **não usa** e **não deve adotar** `io_uring`, gravação em disco ou qualquer E/S bloqueante no caminho RT. Toda pesquisa de I/O pertence à thread CLI ou à thread principal.
 
 ### 3. Minimalismo Lock-Free de Eventos do Rust
 
-- A CLI CLI em rust opera assíncrona com os comandos do usuário transacionando parâmetros sob um único canal intertravado estrito (Ring Buffer) garantindo isenções totais de locks (Mutex, Spin).
+- A CLI em Rust opera assincronamente com os comandos do usuário, transacionando parâmetros exclusivamente via `rtrb::Producer<ParamPayload>` (Ring Buffer SPSC), com alinhamento a 128 bytes via `#[repr(align(128))]` no enum `ParamPayload` — garantindo isenção total de locks (Mutex, RwLock, Spinlock).
+- Ao pesquisar novas formas de comunicação RT→Main, o padrão de `RtStatusFlags` (campos `AtomicU32`/`AtomicBool` em `Arc`) é o modelo consolidado: **sem canais adicionais** salvo justificativa de throughput demonstrável.
+- Inovações que exijam novos canais SPSC devem ser dimensionadas como potências de 2 e documentadas em `docs/architecture.md`.
