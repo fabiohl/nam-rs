@@ -14,6 +14,7 @@ pipewire = "0.9.2"
 rtrb = "0.3.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+lexopt = "0.3.0"
 # rubato 0.16.x: Fixado em 0.16 (não 2.0) — a API 2.0 introduziu dependência obrigatória de
 # audioadapter/audioadapter-buffers, que aumenta a superfície de dependência sem benefício
 # concreto para o nosso modelo RT-safe. O 0.16.x expõe SincFixedIn<f32> com Vec<Vec<f32>>

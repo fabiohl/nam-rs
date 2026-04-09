@@ -11,12 +11,167 @@
 //! - **ZERO LOCKS** na thread DSP (módulo pw_host).
 //! - **ZERO ALOCAÇÕES** na thread DSP (o loop `process()` deve ser zero-allocation).
 
-use nam_rs::{pw_host, spsc};
-
+use lexopt::prelude::*;
+use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
+fn parse_args() -> Result<(Option<PathBuf>, f32, f32), lexopt::Error> {
+    let mut model_path = None;
+    let mut input_gain = 0.0;
+    let mut output_gain = 0.0;
+
+    let mut parser = lexopt::Parser::from_env();
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Short('m') | Long("model") => {
+                model_path = Some(PathBuf::from(parser.value()?));
+            }
+            Short('i') | Long("input-gain") => {
+                input_gain = parser.value()?.parse()?;
+            }
+            Short('o') | Long("output-gain") => {
+                output_gain = parser.value()?.parse()?;
+            }
+            Long("help") => {
+                println!("NAM-rs Standalone\n\nOptions:");
+                println!("  -m, --model <PATH>      Model file (.nam ou .namb)");
+                println!("  -i, --input-gain <DB>   Input gain in dB (float)");
+                println!("  -o, --output-gain <DB>  Output gain in dB (float)");
+                std::process::exit(0);
+            }
+            _ => return Err(arg.unexpected()),
+        }
+    }
+    Ok((model_path, input_gain, output_gain))
+}
+
+fn load_and_send_model(path: &std::path::Path, producer: &mut rtrb::Producer<ParamPayload>) {
+    let path_str = path.to_string_lossy();
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    let ext_lower = ext.to_lowercase();
+    let result = if ext_lower == "namb" {
+        std::fs::read(path)
+            .map_err(anyhow::Error::from)
+            .and_then(|bytes| loader::namb::parse_namb(&bytes))
+    } else if ext_lower == "nam" {
+        std::fs::read_to_string(path)
+            .map_err(anyhow::Error::from)
+            .and_then(|json| loader::nam_json::parse_nam_json(&json))
+    } else {
+        println!("[CLI] Erro: Extensão de arquivo desconhecida (deve ser .nam ou .namb)");
+        return;
+    };
+
+    match result {
+        Ok(model_data) => {
+            let meta = model_data.metadata.unwrap_or(loader::nam_json::NamMetadata {
+                input_level_dbu: None,
+                output_level_dbu: None,
+                loudness: None,
+            });
+            let in_level = meta.input_level_dbu.unwrap_or(0.0);
+            let loudness = meta.loudness.unwrap_or(-18.0);
+
+            let input_db_adj = 12.0 - in_level;
+            let output_db_adj = -18.0 - loudness;
+
+            if producer
+                .push(ParamPayload::LoadModel {
+                    ptr: std::ptr::null_mut(),
+                    input_db_adj,
+                    output_db_adj,
+                })
+                .is_ok()
+            {
+                println!(
+                    "[CLI] Payload gerado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
+                    path_str, input_db_adj, output_db_adj
+                );
+            } else {
+                println!("[CLI] Falha ao enviar LoadModel (buffer cheio).");
+            }
+        }
+        Err(e) => {
+            println!("[CLI] Erro ao carregar modelo {}: {}", path_str, e);
+        }
+    }
+}
+
+fn cli_loop(mut producer: rtrb::Producer<ParamPayload>) {
+    println!("\n[CLI] Interface interativa iniciada. Digite 'help' para comandos.");
+
+    let stdin = std::io::stdin();
+    for line in stdin.lines() {
+        let Ok(cmd) = line else { break };
+        let cmd = cmd.trim();
+        if cmd.is_empty() {
+            continue;
+        }
+
+        let mut parts = cmd.split_whitespace();
+        match parts.next().unwrap() {
+            "quit" | "q" | "exit" => {
+                spsc::SHUTDOWN.store(true, Ordering::SeqCst);
+                println!("[CLI] Solicitando desligamento gracioso...");
+                break;
+            }
+            "model" | "m" => {
+                if let Some(p) = parts.next() {
+                    let path = std::path::Path::new(p);
+                    load_and_send_model(path, &mut producer);
+                } else {
+                    println!("[CLI] Uso: model <caminho>");
+                }
+            }
+            "gain_in" | "gi" => {
+                if let Some(val_str) = parts.next() {
+                    if let Ok(val) = val_str.parse::<f32>() {
+                        if producer.push(ParamPayload::InputGain(val)).is_ok() {
+                            println!("[CLI] Input Gain configurado para {:.2} dB.", val);
+                        } else {
+                            println!("[CLI] Falha ao enviar InputGain (buffer cheio).");
+                        }
+                    } else {
+                        println!("[CLI] Valor de ganho inválido: {}", val_str);
+                    }
+                } else {
+                    println!("[CLI] Uso: gain_in <valor_db>");
+                }
+            }
+            "gain_out" | "go" => {
+                if let Some(val_str) = parts.next() {
+                    if let Ok(val) = val_str.parse::<f32>() {
+                        if producer.push(ParamPayload::OutputGain(val)).is_ok() {
+                            println!("[CLI] Output Gain configurado para {:.2} dB.", val);
+                        } else {
+                            println!("[CLI] Falha ao enviar OutputGain (buffer cheio).");
+                        }
+                    } else {
+                        println!("[CLI] Valor de ganho inválido: {}", val_str);
+                    }
+                } else {
+                    println!("[CLI] Uso: gain_out <valor_db>");
+                }
+            }
+            "help" | "h" => {
+                println!("[CLI] Comandos disponíveis:");
+                println!("  model <caminho>   : Carrega um arquivo de modelo (.nam ou .namb)");
+                println!("  gain_in <db>      : Ajusta o ganho de entrada (ex: -3.0)");
+                println!("  gain_out <db>     : Ajusta o ganho de saída (ex: 2.5)");
+                println!("  quit              : Encerra o engine");
+            }
+            _ => {
+                println!("[CLI] Comando desconhecido. Digite 'help'.");
+            }
+        }
+    }
+}
+
 fn main() -> anyhow::Result<()> {
-    // Verificando suporte de instruções matemáticas fundamentais de AVX2/FMA
+    let (model_path, initial_in_gain, initial_out_gain) = parse_args()?;
+
     #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
         println!("Engine NAM-rs: AVX2 + FMA ativado computando vetores de 256 bits.");
@@ -26,27 +181,34 @@ fn main() -> anyhow::Result<()> {
         );
     }
 
-    // Inicializa as APIs do PipeWire nativo
     pipewire::init();
 
-    // 1️⃣ Configura o tratamento de shutdown gracioso
-    // Um handler de sinal intercepta a intenção de encerramento de forma global.
     ctrlc::set_handler(|| {
         if spsc::SHUTDOWN.load(Ordering::SeqCst) {
-            // Segundo sinal: aborta imediatamente.
             std::process::exit(1);
         }
         spsc::SHUTDOWN.store(true, Ordering::SeqCst);
     })
     .expect("Erro ao configurar handler de Ctrl-C");
 
-    // 2️⃣ Inicializa o SPSC Ring Buffer para a comunicação atômica CLI <-> DSP
-    let (_producer, consumer) = spsc::setup_spsc(64);
+    let (mut producer, consumer) = spsc::setup_spsc(64);
 
-    // 3️⃣ Inicia a topologia PipeWire e bloqueia a thread
+    if initial_in_gain != 0.0 {
+        let _ = producer.push(ParamPayload::InputGain(initial_in_gain));
+    }
+    if initial_out_gain != 0.0 {
+        let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
+    }
+    if let Some(path) = model_path {
+        load_and_send_model(&path, &mut producer);
+    }
+
+    std::thread::spawn(move || {
+        cli_loop(producer);
+    });
+
     pw_host::run_pipewire_host(consumer)?;
 
-    // Desaloca componentes nativos após graceful shutdown
     unsafe {
         pipewire::deinit();
     }
