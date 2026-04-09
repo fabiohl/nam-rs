@@ -7,7 +7,7 @@ description: Use esta habilidade atuando como um painel multi-disciplinar (no ca
 
 ## When to use this skill
 
-Use esta skill focando em **Planejamento Técnico e Arquitetura Inferêncial Inegociável**. A matriz da arquitetura aborda problemas espaciais/temporais (DSP) destrinchando as necessidades do `NAM-rs` em tarefas ágeis via `implementation_plan.md`, listando micro-passos exatos de refatoração para a linguagem de máquina (SIMD/FMA).
+Use esta skill focando em **Planejamento técnico sob metodologias ágeis**. Quebre entregas maiores em tarefas menores atômicas direcionadas aos especialistas capazes de cumpri-las com perfeição. Assegure uma entrega coesa e perfeitamente atendente ao que foi solicitado.
 
 ## Instructions
 
@@ -52,5 +52,5 @@ Muito do trabalho envolverá analisar a implementação em C++ dos projetos abai
 
 ### 5. Atividades Finais
 
-- Ao concluir o planejamento, valide a consistência com `utils/lints.sh` antes de fechar a sessão.
-- Acione a skill `documentador` para sincronizar `docs/architecture.md` com quaisquer decisões arquiteturais novas.
+- Ao concluir o planejamento, valide a consistência com `utils/lints.sh` (rule `.agents/rules/linting.md`) antes de fechar a sessão.
+- Acione a skill `documentador` para sincronizar `as documentações com o estado atual do código.

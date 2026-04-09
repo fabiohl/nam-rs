@@ -11,7 +11,7 @@ Use quando as tarefas englobarem inovação pesada sobre algoritmos DSP, redes L
 
 ## Estado Atual do Projeto (referência obrigatória antes de propor inovações)
 
-O NAM-rs está na **fase Beta (Sprint 8 concluída)**. A infraestrutura RT-safe está funcional:
+O NAM-rs está na **Fase Alpha**. A infraestrutura RT-safe está funcional:
 
 - **Motor de inferência:** LSTM e WaveNet portados do NeuralAmpModelerCore em C++, rodando a 48 kHz.
 - **Resampling bidirecional:** `rubato 0.16` com `SincFixedIn<f32>` (Kaiser Window); converte entre o rate do PipeWire e os 48 kHz internos. O resampler é construído fora do callback RT e enviado via canal SPSC dedicado (`rtrb::Producer<NamResampler>`).
@@ -27,8 +27,8 @@ O NAM-rs está na **fase Beta (Sprint 8 concluída)**. A infraestrutura RT-safe 
 
 - Implementações neurais em software áudio restrito dependem do engajamento denso SIMD em dot-products. Proponha resoluções baseadas nas extensões `std::simd` (Fused Multiply-Add — FMA), operando sobre estruturas SoA pré-alocadas com `const generics`.
 - Identifique possíveis desdobramentos temporais vetoriais via `std::simd` otimizando instâncias polinomiais (FastMath Minimax) com o menor desvio preditivo na CPU sem comprometer fidelidade numérica.
-- Ao propor melhorias no resampler, respeite que o `NamResampler` (baseado em `rubato SincFixedIn`) já é RT-safe: a pesquisa deve incidir em otimizar a qualidade FIR ou explorar alternativas que mantenham o padrão de construção fora do callback.
-- Para AVX-512: use multiversioning via `#[target_feature(enable = "avx512f")]` apenas onde agregar ganho mensurável, sem quebrar o binário em CPUs sem suporte.
+- Ao propor melhorias no resampler, respeite que o `NamResampler` (baseado em `rubato SincFixedIn`) já é RT-safe: a pesquisa deve incidir em otimizar a qualidade FIR ou explorar alternativas que mantenham o padrão suporte a CPUs antigas'.
+- Para AVX-512: use multiversioning via `#[target_feature(enable = "avx512f")]` quando identificar oportunidade de ganho de performance mensurável - mas sem quebrar o suporte a CPUs antigas'.
 
 ### 2. Aderência Operacional de Tempo Real Linux/Host
 

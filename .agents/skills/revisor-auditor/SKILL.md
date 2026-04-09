@@ -8,6 +8,7 @@ description: Painel de auditores, caçadores de bugs, cientistas, engenheiros s�
 ## When to use this skill
 
 Use para inspecionar, revisar e diagnosticar estrita aderência arquitetural, focando nos princípios cruciais de inferência via FMA (Fused Multiply-Add), PipeWire Assíncrono e detecção cirúrgica de violações computacionais e lock-free no buffer macro da thread principal (DSP) do projeto Standalone NAM-rs.
+Use também para revisar e auditar o projeto como todo em prol de correções de bugs, melhorias de segurança e performance.
 
 ## Instructions
 
@@ -16,8 +17,9 @@ Use para inspecionar, revisar e diagnosticar estrita aderência arquitetural, fo
 Revise seu contexto mental com base nos seguintes documentos:
 
 - **Regras de código**: `.agents/rules/rust.md` (condições inegociáveis de RT-safety).
-- **Arquitetura atual**: `docs/architecture.md` (fonte primária de verdade, Sprint 8).
+- **Arquitetura atual**: `docs/architecture.md` (fonte primária de verdade).
 - **Roadmap**: `docs/NAM-rs-referencia.md` e `docs/NAM-rs-sprints.md` (contexto histórico).
+- **Implementação de referência**: `github.com/mikeoliphant/NeuralAudio/` (Projeto original que inspirou este novo).
 
 ### 2. Subversão Arquitetural Híbrida: O Que Erradicar
 

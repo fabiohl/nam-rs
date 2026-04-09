@@ -11,7 +11,7 @@ Use esta skill sob a manifestação de um erro ativo, crash, comportamento não-
 
 ## Contexto de Referência (leia antes de diagnosticar)
 
-O NAM-rs opera com a seguinte arquitetura consolidada (Sprint 8):
+O NAM-rs opera com a seguinte arquitetura consolidada:
 
 - **Thread DSP** (`process()` do PipeWire): `SCHED_FIFO` prioridade 90, fixada em CPU via `pthread_setaffinity_np`. **ZERO** alocação heap, **ZERO** I/O, **ZERO** locks.
 - **Comunicação RT→Main**: via `RtStatusFlags` (`AtomicU32`/`AtomicBool` em `Arc`). A thread principal lê as flags e faz I/O (prints/logs).

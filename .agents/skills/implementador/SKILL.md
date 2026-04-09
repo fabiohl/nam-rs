@@ -28,7 +28,7 @@ Antes de implementar qualquer funcionalidade, consulte a referência mestra em `
 | `libc`                 | 0.2.x  | `pthread_setaffinity_np`, `SCHED_FIFO`             |
 | `anyhow`               | 1.x    | Propagação de erros fora do caminho RT             |
 
-> **Nunca inserir crates diretamente no `Cargo.toml`** — use `cargo add` com features específicas.
+> **Nunca inserir crates diretamente no `Cargo.toml`** — use `cargo add` com as features específicas necessárias.
 
 ### 3. Padrões Consolidados — Não Reinventar
 
@@ -45,7 +45,7 @@ Antes de implementar qualquer funcionalidade, consulte a referência mestra em `
 
 ### 5. AVX2/AVX-512 e Clean Builds
 
-- Use `std::simd` com `const generics` SoA para dot-products LSTM/WaveNet. AVX2 é obrigatório (baseline x86-64-v3); AVX-512 é opcional via multiversioning (`#[target_feature(enable = "avx512f")]`).
+- Use `std::simd` com `const generics` SoA para dot-products LSTM/WaveNet. AVX2 é obrigatório (baseline x86-64-v3); AVX-512 é opcional via multiversioning (`#[target_feature(enable = "avx512f")]`) quando oferecer boas oportunidades de otimização de performance.
 - O código deve passar sem warnings em `utils/lints.sh` (inclui `cargo fmt`, `cargo clippy`, e validação de copyright).
 
 ### 6. Projetos de Referência
