@@ -8,6 +8,7 @@
 
 pub mod lstm;
 pub mod wavenet;
+pub mod wavenet_dyn;
 
 /// Trait base para todos os modelos neurais inferenciais da aplicação.
 ///
@@ -42,6 +43,21 @@ impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
     fn prewarm(&mut self, _num_samples: usize) {
         // WaveNet prewarm é one-shot: preenche o campo receptivo via copy_buffer.
         // O C++ executa `model->Prewarm()` sem parâmetro (diferente do LSTM).
+        self.prewarm();
+    }
+}
+
+// =============================================================================
+// NamModel para WaveNet Dinâmico
+// =============================================================================
+
+#[cfg(target_arch = "x86_64")]
+impl NamModel for wavenet_dyn::WaveNetDynModel {
+    fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        self.process(input, output);
+    }
+
+    fn prewarm(&mut self, _num_samples: usize) {
         self.prewarm();
     }
 }

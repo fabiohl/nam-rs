@@ -20,6 +20,9 @@ use crate::models::lstm::{LstmLayer, LstmModel1, LstmModel2};
 use crate::models::wavenet::{
     Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState, WaveNetModel,
 };
+use crate::models::wavenet_dyn::{
+    Conv1dDyn, DenseLayerDyn, WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn,
+};
 
 // =============================================================================
 // WeightCursor — Leitura sequencial determinística dos pesos planificados
@@ -99,14 +102,22 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
 
 /// Detecta a topologia do WaveNet e bifurca para o construtor const-generic correto.
 fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
-    let topo = get_wavenet_topology(data)
-        .context("Topologia WaveNet desconhecida (verifique canais, dilatações e flags)")?;
+    let topo_opt = get_wavenet_topology(data);
 
-    match topo {
-        NamWavenetTopology::Standard => build_wavenet_typed::<16, 3, 8>(data, topo),
-        NamWavenetTopology::Lite => build_wavenet_typed::<12, 3, 6>(data, topo), // C++: InternalWaveNetDefinitionT<12, 6>
-        NamWavenetTopology::Feather => build_wavenet_typed::<8, 3, 4>(data, topo),
-        NamWavenetTopology::Nano => build_wavenet_typed::<4, 3, 2>(data, topo),
+    match topo_opt {
+        Some(NamWavenetTopology::Standard) => {
+            build_wavenet_typed::<16, 3, 8>(data, NamWavenetTopology::Standard)
+        }
+        Some(NamWavenetTopology::Lite) => {
+            build_wavenet_typed::<12, 3, 6>(data, NamWavenetTopology::Lite)
+        }
+        Some(NamWavenetTopology::Feather) => {
+            build_wavenet_typed::<8, 3, 4>(data, NamWavenetTopology::Feather)
+        }
+        Some(NamWavenetTopology::Nano) => {
+            build_wavenet_typed::<4, 3, 2>(data, NamWavenetTopology::Nano)
+        }
+        None => build_wavenet_dynamic(data),
     }
 }
 
@@ -250,6 +261,80 @@ fn build_wavenet_array<
         head_outputs: vec![0.0; HEAD],
         receptive_field_size,
     })
+}
+
+// =============================================================================
+// WaveNet — Construtor Dinâmico (Fallback)
+// =============================================================================
+
+fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
+    let mut cursor = WeightCursor::new(&data.weights);
+
+    if data.config.layers.len() != 2 {
+        bail!("WaveNet dinâmico exige 2 arrays");
+    }
+
+    let l0 = &data.config.layers[0];
+    let l1 = &data.config.layers[1];
+
+    let ch1 = l0.channels.context("Layer 0: sem channels")?;
+    let k1 = l0.kernel_size.unwrap_or(3);
+    let head1 = l0.head_size.context("Layer 0: sem head_size")?;
+    let dils_0 = l0.dilations.as_deref().context("Layer 0: sem dilations")?;
+    let b1 = l0.head_bias.unwrap_or(false);
+
+    let dils_1 = l1.dilations.as_deref().context("Layer 1: sem dilations")?;
+    let b2 = l1.head_bias.unwrap_or(true);
+
+    let mut alloc_num = 0usize;
+
+    let array1 = build_wavenet_array_dyn(
+        &mut cursor,
+        1,
+        1,
+        ch1,
+        k1,
+        head1,
+        dils_0,
+        b1,
+        &mut alloc_num,
+    )?;
+
+    let array2 = build_wavenet_array_dyn(
+        &mut cursor,
+        ch1,
+        1,
+        head1,
+        k1,
+        1, // HEAD2 sempre 1 para mono out
+        dils_1,
+        b2,
+        &mut alloc_num,
+    )?;
+
+    let head_scale = cursor.read_f32()?;
+
+    cursor.verify_exhausted()?;
+
+    let rf = array1.receptive_field_size.max(array2.receptive_field_size);
+
+    let model = WaveNetDynModel {
+        array1,
+        array2,
+        head_scale,
+        receptive_field_size: rf,
+        head: head1,
+    };
+
+    println!(
+        "[Dispatcher] WaveNet Dinâmico construído — CH={}, K={}, HEAD={}, PESOS={}",
+        ch1,
+        k1,
+        head1,
+        data.weights.len()
+    );
+
+    Ok(Box::new(DynamicModel(Box::new(model))))
 }
 
 // =============================================================================
@@ -458,6 +543,121 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
     Ok(layer)
 }
 
+fn read_conv1d_weights_dyn(
+    cursor: &mut WeightCursor<'_>,
+    in_size: usize,
+    out_size: usize,
+    k: usize,
+    dilation: usize,
+    do_bias: bool,
+) -> anyhow::Result<Conv1dDyn> {
+    let total = out_size * in_size * k;
+    let raw = cursor.read_slice(total)?;
+
+    let mut weights = vec![0.0f32; total];
+    let mut idx = 0;
+    for out_c in 0..out_size {
+        for in_c in 0..in_size {
+            for step in 0..k {
+                weights[out_c * k * in_size + step * in_size + in_c] = raw[idx];
+                idx += 1;
+            }
+        }
+    }
+
+    let bias = if do_bias {
+        cursor.read_slice(out_size)?.to_vec()
+    } else {
+        vec![0.0; out_size]
+    };
+
+    Ok(Conv1dDyn {
+        weights,
+        bias,
+        do_bias,
+        dilation,
+        in_ch: in_size,
+        out_ch: out_size,
+        kernel: k,
+    })
+}
+
+fn read_dense_layer_dyn(
+    cursor: &mut WeightCursor<'_>,
+    in_size: usize,
+    out_size: usize,
+    do_bias: bool,
+) -> anyhow::Result<DenseLayerDyn> {
+    let weights = cursor.read_slice(out_size * in_size)?.to_vec();
+
+    let bias = if do_bias {
+        cursor.read_slice(out_size)?.to_vec()
+    } else {
+        vec![0.0; out_size]
+    };
+
+    Ok(DenseLayerDyn {
+        weights,
+        bias,
+        do_bias,
+        in_size,
+        out_size,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_wavenet_array_dyn(
+    cursor: &mut WeightCursor<'_>,
+    in_size: usize,
+    cond_size: usize,
+    ch: usize,
+    k: usize,
+    head: usize,
+    dilations: &[usize],
+    has_head_bias: bool,
+    alloc_num: &mut usize,
+) -> anyhow::Result<WaveNetLayerArrayDyn> {
+    let rechannel = read_dense_layer_dyn(cursor, in_size, ch, false)?;
+
+    let mut layers = Vec::with_capacity(dilations.len());
+    let mut states = Vec::with_capacity(dilations.len());
+
+    for &dilation in dilations {
+        let conv1d = read_conv1d_weights_dyn(cursor, ch, ch, k, dilation, true)?;
+        let input_mixin = read_dense_layer_dyn(cursor, cond_size, ch, false)?;
+        let one_by_one = read_dense_layer_dyn(cursor, ch, ch, true)?;
+
+        layers.push(WaveNetLayerDyn {
+            conv1d,
+            input_mixin,
+            one_by_one,
+            ch,
+        });
+
+        let rf = (k - 1) * dilation;
+        states.push(WaveNetLayerState::new(ch, rf, *alloc_num));
+        *alloc_num += 1;
+    }
+
+    let head_rechannel = read_dense_layer_dyn(cursor, ch, head, has_head_bias)?;
+
+    let receptive_field_size: usize = dilations.iter().map(|&d| (k - 1) * d).sum();
+
+    Ok(WaveNetLayerArrayDyn {
+        layers,
+        states,
+        rechannel,
+        head_rechannel,
+        array_outputs: vec![0.0; ch],
+        head_accum: vec![0.0; ch],
+        head_outputs: vec![0.0; head],
+        block_buffer: vec![0.0; ch],
+        receptive_field_size,
+        ch,
+        head,
+    })
+}
+
 // =============================================================================
 // Testes Unitários
 // =============================================================================
@@ -632,19 +832,19 @@ mod tests {
     }
 
     // =========================================================================
-    // Sprint 8.3/T-4 — Rejeição de topologias não-suportadas
+    // Sprint 8.3/T-4 — Rejeição de topologias não-suportadas ou Fallback
     // =========================================================================
 
-    /// T-4: WaveNet com channels=32 não é suportado — deve retornar Err.
+    /// Transição para suporte Dinâmico: WaveNet com channels arbitrário funciona via fallback
     #[test]
-    fn test_reject_wavenet_unsupported_channels() {
-        let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-        // channels=32 não é Standard(16), Lite(12), Feather(8) ou Nano(4)
-        let data = make_wavenet_data(32, 16, &std_d, &std_d, 100_000);
+    fn test_build_wavenet_dynamic_arbitrary_channels() {
+        let std_d = [1, 2, 4];
+        let data = make_wavenet_data(24, 12, &std_d, &std_d, 9578);
         let result = build_model(&data);
         assert!(
-            result.is_err(),
-            "Deveria rejeitar WaveNet com channels=32 (topologia não suportada)"
+            result.is_ok(),
+            "Deveria carregar WaveNet com channels=24 dinamicamente: {:?}",
+            result.err()
         );
     }
 
