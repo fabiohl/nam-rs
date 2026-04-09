@@ -956,7 +956,7 @@ Auditoria pós-Sprint 10 (2026-04-09) revelou um conjunto de pendências crític
 
 ---
 
-### **Tarefa 11.2 — Bump de Versão SemVer para `0.9.0-beta.1`**
+### **Tarefa 11.2 — Bump de Versão SemVer para `0.9.0-beta.1`** [CANCELADO - WON'T DO]
 
 | Campo            | Detalhe                                                       |
 |:---------------- |:------------------------------------------------------------- |
@@ -1170,89 +1170,6 @@ Adicionar ao arquivo de testes de integração:
 
 1. O arquivo tem seu status claramente documentado (seja por teste passando, seja por remoção/relocação documentada).
 2. `cargo test` ✅.
-
----
-
-### **Tarefa 12.4 — Diretrizes de Testes Beta UX (`Beta.txt`)**
-
-| Campo            | Detalhe                                                                            |
-|:---------------- |:---------------------------------------------------------------------------------- |
-| **Achados**      | B-12 (ausência de diretrizes UX para a fase beta — requisito do TODO.txt linha 16) |
-| **Prioridade**   | 🟠 ALTA                                                                            |
-| **Módulos Alvo** | `Beta.txt` (NOVO)                                                                  |
-
-#### Especificação
-
-Criar o arquivo `Beta.txt` na raiz do repositório, delineando as diretrizes para a fase de testes beta focadas em experiência do usuário final. O arquivo deve incluir:
-
-**Estrutura proposta:**
-
-```text
-## NAM-rs — Roteiro de Testes Beta
-
-### Objetivos da Fase Beta
-[Descrever: validação em hardware real, coleta de feedback, identificação de edge cases UX]
-
-### Cenários de Teste Prioritários
-
-1. Instalação e Dependências
-   - Ubuntu 24.04+ / 26.04 fresh install
-   - Tempo de build com cold/warm cache
-   - Erros na ausência de libpipewire-0.3-dev
-
-2. Inicialização e Conexão PipeWire
-   - Aparecimento automático do nó "NAM-rs-standalone" no qpwgraph
-   - Conexão manual via pw-link
-   - Comportamento com PipeWire desligado (mensagem de erro descritiva?)
-
-3. Carregamento de Modelos
-   - .nam Standard, Lite, Feather, Nano
-   - .namb (formato Tone3000 binário)
-   - Arquivo corrompido / inexistente (mensagem de erro amigável?)
-   - Modelo muito grande (ex: 50MB+) — há latência perceptível no hot-swap?
-
-4. Hot-Swap em Tempo Real
-   - Troca de modelo SEM xrun perceptível
-   - Validar que o modelo anterior não deixa vazamento de áudio
-
-5. Ajuste de Gain
-   - --input-gain / --output-gain na inicialização
-   - Ajuste interativo via stdin durante processamento
-
-6. Estabilidade de Longa Duração
-   - Execução contínua por > 30 minutos com sinal de guitarra real
-   - Verificar ausência de xruns acumulados (journalctl / pipewire logs)
-
-7. Edge Cases de Hardware
-   - CPU sem AVX2 — mensagem de erro clara na inicialização
-   - Rate do PipeWire diferente de 48kHz (ex: 44.1kHz, 96kHz)
-   - Latência de buffer muito baixa (< 128 frames)
-
-### Métricas de Sucesso Beta
-- Zero crashes em 30 min de uso contínuo
-- Zero xruns em hardware de referência (Intel i5+ / AMD Ryzen 5+, PipeWire 1.6+)
-- Latência round-trip ≤ 10ms com buffer de 128 frames a 48kHz
-- Tempo de hot-swap de modelo < 200ms (medido do stdin Enter até primeiro frame processado)
-- Mensagens de erro compreensíveis em 100% dos cenários de falha comuns
-
-### Coleta de Feedback
-- Abrir Issues no GitHub com template: hardware, OS, PipeWire version, modelo NAM usado, descrição do problema
-```
-
-#### Critérios de Aceite
-
-1. `Beta.txt` existe na raiz do repositório com conteúdo estruturado conforme especificação.
-2. O arquivo não contém cabeçalho SPDX (é um documento de texto operacional, não código).
-3. `cargo test` e `utils/lints.sh` ✅ (o novo arquivo `.txt` não afeta o build).
-
----
-
-> **📋 Nota da Auditoria Beta — Contexto das Sprints 11 e 12 (2026-04-09):**
->
-> Varredura completa pós-Sprint 10 identificou 16 achados (2 críticos 🔴, 4 altos 🟠, 6 médios 🟡, 4 baixos 🟢).
-> O motor de inferência e a pilha RT-DSP estão sólidos — **66 testes passando** (51 unit + 12 integration + 2 proptest + 1 PW headless).
-> Os achados críticos são de higiene e versão (B-1/B-2), não de correctude algorítmica.
-> A maior lacuna de validação é a ausência dos golden vectors C++ (B-3), que torna os testes cruzados Rust ↔ NeuralAudio inoperantes.
 
 ---
 

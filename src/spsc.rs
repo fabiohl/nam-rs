@@ -84,10 +84,6 @@ pub enum ParamPayload {
         /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
         output_db_adj: f32,
     },
-    /// Solicita recriação dos resamplers com nova taxa de amostragem do PipeWire.
-    /// Enviado pela CLI quando o usuário solicita mudança de sample rate.
-    /// A thread principal intercepta e constrói o resampler fora do callback RT.
-    SetSampleRate(u32),
 }
 
 /// Resultado da inicialização SPSC: canais de parâmetros, GC de modelos,
@@ -171,10 +167,6 @@ mod tests {
                             processed_messages += 1;
                         }
                         ParamPayload::LoadModel { model: _, .. } => {
-                            processed_messages += 1;
-                        }
-                        // SetSampleRate não é enviado neste teste; tratado para exaustão do match.
-                        ParamPayload::SetSampleRate(_) => {
                             processed_messages += 1;
                         }
                     }

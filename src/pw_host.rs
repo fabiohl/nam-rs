@@ -201,8 +201,7 @@ pub fn run_pipewire_host(
                             output_db_adj,
                         } => {
                             let mut new_model = model;
-                            if let Some(ref mut m) = new_model {
-                                m.0.prewarm(2048);
+                            if let Some(ref mut _m) = new_model {
                                 model_input_db_adj = input_db_adj;
                                 model_output_db_adj = output_db_adj;
                             } else {
@@ -222,11 +221,6 @@ pub fn run_pipewire_host(
                         ParamPayload::OutputGain(gain_db) => {
                             user_output_gain_db = gain_db;
                             param_changed = true;
-                        }
-                        ParamPayload::SetSampleRate(_) => {
-                            // SetSampleRate é interceptado pela thread principal (não pelo callback).
-                            // Se chegar aqui, é um vestígio — ignorado silenciosamente.
-                            // A thread principal já monitora o SPSC e constrói o resampler.
                         }
                     }
                 }

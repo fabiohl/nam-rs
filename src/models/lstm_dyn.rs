@@ -91,6 +91,13 @@ impl LstmDynLayer {
         }
     }
 
+    #[cfg(not(target_arch = "x86_64"))]
+    pub unsafe fn process_sample(&mut self, _input: &[f32], _math: &SimdMathConfig) {
+        compile_error!(
+            "LstmDynModel requer x86_64 com AVX2. Implementação escalar não disponível."
+        );
+    }
+
     /// Retorna a fração visível oculta do estado transiente para passar entre layers.
     #[inline(always)]
     pub fn get_hidden_state(&self) -> &[f32] {
@@ -130,6 +137,14 @@ impl LstmDynModel {
                 unsafe { (math.dot_product)(&self.head_weights, hidden_out) } + self.head_bias;
             output[i] = head_out;
         }
+    }
+
+    /// Processamento Síncrono de Áudio (Fallback)
+    #[cfg(not(target_arch = "x86_64"))]
+    pub fn process(&mut self, _input: &[f32], _output: &mut [f32]) {
+        compile_error!(
+            "LstmDynModel requer x86_64 com AVX2. Implementação escalar não disponível."
+        );
     }
 
     /// Executa o aquecimento do loop inicial da máquina transiente.
