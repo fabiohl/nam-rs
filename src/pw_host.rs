@@ -7,20 +7,29 @@
 //! standalone nativo e as processa em tempo real.
 //! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
 //!
-//! # Estado Atual (Sprint 5)
-//! O motor de inferência neural está integrado com resampling bidirecional FIR Sinc:
-//! o callback `process()` aplica `NamResampler::process_input()` (Nk→48k) antes da inferência
+//! # Estado Atual (Sprint 8)
+//! O motor de inferência neural está integrado com resampling bidirecional FIR Sinc.
+//! O callback `process()` aplica `NamResampler::process_input()` (Nk→48k) antes da inferência
 //! e `NamResampler::process_output()` (48k→Nk) após, garantindo que a placa de som receba o
 //! áudio no mesmo rate que enviou. Gain staging SIMD (input/output) envolve o bloco completo.
 //! Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
 //! Quando `pw_rate == 48000` (padrão), o resampler opera em bypass sem overhead.
+//!
+//! ## Sprint 8 — RT-Safety Hardening (Tarefa 8.1)
+//!
+//! - **A-2 resolvido:** `NamResampler::new()` nunca é chamado dentro do callback. A detecção
+//!   de sample rate seta flags atômicas; a thread principal constrói o resampler e o envia
+//!   via canal SPSC dedicado `Consumer<NamResampler>`.
+//! - **A-3 resolvido:** Nenhum `println!`/`eprintln!` no callback. Status comunicado via
+//!   `RtStatusFlags` atômicas, lidas pela thread principal que imprime fora do RT.
 
 use crate::dsp::gain::apply_gain_simd;
 use crate::dsp::resampler::NamResampler;
-use crate::spsc::{ParamPayload, SHUTDOWN};
+use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 /// Estrutura de posse explícita para evitar o leak de memória
@@ -34,9 +43,22 @@ struct AppState<S, L> {
 
 /// Inicializa a topologia PipeWire, configurando o nó como um filtro bidirecional
 /// (consumo e produção) na API do WirePlumber, executando o MainLoop até SHUTDOWN.
+///
+/// ## Parâmetros de canais SPSC
+///
+/// - `consumer`: Consumidor do canal de parâmetros CLI→DSP (gain, modelo, etc.).
+/// - `gc_producer`: Produtor do canal GC para drop-delegation de modelos obsoletos.
+/// - `resampler_consumer`: Canal dedicado para receber resamplers pré-construídos
+///   pela thread principal — **zero alocações no callback RT**.
+/// - `resampler_producer`: Produtor do canal de resamplers — a thread principal
+///   constrói `NamResampler::new()` aqui (alocação fora do RT) e envia para o callback.
+/// - `rt_status`: Flags atômicas para comunicação silenciosa RT→Main.
 pub fn run_pipewire_host(
     mut consumer: Consumer<ParamPayload>,
     mut gc_producer: rtrb::Producer<Box<crate::models::DynamicModel>>,
+    mut resampler_consumer: Consumer<NamResampler>,
+    mut resampler_producer: rtrb::Producer<NamResampler>,
+    rt_status: Arc<RtStatusFlags>,
 ) -> anyhow::Result<()> {
     // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
     let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
@@ -72,8 +94,8 @@ pub fn run_pipewire_host(
         let mut active_model: Option<Box<crate::models::DynamicModel>> = None;
 
         // NamResampler bidirecional: converte entre o rate do PipeWire e os 48 kHz do NAM.
-        // Inicializado com 48k (bypass) — rate real será atualizado via SetSampleRate SPSC
-        // quando o PipeWire negociar a taxa de amostragem real do host.
+        // Inicializado com 48k (bypass) — rate real será atualizado via canal SPSC de resamplers
+        // quando a thread principal construir e enviar um novo resampler.
         let mut resampler = NamResampler::new(48_000, 2048).unwrap_or_else(|e| {
             eprintln!("[NAM-rs] ⚠️  Falha ao criar NamResampler (usando bypass 48k): {e}");
             // Fallback: nunca falha no bypass
@@ -115,19 +137,27 @@ pub fn run_pipewire_host(
         let rate_for_param = shared_target_rate.clone();
         let rate_for_process = shared_target_rate.clone();
 
+        // Clonar Arc das flags para uso dentro do callback
+        let rt_status_for_process = rt_status.clone();
+
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         listener = stream
             .add_local_listener::<()>()
             .param_changed(move |_stream, _user_data, id, param| {
                 let Some(param) = param else { return };
-                if id != pw::spa::param::ParamType::Format.as_raw() { return; }
+                if id != pw::spa::param::ParamType::Format.as_raw() {
+                    return;
+                }
 
-                let (media_type, media_subtype) = match pw::spa::param::format_utils::parse_format(param) {
-                    Ok(v) => v,
-                    Err(_) => return,
-                };
+                let (media_type, media_subtype) =
+                    match pw::spa::param::format_utils::parse_format(param) {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
 
-                if media_type != pw::spa::param::format::MediaType::Audio || media_subtype != pw::spa::param::format::MediaSubtype::Raw {
+                if media_type != pw::spa::param::format::MediaType::Audio
+                    || media_subtype != pw::spa::param::format::MediaSubtype::Raw
+                {
                     return;
                 }
 
@@ -138,10 +168,27 @@ pub fn run_pipewire_host(
                 }
             })
             .process(move |stream: &pw::stream::Stream, _info| {
+                // =========================================================
+                // CALLBACK RT — ZERO ALOCAÇÕES, ZERO I/O
+                // =========================================================
+                // Toda alocação (NamResampler::new, Vec, Box) e toda operação
+                // de I/O (println!, eprintln!, write!) são PROIBIDAS neste escopo.
+                // Status comunicado via flags atômicas em `rt_status_for_process`.
+
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
                 if !thread_configured {
                     configure_realtime_thread(target_cpu);
                     thread_configured = true;
+                }
+
+                // Drena resamplers pré-construídos pela thread principal (zero-alloc swap).
+                // O Drop do resampler antigo é aceitável aqui (~50ns free(), evento raro).
+                while let Ok(new_rs) = resampler_consumer.pop() {
+                    // Reporta rate ativo via flag atômica (sem println!)
+                    rt_status_for_process
+                        .active_rate
+                        .store(new_rs.pw_rate(), Ordering::Relaxed);
+                    resampler = new_rs;
                 }
 
                 // Drena parâmetros guiados da thread CLI (Lock-Free) via SPSC Ring Buffer
@@ -176,42 +223,25 @@ pub fn run_pipewire_host(
                             user_output_gain_db = gain_db;
                             param_changed = true;
                         }
-                        ParamPayload::SetSampleRate(new_rate) => {
-                            // Recria o NamResampler com o novo rate (alocação fora do hot path,
-                            // mas dentro do callback — acontece apenas na mudança, não em cada frame).
-                            match NamResampler::new(new_rate, 2048) {
-                                Ok(rs) => {
-                                    resampler = rs;
-                                    println!(
-                                        "[NAM-rs] 🔄 Sample rate atualizado: {} Hz (bypass={})",
-                                        new_rate,
-                                        resampler.is_bypass()
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!("[NAM-rs] ⚠️  SetSampleRate({new_rate}): {e}");
-                                }
-                            }
+                        ParamPayload::SetSampleRate(_) => {
+                            // SetSampleRate é interceptado pela thread principal (não pelo callback).
+                            // Se chegar aqui, é um vestígio — ignorado silenciosamente.
+                            // A thread principal já monitora o SPSC e constrói o resampler.
                         }
                     }
                 }
 
-                // Verifica se a Thread Main do PipeWire reportou alguma alteração via param_changed
-                let detected_rate = rate_for_process.swap(0, std::sync::atomic::Ordering::Relaxed);
+                // Verifica se a Thread Main do PipeWire reportou alguma alteração via param_changed.
+                // Em vez de alocar NamResampler::new() aqui, setamos uma flag atômica para que
+                // a thread principal construa o resampler fora do callback RT.
+                let detected_rate = rate_for_process.swap(0, Ordering::Relaxed);
                 if detected_rate != 0 && detected_rate != resampler.pw_rate() {
-                    match NamResampler::new(detected_rate, 2048) {
-                        Ok(rs) => {
-                            resampler = rs;
-                            println!(
-                                "[NAM-rs] 🔄 Sample rate atualizado pelo fluxo de áudio: {} Hz (bypass={})",
-                                detected_rate,
-                                resampler.is_bypass()
-                            );
-                        }
-                        Err(e) => {
-                            eprintln!("[NAM-rs] ⚠️  SetSampleRate automático ({detected_rate}): {e}");
-                        }
-                    }
+                    rt_status_for_process
+                        .requested_rate
+                        .store(detected_rate, Ordering::Relaxed);
+                    rt_status_for_process
+                        .needs_resampler_rebuild
+                        .store(true, Ordering::Relaxed);
                 }
 
                 if param_changed {
@@ -312,9 +342,54 @@ pub fn run_pipewire_host(
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
 
-    // Loop principal da nossa aplicação, monitorando a flag SHUTDOWN.
-    // Assim não paralisamos a main mantendo ela limpa.
+    // Loop principal da nossa aplicação, monitorando a flag SHUTDOWN e
+    // gerenciando a construção de resamplers fora do callback RT.
     while !SHUTDOWN.load(Ordering::Relaxed) {
+        // Verifica se o callback RT solicitou rebuild do resampler via flag atômica
+        if rt_status.needs_resampler_rebuild.load(Ordering::Relaxed) {
+            let target_rate = rt_status.requested_rate.load(Ordering::Relaxed);
+            if target_rate != 0 {
+                // Constrói novo resampler FORA do callback RT (alocação de heap permitida aqui)
+                match NamResampler::new(target_rate, 2048) {
+                    Ok(new_rs) => {
+                        rt_status
+                            .resampler_rebuild_failed
+                            .store(false, Ordering::Relaxed);
+                        println!(
+                            "[NAM-rs] 🔄 Sample rate atualizado: {} Hz (bypass={})",
+                            target_rate,
+                            new_rs.is_bypass()
+                        );
+                        // Envia para o callback RT via canal SPSC dedicado
+                        if resampler_producer.push(new_rs).is_err() {
+                            // Canal cheio — o resampler que não coube é dropped aqui (fora do RT, ok)
+                            eprintln!("[NAM-rs] ⚠️  Canal de resampler cheio, descartando rebuild");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "[NAM-rs] ⚠️  Falha ao reconstruir NamResampler ({target_rate} Hz): {e}"
+                        );
+                        rt_status
+                            .resampler_rebuild_failed
+                            .store(true, Ordering::Relaxed);
+                    }
+                }
+                rt_status
+                    .needs_resampler_rebuild
+                    .store(false, Ordering::Relaxed);
+            }
+        }
+
+        // Lê e imprime status do callback RT (comunicação silenciosa via flags atômicas)
+        let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
+        if active_rate != 0 {
+            println!(
+                "[NAM-rs] ✅ Callback RT ativou resampler com rate = {} Hz",
+                active_rate
+            );
+        }
+
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 

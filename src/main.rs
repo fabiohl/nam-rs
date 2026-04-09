@@ -208,7 +208,14 @@ fn main() -> anyhow::Result<()> {
     })
     .expect("Erro ao configurar handler de Ctrl-C");
 
-    let (mut producer, consumer, gc_producer, mut gc_consumer) = spsc::setup_spsc(64);
+    let channels = spsc::setup_spsc(64);
+    let mut producer = channels.param_producer;
+    let consumer = channels.param_consumer;
+    let gc_producer = channels.gc_producer;
+    let mut gc_consumer = channels.gc_consumer;
+    let resampler_producer = channels.resampler_producer;
+    let resampler_consumer = channels.resampler_consumer;
+    let rt_status = channels.rt_status;
 
     // 2. Thread GC para "Drop-Delegation" lock-free
     std::thread::spawn(move || {
@@ -234,7 +241,13 @@ fn main() -> anyhow::Result<()> {
         cli_loop(producer);
     });
 
-    pw_host::run_pipewire_host(consumer, gc_producer)?;
+    pw_host::run_pipewire_host(
+        consumer,
+        gc_producer,
+        resampler_consumer,
+        resampler_producer,
+        rt_status,
+    )?;
 
     unsafe {
         pipewire::deinit();
