@@ -3,11 +3,12 @@ Usando a skill "revisor-auditor" promova uma detalhado análise com vista a prep
 * A pasta github.com/mikeoliphant/NeuralAudio/ contém a base de código em C++ da implemntação de referência do NAM.
 * Faça uma meticulosa comparação com o nosso projeto em rust (src/*) assegurando que todas as funcionalidades estão implementadas - respeitando o espírito e os objetivos do projeto.
 * Verifique se o código (src/* e tests/*) e a documentação (README.md e docs/*) atuais estão aderentes ao escopo do projeto (docs/NAM-rs-referência.md).
+* Caçar bugs de todos os tipos.
 * Caçar o máximo de testes automatizados bons e realmente úteis - inclusive na internet aberta geral. Verifique se os atuais existentes estão em boa qualidade e se é possível melhorar ou substituir algum deles.
 * A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma nova sprint ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas.
 
 ## Lançamento Beta:
-* Usando a skill "revisor-auditor" promova uma organização geral do código em prol de legibilidade e manutenibilidade. Remover artefatos desnecessários.
+* Usando a skill "revisor-auditor" promova uma organização geral do código em prol de legibilidade e manutenibilidade. Remover artefatos desnecessários. Caçar bugs de todos os tipos.
 * Usando a skill "pesquisador-inovador" revise todas as definições de IA na pasta ".agents/" para garantir que estão aderentes ao estado atual do projeto.
 * Use a skill "documentador" para revisar completamente os comentários de código fonte em prol do entendimento fácil para leigos em Rust e em DSP/Áudio.
 * Revisar "docs/architecture.md" totalmente como a "biblia" geral de arquitetura. A ponto de tornar "docs/NAM-rs-referência.md" e "docs/NAM-rs-sprints.md" totalmente desnecessários e apaga-los.
@@ -96,3 +97,22 @@ Usando a skill "revisor-auditor" promova uma detalhado análise com vista a prep
 #
 #   Modelos com topologias fora dessas serão rejeitados pelo dispatcher.
 # ============================================================================
+
+Vamos analisar as orientações de testes ao final do TODO.txt.
+Segue anexo o resultado do "cargo test" e do "cargo bench":
+Vamos assegurar que os testes e benches estão devidamente configurados e fáceis de manter.
+Ao final, também garantir que a seção "6. Política de Testes" de "docs/architecture.md" esteja atualizada e correta.
+
+Aparentemente 51 testes unitários foram identificados e executados com sucesso. Nenhum foi deixado pra trás?
+Houveram 0 "unittests src/main.rs". É isso mesmo.
+Finalmente Houveram 9 testes "Golden Vectors". Estão todos lá?
+
+Notei que Temos `utils/golden_gen_build.sh` e `utils/golden_gen.cpp` em `utils/`. Este é o local correto deles estarem, já que eles fazem parte da suíte de testes?
+
+Outra coisa. Não percebi o uso dos arquivos .nam nos testes. Será que eles não foram localizados?
+Temos replicados em `` e em `` vários arquivos .nam fornecido pelo projeto original.
+De todo modo penso não ser um bom lugar para buscar porque este código não ficará lá para sempre.
+Seria uma boa prática adotar outro local mais coerente a este projeto rust e configurar os testes e benches pra localiza-los lá?
+
+Verifique também se tudo foi devidamente identificado no "cargo bench".
+Seria interessante, se não for muito complexo, tornar as mensagens (especialmente de bench) mais explicativas do que isto significa na prática.

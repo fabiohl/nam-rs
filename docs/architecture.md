@@ -96,7 +96,7 @@ PipeWire Input (Nk Hz)
 
 - `rubato 2.0.0`: considerar quando `audioadapter` estabilizar; a API pública de `NamResampler` não muda.
 
-## 6. Política de Testes
+## 6. Política de Testes (`cargo test` e `cargo bench`)
 
 O projeto adota a convenção idiomática do Rust, com duas camadas complementares:
 
