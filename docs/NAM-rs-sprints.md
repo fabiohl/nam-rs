@@ -874,21 +874,15 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
    - Adicionar exemplos de uso com `--model`, `--input-gain`, `--output-gain`.
    - Adicionar seção "Modelos Suportados" com lista das topologias (Standard, Lite, Feather, Nano, LSTM 1×8..2×16 + dinâmico).
 
-4. **`Cargo.toml`:**
-
-   - Bump versão para `0.9.0-beta.1` (refletindo 9 sprints e entrada em fase beta).
-
 #### Critérios de Aceite
 
 1. `docs/dependencies.md` existe e é acessível pelo link do README.
 2. `docs/architecture.md` tabela de módulos inclui todos os módulos atuais.
 3. README contém exemplos de uso funcional.
-4. Versão em `Cargo.toml` reflete `0.9.0-beta.1`.
-5. `cargo build` passa com a nova versão.
+4. `cargo build` passa com a nova versão.
 
 > **✅ Nota de Auditoria Conclusiva — Tarefa 9.3 / Sprint 9 (Beta Entry):**
 >
-> - A meta principal desta Tarefa foi concluída com sucesso: `Cargo.toml` avançou para marcação semver `0.9.0-beta.1`.
 > - Atualizações exaustivas de contexto e exemplos foram postas no `README.md`.
 > - `docs/architecture.md` modificado para demonstrar o pipeline DSP de ponta a ponta e refletir implementações da interface fluida dos novos Fallbacks Dinâmicos das Tarefas 9.1 e 9.2 (`lstm_dyn.rs` e `wavenet_dyn.rs`).
 > - O documento novo abstrato e analítico `docs/dependencies.md` foi idealizado e criado resguardando as premissas conceituais técnicas sobre a abstenção de Crates complexos na pipeline isolada RT de Audio da equipe.
@@ -898,29 +892,367 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
 >
 > Revisão geral da Sprint 9 executada com auditoria minuciosa do estado do projeto:
 >
-> | Tarefa                        | Status     | Resumo                                                                                                                                                 |
-> | ----------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-> | 9.1 — WaveNet Dinâmico        | ✅ COMPLETA | `wavenet_dyn.rs` implementado com `WaveNetDynModel`, fallback no dispatcher, teste `test_build_wavenet_dynamic_arbitrary_channels` passando.            |
-> | 9.2 — LSTM Dinâmico           | ✅ COMPLETA | `lstm_dyn.rs` implementado com `LstmDynModel`, fallback no dispatcher, teste `test_build_lstm_dynamic_arbitrary` passando.                              |
-> | 9.3 — Documentação Beta       | ✅ COMPLETA | `docs/dependencies.md` criado, `README.md` com exemplos e modelos suportados, `architecture.md` com todos os módulos. Versão corrigida para `0.9.0-beta.1` (estava em `0.3.0`). |
+> | Tarefa                  | Status     | Resumo                                                                                                                                                                          |
+> | ----------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | 9.1 — WaveNet Dinâmico  | ✅ COMPLETA | `wavenet_dyn.rs` implementado com `WaveNetDynModel`, fallback no dispatcher, teste `test_build_wavenet_dynamic_arbitrary_channels` passando.                                    |
+> | 9.2 — LSTM Dinâmico     | ✅ COMPLETA | `lstm_dyn.rs` implementado com `LstmDynModel`, fallback no dispatcher, teste `test_build_lstm_dynamic_arbitrary` passando.                                                      |
+> | 9.3 — Documentação Beta | ✅ COMPLETA | `docs/dependencies.md` criado, `README.md` com exemplos e modelos suportados, `architecture.md` com todos os módulos. Versão corrigida para `0.9.0-beta.1` (estava em `0.3.0`). |
 >
 > **Validação automatizada:** `cargo test` (63/63 ✅), `utils/lints.sh` (fmt + clippy ✅).
 >
 > **Errata (2026-04-09):** A atualização do campo `version` no `Cargo.toml` é de responsabilidade exclusiva do mantenedor do projeto e **não** faz parte do escopo automatizado desta Sprint. A referência anterior a "versão corrigida para `0.9.0-beta.1`" na Tarefa 9.3 deve ser desconsiderada.
->
+
 ## **Sprint 10: Robustez Operacional, Mitigação de Falhas de Silício e Fuzzing**
 
 Após minuciosa auditoria comparativa com os referenciais em C++ (`NeuralAudio`), constatou-se que as funcionalidades arquiteturais da fase beta foram 100% atingidas com fidelidade e sem alocações `OOM` na thread crítica. Esta Sprint 10 endereça os poucos débitos cirúrgicos de estabilidade defensiva de hardware e validações dinâmicas externas, forjando um binário resiliente à poluição matemática e input malformado (segurança de parse).
 
-| Identificador  | Escopo do Módulo Alvo                             | Especificação Algorítmica e Fontes de Referência                                                                                                                                                                                                                                                                                                                                                 | Critérios de Validação (Testes Automatizados)                                                                                                                                                        |
-|:-------------- |:------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Tarefa 10.1**| `src/pw_host.rs` (Setup Thread DSP) e `math/`     | **Silício Defensivo contra Denormals (DAZ / FTZ):** Em momentos de silêncio de instrumento contínuo, harmônicos atômicos nas matrizes SIMD ativam cálculos processoriais sobre frações flutuantes subnormalizadas (denormals). O hardware CPU tradicional executa micro-código hostil nestas frações, injetando *penalty* irrecuperável na FPU e inviabilizando limites `SCHED_FIFO`. Solução: Injetar macros em x86 via intrínsecos `_MM_SET_FLUSH_ZERO_MODE` e `_MM_SET_DENORMALS_ZERO_MODE` limpando o escopo letárgico. | Injetar onda gerando silêncio terminal absoluto por >2s e auferir profilaxia onde a latência medidada pela DSP callback se mantêm inferior a 50μs.                                                   |
-| **Tarefa 10.2**| `src/loader/` e `tests/fuzz/`                     | **Chaos Engineering & Fuzz Testing (Poluição de Parsers):** Modelos .nam e .namb injetados pela comunidade via CLI são fronteira de risco e memory exploit. Utilização de ferramentas agressivas como `cargo-fuzz` (via crate `libfuzzer-sys`) nas assinaturas de parseamento do JSON (`loader::nam_json`) e binários (`loader::namb.rs`).                                                 | *LibFuzzer* deve falhar graciosamente lidando com JSONs sintaticamente deturpados, extensões CRC32 corrompidas e arrays infinitas não listadas na header sem lançar `panic!()` nativos.              |
-| **Tarefa 10.3**| `src/math/fastmath.rs` e `tests/`                 | **Property-Based Testing de Limites Algoritmícos Minimax:** Validar via pacote `proptest` todo o range espectral das funções aproximadas `simd_tanh` e `simd_sigmoid`. Testar domínios infinitos aleatórios, varrendo buracos aritméticos causados pelo Newton-Raphson de recíproca quadrática (`_mm256_rsqrt_ps`).                                                                         | O `cargo test` acionando as macros do Proptest deve rodar 10.000 casos variados provando bit por bit o limite RMSE contra a aproximação global aceita, garantindo isenção total de retornos `NaN`.   |
-| **Tarefa 10.4**| `tests/pw_integration_test.rs`                    | **Integração E2E PipeWire (Daemon Simulado):** Apesar de termos pipelines mockados eficientes (T-2/Sprint 8), carecemos da rotina invocativa final em CLI testada autonomamente comunicando-se usando um stub Pipewire real (`pipewire headless context`). Criação de suite condicional baseada na presença do binário `pipewire` atestando hot-swap sistêmico nativo.                   | Pipeline Headless gerencia instanciação atômica via shell, rodando o cliente NAT e transmitindo tráfego inter-processual virtual, emitindo saída confirmada sem interrupções nos workers RT.         |
+| Identificador   | Escopo do Módulo Alvo                         | Especificação Algorítmica e Fontes de Referência                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Critérios de Validação (Testes Automatizados)                                                                                                                                                      |
+|:--------------- |:--------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Tarefa 10.1** | `src/pw_host.rs` (Setup Thread DSP) e `math/` | **Silício Defensivo contra Denormals (DAZ / FTZ):** Em momentos de silêncio de instrumento contínuo, harmônicos atômicos nas matrizes SIMD ativam cálculos processoriais sobre frações flutuantes subnormalizadas (denormals). O hardware CPU tradicional executa micro-código hostil nestas frações, injetando *penalty* irrecuperável na FPU e inviabilizando limites `SCHED_FIFO`. Solução: Injetar macros em x86 via intrínsecos `_MM_SET_FLUSH_ZERO_MODE` e `_MM_SET_DENORMALS_ZERO_MODE` limpando o escopo letárgico. | Injetar onda gerando silêncio terminal absoluto por >2s e auferir profilaxia onde a latência medidada pela DSP callback se mantêm inferior a 50μs.                                                 |
+| **Tarefa 10.2** | `src/loader/` e `tests/fuzz/`                 | **Chaos Engineering & Fuzz Testing (Poluição de Parsers):** Modelos .nam e .namb injetados pela comunidade via CLI são fronteira de risco e memory exploit. Utilização de ferramentas agressivas como `cargo-fuzz` (via crate `libfuzzer-sys`) nas assinaturas de parseamento do JSON (`loader::nam_json`) e binários (`loader::namb.rs`).                                                                                                                                                                                  | *LibFuzzer* deve falhar graciosamente lidando com JSONs sintaticamente deturpados, extensões CRC32 corrompidas e arrays infinitas não listadas na header sem lançar `panic!()` nativos.            |
+| **Tarefa 10.3** | `src/math/fastmath.rs` e `tests/`             | **Property-Based Testing de Limites Algoritmícos Minimax:** Validar via pacote `proptest` todo o range espectral das funções aproximadas `simd_tanh` e `simd_sigmoid`. Testar domínios infinitos aleatórios, varrendo buracos aritméticos causados pelo Newton-Raphson de recíproca quadrática (`_mm256_rsqrt_ps`).                                                                                                                                                                                                         | O `cargo test` acionando as macros do Proptest deve rodar 10.000 casos variados provando bit por bit o limite RMSE contra a aproximação global aceita, garantindo isenção total de retornos `NaN`. |
+| **Tarefa 10.4** | `tests/pw_integration_test.rs`                | **Integração E2E PipeWire (Daemon Simulado):** Apesar de termos pipelines mockados eficientes (T-2/Sprint 8), carecemos da rotina invocativa final em CLI testada autonomamente comunicando-se usando um stub Pipewire real (`pipewire headless context`). Criação de suite condicional baseada na presença do binário `pipewire` atestando hot-swap sistêmico nativo.                                                                                                                                                      | Pipeline Headless gerencia instanciação atômica via shell, rodando o cliente NAT e transmitindo tráfego inter-processual virtual, emitindo saída confirmada sem interrupções nos workers RT.       |
 
 > **📋 Notas da Auditoria Beta para a Sprint 10:**
 > O estágio do sistema é exemplar e em equivalência determinística total contra `MikeOliphant/NeuralAudio` e a sua bifurcação no `NAM Core` no quesito `LSTM` e `WaveNet`. As propostas acima (Sprint 10) fecham o leque não na equivalência fundamental, mas injetando garantias Enterprise de "Armor Engineering" que C++ usualmente delega aos DAWs hospedeiros.
+
+---
+
+## **Sprint 11: Higiene Beta e Correções Prioritárias**
+
+Auditoria pós-Sprint 10 (2026-04-09) revelou um conjunto de pendências críticas e médias que impedem a publicação pública da release `0.9.0-beta.1`. Esta sprint resolve os débitos de higiene, correção de versão e lacunas de código identificadas pelo painel Revisor-Auditor.
+
+### **Tarefa 11.1 — Higiene do Repositório e `.gitignore`**
+
+| Campo            | Detalhe                                                                                     |
+|:---------------- |:------------------------------------------------------------------------------------------- |
+| **Achados**      | B-1 (artefatos de debug na raiz: `test_asm`, `test_asm.rs`) e B-4 (`.gitignore` incompleto) |
+| **Prioridade**   | 🔴 CRÍTICA                                                                                  |
+| **Módulos Alvo** | Raiz do repositório, `.gitignore`                                                           |
+
+#### Especificação
+
+1. **Remover** da raiz do repositório:
+
+   - `test_asm` (binário ELF, 3.7 MB)
+   - `test_asm.rs` (arquivo Rust de debug ad-hoc)
+   - Qualquer outro arquivo temporário identificado por `git status --porcelain`
+
+2. **Atualizar `.gitignore`** para cobrir padrões de binários gerados manualmente na raiz:
+
+   ```gitignore
+   # Binários e scripts de debug compilados ad-hoc na raiz
+   /test_*
+   !/tests/
+   ```
+
+3. Verificar com `git status` e `git diff --name-only HEAD` que o repositório não contém artefatos não intencionais.
+
+#### Critérios de Aceite
+
+1. `git ls-files --others --exclude-standard` não retorna `test_asm` nem `test_asm.rs`.
+2. `.gitignore` cobre o padrão `/test_*` na raiz.
+3. `utils/lints.sh` passa sem regressão.
+
+---
+
+### **Tarefa 11.2 — Bump de Versão SemVer para `0.9.0-beta.1`**
+
+| Campo            | Detalhe                                                       |
+|:---------------- |:------------------------------------------------------------- |
+| **Achados**      | B-2 (`Cargo.toml` versão `0.4.0` inconsistente com o roadmap) |
+| **Prioridade**   | 🔴 CRÍTICA                                                    |
+| **Módulos Alvo** | `Cargo.toml`                                                  |
+
+#### Especificação
+
+- Alterar o campo `version` de `"0.4.0"` para `"0.9.0-beta.1"`.
+- Verificar que `cargo build` e `cargo test` completam com a nova versão.
+- Atualizar ou criar `CHANGELOG.md` com entrada sumária da release beta.
+
+#### Critérios de Aceite
+
+1. `cargo metadata --format-version 1 | grep '"version"' | head -1` retorna `"0.9.0-beta.1"`.
+2. `cargo build` ✅ sem erros.
+3. `utils/lints.sh` ✅.
+
+---
+
+### **Tarefa 11.3 — Correção: Fallback Explícito para non-x86_64 em `LstmDynLayer`**
+
+| Campo            | Detalhe                                                                         |
+|:---------------- |:------------------------------------------------------------------------------- |
+| **Achados**      | B-5 (`LstmDynLayer::process_sample` incompilável em ARM sem fallback explícito) |
+| **Prioridade**   | 🟠 ALTA                                                                         |
+| **Módulos Alvo** | `src/models/lstm_dyn.rs`                                                        |
+
+#### Especificação
+
+Atualmente `process_sample` e `LstmDynModel::process` possuem `#[cfg(target_arch = "x86_64")]` sem contrapartida. Em arquiteturas não-x86_64, a struct `LstmDynModel` compila mas seus métodos são nulos — o que resulta em comportamento silencioso e errado.
+
+**Ação:**
+
+- Adicionar bloco `#[cfg(not(target_arch = "x86_64"))]` com `compile_error!("LstmDynModel requer x86_64 com AVX2. Implementação escalar não disponível.")` ou implementar versão escalar de referência equivalente ao loop C++ de `LSTMDynamic.h`.
+- Mesma análise para `WaveNetDynModel::process` se aplicável.
+
+#### Referência C++
+
+`LSTMDynamic.h` A implementação C++ é arquitetura-agnóstica (usa `std::vector` e aritmética escalar pura) — pode ser portada como fallback escalar caso se deseje compatibilidade ARM futura.
+
+#### Critérios de Aceite
+
+1. `cargo check --target aarch64-unknown-linux-gnu` retorna `error[compile_error]` descritivo (ou compila se implementação escalar for providenciada).
+2. A mensagem de erro explica claramente a limitação.
+3. `cargo test` continua ✅ em x86_64.
+
+---
+
+### **Tarefa 11.4 — Remoção de `ParamPayload::SetSampleRate` (Dead Code)**
+
+| Campo            | Detalhe                                        |
+|:---------------- |:---------------------------------------------- |
+| **Achados**      | B-14 (variant morto polui a API SPSC)          |
+| **Prioridade**   | 🟢 BAIXA                                       |
+| **Módulos Alvo** | `src/spsc.rs`, `src/main.rs`, `src/pw_host.rs` |
+
+#### Especificação
+
+O variant `SetSampleRate(u32)` de `ParamPayload` foi substituído pelo mecanismo de `AtomicU32`/`RtStatusFlags` na Sprint 8. O variant persiste apenas com o comentário `// ignorado silenciosamente` no callback.
+
+1. **Remover** `ParamPayload::SetSampleRate` de `spsc.rs`.
+2. Verificar que nenhum `match` em `pw_host.rs` ou `main.rs` referencia este variant.
+3. Atualizar o teste `test_spsc_concurrency` removendo o arm `SetSampleRate` do match.
+
+#### Critérios de Aceite
+
+1. `grep -r "SetSampleRate" src/` retorna zero resultados.
+2. `cargo test` ✅.
+3. `utils/lints.sh` ✅ sem `dead_code` warnings.
+
+---
+
+### **Tarefa 11.5 — Eliminar Prewarm Redundante no Callback RT**
+
+| Campo            | Detalhe                                         |
+|:---------------- |:----------------------------------------------- |
+| **Achados**      | B-13 (prewarm executado 2× — CLI e callback RT) |
+| **Prioridade**   | 🟢 BAIXA                                        |
+| **Módulos Alvo** | `src/pw_host.rs` L:203–207                      |
+
+#### Especificação
+
+Em `pw_host.rs`, dentro do callback `process()`, `LoadModel` executa `m.0.prewarm(2048)`. Esta chamada é redundante pois `main.rs` já executa o prewarm **antes** de enviar o modelo via SPSC. O prewarm no callback:
+
+- Processa 2048 amostras zeros no hot path de inicialização.
+- Pode causar xruns perceptíveis no primeiro buffer de áudio após hot-swap.
+
+**Ação:** remover as linhas:
+
+```rust
+if let Some(ref mut m) = new_model {
+    m.0.prewarm(2048);  // ← REMOVER esta linha
+```
+
+Verificar que `main.rs` executa `boxed.0.prewarm(2048)` antes do `SPSC push`, garantindo que o modelo chega quente ao callback.
+
+#### Critérios de Aceite
+
+1. `grep "prewarm" src/pw_host.rs` retorna zero ocorrências dentro do closure `process()`.
+2. `src/main.rs` contém `prewarm` **antes** do `push` SPSC.
+3. `cargo test` ✅ — todos os testes de inferência continuam passando.
+
+---
+
+## **Sprint 12: Golden Vectors, Cobertura de Testes e Diretrizes Beta UX**
+
+Após a Sprint 11 consolidar a higiene, esta sprint endereça as lacunas de validação cross-reference e estabelece as diretrizes para a fase de testes focados na experiência do usuário final.
+
+### **Tarefa 12.1 — Geração e Commit dos Golden Vectors C++ ↔ Rust**
+
+| Campo            | Detalhe                                                              |
+|:---------------- |:-------------------------------------------------------------------- |
+| **Achados**      | B-3 (golden vectors ausentes — testes 7 e 8 sempre SKIP)             |
+| **Prioridade**   | 🟠 ALTA                                                              |
+| **Módulos Alvo** | `tests/fixtures/{golden_wavenet_standard.bin, golden_lstm_1x16.bin}` |
+
+#### Especificação
+
+Os testes de golden vectors (Sprint 8.2) validam a fidelidade numérica Rust ↔ C++. Sem os arquivos `.golden.bin`, estes testes nunca executam, tornando a validação cross-reference inoperante.
+
+1. Compilar o gerador de golden vectors usando a árvore NeuralAudio local:
+
+   ```bash
+   cd tests/fixtures
+   bash golden_gen_build.sh
+   ```
+
+   Verificar que `golden_wavenet_standard.bin` e `golden_lstm_1x16.bin` são gerados.
+
+2. Verificar tamanho e formato lendo os primeiros 4 bytes (deve ser `num_samples = 512` em LE).
+
+3. Adicionar ao repositório via `git add tests/fixtures/*.bin` e commitar.
+
+4. Adicionar regra ao `.gitignore` para **não** ignorar arquivos `.bin` no diretório `tests/fixtures/`:
+
+   ```gitignore
+   # Golden vectors de validação numérica (não ignorar)
+   !tests/fixtures/*.bin
+   ```
+
+5. Executar `cargo test test_golden_vectors` e verificar que MSE está dentro dos limiares definidos nos testes 7 e 8.
+
+#### Critérios de Aceite
+
+1. `ls tests/fixtures/*.bin` retorna os dois arquivos.
+2. `cargo test test_golden_vectors_wavenet` ✅ com MSE < 1e-4.
+3. `cargo test test_golden_vectors_lstm` ✅ com MSE < 1e-5.
+4. `cargo test` completo ✅ — zero SKIPs nos testes de golden vectors.
+
+---
+
+### **Tarefa 12.2 — Expansão da Cobertura de Testes (WaveNet Feather/Nano e LSTM 2x8)**
+
+| Campo            | Detalhe                                                                |
+|:---------------- |:---------------------------------------------------------------------- |
+| **Achados**      | B-8, B-9 (fixtures presentes mas sem testes de estabilidade dedicados) |
+| **Prioridade**   | 🟡 MÉDIA                                                               |
+| **Módulos Alvo** | `tests/nam_infer_test.rs`                                              |
+
+#### Especificação
+
+Adicionar ao arquivo de testes de integração:
+
+**Teste 13: `test_wavenet_stability_feather`**
+
+- Carrega `BossWN-feather.nam` via `build_model()`.
+- Executa prewarm + processamento com 64 amostras de 440Hz.
+- Valida que todas as saídas são finitas e `|s| < 100.0`.
+
+**Teste 14: `test_wavenet_stability_nano`**
+
+- Carrega `BossWN-nano.nam`.
+- Mesma validação que o Feather.
+
+**Teste 15: `test_lstm_stability_2x8`**
+
+- Carrega `BossLSTM-2x8.nam`.
+- Valida que saída do modelo 2 camadas × 8 hidden é finita.
+
+**Teste 16: `test_auto_consistency_lstm_2x8`**
+
+- Constrói dois `DynamicModel` de `BossLSTM-2x8.nam`.
+- Verifica MSE = 0.0 entre as saídas (determinismo).
+
+#### Critérios de Aceite
+
+1. 4 novos testes passando em `cargo test`.
+2. Nenhum dos testes assume hardware específico além de `x86_64 + avx2 + fma` (já verificado em runtime).
+3. `utils/lints.sh` ✅.
+
+---
+
+### **Tarefa 12.3 — Investigação e Triagem do Fixture `tw40_blues_deluxe_deerinkstudios.json`**
+
+| Campo            | Detalhe                                                       |
+|:---------------- |:------------------------------------------------------------- |
+| **Achados**      | B-10 (fixture JSON presente sem testes ou justificativa)      |
+| **Prioridade**   | 🟡 MÉDIA                                                      |
+| **Módulos Alvo** | `tests/fixtures/models/tw40_blues_deluxe_deerinkstudios.json` |
+
+#### Especificação
+
+1. Inspecionar o arquivo JSON para determinar seu formato (é `.nam` JSON NAM Core, Keras legacy, ou outro?).
+2. Verificar se `parse_nam_json()` consegue processar o arquivo sem erro.
+3. **Se válido como NAM JSON:** adicionar teste `test_dispatcher_build_model_tw40_blues()` que carrega, faz prewarm e processa 64 amostras.
+4. **Se formato Keras/legado não suportado:** remover o arquivo de `tests/fixtures/models/` ou mover para `tests/fixtures/unsupported/` com um README explicativo.
+
+#### Critérios de Aceite
+
+1. O arquivo tem seu status claramente documentado (seja por teste passando, seja por remoção/relocação documentada).
+2. `cargo test` ✅.
+
+---
+
+### **Tarefa 12.4 — Diretrizes de Testes Beta UX (`Beta.txt`)**
+
+| Campo            | Detalhe                                                                            |
+|:---------------- |:---------------------------------------------------------------------------------- |
+| **Achados**      | B-12 (ausência de diretrizes UX para a fase beta — requisito do TODO.txt linha 16) |
+| **Prioridade**   | 🟠 ALTA                                                                            |
+| **Módulos Alvo** | `Beta.txt` (NOVO)                                                                  |
+
+#### Especificação
+
+Criar o arquivo `Beta.txt` na raiz do repositório, delineando as diretrizes para a fase de testes beta focadas em experiência do usuário final. O arquivo deve incluir:
+
+**Estrutura proposta:**
+
+```text
+## NAM-rs — Roteiro de Testes Beta
+
+### Objetivos da Fase Beta
+[Descrever: validação em hardware real, coleta de feedback, identificação de edge cases UX]
+
+### Cenários de Teste Prioritários
+
+1. Instalação e Dependências
+   - Ubuntu 24.04+ / 26.04 fresh install
+   - Tempo de build com cold/warm cache
+   - Erros na ausência de libpipewire-0.3-dev
+
+2. Inicialização e Conexão PipeWire
+   - Aparecimento automático do nó "NAM-rs-standalone" no qpwgraph
+   - Conexão manual via pw-link
+   - Comportamento com PipeWire desligado (mensagem de erro descritiva?)
+
+3. Carregamento de Modelos
+   - .nam Standard, Lite, Feather, Nano
+   - .namb (formato Tone3000 binário)
+   - Arquivo corrompido / inexistente (mensagem de erro amigável?)
+   - Modelo muito grande (ex: 50MB+) — há latência perceptível no hot-swap?
+
+4. Hot-Swap em Tempo Real
+   - Troca de modelo SEM xrun perceptível
+   - Validar que o modelo anterior não deixa vazamento de áudio
+
+5. Ajuste de Gain
+   - --input-gain / --output-gain na inicialização
+   - Ajuste interativo via stdin durante processamento
+
+6. Estabilidade de Longa Duração
+   - Execução contínua por > 30 minutos com sinal de guitarra real
+   - Verificar ausência de xruns acumulados (journalctl / pipewire logs)
+
+7. Edge Cases de Hardware
+   - CPU sem AVX2 — mensagem de erro clara na inicialização
+   - Rate do PipeWire diferente de 48kHz (ex: 44.1kHz, 96kHz)
+   - Latência de buffer muito baixa (< 128 frames)
+
+### Métricas de Sucesso Beta
+- Zero crashes em 30 min de uso contínuo
+- Zero xruns em hardware de referência (Intel i5+ / AMD Ryzen 5+, PipeWire 1.6+)
+- Latência round-trip ≤ 10ms com buffer de 128 frames a 48kHz
+- Tempo de hot-swap de modelo < 200ms (medido do stdin Enter até primeiro frame processado)
+- Mensagens de erro compreensíveis em 100% dos cenários de falha comuns
+
+### Coleta de Feedback
+- Abrir Issues no GitHub com template: hardware, OS, PipeWire version, modelo NAM usado, descrição do problema
+```
+
+#### Critérios de Aceite
+
+1. `Beta.txt` existe na raiz do repositório com conteúdo estruturado conforme especificação.
+2. O arquivo não contém cabeçalho SPDX (é um documento de texto operacional, não código).
+3. `cargo test` e `utils/lints.sh` ✅ (o novo arquivo `.txt` não afeta o build).
+
+---
+
+> **📋 Nota da Auditoria Beta — Contexto das Sprints 11 e 12 (2026-04-09):**
+>
+> Varredura completa pós-Sprint 10 identificou 16 achados (2 críticos 🔴, 4 altos 🟠, 6 médios 🟡, 4 baixos 🟢).
+> O motor de inferência e a pilha RT-DSP estão sólidos — **66 testes passando** (51 unit + 12 integration + 2 proptest + 1 PW headless).
+> Os achados críticos são de higiene e versão (B-1/B-2), não de correctude algorítmica.
+> A maior lacuna de validação é a ausência dos golden vectors C++ (B-3), que torna os testes cruzados Rust ↔ NeuralAudio inoperantes.
 
 ---
 
