@@ -7,8 +7,10 @@ Alguns pontos a considerar (sinta-se a vontade para ir além):
 * Caçar o máximo de testes automatizados bons e realmente úteis - inclusive na internet aberta geral. Verifique se os atuais existentes estão em boa qualidade e se é possível melhorar ou substituir algum deles.
 * A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma(s) nova(s) sprint(s) ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas. Forneça todos os detalhes necessários.
 
-## Lançamento Beta:
+## Preparação Beta:
 * Usando a skill "revisor-auditor" promova uma limpeza / refatoração / organização geral do código em prol de legibilidade e manutenibilidade. Remover artefatos desnecessários. Cuidado para não inserir bugs de regressão.
 * Usando a skill "pesquisador-inovador" revise todas as definições de IA na pasta ".agents/" para garantir que estão aderentes ao estado atual do projeto.
 * Use a skill "documentador" para revisar completamente os comentários de código-fonte em prol do entendimento fácil para leigos em Rust e em DSP/Áudio.
-* Revisar "docs/architecture.md" e "README.md" totalmente como a "biblia" geral de arquitetura. Caprichar a ponto de tornar "docs/NAM-rs-referência.md" e "docs/NAM-rs-sprints.md" totalmente desnecessários e apaga-los.
+* Revisar "docs/architecture.md" e "README.md" totalmente como a "bíblia" geral de arquitetura. Caprichar a ponto de tornar "docs/NAM-rs-referência.md" e "docs/NAM-rs-sprints.md" totalmente desnecessários e apaga-los.
+* Remover referências a sprints, tarefas e atividades anteriores. Vamos entrar em uma nova fase (beta) para um começo limpo, organizado e focado neste novo momento.
+* Usando a skill "pesquisador-inovador" delineie as diretrizes para uma fase de testes focadas em polimentos na experiência do usuário final (/Beta.txt).
