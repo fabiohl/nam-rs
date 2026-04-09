@@ -7,7 +7,7 @@
 //! standalone nativo e as processa em tempo real.
 //! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
 //!
-//! # Estado Atual (Sprint 8)
+//! # Estado Atual (Sprint 9 — Beta)
 //! O motor de inferência neural está integrado com resampling bidirecional FIR Sinc.
 //! O callback `process()` aplica `NamResampler::process_input()` (Nk→48k) antes da inferência
 //! e `NamResampler::process_output()` (48k→Nk) após, garantindo que a placa de som receba o

@@ -268,7 +268,10 @@ fn build_wavenet_array<
 // WaveNet — Construtor Dinâmico (Fallback)
 // =============================================================================
 
-fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
+/// Constrói um `WaveNetDynModel` com pesos lidos sequencialmente (fallback dinâmico).
+///
+/// Visível publicamente para testes de paridade numérica dinâmico ↔ estático.
+pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     let mut cursor = WeightCursor::new(&data.weights);
 
     if data.config.layers.len() != 2 {
@@ -445,7 +448,10 @@ fn build_lstm_2layer<const H: usize, const H1_IH: usize, const H2_IH: usize, con
 // LSTM — Construtor Dinâmico (Fallback)
 // =============================================================================
 
-fn build_lstm_dynamic(
+/// Constrói um `LstmDynModel` com pesos lidos sequencialmente (fallback dinâmico).
+///
+/// Visível publicamente para testes de paridade numérica dinâmico ↔ estático.
+pub fn build_lstm_dynamic(
     data: &NamModelData,
     num_layers: usize,
     hidden_size: usize,

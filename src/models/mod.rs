@@ -130,8 +130,8 @@ impl NamModel for lstm_dyn::LstmDynModel {
         self.process(input, output);
     }
 
-    fn prewarm(&mut self, _num_samples: usize) {
-        self.prewarm();
+    fn prewarm(&mut self, num_samples: usize) {
+        self.prewarm(num_samples);
     }
 }
 

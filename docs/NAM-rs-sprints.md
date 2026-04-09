@@ -904,7 +904,9 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
 > | 9.2 — LSTM Dinâmico           | ✅ COMPLETA | `lstm_dyn.rs` implementado com `LstmDynModel`, fallback no dispatcher, teste `test_build_lstm_dynamic_arbitrary` passando.                              |
 > | 9.3 — Documentação Beta       | ✅ COMPLETA | `docs/dependencies.md` criado, `README.md` com exemplos e modelos suportados, `architecture.md` com todos os módulos. Versão corrigida para `0.9.0-beta.1` (estava em `0.3.0`). |
 >
-> **Validação automatizada:** `cargo test` (60/60 ✅), `utils/lints.sh` (fmt + clippy ✅) com versão `0.9.0-beta.1`.
+> **Validação automatizada:** `cargo test` (63/63 ✅), `utils/lints.sh` (fmt + clippy ✅).
+>
+> **Errata (2026-04-09):** A atualização do campo `version` no `Cargo.toml` é de responsabilidade exclusiva do mantenedor do projeto e **não** faz parte do escopo automatizado desta Sprint. A referência anterior a "versão corrigida para `0.9.0-beta.1`" na Tarefa 9.3 deve ser desconsiderada.
 >
 > **Status do projeto:** Formalmente em **Beta** — todos os objetivos das 9 sprints foram concluídos, validados e documentados.
 

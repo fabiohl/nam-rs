@@ -133,12 +133,16 @@ impl LstmDynModel {
     }
 
     /// Executa o aquecimento do loop inicial da máquina transiente.
-    pub fn prewarm(&mut self) {
-        let _math = &crate::math::simd::SimdMathConfig::current();
+    ///
+    /// Processa `num_samples` amostras zero em chunks de 512 para estabilizar
+    /// os estados oculto e celular. Consistente com `LstmModel1`/`LstmModel2`.
+    /// Ref C++: `Prewarm(2048, 64)` — o default de 2048 amostras é propagado
+    /// pela trait `NamModel::prewarm(num_samples)` no despacho.
+    pub fn prewarm(&mut self, num_samples: usize) {
         const CHUNK: usize = 512;
         let mut zero_out = [0.0f32; CHUNK];
         let zero_in = [0.0f32; CHUNK];
-        let mut rem = 2048; // LSTM prewarm defaults to 2048 samples C++ `Prewarm(2048, 64)`.
+        let mut rem = num_samples;
 
         while rem > 0 {
             let n = rem.min(CHUNK);

@@ -772,3 +772,215 @@ fn test_end_to_end_spsc_pipeline() {
         "[Sprint 8.3] Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas)."
     );
 }
+
+// =============================================================================
+// Sprint 9 — Testes de Paridade Numérica: Dinâmico ↔ Estático (T-1)
+// =============================================================================
+
+/// Teste 10 (Sprint 9/T-1a): Paridade LSTM — estático 1×16 vs dinâmico 1×16.
+///
+/// Carrega `BossLSTM-1x16.nam`, constrói um `DynamicModel` pelo dispatcher normal
+/// (que matcheia o perfil estático `Lstm1x16`) e outro forçando o builder dinâmico
+/// (`build_lstm_dynamic`). Ambos recebem prewarm idêntico e processam a mesma
+/// senoidal 440 Hz. O MSE entre as saídas deve ser exatamente 0.0 (bitwise identical),
+/// pois os pesos, layout de memória e algoritmo LSTM são equivalentes.
+#[test]
+fn test_parity_lstm_static_vs_dynamic() {
+    use nam_rs::loader::dispatcher::build_lstm_dynamic;
+
+    let path = model_path("BossLSTM-1x16.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado em {path:?}. Ignorando paridade LSTM.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    // Estático: dispatcher matcheia 1×16 → Lstm1x16 const-generic
+    let mut model_static =
+        build_model(&model_data).expect("Dispatcher falhou (estático) para paridade LSTM");
+
+    // Dinâmico: forçar fallback dinâmico explicitamente
+    let mut model_dynamic =
+        build_lstm_dynamic(&model_data, 1, 16).expect("Builder dinâmico falhou para paridade LSTM");
+
+    model_static.0.prewarm(2048);
+    model_dynamic.0.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_static = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_dynamic = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(
+        &mut model_static,
+        &input,
+        &mut out_static,
+        GOLDEN_BLOCK_SIZE,
+    );
+    process_in_blocks(
+        &mut model_dynamic,
+        &input,
+        &mut out_dynamic,
+        GOLDEN_BLOCK_SIZE,
+    );
+
+    let mse = compute_mse(&out_static, &out_dynamic);
+    let mae = compute_max_abs_error(&out_static, &out_dynamic);
+
+    println!("[Paridade LSTM 1×16] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "LSTM estático vs dinâmico — divergência numérica! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}
+
+/// Teste 11 (Sprint 9/T-1b): Paridade WaveNet — estático Nano vs dinâmico Nano.
+///
+/// Carrega `BossWN-nano.nam` (CH=4, K=3, HEAD=2 → perfil Nano), constrói um
+/// `DynamicModel` pelo dispatcher normal (que matcheia a topologia estática Nano)
+/// e outro forçando o builder dinâmico (`build_wavenet_dynamic`).
+/// Ambos processam a mesma senoidal 440 Hz após prewarm.
+///
+/// **Critério:** MSE = 0.0 (bitwise identical).
+/// A equivalência é garantida pois os dois caminhos lêem os pesos na mesma
+/// ordem (WeightCursor forward-only) e aplicam a mesma transposição Conv1d.
+#[test]
+fn test_parity_wavenet_static_vs_dynamic() {
+    use nam_rs::loader::dispatcher::build_wavenet_dynamic;
+
+    let path = model_path("BossWN-nano.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP: BossWN-nano.nam não encontrado em {path:?}. Ignorando paridade WaveNet.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet Nano");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    // Estático: dispatcher matcheia Nano → WaveNetModel<4, 3, 2>
+    let mut model_static =
+        build_model(&model_data).expect("Dispatcher falhou (estático) para paridade WaveNet");
+
+    // Dinâmico: forçar fallback dinâmico explicitamente
+    let mut model_dynamic =
+        build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou para paridade WaveNet");
+
+    model_static.0.prewarm(2048);
+    model_dynamic.0.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_static = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_dynamic = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(
+        &mut model_static,
+        &input,
+        &mut out_static,
+        GOLDEN_BLOCK_SIZE,
+    );
+    process_in_blocks(
+        &mut model_dynamic,
+        &input,
+        &mut out_dynamic,
+        GOLDEN_BLOCK_SIZE,
+    );
+
+    let mse = compute_mse(&out_static, &out_dynamic);
+    let mae = compute_max_abs_error(&out_static, &out_dynamic);
+
+    println!("[Paridade WaveNet Nano] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "WaveNet estático vs dinâmico — divergência numérica! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}
+
+// =============================================================================
+// Sprint 9 — Teste E2E Parser NAMB → Dispatcher (T-2)
+// =============================================================================
+
+/// Teste 12 (Sprint 9/T-2): NAMB roundtrip — parser binário → dispatcher → inferência.
+///
+/// Constrói um buffer `.namb` sintético válido (via `build_valid_namb()`), parseia
+/// com `parse_namb()`, despacha ao `build_model()` e executa prewarm + processamento.
+/// Verifica que a saída é finita e que a cadeia completa `.namb → NamModelData → DynamicModel`
+/// é funcional de ponta a ponta.
+///
+/// O NAMB sintético transporta pesos zerados (0.01) que formam um modelo degradado
+/// mas numericamente estável — o objetivo não é validar a qualidade tonal, mas sim
+/// a integridade da cadeia de desserialização binária.
+#[test]
+fn test_namb_roundtrip_dispatcher_e2e() {
+    use nam_rs::loader::namb::parse_namb;
+
+    // Calcular o número correto de pesos para WaveNet Standard (CH=16, K=3, HEAD=8)
+    // Array1: rechannel(16) + 10×(conv(768+16)+mixin(16)+o2o(256+16)) + head(128) = 10864
+    // Array2: rechannel(128) + 10×(conv(192+8)+mixin(8)+o2o(64+8)) + head(8+1) = 2937
+    // head_scale: 1 → Total: 13802
+    let total_weights = 13802;
+    let weights: Vec<f32> = vec![0.01; total_weights];
+
+    // Construir buffer NAMB binário com CRC32 válida
+    let weights_offset: usize = 80;
+    let total_size = weights_offset + weights.len() * 4;
+    let mut namb_data = vec![0u8; total_size];
+
+    // Magic Number
+    namb_data[0..4].copy_from_slice(&0x4E414D42u32.to_le_bytes());
+    // Version = 1
+    namb_data[4..6].copy_from_slice(&1u16.to_le_bytes());
+    // Offset de pesos
+    namb_data[12..16].copy_from_slice(&(weights_offset as u32).to_le_bytes());
+    // Version String @32
+    namb_data[32..37].copy_from_slice(b"0.9.0");
+    // Frequência = 48000.0
+    namb_data[64..68].copy_from_slice(&48000.0f32.to_le_bytes());
+    // Input DBU = 0.0
+    namb_data[68..72].copy_from_slice(&0.0f32.to_le_bytes());
+    // Output DBU = 0.0
+    namb_data[72..76].copy_from_slice(&0.0f32.to_le_bytes());
+
+    // Pesos
+    for (i, float_val) in weights.iter().enumerate() {
+        let off = weights_offset + i * 4;
+        namb_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
+    }
+
+    // CRC32 sobre bloco de pesos
+    let mut hasher = crc32fast::Hasher::new();
+    hasher.update(&namb_data[weights_offset..]);
+    let crc = hasher.finalize();
+    namb_data[24..28].copy_from_slice(&crc.to_le_bytes());
+
+    // 1. Parse NAMB
+    let model_data = parse_namb(&namb_data).expect("Falha no parse_namb para E2E NAMB");
+    assert_eq!(model_data.architecture, "WaveNet");
+    assert_eq!(model_data.weights.len(), total_weights);
+
+    // 2. Dispatcher: construir DynamicModel
+    let mut model = build_model(&model_data).expect("Dispatcher falhou no E2E NAMB");
+
+    // 3. Prewarm e processamento
+    model.0.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.0.process(&input, &mut output);
+
+    // 4. Validação: finitude
+    for (i, &s) in output.iter().enumerate() {
+        assert!(
+            s.is_finite(),
+            "[E2E NAMB] Sample não finita no índice {i}: {s}"
+        );
+    }
+
+    println!(
+        "[Sprint 9] NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras)."
+    );
+}
