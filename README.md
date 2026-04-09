@@ -14,19 +14,6 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 2. **Inferência SIMD de Ultra-Baixa Latência:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits, eliminando o custo das funções transcendentais da stdlib. Suporte futuro a AVX-512 via multiversioning.
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de núcleo rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
 
-## 🎯 Status do Projeto
-
-| Sprint       | Descrição                                                            | Status                         |
-| ------------ | -------------------------------------------------------------------- | ------------------------------ |
-| **Sprint 1** | Purga do I/O legado, SPSC lock-free, Host PipeWire nativo            | ✅ Concluída                   |
-| **Sprint 2** | Infraestrutura SIMD (dot product AVX2/FMA), FastMath (tanh, sigmoid) | ✅ Concluída                   |
-| **Sprint 3** | Redes inferenciais (WaveNet + LSTM), integração no callback PipeWire | ✅ Concluída                   |
-| **Sprint 4** | Carregamento de modelos (.nam JSON / .namb binário), gain staging    | ✅ Concluída                   |
-| **Sprint 5** | Resampling FIR Sinc, validação MSE contra referência C++             | ✅ Concluída                   |
-| **Sprint 6** | CLI, Hot-Swap Seguro, AVX-512 e Rate Automático do Daemon PipeWire   | 🔄 Em planejamento (Fase Beta) |
-
-Agora estamos nos planejando para cumprir a Sprint 6 e inaugurar a fase puramente *beta*.
-
 ## 🚀 Guia Rápido
 
 ### Pré-requisitos
@@ -74,10 +61,8 @@ Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `p
 
 Contribuições são bem-vindas! O projeto está em fase ativa de desenvolvimento. Áreas de interesse:
 
-* Suporte AVX-512 via multiversioning (registradores ZMM 512-bit)
-* Interface CLI para carregamento de modelos `.nam`/`.namb` em tempo de execução
-* Testes de integração end-to-end com daemon PipeWire ativo
-* Detecção automática de sample rate via callback `param_changed` do PipeWire
+* Testes + testes + testes + testes....
+* Apesar do suporte a AVX-512, eu não tenho uma CPU suportado pra testar. Se alguém tiver alguma por ai, seria muito útil..
 
 Sinta-se à vontade para abrir *Issues* ou enviar *Pull Requests*.
 
