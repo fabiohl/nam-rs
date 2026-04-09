@@ -8,18 +8,182 @@
 //! Injetar um bloco contínuo de ondas iterativas (ex: senoidal) no pipeline Lock-Free de Inferência,
 //! calculando estabilidade computacional temporal e limitando Erros Numéricos (NaN, Infinito),
 //! provando que o compilador Rust / auto-vetorização (Const Generics e FMA/AVX2) não introduzem crashes no DSP de longa duração.
+//!
+//! # Validação Numérica Cross-Reference (Sprint 8.2)
+//!
+//! Testes de auto-consistência verificam o determinismo absoluto do motor Rust:
+//! mesmo modelo + mesmo input → MSE = 0.0 (bitwise identical).
+//!
+//! Testes de golden vectors comparam a saída do motor Rust contra referência C++
+//! (NeuralAudio Internal mode) gravada em `tests/fixtures/*.golden.bin`.
+//!
+//! ## Formato `.golden.bin`
+//! ```text
+//! [u32 num_samples LE]
+//! [f32×N input samples LE]       — senoidal 440Hz a 48kHz
+//! [f32×N expected output LE]     — output do C++ NeuralAudio Internal mode
+//! ```
+//!
+//! ## Regeneração dos golden vectors
+//! Execute `utils/golden_gen_build.sh` com a árvore NeuralAudio C++ compilável.
+//! Os arquivos `.golden.bin` resultantes devem ser commitados em `tests/fixtures/`.
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
 use nam_rs::models::wavenet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // WaveNetModel<CH=16, K=3, HEAD=8>: CH=16 canais, HEAD=8 (head_size da layer 0 = canais da Array2).
 type WaveNetStandard = wavenet::WaveNetModel<16, 3, 8>;
 
 const TEST_BLOCK_SIZE: usize = 64;
 const TEST_NUM_BLOCKS: usize = 4096; // ~5.4 segundos de processamento simulado (a 48kHz).
+
+/// Número de amostras para testes de golden vectors e auto-consistência.
+const GOLDEN_NUM_SAMPLES: usize = 512;
+
+/// Tamanho de bloco para processamento nos testes de validação numérica.
+const GOLDEN_BLOCK_SIZE: usize = 64;
+
+// =============================================================================
+// Helpers — Geração de Sinais e Métricas de Erro
+// =============================================================================
+
+/// Gera sinal senoidal determinístico de 440 Hz a 48 kHz.
+///
+/// O mesmo sinal é usado tanto pelo gerador C++ (`golden_gen.cpp`) quanto pelos
+/// testes Rust, garantindo reprodutibilidade cross-platform.
+fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
+    (0..num_samples)
+        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
+        .collect()
+}
+
+/// Calcula o Mean Squared Error (MSE) entre dois vetores de amostras.
+///
+/// Usa aritmética `f64` internamente para evitar perda de precisão no acumulador.
+fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
+    assert_eq!(a.len(), b.len(), "Vetores de tamanhos diferentes para MSE");
+    let n = a.len();
+    if n == 0 {
+        return 0.0;
+    }
+    let sum: f64 = a
+        .iter()
+        .zip(b.iter())
+        .map(|(x, y)| {
+            let d = (*x as f64) - (*y as f64);
+            d * d
+        })
+        .sum();
+    sum / (n as f64)
+}
+
+/// Calcula o Max Absolute Error (MAE / L∞) entre dois vetores.
+fn compute_max_abs_error(a: &[f32], b: &[f32]) -> f64 {
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "Vetores de tamanhos diferentes para MaxAbsError"
+    );
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| ((*x as f64) - (*y as f64)).abs())
+        .fold(0.0f64, f64::max)
+}
+
+/// Lê um arquivo `.golden.bin` no formato binário especificado.
+///
+/// Retorna `Some((input, expected_output))` ou `None` se o arquivo não existir
+/// ou estiver malformado.
+///
+/// ## Formato
+/// ```text
+/// [u32 num_samples LE]
+/// [f32×N input samples LE]
+/// [f32×N expected output LE]
+/// ```
+fn read_golden_bin(path: &Path) -> Option<(Vec<f32>, Vec<f32>)> {
+    let data = fs::read(path).ok()?;
+
+    // Mínimo: 4 bytes (u32) + pelo menos 4 bytes de input + 4 bytes de output
+    if data.len() < 12 {
+        eprintln!(
+            "WARN: arquivo golden {path:?} muito pequeno ({} bytes)",
+            data.len()
+        );
+        return None;
+    }
+
+    let num_samples = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+
+    let expected_size = 4 + num_samples * 4 * 2; // u32 + N*f32 input + N*f32 output
+    if data.len() < expected_size {
+        eprintln!(
+            "WARN: golden {path:?} declara {num_samples} amostras mas tem {} bytes (esperados {expected_size})",
+            data.len()
+        );
+        return None;
+    }
+
+    let input_start = 4;
+    let output_start = 4 + num_samples * 4;
+
+    let input: Vec<f32> = (0..num_samples)
+        .map(|i| {
+            let offset = input_start + i * 4;
+            f32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ])
+        })
+        .collect();
+
+    let output: Vec<f32> = (0..num_samples)
+        .map(|i| {
+            let offset = output_start + i * 4;
+            f32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ])
+        })
+        .collect();
+
+    Some((input, output))
+}
+
+/// Helper: resolve o caminho para um modelo de teste na árvore NeuralAudio.
+fn model_path(filename: &str) -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("github.com/mikeoliphant/NeuralAudio/Utils/Models");
+    path.push(filename);
+    path
+}
+
+/// Helper: processa um bloco de input pelo modelo em chunks de `block_size`.
+fn process_in_blocks(
+    model: &mut nam_rs::models::DynamicModel,
+    input: &[f32],
+    output: &mut [f32],
+    block_size: usize,
+) {
+    let total = input.len();
+    let mut pos = 0;
+    while pos < total {
+        let end = (pos + block_size).min(total);
+        model.0.process(&input[pos..end], &mut output[pos..end]);
+        pos = end;
+    }
+}
+
+// =============================================================================
+// Helpers — Construção de Modelos Sintéticos para Testes Unitários de Topologia
+// =============================================================================
 
 /// Helper para simular a criação de uma `WaveNetLayer` limpa para a Array1 (CH=16).
 fn make_wavenet_layer(
@@ -144,14 +308,17 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
     }
 }
 
+// =============================================================================
+// Testes Existentes (Sprint 5/7) — Preservados Integralmente
+// =============================================================================
+
 /// Teste 1: Auditoria da capacidade de Leitura do Loader e Validação Geometria
 #[test]
 fn test_wavenet_model_json_parsing() {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("github.com/mikeoliphant/NeuralAudio/Utils/Models/BossWN-standard.nam");
+    let path = model_path("BossWN-standard.nam");
 
     if !path.exists() {
-        println!("Aviso: Modelo de teste WaveNet não encontrado em {path:?}. Ignorando parsing.");
+        eprintln!("SKIP: Modelo de teste WaveNet não encontrado em {path:?}. Ignorando parsing.");
         return;
     }
 
@@ -220,12 +387,11 @@ fn test_wavenet_computational_stability() {
 /// `model.0.process()` com input de zeros retorna samples finitas.
 #[test]
 fn test_dispatcher_build_model_real_json() {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("github.com/mikeoliphant/NeuralAudio/Utils/Models/BossWN-standard.nam");
+    let path = model_path("BossWN-standard.nam");
 
     if !path.exists() {
-        println!(
-            "Aviso: Modelo de teste WaveNet não encontrado em {path:?}. Ignorando dispatcher test."
+        eprintln!(
+            "SKIP: Modelo de teste WaveNet não encontrado em {path:?}. Ignorando dispatcher test."
         );
         return;
     }
@@ -259,11 +425,10 @@ fn test_dispatcher_build_model_real_json() {
 /// Teste 4 (Sprint 7.1 — Extra): `build_model()` com LSTM real produz `DynamicModel` funcional.
 #[test]
 fn test_dispatcher_build_model_real_lstm() {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("github.com/mikeoliphant/NeuralAudio/Utils/Models/BossLSTM-1x16.nam");
+    let path = model_path("BossLSTM-1x16.nam");
 
     if !path.exists() {
-        println!("Aviso: Modelo LSTM não encontrado em {path:?}. Ignorando dispatcher LSTM test.");
+        eprintln!("SKIP: Modelo LSTM não encontrado em {path:?}. Ignorando dispatcher LSTM test.");
         return;
     }
 
@@ -288,5 +453,227 @@ fn test_dispatcher_build_model_real_lstm() {
 
     println!(
         "[Sprint 7.1] Dispatcher LSTM OK — 1×16 construído e inferência estável (64 zeros processados)."
+    );
+}
+
+// =============================================================================
+// Sprint 8.2 — Testes de Auto-Consistência (Determinismo Rust-Only)
+// =============================================================================
+
+/// Teste 5 (Sprint 8.2): Auto-consistência WaveNet — determinismo absoluto.
+///
+/// Carrega `BossWN-standard.nam` duas vezes, constrói dois `DynamicModel` idênticos,
+/// executa prewarm e processa o mesmo sinal senoidal 440 Hz (512 amostras).
+/// O MSE entre as duas saídas deve ser exatamente 0.0 (bitwise identical).
+///
+/// Este teste não depende de golden vectors C++ e valida que o motor Rust
+/// é determinístico em execuções independentes com os mesmos pesos e inputs.
+#[test]
+fn test_auto_consistency_wavenet() {
+    let path = model_path("BossWN-standard.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: BossWN-standard.nam não encontrado em {path:?}. Ignorando auto-consistência WaveNet."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    let mut model_a =
+        build_model(&model_data).expect("Dispatcher falhou (model_a) para auto-consistência");
+    let mut model_b =
+        build_model(&model_data).expect("Dispatcher falhou (model_b) para auto-consistência");
+
+    model_a.0.prewarm(2048);
+    model_b.0.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
+
+    let mse = compute_mse(&out_a, &out_b);
+    let mae = compute_max_abs_error(&out_a, &out_b);
+
+    println!("[Auto-Consistência WaveNet] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "Motor Rust WaveNet não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}
+
+/// Teste 6 (Sprint 8.2): Auto-consistência LSTM — determinismo absoluto.
+///
+/// Carrega `BossLSTM-1x16.nam` duas vezes, constrói dois `DynamicModel` idênticos,
+/// executa prewarm e processa o mesmo sinal senoidal 440 Hz (512 amostras).
+/// O MSE entre as duas saídas deve ser exatamente 0.0 (bitwise identical).
+#[test]
+fn test_auto_consistency_lstm() {
+    let path = model_path("BossLSTM-1x16.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: BossLSTM-1x16.nam não encontrado em {path:?}. Ignorando auto-consistência LSTM."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    let mut model_a =
+        build_model(&model_data).expect("Dispatcher falhou (model_a) para auto-consistência LSTM");
+    let mut model_b =
+        build_model(&model_data).expect("Dispatcher falhou (model_b) para auto-consistência LSTM");
+
+    model_a.0.prewarm(2048);
+    model_b.0.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
+
+    let mse = compute_mse(&out_a, &out_b);
+    let mae = compute_max_abs_error(&out_a, &out_b);
+
+    println!("[Auto-Consistência LSTM] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "Motor Rust LSTM não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}
+
+// =============================================================================
+// Sprint 8.2 — Testes de Golden Vectors (Cross-Reference C++ ↔ Rust)
+// =============================================================================
+
+/// Teste 7 (Sprint 8.2): Golden Vectors WaveNet — cross-reference C++ ↔ Rust.
+///
+/// Lê `tests/fixtures/golden_wavenet_standard.bin`, constrói o `DynamicModel`
+/// a partir de `BossWN-standard.nam`, executa prewarm + processamento,
+/// e compara a saída contra a referência C++ (NeuralAudio Internal mode).
+///
+/// **Critério:** MSE < 1e-4.
+///
+/// A divergência esperada (~1e-3 a ~1e-4 RMS) deve-se à diferença entre o
+/// polinômio Padé grau 5 + `rsqrt_ps` (Rust) e o rational polynomial
+/// (`Activation.h`) do C++. O limiar MSE < 1e-4 acomoda estas diferenças
+/// mas detecta erros estruturais (transposição de pesos, offset de gates, etc.).
+///
+/// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
+/// Execute `utils/golden_gen_build.sh` para regenerar os golden vectors.
+#[test]
+fn test_golden_vectors_wavenet() {
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_standard.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_wavenet_standard.bin não encontrado em {golden_path:?}. \
+             Execute utils/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_standard.bin");
+
+    // Carregar e construir o modelo
+    let nam_path = model_path("BossWN-standard.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossWN-standard.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo WaveNet");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher falhou ao construir WaveNet para golden test");
+
+    // Prewarm + Processamento
+    model.0.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    // Validação numérica
+    let mse = compute_mse(&output, &expected);
+    let mae = compute_max_abs_error(&output, &expected);
+
+    println!(
+        "[Golden WaveNet] MSE={mse:.2e}, MaxAbsErr={mae:.2e}, amostras={}",
+        input.len()
+    );
+
+    assert!(
+        mse < 1e-4,
+        "WaveNet Golden Vector MSE={mse:.6e} excede limiar 1e-4 (MaxAbsErr={mae:.6e})"
+    );
+}
+
+/// Teste 8 (Sprint 8.2): Golden Vectors LSTM — cross-reference C++ ↔ Rust.
+///
+/// Lê `tests/fixtures/golden_lstm_1x16.bin`, constrói o `DynamicModel`
+/// a partir de `BossLSTM-1x16.nam`, executa prewarm + processamento,
+/// e compara a saída contra a referência C++ (NeuralAudio Internal mode).
+///
+/// **Critério:** MSE < 1e-5.
+///
+/// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
+/// Execute `utils/golden_gen_build.sh` para regenerar os golden vectors.
+#[test]
+fn test_golden_vectors_lstm() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x16.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_1x16.bin não encontrado em {golden_path:?}. \
+             Execute utils/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_lstm_1x16.bin");
+
+    // Carregar e construir o modelo
+    let nam_path = model_path("BossLSTM-1x16.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo LSTM");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher falhou ao construir LSTM para golden test");
+
+    // Prewarm + Processamento
+    model.0.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    // Validação numérica
+    let mse = compute_mse(&output, &expected);
+    let mae = compute_max_abs_error(&output, &expected);
+
+    println!(
+        "[Golden LSTM 1×16] MSE={mse:.2e}, MaxAbsErr={mae:.2e}, amostras={}",
+        input.len()
+    );
+
+    assert!(
+        mse < 1e-5,
+        "LSTM Golden Vector MSE={mse:.6e} excede limiar 1e-5 (MaxAbsErr={mae:.6e})"
     );
 }
