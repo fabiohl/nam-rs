@@ -328,6 +328,14 @@ Esta Sprint concentra-se em garantir que o motor DSP construído de forma limpa 
 > - Foi instanciado um objeto de alocação de memória lock-free `AtomicU32` ancorado por `Arc` que liga geograficamente o callback passivo da *Main Loop* ao interior isolado de *Thread de Dados DSP*.
 > - Durante as execuções restritas pela CPU isolada com `SCHED_FIFO` no método `process`, as verificações do estado do sample rate atômico detectam atualizações dinâmicas e o nó instantaneamente executa a instigação lock-free trocando as pontes das `Sinc Interpolation`.
 > - A topologia final suporta conexões hot-plug que alterem o hardware ou propriedades do stream do PulseAudio de maneira instantânea sem falhas de transição ou crashes.
+>
+> **✅ Auditoria da Tarefa 6.4 (Sprint 6 conclusiva):**
+>
+> - As rotinas vitais do `LstmLayer` e as funções matemáticas em `fastmath.rs` foram adaptadas para realizar processamento avançado via registradores ZMM 512-bit, mantendo suporte restrito à flag `avx512f,avx512vl`.
+> - A macro `define_lstm_process!` unifica dinamicamente a arquitetura de processamento em pipelines FMA, contornando poluição baseada em hard-coded strings.
+> - Adequa-se estritamente ao Rust Edition 2024 encapsulando escopos de verificação CPU `std::is_x86_feature_detected!` associados a subrotinas `unsafe` FFI.
+> - Todos os lints rigorosos passam perfeitamente após estabilizar namespaces redundantes.
+
 ## **Referências citadas**
 
 1. NAM-rs-1  

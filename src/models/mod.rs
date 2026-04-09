@@ -57,9 +57,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         // Safety: AVX2+FMA verificado no startup (main.rs).
         // O método inherent unsafe tem prioridade sobre o trait — sem recursão.
-        unsafe {
-            self.process(input, output);
-        }
+        self.process(input, output);
     }
 
     fn prewarm(&mut self, num_samples: usize) {
@@ -72,9 +70,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
         while rem > 0 {
             let n = rem.min(CHUNK);
             // Safety: AVX2+FMA verificado no startup (main.rs).
-            unsafe {
-                self.process(&zero_in[..n], &mut zero_out[..n]);
-            }
+            self.process(&zero_in[..n], &mut zero_out[..n]);
             rem -= n;
         }
     }
@@ -90,9 +86,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
 {
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         // Safety: AVX2+FMA verificado no startup (main.rs).
-        unsafe {
-            self.process(input, output);
-        }
+        self.process(input, output);
     }
 
     fn prewarm(&mut self, num_samples: usize) {
@@ -103,9 +97,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
         while rem > 0 {
             let n = rem.min(CHUNK);
             // Safety: AVX2+FMA verificado no startup (main.rs).
-            unsafe {
-                self.process(&zero_in[..n], &mut zero_out[..n]);
-            }
+            self.process(&zero_in[..n], &mut zero_out[..n]);
             rem -= n;
         }
     }
