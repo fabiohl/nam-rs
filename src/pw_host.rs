@@ -111,9 +111,32 @@ pub fn run_pipewire_host(
                 *out_out_mult = 10.0f32.powf(total_out_db / 20.0);
             };
 
+        let shared_target_rate = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let rate_for_param = shared_target_rate.clone();
+        let rate_for_process = shared_target_rate.clone();
+
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         listener = stream
             .add_local_listener::<()>()
+            .param_changed(move |_stream, _user_data, id, param| {
+                let Some(param) = param else { return };
+                if id != pw::spa::param::ParamType::Format.as_raw() { return; }
+
+                let (media_type, media_subtype) = match pw::spa::param::format_utils::parse_format(param) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+
+                if media_type != pw::spa::param::format::MediaType::Audio || media_subtype != pw::spa::param::format::MediaSubtype::Raw {
+                    return;
+                }
+
+                let mut format = pw::spa::param::audio::AudioInfoRaw::default();
+                if format.parse(param).is_ok() {
+                    let rate = format.rate();
+                    rate_for_param.store(rate, std::sync::atomic::Ordering::Relaxed);
+                }
+            })
             .process(move |stream: &pw::stream::Stream, _info| {
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
                 if !thread_configured {
@@ -169,6 +192,24 @@ pub fn run_pipewire_host(
                                     eprintln!("[NAM-rs] ⚠️  SetSampleRate({new_rate}): {e}");
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Verifica se a Thread Main do PipeWire reportou alguma alteração via param_changed
+                let detected_rate = rate_for_process.swap(0, std::sync::atomic::Ordering::Relaxed);
+                if detected_rate != 0 && detected_rate != resampler.pw_rate() {
+                    match NamResampler::new(detected_rate, 2048) {
+                        Ok(rs) => {
+                            resampler = rs;
+                            println!(
+                                "[NAM-rs] 🔄 Sample rate atualizado pelo fluxo de áudio: {} Hz (bypass={})",
+                                detected_rate,
+                                resampler.is_bypass()
+                            );
+                        }
+                        Err(e) => {
+                            eprintln!("[NAM-rs] ⚠️  SetSampleRate automático ({detected_rate}): {e}");
                         }
                     }
                 }

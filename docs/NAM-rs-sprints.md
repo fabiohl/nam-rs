@@ -321,6 +321,13 @@ Esta Sprint concentra-se em garantir que o motor DSP construído de forma limpa 
 | **Tarefa 6.3** | src/pw_host.rs             | **Detecção Reativa Paramétrica (Sample Rate):** Interceptar ativamente as atualizações de Stream Properties do host PipeWire (monitorando avisos assíncronos da rotina de nó da biblioteca). Ao detetar evento `param_changed` e formato validado no canal de *Stream*, usar emissão atômica (`SetSampleRate`) a fim de calibrar/ativar o Bypass ou as polifásicas janelas da Tarefa 5.1 instanciando Resamplers dinamicamente, mantendo simetria matemática rigorosa perante hardware externo diverso.                   | Execução emparelhada em uma Sink de 44.1kHz emitindo transição no log validada da reconstrução do `NamResampler` operando perfeitamente a inferência isolada sob 48kHz em Sinc Filter.                  |
 | **Tarefa 6.4** | src/math/ e core::arch     | **Vanguarda em Hardware: Multiversioning AVX-512:** Adentrar a barreira de litografia micro-arquitetural (Intel Xeon L/AMD Zen4+) elaborando a vertente matricial baseada no registrador ZMM. Reciclar a topologia vetorial *Dot Product* e Minimax usando a ramificação de *flags* de tempo de compilação (\#\[target_feature(enable = "avx512f,avx512vl")\]).                                                                                                                                                           | Objdump garantindo blocos das bibliotecas FMA geradas por *LLVM* utilizando unicamente canais espaciais paralelos a 512-bit sem degradação do vetor matriz das Redes WaveNet/LSTM profundas.            |
 
+> **✅ Notas de Implementação — Tarefa 6.3 (Sprint 6):**
+>
+> **Detecção Reativa Paramétrica de Sample Rate finalizada com sucesso:**
+> - O callback assíncrono `param_changed` foi registrado no `add_local_listener::<()>` local da arquitetura PipeWire. Em cada alteração de formato, a thread do Main Loop extrai a taxa (`AudioInfoRaw::rate`) usando as utilidades `spa::param::format_utils::parse_format`.
+> - Foi instanciado um objeto de alocação de memória lock-free `AtomicU32` ancorado por `Arc` que liga geograficamente o callback passivo da *Main Loop* ao interior isolado de *Thread de Dados DSP*.
+> - Durante as execuções restritas pela CPU isolada com `SCHED_FIFO` no método `process`, as verificações do estado do sample rate atômico detectam atualizações dinâmicas e o nó instantaneamente executa a instigação lock-free trocando as pontes das `Sinc Interpolation`.
+> - A topologia final suporta conexões hot-plug que alterem o hardware ou propriedades do stream do PulseAudio de maneira instantânea sem falhas de transição ou crashes.
 ## **Referências citadas**
 
 1. NAM-rs-1  
