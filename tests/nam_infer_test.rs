@@ -25,7 +25,7 @@
 //! ```
 //!
 //! ## Regeneração dos golden vectors
-//! Execute `utils/golden_gen_build.sh` com a árvore NeuralAudio C++ compilável.
+//! Execute `tests/fixtures/golden_gen_build.sh` com a árvore NeuralAudio C++ compilável.
 //! Os arquivos `.golden.bin` resultantes devem ser commitados em `tests/fixtures/`.
 
 use nam_rs::loader::dispatcher::build_model;
@@ -157,10 +157,10 @@ fn read_golden_bin(path: &Path) -> Option<(Vec<f32>, Vec<f32>)> {
     Some((input, output))
 }
 
-/// Helper: resolve o caminho para um modelo de teste na árvore NeuralAudio.
+/// Helper: resolve o caminho para um modelo de teste em `tests/fixtures/models/`.
 fn model_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("github.com/mikeoliphant/NeuralAudio/Utils/Models");
+    path.push("tests/fixtures/models");
     path.push(filename);
     path
 }
@@ -588,7 +588,7 @@ fn test_auto_consistency_lstm() {
 /// mas detecta erros estruturais (transposição de pesos, offset de gates, etc.).
 ///
 /// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
-/// Execute `utils/golden_gen_build.sh` para regenerar os golden vectors.
+/// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
 #[test]
 fn test_golden_vectors_wavenet() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

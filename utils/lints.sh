@@ -4,7 +4,10 @@
 
 set -xeuo pipefail
 cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
 
-# Versão do clippy para quem gostar de "caçar problemas" e que lints mais pedantes:
+cargo clippy --all-targets --all-features -- -D warnings
+# Versão do clippy para quem gostar de "caçar problemas" e quer lints mais "pedantes":
 #cargo clippy --all-targets --all-features -- -D warnings -D clippy::pedantic -D clippy::nursery -D clippy::cargo
+
+cargo test
+cargo bench

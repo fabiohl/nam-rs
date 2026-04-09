@@ -3,13 +3,32 @@
 
 //! Benchmarks formais de latência de inferência para o motor NAM-rs.
 //!
-//! Utiliza `criterion` para medir a performance de:
-//! - WaveNet Standard (CH=16, K=3, HEAD=8) — 64 amostras
-//! - LSTM 2×16 — 64 amostras
-//! - FastMath `tanh_slice` — 256 amostras
-//! - FastMath `sigmoid_slice` — 256 amostras
+//! Mede o tempo de processamento de 1 bloco DSP (64 amostras a 48 kHz = deadline
+//! de 1.33 ms) para redes neurais WaveNet e LSTM, além dos kernels FastMath
+//! que compõem as funções de ativação SIMD.
 //!
-//! Execute com: `cargo bench --bench inference_bench`
+//! ## Benchmarks disponíveis
+//!
+//! | ID | Descrição | Contexto prático |
+//! |----|-----------|------------------|
+//! | `WaveNet_Standard_CH16_64samp_48kHz` | Inferência WaveNet Standard completa | Modelo ~284 KB, 10+10 layers dilatadas |
+//! | `LSTM_2x16_64samp_48kHz` | Inferência LSTM 2 camadas × 16 hidden | Rede recorrente mais pesada suportada |
+//! | `FastMath_tanh_AVX2_256elem` | Ativação tanh Padé×rsqrt sobre 256 f32 | Kernel chamado N×layers/bloco no WaveNet |
+//! | `FastMath_sigmoid_AVX2_256elem` | Ativação sigmoid derivada de tanh | Kernel chamado N×gates/bloco no LSTM |
+//!
+//! ## Interpretação dos resultados
+//!
+//! - O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
+//! - Se qualquer benchmark de inferência exceder este deadline, o engine causará
+//!   xruns (buffer underruns) em produção com esse tamanho de buffer.
+//! - Os kernels FastMath são sub-componentes chamados centenas de vezes por bloco;
+//!   seu tempo total contribui para a latência da inferência completa.
+//!
+//! ## Execução
+//!
+//! ```sh
+//! cargo bench --bench inference_bench
+//! ```
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
@@ -40,14 +59,19 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
     }
 }
 
-/// Benchmark: WaveNet Standard (real model) — 64 amostras.
+/// Benchmark: WaveNet Standard (modelo real BossWN-standard.nam).
+///
+/// Mede a latência de `process()` para 64 amostras (1 bloco DSP a 48 kHz).
+/// O deadline de tempo-real para este buffer é 1.33 ms — se o benchmark
+/// exceder esse valor, o engine causará xruns em produção.
 fn bench_wavenet_standard_process(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("github.com/mikeoliphant/NeuralAudio/Utils/Models/BossWN-standard.nam");
+    path.push("tests/fixtures/models/BossWN-standard.nam");
 
     if !path.exists() {
         eprintln!(
-            "SKIP bench: BossWN-standard.nam não encontrado em {path:?}. Ignorando benchmark WaveNet."
+            "SKIP bench: BossWN-standard.nam não encontrado em {path:?}. \
+             Copie modelos para tests/fixtures/models/ (veja TODO.txt)."
         );
         return;
     }
@@ -60,16 +84,18 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
-    c.bench_function("wavenet_standard_64samp", |b| {
+    c.bench_function("WaveNet_Standard_CH16_64samp_48kHz", |b| {
         b.iter(|| {
             model.0.process(&input, &mut output);
         });
     });
 }
 
-/// Benchmark: LSTM 2×16 (sintético) — 64 amostras.
+/// Benchmark: LSTM 2×16 (sintético, 3345 pesos).
+///
+/// Mede a latência de `process()` para 64 amostras (1 bloco DSP a 48 kHz).
+/// A rede LSTM 2×16 é a topologia recorrente mais pesada suportada pelo NAM-rs.
 fn bench_lstm_2x16_process(c: &mut Criterion) {
-    // LSTM 2×16: 3345 pesos
     let data = make_lstm_data(2, 16, 3345);
     let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
     model.0.prewarm(2048);
@@ -77,20 +103,24 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
-    c.bench_function("lstm_2x16_64samp", |b| {
+    c.bench_function("LSTM_2x16_64samp_48kHz", |b| {
         b.iter(|| {
             model.0.process(&input, &mut output);
         });
     });
 }
 
-/// Benchmark: FastMath tanh_slice — 256 amostras.
+/// Benchmark: kernel FastMath `tanh_slice_avx2` sobre 256 elementos f32.
+///
+/// Este kernel é chamado em cada layer×bloco do WaveNet e do LSTM para computar
+/// a função de ativação tanh via polinômio Padé grau 5 + rsqrt_ps Newton-Raphson.
+/// Processar 256 floats por invocação é representativo do workload interno.
 fn bench_tanh_slice_256(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
-        c.bench_function("tanh_slice_256", |b| {
+        c.bench_function("FastMath_tanh_AVX2_256elem", |b| {
             let mut buf = base.clone();
             b.iter(|| {
                 buf.copy_from_slice(&base);
@@ -100,13 +130,16 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
     }
 }
 
-/// Benchmark: FastMath sigmoid_slice — 256 amostras.
+/// Benchmark: kernel FastMath `sigmoid_slice_avx2` sobre 256 elementos f32.
+///
+/// O sigmoid é derivado via identidade `0.5*(1+tanh(0.5*x))` e é usado
+/// nas portas i/f/o do LSTM. Processar 256 floats é representativo.
 fn bench_sigmoid_slice_256(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
-        c.bench_function("sigmoid_slice_256", |b| {
+        c.bench_function("FastMath_sigmoid_AVX2_256elem", |b| {
             let mut buf = base.clone();
             b.iter(|| {
                 buf.copy_from_slice(&base);

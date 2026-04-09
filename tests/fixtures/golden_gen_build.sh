@@ -10,7 +10,7 @@
 #   - Bibliotecas Eigen3 (header-only, incluída nos deps do NeuralAudio)
 #
 # Uso:
-#   ./utils/golden_gen_build.sh
+#   ./tests/fixtures/golden_gen_build.sh
 #
 # Saída:
 #   tests/fixtures/golden_wavenet_standard.bin
@@ -23,12 +23,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 NEURAL_AUDIO_ROOT="$PROJECT_ROOT/github.com/mikeoliphant/NeuralAudio"
 BUILD_DIR="$NEURAL_AUDIO_ROOT/build/golden_gen"
-MODELS_DIR="$NEURAL_AUDIO_ROOT/Utils/Models"
-FIXTURES_DIR="$PROJECT_ROOT/tests/fixtures"
+MODELS_DIR="$SCRIPT_DIR/models"
+FIXTURES_DIR="$SCRIPT_DIR"
 
 echo "=== Golden Vector Generator ==="
 echo "  NeuralAudio: $NEURAL_AUDIO_ROOT"

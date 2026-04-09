@@ -1,118 +1,13 @@
 ## Alphas: Rodadas de revisões globais, até "acalmar" totalmente a quantidade de issues abertas.
-Usando a skill "revisor-auditor" promova uma detalhado análise com vista a preparação para início da fase "beta" do projeto. Alguns pontos a considerar (sinta-se a vontade para ir além):
-* A pasta github.com/mikeoliphant/NeuralAudio/ contém a base de código em C++ da implemntação de referência do NAM.
-* Faça uma meticulosa comparação com o nosso projeto em rust (src/*) assegurando que todas as funcionalidades estão implementadas - respeitando o espírito e os objetivos do projeto.
-* Verifique se o código (src/* e tests/*) e a documentação (README.md e docs/*) atuais estão aderentes ao escopo do projeto (docs/NAM-rs-referência.md).
-* Caçar bugs de todos os tipos.
+Usando a skill "revisor-auditor" promova uma detalhada análise em vista à preparação para início da fase "beta" do projeto. Alguns pontos a considerar (sinta-se a vontade para ir além):
+* A pasta github.com/mikeoliphant/NeuralAudio/ espelha do github da base de código em C++ da implementação de referência do NAM.
+* Faça uma meticulosa comparação com o nosso projeto em rust assegurando que todas as funcionalidades estão implementadas - respeitando o espírito e os objetivos do projeto.
+* Verifique se os códigos, testes, benchmarks e a documentação (README.md e docs/*) atuais estão aderentes ao escopo do projeto (docs/NAM-rs-referência.md).
 * Caçar o máximo de testes automatizados bons e realmente úteis - inclusive na internet aberta geral. Verifique se os atuais existentes estão em boa qualidade e se é possível melhorar ou substituir algum deles.
-* A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma nova sprint ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas.
+* A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma(s) nova(s) sprint(s) ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas.
 
 ## Lançamento Beta:
-* Usando a skill "revisor-auditor" promova uma organização geral do código em prol de legibilidade e manutenibilidade. Remover artefatos desnecessários. Caçar bugs de todos os tipos.
+* Usando a skill "revisor-auditor" promova uma limpeza / refatoração / organização geral do código em prol de legibilidade e manutenibilidade. Remover artefatos desnecessários. Cuidado para não inserir bugs de regressão.
 * Usando a skill "pesquisador-inovador" revise todas as definições de IA na pasta ".agents/" para garantir que estão aderentes ao estado atual do projeto.
-* Use a skill "documentador" para revisar completamente os comentários de código fonte em prol do entendimento fácil para leigos em Rust e em DSP/Áudio.
-* Revisar "docs/architecture.md" totalmente como a "biblia" geral de arquitetura. A ponto de tornar "docs/NAM-rs-referência.md" e "docs/NAM-rs-sprints.md" totalmente desnecessários e apaga-los.
-
-# ============================================================================
-# Modelos .nam para Testes de Integração e Benchmarks
-# ============================================================================
-#
-# Vários testes de integração (tests/nam_infer_test.rs) e benchmarks
-# (benches/inference_bench.rs) dependem de modelos .nam reais para
-# executar. Quando estes modelos não estão presentes, os testes imprimem
-# "SKIP: <motivo>" e retornam sem falhar.
-#
-# Para ativar todos os testes e benchmarks, siga estas instruções:
-#
-# ── 1. Origem dos modelos ──────────────────────────────────────────────
-#
-#   Os modelos vêm do treinador oficial do NAM:
-#     https://tonehunt.com/
-#     https://github.com/sdatkinson/neural-amp-modeler
-#
-#   Modelos pré-treinados de exemplo para teste já estão incluídos no
-#   repositório C++ de referência:
-#     github.com/mikeoliphant/NeuralAudio/Utils/Models/
-#
-#   Modelos presentes (já no repo, usados pelos testes atuais):
-#     - BossWN-standard.nam  (WaveNet Standard, CH=16, ~284KB)
-#     - BossWN-feather.nam   (WaveNet Feather, CH=8, ~65KB)
-#     - BossWN-nano.nam      (WaveNet Nano, CH=4, ~18KB)
-#     - BossLSTM-1x16.nam    (LSTM 1×16, ~25KB)
-#     - BossLSTM-2x8.nam     (LSTM 2×8, ~19KB)
-#     - tw40_blues_deluxe_deerinkstudios.json (WaveNet legacy, ~163KB)
-#
-# ── 2. Verificar que os modelos estão presentes ────────────────────────
-#
-#   Os testes procuram os modelos em:
-#     <CARGO_MANIFEST_DIR>/github.com/mikeoliphant/NeuralAudio/Utils/Models/
-#
-#   Se o repositório C++ de referência foi clonado corretamente como
-#   subdiretório (ou symlinked), os modelos já estarão no local esperado.
-#
-#   Para verificar:
-#     $ ls github.com/mikeoliphant/NeuralAudio/Utils/Models/*.nam
-#
-#   Deve listar pelo menos: BossWN-standard.nam e BossLSTM-1x16.nam
-#
-# ── 3. Baixar modelos adicionais (opcional) ────────────────────────────
-#
-#   Se quiser testar com outros modelos (ex: Lite, ou modelos de terceiros):
-#
-#   a) Baixe arquivos .nam de https://tonehunt.com/
-#   b) Copie o arquivo para:
-#        github.com/mikeoliphant/NeuralAudio/Utils/Models/<nome>.nam
-#   c) Altere os testes para referenciar o novo arquivo, ou crie testes
-#      novos seguindo o padrão dos existentes.
-#
-# ── 4. Executar testes completos ───────────────────────────────────────
-#
-#   # Compila e roda todos os testes (modelos presentes aparecem como OK)
-#   cargo test
-#
-#   # Para ver quais testes foram skippados (stderr):
-#   cargo test 2>&1 | grep SKIP
-#
-#   # Para rodar benchmarks criterion (requer modelos):
-#   cargo bench --bench inference_bench
-#
-# ── 5. Golden Vectors (cross-validation numérica C++ ↔ Rust) ──────────
-#
-#   Os testes test_golden_vectors_wavenet e test_golden_vectors_lstm
-#   procuram arquivos binários em tests/fixtures/:
-#     - golden_wavenet_standard.bin
-#     - golden_lstm_1x16.bin
-#
-#   Se estes arquivos não existirem, os testes imprimem SKIP.
-#   Para gerá-los, compile e execute o utilitário C++:
-#     $ bash utils/golden_gen_build.sh
-#
-#   O script compila o golden_gen.cpp usando os headers do NeuralAudio e
-#   gera os binários de referência automaticamente.
-#
-# ── 6. Topologias suportadas ────────────────────────────────────────────
-#
-#   WaveNet: Standard(CH=16), Lite(CH=12), Feather(CH=8), Nano(CH=4)
-#   LSTM:    1×8, 1×12, 1×16, 1×24, 2×8, 2×12, 2×16
-#
-#   Modelos com topologias fora dessas serão rejeitados pelo dispatcher.
-# ============================================================================
-
-Vamos analisar as orientações de testes ao final do TODO.txt.
-Segue anexo o resultado do "cargo test" e do "cargo bench":
-Vamos assegurar que os testes e benches estão devidamente configurados e fáceis de manter.
-Ao final, também garantir que a seção "6. Política de Testes" de "docs/architecture.md" esteja atualizada e correta.
-
-Aparentemente 51 testes unitários foram identificados e executados com sucesso. Nenhum foi deixado pra trás?
-Houveram 0 "unittests src/main.rs". É isso mesmo.
-Finalmente Houveram 9 testes "Golden Vectors". Estão todos lá?
-
-Notei que Temos `utils/golden_gen_build.sh` e `utils/golden_gen.cpp` em `utils/`. Este é o local correto deles estarem, já que eles fazem parte da suíte de testes?
-
-Outra coisa. Não percebi o uso dos arquivos .nam nos testes. Será que eles não foram localizados?
-Temos replicados em `` e em `` vários arquivos .nam fornecido pelo projeto original.
-De todo modo penso não ser um bom lugar para buscar porque este código não ficará lá para sempre.
-Seria uma boa prática adotar outro local mais coerente a este projeto rust e configurar os testes e benches pra localiza-los lá?
-
-Verifique também se tudo foi devidamente identificado no "cargo bench".
-Seria interessante, se não for muito complexo, tornar as mensagens (especialmente de bench) mais explicativas do que isto significa na prática.
+* Use a skill "documentador" para revisar completamente os comentários de código-fonte em prol do entendimento fácil para leigos em Rust e em DSP/Áudio.
+* Revisar "docs/architecture.md" e "README.md" totalmente como a "biblia" geral de arquitetura. Caprichar a ponto de tornar "docs/NAM-rs-referência.md" e "docs/NAM-rs-sprints.md" totalmente desnecessários e apaga-los.

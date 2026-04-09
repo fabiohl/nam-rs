@@ -98,38 +98,107 @@ PipeWire Input (Nk Hz)
 
 ## 6. Política de Testes (`cargo test` e `cargo bench`)
 
-O projeto adota a convenção idiomática do Rust, com duas camadas complementares:
+O projeto adota a convenção idiomática do Rust, com três camadas complementares:
 
-### 6.1. Testes Unitários Inline (`#[cfg(test)]`)
+### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 51 testes
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
-| Módulo                     | Cobertura                                                       |
-| -------------------------- | --------------------------------------------------------------- |
-| `src/math/fastmath.rs`     | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32` |
-| `src/math/simd.rs`         | `dot_product_avx2`/`avx512`, `SimdMathConfig::current()`        |
-| `src/dsp/gain.rs`          | Gain staging SIMD: dB→linear, vetorização                       |
-| `src/dsp/resampler.rs`     | `NamResampler` bidirecional, bypass em 48 kHz, identidade       |
-| `src/models/wavenet.rs`    | Alocação, prewarm NaN-free, process zeros, determinismo         |
-| `src/models/lstm.rs`       | Alocação, process zeros, determinismo AVX2/AVX-512              |
-| `src/loader/nam_json.rs`   | Parsing JSON, classificação de topologia WaveNet/LSTM           |
-| `src/loader/namb.rs`       | Parsing binário Tone3000, CRC32, header validation              |
-| `src/loader/dispatcher.rs` | WeightCursor, construção por topologia, rejeição de erros       |
-| `src/spsc.rs`              | Concorrência SPSC lock-free, Producer/Consumer multi-thread     |
+| Módulo                     | Testes | Cobertura                                                              |
+| -------------------------- |:------:| ---------------------------------------------------------------------- |
+| `src/dsp/gain.rs`          | 4      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB           |
+| `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response         |
+| `src/loader/dispatcher.rs` | 8      | Build Standard/Feather/LSTM, rejeição, exaustão WeightCursor, overflow |
+| `src/loader/nam_json.rs`   | 6      | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, validação    |
+| `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                  |
+| `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`        |
+| `src/math/simd.rs`         | 2      | `dot_product_avx2`/`dot_product_avx512`                                |
+| `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                |
+| `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer             |
+| `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread          |
 
-### 6.2. Testes de Integração (`tests/`)
+> **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
 
-O diretório `tests/` na raiz do crate contém testes de integração que consomem a API pública `nam_rs::*` como um usuário externo. Estes testes validam o pipeline completo de ponta a ponta:
+### 6.2. Testes de Integração (`tests/`) — 9 testes
 
-- **`tests/nam_infer_test.rs`** — Teste de estabilidade computacional de longa duração:
-  - Parsing JSON de modelos reais (`.nam`) via `parse_nam_json`
-  - Classificação topológica (`get_wavenet_topology`)
-  - Construção via `build_model()` (dispatcher completo)
-  - Inferência WaveNet e LSTM com blocos senoidais (~5.4s simulados a 48 kHz)
-  - Validação de finitude (NaN/Inf) em todas as amostras de saída
+O diretório `tests/` contém `nam_infer_test.rs`, que consome a API pública `nam_rs::*` como um usuário externo. Os 9 testes cobrem **5 categorias** distintas:
 
-### 6.3. Convenções e Guardas
+#### Parsing e Topologia (1 teste)
 
-- **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte a essas instruções não sofram `SIGILL`.
-- **Modelos de teste opcionais:** Testes de integração que dependem de arquivos `.nam` reais (subdiretório `github.com/`) fazem `if !path.exists() { return; }`, permitindo execução parcial em ambientes sem o repositório NeuralAudio espelhado.
-- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os unitários inline; `cargo test --test nam_infer_test` apenas a integração.
+- **`test_wavenet_model_json_parsing`** — Parseia `BossWN-standard.nam`, valida arquitetura "WaveNet" e topologia `Standard`.
+
+#### Estabilidade Numérica (1 teste)
+
+- **`test_wavenet_computational_stability`** — Processa ~5.4s de onda senoidal pelo WaveNet sintético (4096 blocos×64 amostras em release, 512 em debug). Verifica finitude de todas as saídas e RMS ≤ 10.0.
+
+#### Dispatcher com Modelo Real (2 testes)
+
+- **`test_dispatcher_build_model_real_json`** — `build_model()` com `BossWN-standard.nam` produz `DynamicModel` funcional.
+- **`test_dispatcher_build_model_real_lstm`** — `build_model()` com `BossLSTM-1x16.nam` produz `DynamicModel` funcional.
+
+#### Auto-Consistência / Determinismo (2 testes)
+
+- **`test_auto_consistency_wavenet`** — Dois `DynamicModel` idênticos geram saída bitwise identical (MSE = 0.0).
+- **`test_auto_consistency_lstm`** — Idem para LSTM 1×16.
+
+#### Golden Vectors C++ ↔ Rust (2 testes)
+
+- **`test_golden_vectors_wavenet`** — Compara saída Rust vs. referência C++ (MSE < 1e-4).
+- **`test_golden_vectors_lstm`** — Compara saída Rust vs. referência C++ (MSE < 1e-5).
+
+#### Pipeline End-to-End SPSC (1 teste)
+
+- **`test_end_to_end_spsc_pipeline`** — Cadeia completa CLI→SPSC→DSP sem PipeWire: parse + dispatcher + envio pela fila `rtrb` como `ParamPayload::LoadModel` + drainagem + inferência + validação.
+
+### 6.3. Benchmarks `criterion` (`cargo bench`) — 4 benchmarks
+
+O arquivo `benches/inference_bench.rs` mede a latência de processamento com o framework `criterion` (harness=false). O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
+
+| Benchmark                            | Descrição                                      | Referência prática                           |
+| ------------------------------------ | ---------------------------------------------- | -------------------------------------------- |
+| `WaveNet_Standard_CH16_64samp_48kHz` | Inferência WaveNet Standard (modelo real .nam) | 1 bloco DSP completo — deve caber em 1.33 ms |
+| `LSTM_2x16_64samp_48kHz`             | Inferência LSTM 2×16 (sintético, 3345 pesos)   | Topologia recorrente mais pesada suportada   |
+| `FastMath_tanh_AVX2_256elem`         | Ativação tanh Padé×rsqrt sobre 256 f32         | Kernel chamado N×layers/bloco no WaveNet     |
+| `FastMath_sigmoid_AVX2_256elem`      | Ativação sigmoid derivada de tanh              | Kernel chamado N×gates/bloco no LSTM         |
+
+> **Nota:** Durante `cargo bench`, os 51 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
+
+Execução: `cargo bench --bench inference_bench`
+
+### 6.4. Golden Vectors e Infraestrutura C++
+
+Os golden vectors são arquivos binários (`.golden.bin`) contendo input e output de referência gerados pelo motor C++ (NeuralAudio Internal mode). Servem para validar que o motor Rust produz resultados numericamente compatíveis com a implementação C++ de referência.
+
+**Formato `.golden.bin`:**
+
+```text
+[u32 num_samples LE]
+[f32×N input samples LE]       — senoidal 440 Hz a 48 kHz
+[f32×N expected output LE]     — output do C++ NeuralAudio
+```
+
+**Regeneração:** `./tests/fixtures/golden_gen_build.sh`
+
+### 6.5. Layout de `tests/fixtures/`
+
+```text
+tests/fixtures/
+├── models/                         ← Modelos .nam (commitados no repo)
+│   ├── BossWN-standard.nam
+│   ├── BossWN-feather.nam
+│   ├── BossWN-nano.nam
+│   ├── BossLSTM-1x16.nam
+│   ├── BossLSTM-2x8.nam
+│   └── tw40_blues_deluxe_deerinkstudios.json
+├── golden_wavenet_standard.bin     ← Golden vectors (gerados pelo C++)
+├── golden_lstm_1x16.bin
+├── golden_gen.cpp                  ← Gerador C++ de golden vectors
+├── golden_gen_build.sh             ← Script de build do gerador
+└── README.md
+```
+
+### 6.6. Convenções e Guardas
+
+- **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
+- **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
+- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os 51 unitários inline; `cargo test --test nam_infer_test` apenas os 9 de integração.
