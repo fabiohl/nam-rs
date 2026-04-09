@@ -630,4 +630,119 @@ mod tests {
         let result = build_model(&data);
         assert!(result.is_err(), "Deveria falhar com pesos insuficientes");
     }
+
+    // =========================================================================
+    // Sprint 8.3/T-4 — Rejeição de topologias não-suportadas
+    // =========================================================================
+
+    /// T-4: WaveNet com channels=32 não é suportado — deve retornar Err.
+    #[test]
+    fn test_reject_wavenet_unsupported_channels() {
+        let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        // channels=32 não é Standard(16), Lite(12), Feather(8) ou Nano(4)
+        let data = make_wavenet_data(32, 16, &std_d, &std_d, 100_000);
+        let result = build_model(&data);
+        assert!(
+            result.is_err(),
+            "Deveria rejeitar WaveNet com channels=32 (topologia não suportada)"
+        );
+    }
+
+    /// T-4: LSTM com 3 camadas não é suportado — deve retornar Err.
+    #[test]
+    fn test_reject_lstm_unsupported_geometry() {
+        let data = make_lstm_data(3, 8, 10_000);
+        let result = build_model(&data);
+        assert!(
+            result.is_err(),
+            "Deveria rejeitar LSTM 3×8 (geometria não suportada)"
+        );
+    }
+
+    // =========================================================================
+    // Sprint 8.3/T-6 — Exaustão do WeightCursor para todas as topologias
+    // =========================================================================
+
+    /// T-6: Verifica que `build_model()` consome 100% dos pesos para cada perfil WaveNet.
+    ///
+    /// Contagem de pesos por topologia (calculada manualmente a partir do layout C++):
+    /// - Standard (CH=16, K=3, HEAD=8, 10+10 layers):   13802
+    /// - Lite     (CH=12, K=3, HEAD=6, 7+13 layers):     6554
+    /// - Feather  (CH=8,  K=3, HEAD=4, 7+13 layers):     3026
+    /// - Nano     (CH=4,  K=3, HEAD=2, 7+13 layers):      842
+    #[test]
+    fn test_weight_exhaustion_all_wavenet_topologies() {
+        let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        let lite_d0 = [1, 2, 4, 8, 16, 32, 64];
+        let lite_d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+
+        // Standard: CH=16, HEAD=8, 13802 pesos
+        let data = make_wavenet_data(16, 8, &std_d, &std_d, 13802);
+        assert!(
+            build_model(&data).is_ok(),
+            "WaveNet Standard com 13802 pesos deveria passar"
+        );
+
+        // Lite: CH=12, HEAD=6, 6554 pesos
+        let data = make_wavenet_data(12, 6, &lite_d0, &lite_d1, 6554);
+        assert!(
+            build_model(&data).is_ok(),
+            "WaveNet Lite com 6554 pesos deveria passar"
+        );
+
+        // Feather: CH=8, HEAD=4, 3026 pesos
+        let data = make_wavenet_data(8, 4, &lite_d0, &lite_d1, 3026);
+        assert!(
+            build_model(&data).is_ok(),
+            "WaveNet Feather com 3026 pesos deveria passar"
+        );
+
+        // Nano: CH=4, HEAD=2, 842 pesos
+        let data = make_wavenet_data(4, 2, &lite_d0, &lite_d1, 842);
+        assert!(
+            build_model(&data).is_ok(),
+            "WaveNet Nano com 842 pesos deveria passar"
+        );
+    }
+
+    /// T-6: Verifica exaustão de pesos para todos os perfis LSTM suportados.
+    ///
+    /// Layout: layer(H4*IH + H4 + H + H) + head(H + 1).
+    /// - 1×8:  345,  1×12: 709,  1×16: 1201, 1×24: 2569
+    /// - 2×8:  905,  2×12: 1933, 2×16: 3345
+    #[test]
+    fn test_weight_exhaustion_all_lstm_topologies() {
+        let cases: &[(&str, usize, usize, usize)] = &[
+            ("1×8", 1, 8, 345),
+            ("1×12", 1, 12, 709),
+            ("1×16", 1, 16, 1201),
+            ("1×24", 1, 24, 2569),
+            ("2×8", 2, 8, 905),
+            ("2×12", 2, 12, 1933),
+            ("2×16", 2, 16, 3345),
+        ];
+
+        for &(name, nl, hs, w) in cases {
+            let data = make_lstm_data(nl, hs, w);
+            let result = build_model(&data);
+            assert!(
+                result.is_ok(),
+                "LSTM {name} com {w} pesos deveria passar, mas falhou: {:?}",
+                result.err()
+            );
+        }
+    }
+
+    /// T-6: Verifica que 1 peso extra causa falha (overflow de cursor).
+    #[test]
+    fn test_weight_overflow_extra_peso() {
+        let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        // Standard exige 13802 pesos; fornecer 13803 (1 extra) deve falhar na exaustão
+        let data = make_wavenet_data(16, 8, &std_d, &std_d, 13803);
+        let result = build_model(&data);
+        assert!(
+            result.is_err(),
+            "Deveria falhar com 1 peso extra (overflow do cursor)"
+        );
+    }
 }

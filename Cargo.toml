@@ -34,3 +34,10 @@ debug = 1                    # Line tables only (faster than full debug info)
 opt-level = 0                # No optimizations for max build speed
 incremental = true           # Incremental compilation (faster build)
 split-debuginfo = "unpacked" # Faster linking on Linux
+
+[dev-dependencies]
+criterion = { version = "0.8.2", default-features = false }
+
+[[bench]]
+name = "inference_bench"
+harness = false

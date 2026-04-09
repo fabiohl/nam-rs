@@ -197,7 +197,7 @@ pub struct LstmModel1<const H: usize, const H1_IH: usize, const H_H4: usize> {
     pub layer: LstmLayer<1, H, H1_IH, H_H4>,
     /// Pesos de extração direcional (Cabeça).
     pub head_weights: [f32; H],
-    /// # Safety
+    /// Bias escalar da projeção de saída (cabeça linear).
     pub head_bias: f32,
 }
 

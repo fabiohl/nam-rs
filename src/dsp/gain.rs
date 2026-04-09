@@ -141,4 +141,44 @@ mod tests {
             );
         }
     }
+
+    /// Sprint 8.3/T-5: Verifica que `apply_gain_simd` com gain=1.0 é true-bypass bitwise.
+    ///
+    /// Testa dois cenários:
+    /// - Buffer de 16 amostras (alinhado a AVX2 lanes de 8)
+    /// - Buffer de 13 amostras (não-múltiplo de 8, exercita o fallback escalar tail)
+    ///
+    /// Em ambos os casos, o conteúdo deve ser preservado bit-a-bit.
+    #[test]
+    fn test_gain_true_bypass() {
+        // Cenário 1: Buffer alinhado (múltiplo de 8)
+        let original_aligned: [f32; 16] = [
+            0.1, -0.2, 0.3, -0.4, 0.5, -0.6, 0.7, -0.8, 0.9, -1.0, 1.1, -1.2, 1.3, -1.4, 1.5, -1.6,
+        ];
+        let mut buf_aligned = original_aligned;
+        apply_gain_simd(&mut buf_aligned, 1.0);
+        assert_eq!(
+            buf_aligned, original_aligned,
+            "Gain 1.0 deve preservar buffer alinhado bitwise (true-bypass)"
+        );
+
+        // Cenário 2: Buffer não-alinhado (tail escalar)
+        let original_tail: [f32; 13] = [
+            0.01, -0.02, 0.03, -0.04, 0.05, -0.06, 0.07, -0.08, 0.09, -0.10, 0.11, -0.12, 0.13,
+        ];
+        let mut buf_tail = original_tail;
+        apply_gain_simd(&mut buf_tail, 1.0);
+        assert_eq!(
+            buf_tail, original_tail,
+            "Gain 1.0 deve preservar buffer não-alinhado bitwise (true-bypass tail)"
+        );
+
+        // Cenário 3: Gain muito próximo de 1.0 (dentro do epsilon de bypass)
+        let mut buf_eps = original_aligned;
+        apply_gain_simd(&mut buf_eps, 1.0 + 1e-7);
+        assert_eq!(
+            buf_eps, original_aligned,
+            "Gain ≈1.0 (dentro de 1e-6) deve acionar fast-path bypass"
+        );
+    }
 }

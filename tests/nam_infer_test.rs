@@ -340,6 +340,9 @@ fn test_wavenet_model_json_parsing() {
 }
 
 /// Teste 2: Executa Múltiplos Blocos de Senoide pelo Core WaveNet e calcula o RMS/Erro (Sanity)
+///
+/// Sprint 8.3/T-7: Adicionada verificação de magnitude RMS ≤ 10.0 para detectar divergência.
+/// Em debug, usa blocos reduzidos (512) para velocidade de CI.
 #[test]
 fn test_wavenet_computational_stability() {
     #[cfg(target_arch = "x86_64")]
@@ -352,10 +355,17 @@ fn test_wavenet_computational_stability() {
         let mut in_data = [0.0f32; TEST_BLOCK_SIZE];
         let mut out_data = [0.0f32; TEST_BLOCK_SIZE];
 
+        // Em debug, reduz blocos para CI mais rápido; release usa valor completo.
+        let num_blocks = if cfg!(debug_assertions) {
+            512
+        } else {
+            TEST_NUM_BLOCKS
+        };
+
         let mut tot_energy = 0.0f64;
         let mut pos: u64 = 0;
 
-        for _ in 0..TEST_NUM_BLOCKS {
+        for _ in 0..num_blocks {
             // Gerador senoidal controlado como em `ModelTest.cpp`
             for item in in_data.iter_mut().take(TEST_BLOCK_SIZE) {
                 *item = ((pos as f32) * 0.01).sin();
@@ -373,10 +383,17 @@ fn test_wavenet_computational_stability() {
             }
         }
 
-        let rms = (tot_energy / ((TEST_BLOCK_SIZE * TEST_NUM_BLOCKS) as f64)).sqrt();
+        let rms = (tot_energy / ((TEST_BLOCK_SIZE * num_blocks) as f64)).sqrt();
         println!(
             "[Auditoria de Integridade WaveNet] RMS sobre onda senoidal processada: {}",
             rms
+        );
+
+        // T-7: Verificação de magnitude razoável — RMS deve ser ≤ 10.0 para modelo sintético.
+        // Um RMS > 10.0 indicaria divergência numérica da rede ou erro de inicialização.
+        assert!(
+            rms <= 10.0,
+            "WaveNet RMS {rms:.4} excede magnitude razoável (10.0). Possível divergência numérica."
         );
     }
 }
@@ -675,5 +692,83 @@ fn test_golden_vectors_lstm() {
     assert!(
         mse < 1e-5,
         "LSTM Golden Vector MSE={mse:.6e} excede limiar 1e-5 (MaxAbsErr={mae:.6e})"
+    );
+}
+
+// =============================================================================
+// Sprint 8.3 — Teste End-to-End SPSC Pipeline (T-2)
+// =============================================================================
+
+/// Teste 9 (Sprint 8.3/T-2): Pipeline End-to-End CLI→SPSC→DSP sem PipeWire.
+///
+/// Valida a cadeia completa de comunicação lock-free que seria usada em produção:
+/// 1. Parseia `BossWN-standard.nam` e constrói `DynamicModel` via dispatcher
+/// 2. Envia o modelo pela fila SPSC (`rtrb::RingBuffer`) como `ParamPayload::LoadModel`
+/// 3. No lado consumidor (thread DSP simulada), drena o modelo e executa inferência
+/// 4. Verifica que a saída é finita e com magnitude razoável
+///
+/// Este teste não requer um daemon PipeWire ativo — exercita exclusivamente
+/// a mecânica SPSC + inferência, cobrindo a lacuna entre os testes de unidade
+/// do dispatcher e os testes de unidade do SPSC.
+#[test]
+fn test_end_to_end_spsc_pipeline() {
+    let path = model_path("BossWN-standard.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP: BossWN-standard.nam não encontrado em {path:?}. Ignorando pipeline E2E.");
+        return;
+    }
+
+    // 1. Parse + Dispatch (simula thread CLI)
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet para E2E");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON para E2E");
+    let boxed = build_model(&model_data).expect("Dispatcher falhou no pipeline E2E");
+
+    // 2. Cria canal SPSC e envia o modelo como a CLI faria
+    let (mut producer, mut consumer) = rtrb::RingBuffer::<nam_rs::spsc::ParamPayload>::new(8);
+
+    producer
+        .push(nam_rs::spsc::ParamPayload::LoadModel {
+            model: Some(boxed),
+            input_db_adj: 0.0,
+            output_db_adj: 0.0,
+        })
+        .expect("Falha ao enviar modelo via SPSC no E2E");
+
+    // 3. Lado consumidor (simula callback DSP) — drena e executa inferência
+    let received = consumer
+        .pop()
+        .expect("Falha ao receber modelo via SPSC no E2E");
+
+    let mut active_model = match received {
+        nam_rs::spsc::ParamPayload::LoadModel {
+            model,
+            input_db_adj: _,
+            output_db_adj: _,
+        } => model,
+        _ => panic!("Payload recebido não é LoadModel no E2E"),
+    };
+
+    let model = active_model
+        .as_mut()
+        .expect("Modelo nulo após drainagem SPSC");
+    model.0.prewarm(2048);
+
+    // 4. Processa sinal senoidal 440 Hz (64 amostras, 1 bloco)
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.0.process(&input, &mut output);
+
+    // 5. Validação: finitude e magnitude razoável
+    for (i, &s) in output.iter().enumerate() {
+        assert!(s.is_finite(), "[E2E] Sample não finita no índice {i}: {s}");
+        assert!(
+            s.abs() < 100.0,
+            "[E2E] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+        );
+    }
+
+    println!(
+        "[Sprint 8.3] Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas)."
     );
 }
