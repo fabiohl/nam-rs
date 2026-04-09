@@ -17,6 +17,7 @@ use crate::loader::nam_json::{
 };
 use crate::models::DynamicModel;
 use crate::models::lstm::{LstmLayer, LstmModel1, LstmModel2};
+use crate::models::lstm_dyn::{LstmDynLayer, LstmDynModel};
 use crate::models::wavenet::{
     Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState, WaveNetModel,
 };
@@ -354,11 +355,7 @@ fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
         (2, 8) => build_lstm_2layer::<8, 9, 16, 32>(data, num_layers, hidden_size),
         (2, 12) => build_lstm_2layer::<12, 13, 24, 48>(data, num_layers, hidden_size),
         (2, 16) => build_lstm_2layer::<16, 17, 32, 64>(data, num_layers, hidden_size),
-        _ => bail!(
-            "Geometria LSTM não suportada: {}×{}",
-            num_layers,
-            hidden_size
-        ),
+        _ => build_lstm_dynamic(data, num_layers, hidden_size),
     }
 }
 
@@ -436,6 +433,71 @@ fn build_lstm_2layer<const H: usize, const H1_IH: usize, const H2_IH: usize, con
 
     println!(
         "[Dispatcher] LSTM {}×{} construído — pesos={}",
+        num_layers,
+        hidden_size,
+        data.weights.len()
+    );
+
+    Ok(Box::new(DynamicModel(Box::new(model))))
+}
+
+// =============================================================================
+// LSTM — Construtor Dinâmico (Fallback)
+// =============================================================================
+
+fn build_lstm_dynamic(
+    data: &NamModelData,
+    num_layers: usize,
+    hidden_size: usize,
+) -> anyhow::Result<Box<DynamicModel>> {
+    let mut cursor = WeightCursor::new(&data.weights);
+    let mut layers = Vec::with_capacity(num_layers);
+
+    let mut current_input_size = 1;
+
+    for _ in 0..num_layers {
+        let input_hidden_weights = cursor
+            .read_slice(hidden_size * 4 * (current_input_size + hidden_size))?
+            .to_vec();
+        let bias = cursor.read_slice(hidden_size * 4)?.to_vec();
+
+        // initial_hidden_state [H] -> loaded into state[current_input_size..current_input_size+hidden_size]
+        let hidden_init = cursor.read_slice(hidden_size)?;
+        let mut state = vec![0.0; current_input_size + hidden_size];
+        state[current_input_size..current_input_size + hidden_size].copy_from_slice(hidden_init);
+
+        // initial_cell_state [H]
+        let cell_init = cursor.read_slice(hidden_size)?;
+        let mut cell_state = vec![0.0; hidden_size];
+        cell_state.copy_from_slice(cell_init);
+
+        layers.push(LstmDynLayer {
+            input_hidden_weights,
+            bias,
+            state,
+            cell_state,
+            gates: vec![0.0; hidden_size * 4],
+            tanh_cs: vec![0.0; hidden_size],
+            input_size: current_input_size,
+            hidden_size,
+        });
+
+        current_input_size = hidden_size;
+    }
+
+    let head_weights = cursor.read_slice(hidden_size)?.to_vec();
+    let head_bias = cursor.read_f32()?;
+
+    cursor.verify_exhausted()?;
+
+    let model = LstmDynModel {
+        layers,
+        head_weights,
+        head_bias,
+    };
+
+    println!(
+        "[Dispatcher] LSTM Dinâmico {}×{} construído — pesos={}",
         num_layers,
         hidden_size,
         data.weights.len()
@@ -848,14 +910,15 @@ mod tests {
         );
     }
 
-    /// T-4: LSTM com 3 camadas não é suportado — deve retornar Err.
+    /// Transição para suporte Dinâmico: LSTM com múltiplas camadas e tamanhos ocultos customizados.
     #[test]
-    fn test_reject_lstm_unsupported_geometry() {
-        let data = make_lstm_data(3, 8, 10_000);
+    fn test_build_lstm_dynamic_arbitrary() {
+        let data = make_lstm_data(3, 8, 1465); // 336 + 560 + 560 + 9 = 1465
         let result = build_model(&data);
         assert!(
-            result.is_err(),
-            "Deveria rejeitar LSTM 3×8 (geometria não suportada)"
+            result.is_ok(),
+            "Deveria carregar LSTM 3×8 dinamicamente: {:?}",
+            result.err()
         );
     }
 

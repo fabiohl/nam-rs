@@ -7,6 +7,7 @@
 //! baseadas no modelo "Neural Amp Modeler" original.
 
 pub mod lstm;
+pub mod lstm_dyn;
 pub mod wavenet;
 pub mod wavenet_dyn;
 
@@ -116,6 +117,21 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
             self.process(&zero_in[..n], &mut zero_out[..n]);
             rem -= n;
         }
+    }
+}
+
+// =============================================================================
+// NamModel para LSTM Dinâmico
+// =============================================================================
+
+#[cfg(target_arch = "x86_64")]
+impl NamModel for lstm_dyn::LstmDynModel {
+    fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        self.process(input, output);
+    }
+
+    fn prewarm(&mut self, _num_samples: usize) {
+        self.prewarm();
     }
 }
 
