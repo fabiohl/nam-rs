@@ -104,7 +104,7 @@ fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
 
     match topo {
         NamWavenetTopology::Standard => build_wavenet_typed::<16, 3, 8>(data, topo),
-        NamWavenetTopology::Lite => build_wavenet_typed::<12, 3, 8>(data, topo),
+        NamWavenetTopology::Lite => build_wavenet_typed::<12, 3, 6>(data, topo), // C++: InternalWaveNetDefinitionT<12, 6>
         NamWavenetTopology::Feather => build_wavenet_typed::<8, 3, 4>(data, topo),
         NamWavenetTopology::Nano => build_wavenet_typed::<4, 3, 2>(data, topo),
     }
@@ -147,8 +147,9 @@ fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: usize>(
         &mut alloc_num,
     )?;
 
-    // Array 2: IN=CH, COND=1, HasHeadBias=true
-    let array2 = build_wavenet_array::<CH, 1, CH, K, HEAD>(
+    // Array 2: IN=CH, COND=1, CH2=HEAD, HEAD2=1, HasHeadBias=true
+    // C++: WaveNetLayerArrayT<CH, 1, 1, HEAD, K, Dilations, true>
+    let array2 = build_wavenet_array::<CH, 1, HEAD, K, 1>(
         &mut cursor,
         dils_1,
         true, // HasHeadBias da array2 (C++: true)
@@ -532,14 +533,14 @@ mod tests {
     }
 
     // ---- WaveNet Standard: CH=16, K=3, HEAD=8, 10+10 layers -----------------
-    // Array1: 16 + 10*(768+16+16+256+16) + 128 = 10864
-    // Array2: 256 + 10*(768+16+16+256+16) + 128+8 = 11112
-    // head_scale: 1 → Total: 21977
+    // Array1: rechannel(16) + 10×(conv(768+16)+mixin(16)+o2o(256+16)) + head(16×8=128)    = 10864
+    // Array2: rechannel(16×8=128) + 10×(conv(192+8)+mixin(8)+o2o(64+8)) + head(8×1+1=9) = 2937
+    // head_scale: 1 → Total: 13802
 
     #[test]
     fn test_build_wavenet_standard() {
         let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-        let data = make_wavenet_data(16, 8, &std_d, &std_d, 21977);
+        let data = make_wavenet_data(16, 8, &std_d, &std_d, 13802);
         let result = build_model(&data);
         assert!(
             result.is_ok(),
@@ -549,15 +550,15 @@ mod tests {
     }
 
     // ---- WaveNet Feather: CH=8, K=3, HEAD=4, 7+13 layers --------------------
-    // Array1: 8 + 7*(192+8+8+64+8) + 32 = 2000
-    // Array2: 64 + 13*(192+8+8+64+8) + 32+4 = 3740
-    // head_scale: 1 → Total: 5741
+    // Array1: rechannel(8) + 7×(conv(192+8)+mixin(8)+o2o(64+8)) + head(8×4=32)         = 2000
+    // Array2: rechannel(8×4=32) + 13×(conv(48+4)+mixin(4)+o2o(16+4)) + head(4×1+1=5) = 1025
+    // head_scale: 1 → Total: 3026
 
     #[test]
     fn test_build_wavenet_feather() {
         let lite_d = [1, 2, 4, 8, 16, 32, 64];
         let lite_d2 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-        let data = make_wavenet_data(8, 4, &lite_d, &lite_d2, 5741);
+        let data = make_wavenet_data(8, 4, &lite_d, &lite_d2, 3026);
         let result = build_model(&data);
         assert!(
             result.is_ok(),
@@ -624,7 +625,7 @@ mod tests {
     #[test]
     fn test_reject_weight_underflow() {
         let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-        // Standard exige 21977, fornecer apenas 100
+        // Standard exige 13802 pesos; fornecer apenas 100 deve falhar
         let data = make_wavenet_data(16, 8, &std_d, &std_d, 100);
         let result = build_model(&data);
         assert!(result.is_err(), "Deveria falhar com pesos insuficientes");

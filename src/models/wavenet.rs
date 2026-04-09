@@ -378,12 +378,19 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     }
 }
 
-/// Modelo Completo do WaveNet contendo Múltiplos Blocos Diatônicos (Arrays).
+/// Modelo Completo do WaveNet contendo Dois Blocos de Layer Arrays heterogêneos.
+///
+/// `CH` = canais da Array1 (layer 0 do JSON, ex: 16 para Standard)
+/// `K`  = kernel size (sempre 3)
+/// `HEAD` = head_size da Array1 = canais da Array2 (ex: 8 para Standard)
+///
+/// Array2 usa `HEAD` canais e projeta para 1 saída (`HEAD2=1`),
+/// seguindo o padrão C++: `WaveNetLayerArrayT<CH, 1, 1, HEAD, K, Dilations, true>`.
 pub struct WaveNetModel<const CH: usize, const K: usize, const HEAD: usize> {
-    /// Array interno 01: IN=1, COND=1, HasBias=False
+    /// Array interno 01: IN=1, COND=1, CH canais, HEAD saídas, sem HeadBias.
     pub array1: WaveNetLayerArray<1, 1, CH, K, HEAD>,
-    /// Array interno 02: IN=CH, COND=1, HasBias=True
-    pub array2: WaveNetLayerArray<CH, 1, CH, K, HEAD>,
+    /// Array interno 02: IN=CH, COND=1, HEAD canais, 1 saída, com HeadBias.
+    pub array2: WaveNetLayerArray<CH, 1, HEAD, K, 1>,
     /// Escala de compensação da voltagem final (Target Output Scale).
     pub head_scale: f32,
     /// Maior buffer circular requerido na raiz temporal do Kernel.
@@ -392,6 +399,8 @@ pub struct WaveNetModel<const CH: usize, const K: usize, const HEAD: usize> {
 
 impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEAD> {
     /// Resolve o forward total e produz amostras de onda em zero alocação (DSP).
+    ///
+    /// Combina as saídas de ambas as arrays: `sum(head1) + sum(head2)` × `head_scale`.
     #[cfg(target_arch = "x86_64")]
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         let math = &crate::math::simd::SimdMathConfig::current();
@@ -405,14 +414,18 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             unsafe {
                 self.array1.process(&layer_inputs_1, &condition, math);
 
+                // Array2 recebe a saída da Array1 como input (CH canais)
                 let array1_outputs = &self.array1.array_outputs[0..CH];
                 self.array2.process(array1_outputs, &condition, math);
             }
 
-            let mut final_sum = 0.0;
+            // Somatório das projeções Head de ambas as arrays
+            let mut final_sum = 0.0f32;
             for j in 0..HEAD {
-                final_sum += self.array1.head_outputs[j] + self.array2.head_outputs[j];
+                final_sum += self.array1.head_outputs[j];
             }
+            // Array2 projeta para HEAD2=1
+            final_sum += self.array2.head_outputs[0];
             output[i] = final_sum * self.head_scale;
         }
     }
@@ -434,8 +447,10 @@ mod tests {
     use super::*;
 
     /// Constrói um WaveNetModel<4, 3, 2> mínimo para testes com dados zerados.
+    /// Array1: IN=1, COND=1, CH=4, K=3, HEAD=2
+    /// Array2: IN=4, COND=1, CH=2 (=HEAD), K=3, HEAD2=1
     fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
-        let make_layer = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
+        let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
             WaveNetLayer {
                 conv1d: Conv1d {
                     weights: vec![0.01; 4 * 3 * 4],
@@ -456,6 +471,28 @@ mod tests {
             }
         };
 
+        // Array2: CH=2 (=HEAD), layers com COND=1, CH=2
+        let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
+            WaveNetLayer {
+                conv1d: Conv1d {
+                    weights: vec![0.01; 2 * 3 * 2],
+                    bias: vec![0.0; 2],
+                    do_bias: false,
+                    dilation,
+                },
+                input_mixin: DenseLayer {
+                    weights: vec![0.01; 2],
+                    bias: vec![0.0; 2],
+                    do_bias: false,
+                },
+                one_by_one: DenseLayer {
+                    weights: vec![0.01; 2 * 2],
+                    bias: vec![0.0; 2],
+                    do_bias: false,
+                },
+            }
+        };
+
         let dilations_1 = [1, 2, 4];
         let dilations_2 = [1, 2, 4];
 
@@ -464,7 +501,7 @@ mod tests {
 
         // Construção manual das arrays com const generics explícitos.
         let layers_1: Vec<WaveNetLayer<1, 4, 3>> =
-            dilations_1.iter().map(|&d| make_layer(d)).collect();
+            dilations_1.iter().map(|&d| make_layer_a1(d)).collect();
         let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
             .map(|i| WaveNetLayerState::new(4, rf1, i))
             .collect();
@@ -488,28 +525,29 @@ mod tests {
             receptive_field_size: rf1,
         };
 
-        let layers_2: Vec<WaveNetLayer<1, 4, 3>> =
-            dilations_2.iter().map(|&d| make_layer(d)).collect();
+        // Array2: IN=4(=CH), COND=1, CH=2(=HEAD), K=3, HEAD2=1
+        let layers_2: Vec<WaveNetLayer<1, 2, 3>> =
+            dilations_2.iter().map(|&d| make_layer_a2(d)).collect();
         let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
-            .map(|i| WaveNetLayerState::new(4, rf2, i))
+            .map(|i| WaveNetLayerState::new(2, rf2, i))
             .collect();
 
-        let array2 = WaveNetLayerArray::<4, 1, 4, 3, 2> {
+        let array2 = WaveNetLayerArray::<4, 1, 2, 3, 1> {
             layers: layers_2,
             states: states_2,
             rechannel: DenseLayer {
-                weights: vec![0.01; 4 * 4],
-                bias: vec![0.0; 4],
-                do_bias: false,
-            },
-            head_rechannel: DenseLayer {
-                weights: vec![0.01; 2 * 4],
+                weights: vec![0.01; 4 * 2],
                 bias: vec![0.0; 2],
                 do_bias: false,
             },
-            array_outputs: vec![0.0; 4],
-            head_accum: vec![0.0; 4],
-            head_outputs: vec![0.0; 2],
+            head_rechannel: DenseLayer {
+                weights: vec![0.01; 2],
+                bias: vec![0.0; 1],
+                do_bias: true, // array2 HasHeadBias=true
+            },
+            array_outputs: vec![0.0; 2],
+            head_accum: vec![0.0; 2],
+            head_outputs: vec![0.0; 1],
             receptive_field_size: rf2,
         };
 
@@ -526,8 +564,8 @@ mod tests {
         let model = build_tiny_wavenet();
         assert_eq!(model.array1.layers.len(), 3);
         assert_eq!(model.array2.layers.len(), 3);
-        assert_eq!(model.array1.head_outputs.len(), 2);
-        assert_eq!(model.array2.head_outputs.len(), 2);
+        assert_eq!(model.array1.head_outputs.len(), 2); // HEAD1=2
+        assert_eq!(model.array2.head_outputs.len(), 1); // HEAD2=1 (sempre fixo)
         assert!((model.head_scale - 0.02).abs() < 1e-6);
     }
 

@@ -1,4 +1,10 @@
-## Beta 3: Nova revisão global, desta vez usando Claude Opus
+* Posso apagar com segurança a pasta `scratch/` ou ela ainda cumpre um papel importante no projeto?
+* E com relação à pasta `tests/`? Ela está no local mais idiomático para testes no Rust? Ou seria melhor movê-la para a `src/`? Notei que dentro de vários códigos em `src/` tem micro testes. Como tornar isso mais organizado e correto?
+* Atualize docs/architecture.md para refletir uma política de testes mais atualizada.
+
+## Automatizar mais o processo, sem tantas confirmações! Confinar dentro do docker?
+
+## Alpha 3: Nova revisão global, desta vez usando Claude Opus
 Usando a skill "revisor-auditor" promova uma detalhado análise com vista a preparação para início da fase "beta" do projeto. Alguns pontos a considerar (sinta-se a vontade para ir além):
 * A pasta github.com/mikeoliphant/NeuralAudio/ contém a base de código em C++ da implemntação de referência do NAM.
 * Faça uma meticulosa comparação com o nosso projeto em rust (src/*) assegurando que todas as funcionalidades estão implementadas - respeitando o espírito e os objetivos do projeto.

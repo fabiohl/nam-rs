@@ -44,7 +44,8 @@ pub struct NamLayerConfig {
 /// A configuração interna do nó da arquitetura no JSON.
 #[derive(Deserialize, Debug, Clone)]
 pub struct NamConfig {
-    /// Lista das configurações das camadas empilhadas.
+    /// Lista das configurações das camadas empilhadas (presente em WaveNet, ausente em LSTM).
+    #[serde(default)]
     pub layers: Vec<NamLayerConfig>,
     /// Uma possível string auxiliar pra head final. Se null no JSON, pode faltar.
     pub head: Option<std::option::Option<String>>,
