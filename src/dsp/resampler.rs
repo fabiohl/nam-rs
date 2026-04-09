@@ -261,10 +261,12 @@ mod tests {
         let n = rs.process_input(&input, &mut output);
 
         // Para 96k→48k, esperamos ~chunk/2 amostras de saída (±tolerância do Sinc)
+        // O filtro Kaiser tem Group Delay. A primeira janela come metade do Sinc len (256/2 = 128 samples a 96k, vira 64 a 48k).
         let expected_approx = chunk / 2;
+        let expected_with_delay = expected_approx.saturating_sub(64);
         assert!(
-            n >= expected_approx.saturating_sub(16) && n <= expected_approx + 16,
-            "96k→48k: esperado ~{expected_approx} amostras, obteve {n}"
+            n >= expected_with_delay.saturating_sub(16) && n <= expected_approx + 16,
+            "96k→48k: esperado ~{expected_with_delay} a {expected_approx} amostras pós-delay, obteve {n}"
         );
     }
 
@@ -280,10 +282,12 @@ mod tests {
         let n = rs.process_input(&input, &mut output);
 
         // 441 * (48000/44100) ≈ 480
+        // Group delay come ~139 amostras no upsample
         let expected_approx = (chunk as f64 * 48_000.0 / 44_100.0) as usize;
+        let expected_with_delay = expected_approx.saturating_sub(140);
         assert!(
-            n >= expected_approx.saturating_sub(16) && n <= expected_approx + 16,
-            "44.1k→48k: esperado ~{expected_approx} amostras, obteve {n}"
+            n >= expected_with_delay.saturating_sub(16) && n <= expected_approx + 16,
+            "44.1k→48k: esperado ~{expected_with_delay} a {expected_approx} amostras pós-delay, obteve {n}"
         );
     }
 

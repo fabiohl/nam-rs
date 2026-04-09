@@ -34,7 +34,10 @@ struct AppState<S, L> {
 
 /// Inicializa a topologia PipeWire, configurando o nó como um filtro bidirecional
 /// (consumo e produção) na API do WirePlumber, executando o MainLoop até SHUTDOWN.
-pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result<()> {
+pub fn run_pipewire_host(
+    mut consumer: Consumer<ParamPayload>,
+    mut gc_producer: rtrb::Producer<Box<crate::models::DynamicModel>>,
+) -> anyhow::Result<()> {
     // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
     let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
     let context = pw::context::ContextBox::new(thread_loop.loop_(), None)?;
@@ -66,7 +69,7 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
         )?;
 
         let target_cpu = select_optimal_cpu().unwrap_or(0);
-        let mut active_model: *mut crate::models::DynamicModel = std::ptr::null_mut();
+        let mut active_model: Option<Box<crate::models::DynamicModel>> = None;
 
         // NamResampler bidirecional: converte entre o rate do PipeWire e os 48 kHz do NAM.
         // Inicializado com 48k (bypass) — rate real será atualizado via SetSampleRate SPSC
@@ -123,20 +126,22 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                 while let Ok(payload) = consumer.pop() {
                     match payload {
                         ParamPayload::LoadModel {
-                            ptr,
+                            model,
                             input_db_adj,
                             output_db_adj,
                         } => {
-                            if !ptr.is_null() {
-                                active_model = ptr as *mut crate::models::DynamicModel;
-                                let model = unsafe { &mut *active_model };
-                                model.0.prewarm(2048);
+                            let mut new_model = model;
+                            if let Some(ref mut m) = new_model {
+                                m.0.prewarm(2048);
                                 model_input_db_adj = input_db_adj;
                                 model_output_db_adj = output_db_adj;
                             } else {
-                                active_model = std::ptr::null_mut();
                                 model_input_db_adj = 0.0;
                                 model_output_db_adj = 0.0;
+                            }
+
+                            if let Some(old) = std::mem::replace(&mut active_model, new_model) {
+                                let _ = gc_producer.push(old);
                             }
                             param_changed = true;
                         }
@@ -196,7 +201,7 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                     let offset = chunk.offset() as usize;
                     let size = chunk.size() as usize;
 
-                    if !active_model.is_null()
+                    if let Some(ref mut model_box) = active_model
                         && size > 0
                         && let Some(raw_bytes) = d.data()
                     {
@@ -225,8 +230,7 @@ pub fn run_pipewire_host(mut consumer: Consumer<ParamPayload>) -> anyhow::Result
                                 .process_input(&samples[..n], &mut resamp_mid[..MAX_RESAMP_BUF]);
 
                             // 3. Inferência NAM a 48 kHz
-                            let model = unsafe { &mut *active_model };
-                            model
+                            model_box
                                 .0
                                 .process(&resamp_mid[..n_48k], &mut temp_out[..n_48k]);
 

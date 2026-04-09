@@ -66,11 +66,13 @@ fn load_and_send_model(path: &std::path::Path, producer: &mut rtrb::Producer<Par
 
     match result {
         Ok(model_data) => {
-            let meta = model_data.metadata.unwrap_or(loader::nam_json::NamMetadata {
-                input_level_dbu: None,
-                output_level_dbu: None,
-                loudness: None,
-            });
+            let meta = model_data
+                .metadata
+                .unwrap_or(loader::nam_json::NamMetadata {
+                    input_level_dbu: None,
+                    output_level_dbu: None,
+                    loudness: None,
+                });
             let in_level = meta.input_level_dbu.unwrap_or(0.0);
             let loudness = meta.loudness.unwrap_or(-18.0);
 
@@ -79,7 +81,7 @@ fn load_and_send_model(path: &std::path::Path, producer: &mut rtrb::Producer<Par
 
             if producer
                 .push(ParamPayload::LoadModel {
-                    ptr: std::ptr::null_mut(),
+                    model: None,
                     input_db_adj,
                     output_db_adj,
                 })
@@ -191,7 +193,17 @@ fn main() -> anyhow::Result<()> {
     })
     .expect("Erro ao configurar handler de Ctrl-C");
 
-    let (mut producer, consumer) = spsc::setup_spsc(64);
+    let (mut producer, consumer, gc_producer, mut gc_consumer) = spsc::setup_spsc(64);
+
+    // 2. Thread GC para "Drop-Delegation" lock-free
+    std::thread::spawn(move || {
+        while !spsc::SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
+            while let Ok(model) = gc_consumer.pop() {
+                drop(model);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    });
 
     if initial_in_gain != 0.0 {
         let _ = producer.push(ParamPayload::InputGain(initial_in_gain));
@@ -207,7 +219,7 @@ fn main() -> anyhow::Result<()> {
         cli_loop(producer);
     });
 
-    pw_host::run_pipewire_host(consumer)?;
+    pw_host::run_pipewire_host(consumer, gc_producer)?;
 
     unsafe {
         pipewire::deinit();

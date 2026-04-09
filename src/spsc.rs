@@ -15,7 +15,6 @@ pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 /// Payload SPSC enviado do Host (CLI/UI) para a Thread DSP.
 /// Adota alinhamento a 128 bytes para mitigar False Sharing.
 #[repr(align(128))]
-#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum ParamPayload {
     /// Injeta o ganho de entrada (Input Gain) em dB.
@@ -26,8 +25,8 @@ pub enum ParamPayload {
     /// esperados pelo criador do modelo (resolvidos da tag input_level_dbu e loudness).
     /// O ponteiro garante alocação-zero (no-heap) e inicialização determinística.
     LoadModel {
-        /// O pointer bruto para a estrutura DynamicModel
-        ptr: *mut (),
+        /// O modelo encapsulado para a inferência neural
+        model: Option<Box<crate::models::DynamicModel>>,
         /// Ajuste de ganho esperado na entrada em dB (audioInputLevelDBu - modelInputLevelDBu)
         input_db_adj: f32,
         /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
@@ -39,17 +38,22 @@ pub enum ParamPayload {
     SetSampleRate(u32),
 }
 
-/// Garantir que podemos enviar o ponteiro bruto entre threads sem erro de compilador (unsafe trait).
-/// OBS: Devemos assegurar concorrência segura manualmente ao implementar os carregadores.
-unsafe impl Send for ParamPayload {}
-unsafe impl Sync for ParamPayload {}
-
 /// Cria e retorna a malha SPSC lock-free para o pipeline.
 ///
 /// `capacity` deve ser preferencialmente potência de 2.
 #[allow(dead_code)]
-pub fn setup_spsc(capacity: usize) -> (Producer<ParamPayload>, Consumer<ParamPayload>) {
-    RingBuffer::new(capacity)
+#[allow(clippy::type_complexity)]
+pub fn setup_spsc(
+    capacity: usize,
+) -> (
+    Producer<ParamPayload>,
+    Consumer<ParamPayload>,
+    Producer<Box<crate::models::DynamicModel>>,
+    Consumer<Box<crate::models::DynamicModel>>,
+) {
+    let (param_prod, param_cons) = RingBuffer::new(capacity);
+    let (gc_prod, gc_cons) = RingBuffer::new(capacity);
+    (param_prod, param_cons, gc_prod, gc_cons)
 }
 
 #[cfg(test)]
@@ -62,7 +66,7 @@ mod tests {
     #[test]
     fn test_spsc_concurrency() {
         // Configura o SPSC Ring Buffer para testes
-        let (mut producer, consumer) = setup_spsc(64);
+        let (mut producer, consumer, _gc_producer, _gc_consumer) = setup_spsc(64);
 
         // Garante que o shutdown inicie limpo
         SHUTDOWN.store(false, Ordering::SeqCst);
@@ -83,7 +87,7 @@ mod tests {
                             assert!((-60.0..=24.0).contains(&gain));
                             processed_messages += 1;
                         }
-                        ParamPayload::LoadModel { ptr: _, .. } => {
+                        ParamPayload::LoadModel { model: _, .. } => {
                             processed_messages += 1;
                         }
                         // SetSampleRate não é enviado neste teste; tratado para exaustão do match.
@@ -104,15 +108,16 @@ mod tests {
                 ParamPayload::OutputGain(-12.5),
                 ParamPayload::InputGain(12.0),
                 ParamPayload::LoadModel {
-                    ptr: std::ptr::null_mut(),
+                    model: None,
                     input_db_adj: 0.0,
                     output_db_adj: 0.0,
                 },
                 ParamPayload::OutputGain(3.5),
             ];
 
-            for payload in payloads {
-                while producer.push(payload.clone()).is_err() {
+            for mut payload in payloads {
+                while let Err(rtrb::PushError::Full(p)) = producer.push(payload) {
+                    payload = p;
                     thread::yield_now(); // Buf cheio
                 }
                 // Simula latência do operador CLI
