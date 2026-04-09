@@ -517,6 +517,10 @@ Implementação de referência em `NeuralAudio`:
 - `WaveNet.cpp` — `SetWeights()` (leitura cursor-forward de pesos para cada layer)
 - `LSTM.cpp` — `SetWeights()` (pesos de gates + head em sequência)
 
+> **📋 Nota de Execução — Tarefa 7.1 (concluída em 2026-04-09):**
+>
+> Implementado `src/loader/dispatcher.rs` com `WeightCursor` cursor-forward, construtores WaveNet (Standard/Lite/Feather/Nano) e LSTM (1×8, 1×12, 1×16, 1×24, 2×8, 2×12, 2×16). Verificação-chave: **Conv1D `DoBias=true`** confirmado contra C++ `WaveNet.h` L.121 (`Conv1DT<Ch, Ch, K, true, D>`), assim como `oneByOne DoBias=true` (L.123) e `inputMixin DoBias=false` (L.122). Transposição de pesos Conv1D `(out,in,k)→(out,k,in)` aplicada. DenseLayer sem transposição (layout `[out][in]` compatível). LSTM `SetNAMWeights` row-major `[H4][IH]` mapeamento direto. Prewarm (2048 amostras) executado na thread CLI antes do envio para DSP. 6 testes unitários + 45 testes totais passando. `utils/lints.sh` sem warnings.
+
 ---
 
 ## **Referências citadas**

@@ -68,6 +68,7 @@ fn load_and_send_model(path: &std::path::Path, producer: &mut rtrb::Producer<Par
         Ok(model_data) => {
             let meta = model_data
                 .metadata
+                .clone()
                 .unwrap_or(loader::nam_json::NamMetadata {
                     input_level_dbu: None,
                     output_level_dbu: None,
@@ -79,16 +80,30 @@ fn load_and_send_model(path: &std::path::Path, producer: &mut rtrb::Producer<Par
             let input_db_adj = 12.0 - in_level;
             let output_db_adj = -18.0 - loudness;
 
+            // Dispatcher: converte NamModelData → Box<DynamicModel> (thread CLI)
+            let boxed_model = match loader::dispatcher::build_model(&model_data) {
+                Ok(mut model) => {
+                    // Prewarm na thread CLI — estabiliza estados internos antes do DSP
+                    model.0.prewarm(2048);
+                    println!("[CLI] Modelo prewarmado com 2048 amostras.");
+                    Some(model)
+                }
+                Err(e) => {
+                    println!("[CLI] Falha ao construir modelo: {}", e);
+                    None
+                }
+            };
+
             if producer
                 .push(ParamPayload::LoadModel {
-                    model: None,
+                    model: boxed_model,
                     input_db_adj,
                     output_db_adj,
                 })
                 .is_ok()
             {
                 println!(
-                    "[CLI] Payload gerado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
+                    "[CLI] Payload enviado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
                     path_str, input_db_adj, output_db_adj
                 );
             } else {

@@ -7,5 +7,6 @@
 //! Todo o processo de carga ocorre **fora** da thread RT para
 //! evitar qualquer alocação indesejada durante o processamento de áudio.
 
+pub mod dispatcher;
 pub mod nam_json;
 pub mod namb;
