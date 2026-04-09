@@ -894,6 +894,20 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
 > - O documento novo abstrato e analítico `docs/dependencies.md` foi idealizado e criado resguardando as premissas conceituais técnicas sobre a abstenção de Crates complexos na pipeline isolada RT de Audio da equipe.
 > - Finalizado com validação extrema (`utils/lints.sh` e build targets zerados com ausência de warnings). O projeto, neste momento, formalmente detêm o escopo classificado publicamente como `Beta-ready`.
 
+> **📋 Nota de Auditoria Conclusiva — Sprint 9 (revisada em 2026-04-09):**
+>
+> Revisão geral da Sprint 9 executada com auditoria minuciosa do estado do projeto:
+>
+> | Tarefa                        | Status     | Resumo                                                                                                                                                 |
+> | ----------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+> | 9.1 — WaveNet Dinâmico        | ✅ COMPLETA | `wavenet_dyn.rs` implementado com `WaveNetDynModel`, fallback no dispatcher, teste `test_build_wavenet_dynamic_arbitrary_channels` passando.            |
+> | 9.2 — LSTM Dinâmico           | ✅ COMPLETA | `lstm_dyn.rs` implementado com `LstmDynModel`, fallback no dispatcher, teste `test_build_lstm_dynamic_arbitrary` passando.                              |
+> | 9.3 — Documentação Beta       | ✅ COMPLETA | `docs/dependencies.md` criado, `README.md` com exemplos e modelos suportados, `architecture.md` com todos os módulos. Versão corrigida para `0.9.0-beta.1` (estava em `0.3.0`). |
+>
+> **Validação automatizada:** `cargo test` (60/60 ✅), `utils/lints.sh` (fmt + clippy ✅) com versão `0.9.0-beta.1`.
+>
+> **Status do projeto:** Formalmente em **Beta** — todos os objetivos das 9 sprints foram concluídos, validados e documentados.
+
 ---
 
 ## **Referências citadas**

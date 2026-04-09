@@ -1,10 +1,11 @@
 ## Alphas: Rodadas de revisões globais, até "acalmar" totalmente a quantidade de issues abertas.
-Usando a skill "revisor-auditor" promova uma detalhada análise em vista à preparação para início da fase "beta" do projeto. Alguns pontos a considerar (sinta-se a vontade para ir além):
-* A pasta github.com/mikeoliphant/NeuralAudio/ espelha do github da base de código em C++ da implementação de referência do NAM.
+Usando a skill "revisor-auditor" promova uma detalhada análise em vista à preparação para início da fase "beta" do projeto, que vai aos poucos se aproximando.
+Alguns pontos a considerar (sinta-se a vontade para ir além):
+* A pasta github.com/mikeoliphant/NeuralAudio/ espelha o github da base de código em C++ da implementação de referência do NAM.
 * Faça uma meticulosa comparação com o nosso projeto em rust assegurando que todas as funcionalidades estão implementadas - respeitando o espírito e os objetivos do projeto.
 * Verifique se os códigos, testes, benchmarks e a documentação (README.md e docs/*) atuais estão aderentes ao escopo do projeto (docs/NAM-rs-referência.md).
 * Caçar o máximo de testes automatizados bons e realmente úteis - inclusive na internet aberta geral. Verifique se os atuais existentes estão em boa qualidade e se é possível melhorar ou substituir algum deles.
-* A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma(s) nova(s) sprint(s) ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas.
+* A partir do estado geral das coisas, usando a skill "planejador-arquiteto", adicionar uma(s) nova(s) sprint(s) ao final de docs/NAM-rs-sprints.md para cobrir as pendências que forem encontradas. Forneça todos os detalhes necessários.
 
 ## Lançamento Beta:
 * Usando a skill "revisor-auditor" promova uma limpeza / refatoração / organização geral do código em prol de legibilidade e manutenibilidade. Remover artefatos desnecessários. Cuidado para não inserir bugs de regressão.
