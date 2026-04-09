@@ -35,7 +35,7 @@ cargo build --release
 Para iniciar o processamento:
 
 ```bash
-target/release/nam-rs
+target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
 ```
 
 Para que o motor execute inabalável sob modelos NAM severos ("Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário.
@@ -57,6 +57,15 @@ Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `p
 * [docs/dependencies.md](docs/dependencies.md) — Dependências sistêmicas e crates Rust
 * [docs/NAM-rs-referência.md](docs/NAM-rs-referência.md) — Documento de referência arquitetural
 * [docs/NAM-rs-sprints.md](docs/NAM-rs-sprints.md) — Sprints e tarefas técnicas detalhadas
+
+## 🧠 Modelos Suportados
+
+O NAM-rs suporta nativamente a inferência de modelos convencionais e experimentais da comunidade, oferecendo dois níveis de operação de parsing:
+
+* **Modo Estático (Altíssima Performance):** Construções de *Const Generics* dimensionadas em tempo de compilação.
+  * **WaveNet:** Standard (16×8), Lite (12×8), Feather (8×4) e Nano (4×2)
+  * **LSTM:** 1 e 2 Camadas (8 a 24 de Hidden Size: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
+* **Modo Dinâmico (Flexibilidade Absoluta):** Fallback ativado automaticamente ao carregar arranjos `.nam` com geometrias extrassensoriais não catalogadas (`num_layers` e `channels` arbitrários), operando sem *loop unrolling*.
 
 ## 🤝 Contribuindo
 

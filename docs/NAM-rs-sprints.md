@@ -576,8 +576,10 @@ Para garantir que a transposição Eigen→SIMD manual preservou a fidelidade nu
 **Abordagem: Golden Vectors Estáticos**
 
 1. **Geração de referência:** Usando os modelos de teste existentes (`BossWN-standard.nam`, `BossLSTM-1x16.nam`), gerar arquivos `.golden.bin` contendo pares `(input[N], expected_output[N])` em formato `f32` little-endian. O gerador pode ser:
+
    - Um script Python/NumPy que reimplemente a inferência de referência com pesos idênticos (método mais auditável), ou
    - Uma compilação pontual do NeuralAudio C++ como CLI (`golden_gen.cpp → golden_gen`) que leia o `.nam` e produza as amostras de referência.
+
 2. **Formato do arquivo golden:** `golden_wavenet_standard.bin`:
 
    ```text
@@ -587,6 +589,7 @@ Para garantir que a transposição Eigen→SIMD manual preservou a fidelidade nu
    ```
 
 3. **Teste Rust (`test_golden_vectors_wavenet`):**
+
    - Lê o `.golden.bin` do diretório `tests/fixtures/`.
    - Constrói o modelo via `build_model()`.
    - Prewarm com 2048 zeros.
@@ -882,6 +885,14 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
 3. README contém exemplos de uso funcional.
 4. Versão em `Cargo.toml` reflete `0.9.0-beta.1`.
 5. `cargo build` passa com a nova versão.
+
+> **✅ Nota de Auditoria Conclusiva — Tarefa 9.3 / Sprint 9 (Beta Entry):**
+>
+> - A meta principal desta Tarefa foi concluída com sucesso: `Cargo.toml` avançou para marcação semver `0.9.0-beta.1`.
+> - Atualizações exaustivas de contexto e exemplos foram postas no `README.md`.
+> - `docs/architecture.md` modificado para demonstrar o pipeline DSP de ponta a ponta e refletir implementações da interface fluida dos novos Fallbacks Dinâmicos das Tarefas 9.1 e 9.2 (`lstm_dyn.rs` e `wavenet_dyn.rs`).
+> - O documento novo abstrato e analítico `docs/dependencies.md` foi idealizado e criado resguardando as premissas conceituais técnicas sobre a abstenção de Crates complexos na pipeline isolada RT de Audio da equipe.
+> - Finalizado com validação extrema (`utils/lints.sh` e build targets zerados com ausência de warnings). O projeto, neste momento, formalmente detêm o escopo classificado publicamente como `Beta-ready`.
 
 ---
 
