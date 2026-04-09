@@ -699,6 +699,13 @@ Refatorar `test_spsc_concurrency` para usar um `AtomicBool` local (não o global
 2. Doc comments coerentes com as convenções Rust (`/// # Safety` apenas em funções `unsafe`).
 3. `utils/lints.sh` passa.
 
+> **📋 Nota de Execução — Tarefa 8.4 (concluída em 2026-04-09):**
+>
+> - Atualizada a docstring de `pw_host.rs` refletindo o estado atual da Sprint 8.
+> - Revisados os atributos `#[allow(dead_code)]` e justificados corretamente de acordo com as diretrizes.
+> - Corrigido o comentário de documentação mal posicionado `/// # Safety` em `lstm.rs`.
+> - Validação rigorosa executada via `utils/lints.sh` (cargo fmt e cargo clippy) sem falhas ou warnings reportados.
+
 ---
 
 ## **Sprint 9: Modelos Dinâmicos, Documentação Beta e Versão Semver**
