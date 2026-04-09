@@ -104,18 +104,18 @@ O projeto adota a convenção idiomática do Rust, com três camadas complementa
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
-| Módulo                     | Testes | Cobertura                                                              |
-| -------------------------- |:------:| ---------------------------------------------------------------------- |
-| `src/dsp/gain.rs`          | 4      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB           |
-| `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response         |
-| `src/loader/dispatcher.rs` | 8      | Build Standard/Feather/LSTM, rejeição, exaustão WeightCursor, overflow |
-| `src/loader/nam_json.rs`   | 6      | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, validação    |
-| `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                  |
-| `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`        |
-| `src/math/simd.rs`         | 2      | `dot_product_avx2`/`dot_product_avx512`                                |
-| `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                |
-| `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer             |
-| `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread          |
+| Módulo                     | Testes | Cobertura                                                                      |
+| -------------------------- |:------:| ------------------------------------------------------------------------------ |
+| `src/dsp/gain.rs`          | 4      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB                   |
+| `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response                 |
+| `src/loader/dispatcher.rs` | 11     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow |
+| `src/loader/nam_json.rs`   | 6      | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, validação            |
+| `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                          |
+| `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                |
+| `src/math/simd.rs`         | 2      | `dot_product_avx2`/`dot_product_avx512`                                        |
+| `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                        |
+| `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer                     |
+| `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                  |
 
 > **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
 

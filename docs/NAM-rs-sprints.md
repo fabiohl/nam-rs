@@ -531,11 +531,11 @@ Sprint de endurecimento pré-beta gerada a partir da **Auditoria Pré-Beta de 20
 
 ### **Tarefa 8.1 — Eliminação de Alocações e I/O no Callback RT `process()`**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-2 (Alocação via `NamResampler::new()` inline no callback), A-3 (`println!` no callback RT) |
-| **Prioridade** | 🟠 ALTA |
-| **Módulos Alvo** | `src/pw_host.rs`, `src/spsc.rs` |
+| Campo            | Detalhe                                                                                      |
+|:---------------- |:-------------------------------------------------------------------------------------------- |
+| **Achados**      | A-2 (Alocação via `NamResampler::new()` inline no callback), A-3 (`println!` no callback RT) |
+| **Prioridade**   | 🟠 ALTA                                                                                      |
+| **Módulos Alvo** | `src/pw_host.rs`, `src/spsc.rs`                                                              |
 
 #### Especificação Algorítmica
 
@@ -563,10 +563,10 @@ Alternativa mais simples (se a latência de ~100ms for aceitável): usar a varia
 
 ### **Tarefa 8.2 — Validação Numérica Cross-Reference C++ ↔ Rust (Golden Vectors)**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-1 (ausência de validação numérica cross-reference) |
-| **Prioridade** | 🔴 CRÍTICA — Bloqueador de beta |
+| Campo            | Detalhe                                                                             |
+|:---------------- |:----------------------------------------------------------------------------------- |
+| **Achados**      | A-1 (ausência de validação numérica cross-reference)                                |
+| **Prioridade**   | 🔴 CRÍTICA — Bloqueador de beta                                                     |
 | **Módulos Alvo** | `tests/nam_infer_test.rs` (novo teste), `utils/` (script gerador de golden vectors) |
 
 #### Especificação Algorítmica
@@ -579,11 +579,13 @@ Para garantir que a transposição Eigen→SIMD manual preservou a fidelidade nu
    - Um script Python/NumPy que reimplemente a inferência de referência com pesos idênticos (método mais auditável), ou
    - Uma compilação pontual do NeuralAudio C++ como CLI (`golden_gen.cpp → golden_gen`) que leia o `.nam` e produza as amostras de referência.
 2. **Formato do arquivo golden:** `golden_wavenet_standard.bin`:
+
    ```text
    [u32 num_samples LE]
    [f32×N input samples LE]
    [f32×N expected output samples LE]
    ```
+
 3. **Teste Rust (`test_golden_vectors_wavenet`):**
    - Lê o `.golden.bin` do diretório `tests/fixtures/`.
    - Constrói o modelo via `build_model()`.
@@ -607,17 +609,18 @@ Para garantir que a transposição Eigen→SIMD manual preservou a fidelidade nu
 
 ### **Tarefa 8.3 — Expansão da Suíte de Testes para Beta**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-7 (testes silenciosamente skippados), A-9 (SHUTDOWN global), A-16 (teste lento), T-2 a T-7 |
-| **Prioridade** | 🟡 MÉDIA |
-| **Módulos Alvo** | `tests/nam_infer_test.rs`, `src/spsc.rs`, `src/dsp/gain.rs`, `src/loader/dispatcher.rs` |
+| Campo            | Detalhe                                                                                      |
+|:---------------- |:-------------------------------------------------------------------------------------------- |
+| **Achados**      | A-7 (testes silenciosamente skippados), A-9 (SHUTDOWN global), A-16 (teste lento), T-2 a T-7 |
+| **Prioridade**   | 🟡 MÉDIA                                                                                     |
+| **Módulos Alvo** | `tests/nam_infer_test.rs`, `src/spsc.rs`, `src/dsp/gain.rs`, `src/loader/dispatcher.rs`      |
 
 #### Especificação — Novos Testes e Melhorias
 
 **T-2: Teste End-to-End CLI → SPSC → DSP (sem PipeWire)**
 
 Novo teste de integração que simula o pipeline completo sem depender do daemon PipeWire:
+
 ```text
 1. Parseia um arquivo .nam real
 2. Constrói DynamicModel via build_model()
@@ -626,11 +629,13 @@ Novo teste de integração que simula o pipeline completo sem depender do daemon
 5. Consumer recebe e executa process() com sinal senoidal
 6. Verifica finitude e magnitude razoável (|out| < 10.0)
 ```
+
 Arquivo: `tests/nam_infer_test.rs` — novo `test_end_to_end_spsc_pipeline`.
 
 **T-3: Benchmark formal (`cargo bench`)**
 
 Criar `benches/inference_bench.rs` usando `criterion`:
+
 - Benchmark WaveNet Standard: `process()` com bloco de 64 amostras.
 - Benchmark LSTM 2×16: `process()` com bloco de 64 amostras.
 - Benchmark FastMath: `tanh_slice` e `sigmoid_slice` com 256 amostras.
@@ -641,23 +646,27 @@ Dependência: `cargo add --dev criterion` (feature `html_reports` desabilitada p
 **T-4: Teste de rejeição de topologias não-suportadas**
 
 Em `src/loader/dispatcher.rs`:
+
 - `test_reject_wavenet_unsupported_channels()`: WaveNet com `channels=32` (não mapeado) → `Err`.
 - `test_reject_lstm_unsupported_geometry()`: LSTM `3×8` (3 camadas, não suportado) → `Err`.
 
 **T-5: Teste gain true-bypass**
 
 Em `src/dsp/gain.rs`:
+
 - `test_gain_true_bypass()`: `apply_gain_simd(&mut buf, 1.0)` deve manter `buf` inalterado (bitwise).
 
 **T-6: WeightCursor exaustão em todos os perfis**
 
 Em `src/loader/dispatcher.rs`:
+
 - `test_weight_exhaustion_all_topologies()`: Para cada topologia suportada (Standard, Lite, Feather, Nano, LSTM 1×8..2×16), calcular o número exato de pesos esperados, criar dados sintéticos com esse tamanho exato, e verificar que `build_model()` consome 100% sem erro.
 - Complemento: fornecer `total_weights + 1` e verificar `Err` (pesos extras).
 
 **T-7: Magnitude razoável na estabilidade WaveNet**
 
 Melhoria do `test_wavenet_computational_stability` existente:
+
 - Após o loop, verificar que `rms < 10.0` (magnitude razoável para pesos sintéticos ~0.001 e input senoidal de amplitude 1.0).
 - Reduzir `TEST_NUM_BLOCKS` para 512 em modo debug, mantendo 4096 em release via `#[cfg]`.
 
@@ -681,11 +690,11 @@ Refatorar `test_spsc_concurrency` para usar um `AtomicBool` local (não o global
 
 ### **Tarefa 8.4 — Correções Menores de Código e Doc-Comments**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-5 (docstring "Sprint 5"), A-15 (`#[allow(dead_code)]` excessivos), A-17 (`/// # Safety` misplaced) |
-| **Prioridade** | 🟢 BAIXA |
-| **Módulos Alvo** | `src/pw_host.rs`, `src/spsc.rs`, `src/models/lstm.rs` |
+| Campo            | Detalhe                                                                                              |
+|:---------------- |:---------------------------------------------------------------------------------------------------- |
+| **Achados**      | A-5 (docstring "Sprint 5"), A-15 (`#[allow(dead_code)]` excessivos), A-17 (`/// # Safety` misplaced) |
+| **Prioridade**   | 🟢 BAIXA                                                                                             |
+| **Módulos Alvo** | `src/pw_host.rs`, `src/spsc.rs`, `src/models/lstm.rs`                                                |
 
 #### Especificação
 
@@ -706,6 +715,27 @@ Refatorar `test_spsc_concurrency` para usar um `AtomicBool` local (não o global
 > - Corrigido o comentário de documentação mal posicionado `/// # Safety` em `lstm.rs`.
 > - Validação rigorosa executada via `utils/lints.sh` (cargo fmt e cargo clippy) sem falhas ou warnings reportados.
 
+> **📋 Nota de Auditoria Conclusiva — Sprint 8 (auditada em 2026-04-09):**
+>
+> **Todas as 4 tarefas atendem integralmente os critérios de aceite.** Status:
+>
+> | Tarefa                     | Status     | Resumo                                                                                                                                                                        |
+> | -------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | 8.1 — RT-Safety Hardening  | ✅ COMPLETA | Zero alocações + zero I/O no callback `process()`. Resampler construído na thread principal e enviado via SPSC dedicado. `RtStatusFlags` para comunicação silenciosa RT→Main. |
+> | 8.2 — Golden Vectors       | ✅ COMPLETA | Golden vectors gerados para WaveNet Standard e LSTM 1×16. MSE < limiares. Auto-consistência MSE = 0.0 (determinismo absoluto).                                                |
+> | 8.3 — Suíte de Testes Beta | ✅ COMPLETA | 60 testes (51 unitários + 9 integração) + 4 benchmarks `criterion` = 64 verificações. Supera o critério de ≥55.                                                               |
+> | 8.4 — Doc-Comments         | ✅ COMPLETA | Docstrings, `#[allow(dead_code)]` e `/// # Safety` corrigidos.                                                                                                                |
+>
+> **Validação automatizada:** `cargo test` (60/60 ✅), `utils/lints.sh` (fmt + clippy ✅), `cargo bench` (4 benchmarks ✅).
+>
+> **Observações para Sprint 9:**
+>
+> 1. O `Drop` do resampler antigo no callback (`pw_host.rs` L191) envolve `free()` de `Vec<Vec<f32>>` — operação ~50ns, aceitável por ser evento raro (~1x por mudança de hardware).
+> 2. O `prewarm(2048)` no callback (`pw_host.rs` L205) é defensivo/redundante — o prewarm já é executado na thread CLI (`main.rs` L87) antes do envio via SPSC. Na Sprint 9, considerar remover.
+> 3. Versão `Cargo.toml` desatualizada (v0.3.0) — endereçado na Tarefa 9.3 (bump para 0.9.0-beta.1).
+> 4. `docs/dependencies.md` referenciado no README mas inexistente — endereçado na Tarefa 9.3.
+> 5. WaveNet/LSTM dinâmicos (A-4) rejeitam topologias arbitrárias — endereçados nas Tarefas 9.1 e 9.2.
+
 ---
 
 ## **Sprint 9: Modelos Dinâmicos, Documentação Beta e Versão Semver**
@@ -716,10 +746,10 @@ Sprint de ampliação de compatibilidade e consolidação documental para a entr
 
 ### **Tarefa 9.1 — WaveNet Dinâmico (Fallback para Topologias Arbitrárias)**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-4 (WaveNet/LSTM dinâmicos não implementados) |
-| **Prioridade** | 🟠 ALTA |
+| Campo            | Detalhe                                                                             |
+|:---------------- |:----------------------------------------------------------------------------------- |
+| **Achados**      | A-4 (WaveNet/LSTM dinâmicos não implementados)                                      |
+| **Prioridade**   | 🟠 ALTA                                                                             |
 | **Módulos Alvo** | `src/models/wavenet_dyn.rs` (NOVO), `src/loader/dispatcher.rs`, `src/models/mod.rs` |
 
 #### Especificação Algorítmica
@@ -729,6 +759,7 @@ O C++ (`InternalWaveNetModelDyn` em `InternalModel.h` L:175–246) suporta model
 **Arquitetura proposta:**
 
 1. **`src/models/wavenet_dyn.rs`** — Implementação WaveNet com dimensões determinadas em runtime:
+
    - `WaveNetDynModel` com `Vec<WaveNetDynLayer>` onde cada layer armazena `weights: Vec<f32>`, `bias: Vec<f32>`, etc.
    - `DenseLayerDyn { weights: Vec<f32>, bias: Vec<f32>, in_size: usize, out_size: usize }`.
    - `Conv1dDyn { weights: Vec<f32>, bias: Vec<f32>, in_ch: usize, out_ch: usize, kernel: usize, dilation: usize }`.
@@ -736,6 +767,7 @@ O C++ (`InternalWaveNetModelDyn` em `InternalModel.h` L:175–246) suporta model
    - Implementa trait `NamModel` (`process`, `prewarm`).
 
 2. **Modificação em `dispatcher.rs`:**
+
    ```rust
    fn build_wavenet(data: &NamModelData) -> Result<Box<DynamicModel>> {
        match get_wavenet_topology(data) {
@@ -764,10 +796,10 @@ O C++ (`InternalWaveNetModelDyn` em `InternalModel.h` L:175–246) suporta model
 
 ### **Tarefa 9.2 — LSTM Dinâmico (Fallback para Geometrias Arbitrárias)**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-4 (modelos dinâmicos) |
-| **Prioridade** | 🟠 ALTA |
+| Campo            | Detalhe                                                                          |
+|:---------------- |:-------------------------------------------------------------------------------- |
+| **Achados**      | A-4 (modelos dinâmicos)                                                          |
+| **Prioridade**   | 🟠 ALTA                                                                          |
 | **Módulos Alvo** | `src/models/lstm_dyn.rs` (NOVO), `src/loader/dispatcher.rs`, `src/models/mod.rs` |
 
 #### Especificação Algorítmica
@@ -777,12 +809,14 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
 **Arquitetura proposta:**
 
 1. **`src/models/lstm_dyn.rs`** — Implementação LSTM com dimensões runtime:
+
    - `LstmDynLayer { input_hidden_weights: Vec<f32>, bias: Vec<f32>, state: Vec<f32>, cell_state: Vec<f32>, gates: Vec<f32>, input_size: usize, hidden_size: usize }`.
    - `LstmDynModel { layers: Vec<LstmDynLayer>, head_weights: Vec<f32>, head_bias: f32 }`.
    - Process sample-by-sample com dot product AVX2 dinâmico.
    - Implementa trait `NamModel`.
 
 2. **Modificação em `dispatcher.rs`:**
+
    ```rust
    fn build_lstm(data: &NamModelData) -> Result<Box<DynamicModel>> {
        match get_lstm_topology(data) {
@@ -811,30 +845,34 @@ Análogo ao WaveNet dinâmico. O C++ (`InternalLSTMModelDyn` em `InternalModel.h
 
 ### **Tarefa 9.3 — Atualização Documental Completa para Beta**
 
-| Campo | Detalhe |
-|:------|:--------|
-| **Achados** | A-11 (`architecture.md` desatualizado), A-12 (README link quebrado), A-13 (versão semver) |
-| **Prioridade** | 🟡 MÉDIA |
-| **Módulos Alvo** | `docs/architecture.md`, `README.md`, `Cargo.toml`, `docs/dependencies.md` (NOVO) |
+| Campo            | Detalhe                                                                                   |
+|:---------------- |:----------------------------------------------------------------------------------------- |
+| **Achados**      | A-11 (`architecture.md` desatualizado), A-12 (README link quebrado), A-13 (versão semver) |
+| **Prioridade**   | 🟡 MÉDIA                                                                                  |
+| **Módulos Alvo** | `docs/architecture.md`, `README.md`, `Cargo.toml`, `docs/dependencies.md` (NOVO)          |
 
 #### Especificação
 
 1. **`docs/architecture.md`:**
+
    - Adicionar à tabela de módulos (§4): `src/loader/dispatcher.rs` com descrição do fluxo `build_model → DynamicModel → SPSC → pw_host`.
    - Adicionar `src/models/wavenet_dyn.rs` e `src/models/lstm_dyn.rs` se implementados na Sprint 9.
    - Atualizar §1 para refletir o fluxo completo: CLI → Parser → Dispatcher → Prewarm → SPSC → DSP → Inference → Gain → Output.
 
 2. **`docs/dependencies.md` (NOVO):**
+
    - Criar o arquivo referenciado pelo README.
    - Listar todas as dependências do `Cargo.toml` com justificativa técnica, versão fixada e alternativas consideradas.
    - Incluir seção de dependências do sistema (`pipewire`, `libpipewire-0.3-dev`, `clang`, `libclang-dev`, `pkg-config`).
 
 3. **`README.md`:**
+
    - Corrigir link para `docs/dependencies.md` (atualmente referencia arquivo inexistente).
    - Adicionar exemplos de uso com `--model`, `--input-gain`, `--output-gain`.
    - Adicionar seção "Modelos Suportados" com lista das topologias (Standard, Lite, Feather, Nano, LSTM 1×8..2×16 + dinâmico).
 
 4. **`Cargo.toml`:**
+
    - Bump versão para `0.9.0-beta.1` (refletindo 9 sprints e entrada em fase beta).
 
 #### Critérios de Aceite
