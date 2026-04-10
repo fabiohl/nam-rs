@@ -18,7 +18,6 @@ Revise seu contexto mental com base nos seguintes documentos:
 
 - **Regras de código**: `.agents/rules/rust.md` (condições inegociáveis de RT-safety).
 - **Arquitetura atual**: `docs/architecture.md` (fonte primária de verdade).
-
 - **Implementação de referência**: `github.com/mikeoliphant/NeuralAudio/` (Projeto original que inspirou este novo).
 
 ### 2. Subversão Arquitetural Híbrida: O Que Erradicar

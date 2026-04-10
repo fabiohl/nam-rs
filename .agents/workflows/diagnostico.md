@@ -26,7 +26,7 @@ Se o usuário colou apenas a mensagem amigável (sem o bloco técnico), peça qu
 1. Localize o `NamErrorCode` correspondente em `src/diagnostics.rs`.
 
 2. Use a tabela de faixas para direcionar a investigação:
-   
+
    | Faixa   | Onde investigar                                        |
    | ------- | ------------------------------------------------------ |
    | `E1xxx` | `src/loader/`, `src/main.rs::load_and_send_model()`    |
@@ -35,11 +35,11 @@ Se o usuário colou apenas a mensagem amigável (sem o bloco técnico), peça qu
    | `E4xxx` | `src/main.rs::cli_loop()`, `src/main.rs::parse_args()` |
    | `E5xxx` | `src/main.rs::main()`                                  |
 
-3. Leia o módulo e a função onde o diagnóstico é emitido para entender o contexto do código.
+3. Leia no código-fonte o módulo e a função onde a mensagem é emitida para entender o contexto da situação.
 
 ### 1.3. Diagnóstico de Causa-Raiz
 
-Com os dados extraídos:
+Exemplo de questões que podem vir a serem levantadas com os dados extraídos:
 
 - **E1xxx (Modelo)**: O arquivo existe? O formato (JSON/binário) está íntegro? O CRC confere? A topologia (WaveNet/LSTM) está tabelada? Os pesos são suficientes?
 - **E2xxx (Áudio)**: O PipeWire está rodando? O sample rate é suportado? O rubato conseguiu criar o resampler? Existe permissão SCHED_FIFO?
@@ -61,7 +61,7 @@ Se a Fase 2 concluir que é um **bug ou deficiência do NAM-rs**:
 
 1. Acione a skill `planejador-arquiteto`.
 2. Avalie a severidade e a urgência do problema.
-3. Proponha ao usuário se é necessário criar uma tarefa técnica de fix, detalhando:
+3. Proponha ao desenvolvedor se é necessário criar uma tarefa técnica de fix, detalhando:
    - **Módulo(s) afetado(s)** e linhas de código relevantes
    - **Impacto** (crash? degradação? inconveniência?)
    - **Complexidade estimada** (trivial / moderado / complexo)

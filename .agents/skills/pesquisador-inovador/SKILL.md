@@ -41,3 +41,7 @@ O NAM-rs está na **Fase Alpha**. A infraestrutura RT-safe está funcional:
 - A CLI em Rust opera assincronamente com os comandos do usuário, transacionando parâmetros exclusivamente via `rtrb::Producer<ParamPayload>` (Ring Buffer SPSC), com alinhamento a 128 bytes via `#[repr(align(128))]` no enum `ParamPayload` — garantindo isenção total de locks (Mutex, RwLock, Spinlock).
 - Ao pesquisar novas formas de comunicação RT→Main, o padrão de `RtStatusFlags` (campos `AtomicU32`/`AtomicBool` em `Arc`) é o modelo consolidado: **sem canais adicionais** salvo justificativa de throughput demonstrável.
 - Inovações que exijam novos canais SPSC devem ser dimensionadas como potências de 2 e documentadas em `docs/architecture.md`.
+
+### 4. Acionar o planejamento e a execução
+
+- Acione a skill `planejador-arquiteto` para planejar a melhor formar de executar as ideias levantadas.

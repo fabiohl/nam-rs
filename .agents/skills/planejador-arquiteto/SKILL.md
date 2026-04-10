@@ -16,7 +16,8 @@ Use esta skill focando em **Planejamento técnico sob metodologias ágeis**. Que
 - Carregue o contexto denso proveniente dos artefatos essenciais (em ordem de prioridade):
   1. `docs/architecture.md` — é a **bíblia de arquitetura atual** e fonte primária de verdade.
   2. `.agents/rules/rust.md` — condições inegociáveis de código Rust.
-  3. `Beta.txt` — diretrizes e prioridades da fase Beta (UX, polimento, estabilidade).
+  3. `TODO-sprints.md` - planejamento atual das próximas sprints e tarefas.
+  4. `Beta.txt` — diretrizes e prioridades da fase Beta (UX, polimento, estabilidade).
 
 ### 2. Subdivisões do Motor Matemático e Concorrência
 

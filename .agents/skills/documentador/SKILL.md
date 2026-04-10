@@ -19,8 +19,7 @@ Antes de consolidar a documentação final ou propor mudanças, identifique quai
 
 1. **`docs/architecture.md`** — é a **bíblia atual do projeto** e a única fonte de verdade sobre arquitetura. Toda mudança arquitetural deve ser refletida aqui **primeiro**.
 2. **`README.md`** — visão geral para novos colaboradores (instalação, uso básico, dependências de sistema).
-
-4. **`.agents/`** — definições de IA. Atualizar quando a arquitetura evoluir de forma que as skills descrevam padrões obsoletos.
+3. **`.agents/`** — definições de IA. Atualizar quando a arquitetura evoluir de forma que as skills descrevam padrões obsoletos.
 
 ### 3. Princípio "Use the Force, Read the Source"
 
@@ -57,6 +56,5 @@ A escolha de BlackmanHarris2 garante atenuação >−100 dB na stop-band.
 ### 4. Boas Práticas
 
 - Nunca apague arquivos contendo a matriz mental do sistema de tempo real sem realocação sistemática.
-- Edição do arquivo `docs/NAM-rs-referência.md` só é permitida se for cirúrgicas, ou na forma de notas e observações.
 - Aproveite a documentação para justificar decisões de design (por que SCHED_FIFO? por que `#[repr(align(128))]`? por que `rubato 0.16` e não 2.0?). Isso evita regressões arquiteturais futuras.
 - Ao documentar o sistema de diagnósticos (`src/diagnostics.rs`), mantenha o catálogo de códigos `Exxxx` sincronizado entre `docs/architecture.md` e o enum `NamErrorCode` no código-fonte — mas o **enum é a fonte da verdade**.

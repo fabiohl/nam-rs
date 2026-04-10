@@ -2,9 +2,9 @@
 description: Tarefa Técnica conforme /TODO-sprints.md
 ---
 
-# Automatizador de Tarefa Técnica conforme /TODO-sprints.md (caso exista)
+# Automatizador de Tarefa Técnica conforme /TODO-sprints.md (caso não exista, crie-o)
 
-Acionar a skill `planejador-arquiteto` para planejar no Agent Manager uma Tarefa ou Sprint prevista para o projeto, conforme `/TODO-sprints.md`.
+Acionar a skill `planejador-arquiteto` para planejar no Agent Manager uma Tarefa ou Sprint prevista para o projeto, conforme `/TODO-sprints.md` (caso não exista, crie-o).
 Entenda minunciosamente os objetivos do projeto, inclusive pesquisando as fontes citadas.
 Se for fornecido uma tarefa (Exemplo: "Tarefa 1.2") o objetivo é a implementação desta tarefa conforme explicado na sua descrição
 Se for fornecido uma sprint (Exemplo: "Sprint 1") o objetivo é passar em revista/auditoria todo o projeto para assegurar que todos os objetivos daquela sprint foram cumpridos. Aproveitar para atualizar as documentações como README.md e docs/architecture.md.
