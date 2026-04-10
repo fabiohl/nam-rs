@@ -2,26 +2,33 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Núcleo de processamento de áudio DSP usando `pipewire-rs`.
-//! Contém o callback estrito da thread de Tempo-Real/DSP responsável pelo processamento
-//! de inferência neural NAM. Recebe amostras brutas do host PipeWire via backend
-//! standalone nativo e as processa em tempo real.
-//! Zero alocação na heap, zero I/O, zero mutexes durante o `process()`.
 //!
-//! # Estado Atual (Sprint 9 — Beta)
-//! O motor de inferência neural está integrado com resampling bidirecional FIR Sinc.
-//! O callback `process()` aplica `NamResampler::process_input()` (Nk→48k) antes da inferência
-//! e `NamResampler::process_output()` (48k→Nk) após, garantindo que a placa de som receba o
-//! áudio no mesmo rate que enviou. Gain staging SIMD (input/output) envolve o bloco completo.
-//! Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
-//! Quando `pw_rate == 48000` (padrão), o resampler opera em bypass sem overhead.
+//! Este é o "coração" do NAM-rs: o módulo que de fato processa o som da guitarra
+//! em tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
+//! do Linux), passa pelo amplificador neural, e devolve o resultado processado —
+//! tudo sem nenhum engasgo ou atraso perceptível.
 //!
-//! ## Sprint 8 — RT-Safety Hardening (Tarefa 8.1)
+//! ## Regras absolutas deste módulo (por que são tão rigorosas?)
 //!
-//! - **A-2 resolvido:** `NamResampler::new()` nunca é chamado dentro do callback. A detecção
-//!   de sample rate seta flags atômicas; a thread principal constrói o resampler e o envia
-//!   via canal SPSC dedicado `Consumer<NamResampler>`.
-//! - **A-3 resolvido:** Nenhum `println!`/`eprintln!` no callback. Status comunicado via
-//!   `RtStatusFlags` atômicas, lidas pela thread principal que imprime fora do RT.
+//! No `process()` callback (a função chamada centenas de vezes por segundo pelo PipeWire):
+//! - **Zero alocação na heap** — nunca pedimos memória nova ao sistema durante o processamento.
+//! - **Zero I/O** — nunca escrevemos no terminal ou em arquivos; status é reportado via flags atômicas.
+//! - **Zero mutexes** — nunca travamos/esperamos por outras threads.
+//!
+//! Essas regras existem porque qualquer pausa, por menor que seja, causaria estalos e cortes no
+//! áudio — inaceitável para um músico tocando ao vivo.
+//!
+//! ## Fluxo de processamento
+//!
+//! O callback `process()` segue esta sequência para cada bloco de áudio:
+//! 1. Aplica ganho de entrada SIMD (ajuste de volume pré-amplificador)
+//! 2. `NamResampler::process_input()` — converte o sample rate do PipeWire para 48 kHz
+//! 3. Inferência neural WaveNet/LSTM — o "amplificador virtual" processa o som
+//! 4. `NamResampler::process_output()` — converte de volta para o sample rate original
+//! 5. Aplica ganho de saída SIMD (ajuste de volume pós-amplificador)
+//!
+//! Quando nenhum modelo está carregado, opera em pass-through (o som entra e sai sem alteração).
+//! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
 
 use crate::dsp::gain::apply_gain_simd;
 use crate::dsp::resampler::NamResampler;
@@ -396,9 +403,9 @@ pub fn run_pipewire_host(
 /// agendamento de tempo real. Chamada apenas uma vez na primeira invocação do `process()`,
 /// antes do fluxo de dados começar.
 fn configure_realtime_thread(target_cpu: usize) {
-    // Mitigação de Falhas de Silício (Tarefa 10.1 / 13.1):
-    // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via intrínsecos MXCSR.
-    // Evita espirais da morte no FPU do processador ao decair em números subnormalizados (silêncio).
+    // Proteção contra denormals (números subnormalizados que travam o processador):
+    // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
+    // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
     #[cfg(target_arch = "x86_64")]
     unsafe {
         crate::math::simd::set_daz_ftz();

@@ -55,8 +55,6 @@ Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `p
 
 * [docs/architecture.md](docs/architecture.md) — Topologia, módulos e decisões de design
 * [docs/dependencies.md](docs/dependencies.md) — Dependências sistêmicas e crates Rust
-* [docs/NAM-rs-referência.md](docs/NAM-rs-referência.md) — Documento de referência arquitetural
-* [docs/NAM-rs-sprints.md](docs/NAM-rs-sprints.md) — Sprints e tarefas técnicas detalhadas
 
 ## 🧠 Modelos Suportados
 

@@ -900,7 +900,7 @@ mod tests {
     }
 
     // =========================================================================
-    // Sprint 8.3/T-4 — Rejeição de topologias não-suportadas ou Fallback
+    // Rejeição de topologias não-suportadas e Fallback dinâmico
     // =========================================================================
 
     /// Transição para suporte Dinâmico: WaveNet com channels arbitrário funciona via fallback
@@ -929,10 +929,10 @@ mod tests {
     }
 
     // =========================================================================
-    // Sprint 8.3/T-6 — Exaustão do WeightCursor para todas as topologias
+    // Exaustão do WeightCursor para todas as topologias
     // =========================================================================
 
-    /// T-6: Verifica que `build_model()` consome 100% dos pesos para cada perfil WaveNet.
+    /// Verifica que `build_model()` consome 100% dos pesos para cada perfil WaveNet.
     ///
     /// Contagem de pesos por topologia (calculada manualmente a partir do layout C++):
     /// - Standard (CH=16, K=3, HEAD=8, 10+10 layers):   13802
@@ -974,7 +974,7 @@ mod tests {
         );
     }
 
-    /// T-6: Verifica exaustão de pesos para todos os perfis LSTM suportados.
+    /// Verifica exaustão de pesos para todos os perfis LSTM suportados.
     ///
     /// Layout: layer(H4*IH + H4 + H + H) + head(H + 1).
     /// - 1×8:  345,  1×12: 709,  1×16: 1201, 1×24: 2569
@@ -1002,7 +1002,7 @@ mod tests {
         }
     }
 
-    /// T-6: Verifica que 1 peso extra causa falha (overflow de cursor).
+    /// Verifica que 1 peso extra causa falha (overflow de cursor).
     #[test]
     fn test_weight_overflow_extra_peso() {
         let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];

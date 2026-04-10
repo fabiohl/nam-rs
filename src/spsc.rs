@@ -1,16 +1,20 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Estruturas de dados e flags compartilhadas para coordenação entre threads.
-//! Na Tarefa 1.2, este módulo foi expandido com as estruturas de comunicação
-//! lock-free SPSC para parametrização CLI -> DSP (input/output gain, troca de modelo).
+//! Estruturas de dados e flags compartilhadas para coordenação lock-free entre threads.
 //!
-//! ## Sprint 8 — RT-Safety Hardening
+//! Este módulo define toda a "fiação invisível" que conecta a interface CLI (o controle
+//! remoto do músico) com o motor de áudio DSP (o amplificador neural rodando em tempo real).
 //!
-//! Adicionadas:
-//! - `RtStatusFlags`: flags atômicas para comunicação silenciosa RT→Main (sem I/O no callback).
-//! - Canal SPSC dedicado para `NamResampler`: a thread principal constrói o resampler (com
-//!   alocações) e o envia para o callback RT via canal lock-free — zero alocações no hot path.
+//! ## Componentes principais
+//!
+//! - **`SHUTDOWN`**: flag global que sinaliza a todas as threads que o programa deve encerrar.
+//! - **`ParamPayload`**: "pacotes" de parâmetros (ganho de entrada/saída, troca de modelo)
+//!   que a CLI envia para o DSP sem travar nenhuma thread (lock-free via ring buffer SPSC).
+//! - **`RtStatusFlags`**: flags atômicas para comunicação silenciosa RT→Main (sem I/O no callback).
+//!   Permitem que o motor DSP reporte seu estado sem jamais chamar `println!`.
+//! - Canal SPSC de `NamResampler`: a thread principal constrói o resampler (com alocações
+//!   de memória) fora do tempo real e o envia para o callback DSP via canal lock-free.
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;

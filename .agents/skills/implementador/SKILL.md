@@ -13,9 +13,9 @@ Use esta skill quando for necessário focar em **codificação e execução téc
 
 ### 1. Contexto e Padrão Arquitetural Inegociáveis
 
-Antes de implementar qualquer funcionalidade, consulte a referência mestra em `docs/architecture.md`, bem como o guia `docs/NAM-rs-referência.md` e obedeça os ciclos do desenvolvimento em `docs/NAM-rs-sprints.md`. Todas as restrições listadas em `.agents/rules/rust.md` devem ser estritamente observadas.
+Antes de implementar qualquer funcionalidade, consulte a referência mestra em `docs/architecture.md`. Todas as restrições listadas em `.agents/rules/rust.md` devem ser estritamente observadas.
 
-### 2. Stack de Crates Consolidada (Sprint 8 — não substituir sem discussão)
+### 2. Stack de Crates Consolidada
 
 | Crate                  | Versão | Papel                                              |
 | ---------------------- | ------ | -------------------------------------------------- |

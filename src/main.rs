@@ -4,12 +4,15 @@
 #![warn(missing_docs)]
 
 //! Ponto de entrada principal do NAM-rs.
-//! Inicializa o host base de PipeWire para processamento de áudio
-//! e coordena o shutdown gracioso quando CTRL+C é pressionado.
+//!
+//! Pense neste arquivo como a "recepção" do nosso estúdio virtual. Ele é responsável por:
+//! 1. Ler o que o usuário digita no terminal (qual amplificador carregar e os volumes de entrada/saída).
+//! 2. Abrir a conexão de áudio com o sistema (PipeWire), conectando a guitarra ao motor sonoro.
+//! 3. Garantir que, quando o usuário apertar CTRL+C, tudo seja desligado com segurança, sem deixar ruídos.
 //!
 //! # Regras de Arquitetura para Desenvolvedores
-//! - **ZERO LOCKS** na thread DSP (módulo pw_host).
-//! - **ZERO ALOCAÇÕES** na thread DSP (o loop `process()` deve ser zero-allocation).
+//! - **ZERO LOCKS** na thread de Áudio (módulo `pw_host`): O áudio não "espera" pela interface visual. Se não houver instrução nova, ele continua usando a anterior. Evita "engasgos" no som.
+//! - **ZERO ALOCAÇÕES** na thread de Áudio: A memória do canal de áudio (`process()`) é sempre preparada 100% de antemão. O áudio nunca "pede por mais memória RAM" de supetão.
 
 use lexopt::prelude::*;
 use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};

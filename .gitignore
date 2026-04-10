@@ -12,6 +12,7 @@
 Thumbs.db
 repomix-*.xml
 *.bak
+*.bin
 *.old
 *.swp
 *.tar
@@ -32,3 +33,6 @@ scratch/
 
 # Golden vectors de validação numérica (não ignorar)
 !tests/fixtures/*.bin
+
+# Espelho do GitHub da implementação original
+github.com/

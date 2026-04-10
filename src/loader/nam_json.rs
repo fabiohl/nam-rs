@@ -290,10 +290,10 @@ mod tests {
     }
 
     // =========================================================================
-    // Sprint 14.1 — Testes de Rejeição de JSON Malformado (M-7)
+    // Testes de Rejeição de JSON Malformado
     // =========================================================================
 
-    /// Sprint 14.1: JSON truncado no meio deve retornar `Err`.
+    /// JSON truncado no meio deve retornar `Err`.
     #[test]
     fn test_parse_truncated_json() {
         let truncated = r#"{"version": "0.5.4", "architecture": "WaveNet", "config": {"#;
@@ -304,7 +304,7 @@ mod tests {
         );
     }
 
-    /// Sprint 14.1: JSON válido sem o campo obrigatório `"architecture"` deve retornar `Err`.
+    /// JSON válido sem o campo obrigatório `"architecture"` deve retornar `Err`.
     #[test]
     fn test_parse_missing_architecture() {
         let json = r#"{
@@ -319,7 +319,7 @@ mod tests {
         );
     }
 
-    /// Sprint 14.1: JSON válido sem o campo obrigatório `"weights"` deve retornar `Err`.
+    /// JSON válido sem o campo obrigatório `"weights"` deve retornar `Err`.
     #[test]
     fn test_parse_missing_weights() {
         let json = r#"{
@@ -334,7 +334,7 @@ mod tests {
         );
     }
 
-    /// Sprint 14.1: `"weights": []` deve ser aceito pelo parser (array vazia é JSON válido).
+    /// `"weights": []` deve ser aceito pelo parser (array vazia é JSON válido).
     /// O dispatcher é responsável por rejeitar modelos com 0 pesos posteriormente.
     #[test]
     fn test_parse_empty_weights() {
@@ -353,7 +353,7 @@ mod tests {
         assert_eq!(data.weights.len(), 0);
     }
 
-    /// Sprint 14.1: `"config": "not_an_object"` deve retornar `Err` (tipo incorreto).
+    /// `"config": "not_an_object"` deve retornar `Err` (tipo incorreto).
     #[test]
     fn test_parse_malformed_config() {
         let json = r#"{

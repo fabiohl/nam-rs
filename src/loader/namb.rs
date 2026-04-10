@@ -120,7 +120,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
 /// modelos WaveNet "Standard" (16ch, dilatações `[1..512]`×2). A especificação binária
 /// não transporta explicitamente a topologia no cabeçalho — os pesos são interpretados
 /// diretamente pela geometria fixa. Por isso, hardcodamos a configuração Standard
-/// para garantir intercambiabilidade com o parser JSON (Tarefa 4.1.1).
+/// para garantir intercambiabilidade com o parser JSON.
 fn make_standard_wavenet_config() -> NamConfig {
     let std_dilations = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 

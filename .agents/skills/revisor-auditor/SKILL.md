@@ -18,7 +18,7 @@ Revise seu contexto mental com base nos seguintes documentos:
 
 - **Regras de código**: `.agents/rules/rust.md` (condições inegociáveis de RT-safety).
 - **Arquitetura atual**: `docs/architecture.md` (fonte primária de verdade).
-- **Roadmap**: `docs/NAM-rs-referencia.md` e `docs/NAM-rs-sprints.md` (contexto histórico).
+
 - **Implementação de referência**: `github.com/mikeoliphant/NeuralAudio/` (Projeto original que inspirou este novo).
 
 ### 2. Subversão Arquitetural Híbrida: O Que Erradicar
@@ -51,7 +51,7 @@ Inspecione linha-de-código detectando categoricamente:
 | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
 | **Unwraps no RT**                   | `unwrap()` sem fallback silencioso no caminho do callback. Use `.unwrap_or_else()` ou `if let`. |
 | **CRC32 sem verificação**           | Modelos `.namb` carregados sem validação de checksum (`crc32fast`).                             |
-| **Docs desatualizadas**             | `docs/architecture.md` contradizendo a implementação real (especialmente após Sprint 8).        |
+| **Docs desatualizadas**             | `docs/architecture.md` contradizendo a implementação real.        |
 | **Testes sem assertívas numéricas** | Testes de inferência sem verificação de fidelidade (valores esperados com tolerância binária).  |
 
 ### 3. Retificações Bit-Perfect

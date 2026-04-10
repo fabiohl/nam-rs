@@ -19,7 +19,7 @@ Antes de consolidar a documentação final ou propor mudanças, identifique quai
 
 1. **`docs/architecture.md`** — é a **bíblia atual do projeto** e a única fonte de verdade sobre arquitetura. Toda mudança arquitetural deve ser refletida aqui **primeiro**.
 2. **`README.md`** — visão geral para novos colaboradores (instalação, uso básico, dependências de sistema).
-3. **`docs/NAM-rs-referência.md`** e **`docs/NAM-rs-sprints.md`** — documentação histórica e roadmap de sprints. Editar apenas de forma cirúrgica (notas e observações). Não contradizer `architecture.md`.
+
 4. **`.agents/`** — definições de IA. Atualizar quando a arquitetura evoluir de forma que as skills descrevam padrões obsoletos.
 
 ### 3. Boas Práticas

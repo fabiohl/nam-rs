@@ -1,27 +1,31 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Módulo de arquiteturas inferenciais neurais para o NAM-rs.
+//! Módulo de Motores Cerebrais (Arquiteturas Inferenciais Neurais) para o NAM-rs.
 //!
-//! Este módulo contém implementações "Zero-Allocation" usando Const Generics
-//! baseadas no modelo "Neural Amp Modeler" original.
+//! Este módulo contém os cérebros acústicos do programa: redes neurais que aprenderam
+//! como um amplificador ou pedal verdadeiro distorce e colore o som de uma guitarra.
+//! Aqui temos implementações super rápidas ("Zero-Allocation") baseadas no
+//! comportamento exato treinado pelo Neural Amp Modeler (NAM) original.
 
 pub mod lstm;
 pub mod lstm_dyn;
 pub mod wavenet;
 pub mod wavenet_dyn;
 
-/// Trait base para todos os modelos neurais inferenciais da aplicação.
+/// A interface (o conector padrão) para qualquer modelo neural (amplificadores, pedais, etc.).
 ///
-/// Garante interface unificada para despacho dentro do loop lock-free RT de DSP.
+/// Pense nisso como um cabo de guitarra padrão: não importa a marca do pedal interno (WaveNet ou LSTM),
+/// o sistema de áudio (host principal) sabe enviar som para ele e receber de volta através deste contrato/trait.
 pub trait NamModel: Send + Sync {
     /// Invocado pelo DSP RT-Thread para processar blocos de amostragem acústica (Float32).
     /// O áudio deverá ser processado *in-place* ou lido de input para output dependendo da geometria vetorial.
     fn process(&mut self, input: &[f32], output: &mut [f32]);
 
-    /// Inicializa a arquitetura matemática injetando carga zero (`num_samples`)
-    /// para estabilizar buffers (ex: conv1d e receptive field da WaveNet ou state da LSTM)
-    /// anulando vazamentos espúrios e oscilações do momento pré-transiente real.
+    /// "Aquece" as válvulas virtuais do motor neural (`prewarm`).
+    /// Injeta um curto zumbido ou silêncio (`num_samples`) por dentro do amplificador antes de expor
+    /// a guitarra de verdade a ele. Isso acalma o "campo magnético virtual", garantindo que não
+    /// hajam estalos (pops) estridentes quando você liga ou troca de modelo de súbito.
     fn prewarm(&mut self, num_samples: usize);
 }
 

@@ -15,13 +15,13 @@ Use esta skill focando em **Planejamento técnico sob metodologias ágeis**. Que
 
 - Carregue o contexto denso proveniente dos artefatos essenciais (em ordem de prioridade):
   1. `docs/architecture.md` — é a **bíblia de arquitetura atual** e fonte primária de verdade.
-  2. `docs/NAM-rs-referência.md` e `docs/NAM-rs-sprints.md` — documentação histórica e roadmap; consultar para contexto, não contradizer `architecture.md`.
-  3. `.agents/rules/rust.md` — condições inegociáveis de código Rust.
+  2. `.agents/rules/rust.md` — condições inegociáveis de código Rust.
+  3. `Beta.txt` — diretrizes e prioridades da fase Beta (UX, polimento, estabilidade).
 
 ### 2. Subdivisões do Motor Matemático e Concorrência
 
 - Modele requisitos complexos das Redes Neurais (LSTM, WaveNet) usando `Const Generics` para estruturas SoA pré-alocadas. Nenhuma alocação de heap na thread DSP.
-- A comunicação entre threads é **exclusivamente** via os três canais SPSC já consolidados (Sprint 8):
+- A comunicação entre threads é **exclusivamente** via os três canais SPSC já consolidados:
   1. `rtrb::Producer<ParamPayload>` (CLI→DSP): parâmetros de ganho, carga de modelo, sample rate.
   2. `rtrb::Producer<NamResampler>` (Main→DSP): resampler pré-construído, zero-alloc no callback.
   3. `rtrb::Producer<Box<DynamicModel>>` (DSP→GC): Drop-Delegation de modelos obsoletos.

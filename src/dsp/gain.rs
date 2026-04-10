@@ -142,7 +142,7 @@ mod tests {
         }
     }
 
-    /// Sprint 8.3/T-5: Verifica que `apply_gain_simd` com gain=1.0 é true-bypass bitwise.
+    /// Verifica que `apply_gain_simd` com gain=1.0 é true-bypass bitwise (sem alterar nenhum bit).
     ///
     /// Testa dois cenários:
     /// - Buffer de 16 amostras (alinhado a AVX2 lanes de 8)
@@ -183,10 +183,10 @@ mod tests {
     }
 
     // =========================================================================
-    // Sprint 14.2 — Testes de Gain Staging Roundtrip (M-4)
+    // Testes de Gain Staging Roundtrip (ida-e-volta de ganho)
     // =========================================================================
 
-    /// Sprint 14.2: Roundtrip +6dB → -6dB deve preservar o sinal original (MSE < 1e-10).
+    /// Roundtrip +6dB → -6dB deve preservar o sinal original (MSE < 1e-10).
     #[test]
     fn test_gain_roundtrip_6db() {
         // Gera sinal senoidal de referência
@@ -218,7 +218,7 @@ mod tests {
         );
     }
 
-    /// Sprint 14.2: Aplicar +96dB e -96dB sem gerar NaN/Inf.
+    /// Aplicar +96dB e -96dB sem gerar NaN/Inf (extremos de ganho em Float32).
     #[test]
     fn test_gain_extreme_values_96db() {
         // +96 dB → gain ≈ 63095.7
@@ -254,7 +254,7 @@ mod tests {
         }
     }
 
-    /// Sprint 14.2: Input com −0.0 deve produzir output finito sem NaN.
+    /// Input com −0.0 (zero negativo IEEE 754) deve produzir output finito sem NaN.
     #[test]
     fn test_gain_negative_zero() {
         let mut buffer = [-0.0f32; 16];
