@@ -984,3 +984,145 @@ fn test_namb_roundtrip_dispatcher_e2e() {
         "[Sprint 9] NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras)."
     );
 }
+
+// =============================================================================
+// Sprint 12.2 — Expansão da Cobertura de Testes (Feather, Nano, LSTM 2x8)
+// =============================================================================
+
+/// Teste 13 (Sprint 12.2): Estabilidade WaveNet Feather
+#[test]
+fn test_wavenet_stability_feather() {
+    let path = model_path("BossWN-feather.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: BossWN-feather.nam não encontrado em {path:?}. Ignorando estabilidade Feather."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet Feather");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data).expect("Dispatcher falhou no Feather");
+
+    model.0.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.0.process(&input, &mut output);
+
+    for (i, &s) in output.iter().enumerate() {
+        assert!(
+            s.is_finite(),
+            "[Feather] Sample não finita no índice {i}: {s}"
+        );
+        assert!(
+            s.abs() < 100.0,
+            "[Feather] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+        );
+    }
+}
+
+/// Teste 14 (Sprint 12.2): Estabilidade WaveNet Nano
+#[test]
+fn test_wavenet_stability_nano() {
+    let path = model_path("BossWN-nano.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP: BossWN-nano.nam não encontrado em {path:?}. Ignorando estabilidade Nano.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet Nano");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data).expect("Dispatcher falhou no Nano");
+
+    model.0.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.0.process(&input, &mut output);
+
+    for (i, &s) in output.iter().enumerate() {
+        assert!(s.is_finite(), "[Nano] Sample não finita no índice {i}: {s}");
+        assert!(
+            s.abs() < 100.0,
+            "[Nano] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+        );
+    }
+}
+
+/// Teste 15 (Sprint 12.2): Estabilidade LSTM 2x8
+#[test]
+fn test_lstm_stability_2x8() {
+    let path = model_path("BossLSTM-2x8.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: BossLSTM-2x8.nam não encontrado em {path:?}. Ignorando estabilidade LSTM 2x8."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM 2x8");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data).expect("Dispatcher falhou no LSTM 2x8");
+
+    model.0.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.0.process(&input, &mut output);
+
+    for (i, &s) in output.iter().enumerate() {
+        assert!(
+            s.is_finite(),
+            "[LSTM 2x8] Sample não finita no índice {i}: {s}"
+        );
+        assert!(
+            s.abs() < 100.0,
+            "[LSTM 2x8] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+        );
+    }
+}
+
+/// Teste 16 (Sprint 12.2): Auto-consistência LSTM 2x8 — determinismo absoluto.
+#[test]
+fn test_auto_consistency_lstm_2x8() {
+    let path = model_path("BossLSTM-2x8.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: BossLSTM-2x8.nam não encontrado em {path:?}. Ignorando auto-consistência LSTM 2x8."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM 2x8");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    let mut model_a = build_model(&model_data)
+        .expect("Dispatcher falhou (model_a) para auto-consistência LSTM 2x8");
+    let mut model_b = build_model(&model_data)
+        .expect("Dispatcher falhou (model_b) para auto-consistência LSTM 2x8");
+
+    model_a.0.prewarm(2048);
+    model_b.0.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
+
+    let mse = compute_mse(&out_a, &out_b);
+    let mae = compute_max_abs_error(&out_a, &out_b);
+
+    println!("[Auto-Consistência LSTM 2x8] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "Motor Rust LSTM 2x8 não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}

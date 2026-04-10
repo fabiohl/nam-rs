@@ -1149,6 +1149,13 @@ Adicionar ao arquivo de testes de integração:
 2. Nenhum dos testes assume hardware específico além de `x86_64 + avx2 + fma` (já verificado em runtime).
 3. `utils/lints.sh` ✅.
 
+> **✅ Nota de Execução — Tarefa 12.2 (concluída em 2026-04-09):**
+> 
+> - Os 4 novos testes de integração e estabilidade foram implementados em `tests/nam_infer_test.rs`: `test_wavenet_stability_feather`, `test_wavenet_stability_nano`, `test_lstm_stability_2x8` e `test_auto_consistency_lstm_2x8`.
+> - Validação numérica baseada no carregamento com os fixtures preexistentes (BossWN-feather.nam, BossWN-nano.nam e BossLSTM-2x8.nam) foi efetuada e resultou em estabilidade absoluta (retornos sempre finitos com magnitude contida abaixo de 100.0). A checagem de log e determinismo provou falhas numéricas inexistentes para as referidas topologias via verificação MSE = 0.0.
+> - As execuções finais dos targets `cargo test` somadas com a suite do verificador restrito `utils/lints.sh` superaram e foram endossadas nas validações sem emitir nenhum log de aviso ou dependência irregular associada (arquitetura agnóstica de runtime preservada).
+
+
 ---
 
 ### **Tarefa 12.3 — Investigação e Triagem do Fixture `tw40_blues_deluxe_deerinkstudios.json`**
@@ -1170,6 +1177,12 @@ Adicionar ao arquivo de testes de integração:
 
 1. O arquivo tem seu status claramente documentado (seja por teste passando, seja por remoção/relocação documentada).
 2. `cargo test` ✅.
+
+> **✅ Nota de Execução — Tarefa 12.3 (concluída em 2026-04-09):**
+>
+> - Ao inspecionar `tests/fixtures/models/tw40_blues_deluxe_deerinkstudios.json`, apurou-se que a anatomia dos metadados (`"in_shape"`, `"layers"`, `"type"`) descreve uma implementação no padrão Keras Legacy de modelos anteriores à padronização central e determinística estipulada pelo ecossistema NAM Core, não contendo as chaves requeridas (`"version"`, `"architecture"`).
+> - Como o sistema `nam-rs` foi arquitetado rigorosamente acima da padronização NAM Core oficial sem o overhead de fallback para padrões abstratos em *JSON* herdados do Python, o arquivo foi transladado para `tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json`.
+> - Um arquivo `README.md` explicativo foi adicionado junto a ele documentando a natureza incompatível da litografia de serialização provando a sanidade isolada dos Test Cases.
 
 ---
 

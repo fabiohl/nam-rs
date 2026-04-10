@@ -11,6 +11,7 @@ RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends 
     libpipewire-0.3-dev \
     clang \
     libclang-dev \
+    cmake \
     && apt clean \
     && rm -rf /var/lib/apt/lists/*
 
