@@ -464,9 +464,7 @@ fn test_dispatcher_build_model_real_lstm() {
         );
     }
 
-    println!(
-        "Dispatcher LSTM OK — 1×16 construído e inferência estável (64 zeros processados)."
-    );
+    println!("Dispatcher LSTM OK — 1×16 construído e inferência estável (64 zeros processados).");
 }
 
 // =============================================================================
@@ -764,9 +762,7 @@ fn test_end_to_end_spsc_pipeline() {
         );
     }
 
-    println!(
-        "Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas)."
-    );
+    println!("Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas).");
 }
 
 // =============================================================================
@@ -976,9 +972,7 @@ fn test_namb_roundtrip_dispatcher_e2e() {
         );
     }
 
-    println!(
-        "NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras)."
-    );
+    println!("NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras).");
 }
 
 // =============================================================================
