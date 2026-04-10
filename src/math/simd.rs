@@ -10,6 +10,34 @@
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
+/// Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) no registrador MXCSR.
+///
+/// Em CPUs x86-64, operações sobre números subnormais (denormals) incorrem em
+/// penalidade de micro-código na FPU que pode exceder o orçamento temporal do
+/// callback `SCHED_FIFO`. Silêncio prolongado de instrumento gera decaimentos
+/// exponenciais nos estados LSTM e buffers WaveNet que convergem para denormals.
+///
+/// Esta função seta os bits 6 (DAZ) e 15 (FTZ) do MXCSR via instruções
+/// `stmxcsr` / `ldmxcsr`.
+///
+/// - **FTZ (bit 15):** Resultados subnormais são truncados para zero.
+/// - **DAZ (bit 6):** Operandos subnormais são tratados como zero.
+///
+/// # Safety
+/// O chamador deve assegurar que a CPU é x86_64 com suporte SSE2+.
+/// Esta função altera estado global do processador (MXCSR) — deve ser
+/// chamada apenas uma vez por thread (tipicamente no início do callback RT).
+#[cfg(target_arch = "x86_64")]
+pub unsafe fn set_daz_ftz() {
+    // 0x8040 = bit 15 (FTZ) | bit 6 (DAZ)
+    unsafe {
+        let mut mxcsr: u32 = 0;
+        core::arch::asm!("stmxcsr [{0}]", in(reg) &mut mxcsr);
+        mxcsr |= 0x8040;
+        core::arch::asm!("ldmxcsr [{0}]", in(reg) &mxcsr);
+    }
+}
+
 /// Calcula o Dot Product (Produto Escalar) de duas fatias via AVX2 e FMA.
 ///
 /// # Safety
@@ -161,6 +189,34 @@ mod tests {
                 expected,
                 result
             );
+        }
+    }
+
+    /// Verifica que `set_daz_ftz` seta corretamente os bits DAZ (6) e FTZ (15) no MXCSR.
+    #[test]
+    fn test_set_daz_ftz() {
+        #[cfg(target_arch = "x86_64")]
+        {
+            unsafe {
+                // Ler MXCSR atual e limpar DAZ+FTZ para verificar que a função os seta
+                let mut before: u32 = 0;
+                core::arch::asm!("stmxcsr [{0}]", in(reg) &mut before);
+                let cleared = before & !0x8040;
+                core::arch::asm!("ldmxcsr [{0}]", in(reg) &cleared);
+
+                set_daz_ftz();
+
+                let mut after: u32 = 0;
+                core::arch::asm!("stmxcsr [{0}]", in(reg) &mut after);
+                assert!(
+                    (after & 0x8040) == 0x8040,
+                    "set_daz_ftz() não setou DAZ+FTZ: MXCSR=0x{:08X}",
+                    after
+                );
+
+                // Restaurar MXCSR original
+                core::arch::asm!("ldmxcsr [{0}]", in(reg) &before);
+            }
         }
     }
 }

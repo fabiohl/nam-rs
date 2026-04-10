@@ -288,4 +288,84 @@ mod tests {
             "Canais 10 não é uma topologia suportada"
         );
     }
+
+    // =========================================================================
+    // Sprint 14.1 — Testes de Rejeição de JSON Malformado (M-7)
+    // =========================================================================
+
+    /// Sprint 14.1: JSON truncado no meio deve retornar `Err`.
+    #[test]
+    fn test_parse_truncated_json() {
+        let truncated = r#"{"version": "0.5.4", "architecture": "WaveNet", "config": {"#;
+        let result = parse_nam_json(truncated);
+        assert!(
+            result.is_err(),
+            "JSON truncado deve retornar Err, mas obteve Ok"
+        );
+    }
+
+    /// Sprint 14.1: JSON válido sem o campo obrigatório `"architecture"` deve retornar `Err`.
+    #[test]
+    fn test_parse_missing_architecture() {
+        let json = r#"{
+            "version": "0.5.4",
+            "config": { "layers": [] },
+            "weights": [0.1, 0.2]
+        }"#;
+        let result = parse_nam_json(json);
+        assert!(
+            result.is_err(),
+            "JSON sem 'architecture' deve retornar Err, mas obteve Ok"
+        );
+    }
+
+    /// Sprint 14.1: JSON válido sem o campo obrigatório `"weights"` deve retornar `Err`.
+    #[test]
+    fn test_parse_missing_weights() {
+        let json = r#"{
+            "version": "0.5.4",
+            "architecture": "LSTM",
+            "config": { "num_layers": 1, "hidden_size": 8, "layers": [] }
+        }"#;
+        let result = parse_nam_json(json);
+        assert!(
+            result.is_err(),
+            "JSON sem 'weights' deve retornar Err, mas obteve Ok"
+        );
+    }
+
+    /// Sprint 14.1: `"weights": []` deve ser aceito pelo parser (array vazia é JSON válido).
+    /// O dispatcher é responsável por rejeitar modelos com 0 pesos posteriormente.
+    #[test]
+    fn test_parse_empty_weights() {
+        let json = r#"{
+            "version": "0.5.4",
+            "architecture": "LSTM",
+            "config": { "num_layers": 1, "hidden_size": 8, "layers": [] },
+            "weights": []
+        }"#;
+        let result = parse_nam_json(json);
+        assert!(
+            result.is_ok(),
+            "JSON com weights vazio deve ser aceito pelo parser (dispatcher rejeita depois)"
+        );
+        let data = result.unwrap();
+        assert_eq!(data.weights.len(), 0);
+    }
+
+    /// Sprint 14.1: `"config": "not_an_object"` deve retornar `Err` (tipo incorreto).
+    #[test]
+    fn test_parse_malformed_config() {
+        let json = r#"{
+            "version": "0.5.4",
+            "architecture": "WaveNet",
+            "config": "not_an_object",
+            "weights": [0.1]
+        }"#;
+        let result = parse_nam_json(json);
+        assert!(
+            result.is_err(),
+            "JSON com config como string deve retornar Err, mas obteve Ok"
+        );
+    }
 }

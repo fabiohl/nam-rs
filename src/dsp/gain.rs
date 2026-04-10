@@ -181,4 +181,90 @@ mod tests {
             "Gain ≈1.0 (dentro de 1e-6) deve acionar fast-path bypass"
         );
     }
+
+    // =========================================================================
+    // Sprint 14.2 — Testes de Gain Staging Roundtrip (M-4)
+    // =========================================================================
+
+    /// Sprint 14.2: Roundtrip +6dB → -6dB deve preservar o sinal original (MSE < 1e-10).
+    #[test]
+    fn test_gain_roundtrip_6db() {
+        // Gera sinal senoidal de referência
+        let original: Vec<f32> = (0..256)
+            .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
+            .collect();
+
+        let gain_up = 10.0f32.powf(6.0 / 20.0); // +6 dB
+        let gain_down = 10.0f32.powf(-6.0 / 20.0); // -6 dB
+
+        let mut buffer = original.clone();
+        apply_gain_simd(&mut buffer, gain_up);
+        apply_gain_simd(&mut buffer, gain_down);
+
+        // MSE entre buffer processado e original
+        let mse: f64 = original
+            .iter()
+            .zip(buffer.iter())
+            .map(|(a, b)| {
+                let d = (*a as f64) - (*b as f64);
+                d * d
+            })
+            .sum::<f64>()
+            / (original.len() as f64);
+
+        assert!(
+            mse < 1e-10,
+            "Roundtrip +6dB/-6dB MSE={mse:.2e} excede 1e-10 — possível acúmulo de erro float"
+        );
+    }
+
+    /// Sprint 14.2: Aplicar +96dB e -96dB sem gerar NaN/Inf.
+    #[test]
+    fn test_gain_extreme_values_96db() {
+        // +96 dB → gain ≈ 63095.7
+        let gain_pos96 = 10.0f32.powf(96.0 / 20.0);
+        assert!(
+            gain_pos96.is_finite(),
+            "+96dB gain não é finito: {gain_pos96}"
+        );
+
+        let mut buffer = [0.5f32; 32];
+        apply_gain_simd(&mut buffer, gain_pos96);
+        for &s in &buffer {
+            assert!(
+                s.is_finite(),
+                "Output com +96dB deve ser finito, obteve: {s}"
+            );
+        }
+
+        // -96 dB → gain ≈ 1.585e-5
+        let gain_neg96 = 10.0f32.powf(-96.0 / 20.0);
+        assert!(
+            gain_neg96.is_finite() && gain_neg96 > 0.0,
+            "-96dB gain inválido: {gain_neg96}"
+        );
+
+        let mut buffer2 = [1.0f32; 32];
+        apply_gain_simd(&mut buffer2, gain_neg96);
+        for &s in &buffer2 {
+            assert!(
+                s.is_finite() && s >= 0.0,
+                "Output com -96dB deve ser finito e >= 0, obteve: {s}"
+            );
+        }
+    }
+
+    /// Sprint 14.2: Input com −0.0 deve produzir output finito sem NaN.
+    #[test]
+    fn test_gain_negative_zero() {
+        let mut buffer = [-0.0f32; 16];
+        apply_gain_simd(&mut buffer, 2.5);
+        for &s in &buffer {
+            assert!(
+                s.is_finite(),
+                "Gain sobre -0.0 deve ser finito, obteve: {s}"
+            );
+            // -0.0 * 2.5 = -0.0 (IEEE 754), que é finito
+        }
+    }
 }

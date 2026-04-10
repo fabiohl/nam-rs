@@ -67,14 +67,36 @@ O NAM-rs suporta nativamente a inferência de modelos convencionais e experiment
   * **LSTM:** 1 e 2 Camadas (8 a 24 de Hidden Size: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
 * **Modo Dinâmico (Flexibilidade Absoluta):** Fallback ativado automaticamente ao carregar arranjos `.nam` com geometrias extrassensoriais não catalogadas (`num_layers` e `channels` arbitrários), operando sem *loop unrolling*.
 
+## 🧪 Testes e Validação
+
+O NAM-rs mantém uma suíte de **81 verificações** automatizadas distribuídas em três camadas:
+
+```bash
+# Testes unitários + integração + proptest + E2E PipeWire
+cargo test
+
+# Apenas testes unitários inline (60 testes)
+cargo test --lib
+
+# Apenas testes de integração (18 testes)
+cargo test --test nam_infer_test
+
+# Benchmarks de latência (6 benchmarks criterion)
+cargo bench --bench inference_bench
+
+# Lint completo (formatação + clippy rigoroso)
+utils/lints.sh
+```
+
+Categorias de teste incluem: parsing JSON e NAMB, estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip e hot-swap rápido de modelos.
+
 ## 🤝 Contribuindo
 
 Contribuições são bem-vindas! O projeto está em fase ativa de desenvolvimento. Áreas de interesse:
 
 * Testes + testes + testes + testes....
 * Apesar do suporte a AVX-512, eu não tenho uma CPU suportado pra testar. Se alguém tiver alguma por ai, seria muito útil..
-
-Sinta-se à vontade para abrir *Issues* ou enviar *Pull Requests*.
+* Para validar alterações: execute `cargo test` e `utils/lints.sh` antes de submeter PRs.
 
 ## ⚖️ Licença e Transparência (Vibe Coding)
 

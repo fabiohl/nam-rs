@@ -396,15 +396,12 @@ pub fn run_pipewire_host(
 /// agendamento de tempo real. Chamada apenas uma vez na primeira invocação do `process()`,
 /// antes do fluxo de dados começar.
 fn configure_realtime_thread(target_cpu: usize) {
+    // Mitigação de Falhas de Silício (Tarefa 10.1 / 13.1):
+    // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via intrínsecos MXCSR.
+    // Evita espirais da morte no FPU do processador ao decair em números subnormalizados (silêncio).
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        // Mitigação de Falhas de Silício (Tarefa 10.1):
-        // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) modificando o registro MXCSR.
-        // Evita espirais da morte no FPU do processador ao decair em números subnormalizados (silêncio).
-        let mut mxcsr: u32 = 0;
-        core::arch::asm!("stmxcsr [{0}]", in(reg) &mut mxcsr);
-        mxcsr |= (1 << 15) | (1 << 6); // Bit 15: FTZ, Bit 6: DAZ
-        core::arch::asm!("ldmxcsr [{0}]", in(reg) &mxcsr);
+        crate::math::simd::set_daz_ftz();
     }
 
     #[cfg(target_os = "linux")]

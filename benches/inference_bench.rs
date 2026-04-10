@@ -15,6 +15,8 @@
 //! | `LSTM_2x16_64samp_48kHz` | Inferência LSTM 2 camadas × 16 hidden | Rede recorrente mais pesada suportada |
 //! | `FastMath_tanh_AVX2_256elem` | Ativação tanh Padé×rsqrt sobre 256 f32 | Kernel chamado N×layers/bloco no WaveNet |
 //! | `FastMath_sigmoid_AVX2_256elem` | Ativação sigmoid derivada de tanh | Kernel chamado N×gates/bloco no LSTM |
+//! | `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback) | Mede overhead do path sem const generics |
+//! | `LSTM_Dynamic_1x16_64samp_48kHz` | Inferência LSTM Dynamic 1×16 (fallback) | Mede overhead do path sem const generics |
 //!
 //! ## Interpretação dos resultados
 //!
@@ -149,11 +151,97 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     }
 }
 
+// =============================================================================
+// Sprint 13.3 — Benchmarks para Modelos Dinâmicos (WaveNet + LSTM)
+// =============================================================================
+
+/// Benchmark: WaveNet Dynamic Standard (mesmo modelo BossWN-standard.nam via path dinâmico).
+///
+/// Constrói o modelo usando `build_wavenet_dynamic()` em vez do path estático
+/// const-generic. Mede o overhead absoluto do fallback dinâmico que não possui
+/// loop unrolling via const generics.
+///
+/// **Overhead esperado:** ≤ 50% mais lento que o estático para WaveNet,
+/// pois as convoluções 1D dinâmicas não beneficiam de unrolling do compilador.
+fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
+    use nam_rs::loader::dispatcher::build_wavenet_dynamic;
+
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-standard.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP bench: BossWN-standard.nam não encontrado em {path:?}. \
+             Copie modelos para tests/fixtures/models/."
+        );
+        return;
+    }
+
+    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    // Forçar construção pelo caminho dinâmico (sem const generics)
+    let mut model =
+        build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou para benchmark WaveNet");
+    model.0.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("WaveNet_Dynamic_Standard_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.0.process(&input, &mut output);
+        });
+    });
+}
+
+/// Benchmark: LSTM Dynamic 1×16 (mesmo modelo BossLSTM-1x16.nam via path dinâmico).
+///
+/// Constrói o modelo usando `build_lstm_dynamic()` em vez do path estático
+/// const-generic. Mede o overhead absoluto do fallback dinâmico.
+///
+/// **Overhead esperado:** ≤ 30% mais lento que o estático para LSTM,
+/// pois o LSTM dinâmico realiza os mesmos dot products AVX2 mas sem
+/// unrolling de loops proporcionado por const generics.
+fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
+    use nam_rs::loader::dispatcher::build_lstm_dynamic;
+
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossLSTM-1x16.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP bench: BossLSTM-1x16.nam não encontrado em {path:?}. \
+             Copie modelos para tests/fixtures/models/."
+        );
+        return;
+    }
+
+    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    // Forçar construção pelo caminho dinâmico (sem const generics)
+    let mut model = build_lstm_dynamic(&model_data, 1, 16)
+        .expect("Builder dinâmico falhou para benchmark LSTM");
+    model.0.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("LSTM_Dynamic_1x16_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.0.process(&input, &mut output);
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_wavenet_standard_process,
     bench_lstm_2x16_process,
     bench_tanh_slice_256,
     bench_sigmoid_slice_256,
+    bench_wavenet_dynamic_standard,
+    bench_lstm_dynamic_1x16,
 );
 criterion_main!(benches);

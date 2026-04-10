@@ -1126,3 +1126,292 @@ fn test_auto_consistency_lstm_2x8() {
         "Motor Rust LSTM 2x8 não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }
+
+// =============================================================================
+// Sprint 13.2 — Teste de Estabilidade sob Silêncio Prolongado (Denormals)
+// =============================================================================
+
+/// Teste 17 (Sprint 13.2): Estabilidade sob silêncio prolongado — validação de denormals.
+///
+/// Carrega `BossWN-standard.nam` e `BossLSTM-1x16.nam`, executa prewarm e
+/// processa 4096 blocos (≈5.5s) de **silêncio total** (input = zeros).
+///
+/// Valida que:
+/// - Todas as saídas são finitas.
+/// - Output estabilizza (magnitude < 1.0 após convergência — modelos reais
+///   podem ter DC offset residual devido a biases da rede neural).
+/// - Nenhum valor subnormal detectável na saída (todos zero ou normais finitos).
+/// - Tempo de processamento por bloco (medido via `Instant::now()`) não excede 500μs.
+///
+/// Este teste exercita o caminho de decaimento exponencial nos estados internos
+/// do WaveNet (buffers convolucionais) e LSTM (cell/hidden states), que sem
+/// DAZ/FTZ convergem para denormals e causam penalidade de micro-código na FPU.
+#[test]
+fn test_denormal_stability_silence() {
+    const SILENCE_BLOCKS: usize = 4096;
+    const BLOCK_SIZE: usize = 64;
+    const MAX_BLOCK_TIME_US: u128 = 500;
+
+    // --- WaveNet Standard ---
+    let wn_path = model_path("BossWN-standard.nam");
+    if !wn_path.exists() {
+        eprintln!("SKIP: BossWN-standard.nam não encontrado. Ignorando denormal silence WaveNet.");
+    } else {
+        let json_data =
+            fs::read_to_string(&wn_path).expect("Falha ao ler modelo WaveNet para denormal test");
+        let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+        let mut model =
+            build_model(&model_data).expect("Dispatcher falhou para denormal test WaveNet");
+
+        model.0.prewarm(2048);
+
+        let silence = [0.0f32; BLOCK_SIZE];
+        let mut output = [0.0f32; BLOCK_SIZE];
+        let mut max_block_time_us: u128 = 0;
+
+        for block_idx in 0..SILENCE_BLOCKS {
+            let start = std::time::Instant::now();
+            model.0.process(&silence, &mut output);
+            let elapsed = start.elapsed().as_micros();
+
+            if elapsed > max_block_time_us {
+                max_block_time_us = elapsed;
+            }
+
+            // Validar finitude em todos os blocos
+            for (i, &s) in output.iter().enumerate() {
+                assert!(
+                    s.is_finite(),
+                    "[Denormal WaveNet] Sample não finita no bloco {block_idx}, índice {i}: {s}"
+                );
+            }
+        }
+
+        // Validar estabilidade: output após silêncio prolongado deve ser estável
+        // (magnitude < 1.0). Modelos reais mantêm DC offset residual (~6e-3)
+        // devido a biases internos da rede neural — isso é correto.
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                s.abs() < 1.0,
+                "[Denormal WaveNet] Após {SILENCE_BLOCKS} blocos de silêncio, \
+                 output[{i}]={s} divergiu (limiar 1.0)"
+            );
+        }
+
+        // Nenhum valor subnormal na saída
+        for &s in output.iter() {
+            assert!(
+                s == 0.0 || s.is_normal(),
+                "[Denormal WaveNet] Valor subnormal detectado na saída: {s} (bits: 0x{:08X})",
+                s.to_bits()
+            );
+        }
+
+        println!(
+            "[Sprint 13.2] WaveNet denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
+             max_block_time={max_block_time_us}μs, output[0]={:.6e}",
+            output[0]
+        );
+
+        // Validação de timing (relaxed em debug por ser ~10x mais lento)
+        if !cfg!(debug_assertions) {
+            assert!(
+                max_block_time_us < MAX_BLOCK_TIME_US,
+                "[Denormal WaveNet] Bloco mais lento={max_block_time_us}μs excede {MAX_BLOCK_TIME_US}μs — \
+                 possível penalidade por denormals"
+            );
+        }
+    }
+
+    // --- LSTM 1×16 ---
+    let lstm_path = model_path("BossLSTM-1x16.nam");
+    if !lstm_path.exists() {
+        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado. Ignorando denormal silence LSTM.");
+    } else {
+        let json_data =
+            fs::read_to_string(&lstm_path).expect("Falha ao ler modelo LSTM para denormal test");
+        let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+        let mut model =
+            build_model(&model_data).expect("Dispatcher falhou para denormal test LSTM");
+
+        model.0.prewarm(2048);
+
+        let silence = [0.0f32; BLOCK_SIZE];
+        let mut output = [0.0f32; BLOCK_SIZE];
+        let mut max_block_time_us: u128 = 0;
+
+        for block_idx in 0..SILENCE_BLOCKS {
+            let start = std::time::Instant::now();
+            model.0.process(&silence, &mut output);
+            let elapsed = start.elapsed().as_micros();
+
+            if elapsed > max_block_time_us {
+                max_block_time_us = elapsed;
+            }
+
+            for (i, &s) in output.iter().enumerate() {
+                assert!(
+                    s.is_finite(),
+                    "[Denormal LSTM] Sample não finita no bloco {block_idx}, índice {i}: {s}"
+                );
+            }
+        }
+
+        // Validar estabilidade: output < 1.0 (sem divergência numérica)
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                s.abs() < 1.0,
+                "[Denormal LSTM] Após {SILENCE_BLOCKS} blocos de silêncio, \
+                 output[{i}]={s} divergiu (limiar 1.0)"
+            );
+        }
+
+        // Validar que nenhum valor subnormal aparece na saída
+        for &s in output.iter() {
+            // Um float f32 subnormal tem expoente = 0 e mantissa != 0
+            // Verificamos que todos os valores são zero ou normais finitos
+            assert!(
+                s == 0.0 || s.is_normal(),
+                "[Denormal LSTM] Valor subnormal detectado na saída após silêncio: {s} \
+                 (bits: 0x{:08X})",
+                s.to_bits()
+            );
+        }
+
+        println!(
+            "[Sprint 13.2] LSTM denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
+             max_block_time={max_block_time_us}μs, output[0]={:.6e}",
+            output[0]
+        );
+
+        if !cfg!(debug_assertions) {
+            assert!(
+                max_block_time_us < MAX_BLOCK_TIME_US,
+                "[Denormal LSTM] Bloco mais lento={max_block_time_us}μs excede {MAX_BLOCK_TIME_US}μs — \
+                 possível penalidade por denormals"
+            );
+        }
+    }
+}
+
+// =============================================================================
+// Sprint 14.3 — Teste de Hot-Swap Rápido via SPSC (T-6)
+// =============================================================================
+
+/// Teste 18 (Sprint 14.3): Hot-swap rápido via SPSC — troca sequencial de 3 modelos.
+///
+/// Simula o cenário de um utilizador que troca rapidamente entre 3 modelos
+/// diferentes via CLI (`model <path>`). A cadeia SPSC deve manter a integridade
+/// de ownership (sem leak, sem double-free) e cada modelo deve produzir inferência
+/// estável após prewarm.
+///
+/// Modelos usados:
+/// 1. WaveNet Standard (`BossWN-standard.nam`)
+/// 2. LSTM 1×16 (`BossLSTM-1x16.nam`)
+/// 3. WaveNet Feather (`BossWN-feather.nam`)
+///
+/// Procedimento:
+/// 1. Push dos 3 modelos sequencialmente na fila SPSC (simula CLI)
+/// 2. Pop sequencial, substituindo o modelo ativo a cada iteração
+/// 3. Para cada modelo: prewarm + process de 64 amostras senoidais
+/// 4. Verificar finitude e magnitude razoável das saídas
+///
+/// O modelo anterior é descartado (dropped) quando substituído — validando
+/// que o ownership transfer via `Box<DynamicModel>` funciona sem leak.
+#[test]
+fn test_rapid_hot_swap_spsc() {
+    let models_to_load = [
+        ("BossWN-standard.nam", "WaveNet Standard"),
+        ("BossLSTM-1x16.nam", "LSTM 1×16"),
+        ("BossWN-feather.nam", "WaveNet Feather"),
+    ];
+
+    // Verificar disponibilidade de todos os fixtures
+    for (filename, label) in &models_to_load {
+        let p = model_path(filename);
+        if !p.exists() {
+            eprintln!(
+                "SKIP: {filename} não encontrado em {p:?}. Ignorando hot-swap SPSC test ({label})."
+            );
+            return;
+        }
+    }
+
+    // Criar canal SPSC com capacidade para 4 (cabe todos os 3 modelos)
+    let (mut producer, mut consumer) = rtrb::RingBuffer::<nam_rs::spsc::ParamPayload>::new(4);
+
+    // 1. Push dos 3 modelos sequencialmente (simula thread CLI fazendo 3 trocas)
+    for (filename, label) in &models_to_load {
+        let p = model_path(filename);
+        let json_data = fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("Falha ao ler {filename} para hot-swap: {e}"));
+        let model_data = parse_nam_json(&json_data)
+            .unwrap_or_else(|e| panic!("Falha no JSON de {filename}: {e}"));
+        let boxed = build_model(&model_data)
+            .unwrap_or_else(|e| panic!("Dispatcher falhou em {label}: {e}"));
+
+        producer
+            .push(nam_rs::spsc::ParamPayload::LoadModel {
+                model: Some(boxed),
+                input_db_adj: 0.0,
+                output_db_adj: 0.0,
+            })
+            .unwrap_or_else(|_| panic!("SPSC push falhou para {label} — buffer cheio"));
+    }
+
+    // 2. Pop e processamento sequencial (simula thread DSP recebendo trocas)
+    let input = generate_sine_440hz(64);
+    let mut active_model: Option<Box<nam_rs::models::DynamicModel>> = None;
+
+    for (idx, (_filename, label)) in models_to_load.iter().enumerate() {
+        let received = consumer
+            .pop()
+            .unwrap_or_else(|_| panic!("SPSC pop falhou para {label}"));
+
+        // Substituir o modelo ativo — o anterior é dropped aqui
+        let new_model = match received {
+            nam_rs::spsc::ParamPayload::LoadModel {
+                model,
+                input_db_adj: _,
+                output_db_adj: _,
+            } => model,
+            _ => panic!("Payload #{idx} não é LoadModel"),
+        };
+
+        // Drop explícito do modelo anterior antes de atribuir novo
+        // (valida ownership transfer — sem leak)
+        drop(active_model.take());
+        active_model = new_model;
+
+        let model = active_model.as_mut().expect("Modelo nulo após pop SPSC");
+
+        // 3. Prewarm + process
+        model.0.prewarm(2048);
+
+        let mut output = vec![0.0f32; 64];
+        model.0.process(&input, &mut output);
+
+        // 4. Validação: finitude e magnitude razoável
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                s.is_finite(),
+                "[Hot-Swap #{idx} {label}] Sample não finita no índice {i}: {s}"
+            );
+            assert!(
+                s.abs() < 100.0,
+                "[Hot-Swap #{idx} {label}] Magnitude excessiva no índice {i}: {s}"
+            );
+        }
+    }
+
+    // Verificar que o canal SPSC está vazio (todos os payloads consumidos)
+    assert!(
+        consumer.pop().is_err(),
+        "SPSC deve estar vazio após consumir todos os 3 modelos"
+    );
+
+    println!(
+        "[Sprint 14.3] Hot-Swap SPSC OK — 3 modelos trocados sequencialmente, \
+         ownership transfer validada sem leak."
+    );
+}

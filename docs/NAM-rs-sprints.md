@@ -1186,6 +1186,230 @@ Adicionar ao arquivo de testes de integração:
 
 ---
 
+## **Sprint 13: Blindagem RT — DAZ/FTZ, Benchmarks Dinâmicos e Validação de Silêncio**
+
+Auditoria pré-beta (2026-04-10) identificou que a thread DSP **não** habilita DAZ/FTZ para flush de denormals — o achado mais crítico remanescente. Esta sprint implementa a proteção de hardware, adiciona benchmarks para modelos dinâmicos e valida estabilidade sob silêncio prolongado.
+
+### **Tarefa 13.1 — DAZ/FTZ: Flush de Denormals na Thread DSP**
+
+| Campo            | Detalhe                                                                          |
+|:---------------- |:-------------------------------------------------------------------------------- |
+| **Achados**      | C-1 (denormals não flushed), Tarefa 10.1 pendente                                |
+| **Prioridade**   | 🔴 CRÍTICA                                                                       |
+| **Módulos Alvo** | `src/pw_host.rs` (início do callback), `src/math/simd.rs` (helper)               |
+
+#### Especificação
+
+Em CPUs x86-64, operações sobre números subnormais (denormals) incorrem em penalidade de micro-código na FPU que pode exceder o orçamento temporal do callback `SCHED_FIFO`. Silêncio prolongado de instrumento gera decaimentos exponenciais nos estados LSTM e buffers WaveNet que convergem para denormals.
+
+**Ação:**
+
+1. Criar função `set_daz_ftz()` em `src/math/simd.rs`:
+
+   ```rust
+   #[cfg(target_arch = "x86_64")]
+   pub unsafe fn set_daz_ftz() {
+       use core::arch::x86_64::{_MM_FLUSH_ZERO_ON, _MM_SET_FLUSH_ZERO_MODE};
+       _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+       // DAZ via MXCSR bit 6
+       let mut mxcsr: u32;
+       core::arch::asm!("stmxcsr [{}]", in(reg) &mut mxcsr as *mut u32);
+       mxcsr |= 1 << 6; // DAZ bit
+       core::arch::asm!("ldmxcsr [{}]", in(reg) &mxcsr as *const u32);
+   }
+   ```
+
+2. Invocar `set_daz_ftz()` no **início** do closure `process()` em `pw_host.rs`, antes de qualquer processamento.
+
+3. Alternativa mais segura (sem `asm!`): usar `_mm_setcsr(_mm_getcsr() | 0x8040)` via intrínsecos.
+
+#### Referência C++
+
+O C++ delega ao DAW host (VST3/CLAP definem DAZ/FTZ no host). NAM-rs como standalone **não** tem DAW host — deve fazer manualmente.
+
+#### Critérios de Aceite
+
+1. `grep -r "FLUSH_ZERO\|DAZ\|0x8040\|setcsr" src/` retorna ocorrências em `pw_host.rs` ou `simd.rs`.
+2. Teste dedicado (13.2) passa com silêncio prolongado sem degradação.
+3. `utils/lints.sh` ✅.
+
+---
+
+### **Tarefa 13.2 — Teste de Estabilidade sob Silêncio Prolongado (Denormals)**
+
+| Campo            | Detalhe                                                                          |
+|:---------------- |:-------------------------------------------------------------------------------- |
+| **Achados**      | T-1 (lacuna de teste de denormals)                                               |
+| **Prioridade**   | 🔴 CRÍTICA                                                                       |
+| **Módulos Alvo** | `tests/nam_infer_test.rs`                                                        |
+
+#### Especificação
+
+Adicionar teste `test_denormal_stability_silence`:
+
+1. Carregar `BossWN-standard.nam` e `BossLSTM-1x16.nam`.
+2. Executar prewarm.
+3. Processar 4096 blocos (≈5.5s) de **silêncio total** (input = zeros).
+4. Validar que:
+   - Todas as saídas são finitas.
+   - `|output[i]| < 1e-6` após convergência (últimos 64 samples).
+   - Tempo de processamento por bloco (medido via `Instant::now()`) não excede 500μs.
+
+#### Critérios de Aceite
+
+1. Teste passa em modo debug e release.
+2. Nenhum valor `subnormal` detectável na saída (todos zeros ou normais finitos).
+3. `cargo test test_denormal_stability_silence` ✅.
+
+---
+
+### **Tarefa 13.3 — Benchmarks para Modelos Dinâmicos (WaveNet + LSTM)**
+
+| Campo            | Detalhe                                                     |
+|:---------------- |:----------------------------------------------------------- |
+| **Achados**      | M-5 (overhead dinâmico desconhecido)                        |
+| **Prioridade**   | 🟡 MÉDIA                                                    |
+| **Módulos Alvo** | `benches/inference_bench.rs`                                |
+
+#### Especificação
+
+Adicionar grupos de benchmark ao arquivo Criterion existente:
+
+1. **`bench_wavenet_dynamic_standard`**: Mesmo modelo `BossWN-standard.nam` construído via `build_wavenet_dynamic()` em vez do path estático.
+2. **`bench_lstm_dynamic_1x16`**: Mesmo modelo `BossLSTM-1x16.nam` construído via `build_lstm_dynamic()`.
+3. Medir overhead absoluto e relativo (% mais lento que estático).
+
+#### Critérios de Aceite
+
+1. Benchmarks compilam e executam via `cargo bench`.
+2. Overhead dinâmico documentado em comentário inline (expectativa: ≤ 30% vs estático para LSTM, ≤ 50% para WaveNet).
+3. `utils/lints.sh` ✅.
+
+---
+
+## **Sprint 14: Hardening de Testes e Documentação Beta Definitiva**
+
+Sprint final pré-beta que endereça as lacunas de teste identificadas na auditoria e sincroniza toda a documentação com o estado real do código.
+
+### **Tarefa 14.1 — Testes de Rejeição de JSON Malformado**
+
+| Campo            | Detalhe                                                                |
+|:---------------- |:---------------------------------------------------------------------- |
+| **Achados**      | M-7 (parser JSON sem testes de input malformado)                       |
+| **Prioridade**   | 🟠 ALTA                                                                |
+| **Módulos Alvo** | `src/loader/nam_json.rs` (testes inline)                               |
+
+#### Especificação
+
+Adicionar ao `#[cfg(test)]` de `nam_json.rs`:
+
+1. **`test_parse_truncated_json`**: JSON truncado no meio → `Err`.
+2. **`test_parse_missing_architecture`**: JSON válido sem campo `"architecture"` → `Err`.
+3. **`test_parse_missing_weights`**: JSON válido sem campo `"weights"` → `Err`.
+4. **`test_parse_empty_weights`**: `"weights": []` → `Ok` mas modelo com 0 pesos (dispatcher deverá rejeitar).
+5. **`test_parse_malformed_config`**: `"config": "not_an_object"` → `Err`.
+
+#### Critérios de Aceite
+
+1. 5 novos testes passando.
+2. Cobertura de rejeição validada.
+3. `cargo test` ✅.
+
+---
+
+### **Tarefa 14.2 — Teste de Gain Staging Roundtrip**
+
+| Campo            | Detalhe                                  |
+|:---------------- |:---------------------------------------- |
+| **Achados**      | M-4 (gain roundtrip não testado)         |
+| **Prioridade**   | 🟡 MÉDIA                                 |
+| **Módulos Alvo** | `src/dsp/gain.rs` (testes inline)        |
+
+#### Especificação
+
+Adicionar:
+
+1. **`test_gain_roundtrip_6db`**: Aplicar +6dB seguido de -6dB em sinal senoidal → MSE < 1e-10 vs input original.
+2. **`test_gain_extreme_values`**: Aplicar +96dB e -96dB sem gerar NaN/Inf.
+3. **`test_gain_negative_zero`**: Input com −0.0 → output finito sem NaN.
+
+#### Critérios de Aceite
+
+1. 3 novos testes passando.
+2. `utils/lints.sh` ✅.
+
+---
+
+### **Tarefa 14.3 — Teste de Hot-Swap Rápido via SPSC**
+
+| Campo            | Detalhe                                                    |
+|:---------------- |:---------------------------------------------------------- |
+| **Achados**      | T-6 (hot-swap rápido não testado)                          |
+| **Prioridade**   | 🟡 MÉDIA                                                   |
+| **Módulos Alvo** | `tests/nam_infer_test.rs`                                  |
+
+#### Especificação
+
+Adicionar teste `test_rapid_hot_swap_spsc`:
+
+1. Criar 3 modelos diferentes (WaveNet Standard, LSTM 1×16, WaveNet Feather).
+2. Push sequencial dos 3 modelos via SPSC (simula troca rápida pelo usuário).
+3. Pop e processar cada modelo com 64 amostras.
+4. Verificar que todos produzem saída finita e que o modelo anterior é descartado corretamente (sem leak visível).
+
+#### Critérios de Aceite
+
+1. Teste passa sem panic nem leak.
+2. `cargo test test_rapid_hot_swap_spsc` ✅.
+
+---
+
+### **Tarefa 14.4 — Sincronização Documental Completa para Beta**
+
+| Campo            | Detalhe                                                                          |
+|:---------------- |:-------------------------------------------------------------------------------- |
+| **Achados**      | M-1, M-2, M-6, L-3                                                              |
+| **Prioridade**   | 🟡 MÉDIA                                                                         |
+| **Módulos Alvo** | `docs/architecture.md`, `docs/dependencies.md`, `README.md`                      |
+
+#### Especificação
+
+1. **`docs/architecture.md`:**
+   - Atualizar contagem de testes para refletir valor real (70+).
+   - Adicionar menção aos módulos de Sprint 10-14 (proptest, fuzz targets, pw_integration_test).
+   - Documentar DAZ/FTZ (pós-13.1).
+
+2. **`docs/dependencies.md`:**
+   - Adicionar `proptest 1.11`, `criterion 0.8` na seção dev-dependencies.
+
+3. **`README.md`:**
+   - Adicionar seção "Testes e Validação" com `cargo test`, `cargo bench`, `utils/lints.sh`.
+   - Atualizar seção de contribuição.
+
+#### Critérios de Aceite
+
+1. Todos os documentos refletem o estado real do código.
+2. Links internos validados (nenhum link quebrado).
+3. `utils/lints.sh` ✅.
+
+> **📋 Nota de Auditoria — Sprints 13-14 (criadas em 2026-04-10, encerradas em 2026-04-10):**
+>
+> Estas sprints foram definidas pelo painel Revisor-Auditor + Planejador-Arquiteto após auditoria meticulosa de comparação C++ ↔ Rust.
+>
+> **Estado da paridade funcional:** 18/18 componentes Core implementados. LSTM initial states (hidden/cell) corretamente portados (dispatcher L:603-609 estáticos e L:470-478 dinâmicos). Os 3 modos C++ não portados (NAMCore, RTNeural, Keras) são deliberadamente excluídos por decisão arquitetural.
+>
+> **Sprints 11.3-11.5 verificadas:** `SetSampleRate` removido (0 ocorrências). Prewarm redundante removido do callback (0 ocorrências em `pw_host.rs`). `compile_error!` para non-x86_64 pendente (a implementar como parte de Sprint futura caso ARM seja prioridade).
+>
+> **Suite de testes atual (pós Sprint 14):** 81 verificações (60 unitários + 18 integração + 2 proptest + 1 PipeWire E2E), todas ✅.
+>
+> **Sprint 14 — Tarefas concluídas:**
+> - ✅ **14.1** — 5 testes de rejeição JSON malformado adicionados a `nam_json.rs` (M-7)
+> - ✅ **14.2** — 3 testes de gain staging roundtrip/extremos adicionados a `gain.rs` (M-4)
+> - ✅ **14.3** — Teste `test_rapid_hot_swap_spsc` adicionado a `nam_infer_test.rs` (T-6)
+> - ✅ **14.4** — Documentação sincronizada: `architecture.md`, `dependencies.md`, `README.md`
+
+---
+
 ## **Referências citadas**
 
 1. NAM-rs-1  

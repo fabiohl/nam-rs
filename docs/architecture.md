@@ -33,7 +33,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging. **Sprint 8:** zero alocações e zero I/O no callback — resampler via SPSC, status via `RtStatusFlags`             |
 | `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel (tipado `Box<DynamicModel>`); fila GC secundária (`rtrb`); `RtStatusFlags` (atômicas RT→Main); canal SPSC dedicado `NamResampler` (Main→RT) |
 | `src/math/mod.rs`           | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                                                                                                        |
-| `src/math/simd.rs`          | `dot_product_avx2` (YMM 256-bit), `dot_product_avx512` (ZMM 512-bit), `SimdMathConfig` (v-table de despacho dinâmico multiversioning)                                                                                                                                           |
+| `src/math/simd.rs`          | `dot_product_avx2` (YMM 256-bit), `dot_product_avx512` (ZMM 512-bit), `SimdMathConfig` (v-table de despacho dinâmico multiversioning), `set_daz_ftz` (DAZ+FTZ via intrínsecos `_mm_setcsr`/`_mm_getcsr` + inline asm para mitigação de denormals na thread RT — Sprint 13.1)          |
 | `src/math/fastmath.rs`      | `simd_tanh`/`simd_sigmoid` AVX2 (YMM), `simd_tanh_avx512`/`simd_sigmoid_avx512` (ZMM), helpers `tanh_slice_avx2/512`, `sigmoid_slice_avx2/512`                                                                                                                                  |
 | `src/models/mod.rs`         | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                                                                                                                                                                    |
 | `src/models/wavenet.rs`     | WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                                                                                                                                                                 |
@@ -103,28 +103,30 @@ PipeWire Input (Nk Hz)
 
 O projeto adota a convenção idiomática do Rust, com três camadas complementares:
 
-### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 51 testes
+### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 60 testes
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
 | Módulo                     | Testes | Cobertura                                                                      |
 | -------------------------- |:------:| ------------------------------------------------------------------------------ |
-| `src/dsp/gain.rs`          | 4      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB                   |
+| `src/dsp/gain.rs`          | 7      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0 |
 | `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response                 |
 | `src/loader/dispatcher.rs` | 11     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow |
-| `src/loader/nam_json.rs`   | 6      | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, validação            |
+| `src/loader/nam_json.rs`   | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado (Sprint 14.1) |
 | `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                          |
 | `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                |
-| `src/math/simd.rs`         | 2      | `dot_product_avx2`/`dot_product_avx512`                                        |
+| `src/math/simd.rs`         | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits              |
 | `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                        |
 | `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer                     |
 | `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                  |
 
 > **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
+>
+> Os 5 testes da Sprint 14.1 (rejeição JSON malformado) e os 3 testes da Sprint 14.2 (gain staging roundtrip) foram adicionados como parte do hardening final pré-beta.
 
-### 6.2. Testes de Integração (`tests/`) — 9 testes
+### 6.2. Testes de Integração (`tests/`) — 18 testes
 
-O diretório `tests/` contém `nam_infer_test.rs`, que consome a API pública `nam_rs::*` como um usuário externo. Os 9 testes cobrem **5 categorias** distintas:
+O diretório `tests/` contém `nam_infer_test.rs`, que consome a API pública `nam_rs::*` como um usuário externo. Os 18 testes cobrem **11 categorias** distintas:
 
 #### Parsing e Topologia (1 teste)
 
@@ -153,7 +155,34 @@ O diretório `tests/` contém `nam_infer_test.rs`, que consome a API pública `n
 
 - **`test_end_to_end_spsc_pipeline`** — Cadeia completa CLI→SPSC→DSP sem PipeWire: parse + dispatcher + envio pela fila `rtrb` como `ParamPayload::LoadModel` + drainagem + inferência + validação.
 
-### 6.3. Benchmarks `criterion` (`cargo bench`) — 4 benchmarks
+#### Paridade Numérica Estático ↔ Dinâmico (2 testes)
+
+- **`test_parity_lstm_static_vs_dynamic`** — MSE = 0.0 entre LSTM const-generic e fallback dinâmico.
+- **`test_parity_wavenet_static_vs_dynamic`** — MSE = 0.0 entre WaveNet estático e fallback dinâmico.
+
+#### NAMB Roundtrip (1 teste)
+
+- **`test_namb_roundtrip_dispatcher_e2e`** — Cadeia `.namb` binário → `parse_namb` → `build_model` → inferência.
+
+#### Estabilidade de Topologias Adicionais (3 testes)
+
+- **`test_wavenet_stability_feather`** — Estabilidade WaveNet Feather (CH=8).
+- **`test_wavenet_stability_nano`** — Estabilidade WaveNet Nano (CH=4).
+- **`test_lstm_stability_2x8`** — Estabilidade LSTM 2×8.
+
+#### Auto-Consistência Adicional (1 teste)
+
+- **`test_auto_consistency_lstm_2x8`** — Determinismo absoluto LSTM 2×8.
+
+#### Estabilidade sob Silêncio / Denormals (1 teste)
+
+- **`test_denormal_stability_silence`** — Processa 4096 blocos de silêncio total por WaveNet e LSTM, validando finitude, ausência de subnormais na saída, estabilidade de magnitude e timing por bloco (< 500μs em release).
+
+#### Hot-Swap Rápido via SPSC (1 teste — Sprint 14.3)
+
+- **`test_rapid_hot_swap_spsc`** — Carrega 3 modelos diferentes (WaveNet Standard, LSTM 1×16, WaveNet Feather), envia sequencialmente pela fila SPSC, drena e processa cada um verificando finitude, magnitude razoável e descarte correto do modelo anterior (ownership transfer `Box<DynamicModel>`).
+
+### 6.3. Benchmarks `criterion` (`cargo bench`) — 6 benchmarks
 
 O arquivo `benches/inference_bench.rs` mede a latência de processamento com o framework `criterion` (harness=false). O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
 
@@ -163,8 +192,10 @@ O arquivo `benches/inference_bench.rs` mede a latência de processamento com o f
 | `LSTM_2x16_64samp_48kHz`             | Inferência LSTM 2×16 (sintético, 3345 pesos)   | Topologia recorrente mais pesada suportada   |
 | `FastMath_tanh_AVX2_256elem`         | Ativação tanh Padé×rsqrt sobre 256 f32         | Kernel chamado N×layers/bloco no WaveNet     |
 | `FastMath_sigmoid_AVX2_256elem`      | Ativação sigmoid derivada de tanh              | Kernel chamado N×gates/bloco no LSTM         |
+| `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics  |
+| `LSTM_Dynamic_1x16_64samp_48kHz`     | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics     |
 
-> **Nota:** Durante `cargo bench`, os 51 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
+> **Nota:** Durante `cargo bench`, os 60 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
 
 Execução: `cargo bench --bench inference_bench`
 
@@ -191,8 +222,10 @@ tests/fixtures/
 │   ├── BossWN-feather.nam
 │   ├── BossWN-nano.nam
 │   ├── BossLSTM-1x16.nam
-│   ├── BossLSTM-2x8.nam
-│   └── tw40_blues_deluxe_deerinkstudios.json
+│   └── BossLSTM-2x8.nam
+├── unsupported/                    ← Formatos Keras/Legacy não suportados
+│   ├── tw40_blues_deluxe_deerinkstudios.json
+│   └── README.md
 ├── golden_wavenet_standard.bin     ← Golden vectors (gerados pelo C++)
 ├── golden_lstm_1x16.bin
 ├── golden_gen.cpp                  ← Gerador C++ de golden vectors
@@ -204,4 +237,4 @@ tests/fixtures/
 
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os 51 unitários inline; `cargo test --test nam_infer_test` apenas os 9 de integração.
+- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os 60 unitários inline; `cargo test --test nam_infer_test` apenas os 18 de integração.
