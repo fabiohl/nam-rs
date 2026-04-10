@@ -8,6 +8,7 @@
 //! a menos que seja mockado. O ambiente CI (ex: GitHub Actions) precisa de dependências
 //! de PipeWire-headless rodando.
 
+use nam_rs::diagnostics::SystemSnapshot;
 use nam_rs::pw_host::run_pipewire_host;
 use nam_rs::spsc::{self, RtStatusFlags};
 use rtrb::RingBuffer;
@@ -30,9 +31,10 @@ fn test_pipewire_headless_integration() {
     let rt_status = Arc::new(RtStatusFlags::default());
 
     let rt_clone = rt_status.clone();
+    let sys = SystemSnapshot::capture();
     let pw_thread = thread::spawn(move || {
         // Exceções do tipo "Core Não encontrado" serão capturadas como Err().
-        run_pipewire_host(param_cons, gc_prod, res_cons, res_prod, rt_clone)
+        run_pipewire_host(param_cons, gc_prod, res_cons, res_prod, rt_clone, sys)
     });
 
     // Enviar comandos simples via SPSC

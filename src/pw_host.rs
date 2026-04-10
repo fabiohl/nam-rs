@@ -30,6 +30,7 @@
 //! Quando nenhum modelo está carregado, opera em pass-through (o som entra e sai sem alteração).
 //! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
 
+use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::dsp::gain::apply_gain_simd;
 use crate::dsp::resampler::NamResampler;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
@@ -66,6 +67,7 @@ pub fn run_pipewire_host(
     mut resampler_consumer: Consumer<NamResampler>,
     mut resampler_producer: rtrb::Producer<NamResampler>,
     rt_status: Arc<RtStatusFlags>,
+    sys: SystemSnapshot,
 ) -> anyhow::Result<()> {
     // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
     let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
@@ -104,8 +106,13 @@ pub fn run_pipewire_host(
         // Inicializado com 48k (bypass) — rate real será atualizado via canal SPSC de resamplers
         // quando a thread principal construir e enviar um novo resampler.
         let mut resampler = NamResampler::new(48_000, 2048).unwrap_or_else(|e| {
-            eprintln!("[NAM-rs] ⚠️  Falha ao criar NamResampler (usando bypass 48k): {e}");
-            // Fallback: nunca falha no bypass
+            NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
+                .message("Falha ao criar NamResampler inicial (usando bypass 48k).")
+                .hint("O engine contínua em modo bypass. O resampler será recriado ao receber o rate real do PipeWire.")
+                .param("initial_rate", 48_000_u32)
+                .param("detail", &e)
+                .emit_warning();
+            // Fallback: bypass 48k nunca falha (rate == NAM_RATE)
             NamResampler::new(48_000, 2048).expect("bypass 48k não pode falhar")
         });
 
@@ -356,6 +363,7 @@ pub fn run_pipewire_host(
                         rt_status
                             .resampler_rebuild_failed
                             .store(false, Ordering::Relaxed);
+                        // Mensagem mundana informativa
                         println!(
                             "[NAM-rs] 🔄 Sample rate atualizado: {} Hz (bypass={})",
                             target_rate,
@@ -363,14 +371,29 @@ pub fn run_pipewire_host(
                         );
                         // Envia para o callback RT via canal SPSC dedicado
                         if resampler_producer.push(new_rs).is_err() {
-                            // Canal cheio — o resampler que não coube é dropped aqui (fora do RT, ok)
-                            eprintln!("[NAM-rs] ⚠️  Canal de resampler cheio, descartando rebuild");
+                            NamDiagnostic::new(NamErrorCode::ResamplerChannelFull, &sys)
+                                .message("Canal de resampler cheio. Rebuild descartado.")
+                                .hint(
+                                    "O motor de áudio está sobrecarregado. \
+                                     Se o problema persistir, reinicie o NAM-rs.",
+                                )
+                                .param("target_rate", target_rate)
+                                .emit_warning();
                         }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "[NAM-rs] ⚠️  Falha ao reconstruir NamResampler ({target_rate} Hz): {e}"
-                        );
+                        NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
+                            .message(format!(
+                                "Falha ao reconstruir o resampler para {} Hz.",
+                                target_rate
+                            ))
+                            .hint(
+                                "O áudio continuará com o resampler anterior. \
+                                 Se a taxa de amostragem estiver errada, reinicie o NAM-rs.",
+                            )
+                            .param("target_rate", target_rate)
+                            .param("detail", &e)
+                            .emit();
                         rt_status
                             .resampler_rebuild_failed
                             .store(true, Ordering::Relaxed);
@@ -399,9 +422,25 @@ pub fn run_pipewire_host(
     Ok(())
 }
 
-/// Tenta fixar a thread DSP no núcleo físico ideal e aplicar SCHED_FIFO para
-/// agendamento de tempo real. Chamada apenas uma vez na primeira invocação do `process()`,
-/// antes do fluxo de dados começar.
+/// Configura a thread DSP atual para operação em tempo real.
+///
+/// Executada **uma única vez** no cold-path do primeiro frame do callback `process()`,
+/// antes do fluxo de dados começar de fato. Aplica:
+///
+/// 1. **DAZ/FTZ** — Habilita Denormals-Are-Zero e Flush-To-Zero no registro MXCSR
+///    para evitar penalidades de FPU em blocos de silêncio ("espiral da morte").
+/// 2. **Core Affinity** — Fixa a thread no núcleo físico ideal via
+///    `pthread_setaffinity_np`, evitando migração de core e cache misses L1/L2.
+/// 3. **SCHED_FIFO** — Eleva a prioridade para agendamento de tempo real (prio 90).
+///
+/// # Diagnósticos
+///
+/// Esta função usa `eprintln!` direto (ao invés de `NamDiagnostic`) porque:
+/// - É chamada dentro do callback RT (thread PipeWire), onde o `SystemSnapshot`
+///   não está disponível sem adicionar `Arc` ou parâmetro extra ao closure.
+/// - É executada apenas **uma vez** no cold-path inicial — não afeta latência RT.
+/// - O formato simula manualmente o padrão de diagnóstico (código E2301) para
+///   permitir triagem via `/diagnostico` mesmo sem o bloco de suporte completo.
 fn configure_realtime_thread(target_cpu: usize) {
     // Proteção contra denormals (números subnormalizados que travam o processador):
     // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
@@ -428,8 +467,19 @@ fn configure_realtime_thread(target_cpu: usize) {
             );
 
             if ret_aff != 0 {
+                // Diagnóstico estruturado — impossível propagar SystemSnapshot
+                // ao configure_realtime_thread (chamado uma vez no callback RT).
+                // Usamos eprintln direto aqui pois é a única chamada no cold-path
+                // do primeiro frame antes do DSP começar de fato.
                 eprintln!(
-                    "Aviso: Falha ao definir afinidade de CPU para núcleo {} (erro {}).",
+                    "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (erro {}).",
+                    target_cpu, ret_aff
+                );
+                eprintln!(
+                    "  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration."
+                );
+                eprintln!(
+                    "  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
                     target_cpu, ret_aff
                 );
             }

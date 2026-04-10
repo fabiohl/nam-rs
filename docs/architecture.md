@@ -29,7 +29,8 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 
 | Módulo                      | Responsabilidade                                                                                                                                                                                                                                                 |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.rs`               | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo                                                                                                   |
+| `src/main.rs`               | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo, diagnósticos estruturados                                                                        |
+| `src/diagnostics.rs`        | Sistema de diagnósticos estruturados: `NamErrorCode` (catálogo E1xxx–E5xxx), `NamDiagnostic` (mensagem amigável + bloco de suporte copiável), `SystemSnapshot` (captura de ambiente). Zero dependências novas — opera exclusivamente fora da thread RT           |
 | `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging. Zero alocações e zero I/O no callback — resampler via SPSC, status via `RtStatusFlags`            |
 | `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel (tipado `Box<DynamicModel>`); fila GC secundária (`rtrb`); `RtStatusFlags` (atômicas RT→Main); canal SPSC dedicado `NamResampler` (Main→RT) |
 | `src/math/mod.rs`           | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                                                                                         |
@@ -103,25 +104,26 @@ PipeWire Input (Nk Hz)
 
 O projeto adota a convenção idiomática do Rust, com três camadas complementares:
 
-### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 60 testes
+### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 68 testes
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
-| Módulo                     | Testes | Cobertura                                                                               |
-| -------------------------- |:------:| --------------------------------------------------------------------------------------- |
-| `src/dsp/gain.rs`          | 7      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0 |
-| `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response                          |
-| `src/loader/dispatcher.rs` | 11     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow          |
-| `src/loader/nam_json.rs`   | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado      |
-| `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                                   |
-| `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                         |
-| `src/math/simd.rs`         | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                       |
-| `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                                 |
-| `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer                              |
-| `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                           |
+| Módulo                     | Testes | Cobertura                                                                                 |
+| -------------------------- |:------:| ----------------------------------------------------------------------------------------- |
+| `src/dsp/gain.rs`          | 7      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0   |
+| `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response                            |
+| `src/diagnostics.rs`       | 8      | Catálogo de códigos, unicidade numérica, formatação suporte, timestamp ISO 8601, snapshot |
+| `src/loader/dispatcher.rs` | 11     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow            |
+| `src/loader/nam_json.rs`   | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado        |
+| `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                                     |
+| `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                           |
+| `src/math/simd.rs`         | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                         |
+| `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                                   |
+| `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer                                |
+| `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                             |
 
 > **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
-> 
+>
 > Os testes estruturais recentes (ex: rejeição JSON malformado e gain staging roundtrip) consolidam o hardening da base para uso em cenários empacotados em releases mais maduros.
 
 ### 6.2. Testes de Integração (`tests/`) — 18 testes
@@ -237,4 +239,4 @@ tests/fixtures/
 
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os 60 unitários inline; `cargo test --test nam_infer_test` apenas os 18 de integração.
+- **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os 68 unitários inline; `cargo test --test nam_infer_test` apenas os 18 de integração.

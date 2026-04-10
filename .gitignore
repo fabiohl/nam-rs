@@ -35,4 +35,4 @@ scratch/
 !tests/fixtures/*.bin
 
 # Espelho do GitHub da implementação original
-github.com/
+#/github.com
