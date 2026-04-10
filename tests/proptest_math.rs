@@ -4,7 +4,7 @@
 //! Testes baseados em propriedades (Property-Based Testing) para as intrínsecas
 //! matemáticas críticas (AVX2 / AVX-512).
 //!
-//! # Objetivo (Tarefa Sprint 10.3)
+//! # Objetivo
 //! Varre milhões de limites aleatórios na Tangente Hiperbólica e Sigmoide, garantindo:
 //! 1. Ausência de falhas computacionais (NaN / Inf).
 //! 2. RMSE limite estrito contra `f32::tanh` original para a camada neural.

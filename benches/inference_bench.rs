@@ -151,10 +151,6 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     }
 }
 
-// =============================================================================
-// Sprint 13.3 — Benchmarks para Modelos Dinâmicos (WaveNet + LSTM)
-// =============================================================================
-
 /// Benchmark: WaveNet Dynamic Standard (mesmo modelo BossWN-standard.nam via path dinâmico).
 ///
 /// Constrói o modelo usando `build_wavenet_dynamic()` em vez do path estático

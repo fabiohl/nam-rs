@@ -9,7 +9,7 @@
 //! calculando estabilidade computacional temporal e limitando Erros Numéricos (NaN, Infinito),
 //! provando que o compilador Rust / auto-vetorização (Const Generics e FMA/AVX2) não introduzem crashes no DSP de longa duração.
 //!
-//! # Validação Numérica Cross-Reference (Sprint 8.2)
+//! # Validação Numérica Cross-Reference
 //!
 //! Testes de auto-consistência verificam o determinismo absoluto do motor Rust:
 //! mesmo modelo + mesmo input → MSE = 0.0 (bitwise identical).
@@ -308,10 +308,6 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
     }
 }
 
-// =============================================================================
-// Testes Existentes (Sprint 5/7) — Preservados Integralmente
-// =============================================================================
-
 /// Teste 1: Auditoria da capacidade de Leitura do Loader e Validação Geometria
 #[test]
 fn test_wavenet_model_json_parsing() {
@@ -341,7 +337,7 @@ fn test_wavenet_model_json_parsing() {
 
 /// Teste 2: Executa Múltiplos Blocos de Senoide pelo Core WaveNet e calcula o RMS/Erro (Sanity)
 ///
-/// Sprint 8.3/T-7: Adicionada verificação de magnitude RMS ≤ 10.0 para detectar divergência.
+/// Adicionada verificação de magnitude RMS ≤ 10.0 para detectar divergência.
 /// Em debug, usa blocos reduzidos (512) para velocidade de CI.
 #[test]
 fn test_wavenet_computational_stability() {
@@ -398,7 +394,7 @@ fn test_wavenet_computational_stability() {
     }
 }
 
-/// Teste 3 (Sprint 7.1 — Critério 4): `build_model()` com JSON real produz `DynamicModel` funcional.
+/// Teste 3: `build_model()` com JSON real produz `DynamicModel` funcional.
 ///
 /// Carrega BossWN-standard.nam, invoca o dispatcher completo e verifica que
 /// `model.0.process()` com input de zeros retorna samples finitas.
@@ -435,11 +431,11 @@ fn test_dispatcher_build_model_real_json() {
     }
 
     println!(
-        "[Sprint 7.1] Dispatcher OK — DynamicModel construído e inferência estável (64 zeros processados)."
+        "Dispatcher OK — DynamicModel construído e inferência estável (64 zeros processados)."
     );
 }
 
-/// Teste 4 (Sprint 7.1 — Extra): `build_model()` com LSTM real produz `DynamicModel` funcional.
+/// Teste 4: `build_model()` com LSTM real produz `DynamicModel` funcional.
 #[test]
 fn test_dispatcher_build_model_real_lstm() {
     let path = model_path("BossLSTM-1x16.nam");
@@ -469,15 +465,15 @@ fn test_dispatcher_build_model_real_lstm() {
     }
 
     println!(
-        "[Sprint 7.1] Dispatcher LSTM OK — 1×16 construído e inferência estável (64 zeros processados)."
+        "Dispatcher LSTM OK — 1×16 construído e inferência estável (64 zeros processados)."
     );
 }
 
 // =============================================================================
-// Sprint 8.2 — Testes de Auto-Consistência (Determinismo Rust-Only)
+// Testes de Auto-Consistência (Determinismo Rust-Only)
 // =============================================================================
 
-/// Teste 5 (Sprint 8.2): Auto-consistência WaveNet — determinismo absoluto.
+/// Teste 5: Auto-consistência WaveNet — determinismo absoluto.
 ///
 /// Carrega `BossWN-standard.nam` duas vezes, constrói dois `DynamicModel` idênticos,
 /// executa prewarm e processa o mesmo sinal senoidal 440 Hz (512 amostras).
@@ -525,7 +521,7 @@ fn test_auto_consistency_wavenet() {
     );
 }
 
-/// Teste 6 (Sprint 8.2): Auto-consistência LSTM — determinismo absoluto.
+/// Teste 6: Auto-consistência LSTM — determinismo absoluto.
 ///
 /// Carrega `BossLSTM-1x16.nam` duas vezes, constrói dois `DynamicModel` idênticos,
 /// executa prewarm e processa o mesmo sinal senoidal 440 Hz (512 amostras).
@@ -571,10 +567,10 @@ fn test_auto_consistency_lstm() {
 }
 
 // =============================================================================
-// Sprint 8.2 — Testes de Golden Vectors (Cross-Reference C++ ↔ Rust)
+// Testes de Golden Vectors (Cross-Reference C++ ↔ Rust)
 // =============================================================================
 
-/// Teste 7 (Sprint 8.2): Golden Vectors WaveNet — cross-reference C++ ↔ Rust.
+/// Teste 7: Golden Vectors WaveNet — cross-reference C++ ↔ Rust.
 ///
 /// Lê `tests/fixtures/golden_wavenet_standard.bin`, constrói o `DynamicModel`
 /// a partir de `BossWN-standard.nam`, executa prewarm + processamento,
@@ -637,7 +633,7 @@ fn test_golden_vectors_wavenet() {
     );
 }
 
-/// Teste 8 (Sprint 8.2): Golden Vectors LSTM — cross-reference C++ ↔ Rust.
+/// Teste 8: Golden Vectors LSTM — cross-reference C++ ↔ Rust.
 ///
 /// Lê `tests/fixtures/golden_lstm_1x16.bin`, constrói o `DynamicModel`
 /// a partir de `BossLSTM-1x16.nam`, executa prewarm + processamento,
@@ -696,10 +692,10 @@ fn test_golden_vectors_lstm() {
 }
 
 // =============================================================================
-// Sprint 8.3 — Teste End-to-End SPSC Pipeline (T-2)
+// Teste End-to-End SPSC Pipeline (T-2)
 // =============================================================================
 
-/// Teste 9 (Sprint 8.3/T-2): Pipeline End-to-End CLI→SPSC→DSP sem PipeWire.
+/// Teste 9: Pipeline End-to-End CLI→SPSC→DSP sem PipeWire.
 ///
 /// Valida a cadeia completa de comunicação lock-free que seria usada em produção:
 /// 1. Parseia `BossWN-standard.nam` e constrói `DynamicModel` via dispatcher
@@ -769,15 +765,15 @@ fn test_end_to_end_spsc_pipeline() {
     }
 
     println!(
-        "[Sprint 8.3] Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas)."
+        "Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas)."
     );
 }
 
 // =============================================================================
-// Sprint 9 — Testes de Paridade Numérica: Dinâmico ↔ Estático (T-1)
+// Testes de Paridade Numérica: Dinâmico ↔ Estático (T-1)
 // =============================================================================
 
-/// Teste 10 (Sprint 9/T-1a): Paridade LSTM — estático 1×16 vs dinâmico 1×16.
+/// Teste 10: Paridade LSTM — estático 1×16 vs dinâmico 1×16.
 ///
 /// Carrega `BossLSTM-1x16.nam`, constrói um `DynamicModel` pelo dispatcher normal
 /// (que matcheia o perfil estático `Lstm1x16`) e outro forçando o builder dinâmico
@@ -837,7 +833,7 @@ fn test_parity_lstm_static_vs_dynamic() {
     );
 }
 
-/// Teste 11 (Sprint 9/T-1b): Paridade WaveNet — estático Nano vs dinâmico Nano.
+/// Teste 11: Paridade WaveNet — estático Nano vs dinâmico Nano.
 ///
 /// Carrega `BossWN-nano.nam` (CH=4, K=3, HEAD=2 → perfil Nano), constrói um
 /// `DynamicModel` pelo dispatcher normal (que matcheia a topologia estática Nano)
@@ -901,10 +897,10 @@ fn test_parity_wavenet_static_vs_dynamic() {
 }
 
 // =============================================================================
-// Sprint 9 — Teste E2E Parser NAMB → Dispatcher (T-2)
+// Teste E2E Parser NAMB → Dispatcher (T-2)
 // =============================================================================
 
-/// Teste 12 (Sprint 9/T-2): NAMB roundtrip — parser binário → dispatcher → inferência.
+/// Teste 12: NAMB roundtrip — parser binário → dispatcher → inferência.
 ///
 /// Constrói um buffer `.namb` sintético válido (via `build_valid_namb()`), parseia
 /// com `parse_namb()`, despacha ao `build_model()` e executa prewarm + processamento.
@@ -981,15 +977,15 @@ fn test_namb_roundtrip_dispatcher_e2e() {
     }
 
     println!(
-        "[Sprint 9] NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras)."
+        "NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras)."
     );
 }
 
 // =============================================================================
-// Sprint 12.2 — Expansão da Cobertura de Testes (Feather, Nano, LSTM 2x8)
+// Expansão da Cobertura de Testes (Feather, Nano, LSTM 2x8)
 // =============================================================================
 
-/// Teste 13 (Sprint 12.2): Estabilidade WaveNet Feather
+/// Teste 13: Estabilidade WaveNet Feather
 #[test]
 fn test_wavenet_stability_feather() {
     let path = model_path("BossWN-feather.nam");
@@ -1023,7 +1019,7 @@ fn test_wavenet_stability_feather() {
     }
 }
 
-/// Teste 14 (Sprint 12.2): Estabilidade WaveNet Nano
+/// Estabilidade WaveNet Nano
 #[test]
 fn test_wavenet_stability_nano() {
     let path = model_path("BossWN-nano.nam");
@@ -1052,7 +1048,7 @@ fn test_wavenet_stability_nano() {
     }
 }
 
-/// Teste 15 (Sprint 12.2): Estabilidade LSTM 2x8
+/// Teste 15: Estabilidade LSTM 2x8
 #[test]
 fn test_lstm_stability_2x8() {
     let path = model_path("BossLSTM-2x8.nam");
@@ -1086,7 +1082,7 @@ fn test_lstm_stability_2x8() {
     }
 }
 
-/// Teste 16 (Sprint 12.2): Auto-consistência LSTM 2x8 — determinismo absoluto.
+/// Teste 16: Auto-consistência LSTM 2x8 — determinismo absoluto.
 #[test]
 fn test_auto_consistency_lstm_2x8() {
     let path = model_path("BossLSTM-2x8.nam");
@@ -1128,10 +1124,10 @@ fn test_auto_consistency_lstm_2x8() {
 }
 
 // =============================================================================
-// Sprint 13.2 — Teste de Estabilidade sob Silêncio Prolongado (Denormals)
+// Teste de Estabilidade sob Silêncio Prolongado (Denormals)
 // =============================================================================
 
-/// Teste 17 (Sprint 13.2): Estabilidade sob silêncio prolongado — validação de denormals.
+/// Teste 17: Estabilidade sob silêncio prolongado — validação de denormals.
 ///
 /// Carrega `BossWN-standard.nam` e `BossLSTM-1x16.nam`, executa prewarm e
 /// processa 4096 blocos (≈5.5s) de **silêncio total** (input = zeros).
@@ -1208,7 +1204,7 @@ fn test_denormal_stability_silence() {
         }
 
         println!(
-            "[Sprint 13.2] WaveNet denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
+            "WaveNet denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
              max_block_time={max_block_time_us}μs, output[0]={:.6e}",
             output[0]
         );
@@ -1279,7 +1275,7 @@ fn test_denormal_stability_silence() {
         }
 
         println!(
-            "[Sprint 13.2] LSTM denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
+            "LSTM denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
              max_block_time={max_block_time_us}μs, output[0]={:.6e}",
             output[0]
         );
@@ -1295,10 +1291,10 @@ fn test_denormal_stability_silence() {
 }
 
 // =============================================================================
-// Sprint 14.3 — Teste de Hot-Swap Rápido via SPSC (T-6)
+// Teste de Hot-Swap Rápido via SPSC (T-6)
 // =============================================================================
 
-/// Teste 18 (Sprint 14.3): Hot-swap rápido via SPSC — troca sequencial de 3 modelos.
+/// Teste 18: Hot-swap rápido via SPSC — troca sequencial de 3 modelos.
 ///
 /// Simula o cenário de um utilizador que troca rapidamente entre 3 modelos
 /// diferentes via CLI (`model <path>`). A cadeia SPSC deve manter a integridade
@@ -1411,7 +1407,7 @@ fn test_rapid_hot_swap_spsc() {
     );
 
     println!(
-        "[Sprint 14.3] Hot-Swap SPSC OK — 3 modelos trocados sequencialmente, \
+        "Hot-Swap SPSC OK — 3 modelos trocados sequencialmente, \
          ownership transfer validada sem leak."
     );
 }
