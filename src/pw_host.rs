@@ -191,7 +191,7 @@ pub fn run_pipewire_host(
 
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
                 if !thread_configured {
-                    configure_realtime_thread(target_cpu);
+                    configure_realtime_thread(target_cpu, rt_status_for_process.clone());
                     thread_configured = true;
                 }
 
@@ -414,6 +414,34 @@ pub fn run_pipewire_host(
             );
         }
 
+        // Confirmação programática de SCHED_FIFO — sentinela -1 significa "ainda não setado".
+        // A thread DSP publica este valor uma única vez no cold-path do primeiro frame.
+        let prio = rt_status.rt_priority.load(Ordering::Relaxed);
+        if prio != -1 {
+            let is_fifo = rt_status.rt_is_fifo.load(Ordering::Relaxed);
+            // Rearmamos sentinela para não logar novamente nas iterações seguintes.
+            rt_status.rt_priority.store(-1, Ordering::Relaxed);
+
+            if is_fifo {
+                println!(
+                    "[NAM-rs] ✅ Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
+                    prio
+                );
+            } else {
+                NamDiagnostic::new(NamErrorCode::SchedFifoDenied, &sys)
+                    .message(format!(
+                        "Thread DSP NÃO está em SCHED_FIFO (prioridade = {}). \
+                         O áudio pode sofrer jitter e xruns.",
+                        prio
+                    ))
+                    .hint(
+                        "Verifique se o usuário possui permissão RT (ulimit -r) \
+                         ou se o sistema tem rtkit/PipeWire configurados corretamente.",
+                    )
+                    .emit_warning();
+            }
+        }
+
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
@@ -433,15 +461,22 @@ pub fn run_pipewire_host(
 ///    `pthread_setaffinity_np`, evitando migração de core e cache misses L1/L2.
 /// 3. **SCHED_FIFO** — Eleva a prioridade para agendamento de tempo real (prio 90).
 ///
+/// Após configurar, publica o resultado via `rt_status` (flags atômicas):
+/// - `rt_is_fifo`: `true` se `SCHED_FIFO` foi confirmado por `pthread_getschedparam`.
+/// - `rt_priority`: prioridade efetiva concedida pelo kernel (ou `0` se FIFO não obtido).
+///
+/// O loop principal em `run_pipewire_host` lê essas flags e emite log de confirmação
+/// (ou aviso) de forma auditável — **zero I/O adicional dentro do callback RT**.
+///
 /// # Diagnósticos
 ///
 /// Esta função usa `eprintln!` direto (ao invés de `NamDiagnostic`) porque:
 /// - É chamada dentro do callback RT (thread PipeWire), onde o `SystemSnapshot`
 ///   não está disponível sem adicionar `Arc` ou parâmetro extra ao closure.
 /// - É executada apenas **uma vez** no cold-path inicial — não afeta latência RT.
-/// - O formato simula manualmente o padrão de diagnóstico (código E2301) para
+/// - O formato simula manualmente o padrão de diagnóstico (códigos E2301–E2303) para
 ///   permitir triagem via `/diagnostico` mesmo sem o bloco de suporte completo.
-fn configure_realtime_thread(target_cpu: usize) {
+fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
     // Proteção contra denormals (números subnormalizados que travam o processador):
     // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
     // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
@@ -455,7 +490,7 @@ fn configure_realtime_thread(target_cpu: usize) {
         unsafe {
             let thread_id = libc::pthread_self();
 
-            // 1. Afinidade de Núcleo: Foco L1/L2
+            // 1. Afinidade de Núcleo: evita migração de core e invalidação de cache L1/L2
             let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
             libc::CPU_ZERO(&mut cpuset);
             libc::CPU_SET(target_cpu, &mut cpuset);
@@ -467,12 +502,8 @@ fn configure_realtime_thread(target_cpu: usize) {
             );
 
             if ret_aff != 0 {
-                // Diagnóstico estruturado — impossível propagar SystemSnapshot
-                // ao configure_realtime_thread (chamado uma vez no callback RT).
-                // Usamos eprintln direto aqui pois é a única chamada no cold-path
-                // do primeiro frame antes do DSP começar de fato.
                 eprintln!(
-                    "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (erro {}).",
+                    "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).",
                     target_cpu, ret_aff
                 );
                 eprintln!(
@@ -484,13 +515,22 @@ fn configure_realtime_thread(target_cpu: usize) {
                 );
             }
 
-            // 2. Tempo Real: SCHED_FIFO
+            // 2. Tempo Real: SCHED_FIFO prio 90
             let mut param: libc::sched_param = std::mem::zeroed();
             param.sched_priority = 90;
 
-            let _ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
+            let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
+            if ret_sched != 0 {
+                eprintln!(
+                    "  ⚠️  pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).",
+                    ret_sched
+                );
+                eprintln!("  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n");
+            }
 
-            let mut actual_policy = 0;
+            // 3. Verificação programática: lê policy/prio *reais* concedidos pelo kernel.
+            //    Publicados via RtStatusFlags — o loop principal (fora do RT) fará o log definitivo.
+            let mut actual_policy = 0i32;
             let mut actual_param: libc::sched_param = std::mem::zeroed();
             let ret_getsched =
                 libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param);
@@ -498,7 +538,7 @@ fn configure_realtime_thread(target_cpu: usize) {
             let actual_cpu = libc::sched_getcpu();
 
             if ret_getsched == 0 {
-                let reset_on_fork_flag = 0x40000000;
+                let reset_on_fork_flag = 0x40000000i32;
                 let has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
                 let base_policy = actual_policy & !reset_on_fork_flag;
 
@@ -511,17 +551,37 @@ fn configure_realtime_thread(target_cpu: usize) {
                     _ => "UNKNOWN",
                 };
 
+                let confirmed_fifo = base_policy == libc::SCHED_FIFO;
+
+                // Publica resultado real via flags atômicas — zero I/O no caminho quente
+                rt_status
+                    .rt_is_fifo
+                    .store(confirmed_fifo, Ordering::Relaxed);
+                rt_status
+                    .rt_priority
+                    .store(actual_param.sched_priority, Ordering::Relaxed);
+
+                // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
                 if has_reset_on_fork {
                     println!(
-                        "[NAM-rs] 🔍 Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
+                        "[NAM-rs] \u{1F50D} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
                         actual_cpu, policy_str, actual_param.sched_priority
                     );
                 } else {
                     println!(
-                        "[NAM-rs] 🔍 Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
+                        "[NAM-rs] \u{1F50D} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
                         actual_cpu, policy_str, actual_param.sched_priority
                     );
                 }
+            } else {
+                // Publica sentinela de falha de verificação
+                rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
+                rt_status.rt_priority.store(0, Ordering::Relaxed);
+
+                eprintln!(
+                    "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam falhou (ret={}).\n",
+                    ret_getsched
+                );
             }
         }
     }

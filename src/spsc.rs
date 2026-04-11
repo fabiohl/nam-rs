@@ -18,7 +18,7 @@
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32};
 
 /// Flag global para shutdown coordenado e gracioso entre todas as threads.
 /// Definida como `true` pelo handler de CTRL+C.
@@ -49,16 +49,28 @@ pub struct RtStatusFlags {
     /// A thread principal seta `true` ao falhar e o callback pode ler para decidir
     /// se continua com o resampler anterior.
     pub resampler_rebuild_failed: AtomicBool,
+
+    /// `true` se a thread DSP confirmou operação em `SCHED_FIFO` via
+    /// `pthread_getschedparam`. Setado no cold-path do primeiro frame.
+    /// Lido pelo loop principal para confirmação auditável no log.
+    pub rt_is_fifo: AtomicBool,
+
+    /// Prioridade RT efetiva confirmada por `pthread_getschedparam`.
+    /// Valor `-1` indica que a verificação ainda não foi realizada.
+    /// Setado no cold-path do primeiro frame da thread DSP.
+    pub rt_priority: AtomicI32,
 }
 
 impl RtStatusFlags {
-    /// Cria uma nova instância com valores iniciais zerados.
+    /// Cria uma nova instância com valores iniciais zerados/sentinela.
     pub fn new() -> Self {
         Self {
             active_rate: AtomicU32::new(0),
             requested_rate: AtomicU32::new(0),
             needs_resampler_rebuild: AtomicBool::new(false),
             resampler_rebuild_failed: AtomicBool::new(false),
+            rt_is_fifo: AtomicBool::new(false),
+            rt_priority: AtomicI32::new(-1),
         }
     }
 }
