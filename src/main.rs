@@ -374,20 +374,6 @@ fn main() -> anyhow::Result<()> {
     // Captura snapshot do sistema uma vez — propagado para todas as funções de diagnóstico
     let sys = SystemSnapshot::capture();
 
-    #[cfg(target_arch = "x86_64")]
-    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        println!("Engine NAM-rs: AVX2 + FMA ativado computando vetores de 256 bits.");
-    } else {
-        NamDiagnostic::new(NamErrorCode::Avx2FmaMissing, &sys)
-            .message("AVX2 ou FMA não detectados neste processador (x86-64-v3 ausente).")
-            .hint(
-                "O NAM-rs continuará funcionando com fallback escalar, mas o desempenho DSP \
-                 será significativamente inferior. Para melhor performance, execute em um \
-                 processador com suporte a AVX2+FMA (Intel Haswell+ / AMD Zen+).",
-            )
-            .emit_warning();
-    }
-
     pipewire::init();
 
     ctrlc::set_handler(|| {
@@ -414,7 +400,7 @@ fn main() -> anyhow::Result<()> {
     let resampler_consumer = channels.resampler_consumer;
     let rt_status = channels.rt_status;
 
-    // 2. Thread GC para "Drop-Delegation" lock-free
+    // Thread GC para "Drop-Delegation" lock-free
     std::thread::spawn(move || {
         while !spsc::SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
             while let Ok(model) = gc_consumer.pop() {
