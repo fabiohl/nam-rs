@@ -18,19 +18,7 @@ pub fn apply_gain_simd(buffer: &mut [f32], gain_linear: f32) {
     if (gain_linear - 1.0).abs() < 1e-6 {
         return;
     }
-
-    #[cfg(target_arch = "x86_64")]
-    {
-        // Safety: Aplicação central usa apenas _mm256_mul_ps, suportado em AVX2
-        // Assumimos x86-64-v3 estrito (validado primariamente pelo startup em main.rs).
-        unsafe { apply_gain_avx2(buffer, gain_linear) };
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        for x in buffer.iter_mut() {
-            *x *= gain_linear;
-        }
-    }
+    unsafe { apply_gain_avx2(buffer, gain_linear) };
 }
 
 /// Dispara o pacote multiplicativo em arranjos de 8 Float32 por pulso com resíduo escalar.
