@@ -16,5 +16,6 @@ RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends 
     && rm -rf /var/lib/apt/lists/*
 
 # Dica: limpar ambiente docker regularmente:
-## docker ps | ID_DOCKER=
-## docker stop $ID_DOCKER ; docker rm -f $ID_DOCKER ; docker ps ; docker builder prune -a ; docker system prune -a --volumes
+## docker ps
+## ID_DOCKER=
+## docker stop $ID_DOCKER ; docker rm -f $ID_DOCKER ; docker ps ; docker builder prune -a ; docker system prune -a --volumes ; rm -rf target/
