@@ -363,7 +363,6 @@ pub fn run_pipewire_host(
                         rt_status
                             .resampler_rebuild_failed
                             .store(false, Ordering::Relaxed);
-                        // Mensagem mundana informativa
                         println!(
                             "[NAM-rs] 🔄 Sample rate atualizado: {} Hz (bypass={})",
                             target_rate,

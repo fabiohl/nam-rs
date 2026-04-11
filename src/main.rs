@@ -60,7 +60,7 @@ fn parse_args() -> Result<(Option<PathBuf>, f32, f32), lexopt::Error> {
 /// 5. Envia o payload completo (`LoadModel` + ajustes de ganho) pela fila SPSC.
 ///
 /// Todos os erros emitem diagnósticos estruturados via [`NamDiagnostic`].
-/// Mensagens informativas de sucesso usam `println!` mundano.
+/// Mensagens informativas de sucesso usam `println!`.
 fn load_and_send_model(
     path: &std::path::Path,
     producer: &mut rtrb::Producer<ParamPayload>,
@@ -231,7 +231,6 @@ fn load_and_send_model(
                 })
                 .is_ok()
             {
-                // Mensagem mundana informativa — mantida como antes
                 println!(
                     "[CLI] Payload enviado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
                     path_str, input_db_adj, output_db_adj
@@ -292,7 +291,6 @@ fn cli_loop(mut producer: rtrb::Producer<ParamPayload>, sys: SystemSnapshot) {
                 if let Some(val_str) = parts.next() {
                     if let Ok(val) = val_str.parse::<f32>() {
                         if producer.push(ParamPayload::InputGain(val)).is_ok() {
-                            // Mensagem mundana informativa
                             println!("[CLI] Input Gain configurado para {:.2} dB.", val);
                         } else {
                             NamDiagnostic::new(NamErrorCode::ParamChannelFull, &sys)
@@ -319,7 +317,6 @@ fn cli_loop(mut producer: rtrb::Producer<ParamPayload>, sys: SystemSnapshot) {
                 if let Some(val_str) = parts.next() {
                     if let Ok(val) = val_str.parse::<f32>() {
                         if producer.push(ParamPayload::OutputGain(val)).is_ok() {
-                            // Mensagem mundana informativa
                             println!("[CLI] Output Gain configurado para {:.2} dB.", val);
                         } else {
                             NamDiagnostic::new(NamErrorCode::ParamChannelFull, &sys)
@@ -379,7 +376,6 @@ fn main() -> anyhow::Result<()> {
 
     #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        // Mensagem mundana informativa
         println!("Engine NAM-rs: AVX2 + FMA ativado computando vetores de 256 bits.");
     } else {
         NamDiagnostic::new(NamErrorCode::Avx2FmaMissing, &sys)

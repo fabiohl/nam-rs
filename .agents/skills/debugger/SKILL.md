@@ -88,5 +88,5 @@ timestamp=2026-04-10T01:56:18Z
 ### 3. Correções Devem Usar o Sistema de Diagnósticos
 
 - Se o fix introduzir novos pontos de falha fora da thread RT, **sempre** emita um `NamDiagnostic` estruturado com o código de erro apropriado (do `NamErrorCode` existente, ou propondo um novo).
-- **Nunca** use `eprintln!("Erro: ...")` ou `println!("AVISO: ...")` ad-hoc para erros que o usuário pode ver. Use o builder `NamDiagnostic::new(code, &sys).message(...).hint(...).param(...).emit()`.
-- Mensagens mundanas informativas (não-erros) continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`.
+- **Nunca** use `eprintln!("Erro: ...")` ou `println!("AVISO: ...")` ad-hoc para erros que afetam a usabilidade do usuário. Use o builder `NamDiagnostic::new(code, &sys).message(...).hint(...).param(...).emit()`.
+- Mensagens meramente informativas (logging, não-erros) continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`.

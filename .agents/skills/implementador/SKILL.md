@@ -53,7 +53,7 @@ O NAM-rs possui um sistema de diagnósticos em `src/diagnostics.rs`. **Todo erro
        .param("file", &path_str)
        .emit();  // ou .emit_warning() para não-fatais
    ```
-3. **Mensagens mundanas** (informacionais, não-erros) continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`. O sistema de diagnósticos é exclusivo para **erros e avisos**.
+3. **Mensagens logging (não-erros):** continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`. O sistema de diagnósticos é exclusivo para **erros e avisos**.
 4. **Novos cenários de erro**: Se o código introduz um novo ponto de falha que o usuário pode encontrar, verifique se existe um `NamErrorCode` adequado no catálogo. Se não existir, proponha uma nova variante seguindo a convenção de faixas (E1xxx modelo, E2xxx áudio, E3xxx SPSC, E4xxx CLI, E5xxx sistema).
 5. **Thread RT**: O sistema de diagnósticos **nunca** é usado dentro do callback `process()`. Falhas no RT continuam sendo reportadas via flags atômicas (`RtStatusFlags`).
 6. **SystemSnapshot**: É capturado uma vez em `main()` e propagado para todas as funções que emitem diagnósticos. Nunca crie um novo snapshot fora do startup.
