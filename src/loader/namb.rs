@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Carregador Binário para modelos `.namb` do ecossistema Tone3000.
+//! Carregador Binário para modelos `.namb`.
 //!
 //! Realiza a análise e deserialização direta, determinística e lock-free
 //! a partir de um bloco binário para a estrutura `NamModelData`.
@@ -116,7 +116,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
 
 /// Cria o arranjo compatível com a simetria Standard de WaveNet da inferência.
 ///
-/// **Decisão arquitetural:** Arquivos `.namb` do ecossistema Tone3000 são predominantemente
+/// **Decisão arquitetural:** Arquivos `.namb` são predominantemente
 /// modelos WaveNet "Standard" (16ch, dilatações `[1..512]`×2). A especificação binária
 /// não transporta explicitamente a topologia no cabeçalho — os pesos são interpretados
 /// diretamente pela geometria fixa. Por isso, hardcodamos a configuração Standard

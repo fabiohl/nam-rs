@@ -33,7 +33,7 @@ O NAM-rs está na **Fase Alpha**. A infraestrutura RT-safe está funcional:
 ### 2. Aderência Operacional de Tempo Real Linux/Host
 
 - Sugestões técnicas atrelam-se integralmente na soberania do Core Affinity (`pthread_setaffinity_np`) para prevenir Core Migrations e preservar o cache L1/L2, aliados ao escalonador `SCHED_FIFO`.
-- Parâmetros Tone3000 (metadados `.namb`: `input_level_dbu`, `loudness`) fluem exclusivamente via SPSC `rtrb` sob o enum `ParamPayload`, permitindo reescalonamento dBu/dBFS sem qualquer acesso concorrente não-atômico.
+- Parâmetros (metadados `.namb`: `input_level_dbu`, `loudness`) fluem exclusivamente via SPSC `rtrb` sob o enum `ParamPayload`, permitindo reescalonamento dBu/dBFS sem qualquer acesso concorrente não-atômico.
 - O projeto **não usa** e **não deve adotar** `io_uring`, gravação em disco ou qualquer E/S bloqueante no caminho RT. Toda pesquisa de I/O pertence à thread CLI ou à thread principal.
 
 ### 3. Minimalismo Lock-Free de Eventos do Rust

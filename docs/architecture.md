@@ -44,7 +44,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/loader/mod.rs`         | Módulo raiz de carregamento de modelos NAM (fora da thread RT)                                                                                                                                                                                                   |
 | `src/loader/dispatcher.rs`  | Construtor responsável por inferir topologia a partir do `NamModelData` bruto, alocando `DynamicModel` via matrizes de const generics estáticas ou acionando fallback para modelos dinâmicos comunitários flexíveis.                                             |
 | `src/loader/nam_json.rs`    | Parser do formato `.nam` (JSON) — `serde_json`, classificação de topologia WaveNet/LSTM                                                                                                                                                                          |
-| `src/loader/namb.rs`        | Parser do formato `.namb` (Tone3000 binário) — CRC32 IEEE 802.3 + Little-Endian                                                                                                                                                                                  |
+| `src/loader/namb.rs`        | Parser do formato `.namb` — CRC32 IEEE 802.3 + Little-Endian                                                                                                                                                                                                     |
 | `src/dsp/mod.rs`            | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                                                                                              |
 | `src/dsp/gain.rs`           | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                                                                                                                                                           |
 | `src/dsp/resampler.rs`      | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz                                                                                                                                                             |
@@ -115,7 +115,7 @@ Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no fina
 | `src/diagnostics.rs`       | 8      | Catálogo de códigos, unicidade numérica, formatação suporte, timestamp ISO 8601, snapshot |
 | `src/loader/dispatcher.rs` | 11     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow            |
 | `src/loader/nam_json.rs`   | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado        |
-| `src/loader/namb.rs`       | 5      | Parse binário Tone3000, CRC32, header, magic, version                                     |
+| `src/loader/namb.rs`       | 5      | Parse binário, CRC32, header, magic, version                                              |
 | `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                           |
 | `src/math/simd.rs`         | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                         |
 | `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                                   |

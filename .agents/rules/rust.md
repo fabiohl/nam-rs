@@ -12,7 +12,7 @@ globs: **/*.rs, **/*.toml
   * Busque sempre algoritimos que tirem proveito das modernas instruções x86-64-v3 (obrigatório) ou x86-64-v4/avx-512 (opcional, se agregar valor considerável, usando multiversioning).
 * **Gestão de Dependências e Crates:** Mantenha o mais enxuto possível. Nunca insira diretamente no toml, sempre use "cargo add" como helper. Procure ser o mais específico possível em crates e features, de modo a não inserir dependências não utilizadas e abrir possíveis brechas para bugs.
 * **Divisão Estrita de Concorrência Lock-Free:**
-  * O core executa fundamentalmente comunicação sob **SPSC Ring Buffers** transpondo parâmetros entre estado CLI Assíncrono (ex: input/output gain, troca de .namb, metadados de tone3000) para o injetor de DSP passivo.
+  * O core executa fundamentalmente comunicação sob **SPSC Ring Buffers** transpondo parâmetros entre estado CLI Assíncrono (ex: input/output gain, troca de .namb, metadados) para o injetor de DSP passivo.
   * O processo NÃO performa transações de E/S de captura no Kernel Linux. Todas as rotinas não essenciais deve ficar fora da thread RT Áudio/DSP.
 * **Regras de Tempo-Real absolutas (Thread de DSP):**
   * Configurada como `SCHED_FIFO`.
