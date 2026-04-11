@@ -3,8 +3,8 @@
 
 //! Módulo de Motores Cerebrais (Arquiteturas Inferenciais Neurais) para o NAM-rs.
 //!
-//! Este módulo contém os cérebros acústicos do programa: redes neurais que aprenderam
-//! como um amplificador ou pedal verdadeiro distorce e colore o som de uma guitarra.
+//! Este módulo contém os cérebros acústicos do programa: redes neurais que aprenderam como,
+//! por exemplo, um amplificador ou pedal verdadeiro distorce e colore o som de uma guitarra.
 //! Aqui temos implementações super rápidas ("Zero-Allocation") baseadas no
 //! comportamento exato treinado pelo Neural Amp Modeler (NAM) original.
 
@@ -15,7 +15,7 @@ pub mod wavenet_dyn;
 
 /// A interface (o conector padrão) para qualquer modelo neural (amplificadores, pedais, etc.).
 ///
-/// Pense nisso como um cabo de guitarra padrão: não importa a marca do pedal interno (WaveNet ou LSTM),
+/// Pense nisso como um cabo de áudio padrão: não importa a marca do pedal interno (WaveNet ou LSTM),
 /// o sistema de áudio (host principal) sabe enviar som para ele e receber de volta através deste contrato/trait.
 pub trait NamModel: Send + Sync {
     /// Invocado pelo DSP RT-Thread para processar blocos de amostragem acústica (Float32).
@@ -24,7 +24,7 @@ pub trait NamModel: Send + Sync {
 
     /// "Aquece" as válvulas virtuais do motor neural (`prewarm`).
     /// Injeta um curto zumbido ou silêncio (`num_samples`) por dentro do amplificador antes de expor
-    /// a guitarra de verdade a ele. Isso acalma o "campo magnético virtual", garantindo que não
+    /// uma guitarra de verdade a ele. Isso acalma o "campo magnético virtual", garantindo que não
     /// hajam estalos (pops) estridentes quando você liga ou troca de modelo de súbito.
     fn prewarm(&mut self, num_samples: usize);
 }

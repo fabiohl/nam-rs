@@ -3,8 +3,8 @@
 
 //! Núcleo de processamento de áudio DSP usando `pipewire-rs`.
 //!
-//! Este é o "coração" do NAM-rs: o módulo que de fato processa o som da guitarra
-//! em tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
+//! Este é o "coração" do NAM-rs: o módulo que de fato processa o sinal de áudio em
+//! tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
 //! do Linux), passa pelo amplificador neural, e devolve o resultado processado —
 //! tudo sem nenhum engasgo ou atraso perceptível.
 //!
@@ -23,7 +23,7 @@
 //! O callback `process()` segue esta sequência para cada bloco de áudio:
 //! 1. Aplica ganho de entrada SIMD (ajuste de volume pré-amplificador)
 //! 2. `NamResampler::process_input()` — converte o sample rate do PipeWire para 48 kHz
-//! 3. Inferência neural WaveNet/LSTM — o "amplificador virtual" processa o som
+//! 3. Inferência neural WaveNet/LSTM — o "amplificador virtual" que processa o som
 //! 4. `NamResampler::process_output()` — converte de volta para o sample rate original
 //! 5. Aplica ganho de saída SIMD (ajuste de volume pós-amplificador)
 //!

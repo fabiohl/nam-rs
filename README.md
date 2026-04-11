@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-1.6%2B-green.svg)
 
-O **NAM-rs** é um cliente inferência [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para emulação de amplificadores, pedais de guitarra e equipamentos de estúdio.
+O **NAM-rs** é um cliente inferência [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de estúdio.
 
 O motor de inferência é uma transposição otimizada da biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático.
 

@@ -7,7 +7,7 @@
 //!
 //! Pense neste arquivo como a "recepção" do nosso estúdio virtual. Ele é responsável por:
 //! 1. Ler o que o usuário digita no terminal (qual amplificador carregar e os volumes de entrada/saída).
-//! 2. Abrir a conexão de áudio com o sistema (PipeWire), conectando a guitarra ao motor sonoro.
+//! 2. Abrir a conexão de áudio com o sistema (PipeWire), conectando o sinal de áudio ao motor sonoro.
 //! 3. Garantir que, quando o usuário apertar CTRL+C, tudo seja desligado com segurança, sem deixar ruídos.
 //!
 //! # Regras de Arquitetura para Desenvolvedores
