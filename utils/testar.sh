@@ -8,7 +8,8 @@ echo "⚙️ Assegurando o qpwgraph rodando..."
 qpwgraph &
 
 echo "⚙️ Compilando o NAM-rs..."
-cargo build
+cargo build --release
 
 echo "🚀 Executando..."
-target/debug/nam-rs
+#target/debug/nam-rs
+target/release/nam-rs
