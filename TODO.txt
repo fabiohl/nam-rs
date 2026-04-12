@@ -5,6 +5,7 @@
 ### Neste caso eu posso atribuir copyright a mim? Tenho que creditar os modelos de IA usados?
 README.md:101-107
 .agents/rules/copyright.md
+### É interessante tornar o meu ferramental de IA em GPLv3 ou mesmo proprietário?
 
 ## Sample Rate (48 Khz) e Resolution (x bits) (Prioridade: v1.1 se envolver maiores refatorações)
 ### Todo NAM é obrigatoriamente 48 Khz? Ou pode variar?
@@ -13,3 +14,5 @@ src/dsp/resampler.rs:33-34,79,141,153-155,194-196
 ### Porque o sample original e não o mais alto suportado pela placa de áudio ou DAW? Ou simplesmente deixa como tá?
 src/pw_host.rs:27
 src/dsp/resampler.rs:9-11,19-20
+
+## Sincronizar as novas melhorias com o AudioRip.
