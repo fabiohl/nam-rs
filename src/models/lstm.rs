@@ -7,7 +7,6 @@
 //! Utiliza arrays contíguos baseados em _Const Generics_ para evitar saltos condicionais na compilação.
 //! O processamento adota a Estrutura de Arrays (SoA).
 
-#[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
 /// Uma camada individual do modelo LSTM.
@@ -43,7 +42,6 @@ macro_rules! define_lstm_process {
         $tanh:path,
         $sigmoid:path
     ) => {
-        #[cfg(target_arch = "x86_64")]
         #[$target_meta]
         /// Processa uma amostra de entrada com o estado interno da camada.
         ///
@@ -216,8 +214,6 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     ///
     /// # Safety
     /// Exige compatibilidade com `avx2` e `fma` ativados no processador x86_64 hospedeiro.
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "avx2,fma")]
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             for i in 0..input.len() {
@@ -230,7 +226,6 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
@@ -244,7 +239,6 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
     /// Processa o array em tempo de execução validando features CPU.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
@@ -290,8 +284,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     ///
     /// # Safety
     /// Exige compatibilidade com `avx2` e `fma` em sistema de processamento com arquitetura x86_64.
-    #[cfg(target_arch = "x86_64")]
-    #[target_feature(enable = "avx2,fma")]
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             for i in 0..input.len() {
@@ -308,7 +300,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
@@ -324,7 +315,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         }
     }
 
-    #[cfg(target_arch = "x86_64")]
     /// Processa o array em tempo de execução validando features CPU.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
@@ -363,8 +353,7 @@ mod tests {
 
     #[test]
     fn test_lstm_model1_process_zeros() {
-        #[cfg(target_arch = "x86_64")]
-        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        {
             let mut model: LstmModel1<8, 9, 32> = LstmModel1::new();
             let input = [1.0, -1.0, 0.5, -0.5];
             let mut output = [0.0f32; 4];
@@ -379,8 +368,7 @@ mod tests {
 
     #[test]
     fn test_lstm_model2_process_deterministic() {
-        #[cfg(target_arch = "x86_64")]
-        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        {
             let mut model_a: LstmModel2<8, 9, 16, 32> = LstmModel2::new();
             let mut model_b: LstmModel2<8, 9, 16, 32> = LstmModel2::new();
 

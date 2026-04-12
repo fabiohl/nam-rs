@@ -204,7 +204,6 @@ impl SystemSnapshot {
 
 /// Detecta suporte a AVX2 e FMA no runtime.
 fn detect_cpu_features() -> (bool, bool) {
-    #[cfg(target_arch = "x86_64")]
     {
         (
             std::is_x86_feature_detected!("avx2"),

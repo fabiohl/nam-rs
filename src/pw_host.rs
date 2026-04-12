@@ -479,7 +479,6 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
     // Proteção contra denormals (números subnormalizados que travam o processador):
     // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
     // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
-    #[cfg(target_arch = "x86_64")]
     unsafe {
         crate::math::simd::set_daz_ftz();
     }

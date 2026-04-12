@@ -12,7 +12,6 @@
 use nam_rs::math::fastmath;
 use proptest::prelude::*;
 
-#[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::{_mm256_loadu_ps, _mm256_storeu_ps};
 
 prop_compose! {
@@ -38,7 +37,6 @@ proptest! {
 
     #[test]
     fn prop_simd_tanh_avx2_rmse(input in avx2_input_array()) {
-        #[cfg(target_arch = "x86_64")]
         if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
             let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
             let result_vector = unsafe { fastmath::simd_tanh(vector) };
@@ -69,7 +67,6 @@ proptest! {
 
     #[test]
     fn prop_simd_sigmoid_avx2_rmse(input in avx2_input_array()) {
-        #[cfg(target_arch = "x86_64")]
         if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
             let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
             let result_vector = unsafe { fastmath::simd_sigmoid(vector) };

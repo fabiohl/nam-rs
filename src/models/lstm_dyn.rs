@@ -37,7 +37,6 @@ impl LstmDynLayer {
     ///
     /// # Safety
     /// Depende nativamente das matrizes preenchidas via alocador estrito no C++ Fallback parser (Loader CLI).
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process_sample(&mut self, input: &[f32], math: &SimdMathConfig) {
         let ih = self.input_size + self.hidden_size;
         let h = self.hidden_size;
@@ -110,7 +109,6 @@ pub struct LstmDynModel {
 
 impl LstmDynModel {
     /// Processamento Síncrono de Áudio. Requer instanciamento RT.
-    #[cfg(target_arch = "x86_64")]
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         let math = &crate::math::simd::SimdMathConfig::current();
         let num_frames = input.len();

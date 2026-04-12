@@ -341,7 +341,6 @@ fn test_wavenet_model_json_parsing() {
 /// Em debug, usa blocos reduzidos (512) para velocidade de CI.
 #[test]
 fn test_wavenet_computational_stability() {
-    #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
         let mut model = build_synthetic_wavenet_standard();
 

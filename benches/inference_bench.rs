@@ -118,7 +118,6 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
 /// a função de ativação tanh via polinômio Padé grau 5 + rsqrt_ps Newton-Raphson.
 /// Processar 256 floats por invocação é representativo do workload interno.
 fn bench_tanh_slice_256(c: &mut Criterion) {
-    #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
@@ -137,7 +136,6 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
 /// O sigmoid é derivado via identidade `0.5*(1+tanh(0.5*x))` e é usado
 /// nas portas i/f/o do LSTM. Processar 256 floats é representativo.
 fn bench_sigmoid_slice_256(c: &mut Criterion) {
-    #[cfg(target_arch = "x86_64")]
     if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 

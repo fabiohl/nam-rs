@@ -34,7 +34,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     ///
     /// # Safety
     /// Depende dinamicamente da V-Table `SimdMathConfig` fornecida.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process_frame(
         &self,
         layer_buffer: &[f32],
@@ -81,7 +80,6 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     ///
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process_acc(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
         for out_c in 0..OUT {
             let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
@@ -99,7 +97,6 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     ///
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
         for out_c in 0..OUT {
             let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
@@ -130,7 +127,6 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     ///
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process(
         &self,
         condition: &[f32],
@@ -271,7 +267,6 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     ///
     /// # Safety
     /// Ponteiros de states iteram internamente sem bounds checks.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process(
         &mut self,
         layer_inputs: &[f32],
@@ -416,7 +411,6 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// `SimdMathConfig::current()` é hoistado fora do loop de frames para evitar
     /// redespacho via CPUID a cada amostra (reduziria throughput em ~20 µs/bloco).
-    #[cfg(target_arch = "x86_64")]
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         // Hoist: despacha a v-table matemática UMA vez por bloco DSP, não por sample.
         // `is_x86_feature_detected!` serializa o pipeline via CPUID — chamá-lo 64×
@@ -607,7 +601,6 @@ mod tests {
 
     #[test]
     fn test_wavenet_process_zeros() {
-        #[cfg(target_arch = "x86_64")]
         if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
             let mut model = build_tiny_wavenet();
             model.prewarm();
@@ -625,7 +618,6 @@ mod tests {
 
     #[test]
     fn test_wavenet_process_deterministic() {
-        #[cfg(target_arch = "x86_64")]
         if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
             let mut model_a = build_tiny_wavenet();
             let mut model_b = build_tiny_wavenet();

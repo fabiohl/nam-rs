@@ -37,7 +37,6 @@ impl Conv1dDyn {
     ///
     /// # Safety
     /// Depende da instância estrita de `SimdMathConfig` referenciar uma SIMD suportada.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process_frame(
         &self,
         layer_buffer: &[f32],
@@ -89,7 +88,6 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Depende do `SimdMathConfig` ser válido nativamente.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process_acc(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
         for out_c in 0..self.out_size {
             let weight_slice =
@@ -108,7 +106,6 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Requer `SimdMathConfig` validamente instanciado.
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
         for out_c in 0..self.out_size {
             let weight_slice =
@@ -142,7 +139,6 @@ impl WaveNetLayerDyn {
     ///
     /// # Safety
     /// Requer instâncias estritas do buffer interno.
-    #[cfg(target_arch = "x86_64")]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process(
         &self,
@@ -210,7 +206,6 @@ impl WaveNetLayerArrayDyn {
     ///
     /// # Safety
     /// Depende nativamente das matrizes preenchidas via alocador estrito no C++ Fallback parser (Loader CLI).
-    #[cfg(target_arch = "x86_64")]
     pub unsafe fn process(
         &mut self,
         layer_inputs: &[f32],
@@ -354,7 +349,6 @@ pub struct WaveNetDynModel {
 
 impl WaveNetDynModel {
     /// Loop matriz causal para preenchimento bloco de áudio contíguo (via Inversão SIMD).
-    #[cfg(target_arch = "x86_64")]
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         let math = &crate::math::simd::SimdMathConfig::current();
         let num_frames = input.len();

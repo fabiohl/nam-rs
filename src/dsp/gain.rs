@@ -7,7 +7,6 @@
 //! e estrita (zero-allocation) para aplicação de parâmetros de predição
 //! convolucionais informados pela CLI/PipeWire (ex: `input_level_dbu`).
 
-#[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
 
 /// Aplica o multiplicador linear de ganho bruto sobre o buffer.
@@ -22,8 +21,6 @@ pub fn apply_gain_simd(buffer: &mut [f32], gain_linear: f32) {
 }
 
 /// Dispara o pacote multiplicativo em arranjos de 8 Float32 por pulso com resíduo escalar.
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx2")]
 unsafe fn apply_gain_avx2(buffer: &mut [f32], gain_linear: f32) {
     let mut i = 0;
     let len = buffer.len();

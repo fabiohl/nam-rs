@@ -36,7 +36,6 @@ pub struct DynamicModel(pub Box<dyn NamModel>);
 // NamModel para WaveNet
 // =============================================================================
 
-#[cfg(target_arch = "x86_64")]
 impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
     for wavenet::WaveNetModel<CH, K, HEAD>
 {
@@ -56,7 +55,6 @@ impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
 // NamModel para WaveNet Dinâmico
 // =============================================================================
 
-#[cfg(target_arch = "x86_64")]
 impl NamModel for wavenet_dyn::WaveNetDynModel {
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         self.process(input, output);
@@ -71,7 +69,6 @@ impl NamModel for wavenet_dyn::WaveNetDynModel {
 // NamModel para LSTM — 1 Camada
 // =============================================================================
 
-#[cfg(target_arch = "x86_64")]
 impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
     for lstm::LstmModel1<H, H1_IH, H_H4>
 {
@@ -101,7 +98,6 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
 // NamModel para LSTM — 2 Camadas
 // =============================================================================
 
-#[cfg(target_arch = "x86_64")]
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> NamModel
     for lstm::LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
@@ -128,7 +124,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
 // NamModel para LSTM Dinâmico
 // =============================================================================
 
-#[cfg(target_arch = "x86_64")]
 impl NamModel for lstm_dyn::LstmDynModel {
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         self.process(input, output);
