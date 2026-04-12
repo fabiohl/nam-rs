@@ -1,13 +1,9 @@
-# Dúvidas a esclarecer:
-
 ## Propriedade intelectual (Prioridade: Imediata)
-### Como fica a questão dos créditos ao projeto original? E quanto aos direitos autorais dos estudos científicos originais?
-### Neste caso eu posso atribuir copyright a mim? Tenho que creditar os modelos de IA usados?
-README.md:101-107
-.agents/rules/copyright.md
-### É interessante tornar o meu ferramental de IA em GPLv3 ou mesmo proprietário?
+* Consolidar um arquivo CREDITS.md na raiz do seu repositório listando explicitamente as bibliotecas e autores (como Mike Oliphant, Jatin Chowdhury, Steven Atkinson) cujas lógicas foram portadas, além dos links para os repositórios originais.
+* Em arquivos .rs que sejam traduções literais de arquivos fonte em C++, adicionar um comentário de atribuição sutil logo abaixo do seu cabeçalho SPDX. Por exemplo: // Portado da implementação original do RTNeural por Jatin Chowdhury.
+* Crédito aos estudos científicos: Atribuição do crédito intelectual. Isso é feito de forma elegante adicionando as citações dos papers nos blocos de documentação (///) do rustdoc logo acima das structs ou funções de DSP que os implementam, além de uma seção de "Referências" no documento docs/architecture.md ou no próprio README.
 
-## Sample Rate (48 Khz) e Resolution (x bits) (Prioridade: v1.1 se envolver maiores refatorações)
+## Dúvida a esclarecer: Sample Rate (48 Khz) e Resolution (x bits) (Prioridade: v1.1 se envolver maiores refatorações)
 ### Todo NAM é obrigatoriamente 48 Khz? Ou pode variar?
 src/pw_host.rs:25,105-117,307-320
 src/dsp/resampler.rs:33-34,79,141,153-155,194-196
@@ -16,3 +12,5 @@ src/pw_host.rs:27
 src/dsp/resampler.rs:9-11,19-20
 
 ## Sincronizar as novas melhorias com o AudioRip.
+
+## Pushar no GitHub: https://gemini.google.com/app/76160013f0fab6c4
