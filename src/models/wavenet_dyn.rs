@@ -138,11 +138,6 @@ impl DenseLayerDyn {
             }
         }
     }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    pub unsafe fn process(&self, _input: &[f32], _output: &mut [f32], _math: &SimdMathConfig) {
-        compile_error!("NAM-rs requer x86_64 com AVX2 (WaveNetDyn).");
-    }
 }
 
 /// O elemento atomizado de conexão na malha, que interliga as equações diferenciais convolutivas.
@@ -197,21 +192,6 @@ impl WaveNetLayerDyn {
         for j in 0..self.ch {
             output[j] += layer_buffer[lb_start + j];
         }
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    #[allow(clippy::too_many_arguments)]
-    pub unsafe fn process(
-        &self,
-        _condition: &[f32],
-        _head_input: &mut [f32],
-        _output: &mut [f32],
-        _layer_buffer: &[f32],
-        _buffer_start: usize,
-        _block: &mut [f32],
-        _math: &SimdMathConfig,
-    ) {
-        compile_error!("NAM-rs requer x86_64 com AVX2 (WaveNetDyn).");
     }
 }
 
@@ -311,16 +291,6 @@ impl WaveNetLayerArrayDyn {
                 math,
             );
         }
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    pub unsafe fn process(
-        &mut self,
-        _layer_inputs: &[f32],
-        _condition: &[f32],
-        _math: &SimdMathConfig,
-    ) {
-        compile_error!("NAM-rs requer x86_64 com AVX2 (WaveNetDyn).");
     }
 
     /// Executa um aquecimento transiente espelhando buffer em todo o pre-gap RT causal.
@@ -424,11 +394,6 @@ impl WaveNetDynModel {
             final_sum += self.array2.head_outputs[0];
             output[i] = final_sum * self.head_scale;
         }
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    pub fn process(&mut self, _input: &[f32], _output: &mut [f32]) {
-        compile_error!("NAM-rs requer x86_64 com AVX2 (WaveNetDyn).");
     }
 
     /// Realiza `Prewarm` lock-free inicial. Evita instabilidade analítica dos buffers transientes.
