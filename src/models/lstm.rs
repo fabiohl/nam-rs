@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// Portado da implementação original do NeuralAudio por Mike Oliphant e RTNeural por Jatin Chowdhury.
 
 //! Malha de Células Recorrentes Otimizada (LSTM) para inferência NAM.
 //!
@@ -10,6 +11,8 @@
 use core::arch::x86_64::*;
 
 /// Uma camada individual do modelo LSTM.
+///
+/// **Referência Científica:** Hochreiter, S., & Schmidhuber, J. (1997). *"Long Short-Term Memory."*
 ///
 /// Parâmetros Constantes:
 /// * `I` = Input Size

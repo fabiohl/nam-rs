@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// Portado da implementação original do NeuralAudio por Mike Oliphant.
 
 //! Malha de Células Recorrentes Dinâmica para inferência LSTM (Fallback).
 //!
@@ -98,6 +99,8 @@ impl LstmDynLayer {
 }
 
 /// Invólucro Dinâmico LSTM final.
+///
+/// **Referência Científica:** Hochreiter, S., & Schmidhuber, J. (1997). *"Long Short-Term Memory."*
 pub struct LstmDynModel {
     /// Conjunto linearizado empilhado das subrotinas LSTM.
     pub layers: Vec<LstmDynLayer>,

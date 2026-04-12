@@ -98,6 +98,14 @@ Contribuições são bem-vindas! O projeto está em fase ativa de desenvolviment
 * Apesar do suporte a AVX-512, eu não tenho uma CPU suportado pra testar. Se alguém tiver alguma por ai, seria muito útil..
 * Para validar alterações: execute `cargo test` e `utils/lints.sh` antes de submeter PRs.
 
+## 🙏 Créditos e Agradecimentos
+
+Este projeto herda lógica, inspiração e ciência de trabalhos notáveis na comunidade de áudio e inteligência artificial que pavimentaram este caminho. Nossos profundos agradecimentos a:
+
+* **Steven Atkinson** — Pelo desenvolvimento pioneiro do [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler), sua pesquisa original sobre modelagem de amplificadores com deep learning e por compartilhar o ecossistema abertamente.
+* **Mike Oliphant** — Pela excepcional biblioteca [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio), que serviu de base direta e fonte de pesquisa para a transposição das lógicas de inferência e FastMath vetorial (SIMD) portadas para este motor estrutural.
+* **Jatin Chowdhury** — Pesquisador e criador do [RTNeural](https://github.com/jatinchowdhury18/RTNeural), cujo motor open-source de M.L. em tempo real influenciou massivamente os padrões de processamento de áudio com baixa latência na indústria livre.
+
 ## ⚖️ Licença e Transparência (Vibe Coding)
 
 Este projeto é duplamente licenciado sob **MIT** ou **Apache License, Version 2.0**, à sua escolha. Veja os arquivos `LICENSE-MIT` e `LICENSE-APACHE` para mais detalhes.

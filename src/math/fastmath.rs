@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// Otimizações matemáticas portadas dos polinômios de NeuralAudio / math_approx.
 
 //! Módulo de FastMath (Minimax & Pade) para otimização de ativação não linear.
 //!

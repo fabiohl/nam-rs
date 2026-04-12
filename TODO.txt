@@ -1,8 +1,3 @@
-## Propriedade intelectual (Prioridade: Imediata)
-* Consolidar um arquivo CREDITS.md na raiz do seu repositório listando explicitamente as bibliotecas e autores (como Mike Oliphant, Jatin Chowdhury, Steven Atkinson) cujas lógicas foram portadas, além dos links para os repositórios originais.
-* Em arquivos .rs que sejam traduções literais de arquivos fonte em C++, adicionar um comentário de atribuição sutil logo abaixo do seu cabeçalho SPDX. Por exemplo: // Portado da implementação original do RTNeural por Jatin Chowdhury.
-* Crédito aos estudos científicos: Atribuição do crédito intelectual. Isso é feito de forma elegante adicionando as citações dos papers nos blocos de documentação (///) do rustdoc logo acima das structs ou funções de DSP que os implementam, além de uma seção de "Referências" no documento docs/architecture.md ou no próprio README.
-
 ## Dúvida a esclarecer: Sample Rate (48 Khz) e Resolution (x bits) (Prioridade: v1.1 se envolver maiores refatorações)
 ### Todo NAM é obrigatoriamente 48 Khz? Ou pode variar?
 src/pw_host.rs:25,105-117,307-320

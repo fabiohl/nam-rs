@@ -240,3 +240,13 @@ tests/fixtures/
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
 - **Comando de execução:** `cargo test` dispara ambas as camadas. `cargo test --lib` executa apenas os 68 unitários inline; `cargo test --test nam_infer_test` apenas os 18 de integração.
+
+## 7. Referências
+
+Este motor consolida técnicas e arquiteturas detalhadas na literatura acadêmica e em projetos fundamentais de código aberto:
+
+* **Neural Amp Modeler (NAM)**: Atkinson, S. *"Real-Time Guitar Amplifier Emulation with Deep Learning."* Base conceitual e arquitetural dos modelos treinados (.nam).
+* **WaveNet**: van den Oord, A., et al. (2016). *"WaveNet: A Generative Model for Raw Audio."* DeepMind. Topologia CNN causal dilatada.
+* **LSTM**: Hochreiter, S., & Schmidhuber, J. (1997). *"Long Short-Term Memory."* Neural Computation. Arquitetura de rede neural recorrente.
+* **NeuralAudio**: Oliphant, M. [Repositório GitHub](https://github.com/mikeoliphant/NeuralAudio). Referência algorítmica para inferência em DSP distribuída com o ecossistema NAM (FastMath, alocação estática SoA).
+* **RTNeural**: Chowdhury, J. *"RTNeural: Fast Neural Inferencing for Real-Time Systems."* Referências de otimização estrita em arquiteturas limitadas de áudio.

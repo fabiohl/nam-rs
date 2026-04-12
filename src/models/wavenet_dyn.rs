@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// Portado em grande parte da implementação original em C++ (NeuralAudio) por Mike Oliphant.
 
 //! Malha CNN Causal Dinâmica para inferência WaveNet (Fallback).
 //!
@@ -334,6 +335,8 @@ impl WaveNetLayerArrayDyn {
 }
 
 /// Invólucro Dinâmico final. Comporta Arrays interconectados conforme a abstração de Inferência `NamModel`.
+///
+/// **Referência Científica:** van den Oord, A., et al. (2016). *"WaveNet: A Generative Model for Raw Audio."* DeepMind.
 pub struct WaveNetDynModel {
     /// O galho Primário com maior parte do campo causal da WaveNet.
     pub array1: WaveNetLayerArrayDyn,

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// Portado em grande parte da implementação original em C++ (NeuralAudio) por Mike Oliphant.
 
 //! Malha CNN Causal Estática para inferência WaveNet (Design Orientado a Dados, SoA).
 //!
@@ -386,6 +387,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 }
 
 /// Modelo Completo do WaveNet contendo Dois Blocos de Layer Arrays heterogêneos.
+///
+/// **Referência Científica:** van den Oord, A., et al. (2016). *"WaveNet: A Generative Model for Raw Audio."* DeepMind.
 ///
 /// `CH` = canais da Array1 (layer 0 do JSON, ex: 16 para Standard)
 /// `K`  = kernel size (sempre 3)
