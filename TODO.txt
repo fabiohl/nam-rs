@@ -1,6 +1,7 @@
 # Dúvidas a esclarecer:
 
 ## Propriedade intelectual (Prioridade: Imediata)
+### Como fica a questão dos créditos ao projeto original? E quanto aos direitos autorais dos estudos científicos originais?
 ### Neste caso eu posso atribuir copyright a mim? Tenho que creditar os modelos de IA usados?
 README.md:101-107
 .agents/rules/copyright.md
