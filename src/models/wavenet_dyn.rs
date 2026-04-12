@@ -67,17 +67,6 @@ impl Conv1dDyn {
             block[out_c] = sum;
         }
     }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    pub unsafe fn process_frame(
-        &self,
-        _layer_buffer: &[f32],
-        _block: &mut [f32],
-        _buffer_start: usize,
-        _math: &SimdMathConfig,
-    ) {
-        compile_error!("NAM-rs requer x86_64 com AVX2 (WaveNetDyn).");
-    }
 }
 
 /// Camada Dense (fully-connected / projeção linear 1×1) avaliada dinamicamente.
@@ -113,11 +102,6 @@ impl DenseLayerDyn {
                 output[out_c] += sum;
             }
         }
-    }
-
-    #[cfg(not(target_arch = "x86_64"))]
-    pub unsafe fn process_acc(&self, _input: &[f32], _output: &mut [f32], _math: &SimdMathConfig) {
-        compile_error!("NAM-rs requer x86_64 com AVX2 (WaveNetDyn).");
     }
 
     /// Processa o dot product substituindo a memória em `output`.

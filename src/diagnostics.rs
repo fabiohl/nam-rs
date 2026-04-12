@@ -211,10 +211,6 @@ fn detect_cpu_features() -> (bool, bool) {
             std::is_x86_feature_detected!("fma"),
         )
     }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        (false, false)
-    }
 }
 
 /// Lê a versão do kernel Linux a partir de `/proc/version`.
