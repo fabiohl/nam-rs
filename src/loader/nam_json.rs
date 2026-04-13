@@ -25,6 +25,7 @@ pub struct NamDate {
 }
 
 /// Metadados opcionais contidos no fim do formato `.nam`.
+/// Fonte: https://neural-amp-modeler.readthedocs.io/en/latest/model-file.html
 #[derive(Deserialize, Debug, Clone)]
 pub struct NamMetadata {
     /// Data de autoria ou exportação do modelo.
@@ -37,9 +38,9 @@ pub struct NamMetadata {
     pub gear_make: Option<String>,
     /// O modelo do equipamento original (Ex: Deluxe Reverb).
     pub gear_model: Option<String>,
-    /// Que tipo de equipamento é este (ex: amp, pedal, preamp).
+    /// Que tipo de equipamento é este? Opções: "amp", "pedal", "pedal_amp", "amp_cab", "amp_pedal_cab", "preamp" e "studio".
     pub gear_type: Option<String>,
-    /// De qual estilo fásico o equipamento atende (clean, overdrive, hi_gain).
+    /// De qual estilo do equipamento? Opções: "clean", "overdrive", "crunch", "hi_gain" e "fuzz".
     pub tone_type: Option<String>,
     /// Informação opcional de documentação sobre configuração Pydantic de treinamento.
     pub training: Option<serde_json::Value>,
