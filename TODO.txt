@@ -1,5 +1,4 @@
-Como acompanhar a evolução dos projetos originais?
-Auditoria da especificação dos arquivos https://neural-amp-modeler.readthedocs.io/en/latest/_sources/model-file.rst.txt
-## Pushar no GitHub
-## Fazer beta teste; Sucessivas revisoes de revisor-auditor e de pesquisador-inovador.
-## Sincronizar as novas melhorias com o AudioRip
+## Beta 1: Pacote de testes de uso como cliente final (Beta.txt).
+## Beta 2: Sucessivas revisoes de revisor-auditor e de pesquisador-inovador.
+## RC 1: Sincronizar as novas melhorias com o AudioRip
+## Curto prazo: Auditoria do estado de paridade com a implementação padrão https://github.com/sdatkinson/NeuralAmpModelerCore
