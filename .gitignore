@@ -22,7 +22,6 @@ repomix-*.xml
 # Ignorar artefatos do Rust
 Cargo.lock
 /target
-fuzz/target
 
 # Ignorar diretório de scratch (artefatos de debug/protótipos temporários)
 scratch/
@@ -34,5 +33,5 @@ scratch/
 # Golden vectors de validação numérica (não ignorar)
 !tests/fixtures/*.bin
 
-# Espelho do GitHub da implementação original
-#/github.com
+# Espelho dos projetos de referência no GitHub
+/github.com
