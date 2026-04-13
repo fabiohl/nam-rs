@@ -174,6 +174,14 @@ fn load_and_send_model(
                 .metadata
                 .clone()
                 .unwrap_or(loader::nam_json::NamMetadata {
+                    date: None,
+                    name: None,
+                    modeled_by: None,
+                    gear_make: None,
+                    gear_model: None,
+                    gear_type: None,
+                    tone_type: None,
+                    training: None,
                     input_level_dbu: None,
                     output_level_dbu: None,
                     loudness: None,

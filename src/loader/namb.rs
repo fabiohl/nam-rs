@@ -81,6 +81,14 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     let output_level_dbu = read_f32_le(data, 72).unwrap_or(0.0);
 
     let metadata = NamMetadata {
+        date: None,
+        name: None,
+        modeled_by: None,
+        gear_make: None,
+        gear_model: None,
+        gear_type: None,
+        tone_type: None,
+        training: None,
         input_level_dbu: Some(input_level_dbu),
         output_level_dbu: Some(output_level_dbu),
         loudness: Some(-18.0), // Fixo para fallback de ganho, se não fornecido

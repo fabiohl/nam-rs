@@ -7,9 +7,42 @@
 
 use serde::Deserialize;
 
+/// Estrutura de data usada na seção metadata do `.nam`.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct NamDate {
+    /// Ano.
+    pub year: Option<i32>,
+    /// Mês.
+    pub month: Option<i32>,
+    /// Dia.
+    pub day: Option<i32>,
+    /// Hora.
+    pub hour: Option<i32>,
+    /// Minuto.
+    pub minute: Option<i32>,
+    /// Segundo.
+    pub second: Option<i32>,
+}
+
 /// Metadados opcionais contidos no fim do formato `.nam`.
 #[derive(Deserialize, Debug, Clone)]
 pub struct NamMetadata {
+    /// Data de autoria ou exportação do modelo.
+    pub date: Option<NamDate>,
+    /// O nome do modelo.
+    pub name: Option<String>,
+    /// Quem fez/treinou o modelo.
+    pub modeled_by: Option<String>,
+    /// Fabricante do equipamento original (Ex: Fender).
+    pub gear_make: Option<String>,
+    /// O modelo do equipamento original (Ex: Deluxe Reverb).
+    pub gear_model: Option<String>,
+    /// Que tipo de equipamento é este (ex: amp, pedal, preamp).
+    pub gear_type: Option<String>,
+    /// De qual estilo fásico o equipamento atende (clean, overdrive, hi_gain).
+    pub tone_type: Option<String>,
+    /// Informação opcional de documentação sobre configuração Pydantic de treinamento.
+    pub training: Option<serde_json::Value>,
     /// Nível de entrada esperado pelo modelo (dBu). Usado no gain staging de entrada.
     pub input_level_dbu: Option<f32>,
     /// Nível de saída esperado pelo modelo (dBu). Usado no gain staging de saída.
@@ -175,6 +208,9 @@ mod tests {
             "weights": [0.0123, -0.456, 1.0, 2.0],
             "sample_rate": 48000,
             "metadata": {
+                "name": "Super Twin",
+                "modeled_by": "John Doe",
+                "gear_make": "Fender",
                 "input_level_dbu": 12.0,
                 "output_level_dbu": 11.5,
                 "loudness": -18.0
@@ -189,6 +225,10 @@ mod tests {
         assert_eq!(meta.input_level_dbu.unwrap(), 12.0);
         assert_eq!(meta.output_level_dbu.unwrap(), 11.5);
         assert_eq!(meta.loudness.unwrap(), -18.0);
+
+        assert_eq!(meta.name.as_deref(), Some("Super Twin"));
+        assert_eq!(meta.modeled_by.as_deref(), Some("John Doe"));
+        assert_eq!(meta.gear_make.as_deref(), Some("Fender"));
 
         let topo = get_wavenet_topology(&parsed);
         assert_eq!(topo, Some(NamWavenetTopology::Feather));
