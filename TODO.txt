@@ -1,11 +1,5 @@
-Em muitos locais do código - Exemplos: src/pw_host.rs:25,105-117,307-320 e src/dsp/resampler.rs:33-34,79,141,153-155,194-196 - há uma clara indicação de que já se parte do princípio que o sample rate em que o nam foi treinado é sempre 48 Khz.
-Ocorre que dentro da especificação oficial estabelecida pelo criador do formato (Steve Atkinson), existe a chave opcional sample_rate (favor confirmar esta informação!).
-Este campo armazena o valor (frequentemente em formato de ponto flutuante, como 48000.0) da taxa de amostragem na qual os dados de áudio devem ser alimentados ao modelo.
-Entretando, naturalmente na ausência deste campo, a comunidade sempre assumirá 48khz.
-Então é essencial levar isto em consideração na hora de fazer o resampling inicial. Assegurar qual o sample correto e fazer o resampling para ele.
-Pesquise a especificação para verificar como fazer isto de forma correta.
-Atualize os testes automatizados.
-
-## Fazer beta teste
-## Pushar no GitHub da versão limpa.
+Como acompanhar a evolução dos projetos originais?
+Auditoria da especificação dos arquivos https://neural-amp-modeler.readthedocs.io/en/latest/_sources/model-file.rst.txt
+## Pushar no GitHub
+## Fazer beta teste; Sucessivas revisoes de revisor-auditor e de pesquisador-inovador.
 ## Sincronizar as novas melhorias com o AudioRip
