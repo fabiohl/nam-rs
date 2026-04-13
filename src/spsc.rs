@@ -35,10 +35,13 @@ pub struct RtStatusFlags {
     /// Valor `0` indica ausência de atualização pendente.
     pub active_rate: AtomicU32,
 
-    /// Rate alvo que a thread DSP detectou mas não conseguiu aplicar (aguardando rebuild).
+    /// Rate alvo que a thread DSP detectou do pw mas não conseguiu aplicar (aguardando rebuild).
     /// A thread principal lê este valor para saber qual rate construir.
     /// Valor `0` indica nenhuma requisição pendente.
-    pub requested_rate: AtomicU32,
+    pub requested_pw_rate: AtomicU32,
+
+    /// Rate alvo do modelo carregado (NAM). O padrão usual é 48000.
+    pub requested_nam_rate: AtomicU32,
 
     /// Flag indicando que a thread DSP precisa de um novo `NamResampler`.
     /// Setada pelo callback quando detecta mudança de rate via `AtomicU32`.
@@ -66,7 +69,8 @@ impl RtStatusFlags {
     pub fn new() -> Self {
         Self {
             active_rate: AtomicU32::new(0),
-            requested_rate: AtomicU32::new(0),
+            requested_pw_rate: AtomicU32::new(0),
+            requested_nam_rate: AtomicU32::new(48_000),
             needs_resampler_rebuild: AtomicBool::new(false),
             resampler_rebuild_failed: AtomicBool::new(false),
             rt_is_fifo: AtomicBool::new(false),
@@ -99,6 +103,8 @@ pub enum ParamPayload {
         input_db_adj: f32,
         /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
         output_db_adj: f32,
+        /// Sample rate exigido pelo modelo (geralmente 48000).
+        sample_rate: u32,
     },
 }
 
@@ -203,6 +209,7 @@ mod tests {
                     model: None,
                     input_db_adj: 0.0,
                     output_db_adj: 0.0,
+                    sample_rate: 48000,
                 },
                 ParamPayload::OutputGain(3.5),
             ];
@@ -234,7 +241,8 @@ mod tests {
     fn test_rt_status_flags_default() {
         let flags = RtStatusFlags::new();
         assert_eq!(flags.active_rate.load(Ordering::Relaxed), 0);
-        assert_eq!(flags.requested_rate.load(Ordering::Relaxed), 0);
+        assert_eq!(flags.requested_pw_rate.load(Ordering::Relaxed), 0);
+        assert_eq!(flags.requested_nam_rate.load(Ordering::Relaxed), 48_000);
         assert!(!flags.needs_resampler_rebuild.load(Ordering::Relaxed));
         assert!(!flags.resampler_rebuild_failed.load(Ordering::Relaxed));
     }

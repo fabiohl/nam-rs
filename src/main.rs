@@ -183,6 +183,7 @@ fn load_and_send_model(
 
             let input_db_adj = 12.0 - in_level;
             let output_db_adj = -18.0 - loudness;
+            let nam_rate = model_data.sample_rate.unwrap_or(48000.0) as u32;
 
             // Dispatcher: converte NamModelData → Box<DynamicModel> (thread CLI)
             let boxed_model = match loader::dispatcher::build_model(&model_data) {
@@ -228,6 +229,7 @@ fn load_and_send_model(
                     model: boxed_model,
                     input_db_adj,
                     output_db_adj,
+                    sample_rate: nam_rate,
                 })
                 .is_ok()
             {

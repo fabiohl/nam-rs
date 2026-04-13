@@ -105,7 +105,7 @@ pub fn run_pipewire_host(
         // NamResampler bidirecional: converte entre o rate do PipeWire e os 48 kHz do NAM.
         // Inicializado com 48k (bypass) — rate real será atualizado via canal SPSC de resamplers
         // quando a thread principal construir e enviar um novo resampler.
-        let mut resampler = NamResampler::new(48_000, 2048).unwrap_or_else(|e| {
+        let mut resampler = NamResampler::new(48_000, 48_000, 2048).unwrap_or_else(|e| {
             NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
                 .message("Falha ao criar NamResampler inicial (usando bypass 48k).")
                 .hint("O engine contínua em modo bypass. O resampler será recriado ao receber o rate real do PipeWire.")
@@ -113,8 +113,11 @@ pub fn run_pipewire_host(
                 .param("detail", &e)
                 .emit_warning();
             // Fallback: bypass 48k nunca falha (rate == NAM_RATE)
-            NamResampler::new(48_000, 2048).expect("bypass 48k não pode falhar")
+            NamResampler::new(48_000, 48_000, 2048).expect("bypass não pode falhar")
         });
+
+        // Trackeia a taxa de amostragem alvo do amplificador virtual no loop RT
+        let mut current_nam_rate: u32 = 48_000;
 
         // Buffer intermediário 48k para saída do process_input e entrada do process_output (stack).
         // Dimensionado para MAX_DSP_BUF — o resampler pode expandir/contrair dentro deste limite.
@@ -213,14 +216,17 @@ pub fn run_pipewire_host(
                             model,
                             input_db_adj,
                             output_db_adj,
+                            sample_rate,
                         } => {
                             let mut new_model = model;
                             if let Some(ref mut _m) = new_model {
                                 model_input_db_adj = input_db_adj;
                                 model_output_db_adj = output_db_adj;
+                                current_nam_rate = sample_rate;
                             } else {
                                 model_input_db_adj = 0.0;
                                 model_output_db_adj = 0.0;
+                                current_nam_rate = 48_000;
                             }
 
                             if let Some(old) = std::mem::replace(&mut active_model, new_model) {
@@ -239,14 +245,29 @@ pub fn run_pipewire_host(
                     }
                 }
 
-                // Verifica se a Thread Main do PipeWire reportou alguma alteração via param_changed.
-                // Em vez de alocar NamResampler::new() aqui, setamos uma flag atômica para que
-                // a thread principal construa o resampler fora do callback RT.
-                let detected_rate = rate_for_process.swap(0, Ordering::Relaxed);
-                if detected_rate != 0 && detected_rate != resampler.pw_rate() {
+                // Verifica se o PW ou a topologia solicitou mudança na taxa de amostragem.
+                let detected_pw_rate = rate_for_process.swap(0, Ordering::Relaxed);
+                let current_pw_rate = resampler.pw_rate();
+
+                let mut pw_rate_to_request = current_pw_rate;
+                let mut requires_rebuild = false;
+
+                if detected_pw_rate != 0 && detected_pw_rate != current_pw_rate {
+                    pw_rate_to_request = detected_pw_rate;
+                    requires_rebuild = true;
+                }
+
+                if current_nam_rate != resampler.nam_rate() {
+                    requires_rebuild = true;
+                }
+
+                if requires_rebuild && pw_rate_to_request != 0 {
                     rt_status_for_process
-                        .requested_rate
-                        .store(detected_rate, Ordering::Relaxed);
+                        .requested_pw_rate
+                        .store(pw_rate_to_request, Ordering::Relaxed);
+                    rt_status_for_process
+                        .requested_nam_rate
+                        .store(current_nam_rate, Ordering::Relaxed);
                     rt_status_for_process
                         .needs_resampler_rebuild
                         .store(true, Ordering::Relaxed);
@@ -355,17 +376,19 @@ pub fn run_pipewire_host(
     while !SHUTDOWN.load(Ordering::Relaxed) {
         // Verifica se o callback RT solicitou rebuild do resampler via flag atômica
         if rt_status.needs_resampler_rebuild.load(Ordering::Relaxed) {
-            let target_rate = rt_status.requested_rate.load(Ordering::Relaxed);
-            if target_rate != 0 {
+            let target_pw_rate = rt_status.requested_pw_rate.load(Ordering::Relaxed);
+            let target_nam_rate = rt_status.requested_nam_rate.load(Ordering::Relaxed);
+            if target_pw_rate != 0 && target_nam_rate != 0 {
                 // Constrói novo resampler FORA do callback RT (alocação de heap permitida aqui)
-                match NamResampler::new(target_rate, 2048) {
+                match NamResampler::new(target_pw_rate, target_nam_rate, 2048) {
                     Ok(new_rs) => {
                         rt_status
                             .resampler_rebuild_failed
                             .store(false, Ordering::Relaxed);
                         println!(
-                            "[NAM-rs] 🔄 Sample rate atualizado: {} Hz (bypass={})",
-                            target_rate,
+                            "[NAM-rs] 🔄 Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
+                            target_pw_rate,
+                            target_nam_rate,
                             new_rs.is_bypass()
                         );
                         // Envia para o callback RT via canal SPSC dedicado
@@ -376,21 +399,23 @@ pub fn run_pipewire_host(
                                     "O motor de áudio está sobrecarregado. \
                                      Se o problema persistir, reinicie o NAM-rs.",
                                 )
-                                .param("target_rate", target_rate)
+                                .param("target_pw_rate", target_pw_rate)
+                                .param("target_nam_rate", target_nam_rate)
                                 .emit_warning();
                         }
                     }
                     Err(e) => {
                         NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
                             .message(format!(
-                                "Falha ao reconstruir o resampler para {} Hz.",
-                                target_rate
+                                "Falha ao reconstruir o resampler para PW={} Hz e NAM={} Hz.",
+                                target_pw_rate, target_nam_rate
                             ))
                             .hint(
                                 "O áudio continuará com o resampler anterior. \
                                  Se a taxa de amostragem estiver errada, reinicie o NAM-rs.",
                             )
-                            .param("target_rate", target_rate)
+                            .param("target_pw_rate", target_pw_rate)
+                            .param("target_nam_rate", target_nam_rate)
                             .param("detail", &e)
                             .emit();
                         rt_status

@@ -41,9 +41,6 @@ use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 
-/// Taxa de amostragem alvo do motor NAM (modelos treinados a 48 kHz).
-const NAM_RATE: u32 = 48_000;
-
 /// Parâmetros do filtro Sinc Kaiser para o resampler de entrada/saída.
 ///
 /// `sinc_len = 256` → comprimento do filtro Sinc (maior = melhor rejeição de aliasing).
@@ -82,25 +79,28 @@ pub struct NamResampler {
 
     /// Rate do PipeWire (rate da placa de som).
     pw_rate: u32,
+    /// Rate alvo exigido pelo modelo carregado (geralmente 48000).
+    nam_rate: u32,
 }
 
 impl NamResampler {
     /// Cria o par de resamplers (input+output) pré-alocando todos os buffers internos.
     ///
-    /// Se `pw_rate == 48000`, ambos os resamplers ficam em bypass (`None`) — sem overhead.
+    /// Se `pw_rate == nam_rate`, ambos os resamplers ficam em bypass (`None`) — sem overhead.
     ///
     /// # Parâmetros
     /// - `pw_rate`: Taxa de amostragem do PipeWire (e.g., 44100, 48000, 96000).
+    /// - `nam_rate`: Taxa de amostragem do modelo carregado (e.g., 48000).
     /// - `chunk_size`: Tamanho máximo esperado do bloco DSP (frames por callback PipeWire).
     ///
     /// # Erros
     /// Falha se o rubato não conseguir criar o resampler com os parâmetros fornecidos.
-    pub fn new(pw_rate: u32, chunk_size: usize) -> Result<Self> {
-        if pw_rate == 0 {
-            bail!("NamResampler: pw_rate não pode ser zero");
+    pub fn new(pw_rate: u32, nam_rate: u32, chunk_size: usize) -> Result<Self> {
+        if pw_rate == 0 || nam_rate == 0 {
+            bail!("NamResampler: as taxas de amostragem não podem ser nulas");
         }
 
-        if pw_rate == NAM_RATE {
+        if pw_rate == nam_rate {
             // Bypass total: sem overhead de resampling
             return Ok(Self {
                 inner: None,
@@ -110,13 +110,14 @@ impl NamResampler {
                 outer_in_buf: Vec::new(),
                 outer_out_buf: Vec::new(),
                 pw_rate,
+                nam_rate,
             });
         }
 
-        let ratio_in = NAM_RATE as f64 / pw_rate as f64;
-        let ratio_out = pw_rate as f64 / NAM_RATE as f64;
+        let ratio_in = nam_rate as f64 / pw_rate as f64;
+        let ratio_out = pw_rate as f64 / nam_rate as f64;
 
-        // Resampler de entrada: pw_rate → 48k
+        // Resampler de entrada: pw_rate → nam_rate
         // SincFixedIn processa chunks de tamanho fixo na entrada.
         let inner = SincFixedIn::<f32>::new(
             ratio_in,
@@ -146,10 +147,11 @@ impl NamResampler {
             outer_in_buf,
             outer_out_buf,
             pw_rate,
+            nam_rate,
         })
     }
 
-    /// Retorna `true` quando `pw_rate == 48000` (ambos resamplers em bypass).
+    /// Retorna `true` quando `pw_rate == nam_rate` (ambos resamplers em bypass).
     #[inline]
     pub fn is_bypass(&self) -> bool {
         self.inner.is_none()
@@ -159,6 +161,12 @@ impl NamResampler {
     #[inline]
     pub fn pw_rate(&self) -> u32 {
         self.pw_rate
+    }
+
+    /// Retorna a taxa de amostragem alvo do Modelo NAM configurada nesta instância.
+    #[inline]
+    pub fn nam_rate(&self) -> u32 {
+        self.nam_rate
     }
 
     /// **Resampling de entrada** (input path): `pw_rate → 48 kHz`.
@@ -246,7 +254,7 @@ mod tests {
     /// Verifica que 48 kHz gera bypass automático e amostras passam intactas.
     #[test]
     fn test_bypass_48k() {
-        let mut rs = NamResampler::new(48_000, 256).expect("new falhou");
+        let mut rs = NamResampler::new(48_000, 48_000, 256).expect("new falhou");
         assert!(rs.is_bypass(), "48k deve ser bypass");
 
         let input = [1.0f32, 2.0, 3.0, 4.0, 5.0];
@@ -264,7 +272,7 @@ mod tests {
     #[test]
     fn test_downsample_96k_to_48k() {
         let chunk = 512usize;
-        let mut rs = NamResampler::new(96_000, chunk).expect("new falhou");
+        let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
         assert!(!rs.is_bypass());
 
         let input = vec![0.5f32; chunk];
@@ -285,7 +293,7 @@ mod tests {
     #[test]
     fn test_upsample_44k_to_48k() {
         let chunk = 441usize;
-        let mut rs = NamResampler::new(44_100, chunk).expect("new falhou");
+        let mut rs = NamResampler::new(44_100, 48_000, chunk).expect("new falhou");
         assert!(!rs.is_bypass());
 
         let input = vec![0.3f32; chunk];
@@ -306,7 +314,7 @@ mod tests {
     #[test]
     fn test_output_upsample_48k_to_96k() {
         let chunk = 256usize;
-        let mut rs = NamResampler::new(96_000, chunk).expect("new falhou");
+        let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
         // process_output recebe amostras 48k e deve produzir amostras 96k
         // chunk_size do inner_out_buf é inner.output_frames_max() ≈ chunk/2
@@ -329,7 +337,7 @@ mod tests {
     #[test]
     fn test_roundtrip_96k() {
         let chunk = 512usize;
-        let mut rs = NamResampler::new(96_000, chunk).expect("new falhou");
+        let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
         // Sinal de teste: onda senoidal simples (verificável por energia)
         let input: Vec<f32> = (0..chunk)
@@ -362,7 +370,7 @@ mod tests {
     #[test]
     fn test_impulse_response_input() {
         let chunk = 512usize;
-        let mut rs = NamResampler::new(96_000, chunk).expect("new falhou");
+        let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
         // Impulso unitário no início do bloco
         let mut input = vec![0.0f32; chunk];
@@ -390,7 +398,7 @@ mod tests {
     #[test]
     fn test_impulse_response_output() {
         let chunk = 256usize;
-        let mut rs = NamResampler::new(96_000, chunk).expect("new falhou");
+        let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
         // Usa tamanho interno do outer_in_buf (≈ inner_out_size)
         let inner_out_approx = chunk / 2;

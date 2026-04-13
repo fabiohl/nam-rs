@@ -725,6 +725,7 @@ fn test_end_to_end_spsc_pipeline() {
             model: Some(boxed),
             input_db_adj: 0.0,
             output_db_adj: 0.0,
+            sample_rate: 48000,
         })
         .expect("Falha ao enviar modelo via SPSC no E2E");
 
@@ -738,6 +739,7 @@ fn test_end_to_end_spsc_pipeline() {
             model,
             input_db_adj: _,
             output_db_adj: _,
+            sample_rate: _,
         } => model,
         _ => panic!("Payload recebido não é LoadModel no E2E"),
     };
@@ -1344,6 +1346,7 @@ fn test_rapid_hot_swap_spsc() {
                 model: Some(boxed),
                 input_db_adj: 0.0,
                 output_db_adj: 0.0,
+                sample_rate: 48000,
             })
             .unwrap_or_else(|_| panic!("SPSC push falhou para {label} — buffer cheio"));
     }
@@ -1363,6 +1366,7 @@ fn test_rapid_hot_swap_spsc() {
                 model,
                 input_db_adj: _,
                 output_db_adj: _,
+                sample_rate: _,
             } => model,
             _ => panic!("Payload #{idx} não é LoadModel"),
         };
