@@ -1,11 +1,3 @@
-## Dúvida a esclarecer: Sample Rate (48 Khz) e Resolution (x bits) (Prioridade: v1.1 se envolver maiores refatorações)
-### Todo NAM é obrigatoriamente 48 Khz? Ou pode variar?
-src/pw_host.rs:25,105-117,307-320
-src/dsp/resampler.rs:33-34,79,141,153-155,194-196
-### Porque o sample original e não o mais alto suportado pela placa de áudio ou DAW? Ou simplesmente deixa como tá?
-src/pw_host.rs:27
-src/dsp/resampler.rs:9-11,19-20
-
-## Sincronizar as novas melhorias com o AudioRip.
-
-## Pushar no GitHub: https://gemini.google.com/app/76160013f0fab6c4
+## Fazer beta teste
+## Pushar no GitHub
+## Sincronizar as novas melhorias com o AudioRip

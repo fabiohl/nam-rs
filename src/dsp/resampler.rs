@@ -10,6 +10,17 @@
 //! - **`outer`** (output path): `48 kHz → PW_rate` — aplicado após a inferência, antes de
 //!   devolver o áudio ao PipeWire (placa de som recebe no mesmo rate que enviou).
 //!
+//! O motor de inferência do NAM opera em uma taxa de amostragem fixa (historicamente
+//! e por padrão em 48 kHz). Caso o modelo .nam carregado não possua a chave
+//! `sample_rate` em seus metadados, a especificação exige o uso de 48 kHz.
+//!
+//! Como o PipeWire (servidor de áudio) possui o relógio mestre e determina a taxa
+//! de amostragem da sessão (ex: 44.1 kHz, 96 kHz), é estritamente necessário
+//! realizar uma dupla conversão de estágio (inner/outer) para evitar alteração
+//! de afinação (pitch shift) e quebra do tamanho dos buffers (dropouts):
+//! 1. Input: Converte o áudio da taxa do PipeWire para a taxa exigida pelo modelo NAM.
+//! 2. Output: Reconverte a saída do modelo de volta para a taxa nativa do PipeWire.
+//!
 //! ## Garantias de Tempo-Real
 //!
 //! Toda alocação (`Vec`, buffers internos do rubato) ocorre em `NamResampler::new()`, **fora**
