@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-// Portado da implementação original do NeuralAudio por Mike Oliphant e RTNeural por Jatin Chowdhury.
+// Portado da implementação original do NeuralAudio por Mike Oliphant.
 
 //! Malha de Células Recorrentes Otimizada (LSTM) para inferência NAM.
 //!

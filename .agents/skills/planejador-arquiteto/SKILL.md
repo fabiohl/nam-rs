@@ -39,19 +39,7 @@ Use esta skill focando em **Planejamento técnico sob metodologias ágeis**. Que
   - **Thread GC**: drain do canal GC, `drop()` de modelos obsoletos.
 - Para fast-math, especifique exatamente quais polinômios Minimax substituem `f32::tanh()`, `f32::exp()` etc., com justificativa numérica de erro máximo tolerado.
 
-### 4. Projetos de Referência
-
-Muito do trabalho envolverá analisar a implementação em C++ dos projetos abaixo e portar para Rust.
-
-| Repositório GitHub                                     | Pasta local                                                     |
-| ------------------------------------------------------ | --------------------------------------------------------------- |
-| <https://github.com/mikeoliphant/NeuralAudio>          | `github.com/mikeoliphant/NeuralAudio`                           |
-| <https://github.com/p-ranav/argparse>                  | `github.com/mikeoliphant/NeuralAudio/Utils/deps/argparse`       |
-| <https://github.com/Chowdhury-DSP/math_approx>         | `github.com/mikeoliphant/NeuralAudio/deps/math_approx`          |
-| <https://github.com/mikeoliphant/NeuralAmpModelerCore> | `github.com/mikeoliphant/NeuralAudio/deps/NeuralAmpModelerCore` |
-| <https://github.com/mikeoliphant/RTNeural>             | `github.com/mikeoliphant/NeuralAudio/deps/RTNeural`             |
-
-### 5. Atividades Finais
+### 4. Atividades Finais
 
 - Ao concluir o planejamento, valide a consistência com `utils/lints.sh` (rule `.agents/rules/linting.md`) antes de fechar a sessão.
 - Acione a skill `documentador` para sincronizar `as documentações com o estado atual do código.

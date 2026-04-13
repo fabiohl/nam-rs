@@ -100,11 +100,11 @@ Contribuições são bem-vindas! O projeto está em fase ativa de desenvolviment
 
 ## 🙏 Créditos e Agradecimentos
 
-Este projeto herda lógica, inspiração e ciência de trabalhos notáveis na comunidade de áudio e inteligência artificial que pavimentaram este caminho. Nossos profundos agradecimentos a:
+Este projeto herda lógica, inspiração e ciência de trabalhos notáveis na comunidade de áudio e inteligência artificial que pavimentaram este caminho.
+Impossível mapear todos os que contribuíram para o avanço desta tecnologia. Mas no escopo dos nosso projeto, impossível não mencionar:
 
 * **Steven Atkinson** — Pelo desenvolvimento pioneiro do [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler), sua pesquisa original sobre modelagem de amplificadores com deep learning e por compartilhar o ecossistema abertamente.
 * **Mike Oliphant** — Pela excepcional biblioteca [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio), que serviu de base direta e fonte de pesquisa para a transposição das lógicas de inferência e FastMath vetorial (SIMD) portadas para este motor estrutural.
-* **Jatin Chowdhury** — Pesquisador e criador do [RTNeural](https://github.com/jatinchowdhury18/RTNeural), cujo motor open-source de M.L. em tempo real influenciou massivamente os padrões de processamento de áudio com baixa latência na indústria livre.
 
 ## ⚖️ Licença e Transparência (Vibe Coding)
 

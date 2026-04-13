@@ -45,7 +45,7 @@ O NAM-rs possui um sistema de diagnósticos em `src/diagnostics.rs`. **Todo erro
 
 1. **Sempre importe**: `use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};`
 2. **Use o builder fluente**:
-   
+
    ```rust
    NamDiagnostic::new(NamErrorCode::FileNotFound, &sys)
        .message("Arquivo de modelo não encontrado: \"modelo.nam\"")
@@ -53,6 +53,7 @@ O NAM-rs possui um sistema de diagnósticos em `src/diagnostics.rs`. **Todo erro
        .param("file", &path_str)
        .emit();  // ou .emit_warning() para não-fatais
    ```
+
 3. **Mensagens logging (não-erros):** continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`. O sistema de diagnósticos é exclusivo para **erros e avisos**.
 4. **Novos cenários de erro**: Se o código introduz um novo ponto de falha que o usuário pode encontrar, verifique se existe um `NamErrorCode` adequado no catálogo. Se não existir, proponha uma nova variante seguindo a convenção de faixas (E1xxx modelo, E2xxx áudio, E3xxx SPSC, E4xxx CLI, E5xxx sistema).
 5. **Thread RT**: O sistema de diagnósticos **nunca** é usado dentro do callback `process()`. Falhas no RT continuam sendo reportadas via flags atômicas (`RtStatusFlags`).
@@ -72,15 +73,3 @@ Consulte o enum `NamErrorCode` em `src/diagnostics.rs` para a lista completa de 
 
 - Use `std::simd` com `const generics` SoA para dot-products LSTM/WaveNet. AVX2 é obrigatório (baseline x86-64-v3); AVX-512 é opcional via multiversioning (`#[target_feature(enable = "avx512f")]`) quando oferecer boas oportunidades de otimização de performance.
 - O código deve passar sem warnings em `utils/lints.sh` (inclui `cargo fmt`, `cargo clippy`, e validação de copyright).
-
-### 7. Projetos de Referência
-
-Muito do trabalho envolverá analisar a implementação em C++ dos projetos abaixo e portar para Rust, fazendo as devidas adaptações.
-
-| Repositório GitHub                                     | Pasta local                                                     |
-| ------------------------------------------------------ | --------------------------------------------------------------- |
-| <https://github.com/mikeoliphant/NeuralAudio>          | `github.com/mikeoliphant/NeuralAudio`                           |
-| <https://github.com/p-ranav/argparse>                  | `github.com/mikeoliphant/NeuralAudio/Utils/deps/argparse`       |
-| <https://github.com/Chowdhury-DSP/math_approx>         | `github.com/mikeoliphant/NeuralAudio/deps/math_approx`          |
-| <https://github.com/mikeoliphant/NeuralAmpModelerCore> | `github.com/mikeoliphant/NeuralAudio/deps/NeuralAmpModelerCore` |
-| <https://github.com/mikeoliphant/RTNeural>             | `github.com/mikeoliphant/NeuralAudio/deps/RTNeural`             |

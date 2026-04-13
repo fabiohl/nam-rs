@@ -243,10 +243,7 @@ tests/fixtures/
 
 ## 7. Referências
 
-Este motor consolida técnicas e arquiteturas detalhadas na literatura acadêmica e em projetos fundamentais de código aberto:
+Os seguintes repositórios GitHub são a principal base de referência para a implementação do NAM-rs:
 
-- **Neural Amp Modeler (NAM)**: Atkinson, S. _"Real-Time Guitar Amplifier Emulation with Deep Learning."_ Base conceitual e arquitetural dos modelos treinados (.nam).
-- **WaveNet**: van den Oord, A., et al. (2016). _"WaveNet: A Generative Model for Raw Audio."_ DeepMind. Topologia CNN causal dilatada.
-- **LSTM**: Hochreiter, S., & Schmidhuber, J. (1997). _"Long Short-Term Memory."_ Neural Computation. Arquitetura de rede neural recorrente.
-- **NeuralAudio**: Oliphant, M. [Repositório GitHub](https://github.com/mikeoliphant/NeuralAudio). Referência algorítmica para inferência em DSP distribuída com o ecossistema NAM (FastMath, alocação estática SoA).
-- **RTNeural**: Chowdhury, J. _"RTNeural: Fast Neural Inferencing for Real-Time Systems."_ Referências de otimização estrita em arquiteturas limitadas de áudio.
+- [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore)
+- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio)
