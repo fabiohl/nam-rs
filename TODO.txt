@@ -1,5 +1,9 @@
-## Estudar https://www.neuralampmodeler.com/blog
 ## Beta 1: Pacote de testes de uso como cliente final (Beta.txt).
 ## Beta 2: Sucessivas revisoes de revisor-auditor e de pesquisador-inovador.
 ## RC 1: Sincronizar as novas melhorias com o AudioRip
 ## Curto prazo: Auditoria do estado de paridade com a implementação padrão https://github.com/sdatkinson/NeuralAmpModelerCore
+   https://neuralampmodelercore.readthedocs.io/en/latest/ é a documentação oficial
+   https://neuralampmodelercore.readthedocs.io/en/latest/wavenet_walkthrough.html fornece uma explicação mais detalhada do que é WaveNet
+   Ignorar a arquitetura A2 ainda em desenvolvimento, porém mapear pontos atenção e oportunidades simples e seguras de ir se preparando.
+   Considerar que ele vem usando-o como laboratório de testes.
+   Que tal uma comparação de features, como suporte a SIMD?
