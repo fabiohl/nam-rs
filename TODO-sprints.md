@@ -170,7 +170,7 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 **Custo / Risco:** Zero custo adicional. A cobertura de golden vectors + auto-consistência + determinismo valida a equivalência bit-exact.
 
-- [ ] **13.1** Em `src/models/wavenet.rs` → `Conv1d::process_frame()` (L53–56):
+- [x] **13.1** Em `src/models/wavenet.rs` → `Conv1d::process_frame()` (L53–56):
   
   - Substituir os 2 slicings bounds-checked por `get_unchecked`:
 
@@ -194,7 +194,7 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
     };
     ```
 
-- [ ] **13.2** Em `src/models/wavenet.rs` → `WaveNetLayer::process()` residual (L158–162):
+- [x] **13.2** Em `src/models/wavenet.rs` → `WaveNetLayer::process()` residual (L158–162):
   
   - Substituir o loop indexado por `get_unchecked`:
 
@@ -208,7 +208,7 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
     }
     ```
 
-- [ ] **13.3** Em `src/models/wavenet_dyn.rs` → `Conv1dDyn::process_frame()` (L55–60):
+- [x] **13.3** Em `src/models/wavenet_dyn.rs` → `Conv1dDyn::process_frame()` (L55–60):
   
   - Mesma transformação para variante dinâmica:
 
@@ -221,11 +221,11 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
     };
     ```
 
-- [ ] **13.4** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerDyn::process()` residual (L172–175):
+- [x] **13.4** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerDyn::process()` residual (L172–175):
   
   - Mesma transformação para loop residual dinâmico.
 
-- [ ] **13.5** Validação:
+- [x] **13.5** Validação:
   
   - `cargo test` — todos os testes devem passar sem regressão
   - Golden vectors inalterados (MSE tresholds atuais: WaveNet < 5e-2, LSTM < 1e-3)
@@ -233,6 +233,14 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
   - `cargo bench --bench inference_bench` — anotar comparativo antes/depois
 
 - **Critério de aceitação:** Bounds checks eliminados em `process_frame()` e residual de ambas as variantes (estática e dinâmica). Golden vectors e auto-consistência inalterados. Benchmark mostra redução mensurável (ou neutro) em latência/bloco.
+
+> **✅ Concluído:** 2026-04-15. `get_unchecked` aplicado em 4 pontos cirúrgicos do hot-path:
+> `Conv1d::process_frame()` (2 slicings: `in_slice` + `weight_slice`) e `WaveNetLayer::process()` residual em `wavenet.rs`;
+> `Conv1dDyn::process_frame()` (2 slicings) e `WaveNetLayerDyn::process()` residual em `wavenet_dyn.rs`.
+> Provas SAFETY documentadas inline em cada `unsafe` block, rastreando as invariantes de
+> `WaveNetLayerState::new()` → `advance_frames()` → `rewind_buffer()`. **97 testes, 0 falhas**
+> (76 unitários + 18 integração + 2 proptest + 1 PipeWire). `lints.sh` limpo (fmt + clippy -D warnings).
+> Golden vectors (WaveNet MSE < 5e-2, LSTM MSE < 1e-3) e auto-consistência estático↔dinâmico inalterados.
 
 ---
 

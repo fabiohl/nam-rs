@@ -50,10 +50,20 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 let frame_idx = (buffer_start as isize) + offset;
 
                 let in_slice_start = (frame_idx as usize) * IN;
-                let in_slice = &layer_buffer[in_slice_start..in_slice_start + IN];
+                // SAFETY: `in_slice_start + IN ≤ layer_buffer.len()` — invariante de
+                // `WaveNetLayerState::new()` (buffer_frames * CH) e `advance_frames()`
+                // que mantém `buffer_start` dentro de `[0, buffer_frames)`. `frame_idx`
+                // é ≥ 0 porque `buffer_start ≥ receptive_field_size ≥ (K-1)*max_dilation`.
+                let in_slice =
+                    unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
                 let weight_slice_start = (out_c * K + k) * IN;
-                let weight_slice = &self.weights[weight_slice_start..weight_slice_start + IN];
+                // SAFETY: `weight_slice_start + IN ≤ OUT*K*IN` por construção imutável
+                // de `self.weights` alocado com tamanho exato `OUT*K*IN` pelo loader.
+                let weight_slice = unsafe {
+                    self.weights
+                        .get_unchecked(weight_slice_start..weight_slice_start + IN)
+                };
 
                 unsafe {
                     sum += (math.dot_product)(in_slice, weight_slice);
@@ -156,9 +166,14 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
         }
 
         // output += layer_buffer[buffer_start] (Residual connection)
+        // SAFETY: `lb_start + CH ≤ layer_buffer.len()` é invariante do construtor
+        // `WaveNetLayerState::new()` (buffer_frames * CH) e de `advance_frames()`
+        // que mantém `buffer_start` dentro de `[0, buffer_frames)`.
         let lb_start = buffer_start * CH;
-        for j in 0..CH {
-            output[j] += layer_buffer[lb_start + j];
+        unsafe {
+            for j in 0..CH {
+                *output.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
+            }
         }
     }
 }
