@@ -29,9 +29,9 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T2 · C1 — Implementar Gated Activations no Path Dinâmico
 
-- [ ] **2.1** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerDyn` (≈L130):
+- [x] **2.1** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerDyn` (≈L130):
   - Adicionar campo `pub gated: bool`
-- [ ] **2.2** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerDyn::process()` (≈L144):
+- [x] **2.2** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerDyn::process()` (≈L144):
   - Se `self.gated == false`: comportamento atual inalterado (`tanh_slice(block)`)
   - Se `self.gated == true`:
     - `block` tem tamanho `2*ch` (preenchido pelo conv1d com `out_ch = 2*ch`)
@@ -39,22 +39,24 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
     - Aplicar `sigmoid_slice(&mut block[ch..2*ch])`
     - Multiplicação element-wise: `block[j] = block[j] * block[ch + j]` para `j in 0..ch`
     - Prosseguir com `head_input[j] += block[j]` e `one_by_one.process(&block[0..ch], ...)` normalmente
-- [ ] **2.3** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerArrayDyn` (≈L180):
+- [x] **2.3** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerArrayDyn` (≈L180):
   - `block_buffer` deve ter tamanho `max(ch, 2*ch se gated)`, determinado no construtor
-- [ ] **2.4** Em `src/loader/dispatcher.rs` → `build_wavenet_array_dyn()`:
+- [x] **2.4** Em `src/loader/dispatcher.rs` → `build_wavenet_array_dyn()`:
   - Aceitar parâmetro adicional `gated: bool`
   - Quando `gated == true`: passar `out_size = 2 * ch` para `read_conv1d_weights_dyn` (em vez de `ch`)
   - Propagar `gated` para cada `WaveNetLayerDyn { ..., gated }`
   - `block_buffer` alocado com `if gated { 2 * ch } else { ch }`
-- [ ] **2.5** Em `src/loader/dispatcher.rs` → `build_wavenet_dynamic()` (≈L274):
+- [x] **2.5** Em `src/loader/dispatcher.rs` → `build_wavenet_dynamic()` (≈L274):
   - Ler `l0.gated.unwrap_or(false)` e `l1.gated.unwrap_or(false)`
   - Passar o valor para `build_wavenet_array_dyn`
-- [ ] **2.6** Verificar que `get_wavenet_topology()` em `nam_json.rs` já retorna `None` quando `gated == true` (já confirmado, L148)
-- [ ] **2.7** Testes:
+- [x] **2.6** Verificar que `get_wavenet_topology()` em `nam_json.rs` já retorna `None` quando `gated == true` (já confirmado, L148)
+- [x] **2.7** Testes:
   - Adicionar teste unitário `test_gated_layer_dyn_process`: construir `WaveNetLayerDyn` com `gated=true`, `conv1d.out_ch=2*ch`, pesos sintéticos, e verificar que a saída é `tanh(x) ⊙ sigmoid(x)` numericamente
   - Adicionar teste no dispatcher: `test_build_wavenet_dynamic_gated` com `NamModelData` sintético com `gated: true` e contagem de pesos ajustada para `2*ch` no conv1d
 
 - **Critério de aceitação:** Modelos `gated: true` produzem `tanh(conv) ⊙ sigmoid(conv)` no path dinâmico. Path estático rejeita silenciosamente via `get_wavenet_topology() → None → fallback dinâmico`.
+
+> **✅ Concluído:** 2026-04-15. Campo `gated: bool` em `WaveNetLayerDyn`; campo `block_size: usize` em `WaveNetLayerArrayDyn`; `build_wavenet_array_dyn` recebe `gated: bool`, dobra `conv_out_ch` e `block_buffer`; `build_wavenet_dynamic` lê `l0/l1.gated` do JSON. 5 novos testes (3 em `wavenet_dyn.rs`, 2 em `dispatcher.rs`). 97 testes, 0 falhas. `lints.sh` limpo. A fidelidade numérica foi validada analiticamente: `head_input = tanh(x) ⊙ sigmoid(x)` com eps < 1e-5.
 
 ---
 

@@ -333,6 +333,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
         head1,
         dils_0,
         b1,
+        l0.gated.unwrap_or(false),
         &mut alloc_num,
     )?;
 
@@ -345,6 +346,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
         1, // HEAD2 sempre 1 para mono out
         dils_1,
         b2,
+        l1.gated.unwrap_or(false),
         &mut alloc_num,
     )?;
 
@@ -715,15 +717,19 @@ fn build_wavenet_array_dyn(
     head: usize,
     dilations: &[usize],
     has_head_bias: bool,
+    gated: bool,
     alloc_num: &mut usize,
 ) -> anyhow::Result<WaveNetLayerArrayDyn> {
+    // out_ch do conv1d: dobrado quando gated para produzir slots tanh + sigmoid.
+    let conv_out_ch = if gated { 2 * ch } else { ch };
+
     let rechannel = read_dense_layer_dyn(cursor, in_size, ch, false)?;
 
     let mut layers = Vec::with_capacity(dilations.len());
     let mut states = Vec::with_capacity(dilations.len());
 
     for &dilation in dilations {
-        let conv1d = read_conv1d_weights_dyn(cursor, ch, ch, k, dilation, true)?;
+        let conv1d = read_conv1d_weights_dyn(cursor, ch, conv_out_ch, k, dilation, true)?;
         let input_mixin = read_dense_layer_dyn(cursor, cond_size, ch, false)?;
         let one_by_one = read_dense_layer_dyn(cursor, ch, ch, true)?;
 
@@ -732,6 +738,7 @@ fn build_wavenet_array_dyn(
             input_mixin,
             one_by_one,
             ch,
+            gated,
         });
 
         let rf = (k - 1) * dilation;
@@ -743,6 +750,9 @@ fn build_wavenet_array_dyn(
 
     let receptive_field_size: usize = dilations.iter().map(|&d| (k - 1) * d).sum();
 
+    // block_size: 2*ch quando gated (slots tanh + sigmoid), ch caso contrário.
+    let block_size = if gated { 2 * ch } else { ch };
+
     Ok(WaveNetLayerArrayDyn {
         layers,
         states,
@@ -751,7 +761,8 @@ fn build_wavenet_array_dyn(
         array_outputs: vec![0.0; ch],
         head_accum: vec![0.0; ch],
         head_outputs: vec![0.0; head],
-        block_buffer: vec![0.0; ch],
+        block_buffer: vec![0.0; block_size],
+        block_size,
         receptive_field_size,
         ch,
         head,
@@ -1146,6 +1157,107 @@ mod tests {
         assert!(
             result.is_ok(),
             "activation=None (default Tanh) deveria ser aceito, mas falhou: {:?}",
+            result.err()
+        );
+    }
+
+    // =========================================================================
+    // T2 · C1 — Testes de Gated Activations no Path Dinâmico
+    // =========================================================================
+
+    /// Constrói um `NamModelData` WaveNet dinâmico com `gated` configurável por array.
+    ///
+    /// Layout de pesos para CH=4, HEAD=2, K=3, dils=[1,2] (2 layers por array):
+    ///
+    /// **Array1** (IN=1, COND=1, CH=4, gated=true, HEAD=2, no head_bias):
+    /// - rechannel: 1×4 = 4
+    /// - layer×2: conv1d(4→8, K=3) = 8×3×4 + 8 = 104; input_mixin(1×4) = 4; o2o(4×4 + 4) = 20 → 128×2 = 256
+    /// - head_rechannel: 4×2 = 8
+    /// - subtotal: 268
+    ///
+    /// **Array2** (IN=4, COND=1, CH=2, gated=false, HEAD=1, with head_bias):
+    /// - rechannel: 4×2 = 8
+    /// - layer×2: conv1d(2→2, K=3) = 2×3×2 + 2 = 14; input_mixin(1×2) = 2; o2o(2×2 + 2) = 6 → 22×2 = 44
+    /// - head_rechannel: 2×1 + 1 = 3
+    /// - subtotal: 55
+    ///
+    /// head_scale: 1
+    /// **Total: 268 + 55 + 1 = 324**
+    fn make_wavenet_gated_data(gated_0: bool, gated_1: bool, total_weights: usize) -> NamModelData {
+        let dils = vec![1usize, 2];
+        NamModelData {
+            version: Some("0.5.4".to_string()),
+            architecture: "WaveNet".to_string(),
+            config: NamConfig {
+                layers: vec![
+                    NamLayerConfig {
+                        input_size: Some(1),
+                        condition_size: Some(1),
+                        head_size: Some(2),
+                        channels: Some(4),
+                        kernel_size: Some(3),
+                        dilations: Some(dils.clone()),
+                        activation: Some("Tanh".to_string()),
+                        gated: Some(gated_0),
+                        head_bias: Some(false),
+                    },
+                    NamLayerConfig {
+                        input_size: Some(1),
+                        condition_size: Some(1),
+                        head_size: Some(2),
+                        channels: Some(4),
+                        kernel_size: Some(3),
+                        dilations: Some(dils),
+                        activation: Some("Tanh".to_string()),
+                        gated: Some(gated_1),
+                        head_bias: Some(true),
+                    },
+                ],
+                head: None,
+                head_scale: Some(0.02),
+                num_layers: None,
+                hidden_size: None,
+            },
+            weights: vec![0.01; total_weights],
+            sample_rate: Some(48000.0),
+            metadata: None,
+        }
+    }
+
+    /// Verifica que o dispatcher constrói corretamente um WaveNet dinâmico com `gated=true` no array1.
+    ///
+    /// Topologia: CH=4, K=3, HEAD=2, dils=[1,2] (channels≠Standard/Lite/Feather/Nano → path dinâmico).
+    ///
+    /// **Contagem de pesos (array1 gated=true, array2 gated=false):**
+    /// - Array1: rechannel(4) + 2×[conv(8×3×4+8=104) + mixin(4) + o2o(20)] + head(8) = 4 + 256 + 8 = 268
+    /// - Array2: rechannel(8) + 2×[conv(2×3×2+2=14) + mixin(2) + o2o(6)] + head(3) = 8 + 44 + 3 = 55
+    /// - head_scale: 1 → **Total: 324**
+    #[test]
+    fn test_build_wavenet_dynamic_gated() {
+        // gated=true no array1, gated=false no array2 → fallback dinâmico (CH=4 não é Standard)
+        let data = make_wavenet_gated_data(true, false, 324);
+        let result = build_wavenet_dynamic(&data);
+        assert!(
+            result.is_ok(),
+            "WaveNet dinâmico gated=true deveria construir com sucesso: {:?}",
+            result.err()
+        );
+    }
+
+    /// Verifica que gated=false no array1 e array2 (path dinâmico) produz exatamente
+    /// o mesmo número de pesos que a contagem não-gated.
+    ///
+    /// **Contagem de pesos (ambos gated=false):**
+    /// - Array1: rechannel(4) + 2×[conv(4×3×4+4=52) + mixin(4) + o2o(20)] + head(8) = 4 + 152 + 8 = 164
+    /// - Array2: rechannel(8) + 2×[conv(2×3×2+2=14) + mixin(2) + o2o(6)] + head(3) = 8 + 44 + 3 = 55
+    /// - head_scale: 1 → **Total: 220**
+    #[test]
+    fn test_build_wavenet_dynamic_non_gated() {
+        let data = make_wavenet_gated_data(false, false, 220);
+        let result = build_wavenet_dynamic(&data);
+        assert!(
+            result.is_ok(),
+            "WaveNet dinâmico gated=false deveria construir com sucesso: {:?}",
             result.err()
         );
     }
