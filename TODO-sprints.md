@@ -136,27 +136,20 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T5 · C3 — Recalibrar Threshold do Golden Vector WaveNet
 
-- [ ] **5.1** Executar `cargo test test_golden_vectors_wavenet -- --nocapture` e anotar o MSE real impresso em `[Golden WaveNet] MSE=...`
-- [ ] **5.2** Definir novo threshold:
-  - Se MSE real ≤ 1e-3 → threshold = `5e-3` (5× headroom)
-  - Se MSE real ≤ 5e-3 → threshold = `2e-2` (4× headroom)
-  - Se MSE real ≤ 2e-2 → manter `5e-2` e documentar justificativa
-- [ ] **5.3** Em `tests/nam_infer_test.rs` → `test_golden_vectors_wavenet()` (L586):
-  - Atualizar o `assert!(mse < NOVO_THRESHOLD, ...)` conforme medição (L628)
-  - Atualizar o docstring (L576–L581) para refletir o threshold real e sua justificativa:
-
-    ```rust
-    /// **Threshold calibrado:** MSE < Xe-Y
-    /// - MSE medido em [data]: Ze-W
-    /// - Headroom: N× para variação FastMath entre plataformas
-    /// - O `simd_tanh` (Padé grau 5 + rsqrt_ps) difere do C++ que usa
-    ///   rational polynomial (`Activation.h`), acumulando ~5e-3 por camada
-    ///   em 20 camadas empilhadas.
-    ```
-
-  - **Nota:** O docstring atual afirma `MSE < 1e-4` mas o assert real usa `5e-2` — essa inconsistência será corrigida nesta tarefa.
+- [x] **5.1** Executar `cargo test test_golden_vectors_wavenet -- --nocapture` e anotar o MSE real impresso em `[Golden WaveNet] MSE=...`
+- [x] **5.2** Definir novo threshold:
+  - MSE real medido = **3.21e-2** (> 2e-2) → decisão: **manter `5e-2`** e documentar justificativa
+- [x] **5.3** Em `tests/nam_infer_test.rs` → `test_golden_vectors_wavenet()`:
+  - Assert `mse < 5e-2` mantido (já era o valor correto)
+  - Docstring (L588–L607) corrigido: eliminada a afirmação incorreta `MSE < 1e-4`, substituída por documentação precisa:
+    - MSE medido: 3.21e-2 (2026-04-15)
+    - Headroom: ~1.56× sobre a medição real
+    - Justificativa técnica: `simd_tanh` (Padé grau 5 + rsqrt_ps) acumula ~3e-3 a ~5e-3/camada × 20 camadas → ~3.2e-2 MSE sublinear
+    - Threshold `5e-2` detecta erros estruturais mas acomoda divergência FastMath cross-implementation
 
 - **Critério de aceitação:** Threshold documentado e calibrado contra medição real. Docstring consistente com o assert.
+
+> **✅ Concluído:** 2026-04-15. MSE real medido: **3.21e-2** (BossWN-standard.nam, 512 amostras, prewarm 2048). Decisão: manter threshold `5e-2` (headroom ~1.56×). Inconsistência histórica no docstring (`MSE < 1e-4` vs assert `5e-2`) corrigida com justificativa técnica completa sobre acumulação do erro FastMath Padé em 20 camadas empilhadas. `lints.sh` limpo (fmt + clippy -D warnings).
 
 ---
 
