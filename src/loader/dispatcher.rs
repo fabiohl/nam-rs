@@ -98,6 +98,32 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
 }
 
 // =============================================================================
+// WaveNet — Validação de Activation
+// =============================================================================
+
+/// Valida o campo `activation` em todas as layers de um modelo WaveNet.
+///
+/// Percorre `data.config.layers` e rejeita com erro descritivo qualquer valor
+/// que não seja `"Tanh"` (único tipo de ativação suportado). `None` é aceito
+/// e tratado como `"Tanh"` por compatibilidade com modelos legados.
+///
+/// # Errors
+/// Retorna `Err` se alguma layer declarar `activation != "Tanh"`.
+fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<()> {
+    for (idx, layer) in data.config.layers.iter().enumerate() {
+        let act = layer.activation.as_deref().unwrap_or("Tanh");
+        if act != "Tanh" {
+            bail!(
+                "Ativação '{}' na layer {} não é suportada. Apenas 'Tanh' é implementado.",
+                act,
+                idx
+            );
+        }
+    }
+    Ok(())
+}
+
+// =============================================================================
 // WaveNet — Construção por Topologia
 // =============================================================================
 
@@ -134,6 +160,9 @@ fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: usize>(
     data: &NamModelData,
     topo: NamWavenetTopology,
 ) -> anyhow::Result<Box<DynamicModel>> {
+    // Valida ativações antes de qualquer leitura de pesos
+    validate_layer_activations(data)?;
+
     let mut cursor = WeightCursor::new(&data.weights);
 
     // Extrair dilatações de cada array a partir da configuração JSON
@@ -272,11 +301,14 @@ fn build_wavenet_array<
 ///
 /// Visível publicamente para testes de paridade numérica dinâmico ↔ estático.
 pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
-    let mut cursor = WeightCursor::new(&data.weights);
-
     if data.config.layers.len() != 2 {
         bail!("WaveNet dinâmico exige 2 arrays");
     }
+
+    // Valida ativações antes de qualquer leitura de pesos
+    validate_layer_activations(data)?;
+
+    let mut cursor = WeightCursor::new(&data.weights);
 
     let l0 = &data.config.layers[0];
     let l1 = &data.config.layers[1];
@@ -1012,6 +1044,109 @@ mod tests {
         assert!(
             result.is_err(),
             "Deveria falhar com 1 peso extra (overflow do cursor)"
+        );
+    }
+
+    // =========================================================================
+    // T1 · C2 — Validação do campo `activation`
+    // =========================================================================
+
+    /// Helper: gera `NamModelData` com `activation` customizado em ambas as layers.
+    fn make_wavenet_data_with_activation(
+        activation_0: Option<&str>,
+        activation_1: Option<&str>,
+    ) -> NamModelData {
+        let std_d = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+        NamModelData {
+            version: Some("0.5.4".to_string()),
+            architecture: "WaveNet".to_string(),
+            config: NamConfig {
+                layers: vec![
+                    NamLayerConfig {
+                        input_size: Some(1),
+                        condition_size: Some(1),
+                        head_size: Some(8),
+                        channels: Some(16),
+                        kernel_size: Some(3),
+                        dilations: Some(std_d.clone()),
+                        activation: activation_0.map(str::to_string),
+                        gated: Some(false),
+                        head_bias: Some(false),
+                    },
+                    NamLayerConfig {
+                        input_size: Some(1),
+                        condition_size: Some(1),
+                        head_size: Some(8),
+                        channels: Some(16),
+                        kernel_size: Some(3),
+                        dilations: Some(std_d),
+                        activation: activation_1.map(str::to_string),
+                        gated: Some(false),
+                        head_bias: Some(true),
+                    },
+                ],
+                head: None,
+                head_scale: Some(0.02),
+                num_layers: None,
+                hidden_size: None,
+            },
+            weights: vec![0.01; 13802],
+            sample_rate: Some(48000.0),
+            metadata: None,
+        }
+    }
+
+    /// Modelos com `activation: "ReLU"` devem ser rejeitados com mensagem descritiva.
+    #[test]
+    fn test_reject_unsupported_activation() {
+        // ReLU na layer 0 — deve falhar
+        let data = make_wavenet_data_with_activation(Some("ReLU"), Some("Tanh"));
+        let result = build_model(&data);
+        assert!(
+            result.is_err(),
+            "Deveria rejeitar activation='ReLU', mas retornou Ok"
+        );
+        let msg = format!("{:?}", result.err().unwrap());
+        assert!(
+            msg.contains("ReLU"),
+            "Mensagem de erro deveria conter 'ReLU', obteve: {msg}"
+        );
+
+        // ReLU na layer 1 — deve falhar igualmente
+        let data = make_wavenet_data_with_activation(Some("Tanh"), Some("ReLU"));
+        let result = build_model(&data);
+        assert!(
+            result.is_err(),
+            "Deveria rejeitar activation='ReLU' na layer 1, mas retornou Ok"
+        );
+        let msg = format!("{:?}", result.err().unwrap());
+        assert!(
+            msg.contains("ReLU"),
+            "Mensagem de erro da layer 1 deveria conter 'ReLU', obteve: {msg}"
+        );
+    }
+
+    /// Modelos com `activation: "Tanh"` devem ser aceitos sem erro.
+    #[test]
+    fn test_accept_tanh_activation() {
+        let data = make_wavenet_data_with_activation(Some("Tanh"), Some("Tanh"));
+        let result = build_model(&data);
+        assert!(
+            result.is_ok(),
+            "activation='Tanh' deveria ser aceito, mas falhou: {:?}",
+            result.err()
+        );
+    }
+
+    /// Modelos sem campo `activation` (None) devem ser aceitos (default = Tanh).
+    #[test]
+    fn test_accept_missing_activation() {
+        let data = make_wavenet_data_with_activation(None, None);
+        let result = build_model(&data);
+        assert!(
+            result.is_ok(),
+            "activation=None (default Tanh) deveria ser aceito, mas falhou: {:?}",
+            result.err()
         );
     }
 }

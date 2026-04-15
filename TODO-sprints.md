@@ -9,19 +9,21 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T1 · C2 — Validar campo `activation` no Dispatcher
 
-- [ ] **1.1** Em `src/loader/dispatcher.rs` → `build_wavenet_typed()` ou `build_wavenet()` (≈L105):
+- [x] **1.1** Em `src/loader/dispatcher.rs` → `build_wavenet_typed()` ou `build_wavenet()` (≈L105):
   - Antes de despachar para o construtor, iterar `data.config.layers` e ler `layer.activation.as_deref().unwrap_or("Tanh")`
   - Aceitar `"Tanh"` (pass-through, sem alteração funcional)
   - Rejeitar qualquer outro valor com `bail!("Ativação '{}' na layer {} não é suportada. Apenas 'Tanh' é implementado.", act, idx)`
-- [ ] **1.2** Em `src/loader/dispatcher.rs` → `build_wavenet_dynamic()` (≈L274):
+- [x] **1.2** Em `src/loader/dispatcher.rs` → `build_wavenet_dynamic()` (≈L274):
   - Mesmo check de validação antes de chamar `build_wavenet_array_dyn`
-- [ ] **1.3** Em `src/loader/dispatcher.rs` → `mod tests`:
-  - Adicionar `test_reject_unsupported_activation`: construir `NamModelData` com `activation: Some("ReLU".into())` e verificar que `build_model()` retorna `Err` com mensagem contendo `"ReLU"`
-  - Adicionar `test_accept_tanh_activation`: construir com `activation: Some("Tanh".into())` e verificar `Ok`
-  - Adicionar `test_accept_missing_activation`: construir com `activation: None` e verificar `Ok` (default = Tanh)
-- [ ] **1.4** `cargo test` — todos os testes existentes devem continuar passando (nenhum modelo existente usa ativação != Tanh)
+- [x] **1.3** Em `src/loader/dispatcher.rs` → `mod tests`:
+  - Adicionado `test_reject_unsupported_activation`: `NamModelData` com `activation: Some("ReLU".into())` retorna `Err` com mensagem contendo `"ReLU"` (testa layer 0 e layer 1)
+  - Adicionado `test_accept_tanh_activation`: `activation: Some("Tanh".into())` retorna `Ok`
+  - Adicionado `test_accept_missing_activation`: `activation: None` retorna `Ok` (default = Tanh)
+- [x] **1.4** `cargo test` — 71 testes, 0 falhas (sem regressões)
 
 - **Critério de aceitação:** Modelos com `activation != "Tanh"` falham com mensagem descritiva. Modelos existentes (Tanh ou null) sem regressão.
+
+> **✅ Concluído:** 2026-04-15. Helper `validate_layer_activations()` adicionado como função privada reutilizável, invocada antes da leitura de pesos em `build_wavenet_typed()` e `build_wavenet_dynamic()`. `lints.sh` passou limpo.
 
 ---
 
