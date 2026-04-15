@@ -62,17 +62,20 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T3 · A2 — Substituir `println!` por `log::info!`
 
-- [ ] **3.1** `cargo add log` (sem features extras; facade mínima)
+- [x] **3.1** `cargo add log` (sem features extras; facade mínima)
   - Verificar que não arrasta dependências transitivas desnecessárias
-- [ ] **3.2** Em `src/loader/dispatcher.rs`:
-  - Adicionar `use log;` no topo (ou chamada direta `log::info!`)
-  - Substituir as 5 ocorrências de `println!` (L186, L333, L399, L437, L505) por `log::info!`
-- [ ] **3.3** Em `src/main.rs` (opcional, não bloqueia a tarefa):
-  - Considerar instalar `env_logger` para que logs sejam visíveis no CLI standalone
-  - Se instalar: `cargo add env_logger` e `env_logger::init()` no início do `main()`
-- [ ] **3.4** Verificar que `cargo test 2>&1 | grep "\[Dispatcher\]"` retorna vazio (nenhum output em stdout dos testes)
+- [x] **3.2** Em `src/loader/dispatcher.rs`:
+  - Adicionado `use log::info;` no topo
+  - Substituídas as 5 ocorrências de `println!` (WaveNet estático, WaveNet dinâmico, LSTM 1×, LSTM 2×, LSTM dinâmico) por `log::info!`
+- [x] **3.3** Em `src/main.rs`:
+  - `cargo add env_logger` instalado
+  - `env_logger::init()` adicionado no início de `main()`
+  - Mensagens de prewarm e payload também migradas para `log::info!`
+- [x] **3.4** `cargo test 2>&1 | grep "\[Dispatcher\]"` retorna vazio — confirmado
 
 - **Critério de aceitação:** Biblioteca não emite nada em stdout. Logs acessíveis via `RUST_LOG=info` quando subscriber instalado.
+
+> **✅ Concluído:** 2026-04-15. `log = 0.4` e `env_logger = 0.11` adicionados via `cargo add`. 5 `println!` do dispatcher substituídos por `log::info!`; 2 `println!` de lifecycle no `main.rs` também migrados. `env_logger::init()` instalado no topo de `main()`. `cargo test` — todos os testes passam, `[Dispatcher]` ausente em stdout. `lints.sh` limpo.
 
 ---
 

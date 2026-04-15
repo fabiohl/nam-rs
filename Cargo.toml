@@ -21,6 +21,8 @@ lexopt = "0.3.2"
 # pré-alocados, compatível com zero-alloc na thread DSP (process_into_buffer é RT-safe).
 # fft_resampler desabilitado: remove dependência RustFFT (não usamos resampler síncrono FFT).
 rubato = { version = "0.16", default-features = false }
+log = "0.4.29"
+env_logger = "0.11.10"
 
 [profile.release]
 strip = true      # Remove symbols (smaller binary)

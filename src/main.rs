@@ -60,7 +60,7 @@ fn parse_args() -> Result<(Option<PathBuf>, f32, f32), lexopt::Error> {
 /// 5. Envia o payload completo (`LoadModel` + ajustes de ganho) pela fila SPSC.
 ///
 /// Todos os erros emitem diagnósticos estruturados via [`NamDiagnostic`].
-/// Mensagens informativas de sucesso usam `println!`.
+/// Mensagens informativas de sucesso são emitidas via `log::info!` (visíveis com `RUST_LOG=info`).
 fn load_and_send_model(
     path: &std::path::Path,
     producer: &mut rtrb::Producer<ParamPayload>,
@@ -198,7 +198,7 @@ fn load_and_send_model(
                 Ok(mut model) => {
                     // Prewarm na thread CLI — estabiliza estados internos antes do DSP
                     model.0.prewarm(2048);
-                    println!("[CLI] Modelo prewarmado com 2048 amostras.");
+                    log::info!("[CLI] Modelo prewarmado com 2048 amostras.");
                     Some(model)
                 }
                 Err(e) => {
@@ -241,9 +241,11 @@ fn load_and_send_model(
                 })
                 .is_ok()
             {
-                println!(
+                log::info!(
                     "[CLI] Payload enviado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
-                    path_str, input_db_adj, output_db_adj
+                    path_str,
+                    input_db_adj,
+                    output_db_adj
                 );
             } else {
                 NamDiagnostic::new(NamErrorCode::ParamChannelFull, sys)
@@ -379,6 +381,9 @@ fn cli_loop(mut producer: rtrb::Producer<ParamPayload>, sys: SystemSnapshot) {
 /// 7. Carga do modelo inicial (se especificado via `-m`).
 /// 8. Spawn da thread CLI ([`cli_loop`]) e execução do host PipeWire ([`pw_host::run_pipewire_host`]).
 fn main() -> anyhow::Result<()> {
+    // Inicializa o backend de logging (respeita RUST_LOG; padrão: warn)
+    env_logger::init();
+
     let (model_path, initial_in_gain, initial_out_gain) = parse_args()?;
 
     // Captura snapshot do sistema uma vez — propagado para todas as funções de diagnóstico

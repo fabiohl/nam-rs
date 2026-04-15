@@ -11,6 +11,7 @@
 //! com verificação de exaustão ao final para detectar modelos inconsistentes.
 
 use anyhow::{Context, bail};
+use log::info;
 
 use crate::loader::nam_json::{
     NamModelData, NamWavenetTopology, get_lstm_topology, get_wavenet_topology,
@@ -212,7 +213,7 @@ fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: usize>(
         receptive_field_size: rf,
     };
 
-    println!(
+    info!(
         "[Dispatcher] WaveNet {:?} construído — CH={}, K={}, HEAD={}, head_scale={:.6}, pesos={}",
         topo,
         CH,
@@ -364,7 +365,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
         head: head1,
     };
 
-    println!(
+    info!(
         "[Dispatcher] WaveNet Dinâmico construído — CH={}, K={}, HEAD={}, PESOS={}",
         ch1,
         k1,
@@ -430,7 +431,7 @@ fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: usize>(
         head_bias,
     };
 
-    println!(
+    info!(
         "[Dispatcher] LSTM 1×{} construído — pesos={}",
         hidden_size,
         data.weights.len()
@@ -468,7 +469,7 @@ fn build_lstm_2layer<const H: usize, const H1_IH: usize, const H2_IH: usize, con
         head_bias,
     };
 
-    println!(
+    info!(
         "[Dispatcher] LSTM {}×{} construído — pesos={}",
         num_layers,
         hidden_size,
@@ -536,7 +537,7 @@ pub fn build_lstm_dynamic(
         head_bias,
     };
 
-    println!(
+    info!(
         "[Dispatcher] LSTM Dinâmico {}×{} construído — pesos={}",
         num_layers,
         hidden_size,
