@@ -358,7 +358,7 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ## Sprint 3 — Médio Prazo
 
-### T8 · M3 — Adicionar Fixture BossWN-lite.nam e Teste de Integração
+### T8 · M3 — Adicionar Fixture BossWN-lite.nam e Teste de Integração [CANCELADO]
 
 OBS: O arquivo BossWN-lite.nam não foi localizado. Não vamos fazer esta tarefa!
 
@@ -382,21 +382,30 @@ OBS: O arquivo BossWN-lite.nam não foi localizado. Não vamos fazer esta tarefa
 
 ### T9 · M4 — Documentar FastMath vs Threshold nos Testes
 
-- [ ] **9.1** Em `tests/nam_infer_test.rs`:
+- [x] **9.1** Em `tests/nam_infer_test.rs`:
   
-  - Expandir docstring de `test_golden_vectors_wavenet` (L570–L584) com seção explícita sobre calibração do threshold vs erro de `simd_tanh`
-  - Incluir referência ao erro máximo documentado em `docs/architecture.md` §2 ("Erro máximo ~5e-3")
-  - Explicitar a fórmula de acumulação esperada: `erro_máx ≈ √N_camadas × erro_por_camada`
+  - Expandido docstring de `test_golden_vectors_wavenet` com seção explícita `## Calibração do Threshold vs Erro FastMath (simd_tanh)`
+  - Referência explícita a `docs/architecture.md §2` e ao docstring de `simd_tanh`
+  - Fórmula de acumulação sublinear documentada: `erro_máx_acumulado ≈ √N_camadas × erro_por_camada`
+  - Cálculo numérico para BossWN-standard (20 camadas): `√20 × 5e-3 ≈ 2.2e-2`
+  - Explicação do headroom `5e-2` (~1.56×) e sua relação com a conversão MSE↔MaxAbs
 
-- [ ] **9.2** Em `src/math/fastmath.rs` ou docstring de `simd_tanh`:
+- [x] **9.2** Em `src/math/fastmath.rs` → docstring de `simd_tanh`:
   
-  - Documentar: "Erro máximo vs `f32::tanh()`: ~5e-3 (Padé grau 5 + Newton-Raphson rsqrt). Em modelos WaveNet com 20 camadas empilhadas, o erro acumula sublinearmente."
+  - Adicionada seção `# Erro Máximo vs f32::tanh()` documentando ~5e-3 por ativação
+  - Adicionada seção `# Acumulação em Modelos WaveNet Empilhados` com fórmula √N×ε
+  - Referência cruzada a `docs/architecture.md §2` e `test_golden_vectors_wavenet`
+  - Contexto perceptual: resolução 16-bit equivale a erro ~3e-5 no domínio normalizado
 
 - **Critério de aceitação:** Justificativa do threshold golden documentada junto ao assert. Erro do FastMath documentado na função fonte.
 
----
+> **✅ Concluído:** 2026-04-15. Seção `## Calibração do Threshold vs Erro FastMath` adicionada ao docstring de `test_golden_vectors_wavenet` com fórmula de acumulação sublinear `√N × ε`, cálculo numérico para 20 camadas (≈2.2e-2) e referência a `docs/architecture.md §2`. Docstring de `simd_tanh` expandido com seções `# Erro Máximo` e `# Acumulação` âncorando o raciocínio diretamente na função fonte. `lints.sh` limpo (fmt + clippy -D warnings, zero warnings).
 
-### T10 · Campos Privados + Construtores Validados (Futuro)
+
+
+### T10 · Campos Privados + Construtores Validados [CANCELADO]
+
+OBS: Não é o momento para isto. Fica para o futuro
 
 - [ ] **10.1** Tornar campos de `WaveNetLayerArray` privados (`pub(crate)` ou privados com getters)
 

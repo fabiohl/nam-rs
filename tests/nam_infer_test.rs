@@ -710,6 +710,30 @@ fn test_auto_consistency_lstm() {
 /// - O threshold original de 30 dB era irrealista: a divergência cross-implementação
 ///   c/ FastMath acumulado em profundidade reduz o SNR para ~10 dB inevitavelmente.
 ///
+/// ## Calibração do Threshold vs Erro FastMath (`simd_tanh`)
+///
+/// O `simd_tanh` introduz um erro máximo de **~5e-3 por ativação** em relação a
+/// `f32::tanh()` — ver `docs/architecture.md §2` e docstring de `simd_tanh` para
+/// a derivação completa. O erro **não** acumula linearmente em profundidade:
+/// cada camada aplica uma ativação não-linear que reescala o resíduo. O modelo
+/// de acumulação sublinear aproximado é:
+///
+/// ```text
+/// erro_máx_acumulado ≈ √N_camadas × erro_por_camada
+/// ```
+///
+/// Para o BossWN-standard com 20 camadas (2 arrays × 10 layers):
+///
+/// ```text
+/// erro_máx ≈ √20 × 5e-3 ≈ 4.47 × 5e-3 ≈ 2.2e-2
+/// ```
+///
+/// O MSE medido (3.21e-2) excede a estimativa de pico por ~1.5× — consistente
+/// com a conversão MSE↔MaxAbs em sinais correlacionados. O threshold `5e-2`
+/// oferece headroom ~1.56× acima do valor real: suficiente para absorver
+/// variações de compilador/FP mas apertado o suficiente para capturar
+/// regressões estruturais (onde o MSE tipicamente salta para > 0.5).
+///
 /// ## Fusão Single-Pass
 /// MSE, MAE e SNR são calculados numa única iteração sobre o buffer (512 amostras
 /// em `f64`), substituindo as 2 passagens anteriores (`compute_mse` + `compute_max_abs_error`).
