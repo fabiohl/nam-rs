@@ -214,7 +214,19 @@ impl WaveNetLayerState {
     }
 
     /// Rebina a memória do Ring Buffer para evitar overflow circular conservando o hitspace L1.
+    ///
+    /// # Invariante
+    ///
+    /// `buffer_start >= receptive_field_size` (garantido por `advance_frames`).
+    /// Violar este invariante causaria underflow na subtração `buffer_start - receptive_field_size`,
+    /// resultando em acesso fora dos limites do buffer e comportamento indefinido.
     pub fn rewind_buffer(&mut self, channels: usize) {
+        debug_assert!(
+            self.buffer_start >= self.receptive_field_size,
+            "rewind_buffer: buffer_start ({}) < receptive_field_size ({})",
+            self.buffer_start,
+            self.receptive_field_size
+        );
         let start = self.receptive_field_size;
         let from = (self.buffer_start - self.receptive_field_size) * channels;
         let to = (start - self.receptive_field_size) * channels;

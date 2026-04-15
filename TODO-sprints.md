@@ -107,12 +107,14 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T7 · M2 — Guard em `rewind_buffer`
 
-- [ ] **7.1** Em `src/models/wavenet.rs` → `rewind_buffer()` (L217):
+- [x] **7.1** Em `src/models/wavenet.rs` → `rewind_buffer()` (L217):
   - Inserir antes da subtração: `debug_assert!(self.buffer_start >= self.receptive_field_size, "rewind_buffer: buffer_start ({}) < receptive_field_size ({})", self.buffer_start, self.receptive_field_size);`
-- [ ] **7.2** Documentar o invariante no docstring de `rewind_buffer`:
+- [x] **7.2** Documentar o invariante no docstring de `rewind_buffer`:
   - `/// # Invariante:`buffer_start >= receptive_field_size` (garantido por `advance_frames`).`
 
 - **Critério de aceitação:** Debug panic para estados mal construídos. Comportamento de release inalterado.
+
+> **✅ Concluído:** 2026-04-15. `debug_assert!` inserido no início de `rewind_buffer()`: panic em debug se `buffer_start < receptive_field_size`, capturando underflow antes da subtração. Docstring expandido com seção `# Invariante` que formaliza a garantia provida por `advance_frames` e descreve as consequências da violação. **97 testes, 0 falhas**. `lints.sh` limpo.
 
 ---
 
