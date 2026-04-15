@@ -27,27 +27,27 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 
 ## 4. Módulos Fonte Atuais
 
-| Módulo                      | Responsabilidade                                                                                                                                                                                                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.rs`               | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo, diagnósticos estruturados                                                                        |
-| `src/diagnostics.rs`        | Sistema de diagnósticos estruturados: `NamErrorCode` (catálogo E1xxx–E5xxx), `NamDiagnostic` (mensagem amigável + bloco de suporte copiável), `SystemSnapshot` (captura de ambiente). Zero dependências novas — opera exclusivamente fora da thread RT           |
-| `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging. Zero alocações e zero I/O no callback — resampler via SPSC, status via `RtStatusFlags`            |
-| `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel (tipado `Box<DynamicModel>`); fila GC secundária (`rtrb`); `RtStatusFlags` (atômicas RT→Main); canal SPSC dedicado `NamResampler` (Main→RT) |
-| `src/math/mod.rs`           | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                                                                                         |
-| `src/math/simd.rs`          | `dot_product_avx2` (YMM 256-bit), `dot_product_avx512` (ZMM 512-bit), `SimdMathConfig` (v-table de despacho dinâmico multiversioning), `set_daz_ftz` (DAZ+FTZ via intrínsecos `_mm_setcsr`/`_mm_getcsr` + inline asm para mitigação de denormals na thread RT)   |
-| `src/math/fastmath.rs`      | `simd_tanh`/`simd_sigmoid` AVX2 (YMM), `simd_tanh_avx512`/`simd_sigmoid_avx512` (ZMM), helpers `tanh_slice_avx2/512`, `sigmoid_slice_avx2/512`                                                                                                                   |
-| `src/models/mod.rs`         | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                                                                                                                                                     |
-| `src/models/wavenet.rs`     | WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                                                                                                                                                  |
-| `src/models/wavenet_dyn.rs` | Implementação de fallback dinâmico (no-unrolling) para convoluções causais dilatadas, suportando modelos comunitários de geometria arbitrária não tabelada.                                                                                                      |
-| `src/models/lstm.rs`        | LSTM recorrente — gates [i\|f\|g\|o], macro `define_lstm_process!` unificando AVX2 e AVX-512, 1 e 2 camadas com const generics, despacho runtime via `is_x86_feature_detected!`                                                                                  |
-| `src/models/lstm_dyn.rs`    | Implementação de fallback dinâmico para redes recorrentes LSTM submetidas em matrizes extensas heterogêneas operando iteradores sem _loop unrolling_ explícito.                                                                                                  |
-| `src/loader/mod.rs`         | Módulo raiz de carregamento de modelos NAM (fora da thread RT)                                                                                                                                                                                                   |
-| `src/loader/dispatcher.rs`  | Construtor responsável por inferir topologia a partir do `NamModelData` bruto, alocando `DynamicModel` via matrizes de const generics estáticas ou acionando fallback para modelos dinâmicos comunitários flexíveis.                                             |
-| `src/loader/nam_json.rs`    | Parser do formato `.nam` (JSON) — `serde_json`, classificação de topologia WaveNet/LSTM                                                                                                                                                                          |
-| `src/loader/namb.rs`        | Parser do formato `.namb` — CRC32 IEEE 802.3 + Little-Endian                                                                                                                                                                                                     |
-| `src/dsp/mod.rs`            | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                                                                                              |
-| `src/dsp/gain.rs`           | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                                                                                                                                                           |
-| `src/dsp/resampler.rs`      | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz                                                                                                                                                             |
+| Módulo                      | Responsabilidade                                                                                                                                                                                                                                                                                    |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.rs`               | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo, diagnósticos estruturados                                                                                                           |
+| `src/diagnostics.rs`        | Sistema de diagnósticos estruturados: `NamErrorCode` (catálogo E1xxx–E5xxx), `NamDiagnostic` (mensagem amigável + bloco de suporte copiável), `SystemSnapshot` (captura de ambiente). Zero dependências novas — opera exclusivamente fora da thread RT                                              |
+| `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging. Zero alocações e zero I/O no callback — resampler via SPSC, status via `RtStatusFlags`                                               |
+| `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel (tipado `Box<DynamicModel>`); fila GC secundária (`rtrb`); `RtStatusFlags` (atômicas RT→Main); canal SPSC dedicado `NamResampler` (Main→RT)                                    |
+| `src/math/mod.rs`           | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                                                                                                                            |
+| `src/math/simd.rs`          | `dot_product_avx2` (YMM 256-bit), `dot_product_avx512` (ZMM 512-bit), `SimdMathConfig` (v-table de despacho dinâmico multiversioning), `set_daz_ftz` (DAZ+FTZ via intrínsecos `_mm_setcsr`/`_mm_getcsr` + inline asm para mitigação de denormals na thread RT)                                      |
+| `src/math/fastmath.rs`      | `simd_tanh`/`simd_sigmoid` AVX2 (YMM), `simd_tanh_avx512`/`simd_sigmoid_avx512` (ZMM), helpers `tanh_slice_avx2/512`, `sigmoid_slice_avx2/512`                                                                                                                                                      |
+| `src/models/mod.rs`         | Trait `NamModel`, dispatch WaveNet/LSTM, DynamicModel, type aliases LSTM (Lstm1x8..Lstm2x16)                                                                                                                                                                                                        |
+| `src/models/wavenet.rs`     | WaveNet CNN causal dilatada — SoA com const generics, Conv1d + DenseLayer + prewarm copy_buffer                                                                                                                                                                                                     |
+| `src/models/wavenet_dyn.rs` | Implementação de fallback dinâmico (no-unrolling) para convoluções causais dilatadas, suportando modelos comunitários de geometria arbitrária não tabelada.                                                                                                                                         |
+| `src/models/lstm.rs`        | LSTM recorrente — gates [i\|f\|g\|o], macro `define_lstm_process!` unificando AVX2 e AVX-512, 1 e 2 camadas com const generics, despacho runtime via `is_x86_feature_detected!`                                                                                                                     |
+| `src/models/lstm_dyn.rs`    | Implementação de fallback dinâmico para redes recorrentes LSTM submetidas em matrizes extensas heterogêneas operando iteradores sem _loop unrolling_ explícito.                                                                                                                                     |
+| `src/loader/mod.rs`         | Módulo raiz de carregamento de modelos NAM (fora da thread RT)                                                                                                                                                                                                                                      |
+| `src/loader/dispatcher.rs`  | Construtor responsável por inferir topologia a partir do `NamModelData` bruto, alocando `DynamicModel` via matrizes de const generics estáticas ou acionando fallback para modelos dinâmicos comunitários flexíveis. Valida `activation` (rejeita não-Tanh) e propaga `gated` para o path dinâmico. |
+| `src/loader/nam_json.rs`    | Parser do formato `.nam` (JSON) — `serde_json`, classificação de topologia WaveNet/LSTM                                                                                                                                                                                                             |
+| `src/loader/namb.rs`        | Parser do formato `.namb` — CRC32 IEEE 802.3 + Little-Endian                                                                                                                                                                                                                                        |
+| `src/dsp/mod.rs`            | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                                                                                                                                 |
+| `src/dsp/gain.rs`           | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                                                                                                                                                                                              |
+| `src/dsp/resampler.rs`      | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz                                                                                                                                                                                                |
 
 ## 5. Gestão de Dependências DSP
 
@@ -104,23 +104,24 @@ PipeWire Input (Nk Hz)
 
 O projeto adota a convenção idiomática do Rust, com três camadas complementares:
 
-### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 68 testes
+### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 76 testes
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
-| Módulo                     | Testes | Cobertura                                                                                 |
-| -------------------------- |:------:| ----------------------------------------------------------------------------------------- |
-| `src/dsp/gain.rs`          | 7      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0   |
-| `src/dsp/resampler.rs`     | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response                            |
-| `src/diagnostics.rs`       | 8      | Catálogo de códigos, unicidade numérica, formatação suporte, timestamp ISO 8601, snapshot |
-| `src/loader/dispatcher.rs` | 11     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow            |
-| `src/loader/nam_json.rs`   | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado        |
-| `src/loader/namb.rs`       | 5      | Parse binário, CRC32, header, magic, version                                              |
-| `src/math/fastmath.rs`     | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                           |
-| `src/math/simd.rs`         | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                         |
-| `src/models/wavenet.rs`    | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                                   |
-| `src/models/lstm.rs`       | 5      | Alocação, process zeros, determinismo, gate order, 2-layer                                |
-| `src/spsc.rs`              | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                             |
+| Módulo                      | Testes | Cobertura                                                                                                            |
+| --------------------------- |:------:| -------------------------------------------------------------------------------------------------------------------- |
+| `src/dsp/gain.rs`           | 7      | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0                              |
+| `src/dsp/resampler.rs`      | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response                                                       |
+| `src/diagnostics.rs`        | 8      | Catálogo de códigos, unicidade numérica, formatação suporte, timestamp ISO 8601, snapshot                            |
+| `src/loader/dispatcher.rs`  | 16     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow, validação activation, gated dispatch |
+| `src/loader/nam_json.rs`    | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado                                   |
+| `src/loader/namb.rs`        | 5      | Parse binário, CRC32, header, magic, version                                                                         |
+| `src/math/fastmath.rs`      | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                                                      |
+| `src/math/simd.rs`          | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                                                    |
+| `src/models/wavenet.rs`     | 4      | Alocação, prewarm NaN-free, process zeros, determinismo                                                              |
+| `src/models/lstm.rs`        | 5      | Alocação, process zeros, determinismo, gate order, 2-layer                                                           |
+| `src/models/wavenet_dyn.rs` | 3      | Gated activation `tanh⊙sigmoid`, non-gated fallback, block_size 2×ch                                                 |
+| `src/spsc.rs`               | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                                                        |
 
 > **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
 >
@@ -197,7 +198,7 @@ O arquivo `benches/inference_bench.rs` mede a latência de processamento com o f
 | `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics     |
 | `LSTM_Dynamic_1x16_64samp_48kHz`        | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics     |
 
-> **Nota:** Durante `cargo bench`, os 60 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
+> **Nota:** Durante `cargo bench`, os 76 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
 
 Execução: `cargo bench --bench inference_bench`
 

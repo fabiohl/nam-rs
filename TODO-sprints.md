@@ -79,6 +79,12 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ---
 
+> **📋 Sprint 1 — Revisão Concluída:** 2026-04-15.
+> Auditoria independente confirmou todas as 3 tarefas (T1, T2, T3) implementadas e funcionais.
+> **97 testes** passando (76 unitários + 18 integração + 2 proptest + 1 PipeWire), 0 falhas.
+> Documentação sincronizada: `README.md` (97 verificações) e `docs/architecture.md` (76 unitários, tabela atualizada com `dispatcher.rs:16` e novo `wavenet_dyn.rs:3`).
+> Nenhum apontamento de melhoria identificado que necessite adição de tarefas extras.
+
 ## Sprint 2 — Curto Prazo
 
 ### T6 · M1 — Debug Asserts de Invariante em `process()`/`prewarm()`
