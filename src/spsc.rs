@@ -62,6 +62,11 @@ pub struct RtStatusFlags {
     /// Valor `-1` indica que a verificação ainda não foi realizada.
     /// Setado no cold-path do primeiro frame da thread DSP.
     pub rt_priority: AtomicI32,
+
+    /// Flag atômica indicando que houve saturação (clipping) no áudio de saída.
+    /// Setada pelo callback RT ao detectar samples fora do intervalo [-1.0, 1.0].
+    /// A thread principal exibe um alerta e a reseta.
+    pub has_clipped: AtomicBool,
 }
 
 impl RtStatusFlags {
@@ -75,6 +80,7 @@ impl RtStatusFlags {
             resampler_rebuild_failed: AtomicBool::new(false),
             rt_is_fifo: AtomicBool::new(false),
             rt_priority: AtomicI32::new(-1),
+            has_clipped: AtomicBool::new(false),
         }
     }
 }

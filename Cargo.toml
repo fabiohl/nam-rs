@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 [package]
 name = "nam-rs"
-version = "0.7.4" # Beta 1.4
+version = "0.8.0" # Beta 2.0
 edition = "2024"
 
 [dependencies]
@@ -23,6 +23,7 @@ lexopt = "0.3.2"
 rubato = { version = "0.16", default-features = false }
 log = "0.4.29"
 env_logger = "0.11.10"
+colored = "3.1.1"
 
 [profile.release]
 strip = true      # Remove symbols (smaller binary)

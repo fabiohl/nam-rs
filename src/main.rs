@@ -14,6 +14,7 @@
 //! - **ZERO LOCKS** na thread de Áudio (módulo `pw_host`): O áudio não "espera" pela interface visual. Se não houver instrução nova, ele continua usando a anterior. Evita "engasgos" no som.
 //! - **ZERO ALOCAÇÕES** na thread de Áudio: A memória do canal de áudio (`process()`) é sempre preparada 100% de antemão. O áudio nunca "pede por mais memória RAM" de supetão.
 
+use colored::Colorize;
 use lexopt::prelude::*;
 use nam_rs::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};
@@ -73,10 +74,10 @@ fn load_and_send_model(
     if !path.exists() {
         NamDiagnostic::new(NamErrorCode::FileNotFound, sys)
             .message(format!(
-                "Arquivo de modelo não encontrado: \"{}\"",
+                "Não foi possível encontrar o arquivo do modelo em \"{}\".",
                 path_str
             ))
-            .hint("Verifique se o caminho está correto e o arquivo existe.")
+            .hint("Verifique se o caminho digitado está correto e se o arquivo realmente existe.")
             .param("file", &path_str)
             .emit();
         return;
@@ -86,8 +87,8 @@ fn load_and_send_model(
     let result = if ext_lower == "namb" {
         std::fs::read(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Erro ao ler o arquivo \"{}\"", path_str))
-                .hint("Verifique as permissões do arquivo e se o disco está acessível.")
+                .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
+                .hint("Verifique se o aplicativo tem permissão de leitura nesta pasta ou se o arquivo não está bloqueado.")
                 .param("file", &path_str)
                 .param("io_error", &e)
                 .emit();
@@ -114,11 +115,11 @@ fn load_and_send_model(
 
                 NamDiagnostic::new(code, sys)
                     .message(format!(
-                        "O arquivo \"{}\" não é um modelo .namb válido.",
+                        "O arquivo \"{}\" não parece ser um modelo .namb válido.",
                         path_str
                     ))
                     .hint(
-                        "O arquivo pode estar corrompido. Tente baixá-lo novamente do site original.",
+                        "Ele pode estar corrompido ou incompleto. Sugerimos baixar o modelo novamente do site original.",
                     )
                     .param("file", &path_str)
                     .param("size", file_size)
@@ -129,8 +130,8 @@ fn load_and_send_model(
     } else if ext_lower == "nam" {
         std::fs::read_to_string(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Erro ao ler o arquivo \"{}\"", path_str))
-                .hint("Verifique as permissões do arquivo e se o disco está acessível.")
+                .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
+                .hint("Verifique as permissões de acesso ao arquivo ou problemas no disco rígido.")
                 .param("file", &path_str)
                 .param("io_error", &e)
                 .emit();
@@ -143,11 +144,11 @@ fn load_and_send_model(
 
                 NamDiagnostic::new(NamErrorCode::NamJsonParseError, sys)
                     .message(format!(
-                        "Falha ao interpretar o modelo \"{}\".",
+                        "Não foi possível entender o conteúdo do modelo \"{}\".",
                         path_str
                     ))
                     .hint(
-                        "O arquivo JSON pode estar incompleto ou malformado. Verifique se foi baixado corretamente.",
+                        "O arquivo JSON pode estar danificado ou incompleto. Recomendamos fazer um novo download da fonte original.",
                     )
                     .param("file", &path_str)
                     .param("size", file_size)
@@ -158,10 +159,10 @@ fn load_and_send_model(
     } else {
         NamDiagnostic::new(NamErrorCode::UnknownExtension, sys)
             .message(format!(
-                "Extensão de arquivo desconhecida: \".{}\"",
+                "Não suportamos arquivos do tipo \".{}\".",
                 ext_lower
             ))
-            .hint("O NAM-rs aceita arquivos .nam (JSON) ou .namb (binário).")
+            .hint("Por favor, selecione um arquivo de modelo válido do NAM (.nam ou .namb).")
             .param("file", &path_str)
             .param("extension", &ext_lower)
             .emit();
@@ -198,7 +199,10 @@ fn load_and_send_model(
                 Ok(mut model) => {
                     // Prewarm na thread CLI — estabiliza estados internos antes do DSP
                     model.0.prewarm(2048);
-                    log::info!("[CLI] Modelo prewarmado com 2048 amostras.");
+                    log::info!(
+                        "{} Modelo prewarmado com 2048 amostras.",
+                        "🔥 [CLI]".yellow()
+                    );
                     Some(model)
                 }
                 Err(e) => {
@@ -216,12 +220,11 @@ fn load_and_send_model(
 
                     NamDiagnostic::new(code, sys)
                         .message(format!(
-                            "Não foi possível construir o modelo a partir de \"{}\".",
+                            "Não foi possível construir o amplificador neural a partir de \"{}\".",
                             path_str
                         ))
                         .hint(
-                            "O modelo pode ser incompatível com esta versão do NAM-rs. \
-                             Verifique se a arquitetura (WaveNet/LSTM) e os pesos são compatíveis.",
+                            "Este modelo pode exigir recursos não suportados ou não ser compatível com a nossa versão do aplicativo.",
                         )
                         .param("file", &path_str)
                         .param("architecture", &model_data.architecture)
@@ -242,17 +245,17 @@ fn load_and_send_model(
                 .is_ok()
             {
                 log::info!(
-                    "[CLI] Payload enviado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
-                    path_str,
+                    "{} Payload enviado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
+                    "🚀 [CLI]".green(),
+                    path_str.bright_cyan(),
                     input_db_adj,
                     output_db_adj
                 );
             } else {
                 NamDiagnostic::new(NamErrorCode::ParamChannelFull, sys)
-                    .message("Canal de parâmetros cheio. O modelo não foi enviado ao DSP.")
+                    .message("O sistema de áudio está temporariamente ocupado.")
                     .hint(
-                        "Tente novamente em alguns instantes. \
-                         Se o problema persistir, o motor de áudio pode estar sobrecarregado.",
+                        "Aguarde um instante e tente carregar o modelo novamente. Caso persista, pode haver sobrecarga no processamento.",
                     )
                     .param("file", &path_str)
                     .emit();
@@ -285,20 +288,25 @@ fn main() -> anyhow::Result<()> {
     let sys = SystemSnapshot::capture();
 
     // Banner de startup
-    println!();
-    println!(
-        "  🎸 NAM-rs v{} — Neural Amp Modeler (Rust PipeWire native)",
-        sys.version
+    log::info!(
+        "🎸 {}",
+        format!(
+            "NAM-rs v{} — Neural Amp Modeler (Rust PipeWire native)",
+            sys.version
+        )
+        .bright_green()
+        .bold()
     );
-    println!(
-        "     arch={} | avx2={} fma={} | kernel={}",
-        sys.arch, sys.avx2, sys.fma, sys.kernel
+    log::info!(
+        "💻 arch={} | avx2={} fma={} | kernel={}",
+        sys.arch.cyan(),
+        if sys.avx2 { "✓".green() } else { "✗".red() },
+        if sys.fma { "✓".green() } else { "✗".red() },
+        sys.kernel.cyan()
     );
-    println!();
 
-    println!("[NAM-rs] Inicializando PipeWire...");
     pipewire::init();
-    println!("[NAM-rs] ✅ PipeWire inicializado.");
+    log::info!("{} PipeWire inicializado.", "🔌".bright_blue());
 
     ctrlc::set_handler(|| {
         if spsc::SHUTDOWN.load(Ordering::SeqCst) {
@@ -308,8 +316,10 @@ fn main() -> anyhow::Result<()> {
     })
     .map_err(|e| {
         NamDiagnostic::new(NamErrorCode::CtrlCHandlerFailed, &sys)
-            .message("Falha ao configurar o handler de Ctrl-C.")
-            .hint("O programa pode não responder corretamente ao sinal de interrupção.")
+            .message("Falha ao preparar o sistema para interceptar o CTRL+C.")
+            .hint(
+                "O aplicativo pode não encerrar suavemente se você tentar fechá-lo pelo terminal.",
+            )
             .param("detail", &e)
             .emit();
         anyhow::anyhow!("Ctrl-C handler setup failed: {e}")
@@ -341,10 +351,17 @@ fn main() -> anyhow::Result<()> {
         let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
     }
     if let Some(ref path) = model_path {
-        println!("[NAM-rs] Carregando modelo: {} ...", path.to_string_lossy());
+        log::info!(
+            "{} Carregando modelo: {} ...",
+            "📂".yellow(),
+            path.to_string_lossy().bright_cyan()
+        );
         load_and_send_model(path, &mut producer, &sys);
     } else {
-        println!("[NAM-rs] Nenhum modelo especificado. Use 'model <caminho>' para carregar.");
+        log::info!(
+            "{} Nenhum modelo especificado. Use '--model <caminho>' para carregar.",
+            "ℹ️".blue()
+        );
     }
 
     // Mantém o producer vivo sem thread TUI — o canal SPSC precisa existir
@@ -352,7 +369,6 @@ fn main() -> anyhow::Result<()> {
     // parâmetros em tempo de execução permanece intacta para uso futuro.
     std::mem::forget(producer);
 
-    println!("[NAM-rs] Conectando stream DSP ao PipeWire...");
     pw_host::run_pipewire_host(
         consumer,
         gc_producer,

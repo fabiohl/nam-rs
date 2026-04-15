@@ -1,27 +1,17 @@
-Fase Beta: Diretrizes de Polimento de Experiência do Usuário (UX)
-
-O motor NAM-rs (Neural Amp Modeler em Rust) atingiu maturidade arquitetural e excelente performance computacional. Para a fase Beta, o foco migra estritamente da estabilidade interna para o fator humano. Esta fase validará como o usuário final, músicos e produtores interagem com o sistema no dia-a-dia.
-
-Abaixo estão as diretrizes para os testes de aceitação e melhoria de UX:
+Fase Beta: Diretrizes de Polimento de Experiência do Usuário (UX); Não é mais sobre "funciona", é sobre "é uma delícia de usar".
 
 1. Polimento da Interface de Linha de Comando (CLI)
-   - [ ] Mensagens de Erro Humanizadas: Substituir panics ou erros técnicos (e.g., "FileNotFound") por explicações amigáveis e sugestões (e.g., "Não foi possível encontrar o arquivo do modelo na pasta 'X'. Verifique o caminho.").
-   - [ ] Feedback Visual Aprimorado: O uso de cores e emojis no terminal para distinguir logs de carregamento, sucesso de conexão com o PipeWire, ou alertas de saturação (clipping).
-   - [ ] Menu Interativo Mais Resiliente: O loop iterativo (`stdin`) não deve travar em comandos inválidos. Se o usuário digitar algo errado, exibir a lista de comandos disponíveis.
+   - [x] Mensagens de Erro Humanizadas: Substituir panics ou erros técnicos (e.g., "FileNotFound") por explicações amigáveis e sugestões (e.g., "Não foi possível encontrar o arquivo do modelo na pasta 'X'. Verifique o caminho.").
+   - [x] Feedback Visual Aprimorado: O uso de cores e emojis no terminal para distinguir logs de carregamento, sucesso de conexão com o PipeWire, ou alertas de saturação (clipping).
 
 2. Experiência "Zero-Config" e Valores Padrões
    - [ ] Auto-Ajuste Resiliente: Testar uso leigo em cenários PipeWire sem `SCHED_FIFO` disponível. O NAM-rs deve avisar amigavelmente sobre o ganho de latência sem interromper a execução.
    - [ ] Tratamento de Modelos Incompatíveis: Ao carregar um modelo não-tabelado ou defeituoso, o fallback dinâmico já funciona, mas precisa reportar isso de forma encorajadora e não como uma falha fatal.
 
-3. Testes Auditivos Rigorosos no Hot-Swap
-   - [ ] Zero Crackles/Pops: Trocas de modelos em tempo real (`.nam` -> `.namb`, WaveNet -> LSTM) devem ocorrer perfeitamente livres de estalos de áudio percussivos (cliques abruptos). Validar isso auditivamente com monitores de estúdio ligados em alto volume.
-   - [ ] Tempo de Resposta da Injeção de Modelos: Mensurar se o delay perceptivo entre dar Enter na CLI (para carregar um modelo) e ouvir o timbre alterado é natural o suficiente para uso ao vivo (e.g., foot-switch integration via MIDI no futuro).
-
-4. Robustez de Conexão com Sistema de Áudio (PipeWire)
+3. Robustez de Conexão com Sistema de Áudio (PipeWire)
    - [ ] Plugar/Desplugar Interfaces Físicas: Simulando a queda de conexão do cabo USB da interface focada. O servidor PW mudará nodos. O NAM-rs não deve "crashar", mas aguardar e religar graciosamente ou encerrar com mensagem limpa.
    - [ ] Ajuste do Sample Rate Dinâmico: Confirmar se variações inesperadas de sample rate vindo do OS durante a operação alteram a percepção do tom ou da latência de forma dramática.
 
-5. Documentação Externa (User-Facing)
-   - [ ] O `README.md` já é o guia mestre. Consolidar uma versão curta "Para Músicos", sem jargões como instrução vetorial (AVX/SIMD), focada unicamente em "Como plugar a guitarra e tocar em 3 passos".
-
-Foco principal da Fase Beta: Não é mais sobre "funciona", é sobre "é uma delícia de usar".
+4. Conexões PipeWire
+   - [ ] Sinal de saida deve ser o único para o fone de ouvido. Não se somar ao do google chrome, que continua também indo.
+   - [ ] Esquema de true stereo. Atualmente, o sinal é mono e vai para os dois ouvidos.

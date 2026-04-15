@@ -337,26 +337,30 @@ impl NamDiagnostic {
 
     /// Imprime o diagnóstico completo no stderr (mensagem amigável + bloco de suporte).
     pub fn emit(&self) {
-        eprintln!();
-        eprintln!("  ⚠️  {}", self.user_message);
-        if !self.user_hint.is_empty() {
-            eprintln!("  💡 {}", self.user_hint);
-        }
-        eprintln!();
-        eprintln!("{}", self.support_block());
-        eprintln!();
+        log::error!(
+            "{}\n\n{}\n\n{}",
+            self.user_message,
+            if self.user_hint.is_empty() {
+                ""
+            } else {
+                &self.user_hint
+            },
+            self.support_block()
+        );
     }
 
     /// Imprime como aviso (não-fatal) com prefixo visual diferenciado.
     pub fn emit_warning(&self) {
-        eprintln!();
-        eprintln!("  ⚡ {}", self.user_message);
-        if !self.user_hint.is_empty() {
-            eprintln!("  💡 {}", self.user_hint);
-        }
-        eprintln!();
-        eprintln!("{}", self.support_block());
-        eprintln!();
+        log::warn!(
+            "{}\n\n{}\n\n{}",
+            self.user_message,
+            if self.user_hint.is_empty() {
+                ""
+            } else {
+                &self.user_hint
+            },
+            self.support_block()
+        );
     }
 }
 

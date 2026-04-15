@@ -34,6 +34,7 @@ use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::dsp::gain::apply_gain_simd;
 use crate::dsp::resampler::NamResampler;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
+use colored::Colorize;
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;
@@ -343,9 +344,24 @@ pub fn run_pipewire_host(
                             // 5. Aplica ganho de saída SIMD após conversão de rate
                             apply_gain_simd(&mut resamp_out[..n_pw], output_gain_mult);
 
-                            // Copia resultado de volta para o buffer do PipeWire
+                            // Copia resultado de volta para o buffer do PipeWire e detecta saturação
                             let n_copy = n_pw.min(n);
-                            samples[..n_copy].copy_from_slice(&resamp_out[..n_copy]);
+                            let out_slice = &resamp_out[..n_copy];
+
+                            let mut clipped = false;
+                            for &s in out_slice {
+                                if s.abs() > 1.0 {
+                                    clipped = true;
+                                    break;
+                                }
+                            }
+                            if clipped {
+                                rt_status_for_process
+                                    .has_clipped
+                                    .store(true, Ordering::Relaxed);
+                            }
+
+                            samples[..n_copy].copy_from_slice(out_slice);
                         }
                     }
                 }
@@ -393,7 +409,10 @@ pub fn run_pipewire_host(
             &mut [format_pod],
         )?;
 
-        println!("[NAM-rs] ✅ Stream DSP conectado ao PipeWire (F32 mono, Audio/Duplex).");
+        log::info!(
+            "{} Stream DSP conectado ao PipeWire (F32 mono, Audio/Duplex).",
+            "🎼".bright_blue()
+        );
     }
 
     let _app_state = AppState { stream, listener };
@@ -415,8 +434,9 @@ pub fn run_pipewire_host(
                         rt_status
                             .resampler_rebuild_failed
                             .store(false, Ordering::Relaxed);
-                        println!(
-                            "[NAM-rs] 🔄 Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
+                        log::info!(
+                            "{} Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
+                            "🔄".cyan(),
                             target_pw_rate,
                             target_nam_rate,
                             new_rs.is_bypass()
@@ -462,9 +482,17 @@ pub fn run_pipewire_host(
         // Lê e imprime status do callback RT (comunicação silenciosa via flags atômicas)
         let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
         if active_rate != 0 {
-            println!(
-                "[NAM-rs] ✅ Callback RT ativou resampler com rate = {} Hz",
+            log::info!(
+                "{} Callback RT ativou resampler com rate = {} Hz",
+                "✅".green(),
                 active_rate
+            );
+        }
+
+        if rt_status.has_clipped.swap(false, Ordering::Relaxed) {
+            log::warn!(
+                "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada ou saída.",
+                "⚠️".bright_red().bold()
             );
         }
 
@@ -477,8 +505,9 @@ pub fn run_pipewire_host(
             rt_status.rt_priority.store(-1, Ordering::Relaxed);
 
             if is_fifo {
-                println!(
-                    "[NAM-rs] ✅ Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
+                log::info!(
+                    "{} Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
+                    "✅".green(),
                     prio
                 );
             } else {
@@ -524,7 +553,7 @@ pub fn run_pipewire_host(
 ///
 /// # Diagnósticos
 ///
-/// Esta função usa `eprintln!` direto (ao invés de `NamDiagnostic`) porque:
+/// Esta função usa macros de `log` diretas (`log::error!`, etc) ao invés de `NamDiagnostic` porque:
 /// - É chamada dentro do callback RT (thread PipeWire), onde o `SystemSnapshot`
 ///   não está disponível sem adicionar `Arc` ou parâmetro extra ao closure.
 /// - É executada apenas **uma vez** no cold-path inicial — não afeta latência RT.
@@ -555,16 +584,12 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
             );
 
             if ret_aff != 0 {
-                eprintln!(
-                    "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).",
-                    target_cpu, ret_aff
-                );
-                eprintln!(
-                    "  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration."
-                );
-                eprintln!(
-                    "  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
-                    target_cpu, ret_aff
+                log::error!(
+                    "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).\n  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
+                    target_cpu,
+                    ret_aff,
+                    target_cpu,
+                    ret_aff
                 );
             }
 
@@ -574,11 +599,10 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
 
             let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
             if ret_sched != 0 {
-                eprintln!(
-                    "  ⚠️  pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).",
+                log::error!(
+                    "  ⚠️  pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
                     ret_sched
                 );
-                eprintln!("  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n");
             }
 
             // 3. Verificação programática: lê policy/prio *reais* concedidos pelo kernel.
@@ -616,14 +640,20 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
 
                 // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
                 if has_reset_on_fork {
-                    println!(
-                        "[NAM-rs] \u{1F50D} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
-                        actual_cpu, policy_str, actual_param.sched_priority
+                    log::info!(
+                        "{} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
+                        "🔍".blue(),
+                        actual_cpu.to_string().cyan(),
+                        policy_str.cyan(),
+                        actual_param.sched_priority.to_string().green()
                     );
                 } else {
-                    println!(
-                        "[NAM-rs] \u{1F50D} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
-                        actual_cpu, policy_str, actual_param.sched_priority
+                    log::info!(
+                        "{} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
+                        "🔍".blue(),
+                        actual_cpu.to_string().cyan(),
+                        policy_str.cyan(),
+                        actual_param.sched_priority.to_string().green()
                     );
                 }
             } else {
@@ -631,7 +661,7 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
                 rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
                 rt_status.rt_priority.store(0, Ordering::Relaxed);
 
-                eprintln!(
+                log::error!(
                     "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam falhou (ret={}).\n",
                     ret_getsched
                 );
