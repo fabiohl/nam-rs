@@ -151,8 +151,8 @@ O diretório `tests/` contém `nam_infer_test.rs`, que consome a API pública `n
 
 #### Golden Vectors C++ ↔ Rust (2 testes)
 
-- **`test_golden_vectors_wavenet`** — Compara saída Rust vs. referência C++ (MSE < 1e-4).
-- **`test_golden_vectors_lstm`** — Compara saída Rust vs. referência C++ (MSE < 1e-5).
+- **`test_golden_vectors_wavenet`** — Compara saída Rust vs. referência C++ (validação dual: MSE < 5e-2 + SNR ≥ 9 dB).
+- **`test_golden_vectors_lstm`** — Compara saída Rust vs. referência C++ (validação dual: MSE < 1e-3 + SNR ≥ 22 dB).
 
 #### Pipeline End-to-End SPSC (1 teste)
 
