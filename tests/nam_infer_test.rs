@@ -237,20 +237,32 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
 ///
 /// `WaveNetModel<16, 3, 8>`: Array1 CH=16, Array2 CH=8(=HEAD), HEAD2=1.
 /// Nota: o type alias abaixo passou a usar HEAD=8 (head_size real do BossWN-standard).
+///
+/// # Alinhamento com o construtor de produção (`build_wavenet_array`)
+///
+/// Cada `WaveNetLayerState` recebe `receptive_field_size = (K-1) * dilation`
+/// da sua camada específica — espelhando fielmente `build_wavenet_array` (L274).
+/// O `receptive_field_size` global é a soma de todos os RFs individuais (2046).
 fn build_synthetic_wavenet_standard() -> WaveNetStandard {
-    let dilations_1 = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-    let dilations_2 = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+    const K: usize = 3;
+    let dilations_1: [usize; 10] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+    let dilations_2: [usize; 10] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-    let rf1 = 512 * 2;
-    let rf2 = 512 * 2;
+    // RF total = soma dos RFs por camada: Σ (K-1)*d
+    // Para dilations = [1,2,4,8,16,32,64,128,256,512]: soma = 1023 × 2 = 2046
+    let rf1: usize = dilations_1.iter().map(|&d| (K - 1) * d).sum();
+    let rf2: usize = dilations_2.iter().map(|&d| (K - 1) * d).sum();
     let final_rf = rf1.max(rf2);
 
     let layers_1: Vec<wavenet::WaveNetLayer<1, 16, 3>> = dilations_1
         .iter()
         .map(|&d| make_wavenet_layer(d, false, 16))
         .collect();
-    let states_1: Vec<wavenet::WaveNetLayerState> = (0..layers_1.len())
-        .map(|i| wavenet::WaveNetLayerState::new(16, final_rf, i))
+    // RF por-camada: (K-1)*d — espelha build_wavenet_array L274
+    let states_1: Vec<wavenet::WaveNetLayerState> = dilations_1
+        .iter()
+        .enumerate()
+        .map(|(i, &d)| wavenet::WaveNetLayerState::new(16, (K - 1) * d, i))
         .collect();
 
     let array1 = wavenet::WaveNetLayerArray::<1, 1, 16, 3, 8> {
@@ -269,7 +281,7 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         array_outputs: vec![0.0; 16],
         head_accum: vec![0.0; 16],
         head_outputs: vec![0.0; 8],
-        receptive_field_size: final_rf,
+        receptive_field_size: rf1,
     };
 
     // Array2: IN=16(=CH), COND=1, CH=8(=HEAD1), HEAD2=1, HasHeadBias=true
@@ -277,8 +289,14 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         .iter()
         .map(|&d| make_wavenet_layer_a2(d))
         .collect();
-    let states_2: Vec<wavenet::WaveNetLayerState> = (0..layers_2.len())
-        .map(|i| wavenet::WaveNetLayerState::new(8, final_rf, i))
+    // RF por-camada: (K-1)*d (CH=8)
+    let states_2: Vec<wavenet::WaveNetLayerState> = dilations_2
+        .iter()
+        .enumerate()
+        .map(|(i, &d)| {
+            // alloc_num continua de onde array1 parou — espelha o alloc_num global do dispatcher
+            wavenet::WaveNetLayerState::new(8, (K - 1) * d, dilations_1.len() + i)
+        })
         .collect();
 
     let array2 = wavenet::WaveNetLayerArray::<16, 1, 8, 3, 1> {
@@ -297,7 +315,7 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         array_outputs: vec![0.0; 8],
         head_accum: vec![0.0; 8],
         head_outputs: vec![0.0; 1],
-        receptive_field_size: final_rf,
+        receptive_field_size: rf2,
     };
 
     WaveNetStandard {

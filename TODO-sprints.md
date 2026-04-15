@@ -120,18 +120,19 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T4 · A1 — Corrigir RF Sintético nos Testes de Integração
 
-- [ ] **4.1** Em `tests/nam_infer_test.rs` → `build_synthetic_wavenet_standard()` (≈L240):
-  - Substituir `let rf1 = 512 * 2;` (L244) por `let rf1: usize = dilations_1.iter().map(|&d| (3 - 1) * d).sum();` (resultado: 2046)
-  - Idem para `rf2` (L245)
-  - Substituir `WaveNetLayerState::new(16, final_rf, i)` (L253) por `WaveNetLayerState::new(16, (3 - 1) * d, i)` onde `d` é a dilatação da camada correspondente
-  - Idem para `states_2` (L281, CH=8, per-layer RF)
-  - Manter `model.receptive_field_size = rf1.max(rf2)` (agora = 2046)
-- [ ] **4.2** Verificar que `test_wavenet_computational_stability` (L342) continua passando com os novos RFs
-- [ ] **4.3** Ajustar `prewarm()` se necessário (o prewarm do `build_synthetic` chama o interno do modelo que já itera `receptive_field_size` passos)
+- [x] **4.1** Em `tests/nam_infer_test.rs` → `build_synthetic_wavenet_standard()`:
+  - Substituído `rf1 = 512 * 2` por `rf1: usize = dilations_1.iter().map(|&d| (K - 1) * d).sum()` (resultado: 2046)
+  - Idem para `rf2` (resultado: 2046)
+  - `states_1`: cada `WaveNetLayerState::new(16, (K-1)*d, i)` com a dilatação per-layer de `dilations_1`
+  - `states_2`: cada `WaveNetLayerState::new(8, (K-1)*d, dilations_1.len() + i)` com dilatação per-layer de `dilations_2`
+  - `array1.receptive_field_size = rf1`; `array2.receptive_field_size = rf2`; `model.receptive_field_size = rf1.max(rf2) = 2046`
+- [x] **4.2** `test_wavenet_computational_stability` continua passando — RMS = `1.87e-5 ≤ 10.0`
+- [x] **4.3** Prewarm inalterado — o modelo sintético chama `model.prewarm()` internamente sem ajustes necessários
 
-- **Critério de aceitação:** Cada `WaveNetLayerState` no teste sintético usa `RF = (K-1) * dilation`, espelhando fielmente o construtor de produção (`build_wavenet_array`/`build_wavenet_array_dyn`).
+- **Critério de aceitação:** ✅ Cada `WaveNetLayerState` no teste sintético usa `RF = (K-1) * dilation`, espelhando fielmente o construtor de produção (`build_wavenet_array`/`build_wavenet_array_dyn`).
 
----
+> **✅ Concluído:** 2026-04-15. `build_synthetic_wavenet_standard()` refatorado com `const K: usize = 3` e cálculo por-camada `(K-1)*d` para `states_1` e `states_2`. `final_rf` agora calculado como soma `Σ(K-1)*d = 2046` em vez do valor arbitrário `512*2 = 1024`. `alloc_num` da Array2 continua de onde parou a Array1 (espelha o `alloc_num` global do dispatcher). **97 testes, 0 falhas**. `lints.sh` limpo (fmt + clippy -D warnings).
+
 
 ### T5 · C3 — Recalibrar Threshold do Golden Vector WaveNet
 
