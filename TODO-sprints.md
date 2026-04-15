@@ -401,8 +401,6 @@ OBS: O arquivo BossWN-lite.nam não foi localizado. Não vamos fazer esta tarefa
 
 > **✅ Concluído:** 2026-04-15. Seção `## Calibração do Threshold vs Erro FastMath` adicionada ao docstring de `test_golden_vectors_wavenet` com fórmula de acumulação sublinear `√N × ε`, cálculo numérico para 20 camadas (≈2.2e-2) e referência a `docs/architecture.md §2`. Docstring de `simd_tanh` expandido com seções `# Erro Máximo` e `# Acumulação` âncorando o raciocínio diretamente na função fonte. `lints.sh` limpo (fmt + clippy -D warnings, zero warnings).
 
-
-
 ### T10 · Campos Privados + Construtores Validados [CANCELADO]
 
 OBS: Não é o momento para isto. Fica para o futuro
@@ -427,16 +425,29 @@ OBS: Não é o momento para isto. Fica para o futuro
 
 **Origem:** Mesma auditoria de T11.
 
-- [ ] **12.1** Em `tests/fixtures/README.md`:
+- [x] **12.1** Em `tests/fixtures/README.md`:
   
-  - Adicionar seção "## Metodologia de Validação" após "## Para regenerar"
-  - Documentar a estratégia dual MSE + SNR:
-    - MSE: erro quadrático médio como métrica de regressão primária (sensível à escala absoluta)
-    - SNR: relação sinal-ruído em dB como métrica de equivalência perceptual (normalizada pela potência do sinal)
-    - Ambas assertadas independentemente nos golden tests
-  - Justificar por que SNR é aditiva e não substitutiva:
-    - MSE detecta erros absolutos (útil para regressões estruturais)
-    - SNR fornece interpretação DSP padrão (útil para engenheiros de áudio)
-  - Documentar thresholds atuais e a fonte de divergência (FastMath Padé vs. C++ rational polynomial)
+  - Adicionada seção `## Metodologia de Validação` após `## Para regenerar`
+  - Documentada a estratégia dual MSE + SNR com tabelas de thresholds calibrados e SNR medidos reais
+  - Justificativa de complementaridade: MSE detecta erros absolutos; SNR fornece interpretação DSP perceptual
+  - Documentada fonte de divergência: FastMath Padé grau 5 vs. C++ polynomial (`Activation.h`)
+  - Fórmula de acumulação sublinear `√N × ε`, cálculo numérico para WaveNet Standard (20 camadas → 2.2e-2)
+  - Thresholds calibrados: WaveNet MSE < 5e-2 (headroom ~1.56×), SNR ≥ 9 dB (medido: 10.1 dB); LSTM SNR ≥ 22 dB (medido: 26.0 dB)
+  - Seção `### Referências` com links cruzados a `docs/architecture.md §2`, `simd_tanh` e `test_golden_vectors_wavenet`
 
 - **Critério de aceitação:** README de fixtures documenta a política de validação numérica de forma autocontida.
+
+> **✅ Concluído:** 2026-04-15. `tests/fixtures/README.md` expandido de 22 para 90 linhas com seção `## Metodologia de Validação` completa: tabelas MSE e SNR, justificativa de complementaridade entre métricas, derivação da divergência FastMath Padé vs C++ polynomial, fórmula de acumulação sublinear `√N × ε` com cálculo numérico para WaveNet Standard, e referências cruzadas para `docs/architecture.md §2`, `fastmath.rs` e `nam_infer_test.rs`. `lints.sh` limpo.
+
+---
+
+> **📋 Sprint 3 — Revisão Concluída:** 2026-04-15.
+> Auditoria de tarefas executáveis (T9, T12) confirmadas implementadas e funcionais.
+>
+> - **T8 [CANCELADO]:** `BossWN-lite.nam` não localizado; tarefa adiada indefinidamente.
+> - **T9 ✅:** Docstrings de `test_golden_vectors_wavenet` e `simd_tanh` expandidos com fórmula de acumulação sublinear `√N × ε`, cálculo numérico para 20 camadas e referências cruzadas a `docs/architecture.md §2`.
+> - **T10 [CANCELADO]:** Campos privados + construtores validados adiados para fase futura.
+> - **T12 ✅:** `tests/fixtures/README.md` agora documenta a política de validação dual MSE+SNR de forma autocontida, com tabelas de thresholds calibrados, SNR medidos reais e a derivação da divergência FastMath Padé vs C++ polynomial.
+>
+> `lints.sh` limpo (fmt + clippy -D warnings). Repositório sem artefatos temporários.
+> Documentação sincronizada. Nenhum apontamento adicional identificado para sprints futuras.
