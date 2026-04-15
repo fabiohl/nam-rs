@@ -1,3 +1,9 @@
 ## Beta 1: Pacote de testes de uso como cliente final (Beta.txt).
+pw-jack target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0 --backend jack
+README.md#L41 Rodar este comando não está tendo o efeito desejado, conforme podemos ver em @terminal:bash.
+Não está tendo no terminal uma referência visual se os comandos foram aceitos com sucesso. A aplicação abre e não mostra nada. Mesmo que inserindo os comandos manualmente na TUI.
+Deveria ter um log do que tá acontecendo na CLI até para podermos ter diagnósticos da situação.
+Ademais no qpwgraph notamos no print da tela em Captura de tela de 2026-04-15 00-29-12-fs8.png que o nosso node tem só uma entrada e nenhuma saída. E esta entrada não pude puxar a saida do google chrome pra ela.
+
 ## Beta 2: Sucessivas rodadas de "revisor-auditor" e de "pesquisador-inovador".
 ## RC 1: Sincronizar as novas melhorias com o AudioRip
