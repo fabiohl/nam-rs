@@ -264,111 +264,6 @@ fn load_and_send_model(
     }
 }
 
-/// Loop interativo de comandos CLI (thread separada).
-///
-/// Lê comandos do stdin em loop bloqueante e os converte em operações SPSC:
-/// - `model <path>` — carrega um novo modelo neural.
-/// - `gain_in <dB>` / `gain_out <dB>` — ajusta ganhos de entrada/saída.
-/// - `quit` — sinaliza shutdown gracioso via [`spsc::SHUTDOWN`].
-///
-/// Erros de parsing e canal cheio emitem diagnósticos estruturados.
-/// O loop encerra quando stdin fecha (EOF) ou o usuário digita `quit`.
-fn cli_loop(mut producer: rtrb::Producer<ParamPayload>, sys: SystemSnapshot) {
-    println!("\n[CLI] Interface interativa iniciada. Digite 'help' para comandos.");
-
-    let stdin = std::io::stdin();
-    for line in stdin.lines() {
-        let Ok(cmd) = line else { break };
-        let cmd = cmd.trim();
-        if cmd.is_empty() {
-            continue;
-        }
-
-        let mut parts = cmd.split_whitespace();
-        match parts.next().unwrap() {
-            "quit" | "q" | "exit" => {
-                spsc::SHUTDOWN.store(true, Ordering::SeqCst);
-                println!("[CLI] Solicitando desligamento gracioso...");
-                break;
-            }
-            "model" | "m" => {
-                if let Some(p) = parts.next() {
-                    let path = std::path::Path::new(p);
-                    load_and_send_model(path, &mut producer, &sys);
-                } else {
-                    println!("[CLI] Uso: model <caminho>");
-                }
-            }
-            "gain_in" | "gi" => {
-                if let Some(val_str) = parts.next() {
-                    if let Ok(val) = val_str.parse::<f32>() {
-                        if producer.push(ParamPayload::InputGain(val)).is_ok() {
-                            println!("[CLI] Input Gain configurado para {:.2} dB.", val);
-                        } else {
-                            NamDiagnostic::new(NamErrorCode::ParamChannelFull, &sys)
-                                .message("Canal de parâmetros cheio. O ganho não foi alterado.")
-                                .hint("Tente novamente em alguns instantes.")
-                                .param("param", "InputGain")
-                                .param("value_db", val)
-                                .emit();
-                        }
-                    } else {
-                        NamDiagnostic::new(NamErrorCode::InvalidGainValue, &sys)
-                            .message(format!("Valor de ganho inválido: \"{}\"", val_str))
-                            .hint(
-                                "Use um número decimal, por exemplo: gain_in -3.0 ou gain_in 12.5",
-                            )
-                            .param("raw_input", val_str)
-                            .emit();
-                    }
-                } else {
-                    println!("[CLI] Uso: gain_in <valor_db>");
-                }
-            }
-            "gain_out" | "go" => {
-                if let Some(val_str) = parts.next() {
-                    if let Ok(val) = val_str.parse::<f32>() {
-                        if producer.push(ParamPayload::OutputGain(val)).is_ok() {
-                            println!("[CLI] Output Gain configurado para {:.2} dB.", val);
-                        } else {
-                            NamDiagnostic::new(NamErrorCode::ParamChannelFull, &sys)
-                                .message("Canal de parâmetros cheio. O ganho não foi alterado.")
-                                .hint("Tente novamente em alguns instantes.")
-                                .param("param", "OutputGain")
-                                .param("value_db", val)
-                                .emit();
-                        }
-                    } else {
-                        NamDiagnostic::new(NamErrorCode::InvalidGainValue, &sys)
-                            .message(format!("Valor de ganho inválido: \"{}\"", val_str))
-                            .hint(
-                                "Use um número decimal, por exemplo: gain_out 2.5 ou gain_out -6.0",
-                            )
-                            .param("raw_input", val_str)
-                            .emit();
-                    }
-                } else {
-                    println!("[CLI] Uso: gain_out <valor_db>");
-                }
-            }
-            "help" | "h" => {
-                println!("[CLI] Comandos disponíveis:");
-                println!("  model <caminho>   : Carrega um arquivo de modelo (.nam ou .namb)");
-                println!("  gain_in <db>      : Ajusta o ganho de entrada (ex: -3.0)");
-                println!("  gain_out <db>     : Ajusta o ganho de saída (ex: 2.5)");
-                println!("  quit              : Encerra o engine");
-            }
-            other => {
-                NamDiagnostic::new(NamErrorCode::UnknownCommand, &sys)
-                    .message(format!("Comando desconhecido: \"{}\"", other))
-                    .hint("Digite 'help' para ver os comandos disponíveis.")
-                    .param("input", other)
-                    .emit();
-            }
-        }
-    }
-}
-
 /// Ponto de entrada do NAM-rs.
 ///
 /// Orquestra o startup completo do engine:
@@ -381,15 +276,29 @@ fn cli_loop(mut producer: rtrb::Producer<ParamPayload>, sys: SystemSnapshot) {
 /// 7. Carga do modelo inicial (se especificado via `-m`).
 /// 8. Spawn da thread CLI ([`cli_loop`]) e execução do host PipeWire ([`pw_host::run_pipewire_host`]).
 fn main() -> anyhow::Result<()> {
-    // Inicializa o backend de logging (respeita RUST_LOG; padrão: warn)
-    env_logger::init();
+    // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let (model_path, initial_in_gain, initial_out_gain) = parse_args()?;
 
     // Captura snapshot do sistema uma vez — propagado para todas as funções de diagnóstico
     let sys = SystemSnapshot::capture();
 
+    // Banner de startup
+    println!();
+    println!(
+        "  🎸 NAM-rs v{} — Neural Amp Modeler (Rust PipeWire native)",
+        sys.version
+    );
+    println!(
+        "     arch={} | avx2={} fma={} | kernel={}",
+        sys.arch, sys.avx2, sys.fma, sys.kernel
+    );
+    println!();
+
+    println!("[NAM-rs] Inicializando PipeWire...");
     pipewire::init();
+    println!("[NAM-rs] ✅ PipeWire inicializado.");
 
     ctrlc::set_handler(|| {
         if spsc::SHUTDOWN.load(Ordering::SeqCst) {
@@ -431,15 +340,19 @@ fn main() -> anyhow::Result<()> {
     if initial_out_gain != 0.0 {
         let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
     }
-    if let Some(path) = model_path {
-        load_and_send_model(&path, &mut producer, &sys);
+    if let Some(ref path) = model_path {
+        println!("[NAM-rs] Carregando modelo: {} ...", path.to_string_lossy());
+        load_and_send_model(path, &mut producer, &sys);
+    } else {
+        println!("[NAM-rs] Nenhum modelo especificado. Use 'model <caminho>' para carregar.");
     }
 
-    let sys_for_cli = sys.clone();
-    std::thread::spawn(move || {
-        cli_loop(producer, sys_for_cli);
-    });
+    // Mantém o producer vivo sem thread TUI — o canal SPSC precisa existir
+    // enquanto o consumer (RT thread) estiver ativo. A infraestrutura de
+    // parâmetros em tempo de execução permanece intacta para uso futuro.
+    std::mem::forget(producer);
 
+    println!("[NAM-rs] Conectando stream DSP ao PipeWire...");
     pw_host::run_pipewire_host(
         consumer,
         gc_producer,

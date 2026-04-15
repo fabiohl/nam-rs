@@ -92,7 +92,7 @@ pub fn run_pipewire_host(
                 *pw::keys::MEDIA_TYPE => "Audio",
                 *pw::keys::MEDIA_CATEGORY => "Filter",
                 *pw::keys::MEDIA_ROLE => "DSP",
-                *pw::keys::MEDIA_CLASS => "Audio/Filter", // Nó DSP
+                *pw::keys::MEDIA_CLASS => "Audio/Duplex", // Nó bidirecional com portas IN e OUT
                 *pw::keys::NODE_NAME => "NAM-rs-standalone",
                 *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Rust PipeWire native)",
                 // Extensões para bit-perfect: PipeWire tentará acoplar com as cfg da fonte
@@ -353,17 +353,47 @@ pub fn run_pipewire_host(
             })
             .register()?;
 
-        // Ativa o stream pedindo auto-conexão pelo daemon (WirePlumber),
-        // com buffers mapeados pelo DMA/Mem no host, na cadência RT sem especificar Direction
-        // pois filtros configuram in & out.
+        // Constrói o SPA Pod de formato de áudio para negociação com PipeWire.
+        // Formato F32 nativo, mono (1 canal). Sem rate fixo — o PipeWire negocia.
+        let mut audio_info = pw::spa::param::audio::AudioInfoRaw::new();
+        audio_info.set_format(pw::spa::param::audio::AudioFormat::F32LE);
+        audio_info.set_channels(1);
+
+        // Constrói o Pod serializado via FFI (spa_format_audio_raw_build)
+        let mut format_buf = [0u8; 1024];
+        let format_pod = unsafe {
+            let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
+            pw::spa::sys::spa_pod_builder_init(
+                &mut builder,
+                format_buf.as_mut_ptr().cast(),
+                format_buf.len() as u32,
+            );
+            let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
+                &mut builder,
+                pw::spa::param::ParamType::EnumFormat.as_raw(),
+                &audio_info.as_raw(),
+            );
+            if pod_ptr.is_null() {
+                return Err(anyhow::anyhow!(
+                    "Falha ao construir SPA Pod de formato de áudio"
+                ));
+            }
+            // O pod aponta dentro de format_buf — válido enquanto format_buf existir
+            &*(pod_ptr as *const pw::spa::pod::Pod)
+        };
+
+        // Ativa o stream com formato de áudio declarado.
+        // Direction::Input + Audio/Duplex garante criação de portas capture E playback.
         stream.connect(
             pw::spa::utils::Direction::Input,
             None,
             pw::stream::StreamFlags::AUTOCONNECT
                 | pw::stream::StreamFlags::MAP_BUFFERS
                 | pw::stream::StreamFlags::RT_PROCESS,
-            &mut [],
+            &mut [format_pod],
         )?;
+
+        println!("[NAM-rs] ✅ Stream DSP conectado ao PipeWire (F32 mono, Audio/Duplex).");
     }
 
     let _app_state = AppState { stream, listener };

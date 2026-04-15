@@ -39,8 +39,8 @@ Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire.
 Para iniciar o processamento:
 
 ```bash
-target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
 target/release/nam-rs --model tests/Neve31102-Pre30-R.nam
+target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
 ```
 
 Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário.

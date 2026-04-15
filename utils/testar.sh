@@ -11,5 +11,4 @@ echo "⚙️ Compilando o NAM-rs..."
 cargo build --release
 
 echo "🚀 Executando..."
-#target/debug/nam-rs
-target/release/nam-rs
+target/release/nam-rs --model tests/Neve31102-Pre30-R.nam
