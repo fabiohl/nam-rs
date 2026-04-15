@@ -274,6 +274,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         condition: &[f32],
         math: &SimdMathConfig,
     ) {
+        debug_assert_eq!(
+            self.layers.len(),
+            self.states.len(),
+            "WaveNetLayerArray: layers ({}) ≠ states ({})",
+            self.layers.len(),
+            self.states.len()
+        );
         let states_ptr = self.states.as_mut_ptr();
 
         // Zera o acumulador CH-sized para contribuições das camadas ao head.
@@ -331,6 +338,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
     /// Invoca a transposição artificial do modelo em Pre-warm estabilizando memória temporal.
     pub fn prewarm(&mut self, layer_inputs: &[f32], condition: &[f32], math: &SimdMathConfig) {
+        debug_assert_eq!(
+            self.layers.len(),
+            self.states.len(),
+            "WaveNetLayerArray: layers ({}) ≠ states ({})",
+            self.layers.len(),
+            self.states.len()
+        );
         let states_ptr = self.states.as_mut_ptr();
 
         // Zera o acumulador CH-sized para contribuições das camadas ao head.

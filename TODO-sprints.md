@@ -89,17 +89,19 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ### T6 · M1 — Debug Asserts de Invariante em `process()`/`prewarm()`
 
-- [ ] **6.1** Em `src/models/wavenet.rs` → `WaveNetLayerArray::process()` (≈L271):
+- [x] **6.1** Em `src/models/wavenet.rs` → `WaveNetLayerArray::process()` (≈L271):
   - Inserir no início: `debug_assert_eq!(self.layers.len(), self.states.len(), "WaveNetLayerArray: layers ({}) ≠ states ({})", self.layers.len(), self.states.len());`
-- [ ] **6.2** Em `src/models/wavenet.rs` → `WaveNetLayerArray::prewarm()` (≈L333):
+- [x] **6.2** Em `src/models/wavenet.rs` → `WaveNetLayerArray::prewarm()` (≈L333):
   - Mesmo `debug_assert_eq!`
-- [ ] **6.3** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerArrayDyn::process()` (≈L210):
+- [x] **6.3** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerArrayDyn::process()` (≈L210):
   - Mesmo `debug_assert_eq!`
-- [ ] **6.4** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerArrayDyn::prewarm()` (≈L277):
+- [x] **6.4** Em `src/models/wavenet_dyn.rs` → `WaveNetLayerArrayDyn::prewarm()` (≈L277):
   - Mesmo `debug_assert_eq!`
-- [ ] **6.5** Verificar que `cargo test` em modo debug (default) exercita os asserts sem falha
+- [x] **6.5** Verificar que `cargo test` em modo debug (default) exercita os asserts sem falha
 
 - **Critério de aceitação:** Panic em debug se `layers.len() ≠ states.len()`. Zero custo em release.
+
+> **✅ Concluído:** 2026-04-15. `debug_assert_eq!` inserido no início de `process()` e `prewarm()` em ambas as variantes (`WaveNetLayerArray` e `WaveNetLayerArrayDyn`). Exercitado em modo debug pelo suite completo: **97 testes, 0 falhas**. `lints.sh` limpo (fmt + clippy -D warnings). Zero impacto em release — macro compilada a vazio pelo compilador.
 
 ---
 
@@ -357,26 +359,7 @@ Cada item contém: escopo, arquivos afetados, estratégia de correção e crité
 
 ---
 
-## Dependências entre Tarefas
-
-```text
-T1 (activation) ──→ T2 (gated) ──→ T5 (threshold recalibrar)
-T3 (log) ──→ independente
-T4 (RF sintético) ──→ independente
-T6, T7 (asserts) ──→ independente
-T8 (fixture lite) ──→ depende de T1/T2 para cobertura completa
-T9 (doc threshold) ──→ depende de T5
-T10 (campos privados) ──→ depende de T6
-T11 (SNR golden) ──→ independente (co-beneficia T5 quando executado junto)
-T12 (doc SNR fixtures) ──→ depende de T11
-T13 (bounds checks) ──→ independente (validada por golden vectors existentes)
-```
-
 ## Ordem de Execução Recomendada
-
-Sprint 1 (sequencial):
-
-1. **T1** → T2 → T3
 
 Sprint 2 (segurança primeiro, depois performance, depois observabilidade):
 

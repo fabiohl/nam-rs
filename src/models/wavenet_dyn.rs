@@ -253,6 +253,13 @@ impl WaveNetLayerArrayDyn {
         condition: &[f32],
         math: &SimdMathConfig,
     ) {
+        debug_assert_eq!(
+            self.layers.len(),
+            self.states.len(),
+            "WaveNetLayerArrayDyn: layers ({}) ≠ states ({})",
+            self.layers.len(),
+            self.states.len()
+        );
         let ch = self.ch;
         let head = self.head;
 
@@ -317,6 +324,13 @@ impl WaveNetLayerArrayDyn {
 
     /// Executa um aquecimento transiente espelhando buffer em todo o pre-gap RT causal.
     pub fn prewarm(&mut self, layer_inputs: &[f32], condition: &[f32], math: &SimdMathConfig) {
+        debug_assert_eq!(
+            self.layers.len(),
+            self.states.len(),
+            "WaveNetLayerArrayDyn: layers ({}) ≠ states ({})",
+            self.layers.len(),
+            self.states.len()
+        );
         let ch = self.ch;
         let head = self.head;
         let states_ptr = self.states.as_mut_ptr();
