@@ -21,33 +21,79 @@ use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 
-fn parse_args() -> Result<(Option<PathBuf>, f32, f32), lexopt::Error> {
+fn print_help() {
+    println!("{}", "🎸 NAM-rs Standalone".bright_green().bold());
+    println!("\n{}", "Uso:".yellow().bold());
+    println!("  nam-rs [OPÇÕES]");
+    println!("\n{}", "Opções:".yellow().bold());
+    println!(
+        "  -m, --model <ARQUIVO>   Caminho para o modelo (.nam ou .namb). Suporta ~, ../, etc."
+    );
+    println!("  -i, --input-gain <DB>   Ganho de entrada em dB (ex: -3.5, 12, 0) [padrão: 0]");
+    println!("  -o, --output-gain <DB>  Ganho de saída em dB (ex: 5.0, -10) [padrão: 0]");
+    println!("  -h, --help              Mostra esta ajuda e sai");
+}
+
+fn parse_args() -> Result<(Option<PathBuf>, f32, f32), String> {
     let mut model_path = None;
     let mut input_gain = 0.0;
     let mut output_gain = 0.0;
+    let mut has_args = false;
 
     let mut parser = lexopt::Parser::from_env();
-    while let Some(arg) = parser.next()? {
-        match arg {
-            Short('m') | Long("model") => {
-                model_path = Some(PathBuf::from(parser.value()?));
+    loop {
+        match parser.next() {
+            Ok(Some(arg)) => {
+                has_args = true;
+                match arg {
+                    Short('h') | Long("help") => {
+                        print_help();
+                        std::process::exit(0);
+                    }
+                    Short('m') | Long("model") => {
+                        let val = parser.value().map_err(|e| e.to_string())?;
+                        let p_str = val.into_string().map_err(|_| {
+                            "Caminho de modelo inválido (caracteres não-UTF8).".to_string()
+                        })?;
+
+                        let expanded = if p_str.starts_with("~/") {
+                            if let Ok(home) = std::env::var("HOME") {
+                                p_str.replacen("~", &home, 1)
+                            } else {
+                                p_str
+                            }
+                        } else {
+                            p_str
+                        };
+                        model_path = Some(PathBuf::from(expanded));
+                    }
+                    Short('i') | Long("input-gain") => {
+                        let val = parser.value().map_err(|e| e.to_string())?;
+                        let val_str = val
+                            .into_string()
+                            .map_err(|_| "Valor de ganho de entrada inválido.".to_string())?;
+                        input_gain = val_str.parse::<f32>().map_err(|_| format!("Ganho de entrada inválido: '{}'. Deve ser um número em dB (ex: 3.5, -12).", val_str))?;
+                    }
+                    Short('o') | Long("output-gain") => {
+                        let val = parser.value().map_err(|e| e.to_string())?;
+                        let val_str = val
+                            .into_string()
+                            .map_err(|_| "Valor de ganho de saída inválido.".to_string())?;
+                        output_gain = val_str.parse::<f32>().map_err(|_| format!("Ganho de saída inválido: '{}'. Deve ser um número em dB (ex: 3.5, -12).", val_str))?;
+                    }
+                    _ => return Err(arg.unexpected().to_string()),
+                }
             }
-            Short('i') | Long("input-gain") => {
-                input_gain = parser.value()?.parse()?;
-            }
-            Short('o') | Long("output-gain") => {
-                output_gain = parser.value()?.parse()?;
-            }
-            Long("help") => {
-                println!("NAM-rs Standalone\n\nOptions:");
-                println!("  -m, --model <PATH>      Model file (.nam ou .namb)");
-                println!("  -i, --input-gain <DB>   Input gain in dB (float)");
-                println!("  -o, --output-gain <DB>  Output gain in dB (float)");
-                std::process::exit(0);
-            }
-            _ => return Err(arg.unexpected()),
+            Ok(None) => break,
+            Err(e) => return Err(e.to_string()),
         }
     }
+
+    if !has_args {
+        print_help();
+        std::process::exit(0);
+    }
+
     Ok((model_path, input_gain, output_gain))
 }
 
@@ -282,7 +328,22 @@ fn main() -> anyhow::Result<()> {
     // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let (model_path, initial_in_gain, initial_out_gain) = parse_args()?;
+    let (model_path, initial_in_gain, initial_out_gain) = match parse_args() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!(
+                "\n{} {}",
+                "❌ Erro ao ler argumentos da CLI:".red().bold(),
+                e
+            );
+            eprintln!(
+                "{}",
+                "💡 Dica: Rode 'nam-rs --help' para ver os parâmetros e formatos corretos.\n"
+                    .yellow()
+            );
+            std::process::exit(1);
+        }
+    };
 
     // Captura snapshot do sistema uma vez — propagado para todas as funções de diagnóstico
     let sys = SystemSnapshot::capture();

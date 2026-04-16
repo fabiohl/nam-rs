@@ -1,2 +1,5 @@
+## Leitura geral do código fonte
+## Sincronizar as novas melhorias com o AudioRip
 ## Sucessivas rodadas de "revisor-auditor" e de "pesquisador-inovador".
-## RC: Sincronizar as novas melhorias com o AudioRip
+## Esquema de true stereo. Atualmente, o sinal é mono e vai para os dois ouvidos.
+## Sinal de saida deve ser o único para o fone de ouvido. Não se somar ao do google chrome, que continua também indo.

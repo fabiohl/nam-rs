@@ -161,6 +161,25 @@ pub fn run_pipewire_host(
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         listener = stream
             .add_local_listener::<()>()
+            .state_changed(move |_stream, _user_data, old, new| match new {
+                pw::stream::StreamState::Error(err) => {
+                    log::error!("{} Falha grave na stream de áudio PW: {}", "💥".red(), err);
+                }
+                pw::stream::StreamState::Paused => {
+                    if old == pw::stream::StreamState::Streaming {
+                        log::info!(
+                            "{} Áudio pausado pelo servidor (Cabo desconectado ou troca de nó?)",
+                            "⏸️".yellow()
+                        );
+                    }
+                }
+                pw::stream::StreamState::Streaming => {
+                    if old == pw::stream::StreamState::Paused {
+                        log::info!("{} Áudio retomado (Conexão restabelecida!)", "▶️".green());
+                    }
+                }
+                _ => {}
+            })
             .param_changed(move |_stream, _user_data, id, param| {
                 let Some(param) = param else { return };
                 if id != pw::spa::param::ParamType::Format.as_raw() {
