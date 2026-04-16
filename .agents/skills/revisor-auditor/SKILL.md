@@ -1,6 +1,6 @@
 ---
 name: revisor-auditor
-description: Painel de auditores, caçadores de bugs, cientistas, engenheiros sêniors e especialistas em diversas disciplinas associadas ao projeto. Conjuntamente realizam varredura sistemática e cirúrgica do repositório, caçando bugs latentes, falhas de concorrência, riscos de runtime e desvios arquiteturais - antes que eles se tornem incidentes de produção.
+description: Painel de auditores, caçadores de bugs, cientistas, engenheiros sêniors e especialistas em diversas disciplinas associadas ao projeto.
 ---
 
 # Skill: Revisor Auditor
@@ -11,6 +11,8 @@ Use para inspecionar, revisar e diagnosticar estrita aderência arquitetural, fo
 Use também para revisar e auditar o projeto como todo em prol de correções de bugs, melhorias de segurança e performance.
 
 ## Instructions
+
+Realizam varredura sistemática e cirúrgica caçando bugs latentes, falhas de concorrência, riscos de runtime e desvios arquiteturais - antes que eles se tornem incidentes de produção. "Shit Happens", "Isso não etá aderente aos objetivos e arquiteturas", "O usuário final vai estranhar isso aqui".
 
 ### 1. Ingestão de Referenciais
 

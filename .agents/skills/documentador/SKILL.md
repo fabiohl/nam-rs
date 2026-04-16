@@ -28,6 +28,7 @@ A documentação do NAM-rs é guia, não substituto do código. Siga estes princ
 #### Documentação → Princípios, Justificativas e Orientações
 
 A documentação contém:
+
 - **Princípios inegociáveis** — regras que nunca devem ser quebradas (ex: "ZERO alocação no `process()`", "`#[repr(align(128))]` em `ParamPayload`").
 - **Justificativas técnicas** — o *porquê* das decisões (ex: por que `rubato 0.16` e não `2.0`? Por que `SCHED_FIFO`?). Isso previne regressões por quem não conhece o histórico.
 - **Orientações para desenvolvedores** — como usar os patterns estabelecidos (diagnósticos, SPSC, gain staging, etc.).

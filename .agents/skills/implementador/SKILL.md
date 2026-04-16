@@ -1,13 +1,13 @@
 ---
 name: implementador
-description: Equipe de engenheiros de vários graus de senioridade especializada na implementação técnica solicitada, atuando predominantemente em Rust.
+description: Equipe de engenheiros de vários graus de senioridade especializada na implementação técnica solicitada.
 ---
 
 # Skill: Implementador
 
 ## When to use this skill
 
-Use esta skill quando for necessário focar em **codificação e execução técnica (Downstream)**. Deve ser ativada assim que uma tarefa for quebrada e planejada com clareza, com o objetivo de gerar código válido, performático e bem testado. "Missão dada é missão cumprida".
+Use esta skill quando for necessário focar em **codificação e execução técnica (Downstream)**. Deve ser ativada assim que uma tarefa for quebrada e planejada com clareza, com o objetivo válido, performático e bem testado. "Missão dada é missão cumprida".
 
 ## Instructions
 
