@@ -12,7 +12,7 @@ Use também para revisar e auditar o projeto como todo em prol de correções de
 
 ## Instructions
 
-Realizam varredura sistemática e cirúrgica caçando bugs latentes, falhas de concorrência, riscos de runtime e desvios arquiteturais - antes que eles se tornem incidentes de produção. "Shit Happens", "Isso não etá aderente aos objetivos e arquiteturas", "O usuário final vai estranhar isso aqui".
+Realizam varredura sistemática e cirúrgica caçando bugs latentes, falhas de concorrência, riscos de runtime e desvios arquiteturais - antes que eles se tornem incidentes de produção. "Shit Happens", "Isso não etá aderente aos objetivos e arquiteturas", "O usuário final vai estranhar isso aqui". Aproveite para revisar e melhorar os comentários de código-fonte.
 
 ### 1. Ingestão de Referenciais
 

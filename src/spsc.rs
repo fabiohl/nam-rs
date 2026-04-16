@@ -29,6 +29,7 @@ pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 /// A thread DSP seta flags atômicas ao invés de chamar `println!`/`eprintln!`.
 /// A thread principal lê estas flags periodicamente e imprime logs ao usuário.
 /// Isso garante que **zero I/O** ocorra no callback RT.
+#[repr(align(128))]
 pub struct RtStatusFlags {
     /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.
     /// Setado pela thread DSP ao consumir um novo `NamResampler` do canal SPSC.
