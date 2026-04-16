@@ -241,14 +241,10 @@ fn load_and_send_model(
             let nam_rate = model_data.sample_rate.unwrap_or(48000.0) as u32;
 
             // Dispatcher: converte NamModelData → Box<DynamicModel> (thread CLI)
-            let boxed_model = match loader::dispatcher::build_model(&model_data) {
+            // Para "True Stereo", instanciamos dois caminhos (L e R) de estados estritamente independentes.
+            let model_l = match loader::dispatcher::build_model(&model_data) {
                 Ok(mut model) => {
-                    // Prewarm na thread CLI — estabiliza estados internos antes do DSP
                     model.0.prewarm(2048);
-                    log::info!(
-                        "{} Modelo prewarmado com 2048 amostras.",
-                        "🔥 [CLI]".yellow()
-                    );
                     Some(model)
                 }
                 Err(e) => {
@@ -281,9 +277,29 @@ fn load_and_send_model(
                 }
             };
 
+            let model_r = if model_l.is_some() {
+                match loader::dispatcher::build_model(&model_data) {
+                    Ok(mut model) => {
+                        model.0.prewarm(2048);
+                        Some(model)
+                    }
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            if model_l.is_some() {
+                log::info!(
+                    "{} Modelo preparado em True Stereo (L+R) com 2048 amostras pré-aquecidas.",
+                    "🔥 [CLI]".yellow()
+                );
+            }
+
             if producer
                 .push(ParamPayload::LoadModel {
-                    model: boxed_model,
+                    model_l,
+                    model_r,
                     input_db_adj,
                     output_db_adj,
                     sample_rate: nam_rate,

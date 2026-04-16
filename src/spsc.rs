@@ -104,8 +104,10 @@ pub enum ParamPayload {
     /// esperados pelo criador do modelo (resolvidos da tag input_level_dbu e loudness).
     /// O ponteiro garante alocação-zero (no-heap) e inicialização determinística.
     LoadModel {
-        /// O modelo encapsulado para a inferência neural
-        model: Option<Box<crate::models::DynamicModel>>,
+        /// O modelo encapsulado para a inferência neural (Canal Esquerdo)
+        model_l: Option<Box<crate::models::DynamicModel>>,
+        /// O modelo encapsulado para a inferência neural (Canal Direito)
+        model_r: Option<Box<crate::models::DynamicModel>>,
         /// Ajuste de ganho esperado na entrada em dB (audioInputLevelDBu - modelInputLevelDBu)
         input_db_adj: f32,
         /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
@@ -145,7 +147,7 @@ pub struct SpscChannels {
 /// `capacity` deve ser preferencialmente potência de 2.
 pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (param_prod, param_cons) = RingBuffer::new(capacity);
-    let (gc_prod, gc_cons) = RingBuffer::new(capacity);
+    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 2); // Capacidade dobrada para garbage collection dupla (L+R)
     // Canal de resampler: capacidade pequena (apenas 1 em trânsito por vez, tipicamente)
     let (rs_prod, rs_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
@@ -195,7 +197,11 @@ mod tests {
                             assert!((-60.0..=24.0).contains(&gain));
                             processed_messages += 1;
                         }
-                        ParamPayload::LoadModel { model: _, .. } => {
+                        ParamPayload::LoadModel {
+                            model_l: _,
+                            model_r: _,
+                            ..
+                        } => {
                             processed_messages += 1;
                         }
                     }
@@ -213,7 +219,8 @@ mod tests {
                 ParamPayload::OutputGain(-12.5),
                 ParamPayload::InputGain(12.0),
                 ParamPayload::LoadModel {
-                    model: None,
+                    model_l: None,
+                    model_r: None,
                     input_db_adj: 0.0,
                     output_db_adj: 0.0,
                     sample_rate: 48000,

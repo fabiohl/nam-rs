@@ -65,16 +65,16 @@ fn sinc_params() -> SincInterpolationParameters {
 pub struct NamResampler {
     /// Resampler de entrada: `pw_rate → 48 kHz`. `None` quando `pw_rate == 48000` (bypass).
     inner: Option<SincFixedIn<f32>>,
-    /// Buffer de entrada do resampler `inner` (pré-alocado, canal único).
+    /// Buffer de entrada do resampler `inner` (pré-alocado, planar 2 canais).
     inner_in_buf: Vec<Vec<f32>>,
-    /// Buffer de saída do resampler `inner` (pré-alocado, canal único).
+    /// Buffer de saída do resampler `inner` (pré-alocado, planar 2 canais).
     inner_out_buf: Vec<Vec<f32>>,
 
     /// Resampler de saída: `48 kHz → pw_rate`. `None` quando `pw_rate == 48000` (bypass).
     outer: Option<SincFixedIn<f32>>,
-    /// Buffer de entrada do resampler `outer` (pré-alocado, canal único).
+    /// Buffer de entrada do resampler `outer` (pré-alocado, planar 2 canais).
     outer_in_buf: Vec<Vec<f32>>,
-    /// Buffer de saída do resampler `outer` (pré-alocado, canal único).
+    /// Buffer de saída do resampler `outer` (pré-alocado, planar 2 canais).
     outer_out_buf: Vec<Vec<f32>>,
 
     /// Rate do PipeWire (rate da placa de som).
@@ -124,20 +124,20 @@ impl NamResampler {
             2.0, // max_resample_ratio_relative: permite variação de ±2× (async)
             sinc_params(),
             chunk_size,
-            1, // mono (canal único)
+            2, // Planar estéreo (2 canais)
         )?;
 
         // Tamanho do bloco de saída do inner (em frames 48k)
         let inner_out_size = inner.output_frames_max();
-        let inner_in_buf = vec![vec![0.0f32; chunk_size]];
-        let inner_out_buf = vec![vec![0.0f32; inner_out_size]];
+        let inner_in_buf = vec![vec![0.0f32; chunk_size], vec![0.0f32; chunk_size]];
+        let inner_out_buf = vec![vec![0.0f32; inner_out_size], vec![0.0f32; inner_out_size]];
 
         // Bloco de entrada do outer = saída do inner (amostras 48k)
-        let outer = SincFixedIn::<f32>::new(ratio_out, 2.0, sinc_params(), inner_out_size, 1)?;
+        let outer = SincFixedIn::<f32>::new(ratio_out, 2.0, sinc_params(), inner_out_size, 2)?;
 
         let outer_out_size = outer.output_frames_max();
-        let outer_in_buf = vec![vec![0.0f32; inner_out_size]];
-        let outer_out_buf = vec![vec![0.0f32; outer_out_size]];
+        let outer_in_buf = vec![vec![0.0f32; inner_out_size], vec![0.0f32; inner_out_size]];
+        let outer_out_buf = vec![vec![0.0f32; outer_out_size], vec![0.0f32; outer_out_size]];
 
         Ok(Self {
             inner: Some(inner),
@@ -179,32 +179,43 @@ impl NamResampler {
     ///
     /// # Panics
     /// Não entra em pânico; trunca silenciosamente se `output` for menor que o necessário.
-    pub fn process_input(&mut self, input: &[f32], output: &mut [f32]) -> usize {
+    pub fn process_input(
+        &mut self,
+        in_l: &[f32],
+        in_r: &[f32],
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+    ) -> usize {
         let Some(ref mut resampler) = self.inner else {
             // Bypass: copia diretamente
-            let n = input.len().min(output.len());
-            output[..n].copy_from_slice(&input[..n]);
+            let n = in_l.len().min(out_l.len());
+            out_l[..n].copy_from_slice(&in_l[..n]);
+            out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
 
-        let n_in = input.len().min(self.inner_in_buf[0].len());
-        self.inner_in_buf[0][..n_in].copy_from_slice(&input[..n_in]);
+        let n_in = in_l.len().min(self.inner_in_buf[0].len());
+        self.inner_in_buf[0][..n_in].copy_from_slice(&in_l[..n_in]);
+        self.inner_in_buf[1][..n_in].copy_from_slice(&in_r[..n_in]);
 
         // Limpa o restante se o chunk for menor que o configurado
         if n_in < self.inner_in_buf[0].len() {
             self.inner_in_buf[0][n_in..].fill(0.0);
+            self.inner_in_buf[1][n_in..].fill(0.0);
         }
 
         match resampler.process_into_buffer(&self.inner_in_buf, &mut self.inner_out_buf, None) {
             Ok((_, n_out)) => {
-                let n = n_out.min(output.len());
-                output[..n].copy_from_slice(&self.inner_out_buf[0][..n]);
+                let n = n_out.min(out_l.len());
+                out_l[..n].copy_from_slice(&self.inner_out_buf[0][..n]);
+                out_r[..n].copy_from_slice(&self.inner_out_buf[1][..n]);
                 n
             }
             Err(_) => {
                 // Falha silenciosa RT-safe: retorna silêncio
-                let n = n_in.min(output.len());
-                output[..n].fill(0.0);
+                let n = n_in.min(out_l.len());
+                out_l[..n].fill(0.0);
+                out_r[..n].fill(0.0);
                 n
             }
         }
@@ -217,30 +228,41 @@ impl NamResampler {
     ///
     /// # Retorno
     /// Número de amostras escritas em `output`. Em modo bypass retorna `input.len()`.
-    pub fn process_output(&mut self, input: &[f32], output: &mut [f32]) -> usize {
+    pub fn process_output(
+        &mut self,
+        in_l: &[f32],
+        in_r: &[f32],
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+    ) -> usize {
         let Some(ref mut resampler) = self.outer else {
             // Bypass: copia diretamente
-            let n = input.len().min(output.len());
-            output[..n].copy_from_slice(&input[..n]);
+            let n = in_l.len().min(out_l.len());
+            out_l[..n].copy_from_slice(&in_l[..n]);
+            out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
 
-        let n_in = input.len().min(self.outer_in_buf[0].len());
-        self.outer_in_buf[0][..n_in].copy_from_slice(&input[..n_in]);
+        let n_in = in_l.len().min(self.outer_in_buf[0].len());
+        self.outer_in_buf[0][..n_in].copy_from_slice(&in_l[..n_in]);
+        self.outer_in_buf[1][..n_in].copy_from_slice(&in_r[..n_in]);
 
         if n_in < self.outer_in_buf[0].len() {
             self.outer_in_buf[0][n_in..].fill(0.0);
+            self.outer_in_buf[1][n_in..].fill(0.0);
         }
 
         match resampler.process_into_buffer(&self.outer_in_buf, &mut self.outer_out_buf, None) {
             Ok((_, n_out)) => {
-                let n = n_out.min(output.len());
-                output[..n].copy_from_slice(&self.outer_out_buf[0][..n]);
+                let n = n_out.min(out_l.len());
+                out_l[..n].copy_from_slice(&self.outer_out_buf[0][..n]);
+                out_r[..n].copy_from_slice(&self.outer_out_buf[1][..n]);
                 n
             }
             Err(_) => {
-                let n = n_in.min(output.len());
-                output[..n].fill(0.0);
+                let n = n_in.min(out_l.len());
+                out_l[..n].fill(0.0);
+                out_r[..n].fill(0.0);
                 n
             }
         }
@@ -258,14 +280,21 @@ mod tests {
         assert!(rs.is_bypass(), "48k deve ser bypass");
 
         let input = [1.0f32, 2.0, 3.0, 4.0, 5.0];
+        let input_r = [5.0f32, 4.0, 3.0, 2.0, 1.0];
         let mut output = [0.0f32; 5];
-        let n = rs.process_input(&input, &mut output);
+        let mut output_r = [0.0f32; 5];
+        let n = rs.process_input(&input, &input_r, &mut output, &mut output_r);
         assert_eq!(n, 5);
-        assert_eq!(output, input, "bypass deve copiar exatamente");
+        assert_eq!(output, input, "bypass deve copiar exatamente L");
+        assert_eq!(output_r, input_r, "bypass deve copiar exatamente R");
 
-        let n2 = rs.process_output(&input, &mut output);
+        let n2 = rs.process_output(&input, &input_r, &mut output, &mut output_r);
         assert_eq!(n2, 5);
-        assert_eq!(output, input, "bypass de saída deve copiar exatamente");
+        assert_eq!(output, input, "bypass de saída deve copiar exatamente L");
+        assert_eq!(
+            output_r, input_r,
+            "bypass de saída deve copiar exatamente R"
+        );
     }
 
     /// Verifica que o downsample 96k→48k produz ~metade das amostras.
@@ -276,8 +305,10 @@ mod tests {
         assert!(!rs.is_bypass());
 
         let input = vec![0.5f32; chunk];
+        let input_r = vec![0.5f32; chunk];
         let mut output = vec![0.0f32; chunk * 2]; // buffer generoso
-        let n = rs.process_input(&input, &mut output);
+        let mut output_r = vec![0.0f32; chunk * 2];
+        let n = rs.process_input(&input, &input_r, &mut output, &mut output_r);
 
         // Para 96k→48k, esperamos ~chunk/2 amostras de saída (±tolerância do Sinc)
         // O filtro Kaiser tem Group Delay. A primeira janela come metade do Sinc len (256/2 = 128 samples a 96k, vira 64 a 48k).
@@ -297,8 +328,10 @@ mod tests {
         assert!(!rs.is_bypass());
 
         let input = vec![0.3f32; chunk];
+        let input_r = vec![0.3f32; chunk];
         let mut output = vec![0.0f32; chunk * 2];
-        let n = rs.process_input(&input, &mut output);
+        let mut output_r = vec![0.0f32; chunk * 2];
+        let n = rs.process_input(&input, &input_r, &mut output, &mut output_r);
 
         // 441 * (48000/44100) ≈ 480
         // Group delay come ~139 amostras no upsample
@@ -321,8 +354,10 @@ mod tests {
         let inner_out_size = chunk / 2; // tamanho aproximado do bloco de 48k
 
         let input = vec![0.4f32; inner_out_size];
+        let input_r = vec![0.4f32; inner_out_size];
         let mut output = vec![0.0f32; chunk * 2];
-        let n = rs.process_output(&input, &mut output);
+        let mut output_r = vec![0.0f32; chunk * 2];
+        let n = rs.process_output(&input, &input_r, &mut output, &mut output_r);
 
         // inner_out_size * (96000/48000) ≈ chunk
         let expected_approx = inner_out_size * 2;
@@ -343,13 +378,16 @@ mod tests {
         let input: Vec<f32> = (0..chunk)
             .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 96_000.0_f32).sin())
             .collect();
+        let input_r = input.clone();
 
         let mut mid = vec![0.0f32; chunk];
-        let n_mid = rs.process_input(&input, &mut mid);
+        let mut mid_r = vec![0.0f32; chunk];
+        let n_mid = rs.process_input(&input, &input_r, &mut mid, &mut mid_r);
         assert!(n_mid > 0, "process_input não produziu saída");
 
         let mut out = vec![0.0f32; chunk * 2];
-        let n_out = rs.process_output(&mid[..n_mid], &mut out);
+        let mut out_r = vec![0.0f32; chunk * 2];
+        let n_out = rs.process_output(&mid[..n_mid], &mid_r[..n_mid], &mut out, &mut out_r);
         assert!(n_out > 0, "process_output não produziu saída");
 
         // A energia do sinal de saída deve ser razoavelmente próxima à entrada
@@ -375,9 +413,12 @@ mod tests {
         // Impulso unitário no início do bloco
         let mut input = vec![0.0f32; chunk];
         input[0] = 1.0;
+        let mut input_r = vec![0.0f32; chunk];
+        input_r[0] = 1.0;
 
         let mut output = vec![0.0f32; chunk];
-        let n = rs.process_input(&input, &mut output);
+        let mut output_r = vec![0.0f32; chunk];
+        let n = rs.process_input(&input, &input_r, &mut output, &mut output_r);
         assert!(n > 0);
 
         // A resposta ao impulso do filtro Sinc deve ter energia finita e não-zero
@@ -404,9 +445,12 @@ mod tests {
         let inner_out_approx = chunk / 2;
         let mut input = vec![0.0f32; inner_out_approx];
         input[0] = 1.0;
+        let mut input_r = vec![0.0f32; inner_out_approx];
+        input_r[0] = 1.0;
 
         let mut output = vec![0.0f32; chunk];
-        let n = rs.process_output(&input, &mut output);
+        let mut output_r = vec![0.0f32; chunk];
+        let n = rs.process_output(&input, &input_r, &mut output, &mut output_r);
         assert!(n > 0);
 
         let energy: f32 = output[..n].iter().map(|x| x * x).sum();

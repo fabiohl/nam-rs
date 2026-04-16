@@ -4,9 +4,9 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 
 ## 1. Topologia PipeWire Standalone
 
-- **PipeWire-First:** O servidor abandona abstrações tradicionais VST/LV2/CLAP para interagir como um cliente Standalone nativo através da biblioteca `pipewire-rs`, sem intermediários. O processo assume imediatamente a jurisdição percussiva.
-- **Integração Lock-Free end-to-end:** A arquitetura do projeto obedece ao seguinte fluxo determinístico: `CLI → Parser (.nam/.namb) → Model Dispatcher (determinação de arquitetura estática/dinâmica) → Prewarm (Thread CLI) → Injeção Lock-free via SPSC → Thread DSP (SCHED_FIFO) → Gain Stage Input → Inference Nativa (WaveNet/LSTM) → Gain Stage Output → PipeWire Output.`
-- **Pass-Through Transitório → Dispatch Ativo:** O callback `process()` extrai amostras `f32` do buffer PipeWire e as despacha para o modelo neural ativo (`WaveNet` ou `LSTM`) via trait `NamModel`. Quando nenhum modelo está carregado, opera em pass-through nativo (Injeção Nula).
+- **PipeWire-First e Node Exclusive:** O servidor age como um cliente Standalone nativo através de `pipewire-rs`. Para evitar poluição sonora ou conversões latentes do mixer intermédio do SO, ele afixa as propriedades `node.exclusive = true` e `node.always-process = true`, monopolizando agressivamente a interface de som.
+- **Integração Lock-Free end-to-end:** A arquitetura do projeto obedece ao seguinte fluxo determinístico: `CLI → Parser (.nam/.namb) → Model Dispatcher (determinação de arquitetura estática/dinâmica) → Prewarm (Thread CLI) → Injeção Lock-free Dual via SPSC → Thread DSP (SCHED_FIFO) → Gain Stage Input → Inference Nativa True Stereo (WaveNet/LSTM) → Gain Stage Output → PipeWire Output.`
+- **True Stereo e Bypass Inteligente:** O callback `process()` negocia canais planares de 32 bits (`F32P` com canais = 2). Ele extrai os arrays e invoca inferência simétrica para L e R (`model_l`, `model_r`). Contudo, o sistema prevê uma mitigação vital de CPU: se o canal R for puro silêncio ou idênticamente replicado a L, a thread pula o processamento do R, inferindo apenas a percurso mono L e estampando bit-a-bit à saída R, poupando virtualmente 50% dos ciclos.
 
 ## 2. Inferência FastMath e Microarquitetura (AVX2 / AVX-512)
 
@@ -19,8 +19,8 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 ## 3. Gestão e Isolação Temporais
 
 - **SCHED_FIFO e Affinity:** A thread principal DSP é ancorada por _Core Affinity_ no _SCHED_FIFO_ (se disponível), desativando a jurisdição do escalonador _CFS_ do SO. O silício não sofrerá instâncias de _Cache Misses_ no L1/L2.
-- **SPSC Ring Buffers:** Comunicação parametrizada entre CLI e DSP (input/output gain, troca de modelo .nam/.namb, taxa de amostragem) transita via canais SPSC (`rtrb`), com payload `ParamPayload` alinhado a 128 bytes (`#[repr(align(128))]`) para blindar contra _False Sharing_. O campo `LoadModel.model` trafega como `Option<Box<DynamicModel>>` tipado (sem ponteiro opaco `*mut ()`). Canal SPSC dedicado para `NamResampler` (Main→RT) garante que a construção de resamplers (com alocações heap) ocorra exclusivamente fora do callback RT. `RtStatusFlags` (struct atômica) substitui todos os `println!`/`eprintln!` no callback por comunicação silenciosa RT→Main.
-- **Hot-Swap Lock-Free com GC Thread:** Ao trocar o modelo ativo, o `Box<DynamicModel>` obsoleto é enviado para uma segunda fila SPSC GC (produzida na thread DSP, consumida em thread background). O `Drop` ocorre fora do limite `SCHED_FIFO`, garantindo ausência de alocações e liberações de heap no hot path.
+- **SPSC Ring Buffers:** Comunicação parametrizada entre CLI e DSP (input/output gain, troca de modelo .nam/.namb, taxa de amostragem) transita via canais SPSC (`rtrb`), com payload `ParamPayload` alinhado a 128 bytes (`#[repr(align(128))]`) para blindar contra _False Sharing_. O campo `LoadModel` trafega com dois slots tipados (`model_l: Option<Box<DynamicModel>>`, `model_r: Option<Box<DynamicModel>>`). Canal SPSC dedicado para `NamResampler` garante que a construção de resamplers não trave o callback RT. `RtStatusFlags` substitui prints.
+- **Hot-Swap Lock-Free com GC Thread duplo:** Ao trocar o par de modelos ativo, os `Box<DynamicModel>` obsoletos são enviados para uma fila SPSC GC (produzida na thread DSP, consumida background). Essa fila tem volume dobrado (acompanhando o estéreo) para assegurar que a desalocação ocorra via thread coletora, longe do strict schedule `SCHED_FIFO`.
 - **Purga de I/O de Disco Concluída:** Toda a infraestrutura de gravação herdada do AudioRip (io_uring, fallocate, headers WAV, tokio-uring) foi extirpada. O NAM-rs é um injetor de modelo, não um capturador multimídia.
 - **Tempo Linear de Sinc FIR:** `NamResampler` realiza conversão bidirecional de sample rate (`pw_rate→48 kHz` na entrada, `48 kHz→pw_rate` na saída) usando filtro Sinc Kaiser-BlackmanHarris2 com `sinc_len=256`, garantindo isolação total entre o rate do PipeWire e o rate interno dos modelos NAM (48 kHz). Bypass automático quando `pw_rate == 48000`.
 - **Detecção Reativa de Sample Rate (RT-safe):** O callback `param_changed` do stream PipeWire detecta alterações de `AudioInfoRaw::rate` e as comunica via `AtomicU32` compartilhado. No `process()`, a detecção seta flags atômicas (`needs_resampler_rebuild`, `requested_rate`) em `RtStatusFlags` — **sem alocar**. A thread principal (loop `while !SHUTDOWN`) verifica as flags, constrói `NamResampler::new()` fora do RT, e envia via canal SPSC dedicado `Producer<NamResampler>`. O callback drena o canal e substitui o resampler ativo (zero-alloc swap). Suporta hot-plug de hardware externo sem falhas de transição.
@@ -31,8 +31,8 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/main.rs`               | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo, diagnósticos estruturados                                                                                                           |
 | `src/diagnostics.rs`        | Sistema de diagnósticos estruturados: `NamErrorCode` (catálogo E1xxx–E5xxx), `NamDiagnostic` (mensagem amigável + bloco de suporte copiável), `SystemSnapshot` (captura de ambiente). Zero dependências novas — opera exclusivamente fora da thread RT                                              |
-| `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, callback DSP RT (Core Affinity + SCHED_FIFO), resampling bidirecional, dispatch NamModel, gain staging. Zero alocações e zero I/O no callback — resampler via SPSC, status via `RtStatusFlags`                                               |
-| `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com InputGain, OutputGain, LoadModel (tipado `Box<DynamicModel>`); fila GC secundária (`rtrb`); `RtStatusFlags` (atômicas RT→Main); canal SPSC dedicado `NamResampler` (Main→RT)                                    |
+| `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, Mode node.exclusive, callback DSP RT (Core Affinity + SCHED_FIFO), resampling planar, dispatch True Stereo/Bypass Mono, gain staging.                                                                                                        |
+| `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com LoadModel (par `model_l`, `model_r`); fila GC suportando dupla descarga paralela; `RtStatusFlags` atômicas e canal SPSC de resampler.                                                                           |
 | `src/math/mod.rs`           | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                                                                                                                            |
 | `src/math/simd.rs`          | `dot_product_avx2` (YMM 256-bit), `dot_product_avx512` (ZMM 512-bit), `SimdMathConfig` (v-table de despacho dinâmico multiversioning), `set_daz_ftz` (DAZ+FTZ via intrínsecos `_mm_setcsr`/`_mm_getcsr` + inline asm para mitigação de denormals na thread RT)                                      |
 | `src/math/fastmath.rs`      | `simd_tanh`/`simd_sigmoid` AVX2 (YMM), `simd_tanh_avx512`/`simd_sigmoid_avx512` (ZMM), helpers `tanh_slice_avx2/512`, `sigmoid_slice_avx2/512`                                                                                                                                                      |
@@ -47,7 +47,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/loader/namb.rs`        | Parser do formato `.namb` — CRC32 IEEE 802.3 + Little-Endian                                                                                                                                                                                                                                        |
 | `src/dsp/mod.rs`            | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                                                                                                                                 |
 | `src/dsp/gain.rs`           | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`                                                                                                                                                                                                              |
-| `src/dsp/resampler.rs`      | `NamResampler`: resampler FIR Sinc Kaiser bidirecional (rubato 0.16), RT-safe, bypass auto em 48 kHz                                                                                                                                                                                                |
+| `src/dsp/resampler.rs`      | `NamResampler`: wrapper multi-channel Planar (2 channels), resampler bidirecional FIR Sinc (rubato 0.16), bypass automático para frequências de 48 kHz cravadas.                                                                                                                                    |
 
 ## 5. Gestão de Dependências DSP
 
@@ -56,12 +56,12 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 O crate `rubato` é usado para resampling FIR Sinc de fase linear em `src/dsp/resampler.rs`.
 A versão foi **fixada em `0.16.x`** (não `2.0.0`) pelos seguintes motivos técnicos:
 
-| Critério               | rubato 0.16.x                                               | rubato 2.0.0                                   |
-| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| **API de buffer**      | `Vec<Vec<f32>>` pré-alocados — compatível com zero-alloc RT | Requer `audioadapter` + `audioadapter-buffers` |
-| **Superfície de dep.** | Mínima (sem dependências de wrapper)                        | +2 crates obrigatórios                         |
-| **RT-safe**            | `process_into_buffer()` sempre disponível                   | Idem, mas API diferente                        |
-| **Feature FFT**        | Desabilitada (`default-features = false`)                   | Idem                                           |
+| Critério               | rubato 0.16.x                                                | rubato 2.0.0                                   |
+| ---------------------- | ------------------------------------------------------------ | ---------------------------------------------- |
+| **API de buffer**      | `Vec<Vec<f32>>` (planares x2 canais) — compatível zero-alloc | Requer `audioadapter` + `audioadapter-buffers` |
+| **Superfície de dep.** | Mínima (sem dependências de wrapper)                         | +2 crates obrigatórios                         |
+| **RT-safe**            | `process_into_buffer()` multi-canal sempre disponível        | Idem, mas API diferente                        |
+| **Feature FFT**        | Desabilitada (`default-features = false`)                    | Idem                                           |
 
 **Configuração no Cargo.toml:**
 
@@ -73,19 +73,19 @@ rubato = { version = "0.16", default-features = false }
 ### Fluxo DSP Bidirecional
 
 ```text
-PipeWire Input (Nk Hz)
+PipeWire Input (Nk Hz) — L/R (F32P)
     │
-    ▼ apply_gain_simd(input_gain_mult)          — SIMD AVX2, antes do NAM
+    ▼ apply_gain_simd(input_gain_mult)          — SIMD AVX2 dual-channel
     │
-    ▼ NamResampler::process_input(Nk → 48k)    — FIR Sinc Kaiser, ou bypass se Nk=48k
+    ▼ NamResampler::process_input(Nk → 48k)    — Planar L e R processados sincronamente
     │
-    ▼ NamModel::process(48 kHz)                — WaveNet / LSTM inference
+    ▼ NamModel::process(48 kHz)                — True Stereo: if R==L { bypass Mono() + L->R }
     │
-    ▼ NamResampler::process_output(48k → Nk)   — FIR Sinc Kaiser, ou bypass se Nk=48k
+    ▼ NamResampler::process_output(48k → Nk)   — Planar reconvertido simetricamente
     │
-    ▼ apply_gain_simd(output_gain_mult)         — SIMD AVX2, após o NAM
+    ▼ apply_gain_simd(output_gain_mult)         — SIMD AVX2 dual-channel
     │
-    ▼ PipeWire Output (Nk Hz)                  — placa de som recebe no rate original
+    ▼ PipeWire Output (Nk Hz)                  — Exclusivo para o SO (sem mixers paralelos)
 ```
 
 **Parâmetros do filtro Sinc:**

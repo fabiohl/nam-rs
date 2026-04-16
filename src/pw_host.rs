@@ -96,12 +96,15 @@ pub fn run_pipewire_host(
                 *pw::keys::MEDIA_CLASS => "Audio/Duplex", // Nó bidirecional com portas IN e OUT
                 *pw::keys::NODE_NAME => "NAM-rs-standalone",
                 *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Rust PipeWire native)",
+                "node.exclusive" => "true",
+                "node.always-process" => "true",
                 // Extensões para bit-perfect: PipeWire tentará acoplar com as cfg da fonte
             },
         )?;
 
         let target_cpu = select_optimal_cpu().unwrap_or(0);
-        let mut active_model: Option<Box<crate::models::DynamicModel>> = None;
+        let mut active_model_l: Option<Box<crate::models::DynamicModel>> = None;
+        let mut active_model_r: Option<Box<crate::models::DynamicModel>> = None;
 
         // NamResampler bidirecional: converte entre o rate do PipeWire e os 48 kHz do NAM.
         // Inicializado com 48k (bypass) — rate real será atualizado via canal SPSC de resamplers
@@ -123,8 +126,10 @@ pub fn run_pipewire_host(
         // Buffer intermediário 48k para saída do process_input e entrada do process_output (stack).
         // Dimensionado para MAX_DSP_BUF — o resampler pode expandir/contrair dentro deste limite.
         const MAX_RESAMP_BUF: usize = 4096;
-        let mut resamp_mid = [0.0f32; MAX_RESAMP_BUF];
-        let mut resamp_out = [0.0f32; MAX_RESAMP_BUF];
+        let mut resamp_mid_l = [0.0f32; MAX_RESAMP_BUF];
+        let mut resamp_out_l = [0.0f32; MAX_RESAMP_BUF];
+        let mut resamp_mid_r = [0.0f32; MAX_RESAMP_BUF];
+        let mut resamp_out_r = [0.0f32; MAX_RESAMP_BUF];
 
         // Variáveis de ganho em decibéis
         let mut user_input_gain_db: f32 = 0.0;
@@ -233,13 +238,15 @@ pub fn run_pipewire_host(
                 while let Ok(payload) = consumer.pop() {
                     match payload {
                         ParamPayload::LoadModel {
-                            model,
+                            model_l,
+                            model_r,
                             input_db_adj,
                             output_db_adj,
                             sample_rate,
                         } => {
-                            let mut new_model = model;
-                            if let Some(ref mut _m) = new_model {
+                            let new_model_l = model_l;
+                            let new_model_r = model_r;
+                            if new_model_l.is_some() || new_model_r.is_some() {
                                 model_input_db_adj = input_db_adj;
                                 model_output_db_adj = output_db_adj;
                                 current_nam_rate = sample_rate;
@@ -249,7 +256,10 @@ pub fn run_pipewire_host(
                                 current_nam_rate = 48_000;
                             }
 
-                            if let Some(old) = std::mem::replace(&mut active_model, new_model) {
+                            if let Some(old) = std::mem::replace(&mut active_model_l, new_model_l) {
+                                let _ = gc_producer.push(old);
+                            }
+                            if let Some(old) = std::mem::replace(&mut active_model_r, new_model_r) {
                                 let _ = gc_producer.push(old);
                             }
                             param_changed = true;
@@ -314,73 +324,122 @@ pub fn run_pipewire_host(
                     None => return,
                 };
 
-                // Extrai a primeira região de dados do buffer (mono, canal 0).
                 let datas = _buf.datas_mut();
-                if let Some(d) = datas.first_mut() {
-                    let chunk = d.chunk();
-                    let offset = chunk.offset() as usize;
-                    let size = chunk.size() as usize;
-
-                    if let Some(ref mut model_box) = active_model
-                        && size > 0
-                        && let Some(raw_bytes) = d.data()
+                if datas.len() >= 2 {
+                    let (left_datas, right_datas) = datas.split_at_mut(1);
+                    if let (Some(d_l), Some(d_r)) =
+                        (left_datas.first_mut(), right_datas.first_mut())
                     {
-                        let n_bytes = size.min(raw_bytes.len().saturating_sub(offset));
-                        let n_samples = n_bytes / std::mem::size_of::<f32>();
+                        let chunk_l = d_l.chunk();
+                        let chunk_r = d_r.chunk();
+                        let offset_l = chunk_l.offset() as usize;
+                        let size_l = chunk_l.size() as usize;
+                        let offset_r = chunk_r.offset() as usize;
+                        let size_r = chunk_r.size() as usize;
 
-                        if n_samples > 0 {
-                            let samples = unsafe {
-                                std::slice::from_raw_parts_mut(
-                                    raw_bytes.as_mut_ptr().add(offset).cast::<f32>(),
-                                    n_samples,
-                                )
-                            };
+                        if let (Some(raw_l), Some(raw_r)) = (d_l.data(), d_r.data()) {
+                            let n_bytes_l = size_l.min(raw_l.len().saturating_sub(offset_l));
+                            let n_bytes_r = size_r.min(raw_r.len().saturating_sub(offset_r));
+                            let n_samples_l = n_bytes_l / std::mem::size_of::<f32>();
+                            let n_samples_r = n_bytes_r / std::mem::size_of::<f32>();
+                            let n_samples = n_samples_l.min(n_samples_r);
 
-                            // Buffer temporal na stack para saída (Zero-Alloc).
-                            // Máximo razoável para callbacks PipeWire: 2048 amostras.
-                            const MAX_DSP_BUF: usize = 2048;
-                            let mut temp_out = [0.0f32; MAX_DSP_BUF];
-                            let n = n_samples.min(MAX_DSP_BUF);
+                            if n_samples > 0 {
+                                let samples_l = unsafe {
+                                    std::slice::from_raw_parts_mut(
+                                        raw_l.as_mut_ptr().add(offset_l).cast::<f32>(),
+                                        n_samples,
+                                    )
+                                };
+                                let samples_r = unsafe {
+                                    std::slice::from_raw_parts_mut(
+                                        raw_r.as_mut_ptr().add(offset_r).cast::<f32>(),
+                                        n_samples,
+                                    )
+                                };
 
-                            // 1. Aplica ganho de entrada SIMD antes do resampling e inferência
-                            apply_gain_simd(&mut samples[..n], input_gain_mult);
-
-                            // 2. Downsample: PW_rate → 48 kHz (ou bypass se já em 48k)
-                            let n_48k = resampler
-                                .process_input(&samples[..n], &mut resamp_mid[..MAX_RESAMP_BUF]);
-
-                            // 3. Inferência NAM a 48 kHz
-                            model_box
-                                .0
-                                .process(&resamp_mid[..n_48k], &mut temp_out[..n_48k]);
-
-                            // 4. Upsample: 48 kHz → PW_rate (ou bypass se já em 48k)
-                            let n_pw = resampler.process_output(
-                                &temp_out[..n_48k],
-                                &mut resamp_out[..MAX_RESAMP_BUF],
-                            );
-
-                            // 5. Aplica ganho de saída SIMD após conversão de rate
-                            apply_gain_simd(&mut resamp_out[..n_pw], output_gain_mult);
-
-                            // Copia resultado de volta para o buffer do PipeWire e detecta saturação
-                            let n_copy = n_pw.min(n);
-                            let out_slice = &resamp_out[..n_copy];
-
-                            let mut clipped = false;
-                            for &s in out_slice {
-                                if s.abs() > 1.0 {
-                                    clipped = true;
-                                    break;
+                                // Mitigação: se o R for puramente zero ou exatamente igual ao L,
+                                // processamos no modo Mono economizando 50% de CPU.
+                                let mut process_mono = true;
+                                for i in 0..n_samples {
+                                    if samples_r[i] != 0.0 && samples_r[i] != samples_l[i] {
+                                        process_mono = false;
+                                        break;
+                                    }
                                 }
-                            }
-                            if clipped {
-                                rt_status_for_process
-                                    .has_clipped
-                                    .store(true, Ordering::Relaxed);
-                            }
 
-                            samples[..n_copy].copy_from_slice(out_slice);
+                                const MAX_DSP_BUF: usize = 2048;
+                                let mut temp_out_l = [0.0f32; MAX_DSP_BUF];
+                                let mut temp_out_r = [0.0f32; MAX_DSP_BUF];
+                                let n = n_samples.min(MAX_DSP_BUF);
+
+                                // 1. Aplica ganho de entrada SIMD antes do resampling
+                                apply_gain_simd(&mut samples_l[..n], input_gain_mult);
+                                if !process_mono {
+                                    apply_gain_simd(&mut samples_r[..n], input_gain_mult);
+                                }
+
+                                // 2. Downsample: PW_rate → 48 kHz
+                                let n_48k = resampler.process_input(
+                                    &samples_l[..n],
+                                    if process_mono {
+                                        &samples_l[..n]
+                                    } else {
+                                        &samples_r[..n]
+                                    },
+                                    &mut resamp_mid_l[..MAX_RESAMP_BUF],
+                                    &mut resamp_mid_r[..MAX_RESAMP_BUF],
+                                );
+
+                                // 3. Inferência NAM a 48 kHz
+                                if let Some(ref mut model_l) = active_model_l {
+                                    model_l
+                                        .0
+                                        .process(&resamp_mid_l[..n_48k], &mut temp_out_l[..n_48k]);
+                                }
+
+                                if process_mono {
+                                    // Copia a saída L para R
+                                    temp_out_r[..n_48k].copy_from_slice(&temp_out_l[..n_48k]);
+                                } else if let Some(ref mut model_r) = active_model_r {
+                                    model_r
+                                        .0
+                                        .process(&resamp_mid_r[..n_48k], &mut temp_out_r[..n_48k]);
+                                }
+
+                                // 4. Upsample: 48 kHz → PW_rate
+                                let n_pw = resampler.process_output(
+                                    &temp_out_l[..n_48k],
+                                    &temp_out_r[..n_48k],
+                                    &mut resamp_out_l[..MAX_RESAMP_BUF],
+                                    &mut resamp_out_r[..MAX_RESAMP_BUF],
+                                );
+
+                                // 5. Aplica ganho de saída SIMD após conversão de rate
+                                apply_gain_simd(&mut resamp_out_l[..n_pw], output_gain_mult);
+                                apply_gain_simd(&mut resamp_out_r[..n_pw], output_gain_mult);
+
+                                // Copia resultado e detecta saturação
+                                let n_copy = n_pw.min(n);
+                                let out_slice_l = &resamp_out_l[..n_copy];
+                                let out_slice_r = &resamp_out_r[..n_copy];
+
+                                let mut clipped = false;
+                                for i in 0..n_copy {
+                                    if out_slice_l[i].abs() > 1.0 || out_slice_r[i].abs() > 1.0 {
+                                        clipped = true;
+                                        break;
+                                    }
+                                }
+                                if clipped {
+                                    rt_status_for_process
+                                        .has_clipped
+                                        .store(true, Ordering::Relaxed);
+                                }
+
+                                samples_l[..n_copy].copy_from_slice(out_slice_l);
+                                samples_r[..n_copy].copy_from_slice(out_slice_r);
+                            }
                         }
                     }
                 }
@@ -389,10 +448,10 @@ pub fn run_pipewire_host(
             .register()?;
 
         // Constrói o SPA Pod de formato de áudio para negociação com PipeWire.
-        // Formato F32 nativo, mono (1 canal). Sem rate fixo — o PipeWire negocia.
+        // Formato F32P (Planar), estéreo (2 canais).
         let mut audio_info = pw::spa::param::audio::AudioInfoRaw::new();
-        audio_info.set_format(pw::spa::param::audio::AudioFormat::F32LE);
-        audio_info.set_channels(1);
+        audio_info.set_format(pw::spa::param::audio::AudioFormat::F32P);
+        audio_info.set_channels(2);
 
         // Constrói o Pod serializado via FFI (spa_format_audio_raw_build)
         let mut format_buf = [0u8; 1024];
@@ -429,7 +488,7 @@ pub fn run_pipewire_host(
         )?;
 
         log::info!(
-            "{} Stream DSP conectado ao PipeWire (F32 mono, Audio/Duplex).",
+            "{} Stream DSP conectado ao PipeWire (F32P Planar Stereo, node.exclusive=true).",
             "🎼".bright_blue()
         );
     }

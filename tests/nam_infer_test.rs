@@ -878,7 +878,8 @@ fn test_end_to_end_spsc_pipeline() {
 
     producer
         .push(nam_rs::spsc::ParamPayload::LoadModel {
-            model: Some(boxed),
+            model_l: Some(boxed),
+            model_r: None,
             input_db_adj: 0.0,
             output_db_adj: 0.0,
             sample_rate: 48000,
@@ -892,11 +893,12 @@ fn test_end_to_end_spsc_pipeline() {
 
     let mut active_model = match received {
         nam_rs::spsc::ParamPayload::LoadModel {
-            model,
+            model_l,
+            model_r: _,
             input_db_adj: _,
             output_db_adj: _,
             sample_rate: _,
-        } => model,
+        } => model_l,
         _ => panic!("Payload recebido não é LoadModel no E2E"),
     };
 
@@ -1499,7 +1501,8 @@ fn test_rapid_hot_swap_spsc() {
 
         producer
             .push(nam_rs::spsc::ParamPayload::LoadModel {
-                model: Some(boxed),
+                model_l: Some(boxed),
+                model_r: None,
                 input_db_adj: 0.0,
                 output_db_adj: 0.0,
                 sample_rate: 48000,
@@ -1519,11 +1522,12 @@ fn test_rapid_hot_swap_spsc() {
         // Substituir o modelo ativo — o anterior é dropped aqui
         let new_model = match received {
             nam_rs::spsc::ParamPayload::LoadModel {
-                model,
+                model_l,
+                model_r: _,
                 input_db_adj: _,
                 output_db_adj: _,
                 sample_rate: _,
-            } => model,
+            } => model_l,
             _ => panic!("Payload #{idx} não é LoadModel"),
         };
 
