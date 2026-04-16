@@ -424,14 +424,12 @@ pub fn run_pipewire_host(
                                 let out_slice_l = &resamp_out_l[..n_copy];
                                 let out_slice_r = &resamp_out_r[..n_copy];
 
-                                let mut clipped = false;
-                                for i in 0..n_copy {
-                                    if out_slice_l[i].abs() > 1.0 || out_slice_r[i].abs() > 1.0 {
-                                        clipped = true;
-                                        break;
-                                    }
-                                }
-                                if clipped {
+                                // Detecção de clipping via AVX2 vetorial (Item 6):
+                                // 8 samples/iteração vs loop escalar (128 comparações).
+                                if crate::dsp::gain::detect_clipping_stereo_simd(
+                                    out_slice_l,
+                                    out_slice_r,
+                                ) {
                                     rt_status_for_process
                                         .has_clipped
                                         .store(true, Ordering::Relaxed);

@@ -6,7 +6,7 @@ O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodel
 
 O motor de inferência é uma transposição otimizada da biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático.
 
-Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux.
+Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux. Caprichei na busca intensiva pelo estado de arte em matéria de otimização!
 
 ## ✨ Arquitetura
 

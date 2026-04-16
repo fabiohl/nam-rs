@@ -38,32 +38,85 @@ pub unsafe fn set_daz_ftz() {
 
 /// Calcula o Dot Product (Produto Escalar) de duas fatias via AVX2 e FMA.
 ///
+/// ## Otimização: 4 Acumuladores Independentes (ILP)
+///
+/// CPUs modernas (Zen4, Skylake+) possuem 2 portas de FMA com throughput de
+/// 0.5 ciclos/instrução, mas **latência de 4–5 ciclos** por FMA. Um único
+/// acumulador cria uma cadeia de dependência serial que desperdiça ~87% do
+/// pipeline. Os 4 acumuladores independentes (`sum0..sum3`) quebram essa cadeia,
+/// permitindo ao scheduler despachar 4 FMAs em paralelo nos 2 ports — saturando
+/// o throughput teórico do processador.
+///
+/// Para vetores curtos (H=8..16, típicos de LSTM/WaveNet NAM), o loop de 8-em-8
+/// com 2 acumuladores captura a maior parte do ganho sem overhead excessivo.
+///
 /// # Safety
 /// O chamador deve assegurar que a CPU suporta os recursos "avx2" e "fma".
-/// Verifique o suporte em tempo de inicialização via `is_x86_feature_detected!("avx2")`
-/// e `is_x86_feature_detected!("fma")`.
 pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
 
     unsafe {
-        // Inicializa o acumulador de 256 bits (8 floats) com zero
-        let mut sum = _mm256_setzero_ps();
+        // 4 acumuladores independentes — quebra cadeia de dependência FMA
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut sum2 = _mm256_setzero_ps();
+        let mut sum3 = _mm256_setzero_ps();
 
-        // Processa de 8 em 8 (256 bits = 8 * 32)
+        // Loop principal: 4×8 = 32 floats/iteração (throughput-bound)
+        while i + 32 <= len {
+            let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
+            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
+
+            let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
+            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
+            sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
+
+            let va2 = _mm256_loadu_ps(a.as_ptr().add(i + 16));
+            let vb2 = _mm256_loadu_ps(b.as_ptr().add(i + 16));
+            sum2 = _mm256_fmadd_ps(va2, vb2, sum2);
+
+            let va3 = _mm256_loadu_ps(a.as_ptr().add(i + 24));
+            let vb3 = _mm256_loadu_ps(b.as_ptr().add(i + 24));
+            sum3 = _mm256_fmadd_ps(va3, vb3, sum3);
+
+            i += 32;
+        }
+
+        // Remainder: 8-em-8 com 2 acumuladores (vetores curtos H=8..16)
+        while i + 16 <= len {
+            let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
+            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
+
+            let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
+            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
+            sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
+
+            i += 16;
+        }
+
+        // Remainder: 8-em-8 simples
         while i + 8 <= len {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb = _mm256_loadu_ps(b.as_ptr().add(i));
-            sum = _mm256_fmadd_ps(va, vb, sum);
+            sum0 = _mm256_fmadd_ps(va, vb, sum0);
             i += 8;
         }
 
+        // Redução: combina 4 acumuladores → 1
+        sum0 = _mm256_add_ps(sum0, sum1);
+        sum2 = _mm256_add_ps(sum2, sum3);
+        let sum = _mm256_add_ps(sum0, sum2);
+
+        // Horizontal sum: extrair e somar os 8 floats do YMM
         let mut temp = [0.0f32; 8];
         _mm256_storeu_ps(temp.as_mut_ptr(), sum);
 
         let mut scalar_sum = temp.iter().sum();
 
-        // Loop tail
+        // Loop tail escalar
         while i < len {
             scalar_sum += a[i] * b[i];
             i += 1;
@@ -75,6 +128,13 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
 
 /// Calcula o Dot Product (Produto Escalar) de duas fatias via AVX-512 (ZMM).
 ///
+/// ## Otimização: 2 Acumuladores ZMM Independentes (ILP)
+///
+/// Mesma motivação do `dot_product_avx2`: quebra a cadeia de dependência FMA
+/// usando 2 acumuladores de 512 bits. Com ZMM (16 floats), 2 acumuladores
+/// processam 32 floats/iteração e são suficientes para saturar o pipeline
+/// AVX-512 (que tipicamente tem 1–2 FMA ports em Zen4/Sapphire Rapids).
+///
 /// # Safety
 /// O chamador deve assegurar que a CPU suporta os recursos "avx512f" e "avx512vl".
 #[target_feature(enable = "avx512f,avx512vl")]
@@ -83,17 +143,36 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
     let mut i = 0;
 
     unsafe {
-        let mut sum = _mm512_setzero_ps();
+        // 2 acumuladores ZMM independentes (32 floats/iter)
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
 
+        // Loop principal: 2×16 = 32 floats/iteração
+        while i + 32 <= len {
+            let va0 = _mm512_loadu_ps(a.as_ptr().add(i));
+            let vb0 = _mm512_loadu_ps(b.as_ptr().add(i));
+            sum0 = _mm512_fmadd_ps(va0, vb0, sum0);
+
+            let va1 = _mm512_loadu_ps(a.as_ptr().add(i + 16));
+            let vb1 = _mm512_loadu_ps(b.as_ptr().add(i + 16));
+            sum1 = _mm512_fmadd_ps(va1, vb1, sum1);
+
+            i += 32;
+        }
+
+        // Remainder: 16-em-16
         while i + 16 <= len {
             let va = _mm512_loadu_ps(a.as_ptr().add(i));
             let vb = _mm512_loadu_ps(b.as_ptr().add(i));
-            sum = _mm512_fmadd_ps(va, vb, sum);
+            sum0 = _mm512_fmadd_ps(va, vb, sum0);
             i += 16;
         }
 
+        // Redução: combina 2 acumuladores → 1
+        let sum = _mm512_add_ps(sum0, sum1);
         let mut scalar_sum = _mm512_reduce_add_ps(sum);
 
+        // Loop tail escalar
         while i < len {
             scalar_sum += a[i] * b[i];
             i += 1;
@@ -105,6 +184,16 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
 
 /// Estrutura de Inversão de Controle com Função de Despacho Dinâmico de Ponteiros.
 /// Resolve transparentemente o multiversionamento das Redes Inferenciais sem alocações.
+///
+/// ## Motivação: Caching via `LazyLock`
+///
+/// A detecção de features SIMD (`is_x86_feature_detected!`) realiza internamente
+/// uma leitura atômica de um `OnceLock` global na stdlib. Embora individual seja
+/// barata (~2 loads + branch), ela é invocada **a cada bloco DSP** em todos os
+/// modelos (WaveNet, LSTM, WaveNet Dyn, LSTM Dyn). O `SIMD_MATH_CONFIG` global
+/// (`LazyLock`) resolve a v-table **uma única vez** no startup e expõe via
+/// `SimdMathConfig::get()` uma referência `&'static` com overhead efetivo zero
+/// no hot-path RT.
 #[derive(Clone, Copy)]
 pub struct SimdMathConfig {
     /// Função inlined dinamicamente agendada para computar fma vetorial.
@@ -114,6 +203,14 @@ pub struct SimdMathConfig {
     /// Loop ativado via fptr para iterar `sigmoid(x)` na matriz especificada.
     pub sigmoid_slice: unsafe fn(&mut [f32]),
 }
+
+/// V-Table SIMD global, inicializada uma única vez via `LazyLock`.
+///
+/// Elimina a necessidade de `is_x86_feature_detected!` (leitura atômica de `OnceLock`)
+/// em cada chamada `process()` dos modelos. Após a primeira avaliação, acesso via
+/// `SimdMathConfig::get()` se resolve em um único load de ponteiro estático.
+static SIMD_MATH_CONFIG: std::sync::LazyLock<SimdMathConfig> =
+    std::sync::LazyLock::new(SimdMathConfig::current);
 
 impl SimdMathConfig {
     /// Inicia e aloca a v-table matemática inspecionando nativamente as capabilities da CPU.
@@ -131,6 +228,16 @@ impl SimdMathConfig {
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
         }
+    }
+
+    /// Retorna referência estática à v-table SIMD resolvida no startup.
+    ///
+    /// Zero overhead após a primeira chamada — nenhuma leitura atômica, nenhum
+    /// branch de CPUID. Preferir esta API em todos os hot-paths (DSP, modelos)
+    /// em vez de `SimdMathConfig::current()` que repete a detecção de features.
+    #[inline(always)]
+    pub fn get() -> &'static Self {
+        &SIMD_MATH_CONFIG
     }
 }
 

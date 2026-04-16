@@ -44,6 +44,57 @@ unsafe fn apply_gain_avx2(buffer: &mut [f32], gain_linear: f32) {
     }
 }
 
+/// Detecta clipping estéreo via AVX2 — retorna `true` se qualquer amostra
+/// em `left` ou `right` possuir `|x| > 1.0`.
+///
+/// ## Motivação: Substituição do loop escalar
+///
+/// O loop escalar original itera até 128 comparações (L+R × 64 samples) com
+/// `f32::abs()` + branch por sample. Esta implementação vetorial processa
+/// **8 samples por iteração** via `_mm256_andnot_ps` (abs) + `_mm256_cmp_ps`
+/// (comparação > 1.0) com acumulação OR — sem branches no loop interno.
+/// Para blocos de 64 samples: **8 iterações vetoriais** vs até 128 escalares.
+pub fn detect_clipping_stereo_simd(left: &[f32], right: &[f32]) -> bool {
+    let n = core::cmp::min(left.len(), right.len());
+
+    unsafe {
+        let limit = _mm256_set1_ps(1.0);
+        // Máscara de sinal: bit 31 setado. andnot com ela produz abs(x).
+        let sign_mask = _mm256_set1_ps(-0.0f32);
+        let mut any_clip = _mm256_setzero_ps();
+        let mut i = 0;
+
+        while i + 8 <= n {
+            let vl = _mm256_loadu_ps(left.as_ptr().add(i));
+            let vr = _mm256_loadu_ps(right.as_ptr().add(i));
+            // abs(x) = x & ~sign_mask (limpa o bit de sinal)
+            let abs_l = _mm256_andnot_ps(sign_mask, vl);
+            let abs_r = _mm256_andnot_ps(sign_mask, vr);
+            // Compara: abs(x) > 1.0? Resultado é máscara all-ones nos lanes que clipam.
+            let cmp_l = _mm256_cmp_ps(abs_l, limit, _CMP_GT_OQ);
+            let cmp_r = _mm256_cmp_ps(abs_r, limit, _CMP_GT_OQ);
+            // Acumula: se qualquer lane clipou, any_clip terá bits setados.
+            any_clip = _mm256_or_ps(any_clip, _mm256_or_ps(cmp_l, cmp_r));
+            i += 8;
+        }
+
+        // Verifica se algum lane do acumulador tem bits setados.
+        if _mm256_movemask_ps(any_clip) != 0 {
+            return true;
+        }
+
+        // Loop tail escalar para remainder
+        while i < n {
+            if left[i].abs() > 1.0 || right[i].abs() > 1.0 {
+                return true;
+            }
+            i += 1;
+        }
+
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

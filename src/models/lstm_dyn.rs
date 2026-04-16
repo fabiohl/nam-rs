@@ -113,7 +113,7 @@ pub struct LstmDynModel {
 impl LstmDynModel {
     /// Processamento Síncrono de Áudio. Requer instanciamento RT.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        let math = &crate::math::simd::SimdMathConfig::current();
+        let math = crate::math::simd::SimdMathConfig::get();
         let num_frames = input.len();
 
         for i in 0..num_frames {

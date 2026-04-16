@@ -233,10 +233,10 @@ fn load_and_send_model(
                     output_level_dbu: None,
                     loudness: None,
                 });
-            let in_level = meta.input_level_dbu.unwrap_or(0.0);
+            let in_level = meta.input_level_dbu.unwrap_or(12.0);
             let loudness = meta.loudness.unwrap_or(-18.0);
 
-            let input_db_adj = 12.0 - in_level;
+            let input_db_adj = in_level - 12.0;
             let output_db_adj = -18.0 - loudness;
             let nam_rate = model_data.sample_rate.unwrap_or(48000.0) as u32;
 
