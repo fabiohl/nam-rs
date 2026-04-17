@@ -68,6 +68,10 @@ pub struct RtStatusFlags {
     /// Setada pelo callback RT ao detectar samples fora do intervalo [-1.0, 1.0].
     /// A thread principal exibe um alerta e a reseta.
     pub has_clipped: AtomicBool,
+
+    /// Contador atômico de overloads de DSP (XRUNs virtuais).
+    /// Incrementado pelo callback RT se o processamento exceder 85% do tempo limite (budget).
+    pub dsp_overloads: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -82,6 +86,7 @@ impl RtStatusFlags {
             rt_is_fifo: AtomicBool::new(false),
             rt_priority: AtomicI32::new(-1),
             has_clipped: AtomicBool::new(false),
+            dsp_overloads: AtomicU32::new(0),
         }
     }
 }
