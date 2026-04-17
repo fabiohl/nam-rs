@@ -1,4 +1,3 @@
-## Testar: True Stereo e Modo Exclusivo
-## Nova Sprint (Atualizar Giuthub dos projetos baseados) e rodadas de revisor-auditor e de pesquisador-inovador.
+## TODO-sprints.md e rodadas de revisor-auditor e de pesquisador-inovador.
 ## Backportar para o Github do AudioRip
 ## Leitura geral do código fonte

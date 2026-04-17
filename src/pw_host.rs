@@ -79,28 +79,52 @@ pub fn run_pipewire_host(
     let listener;
     let mut thread_configured = false;
 
+    // Obtém a saída de som de hardware padrão atual (antes do NAM-rs roubar a cena)
+    let mut hardware_sink = String::new();
+    if let Ok(output) = std::process::Command::new("wpctl")
+        .args(["inspect", "@DEFAULT_AUDIO_SINK@"])
+        .output()
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.contains("node.name") {
+                let parts: Vec<&str> = line.split('"').collect();
+                if parts.len() >= 3 {
+                    hardware_sink = parts[1].to_string();
+                    break;
+                }
+            }
+        }
+    }
+
+    if hardware_sink.is_empty() {
+        log::warn!(
+            "Não foi possível determinar o Hardware Sink padrão. Roteamento automático pode falhar."
+        );
+    } else {
+        log::info!("Hardware Sink padrão identificado: {}", hardware_sink);
+    }
+
     // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança
     // O lock é automaticamente liberado ao final deste escopo (_lock is dropped).
     {
         let _lock = thread_loop.lock();
 
-        // Configurando Stream DSP Ativo. "Audio/Duplex" cria um nó que expõe
-        // portas de Capture e Playback dinamicamente, permitindo ligação na cadeia sem resampling forçado.
         stream = pw::stream::StreamBox::new(
             &core,
             "NAM-rs",
             properties! {
                 *pw::keys::MEDIA_TYPE => "Audio",
-                *pw::keys::MEDIA_CATEGORY => "Filter", // Retornado para Filter para garantir autoconnect
+                *pw::keys::MEDIA_CATEGORY => "Duplex",
                 *pw::keys::MEDIA_ROLE => "DSP",
-                *pw::keys::MEDIA_CLASS => "Audio/Duplex", // Nó bidirecional com portas IN e OUT
+                *pw::keys::MEDIA_CLASS => "Audio/Sink", // Virtual Sink!
                 *pw::keys::NODE_NAME => "NAM-rs-standalone",
-                *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Rust PipeWire native)",
-                *pw::keys::NODE_VIRTUAL => "true", // Transformar em Virtual Sink para interceptar (puxar) todo o áudio do sistema
-                *pw::keys::PRIORITY_SESSION => "1005", // Forçar prioridade maior que a placa de hardware (geralmente < 1000)
-                "node.exclusive" => "true",
-                "node.always-process" => "true",
-                // Extensões para bit-perfect: PipeWire tentará acoplar com as cfg da fonte
+                *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Virtual Sink)",
+                *pw::keys::NODE_VIRTUAL => "true",
+                *pw::keys::PRIORITY_SESSION => "2000", // Alta prioridade para forçar como Default Sink
+                *pw::keys::PRIORITY_DRIVER => "2000",
+                "audio.position" => "FL,FR",
+                // Extensões para bit-perfect
             },
         )?;
 
@@ -220,6 +244,8 @@ pub fn run_pipewire_host(
                     configure_realtime_thread(target_cpu, rt_status_for_process.clone());
                     thread_configured = true;
                 }
+
+                let start_time = std::time::Instant::now();
 
                 // Drena resamplers pré-construídos pela thread principal (zero-alloc swap).
                 // O Drop do resampler antigo é aceitável aqui (~50ns free(), evento raro).
@@ -435,6 +461,17 @@ pub fn run_pipewire_host(
 
                                 samples_l[..n_copy].copy_from_slice(out_slice_l);
                                 samples_r[..n_copy].copy_from_slice(out_slice_r);
+
+                                // Monitoramento de carga de DSP (DSP Load Monitoring)
+                                let elapsed = start_time.elapsed();
+                                // Calcula o budget máximo tolerável (85% do tempo real do buffer)
+                                let budget_secs =
+                                    (n_samples as f64 / current_pw_rate as f64) * 0.85;
+                                if elapsed.as_secs_f64() > budget_secs {
+                                    rt_status_for_process
+                                        .dsp_overloads
+                                        .fetch_add(1, Ordering::Relaxed);
+                                }
                             }
                         }
                     }
@@ -491,6 +528,22 @@ pub fn run_pipewire_host(
     }
 
     let _app_state = AppState { stream, listener };
+
+    let mut loopback_process = None;
+    if !hardware_sink.is_empty() {
+        log::info!("Criando loopback automático (NAM-rs -> {})", hardware_sink);
+        loopback_process = std::process::Command::new("pw-loopback")
+            .arg("-i")
+            .arg("{ \"stream.capture.sink\": true }")
+            .arg("-C")
+            .arg("NAM-rs-standalone")
+            .arg("-n")
+            .arg("NAM-rs-Hardware-Out")
+            .arg("-P")
+            .arg(&hardware_sink)
+            .spawn()
+            .ok();
+    }
 
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
@@ -600,10 +653,25 @@ pub fn run_pipewire_host(
             }
         }
 
+        let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
+        if overloads > 0 {
+            log::warn!(
+                "{} SOBRECARGA DE DSP ({} buffers estouraram o tempo). A CPU pode não suportar True Stereo com a latência atual.",
+                "🔥".red(),
+                overloads
+            );
+        }
+
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
     thread_loop.stop();
+
+    if let Some(mut child) = loopback_process {
+        let _ = child.kill();
+        let _ = child.wait();
+        log::info!("Processo pw-loopback finalizado.");
+    }
 
     Ok(())
 }
