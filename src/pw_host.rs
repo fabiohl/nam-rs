@@ -84,18 +84,20 @@ pub fn run_pipewire_host(
     {
         let _lock = thread_loop.lock();
 
-        // Configurando Stream DSP Ativo. "Audio/Filter" cria um nó que expõe
+        // Configurando Stream DSP Ativo. "Audio/Duplex" cria um nó que expõe
         // portas de Capture e Playback dinamicamente, permitindo ligação na cadeia sem resampling forçado.
         stream = pw::stream::StreamBox::new(
             &core,
             "NAM-rs",
             properties! {
                 *pw::keys::MEDIA_TYPE => "Audio",
-                *pw::keys::MEDIA_CATEGORY => "Filter",
+                *pw::keys::MEDIA_CATEGORY => "Filter", // Retornado para Filter para garantir autoconnect
                 *pw::keys::MEDIA_ROLE => "DSP",
                 *pw::keys::MEDIA_CLASS => "Audio/Duplex", // Nó bidirecional com portas IN e OUT
                 *pw::keys::NODE_NAME => "NAM-rs-standalone",
                 *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Rust PipeWire native)",
+                *pw::keys::NODE_VIRTUAL => "true", // Transformar em Virtual Sink para interceptar (puxar) todo o áudio do sistema
+                *pw::keys::PRIORITY_SESSION => "1005", // Forçar prioridade maior que a placa de hardware (geralmente < 1000)
                 "node.exclusive" => "true",
                 "node.always-process" => "true",
                 // Extensões para bit-perfect: PipeWire tentará acoplar com as cfg da fonte
@@ -170,18 +172,14 @@ pub fn run_pipewire_host(
                 pw::stream::StreamState::Error(err) => {
                     log::error!("{} Falha grave na stream de áudio PW: {}", "💥".red(), err);
                 }
-                pw::stream::StreamState::Paused => {
-                    if old == pw::stream::StreamState::Streaming {
-                        log::info!(
-                            "{} Áudio pausado pelo servidor (Cabo desconectado ou troca de nó?)",
-                            "⏸️".yellow()
-                        );
-                    }
+                pw::stream::StreamState::Paused if old == pw::stream::StreamState::Streaming => {
+                    log::info!(
+                        "{} Áudio pausado pelo servidor (Cabo desconectado ou troca de nó?)",
+                        "⏸️ ".yellow()
+                    );
                 }
-                pw::stream::StreamState::Streaming => {
-                    if old == pw::stream::StreamState::Paused {
-                        log::info!("{} Áudio retomado (Conexão restabelecida!)", "▶️".green());
-                    }
+                pw::stream::StreamState::Streaming if old == pw::stream::StreamState::Paused => {
+                    log::info!("{} Áudio retomado (Conexão restabelecida!)", "▶️ ".green());
                 }
                 _ => {}
             })
@@ -481,7 +479,8 @@ pub fn run_pipewire_host(
             None,
             pw::stream::StreamFlags::AUTOCONNECT
                 | pw::stream::StreamFlags::MAP_BUFFERS
-                | pw::stream::StreamFlags::RT_PROCESS,
+                | pw::stream::StreamFlags::RT_PROCESS
+                | pw::stream::StreamFlags::EXCLUSIVE,
             &mut [format_pod],
         )?;
 
@@ -669,20 +668,7 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
                 );
             }
 
-            // 2. Tempo Real: SCHED_FIFO prio 90
-            let mut param: libc::sched_param = std::mem::zeroed();
-            param.sched_priority = 90;
-
-            let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
-            if ret_sched != 0 {
-                log::error!(
-                    "  ⚠️  pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
-                    ret_sched
-                );
-            }
-
-            // 3. Verificação programática: lê policy/prio *reais* concedidos pelo kernel.
-            //    Publicados via RtStatusFlags — o loop principal (fora do RT) fará o log definitivo.
+            // 2. Verificação programática prévia: lê policy/prio concedidos pelo kernel via rtkit/PipeWire
             let mut actual_policy = 0i32;
             let mut actual_param: libc::sched_param = std::mem::zeroed();
             let ret_getsched =
@@ -692,8 +678,28 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
 
             if ret_getsched == 0 {
                 let reset_on_fork_flag = 0x40000000i32;
-                let has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
-                let base_policy = actual_policy & !reset_on_fork_flag;
+                let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
+                let mut base_policy = actual_policy & !reset_on_fork_flag;
+
+                // 3. Se PipeWire não elevou para SCHED_FIFO via rtkit, tentamos forçar manualmente
+                if base_policy != libc::SCHED_FIFO {
+                    let mut param: libc::sched_param = std::mem::zeroed();
+                    param.sched_priority = 90;
+
+                    let ret_sched =
+                        libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
+                    if ret_sched != 0 {
+                        log::error!(
+                            "⚠️ pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
+                            ret_sched
+                        );
+                    } else {
+                        // Atualiza as variáveis refletindo a aplicação bem-sucedida
+                        base_policy = libc::SCHED_FIFO;
+                        actual_param.sched_priority = 90;
+                        has_reset_on_fork = false; // Nós não setamos a flag de reset on fork
+                    }
+                }
 
                 let policy_str = match base_policy {
                     libc::SCHED_FIFO => "SCHED_FIFO",
