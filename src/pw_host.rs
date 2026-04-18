@@ -5,8 +5,23 @@
 //!
 //! Este é o "coração" do NAM-rs: o módulo que de fato processa o sinal de áudio em
 //! tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
-//! do Linux), passa pelo amplificador neural, e devolve o resultado processado —
-//! tudo sem nenhum engasgo ou atraso perceptível.
+//! do Linux), passa pelo amplificador neural, e entrega o resultado processado
+//! ao hardware via arquitetura dual-stream.
+//!
+//! ## Arquitetura Dual-Stream com DspBridge
+//!
+//! O PipeWire copia os buffers para o monitor port **antes** de chamar o `process()`.
+//! Portanto, modificações in-place numa única stream `Audio/Sink` seriam invisíveis
+//! ao hardware. A solução usa duas streams:
+//!
+//! 1. **Capture stream** (`Audio/Sink`, Direction::Input) — recebe áudio dos apps,
+//!    aplica DSP (ganho + inferência neural), escreve no [`DspBridge`].
+//! 2. **Playback stream** (`Stream/Output/Audio`, Direction::Output) — lê do
+//!    [`DspBridge`] e entrega ao hardware.
+//!
+//! O [`DspBridge`] é um buffer `#[repr(align(128))]` compartilhado entre as duas
+//! closures via ponteiro raw, com sincronização lock-free via `fence(Release/Acquire)`
+//! e contador de geração atômico.
 //!
 //! ## Regras absolutas deste módulo (por que são tão rigorosas?)
 //!
@@ -18,7 +33,7 @@
 //! Essas regras existem porque qualquer pausa, por menor que seja, causaria estalos e cortes no
 //! áudio — inaceitável para um músico tocando ao vivo.
 //!
-//! ## Fluxo de processamento
+//! ## Fluxo de processamento (Capture callback)
 //!
 //! O callback `process()` segue esta sequência para cada bloco de áudio:
 //! 1. Aplica ganho de entrada SIMD (ajuste de volume pré-amplificador)
@@ -26,6 +41,7 @@
 //! 3. Inferência neural WaveNet/LSTM — o "amplificador virtual" que processa o som
 //! 4. `NamResampler::process_output()` — converte de volta para o sample rate original
 //! 5. Aplica ganho de saída SIMD (ajuste de volume pós-amplificador)
+//! 6. Escreve resultado no [`DspBridge`] com `fence(Release)` para o playback callback
 //!
 //! Quando nenhum modelo está carregado, opera em pass-through (o som entra e sai sem alteração).
 //! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
@@ -169,8 +185,8 @@ pub fn run_pipewire_host(
         // Trackeia a taxa de amostragem alvo do amplificador virtual no loop RT
         let mut current_nam_rate: u32 = 48_000;
 
-        // Buffer intermediário 48k para saída do process_input e entrada do process_output (stack).
-        // Dimensionado para MAX_DSP_BUF — o resampler pode expandir/contrair dentro deste limite.
+        // Buffer intermediário 48k para saída do resampler (stack-allocated).
+        // MAX_RESAMP_BUF comporta a expansão do resampler (ex: 44100→48000 = ~1.088x).
         const MAX_RESAMP_BUF: usize = 4096;
         let mut resamp_mid_l = [0.0f32; MAX_RESAMP_BUF];
         let mut resamp_out_l = [0.0f32; MAX_RESAMP_BUF];
@@ -217,13 +233,10 @@ pub fn run_pipewire_host(
                     log::error!("{} Falha grave na stream de áudio PW: {}", "💥".red(), err);
                 }
                 pw::stream::StreamState::Paused if old == pw::stream::StreamState::Streaming => {
-                    log::info!(
-                        "{} Áudio pausado pelo servidor (Cabo desconectado ou troca de nó?)",
-                        "⏸️".yellow()
-                    );
+                    log::info!("{} Áudio desconectado ou troca de nó.", "⏸️".yellow());
                 }
                 pw::stream::StreamState::Streaming if old == pw::stream::StreamState::Paused => {
-                    log::info!("{} Áudio retomado (Conexão restabelecida!)", "▶️".green());
+                    log::info!("{} Áudio capturado (conexão estabelecida)", "▶️".green());
                 }
                 _ => {}
             })
@@ -413,7 +426,14 @@ pub fn run_pipewire_host(
                                     rt_status_for_process
                                         .is_silent
                                         .store(true, Ordering::Relaxed);
-                                    // Buffer já contém zeros/sub-threshold — nada a copiar.
+
+                                    // Zera o bridge para que o playback emita silêncio
+                                    // em vez de repetir o último frame processado.
+                                    // SAFETY: capture callback é o único escritor.
+                                    let bridge_ref = unsafe { &mut *bridge_ptr };
+                                    bridge_ref.n_samples.store(0, Ordering::Relaxed);
+                                    std::sync::atomic::fence(Ordering::Release);
+                                    bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
                                     return;
                                 }
                                 // Se chegou aqui, há sinal — reseta flag de silêncio
@@ -507,6 +527,10 @@ pub fn run_pipewire_host(
                                 // BRIDGE WRITE: copia resultado pós-DSP para o DspBridge
                                 // O playback callback lê daqui via fence(Acquire).
                                 // =========================================================
+                                // SAFETY: `bridge_ptr` aponta para `DspBridge` alocado via
+                                // `Box::leak` (vive até o shutdown). O capture callback é
+                                // o único escritor dos arrays `buf_l`/`buf_r` — não há
+                                // data race. Os campos atômicos são acessados via Ordering.
                                 let bridge_ref = unsafe { &mut *bridge_ptr };
                                 let n_bridge = n_copy.min(MAX_BRIDGE_BUF);
                                 bridge_ref.buf_l[..n_bridge]
@@ -611,6 +635,9 @@ pub fn run_pipewire_host(
             .add_local_listener::<()>()
             .process(move |stream: &pw::stream::Stream, _info| {
                 // Callback RT do playback: lê do DspBridge e copia para o output buffer.
+                // SAFETY: `bridge_ptr_playback` aponta para `DspBridge` alocado via
+                // `Box::leak` (vive até o shutdown). O playback callback é o único
+                // leitor dos arrays `buf_l`/`buf_r` após `fence(Acquire)`.
                 let bridge_ref = unsafe { &*bridge_ptr_playback };
 
                 // Verifica se há dados novos do capture callback.
@@ -649,12 +676,15 @@ pub fn run_pipewire_host(
                 }
 
                 if let Some(raw_l) = data_l.data() {
+                    // SAFETY: `raw_l` é um mmap do PipeWire válido enquanto o buffer
+                    // existir. Castamos para `f32` pois negociamos F32P.
                     let out_l = unsafe {
                         std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out)
                     };
                     out_l.copy_from_slice(&bridge_ref.buf_l[..n_out]);
                 }
                 if let Some(raw_r) = data_r.data() {
+                    // SAFETY: Idem canal direito.
                     let out_r = unsafe {
                         std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out)
                     };

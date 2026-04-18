@@ -14,6 +14,7 @@ globs: **/*.rs, **/*.toml
 * **Gestão de Dependências e Crates:** Mantenha o mais enxuto possível. Nunca insira diretamente no toml, sempre use "cargo add" como helper. Procure ser o mais específico possível em crates e features, de modo a não inserir dependências não utilizadas e abrir possíveis brechas para bugs.
 * **Divisão Estrita de Concorrência Lock-Free:**
   * O core executa fundamentalmente comunicação sob **SPSC Ring Buffers** transpondo parâmetros entre estado CLI Assíncrono (ex: input/output gain, troca de .namb, metadados) para o injetor de DSP passivo.
+  * **DspBridge (Dual-Stream):** A comunicação inter-stream (capture→playback) usa um buffer `#[repr(align(128))]` compartilhado via ponteiro raw (`Box::leak`), sincronizado por `fence(Release/Acquire)` + `AtomicU64` (generation counter). Nunca use `Mutex`, `RwLock`, ou qualquer primitiva bloqueante entre callbacks RT.
   * O processo NÃO performa transações de E/S de captura no Kernel Linux. Todas as rotinas não essenciais deve ficar fora da thread RT Áudio/DSP.
 * **Regras de Tempo-Real absolutas (Thread de DSP):**
   * Configurada como `SCHED_FIFO`.
