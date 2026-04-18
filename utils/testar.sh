@@ -11,4 +11,4 @@ echo "⚙️ Compilando o NAM-rs..."
 cargo build --release
 
 echo "🚀 Executando..."
-target/release/nam-rs --model tests/Neve31102-Pre30-R.nam
+target/release/nam-rs --model tests/EVH-5150-Lite.nam # --input-gain 2.0 --output-gain 5.0

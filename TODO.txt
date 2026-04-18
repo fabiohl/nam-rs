@@ -1,4 +1,4 @@
-## Modo exclusivo: segue a querela!
-## TODO-sprints.md e rodadas de revisor-auditor e de pesquisador-inovador.
-## Backportar para o Github do AudioRip
+## Modo exclusivo
+## TODO-sprints.md
+## revisor-auditor / pesquisador-inovador
 ## Leitura geral do código fonte
