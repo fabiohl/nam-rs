@@ -199,11 +199,11 @@ pub fn run_pipewire_host(
                 pw::stream::StreamState::Paused if old == pw::stream::StreamState::Streaming => {
                     log::info!(
                         "{} Áudio pausado pelo servidor (Cabo desconectado ou troca de nó?)",
-                        "⏸️ ".yellow()
+                        "⏸️".yellow()
                     );
                 }
                 pw::stream::StreamState::Streaming if old == pw::stream::StreamState::Paused => {
-                    log::info!("{} Áudio retomado (Conexão restabelecida!)", "▶️ ".green());
+                    log::info!("{} Áudio retomado (Conexão restabelecida!)", "▶️".green());
                 }
                 _ => {}
             })
@@ -619,8 +619,8 @@ pub fn run_pipewire_host(
 
         if rt_status.has_clipped.swap(false, Ordering::Relaxed) {
             log::warn!(
-                "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada ou saída.",
-                "⚠️".bright_red().bold()
+                "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
+                "🔥".bright_red().bold()
             );
         }
 
@@ -656,8 +656,8 @@ pub fn run_pipewire_host(
         let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
         if overloads > 0 {
             log::warn!(
-                "{} SOBRECARGA DE DSP ({} buffers estouraram o tempo). A CPU pode não suportar True Stereo com a latência atual.",
-                "🔥".red(),
+                "{} Sobrecarga de CPU ({} buffers). Considere usar um modelo mais leve ou processador mais poderoso.",
+                "🚨".red(),
                 overloads
             );
         }

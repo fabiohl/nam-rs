@@ -307,9 +307,13 @@ fn load_and_send_model(
                 .is_ok()
             {
                 log::info!(
-                    "{} Payload enviado. Modelo: {}, InputAdj: {:.2}dB, OutputAdj: {:.2}dB",
+                    "{} Payload enviado. Modelo: {}",
                     "🚀 [CLI]".green(),
                     path_str.bright_cyan(),
+                );
+                log::info!(
+                    "{} Calibração do modelo: input_level_dbu={:+.1}dB, loudness={:+.1}dB",
+                    "📐 [CLI]".blue(),
                     input_db_adj,
                     output_db_adj
                 );
@@ -421,16 +425,10 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    if initial_in_gain != 0.0 {
-        let _ = producer.push(ParamPayload::InputGain(initial_in_gain));
-    }
-    if initial_out_gain != 0.0 {
-        let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
-    }
     if let Some(ref path) = model_path {
         log::info!(
             "{} Carregando modelo: {} ...",
-            "📂".yellow(),
+            "📂 [CLI]".cyan(),
             path.to_string_lossy().bright_cyan()
         );
         load_and_send_model(path, &mut producer, &sys);
@@ -438,6 +436,22 @@ fn main() -> anyhow::Result<()> {
         log::info!(
             "{} Nenhum modelo especificado. Use '--model <caminho>' para carregar.",
             "ℹ️".blue()
+        );
+    }
+    if initial_in_gain != 0.0 {
+        let _ = producer.push(ParamPayload::InputGain(initial_in_gain));
+        log::info!(
+            "{} Ganho de entrada (CLI): {:+.1} dB",
+            "🎚️ [CLI]".cyan(),
+            initial_in_gain
+        );
+    }
+    if initial_out_gain != 0.0 {
+        let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
+        log::info!(
+            "{} Ganho de saída (CLI): {:+.1} dB",
+            "🎚️ [CLI]".cyan(),
+            initial_out_gain
         );
     }
 
