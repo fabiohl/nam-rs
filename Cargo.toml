@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 [package]
 name = "nam-rs"
-version = "0.9.0" # Beta 3
+version = "0.10.0" # Beta 4
 edition = "2024"
 
 [dependencies]
