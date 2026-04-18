@@ -31,7 +31,7 @@
 //! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
 
 use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
-use crate::dsp::gain::apply_gain_simd;
+use crate::dsp::gain::{apply_gain_simd, is_buffer_silent_stereo_simd};
 use crate::dsp::resampler::NamResampler;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
 use colored::Colorize;
@@ -382,6 +382,25 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
+                                // Silence Bypass: se o buffer inteiro está abaixo de −80 dBFS,
+                                // pula o pipeline DSP completo (gain + resample + inferência neural).
+                                // Custo: ~10 ns AVX2 vs ~500 µs de inferência neural por buffer.
+                                if is_buffer_silent_stereo_simd(
+                                    &samples_l[..n_samples],
+                                    &samples_r[..n_samples],
+                                ) {
+                                    // Sinaliza silêncio via flag atômica (zero I/O no callback RT)
+                                    rt_status_for_process
+                                        .is_silent
+                                        .store(true, Ordering::Relaxed);
+                                    // Buffer já contém zeros/sub-threshold — nada a copiar.
+                                    return;
+                                }
+                                // Se chegou aqui, há sinal — reseta flag de silêncio
+                                rt_status_for_process
+                                    .is_silent
+                                    .store(false, Ordering::Relaxed);
+
                                 // Mitigação: se o R for puramente zero ou exatamente igual ao L,
                                 // processamos no modo Mono economizando 50% de CPU.
                                 let mut process_mono = true;
@@ -550,6 +569,7 @@ pub fn run_pipewire_host(
 
     // Loop principal da nossa aplicação, monitorando a flag SHUTDOWN e
     // gerenciando a construção de resamplers fora do callback RT.
+    let mut was_silent = false;
     while !SHUTDOWN.load(Ordering::Relaxed) {
         // Verifica se o callback RT solicitou rebuild do resampler via flag atômica
         if rt_status.needs_resampler_rebuild.load(Ordering::Relaxed) {
@@ -660,6 +680,23 @@ pub fn run_pipewire_host(
                 "🚨".red(),
                 overloads
             );
+        }
+
+        // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
+        let current_silent = rt_status.is_silent.load(Ordering::Relaxed);
+        if current_silent != was_silent {
+            was_silent = current_silent;
+            if current_silent {
+                log::info!(
+                    "{} Silence bypass ativado (entrada < −80 dBFS). DSP em idle.",
+                    "🔇".blue()
+                );
+            } else {
+                log::info!(
+                    "{} Sinal detectado. Processamento DSP retomado.",
+                    "🔊".green()
+                );
+            }
         }
 
         std::thread::sleep(std::time::Duration::from_millis(100));

@@ -72,6 +72,11 @@ pub struct RtStatusFlags {
     /// Contador atômico de overloads de DSP (XRUNs virtuais).
     /// Incrementado pelo callback RT se o processamento exceder 85% do tempo limite (budget).
     pub dsp_overloads: AtomicU32,
+
+    /// Flag atômica indicando que o buffer atual está em silêncio (abaixo de −80 dBFS).
+    /// O callback RT seta `true` ao detectar silêncio e pular o pipeline DSP pesado.
+    /// A thread principal lê para exibir/ocultar o status de "Silence Bypass" ativo.
+    pub is_silent: AtomicBool,
 }
 
 impl RtStatusFlags {
@@ -87,6 +92,7 @@ impl RtStatusFlags {
             rt_priority: AtomicI32::new(-1),
             has_clipped: AtomicBool::new(false),
             dsp_overloads: AtomicU32::new(0),
+            is_silent: AtomicBool::new(false),
         }
     }
 }

@@ -8,7 +8,7 @@ Porém o áudio que escuto no fone de ouvido é o mesmíssimo original, sem proc
 E isso não acontece com o supramencionado Easy Effects (https://wwmm.github.io/easyeffects/). Ele funciona perfeitamente como queremos. Veja como ele aparece no qpwgraph: Captura de tela de 2026-04-18 14-27-33-fs8.png
 Parece-me claro que precisaremos dar um passo atrás e voltar à prancheta neste ponto específico da ligação com o PipeWire.
 Minha encomeda: Estudar meticulosamente como Easy Effects implementa isto. O github completo do Easy Effects encontra-se espelhado na pasta github.com/wwmm/easyeffects/ .
-Monte um plano detalhado em Tarefas Técnicas ao final de TODO-sprints.md para implantar isto.
+Elaborar alguma(s) proposta(s) e montar um plano detalhado em Tarefas Técnicas ao final de TODO-sprints.md para implantar isto.
 ## TODO-sprints.md
 ## revisor-auditor / pesquisador-inovador
 ## Leitura geral do código fonte
