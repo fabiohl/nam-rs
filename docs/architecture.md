@@ -2,10 +2,11 @@
 
 A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de baixa latência e aprendizado de máquina neural estritamente focado na simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de áudio (NAM - Neural Amp Modeler). O projeto é concebido em Rust nativo e idiomático, operando como cliente PipeWire standalone no Linux.
 
-## 1. Topologia PipeWire: Interceptador de Sistema (Virtual Sink)
+## 1. Topologia PipeWire: Arquitetura Dual-Stream (Capture + Playback)
 
-- **Processador Sistêmico (Estilo Easy Effects):** Diferente de um cliente tradicional que requer roteamento manual para gravar/processar uma porta isolada, o NAM-rs declara-se como um **Virtual Sink** (`media.class = Audio/Sink` e `filter.smart = true`). Isso faz com que o *WirePlumber* assuma o NAM-rs como a saída de som padrão do Desktop. Aplicativos (como YouTube/Spotify) enviam áudio para o NAM-rs automaticamente, ele processa via DSP Neural, e cospe o áudio na placa de som de hardware em *Modo Exclusivo* (`node.exclusive = true`).
-- **Integração Lock-Free end-to-end:** A arquitetura do projeto obedece ao seguinte fluxo determinístico: `CLI → Parser (.nam/.namb) → Model Dispatcher → Prewarm → Injeção Lock-free Dual via SPSC → Thread DSP (SCHED_FIFO) → Gain Stage Input → Inferência Nativa (Virtual Sink Capture) → Gain Stage Output → PipeWire Output (Hardware Sink).`
+- **Processador Sistêmico (Estilo Easy Effects):** O NAM-rs declara-se como um **Virtual Sink** (`media.class = Audio/Sink`) via `pw_stream` (Direction::Input). O *WirePlumber* eleva-o a saída de som padrão. Apps (YouTube, VLC, etc.) enviam áudio automaticamente. Entretanto, **o monitor port do `Audio/Sink` copia os buffers antes do callback `process()`** — o que torna modificações in-place invisíveis ao monitor. Por isso, o NAM-rs usa uma **segunda stream de playback** (`Stream/Output/Audio`, Direction::Output) que lê o áudio processado de um `DspBridge` compartilhado e o entrega ao hardware.
+- **DspBridge (Lock-Free Inter-Stream):** Buffer `#[repr(align(128))]` com arrays `[f32; 8192]` L/R + `AtomicU32` (n_samples) + `AtomicU64` (generation). O capture callback escreve com `fence(Release)`; o playback callback lê com `fence(Acquire)`. O `node.group = "nam-rs-dsp"` em ambas as streams garante clock sync. Alocação via `Box::leak` — nunca dropado em runtime.
+- **Integração Lock-Free end-to-end:** `CLI → Parser (.nam/.namb) → Model Dispatcher → Prewarm → Injeção Lock-free Dual via SPSC → Thread DSP (SCHED_FIFO) → Gain Stage Input → Inferência Neural (Capture Stream) → DspBridge → Gain Stage Output → Playback Stream → Hardware Sink.`
 - **True Stereo e Bypass Inteligente:** O callback `process()` negocia canais planares de 32 bits (`F32P` com canais = 2). Ele extrai os arrays e invoca inferência simétrica para L e R (`model_l`, `model_r`). Contudo, o sistema prevê uma mitigação vital de CPU: se o canal R for puro silêncio ou idênticamente replicado a L, a thread pula o processamento do R, inferindo apenas a percurso mono L e estampando bit-a-bit à saída R, poupando virtualmente 50% dos ciclos. Para instrumentos físicos (ex: Guitarra) tocarem por cima de "backing tracks", a rota do microfone deve ser conectada ao Sink do NAM-rs manualmente no `qpwgraph`.
 
 ## 2. Inferência FastMath e Microarquitetura (AVX2 / AVX-512)
@@ -31,7 +32,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `src/main.rs`               | Ponto de entrada: parser CLI (`lexopt`), detecção AVX2/FMA, inicialização PipeWire nativo, handler CTRL+C, thread GC de drop-delegation, stdin loop interativo, diagnósticos estruturados                                                                                                           |
 | `src/diagnostics.rs`        | Sistema de diagnósticos estruturados: `NamErrorCode` (catálogo E1xxx–E5xxx), `NamDiagnostic` (mensagem amigável + bloco de suporte copiável), `SystemSnapshot` (captura de ambiente). Zero dependências novas — opera exclusivamente fora da thread RT                                              |
-| `src/pw_host.rs`            | Host PipeWire nativo: ThreadLoopBox, StreamBox Filter, Mode node.exclusive, callback DSP RT (Core Affinity + SCHED_FIFO), resampling planar, dispatch True Stereo/Bypass Mono, gain staging.                                                                                                        |
+| `src/pw_host.rs`            | Host PipeWire dual-stream: Capture stream (Audio/Sink, Direction::Input) + Playback stream (Stream/Output/Audio, Direction::Output), DspBridge (#[repr(align(128))]) inter-stream lock-free, callback DSP RT (Core Affinity + SCHED_FIFO), resampling planar, dispatch True Stereo/Bypass Mono, gain staging. |
 | `src/spsc.rs`               | Flag SHUTDOWN (`AtomicBool`), payload SPSC `ParamPayload` (#[repr(align(128))]) com LoadModel (par `model_l`, `model_r`); fila GC suportando dupla descarga paralela; `RtStatusFlags` atômicas e canal SPSC de resampler.                                                                           |
 | `src/math/mod.rs`           | Módulo raiz de operações matemáticas e inferência neural                                                                                                                                                                                                                                            |
 | `src/math/simd.rs`          | `dot_product_avx2` (YMM 256-bit, 4 acumuladores ILP), `dot_product_avx512` (ZMM 512-bit, 2 acumuladores ILP), `SimdMathConfig` (v-table `LazyLock` estática — zero overhead de dispatch via `get()`), `set_daz_ftz` (DAZ+FTZ via intrínsecos + inline asm)                                          |
@@ -85,7 +86,11 @@ PipeWire Input (Nk Hz) — L/R (F32P)
     │
     ▼ apply_gain_simd(output_gain_mult)         — SIMD AVX2 dual-channel
     │
-    ▼ PipeWire Output (Nk Hz)                  — Exclusivo para o SO (sem mixers paralelos)
+    ▼ DspBridge (fence Release)                 — Buffer compartilhado entre streams
+    │
+    ▼ Playback Stream (fence Acquire)           — Copia do bridge para output buffer
+    │
+    ▼ PipeWire Output (Nk Hz)                   — Entrega ao hardware (Direction::Output)
 ```
 
 **Parâmetros do filtro Sinc:**

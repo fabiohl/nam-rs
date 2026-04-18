@@ -41,17 +41,50 @@ use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// Estrutura de posse explícita para evitar o leak de memória
-/// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
-struct AppState<S, L> {
-    #[allow(dead_code)]
-    stream: S,
-    #[allow(dead_code)]
-    listener: L,
+/// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
+/// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
+const MAX_BRIDGE_BUF: usize = 8192;
+
+/// Buffer compartilhado entre o callback de captura (DSP) e o callback de playback.
+///
+/// O capture callback escreve o resultado processado aqui com `fence(Release)`;
+/// o playback callback lê com `fence(Acquire)`. A `generation` atômica permite
+/// ao playback detectar se há dados novos disponíveis sem spin-lock.
+///
+/// Alinhado a 128 bytes para evitar false-sharing entre os dois callbacks RT.
+#[repr(align(128))]
+struct DspBridge {
+    /// Buffer de saída processada, canal esquerdo.
+    buf_l: [f32; MAX_BRIDGE_BUF],
+    /// Buffer de saída processada, canal direito.
+    buf_r: [f32; MAX_BRIDGE_BUF],
+    /// Número de amostras válidas no buffer atual.
+    n_samples: std::sync::atomic::AtomicU32,
+    /// Contador de geração — incrementado a cada escrita pelo capture callback.
+    /// O playback compara com sua cópia local para detectar novos dados.
+    generation: std::sync::atomic::AtomicU64,
 }
 
-/// Inicializa a topologia PipeWire, configurando o nó como um filtro bidirecional
-/// (consumo e produção) na API do WirePlumber, executando o MainLoop até SHUTDOWN.
+/// Estrutura de posse explícita para evitar o leak de memória
+/// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
+/// Mantém ownership das 4 instâncias (2 streams + 2 listeners) da arquitetura dual-stream.
+struct AppState<S1, L1, S2, L2> {
+    #[allow(dead_code)]
+    capture_stream: S1,
+    #[allow(dead_code)]
+    capture_listener: L1,
+    #[allow(dead_code)]
+    playback_stream: S2,
+    #[allow(dead_code)]
+    playback_listener: L2,
+}
+
+/// Inicializa a topologia PipeWire dual-stream (Capture + Playback).
+///
+/// Arquitetura: Apps → [Capture Stream: Audio/Sink] → process(DSP) → DspBridge → [Playback Stream] → Hardware.
+/// O monitor port do `Audio/Sink` copia o buffer *antes* do `process()` — portanto, a única
+/// forma de entregar o áudio processado ao hardware é via uma segunda stream de playback
+/// que lê do `DspBridge` pós-DSP.
 ///
 /// ## Parâmetros de canais SPSC
 ///
@@ -75,56 +108,43 @@ pub fn run_pipewire_host(
     let context = pw::context::ContextBox::new(thread_loop.loop_(), None)?;
     let core = context.connect(None)?;
 
-    let stream;
-    let listener;
+    let capture_stream;
+    let capture_listener;
+    let playback_stream;
+    let playback_listener;
     let mut thread_configured = false;
 
-    // Obtém a saída de som de hardware padrão atual (antes do NAM-rs roubar a cena)
-    let mut hardware_sink = String::new();
-    if let Ok(output) = std::process::Command::new("wpctl")
-        .args(["inspect", "@DEFAULT_AUDIO_SINK@"])
-        .output()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        for line in stdout.lines() {
-            if line.contains("node.name") {
-                let parts: Vec<&str> = line.split('"').collect();
-                if parts.len() >= 3 {
-                    hardware_sink = parts[1].to_string();
-                    break;
-                }
-            }
-        }
-    }
-
-    if hardware_sink.is_empty() {
-        log::warn!(
-            "Não foi possível determinar o Hardware Sink padrão. Roteamento automático pode falhar."
-        );
-    } else {
-        log::info!("Hardware Sink padrão identificado: {}", hardware_sink);
-    }
+    // Aloca o buffer compartilhado entre capture e playback via leak intencional.
+    // O DspBridge vive até o shutdown do processo — nunca é dropado em runtime.
+    let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
+        buf_l: [0.0f32; MAX_BRIDGE_BUF],
+        buf_r: [0.0f32; MAX_BRIDGE_BUF],
+        n_samples: std::sync::atomic::AtomicU32::new(0),
+        generation: std::sync::atomic::AtomicU64::new(0),
+    }));
+    // Ponteiro raw para compartilhamento seguro entre closures (ambos RT, mesmo context PW).
+    let bridge_ptr = bridge as *const DspBridge as *mut DspBridge;
 
     // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança
     // O lock é automaticamente liberado ao final deste escopo (_lock is dropped).
     {
         let _lock = thread_loop.lock();
 
-        stream = pw::stream::StreamBox::new(
+        capture_stream = pw::stream::StreamBox::new(
             &core,
             "NAM-rs",
             properties! {
                 *pw::keys::MEDIA_TYPE => "Audio",
                 *pw::keys::MEDIA_CATEGORY => "Duplex",
                 *pw::keys::MEDIA_ROLE => "DSP",
-                *pw::keys::MEDIA_CLASS => "Audio/Sink", // Virtual Sink!
+                *pw::keys::MEDIA_CLASS => "Audio/Sink", // Virtual Sink — recebe áudio dos apps
                 *pw::keys::NODE_NAME => "NAM-rs-standalone",
                 *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Virtual Sink)",
                 *pw::keys::NODE_VIRTUAL => "true",
-                *pw::keys::PRIORITY_SESSION => "2000", // Alta prioridade para forçar como Default Sink
+                *pw::keys::PRIORITY_SESSION => "2000",
                 *pw::keys::PRIORITY_DRIVER => "2000",
                 "audio.position" => "FL,FR",
-                // Extensões para bit-perfect
+                "node.group" => "nam-rs-dsp", // Sincroniza clock com playback stream
             },
         )?;
 
@@ -190,7 +210,7 @@ pub fn run_pipewire_host(
         let rt_status_for_process = rt_status.clone();
 
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
-        listener = stream
+        capture_listener = capture_stream
             .add_local_listener::<()>()
             .state_changed(move |_stream, _user_data, old, new| match new {
                 pw::stream::StreamState::Error(err) => {
@@ -411,10 +431,12 @@ pub fn run_pipewire_host(
                                     }
                                 }
 
-                                const MAX_DSP_BUF: usize = 2048;
-                                let mut temp_out_l = [0.0f32; MAX_DSP_BUF];
-                                let mut temp_out_r = [0.0f32; MAX_DSP_BUF];
-                                let n = n_samples.min(MAX_DSP_BUF);
+                                // O resampler de entrada pode expandir amostras
+                                // (ex: 44100→48000 = ratio ~1.088x), portanto os buffers
+                                // intermediários de inferência usam MAX_RESAMP_BUF.
+                                let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];
+                                let mut temp_out_r = [0.0f32; MAX_RESAMP_BUF];
+                                let n = n_samples.min(MAX_RESAMP_BUF);
 
                                 // 1. Aplica ganho de entrada SIMD antes do resampling
                                 apply_gain_simd(&mut samples_l[..n], input_gain_mult);
@@ -481,6 +503,22 @@ pub fn run_pipewire_host(
                                 samples_l[..n_copy].copy_from_slice(out_slice_l);
                                 samples_r[..n_copy].copy_from_slice(out_slice_r);
 
+                                // =========================================================
+                                // BRIDGE WRITE: copia resultado pós-DSP para o DspBridge
+                                // O playback callback lê daqui via fence(Acquire).
+                                // =========================================================
+                                let bridge_ref = unsafe { &mut *bridge_ptr };
+                                let n_bridge = n_copy.min(MAX_BRIDGE_BUF);
+                                bridge_ref.buf_l[..n_bridge]
+                                    .copy_from_slice(&resamp_out_l[..n_bridge]);
+                                bridge_ref.buf_r[..n_bridge]
+                                    .copy_from_slice(&resamp_out_r[..n_bridge]);
+                                bridge_ref
+                                    .n_samples
+                                    .store(n_bridge as u32, Ordering::Relaxed);
+                                std::sync::atomic::fence(Ordering::Release);
+                                bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+
                                 // Monitoramento de carga de DSP (DSP Load Monitoring)
                                 let elapsed = start_time.elapsed();
                                 // Calcula o budget máximo tolerável (85% do tempo real do buffer)
@@ -528,9 +566,9 @@ pub fn run_pipewire_host(
             &*(pod_ptr as *const pw::spa::pod::Pod)
         };
 
-        // Ativa o stream com formato de áudio declarado.
-        // Direction::Input + Audio/Duplex garante criação de portas capture E playback.
-        stream.connect(
+        // Ativa a capture stream com formato de áudio declarado.
+        // Direction::Input — recebe áudio dos apps (Virtual Sink).
+        capture_stream.connect(
             pw::spa::utils::Direction::Input,
             None,
             pw::stream::StreamFlags::AUTOCONNECT
@@ -541,28 +579,152 @@ pub fn run_pipewire_host(
         )?;
 
         log::info!(
-            "{} Stream DSP conectado ao PipeWire (F32P Planar Stereo, node.exclusive=true).",
+            "{} Capture stream conectado ao PipeWire (Audio/Sink, F32P Planar Stereo).",
             "🎼".bright_blue()
+        );
+
+        // =========================================================
+        // PLAYBACK STREAM: envia áudio processado para o hardware
+        // =========================================================
+        // Ponteiro raw para o bridge, compartilhado com o playback callback.
+        let bridge_ptr_playback = bridge_ptr;
+
+        playback_stream = pw::stream::StreamBox::new(
+            &core,
+            "NAM-rs-Output",
+            properties! {
+                *pw::keys::MEDIA_TYPE => "Audio",
+                *pw::keys::MEDIA_CATEGORY => "Playback",
+                *pw::keys::MEDIA_ROLE => "Music",
+                *pw::keys::MEDIA_CLASS => "Stream/Output/Audio",
+                *pw::keys::NODE_NAME => "NAM-rs-playback",
+                *pw::keys::NODE_DESCRIPTION => "NAM-rs Processed Output",
+                "audio.position" => "FL,FR",
+                "node.group" => "nam-rs-dsp", // Clock sync com capture stream
+            },
+        )?;
+
+        // Contador de geração local para detectar novos dados do bridge.
+        let mut last_bridge_gen: u64 = 0;
+
+        playback_listener = playback_stream
+            .add_local_listener::<()>()
+            .process(move |stream: &pw::stream::Stream, _info| {
+                // Callback RT do playback: lê do DspBridge e copia para o output buffer.
+                let bridge_ref = unsafe { &*bridge_ptr_playback };
+
+                // Verifica se há dados novos do capture callback.
+                let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+                if current_gen == last_bridge_gen {
+                    return; // Nenhum dado novo — pula este ciclo.
+                }
+                last_bridge_gen = current_gen;
+                std::sync::atomic::fence(Ordering::Acquire);
+
+                let n_samples = bridge_ref.n_samples.load(Ordering::Relaxed) as usize;
+                if n_samples == 0 || n_samples > MAX_BRIDGE_BUF {
+                    return;
+                }
+
+                let mut buf = match stream.dequeue_buffer() {
+                    Some(b) => b,
+                    None => return,
+                };
+
+                let datas = buf.datas_mut();
+                if datas.len() < 2 {
+                    return;
+                }
+
+                // split_at_mut para satisfazer o borrow checker
+                let (datas_left, datas_right) = datas.split_at_mut(1);
+                let data_l = &mut datas_left[0];
+                let data_r = &mut datas_right[0];
+
+                let max_l = data_l.as_raw().maxsize as usize / std::mem::size_of::<f32>();
+                let max_r = data_r.as_raw().maxsize as usize / std::mem::size_of::<f32>();
+                let n_out = n_samples.min(max_l).min(max_r);
+                if n_out == 0 {
+                    return;
+                }
+
+                if let Some(raw_l) = data_l.data() {
+                    let out_l = unsafe {
+                        std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out)
+                    };
+                    out_l.copy_from_slice(&bridge_ref.buf_l[..n_out]);
+                }
+                if let Some(raw_r) = data_r.data() {
+                    let out_r = unsafe {
+                        std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out)
+                    };
+                    out_r.copy_from_slice(&bridge_ref.buf_r[..n_out]);
+                }
+
+                // Informa ao PipeWire quantos bytes foram escritos
+                {
+                    let chunk = data_l.chunk_mut();
+                    *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
+                    *chunk.offset_mut() = 0;
+                    *chunk.stride_mut() = std::mem::size_of::<f32>() as i32;
+                }
+                {
+                    let chunk = data_r.chunk_mut();
+                    *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
+                    *chunk.offset_mut() = 0;
+                    *chunk.stride_mut() = std::mem::size_of::<f32>() as i32;
+                }
+            })
+            .register()?;
+
+        // Constrói formato de áudio para a playback stream (mesmo formato F32P stereo).
+        let mut playback_audio_info = pw::spa::param::audio::AudioInfoRaw::new();
+        playback_audio_info.set_format(pw::spa::param::audio::AudioFormat::F32P);
+        playback_audio_info.set_channels(2);
+
+        let mut playback_format_buf = [0u8; 1024];
+        let playback_format_pod = unsafe {
+            let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
+            pw::spa::sys::spa_pod_builder_init(
+                &mut builder,
+                playback_format_buf.as_mut_ptr().cast(),
+                playback_format_buf.len() as u32,
+            );
+            let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
+                &mut builder,
+                pw::spa::param::ParamType::EnumFormat.as_raw(),
+                &playback_audio_info.as_raw(),
+            );
+            if pod_ptr.is_null() {
+                return Err(anyhow::anyhow!(
+                    "Falha ao construir SPA Pod de formato para playback stream"
+                ));
+            }
+            &*(pod_ptr as *const pw::spa::pod::Pod)
+        };
+
+        // Ativa a playback stream — Direction::Output envia para o hardware.
+        playback_stream.connect(
+            pw::spa::utils::Direction::Output,
+            None,
+            pw::stream::StreamFlags::AUTOCONNECT
+                | pw::stream::StreamFlags::MAP_BUFFERS
+                | pw::stream::StreamFlags::RT_PROCESS,
+            &mut [playback_format_pod],
+        )?;
+
+        log::info!(
+            "{} Playback stream conectado ao PipeWire (Stream/Output/Audio, F32P Planar Stereo).",
+            "🔊".bright_blue()
         );
     }
 
-    let _app_state = AppState { stream, listener };
-
-    let mut loopback_process = None;
-    if !hardware_sink.is_empty() {
-        log::info!("Criando loopback automático (NAM-rs -> {})", hardware_sink);
-        loopback_process = std::process::Command::new("pw-loopback")
-            .arg("-i")
-            .arg("{ \"stream.capture.sink\": true }")
-            .arg("-C")
-            .arg("NAM-rs-standalone")
-            .arg("-n")
-            .arg("NAM-rs-Hardware-Out")
-            .arg("-P")
-            .arg(&hardware_sink)
-            .spawn()
-            .ok();
-    }
+    let _app_state = AppState {
+        capture_stream,
+        capture_listener,
+        playback_stream,
+        playback_listener,
+    };
 
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
@@ -703,12 +865,6 @@ pub fn run_pipewire_host(
     }
 
     thread_loop.stop();
-
-    if let Some(mut child) = loopback_process {
-        let _ = child.kill();
-        let _ = child.wait();
-        log::info!("Processo pw-loopback finalizado.");
-    }
 
     Ok(())
 }

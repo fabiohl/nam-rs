@@ -5,7 +5,10 @@ Ou seja: que ele automaticamente capture TODAS as saídas de áudio, faça o seu
 Tudo isto de forma simples e resiliente. O Easy Effects (https://wwmm.github.io/easyeffects/) é o benchmark disto.
 Atualmente o NAM-rs até captura o sinal e o lança para a saida de áudio, como podemos ver o print do qpwgraph: Captura de tela de 2026-04-18 14-16-07-fs8.png
 Porém o áudio que escuto no fone de ouvido é o mesmíssimo original, sem processamento. Mesmo que a saida do terminal sugira que processamento esteja ocorrendo: terminal.txt
+Mesmo rodando o comando "target/release/nam-rs --model tests/EVH-5150-Lite.nam --input-gain -20.0 --output-gain -20.0" deveria produzir um áudio muito baixo.
+Não foi o caso, ele parece intocável - ainda que o áudio no vlc sofra muitos picotamentos.
 E isso não acontece com o supramencionado Easy Effects (https://wwmm.github.io/easyeffects/). Ele funciona perfeitamente como queremos. Veja como ele aparece no qpwgraph: Captura de tela de 2026-04-18 14-27-33-fs8.png
+Uma tentativa de implementação anterior (implementation_plan.md walkthrough.md Fixing Audio Processing Routing.md) não obteve êxito ().
 Parece-me claro que precisaremos dar um passo atrás e voltar à prancheta neste ponto específico da ligação com o PipeWire.
 Minha encomeda: Estudar meticulosamente como Easy Effects implementa isto. O github completo do Easy Effects encontra-se espelhado na pasta github.com/wwmm/easyeffects/ .
 Elaborar alguma(s) proposta(s) e montar um plano detalhado em Tarefas Técnicas ao final de TODO-sprints.md para implantar isto.
