@@ -27,6 +27,21 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 * Toolchain do Rust 1.94+ (`cargo`).
 * Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev`
 
+* Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
+  1. `sudo usermod -aG audio $USER`
+  2. Crie ou edite o arquivo de limites (ex: `sudo nano /etc/security/limits.d/audio.conf`):
+
+```text
+@audio   -  rtprio     95
+@audio   -  memlock    unlimited
+```
+
+* Também é muito recomendável configurar o governador da sua CPU (`intel_pstate` ou `amd_pstate`) para o modo **Performance**.
+  1. Desktop modernos (como GNOME no Ubuntu/Fedora ou KDE Plasma), o sistema já gerencia isso nativamente via power-profiles-daemon.
+  2. Caso você prefira o `tlp`, pode editar o /etc/tlp.conf
+     `CPU_SCALING_GOVERNOR_ON_AC=performance`
+     `CPU_SCALING_GOVERNOR_ON_BAT=powersave`
+
 ### Build e Execução
 
 ```bash
@@ -41,17 +56,6 @@ Para iniciar o processamento:
 ```bash
 target/release/nam-rs --model tests/Neve31102-Pre30-R.nam
 target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
-```
-
-Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário.
-Adicione seu usuário ao grupo de áudio do sistema e edite limits:
-
-1. `sudo usermod -aG audio $USER`
-2. Crie ou edite o arquivo de limites (ex: `sudo nano /etc/security/limits.d/audio.conf`):
-
-```text
-@audio   -  rtprio     95
-@audio   -  memlock    unlimited
 ```
 
 Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `pw-link` para conectar a entrada de instrumento e a saída para monitores.

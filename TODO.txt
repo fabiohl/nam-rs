@@ -1,3 +1,10 @@
+* Testar o tests/NEVE1073-Standard.nam usando o próprio sample em https://www.tone3000.com/tones/neve-1073-mic-tube-tech-cl1b-60177
+* Testar e concluir a Tarefa 1.1
+* Remover todo e qualquer suporte a x86-64-v4 e AVX-512 porque eu não tem processador que o suporte ;-()
+  Incluir no futuro a meta de suporta-lo junto com outras coisas. Usar este prompt para pesquisar:
+  A intel possui uma tecnologia chamada QAT (Intel Quick Assist). Ela tem potencial de acelerar o processamento e reduzir a latência do áudio processado via "Neural Amp Modeler" (NAM)? É possível usar este recurso no user space? Que outros recursos não tão conhecidos os processadores Intel e AMD fornecem com potencial para o NAM em user space?
+
+
 ## TODO-sprints.md
 ## revisor-auditor / pesquisador-inovador
 ## Leitura geral do código fonte
