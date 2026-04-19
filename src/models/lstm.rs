@@ -54,9 +54,23 @@ macro_rules! define_lstm_process {
             unsafe {
                 self.state[..I].copy_from_slice(&input[..I]);
 
-                for i in 0..H4 {
-                    let dot = $dot_product(&self.input_hidden_weights[i], &self.state);
-                    self.gates[i] = dot + self.bias[i];
+                _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
+                if IH > 16 {
+                    _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().add(16).cast::<i8>());
+                }
+
+                for i in 0..H {
+                    let w_i = &self.input_hidden_weights[i * 4];
+                    let w_f = &self.input_hidden_weights[i * 4 + 1];
+                    let w_c = &self.input_hidden_weights[i * 4 + 2];
+                    let w_o = &self.input_hidden_weights[i * 4 + 3];
+
+                    let dots = $dot_product(w_i, w_f, w_c, w_o, &self.state);
+
+                    self.gates[i] = dots[0] + self.bias[i];
+                    self.gates[i + H] = dots[1] + self.bias[i + H];
+                    self.gates[i + 2 * H] = dots[2] + self.bias[i + 2 * H];
+                    self.gates[i + 3 * H] = dots[3] + self.bias[i + 3 * H];
                 }
 
                 let f_offset = H;
@@ -160,7 +174,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         target_feature(enable = "avx2,fma"),
-        crate::math::simd::dot_product_avx2,
+        crate::math::simd::dot_product_4x_avx2,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -173,7 +187,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
-        crate::math::simd::dot_product_avx512,
+        crate::math::simd::dot_product_4x_avx512,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,

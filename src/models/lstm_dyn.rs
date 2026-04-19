@@ -41,17 +41,41 @@ impl LstmDynLayer {
     pub unsafe fn process_sample(&mut self, input: &[f32], math: &SimdMathConfig) {
         let ih = self.input_size + self.hidden_size;
         let h = self.hidden_size;
-        let h4 = h * 4;
 
         // 1. Atualiza state com sample de input (substitui no prefixo)
         self.state[..self.input_size].copy_from_slice(input);
 
+        unsafe {
+            core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
+                self.state.as_ptr().cast::<i8>(),
+            );
+            if ih > 16 {
+                core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
+                    self.state.as_ptr().add(16).cast::<i8>(),
+                );
+            }
+        }
+
         // 2. Linear Dot Products -> Preenche GATES e adiciona BIAS
-        for i in 0..h4 {
-            let start = i * ih;
-            let w_slice = &self.input_hidden_weights[start..start + ih];
-            let sum = unsafe { (math.dot_product)(w_slice, &self.state) };
-            self.gates[i] = sum + self.bias[i];
+        for i in 0..h {
+            let start_i = (i * 4) * ih;
+            let w_i = &self.input_hidden_weights[start_i..start_i + ih];
+
+            let start_f = (i * 4 + 1) * ih;
+            let w_f = &self.input_hidden_weights[start_f..start_f + ih];
+
+            let start_c = (i * 4 + 2) * ih;
+            let w_c = &self.input_hidden_weights[start_c..start_c + ih];
+
+            let start_o = (i * 4 + 3) * ih;
+            let w_o = &self.input_hidden_weights[start_o..start_o + ih];
+
+            let dots = unsafe { (math.dot_product_4x)(w_i, w_f, w_c, w_o, &self.state) };
+
+            self.gates[i] = dots[0] + self.bias[i];
+            self.gates[i + h] = dots[1] + self.bias[i + h];
+            self.gates[i + 2 * h] = dots[2] + self.bias[i + 2 * h];
+            self.gates[i + 3 * h] = dots[3] + self.bias[i + 3 * h];
         }
 
         // 3. Funções de Ativação (FastMath SIMD via Slices in-place)

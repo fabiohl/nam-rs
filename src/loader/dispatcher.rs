@@ -497,9 +497,25 @@ pub fn build_lstm_dynamic(
     let mut current_input_size = 1;
 
     for _ in 0..num_layers {
-        let input_hidden_weights = cursor
-            .read_slice(hidden_size * 4 * (current_input_size + hidden_size))?
-            .to_vec();
+        let raw_weights =
+            cursor.read_slice(hidden_size * 4 * (current_input_size + hidden_size))?;
+
+        let ih = current_input_size + hidden_size;
+        let mut input_hidden_weights = vec![0.0; raw_weights.len()];
+
+        for i in 0..hidden_size {
+            input_hidden_weights[(i * 4) * ih..(i * 4 + 1) * ih]
+                .copy_from_slice(&raw_weights[i * ih..(i + 1) * ih]);
+            input_hidden_weights[(i * 4 + 1) * ih..(i * 4 + 2) * ih]
+                .copy_from_slice(&raw_weights[(i + hidden_size) * ih..(i + hidden_size + 1) * ih]);
+            input_hidden_weights[(i * 4 + 2) * ih..(i * 4 + 3) * ih].copy_from_slice(
+                &raw_weights[(i + 2 * hidden_size) * ih..(i + 2 * hidden_size + 1) * ih],
+            );
+            input_hidden_weights[(i * 4 + 3) * ih..(i * 4 + 4) * ih].copy_from_slice(
+                &raw_weights[(i + 3 * hidden_size) * ih..(i + 3 * hidden_size + 1) * ih],
+            );
+        }
+
         let bias = cursor.read_slice(hidden_size * 4)?.to_vec();
 
         // initial_hidden_state [H] -> loaded into state[current_input_size..current_input_size+hidden_size]
@@ -625,10 +641,16 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
 ) -> anyhow::Result<LstmLayer<I, H, IH, H4>> {
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
-    // 1. input_hidden_weights: [H4][IH] row-major (equivalente ao C++ SetNAMWeights)
-    for row in 0..H4 {
-        let row_data = cursor.read_slice(IH)?;
-        layer.input_hidden_weights[row].copy_from_slice(row_data);
+    // 1. input_hidden_weights: [H4][IH] intercalado (I, F, C, O por neurônio)
+    let raw_weights = cursor.read_slice(H4 * IH)?;
+    for i in 0..H {
+        layer.input_hidden_weights[i * 4].copy_from_slice(&raw_weights[i * IH..(i + 1) * IH]);
+        layer.input_hidden_weights[i * 4 + 1]
+            .copy_from_slice(&raw_weights[(i + H) * IH..(i + H + 1) * IH]);
+        layer.input_hidden_weights[i * 4 + 2]
+            .copy_from_slice(&raw_weights[(i + 2 * H) * IH..(i + 2 * H + 1) * IH]);
+        layer.input_hidden_weights[i * 4 + 3]
+            .copy_from_slice(&raw_weights[(i + 3 * H) * IH..(i + 3 * H + 1) * IH]);
     }
 
     // 2. bias: [H4] valores

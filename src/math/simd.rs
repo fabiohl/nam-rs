@@ -182,6 +182,129 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
     }
 }
 
+/// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
+///
+/// Otimizado especificamente para as 4 portas do LSTM (Input, Forget, Cell, Output).
+/// # Safety
+/// O chamador deve assegurar que a CPU suporta os recursos "avx2" e "fma".
+pub unsafe fn dot_product_4x_avx2(
+    w0: &[f32],
+    w1: &[f32],
+    w2: &[f32],
+    w3: &[f32],
+    state: &[f32],
+) -> [f32; 4] {
+    let len = state.len();
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut sum2 = _mm256_setzero_ps();
+        let mut sum3 = _mm256_setzero_ps();
+
+        while i + 8 <= len {
+            let vs = _mm256_loadu_ps(state.as_ptr().add(i));
+
+            let vw0 = _mm256_loadu_ps(w0.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(vw0, vs, sum0);
+
+            let vw1 = _mm256_loadu_ps(w1.as_ptr().add(i));
+            sum1 = _mm256_fmadd_ps(vw1, vs, sum1);
+
+            let vw2 = _mm256_loadu_ps(w2.as_ptr().add(i));
+            sum2 = _mm256_fmadd_ps(vw2, vs, sum2);
+
+            let vw3 = _mm256_loadu_ps(w3.as_ptr().add(i));
+            sum3 = _mm256_fmadd_ps(vw3, vs, sum3);
+
+            i += 8;
+        }
+
+        // Horizontal sum para cada acumulador
+        let mut temp0 = [0.0f32; 8];
+        let mut temp1 = [0.0f32; 8];
+        let mut temp2 = [0.0f32; 8];
+        let mut temp3 = [0.0f32; 8];
+
+        _mm256_storeu_ps(temp0.as_mut_ptr(), sum0);
+        _mm256_storeu_ps(temp1.as_mut_ptr(), sum1);
+        _mm256_storeu_ps(temp2.as_mut_ptr(), sum2);
+        _mm256_storeu_ps(temp3.as_mut_ptr(), sum3);
+
+        let mut s0: f32 = temp0.iter().sum();
+        let mut s1: f32 = temp1.iter().sum();
+        let mut s2: f32 = temp2.iter().sum();
+        let mut s3: f32 = temp3.iter().sum();
+
+        while i < len {
+            s0 += w0[i] * state[i];
+            s1 += w1[i] * state[i];
+            s2 += w2[i] * state[i];
+            s3 += w3[i] * state[i];
+            i += 1;
+        }
+
+        [s0, s1, s2, s3]
+    }
+}
+
+/// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
+///
+/// # Safety
+/// O chamador deve assegurar que a CPU suporta os recursos "avx512f" e "avx512vl".
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn dot_product_4x_avx512(
+    w0: &[f32],
+    w1: &[f32],
+    w2: &[f32],
+    w3: &[f32],
+    state: &[f32],
+) -> [f32; 4] {
+    let len = state.len();
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+        let mut sum2 = _mm512_setzero_ps();
+        let mut sum3 = _mm512_setzero_ps();
+
+        while i + 16 <= len {
+            let vs = _mm512_loadu_ps(state.as_ptr().add(i));
+
+            let vw0 = _mm512_loadu_ps(w0.as_ptr().add(i));
+            sum0 = _mm512_fmadd_ps(vw0, vs, sum0);
+
+            let vw1 = _mm512_loadu_ps(w1.as_ptr().add(i));
+            sum1 = _mm512_fmadd_ps(vw1, vs, sum1);
+
+            let vw2 = _mm512_loadu_ps(w2.as_ptr().add(i));
+            sum2 = _mm512_fmadd_ps(vw2, vs, sum2);
+
+            let vw3 = _mm512_loadu_ps(w3.as_ptr().add(i));
+            sum3 = _mm512_fmadd_ps(vw3, vs, sum3);
+
+            i += 16;
+        }
+
+        let mut s0 = _mm512_reduce_add_ps(sum0);
+        let mut s1 = _mm512_reduce_add_ps(sum1);
+        let mut s2 = _mm512_reduce_add_ps(sum2);
+        let mut s3 = _mm512_reduce_add_ps(sum3);
+
+        while i < len {
+            s0 += w0[i] * state[i];
+            s1 += w1[i] * state[i];
+            s2 += w2[i] * state[i];
+            s3 += w3[i] * state[i];
+            i += 1;
+        }
+
+        [s0, s1, s2, s3]
+    }
+}
+
 /// Estrutura de Inversão de Controle com Função de Despacho Dinâmico de Ponteiros.
 /// Resolve transparentemente o multiversionamento das Redes Inferenciais sem alocações.
 ///
@@ -194,10 +317,20 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
 /// (`LazyLock`) resolve a v-table **uma única vez** no startup e expõe via
 /// `SimdMathConfig::get()` uma referência `&'static` com overhead efetivo zero
 /// no hot-path RT.
+/// Assinatura da função para 4 Dot Products simultâneos (ILP máximo) reutilizando o state.
+pub type DotProduct4xFn = unsafe fn(&[f32], &[f32], &[f32], &[f32], &[f32]) -> [f32; 4];
+
+/// Estrutura de Inversão de Controle com Função de Despacho Dinâmico de Ponteiros.
+/// Resolve transparentemente o multiversionamento das Redes Inferenciais sem alocações.
+///
+/// **Design:** Singleton Lazily Evaluated (`SimdMathConfig::get()`) no momento do despacho.
+/// Toda a API `unsafe` tem garantia arquitetural no init estático via `is_x86_feature_detected!`.
 #[derive(Clone, Copy)]
 pub struct SimdMathConfig {
     /// Função inlined dinamicamente agendada para computar fma vetorial.
     pub dot_product: unsafe fn(&[f32], &[f32]) -> f32,
+    /// Fused GEMV de 4 portas compartilhando um mesmo vetor de estado.
+    pub dot_product_4x: DotProduct4xFn,
     /// Loop ativado via fptr para iterar `tanh(x)` na matriz especificada.
     pub tanh_slice: unsafe fn(&mut [f32]),
     /// Loop ativado via fptr para iterar `sigmoid(x)` na matriz especificada.
@@ -218,6 +351,7 @@ impl SimdMathConfig {
         if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
             return Self {
                 dot_product: dot_product_avx512,
+                dot_product_4x: dot_product_4x_avx512,
                 tanh_slice: crate::math::fastmath::tanh_slice_avx512,
                 sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx512,
             };
@@ -225,6 +359,7 @@ impl SimdMathConfig {
 
         Self {
             dot_product: dot_product_avx2,
+            dot_product_4x: dot_product_4x_avx2,
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
         }
