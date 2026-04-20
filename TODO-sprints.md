@@ -2,35 +2,30 @@
 
 ## Sprint 4: Pesquisa e Inovação (Backlog Avançado)
 
-> Itens de investigação a longo prazo. Requerem prototipagem e benchmarking
-> antes de serem promovidos a tarefas formais.
-
 ---
 
-### Pesquisa 4.1: VNNI para Dot Products Int8
+### Pesquisa 4.1: VNNI para Dot Products Int8 [To Do]
 
 #### 4.1 Contexto
 
-Quantização dos pesos LSTM/WaveNet para Int8 com acumulação em Int32 via `_mm512_dpbusd_epi32`
-ou `_mm256_dpbusd_epi32`.
+Quantização dos pesos LSTM/WaveNet para Int8 com acumulação em Int32 via `_mm512_dpbusd_epi32` ou `_mm256_dpbusd_epi32`.
 
 Ganho teórico: **4× throughput vs FP32 FMA**. O VNNI combina múltiplas multiplicações e adições em um único ciclo de clock de forma muito mais densa que o FMA3 padrão. Isso significa que a CPU faz muito menos força para entregar o mesmo bloco de áudio.
 
 #### 4.1 Desafio Principal
 
-Validar que a perda de precisão (FP32 → Int8) é aceitável para modelos NAM,
-onde a fidelidade perceptual de áudio é crítica. Provavelmente requer:
+Validar que a perda de precisão (FP32 → Int8) é aceitável para modelos NAM, onde a fidelidade perceptual de áudio é crítica. Provavelmente requer:
 
 - Calibração de escala por-camada (quantization-aware)
 - Comparação A/B audível para cada modelo
 - Threshold de SNR mínimo para aceitar quantização
 
-#### 4.1 Próximos Passos
+#### 4.1 Passos
 
-- Prototipar quantização dos pesos de um modelo LSTM 1×16
+- Ativação via linha de comando
+- Prototipar quantização dos pesos
 - Medir MSE e SNR vs referência FP32
 - Avaliar se a calibração per-layer é suficiente ou se precisa per-tensor
-- Ativado via linha de comando.
 - Quantização Just-in-Time (JIT)? Ao carregar o arquivo .nam comum, arredondar os pesos de Float32 para inteiros durante o carregamento.
 
 #### 4.1 VNNI também possui uma versão para x86-64-v3
@@ -38,58 +33,96 @@ onde a fidelidade perceptual de áudio é crítica. Provavelmente requer:
 - Intel: Qualquer processador a partir da 12ª Geração (Alder Lake, final de 2021). Inclui a série Core (i3, i5, i7, i9 com numeração 12000 ou superior) e as novas linhas Core Ultra.
 - AMD: Qualquer processador baseado na arquitetura Zen 4 ou superior (lançados a partir do final de 2022). O marco principal é a linha Ryzen série 7000 para desktops.
 - grep -E 'avx_vnni' /proc/cpuinfo
-- std::is_x86_feature_detected!("avx_vnni")
+- Multiversioning via std::is_x86_feature_detected!("avx_vnni")
 
 ---
 
-### Pesquisa 4.2: Uso de Cgroup
+### Tarefa 4.2: A "Bala de Prata" em Código: `/dev/cpu_dma_latency` [Concluída]
 
-Enquanto o `pthread_setaffinity_np` (afinidade) é como colocar uma placa de "Reservado" em uma mesa para a sua _thread_ de áudio, o **cgroups (Control Groups)**, especificamente na sua versão v2 unificada, é como construir uma sala à prova de som ao redor dessa mesa e trancar a porta por fora.
+Os processadores modernos tentam "dormir" (entrar em C-States profundos, como C6/C7) para economizar energia, e o tempo que levam para "acordar" causa estalos no áudio.
 
-A afinidade diz para onde a sua _thread_ deve ir, mas não impede que o escalonador do Linux jogue um processo do navegador ou um atualizador do sistema naquele mesmo núcleo por alguns microssegundos. O `cgroups` resolve isso criando fronteiras físicas e lógicas no nível do kernel.
+O Linux permite que um processo em *user space* diga ao kernel: *"Eu exijo que a latência de despertar da CPU seja de **Zero** milissegundos"*. Enquanto o seu programa mantiver essa solicitação aberta, o kernel **proibirá fisicamente a CPU de entrar em estados de dormência**, mantendo os transistores alimentados e prontos para o PipeWire.
 
-Para um projeto de DSP de baixíssima latência, aqui está o que pode ser feito estritamente via `cgroups`:
+### Como implementar no Rust
 
-#### 1. Blindagem Absoluta de Núcleos (O Controlador `cpuset`)
+Você só precisa abrir o arquivo `/dev/cpu_dma_latency`, escrever um inteiro `0` de 32 bits nele, e **manter o arquivo aberto** (segurar o *File Descriptor*) durante a execução do programa. Quando o NAM-rs for fechado, o arquivo é descartado e o kernel devolve a CPU ao modo de economia de bateria normal. Zero scripts externos.
 
-Esta é a aplicação mais brutal e eficaz do `cgroups` para áudio. Você particiona os núcleos físicos do processador e proíbe o resto do sistema de enxergá-los.
+Adicione esta função e chame-a depois do carregamento bem-sucessido, mas antesde iniciar o processamento em si:
 
-- **Isolamento de Domínio (CPU Shielding):** Você pode criar um grupo (por exemplo, `system.slice`) e atribuir os núcleos `0,1,2,3` a ele. Todos os processos normais do SO rodarão apenas aí. Em seguida, cria um `audio.slice` com os núcleos `4,5` (os de maior capacidade/menor interrupção que você identificou).
-- **Migração de Interrupções:** Ao isolar os núcleos via `cpuset`, o kernel automaticamente tenta afastar o processamento de interrupções de hardware (IRQs de rede, USB, vídeo) desses núcleos isolados, deixando-os em silêncio absoluto aguardando as amostras do PipeWire.
-- **Desligamento do Balanceador de Carga:** Dentro do `cpuset` do seu grupo de áudio, você pode sinalizar ao kernel para desligar o _load balancer_ (`cpuset.sched_load_balance=0`). Como você já fixou a afinidade da sua _thread_ manualmente no código, o kernel para de gastar ciclos de clock tentando reavaliar se deve mover sua _thread_ para outro núcleo.
+```rust
+use std::fs::OpenOptions;
+use std::io::Write;
 
-#### 2. Prevenção de Swap e Page Faults (O Controlador `memory`)
-
-O maior inimigo da latência determinística não é a falta de CPU, mas a CPU ter que esperar a memória RAM. Se o sistema operacional decidir fazer paginação (_swap_) de um pedaço da memória do seu motor neural para o disco, o áudio vai estalar severamente.
-
-- **Bloqueio de Swap (`memory.swap.max = 0`):** Você pode instruir o `cgroups` a definir um limite de zero _bytes_ de swap para o grupo onde o servidor de áudio e o cliente NAM estão rodando. Se faltar RAM, o sistema não jogará as matrizes neurais para o SSD; ele as manterá travadas na memória física (L1/L2/L3 e RAM).
-- _Nota de Desenvolvimento:_ No código Rust/C++, isso trabalha em conjunto com chamadas de sistema como o `mlockall()` (Memory Lock), que tranca o espaço de endereçamento do processo na RAM, impedindo falhas de página (_page faults_) durante o processamento do _buffer_.
-
-#### 3. Garantia de Tempo de Execução (O Controlador `cpu`)
-
-Como você já utiliza o agendador de tempo real (`SCHED_FIFO` via `rtprio`), este controlador é menos crítico, mas atua como uma rede de segurança contra travamentos completos do sistema (o temido _RT throttling_).
-
-- **Alocação de Banda Larga de CPU (`cpu.max` / `cpu.weight`):** Mesmo rodando em tempo real, se houver uma falha no seu código (um _loop_ infinito, por exemplo), uma _thread_ RT pode congelar a máquina inteira. O `cgroups` permite definir um teto (ex: permitir uso de 95% do tempo do núcleo, deixando 5% para que o kernel possa intervir e você consiga matar o processo no terminal, se necessário).
-
-#### 4. Gestão de Banda de I/O (O Controlador `io`)
-
-Embora a inferência do NAM seja estritamente matemática e dependa de CPU/RAM, a cadeia de áudio pode envolver a leitura de respostas de impulso (IRs) ou gravação de _takes_ em disco.
-
-- **Priorização de Disco (`io.latency` / `io.weight`):** Caso o sistema esteja sob forte estresse de disco (ex: atualizando pacotes ou copiando arquivos grandes), você pode proteger o grupo de áudio garantindo que qualquer leitura de arquivo (como carregar dinamicamente um novo modelo `.nam` ou arquivo `.wav` de _cab sim_) tenha passagem livre pelo agendador de I/O do kernel, reduzindo o tempo de carregamento da interface.
-
-#### Como isso se traduz na Prática (Via Systemd)
-
-Em distribuições modernas (como Ubuntu), manipular os arquivos virtuais do `cgroups` manualmente em `/sys/fs/cgroup/` não é recomendado, pois o `systemd` gerencia a árvore unificada do cgroups v2.
-
-A forma mais limpa de aplicar esse poder é encapsular a execução do seu binário em um serviço ou escopo do systemd. Por exemplo, executando o motor de áudio via comando com as diretivas do cgroups mapeadas:
-
-```bash
-systemd-run --user --scope \
-    -p AllowedCPUs=4,5 \
-    -p MemorySwapMax=0 \
-    -p CPUSchedulingPolicy=fifo \
-    -p CPUSchedulingPriority=85 \
-    ./seu_binario_nam_rs
+/// Impede que o processador entre em C-States de economia de energia,
+/// garantindo latência de despertar de 0ms para processamento de áudio RT.
+///
+/// RETORNO: O arquivo `File`. Ele DEVE ser mantido vivo no escopo principal.
+/// Se for "dropado", o kernel anula a proteção.
+pub fn lock_cpu_c_states() -> Option<std::fs::File> {
+    match OpenOptions::new().write(true).open("/dev/cpu_dma_latency") {
+        Ok(mut file) => {
+            let zero: i32 = 0;
+            if file.write_all(&zero.to_ne_bytes()).is_ok() {
+                log::info!("⚡ PM QoS Lock: C-States profundos da CPU desativados (Zero DMA Latency).");
+                return Some(file);
+            }
+            log::warn!("PM QoS: Falha ao escrever em /dev/cpu_dma_latency.");
+            None
+        }
+        Err(e) => {
+            log::warn!(
+                "PM QoS: Acesso negado a /dev/cpu_dma_latency ({}). \
+                 Considere criar uma regra de udev para o grupo 'audio'.", 
+                e
+            );
+            None
+        }
+    }
+}
 ```
 
-Esse comando cria um escopo (grupo de controle) efêmero que isola os núcleos, zera a paginação, aplica as políticas de tempo real e empacota o processo numa bolha blindada gerenciada nativamente pelo kernel, extraindo o limite do que o hardware de consumidor pode oferecer.
+Obs: Cuidado para este estado não continuar após o encerramento do NAM-rs.
+
+### O complemento no Sistema Operacional (A Regra do Udev)
+
+Assim como o `SCHED_FIFO` precisou do arquivo em `limits.d` para funcionar sem root, a abertura deste arquivo exige privilégios. Para que o seu usuário comum consiga aplicar essa trava no processador pelo próprio código, basta delegar a permissão via uma regra do `udev` para o grupo `audio`.
+
+Crie um arquivo em `/etc/udev/rules.d/99-audio-dma-latency.rules` contendo:
+
+```text
+KERNEL=="cpu_dma_latency", GROUP="audio", MODE="0664"
+```
+
+*(Reinicie a máquina ou rode `sudo udevadm control --reload-rules && sudo udevadm trigger` para aplicar).*
+
+Com isso, o NAM-rs assume o controle total do envelope de energia da CPU de forma programática.
+
+> **Nota (Conclusão da Tarefa 4.2):** A implementação da trava de DMA (`lock_cpu_c_states`), da proteção de páginas de memória (`madvise`) e da nomeação de thread DSP (`pthread_setname_np`) foi efetuada no arquivo `src/pw_host.rs`. As permissões para grupo `audio` no `/etc/udev/rules.d/99-audio-dma-latency.rules` devem ser conferidas pelo usuário. A arquitetura de áudio RT PipeWire agora restringe completamente o retorno de latências derivadas de states ociosos (C-states), impedindo drop-outs na operação em low-latency.
+
+### Ajustes Menores de *Hardening* em C/Rust
+
+Além da gestão de energia, existem mais duas diretivas que você pode inserir junto à sua função `configure_realtime_thread` para "apertar" ainda mais a segurança:
+
+**1. Blindagem de Memória Avançada (`madvise`):**
+Você já vai colocar o `mlockall` para evitar swap. Para complementar, você pode avisar o kernel para **não clonar** as páginas de memória do seu áudio se o processo sofrer um *fork*, e para não fazer *core dumps* dessa região.
+
+```rust
+#[cfg(target_os = "linux")]
+unsafe {
+    // Substitua `buffer_ptr` e `tamanho` pelos ponteiros do seu DspBridge.
+    // libc::madvise(buffer_ptr, tamanho, libc::MADV_DONTFORK | libc::MADV_DONTDUMP);
+}
+```
+
+Isso é opcional, mas evita que engasgos ocultos do SO (como serviços do sistema tentando ler a memória) travem a *thread* DSP.
+
+**2. Nomeação Explicita da Thread (`pthread_setname_np`):**
+O PipeWire cria a *Data Thread* nos bastidores. Dar um nome a ela via código não melhora a latência, mas é fundamental para você monitorar se o *Core Affinity* realmente funcionou quando rodar ferramentas como `htop` ou `perf` no terminal do Linux.
+
+```rust
+#[cfg(target_os = "linux")]
+unsafe {
+    let name = b"nam_rs_dsp\0";
+    libc::pthread_setname_np(libc::pthread_self(), name.as_ptr() as *const libc::c_char);
+}
+```

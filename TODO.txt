@@ -1,5 +1,4 @@
-## TODO-sprints.md
-## Revisitar a completude da suite de testes e benches e seu alinhamento à implementação de referência do mikeoliphant
 ## revisor-auditor / pesquisador-inovador
+## Revisitar a completude da suite de testes e benches e seu alinhamento à implementação de referência do mikeoliphant
 ## Testes finais de calibração com github.com/mikeoliphant/NeuralAudio/Utils/Models/*.nam e tests/*.nam
 ## Leitura geral do código fonte
