@@ -1,46 +1,5 @@
 # TODO-sprints
 
-## Sprint 3: Arquitetura Core e Estabilidade
-
-### Tarefa 3.1: DspBridge com Double-Buffer
-
-Estimativa: ~4h | Complexidade: Média | Ganho: Robustez contra futuras mudanças na topologia de áudio
-
-> Pode ser combinada com outras tarefas de baixa prioridade durante
-> refatorações periódicas.
-
-#### 3.1 Motivação
-
-O `DspBridge` atual em `pw_host.rs` (linhas 72–82) usa um **único buffer** com
-generation counter atômico. Na implementação atual, ambos os callbacks rodam no
-mesmo `ThreadLoop` PW (`node.group = "nam-rs-dsp"`) e o `fence(Release)` +
-`generation.fetch_add` só é emitido **após** ambos os canais L e R estarem
-escritos (linhas 536–544). Portanto, **não há bug atual**.
-
-Porém, um double-buffer com swap atômico seria mais robusto contra:
-
-- Futuras mudanças na topologia de streams PW
-- Cenários onde os callbacks possam executar em threads diferentes
-- Simplificação da lógica de sincronização (elimina `n_samples == 0` guard)
-
-#### 3.1 Proposta Técnica
-
-1. Alocar 2 instâncias de buffer (front/back) via `Box::leak`
-2. Usar `AtomicBool` ou `AtomicUsize` para indexar qual buffer é o "ativo para leitura"
-3. Capture escreve sempre no back-buffer; ao final, swapa o índice com `fence(Release)`
-4. Playback lê sempre do front-buffer com `fence(Acquire)`
-
-#### 3.1 Arquivos Afetados
-
-- `src/pw_host.rs` — struct `DspBridge` e lógica de sincronização dos callbacks
-
-#### 3.1 Verificação
-
-- Testes de integração com modelo WaveNet real (sem artefatos audíveis)
-- Validar que a latência não aumentou (generation gap ≤ 1 buffer)
-
----
-
 ## Sprint 4: Pesquisa e Inovação (Backlog Avançado)
 
 > Itens de investigação a longo prazo. Requerem prototipagem e benchmarking

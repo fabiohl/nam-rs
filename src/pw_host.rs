@@ -61,6 +61,17 @@ use std::sync::atomic::Ordering;
 /// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
 const MAX_BRIDGE_BUF: usize = 8192;
 
+/// Buffer individual de áudio para o DspBridge (double-buffer).
+#[repr(align(128))]
+struct BridgeBuffer {
+    /// Buffer de saída processada, canal esquerdo.
+    buf_l: [f32; MAX_BRIDGE_BUF],
+    /// Buffer de saída processada, canal direito.
+    buf_r: [f32; MAX_BRIDGE_BUF],
+    /// Número de amostras válidas no buffer atual.
+    n_samples: u32,
+}
+
 /// Buffer compartilhado entre o callback de captura (DSP) e o callback de playback.
 ///
 /// O capture callback escreve o resultado processado aqui com `fence(Release)`;
@@ -70,12 +81,10 @@ const MAX_BRIDGE_BUF: usize = 8192;
 /// Alinhado a 128 bytes para evitar false-sharing entre os dois callbacks RT.
 #[repr(align(128))]
 struct DspBridge {
-    /// Buffer de saída processada, canal esquerdo.
-    buf_l: [f32; MAX_BRIDGE_BUF],
-    /// Buffer de saída processada, canal direito.
-    buf_r: [f32; MAX_BRIDGE_BUF],
-    /// Número de amostras válidas no buffer atual.
-    n_samples: std::sync::atomic::AtomicU32,
+    /// Os dois buffers físicos (front / back) para o double-buffering.
+    buffers: [BridgeBuffer; 2],
+    /// Índice do buffer ativo para LEITURA (0 ou 1). O capture sempre escreve no (1 - ativo).
+    active_read_idx: std::sync::atomic::AtomicUsize,
     /// Contador de geração — incrementado a cada escrita pelo capture callback.
     /// O playback compara com sua cópia local para detectar novos dados.
     generation: std::sync::atomic::AtomicU64,
@@ -134,9 +143,19 @@ pub fn run_pipewire_host(
     // Aloca o buffer compartilhado entre capture e playback via leak intencional.
     // O DspBridge vive até o shutdown do processo — nunca é dropado em runtime.
     let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
-        buf_l: [0.0f32; MAX_BRIDGE_BUF],
-        buf_r: [0.0f32; MAX_BRIDGE_BUF],
-        n_samples: std::sync::atomic::AtomicU32::new(0),
+        buffers: [
+            BridgeBuffer {
+                buf_l: [0.0f32; MAX_BRIDGE_BUF],
+                buf_r: [0.0f32; MAX_BRIDGE_BUF],
+                n_samples: 0,
+            },
+            BridgeBuffer {
+                buf_l: [0.0f32; MAX_BRIDGE_BUF],
+                buf_r: [0.0f32; MAX_BRIDGE_BUF],
+                n_samples: 0,
+            },
+        ],
+        active_read_idx: std::sync::atomic::AtomicUsize::new(0),
         generation: std::sync::atomic::AtomicU64::new(0),
     }));
     // Ponteiro raw para compartilhamento seguro entre closures (ambos RT, mesmo context PW).
@@ -435,8 +454,13 @@ pub fn run_pipewire_host(
                                     // em vez de repetir o último frame processado.
                                     // SAFETY: capture callback é o único escritor.
                                     let bridge_ref = unsafe { &mut *bridge_ptr };
-                                    bridge_ref.n_samples.store(0, Ordering::Relaxed);
+                                    let back_idx =
+                                        1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
+                                    bridge_ref.buffers[back_idx].n_samples = 0;
                                     std::sync::atomic::fence(Ordering::Release);
+                                    bridge_ref
+                                        .active_read_idx
+                                        .store(back_idx, Ordering::Relaxed);
                                     bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
                                     return;
                                 }
@@ -533,15 +557,21 @@ pub fn run_pipewire_host(
                                 // o único escritor dos arrays `buf_l`/`buf_r` — não há
                                 // data race. Os campos atômicos são acessados via Ordering.
                                 let bridge_ref = unsafe { &mut *bridge_ptr };
+                                let back_idx =
+                                    1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
+                                let back_buf = &mut bridge_ref.buffers[back_idx];
+
                                 let n_bridge = n_copy.min(MAX_BRIDGE_BUF);
-                                bridge_ref.buf_l[..n_bridge]
+                                back_buf.buf_l[..n_bridge]
                                     .copy_from_slice(&resamp_out_l[..n_bridge]);
-                                bridge_ref.buf_r[..n_bridge]
+                                back_buf.buf_r[..n_bridge]
                                     .copy_from_slice(&resamp_out_r[..n_bridge]);
-                                bridge_ref
-                                    .n_samples
-                                    .store(n_bridge as u32, Ordering::Relaxed);
+                                back_buf.n_samples = n_bridge as u32;
+
                                 std::sync::atomic::fence(Ordering::Release);
+                                bridge_ref
+                                    .active_read_idx
+                                    .store(back_idx, Ordering::Relaxed);
                                 bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 
                                 // Monitoramento de carga de DSP (DSP Load Monitoring)
@@ -651,7 +681,10 @@ pub fn run_pipewire_host(
                 last_bridge_gen = current_gen;
                 std::sync::atomic::fence(Ordering::Acquire);
 
-                let n_samples = bridge_ref.n_samples.load(Ordering::Relaxed) as usize;
+                let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
+                let front_buf = &bridge_ref.buffers[read_idx];
+
+                let n_samples = front_buf.n_samples as usize;
                 if n_samples == 0 || n_samples > MAX_BRIDGE_BUF {
                     return;
                 }
@@ -684,14 +717,14 @@ pub fn run_pipewire_host(
                     let out_l = unsafe {
                         std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out)
                     };
-                    out_l.copy_from_slice(&bridge_ref.buf_l[..n_out]);
+                    out_l.copy_from_slice(&front_buf.buf_l[..n_out]);
                 }
                 if let Some(raw_r) = data_r.data() {
                     // SAFETY: Idem canal direito.
                     let out_r = unsafe {
                         std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out)
                     };
-                    out_r.copy_from_slice(&bridge_ref.buf_r[..n_out]);
+                    out_r.copy_from_slice(&front_buf.buf_r[..n_out]);
                 }
 
                 // Informa ao PipeWire quantos bytes foram escritos

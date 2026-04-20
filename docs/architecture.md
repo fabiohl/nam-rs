@@ -5,7 +5,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 ## 1. Topologia PipeWire: Arquitetura Dual-Stream (Capture + Playback)
 
 - **Processador Sistêmico (Estilo Easy Effects):** O NAM-rs declara-se como um **Virtual Sink** (`media.class = Audio/Sink`) via `pw_stream` (Direction::Input). O *WirePlumber* eleva-o a saída de som padrão. Apps (YouTube, VLC, etc.) enviam áudio automaticamente. Entretanto, **o monitor port do `Audio/Sink` copia os buffers antes do callback `process()`** — o que torna modificações in-place invisíveis ao monitor. Por isso, o NAM-rs usa uma **segunda stream de playback** (`Stream/Output/Audio`, Direction::Output) que lê o áudio processado de um `DspBridge` compartilhado e o entrega ao hardware.
-- **DspBridge (Lock-Free Inter-Stream):** Buffer `#[repr(align(128))]` com arrays `[f32; 8192]` L/R + `AtomicU32` (n_samples) + `AtomicU64` (generation). O capture callback escreve com `fence(Release)`; o playback callback lê com `fence(Acquire)`. O `node.group = "nam-rs-dsp"` em ambas as streams garante clock sync. Alocação via `Box::leak` — nunca dropado em runtime.
+- **DspBridge (Lock-Free Inter-Stream Double-Buffer):** Estrutura `#[repr(align(128))]` contendo dois `BridgeBuffer`s (front/back), cada um com arrays `[f32; 8192]` L/R e `n_samples`. Um `AtomicUsize` indica o índice de leitura ativo, garantindo isolamento total entre leitura e escrita. O capture callback escreve no buffer inativo e troca o índice com `fence(Release)`; o playback callback lê do buffer ativo com `fence(Acquire)`, validando atualizações por um `AtomicU64` (generation). O `node.group = "nam-rs-dsp"` em ambas as streams garante clock sync. Alocação via `Box::leak` — nunca dropado em runtime.
 - **Integração Lock-Free end-to-end:** `CLI → Parser (.nam/.namb) → Model Dispatcher → Prewarm → Injeção Lock-free Dual via SPSC → Thread DSP (SCHED_FIFO) → Gain Stage Input → Inferência Neural (Capture Stream) → DspBridge → Gain Stage Output → Playback Stream → Hardware Sink.`
 - **True Stereo e Bypass Inteligente:** O callback `process()` negocia canais planares de 32 bits (`F32P` com canais = 2). Ele extrai os arrays e invoca inferência simétrica para L e R (`model_l`, `model_r`). Contudo, o sistema prevê uma mitigação vital de CPU: se o canal R for puro silêncio ou idênticamente replicado a L, a thread pula o processamento do R, inferindo apenas a percurso mono L e estampando bit-a-bit à saída R, poupando virtualmente 50% dos ciclos. Para instrumentos físicos (ex: Guitarra) tocarem por cima de "backing tracks", a rota do microfone deve ser conectada ao Sink do NAM-rs manualmente no `qpwgraph`.
 
@@ -53,6 +53,7 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/dsp/mod.rs`            | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `src/dsp/gain.rs`           | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`. `detect_clipping_stereo_simd` detecta saturação estéreo via AVX2 (8 samples/iteração) substituindo loop escalar. Fórmulas de calibração: `input_db_adj = input_level_dbu − 12.0` (positivo = boost; referência NAM = 12 dBu); `output_db_adj = −18.0 − loudness` (alvo = −18 LUFS). Multiplicador linear: `10^((user_db + model_db_adj) / 20)`.                                         |
 | `src/dsp/resampler.rs`      | `NamResampler`: wrapper multi-channel Planar (2 channels), resampler bidirecional FIR Sinc (rubato 0.16), interpolação Hermite **cúbica** (+6 dB SNR vs linear), bypass automático para frequências de 48 kHz cravadas.                                                                                                                                                                                                                                                         |
+| `src/dsp/traits.rs`         | Traits genéricos para DSP: `Sample` (escalar f32/f64 com `EQUILIBRIUM`, `from_f32`, `to_f32`), `Frame` (container multi-canal `[S; N]` com `CHANNELS`, `as_slice`/`as_mut_slice`), `Signal` (processamento vetorial em bloco `process_block`/`process_block_in_place`). Fundações para static dispatch (monomorfização) em vias quentes, impedindo acoplamento em fatias brutas `&[f32]`.                                                                                       |
 
 ## 5. Gestão de Dependências DSP
 
@@ -138,7 +139,13 @@ Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no fina
 
 ### 6.2. Testes de Integração (`tests/`) — 21 testes
 
-O diretório `tests/` contém `nam_infer_test.rs`, que consome a API pública `nam_rs::*` como um usuário externo. Os 18 testes cobrem **11 categorias** distintas:
+O diretório `tests/` contém três arquivos de teste que consomem a API pública `nam_rs::*` como um usuário externo:
+
+- **`nam_infer_test.rs`** (18 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors, SPSC E2E.
+- **`proptest_math.rs`** (2 testes) — validação estocástica via `proptest`: `prop_simd_tanh_avx2_rmse` e `prop_simd_sigmoid_avx2_rmse` verificam que FastMath AVX2 mantém RMSE < threshold contra `std::f32` em domínios aleatórios.
+- **`pw_integration_test.rs`** (1 teste) — `test_pipewire_headless_integration`: validação headless do PipeWire (init/connect/shutdown) sem hardware de áudio.
+
+Os 18 testes de `nam_infer_test.rs` cobrem **11 categorias** distintas:
 
 #### Parsing e Topologia (1 teste)
 
@@ -249,7 +256,7 @@ tests/fixtures/
 
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara todas as camadas. `cargo test --lib` executa apenas os 83 unitários inline; `cargo test --test nam_infer_test` apenas os 18 de integração.
+- **Comando de execução:** `cargo test` dispara todas as camadas (104 verificações). `cargo test --lib` executa apenas os 83 unitários inline; `cargo test --test nam_infer_test` os 18 de inferência; `cargo test --test proptest_math` os 2 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 
 ## 7. Referências
 
