@@ -247,6 +247,12 @@ fn load_and_send_model(
             let in_level = meta.input_level_dbu.unwrap_or(12.0);
             let loudness = meta.loudness.unwrap_or(-18.0);
 
+            // Calibração de ganho baseada em metadados do modelo:
+            // - input_db_adj: positivo = boost. Se o modelo foi calibrado a 15 dBu,
+            //   o sinal PW (que assume 12 dBu) precisa de +3 dB para equiparar.
+            //   Fórmula: input_level_dbu - 12.0 (referência NAM padrão).
+            // - output_db_adj: normalização de loudness. Alvo = −18 LUFS.
+            //   Se o modelo declara −15 LUFS, output_db_adj = −18 − (−15) = −3 dB (atenua).
             let input_db_adj = in_level - 12.0;
             let output_db_adj = -18.0 - loudness;
             let nam_rate = model_data.sample_rate.unwrap_or(48000.0) as u32;

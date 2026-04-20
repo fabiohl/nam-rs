@@ -28,7 +28,11 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // 0: Magic Number (b"NAMB" ou b"BMAN". A especificação diz 0x4E414D42)
     // Se convertermos 0x4E414D42 para `[u8; 4]` local, little-endian será `[0x42, 0x4D, 0x41, 0x4E]` ("BMAN")
     // Vamos checar diretamente o array fornecido.
-    let magic_le = u32::from_le_bytes(data[0..4].try_into().unwrap());
+    let magic_le = u32::from_le_bytes(
+        data[0..4]
+            .try_into()
+            .expect("header magic: 4 bytes garantidos pela guarda L24"),
+    );
     if magic_le != 0x4E414D42 {
         // Fallback: Vamos checar se o Magic Number for string direta "NAMB"
         if &data[0..4] != b"NAMB" && &data[0..4] != b"BMAN" {
@@ -37,19 +41,31 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
 
     // 4: Versão Lógica (Estritamente Versão 1)
-    let version_le = u16::from_le_bytes(data[4..6].try_into().unwrap());
+    let version_le = u16::from_le_bytes(
+        data[4..6]
+            .try_into()
+            .expect("header version: 2 bytes garantidos pela guarda L24"),
+    );
     if version_le != 1 {
         bail!("Versão de arquivo não suportada: {}", version_le);
     }
 
     // 12: Offset de Início do Conjunto de Pesos Neurais
-    let weights_offset = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
+    let weights_offset = u32::from_le_bytes(
+        data[12..16]
+            .try_into()
+            .expect("header weights_offset: 4 bytes garantidos pela guarda L24"),
+    ) as usize;
     if weights_offset > data.len() {
         bail!("Offset de pesos aponta além dos limites do arquivo.");
     }
 
     // 24: CRC32
-    let crc_expected = u32::from_le_bytes(data[24..28].try_into().unwrap());
+    let crc_expected = u32::from_le_bytes(
+        data[24..28]
+            .try_into()
+            .expect("header CRC32: 4 bytes garantidos pela guarda L24"),
+    );
 
     // Verificação CRC32 base IEEE 802.3 sobre o bloco de pesos.
     let mut hasher = Hasher::new();
