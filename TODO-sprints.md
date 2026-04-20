@@ -1,50 +1,5 @@
 # TODO-sprints
 
-## Sprint 2: Revolução WaveNet (Throughput e Multiversionamento) (Concluída)
-
-### Tarefa 2.1: Multiversionamento Explícito do Loop WaveNet
-
-Estimativa: ~4h | Complexidade: Média | Ganho: Melhor _Register Allocation_ e eliminação de _Pointer Aliasing_
-
-#### 2.1 Motivação
-
-Atualmente, o WaveNet usa a v-table `SimdMathConfig` (em `src/math/simd.rs`) para dispatch de `dot_product` e ativações, o que insere indireções (ponteiros de função) no hot-loop. Ao remover essa "parede cega", o compilador poderá executar _Loop Unrolling_ com _Register Allocation_ nativa em ZMM (AVX-512) ou YMM (AVX2), reduzindo ainda mais os ciclos/fma do WaveNet.
-
-#### 2.1 Proposta Técnica
-
-Adicionar uma versão `process_avx2()` e `process_avx512()` via macros ou funções explicitamente demarcadas via `#[target_feature(enable = "...")]` no loop interno do WaveNet, contornando a V-Table e dando visibilidade total ao compilador do loop ponta a ponta.
-
-#### 2.1 Verificação
-
-- Garantir tempo menor no `cargo bench` (Criterion) para `WaveNet_Standard`.
-
----
-
-### Tarefa 2.2: Processamento Temporal em Bloco do WaveNet (Batch GEMM) (Concluída)
-
-Estimativa: ~8h | Complexidade: Muito Alta | Ganho: Quebra do Teto de Latência (Small-GEMM)
-
-#### 2.2 Motivação
-
-A LSTM possui uma dependência temporal inquebrável (o estado oculto $t+1$ necessita de $t$). O modelo WaveNet (CNN Dilatada / FIR), **NÃO POSSUI** esse loop de realimentação infinito. A dependência temporal da WaveNet olha puramente para as amostras anteriores de input. Isso nos abre a porta de ouro: processamento em lote.
-
-#### 2.2 Proposta Técnica
-
-Em vez de iterar processando _sample-by-sample_ (`for i in 0..num_frames`), podemos agrupar os samples em blocos de 8, 16 ou 32, multiplicando matrizes simultaneamente. Isso transforma centenas de _Dot Products_ vetoriais rasos em multiplicações _Small-GEMM_ hiperdensas, convertendo o teto de latência da CPU num gargalo mitigável de _Data Throughput_.
-
-#### 2.2 Resultados e Benefícios Alcançados
-
-- **Quebra do Teto de Latência**: A transição para um modelo _array-at-a-time_ agrupou chamadas pontuais em execuções de lote extremamente coesas, reduzindo drasticamente o _overhead_ de instruções de loop.
-- **Eficiência de L1 Cache (Simd FMA)**: Matrizes de pesos como `conv1d` e `input_mixin` passaram a iterar ao longo do vetor `num_frames` inteiro de uma vez só. Os dados da matriz permanecem estacionários em registradores YMM/ZMM, eliminando switches de contexto e _cache evictions_ destrutivas que marcavam a implementação escalar anterior.
-- **Prevenção Real de XRuns**: Ao abaixar a ocupação de CPU por interrupção de ciclo do ALSA/Pipewire, o sistema ganhou margem vital contra gargalos de processamento.
-- **Paridade Matemática Estrita preservada**: Restauramos o fluxo `non-gated` que havia sido ofuscado durante o redesign inicial do Buffer de Processamento. A variação da paridade WaveNet foi fixada no limite aritmético prático (`MSE=2.78e-9`), resultado inofensivo do acúmulo paralelo SIMD _Fused Multiply-Add_.
-
-#### 2.2 Verificação
-
-- [x] Implementação gradual garantindo paridade Golden MSE rigorosa nas CNNs para processamento _block-based_.
-
----
-
 ## Sprint 3: Arquitetura Core e Estabilidade
 
 ### Tarefa 3.1: DspBridge com Double-Buffer

@@ -13,7 +13,7 @@ Está totalmente otimizado para extrair o máximo de performarce e baixa latênc
 O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire via `pipewire-rs` como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no *Graph Engine* do PipeWire.
-2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `#[target_feature(enable = "avx512f,avx512vl")]` para hardware que suporta ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução.
+2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning estático no WaveNet via trait `SimdMath` com `#[target_feature]` (zero v-table no hot-loop); AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
 4. **CLI Interativa e Hot-Swap de Modelos:** Interface de linha de comando com `lexopt` para configuração inicial (`--model`, `--input-gain`, `--output-gain`, `--buffer-size`) e loop `stdin` interativo em runtime. Troca de modelos (.nam/.namb) sem interromper o PipeWire, com delegação do `Drop` do modelo antigo para thread GC (lock-free Drop-Delegation).
 5. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de garantias de segurança e de performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++ - trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
@@ -79,13 +79,13 @@ O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquiv
 
 ## 🧪 Testes e Validação
 
-O NAM-rs mantém uma suíte de **97 verificações** automatizadas distribuídas em três camadas:
+O NAM-rs mantém uma suíte de **104 verificações** automatizadas distribuídas em quatro camadas:
 
 ```bash
 # Testes unitários + integração + proptest + E2E PipeWire
 cargo test
 
-# Apenas testes unitários inline (76 testes)
+# Apenas testes unitários inline (83 testes)
 cargo test --lib
 
 # Apenas testes de integração (18 testes)
