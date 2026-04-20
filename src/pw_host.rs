@@ -969,112 +969,123 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
         crate::math::simd::set_daz_ftz();
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        unsafe {
-            let thread_id = libc::pthread_self();
+    // Bloqueia a memória atual e futura na RAM física, prevenindo page faults.
+    let ret_mlock = unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) };
 
-            // 1. Afinidade de Núcleo: evita migração de core e invalidação de cache L1/L2
-            let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
-            libc::CPU_ZERO(&mut cpuset);
-            libc::CPU_SET(target_cpu, &mut cpuset);
+    if ret_mlock != 0 {
+        let err = std::io::Error::last_os_error();
+        log::warn!(
+            "⚠️ mlockall() falhou ({}). O áudio pode sofrer engasgos se o sistema usar swap.\n  Dica: Verifique o limite de 'memlock' no ulimits.",
+            err
+        );
+    } else {
+        log::info!(
+            "🔒 Memória do processo travada na RAM física (mlockall). Page faults prevenidos."
+        );
+    }
 
-            let ret_aff = libc::pthread_setaffinity_np(
-                thread_id,
-                std::mem::size_of::<libc::cpu_set_t>(),
-                &cpuset,
+    unsafe {
+        let thread_id = libc::pthread_self();
+
+        // 1. Afinidade de Núcleo: evita migração de core e invalidação de cache L1/L2
+        let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
+        libc::CPU_ZERO(&mut cpuset);
+        libc::CPU_SET(target_cpu, &mut cpuset);
+
+        let ret_aff = libc::pthread_setaffinity_np(
+            thread_id,
+            std::mem::size_of::<libc::cpu_set_t>(),
+            &cpuset,
+        );
+
+        if ret_aff != 0 {
+            log::error!(
+                "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).\n  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
+                target_cpu,
+                ret_aff,
+                target_cpu,
+                ret_aff
             );
+        }
 
-            if ret_aff != 0 {
-                log::error!(
-                    "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).\n  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
-                    target_cpu,
-                    ret_aff,
-                    target_cpu,
-                    ret_aff
-                );
-            }
+        // 2. Verificação programática prévia: lê policy/prio concedidos pelo kernel via rtkit/PipeWire
+        let mut actual_policy = 0i32;
+        let mut actual_param: libc::sched_param = std::mem::zeroed();
+        let ret_getsched =
+            libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param);
 
-            // 2. Verificação programática prévia: lê policy/prio concedidos pelo kernel via rtkit/PipeWire
-            let mut actual_policy = 0i32;
-            let mut actual_param: libc::sched_param = std::mem::zeroed();
-            let ret_getsched =
-                libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param);
+        let actual_cpu = libc::sched_getcpu();
 
-            let actual_cpu = libc::sched_getcpu();
+        if ret_getsched == 0 {
+            let reset_on_fork_flag = 0x40000000i32;
+            let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
+            let mut base_policy = actual_policy & !reset_on_fork_flag;
 
-            if ret_getsched == 0 {
-                let reset_on_fork_flag = 0x40000000i32;
-                let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
-                let mut base_policy = actual_policy & !reset_on_fork_flag;
+            // 3. Se PipeWire não elevou para SCHED_FIFO via rtkit, tentamos forçar manualmente
+            if base_policy != libc::SCHED_FIFO {
+                let mut param: libc::sched_param = std::mem::zeroed();
+                param.sched_priority = 90;
 
-                // 3. Se PipeWire não elevou para SCHED_FIFO via rtkit, tentamos forçar manualmente
-                if base_policy != libc::SCHED_FIFO {
-                    let mut param: libc::sched_param = std::mem::zeroed();
-                    param.sched_priority = 90;
-
-                    let ret_sched =
-                        libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
-                    if ret_sched != 0 {
-                        log::error!(
-                            "⚠️ pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
-                            ret_sched
-                        );
-                    } else {
-                        // Atualiza as variáveis refletindo a aplicação bem-sucedida
-                        base_policy = libc::SCHED_FIFO;
-                        actual_param.sched_priority = 90;
-                        has_reset_on_fork = false; // Nós não setamos a flag de reset on fork
-                    }
-                }
-
-                let policy_str = match base_policy {
-                    libc::SCHED_FIFO => "SCHED_FIFO",
-                    libc::SCHED_RR => "SCHED_RR",
-                    libc::SCHED_OTHER => "SCHED_OTHER",
-                    libc::SCHED_BATCH => "SCHED_BATCH",
-                    libc::SCHED_IDLE => "SCHED_IDLE",
-                    _ => "UNKNOWN",
-                };
-
-                let confirmed_fifo = base_policy == libc::SCHED_FIFO;
-
-                // Publica resultado real via flags atômicas — zero I/O no caminho quente
-                rt_status
-                    .rt_is_fifo
-                    .store(confirmed_fifo, Ordering::Relaxed);
-                rt_status
-                    .rt_priority
-                    .store(actual_param.sched_priority, Ordering::Relaxed);
-
-                // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
-                if has_reset_on_fork {
-                    log::info!(
-                        "{} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
-                        "🔍".blue(),
-                        actual_cpu.to_string().cyan(),
-                        policy_str.cyan(),
-                        actual_param.sched_priority.to_string().green()
+                let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
+                if ret_sched != 0 {
+                    log::error!(
+                        "⚠️ pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
+                        ret_sched
                     );
                 } else {
-                    log::info!(
-                        "{} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
-                        "🔍".blue(),
-                        actual_cpu.to_string().cyan(),
-                        policy_str.cyan(),
-                        actual_param.sched_priority.to_string().green()
-                    );
+                    // Atualiza as variáveis refletindo a aplicação bem-sucedida
+                    base_policy = libc::SCHED_FIFO;
+                    actual_param.sched_priority = 90;
+                    has_reset_on_fork = false; // Nós não setamos a flag de reset on fork
                 }
-            } else {
-                // Publica sentinela de falha de verificação
-                rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
-                rt_status.rt_priority.store(0, Ordering::Relaxed);
+            }
 
-                log::error!(
-                    "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam falhou (ret={}).\n",
-                    ret_getsched
+            let policy_str = match base_policy {
+                libc::SCHED_FIFO => "SCHED_FIFO",
+                libc::SCHED_RR => "SCHED_RR",
+                libc::SCHED_OTHER => "SCHED_OTHER",
+                libc::SCHED_BATCH => "SCHED_BATCH",
+                libc::SCHED_IDLE => "SCHED_IDLE",
+                _ => "UNKNOWN",
+            };
+
+            let confirmed_fifo = base_policy == libc::SCHED_FIFO;
+
+            // Publica resultado real via flags atômicas — zero I/O no caminho quente
+            rt_status
+                .rt_is_fifo
+                .store(confirmed_fifo, Ordering::Relaxed);
+            rt_status
+                .rt_priority
+                .store(actual_param.sched_priority, Ordering::Relaxed);
+
+            // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
+            if has_reset_on_fork {
+                log::info!(
+                    "{} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
+                    "🔍".blue(),
+                    actual_cpu.to_string().cyan(),
+                    policy_str.cyan(),
+                    actual_param.sched_priority.to_string().green()
+                );
+            } else {
+                log::info!(
+                    "{} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
+                    "🔍".blue(),
+                    actual_cpu.to_string().cyan(),
+                    policy_str.cyan(),
+                    actual_param.sched_priority.to_string().green()
                 );
             }
+        } else {
+            // Publica sentinela de falha de verificação
+            rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
+            rt_status.rt_priority.store(0, Ordering::Relaxed);
+
+            log::error!(
+                "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam falhou (ret={}).\n",
+                ret_getsched
+            );
         }
     }
 }
