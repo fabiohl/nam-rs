@@ -23,11 +23,15 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 ### Pré-requisitos
 
 * Linha de base: Ubuntu 26.04+ / Linux kernel 7.0+ com PipeWire 1.6+ (possivelmente funciona em versões anteriores também).
+
 * Processador x86-64-v3 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015).
+
 * Toolchain do Rust 1.94+ (`cargo`).
+
 * Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev`
 
 * Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
+  
   1. `sudo usermod -aG audio $USER`
   2. Crie ou edite o arquivo de limites (ex: `sudo nano /etc/security/limits.d/audio.conf`):
 
@@ -36,9 +40,16 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 @audio   -  memlock    unlimited
 ```
 
-* Também é muito recomendável configurar o governador da sua CPU (`intel_pstate` ou `amd_pstate`) para o modo **Performance**.
-  1. Desktop modernos (como GNOME no Ubuntu/Fedora ou KDE Plasma), o sistema já gerencia isso nativamente via power-profiles-daemon.
-  2. Caso você prefira o `tlp`, pode editar o /etc/tlp.conf
+1. Crie uma regra no *udev* para permitir que o grupo `audio` bloqueie a latência de despertar da CPU (C-states), (ex: `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`):
+   *(Reinicie a máquina ou execute `sudo udevadm control --reload-rules && sudo udevadm trigger` para aplicar as regras)*
+
+```text
+KERNEL=="cpu_dma_latency", GROUP="audio", MODE="0664"
+```
+
+1. Também é muito recomendável configurar o governador da sua CPU (`intel_pstate` ou `amd_pstate`) para o modo **Performance**.
+   * Desktop modernos (como GNOME no Ubuntu/Fedora ou KDE Plasma), o sistema já gerencia isso nativamente via power-profiles-daemon.
+   * Caso você prefira o `tlp`, pode editar o /etc/tlp.conf
      `CPU_SCALING_GOVERNOR_ON_AC=performance`
      `CPU_SCALING_GOVERNOR_ON_BAT=powersave`
 

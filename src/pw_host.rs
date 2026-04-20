@@ -161,6 +161,14 @@ pub fn run_pipewire_host(
     // Ponteiro raw para compartilhamento seguro entre closures (ambos RT, mesmo context PW).
     let bridge_ptr = bridge as *const DspBridge as *mut DspBridge;
 
+    unsafe {
+        libc::madvise(
+            bridge_ptr as *mut libc::c_void,
+            std::mem::size_of::<DspBridge>(),
+            libc::MADV_DONTFORK | libc::MADV_DONTDUMP,
+        );
+    }
+
     // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança
     // O lock é automaticamente liberado ao final deste escopo (_lock is dropped).
     {
@@ -792,6 +800,8 @@ pub fn run_pipewire_host(
         playback_listener,
     };
 
+    let _cpu_dma_lock = lock_cpu_c_states();
+
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
 
@@ -987,6 +997,9 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
     unsafe {
         let thread_id = libc::pthread_self();
 
+        let name = b"nam_rs_dsp\0";
+        libc::pthread_setname_np(thread_id, name.as_ptr() as *const libc::c_char);
+
         // 1. Afinidade de Núcleo: evita migração de core e invalidação de cache L1/L2
         let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
         libc::CPU_ZERO(&mut cpuset);
@@ -1178,4 +1191,36 @@ fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
     }
 
     totals
+}
+
+/// Impede que o processador entre em C-States de economia de energia,
+/// garantindo latência de despertar de 0ms para processamento de áudio RT.
+///
+/// RETORNO: O arquivo `File`. Ele DEVE ser mantido vivo no escopo principal.
+/// Se for "dropado", o kernel anula a proteção.
+pub fn lock_cpu_c_states() -> Option<std::fs::File> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .open("/dev/cpu_dma_latency")
+    {
+        Ok(mut file) => {
+            let zero: i32 = 0;
+            if std::io::Write::write_all(&mut file, &zero.to_ne_bytes()).is_ok() {
+                log::info!(
+                    "⚡ PM QoS Lock: C-States profundos da CPU desativados (Zero DMA Latency)."
+                );
+                return Some(file);
+            }
+            log::warn!("PM QoS: Falha ao escrever em /dev/cpu_dma_latency.");
+            None
+        }
+        Err(e) => {
+            log::warn!(
+                "PM QoS: Acesso negado a /dev/cpu_dma_latency ({}). \
+                 Considere criar uma regra de udev para o grupo 'audio'.",
+                e
+            );
+            None
+        }
+    }
 }
