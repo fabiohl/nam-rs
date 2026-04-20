@@ -164,6 +164,51 @@ pub fn is_buffer_silent_stereo_simd(left: &[f32], right: &[f32]) -> bool {
     }
 }
 
+/// Detecta se o canal direito (right) é puramente zero ou exatamente igual ao esquerdo (left),
+/// permitindo bypass no canal direito (processamento mono) economizando 50% de CPU.
+///
+/// Implementação SIMD:
+/// 1. `_mm256_loadu_ps` — carregar 8 samples de L e R
+/// 2. `_mm256_cmp_ps(r, zero, _CMP_NEQ_OQ)` — R ≠ 0?
+/// 3. `_mm256_cmp_ps(r, l, _CMP_NEQ_OQ)` — R ≠ L?
+/// 4. `_mm256_and_ps(cmp_nz, cmp_ne)` — R ≠ 0 e R ≠ L?
+/// 5. `_mm256_or_ps(accum, result)` — acumular
+/// 6. `_mm256_movemask_ps` — early-exit se não for mono
+pub fn is_buffer_mono_simd(left: &[f32], right: &[f32]) -> bool {
+    let n = core::cmp::min(left.len(), right.len());
+
+    unsafe {
+        let zero = _mm256_setzero_ps();
+        let mut any_not_mono = _mm256_setzero_ps();
+        let mut i = 0;
+
+        while i + 8 <= n {
+            let vl = _mm256_loadu_ps(left.as_ptr().add(i));
+            let vr = _mm256_loadu_ps(right.as_ptr().add(i));
+
+            let cmp_nz = _mm256_cmp_ps(vr, zero, _CMP_NEQ_OQ);
+            let cmp_ne = _mm256_cmp_ps(vr, vl, _CMP_NEQ_OQ);
+
+            let result = _mm256_and_ps(cmp_nz, cmp_ne);
+            any_not_mono = _mm256_or_ps(any_not_mono, result);
+
+            if _mm256_movemask_ps(any_not_mono) != 0 {
+                return false;
+            }
+            i += 8;
+        }
+
+        while i < n {
+            if right[i] != 0.0 && right[i] != left[i] {
+                return false;
+            }
+            i += 1;
+        }
+
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,5 +473,34 @@ mod tests {
         let mut left_loud = [0.0f32; 13];
         left_loud[12] = 0.5; // Último sample no tail
         assert!(!is_buffer_silent_stereo_simd(&left_loud, &right));
+    }
+
+    // =========================================================================
+    // Testes de Detecção Mono (Mono Bypass)
+    // =========================================================================
+
+    #[test]
+    fn test_is_buffer_mono_simd() {
+        // Buffer R=zeros -> mono=true
+        let l = vec![1.0; 128];
+        let r = vec![0.0; 128];
+        assert!(is_buffer_mono_simd(&l, &r));
+
+        // Buffer R=L (bitwise) -> mono=true
+        let l = vec![0.5; 128];
+        let r = vec![0.5; 128];
+        assert!(is_buffer_mono_simd(&l, &r));
+
+        // Buffer R!=L in sample 64 -> mono=false
+        let l = vec![0.5; 128];
+        let mut r = vec![0.5; 128];
+        r[64] = 0.6;
+        assert!(!is_buffer_mono_simd(&l, &r));
+
+        // Buffer R=zeros except last sample (scalar tail) -> mono=false
+        let l = vec![1.0; 15]; // length not multiple of 8
+        let mut r = vec![0.0; 15];
+        r[14] = 0.1;
+        assert!(!is_buffer_mono_simd(&l, &r));
     }
 }

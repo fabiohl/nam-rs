@@ -47,7 +47,7 @@
 //! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
 
 use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
-use crate::dsp::gain::{apply_gain_simd, is_buffer_silent_stereo_simd};
+use crate::dsp::gain::{apply_gain_simd, is_buffer_mono_simd, is_buffer_silent_stereo_simd};
 use crate::dsp::resampler::NamResampler;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
 use colored::Colorize;
@@ -447,13 +447,10 @@ pub fn run_pipewire_host(
 
                                 // Mitigação: se o R for puramente zero ou exatamente igual ao L,
                                 // processamos no modo Mono economizando 50% de CPU.
-                                let mut process_mono = true;
-                                for i in 0..n_samples {
-                                    if samples_r[i] != 0.0 && samples_r[i] != samples_l[i] {
-                                        process_mono = false;
-                                        break;
-                                    }
-                                }
+                                let process_mono = is_buffer_mono_simd(
+                                    &samples_l[..n_samples],
+                                    &samples_r[..n_samples],
+                                );
 
                                 // O resampler de entrada pode expandir amostras
                                 // (ex: 44100→48000 = ratio ~1.088x), portanto os buffers
