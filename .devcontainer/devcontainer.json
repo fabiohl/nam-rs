@@ -21,16 +21,20 @@
     "remoteUser": "vscode",
     "runArgs": [
         "--cap-add=SYS_NICE",
-        "--security-opt",
-        "seccomp=unconfined"
+        "--security-opt", "seccomp=unconfined",
+        "--ipc=host",
+        "--group-add=audio"
     ],
     "mounts": [
-        "source=/run/user/1000/pipewire-0,target=/tmp/pipewire-0,type=bind,consistency=cached",
+        "source=${localEnv:XDG_RUNTIME_DIR:/run/user/1000}/pipewire-0,target=/tmp/pipewire-0,type=bind,consistency=cached",
+        "source=${localEnv:XDG_RUNTIME_DIR:/run/user/1000}/pulse/native,target=/tmp/pulse/native,type=bind,consistency=cached",
+        "source=/etc/machine-id,target=/etc/machine-id,type=bind,readonly",
         "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached,readonly",
         "source=${localEnv:HOME}/.gnupg,target=/home/vscode/.gnupg,type=bind,consistency=cached"
     ],
     "containerEnv": {
-        "PIPEWIRE_RUNTIME_DIR": "/tmp"
+        "PIPEWIRE_RUNTIME_DIR": "/tmp",
+        "PULSE_SERVER": "unix:/tmp/pulse/native"
     },
     "postCreateCommand": "cargo fetch && chmod a+x utils/*"
 }
