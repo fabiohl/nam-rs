@@ -118,6 +118,7 @@ pub fn run_pipewire_host(
     mut resampler_producer: rtrb::Producer<NamResampler>,
     rt_status: Arc<RtStatusFlags>,
     sys: SystemSnapshot,
+    buffer_size: u32,
 ) -> anyhow::Result<()> {
     // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
     let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
@@ -146,23 +147,26 @@ pub fn run_pipewire_host(
     {
         let _lock = thread_loop.lock();
 
-        capture_stream = pw::stream::StreamBox::new(
-            &core,
-            "NAM-rs",
-            properties! {
-                *pw::keys::MEDIA_TYPE => "Audio",
-                *pw::keys::MEDIA_CATEGORY => "Duplex",
-                *pw::keys::MEDIA_ROLE => "DSP",
-                *pw::keys::MEDIA_CLASS => "Audio/Sink", // Virtual Sink — recebe áudio dos apps
-                *pw::keys::NODE_NAME => "NAM-rs-standalone",
-                *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Virtual Sink)",
-                *pw::keys::NODE_VIRTUAL => "true",
-                *pw::keys::PRIORITY_SESSION => "2000",
-                *pw::keys::PRIORITY_DRIVER => "2000",
-                "audio.position" => "FL,FR",
-                "node.group" => "nam-rs-dsp", // Sincroniza clock com playback stream
-            },
-        )?;
+        let mut capture_props = properties! {
+            *pw::keys::MEDIA_TYPE => "Audio",
+            *pw::keys::MEDIA_CATEGORY => "Duplex",
+            *pw::keys::MEDIA_ROLE => "DSP",
+            *pw::keys::MEDIA_CLASS => "Audio/Sink", // Virtual Sink — recebe áudio dos apps
+            *pw::keys::NODE_NAME => "NAM-rs-standalone",
+            *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Virtual Sink)",
+            *pw::keys::NODE_VIRTUAL => "true",
+            *pw::keys::PRIORITY_SESSION => "2000",
+            *pw::keys::PRIORITY_DRIVER => "2000",
+            "audio.position" => "FL,FR",
+            "node.group" => "nam-rs-dsp", // Sincroniza clock com playback stream
+        };
+
+        let latency_str = format!("{}/48000", buffer_size);
+        if buffer_size > 0 {
+            capture_props.insert("node.latency", latency_str.as_str());
+        }
+
+        capture_stream = pw::stream::StreamBox::new(&core, "NAM-rs", capture_props)?;
 
         let target_cpu = select_optimal_cpu().unwrap_or(0);
         let mut active_model_l: Option<Box<crate::models::DynamicModel>> = None;
@@ -613,20 +617,22 @@ pub fn run_pipewire_host(
         // Ponteiro raw para o bridge, compartilhado com o playback callback.
         let bridge_ptr_playback = bridge_ptr;
 
-        playback_stream = pw::stream::StreamBox::new(
-            &core,
-            "NAM-rs-Output",
-            properties! {
-                *pw::keys::MEDIA_TYPE => "Audio",
-                *pw::keys::MEDIA_CATEGORY => "Playback",
-                *pw::keys::MEDIA_ROLE => "Music",
-                *pw::keys::MEDIA_CLASS => "Stream/Output/Audio",
-                *pw::keys::NODE_NAME => "NAM-rs-playback",
-                *pw::keys::NODE_DESCRIPTION => "NAM-rs Processed Output",
-                "audio.position" => "FL,FR",
-                "node.group" => "nam-rs-dsp", // Clock sync com capture stream
-            },
-        )?;
+        let mut playback_props = properties! {
+            *pw::keys::MEDIA_TYPE => "Audio",
+            *pw::keys::MEDIA_CATEGORY => "Playback",
+            *pw::keys::MEDIA_ROLE => "Music",
+            *pw::keys::MEDIA_CLASS => "Stream/Output/Audio",
+            *pw::keys::NODE_NAME => "NAM-rs-playback",
+            *pw::keys::NODE_DESCRIPTION => "NAM-rs Processed Output",
+            "audio.position" => "FL,FR",
+            "node.group" => "nam-rs-dsp", // Clock sync com capture stream
+        };
+
+        if buffer_size > 0 {
+            playback_props.insert("node.latency", latency_str.as_str());
+        }
+
+        playback_stream = pw::stream::StreamBox::new(&core, "NAM-rs-Output", playback_props)?;
 
         // Contador de geração local para detectar novos dados do bridge.
         let mut last_bridge_gen: u64 = 0;

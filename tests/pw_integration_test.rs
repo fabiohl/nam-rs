@@ -34,7 +34,7 @@ fn test_pipewire_headless_integration() {
     let sys = SystemSnapshot::capture();
     let pw_thread = thread::spawn(move || {
         // Exceções do tipo "Core Não encontrado" serão capturadas como Err().
-        run_pipewire_host(param_cons, gc_prod, res_cons, res_prod, rt_clone, sys)
+        run_pipewire_host(param_cons, gc_prod, res_cons, res_prod, rt_clone, sys, 0)
     });
 
     // Enviar comandos simples via SPSC

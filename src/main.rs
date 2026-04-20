@@ -31,13 +31,17 @@ fn print_help() {
     );
     println!("  -i, --input-gain <DB>   Ganho de entrada em dB (ex: -3.5, 12, 0) [padrão: 0]");
     println!("  -o, --output-gain <DB>  Ganho de saída em dB (ex: 5.0, -10) [padrão: 0]");
+    println!(
+        "  -b, --buffer-size <SAMPLES> Tamanho fixo do bloco (ex: 64, 256, 512). Use 0 para automático [padrão: 256]"
+    );
     println!("  -h, --help              Mostra esta ajuda e sai");
 }
 
-fn parse_args() -> Result<(Option<PathBuf>, f32, f32), String> {
+fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
     let mut model_path = None;
     let mut input_gain = 0.0;
     let mut output_gain = 0.0;
+    let mut buffer_size = 256;
     let mut has_args = false;
 
     let mut parser = lexopt::Parser::from_env();
@@ -81,6 +85,13 @@ fn parse_args() -> Result<(Option<PathBuf>, f32, f32), String> {
                             .map_err(|_| "Valor de ganho de saída inválido.".to_string())?;
                         output_gain = val_str.parse::<f32>().map_err(|_| format!("Ganho de saída inválido: '{}'. Deve ser um número em dB (ex: 3.5, -12).", val_str))?;
                     }
+                    Short('b') | Long("buffer-size") => {
+                        let val = parser.value().map_err(|e| e.to_string())?;
+                        let val_str = val
+                            .into_string()
+                            .map_err(|_| "Valor de tamanho do buffer inválido.".to_string())?;
+                        buffer_size = val_str.parse::<u32>().map_err(|_| format!("Tamanho do buffer inválido: '{}'. Deve ser um número inteiro (ex: 256).", val_str))?;
+                    }
                     _ => return Err(arg.unexpected().to_string()),
                 }
             }
@@ -94,7 +105,7 @@ fn parse_args() -> Result<(Option<PathBuf>, f32, f32), String> {
         std::process::exit(0);
     }
 
-    Ok((model_path, input_gain, output_gain))
+    Ok((model_path, input_gain, output_gain, buffer_size))
 }
 
 /// Carrega um arquivo de modelo (.nam ou .namb) e o envia para o callback DSP via SPSC.
@@ -348,7 +359,7 @@ fn main() -> anyhow::Result<()> {
     // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let (model_path, initial_in_gain, initial_out_gain) = match parse_args() {
+    let (model_path, initial_in_gain, initial_out_gain, buffer_size) = match parse_args() {
         Ok(args) => args,
         Err(e) => {
             eprintln!(
@@ -467,6 +478,7 @@ fn main() -> anyhow::Result<()> {
         resampler_producer,
         rt_status,
         sys,
+        buffer_size,
     )?;
 
     unsafe {

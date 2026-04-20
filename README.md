@@ -15,7 +15,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire via `pipewire-rs` como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no *Graph Engine* do PipeWire.
 2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `#[target_feature(enable = "avx512f,avx512vl")]` para hardware que suporta ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução.
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
-4. **CLI Interativa e Hot-Swap de Modelos:** Interface de linha de comando com `lexopt` para configuração inicial (`--model`, `--input-gain`, `--output-gain`) e loop `stdin` interativo em runtime. Troca de modelos (.nam/.namb) sem interromper o PipeWire, com delegação do `Drop` do modelo antigo para thread GC (lock-free Drop-Delegation).
+4. **CLI Interativa e Hot-Swap de Modelos:** Interface de linha de comando com `lexopt` para configuração inicial (`--model`, `--input-gain`, `--output-gain`, `--buffer-size`) e loop `stdin` interativo em runtime. Troca de modelos (.nam/.namb) sem interromper o PipeWire, com delegação do `Drop` do modelo antigo para thread GC (lock-free Drop-Delegation).
 5. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de garantias de segurança e de performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++ - trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
 
 ## 🚀 Guia Rápido
@@ -56,6 +56,9 @@ Para iniciar o processamento:
 ```bash
 target/release/nam-rs --model tests/Neve31102-Pre30-R.nam
 target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
+
+# Em máquinas fracas ou setups de desktop, aumente o buffer para aliviar a CPU:
+target/release/nam-rs --model tests/HeavyModel.nam --buffer-size 512
 ```
 
 Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `pw-link` para conectar a entrada de instrumento e a saída para monitores.
