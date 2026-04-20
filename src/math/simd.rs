@@ -376,6 +376,90 @@ impl SimdMathConfig {
     }
 }
 
+/// Trait de abstração para despacho estático de operações matemáticas SIMD.
+pub trait SimdMath {
+    /// Calcula o produto escalar entre dois vetores.
+    ///
+    /// # Safety
+    /// Depende da arquitetura SIMD alvo suportar as instruções emitidas e os slices terem o mesmo tamanho.
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32;
+    /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado).
+    ///
+    /// # Safety
+    /// Depende de HW support, slices dimensionados corretamente, e ponteiros alinhados.
+    unsafe fn dot_product_4x(
+        w0: &[f32],
+        w1: &[f32],
+        w2: &[f32],
+        w3: &[f32],
+        state: &[f32],
+    ) -> [f32; 4];
+    /// Aplica Tanh em-lugar no slice usando aproximação minimax polinomial fastmath.
+    ///
+    /// # Safety
+    /// Depende do suporte de hardware correspondente para iterações vetorizadas.
+    unsafe fn tanh_slice(slice: &mut [f32]);
+    /// Aplica Sigmoid em-lugar no slice via fastmath.
+    ///
+    /// # Safety
+    /// Hardware SIMD requerido e iteradores vetorizados inseguros sem bounds checking.
+    unsafe fn sigmoid_slice(slice: &mut [f32]);
+}
+
+/// Implementação estática para microarquitetura x86-64-v3 (AVX2/FMA).
+pub struct Avx2Math;
+impl SimdMath for Avx2Math {
+    #[inline(always)]
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { dot_product_avx2(a, b) }
+    }
+    #[inline(always)]
+    unsafe fn dot_product_4x(
+        w0: &[f32],
+        w1: &[f32],
+        w2: &[f32],
+        w3: &[f32],
+        state: &[f32],
+    ) -> [f32; 4] {
+        unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
+    }
+    #[inline(always)]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
+    }
+    #[inline(always)]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::sigmoid_slice_avx2(slice) }
+    }
+}
+
+/// Implementação estática para microarquitetura x86-64-v4 (AVX-512).
+pub struct Avx512Math;
+impl SimdMath for Avx512Math {
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { dot_product_avx512(a, b) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn dot_product_4x(
+        w0: &[f32],
+        w1: &[f32],
+        w2: &[f32],
+        w3: &[f32],
+        state: &[f32],
+    ) -> [f32; 4] {
+        unsafe { dot_product_4x_avx512(w0, w1, w2, w3, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::tanh_slice_avx512(slice) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::sigmoid_slice_avx512(slice) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

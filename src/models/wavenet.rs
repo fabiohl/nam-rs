@@ -10,7 +10,7 @@
 
 #![allow(clippy::needless_range_loop)]
 
-use crate::math::simd::SimdMathConfig;
+use crate::math::simd::SimdMath;
 
 /// Máximo de frames a processar em um pulso do callback.
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
@@ -43,13 +43,13 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// pipeline FMA), benefício de ~5–10% de latência em layers com dilatação alta.
     ///
     /// # Safety
-    /// Depende dinamicamente da V-Table `SimdMathConfig` fornecida.
-    pub unsafe fn process_frame(
+    /// Depende dinamicamente da trait `SimdMath` fornecida.
+    #[inline(always)]
+    pub unsafe fn process_frame<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
         buffer_start: usize,
-        math: &SimdMathConfig,
     ) {
         for out_c in 0..OUT {
             let mut sum = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -91,7 +91,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 };
 
                 unsafe {
-                    sum += (math.dot_product)(in_slice, weight_slice);
+                    sum += M::dot_product(in_slice, weight_slice);
                 }
             }
 
@@ -115,11 +115,12 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     /// Processa o Dense acumulando com o estado corrente de output.
     ///
     /// # Safety
-    /// Despacho matemático via ponteiro para funções intrínsecas inlined.
-    pub unsafe fn process_acc(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
+    /// Despacho matemático via trait inlined.
+    #[inline(always)]
+    pub unsafe fn process_acc<M: SimdMath>(&self, input: &[f32], output: &mut [f32]) {
         for out_c in 0..OUT {
             let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
-            let sum = unsafe { (math.dot_product)(input, weight_slice) };
+            let sum = unsafe { M::dot_product(input, weight_slice) };
 
             if self.do_bias {
                 output[out_c] += sum + self.bias[out_c];
@@ -132,11 +133,12 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     /// Processa o Dense sobrescrevendo o slice do output.
     ///
     /// # Safety
-    /// Despacho matemático via ponteiro para funções intrínsecas inlined.
-    pub unsafe fn process(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
+    /// Despacho matemático via trait inlined.
+    #[inline(always)]
+    pub unsafe fn process<M: SimdMath>(&self, input: &[f32], output: &mut [f32]) {
         for out_c in 0..OUT {
             let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
-            let sum = unsafe { (math.dot_product)(input, weight_slice) };
+            let sum = unsafe { M::dot_product(input, weight_slice) };
 
             if self.do_bias {
                 output[out_c] = sum + self.bias[out_c];
@@ -163,31 +165,31 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     ///
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
-    pub unsafe fn process(
+    #[inline(always)]
+    pub unsafe fn process_internal<M: SimdMath>(
         &self,
         condition: &[f32],
         head_input: &mut [f32],
         output: &mut [f32],
         layer_buffer: &[f32],
         buffer_start: usize,
-        math: &SimdMathConfig,
     ) {
         let mut block = [0.0f32; CH];
 
         unsafe {
             self.conv1d
-                .process_frame(layer_buffer, &mut block, buffer_start, math);
-            self.input_mixin.process_acc(condition, &mut block, math);
+                .process_frame::<M>(layer_buffer, &mut block, buffer_start);
+            self.input_mixin.process_acc::<M>(condition, &mut block);
 
             // Ativação Tanh usando V-Table do SIMD HW Config
-            (math.tanh_slice)(&mut block);
+            M::tanh_slice(&mut block);
 
             // Sum block to head_input
             for j in 0..CH {
                 head_input[j] += block[j];
             }
 
-            self.one_by_one.process(&block, output, math);
+            self.one_by_one.process::<M>(&block, output);
         }
 
         // output += layer_buffer[buffer_start] (Residual connection)
@@ -320,11 +322,11 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     ///
     /// # Safety
     /// Ponteiros de states iteram internamente sem bounds checks.
-    pub unsafe fn process(
+    #[inline(always)]
+    pub unsafe fn process_internal<M: SimdMath>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
-        math: &SimdMathConfig,
     ) {
         debug_assert_eq!(
             self.layers.len(),
@@ -342,11 +344,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
-            self.rechannel.process(
-                layer_inputs,
-                &mut state_0.layer_buffer[start..start + CH],
-                math,
-            );
+            self.rechannel
+                .process::<M>(layer_inputs, &mut state_0.layer_buffer[start..start + CH]);
 
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
@@ -355,41 +354,37 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
-                    layer.process(
+                    layer.process_internal::<M>(
                         condition,
                         &mut self.head_accum[0..CH],
                         &mut self.array_outputs[0..CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
-                        math,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
-                    layer.process(
+                    layer.process_internal::<M>(
                         condition,
                         &mut self.head_accum[0..CH],
                         &mut next_state.layer_buffer[next_start..next_start + CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
-                        math,
                     );
                 }
 
                 current_state.advance_frames(1, CH);
             }
 
-            self.head_rechannel.process(
-                &self.head_accum[0..CH],
-                &mut self.head_outputs[0..HEAD],
-                math,
-            );
+            self.head_rechannel
+                .process::<M>(&self.head_accum[0..CH], &mut self.head_outputs[0..HEAD]);
         }
     }
 
     /// Invoca a transposição artificial do modelo em Pre-warm estabilizando memória temporal.
-    pub fn prewarm(&mut self, layer_inputs: &[f32], condition: &[f32], math: &SimdMathConfig) {
+    #[inline(always)]
+    pub fn prewarm_internal<M: SimdMath>(&mut self, layer_inputs: &[f32], condition: &[f32]) {
         debug_assert_eq!(
             self.layers.len(),
             self.states.len(),
@@ -406,11 +401,8 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
-            self.rechannel.process(
-                layer_inputs,
-                &mut state_0.layer_buffer[start..start + CH],
-                math,
-            );
+            self.rechannel
+                .process::<M>(layer_inputs, &mut state_0.layer_buffer[start..start + CH]);
 
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
@@ -420,34 +412,29 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 current_state.copy_buffer(CH);
 
                 if i == last_layer {
-                    layer.process(
+                    layer.process_internal::<M>(
                         condition,
                         &mut self.head_accum[0..CH],
                         &mut self.array_outputs[0..CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
-                        math,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
-                    layer.process(
+                    layer.process_internal::<M>(
                         condition,
                         &mut self.head_accum[0..CH],
                         &mut next_state.layer_buffer[next_start..next_start + CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
-                        math,
                     );
                 }
             }
 
-            self.head_rechannel.process(
-                &self.head_accum[0..CH],
-                &mut self.head_outputs[0..HEAD],
-                math,
-            );
+            self.head_rechannel
+                .process::<M>(&self.head_accum[0..CH], &mut self.head_outputs[0..HEAD]);
         }
     }
 }
@@ -477,13 +464,40 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// Resolve o forward total e produz amostras de onda em zero alocação (DSP).
     ///
     /// Combina as saídas de ambas as arrays: `sum(head1) + sum(head2)` × `head_scale`.
-    ///
-    /// `SimdMathConfig::get()` retorna uma referência `&'static` à v-table SIMD
-    /// resolvida uma única vez no startup via `LazyLock` — zero overhead atômico
-    /// no hot-path, ao contrário de `current()` que repete a detecção de features.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        // Hoist: v-table estática resolvida via LazyLock (zero CPUID no RT).
-        let math = crate::math::simd::SimdMathConfig::get();
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl")
+            {
+                return unsafe { self.process_avx512(input, output) };
+            }
+            if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+                return unsafe { self.process_avx2(input, output) };
+            }
+        }
+        unsafe { self.process_avx2(input, output) }
+    }
+
+    /// Processamento estritamente compilado para `avx512f` e `avx512vl`.
+    ///
+    /// # Safety
+    /// A CPU local deve suportar explicitamente as extensões AVX-512 invocadas.
+    #[target_feature(enable = "avx512f,avx512vl")]
+    pub unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe { self.process_internal::<crate::math::simd::Avx512Math>(input, output) }
+    }
+
+    /// Processamento estritamente compilado para `avx2` e `fma`.
+    ///
+    /// # Safety
+    /// A CPU local deve suportar explicitamente extensões x86-64-v3 (AVX2+FMA).
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe { self.process_internal::<crate::math::simd::Avx2Math>(input, output) }
+    }
+
+    #[inline(always)]
+    unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let num_frames = input.len();
 
         for i in 0..num_frames {
@@ -492,11 +506,13 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             let layer_inputs_1 = [sample];
 
             unsafe {
-                self.array1.process(&layer_inputs_1, &condition, math);
+                self.array1
+                    .process_internal::<M>(&layer_inputs_1, &condition);
 
                 // Array2 recebe a saída da Array1 como input (CH canais)
                 let array1_outputs = &self.array1.array_outputs[0..CH];
-                self.array2.process(array1_outputs, &condition, math);
+                self.array2
+                    .process_internal::<M>(array1_outputs, &condition);
             }
 
             // Somatório das projeções Head de ambas as arrays
@@ -512,13 +528,47 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
     /// Estabiliza os transientes inicias causais por tempo de propagação (Zero Input).
     pub fn prewarm(&mut self) {
-        let math = crate::math::simd::SimdMathConfig::get();
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl")
+            {
+                return unsafe { self.prewarm_avx512() };
+            }
+            if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+                return unsafe { self.prewarm_avx2() };
+            }
+        }
+        unsafe { self.prewarm_avx2() }
+    }
+
+    /// Prewarm estritamente otimizado para a arquitetura AVX-512.
+    ///
+    /// # Safety
+    /// Exige processador suportado (AVX-512).
+    #[target_feature(enable = "avx512f,avx512vl")]
+    pub unsafe fn prewarm_avx512(&mut self) {
+        unsafe { self.prewarm_internal::<crate::math::simd::Avx512Math>() };
+    }
+
+    /// Prewarm estritamente otimizado para arquitetura AVX2.
+    ///
+    /// # Safety
+    /// Exige processador x86-64-v3 (AVX2).
+    #[target_feature(enable = "avx2,fma")]
+    pub unsafe fn prewarm_avx2(&mut self) {
+        unsafe { self.prewarm_internal::<crate::math::simd::Avx2Math>() };
+    }
+
+    #[inline(always)]
+    unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
 
-        self.array1.prewarm(&layer_inputs_1, &condition, math);
+        self.array1
+            .prewarm_internal::<M>(&layer_inputs_1, &condition);
         let array1_outputs = &self.array1.array_outputs[0..CH];
-        self.array2.prewarm(array1_outputs, &condition, math);
+        self.array2
+            .prewarm_internal::<M>(array1_outputs, &condition);
     }
 }
 

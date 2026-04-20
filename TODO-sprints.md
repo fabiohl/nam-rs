@@ -1,6 +1,6 @@
 # TODO-sprints
 
-## Sprint 2: Revolução WaveNet (Throughput e Multiversionamento)
+## Sprint 2: Revolução WaveNet (Throughput e Multiversionamento) [Concluido]
 
 ### Tarefa 2.1: Multiversionamento Explícito do Loop WaveNet
 
