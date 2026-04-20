@@ -1,4 +1,3 @@
 ## revisor-auditor / pesquisador-inovador
-## Revisitar a completude da suite de testes e benches e seu alinhamento à implementação de referência do mikeoliphant
-## Testes finais de calibração com github.com/mikeoliphant/NeuralAudio/Utils/Models/*.nam e tests/*.nam
+## Testes finais de audição em ambiente real com tests/*.nam e github.com/mikeoliphant/NeuralAudio/Utils/Models/*.nam
 ## Leitura geral do código fonte
