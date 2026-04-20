@@ -86,10 +86,6 @@ pub enum NamErrorCode {
     UnknownCommand,
     /// Falha ao configurar o handler de Ctrl-C.
     CtrlCHandlerFailed,
-
-    // E5xxx — Sistema / Hardware
-    /// CPU não possui AVX2+FMA (x86-64-v3 ausente).
-    Avx2FmaMissing,
 }
 
 impl NamErrorCode {
@@ -118,7 +114,6 @@ impl NamErrorCode {
             Self::InvalidGainValue => "E4100",
             Self::UnknownCommand => "E4101",
             Self::CtrlCHandlerFailed => "E4102",
-            Self::Avx2FmaMissing => "E5100",
         }
     }
 
@@ -147,7 +142,6 @@ impl NamErrorCode {
             Self::InvalidGainValue => "INVALID_GAIN_VALUE",
             Self::UnknownCommand => "UNKNOWN_COMMAND",
             Self::CtrlCHandlerFailed => "CTRL_C_HANDLER_FAILED",
-            Self::Avx2FmaMissing => "AVX2_FMA_MISSING",
         }
     }
 }
@@ -174,10 +168,6 @@ pub struct SystemSnapshot {
     pub arch: &'static str,
     /// Sistema operacional (e.g. "linux").
     pub os: &'static str,
-    /// AVX2 disponível.
-    pub avx2: bool,
-    /// FMA disponível.
-    pub fma: bool,
     /// Versão do kernel Linux (lida de /proc/version).
     pub kernel: String,
 }
@@ -188,27 +178,14 @@ impl SystemSnapshot {
     /// Deve ser chamada uma vez no `main()` e o resultado propagado
     /// para as funções que emitem diagnósticos.
     pub fn capture() -> Self {
-        let (avx2, fma) = detect_cpu_features();
         let kernel = read_kernel_version();
 
         Self {
             version: NAM_VERSION,
             arch: std::env::consts::ARCH,
             os: std::env::consts::OS,
-            avx2,
-            fma,
             kernel,
         }
-    }
-}
-
-/// Detecta suporte a AVX2 e FMA no runtime.
-fn detect_cpu_features() -> (bool, bool) {
-    {
-        (
-            std::is_x86_feature_detected!("avx2"),
-            std::is_x86_feature_detected!("fma"),
-        )
     }
 }
 
@@ -319,14 +296,12 @@ impl NamDiagnostic {
 
         // Informações do sistema
         block.push_str(&format!(
-            "arch={} avx2={} fma={}\n\
+            "arch={}\n\
              os={} kernel={}\n\
              timestamp={}\n\
              {separator}\n\
              Copie o bloco acima ao abrir um ticket de suporte.",
             self.system.arch,
-            self.system.avx2,
-            self.system.fma,
             self.system.os,
             self.system.kernel,
             Self::timestamp(),
@@ -435,7 +410,6 @@ mod tests {
             InvalidGainValue,
             UnknownCommand,
             CtrlCHandlerFailed,
-            Avx2FmaMissing,
         ];
 
         let codes: Vec<&str> = all.iter().map(|c| c.code()).collect();

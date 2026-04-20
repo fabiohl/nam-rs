@@ -395,13 +395,7 @@ fn main() -> anyhow::Result<()> {
         .bright_green()
         .bold()
     );
-    log::info!(
-        "💻 arch={} | avx2={} fma={} | kernel={}",
-        sys.arch.cyan(),
-        if sys.avx2 { "✓".green() } else { "✗".red() },
-        if sys.fma { "✓".green() } else { "✗".red() },
-        sys.kernel.cyan()
-    );
+    log::info!("💻 arch={} | kernel={}", sys.arch.cyan(), sys.kernel.cyan());
 
     pipewire::init();
     log::info!("{} PipeWire inicializado.", "🔌".bright_blue());

@@ -173,7 +173,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
 
     define_lstm_process!(
         process_sample_avx2,
-        target_feature(enable = "avx2,fma"),
+        inline(always),
         crate::math::simd::dot_product_4x_avx2,
         8,
         _mm256_loadu_ps,

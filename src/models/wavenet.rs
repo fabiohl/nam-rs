@@ -555,9 +555,6 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             {
                 return unsafe { self.process_avx512(input, output) };
             }
-            if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-                return unsafe { self.process_avx2(input, output) };
-            }
         }
         unsafe { self.process_avx2(input, output) }
     }
@@ -575,7 +572,6 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// # Safety
     /// A CPU local deve suportar explicitamente extensões x86-64-v3 (AVX2+FMA).
-    #[target_feature(enable = "avx2,fma")]
     pub unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe { self.process_internal::<crate::math::simd::Avx2Math>(input, output) }
     }
@@ -616,9 +612,6 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
             {
                 return unsafe { self.prewarm_avx512() };
             }
-            if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-                return unsafe { self.prewarm_avx2() };
-            }
         }
         unsafe { self.prewarm_avx2() }
     }
@@ -636,7 +629,6 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// # Safety
     /// Exige processador x86-64-v3 (AVX2).
-    #[target_feature(enable = "avx2,fma")]
     pub unsafe fn prewarm_avx2(&mut self) {
         unsafe { self.prewarm_internal::<crate::math::simd::Avx2Math>() };
     }
@@ -803,46 +795,42 @@ mod tests {
 
     #[test]
     fn test_wavenet_process_zeros() {
-        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-            let mut model = build_tiny_wavenet();
-            model.prewarm();
+        let mut model = build_tiny_wavenet();
+        model.prewarm();
 
-            let input = [0.0f32; 16];
-            let mut output = [0.0f32; 16];
+        let input = [0.0f32; 16];
+        let mut output = [0.0f32; 16];
 
-            model.process(&input, &mut output);
+        model.process(&input, &mut output);
 
-            for (i, &v) in output.iter().enumerate() {
-                assert!(v.is_finite(), "Amostra de saída [{}] é NaN/Inf: {}", i, v);
-            }
+        for (i, &v) in output.iter().enumerate() {
+            assert!(v.is_finite(), "Amostra de saída [{}] é NaN/Inf: {}", i, v);
         }
     }
 
     #[test]
     fn test_wavenet_process_deterministic() {
-        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-            let mut model_a = build_tiny_wavenet();
-            let mut model_b = build_tiny_wavenet();
+        let mut model_a = build_tiny_wavenet();
+        let mut model_b = build_tiny_wavenet();
 
-            model_a.prewarm();
-            model_b.prewarm();
+        model_a.prewarm();
+        model_b.prewarm();
 
-            let input = [0.1f32; 8];
-            let mut out_a = [0.0f32; 8];
-            let mut out_b = [0.0f32; 8];
+        let input = [0.1f32; 8];
+        let mut out_a = [0.0f32; 8];
+        let mut out_b = [0.0f32; 8];
 
-            model_a.process(&input, &mut out_a);
-            model_b.process(&input, &mut out_b);
+        model_a.process(&input, &mut out_a);
+        model_b.process(&input, &mut out_b);
 
-            for i in 0..8 {
-                assert!(
-                    (out_a[i] - out_b[i]).abs() < 1e-6,
-                    "Resultado não-determinístico na amostra [{}]: {} vs {}",
-                    i,
-                    out_a[i],
-                    out_b[i]
-                );
-            }
+        for i in 0..8 {
+            assert!(
+                (out_a[i] - out_b[i]).abs() < 1e-6,
+                "Resultado não-determinístico na amostra [{}]: {} vs {}",
+                i,
+                out_a[i],
+                out_b[i]
+            );
         }
     }
 }
