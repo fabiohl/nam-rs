@@ -45,20 +45,18 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// # Safety
     /// Depende dinamicamente da trait `SimdMath` fornecida.
     #[inline(always)]
-    pub unsafe fn process_frame<M: SimdMath>(
+    /// Processa bloco iterativo.
+    /// # Safety
+    /// Pointer must be valid.
+    pub unsafe fn process_block<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
         buffer_start: usize,
+        num_frames: usize,
     ) {
         for out_c in 0..OUT {
-            let mut sum = if self.do_bias { self.bias[out_c] } else { 0.0 };
-
             for k in 0..K {
-                // Prefetch proativo: enquanto processamos tap k, pré-carregamos
-                // a cache line do tap k+1 no layer_buffer (dilatado).
-                // Para dilatações grandes (512), os saltos excedem 64B cache lines,
-                // provocando L1 misses previsíveis que este prefetch elimina.
                 if k + 1 < K {
                     let next_offset = (self.dilation as isize) * ((k as isize) + 2 - (K as isize));
                     let next_frame_idx = (buffer_start as isize) + next_offset;
@@ -72,30 +70,41 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 }
 
                 let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
-                let frame_idx = (buffer_start as isize) + offset;
-
-                let in_slice_start = (frame_idx as usize) * IN;
-                // SAFETY: `in_slice_start + IN ≤ layer_buffer.len()` — invariante de
-                // `WaveNetLayerState::new()` (buffer_frames * CH) e `advance_frames()`
-                // que mantém `buffer_start` dentro de `[0, buffer_frames)`. `frame_idx`
-                // é ≥ 0 porque `buffer_start ≥ receptive_field_size ≥ (K-1)*max_dilation`.
-                let in_slice =
-                    unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
-
+                let base_frame_idx = (buffer_start as isize) + offset;
                 let weight_slice_start = (out_c * K + k) * IN;
-                // SAFETY: `weight_slice_start + IN ≤ OUT*K*IN` por construção imutável
-                // de `self.weights` alocado com tamanho exato `OUT*K*IN` pelo loader.
+                // SAFETY: `weight_slice_start + IN ≤ OUT*K*IN`
                 let weight_slice = unsafe {
                     self.weights
                         .get_unchecked(weight_slice_start..weight_slice_start + IN)
                 };
 
-                unsafe {
-                    sum += M::dot_product(in_slice, weight_slice);
+                if k == 0 {
+                    let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+                    for i in 0..num_frames {
+                        let frame_idx = base_frame_idx + (i as isize);
+                        let in_slice_start = (frame_idx as usize) * IN;
+                        let in_slice = unsafe {
+                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN)
+                        };
+                        unsafe {
+                            *block.get_unchecked_mut(i * OUT + out_c) =
+                                bias + M::dot_product(in_slice, weight_slice);
+                        }
+                    }
+                } else {
+                    for i in 0..num_frames {
+                        let frame_idx = base_frame_idx + (i as isize);
+                        let in_slice_start = (frame_idx as usize) * IN;
+                        let in_slice = unsafe {
+                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN)
+                        };
+                        unsafe {
+                            *block.get_unchecked_mut(i * OUT + out_c) +=
+                                M::dot_product(in_slice, weight_slice);
+                        }
+                    }
                 }
             }
-
-            block[out_c] = sum;
         }
     }
 }
@@ -117,15 +126,21 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     /// # Safety
     /// Despacho matemático via trait inlined.
     #[inline(always)]
-    pub unsafe fn process_acc<M: SimdMath>(&self, input: &[f32], output: &mut [f32]) {
+    pub unsafe fn process_acc_block<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
         for out_c in 0..OUT {
             let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
-            let sum = unsafe { M::dot_product(input, weight_slice) };
-
-            if self.do_bias {
-                output[out_c] += sum + self.bias[out_c];
-            } else {
-                output[out_c] += sum;
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * OUT + out_c) += sum + bias;
+                }
             }
         }
     }
@@ -135,15 +150,71 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     /// # Safety
     /// Despacho matemático via trait inlined.
     #[inline(always)]
-    pub unsafe fn process<M: SimdMath>(&self, input: &[f32], output: &mut [f32]) {
+    pub unsafe fn process_acc_block_strided<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+        in_stride: usize,
+        out_stride: usize,
+    ) {
         for out_c in 0..OUT {
             let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
-            let sum = unsafe { M::dot_product(input, weight_slice) };
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe { input.get_unchecked(i * in_stride..i * in_stride + IN) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * out_stride + out_c) += sum + bias;
+                }
+            }
+        }
+    }
 
-            if self.do_bias {
-                output[out_c] = sum + self.bias[out_c];
-            } else {
-                output[out_c] = sum;
+    #[inline(always)]
+    /// Processa bloco strided.
+    /// # Safety
+    /// Pointer must be valid.
+    pub unsafe fn process_block_strided<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+        in_stride: usize,
+        out_stride: usize,
+    ) {
+        for out_c in 0..OUT {
+            let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe { input.get_unchecked(i * in_stride..i * in_stride + IN) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * out_stride + out_c) = sum + bias;
+                }
+            }
+        }
+    }
+
+    #[inline(always)]
+    /// Processa bloco iterativo.
+    /// # Safety
+    /// Pointer must be valid.
+    pub unsafe fn process_block<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
+        for out_c in 0..OUT {
+            let weight_slice = &self.weights[out_c * IN..out_c * IN + IN];
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * OUT + out_c) = sum + bias;
+                }
             }
         }
     }
@@ -166,40 +237,44 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
     #[inline(always)]
-    pub unsafe fn process_internal<M: SimdMath>(
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn process_block_internal<M: SimdMath>(
         &self,
         condition: &[f32],
         head_input: &mut [f32],
         output: &mut [f32],
         layer_buffer: &[f32],
         buffer_start: usize,
+        block: &mut [f32],
+        num_frames: usize,
     ) {
-        let mut block = [0.0f32; CH];
-
         unsafe {
             self.conv1d
-                .process_frame::<M>(layer_buffer, &mut block, buffer_start);
-            self.input_mixin.process_acc::<M>(condition, &mut block);
+                .process_block::<M>(layer_buffer, block, buffer_start, num_frames);
+            self.input_mixin
+                .process_acc_block::<M>(condition, block, num_frames);
 
-            // Ativação Tanh usando V-Table do SIMD HW Config
-            M::tanh_slice(&mut block);
+            M::tanh_slice(&mut block[0..num_frames * CH]);
 
             // Sum block to head_input
-            for j in 0..CH {
-                head_input[j] += block[j];
+            for i in 0..num_frames {
+                let head_frame = &mut head_input[i * CH..i * CH + CH];
+                let block_frame = &block[i * CH..i * CH + CH];
+                for j in 0..CH {
+                    *head_frame.get_unchecked_mut(j) += *block_frame.get_unchecked(j);
+                }
             }
 
-            self.one_by_one.process::<M>(&block, output);
-        }
+            self.one_by_one
+                .process_block::<M>(block, output, num_frames);
 
-        // output += layer_buffer[buffer_start] (Residual connection)
-        // SAFETY: `lb_start + CH ≤ layer_buffer.len()` é invariante do construtor
-        // `WaveNetLayerState::new()` (buffer_frames * CH) e de `advance_frames()`
-        // que mantém `buffer_start` dentro de `[0, buffer_frames)`.
-        let lb_start = buffer_start * CH;
-        unsafe {
-            for j in 0..CH {
-                *output.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
+            // output += layer_buffer[buffer_start] (Residual connection)
+            for i in 0..num_frames {
+                let out_frame = output.get_unchecked_mut(i * CH..i * CH + CH);
+                let lb_start = (buffer_start + i) * CH;
+                for j in 0..CH {
+                    *out_frame.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
+                }
             }
         }
     }
@@ -311,6 +386,8 @@ pub struct WaveNetLayerArray<
     pub head_accum: std::vec::Vec<f32>,
     /// Memória alocada da projeção Linear global (HEAD-sized).
     pub head_outputs: std::vec::Vec<f32>,
+    /// Buffer auxiliar de escopo de bloco da camada (num_frames * CH).
+    pub block_buffer: std::vec::Vec<f32>,
     /// Tamanho do campo dimensional (receptive field global) para roteamentos.
     pub receptive_field_size: usize,
 }
@@ -323,29 +400,27 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     /// # Safety
     /// Ponteiros de states iteram internamente sem bounds checks.
     #[inline(always)]
-    pub unsafe fn process_internal<M: SimdMath>(
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn process_block_internal<M: SimdMath>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
+        num_frames: usize,
     ) {
-        debug_assert_eq!(
-            self.layers.len(),
-            self.states.len(),
-            "WaveNetLayerArray: layers ({}) ≠ states ({})",
-            self.layers.len(),
-            self.states.len()
-        );
+        debug_assert_eq!(self.layers.len(), self.states.len());
         let states_ptr = self.states.as_mut_ptr();
 
-        // Zera o acumulador CH-sized para contribuições das camadas ao head.
-        // `fill` emite vmovups vetorizado em vez de loop escalar.
-        self.head_accum.fill(0.0);
+        // Zera o acumulador para todo o bloco
+        self.head_accum[0..num_frames * CH].fill(0.0);
 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
-            self.rechannel
-                .process::<M>(layer_inputs, &mut state_0.layer_buffer[start..start + CH]);
+            self.rechannel.process_block::<M>(
+                layer_inputs,
+                &mut state_0.layer_buffer[start..start + num_frames * CH],
+                num_frames,
+            );
 
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
@@ -354,55 +429,57 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
-                    layer.process_internal::<M>(
+                    layer.process_block_internal::<M>(
                         condition,
-                        &mut self.head_accum[0..CH],
-                        &mut self.array_outputs[0..CH],
+                        &mut self.head_accum[0..num_frames * CH],
+                        &mut self.array_outputs[0..num_frames * CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
+                        &mut self.block_buffer[0..num_frames * CH],
+                        num_frames,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
-                    layer.process_internal::<M>(
+                    layer.process_block_internal::<M>(
                         condition,
-                        &mut self.head_accum[0..CH],
-                        &mut next_state.layer_buffer[next_start..next_start + CH],
+                        &mut self.head_accum[0..num_frames * CH],
+                        &mut next_state.layer_buffer[next_start..next_start + num_frames * CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
+                        &mut self.block_buffer[0..num_frames * CH],
+                        num_frames,
                     );
                 }
 
-                current_state.advance_frames(1, CH);
+                current_state.advance_frames(num_frames, CH);
             }
 
-            self.head_rechannel
-                .process::<M>(&self.head_accum[0..CH], &mut self.head_outputs[0..HEAD]);
+            self.head_rechannel.process_block::<M>(
+                &self.head_accum[0..num_frames * CH],
+                &mut self.head_outputs[0..num_frames * HEAD],
+                num_frames,
+            );
         }
     }
 
     /// Invoca a transposição artificial do modelo em Pre-warm estabilizando memória temporal.
     #[inline(always)]
     pub fn prewarm_internal<M: SimdMath>(&mut self, layer_inputs: &[f32], condition: &[f32]) {
-        debug_assert_eq!(
-            self.layers.len(),
-            self.states.len(),
-            "WaveNetLayerArray: layers ({}) ≠ states ({})",
-            self.layers.len(),
-            self.states.len()
-        );
+        debug_assert_eq!(self.layers.len(), self.states.len());
         let states_ptr = self.states.as_mut_ptr();
 
-        // Zera o acumulador CH-sized para contribuições das camadas ao head.
-        // `fill` emite vmovups vetorizado em vez de loop escalar.
-        self.head_accum.fill(0.0);
+        self.head_accum[0..CH].fill(0.0);
 
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
-            self.rechannel
-                .process::<M>(layer_inputs, &mut state_0.layer_buffer[start..start + CH]);
+            self.rechannel.process_block::<M>(
+                layer_inputs,
+                &mut state_0.layer_buffer[start..start + CH],
+                1,
+            );
 
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
@@ -412,29 +489,36 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 current_state.copy_buffer(CH);
 
                 if i == last_layer {
-                    layer.process_internal::<M>(
+                    layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..CH],
                         &mut self.array_outputs[0..CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
+                        &mut self.block_buffer[0..CH],
+                        1,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
-                    layer.process_internal::<M>(
+                    layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..CH],
                         &mut next_state.layer_buffer[next_start..next_start + CH],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
+                        &mut self.block_buffer[0..CH],
+                        1,
                     );
                 }
             }
 
-            self.head_rechannel
-                .process::<M>(&self.head_accum[0..CH], &mut self.head_outputs[0..HEAD]);
+            self.head_rechannel.process_block::<M>(
+                &self.head_accum[0..CH],
+                &mut self.head_outputs[0..HEAD],
+                1,
+            );
         }
     }
 }
@@ -499,29 +583,27 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     #[inline(always)]
     unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let num_frames = input.len();
+        if num_frames == 0 {
+            return;
+        }
 
+        unsafe {
+            // Condicionamento e Input (1D: 1 canal) -> formatado como blocos de IN frames
+            self.array1
+                .process_block_internal::<M>(input, input, num_frames);
+
+            let array1_outputs = &self.array1.array_outputs[0..num_frames * CH];
+            self.array2
+                .process_block_internal::<M>(array1_outputs, input, num_frames);
+        }
+
+        // Somatório das projeções Head de ambas as arrays e escala
         for i in 0..num_frames {
-            let sample = input[i];
-            let condition = [sample];
-            let layer_inputs_1 = [sample];
-
-            unsafe {
-                self.array1
-                    .process_internal::<M>(&layer_inputs_1, &condition);
-
-                // Array2 recebe a saída da Array1 como input (CH canais)
-                let array1_outputs = &self.array1.array_outputs[0..CH];
-                self.array2
-                    .process_internal::<M>(array1_outputs, &condition);
-            }
-
-            // Somatório das projeções Head de ambas as arrays
             let mut final_sum = 0.0f32;
             for j in 0..HEAD {
-                final_sum += self.array1.head_outputs[j];
+                final_sum += self.array1.head_outputs[i * HEAD + j];
             }
-            // Array2 projeta para HEAD2=1
-            final_sum += self.array2.head_outputs[0];
+            final_sum += self.array2.head_outputs[i]; // HEAD2=1
             output[i] = final_sum * self.head_scale;
         }
     }
@@ -649,9 +731,10 @@ mod tests {
                 bias: vec![0.0; 2],
                 do_bias: false,
             },
-            array_outputs: vec![0.0; 4],
-            head_accum: vec![0.0; 4],
-            head_outputs: vec![0.0; 2],
+            array_outputs: vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES],
+            head_accum: vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES],
+            head_outputs: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
+            block_buffer: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
             receptive_field_size: rf1,
         };
 
@@ -675,9 +758,10 @@ mod tests {
                 bias: vec![0.0; 1],
                 do_bias: true, // array2 HasHeadBias=true
             },
-            array_outputs: vec![0.0; 2],
-            head_accum: vec![0.0; 2],
-            head_outputs: vec![0.0; 1],
+            array_outputs: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
+            head_accum: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
+            head_outputs: vec![0.0; WAVENET_MAX_NUM_FRAMES],
+            block_buffer: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
             receptive_field_size: rf2,
         };
 
@@ -694,8 +778,8 @@ mod tests {
         let model = build_tiny_wavenet();
         assert_eq!(model.array1.layers.len(), 3);
         assert_eq!(model.array2.layers.len(), 3);
-        assert_eq!(model.array1.head_outputs.len(), 2); // HEAD1=2
-        assert_eq!(model.array2.head_outputs.len(), 1); // HEAD2=1 (sempre fixo)
+        assert_eq!(model.array1.head_outputs.len(), 2 * WAVENET_MAX_NUM_FRAMES); // HEAD1=2
+        assert_eq!(model.array2.head_outputs.len(), WAVENET_MAX_NUM_FRAMES); // HEAD2=1 (sempre fixo)
         assert!((model.head_scale - 0.02).abs() < 1e-6);
     }
 

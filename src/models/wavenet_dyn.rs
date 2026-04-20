@@ -44,18 +44,19 @@ impl Conv1dDyn {
     ///
     /// # Safety
     /// Depende da instância estrita de `SimdMathConfig` referenciar uma SIMD suportada.
-    pub unsafe fn process_frame(
+    /// Processa bloco iterativo.
+    /// # Safety
+    /// Pointer must be valid.
+    pub unsafe fn process_block(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
         buffer_start: usize,
+        num_frames: usize,
         math: &SimdMathConfig,
     ) {
         for out_c in 0..self.out_ch {
-            let mut sum = if self.do_bias { self.bias[out_c] } else { 0.0 };
-
             for k in 0..self.kernel {
-                // Prefetch proativo para o próximo tap do kernel (dilatado).
                 if k + 1 < self.kernel {
                     let next_offset =
                         (self.dilation as isize) * ((k as isize) + 2 - (self.kernel as isize));
@@ -73,31 +74,40 @@ impl Conv1dDyn {
                 }
 
                 let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
-                let frame_idx = (buffer_start as isize) + offset;
-
-                let in_slice_start = (frame_idx as usize) * self.in_ch;
-                // SAFETY: `in_slice_start + in_ch ≤ layer_buffer.len()` — invariante de
-                // `WaveNetLayerState::new()` (buffer_frames * ch) e `advance_frames()`
-                // que mantém `buffer_start` dentro de `[0, buffer_frames)`. `frame_idx`
-                // é ≥ 0 porque `buffer_start ≥ receptive_field_size ≥ (K-1)*max_dilation`.
-                let in_slice = unsafe {
-                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
-                };
-
+                let base_frame_idx = (buffer_start as isize) + offset;
                 let weight_slice_start = (out_c * self.kernel + k) * self.in_ch;
-                // SAFETY: `weight_slice_start + in_ch ≤ out_ch*kernel*in_ch` por construção
-                // imutável de `self.weights` alocado com tamanho exato pelo dispatcher.
                 let weight_slice = unsafe {
                     self.weights
                         .get_unchecked(weight_slice_start..weight_slice_start + self.in_ch)
                 };
 
-                unsafe {
-                    sum += (math.dot_product)(in_slice, weight_slice);
+                if k == 0 {
+                    let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+                    for i in 0..num_frames {
+                        let frame_idx = base_frame_idx + (i as isize);
+                        let in_slice_start = (frame_idx as usize) * self.in_ch;
+                        let in_slice = unsafe {
+                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
+                        };
+                        unsafe {
+                            *block.get_unchecked_mut(i * self.out_ch + out_c) =
+                                bias + (math.dot_product)(in_slice, weight_slice);
+                        }
+                    }
+                } else {
+                    for i in 0..num_frames {
+                        let frame_idx = base_frame_idx + (i as isize);
+                        let in_slice_start = (frame_idx as usize) * self.in_ch;
+                        let in_slice = unsafe {
+                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
+                        };
+                        unsafe {
+                            *block.get_unchecked_mut(i * self.out_ch + out_c) +=
+                                (math.dot_product)(in_slice, weight_slice);
+                        }
+                    }
                 }
             }
-
-            block[out_c] = sum;
         }
     }
 }
@@ -122,16 +132,25 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Depende do `SimdMathConfig` ser válido nativamente.
-    pub unsafe fn process_acc(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
+    pub unsafe fn process_acc_block(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+        math: &SimdMathConfig,
+    ) {
         for out_c in 0..self.out_size {
             let weight_slice =
                 &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
-            let sum = unsafe { (math.dot_product)(input, weight_slice) };
-
-            if self.do_bias {
-                output[out_c] += sum + self.bias[out_c];
-            } else {
-                output[out_c] += sum;
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe {
+                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
+                };
+                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * self.out_size + out_c) += sum + bias;
+                }
             }
         }
     }
@@ -140,16 +159,79 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Requer `SimdMathConfig` validamente instanciado.
-    pub unsafe fn process(&self, input: &[f32], output: &mut [f32], math: &SimdMathConfig) {
+    pub unsafe fn process_acc_block_strided(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+        in_stride: usize,
+        out_stride: usize,
+        math: &SimdMathConfig,
+    ) {
         for out_c in 0..self.out_size {
             let weight_slice =
                 &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
-            let sum = unsafe { (math.dot_product)(input, weight_slice) };
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame =
+                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * out_stride + out_c) += sum + bias;
+                }
+            }
+        }
+    }
 
-            if self.do_bias {
-                output[out_c] = sum + self.bias[out_c];
-            } else {
-                output[out_c] = sum;
+    /// Processa bloco strided.
+    /// # Safety
+    /// Pointer must be valid.
+    pub unsafe fn process_block_strided(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+        in_stride: usize,
+        out_stride: usize,
+        math: &SimdMathConfig,
+    ) {
+        for out_c in 0..self.out_size {
+            let weight_slice =
+                &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame =
+                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * out_stride + out_c) = sum + bias;
+                }
+            }
+        }
+    }
+
+    /// Processa bloco iterativo.
+    /// # Safety
+    /// Pointer must be valid.
+    pub unsafe fn process_block(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+        math: &SimdMathConfig,
+    ) {
+        for out_c in 0..self.out_size {
+            let weight_slice =
+                &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe {
+                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
+                };
+                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * self.out_size + out_c) = sum + bias;
+                }
             }
         }
     }
@@ -184,7 +266,7 @@ impl WaveNetLayerDyn {
     /// Requer instâncias estritas do buffer interno e `block` com tamanho
     /// `ch` (não-gated) ou `2*ch` (gated).
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn process(
+    pub unsafe fn process_block_internal(
         &self,
         condition: &[f32],
         head_input: &mut [f32],
@@ -192,6 +274,7 @@ impl WaveNetLayerDyn {
         layer_buffer: &[f32],
         buffer_start: usize,
         block: &mut [f32],
+        num_frames: usize,
         math: &SimdMathConfig,
     ) {
         let ch = self.ch;
@@ -202,48 +285,62 @@ impl WaveNetLayerDyn {
 
         unsafe {
             self.conv1d
-                .process_frame(layer_buffer, block, buffer_start, math);
+                .process_block(layer_buffer, block, buffer_start, num_frames, math);
 
             if self.gated {
-                // `block` tem tamanho 2*ch.
-                // input_mixin acumula condicionamento apenas na metade tanh (os primeiros ch).
-                self.input_mixin
-                    .process_acc(condition, &mut block[0..ch], math);
+                self.input_mixin.process_acc_block_strided(
+                    condition,
+                    block,
+                    num_frames,
+                    1,
+                    2 * self.ch,
+                    math,
+                );
 
-                // Ativação gated: tanh nos primeiros ch, sigmoid nos ch seguintes.
-                (math.tanh_slice)(&mut block[0..ch]);
-                (math.sigmoid_slice)(&mut block[ch..2 * ch]);
+                for i in 0..num_frames {
+                    let block_start = i * self.conv1d.out_ch;
+                    let block_frame = &mut block[block_start..block_start + self.conv1d.out_ch];
 
-                // Multiplicação element-wise: bloco de saída = tanh(z) ⊙ sigmoid(g).
-                for j in 0..ch {
-                    block[j] *= block[ch + j];
+                    let (z1, z2) = block_frame.split_at_mut(self.ch);
+                    (math.tanh_slice)(z1);
+                    (math.sigmoid_slice)(z2);
+
+                    for j in 0..self.ch {
+                        *z1.get_unchecked_mut(j) *= *z2.get_unchecked(j);
+                    }
                 }
-
-                for j in 0..ch {
-                    head_input[j] += block[j];
-                }
-
-                self.one_by_one.process(&block[0..ch], output, math);
             } else {
-                self.input_mixin.process_acc(condition, block, math);
-
-                (math.tanh_slice)(block);
-
-                for j in 0..ch {
-                    head_input[j] += block[j];
-                }
-
-                self.one_by_one.process(block, output, math);
+                self.input_mixin
+                    .process_acc_block_strided(condition, block, num_frames, 1, self.ch, math);
+                (math.tanh_slice)(&mut block[0..num_frames * self.ch]);
             }
+
+            for i in 0..num_frames {
+                let head_frame = &mut head_input[i * ch..i * ch + ch];
+                let block_frame = &block[i * (if self.gated { 2 * ch } else { ch })
+                    ..i * (if self.gated { 2 * ch } else { ch }) + ch];
+                for j in 0..ch {
+                    *head_frame.get_unchecked_mut(j) += *block_frame.get_unchecked(j);
+                }
+            }
+
+            self.one_by_one.process_block_strided(
+                block,
+                output,
+                num_frames,
+                2 * self.ch,
+                self.ch,
+                math,
+            );
         }
 
-        // SAFETY: `lb_start + ch ≤ layer_buffer.len()` é invariante do construtor
-        // `WaveNetLayerState::new()` (buffer_frames * ch) e de `advance_frames()`
-        // que mantém `buffer_start` dentro de `[0, buffer_frames)`.
-        let lb_start = buffer_start * ch;
         unsafe {
-            for j in 0..ch {
-                *output.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
+            for i in 0..num_frames {
+                let out_frame = output.get_unchecked_mut(i * ch..i * ch + ch);
+                let lb_start = (buffer_start + i) * ch;
+                for j in 0..ch {
+                    *out_frame.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
+                }
             }
         }
     }
@@ -310,9 +407,10 @@ impl WaveNetLayerArrayDyn {
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
-            self.rechannel.process(
+            self.rechannel.process_block(
                 layer_inputs,
                 &mut state_0.layer_buffer[start..start + ch],
+                1, // prewarm is 1 frame
                 math,
             );
 
@@ -325,26 +423,28 @@ impl WaveNetLayerArrayDyn {
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
-                    layer.process(
+                    layer.process_block_internal(
                         condition,
                         &mut self.head_accum[0..ch],
                         &mut self.array_outputs[0..ch],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
                         &mut self.block_buffer[0..block_size],
+                        1,
                         math,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
 
-                    layer.process(
+                    layer.process_block_internal(
                         condition,
                         &mut self.head_accum[0..ch],
                         &mut next_state.layer_buffer[next_start..next_start + ch],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
                         &mut self.block_buffer[0..block_size],
+                        1,
                         math,
                     );
                 }
@@ -352,9 +452,10 @@ impl WaveNetLayerArrayDyn {
                 current_state.advance_frames(1, ch);
             }
 
-            self.head_rechannel.process(
+            self.head_rechannel.process_block(
                 &self.head_accum[0..ch],
                 &mut self.head_outputs[0..head],
+                1,
                 math,
             );
         }
@@ -380,9 +481,10 @@ impl WaveNetLayerArrayDyn {
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
-            self.rechannel.process(
+            self.rechannel.process_block(
                 layer_inputs,
                 &mut state_0.layer_buffer[start..start + ch],
+                1, // prewarm is 1 frame
                 math,
             );
 
@@ -396,34 +498,37 @@ impl WaveNetLayerArrayDyn {
                 current_state.copy_buffer(ch);
 
                 if i == last_layer {
-                    layer.process(
+                    layer.process_block_internal(
                         condition,
                         &mut self.head_accum[0..ch],
                         &mut self.array_outputs[0..ch],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
                         &mut self.block_buffer[0..block_size],
+                        1,
                         math,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
 
-                    layer.process(
+                    layer.process_block_internal(
                         condition,
                         &mut self.head_accum[0..ch],
                         &mut next_state.layer_buffer[next_start..next_start + ch],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
                         &mut self.block_buffer[0..block_size],
+                        1,
                         math,
                     );
                 }
             }
 
-            self.head_rechannel.process(
+            self.head_rechannel.process_block(
                 &self.head_accum[0..ch],
                 &mut self.head_outputs[0..head],
+                1,
                 math,
             );
         }
@@ -559,13 +664,14 @@ mod tests {
         let math = SimdMathConfig::current();
 
         unsafe {
-            layer.process(
+            layer.process_block_internal(
                 &condition,
                 &mut head_input,
                 &mut output,
                 &layer_buffer,
                 buffer_start,
                 &mut block,
+                1,
                 &math,
             );
         }
@@ -618,13 +724,14 @@ mod tests {
         let math = SimdMathConfig::current();
 
         unsafe {
-            layer.process(
+            layer.process_block_internal(
                 &condition,
                 &mut head_input,
                 &mut output,
                 &layer_buffer,
                 buffer_start,
                 &mut block,
+                1,
                 &math,
             );
         }
