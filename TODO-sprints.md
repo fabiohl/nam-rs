@@ -206,7 +206,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 - Todos os 5 modelos carregam, constroem e processam sem crash.
 - Nenhum teste usa `#[ignore]` — roda no CI principal.
 
-### Tarefa 6.3 — Teste de Rejeição de Formatos Não-Suportados
+### Tarefa 6.3 — Teste de Rejeição de Formatos Não-Suportados [Concluído]
 
 **Entregável:** Novo teste em `tests/nam_infer_test.rs`.
 

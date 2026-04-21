@@ -1969,3 +1969,74 @@ fn test_community_models_inference() {
         println!("Modelo comunitário {} OK.", filename);
     }
 }
+
+/// Tarefa 6.3 — Teste de Rejeição de Formatos Não-Suportados (Keras)
+#[test]
+fn test_reject_keras_legacy_format() {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json");
+
+    if !path.exists() {
+        eprintln!("SKIP: Modelo Keras não encontrado em {:?}", path);
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON Keras");
+
+    // O parser deve retornar Ok se for um JSON estruturalmente válido,
+    // mas pode falhar se já identificar campos faltando.
+    let model_data = match parse_nam_json(&json_data) {
+        Ok(data) => data,
+        Err(e) => {
+            println!("parse_nam_json rejeitou corretamente: {}", e);
+            return;
+        }
+    };
+
+    // Se o parser passou (porque é um JSON válido e tem alguma architecture),
+    // o dispatcher DEVE falhar.
+    let build_result = build_model(&model_data);
+    assert!(
+        build_result.is_err(),
+        "build_model() aceitou um formato Keras Legacy que deveria ter sido rejeitado!"
+    );
+
+    println!("Formato Keras Legacy rejeitado corretamente via build_model().");
+}
+
+/// Tarefa 6.3 — Teste de Rejeição de Ativação Não-Suportada
+#[test]
+fn test_reject_activation_non_tanh() {
+    // Cria um JSON minimalista válido para um WaveNet, mas com ativação ReLU
+    let synthetic_json = r#"{
+        "version": "0.5.0",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "condition_size": 1,
+                    "channels": 16,
+                    "kernel_size": 3,
+                    "dilations": [1, 2, 4],
+                    "activation": "ReLU",
+                    "gated": false,
+                    "head_size": 8,
+                    "with_head": true
+                }
+            ]
+        },
+        "weights": [0.0, 0.0, 0.0]
+    }"#;
+
+    let model_data =
+        parse_nam_json(synthetic_json).expect("Falha ao fazer parse do JSON sintético");
+
+    // O dispatcher DEVE falhar ao encontrar "ReLU" (ou qualquer ativação não-"Tanh")
+    let build_result = build_model(&model_data);
+    assert!(
+        build_result.is_err(),
+        "build_model() aceitou uma ativação diferente de Tanh!"
+    );
+
+    println!("Ativação não-Tanh rejeitada corretamente.");
+}
