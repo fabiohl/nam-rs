@@ -1,5 +1,8 @@
 # TODO-sprints.md — Hardening da Suite de Testes e Benchmarks
 
+O objetivos das sprints abaixo é reforçar a suite de QA do NAM-rs. São fortemente inspiradas no trabalho de Steven Atkinson, Mike Oliphant e outros (espelhados em github.com/mikeoliphant/NeuralAudio/), consulte-os sempre.
+O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e performance exemplar. Em cada tarefa, construa os testes visando os mais altos padrões e só conclua a tarefa quando a base de código passar aprovada no teste construido.
+
 ---
 
 ## Sprint 5 — Fundação de Segurança: Fuzz Testing e Zero-Alloc (Prioridade Máxima)
@@ -8,7 +11,7 @@
 >
 > **Skill:** `implementador`
 
-### Tarefa 5.1 — Fuzz Testing via Proptest para `parse_nam_json()` (Stable Rust)
+### Tarefa 5.1 — Fuzz Testing via Proptest para `parse_nam_json()` (Stable Rust) [Concluida]
 
 **Entregável:** Novos testes proptest em `tests/proptest_parsers.rs`.
 
