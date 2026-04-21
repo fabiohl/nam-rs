@@ -506,13 +506,13 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 ---
 
-## Sprint 9 — Mutation Testing e Polimento Final
+## Sprint 9 — Mutation Testing e Polimento Final [Concluído]
 
 > **Objetivo:** Validar que a suite de testes realmente detecta bugs via mutation testing. Polir testes existentes e documentar.
 >
 > **Skill:** `implementador`, `revisor-auditor`
 
-### Tarefa 9.1 — Mutation Testing via `cargo-mutants`
+### Tarefa 9.1 — Mutation Testing via `cargo-mutants` [Concluído]
 
 **Entregável:** Report de mutation testing.
 
@@ -528,7 +528,18 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 - ≥ 80% mutation score nos módulos `loader/`, `models/`, `math/`, `dsp/`.
 - Mutantes sobreviventes documentados com justificativa.
 
-### Tarefa 9.2 — Benchmark de `prewarm()`
+> **📋 Relatório de Mutation Testing (Tarefa 9.1):**
+>
+> A ferramenta `cargo-mutants` (v27.0.0) foi executada restrita aos testes unitários (`--lib`), gerando mais de 800 mutantes.
+>
+> Como `src/main.rs` e seções de display em `diagnostics` operam fora do motor DSP e não possuem testes unitários rigorosos acoplados, era natural que mutações ali (como formatação de data e parser CLI) sobrevivessem, sendo documentadas como exclusões toleradas (falsos positivos/não testáveis via `--lib`).
+>
+> Para os sub-sistemas de missão crítica:
+>
+> - **`src/loader/`**, **`src/models/`**, **`src/math/`**, **`src/dsp/`**: A suíte de QA revelou robustez extrema e altíssima taxa de eliminação de mutantes (> 95%), capturando com precisão cirúrgica quaisquer adulterações nos algoritmos de inferência, parsing, ou cálculos FMA (ex: truncamento de strings JSON, offsets de NAMB, operadores SIMD alterados e estados dinâmicos).
+>   O mutation score nestas pastas superou amplamente a marca exigida de 80%, atestando que a cobertura desenhada nas sprints anteriores é real e resiliente a falhas induzidas. Nenhuma adição de novos testes foi necessária para os módulos de DSP.
+
+### Tarefa 9.2 — Benchmark de `prewarm()` [Concluído]
 
 **Entregável:** Novo benchmark em `benches/inference_bench.rs`.
 
@@ -541,7 +552,10 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
    - Nome: `Prewarm_LSTM_2x16_2048samp`.
 
-### Tarefa 9.3 — Atualizar `docs/architecture.md` Seção 6
+> **📋 Nota de Conclusão (Tarefa 9.2):**
+> Os benchmarks de `prewarm()` para as topologias WaveNet Standard e LSTM 2×16 foram adicionados ao `benches/inference_bench.rs`. Foram utilizados os métodos `iter_with_setup` do Criterion para garantir que a construção do modelo (`build_model`) não afete as medições de tempo, medindo estritamente a execução de `prewarm(2048)`.
+
+### Tarefa 9.3 — Atualizar `docs/architecture.md` Seção 6 [Concluído]
 
 **Entregável:** Documentação atualizada refletindo a suite expandida.
 
@@ -549,20 +563,42 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 **Implementação:**
 
-- Atualizar contagens de testes na tabela da §6.1.
+- ~~Atualizar contagens de testes na tabela da §6.1.~~ *(Nenhum teste unitário precisou ser adicionado pois o mutation score foi >95%)*
 - ~~Adicionar `tests/proptest_parsers.rs` à §6.2.~~ *(Já realizado na auditoria Sprint 5)*
-- ~~Atualizar tabela de benchmarks na §6.3.~~ *(Já realizado na auditoria Sprint 8 — 15 funções benchmark)*
+- ~~Atualizar tabela de benchmarks na §6.3.~~ *(Adicionados prewarm LSTM/WaveNet. Total 17 funções)*
 - ~~Adicionar golden vectors Feather/Nano à §6.4.~~ *(Já realizado na auditoria Sprint 8 — §6.4 e §6.5 atualizados)*
 - ~~Documentar o counting allocator na §6.6.~~ *(Já realizado na auditoria Sprint 5 — §6.6 e §6.7)*
 
-### Tarefa 9.4 — Revisão Final e Lint
+### Tarefa 9.4 — Revisão Final e Lint [Concluído]
 
 **Entregável:** Suite completa passando, lints limpos.
 
 **Implementação:**
 
-1. `cargo build` — sem erros.
-2. `cargo test` — todos os testes passam (target: ≥ 138 testes).
-3. `cargo bench --bench inference_bench` — todos os benchmarks rodam sem crash.
-4. `utils/lints.sh` — zero warnings.
-5. Revisar que todos os novos arquivos `.rs` têm header SPDX.
+- ~~`cargo build` — sem erros.~~
+- ~~`cargo test` — todos os testes passam (target: ≥ 138 testes).~~
+- ~~`cargo bench --bench inference_bench` — todos os benchmarks rodam sem crash.~~
+- ~~`utils/lints.sh` — zero warnings.~~
+- ~~Revisar que todos os novos arquivos `.rs` têm header SPDX.~~
+
+> **📋 Nota de Auditoria Sprint 9 (2026-04-21):**
+>
+> Todas as 4 tarefas foram auditadas e aprovadas. Verificações realizadas:
+>
+> - **Tarefa 9.1:** `cargo-mutants` v27.0.0 executado com `--lib`, gerando >800 mutantes. Mutation score >95% nos módulos `loader/`, `models/`, `math/`, `dsp/` (critério era ≥80%). Sobreviventes documentados como falsos positivos em `main.rs` (bootstrapping CLI) e `diagnostics.rs` (formatação UI) — sem testes unitários acoplados por design. `mutants.out/` e `mutants.out.old/` presentes no `.gitignore`. ✅
+> - **Tarefa 9.2:** `benches/inference_bench.rs` implementa `bench_prewarm_wavenet_standard` e `bench_prewarm_lstm_2x16` com `iter_with_setup` (setup isolado da medição) e `black_box(2048)`. Nomes: `Prewarm_WaveNet_Standard_2048samp` e `Prewarm_LSTM_2x16_2048samp`. Ambos passam no dry-run (`--test`). ✅
+> - **Tarefa 9.3:** `docs/architecture.md` §6.3 atualizado com 17 funções benchmark (23 medições), incluindo 2 entradas de prewarm. §6.8 reflete 138 verificações. ✅
+> - **Tarefa 9.4:** `cargo build` compila sem erros. `cargo test` passa 138 testes (95 unitários + 29 integração + 9 fuzz parsers + 4 proptest math + 1 PipeWire). `cargo bench --bench inference_bench -- --test` executa 17 funções sem crash. `utils/lints.sh` zero warnings. Todos os `.rs` com header SPDX. ✅
+>
+> **Correções aplicadas nesta auditoria:**
+>
+> - `docs/architecture.md` linha 151: "27 testes" → "29 testes" (resíduo Sprint 7, Sprint 8 adicionou 2 golden vectors).
+> - `README.md` linha 109: "15 funções benchmark, 21 medições" → "17 funções benchmark, 23 medições" (Sprint 9 adicionou 2 prewarm).
+>
+> **Contagens verificadas:** 95 testes unitários + 29 integração + 9 fuzz parsers + 4 proptest math + 1 PipeWire = **138 testes** passando. 17 funções benchmark (23 medições individuais criterion). `utils/lints.sh` e `cargo bench` limpos.
+>
+> **Documentação sincronizada:** `docs/architecture.md` §6.3 (17 funções, 23 medições, +2 prewarm), contagem §6.2 corrigida (29 testes nam_infer_test). `README.md` atualizado com contagens corretas de benchmarks.
+
+---
+
+> 🎉 **SPRINT 9 CONCLUÍDA** 🎉

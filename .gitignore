@@ -40,3 +40,7 @@ scratch.rs
 
 # Espelho dos projetos de referência no GitHub
 /github.com
+
+# Artefatos do cargo-mutants
+mutants.out/
+mutants.out.old/

@@ -28,7 +28,9 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 * Toolchain do Rust 1.94+ (`cargo`).
 
-* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev`
+* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph`
+
+* Utilitários do Cargo (necessários para QA): `cargo install cargo-mutants cargo-edit`
 
 * Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
   
@@ -105,7 +107,7 @@ cargo test --test nam_infer_test
 # Fuzz testing dos parsers (9 testes × 5000 cases = ~45.000 inputs)
 cargo test --test proptest_parsers
 
-# Benchmarks de latência (15 funções benchmark, 21 medições criterion)
+# Benchmarks de latência (17 funções benchmark, 23 medições criterion)
 cargo bench --bench inference_bench
 
 # Lint rigoroso de código fonte (formatação + clippy)

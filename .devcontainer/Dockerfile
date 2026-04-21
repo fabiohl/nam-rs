@@ -12,8 +12,14 @@ RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends 
     clang \
     libclang-dev \
     cmake \
+    qpwgraph \
     && apt clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Instalação de ferramentas Cargo necessárias para testes e scripts de utilitários
+USER vscode
+RUN cargo install cargo-mutants cargo-edit
+USER root
 
 # Dica: limpar ambiente docker regularmente:
 ## docker ps

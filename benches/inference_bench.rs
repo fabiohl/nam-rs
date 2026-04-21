@@ -406,6 +406,41 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
     }
 }
 
+fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-standard.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP bench: BossWN-standard.nam não encontrado em {path:?}.");
+        return;
+    }
+
+    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    c.bench_function("Prewarm_WaveNet_Standard_2048samp", |b| {
+        b.iter_with_setup(
+            || build_model(&model_data).expect("Dispatcher falhou para benchmark"),
+            |mut model| {
+                model.0.prewarm(std::hint::black_box(2048));
+            },
+        );
+    });
+}
+
+fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
+    let data = make_lstm_data(2, 16, 3345);
+
+    c.bench_function("Prewarm_LSTM_2x16_2048samp", |b| {
+        b.iter_with_setup(
+            || build_model(&data).expect("Dispatcher falhou para benchmark"),
+            |mut model| {
+                model.0.prewarm(std::hint::black_box(2048));
+            },
+        );
+    });
+}
+
 criterion_group!(
     benches,
     bench_wavenet_standard_process,
@@ -423,5 +458,7 @@ criterion_group!(
     bench_resampler_48000_bypass,
     bench_tanh_avx512_256elem,
     bench_sigmoid_avx512_256elem,
+    bench_prewarm_wavenet_standard,
+    bench_prewarm_lstm_2x16,
 );
 criterion_main!(benches);

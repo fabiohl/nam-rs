@@ -135,7 +135,7 @@ Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no fina
 | `src/spsc.rs`               | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                                                                               |
 | `src/pw_host.rs`            | 1      | DspBridge concorrência lock-free double-buffer (fence Acquire/Release, 1000 buffers, coerência temporal)                                    |
 
-> **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
+> **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.s
 >
 > Os testes estruturais recentes (ex: rejeição JSON malformado e gain staging roundtrip) consolidam o hardening da base para uso em cenários empacotados em releases mais maduros.
 
@@ -148,7 +148,7 @@ O diretório `tests/` contém quatro arquivos de teste que consomem a API públi
 - **`proptest_math.rs`** (4 testes) — validação estocástica via `proptest` (10.000 cases cada): `prop_simd_tanh_avx2_rmse` e `prop_simd_sigmoid_avx2_rmse` verificam que FastMath AVX2 mantém RMSE < threshold contra `std::f32`; `prop_dot_product_avx2_vs_scalar` e `prop_dot_product_avx512_vs_scalar` verificam exatidão numérica do dot product SIMD contra acumulação f64 escalar com tolerância L1-norm.
 - **`pw_integration_test.rs`** (1 teste) — `test_pipewire_headless_integration`: validação headless do PipeWire (init/connect/shutdown) sem hardware de áudio.
 
-Os 27 testes de `nam_infer_test.rs` cobrem **16 categorias** distintas:
+Os 29 testes de `nam_infer_test.rs` cobrem **16 categorias** distintas:
 
 #### Parsing e Topologia (1 teste)
 
@@ -227,27 +227,29 @@ Os 27 testes de `nam_infer_test.rs` cobrem **16 categorias** distintas:
 - **`test_reject_keras_legacy_format`** — Verifica que Keras Legacy JSON é rejeitado graciosamente por `parse_nam_json()` ou `build_model()`.
 - **`test_reject_activation_non_tanh`** — Verifica que ativação ReLU (não-Tanh) é rejeitada por `build_model()` com `Err`.
 
-### 6.3. Benchmarks `criterion` (`cargo bench`) — 15 funções benchmark (21 medições individuais)
+### 6.3. Benchmarks `criterion` (`cargo bench`) — 17 funções benchmark (23 medições individuais)
 
 O arquivo `benches/inference_bench.rs` mede a latência de processamento com o framework `criterion` (harness=false). O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
 
-| Benchmark                                          | Descrição                                      | Referência prática                           |
-| -------------------------------------------------- | ---------------------------------------------- | -------------------------------------------- |
-| `WaveNet_Standard_CH16_64samp_48kHz`               | Inferência WaveNet Standard (modelo real .nam) | 1 bloco DSP completo — deve caber em 1.33 ms |
-| `WaveNet_Standard_CH16_{32,128,256,512}samp_48kHz` | WaveNet Standard com buffers variáveis         | Perfil de latência para block sizes maiores  |
-| `LSTM_2x16_64samp_48kHz`                           | Inferência LSTM 2×16 (sintético, 3345 pesos)   | Topologia recorrente mais pesada suportada   |
-| `LSTM_2x16_{32,128,256,512}samp_48kHz`             | LSTM 2×16 com buffers variáveis                | Perfil de latência para block sizes maiores  |
-| `FastMath_tanh_AVX2_256elem`                       | Ativação tanh Padé×rsqrt sobre 256 f32         | Kernel chamado N×layers/bloco no WaveNet     |
-| `FastMath_sigmoid_AVX2_256elem`                    | Ativação sigmoid derivada de tanh              | Kernel chamado N×gates/bloco no LSTM         |
-| `WaveNet_Dynamic_Standard_64samp_48kHz`            | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics     |
-| `LSTM_Dynamic_1x16_64samp_48kHz`                   | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics     |
-| `DotProduct_AVX2_256elem`                          | Dot product SIMD sobre 256 f32                 | Kernel central de DenseLayer/Conv1d          |
-| `DotProduct_AVX2_64elem`                           | Dot product SIMD sobre 64 f32                  | Tamanho típico de hidden layer LSTM          |
-| `Resampler_44100_to_48k_1024samp`                  | NamResampler 44.1 kHz → 48 kHz (1024 amostras) | Conversão FIR Sinc para hardware 44.1 kHz    |
-| `Resampler_96000_to_48k_1024samp`                  | NamResampler 96 kHz → 48 kHz (1024 amostras)   | Conversão FIR Sinc para hardware 96 kHz      |
-| `Resampler_48000_bypass_1024samp`                  | NamResampler 48 kHz bypass (overhead mínimo)   | Mede overhead da branch bypass               |
-| `FastMath_tanh_AVX512_256elem`                     | Ativação tanh AVX-512 sobre 256 f32            | Condicional: requer `avx512f`+`avx512vl`     |
-| `FastMath_sigmoid_AVX512_256elem`                  | Ativação sigmoid AVX-512 sobre 256 f32         | Condicional: requer `avx512f`+`avx512vl`     |
+| Benchmark                                          | Descrição                                      | Referência prática                              |
+| -------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| `WaveNet_Standard_CH16_64samp_48kHz`               | Inferência WaveNet Standard (modelo real .nam) | 1 bloco DSP completo — deve caber em 1.33 ms    |
+| `WaveNet_Standard_CH16_{32,128,256,512}samp_48kHz` | WaveNet Standard com buffers variáveis         | Perfil de latência para block sizes maiores     |
+| `LSTM_2x16_64samp_48kHz`                           | Inferência LSTM 2×16 (sintético, 3345 pesos)   | Topologia recorrente mais pesada suportada      |
+| `LSTM_2x16_{32,128,256,512}samp_48kHz`             | LSTM 2×16 com buffers variáveis                | Perfil de latência para block sizes maiores     |
+| `FastMath_tanh_AVX2_256elem`                       | Ativação tanh Padé×rsqrt sobre 256 f32         | Kernel chamado N×layers/bloco no WaveNet        |
+| `FastMath_sigmoid_AVX2_256elem`                    | Ativação sigmoid derivada de tanh              | Kernel chamado N×gates/bloco no LSTM            |
+| `WaveNet_Dynamic_Standard_64samp_48kHz`            | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics        |
+| `LSTM_Dynamic_1x16_64samp_48kHz`                   | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics        |
+| `DotProduct_AVX2_256elem`                          | Dot product SIMD sobre 256 f32                 | Kernel central de DenseLayer/Conv1d             |
+| `DotProduct_AVX2_64elem`                           | Dot product SIMD sobre 64 f32                  | Tamanho típico de hidden layer LSTM             |
+| `Resampler_44100_to_48k_1024samp`                  | NamResampler 44.1 kHz → 48 kHz (1024 amostras) | Conversão FIR Sinc para hardware 44.1 kHz       |
+| `Resampler_96000_to_48k_1024samp`                  | NamResampler 96 kHz → 48 kHz (1024 amostras)   | Conversão FIR Sinc para hardware 96 kHz         |
+| `Resampler_48000_bypass_1024samp`                  | NamResampler 48 kHz bypass (overhead mínimo)   | Mede overhead da branch bypass                  |
+| `FastMath_tanh_AVX512_256elem`                     | Ativação tanh AVX-512 sobre 256 f32            | Condicional: requer `avx512f`+`avx512vl`        |
+| `FastMath_sigmoid_AVX512_256elem`                  | Ativação sigmoid AVX-512 sobre 256 f32         | Condicional: requer `avx512f`+`avx512vl`        |
+| `Prewarm_WaveNet_Standard_2048samp`                | Benchmark de `prewarm(2048)` para WaveNet      | Tempo gasto na inicialização/alocação de buffer |
+| `Prewarm_LSTM_2x16_2048samp`                       | Benchmark de `prewarm(2048)` para LSTM         | Tempo gasto na estabilização dos estados LSTM   |
 
 > **Nota:** Durante `cargo bench`, os 95 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado. Os benchmarks AVX-512 são condicionais: em hardware sem suporte, imprimem `SKIP` e retornam sem falha.
 
