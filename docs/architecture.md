@@ -119,31 +119,31 @@ O projeto adota a convenção idiomática do Rust, com três camadas complementa
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
-| Módulo                      | Testes | Cobertura                                                                                                            |
-| --------------------------- |:------:| -------------------------------------------------------------------------------------------------------------------- |
-| `src/loader/dispatcher.rs`  | 16     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow, validação activation, gated dispatch |
-| `src/dsp/gain.rs`           | 14     | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0, silêncio, mono detect       |
+| Módulo                      | Testes | Cobertura                                                                                                                                   |
+| --------------------------- |:------:| ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/loader/dispatcher.rs`  | 16     | Build Standard/Feather/LSTM, rejeição arq./topologia, exaustão pesos, overflow, validação activation, gated dispatch                        |
+| `src/dsp/gain.rs`           | 14     | Gain staging SIMD, true-bypass bitwise, extremos ±60dB/+24dB/±96dB, roundtrip 6dB, -0.0, silêncio, mono detect                              |
 | `src/models/wavenet.rs`     | 12     | Alocação, prewarm NaN-free, process zeros, determinismo, Conv1d (identity/bias/dilation/zero/known), DenseLayer (identity/bias/rectangular) |
-| `src/loader/nam_json.rs`    | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado                                   |
-| `src/diagnostics.rs`        | 8      | Catálogo de códigos, unicidade numérica, formatação suporte, timestamp ISO 8601, snapshot, days_to_date              |
-| `src/models/lstm.rs`        | 8      | Alocação, process zeros, determinismo, gate order, 2-layer, state evolution, variable block sizes, reset on prewarm   |
-| `src/dsp/resampler.rs`      | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response input/output                                          |
-| `src/loader/namb.rs`        | 5      | Parse binário, CRC32, header, magic, version                                                                         |
-| `src/math/fastmath.rs`      | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                                                      |
-| `src/math/simd.rs`          | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                                                    |
-| `src/models/wavenet_dyn.rs` | 3      | Gated activation `tanh⊙sigmoid`, non-gated fallback, block_size 2×ch                                                 |
-| `src/spsc.rs`               | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                                                        |
-| `src/pw_host.rs`            | 1      | DspBridge concorrência lock-free double-buffer (fence Acquire/Release, 1000 buffers, coerência temporal)             |
+| `src/loader/nam_json.rs`    | 11     | Parse WaveNet/LSTM/Feather, topologia Standard/Lite/Nano, rejeição JSON malformado                                                          |
+| `src/diagnostics.rs`        | 8      | Catálogo de códigos, unicidade numérica, formatação suporte, timestamp ISO 8601, snapshot, days_to_date                                     |
+| `src/models/lstm.rs`        | 8      | Alocação, process zeros, determinismo, gate order, 2-layer, state evolution, variable block sizes, reset on prewarm                         |
+| `src/dsp/resampler.rs`      | 7      | Bypass 48 kHz, up/down/roundtrip 44k↔48k↔96k, impulse response input/output                                                                 |
+| `src/loader/namb.rs`        | 5      | Parse binário, CRC32, header, magic, version                                                                                                |
+| `src/math/fastmath.rs`      | 4      | MSE de `simd_tanh`/`simd_sigmoid` AVX2 e AVX-512 vs. `std::f32`                                                                             |
+| `src/math/simd.rs`          | 3      | `dot_product_avx2`/`dot_product_avx512`, `set_daz_ftz` MXCSR bits                                                                           |
+| `src/models/wavenet_dyn.rs` | 3      | Gated activation `tanh⊙sigmoid`, non-gated fallback, block_size 2×ch                                                                        |
+| `src/spsc.rs`               | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                                                                               |
+| `src/pw_host.rs`            | 1      | DspBridge concorrência lock-free double-buffer (fence Acquire/Release, 1000 buffers, coerência temporal)                                    |
 
 > **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
 >
 > Os testes estruturais recentes (ex: rejeição JSON malformado e gain staging roundtrip) consolidam o hardening da base para uso em cenários empacotados em releases mais maduros.
 
-### 6.2. Testes de Integração (`tests/`) — 41 testes
+### 6.2. Testes de Integração (`tests/`) — 43 testes
 
 O diretório `tests/` contém quatro arquivos de teste que consomem a API pública `nam_rs::*` como um usuário externo:
 
-- **`nam_infer_test.rs`** (27 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors, SPSC E2E, verificação zero-allocation, block sizes variáveis, modelos comunitários, rejeição de formatos.
+- **`nam_infer_test.rs`** (29 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors (Standard, LSTM, Feather, Nano), SPSC E2E, verificação zero-allocation, block sizes variáveis, modelos comunitários, rejeição de formatos.
 - **`proptest_parsers.rs`** (9 testes) — fuzz testing via `proptest` (5000 cases cada) para `parse_nam_json()` e `parse_namb()`: bytes arbitrários, JSON semi-válido, truncamento, weight overflow, magic corrompido, CRC inválido, buffer truncado, offsets fora de limites. Nenhum panic em ~45.000 inputs adversários.
 - **`proptest_math.rs`** (4 testes) — validação estocástica via `proptest` (10.000 cases cada): `prop_simd_tanh_avx2_rmse` e `prop_simd_sigmoid_avx2_rmse` verificam que FastMath AVX2 mantém RMSE < threshold contra `std::f32`; `prop_dot_product_avx2_vs_scalar` e `prop_dot_product_avx512_vs_scalar` verificam exatidão numérica do dot product SIMD contra acumulação f64 escalar com tolerância L1-norm.
 - **`pw_integration_test.rs`** (1 teste) — `test_pipewire_headless_integration`: validação headless do PipeWire (init/connect/shutdown) sem hardware de áudio.
@@ -168,10 +168,12 @@ Os 27 testes de `nam_infer_test.rs` cobrem **16 categorias** distintas:
 - **`test_auto_consistency_wavenet`** — Dois `DynamicModel` idênticos geram saída bitwise identical (MSE = 0.0).
 - **`test_auto_consistency_lstm`** — Idem para LSTM 1×16.
 
-#### Golden Vectors C++ ↔ Rust (2 testes)
+#### Golden Vectors C++ ↔ Rust (4 testes)
 
 - **`test_golden_vectors_wavenet`** — Compara saída Rust vs. referência C++ (validação dual: MSE < 5e-2 + SNR ≥ 9 dB).
 - **`test_golden_vectors_lstm`** — Compara saída Rust vs. referência C++ (validação dual: MSE < 1e-3 + SNR ≥ 22 dB).
+- **`test_golden_vectors_wavenet_feather`** — Golden vectors WaveNet Feather (CH=8) — MSE < 5e-2, SNR ≥ 9 dB.
+- **`test_golden_vectors_wavenet_nano`** — Golden vectors WaveNet Nano (CH=4) — MSE < 5e-2, SNR ≥ 9 dB.
 
 #### Pipeline End-to-End SPSC (1 teste)
 
@@ -225,20 +227,29 @@ Os 27 testes de `nam_infer_test.rs` cobrem **16 categorias** distintas:
 - **`test_reject_keras_legacy_format`** — Verifica que Keras Legacy JSON é rejeitado graciosamente por `parse_nam_json()` ou `build_model()`.
 - **`test_reject_activation_non_tanh`** — Verifica que ativação ReLU (não-Tanh) é rejeitada por `build_model()` com `Err`.
 
-### 6.3. Benchmarks `criterion` (`cargo bench`) — 6 benchmarks
+### 6.3. Benchmarks `criterion` (`cargo bench`) — 15 funções benchmark (21 medições individuais)
 
 O arquivo `benches/inference_bench.rs` mede a latência de processamento com o framework `criterion` (harness=false). O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
 
-| Benchmark                               | Descrição                                      | Referência prática                           |
-| --------------------------------------- | ---------------------------------------------- | -------------------------------------------- |
-| `WaveNet_Standard_CH16_64samp_48kHz`    | Inferência WaveNet Standard (modelo real .nam) | 1 bloco DSP completo — deve caber em 1.33 ms |
-| `LSTM_2x16_64samp_48kHz`                | Inferência LSTM 2×16 (sintético, 3345 pesos)   | Topologia recorrente mais pesada suportada   |
-| `FastMath_tanh_AVX2_256elem`            | Ativação tanh Padé×rsqrt sobre 256 f32         | Kernel chamado N×layers/bloco no WaveNet     |
-| `FastMath_sigmoid_AVX2_256elem`         | Ativação sigmoid derivada de tanh              | Kernel chamado N×gates/bloco no LSTM         |
-| `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics     |
-| `LSTM_Dynamic_1x16_64samp_48kHz`        | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics     |
+| Benchmark                                          | Descrição                                      | Referência prática                           |
+| -------------------------------------------------- | ---------------------------------------------- | -------------------------------------------- |
+| `WaveNet_Standard_CH16_64samp_48kHz`               | Inferência WaveNet Standard (modelo real .nam) | 1 bloco DSP completo — deve caber em 1.33 ms |
+| `WaveNet_Standard_CH16_{32,128,256,512}samp_48kHz` | WaveNet Standard com buffers variáveis         | Perfil de latência para block sizes maiores  |
+| `LSTM_2x16_64samp_48kHz`                           | Inferência LSTM 2×16 (sintético, 3345 pesos)   | Topologia recorrente mais pesada suportada   |
+| `LSTM_2x16_{32,128,256,512}samp_48kHz`             | LSTM 2×16 com buffers variáveis                | Perfil de latência para block sizes maiores  |
+| `FastMath_tanh_AVX2_256elem`                       | Ativação tanh Padé×rsqrt sobre 256 f32         | Kernel chamado N×layers/bloco no WaveNet     |
+| `FastMath_sigmoid_AVX2_256elem`                    | Ativação sigmoid derivada de tanh              | Kernel chamado N×gates/bloco no LSTM         |
+| `WaveNet_Dynamic_Standard_64samp_48kHz`            | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics     |
+| `LSTM_Dynamic_1x16_64samp_48kHz`                   | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics     |
+| `DotProduct_AVX2_256elem`                          | Dot product SIMD sobre 256 f32                 | Kernel central de DenseLayer/Conv1d          |
+| `DotProduct_AVX2_64elem`                           | Dot product SIMD sobre 64 f32                  | Tamanho típico de hidden layer LSTM          |
+| `Resampler_44100_to_48k_1024samp`                  | NamResampler 44.1 kHz → 48 kHz (1024 amostras) | Conversão FIR Sinc para hardware 44.1 kHz    |
+| `Resampler_96000_to_48k_1024samp`                  | NamResampler 96 kHz → 48 kHz (1024 amostras)   | Conversão FIR Sinc para hardware 96 kHz      |
+| `Resampler_48000_bypass_1024samp`                  | NamResampler 48 kHz bypass (overhead mínimo)   | Mede overhead da branch bypass               |
+| `FastMath_tanh_AVX512_256elem`                     | Ativação tanh AVX-512 sobre 256 f32            | Condicional: requer `avx512f`+`avx512vl`     |
+| `FastMath_sigmoid_AVX512_256elem`                  | Ativação sigmoid AVX-512 sobre 256 f32         | Condicional: requer `avx512f`+`avx512vl`     |
 
-> **Nota:** Durante `cargo bench`, os 83 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
+> **Nota:** Durante `cargo bench`, os 95 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado. Os benchmarks AVX-512 são condicionais: em hardware sem suporte, imprimem `SKIP` e retornam sem falha.
 
 Execução: `cargo bench --bench inference_bench`
 
@@ -256,6 +267,8 @@ Os golden vectors são arquivos binários (`.golden.bin`) contendo input e outpu
 
 **Regeneração:** `./tests/fixtures/golden_gen_build.sh`
 
+**Modelos cobertos:** WaveNet Standard, LSTM 1×16, WaveNet Feather (CH=8), WaveNet Nano (CH=4).
+
 ### 6.5. Layout de `tests/fixtures/`
 
 ```text
@@ -270,6 +283,8 @@ tests/fixtures/
 │   ├── tw40_blues_deluxe_deerinkstudios.json
 │   └── README.md
 ├── golden_wavenet_standard.bin     ← Golden vectors (gerados pelo C++)
+├── golden_wavenet_feather.bin      ← Golden vectors WaveNet Feather (CH=8)
+├── golden_wavenet_nano.bin         ← Golden vectors WaveNet Nano (CH=4)
 ├── golden_lstm_1x16.bin
 ├── golden_gen.cpp                  ← Gerador C++ de golden vectors
 ├── golden_gen_build.sh             ← Script de build do gerador
@@ -317,7 +332,7 @@ O arquivo `tests/proptest_parsers.rs` exercita os parsers de entrada com **~45.0
 
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara todas as camadas (136 verificações). `cargo test --lib` executa apenas os 95 unitários inline; `cargo test --test nam_infer_test` os 27 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 4 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
+- **Comando de execução:** `cargo test` dispara todas as camadas (138 verificações). `cargo test --lib` executa apenas os 95 unitários inline; `cargo test --test nam_infer_test` os 29 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 4 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 
 ## 7. Referências
 

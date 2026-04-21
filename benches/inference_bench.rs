@@ -229,13 +229,199 @@ fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
     });
 }
 
+fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-standard.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP bench: BossWN-standard.nam não encontrado em {:?}. \
+             Copie modelos para tests/fixtures/models/ (veja TODO.txt).",
+            path
+        );
+        return;
+    }
+
+    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data).expect("Dispatcher falhou para benchmark");
+    model.0.prewarm(2048);
+
+    for &size in &[32, 128, 256, 512] {
+        let input = generate_sine_440hz(size);
+        let mut output = vec![0.0f32; size];
+        c.bench_function(&format!("WaveNet_Standard_CH16_{}samp_48kHz", size), |b| {
+            b.iter(|| {
+                model.0.process(&input, &mut output);
+            });
+        });
+    }
+}
+
+/// Benchmark: LSTM 2×16 (sintético, 3345 pesos) com buffers variáveis.
+fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
+    let data = make_lstm_data(2, 16, 3345);
+    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    model.0.prewarm(2048);
+
+    for &size in &[32, 128, 256, 512] {
+        let input = generate_sine_440hz(size);
+        let mut output = vec![0.0f32; size];
+        c.bench_function(&format!("LSTM_2x16_{}samp_48kHz", size), |b| {
+            b.iter(|| {
+                model.0.process(&input, &mut output);
+            });
+        });
+    }
+}
+
+fn bench_dot_product_avx2_256(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        let vec_a: Vec<f32> = (0..256).map(|i| (i as f32) * 0.1).collect();
+        let vec_b: Vec<f32> = (0..256).map(|i| (i as f32) * -0.1).collect();
+
+        c.bench_function("DotProduct_AVX2_256elem", |b| {
+            b.iter(|| unsafe {
+                nam_rs::math::simd::dot_product_avx2(
+                    std::hint::black_box(&vec_a),
+                    std::hint::black_box(&vec_b),
+                )
+            });
+        });
+    }
+}
+
+fn bench_dot_product_avx2_64(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        let vec_a: Vec<f32> = (0..64).map(|i| (i as f32) * 0.1).collect();
+        let vec_b: Vec<f32> = (0..64).map(|i| (i as f32) * -0.1).collect();
+
+        c.bench_function("DotProduct_AVX2_64elem", |b| {
+            b.iter(|| unsafe {
+                nam_rs::math::simd::dot_product_avx2(
+                    std::hint::black_box(&vec_a),
+                    std::hint::black_box(&vec_b),
+                )
+            });
+        });
+    }
+}
+
+fn bench_resampler_44100_to_48000(c: &mut Criterion) {
+    use nam_rs::dsp::resampler::NamResampler;
+    let chunk = 1024;
+    let mut rs = NamResampler::new(44_100, 48_000, chunk).expect("Failed to create NamResampler");
+    let in_l = vec![0.0f32; chunk];
+    let in_r = vec![0.0f32; chunk];
+    let mut out_l = vec![0.0f32; chunk * 2];
+    let mut out_r = vec![0.0f32; chunk * 2];
+
+    c.bench_function("Resampler_44100_to_48k_1024samp", |b| {
+        b.iter(|| {
+            rs.process_input(
+                std::hint::black_box(&in_l),
+                std::hint::black_box(&in_r),
+                std::hint::black_box(&mut out_l),
+                std::hint::black_box(&mut out_r),
+            );
+        });
+    });
+}
+
+fn bench_resampler_96000_to_48000(c: &mut Criterion) {
+    use nam_rs::dsp::resampler::NamResampler;
+    let chunk = 1024;
+    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("Failed to create NamResampler");
+    let in_l = vec![0.0f32; chunk];
+    let in_r = vec![0.0f32; chunk];
+    let mut out_l = vec![0.0f32; chunk * 2];
+    let mut out_r = vec![0.0f32; chunk * 2];
+
+    c.bench_function("Resampler_96000_to_48k_1024samp", |b| {
+        b.iter(|| {
+            rs.process_input(
+                std::hint::black_box(&in_l),
+                std::hint::black_box(&in_r),
+                std::hint::black_box(&mut out_l),
+                std::hint::black_box(&mut out_r),
+            );
+        });
+    });
+}
+
+fn bench_resampler_48000_bypass(c: &mut Criterion) {
+    use nam_rs::dsp::resampler::NamResampler;
+    let chunk = 1024;
+    let mut rs = NamResampler::new(48_000, 48_000, chunk).expect("Failed to create NamResampler");
+    let in_l = vec![0.0f32; chunk];
+    let in_r = vec![0.0f32; chunk];
+    let mut out_l = vec![0.0f32; chunk * 2];
+    let mut out_r = vec![0.0f32; chunk * 2];
+
+    c.bench_function("Resampler_48000_bypass_1024samp", |b| {
+        b.iter(|| {
+            rs.process_input(
+                std::hint::black_box(&in_l),
+                std::hint::black_box(&in_r),
+                std::hint::black_box(&mut out_l),
+                std::hint::black_box(&mut out_r),
+            );
+        });
+    });
+}
+
+fn bench_tanh_avx512_256elem(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+
+        c.bench_function("FastMath_tanh_AVX512_256elem", |b| {
+            let mut buf = base.clone();
+            b.iter(|| {
+                buf.copy_from_slice(&base);
+                unsafe { nam_rs::math::fastmath::tanh_slice_avx512(&mut buf) };
+            });
+        });
+    } else {
+        eprintln!(
+            "SKIP bench: Hardware does not support AVX-512 (avx512f/avx512vl) for FastMath_tanh_AVX512_256elem"
+        );
+    }
+}
+
+fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+
+        c.bench_function("FastMath_sigmoid_AVX512_256elem", |b| {
+            let mut buf = base.clone();
+            b.iter(|| {
+                buf.copy_from_slice(&base);
+                unsafe { nam_rs::math::fastmath::sigmoid_slice_avx512(&mut buf) };
+            });
+        });
+    } else {
+        eprintln!(
+            "SKIP bench: Hardware does not support AVX-512 (avx512f/avx512vl) for FastMath_sigmoid_AVX512_256elem"
+        );
+    }
+}
+
 criterion_group!(
     benches,
     bench_wavenet_standard_process,
+    bench_wavenet_standard_block_sizes,
     bench_lstm_2x16_process,
+    bench_lstm_2x16_block_sizes,
     bench_tanh_slice_256,
     bench_sigmoid_slice_256,
     bench_wavenet_dynamic_standard,
     bench_lstm_dynamic_1x16,
+    bench_dot_product_avx2_256,
+    bench_dot_product_avx2_64,
+    bench_resampler_44100_to_48000,
+    bench_resampler_96000_to_48000,
+    bench_resampler_48000_bypass,
+    bench_tanh_avx512_256elem,
+    bench_sigmoid_avx512_256elem,
 );
 criterion_main!(benches);

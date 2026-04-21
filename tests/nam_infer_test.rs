@@ -907,6 +907,82 @@ fn test_golden_vectors_lstm() {
     assert_dsp_fidelity(&expected, &output, 1e-3, 22.0, "Golden LSTM 1×16");
 }
 
+/// Teste 8b: Golden Vectors WaveNet Feather — cross-reference C++ ↔ Rust.
+#[test]
+fn test_golden_vectors_wavenet_feather() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_feather.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_wavenet_feather.bin não encontrado em {golden_path:?}. \
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_feather.bin");
+
+    // Carregar e construir o modelo
+    let nam_path = model_path("BossWN-feather.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossWN-feather.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo WaveNet Feather");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher falhou ao construir WaveNet Feather para golden test");
+
+    // Prewarm + Processamento
+    model.0.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    // Validação dual MSE + SNR — single-pass fusion
+    assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet Feather");
+}
+
+/// Teste 8c: Golden Vectors WaveNet Nano — cross-reference C++ ↔ Rust.
+#[test]
+fn test_golden_vectors_wavenet_nano() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_wavenet_nano.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_wavenet_nano.bin não encontrado em {golden_path:?}. \
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_nano.bin");
+
+    // Carregar e construir o modelo
+    let nam_path = model_path("BossWN-nano.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossWN-nano.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo WaveNet Nano");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher falhou ao construir WaveNet Nano para golden test");
+
+    // Prewarm + Processamento
+    model.0.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    // Validação dual MSE + SNR — single-pass fusion
+    assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet Nano");
+}
+
 // =============================================================================
 // Teste End-to-End SPSC Pipeline (T-2)
 // =============================================================================

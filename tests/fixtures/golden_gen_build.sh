@@ -48,6 +48,16 @@ if [ ! -f "$MODELS_DIR/BossLSTM-1x16.nam" ]; then
     exit 1
 fi
 
+if [ ! -f "$MODELS_DIR/BossWN-feather.nam" ]; then
+    echo "ERRO: BossWN-feather.nam não encontrado em $MODELS_DIR"
+    exit 1
+fi
+
+if [ ! -f "$MODELS_DIR/BossWN-nano.nam" ]; then
+    echo "ERRO: BossWN-nano.nam não encontrado em $MODELS_DIR"
+    exit 1
+fi
+
 # Criar diretórios
 mkdir -p "$BUILD_DIR"
 mkdir -p "$FIXTURES_DIR"
@@ -82,6 +92,9 @@ echo "Compilando NeuralAudio com cmake --build . ..."
 cmake --build .
 
 echo "[2/3] Compilando golden_gen..."
+# Coletar object files da library OBJECT NeuralAudio
+NEURAL_AUDIO_OBJS=$(find "$BUILD_DIR/NeuralAudio/CMakeFiles/NeuralAudio.dir" -name "*.o")
+
 # Compilar o gerador customizado
 g++ -std=c++17 -O2 \
     -I"$NEURAL_AUDIO_ROOT" \
@@ -89,7 +102,7 @@ g++ -std=c++17 -O2 \
     -I"$NEURAL_AUDIO_ROOT/deps/RTNeural" \
     "$SCRIPT_DIR/golden_gen.cpp" \
     -o "$BUILD_DIR/golden_gen" \
-    -L"$BUILD_DIR/NeuralAudio" -lNeuralAudio \
+    $NEURAL_AUDIO_OBJS \
     -L"$BUILD_DIR/NeuralAudio/RTNeural/RTNeural" -lRTNeural \
     -lm \
     2>&1 || {
@@ -112,9 +125,23 @@ echo "  Gerando LSTM 1×16..."
     "$MODELS_DIR/BossLSTM-1x16.nam" \
     "$FIXTURES_DIR/golden_lstm_1x16.bin"
 
+# WaveNet Feather
+echo "  Gerando WaveNet Feather..."
+"$BUILD_DIR/golden_gen" \
+    "$MODELS_DIR/BossWN-feather.nam" \
+    "$FIXTURES_DIR/golden_wavenet_feather.bin"
+
+# WaveNet Nano
+echo "  Gerando WaveNet Nano..."
+"$BUILD_DIR/golden_gen" \
+    "$MODELS_DIR/BossWN-nano.nam" \
+    "$FIXTURES_DIR/golden_wavenet_nano.bin"
+
 echo ""
 echo "=== Golden vectors gerados com sucesso ==="
 echo "  $FIXTURES_DIR/golden_wavenet_standard.bin"
 echo "  $FIXTURES_DIR/golden_lstm_1x16.bin"
+echo "  $FIXTURES_DIR/golden_wavenet_feather.bin"
+echo "  $FIXTURES_DIR/golden_wavenet_nano.bin"
 echo ""
 echo "Commite estes arquivos para que os testes Rust de golden vectors funcionem."

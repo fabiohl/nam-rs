@@ -90,7 +90,7 @@ O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquiv
 
 ## 🧪 Testes e Validação
 
-O NAM-rs mantém uma suíte de **136 verificações** automatizadas distribuídas em cinco camadas:
+O NAM-rs mantém uma suíte de **138 verificações** automatizadas distribuídas em cinco camadas:
 
 ```bash
 # Testes unitários + integração + proptest + fuzz + E2E PipeWire
@@ -99,13 +99,13 @@ cargo test
 # Apenas testes unitários inline (95 testes)
 cargo test --lib
 
-# Apenas testes de integração (27 testes, incluindo zero-alloc, block sizes, modelos comunitários)
+# Apenas testes de integração (29 testes, incluindo zero-alloc, block sizes, golden vectors Feather/Nano, modelos comunitários)
 cargo test --test nam_infer_test
 
 # Fuzz testing dos parsers (9 testes × 5000 cases = ~45.000 inputs)
 cargo test --test proptest_parsers
 
-# Benchmarks de latência (6 benchmarks criterion)
+# Benchmarks de latência (15 funções benchmark, 21 medições criterion)
 cargo bench --bench inference_bench
 
 # Lint rigoroso de código fonte (formatação + clippy)
