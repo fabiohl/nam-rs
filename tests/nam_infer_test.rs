@@ -441,7 +441,6 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         array_outputs: vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES],
         head_accum: vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
-        block_buffer: vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES],
         receptive_field_size: rf1,
     };
 
@@ -476,7 +475,6 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         array_outputs: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
         head_accum: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; wavenet::WAVENET_MAX_NUM_FRAMES],
-        block_buffer: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
         receptive_field_size: rf2,
     };
 

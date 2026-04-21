@@ -149,6 +149,7 @@ Os coeficientes `c0`, `c1`, `c2` devem ser re-derivados via **otimização Minim
 
 **Prioridade: P2** · Esforço: 🟡 Médio · Impacto: 🟡 Médio (~40% menos loads) · Risco: 🟡 Médio
 **Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
+**Nota de Conclusão:** A fusão de operadores foi implementada invertendo o laço na convolução e camadas densas (frame-first) em conjunção direta com o FMA Multi-Channel (Tarefa I.4). O `block_buffer` foi eliminado na pipeline estática poupando alocação e cópias L1 desnecessárias, e tudo opera em registradores dentro de `[0.0; CH]`. Testes de bitwise passados.
 
 #### 3.1 Diagnóstico
 
@@ -210,6 +211,7 @@ Esta proposta complementa a Proposta 4 (FMA Multi-Channel): se combinadas, os ga
 
 **Prioridade: P2** · Esforço: 🟡 Médio · Impacto: 🟡 Médio (~75% menos loads) · Risco: 🟡 Médio
 **Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
+**Nota de Conclusão:** O `dot_product_4x` agora é utilizado internamente no pipeline otimizado do `WaveNetLayer`, em paralelo para canais de saída. O laço acumula até 4 elementos SIMD independentes (R0, R1, R2, R3). A validação por Golden Vectors provou rigor matemático inalterado e testes proptest também fluíram.
 
 #### 4.1 Diagnóstico
 

@@ -290,7 +290,6 @@ fn build_wavenet_array<
         array_outputs: vec![0.0; CH * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
         head_accum: vec![0.0; CH * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; HEAD * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
-        block_buffer: vec![0.0; CH * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
         receptive_field_size,
     })
 }
