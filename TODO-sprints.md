@@ -32,7 +32,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 - `cargo test --test proptest_parsers` passa com 5000 cases sem panic.
 - `parse_nam_json()` retorna `Err` para todos os inputs inválidos (nunca `unwrap` explode).
 
-### Tarefa 5.2 — Fuzz Testing via Proptest para `parse_namb()` (Binário)
+### Tarefa 5.2 — Fuzz Testing via Proptest para `parse_namb()` (Binário) [Concluida]
 
 **Entregável:** Testes proptest adicionais em `tests/proptest_parsers.rs`.
 

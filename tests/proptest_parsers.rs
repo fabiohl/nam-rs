@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 use nam_rs::loader::nam_json::{get_wavenet_topology, parse_nam_json};
+use nam_rs::loader::namb::parse_namb;
 use proptest::prelude::*;
 use std::fs;
 
@@ -132,5 +133,78 @@ proptest! {
             // Just ensure accessing topology doesn't crash
             let _topo = get_wavenet_topology(&parsed);
         }
+    }
+}
+
+// Fuzz 5: Arbitrary bytes into parse_namb
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #[test]
+    fn prop_fuzz_namb_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..8192)) {
+        let _ = parse_namb(&bytes);
+    }
+}
+
+// Strategy for valid namb with weights
+prop_compose! {
+    fn valid_namb_strategy()(weights in prop::collection::vec(any::<f32>(), 0..200)) -> Vec<u8> {
+        let weights_offset: usize = 80;
+        let total_size = weights_offset + weights.len() * 4;
+        let mut sim_data = vec![0u8; total_size];
+
+        sim_data[0..4].copy_from_slice(&0x4E414D42u32.to_le_bytes());
+        sim_data[4..6].copy_from_slice(&1u16.to_le_bytes());
+        sim_data[12..16].copy_from_slice(&(weights_offset as u32).to_le_bytes());
+        sim_data[32..37].copy_from_slice(b"1.0.0");
+        sim_data[64..68].copy_from_slice(&48000.0f32.to_le_bytes());
+        sim_data[68..72].copy_from_slice(&12.0f32.to_le_bytes());
+        sim_data[72..76].copy_from_slice(&(-6.0f32).to_le_bytes());
+
+        for (i, float_val) in weights.iter().enumerate() {
+            let off = weights_offset + i * 4;
+            sim_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
+        }
+
+        let mut hasher = crc32fast::Hasher::new();
+        hasher.update(&sim_data[weights_offset..]);
+        let crc = hasher.finalize();
+        sim_data[24..28].copy_from_slice(&crc.to_le_bytes());
+
+        sim_data
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(5_000))]
+
+    #[test]
+    fn prop_fuzz_namb_bad_magic(mut namb in valid_namb_strategy(), bad_magic in any::<u32>()) {
+        prop_assume!(bad_magic != 0x4E414D42);
+        let bad_bytes = bad_magic.to_le_bytes();
+        prop_assume!(&bad_bytes != b"NAMB" && &bad_bytes != b"BMAN");
+        namb[0..4].copy_from_slice(&bad_bytes);
+        assert!(parse_namb(&namb).is_err());
+    }
+
+    #[test]
+    fn prop_fuzz_namb_bad_crc(mut namb in valid_namb_strategy(), bit_flip in 0..32usize) {
+        let byte_idx = 24 + (bit_flip / 8);
+        let bit_idx = bit_flip % 8;
+        namb[byte_idx] ^= 1 << bit_idx;
+        assert!(parse_namb(&namb).is_err());
+    }
+
+    #[test]
+    fn prop_fuzz_namb_truncated(namb in valid_namb_strategy(), truncate_idx in any::<usize>()) {
+        let idx = std::cmp::min(truncate_idx, namb.len().saturating_sub(1));
+        let truncated = &namb[0..idx];
+        assert!(parse_namb(truncated).is_err());
+    }
+
+    #[test]
+    fn prop_fuzz_namb_oversized_offset(mut namb in valid_namb_strategy(), offset_add in 1..10000u32) {
+        let new_offset = namb.len() as u32 + offset_add;
+        namb[12..16].copy_from_slice(&new_offset.to_le_bytes());
+        assert!(parse_namb(&namb).is_err());
     }
 }
