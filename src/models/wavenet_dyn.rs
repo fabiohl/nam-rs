@@ -324,14 +324,12 @@ impl WaveNetLayerDyn {
                 }
             }
 
-            self.one_by_one.process_block_strided(
-                block,
-                output,
-                num_frames,
-                2 * self.ch,
-                self.ch,
-                math,
-            );
+            // in_stride depende do layout do block: 2*ch quando gated (slots tanh+sigmoid),
+            // ch quando não-gated (apenas slot tanh). Usar stride errado faz o one_by_one
+            // ler de offsets incorretos, produzindo saída silenciosamente corrompida.
+            let in_stride = if self.gated { 2 * self.ch } else { self.ch };
+            self.one_by_one
+                .process_block_strided(block, output, num_frames, in_stride, self.ch, math);
         }
 
         unsafe {

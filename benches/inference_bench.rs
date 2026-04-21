@@ -442,8 +442,9 @@ fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
 }
 
 criterion_group!(
-    benches,
-    bench_wavenet_standard_process,
+    name = benches;
+    config = Criterion::default().sample_size(50);
+    targets = bench_wavenet_standard_process,
     bench_wavenet_standard_block_sizes,
     bench_lstm_2x16_process,
     bench_lstm_2x16_block_sizes,
@@ -459,6 +460,6 @@ criterion_group!(
     bench_tanh_avx512_256elem,
     bench_sigmoid_avx512_256elem,
     bench_prewarm_wavenet_standard,
-    bench_prewarm_lstm_2x16,
+    bench_prewarm_lstm_2x16
 );
 criterion_main!(benches);
