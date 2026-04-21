@@ -18,8 +18,8 @@ use core::arch::x86_64::*;
 ///
 /// # Erro Máximo vs `f32::tanh()`
 ///
-/// O polinômio Padé de grau 5 + refinamento Newton-Raphson sobre `_mm256_rsqrt_ps`
-/// introduz um erro absoluto máximo de **~5e-3** por ativação em relação a `f32::tanh()`
+/// O polinômio Minimax de grau 7 + refinamento Newton-Raphson sobre `_mm256_rsqrt_ps`
+/// introduz um erro absoluto máximo de **~1.2e-5** por ativação em relação a `f32::tanh()`
 /// (validado pelos testes unitários de `test_simd_fastmath_tanh_mse`).
 ///
 /// Esta divergência é intencional: o custo de um `tanh` escalar via libm (~20–60 ciclos)
@@ -52,22 +52,22 @@ use core::arch::x86_64::*;
 /// O chamador deve assegurar que a máquina host tem as features `avx2` e `fma` ativadas.
 pub unsafe fn simd_tanh(x: __m256) -> __m256 {
     unsafe {
-        // Coeficientes do polinômio Minimax/Pade de grau 5
-        let c0 = _mm256_set1_ps(0.165_326_98_f32);
-        let c1 = _mm256_set1_ps(0.009_702_402_f32);
+        // Coeficientes do polinômio Minimax de grau 7
+        let c0 = _mm256_set1_ps(0.166_814_34_f32);
+        let c1 = _mm256_set1_ps(0.008_153_17_f32);
+        let c2 = _mm256_set1_ps(0.000_246_32_f32);
         let one = _mm256_set1_ps(1.0);
 
         // x_sq = x * x
         let x_sq = _mm256_mul_ps(x, x);
+        let x_sq_sq = _mm256_mul_ps(x_sq, x_sq);
 
-        // y_3_5 = 0.165326984031 + 0.00970240200826 * x_sq
         let y_3_5 = _mm256_fmadd_ps(c1, x_sq, c0);
+        let y_3_5_7 = _mm256_fmadd_ps(c2, x_sq_sq, y_3_5);
+        let y_full = _mm256_fmadd_ps(y_3_5_7, x_sq, one);
 
-        // y_1_3_5 = 1.0 + y_3_5 * x_sq
-        let y_1_3_5 = _mm256_fmadd_ps(y_3_5, x_sq, one);
-
-        // p(x) = x * y_1_3_5
-        let p_x = _mm256_mul_ps(x, y_1_3_5);
+        // p(x) = x * y_full
+        let p_x = _mm256_mul_ps(x, y_full);
 
         // Evaluando rsqrt(p(x)^2 + 1)
         let p_x_sq = _mm256_mul_ps(p_x, p_x);
@@ -128,21 +128,22 @@ pub unsafe fn simd_sigmoid(x: __m256) -> __m256 {
 /// O chamador deve assegurar suporte a `avx512f` e `avx512vl`.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
-    let c0 = _mm512_set1_ps(0.165_326_98_f32);
-    let c1 = _mm512_set1_ps(0.009_702_402_f32);
+    // Coeficientes do polinômio Minimax de grau 7
+    let c0 = _mm512_set1_ps(0.166_814_34_f32);
+    let c1 = _mm512_set1_ps(0.008_153_17_f32);
+    let c2 = _mm512_set1_ps(0.000_246_32_f32);
     let one = _mm512_set1_ps(1.0);
 
     // x_sq = x * x
     let x_sq = _mm512_mul_ps(x, x);
+    let x_sq_sq = _mm512_mul_ps(x_sq, x_sq);
 
-    // y_3_5 = 0.165326984031 + 0.00970240200826 * x_sq
     let y_3_5 = _mm512_fmadd_ps(c1, x_sq, c0);
+    let y_3_5_7 = _mm512_fmadd_ps(c2, x_sq_sq, y_3_5);
+    let y_full = _mm512_fmadd_ps(y_3_5_7, x_sq, one);
 
-    // y_1_3_5 = 1.0 + y_3_5 * x_sq
-    let y_1_3_5 = _mm512_fmadd_ps(y_3_5, x_sq, one);
-
-    // p(x) = x * y_1_3_5
-    let p_x = _mm512_mul_ps(x, y_1_3_5);
+    // p(x) = x * y_full
+    let p_x = _mm512_mul_ps(x, y_full);
 
     // Evaluando rsqrt(p(x)^2 + 1)
     let p_x_sq = _mm512_mul_ps(p_x, p_x);
@@ -301,7 +302,7 @@ mod tests {
 
             // Tolerância estrita (threshold) ajustada para polinomios < 5 na base original
             assert!(
-                error < 5e-3,
+                error < 1e-4,
                 "Falha matemática MS/E. Entrada: {}. Esperado: {}, Obtido: {}, Delta (Erro): {}",
                 input[i],
                 expected,
@@ -328,7 +329,7 @@ mod tests {
             let error = (expected - actual).abs();
 
             assert!(
-                error < 5e-3,
+                error < 1e-4,
                 "Falha ao validar FastMath Sigmoid em {}. Esperado: {}, Obtido: {}, Delta (Erro): {}",
                 input[i],
                 expected,
@@ -357,7 +358,7 @@ mod tests {
                 let error = (expected - actual).abs();
 
                 assert!(
-                    error < 5e-3,
+                    error < 1e-4,
                     "Falha matemática MS/E AVX-512. Entrada: {}. Esperado: {}, Obtido: {}, Delta (Erro): {}",
                     input[i],
                     expected,
@@ -389,7 +390,7 @@ mod tests {
                 let error = (expected - actual).abs();
 
                 assert!(
-                    error < 5e-3,
+                    error < 1e-4,
                     "Falha ao validar FastMath Sigmoid AVX-512 em {}. Esperado: {}, Obtido: {}, Delta: {}",
                     input[i],
                     expected,

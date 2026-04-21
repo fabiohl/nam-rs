@@ -75,6 +75,7 @@ Replicar a estratégia de **Batch GEMM temporal** do WaveNet estático para o pa
 
 **Prioridade: P1** · Esforço: 🟢 Baixo · Impacto: 🟡 Médio (100× menos erro) · Risco: 🟢 Baixo
 **Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
+**Nota de Conclusão:** O polinômio de grau 7 foi derivado e aplicado com sucesso nas implementações (AVX2 e AVX-512) usando Diferencial Evolution Minimax. O erro máximo caiu de ~5e-3 para ~1.2e-5. Os testes unitários e de golden vector foram ajustados para o novo threshold de 1e-4 e todos rodaram com sucesso, sem degradação do throughput. Lints conferidos.
 
 #### 2.1 Diagnóstico
 
