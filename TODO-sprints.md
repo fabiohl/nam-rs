@@ -211,7 +211,7 @@ Esta proposta complementa a Proposta 4 (FMA Multi-Channel): se combinadas, os ga
 
 **Prioridade: P2** · Esforço: 🟡 Médio · Impacto: 🟡 Médio (~75% menos loads) · Risco: 🟡 Médio
 **Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
-**Nota de Conclusão:** O `dot_product_4x` agora é utilizado internamente no pipeline otimizado do `WaveNetLayer`, em paralelo para canais de saída. O laço acumula até 4 elementos SIMD independentes (R0, R1, R2, R3). A validação por Golden Vectors provou rigor matemático inalterado e testes proptest também fluíram.
+**Nota de Conclusão:** O `dot_product_4x` agora é utilizado internamente no pipeline otimizado do `WaveNetLayer` (path estático) e `WaveNetLayerDyn` (path dinâmico), em paralelo para canais de saída. O laço acumula até 4 elementos SIMD independentes (R0, R1, R2, R3). A validação por Golden Vectors provou rigor matemático inalterado e testes proptest também fluíram.
 
 #### 4.1 Diagnóstico
 

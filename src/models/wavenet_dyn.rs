@@ -55,7 +55,103 @@ impl Conv1dDyn {
         num_frames: usize,
         math: &SimdMathConfig,
     ) {
-        for out_c in 0..self.out_ch {
+        let mut out_c_base = 0;
+        while out_c_base + 4 <= self.out_ch {
+            for k in 0..self.kernel {
+                if k + 1 < self.kernel {
+                    let next_offset =
+                        (self.dilation as isize) * ((k as isize) + 2 - (self.kernel as isize));
+                    let next_frame_idx = (buffer_start as isize) + next_offset;
+                    let next_addr = unsafe {
+                        layer_buffer
+                            .as_ptr()
+                            .add((next_frame_idx as usize) * self.in_ch)
+                    };
+                    unsafe {
+                        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
+                            next_addr.cast::<i8>(),
+                        );
+                    }
+                }
+
+                let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
+                let base_frame_idx = (buffer_start as isize) + offset;
+
+                let w_start0 = ((out_c_base) * self.kernel + k) * self.in_ch;
+                let w_start1 = ((out_c_base + 1) * self.kernel + k) * self.in_ch;
+                let w_start2 = ((out_c_base + 2) * self.kernel + k) * self.in_ch;
+                let w_start3 = ((out_c_base + 3) * self.kernel + k) * self.in_ch;
+
+                let w0 = unsafe { self.weights.get_unchecked(w_start0..w_start0 + self.in_ch) };
+                let w1 = unsafe { self.weights.get_unchecked(w_start1..w_start1 + self.in_ch) };
+                let w2 = unsafe { self.weights.get_unchecked(w_start2..w_start2 + self.in_ch) };
+                let w3 = unsafe { self.weights.get_unchecked(w_start3..w_start3 + self.in_ch) };
+
+                if k == 0 {
+                    let bias0 = if self.do_bias {
+                        self.bias[out_c_base]
+                    } else {
+                        0.0
+                    };
+                    let bias1 = if self.do_bias {
+                        self.bias[out_c_base + 1]
+                    } else {
+                        0.0
+                    };
+                    let bias2 = if self.do_bias {
+                        self.bias[out_c_base + 2]
+                    } else {
+                        0.0
+                    };
+                    let bias3 = if self.do_bias {
+                        self.bias[out_c_base + 3]
+                    } else {
+                        0.0
+                    };
+
+                    for i in 0..num_frames {
+                        let frame_idx = base_frame_idx + (i as isize);
+                        let in_slice_start = (frame_idx as usize) * self.in_ch;
+                        let in_slice = unsafe {
+                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
+                        };
+
+                        let [r0, r1, r2, r3] =
+                            unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_slice) };
+
+                        unsafe {
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base) = bias0 + r0;
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 1) = bias1 + r1;
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 2) = bias2 + r2;
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 3) = bias3 + r3;
+                        }
+                    }
+                } else {
+                    for i in 0..num_frames {
+                        let frame_idx = base_frame_idx + (i as isize);
+                        let in_slice_start = (frame_idx as usize) * self.in_ch;
+                        let in_slice = unsafe {
+                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
+                        };
+
+                        let [r0, r1, r2, r3] =
+                            unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_slice) };
+
+                        unsafe {
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base) += r0;
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 1) += r1;
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 2) += r2;
+                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 3) += r3;
+                        }
+                    }
+                }
+            }
+            out_c_base += 4;
+        }
+
+        // Tail process (remainder)
+        while out_c_base < self.out_ch {
+            let out_c = out_c_base;
             for k in 0..self.kernel {
                 if k + 1 < self.kernel {
                     let next_offset =
@@ -108,6 +204,7 @@ impl Conv1dDyn {
                     }
                 }
             }
+            out_c_base += 1;
         }
     }
 }
@@ -139,7 +236,68 @@ impl DenseLayerDyn {
         num_frames: usize,
         math: &SimdMathConfig,
     ) {
-        for out_c in 0..self.out_size {
+        let mut out_c_base = 0;
+        while out_c_base + 4 <= self.out_size {
+            let w_start0 = (out_c_base) * self.in_size;
+            let w_start1 = (out_c_base + 1) * self.in_size;
+            let w_start2 = (out_c_base + 2) * self.in_size;
+            let w_start3 = (out_c_base + 3) * self.in_size;
+
+            let w0 = unsafe {
+                self.weights
+                    .get_unchecked(w_start0..w_start0 + self.in_size)
+            };
+            let w1 = unsafe {
+                self.weights
+                    .get_unchecked(w_start1..w_start1 + self.in_size)
+            };
+            let w2 = unsafe {
+                self.weights
+                    .get_unchecked(w_start2..w_start2 + self.in_size)
+            };
+            let w3 = unsafe {
+                self.weights
+                    .get_unchecked(w_start3..w_start3 + self.in_size)
+            };
+
+            let bias0 = if self.do_bias {
+                self.bias[out_c_base]
+            } else {
+                0.0
+            };
+            let bias1 = if self.do_bias {
+                self.bias[out_c_base + 1]
+            } else {
+                0.0
+            };
+            let bias2 = if self.do_bias {
+                self.bias[out_c_base + 2]
+            } else {
+                0.0
+            };
+            let bias3 = if self.do_bias {
+                self.bias[out_c_base + 3]
+            } else {
+                0.0
+            };
+
+            for i in 0..num_frames {
+                let in_frame = unsafe {
+                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
+                };
+                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                unsafe {
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base) += r0 + bias0;
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 1) += r1 + bias1;
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 2) += r2 + bias2;
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 3) += r3 + bias3;
+                }
+            }
+            out_c_base += 4;
+        }
+
+        while out_c_base < self.out_size {
+            let out_c = out_c_base;
             let weight_slice =
                 &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
             let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -152,6 +310,7 @@ impl DenseLayerDyn {
                     *output.get_unchecked_mut(i * self.out_size + out_c) += sum + bias;
                 }
             }
+            out_c_base += 1;
         }
     }
 
@@ -168,7 +327,67 @@ impl DenseLayerDyn {
         out_stride: usize,
         math: &SimdMathConfig,
     ) {
-        for out_c in 0..self.out_size {
+        let mut out_c_base = 0;
+        while out_c_base + 4 <= self.out_size {
+            let w_start0 = (out_c_base) * self.in_size;
+            let w_start1 = (out_c_base + 1) * self.in_size;
+            let w_start2 = (out_c_base + 2) * self.in_size;
+            let w_start3 = (out_c_base + 3) * self.in_size;
+
+            let w0 = unsafe {
+                self.weights
+                    .get_unchecked(w_start0..w_start0 + self.in_size)
+            };
+            let w1 = unsafe {
+                self.weights
+                    .get_unchecked(w_start1..w_start1 + self.in_size)
+            };
+            let w2 = unsafe {
+                self.weights
+                    .get_unchecked(w_start2..w_start2 + self.in_size)
+            };
+            let w3 = unsafe {
+                self.weights
+                    .get_unchecked(w_start3..w_start3 + self.in_size)
+            };
+
+            let bias0 = if self.do_bias {
+                self.bias[out_c_base]
+            } else {
+                0.0
+            };
+            let bias1 = if self.do_bias {
+                self.bias[out_c_base + 1]
+            } else {
+                0.0
+            };
+            let bias2 = if self.do_bias {
+                self.bias[out_c_base + 2]
+            } else {
+                0.0
+            };
+            let bias3 = if self.do_bias {
+                self.bias[out_c_base + 3]
+            } else {
+                0.0
+            };
+
+            for i in 0..num_frames {
+                let in_frame =
+                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                unsafe {
+                    *output.get_unchecked_mut(i * out_stride + out_c_base) += r0 + bias0;
+                    *output.get_unchecked_mut(i * out_stride + out_c_base + 1) += r1 + bias1;
+                    *output.get_unchecked_mut(i * out_stride + out_c_base + 2) += r2 + bias2;
+                    *output.get_unchecked_mut(i * out_stride + out_c_base + 3) += r3 + bias3;
+                }
+            }
+            out_c_base += 4;
+        }
+
+        while out_c_base < self.out_size {
+            let out_c = out_c_base;
             let weight_slice =
                 &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
             let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -180,6 +399,7 @@ impl DenseLayerDyn {
                     *output.get_unchecked_mut(i * out_stride + out_c) += sum + bias;
                 }
             }
+            out_c_base += 1;
         }
     }
 
@@ -195,7 +415,67 @@ impl DenseLayerDyn {
         out_stride: usize,
         math: &SimdMathConfig,
     ) {
-        for out_c in 0..self.out_size {
+        let mut out_c_base = 0;
+        while out_c_base + 4 <= self.out_size {
+            let w_start0 = (out_c_base) * self.in_size;
+            let w_start1 = (out_c_base + 1) * self.in_size;
+            let w_start2 = (out_c_base + 2) * self.in_size;
+            let w_start3 = (out_c_base + 3) * self.in_size;
+
+            let w0 = unsafe {
+                self.weights
+                    .get_unchecked(w_start0..w_start0 + self.in_size)
+            };
+            let w1 = unsafe {
+                self.weights
+                    .get_unchecked(w_start1..w_start1 + self.in_size)
+            };
+            let w2 = unsafe {
+                self.weights
+                    .get_unchecked(w_start2..w_start2 + self.in_size)
+            };
+            let w3 = unsafe {
+                self.weights
+                    .get_unchecked(w_start3..w_start3 + self.in_size)
+            };
+
+            let bias0 = if self.do_bias {
+                self.bias[out_c_base]
+            } else {
+                0.0
+            };
+            let bias1 = if self.do_bias {
+                self.bias[out_c_base + 1]
+            } else {
+                0.0
+            };
+            let bias2 = if self.do_bias {
+                self.bias[out_c_base + 2]
+            } else {
+                0.0
+            };
+            let bias3 = if self.do_bias {
+                self.bias[out_c_base + 3]
+            } else {
+                0.0
+            };
+
+            for i in 0..num_frames {
+                let in_frame =
+                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                unsafe {
+                    *output.get_unchecked_mut(i * out_stride + out_c_base) = r0 + bias0;
+                    *output.get_unchecked_mut(i * out_stride + out_c_base + 1) = r1 + bias1;
+                    *output.get_unchecked_mut(i * out_stride + out_c_base + 2) = r2 + bias2;
+                    *output.get_unchecked_mut(i * out_stride + out_c_base + 3) = r3 + bias3;
+                }
+            }
+            out_c_base += 4;
+        }
+
+        while out_c_base < self.out_size {
+            let out_c = out_c_base;
             let weight_slice =
                 &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
             let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -207,6 +487,7 @@ impl DenseLayerDyn {
                     *output.get_unchecked_mut(i * out_stride + out_c) = sum + bias;
                 }
             }
+            out_c_base += 1;
         }
     }
 
@@ -220,7 +501,68 @@ impl DenseLayerDyn {
         num_frames: usize,
         math: &SimdMathConfig,
     ) {
-        for out_c in 0..self.out_size {
+        let mut out_c_base = 0;
+        while out_c_base + 4 <= self.out_size {
+            let w_start0 = (out_c_base) * self.in_size;
+            let w_start1 = (out_c_base + 1) * self.in_size;
+            let w_start2 = (out_c_base + 2) * self.in_size;
+            let w_start3 = (out_c_base + 3) * self.in_size;
+
+            let w0 = unsafe {
+                self.weights
+                    .get_unchecked(w_start0..w_start0 + self.in_size)
+            };
+            let w1 = unsafe {
+                self.weights
+                    .get_unchecked(w_start1..w_start1 + self.in_size)
+            };
+            let w2 = unsafe {
+                self.weights
+                    .get_unchecked(w_start2..w_start2 + self.in_size)
+            };
+            let w3 = unsafe {
+                self.weights
+                    .get_unchecked(w_start3..w_start3 + self.in_size)
+            };
+
+            let bias0 = if self.do_bias {
+                self.bias[out_c_base]
+            } else {
+                0.0
+            };
+            let bias1 = if self.do_bias {
+                self.bias[out_c_base + 1]
+            } else {
+                0.0
+            };
+            let bias2 = if self.do_bias {
+                self.bias[out_c_base + 2]
+            } else {
+                0.0
+            };
+            let bias3 = if self.do_bias {
+                self.bias[out_c_base + 3]
+            } else {
+                0.0
+            };
+
+            for i in 0..num_frames {
+                let in_frame = unsafe {
+                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
+                };
+                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                unsafe {
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base) = r0 + bias0;
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 1) = r1 + bias1;
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 2) = r2 + bias2;
+                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 3) = r3 + bias3;
+                }
+            }
+            out_c_base += 4;
+        }
+
+        while out_c_base < self.out_size {
+            let out_c = out_c_base;
             let weight_slice =
                 &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
             let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -233,6 +575,7 @@ impl DenseLayerDyn {
                     *output.get_unchecked_mut(i * self.out_size + out_c) = sum + bias;
                 }
             }
+            out_c_base += 1;
         }
     }
 }
