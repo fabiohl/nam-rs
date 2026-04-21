@@ -173,7 +173,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 - Todos os block sizes processam sem panic e com saídas finitas.
 - Block_size=1 (sample-by-sample) **deve** funcionar — este é o caso extremo que expõe bugs de indexação.
 
-### Tarefa 6.2 — Exercitar Modelos Comunitários de `tests/nam_files/`
+### Tarefa 6.2 — Exercitar Modelos Comunitários de `tests/nam_files/` [Concluído]
 
 **Entregável:** Novo teste parametrizado em `tests/nam_infer_test.rs`.
 

@@ -1892,3 +1892,80 @@ fn test_wavenet_dynamic_variable_block_sizes() {
         }
     }
 }
+
+// =============================================================================
+// Testes com Modelos Comunitários (Tarefa 6.2)
+// =============================================================================
+
+/// Tarefa 6.2 — Exercita Modelos Comunitários de `tests/nam_files/`
+#[test]
+fn test_community_models_inference() {
+    let models = [
+        (
+            "ChandlerRedd47-Gain34-Standard.nam",
+            Some(NamWavenetTopology::Standard),
+        ),
+        ("EVH-5150-Lite.nam", Some(NamWavenetTopology::Lite)),
+        ("NEVE1073-Standard.nam", Some(NamWavenetTopology::Standard)),
+        (
+            "UA610B-Gain+10-Standard.nam",
+            Some(NamWavenetTopology::Standard),
+        ),
+        (
+            "little-bear-t7_phono-aux-tube-preamp_line-in_Standard.nam",
+            Some(NamWavenetTopology::Standard),
+        ),
+    ];
+
+    let input = generate_sine_440hz(64);
+
+    for (filename, expected_topo) in models {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("tests/nam_files");
+        path.push(filename);
+
+        if !path.exists() {
+            panic!("Modelo comunitário não encontrado: {:?}", path);
+        }
+
+        // 1. parse_nam_json() -> sucesso
+        let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
+        let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+        // Verifica topologia detectada
+        let topo = get_wavenet_topology(&model_data);
+        assert_eq!(
+            topo, expected_topo,
+            "Topologia incorreta para o modelo {}",
+            filename
+        );
+
+        // 2. build_model() -> sucesso
+        let mut model = build_model(&model_data).expect("Falha ao construir modelo comunitário");
+
+        // 3. prewarm(2048)
+        model.0.prewarm(2048);
+
+        // 4. process() com 64 amostras
+        let mut output = vec![0.0f32; 64];
+        model.0.process(&input, &mut output);
+
+        // 5. Verificar finitude e magnitude < 100.0 em todas as saídas
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                s.is_finite(),
+                "Modelo {} retornou sample não finita no índice {}",
+                filename,
+                i
+            );
+            assert!(
+                s.abs() < 100.0,
+                "Modelo {} gerou magnitude >= 100.0 no índice {}: {}",
+                filename,
+                i,
+                s
+            );
+        }
+        println!("Modelo comunitário {} OK.", filename);
+    }
+}
