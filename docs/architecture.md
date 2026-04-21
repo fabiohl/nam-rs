@@ -138,15 +138,16 @@ Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no fina
 >
 > Os testes estruturais recentes (ex: rejeição JSON malformado e gain staging roundtrip) consolidam o hardening da base para uso em cenários empacotados em releases mais maduros.
 
-### 6.2. Testes de Integração (`tests/`) — 21 testes
+### 6.2. Testes de Integração (`tests/`) — 33 testes
 
-O diretório `tests/` contém três arquivos de teste que consomem a API pública `nam_rs::*` como um usuário externo:
+O diretório `tests/` contém cinco arquivos de teste que consomem a API pública `nam_rs::*` como um usuário externo:
 
-- **`nam_infer_test.rs`** (18 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors, SPSC E2E.
+- **`nam_infer_test.rs`** (21 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors, SPSC E2E, verificação zero-allocation.
+- **`proptest_parsers.rs`** (9 testes) — fuzz testing via `proptest` (5000 cases cada) para `parse_nam_json()` e `parse_namb()`: bytes arbitrários, JSON semi-válido, truncamento, weight overflow, magic corrompido, CRC inválido, buffer truncado, offsets fora de limites. Nenhum panic em ~45.000 inputs adversários.
 - **`proptest_math.rs`** (2 testes) — validação estocástica via `proptest`: `prop_simd_tanh_avx2_rmse` e `prop_simd_sigmoid_avx2_rmse` verificam que FastMath AVX2 mantém RMSE < threshold contra `std::f32` em domínios aleatórios.
 - **`pw_integration_test.rs`** (1 teste) — `test_pipewire_headless_integration`: validação headless do PipeWire (init/connect/shutdown) sem hardware de áudio.
 
-Os 18 testes de `nam_infer_test.rs` cobrem **11 categorias** distintas:
+Os 21 testes de `nam_infer_test.rs` cobrem **13 categorias** distintas:
 
 #### Parsing e Topologia (1 teste)
 
@@ -202,6 +203,12 @@ Os 18 testes de `nam_infer_test.rs` cobrem **11 categorias** distintas:
 
 - **`test_rapid_hot_swap_spsc`** — Carrega 3 modelos diferentes (WaveNet Standard, LSTM 1×16, WaveNet Feather), envia sequencialmente pela fila SPSC, drena e processa cada um verificando finitude, magnitude razoável e descarte correto do modelo anterior (ownership transfer `Box<DynamicModel>`).
 
+#### Verificação Zero-Allocation no Hot Path (3 testes — Sprint 5)
+
+- **`test_zero_alloc_process_wavenet`** — Counting Allocator (`#[global_allocator]` condicional `#[cfg(test)]`) prova que `WaveNetModel::process()` estático completa com 0 alocações heap.
+- **`test_zero_alloc_process_lstm`** — Idem para `LstmModel::process()` estático (1×16).
+- **`test_zero_alloc_process_wavenet_dynamic`** — Idem para WaveNet dinâmico (Feather). Documenta exceção conhecida se o path dinâmico alocar (uso de `Vec` interno).
+
 ### 6.3. Benchmarks `criterion` (`cargo bench`) — 6 benchmarks
 
 O arquivo `benches/inference_bench.rs` mede a latência de processamento com o framework `criterion` (harness=false). O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
@@ -215,7 +222,7 @@ O arquivo `benches/inference_bench.rs` mede a latência de processamento com o f
 | `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback dinâmico) | Mede overhead do path sem const generics     |
 | `LSTM_Dynamic_1x16_64samp_48kHz`        | Inferência LSTM Dynamic 1×16 (fallback)        | Mede overhead do path sem const generics     |
 
-> **Nota:** Durante `cargo bench`, os 76 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
+> **Nota:** Durante `cargo bench`, os 83 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado.
 
 Execução: `cargo bench --bench inference_bench`
 
@@ -253,11 +260,48 @@ tests/fixtures/
 └── README.md
 ```
 
-### 6.6. Convenções e Guardas
+### 6.6. Counting Allocator para Verificação Zero-Allocation (Sprint 5)
+
+O test binary (`cargo test --test nam_infer_test`) inclui um **Counting Allocator** condicional (`#[cfg(test)] #[global_allocator]`) que intercepta todas as chamadas `malloc` durante intervalos de medição. O allocator é thread-aware via `SYS_gettid` no Linux, garantindo que apenas alocações da thread sob teste são contabilizadas.
+
+**Componentes:**
+
+- `CountingAllocator` — wrapper sobre `System` allocator que incrementa `AtomicUsize` quando `TRACKING_ENABLED` está ativo.
+- `TrackingGuard` — RAII guard que ativa o tracking no `new()` e desativa automaticamente no `drop()`, garantindo cleanup mesmo em panics.
+- `TRACKING_THREAD` — `AtomicI32` com o TID da thread atual, isolando a contagem de alocações de outras threads do test harness.
+
+**Impacto:** Zero no binário de produção (`nam-rs`). O `#[global_allocator]` existe **apenas** no test binary. O binário release compila sem o counting allocator.
+
+> **Código-fonte:** `tests/nam_infer_test.rs` — seção "Counting Allocator para Verificação Zero-Allocation" (linhas 40–96).
+
+### 6.7. Fuzz Testing via Proptest (Sprint 5)
+
+O arquivo `tests/proptest_parsers.rs` exercita os parsers de entrada com **~45.000 inputs adversários** (9 testes × 5.000 cases cada), garantindo que `parse_nam_json()` e `parse_namb()` **nunca** façam panic em dados malformados.
+
+**Estratégias de fuzzing para `parse_nam_json()`:**
+
+- Bytes arbitrários (0–4096 bytes) convertidos lossy para string.
+- JSON semi-válido com campos `architecture`/`config`/`weights` randomizados.
+- JSON válido de modelo real truncado em posição aleatória.
+- Pesos contendo `f32::MAX`, `f32::INFINITY`, `f32::NAN`, `f32::MIN_POSITIVE`.
+
+**Estratégias de fuzzing para `parse_namb()`:**
+
+- Bytes arbitrários (0–8192 bytes).
+- NAMB válido com magic number corrompido.
+- NAMB válido com CRC32 alterada em 1 bit.
+- NAMB válido truncado em posição aleatória.
+- NAMB com `weights_offset` apontando além do buffer.
+
+**Auditoria de `unwrap()`:** Os parsers `parse_nam_json()` e `parse_namb()` contêm **zero** chamadas `unwrap()` ou `expect()` em dados de input externo — todo acesso usa `?` operator ou `.ok_or_else(|| anyhow!(...))`, garantindo retorno gracioso de `Err` sem panic.
+
+> **Código-fonte:** `tests/proptest_parsers.rs`.
+
+### 6.8. Convenções e Guardas
 
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara todas as camadas (104 verificações). `cargo test --lib` executa apenas os 83 unitários inline; `cargo test --test nam_infer_test` os 18 de inferência; `cargo test --test proptest_math` os 2 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
+- **Comando de execução:** `cargo test` dispara todas as camadas (116 verificações). `cargo test --lib` executa apenas os 83 unitários inline; `cargo test --test nam_infer_test` os 21 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 2 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 
 ## 7. Referências
 

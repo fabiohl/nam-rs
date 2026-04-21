@@ -20,6 +20,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. Criar `tests/proptest_parsers.rs` com:
+
    - **`prop_fuzz_nam_json_arbitrary_bytes`** — Gera `Vec<u8>` aleatórios (0..4096 bytes), converte para `String` (lossy), alimenta `parse_nam_json()`. Verifica que **nunca** ocorre panic — apenas `Ok` ou `Err`.
    - **`prop_fuzz_nam_json_near_valid`** — Gera JSON semi-válido com campos `architecture`, `config`, `weights` presentes mas com valores aleatórios (strings, números, arrays de tamanhos variáveis). Valida que erros são retornados graciosamente.
    - **`prop_fuzz_nam_json_truncated`** — Pega um JSON válido de modelo `.nam` (fixture), trunca em posição aleatória (0..len), e alimenta `parse_nam_json()`. Deve retornar `Err` sem panic.
@@ -39,6 +40,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. Adicionar ao mesmo arquivo:
+
    - **`prop_fuzz_namb_arbitrary_bytes`** — `Vec<u8>` aleatórios (0..8192 bytes), alimenta `parse_namb()`. Verifica que nunca ocorre panic.
    - **`prop_fuzz_namb_bad_magic`** — Header com magic number corrompido mas restante válido. Deve retornar `Err`.
    - **`prop_fuzz_namb_bad_crc`** — NAMB válido mas CRC32 alterada em 1 bit. Deve falhar na verificação de integridade.
@@ -67,10 +69,10 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
    // Ativo apenas quando #[cfg(test)]
    use std::alloc::{GlobalAlloc, Layout, System};
    use std::sync::atomic::{AtomicUsize, Ordering};
-
+   
    static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
    static TRACKING_ENABLED: AtomicBool = AtomicBool::new(false);
-
+   
    struct CountingAllocator;
    unsafe impl GlobalAlloc for CountingAllocator {
        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -83,13 +85,14 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
            unsafe { System.dealloc(ptr, layout) }
        }
    }
-
+   
    #[cfg(test)]
    #[global_allocator]
    static GLOBAL: CountingAllocator = CountingAllocator;
    ```
 
 2. Teste `test_zero_alloc_process`:
+
    - Carrega modelo real (`BossWN-standard.nam`), faz prewarm.
    - Reseta `ALLOC_COUNT` para 0, ativa tracking.
    - Roda `model.process()` com 64 amostras de seno 440Hz.
@@ -119,6 +122,19 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 - Os fuzz tests da 5.1/5.2 passam sem panic em 5000 cases.
 
+> **📋 Nota de Auditoria Sprint 5 (2026-04-21):**
+>
+> Todas as 4 tarefas foram auditadas e aprovadas. Verificações realizadas:
+>
+> - **Tarefa 5.1:** `tests/proptest_parsers.rs` implementa 4 testes fuzz para `parse_nam_json()` com `ProptestConfig::with_cases(5_000)` cada. Todas as estratégias exigidas estão presentes (arbitrary bytes, near-valid, truncated, weight overflow). ✅
+> - **Tarefa 5.2:** `tests/proptest_parsers.rs` implementa 5 testes fuzz para `parse_namb()` com `ProptestConfig::with_cases(5_000)` cada. Todas as estratégias exigidas estão presentes (arbitrary bytes, bad magic, bad CRC, truncated, oversized offset). Usa `valid_namb_strategy()` via `prop_compose!` para gerar NAMB estruturalmente válido. ✅
+> - **Tarefa 5.3:** `tests/nam_infer_test.rs` implementa `CountingAllocator` com `#[cfg(test)] #[global_allocator]`, `TrackingGuard` RAII, e isolamento por `SYS_gettid`. 3 testes zero-alloc: WaveNet estático (0 allocs), LSTM estático (0 allocs), WaveNet dinâmico (documenta exceção). ✅
+> - **Tarefa 5.4:** `grep` confirma **zero** ocorrências de `unwrap()` ou `expect()` em `src/loader/nam_json.rs` e `src/loader/namb.rs`. ✅
+>
+> **Contagens verificadas:** 83 testes unitários + 21 integração + 9 fuzz parsers + 2 proptest math + 1 PipeWire = **116 testes** passando. `utils/lints.sh` e `cargo bench` limpos.
+>
+> **Documentação sincronizada:** `docs/architecture.md` §6.2/§6.6/§6.7/§6.8 e `README.md` atualizados com contagens, proptest_parsers, counting allocator e fuzz testing.
+
 ---
 
 ## Sprint 6 — Cobertura de Block Sizes e Modelos Comunitários
@@ -134,6 +150,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. Teste `test_wavenet_variable_block_sizes`:
+
    - Carrega `BossWN-standard.nam`, faz prewarm(2048).
    - Para cada `block_size ∈ {1, 16, 32, 64, 128, 256, 512}`:
      - Gera 512 amostras de senoidal 440Hz.
@@ -143,10 +160,12 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
    - Opcionalmente: verifica que outputs com block_size=64 vs block_size=1 são **idênticos** (propriedade obrigatória — o modelo é state-stationary para block boundaries arbitrárias).
 
 2. Teste `test_lstm_variable_block_sizes`:
+
    - Mesmo procedimento com `BossLSTM-1x16.nam`.
    - Block sizes: `{1, 16, 32, 64, 128, 256, 512}`.
 
 3. Teste `test_wavenet_dynamic_variable_block_sizes`:
+
    - Mesmo com path dinâmico (`build_wavenet_dynamic()`).
 
 **Critério de aceite:**
@@ -161,6 +180,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. Teste `test_community_models_inference`:
+
    - Lista estática dos 5 modelos em `tests/nam_files/`:
      - `ChandlerRedd47-Gain34-Standard.nam`
      - `EVH-5150-Lite.nam`
@@ -176,6 +196,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
    - Incluir no `cargo test` principal (sem `#[ignore]`).
 
 2. Verificar que topologias são detectadas corretamente:
+
    - `ChandlerRedd47` e `NEVE1073` são Standard (CH=16).
    - `EVH-5150` é Lite (CH=12).
    - Assertar `get_wavenet_topology()` para cada um.
@@ -192,12 +213,14 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. Teste `test_reject_keras_legacy_format`:
+
    - Carrega `tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json`.
    - Alimenta `parse_nam_json()`.
    - Verifica que retorna `Err` (formato Keras Legacy não suportado).
    - Se `parse_nam_json()` retornar `Ok`, verificar que `build_model()` retorna `Err` (rejeição no dispatcher por topologia desconhecida ou `architecture` não reconhecida).
 
 2. Teste `test_reject_activation_non_tanh`:
+
    - Construir JSON sintético com `"activation": "ReLU"` (não Tanh).
    - Verificar que `build_model()` retorna `Err` com mensagem sobre ativação não suportada.
 
@@ -220,22 +243,27 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. `test_conv1d_identity_kernel`:
+
    - Cria `Conv1d` com kernel_size=1, CH=4, pesos = identidade (1.0 na diagonal).
    - Input = `[1.0, 2.0, 3.0, 4.0]`, verifica output = input.
 
 2. `test_conv1d_with_bias`:
+
    - `Conv1d` com `do_bias=true`, bias = `[0.5; CH]`.
    - Verifica que output = conv(input) + 0.5 para cada canal.
 
 3. `test_conv1d_dilation`:
+
    - Dilation=2, kernel_size=3, CH=2.
    - Verifica que os taps acessam posições `[t, t-2, t-4]` no buffer (não `[t, t-1, t-2]`).
    - Alimenta sequência crescente, verifica resultado contra cálculo manual.
 
 4. `test_conv1d_zero_input`:
+
    - Input de zeros, pesos arbitrários → output deve ser zero (sem bias) ou bias puro.
 
 5. `test_conv1d_known_output`:
+
    - Pesos manuais e input manuais com output calculado à mão.
 
 ### Tarefa 7.2 — Testes Unitários Isolados para DenseLayer
@@ -243,12 +271,15 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Entregável:** Novos testes em `src/models/wavenet.rs` → `#[cfg(test)] mod tests`.
 
 1. `test_dense_layer_identity`:
+
    - DenseLayer(IN=4, OUT=4) com pesos = identidade. Output = input.
 
 2. `test_dense_layer_with_bias`:
+
    - `do_bias=true`, bias = [1.0; OUT]. Verifica acréscimo constante.
 
 3. `test_dense_layer_rectangular`:
+
    - IN=8, OUT=4. Pesos conhecidos, output verificado manualmente.
 
 ### Tarefa 7.3 — Testes LSTM Granulares
@@ -256,14 +287,17 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Entregável:** Novos testes em `src/models/lstm.rs` → `#[cfg(test)] mod tests`.
 
 1. `test_lstm_state_evolution`:
+
    - Alimenta step function (0→1) e verifica que hidden/cell states evoluem progressivamente.
    - Compara hidden state após 1 step vs 10 steps — devem ser diferentes.
 
 2. `test_lstm_variable_block_sizes`:
+
    - Processa 64 amostras em {1, 8, 16, 32, 64} block sizes.
    - Verifica que output final é **idêntico** (state carryover correto entre blocos).
 
 3. `test_lstm_reset_on_prewarm`:
+
    - Verifica que `prewarm()` zera os hidden/cell states antes de reprocessar.
 
 ### Tarefa 7.4 — Proptest para `dot_product_avx2` e `dot_product_avx512`
@@ -273,11 +307,13 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. `prop_dot_product_avx2_vs_scalar`:
+
    - Gera dois vetores `Vec<f32>` de comprimento aleatório (1..512).
    - Computa dot product via SIMD (`dot_product_avx2`) e via escalar (`a.iter().zip(b).map(|(x,y)| x*y).sum()`).
    - Verifica que erro relativo ≤ 1e-5 (acumulação f32 tolerada).
 
 2. `prop_dot_product_avx512_vs_scalar` (com guarda runtime `is_x86_feature_detected!("avx512f")`):
+
    - Mesmo procedimento para AVX-512.
 
 3. Configuração: 5000 cases.
@@ -289,6 +325,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. `test_dsp_bridge_concurrent_access`:
+
    - Cria `DspBridge` via `Box::leak` (como produção).
    - Spawna 2 threads:
      - **Writer** (capture): escreve 1000 buffers de 64 amostras (padrão de contagem crescente) com `fence(Release)`.
@@ -313,10 +350,12 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. `bench_wavenet_standard_block_sizes`:
+
    - WaveNet Standard com buffer sizes: 32, 128, 256.
    - Nome: `WaveNet_Standard_CH16_{N}samp_48kHz`.
 
 2. `bench_lstm_2x16_block_sizes`:
+
    - LSTM 2×16 com buffer sizes: 32, 128, 256.
 
 3. Manter os benchmarks existentes de 64 amostras intactos.
@@ -326,10 +365,12 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Entregável:** Novo benchmark em `benches/inference_bench.rs`.
 
 1. `bench_dot_product_avx2_256`:
+
    - Dois vetores de 256 f32, dot product via SIMD.
    - Nome: `DotProduct_AVX2_256elem`.
 
 2. `bench_dot_product_avx2_64`:
+
    - Dois vetores de 64 f32 (tamanho típico de hidden layer LSTM).
    - Nome: `DotProduct_AVX2_64elem`.
 
@@ -338,14 +379,17 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Entregável:** Novo benchmark em `benches/inference_bench.rs`.
 
 1. `bench_resampler_44100_to_48000`:
+
    - Cria `NamResampler(44100)`, processa 1024 amostras (input → 48k).
    - Nome: `Resampler_44100_to_48k_1024samp`.
 
 2. `bench_resampler_96000_to_48000`:
+
    - Cria `NamResampler(96000)`, processa 1024 amostras (input → 48k).
    - Nome: `Resampler_96000_to_48k_1024samp`.
 
 3. `bench_resampler_48000_bypass`:
+
    - `NamResampler(48000)` em bypass — mede overhead mínimo.
    - Nome: `Resampler_48000_bypass_1024samp`.
 
@@ -354,11 +398,13 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Entregável:** Novos benchmarks em `benches/inference_bench.rs`.
 
 1. `bench_tanh_avx512_256elem`:
+
    - Envolver com `if std::is_x86_feature_detected!("avx512f")`.
    - Se não suportado, SKIP (eprintln + return).
    - Nome: `FastMath_tanh_AVX512_256elem`.
 
 2. `bench_sigmoid_avx512_256elem`:
+
    - Mesmo padrão.
    - Nome: `FastMath_sigmoid_AVX512_256elem`.
 
@@ -369,13 +415,16 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação detalhada:**
 
 1. Modificar `golden_gen.cpp`:
+
    - Adicionar geração para `BossWN-feather.nam` → `golden_wavenet_feather.bin`.
    - Adicionar geração para `BossWN-nano.nam` → `golden_wavenet_nano.bin`.
 
 2. Modificar `golden_gen_build.sh`:
+
    - Incluir os dois novos modelos na pipeline de build.
 
 3. Novos testes em `tests/nam_infer_test.rs`:
+
    - `test_golden_vectors_wavenet_feather`:
      - MSE < 5e-2, SNR ≥ 9 dB (mesmos critérios do Standard — FastMath error similar).
    - `test_golden_vectors_wavenet_nano`:
@@ -412,10 +461,12 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Entregável:** Novo benchmark em `benches/inference_bench.rs`.
 
 1. `bench_prewarm_wavenet_standard`:
+
    - Constrói WaveNet Standard, mede tempo de `prewarm(2048)`.
    - Nome: `Prewarm_WaveNet_Standard_2048samp`.
 
 2. `bench_prewarm_lstm_2x16`:
+
    - Nome: `Prewarm_LSTM_2x16_2048samp`.
 
 ### Tarefa 9.3 — Atualizar `docs/architecture.md` Seção 6
@@ -427,10 +478,10 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Implementação:**
 
 - Atualizar contagens de testes na tabela da §6.1.
-- Adicionar `tests/proptest_parsers.rs` à §6.2.
+- ~~Adicionar `tests/proptest_parsers.rs` à §6.2.~~ *(Já realizado na auditoria Sprint 5)*
 - Atualizar tabela de benchmarks na §6.3.
 - Adicionar golden vectors Feather/Nano à §6.4.
-- Documentar o counting allocator na §6.6.
+- ~~Documentar o counting allocator na §6.6.~~ *(Já realizado na auditoria Sprint 5 — §6.6 e §6.7)*
 
 ### Tarefa 9.4 — Revisão Final e Lint
 
