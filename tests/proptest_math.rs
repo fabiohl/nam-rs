@@ -10,6 +10,7 @@
 //! 2. RMSE limite estrito contra `f32::tanh` original para a camada neural.
 
 use nam_rs::math::fastmath;
+use nam_rs::math::simd::{dot_product_avx2, dot_product_avx512};
 use proptest::prelude::*;
 
 use core::arch::x86_64::{_mm256_loadu_ps, _mm256_storeu_ps};
@@ -28,6 +29,16 @@ prop_compose! {
         h in -10.0f32..10.0f32,
     ) -> [f32; 8] {
         [a, b, c, d, e, f, g, h]
+    }
+
+}
+
+prop_compose! {
+    /// Gera pares de vetores de tamanho idêntico (1 a 512)
+    fn vec_pair_strategy()(len in 1..=512usize)
+                          (a in prop::collection::vec(-10.0f32..10.0f32, len..=len),
+                           b in prop::collection::vec(-10.0f32..10.0f32, len..=len)) -> (Vec<f32>, Vec<f32>) {
+        (a, b)
     }
 }
 
@@ -92,6 +103,48 @@ proptest! {
                     error
                 );
             }
+        }
+    }
+    #[test]
+    fn prop_dot_product_avx2_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
+        if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+            let simd_result = unsafe { dot_product_avx2(&vec_a, &vec_b) };
+
+            // Usamos f64 como "ground truth" porque a acumulação f32 iterativa perde precisão.
+            // O SIMD usa FMA que possui precisão interna maior antes de arredondar.
+            let scalar_result: f64 = vec_a.iter().zip(vec_b.iter()).map(|(&x, &y)| (x as f64) * (y as f64)).sum();
+            let l1_norm: f64 = vec_a.iter().zip(vec_b.iter()).map(|(&x, &y)| ((x as f64) * (y as f64)).abs()).sum();
+
+            let error = (simd_result as f64 - scalar_result).abs();
+            let threshold = 1e-5 * l1_norm.max(1.0); // Erro escalado pelo L1 norm evita falso positivo por cancelamento
+
+            assert!(
+                error <= threshold,
+                "Falha matemática no dot_product_avx2! SIMD: {}, Escalar (f64): {}, Erro: {}",
+                simd_result,
+                scalar_result,
+                error
+            );
+        }
+    }
+
+    #[test]
+    fn prop_dot_product_avx512_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
+        if std::is_x86_feature_detected!("avx512f") {
+            let simd_result = unsafe { dot_product_avx512(&vec_a, &vec_b) };
+
+            let scalar_result: f64 = vec_a.iter().zip(vec_b.iter()).map(|(&x, &y)| (x as f64) * (y as f64)).sum();
+
+            let error = (simd_result as f64 - scalar_result).abs();
+            let threshold = (1e-5 * scalar_result.abs()).max(1e-5); // Tolerância para cancelamento catastrófico
+
+            assert!(
+                error <= threshold,
+                "Falha matemática no dot_product_avx512! SIMD: {}, Escalar (f64): {}, Erro: {}",
+                simd_result,
+                scalar_result,
+                error
+            );
         }
     }
 }

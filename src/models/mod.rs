@@ -79,6 +79,9 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
     }
 
     fn prewarm(&mut self, num_samples: usize) {
+        // Zera os estados internos antes do prewarm (como esperado pelo C++)
+        self.reset_states();
+
         // LSTM requer processamento de `num_samples` amostras zero para estabilizar estados.
         // Ref C++: Prewarm(2048, 64) — processa 2048 amostras com bloco de 64.
         const CHUNK: usize = 512;
@@ -107,6 +110,9 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     }
 
     fn prewarm(&mut self, num_samples: usize) {
+        // Zera os estados internos antes do prewarm
+        self.reset_states();
+
         const CHUNK: usize = 512;
         let zero_in = [0.0f32; CHUNK];
         let mut zero_out = [0.0f32; CHUNK];

@@ -120,6 +120,14 @@ impl LstmDynLayer {
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[self.input_size..]
     }
+
+    /// Zera os estados internos (hidden e cell) da camada.
+    pub fn reset_states(&mut self) {
+        self.state.fill(0.0);
+        self.cell_state.fill(0.0);
+        self.gates.fill(0.0);
+        self.tanh_cs.fill(0.0);
+    }
 }
 
 /// Invólucro Dinâmico LSTM final.
@@ -165,6 +173,8 @@ impl LstmDynModel {
     /// Ref C++: `Prewarm(2048, 64)` — o default de 2048 amostras é propagado
     /// pela trait `NamModel::prewarm(num_samples)` no despacho.
     pub fn prewarm(&mut self, num_samples: usize) {
+        self.reset_states();
+
         const CHUNK: usize = 512;
         let mut zero_out = [0.0f32; CHUNK];
         let zero_in = [0.0f32; CHUNK];
@@ -174,6 +184,13 @@ impl LstmDynModel {
             let n = rem.min(CHUNK);
             self.process(&zero_in[..n], &mut zero_out[..n]);
             rem -= n;
+        }
+    }
+
+    /// Zera os estados internos das camadas LSTM.
+    pub fn reset_states(&mut self) {
+        for layer in self.layers.iter_mut() {
+            layer.reset_states();
         }
     }
 }

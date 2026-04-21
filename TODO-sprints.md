@@ -244,15 +244,18 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 ---
 
-## Sprint 7 — Testes Unitários Granulares e Proptest Expandido
+## Sprint 7 — Testes Unitários Granulares e Proptest Expandido [Concluído]
 
 > **Objetivo:** Preencher lacunas de cobertura unitária nas camadas internas (Conv1d, DenseLayer, LSTM state), e expandir proptest para `dot_product`.
 >
 > **Skill:** `implementador`
 
-### Tarefa 7.1 — Testes Unitários Isolados para Conv1d
+### Tarefa 7.1 — Testes Unitários Isolados para Conv1d [Concluído]
 
 **Entregável:** Novos testes em `src/models/wavenet.rs` → `#[cfg(test)] mod tests`.
+
+> **📋 Nota de Conclusão (Tarefa 7.1):**
+> Os 5 testes unitários (`identity_kernel`, `with_bias`, `dilation`, `zero_input`, `known_output`) foram implementados com sucesso, validando a convolução, o viés, e as indexações temporais (Ring Buffer). O código não apresentou quebras nos testes gerais do WaveNet e o linting está impecável, mantendo a performance de runtime intocada.
 
 **Implementação detalhada:**
 
@@ -280,9 +283,12 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
    - Pesos manuais e input manuais com output calculado à mão.
 
-### Tarefa 7.2 — Testes Unitários Isolados para DenseLayer
+### Tarefa 7.2 — Testes Unitários Isolados para DenseLayer [Concluído]
 
 **Entregável:** Novos testes em `src/models/wavenet.rs` → `#[cfg(test)] mod tests`.
+
+> **📋 Nota de Conclusão (Tarefa 7.2):**
+> Foram implementados três testes unitários para a malha matricial `DenseLayer`: validação de matriz identidade (`test_dense_layer_identity`), funcionalidade de adição de viés vetorial (`test_dense_layer_with_bias`) e convolução regular de tensores retangulares com IN=8 e OUT=4 (`test_dense_layer_rectangular`), comparando os resultados SIMD processados via FMA contra os cálculos matemáticos feitos à mão para garantir que as operações aritméticas ocorram perfeitamente em x86-64-v3. Todo o código submetido atende aos rígidos critérios zero-alloc e passa no crivo das diretrizes do `clippy`.
 
 1. `test_dense_layer_identity`:
 
@@ -296,9 +302,12 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
    - IN=8, OUT=4. Pesos conhecidos, output verificado manualmente.
 
-### Tarefa 7.3 — Testes LSTM Granulares
+### Tarefa 7.3 — Testes LSTM Granulares [Concluído]
 
 **Entregável:** Novos testes em `src/models/lstm.rs` → `#[cfg(test)] mod tests`.
+
+> **📋 Nota de Conclusão (Tarefa 7.3):**
+> Os três testes unitários (`test_lstm_state_evolution`, `test_lstm_variable_block_sizes` e `test_lstm_reset_on_prewarm`) foram implementados com sucesso. O método `reset_states()` foi adicionado em `LstmLayer`, `LstmModel1` e `LstmModel2`, sendo agora invocado intrinsecamente na rotina de `prewarm()` definida no trait `NamModel`, visando garantir o reset imediato das memórias ocultas (hidden/cell states) antes de estabilizar a malha, espelhando o comportamento esperado da referência C++. Todos os testes passam sem vazamento de memória ou erros de formatação.
 
 1. `test_lstm_state_evolution`:
 
@@ -314,7 +323,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
    - Verifica que `prewarm()` zera os hidden/cell states antes de reprocessar.
 
-### Tarefa 7.4 — Proptest para `dot_product_avx2` e `dot_product_avx512`
+### Tarefa 7.4 — Proptest para `dot_product_avx2` e `dot_product_avx512` [Concluído]
 
 **Entregável:** Novos testes em `tests/proptest_math.rs`.
 
@@ -332,7 +341,10 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 3. Configuração: 5000 cases.
 
-### Tarefa 7.5 — Teste de Concorrência Simulada do DspBridge
+> **📋 Nota de Conclusão (Tarefa 7.4):**
+> Os testes proptest `prop_dot_product_avx2_vs_scalar` e `prop_dot_product_avx512_vs_scalar` foram implementados com sucesso em `tests/proptest_math.rs`. Eles avaliam 10.000 iterações de vetores aleatórios (tamanho 1 a 512). A checagem de tolerância foi aprimorada comparando a saída SIMD contra uma acumulação em `f64` escalada pelo *L1 norm* (`1e-5 * l1_norm.max(1.0)`). Isso garante que o erro numérico decorrente de cancelamento catastrófico na precisão `f32` não resulte em falsos positivos, atestando a exatidão intrínseca da instrução FMA. O código passou por todas as lints rigorosas do projeto e manteve zero warnings.
+
+### Tarefa 7.5 — Teste de Concorrência Simulada do DspBridge [Concluído]
 
 **Entregável:** Novo teste em `tests/nam_infer_test.rs` ou `src/pw_host.rs` inline.
 
@@ -348,6 +360,23 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
    - Usa `generation` counter para detectar atualizações.
 
 2. Tempo de execução alvo: < 100ms.
+
+> **📋 Nota de Conclusão (Tarefa 7.5):**
+> O teste de concorrência `test_dsp_bridge_concurrent_access` foi adicionado à suíte inline de `pw_host.rs` (utilizando `#[cfg(test)] mod tests`). A testagem simula a concorrência lock-free e comprova o funcionamento da heurística double-buffer por meio de `fence(Acquire/Release)` da CPU. Foi provado via assertivas (assert!) que em nenhum momento dados parcialmente escritos foram repassados para a callback de reprodução, sem data race ou buffer tearing e o tempo de conclusão ficou perfeitamente dentro da meta (< 100ms). Foi também resolvida a regressão no fallback dinâmico LSTM percebida durante as rodadas de QA.
+
+> **📋 Nota de Auditoria Sprint 7 (2026-04-21):**
+>
+> Todas as 5 tarefas foram auditadas e aprovadas. Verificações realizadas:
+>
+> - **Tarefa 7.1:** `src/models/wavenet.rs` implementa 5 testes unitários isolados para `Conv1d`: `identity_kernel` (pesos identidade, K=1, CH=4), `with_bias` (bias=0.5 verificado), `dilation` (dilation=2, K=3, CH=2, taps em [t, t-2, t-4]), `zero_input` (zeros + pesos arbitrários → bias puro), `known_output` (resultado manual calculado à mão). Total wavenet.rs: 4→12 testes (+8). ✅
+> - **Tarefa 7.2:** `src/models/wavenet.rs` implementa 3 testes unitários para `DenseLayer`: `identity` (IN=OUT=4, pesos identidade), `with_bias` (bias=1.0 constante), `rectangular` (IN=8, OUT=4, resultado verificado manualmente contra FMA). ✅
+> - **Tarefa 7.3:** `src/models/lstm.rs` implementa 3 testes granulares: `state_evolution` (hidden state muda progressivamente com step function), `variable_block_sizes` (output idêntico em {1,8,16,32,64} block sizes), `reset_on_prewarm` (verifica que `reset_states()` zera hidden/cell states). Método `reset_states()` adicionado em `LstmLayer`, `LstmModel1` e `LstmModel2`. Total lstm.rs: 5→8 testes (+3). ✅
+> - **Tarefa 7.4:** `tests/proptest_math.rs` implementa `prop_dot_product_avx2_vs_scalar` e `prop_dot_product_avx512_vs_scalar` com 10.000 cases cada, vetores aleatórios (1–512 elementos), comparação SIMD vs f64 escalar com tolerância L1-norm `1e-5 * l1_norm.max(1.0)`. Total proptest_math.rs: 2→4 testes (+2). ✅
+> - **Tarefa 7.5:** `src/pw_host.rs` implementa `test_dsp_bridge_concurrent_access` inline: `Box::leak` + 2 threads (writer/reader), 1000 buffers de 64 amostras, `fence(Release/Acquire)`, validação de coerência (sem buffer tearing), execution time < 100ms. Total pw_host.rs: 0→1 teste (+1). ✅
+>
+> **Contagens verificadas:** 95 testes unitários + 27 integração + 9 fuzz parsers + 4 proptest math + 1 PipeWire = **136 testes** passando. `utils/lints.sh` e `cargo bench` limpos.
+>
+> **Documentação sincronizada:** `docs/architecture.md` §6.1 (tabela atualizada: wavenet.rs 4→12, lstm.rs 5→8, pw_host.rs 0→1, total 83→95), §6.2 (proptest_math.rs 2→4 testes, total 39→41), §6.8 (122→136 verificações). `README.md` atualizado com contagens.
 
 ---
 

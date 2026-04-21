@@ -840,4 +840,241 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_conv1d_identity_kernel() {
+        let mut weights = vec![0.0; 16]; // 4 * 1 * 4
+        for i in 0..4 {
+            weights[i * 4 + i] = 1.0;
+        }
+
+        let conv = Conv1d::<4, 4, 1> {
+            weights,
+            bias: vec![0.0; 4],
+            do_bias: false,
+            dilation: 1,
+        };
+
+        let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
+        let mut block = vec![0.0; 4];
+
+        unsafe {
+            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 0, 1);
+        }
+
+        assert_eq!(block, vec![1.0, 2.0, 3.0, 4.0]);
+    }
+
+    #[test]
+    fn test_conv1d_with_bias() {
+        let mut weights = vec![0.0; 16]; // 4 * 1 * 4
+        for i in 0..4 {
+            weights[i * 4 + i] = 1.0;
+        }
+
+        let conv = Conv1d::<4, 4, 1> {
+            weights,
+            bias: vec![0.5; 4],
+            do_bias: true,
+            dilation: 1,
+        };
+
+        let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
+        let mut block = vec![0.0; 4];
+
+        unsafe {
+            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 0, 1);
+        }
+
+        assert_eq!(block, vec![1.5, 2.5, 3.5, 4.5]);
+    }
+
+    #[test]
+    fn test_conv1d_dilation() {
+        let mut weights = vec![0.0; 2 * 3 * 2];
+        for i in 0..12 {
+            weights[i] = 1.0;
+        }
+
+        let conv = Conv1d::<2, 2, 3> {
+            weights,
+            bias: vec![0.0; 2],
+            do_bias: false,
+            dilation: 2,
+        };
+
+        let mut layer_buffer = vec![0.0; 6 * 2];
+        layer_buffer[0] = 1.0;
+        layer_buffer[1] = 2.0;
+        layer_buffer[2] = 10.0;
+        layer_buffer[3] = 20.0;
+        layer_buffer[4] = 3.0;
+        layer_buffer[5] = 4.0;
+        layer_buffer[6] = 30.0;
+        layer_buffer[7] = 40.0;
+        layer_buffer[8] = 5.0;
+        layer_buffer[9] = 6.0;
+
+        let mut block = vec![0.0; 2];
+
+        unsafe {
+            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 4, 1);
+        }
+
+        assert_eq!(block[0], 21.0);
+        assert_eq!(block[1], 21.0);
+    }
+
+    #[test]
+    fn test_conv1d_zero_input() {
+        let mut weights = vec![0.0; 2 * 3 * 2];
+        for i in 0..12 {
+            weights[i] = 100.0;
+        }
+
+        let mut conv = Conv1d::<2, 2, 3> {
+            weights: weights.clone(),
+            bias: vec![0.0; 2],
+            do_bias: false,
+            dilation: 1,
+        };
+
+        let layer_buffer = vec![0.0; 4 * 2];
+        let mut block = vec![0.0; 2];
+
+        unsafe {
+            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 2, 1);
+        }
+
+        assert_eq!(block, vec![0.0, 0.0]);
+
+        conv.do_bias = true;
+        conv.bias = vec![7.5, 8.5];
+
+        unsafe {
+            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 2, 1);
+        }
+
+        assert_eq!(block, vec![7.5, 8.5]);
+    }
+
+    #[test]
+    fn test_conv1d_known_output() {
+        let mut weights = vec![0.0; 2 * 2 * 2];
+        weights[0] = 0.5;
+        weights[1] = 1.0;
+        weights[2] = 1.5;
+        weights[3] = 2.0;
+        weights[4] = -0.5;
+        weights[5] = -1.0;
+        weights[6] = -1.5;
+        weights[7] = -2.0;
+
+        let conv = Conv1d::<2, 2, 2> {
+            weights,
+            bias: vec![1.0, -1.0],
+            do_bias: true,
+            dilation: 1,
+        };
+
+        let layer_buffer = vec![2.0, 3.0, 4.0, 5.0];
+        let mut block = vec![0.0; 2];
+
+        unsafe {
+            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 1, 1);
+        }
+
+        assert_eq!(block[0], 21.0);
+        assert_eq!(block[1], -21.0);
+    }
+
+    #[test]
+    fn test_dense_layer_identity() {
+        let mut weights = vec![0.0; 16]; // OUT=4 * IN=4
+        for out_c in 0..4 {
+            weights[out_c * 4 + out_c] = 1.0;
+        }
+
+        let dense = DenseLayer::<4, 4> {
+            weights,
+            bias: vec![0.0; 4],
+            do_bias: false,
+        };
+
+        let input = vec![1.5, 2.5, 3.5, 4.5];
+        let mut output = vec![0.0; 4];
+
+        unsafe {
+            dense.process_block::<crate::math::simd::Avx2Math>(&input, &mut output, 1);
+        }
+
+        assert_eq!(output, vec![1.5, 2.5, 3.5, 4.5]);
+    }
+
+    #[test]
+    fn test_dense_layer_with_bias() {
+        let mut weights = vec![0.0; 16];
+        for out_c in 0..4 {
+            weights[out_c * 4 + out_c] = 1.0;
+        }
+
+        let dense = DenseLayer::<4, 4> {
+            weights,
+            bias: vec![1.0; 4],
+            do_bias: true,
+        };
+
+        let input = vec![1.0, 2.0, 3.0, 4.0];
+        let mut output = vec![0.0; 4];
+
+        unsafe {
+            dense.process_block::<crate::math::simd::Avx2Math>(&input, &mut output, 1);
+        }
+
+        assert_eq!(output, vec![2.0, 3.0, 4.0, 5.0]);
+    }
+
+    #[test]
+    fn test_dense_layer_rectangular() {
+        // IN=8, OUT=4. Pesos conhecidos, output verificado manualmente.
+        let mut weights = vec![0.0; 32]; // 4 * 8
+
+        // out_c = 0: in[0]*1 + in[1]*2
+        weights[0] = 1.0;
+        weights[1] = 2.0;
+
+        // out_c = 1: in[2]*3 + in[3]*4
+        weights[10] = 3.0;
+        weights[11] = 4.0;
+
+        // out_c = 2: in[4]*0.5
+        weights[20] = 0.5;
+
+        // out_c = 3: in[7]*(-1.0)
+        weights[31] = -1.0;
+
+        let dense = DenseLayer::<8, 4> {
+            weights,
+            bias: vec![0.5, -0.5, 1.0, -1.0],
+            do_bias: true,
+        };
+
+        let input = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let mut output = vec![0.0; 4];
+
+        unsafe {
+            dense.process_block::<crate::math::simd::Avx2Math>(&input, &mut output, 1);
+        }
+
+        // Expected output:
+        // out[0] = 1*1.0 + 2*2.0 + 0.5 = 5.5
+        // out[1] = 3*3.0 + 4*4.0 - 0.5 = 9.0 + 16.0 - 0.5 = 24.5
+        // out[2] = 5*0.5 + 1.0 = 2.5 + 1.0 = 3.5
+        // out[3] = 8*(-1.0) - 1.0 = -8.0 - 1.0 = -9.0
+
+        assert_eq!(output[0], 5.5);
+        assert_eq!(output[1], 24.5);
+        assert_eq!(output[2], 3.5);
+        assert_eq!(output[3], -9.0);
+    }
 }

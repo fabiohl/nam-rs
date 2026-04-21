@@ -1224,3 +1224,113 @@ pub fn lock_cpu_c_states() -> Option<std::fs::File> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn test_dsp_bridge_concurrent_access() {
+        let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
+            buffers: [
+                BridgeBuffer {
+                    buf_l: [0.0; MAX_BRIDGE_BUF],
+                    buf_r: [0.0; MAX_BRIDGE_BUF],
+                    n_samples: 0,
+                },
+                BridgeBuffer {
+                    buf_l: [0.0; MAX_BRIDGE_BUF],
+                    buf_r: [0.0; MAX_BRIDGE_BUF],
+                    n_samples: 0,
+                },
+            ],
+            active_read_idx: std::sync::atomic::AtomicUsize::new(0),
+            generation: std::sync::atomic::AtomicU64::new(0),
+        }));
+
+        let bridge_ptr_writer = bridge as *const DspBridge as *mut DspBridge as usize;
+        let bridge_ptr_reader = bridge as *const DspBridge;
+
+        let writer_handle = std::thread::spawn(move || {
+            let mut counter = 0.0f32;
+            let bridge_ptr_writer = bridge_ptr_writer as *mut DspBridge;
+            for _ in 0..1000 {
+                let bridge_ref = unsafe { &mut *bridge_ptr_writer };
+                let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
+                let back_buf = &mut bridge_ref.buffers[back_idx];
+
+                // Write 64 samples
+                for i in 0..64 {
+                    back_buf.buf_l[i] = counter;
+                    back_buf.buf_r[i] = counter;
+                    counter += 1.0;
+                }
+                back_buf.n_samples = 64;
+
+                std::sync::atomic::fence(Ordering::Release);
+                bridge_ref
+                    .active_read_idx
+                    .store(back_idx, Ordering::Relaxed);
+                bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+
+                // Small sleep to simulate DSP time and allow reader to catch some frames
+                std::thread::sleep(Duration::from_micros(10));
+            }
+        });
+
+        let start = Instant::now();
+        let mut last_gen = 0;
+        let mut reads = 0;
+        let mut last_val_read = -1.0;
+
+        while reads < 1000 && start.elapsed() < Duration::from_millis(100) {
+            let bridge_ref = unsafe { &*bridge_ptr_reader };
+            let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+            if current_gen != last_gen {
+                std::sync::atomic::fence(Ordering::Acquire);
+                let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
+                let front_buf = &bridge_ref.buffers[read_idx];
+
+                assert_eq!(front_buf.n_samples, 64);
+
+                let first_val = front_buf.buf_l[0];
+                for i in 0..64 {
+                    assert_eq!(
+                        front_buf.buf_l[i],
+                        first_val + i as f32,
+                        "Buffer mixing detected in L channel"
+                    );
+                    assert_eq!(
+                        front_buf.buf_r[i],
+                        first_val + i as f32,
+                        "Buffer mixing detected in R channel"
+                    );
+                }
+
+                // Values should be monotonically increasing (we might drop frames, but never go backward)
+                assert!(
+                    first_val > last_val_read,
+                    "Read older data than previously seen!"
+                );
+                last_val_read = front_buf.buf_l[63];
+
+                last_gen = current_gen;
+                reads += 1;
+            }
+
+            if last_gen == 1000 {
+                break;
+            }
+        }
+
+        writer_handle.join().unwrap();
+
+        // Assert execution time
+        assert!(
+            start.elapsed() < Duration::from_millis(100),
+            "Test took too long to execute"
+        );
+    }
+}

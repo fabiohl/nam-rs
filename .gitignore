@@ -25,6 +25,8 @@ Cargo.lock
 
 # Ignorar diretório de scratch (artefatos de debug/protótipos temporários)
 scratch/
+scratch
+scratch.rs
 
 # Binários e scripts de debug compilados ad-hoc na raiz
 /test_*
@@ -32,6 +34,9 @@ scratch/
 
 # Golden vectors de validação numérica (não ignorar)
 !tests/fixtures/*.bin
+
+# Proptest regression files (gerados automaticamente)
+*.proptest-regressions
 
 # Espelho dos projetos de referência no GitHub
 /github.com
