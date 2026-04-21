@@ -105,7 +105,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 - `model.process()` completa com 0 alocações heap para WaveNet estático, WaveNet dinâmico e LSTM estático.
 - Se WaveNet dinâmico alocar (possível por usar `Vec` internamente), documentar como exceção conhecida.
 
-### Tarefa 5.4 — Auditoria de `unwrap()` nos parsers
+### Tarefa 5.4 — Auditoria de `unwrap()` nos parsers [Concluida]
 
 **Entregável:** Revisão e correção de qualquer `unwrap()`/`expect()` em `parse_nam_json()` e `parse_namb()` que toque input externo.
 
