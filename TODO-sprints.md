@@ -5,7 +5,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 ---
 
-## Sprint 5 — Fundação de Segurança: Fuzz Testing e Zero-Alloc (Prioridade Máxima)
+## Sprint 5 — Fundação de Segurança: Fuzz Testing e Zero-Alloc (Prioridade Máxima) [Concluida]
 
 > **Objetivo:** Garantir que os parsers de entrada (`parse_nam_json`, `parse_namb`) sobrevivam a inputs malformados/adversários, e que o hot path `process()` seja comprovadamente zero-allocation.
 >
@@ -143,7 +143,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 >
 > **Skill:** `implementador`
 
-### Tarefa 6.1 — Testes com Block Sizes Variáveis (WaveNet + LSTM)
+### Tarefa 6.1 — Testes com Block Sizes Variáveis (WaveNet + LSTM) [Concluído]
 
 **Entregável:** Novo teste parametrizado em `tests/nam_infer_test.rs`.
 

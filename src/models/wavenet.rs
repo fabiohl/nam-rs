@@ -578,29 +578,36 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
     #[inline(always)]
     unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
-        let num_frames = input.len();
-        if num_frames == 0 {
+        let total_frames = input.len();
+        if total_frames == 0 {
             return;
         }
 
-        unsafe {
-            // Condicionamento e Input (1D: 1 canal) -> formatado como blocos de IN frames
-            self.array1
-                .process_block_internal::<M>(input, input, num_frames);
+        let mut pos = 0;
+        while pos < total_frames {
+            let num_frames = (total_frames - pos).min(WAVENET_MAX_NUM_FRAMES);
+            let in_slice = &input[pos..pos + num_frames];
 
-            let array1_outputs = &self.array1.array_outputs[0..num_frames * CH];
-            self.array2
-                .process_block_internal::<M>(array1_outputs, input, num_frames);
-        }
+            unsafe {
+                // Condicionamento e Input (1D: 1 canal) -> formatado como blocos de IN frames
+                self.array1
+                    .process_block_internal::<M>(in_slice, in_slice, num_frames);
 
-        // Somatório das projeções Head de ambas as arrays e escala
-        for i in 0..num_frames {
-            let mut final_sum = 0.0f32;
-            for j in 0..HEAD {
-                final_sum += self.array1.head_outputs[i * HEAD + j];
+                let array1_outputs = &self.array1.array_outputs[0..num_frames * CH];
+                self.array2
+                    .process_block_internal::<M>(array1_outputs, in_slice, num_frames);
             }
-            final_sum += self.array2.head_outputs[i]; // HEAD2=1
-            output[i] = final_sum * self.head_scale;
+
+            // Somatório das projeções Head de ambas as arrays e escala
+            for i in 0..num_frames {
+                let mut final_sum = 0.0f32;
+                for j in 0..HEAD {
+                    final_sum += self.array1.head_outputs[i * HEAD + j];
+                }
+                final_sum += self.array2.head_outputs[i]; // HEAD2=1
+                output[pos + i] = final_sum * self.head_scale;
+            }
+            pos += num_frames;
         }
     }
 

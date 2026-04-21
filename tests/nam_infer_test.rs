@@ -1737,3 +1737,158 @@ fn test_zero_alloc_process_wavenet_dynamic() {
         assert_eq!(count, 0);
     }
 }
+
+// =============================================================================
+// Testes com Block Sizes Variáveis (Tarefa 6.1)
+// =============================================================================
+
+/// Verifica processamento WaveNet estático com diversos block sizes
+#[test]
+fn test_wavenet_variable_block_sizes() {
+    let path = model_path("BossWN-standard.nam");
+    if !path.exists() {
+        eprintln!("SKIP: BossWN-standard.nam não encontrado.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+
+    let block_sizes = [1, 16, 32, 64, 128, 256, 512];
+    let input = generate_sine_440hz(512);
+    let mut ref_output = vec![0.0f32; 512];
+
+    for &bs in &block_sizes {
+        let mut model = build_model(&model_data).expect("Falha ao construir modelo");
+        model.0.prewarm(2048);
+
+        let mut output = vec![0.0f32; 512];
+        process_in_blocks(&mut model, &input, &mut output, bs);
+
+        let mut tot_energy = 0.0f64;
+        for &s in &output {
+            assert!(s.is_finite(), "Block size {} gerou saída não finita", bs);
+            tot_energy += (s as f64) * (s as f64);
+        }
+        let rms = (tot_energy / 512.0).sqrt();
+        assert!(rms <= 10.0, "Block size {} tem RMS alto: {}", bs, rms);
+
+        if bs == 1 {
+            ref_output.copy_from_slice(&output);
+        } else {
+            let mse = compute_mse(&ref_output, &output);
+            assert!(
+                mse < 1e-7,
+                "Divergência entre block_size=1 e block_size={} (MSE={})",
+                bs,
+                mse
+            );
+        }
+    }
+}
+
+/// Verifica processamento LSTM com diversos block sizes
+#[test]
+fn test_lstm_variable_block_sizes() {
+    let path = model_path("BossLSTM-1x16.nam");
+    if !path.exists() {
+        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+
+    let block_sizes = [1, 16, 32, 64, 128, 256, 512];
+    let input = generate_sine_440hz(512);
+    let mut ref_output = vec![0.0f32; 512];
+
+    for &bs in &block_sizes {
+        let mut model = build_model(&model_data).expect("Falha ao construir modelo LSTM");
+        model.0.prewarm(2048);
+
+        let mut output = vec![0.0f32; 512];
+        process_in_blocks(&mut model, &input, &mut output, bs);
+
+        let mut tot_energy = 0.0f64;
+        for &s in &output {
+            assert!(
+                s.is_finite(),
+                "LSTM Block size {} gerou saída não finita",
+                bs
+            );
+            tot_energy += (s as f64) * (s as f64);
+        }
+        let rms = (tot_energy / 512.0).sqrt();
+        assert!(rms <= 10.0, "LSTM Block size {} tem RMS alto: {}", bs, rms);
+
+        if bs == 1 {
+            ref_output.copy_from_slice(&output);
+        } else {
+            let mse = compute_mse(&ref_output, &output);
+            assert!(
+                mse < 1e-7,
+                "LSTM: Divergência entre block_size=1 e block_size={} (MSE={})",
+                bs,
+                mse
+            );
+        }
+    }
+}
+
+/// Verifica processamento WaveNet dinâmico com diversos block sizes
+#[test]
+fn test_wavenet_dynamic_variable_block_sizes() {
+    use nam_rs::loader::dispatcher::build_wavenet_dynamic;
+
+    let path = model_path("BossWN-standard.nam");
+    if !path.exists() {
+        eprintln!("SKIP: BossWN-standard.nam não encontrado.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+
+    let block_sizes = [1, 16, 32, 64, 128, 256, 512];
+    let input = generate_sine_440hz(512);
+    let mut ref_output = vec![0.0f32; 512];
+
+    for &bs in &block_sizes {
+        let mut model =
+            build_wavenet_dynamic(&model_data).expect("Falha ao construir WaveNet dinâmico");
+        model.0.prewarm(2048);
+
+        let mut output = vec![0.0f32; 512];
+        process_in_blocks(&mut model, &input, &mut output, bs);
+
+        let mut tot_energy = 0.0f64;
+        for &s in &output {
+            assert!(
+                s.is_finite(),
+                "Dynamic WaveNet Block size {} gerou saída não finita",
+                bs
+            );
+            tot_energy += (s as f64) * (s as f64);
+        }
+        let rms = (tot_energy / 512.0).sqrt();
+        assert!(
+            rms <= 10.0,
+            "Dynamic WaveNet Block size {} tem RMS alto: {}",
+            bs,
+            rms
+        );
+
+        if bs == 1 {
+            ref_output.copy_from_slice(&output);
+        } else {
+            let mse = compute_mse(&ref_output, &output);
+            assert!(
+                mse < 1e-7,
+                "Dynamic WaveNet: Divergência entre block_size=1 e block_size={} (MSE={})",
+                bs,
+                mse
+            );
+        }
+    }
+}
