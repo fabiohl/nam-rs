@@ -384,6 +384,7 @@ impl WaveNetLayerArrayDyn {
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
+        num_frames: usize,
         math: &SimdMathConfig,
     ) {
         debug_assert_eq!(
@@ -407,8 +408,8 @@ impl WaveNetLayerArrayDyn {
             let start = state_0.buffer_start * ch;
             self.rechannel.process_block(
                 layer_inputs,
-                &mut state_0.layer_buffer[start..start + ch],
-                1, // prewarm is 1 frame
+                &mut state_0.layer_buffer[start..start + num_frames * ch],
+                num_frames,
                 math,
             );
 
@@ -423,12 +424,12 @@ impl WaveNetLayerArrayDyn {
                 if i == last_layer {
                     layer.process_block_internal(
                         condition,
-                        &mut self.head_accum[0..ch],
-                        &mut self.array_outputs[0..ch],
+                        &mut self.head_accum[0..num_frames * ch],
+                        &mut self.array_outputs[0..num_frames * ch],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
-                        &mut self.block_buffer[0..block_size],
-                        1,
+                        &mut self.block_buffer[0..num_frames * block_size],
+                        num_frames,
                         math,
                     );
                 } else {
@@ -437,23 +438,23 @@ impl WaveNetLayerArrayDyn {
 
                     layer.process_block_internal(
                         condition,
-                        &mut self.head_accum[0..ch],
-                        &mut next_state.layer_buffer[next_start..next_start + ch],
+                        &mut self.head_accum[0..num_frames * ch],
+                        &mut next_state.layer_buffer[next_start..next_start + num_frames * ch],
                         &current_state.layer_buffer,
                         current_state.buffer_start,
-                        &mut self.block_buffer[0..block_size],
-                        1,
+                        &mut self.block_buffer[0..num_frames * block_size],
+                        num_frames,
                         math,
                     );
                 }
 
-                current_state.advance_frames(1, ch);
+                current_state.advance_frames(num_frames, ch);
             }
 
             self.head_rechannel.process_block(
-                &self.head_accum[0..ch],
-                &mut self.head_outputs[0..head],
-                1,
+                &self.head_accum[0..num_frames * ch],
+                &mut self.head_outputs[0..num_frames * head],
+                num_frames,
                 math,
             );
         }
@@ -553,26 +554,31 @@ impl WaveNetDynModel {
     /// Loop matriz causal para preenchimento bloco de áudio contíguo (via Inversão SIMD).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         let math = crate::math::simd::SimdMathConfig::get();
-        let num_frames = input.len();
+        let total_frames = input.len();
 
-        for i in 0..num_frames {
-            let sample = input[i];
-            let condition = [sample];
-            let layer_inputs_1 = [sample];
+        let mut pos = 0;
+        while pos < total_frames {
+            let num_frames =
+                (total_frames - pos).min(crate::models::wavenet::WAVENET_MAX_NUM_FRAMES);
+            let in_slice = &input[pos..pos + num_frames];
 
             unsafe {
-                self.array1.process(&layer_inputs_1, &condition, math);
+                self.array1.process(in_slice, in_slice, num_frames, math);
 
-                let array1_outputs = &self.array1.array_outputs[..];
-                self.array2.process(array1_outputs, &condition, math);
+                let array1_outputs = &self.array1.array_outputs[0..num_frames * self.array1.ch];
+                self.array2
+                    .process(array1_outputs, in_slice, num_frames, math);
             }
 
-            let mut final_sum = 0.0f32;
-            for j in 0..self.head {
-                final_sum += self.array1.head_outputs[j];
+            for i in 0..num_frames {
+                let mut final_sum = 0.0f32;
+                for j in 0..self.head {
+                    final_sum += self.array1.head_outputs[i * self.head + j];
+                }
+                final_sum += self.array2.head_outputs[i];
+                output[pos + i] = final_sum * self.head_scale;
             }
-            final_sum += self.array2.head_outputs[0];
-            output[i] = final_sum * self.head_scale;
+            pos += num_frames;
         }
     }
 

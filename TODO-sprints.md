@@ -12,6 +12,7 @@ Propostas de otimizações pesquisadas para o hot-path do NAM-rs, organizadas po
 
 **Prioridade: P0** · Esforço: 🟢 Baixo · Impacto: 🔴 Alto (2–4× speedup) · Risco: 🟢 Baixo
 **Minhas Notas:** Assegurar o backport para o estático dos mesmos ganhos que por ventura possam ser obtidos aqui.
+**Nota de Conclusão:** O processamento em bloco foi implementado no WaveNet Dinâmico (`wavenet_dyn.rs`). O caminho estático (`wavenet.rs`) já possuía essa otimização implementada (processamento em blocos iterativos limitados a `WAVENET_MAX_NUM_FRAMES`), portanto, nenhum backport foi necessário. Testes e lints rodaram com sucesso sem regressão matemática.
 
 #### 1.1 Diagnóstico
 
