@@ -90,7 +90,7 @@ O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquiv
 
 ## 🧪 Testes e Validação
 
-O NAM-rs mantém uma suíte de **116 verificações** automatizadas distribuídas em cinco camadas:
+O NAM-rs mantém uma suíte de **122 verificações** automatizadas distribuídas em cinco camadas:
 
 ```bash
 # Testes unitários + integração + proptest + fuzz + E2E PipeWire
@@ -99,7 +99,7 @@ cargo test
 # Apenas testes unitários inline (83 testes)
 cargo test --lib
 
-# Apenas testes de integração (21 testes, incluindo zero-alloc)
+# Apenas testes de integração (27 testes, incluindo zero-alloc, block sizes, modelos comunitários)
 cargo test --test nam_infer_test
 
 # Fuzz testing dos parsers (9 testes × 5000 cases = ~45.000 inputs)
@@ -112,7 +112,7 @@ cargo bench --bench inference_bench
 utils/lints.sh
 ```
 
-Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip e hot-swap rápido de modelos.
+Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip, hot-swap rápido de modelos, **block sizes variáveis** (1–512 amostras), **modelos comunitários** (5 modelos .nam) e **rejeição de formatos não-suportados** (Keras Legacy, ativações não-Tanh).
 
 ## 🤝 Contribuindo
 

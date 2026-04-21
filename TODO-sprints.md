@@ -137,7 +137,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 
 ---
 
-## Sprint 6 — Cobertura de Block Sizes e Modelos Comunitários
+## Sprint 6 — Cobertura de Block Sizes e Modelos Comunitários [Concluído]
 
 > **Objetivo:** Validar robustez com block sizes variáveis (como NeuralAudio faz) e exercitar os 5 modelos comunitários que existem em `tests/nam_files/` mas nunca foram testados.
 >
@@ -227,6 +227,20 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 **Critério de aceite:**
 
 - Formatos Keras e ativações não-Tanh são rejeitados graciosamente com `Err`.
+
+> **📋 Nota de Auditoria Sprint 6 (2026-04-21):**
+>
+> Todas as 3 tarefas foram auditadas e aprovadas. Verificações realizadas:
+>
+> - **Tarefa 6.1:** `tests/nam_infer_test.rs` implementa 3 testes parametrizados (`test_wavenet_variable_block_sizes`, `test_lstm_variable_block_sizes`, `test_wavenet_dynamic_variable_block_sizes`) com block sizes {1, 16, 32, 64, 128, 256, 512}. Cada teste verifica finitude, RMS ≤ 10.0, e consistência numérica vs block_size=1 (MSE < 1e-7). O `process_internal` do WaveNet estático implementa block-chunking com `WAVENET_MAX_NUM_FRAMES`, garantindo estabilidade para buffers arbitrários. ✅
+> - **Tarefa 6.2:** `test_community_models_inference` exercita todos os 5 modelos em `tests/nam_files/`: ChandlerRedd47 (Standard), EVH-5150 (Lite), NEVE1073 (Standard), UA610B (Standard), little-bear-t7 (Standard). Verifica parse, build, prewarm, process, finitude e magnitude < 100.0. Topologias Standard/Lite detectadas corretamente via `get_wavenet_topology()`. Nenhum `#[ignore]` — roda no CI principal. ✅
+> - **Tarefa 6.3:** `test_reject_keras_legacy_format` carrega `tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json` e verifica rejeição por `parse_nam_json()` ou `build_model()`. `test_reject_activation_non_tanh` usa JSON sintético com `"activation": "ReLU"` e verifica `build_model()` retorna `Err`. ✅
+>
+> **Contagens verificadas:** 83 testes unitários + 27 integração + 9 fuzz parsers + 2 proptest math + 1 PipeWire = **122 testes** passando. `utils/lints.sh` e `cargo bench` limpos.
+>
+> **Correção arquitetural (Tarefa 6.1):** Block-chunking implementado em `WaveNetModel::process_internal` para processar buffers > `WAVENET_MAX_NUM_FRAMES` em chunks, eliminando OOB em block sizes grandes. O WaveNet dinâmico (`WaveNetDynModel`) processa sample-by-sample intrinsecamente.
+>
+> **Documentação sincronizada:** `docs/architecture.md` §6.2 atualizado com 16 categorias de teste, contagens (27 integração, 122 total), e descrições das 3 novas categorias Sprint 6. `README.md` atualizado com contagens e categorias.
 
 ---
 

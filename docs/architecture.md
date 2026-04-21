@@ -138,16 +138,16 @@ Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no fina
 >
 > Os testes estruturais recentes (ex: rejeição JSON malformado e gain staging roundtrip) consolidam o hardening da base para uso em cenários empacotados em releases mais maduros.
 
-### 6.2. Testes de Integração (`tests/`) — 33 testes
+### 6.2. Testes de Integração (`tests/`) — 39 testes
 
 O diretório `tests/` contém cinco arquivos de teste que consomem a API pública `nam_rs::*` como um usuário externo:
 
-- **`nam_infer_test.rs`** (21 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors, SPSC E2E, verificação zero-allocation.
+- **`nam_infer_test.rs`** (27 testes) — inferência neural, parsing, estabilidade, determinismo, golden vectors, SPSC E2E, verificação zero-allocation, block sizes variáveis, modelos comunitários, rejeição de formatos.
 - **`proptest_parsers.rs`** (9 testes) — fuzz testing via `proptest` (5000 cases cada) para `parse_nam_json()` e `parse_namb()`: bytes arbitrários, JSON semi-válido, truncamento, weight overflow, magic corrompido, CRC inválido, buffer truncado, offsets fora de limites. Nenhum panic em ~45.000 inputs adversários.
 - **`proptest_math.rs`** (2 testes) — validação estocástica via `proptest`: `prop_simd_tanh_avx2_rmse` e `prop_simd_sigmoid_avx2_rmse` verificam que FastMath AVX2 mantém RMSE < threshold contra `std::f32` em domínios aleatórios.
 - **`pw_integration_test.rs`** (1 teste) — `test_pipewire_headless_integration`: validação headless do PipeWire (init/connect/shutdown) sem hardware de áudio.
 
-Os 21 testes de `nam_infer_test.rs` cobrem **13 categorias** distintas:
+Os 27 testes de `nam_infer_test.rs` cobrem **16 categorias** distintas:
 
 #### Parsing e Topologia (1 teste)
 
@@ -208,6 +208,21 @@ Os 21 testes de `nam_infer_test.rs` cobrem **13 categorias** distintas:
 - **`test_zero_alloc_process_wavenet`** — Counting Allocator (`#[global_allocator]` condicional `#[cfg(test)]`) prova que `WaveNetModel::process()` estático completa com 0 alocações heap.
 - **`test_zero_alloc_process_lstm`** — Idem para `LstmModel::process()` estático (1×16).
 - **`test_zero_alloc_process_wavenet_dynamic`** — Idem para WaveNet dinâmico (Feather). Documenta exceção conhecida se o path dinâmico alocar (uso de `Vec` interno).
+
+#### Block Sizes Variáveis (3 testes — Sprint 6)
+
+- **`test_wavenet_variable_block_sizes`** — WaveNet Standard com block sizes {1, 16, 32, 64, 128, 256, 512}. Verifica finitude, RMS ≤ 10.0, e consistência entre block_size=1 e demais (MSE < 1e-7).
+- **`test_lstm_variable_block_sizes`** — LSTM 1×16 com mesmos block sizes e critérios.
+- **`test_wavenet_dynamic_variable_block_sizes`** — WaveNet Dynamic (fallback) com mesmos block sizes e critérios.
+
+#### Modelos Comunitários (1 teste — Sprint 6)
+
+- **`test_community_models_inference`** — Exercita 5 modelos de `tests/nam_files/` (ChandlerRedd47, EVH-5150, NEVE1073, UA610B, little-bear-t7). Valida parse, build, prewarm, process, finitude, magnitude < 100.0 e topologia (Standard/Lite) detectada corretamente.
+
+#### Rejeição de Formatos Não-Suportados (2 testes — Sprint 6)
+
+- **`test_reject_keras_legacy_format`** — Verifica que Keras Legacy JSON é rejeitado graciosamente por `parse_nam_json()` ou `build_model()`.
+- **`test_reject_activation_non_tanh`** — Verifica que ativação ReLU (não-Tanh) é rejeitada por `build_model()` com `Err`.
 
 ### 6.3. Benchmarks `criterion` (`cargo bench`) — 6 benchmarks
 
@@ -301,7 +316,7 @@ O arquivo `tests/proptest_parsers.rs` exercita os parsers de entrada com **~45.0
 
 - **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara todas as camadas (116 verificações). `cargo test --lib` executa apenas os 83 unitários inline; `cargo test --test nam_infer_test` os 21 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 2 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
+- **Comando de execução:** `cargo test` dispara todas as camadas (122 verificações). `cargo test --lib` executa apenas os 83 unitários inline; `cargo test --test nam_infer_test` os 27 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 2 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 
 ## 7. Referências
 
