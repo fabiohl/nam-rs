@@ -4,11 +4,14 @@ Propostas de otimizações pesquisadas para o hot-path do NAM-rs, organizadas po
 
 ---
 
-## Parte I — Otimizações de Compute (Hot-Path Neural)
+## Sprint I — Otimizações de Compute (Hot-Path Neural)
 
-### 1. WaveNet Dinâmico: Processamento em Bloco (Batch GEMM)
+---
+
+### Tarefa I.1. WaveNet Dinâmico: Processamento em Bloco (Batch GEMM)
 
 **Prioridade: P0** · Esforço: 🟢 Baixo · Impacto: 🔴 Alto (2–4× speedup) · Risco: 🟢 Baixo
+**Minhas Notas:** Assegurar o backport para o estático dos mesmos ganhos que por ventura possam ser obtidos aqui.
 
 #### 1.1 Diagnóstico
 
@@ -67,9 +70,10 @@ Replicar a estratégia de **Batch GEMM temporal** do WaveNet estático para o pa
 
 ---
 
-### 2. Tanh Polinômio de Grau 7: Precisão sem Custo
+### Tarefa I.2. Tanh Polinômio de Grau 7: Precisão sem Custo
 
 **Prioridade: P1** · Esforço: 🟢 Baixo · Impacto: 🟡 Médio (100× menos erro) · Risco: 🟢 Baixo
+**Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
 
 #### 2.1 Diagnóstico
 
@@ -139,9 +143,10 @@ Os coeficientes `c0`, `c1`, `c2` devem ser re-derivados via **otimização Minim
 
 ---
 
-### 3. Fusão de Operadores no WaveNet Layer
+### Tarefa I.3. Fusão de Operadores no WaveNet Layer
 
 **Prioridade: P2** · Esforço: 🟡 Médio · Impacto: 🟡 Médio (~40% menos loads) · Risco: 🟡 Médio
+**Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
 
 #### 3.1 Diagnóstico
 
@@ -199,9 +204,10 @@ Esta proposta complementa a Proposta 4 (FMA Multi-Channel): se combinadas, os ga
 
 ---
 
-### 4. FMA Multi-Channel: Dot Product 4× para Conv1d
+### Tarefa I.4. FMA Multi-Channel: Dot Product 4× para Conv1d
 
 **Prioridade: P2** · Esforço: 🟡 Médio · Impacto: 🟡 Médio (~75% menos loads) · Risco: 🟡 Médio
+**Minhas Notas:** Medir efetivamente o "antes e o depois" para assegurar impacto baixíssimo em performance.
 
 #### 4.1 Diagnóstico
 
@@ -270,10 +276,13 @@ O `dot_product_4x_avx2` já existe em `simd.rs` para o LSTM (processa 4 dot prod
 - Golden vectors inalterados.
 
 ---
+---
 
-## Parte II — Hardening de Tempo Real (Sistema)
+## Sprint II — Hardening de Tempo Real (Sistema)
 
-### 5. Desabilitação de THP e Advisory de IRQ Isolation
+---
+
+### Tarefa II.5. Desabilitação de THP e Advisory de IRQ Isolation
 
 **Prioridade: P2** · Esforço: 🟢 Baixo · Impacto: 🟡 Médio (jitter) · Risco: 🟢 Baixo
 
@@ -323,10 +332,13 @@ Não é possível automatizar isso sem `root`; a sugestão é informativa.
 - Testes existentes não são afetados (THP e IRQ não alteram a lógica DSP).
 
 ---
+---
 
-## Parte III — Pesquisa de Longo Prazo
+## Sprint III — Pesquisa de Longo Prazo
 
-### 6. Filtros de Fase Mínima (Minimum Phase) no Resampler
+---
+
+### Tarefa III.6. Filtros de Fase Mínima (Minimum Phase) no Resampler
 
 **Prioridade: P4** · Esforço: 🔴 Alto · Impacto: 🟡 Médio (~1 ms latência) · Risco: 🔴 Alto
 
@@ -363,6 +375,7 @@ Migrar para coeficientes FIR de **Fase Mínima** (Minimum Phase Sinc). Duas abor
 
 **Não implementar agora.** O ganho de ~1 ms é relevante para `pw_rate ≠ 48000` (cenário não-padrão), mas o risco de regressão audível e o esforço de implementação/validação são desproporcionais. Reavaliar quando houver demanda de usuários com setups a 96 kHz.
 
+---
 ---
 
 ## Matriz de Prioridades Consolidada

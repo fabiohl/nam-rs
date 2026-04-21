@@ -1,3 +1,2 @@
-## Avaliar o que fazer das ideias em pesquisa_inovacao.md
 ## Testes finais de audição em ambiente real com tests/*.nam e github.com/mikeoliphant/NeuralAudio/Utils/Models/*.nam
 ## Leitura geral do código fonte
