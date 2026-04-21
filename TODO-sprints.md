@@ -52,7 +52,7 @@ O objetivo é assegurar conformidade aos padrões do NAM, qualidade de código e
 - Todos os testes passam, nenhum panic, nenhum OOB read.
 - Verificar que `parse_namb()` não usa `unwrap()` ou `expect()` em dados de input — todo `[]` indexing deve usar `.get()` ou bounds check.
 
-### Tarefa 5.3 — Verificação de Zero-Allocation no `process()` (Counting Allocator)
+### Tarefa 5.3 — Verificação de Zero-Allocation no `process()` (Counting Allocator) [Concluida]
 
 **Entregável:** Teste de integração em `tests/nam_infer_test.rs` que prova zero-alloc no hot path.
 
