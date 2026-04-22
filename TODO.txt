@@ -3,8 +3,10 @@
 
 ## Leitura geral do código fonte (pós limpeza final)
 ## Limpeza geral de código-fonte:
-- Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser substituidas por outras. Limpar as "dependencies" no Cargo.toml
-- Organizar logicamente as funções. Quebrar funções muito grandes ou unir muito pequenas. Quebrar arquivos muito grandes.
-- Comentários de código-fone limpos e úteis. Remover referências a sprints e coisas do passado. Utilidade real no presente. Linguagem simples e direta para o dev junior entender os algoritmos e o arquiteto entender as decisões técnicas.
-- Remover referências desnecessárias a cfg que já são óbvias (ex: linux, 64 bits, avx2, etc)
-- Atualizar pasta docs/.
+- Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser unificadas ou substituidas por outras.
+- Revisão nas "dependencies" no Cargo.toml se podem ser mais específicas. Se são muito pouco usadas, com considerável carga de código e elegíveis para substituição por outras funções.
+- Organizar logicamente o posicionamento das funções. Quebrar funções muito grandes ou unir muito pequenas. Fazer o mesmco com os arquivos em si.
+- Comentários de código-fone limpos e úteis, com tamanho ideal. Remover referências a sprints e fatos que ocorrenam no decorrer do desenvolvimento, mas não tem sentido estar na versão 1.0.
+- Comentários e documentações com utilidade real no presente (v1.0). Linguagem simples e direta para o dev junior entender os algoritmos e para o arquiteto entender as decisões técnicas e resguarda-las.
+- Remover certas construções do tipo "#[cfg(condition)]" que verifiquem coisas óbvias ou redundantes (ex: linux, 64 bits, avx2, etc) e não fazem sentido serem verificadas pelo próprio escopo fixo do projeto.
+- Atualizar pasta docs/ e .agents/.
