@@ -395,7 +395,6 @@ fn main() -> anyhow::Result<()> {
         .bright_green()
         .bold()
     );
-    log::info!("💻 arch={} | kernel={}", sys.arch.cyan(), sys.kernel.cyan());
 
     pipewire::init();
     log::info!("{} PipeWire inicializado.", "🔌".bright_blue());

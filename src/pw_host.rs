@@ -169,6 +169,10 @@ pub fn run_pipewire_host(
         );
     }
 
+    // Seleciona o núcleo ideal para a thread RT (capacidade + menor carga IRQ).
+    // Computado antes do lock para que o valor seja acessível após o escopo.
+    let target_cpu = select_optimal_cpu().unwrap_or(0);
+
     // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança
     // O lock é automaticamente liberado ao final deste escopo (_lock is dropped).
     {
@@ -195,7 +199,6 @@ pub fn run_pipewire_host(
 
         capture_stream = pw::stream::StreamBox::new(&core, "NAM-rs", capture_props)?;
 
-        let target_cpu = select_optimal_cpu().unwrap_or(0);
         let mut active_model_l: Option<Box<crate::models::DynamicModel>> = None;
         let mut active_model_r: Option<Box<crate::models::DynamicModel>> = None;
 
@@ -802,6 +805,10 @@ pub fn run_pipewire_host(
 
     let _cpu_dma_lock = lock_cpu_c_states();
 
+    // Emitido aqui (após PM QoS e antes do thread_loop.start()) para agrupar
+    // todos os diagnósticos de hardening RT na saída do console.
+    sys.emit_irq_advisory(target_cpu);
+
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
 
@@ -977,6 +984,12 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
     // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
     unsafe {
         crate::math::simd::set_daz_ftz();
+    }
+
+    // Desabilita Transparent Huge Pages (THP) para este processo antes do mlockall,
+    // evitando latências de compactação em background pelo khugepaged.
+    unsafe {
+        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
     }
 
     // Bloqueia a memória atual e futura na RAM física, prevenindo page faults.

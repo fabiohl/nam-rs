@@ -280,6 +280,7 @@ O `dot_product_4x_avx2` já existe em `simd.rs` para o LSTM (processa 4 dot prod
 - Golden vectors inalterados.
 
 ---
+
 ---
 
 ## Sprint II — Hardening de Tempo Real (Sistema)
@@ -289,6 +290,7 @@ O `dot_product_4x_avx2` já existe em `simd.rs` para o LSTM (processa 4 dot prod
 ### Tarefa II.5. Desabilitação de THP e Advisory de IRQ Isolation
 
 **Prioridade: P2** · Esforço: 🟢 Baixo · Impacto: 🟡 Médio (jitter) · Risco: 🟢 Baixo
+**Nota de Conclusão:** O isolamento de interrupção (IRQ Advisory) foi inserido via método novo `emit_irq_advisory` na estrutura `SystemSnapshot`, que calcula a máscara bitwise correta usando inversão (XOR com máscara) no momento da inicialização do `run_pipewire_host` baseando-se no `target_cpu` afixado. A desabilitação do Transparent Huge Pages (THP) foi aplicada via `prctl` em `pw_host.rs` antes do lock total da memória (`mlockall`), prevenindo page faults da compactação em segundo plano pelo `khugepaged`. Lints passados com sucesso.
 
 #### 5.1 Diagnóstico
 
@@ -315,11 +317,12 @@ Isso desabilita THP **apenas para este processo** — sem afetar o restante do s
 Adicionar ao `SystemSnapshot` uma detecção do core afixado e emitir sugestão:
 
 ```text
-💡 Para latência mínima, isole o core 3 das IRQs do sistema:
+💡 Para latência mínima, isole o core X das IRQs do sistema (como sudo):
    echo 0xFFFFFFF7 > /proc/irq/default_smp_affinity
 ```
 
 Não é possível automatizar isso sem `root`; a sugestão é informativa.
+Obs: já foneça um comando "one line" para o usuário copiar e colar no terminal com sucesso na hora!
 
 #### 5.3 Mudanças Necessárias
 
@@ -336,6 +339,7 @@ Não é possível automatizar isso sem `root`; a sugestão é informativa.
 - Testes existentes não são afetados (THP e IRQ não alteram a lógica DSP).
 
 ---
+
 ---
 
 ## Sprint III — Pesquisa de Longo Prazo
@@ -345,6 +349,7 @@ Não é possível automatizar isso sem `root`; a sugestão é informativa.
 ### Tarefa III.6. Filtros de Fase Mínima (Minimum Phase) no Resampler
 
 **Prioridade: P4** · Esforço: 🔴 Alto · Impacto: 🟡 Médio (~1 ms latência) · Risco: 🔴 Alto
+**Minhas Notas:** Fica pra versão 1.x. Cogitar trabalhar upstream na versão 2.0 do Rubato.
 
 #### 6.1 Diagnóstico
 
@@ -380,6 +385,7 @@ Migrar para coeficientes FIR de **Fase Mínima** (Minimum Phase Sinc). Duas abor
 **Não implementar agora.** O ganho de ~1 ms é relevante para `pw_rate ≠ 48000` (cenário não-padrão), mas o risco de regressão audível e o esforço de implementação/validação são desproporcionais. Reavaliar quando houver demanda de usuários com setups a 96 kHz.
 
 ---
+
 ---
 
 ## Matriz de Prioridades Consolidada

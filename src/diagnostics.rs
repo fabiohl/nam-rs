@@ -14,6 +14,7 @@
 //! threads não-RT (CLI, loop principal do PipeWire). O callback `process()`
 //! continua usando flags atômicas (`RtStatusFlags`) para sinalização silenciosa.
 
+use colored::Colorize;
 use std::fmt;
 use std::time::SystemTime;
 
@@ -186,6 +187,18 @@ impl SystemSnapshot {
             os: std::env::consts::OS,
             kernel,
         }
+    }
+
+    /// Emite aviso informativo recomendando o isolamento de IRQs do núcleo afixado
+    /// pelo PipeWire, de modo a minimizar a preempção em tempo real.
+    pub fn emit_irq_advisory(&self, core: usize) {
+        let mask = 0xFFFFFFFFu32 ^ (1u32 << core);
+        log::info!(
+            "{} Para latência mínima, isole o core {} das IRQs do sistema (como sudo):\n   echo {:X} > /proc/irq/default_smp_affinity",
+            "💡".yellow(),
+            core,
+            mask
+        );
     }
 }
 
