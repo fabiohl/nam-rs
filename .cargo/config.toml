@@ -1,8 +1,35 @@
-# (c) 2026 Fábio Henrique de Lima Silva. Todos os direitos reservados.
-# Este arquivo é confidencial e propriedade de Fábio Henrique de Lima Silva.
-# O uso não autorizado é estritamente proibido.
+# SPDX-License-Identifier: MIT OR Apache-2.0
+# Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
 [build]
 rustflags = [
-  "-Ctarget-cpu=x86-64-v3",       # Otimiza o código para a CPUs modernas.
-  "-Clink-arg=-Wl,--gc-sections", # Pede ao "linker" para remover código não utilizado, diminuindo o tamanho.
+  # --- Configuração de Arquitetura e Otimização (march / mtune) ---
+
+  # OPÇÃO 1 (Padrão Distribuível): 
+  # Requisito base: CPUs com AVX2, FMA e BMI2 (2013+).
+  # Nota: No Rust Estável (1.95), '-Ctarget-cpu' define TANTO o ISA (march) quanto o Tuning genérico (mtune).
+  "-Ctarget-cpu=x86-64-v3",
+
+  # OPÇÃO 2 (Tuning Específico para CPUs 2019+ - REQUER RUST NIGHTLY):
+  # Mantém a compatibilidade x86-64-v3, mas otimiza o agendamento de instruções (mtune) 
+  # para microarquiteturas modernas (ex: AMD Zen 2 ou Intel Ice Lake / Skylake).
+  # NOTA PARA O SCRIPT: O script espera essa linha formatada com # no início.
+  # "-Ctarget-cpu=x86-64-v3", "-Ztune-cpu=znver2",
+
+  # OPÇÃO 3 (Otimização Máxima Local - "Native"):
+  # Define tanto march quanto mtune para a sua própria CPU atual.
+  # ATENÇÃO: O binário gerado será incompatível com processadores mais antigos ou de outras famílias.
+  # "-Ctarget-cpu=native",
+
+  # --- Otimizações de Linker ---
+  # Remove código morto para reduzir o tamanho final do binário.
+  "-Clink-arg=-Wl,--gc-sections",
+
+  # CRÍTICO PARA TEMPO-REAL (DSP): Força a resolução de símbolos dinâmicos no startup (Bind Now).
+  # Evita que o lazy-binding do SO (ex: chamadas para libm ou libc) ocorra de surpresa 
+  # durante a thread de DSP de áudio, o que causaria lockups e XRuns (page-faults de execução).
+  "-Clink-arg=-Wl,-z,now",
+
+  # Melhora a velocidade de carregamento descartando bibliotecas listadas que não são de fato usadas.
+  "-Clink-arg=-Wl,--as-needed",
 ]

@@ -5,5 +5,6 @@
 ## Limpeza geral de código-fonte:
 - Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser substituidas por outras. Limpar as "dependencies" no Cargo.toml
 - Organizar logicamente as funções. Quebrar funções muito grandes ou unir muito pequenas. Quebrar arquivos muito grandes.
-- Comentários de código-fone limpos e úteis. Remover referências a sprints e coisas do passado. Utilidade real no presente.
+- Comentários de código-fone limpos e úteis. Remover referências a sprints e coisas do passado. Utilidade real no presente. Linguagem simples e direta para o dev junior entender os algoritmos e o arquiteto entender as decisões técnicas.
+- Remover referências desnecessárias a cfg que já são óbvias (ex: linux, 64 bits, avx2, etc)
 - Atualizar pasta docs/.

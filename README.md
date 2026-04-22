@@ -26,6 +26,8 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 * Processador x86-64-v3 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015).
 
+* Hadware recomendado para redes neurais NAM: Intel Core 9ª Geração (2019) ou AMD Ryzen 3000 (Zen 2) ou superior.
+
 * Toolchain do Rust 1.94+ (`cargo`).
 
 * Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph`
