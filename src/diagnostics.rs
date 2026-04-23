@@ -14,7 +14,7 @@
 //! threads não-RT (CLI, loop principal do PipeWire). O callback `process()`
 //! continua usando flags atômicas (`RtStatusFlags`) para sinalização silenciosa.
 
-use colored::Colorize;
+use crate::colors::Colorize;
 use std::fmt;
 use std::time::SystemTime;
 

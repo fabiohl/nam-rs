@@ -46,11 +46,11 @@
 //! Quando nenhum modelo está carregado, opera em pass-through (o som entra e sai sem alteração).
 //! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
 
+use crate::colors::Colorize;
 use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::dsp::gain::{apply_gain_simd, is_buffer_mono_simd, is_buffer_silent_stereo_simd};
 use crate::dsp::resampler::NamResampler;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
-use colored::Colorize;
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;

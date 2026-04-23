@@ -165,9 +165,7 @@ prop_compose! {
             sim_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
         }
 
-        let mut hasher = crc32fast::Hasher::new();
-        hasher.update(&sim_data[weights_offset..]);
-        let crc = hasher.finalize();
+        let crc = nam_rs::loader::namb::crc32_ieee(&sim_data[weights_offset..]);
         sim_data[24..28].copy_from_slice(&crc.to_le_bytes());
 
         sim_data

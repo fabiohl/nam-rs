@@ -336,7 +336,7 @@ O arquivo `tests/proptest_parsers.rs` exercita os parsers de entrada com **~45.0
 
 ### 6.8. Convenções e Guardas
 
-- **Guarda SIMD por runtime detection:** Testes que exercitam kernels AVX2/AVX-512 envolvem o corpo em `if std::is_x86_feature_detected!("avx2") && ...`, garantindo que máquinas sem suporte não sofram `SIGILL`.
+- **Guarda SIMD por runtime detection:** O nam-rs compila estritamente para `x86-64-v3`, portanto verificações de AVX2/FMA foram removidas. Testes que exercitam kernels experimentais de **AVX-512** continuam a usar guardas como `if std::is_x86_feature_detected!("avx512f")`, garantindo fallback seguro nestes casos.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
 - **Comando de execução:** `cargo test` dispara todas as camadas (138 verificações). `cargo test --lib` executa apenas os 95 unitários inline; `cargo test --test nam_infer_test` os 29 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 4 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 

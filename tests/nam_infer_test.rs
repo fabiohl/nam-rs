@@ -51,18 +51,9 @@ struct CountingAllocator;
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if TRACKING_ENABLED.load(Ordering::Relaxed) {
-            #[cfg(target_os = "linux")]
-            {
-                let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-                if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
-                    ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
-                }
-            }
-            #[cfg(not(target_os = "linux"))]
-            {
-                ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
-            }
+        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+        if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
+            ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
         }
         unsafe { System.alloc(layout) }
     }
@@ -79,11 +70,8 @@ static GLOBAL: CountingAllocator = CountingAllocator;
 struct TrackingGuard;
 impl TrackingGuard {
     fn new() -> Self {
-        #[cfg(target_os = "linux")]
-        {
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            TRACKING_THREAD.store(tid, Ordering::Relaxed);
-        }
+        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+        TRACKING_THREAD.store(tid, Ordering::Relaxed);
         ALLOC_COUNT.store(0, Ordering::Relaxed);
         TRACKING_ENABLED.store(true, Ordering::Relaxed);
         Self
@@ -519,56 +507,54 @@ fn test_wavenet_model_json_parsing() {
 /// Em debug, usa blocos reduzidos (512) para velocidade de CI.
 #[test]
 fn test_wavenet_computational_stability() {
-    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        let mut model = build_synthetic_wavenet_standard();
+    let mut model = build_synthetic_wavenet_standard();
 
-        // Estabilização da matemática com blocos silenciosos de transiente
-        model.prewarm();
+    // Estabilização da matemática com blocos silenciosos de transiente
+    model.prewarm();
 
-        let mut in_data = [0.0f32; TEST_BLOCK_SIZE];
-        let mut out_data = [0.0f32; TEST_BLOCK_SIZE];
+    let mut in_data = [0.0f32; TEST_BLOCK_SIZE];
+    let mut out_data = [0.0f32; TEST_BLOCK_SIZE];
 
-        // Em debug, reduz blocos para CI mais rápido; release usa valor completo.
-        let num_blocks = if cfg!(debug_assertions) {
-            512
-        } else {
-            TEST_NUM_BLOCKS
-        };
+    // Em debug, reduz blocos para CI mais rápido; release usa valor completo.
+    let num_blocks = if cfg!(debug_assertions) {
+        512
+    } else {
+        TEST_NUM_BLOCKS
+    };
 
-        let mut tot_energy = 0.0f64;
-        let mut pos: u64 = 0;
+    let mut tot_energy = 0.0f64;
+    let mut pos: u64 = 0;
 
-        for _ in 0..num_blocks {
-            // Gerador senoidal controlado como em `ModelTest.cpp`
-            for item in in_data.iter_mut().take(TEST_BLOCK_SIZE) {
-                *item = ((pos as f32) * 0.01).sin();
-                pos += 1;
-            }
-
-            model.process(&in_data, &mut out_data);
-
-            for &out_val in out_data.iter().take(TEST_BLOCK_SIZE) {
-                assert!(
-                    out_val.is_finite(),
-                    "Crash computacional detectado: FPU gerou float não finito. Falha de auditoria."
-                );
-                tot_energy += (out_val as f64) * (out_val as f64);
-            }
+    for _ in 0..num_blocks {
+        // Gerador senoidal controlado como em `ModelTest.cpp`
+        for item in in_data.iter_mut().take(TEST_BLOCK_SIZE) {
+            *item = ((pos as f32) * 0.01).sin();
+            pos += 1;
         }
 
-        let rms = (tot_energy / ((TEST_BLOCK_SIZE * num_blocks) as f64)).sqrt();
-        println!(
-            "[Auditoria de Integridade WaveNet] RMS sobre onda senoidal processada: {}",
-            rms
-        );
+        model.process(&in_data, &mut out_data);
 
-        // T-7: Verificação de magnitude razoável — RMS deve ser ≤ 10.0 para modelo sintético.
-        // Um RMS > 10.0 indicaria divergência numérica da rede ou erro de inicialização.
-        assert!(
-            rms <= 10.0,
-            "WaveNet RMS {rms:.4} excede magnitude razoável (10.0). Possível divergência numérica."
-        );
+        for &out_val in out_data.iter().take(TEST_BLOCK_SIZE) {
+            assert!(
+                out_val.is_finite(),
+                "Crash computacional detectado: FPU gerou float não finito. Falha de auditoria."
+            );
+            tot_energy += (out_val as f64) * (out_val as f64);
+        }
     }
+
+    let rms = (tot_energy / ((TEST_BLOCK_SIZE * num_blocks) as f64)).sqrt();
+    println!(
+        "[Auditoria de Integridade WaveNet] RMS sobre onda senoidal processada: {}",
+        rms
+    );
+
+    // T-7: Verificação de magnitude razoável — RMS deve ser ≤ 10.0 para modelo sintético.
+    // Um RMS > 10.0 indicaria divergência numérica da rede ou erro de inicialização.
+    assert!(
+        rms <= 10.0,
+        "WaveNet RMS {rms:.4} excede magnitude razoável (10.0). Possível divergência numérica."
+    );
 }
 
 /// Teste 3: `build_model()` com JSON real produz `DynamicModel` funcional.
@@ -1242,9 +1228,7 @@ fn test_namb_roundtrip_dispatcher_e2e() {
     }
 
     // CRC32 sobre bloco de pesos
-    let mut hasher = crc32fast::Hasher::new();
-    hasher.update(&namb_data[weights_offset..]);
-    let crc = hasher.finalize();
+    let crc = nam_rs::loader::namb::crc32_ieee(&namb_data[weights_offset..]);
     namb_data[24..28].copy_from_slice(&crc.to_le_bytes());
 
     // 1. Parse NAMB

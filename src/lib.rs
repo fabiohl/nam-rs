@@ -8,6 +8,7 @@
 //! Contém a infraestrutura matemática, arquitetura de inferência neural
 //! sob Const Generics, utilitários Lock-Free (SPSC) e host Pipeline.
 
+pub mod colors;
 pub mod diagnostics;
 pub mod dsp;
 pub mod loader;

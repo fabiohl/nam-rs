@@ -1,9 +1,9 @@
 ## Leitura geral do código fonte (pós limpeza final)
 ## Limpeza geral de código-fonte:
-- Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser unificadas ou substituidas por outras.
-- Revisão nas "dependencies" no Cargo.toml se podem ser mais específicas. Se são muito pouco usadas, com considerável carga de código e elegíveis para substituição por outras funções.
-- Organizar logicamente o posicionamento das funções. Quebrar funções muito grandes ou unir muito pequenas. Fazer o mesmco com os arquivos em si.
-- Comentários de código-fone limpos e úteis, com tamanho ideal. Remover referências a sprints e fatos que ocorrenam no decorrer do desenvolvimento, mas não tem sentido estar na versão 1.0.
-- Comentários e documentações com utilidade real no presente (v1.0). Linguagem simples e direta para o dev junior entender os algoritmos e para o arquiteto entender as decisões técnicas e resguarda-las.
-- Remover certas construções do tipo "#[cfg(condition)]" que verifiquem coisas óbvias ou redundantes (ex: linux, 64 bits, avx2, etc) e não fazem sentido serem verificadas pelo próprio escopo fixo do projeto.
-- Atualizar pasta docs/ e .agents/.
+1. Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser unificadas ou substituidas por outras.
+1. Revisão nas "dependencies" no Cargo.toml se podem ser mais específicas. Se são muito pouco usadas, com considerável carga de código e elegíveis para substituição por outras funções.
+1. Remover certas construções do tipo "#[cfg(condition)]" que verifiquem coisas óbvias ou redundantes (ex: linux, 64 bits, avx2, etc) e não fazem sentido serem verificadas pelo próprio escopo fixo do projeto.
+2. Organizar logicamente o posicionamento das funções. Quebrar funções muito grandes ou unir muito pequenas. Fazer o mesmo com os arquivos em si.
+3. Comentários de código-fone limpos e úteis, com tamanho ideal. Remover referências a sprints e fatos que ocorrenam no decorrer do desenvolvimento, mas não tem sentido estar na versão 1.0.
+3. Comentários e documentações com utilidade real no presente (v1.0). Linguagem simples e direta para o dev junior entender os algoritmos e para o arquiteto entender as decisões técnicas e resguarda-las.
+3. Atualizar pasta docs/ e .agents/.

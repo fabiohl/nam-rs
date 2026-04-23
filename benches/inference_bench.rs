@@ -118,17 +118,15 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
 /// a função de ativação tanh via polinômio Padé grau 5 + rsqrt_ps Newton-Raphson.
 /// Processar 256 floats por invocação é representativo do workload interno.
 fn bench_tanh_slice_256(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
-        c.bench_function("FastMath_tanh_AVX2_256elem", |b| {
-            let mut buf = base.clone();
-            b.iter(|| {
-                buf.copy_from_slice(&base);
-                unsafe { nam_rs::math::fastmath::tanh_slice_avx2(&mut buf) };
-            });
+    c.bench_function("FastMath_tanh_AVX2_256elem", |b| {
+        let mut buf = base.clone();
+        b.iter(|| {
+            buf.copy_from_slice(&base);
+            unsafe { nam_rs::math::fastmath::tanh_slice_avx2(&mut buf) };
         });
-    }
+    });
 }
 
 /// Benchmark: kernel FastMath `sigmoid_slice_avx2` sobre 256 elementos f32.
@@ -136,17 +134,15 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
 /// O sigmoid é derivado via identidade `0.5*(1+tanh(0.5*x))` e é usado
 /// nas portas i/f/o do LSTM. Processar 256 floats é representativo.
 fn bench_sigmoid_slice_256(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
-        c.bench_function("FastMath_sigmoid_AVX2_256elem", |b| {
-            let mut buf = base.clone();
-            b.iter(|| {
-                buf.copy_from_slice(&base);
-                unsafe { nam_rs::math::fastmath::sigmoid_slice_avx2(&mut buf) };
-            });
+    c.bench_function("FastMath_sigmoid_AVX2_256elem", |b| {
+        let mut buf = base.clone();
+        b.iter(|| {
+            buf.copy_from_slice(&base);
+            unsafe { nam_rs::math::fastmath::sigmoid_slice_avx2(&mut buf) };
         });
-    }
+    });
 }
 
 /// Benchmark: WaveNet Dynamic Standard (mesmo modelo BossWN-standard.nam via path dinâmico).
@@ -276,35 +272,31 @@ fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
 }
 
 fn bench_dot_product_avx2_256(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        let vec_a: Vec<f32> = (0..256).map(|i| (i as f32) * 0.1).collect();
-        let vec_b: Vec<f32> = (0..256).map(|i| (i as f32) * -0.1).collect();
+    let vec_a: Vec<f32> = (0..256).map(|i| (i as f32) * 0.1).collect();
+    let vec_b: Vec<f32> = (0..256).map(|i| (i as f32) * -0.1).collect();
 
-        c.bench_function("DotProduct_AVX2_256elem", |b| {
-            b.iter(|| unsafe {
-                nam_rs::math::simd::dot_product_avx2(
-                    std::hint::black_box(&vec_a),
-                    std::hint::black_box(&vec_b),
-                )
-            });
+    c.bench_function("DotProduct_AVX2_256elem", |b| {
+        b.iter(|| unsafe {
+            nam_rs::math::simd::dot_product_avx2(
+                std::hint::black_box(&vec_a),
+                std::hint::black_box(&vec_b),
+            )
         });
-    }
+    });
 }
 
 fn bench_dot_product_avx2_64(c: &mut Criterion) {
-    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
-        let vec_a: Vec<f32> = (0..64).map(|i| (i as f32) * 0.1).collect();
-        let vec_b: Vec<f32> = (0..64).map(|i| (i as f32) * -0.1).collect();
+    let vec_a: Vec<f32> = (0..64).map(|i| (i as f32) * 0.1).collect();
+    let vec_b: Vec<f32> = (0..64).map(|i| (i as f32) * -0.1).collect();
 
-        c.bench_function("DotProduct_AVX2_64elem", |b| {
-            b.iter(|| unsafe {
-                nam_rs::math::simd::dot_product_avx2(
-                    std::hint::black_box(&vec_a),
-                    std::hint::black_box(&vec_b),
-                )
-            });
+    c.bench_function("DotProduct_AVX2_64elem", |b| {
+        b.iter(|| unsafe {
+            nam_rs::math::simd::dot_product_avx2(
+                std::hint::black_box(&vec_a),
+                std::hint::black_box(&vec_b),
+            )
         });
-    }
+    });
 }
 
 fn bench_resampler_44100_to_48000(c: &mut Criterion) {

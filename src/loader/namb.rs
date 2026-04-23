@@ -8,7 +8,20 @@
 
 use super::nam_json::{NamConfig, NamLayerConfig, NamMetadata, NamModelData};
 use anyhow::{Result, bail};
-use crc32fast::Hasher;
+
+/// Calcula o CRC32 (IEEE 802.3) de um slice de bytes.
+/// Substitui a dependência externa `crc32fast` por uma versão leve em software.
+pub fn crc32_ieee(data: &[u8]) -> u32 {
+    let mut crc = 0xFFFFFFFFu32;
+    for &byte in data {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            let mask = (crc & 1).wrapping_neg();
+            crc = (crc >> 1) ^ (0xEDB88320u32 & mask);
+        }
+    }
+    crc ^ 0xFFFFFFFFu32
+}
 
 /// Lê um `f32` little-endian do slice nos offsets informados.
 fn read_f32_le(data: &[u8], offset: usize) -> Result<f32> {
@@ -51,10 +64,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // 24: CRC32
     let crc_expected = u32::from_le_bytes(data[24..28].try_into()?);
 
-    // Verificação CRC32 base IEEE 802.3 sobre o bloco de pesos.
-    let mut hasher = Hasher::new();
-    hasher.update(&data[weights_offset..]);
-    let crc_calculated = hasher.finalize();
+    let crc_calculated = crc32_ieee(&data[weights_offset..]);
 
     if crc_calculated != crc_expected {
         bail!(
@@ -197,10 +207,7 @@ mod tests {
             sim_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
         }
 
-        // CRC32 IEEE 802.3 sobre os bytes de pesos
-        let mut hasher = Hasher::new();
-        hasher.update(&sim_data[weights_offset..]);
-        let crc = hasher.finalize();
+        let crc = crc32_ieee(&sim_data[weights_offset..]);
         sim_data[24..28].copy_from_slice(&crc.to_le_bytes());
 
         sim_data
