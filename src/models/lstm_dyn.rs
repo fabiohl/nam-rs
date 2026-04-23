@@ -115,7 +115,7 @@ impl LstmDynLayer {
         }
     }
 
-    /// Retorna a fração visível oculta do estado transiente para passar entre layers.
+    /// Retorna a parte visível do estado oculto (hidden state).
     #[inline(always)]
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[self.input_size..]
@@ -166,7 +166,7 @@ impl LstmDynModel {
     }
 
     /// Processamento Síncrono de Áudio (Fallback)
-    /// Executa o aquecimento do loop inicial da máquina transiente.
+    /// Executa o aquecimento (Pre-warm) do estado interno da LSTM.
     ///
     /// Processa `num_samples` amostras zero em chunks de 512 para estabilizar
     /// os estados oculto e celular. Consistente com `LstmModel1`/`LstmModel2`.

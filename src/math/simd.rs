@@ -351,8 +351,8 @@ pub unsafe fn dot_product_4x_avx512(
     }
 }
 
-/// Estrutura de Inversão de Controle com Função de Despacho Dinâmico de Ponteiros.
-/// Resolve transparentemente o multiversionamento das Redes Inferenciais sem alocações.
+/// Despacho Dinâmico Global de Funções Matemáticas SIMD.
+/// Resolve o multiversionamento (AVX2/AVX-512) para a inferência sem causar alocações.
 ///
 /// ## Motivação: Caching via `LazyLock`
 ///
@@ -366,10 +366,10 @@ pub unsafe fn dot_product_4x_avx512(
 /// Assinatura da função para 4 Dot Products simultâneos (ILP máximo) reutilizando o state.
 pub type DotProduct4xFn = unsafe fn(&[f32], &[f32], &[f32], &[f32], &[f32]) -> [f32; 4];
 
-/// Estrutura de Inversão de Controle com Função de Despacho Dinâmico de Ponteiros.
-/// Resolve transparentemente o multiversionamento das Redes Inferenciais sem alocações.
+/// Despacho Dinâmico Global de Funções Matemáticas SIMD.
+/// Resolve o multiversionamento (AVX2/AVX-512) para a inferência sem causar alocações.
 ///
-/// **Design:** Singleton Lazily Evaluated (`SimdMathConfig::get()`) no momento do despacho.
+/// **Design:** Singleton resolvido tardiamente (Lazily Evaluated via `SimdMathConfig::get()`).
 /// Toda a API `unsafe` tem garantia arquitetural no init estático via `is_x86_feature_detected!`.
 #[derive(Clone, Copy)]
 pub struct SimdMathConfig {

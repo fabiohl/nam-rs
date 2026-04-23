@@ -1,5 +1,11 @@
 ## Leitura geral do código fonte (pós limpeza final)
-## Limpeza geral de código-fonte:
+## DotProduct_AVX2_64elem  time:   [5.1265 ns 5.1540 ns 5.2014 ns]
+                        change: [+2.9237% +4.7513% +7.5800%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+   Found 5 outliers among 50 measurements (10.00%)
+     1 (2.00%) low mild
+     4 (8.00%) high severe
+## Limpeza geral de código-fonte [Claude Opus]:
 1. Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser unificadas ou substituidas por outras.
 1. Revisão nas "dependencies" no Cargo.toml se podem ser mais específicas. Se são muito pouco usadas, com considerável carga de código e elegíveis para substituição por outras funções.
 1. Remover certas construções do tipo "#[cfg(condition)]" que verifiquem coisas óbvias ou redundantes (ex: linux, 64 bits, avx2, etc) e não fazem sentido serem verificadas pelo próprio escopo fixo do projeto.
