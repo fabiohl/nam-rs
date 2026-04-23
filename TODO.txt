@@ -1,6 +1,7 @@
-# Leitura geral do código-fonte e Release 1.0
+# Release 1.0 (Git Tag)
+# Leitura geral do código-fonte
 
-# Testes finais: utils/mod-update.sh utils/lints.sh utils/testar.sh (Gitar o Cargo.lock)
+# Testes finais (rm Cargo.lock e tirar do .gitignore): utils/mod-update.sh ; utils/lints.sh ; utils/testar.sh
 ## Chat "Finalizing NAM-rs Release Candidate" [Repeti-lo!!!!]
 ## C.4 — Eliminação de Cópia Duplicada no Capture Buffer (pw_host.rs)
 ##

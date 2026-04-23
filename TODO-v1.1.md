@@ -1,4 +1,4 @@
-# Ideias de pesquisa para as próximas versões 1.x e/ou 2.x
+# Ideias para versão 1.1
 
 ---
 
@@ -158,11 +158,13 @@ A função `update_gain_multipliers` em `pw_host.rs` calcula `10.0f32.powf(total
 ### 6.2 Implementação Proposta
 
 **Opção A — LUT Pré-computada:**
+
 - Tabela estática `const` de ~120 entradas: `DB_TO_LINEAR_LUT[i] = 10.0^((i - 60) / 20.0)` para i ∈ [0, 120] cobrindo −60dB a +60dB.
 - Interpolação linear entre pontos adjacentes para valores fracionários.
 - Custo: 1 load + 1 FMA vs 200 ciclos de `powf`.
 
 **Opção B — Polinômio Rápido `exp2`:**
+
 - Usar a identidade `10^(x/20) = 2^(x * log2(10) / 20)` e implementar um polinômio rápido `exp2_fast(x)` baseado na mesma técnica de Minimax já usada em `fastmath.rs`.
 - Custo: ~5-8 instruções FMA em registrador vs chamada `libm`.
 
@@ -197,4 +199,3 @@ O `dot_product_4x_interleaved_avx2` em `simd.rs` usa `_mm256_broadcast_ss` + `_m
 - BF16 tem apenas 7 bits de mantissa (vs 10 do FP16). Testar extensivamente a estabilidade do loop LSTM recorrente com pesos BF16 — o erro pode acumular de forma catastrófica em redes profundas.
 - Considerar BF16 apenas para pesos (não para ativações/states), preservando FP32 nos acumuladores.
 - Golden vectors precisariam de versões BF16-specific ou tolerâncias relaxadas.
-
