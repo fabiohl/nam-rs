@@ -82,6 +82,7 @@ Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `p
 
 * [docs/architecture.md](docs/architecture.md) — Topologia, módulos e decisões de design
 * [docs/dependencies.md](docs/dependencies.md) — Dependências sistêmicas e crates Rust
+* [docs/benchmarks.md](docs/benchmarks.md) — Como interpretar as métricas de performance do Criterion
 
 ## 🧠 Modelos Suportados
 
