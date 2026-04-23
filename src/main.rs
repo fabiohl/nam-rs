@@ -313,22 +313,33 @@ fn main() -> anyhow::Result<()> {
     pipewire::init();
     log::info!("{} PipeWire inicializado.", "🔌".bright_blue());
 
-    ctrlc::set_handler(|| {
+    // Handler de SIGINT direto via libc::sigaction — substitui crate `ctrlc`.
+    // Usa apenas operações async-signal-safe: AtomicBool + libc::_exit.
+    extern "C" fn sigint_handler(_sig: libc::c_int) {
         if spsc::SHUTDOWN.load(Ordering::SeqCst) {
-            std::process::exit(1);
+            // Segundo CTRL+C → force-quit imediato (signal-safe)
+            unsafe { libc::_exit(1) };
         }
         spsc::SHUTDOWN.store(true, Ordering::SeqCst);
-    })
-    .map_err(|e| {
-        NamDiagnostic::new(NamErrorCode::CtrlCHandlerFailed, &sys)
-            .message("Falha ao preparar o sistema para interceptar o CTRL+C.")
-            .hint(
-                "O aplicativo pode não encerrar suavemente se você tentar fechá-lo pelo terminal.",
-            )
-            .param("detail", &e)
-            .emit();
-        anyhow::anyhow!("Ctrl-C handler setup failed: {e}")
-    })?;
+    }
+
+    unsafe {
+        let mut sa: libc::sigaction = std::mem::zeroed();
+        sa.sa_sigaction = sigint_handler as *const () as libc::sighandler_t;
+        sa.sa_flags = libc::SA_RESTART;
+        libc::sigemptyset(&mut sa.sa_mask);
+        let ret = libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
+        if ret != 0 {
+            NamDiagnostic::new(NamErrorCode::CtrlCHandlerFailed, &sys)
+                .message("Falha ao preparar o sistema para interceptar o CTRL+C.")
+                .hint(
+                    "O aplicativo pode não encerrar suavemente se você tentar fechá-lo pelo terminal.",
+                )
+                .param("detail", "sigaction(SIGINT) retornou erro")
+                .emit();
+            return Err(anyhow::anyhow!("sigaction(SIGINT) failed"));
+        }
+    }
 
     let channels = spsc::setup_spsc(64);
     let mut producer = channels.param_producer;

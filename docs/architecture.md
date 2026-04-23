@@ -58,7 +58,6 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 | `src/dsp/mod.rs`            | Módulo raiz DSP para operações pré/pós motor neural                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `src/dsp/gain.rs`           | Gain staging SIMD (AVX2 `_mm256_mul_ps`) baseado em metadados `input/output_level_dbu`. `detect_clipping_stereo_simd` detecta saturação estéreo via AVX2 (8 samples/iteração) substituindo loop escalar. Fórmulas de calibração: `input_db_adj = 12.0 - input_level_dbu` (positivo = atenuação; referência NAM = 12 dBu); `output_db_adj = −18.0 − loudness` (alvo = −18 LUFS). Multiplicador linear: `10^((user_db + model_db_adj) / 20)`.                                     |
 | `src/dsp/resampler.rs`      | `NamResampler`: wrapper multi-channel Planar (2 channels), resampler bidirecional FIR Sinc (rubato 0.16), interpolação Hermite **cúbica** (+6 dB SNR vs linear), bypass automático para frequências de 48 kHz cravadas.                                                                                                                                                                                                                                                         |
-| `src/dsp/traits.rs`         | Traits genéricos para DSP: `Sample` (escalar f32/f64 com `EQUILIBRIUM`, `from_f32`, `to_f32`), `Frame` (container multi-canal `[S; N]` com `CHANNELS`, `as_slice`/`as_mut_slice`), `Signal` (processamento vetorial em bloco `process_block`/`process_block_in_place`). Fundações para static dispatch (monomorfização) em vias quentes, impedindo acoplamento em fatias brutas `&[f32]`.                                                                                       |
 
 ## 5. Gestão de Dependências DSP
 
@@ -119,7 +118,7 @@ PipeWire Input (Nk Hz) — L/R (F32P)
 
 O projeto adota a convenção idiomática do Rust, com três camadas complementares:
 
-### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 95 testes
+### 6.1. Testes Unitários Inline (`#[cfg(test)]`) — 79 testes
 
 Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no final do arquivo, testando funções e structs **privadas** com acesso direto. Estes testes são compilados apenas em modo test e não afetam o binário de produção.
 
@@ -255,7 +254,7 @@ O arquivo `benches/inference_bench.rs` mede a latência de processamento com o f
 | `Prewarm_WaveNet_Standard_2048samp`                | Benchmark de `prewarm(2048)` para WaveNet      | Tempo gasto na inicialização/alocação de buffer |
 | `Prewarm_LSTM_2x16_2048samp`                       | Benchmark de `prewarm(2048)` para LSTM         | Tempo gasto na estabilização dos estados LSTM   |
 
-> **Nota:** Durante `cargo bench`, os 95 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado. Os benchmarks AVX-512 são condicionais: em hardware sem suporte, imprimem `SKIP` e retornam sem falha.
+> **Nota:** Durante `cargo bench`, os 79 testes unitários aparecem como `ignored` — isto é o comportamento normal do criterion, que re-roda o binário com harness desabilitado. Os benchmarks AVX-512 são condicionais: em hardware sem suporte, imprimem `SKIP` e retornam sem falha.
 
 Execução: `cargo bench --bench inference_bench`
 
@@ -338,7 +337,7 @@ O arquivo `tests/proptest_parsers.rs` exercita os parsers de entrada com **~45.0
 
 - **Guarda SIMD por runtime detection:** O nam-rs compila estritamente para `x86-64-v3`, portanto verificações de AVX2/FMA foram removidas. Testes que exercitam kernels experimentais de **AVX-512** continuam a usar guardas como `if std::is_x86_feature_detected!("avx512f")`, garantindo fallback seguro nestes casos.
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
-- **Comando de execução:** `cargo test` dispara todas as camadas (138 verificações). `cargo test --lib` executa apenas os 95 unitários inline; `cargo test --test nam_infer_test` os 29 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 4 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
+- **Comando de execução:** `cargo test` dispara todas as camadas (122 verificações). `cargo test --lib` executa apenas os 79 unitários inline; `cargo test --test nam_infer_test` os 29 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 4 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 
 ## 7. Referências
 
