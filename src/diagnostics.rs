@@ -163,7 +163,7 @@ impl fmt::Display for NamErrorCode {
 /// versão do NAM-rs, arquitetura, OS, features de CPU, versão do kernel.
 #[derive(Debug, Clone)]
 pub struct SystemSnapshot {
-    /// Versão do NAM-rs (e.g. "0.7.0").
+    /// Versão do NAM-rs (e.g. "1.0.0").
     pub version: &'static str,
     /// Arquitetura do CPU (e.g. "x86_64").
     pub arch: &'static str,

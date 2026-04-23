@@ -177,17 +177,11 @@ mod tests {
         assert!(model.layer.cell_state[0] != 0.0);
         assert!(model.layer.state[0] != 0.0);
 
-        // Chama prewarm que agora DEVE chamar reset_states() internamente
-        model.prewarm(0); // prewarm com 0 samples apenas chama reset_states e sai (se implementado assim) ou pelo menos limpa o estado.
-        // Wait, prewarm(2048) calls reset_states() then processes zeros. Let's call prewarm(10)
+        // Chama prewarm — internamente chama reset_states() e processa N zeros
+        model.prewarm(0);
         model.prewarm(10);
 
-        // Como o modelo processa 10 zeros e temos um bias = 1.0, o state vai mudar de novo!
-        // A tarefa é "Verifica que prewarm() zera os hidden/cell states antes de reprocessar."
-        // Vamos apenas verificar se chamando reset_states o state é zerado,
-        // E verificar a implementação do prewarm.
-
-        // Melhor teste para "zera os hidden/cell states antes de reprocessar":
+        // Verifica que reset_states() efetivamente zera hidden e cell states
         model.reset_states();
         for val in model.layer.cell_state.iter() {
             assert_eq!(*val, 0.0);

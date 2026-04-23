@@ -1,3 +1,7 @@
+<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+
+<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
+
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural em Tempo Real
 
 A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de baixa latência e aprendizado de máquina neural estritamente focado na simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de áudio (NAM - Neural Amp Modeler). O projeto é concebido em Rust nativo e idiomático, operando como cliente PipeWire standalone no Linux.
@@ -138,9 +142,7 @@ Cada módulo em `src/` contém um bloco `#[cfg(test)] mod tests { ... }` no fina
 | `src/spsc.rs`               | 3      | RtStatusFlags default, canais SPSC, concorrência multi-thread                                                                               |
 | `src/pw_host.rs`            | 1      | DspBridge concorrência lock-free double-buffer (fence Acquire/Release, 1000 buffers, coerência temporal)                                    |
 
-> **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.s
->
-> Os testes estruturais recentes (ex: rejeição JSON malformado e gain staging roundtrip) consolidam o hardening da base para uso em cenários empacotados em releases mais maduros.
+> **Nota:** `src/main.rs` contém 0 testes. Isto é esperado — o `main.rs` é apenas bootstrapping (CLI parser, PipeWire init, stdin loop). Toda a lógica testável está em `src/lib.rs` e submódulos.
 
 ### 6.2. Testes de Integração (`tests/`) — 43 testes
 
