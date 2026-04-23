@@ -7,7 +7,7 @@ globs: **/*.rs, **/*.toml
 # Diretrizes de Aplicação (Rust focado em Inferência e PipeWire)
 
 * **Porte de código C++:** Muito do trabalho a ser realizado envolverá portar código escrito em C++ a partir de outros projetos que subsidiam este projeto. Esteja preparado para navegar nestes projetos espelhados na pasta github.com/ ou em outros locais.
-* **Stack Matemática e Perf:** Como padrão, assuma **Rust 1.94+** (edição 2024). A arquitetura apoia-se nativamente no `std::simd` para operações de Fused Multiply-Add (FMA), calculando topologias complexas (LSTM e WaveNet).
+* **Stack Matemática e Perf:** Como padrão, assuma **Rust 1.95+** (edição 2024). A arquitetura apoia-se nativamente no `std::simd` para operações de Fused Multiply-Add (FMA), calculando topologias complexas (LSTM e WaveNet).
   * Assegure conformidade irrestrita aos desdobramentos de microarquiteturas x86-64-v3, expurgando cálculos `std::math` abstratos por polinômios otimizados (FastMath Minimax).
   * Busque sempre algoritimos que tirem proveito das modernas instruções x86-64-v3 (obrigatório) ou x86-64-v4/avx-512 (opcional, se agregar valor considerável, usando multiversioning).
   * Busque sempre construções de código que dêem ao compilador oportunidade a mais otimizações de código binário.
@@ -26,3 +26,4 @@ globs: **/*.rs, **/*.toml
 * **Tratamento de Erros:** Unwraps são restritos. Em threads DSP não se deve incorrer a interrupções dinâmicas sem tratamentos tolerantes lógicos ou avisos assíncronos silentes.
 * **Comentários de código-fonte:** Pratique a documentação limpa.
   * Módulo (`//!`), structs (`///`), e logs de linha visando expor magias das iterações dos _Const Generics_ das CNN WaveNet ou portas LSTM.
+* **Debug Friendly:** Crie código amigável à skill .agents/skills/debugger/SKILL.md.

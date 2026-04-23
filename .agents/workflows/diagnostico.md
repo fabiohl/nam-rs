@@ -19,7 +19,7 @@ Extraia do texto colado pelo usuário:
 - **Informações de sistema** (versão, arch, avx2/fma, os, kernel)
 - **Timestamp** da ocorrência
 
-Se o usuário colou apenas a mensagem amigável (sem o bloco técnico), peça que cole o bloco completo — incluindo a seção "Informação para suporte" que o NAM-rs gera.
+Se o usuário colou apenas a mensagem amigável (sem o bloco técnico), peça que cole o bloco completo do shell/terminal — incluindo a seção "Informação para suporte" que o NAM-rs gera.
 
 ### 1.2. Localização no Código-Fonte
 

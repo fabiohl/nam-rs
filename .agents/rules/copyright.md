@@ -15,8 +15,4 @@ globs: **/*
   ```
 
 * **Boas Práticas e Posicionamento**: Sempre coloque o aviso de forma fluida e profissional no topo do arquivo. Em arquivos de script que contenham *shebang/hashbang* (ex.: `#!/bin/bash`), aloque o bloco de copyright imediatamente abaixo do mesmo. Tenha zelo para que o formato do comentário não quebre a sintaxe do arquivo de código em vigência. Atentar para que o ano 2026 seja substituído pelo ano correspondente (se for o caso), porém apenas nos arquivos que estiverem sendo editados.
-* **Formatos por Linguagem**:
-  * **Rust / SQL / JavaScript / TypeScript / C**: `// SPDX-License-Identifier: MIT OR Apache-2.0`\n  `// Copyright …`
-  * **Python / Shell / TOML / ini**: `# SPDX-License-Identifier: MIT OR Apache-2.0`\n  `# Copyright …`
-  * **HTML / Markdown / XML**: `<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->`\n  `<!-- Copyright … -->` — em Markdown (`*.md`), prefira omitir o comentário para não poluir a renderização, exceto quando explicitamente solicitado. Arquivos `.md` em `docs/` não carregam copyright obrigatório.
 * **Arquivos Não Aplicáveis**: `Cargo.lock`, arquivos temporários, arquivos binários e recursos de imagem gerados automaticamente não precisam de cabeçalho.
