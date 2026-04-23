@@ -4,14 +4,42 @@
 //! Módulo de Motores Cerebrais (Arquiteturas Inferenciais Neurais) para o NAM-rs.
 //!
 //! Este módulo contém os cérebros acústicos do programa: redes neurais que aprenderam como,
-//! por exemplo, um amplificador ou pedal verdadeiro distorce e colore o som de uma guitarra.
+//! por exemplo, um amplificador ou pedal verdadeiro distorce e colora o som de uma guitarra.
 //! Aqui temos implementações super rápidas ("Zero-Allocation") baseadas no
 //! comportamento exato treinado pelo Neural Amp Modeler (NAM) original.
+
+// =============================================================================
+// Sub-módulos
+// =============================================================================
 
 pub mod lstm;
 pub mod lstm_dyn;
 pub mod wavenet;
 pub mod wavenet_dyn;
+
+// =============================================================================
+// Type Aliases — Perfis LSTM NAM Comuns
+// =============================================================================
+
+/// LSTM 1 camada × 8 unidades ocultas (Nano/Feather).
+pub type Lstm1x8 = lstm::LstmModel1<8, 9, 32>;
+/// LSTM 1 camada × 12 unidades ocultas (Lite).
+pub type Lstm1x12 = lstm::LstmModel1<12, 13, 48>;
+/// LSTM 1 camada × 16 unidades ocultas (Standard).
+pub type Lstm1x16 = lstm::LstmModel1<16, 17, 64>;
+/// LSTM 1 camada × 24 unidades ocultas (Heavy Standard).
+pub type Lstm1x24 = lstm::LstmModel1<24, 25, 96>;
+
+/// LSTM 2 camadas × 8 unidades ocultas.
+pub type Lstm2x8 = lstm::LstmModel2<8, 9, 16, 32>;
+/// LSTM 2 camadas × 12 unidades ocultas.
+pub type Lstm2x12 = lstm::LstmModel2<12, 13, 24, 48>;
+/// LSTM 2 camadas × 16 unidades ocultas.
+pub type Lstm2x16 = lstm::LstmModel2<16, 17, 32, 64>;
+
+// =============================================================================
+// Trait NamModel — Contrato Público
+// =============================================================================
 
 /// A interface (o conector padrão) para qualquer modelo neural (amplificadores, pedais, etc.).
 ///
@@ -33,7 +61,7 @@ pub trait NamModel: Send + Sync {
 pub struct DynamicModel(pub Box<dyn NamModel>);
 
 // =============================================================================
-// NamModel para WaveNet
+// NamModel para WaveNet (Const Generics)
 // =============================================================================
 
 impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
@@ -139,23 +167,3 @@ impl NamModel for lstm_dyn::LstmDynModel {
         self.prewarm(num_samples);
     }
 }
-
-// =============================================================================
-// Type Aliases — Perfis LSTM NAM Comuns
-// =============================================================================
-
-/// LSTM 1 camada × 8 unidades ocultas (Nano/Feather).
-pub type Lstm1x8 = lstm::LstmModel1<8, 9, 32>;
-/// LSTM 1 camada × 12 unidades ocultas (Lite).
-pub type Lstm1x12 = lstm::LstmModel1<12, 13, 48>;
-/// LSTM 1 camada × 16 unidades ocultas (Standard).
-pub type Lstm1x16 = lstm::LstmModel1<16, 17, 64>;
-/// LSTM 1 camada × 24 unidades ocultas (Heavy Standard).
-pub type Lstm1x24 = lstm::LstmModel1<24, 25, 96>;
-
-/// LSTM 2 camadas × 8 unidades ocultas.
-pub type Lstm2x8 = lstm::LstmModel2<8, 9, 16, 32>;
-/// LSTM 2 camadas × 12 unidades ocultas.
-pub type Lstm2x12 = lstm::LstmModel2<12, 13, 24, 48>;
-/// LSTM 2 camadas × 16 unidades ocultas.
-pub type Lstm2x16 = lstm::LstmModel2<16, 17, 32, 64>;

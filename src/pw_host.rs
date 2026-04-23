@@ -604,34 +604,13 @@ pub fn run_pipewire_host(
             })
             .register()?;
 
-        // Constrói o SPA Pod de formato de áudio para negociação com PipeWire.
-        // Formato F32P (Planar), estéreo (2 canais).
+        // Constrói o SPA Pod F32P stereo para negociação de formato com PipeWire.
         let mut audio_info = pw::spa::param::audio::AudioInfoRaw::new();
         audio_info.set_format(pw::spa::param::audio::AudioFormat::F32P);
         audio_info.set_channels(2);
 
-        // Constrói o Pod serializado via FFI (spa_format_audio_raw_build)
         let mut format_buf = [0u8; 1024];
-        let format_pod = unsafe {
-            let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
-            pw::spa::sys::spa_pod_builder_init(
-                &mut builder,
-                format_buf.as_mut_ptr().cast(),
-                format_buf.len() as u32,
-            );
-            let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
-                &mut builder,
-                pw::spa::param::ParamType::EnumFormat.as_raw(),
-                &audio_info.as_raw(),
-            );
-            if pod_ptr.is_null() {
-                return Err(anyhow::anyhow!(
-                    "Falha ao construir SPA Pod de formato de áudio"
-                ));
-            }
-            // O pod aponta dentro de format_buf — válido enquanto format_buf existir
-            &*(pod_ptr as *const pw::spa::pod::Pod)
-        };
+        let format_pod = unsafe { build_spa_format_pod(&audio_info, &mut format_buf)? };
 
         // Ativa a capture stream com formato de áudio declarado.
         // Direction::Input — recebe áudio dos apps (Virtual Sink).
@@ -656,32 +635,7 @@ pub fn run_pipewire_host(
         // Ponteiro raw para o bridge, compartilhado com o playback callback.
         let bridge_ptr_playback = bridge_ptr;
 
-        // Tenta descobrir o sink de hardware padrão via pw-metadata (ignorando Sinks Virtuais)
-        let hardware_target = match std::process::Command::new("pw-metadata")
-            .args(["-n", "default", "0", "default.audio.sink"])
-            .output()
-        {
-            Ok(out) => {
-                let s = String::from_utf8_lossy(&out.stdout);
-                if let Some(start) = s.find("\"name\":\"") {
-                    let rest = &s[start + 8..];
-                    if let Some(end) = rest.find("\"") {
-                        let name = &rest[..end];
-                        // Ignora se o default detectado for o próprio NAM-rs (pode ocorrer se foi salvo pelo WP)
-                        if name != "NAM-rs-input" && name != "NAM-rs-standalone" {
-                            Some(name.to_string())
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        };
+        let hardware_target = detect_hardware_sink();
 
         let mut playback_props = properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
@@ -792,31 +746,14 @@ pub fn run_pipewire_host(
             })
             .register()?;
 
-        // Constrói formato de áudio para a playback stream (mesmo formato F32P stereo).
+        // Constrói SPA Pod F32P stereo para a playback stream (mesmo formato da capture).
         let mut playback_audio_info = pw::spa::param::audio::AudioInfoRaw::new();
         playback_audio_info.set_format(pw::spa::param::audio::AudioFormat::F32P);
         playback_audio_info.set_channels(2);
 
         let mut playback_format_buf = [0u8; 1024];
-        let playback_format_pod = unsafe {
-            let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
-            pw::spa::sys::spa_pod_builder_init(
-                &mut builder,
-                playback_format_buf.as_mut_ptr().cast(),
-                playback_format_buf.len() as u32,
-            );
-            let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
-                &mut builder,
-                pw::spa::param::ParamType::EnumFormat.as_raw(),
-                &playback_audio_info.as_raw(),
-            );
-            if pod_ptr.is_null() {
-                return Err(anyhow::anyhow!(
-                    "Falha ao construir SPA Pod de formato para playback stream"
-                ));
-            }
-            &*(pod_ptr as *const pw::spa::pod::Pod)
-        };
+        let playback_format_pod =
+            unsafe { build_spa_format_pod(&playback_audio_info, &mut playback_format_buf)? };
 
         // Ativa a playback stream — Direction::Output envia para o hardware.
         playback_stream.connect(
@@ -910,77 +847,7 @@ pub fn run_pipewire_host(
             }
         }
 
-        // Lê e imprime status do callback RT (comunicação silenciosa via flags atômicas)
-        let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
-        if active_rate != 0 {
-            log::info!(
-                "{} Callback RT ativou resampler com rate = {} Hz",
-                "✅".green(),
-                active_rate
-            );
-        }
-
-        if rt_status.has_clipped.swap(false, Ordering::Relaxed) {
-            log::warn!(
-                "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
-                "🔥".bright_red().bold()
-            );
-        }
-
-        // Confirmação programática de SCHED_FIFO — sentinela -1 significa "ainda não setado".
-        // A thread DSP publica este valor uma única vez no cold-path do primeiro frame.
-        let prio = rt_status.rt_priority.load(Ordering::Relaxed);
-        if prio != -1 {
-            let is_fifo = rt_status.rt_is_fifo.load(Ordering::Relaxed);
-            // Rearmamos sentinela para não logar novamente nas iterações seguintes.
-            rt_status.rt_priority.store(-1, Ordering::Relaxed);
-
-            if is_fifo {
-                log::info!(
-                    "{} Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
-                    "✅".green(),
-                    prio
-                );
-            } else {
-                NamDiagnostic::new(NamErrorCode::SchedFifoDenied, &sys)
-                    .message(format!(
-                        "Thread DSP NÃO está em SCHED_FIFO (prioridade = {}). \
-                         O áudio pode sofrer jitter e xruns.",
-                        prio
-                    ))
-                    .hint(
-                        "Verifique se o usuário possui permissão RT (ulimit -r) \
-                         ou se o sistema tem rtkit/PipeWire configurados corretamente.",
-                    )
-                    .emit_warning();
-            }
-        }
-
-        let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
-        if overloads > 0 {
-            log::warn!(
-                "{} Sobrecarga de CPU ({} buffers). Considere usar um modelo mais leve ou processador mais poderoso.",
-                "🚨".red(),
-                overloads
-            );
-        }
-
-        // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
-        let current_silent = rt_status.is_silent.load(Ordering::Relaxed);
-        if current_silent != was_silent {
-            was_silent = current_silent;
-            if current_silent {
-                log::info!(
-                    "{} Silence bypass ativado (entrada < −80 dBFS). DSP em idle.",
-                    "🔇".blue()
-                );
-            } else {
-                log::info!(
-                    "{} Sinal detectado. Processamento DSP retomado.",
-                    "🔊".green()
-                );
-            }
-        }
+        was_silent = poll_rt_status(&rt_status, &sys, was_silent);
 
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
@@ -988,6 +855,155 @@ pub fn run_pipewire_host(
     thread_loop.stop();
 
     Ok(())
+}
+
+// =============================================================================
+// Helpers Extraídos — Redução de Complexidade do `run_pipewire_host`
+// =============================================================================
+
+/// Constrói um SPA Pod de formato de áudio F32P stereo para negociação PipeWire.
+///
+/// Serializa `audio_info` em um pod binário via FFI (`spa_format_audio_raw_build`).
+/// O buffer `format_buf` deve viver pelo menos tanto quanto o pod retornado,
+/// pois o pod aponta diretamente para dentro dele (zero-copy FFI).
+///
+/// # Safety
+///
+/// Requer que `audio_info` esteja corretamente inicializado (format + channels).
+/// O pod retornado é válido **somente** enquanto `format_buf` existir em escopo.
+unsafe fn build_spa_format_pod<'a>(
+    audio_info: &pw::spa::param::audio::AudioInfoRaw,
+    format_buf: &'a mut [u8; 1024],
+) -> anyhow::Result<&'a pw::spa::pod::Pod> {
+    unsafe {
+        let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
+        pw::spa::sys::spa_pod_builder_init(
+            &mut builder,
+            format_buf.as_mut_ptr().cast(),
+            format_buf.len() as u32,
+        );
+        let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
+            &mut builder,
+            pw::spa::param::ParamType::EnumFormat.as_raw(),
+            &audio_info.as_raw(),
+        );
+        if pod_ptr.is_null() {
+            return Err(anyhow::anyhow!(
+                "Falha ao construir SPA Pod de formato de áudio"
+            ));
+        }
+        // O pod aponta dentro de format_buf — válido enquanto format_buf existir
+        Ok(&*(pod_ptr as *const pw::spa::pod::Pod))
+    }
+}
+
+/// Detecta o sink de hardware padrão do PipeWire via `pw-metadata`.
+///
+/// Retorna `None` se não for possível determinar (falha de comando,
+/// o default é o próprio NAM-rs, ou parsing falhou).
+fn detect_hardware_sink() -> Option<String> {
+    let out = std::process::Command::new("pw-metadata")
+        .args(["-n", "default", "0", "default.audio.sink"])
+        .output()
+        .ok()?;
+
+    let s = String::from_utf8_lossy(&out.stdout);
+    let start = s.find("\"name\":\"")?;
+    let rest = &s[start + 8..];
+    let end = rest.find('"')?;
+    let name = &rest[..end];
+
+    // Ignora se o default detectado for o próprio NAM-rs
+    // (pode ocorrer se foi salvo pelo WirePlumber)
+    if name == "NAM-rs-input" || name == "NAM-rs-standalone" {
+        None
+    } else {
+        Some(name.to_string())
+    }
+}
+
+/// Lê flags atômicas de status RT e emite logs de monitoramento.
+///
+/// Chamada a cada iteração do loop principal (~100ms). Consome flags
+/// one-shot (active_rate, has_clipped, rt_priority, dsp_overloads) e
+/// faz edge-detection no estado de silêncio.
+///
+/// Retorna o novo estado de silêncio (para edge-detection no caller).
+fn poll_rt_status(rt_status: &RtStatusFlags, sys: &SystemSnapshot, was_silent: bool) -> bool {
+    // Rate do resampler ativado pelo callback RT
+    let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
+    if active_rate != 0 {
+        log::info!(
+            "{} Callback RT ativou resampler com rate = {} Hz",
+            "✅".green(),
+            active_rate
+        );
+    }
+
+    // Detecção de clipping na saída
+    if rt_status.has_clipped.swap(false, Ordering::Relaxed) {
+        log::warn!(
+            "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
+            "🔥".bright_red().bold()
+        );
+    }
+
+    // Confirmação programática de SCHED_FIFO — sentinela -1 significa "ainda não setado".
+    // A thread DSP publica este valor uma única vez no cold-path do primeiro frame.
+    let prio = rt_status.rt_priority.load(Ordering::Relaxed);
+    if prio != -1 {
+        let is_fifo = rt_status.rt_is_fifo.load(Ordering::Relaxed);
+        // Rearmamos sentinela para não logar novamente nas iterações seguintes.
+        rt_status.rt_priority.store(-1, Ordering::Relaxed);
+
+        if is_fifo {
+            log::info!(
+                "{} Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
+                "✅".green(),
+                prio
+            );
+        } else {
+            NamDiagnostic::new(NamErrorCode::SchedFifoDenied, sys)
+                .message(format!(
+                    "Thread DSP NÃO está em SCHED_FIFO (prioridade = {}). \
+                     O áudio pode sofrer jitter e xruns.",
+                    prio
+                ))
+                .hint(
+                    "Verifique se o usuário possui permissão RT (ulimit -r) \
+                     ou se o sistema tem rtkit/PipeWire configurados corretamente.",
+                )
+                .emit_warning();
+        }
+    }
+
+    // Contador de overloads de CPU
+    let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
+    if overloads > 0 {
+        log::warn!(
+            "{} Sobrecarga de CPU ({} buffers). Considere usar um modelo mais leve ou processador mais poderoso.",
+            "🚨".red(),
+            overloads
+        );
+    }
+
+    // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
+    let current_silent = rt_status.is_silent.load(Ordering::Relaxed);
+    if current_silent != was_silent {
+        if current_silent {
+            log::info!(
+                "{} Silence bypass ativado (entrada < −80 dBFS). DSP em idle.",
+                "🔇".blue()
+            );
+        } else {
+            log::info!(
+                "{} Sinal detectado. Processamento DSP retomado.",
+                "🔊".green()
+            );
+        }
+    }
+
+    current_silent
 }
 
 /// Configura a thread DSP atual para operação em tempo real.

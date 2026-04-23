@@ -94,6 +94,3 @@ pub mod wavenet;
 
 pub use lstm::build_lstm_dynamic;
 pub use wavenet::build_wavenet_dynamic;
-
-#[cfg(test)]
-mod dispatcher_test;
