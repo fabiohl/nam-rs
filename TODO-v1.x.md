@@ -94,3 +94,107 @@ O principal gargalo na avaliação de Redes Neurais densas é o Memory Bound (ba
 
 - **Invasividade**: A alteração afeta a assinatura estrutural de todos os modelos `WaveNet` e `LSTM`, bem como da engine SIMD inteira. É por esta razão que foi adiado para 1.x ou 2.x, ao invés da versão inicial Release Candidate.
 - **Validação Numérica**: Necessário testar extensivamente contra os "golden vectors" (testes do cargo) para certificar-se de que a perda de precisão associada ao f16 não degrada a taxa SNR do plugin ou provoca instabilidades no loop DSP recorrente (LSTM).
+
+---
+
+## Idéia 4. LSTM Batch Head Dot-Product (Mini-GEMM)
+
+Esforço: 🟡 Médio · Impacto: 🟡 Médio (5-10% em LSTM benchmarks) · Risco: 🟡 Médio
+
+### 4.1 Diagnóstico e Justificativa
+
+O LSTM processa estritamente sample-by-sample (IIR: `t` depende de `t-1`), conforme documentado na decisão arquitetural em `architecture.md §2`. Porém, dentro de cada sample, a projeção **head dot_product** (`dot_product_avx2(&self.head_weights, hidden)` em `lstm.rs`) é invocada N vezes independentes.
+
+Atualmente, cada invocação paga o custo de setup de registradores YMM para `head_weights` (load constants) e o overhead de loop do `dot_product`. Para N=64 frames, são 64 setups redundantes dos mesmos pesos.
+
+### 4.2 Implementação Proposta
+
+1. Acumular os hidden states de K samples (4-8) num buffer temporário stack-allocated (`[f32; K * H]`, ~128 bytes para K=8, H=16 — cabe inteiramente em L1).
+2. Processar o head dot_product como uma mini-GEMM de K×H → K×1, permitindo reutilização dos pesos em registradores YMM durante K iterações.
+3. O loop externo em `LstmModel1::process_avx2/512` ficaria:
+   - Para cada batch de K samples: executar LSTM sample-by-sample (acumulando hidden states)
+   - Executar head dot_product sobre o batch inteiro (1 load de pesos, K FMAs)
+
+### 4.3 Riscos e Validação
+
+- Requer reestruturação dos loops em `LstmModel1::process_avx2` e `LstmModel2::process_avx2` com cuidado para preservar a semântica sample-by-sample do estado recorrente.
+- Golden vectors existentes devem continuar passando (mesma saída numérica).
+- Validar com `cargo bench --bench inference_bench -- Lstm` para medir o ganho real.
+
+---
+
+## Idéia 5. Prefetch Adaptativo por Dilatação (WaveNet Conv1D)
+
+Esforço: 🟢 Baixo · Impacto: Variável (dependente do hardware) · Risco: 🟡 Médio
+
+### 5.1 Diagnóstico e Justificativa
+
+O `_mm_prefetch` em `wavenet.rs Conv1d::process_single_frame` usa stride fixo de `+1 tap` para o prefetch do próximo tap. Para dilatações baixas (1, 2, 4), o hardware prefetcher do processador já resolve os acessos sequenciais e o software prefetch é redundante. Para dilatações altas (256, 512), o stride é tão grande que o `_MM_HINT_T0` pode trazer a cache line cedo demais (evicção antes do uso) ou gerar I-Cache pollution desnecessária.
+
+### 5.2 Implementação Proposta
+
+Prefetch adaptativo baseado no campo `dilation` da `Conv1d`:
+
+- **Dilatação ≤ 16:** Omitir o prefetch (o hardware prefetcher detecta o padrão strided para strides pequenos).
+- **Dilatação ≥ 32 e < 256:** Manter `_MM_HINT_T0` (L1), comportamento atual.
+- **Dilatação ≥ 256:** Usar `_MM_HINT_T1` (L2 em vez de L1) para evitar poluição da L1. A L2 tem mais capacidade e tolera melhor o prefetch agressivo.
+
+### 5.3 Riscos e Validação
+
+- Pode degradar CPUs com hardware prefetchers menos agressivos (laptops com menos unidades de memória).
+- Requer `cargo bench` em hardware real com modelos Standard (dilation 512) vs Lite (dilation 16).
+- Considerar tornar o comportamento configurável via `const generic` ou parâmetro do modelo.
+
+---
+
+## Idéia 6. Eliminação do `powf` no Callback RT (Gain Staging LUT)
+
+Esforço: 🟢 Baixo · Impacto: 🟡 Médio (latência de I-Cache) · Risco: 🟡 Médio
+
+### 6.1 Diagnóstico e Justificativa
+
+A função `update_gain_multipliers` em `pw_host.rs` calcula `10.0f32.powf(total_db / 20.0)` quando parâmetros de ganho mudam. O `powf` é uma chamada para `libm` que pode levar 100-200 ciclos. Embora protegida por `if param_changed` (evento raro), a mera presença de `powf` importa o corpo da função `libm` na I-Cache do callback, ocupando espaço que poderia ser usado pelo código hot-path.
+
+### 6.2 Implementação Proposta
+
+**Opção A — LUT Pré-computada:**
+- Tabela estática `const` de ~120 entradas: `DB_TO_LINEAR_LUT[i] = 10.0^((i - 60) / 20.0)` para i ∈ [0, 120] cobrindo −60dB a +60dB.
+- Interpolação linear entre pontos adjacentes para valores fracionários.
+- Custo: 1 load + 1 FMA vs 200 ciclos de `powf`.
+
+**Opção B — Polinômio Rápido `exp2`:**
+- Usar a identidade `10^(x/20) = 2^(x * log2(10) / 20)` e implementar um polinômio rápido `exp2_fast(x)` baseado na mesma técnica de Minimax já usada em `fastmath.rs`.
+- Custo: ~5-8 instruções FMA em registrador vs chamada `libm`.
+
+### 6.3 Riscos e Validação
+
+- A LUT requer validação de precisão nos limites (−60dB, +60dB). Tolerância aceitável: < 0.001 dB.
+- A Opção B requer polinômio de grau 3-4 para precisão suficiente no range [−3.0, +3.0] (cobrindo ±60dB/20).
+- Testar com `cargo test -- test_combined_gain_staging` e `test_extreme_gain_values`.
+
+---
+
+## Idéia 7. AVX-512 VNNI/BF16 para Dot Product Interleaved (LSTM)
+
+Esforço: 🔴 Alto · Impacto: 🟢 Alto (30-50% teórico em LSTM) · Risco: 🔴 Alto
+
+> **Cruza com Idéia 3 (F16C Weight Compression).** A implementação VNNI requer pesos em formato BF16, portanto é um super-set natural da Idéia 3.
+
+### 7.1 Diagnóstico e Justificativa
+
+O `dot_product_4x_interleaved_avx2` em `simd.rs` usa `_mm256_broadcast_ss` + `_mm256_blend_ps` para construir pares de state values antes do FMA. Em AVX-512 com VNNI (Intel Tiger Lake+, AMD Zen4+), o `_mm512_dpbf16_ps` pode processar dot-products de 2×BF16 acumulando em FP32 nativamente — potencialmente dobrando o throughput.
+
+### 7.2 Implementação Proposta
+
+1. Adicionar target feature `avx512bf16` + `avx512vnni` no `SimdMathConfig` via multiversioning.
+2. Converter os pesos LSTM interleaved de `[f32; 4]` para `[bf16; 4]` no loader.
+3. Implementar `dot_product_4x_interleaved_vnni` que usa `_mm512_dpbf16_ps` diretamente.
+4. O dispatch via `LazyLock` v-table selecionaria automaticamente o path VNNI quando disponível.
+
+### 7.3 Riscos e Validação
+
+- Requer features `avx512bf16` + `avx512vnni` (hardware 2020+: Intel Tiger Lake, AMD Zen4).
+- BF16 tem apenas 7 bits de mantissa (vs 10 do FP16). Testar extensivamente a estabilidade do loop LSTM recorrente com pesos BF16 — o erro pode acumular de forma catastrófica em redes profundas.
+- Considerar BF16 apenas para pesos (não para ativações/states), preservando FP32 nos acumuladores.
+- Golden vectors precisariam de versões BF16-specific ou tolerâncias relaxadas.
+

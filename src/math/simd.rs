@@ -114,11 +114,16 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
         sum2 = _mm256_add_ps(sum2, sum3);
         let sum = _mm256_add_ps(sum0, sum2);
 
-        // Horizontal sum: extrair e somar os 8 floats do YMM
-        let mut temp = [0.0f32; 8];
-        _mm256_storeu_ps(temp.as_mut_ptr(), sum);
-
-        let mut scalar_sum = temp.iter().sum();
+        // Horizontal sum otimizado: redução via intrínsecos (sem spill YMM→stack)
+        let hi128 = _mm256_extractf128_ps(sum, 1);
+        let lo128 = _mm256_castps256_ps128(sum);
+        let sum128 = _mm_add_ps(lo128, hi128);
+        let shuf = _mm_movehdup_ps(sum128);
+        let sums = _mm_add_ps(sum128, shuf);
+        let shuf2 = _mm_movehl_ps(sums, sums);
+        let final_ss = _mm_add_ss(sums, shuf2);
+        let mut scalar_sum = 0.0f32;
+        _mm_store_ss(&mut scalar_sum, final_ss);
 
         // Loop tail escalar
         while i < len {
@@ -267,21 +272,27 @@ pub unsafe fn dot_product_4x_avx2(
         let sum2 = _mm256_add_ps(sum2_0, sum2_1);
         let sum3 = _mm256_add_ps(sum3_0, sum3_1);
 
-        // Horizontal sum para cada acumulador
-        let mut temp0 = [0.0f32; 8];
-        let mut temp1 = [0.0f32; 8];
-        let mut temp2 = [0.0f32; 8];
-        let mut temp3 = [0.0f32; 8];
+        // Horizontal sum otimizado: redução via intrínsecos (sem spill YMM→stack)
+        #[inline(always)]
+        unsafe fn hsum_avx2(v: __m256) -> f32 {
+            unsafe {
+                let hi = _mm256_extractf128_ps(v, 1);
+                let lo = _mm256_castps256_ps128(v);
+                let s128 = _mm_add_ps(lo, hi);
+                let shuf = _mm_movehdup_ps(s128);
+                let sums = _mm_add_ps(s128, shuf);
+                let shuf2 = _mm_movehl_ps(sums, sums);
+                let r = _mm_add_ss(sums, shuf2);
+                let mut out = 0.0f32;
+                _mm_store_ss(&mut out, r);
+                out
+            }
+        }
 
-        _mm256_storeu_ps(temp0.as_mut_ptr(), sum0);
-        _mm256_storeu_ps(temp1.as_mut_ptr(), sum1);
-        _mm256_storeu_ps(temp2.as_mut_ptr(), sum2);
-        _mm256_storeu_ps(temp3.as_mut_ptr(), sum3);
-
-        let mut s0: f32 = temp0.iter().sum();
-        let mut s1: f32 = temp1.iter().sum();
-        let mut s2: f32 = temp2.iter().sum();
-        let mut s3: f32 = temp3.iter().sum();
+        let mut s0: f32 = hsum_avx2(sum0);
+        let mut s1: f32 = hsum_avx2(sum1);
+        let mut s2: f32 = hsum_avx2(sum2);
+        let mut s3: f32 = hsum_avx2(sum3);
 
         while i < len {
             s0 += w0[i] * state[i];

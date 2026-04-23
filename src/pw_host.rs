@@ -104,6 +104,34 @@ struct AppState<S1, L1, S2, L2> {
     playback_listener: L2,
 }
 
+/// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
+///
+/// Marcada como `#[cold]` para sinalizar ao LLVM que este é o path improvável (o músico
+/// está tocando, portanto há sinal na maioria dos callbacks). Isso permite ao compilador
+/// posicionar este código fora da região quente de I-Cache do `process()`.
+///
+/// ## Safety
+/// - `bridge_ptr` deve apontar para um `DspBridge` válido (garantido pelo `Box::leak`).
+/// - Deve ser chamada apenas do capture callback (único escritor do bridge).
+#[cold]
+#[inline(never)]
+fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
+    // Sinaliza silêncio via flag atômica (zero I/O no callback RT)
+    rt_status.is_silent.store(true, Ordering::Relaxed);
+
+    // Zera o bridge para que o playback emita silêncio
+    // em vez de repetir o último frame processado.
+    // SAFETY: capture callback é o único escritor.
+    let bridge_ref = unsafe { &mut *bridge_ptr };
+    let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
+    bridge_ref.buffers[back_idx].n_samples = 0;
+    std::sync::atomic::fence(Ordering::Release);
+    bridge_ref
+        .active_read_idx
+        .store(back_idx, Ordering::Relaxed);
+    bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+}
+
 /// Inicializa a topologia PipeWire dual-stream (Capture + Playback).
 ///
 /// Arquitetura: Apps → [Capture Stream: Audio/Sink] → process(DSP) → DspBridge → [Playback Stream] → Hardware.
@@ -450,30 +478,11 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
-                                // Silence Bypass: se o buffer inteiro está abaixo de −80 dBFS,
-                                // pula o pipeline DSP completo (gain + resample + inferência neural).
-                                // Custo: ~10 ns AVX2 vs ~500 µs de inferência neural por buffer.
                                 if is_buffer_silent_stereo_simd(
                                     &samples_l[..n_samples],
                                     &samples_r[..n_samples],
                                 ) {
-                                    // Sinaliza silêncio via flag atômica (zero I/O no callback RT)
-                                    rt_status_for_process
-                                        .is_silent
-                                        .store(true, Ordering::Relaxed);
-
-                                    // Zera o bridge para que o playback emita silêncio
-                                    // em vez de repetir o último frame processado.
-                                    // SAFETY: capture callback é o único escritor.
-                                    let bridge_ref = unsafe { &mut *bridge_ptr };
-                                    let back_idx =
-                                        1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
-                                    bridge_ref.buffers[back_idx].n_samples = 0;
-                                    std::sync::atomic::fence(Ordering::Release);
-                                    bridge_ref
-                                        .active_read_idx
-                                        .store(back_idx, Ordering::Relaxed);
-                                    bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+                                    handle_silence_bypass(bridge_ptr, &rt_status_for_process);
                                     return;
                                 }
                                 // Se chegou aqui, há sinal — reseta flag de silêncio
@@ -557,8 +566,12 @@ pub fn run_pipewire_host(
                                         .store(true, Ordering::Relaxed);
                                 }
 
-                                samples_l[..n_copy].copy_from_slice(out_slice_l);
-                                samples_r[..n_copy].copy_from_slice(out_slice_r);
+                                // C.4: A cópia para samples_l/samples_r foi eliminada.
+                                // Na arquitetura dual-stream, o monitor port do Audio/Sink copia
+                                // o buffer *antes* do process() — portanto, escrever de volta em
+                                // samples_l/samples_r é redundante. O áudio processado chega ao
+                                // hardware exclusivamente via playback stream ← DspBridge.
+                                // Ver TODO.txt para instruções de validação e reversão.
 
                                 // =========================================================
                                 // BRIDGE WRITE: copia resultado pós-DSP para o DspBridge

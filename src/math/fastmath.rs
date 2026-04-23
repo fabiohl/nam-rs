@@ -81,10 +81,9 @@ pub unsafe fn simd_tanh(x: __m256) -> __m256 {
         let half = _mm256_set1_ps(0.5);
 
         let rr_sq = _mm256_mul_ps(rr, rr);
-        let rad_rr_sq = _mm256_mul_ps(radicand, rr_sq);
 
-        // diff = 3.0 - (radicand * rr^2)
-        let diff = _mm256_sub_ps(three, rad_rr_sq);
+        // diff = 3.0 - (radicand * rr^2) — fusão FMA (FNMADD: c - a*b em 1 ciclo)
+        let diff = _mm256_fnmadd_ps(radicand, rr_sq, three);
 
         // rr_half = rr * 0.5
         let rr_half = _mm256_mul_ps(rr, half);
@@ -157,10 +156,9 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     let half = _mm512_set1_ps(0.5);
 
     let rr_sq = _mm512_mul_ps(rr, rr);
-    let rad_rr_sq = _mm512_mul_ps(radicand, rr_sq);
 
-    // diff = 3.0 - (radicand * rr^2)
-    let diff = _mm512_sub_ps(three, rad_rr_sq);
+    // diff = 3.0 - (radicand * rr^2) — fusão FMA (FNMADD: c - a*b em 1 ciclo)
+    let diff = _mm512_fnmadd_ps(radicand, rr_sq, three);
 
     // rr_half = rr * 0.5
     let rr_half = _mm512_mul_ps(rr, half);
