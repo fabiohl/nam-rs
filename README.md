@@ -8,6 +8,16 @@ O motor de inferência é uma transposição otimizada da biblioteca C++ [Neural
 
 Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux. Caprichei na busca intensiva pelo estado de arte em matéria de otimização!
 
+## **🇺🇲 English Version (International)**
+
+**NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
+
+The inference engine is an optimized port of Mike Oliphant’s [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, rewritten from scratch in native, idiomatic Rust.
+
+It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features. Our goal is to achieve state-of-the-art performance and efficiency.
+
+*Note: A full translation of this documentation is planned. For now, our primary focus remains on the development of the project itself.*
+
 ## ✨ Arquitetura
 
 O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
@@ -17,6 +27,18 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
 4. **CLI Interativa e Hot-Swap de Modelos:** Interface de linha de comando com `lexopt` para configuração inicial (`--model`, `--input-gain`, `--output-gain`, `--buffer-size`) e loop `stdin` interativo em runtime. Troca de modelos (.nam/.namb) sem interromper o PipeWire, com delegação do `Drop` do modelo antigo para thread GC (lock-free Drop-Delegation).
 5. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de garantias de segurança e de performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++ - trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
+
+## **🇺🇲 Architecture**
+
+NAM-rs follows an opinionated architecture focused on several key pillars:
+
+1. **Native Standalone PipeWire:** It integrates directly with the PipeWire server using `pipewire-rs`. It runs as a native client without VST/LV2/CLAP abstractions (for now), managing its audio ports directly within the PipeWire Graph Engine.
+2. **Ultra-Fast SIMD Inference:** The baseline is x86-64-v3 (AVX2 + FMA required). Activation functions (tanh, sigmoid) use FastMath approximations (Padé + Newton-Raphson rsqrt) in 256-bit registers. WaveNet uses static multiversioning via the `SimdMath` trait with `#[target_feature]` (zero v-table overhead in the hot loop). AVX-512 is supported via `Avx512Math` for ZMM hardware (Intel Xeon, AMD Zen 4+), processing 16 floats per instruction. WaveNet operates using **Batch GEMM** (blocks of up to 64 frames per invocation).
+3. **Real-Time Determinism:** The DSP thread is promoted to `SCHED_FIFO` with strict CPU affinity, preventing migrations and cache misses. Communication between CLI and DSP occurs via a 128-byte aligned SPSC ring buffer. There are **zero heap allocations** during audio processing.
+4. **Interactive CLI and Model Hot-Swapping:** A command-line interface using `lexopt` handles initial configuration (`--model`, `--input-gain`, `--output-gain`, `--buffer-size`) and an interactive `stdin` loop at runtime. Models (.nam/.namb) can be swapped without interrupting audio, with the old model's cleanup delegated to a GC thread (lock-free Drop-Delegation).
+5. **Pure Rust:** Rust was chosen for its strong guarantees in safety and performance. As a compiled language similar to C/C++, it offers modern, expressive syntax. Static implementations (e.g., in `wavenet.rs`) allow the compiler (LLVM) to perform aggressive loop unrolling when kernel sizes and channels are known at compile time.
+
+*Note: A full translation of this documentation is planned. For now, our primary focus remains on the development of the project itself.*
 
 ## 🚀 Guia Rápido
 
