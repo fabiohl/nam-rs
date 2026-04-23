@@ -58,19 +58,13 @@ impl LstmDynLayer {
 
         // 2. Linear Dot Products -> Preenche GATES e adiciona BIAS
         for i in 0..h {
-            let start_i = (i * 4) * ih;
-            let w_i = &self.input_hidden_weights[start_i..start_i + ih];
+            let start = i * ih * 4;
+            let w_interleaved = &self.input_hidden_weights[start..start + ih * 4];
+            let w_slice = unsafe {
+                core::slice::from_raw_parts(w_interleaved.as_ptr() as *const [f32; 4], ih)
+            };
 
-            let start_f = (i * 4 + 1) * ih;
-            let w_f = &self.input_hidden_weights[start_f..start_f + ih];
-
-            let start_c = (i * 4 + 2) * ih;
-            let w_c = &self.input_hidden_weights[start_c..start_c + ih];
-
-            let start_o = (i * 4 + 3) * ih;
-            let w_o = &self.input_hidden_weights[start_o..start_o + ih];
-
-            let dots = unsafe { (math.dot_product_4x)(w_i, w_f, w_c, w_o, &self.state) };
+            let dots = unsafe { (math.dot_product_4x_interleaved)(w_slice, &self.state) };
 
             self.gates[i] = dots[0] + self.bias[i];
             self.gates[i + h] = dots[1] + self.bias[i + h];

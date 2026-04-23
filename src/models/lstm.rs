@@ -20,8 +20,8 @@ use core::arch::x86_64::*;
 /// * `IH` = Input + Hidden Size
 /// * `H4` = 4 * Hidden Size
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
-    /// Matriz 1D agregada contendo os pesos (Input + Hidden) em Structure of Arrays.
-    pub input_hidden_weights: [[f32; IH]; H4],
+    /// Matriz 3D agregada contendo os pesos interfolhados horizontalmente [I, F, C, O] por neurônio e entrada.
+    pub input_hidden_weights: [[[f32; 4]; IH]; H],
     /// Bias lineares extraídos do modelo (tamanho `4 * Hidden`).
     pub bias: [f32; H4],
     /// Estado global contendo [Input | Hidden].
@@ -36,7 +36,7 @@ macro_rules! define_lstm_process {
     (
         $fn_name:ident,
         $target_meta:meta,
-        $dot_product:path,
+        $dot_product_interleaved:path,
         $step:expr,
         $load:ident,
         $store:ident,
@@ -60,12 +60,8 @@ macro_rules! define_lstm_process {
                 }
 
                 for i in 0..H {
-                    let w_i = &self.input_hidden_weights[i * 4];
-                    let w_f = &self.input_hidden_weights[i * 4 + 1];
-                    let w_c = &self.input_hidden_weights[i * 4 + 2];
-                    let w_o = &self.input_hidden_weights[i * 4 + 3];
-
-                    let dots = $dot_product(w_i, w_f, w_c, w_o, &self.state);
+                    let w_slice = &self.input_hidden_weights[i];
+                    let dots = $dot_product_interleaved(w_slice, &self.state);
 
                     self.gates[i] = dots[0] + self.bias[i];
                     self.gates[i + H] = dots[1] + self.bias[i + H];
@@ -157,7 +153,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// Instancia uma nova camada LSTM, zero-iniciada via pré-alocação SoA contínua.
     pub fn new() -> Self {
         Self {
-            input_hidden_weights: [[0.0; IH]; H4],
+            input_hidden_weights: [[[0.0; 4]; IH]; H],
             bias: [0.0; H4],
             state: [0.0; IH],
             cell_state: [0.0; H],
@@ -174,7 +170,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
-        crate::math::simd::dot_product_4x_avx2,
+        crate::math::simd::dot_product_4x_interleaved_avx2,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -187,7 +183,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
-        crate::math::simd::dot_product_4x_avx512,
+        crate::math::simd::dot_product_4x_interleaved_avx512,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,

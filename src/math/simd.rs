@@ -351,6 +351,157 @@ pub unsafe fn dot_product_4x_avx512(
     }
 }
 
+/// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
+/// Otimizado especificamente para as 4 portas do LSTM interfolhadas (Input, Forget, Cell, Output).
+///
+/// # Safety
+/// O chamador deve assegurar que a CPU suporta os recursos "avx2" e "fma".
+pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    let len = state.len();
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut sum2 = _mm256_setzero_ps();
+        let mut sum3 = _mm256_setzero_ps();
+
+        while i + 8 <= len {
+            _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 16) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 8) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 16) as *const i8);
+
+            let s0 = _mm256_broadcast_ss(&state[i]);
+            let s1 = _mm256_broadcast_ss(&state[i + 1]);
+            let s01 = _mm256_blend_ps(s0, s1, 0b11110000);
+            let w01 = _mm256_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            sum0 = _mm256_fmadd_ps(w01, s01, sum0);
+
+            let s2 = _mm256_broadcast_ss(&state[i + 2]);
+            let s3 = _mm256_broadcast_ss(&state[i + 3]);
+            let s23 = _mm256_blend_ps(s2, s3, 0b11110000);
+            let w23 = _mm256_loadu_ps(weights.as_ptr().add(i + 2) as *const f32);
+            sum1 = _mm256_fmadd_ps(w23, s23, sum1);
+
+            let s4 = _mm256_broadcast_ss(&state[i + 4]);
+            let s5 = _mm256_broadcast_ss(&state[i + 5]);
+            let s45 = _mm256_blend_ps(s4, s5, 0b11110000);
+            let w45 = _mm256_loadu_ps(weights.as_ptr().add(i + 4) as *const f32);
+            sum2 = _mm256_fmadd_ps(w45, s45, sum2);
+
+            let s6 = _mm256_broadcast_ss(&state[i + 6]);
+            let s7 = _mm256_broadcast_ss(&state[i + 7]);
+            let s67 = _mm256_blend_ps(s6, s7, 0b11110000);
+            let w67 = _mm256_loadu_ps(weights.as_ptr().add(i + 6) as *const f32);
+            sum3 = _mm256_fmadd_ps(w67, s67, sum3);
+
+            i += 8;
+        }
+
+        while i + 2 <= len {
+            let s0 = _mm256_broadcast_ss(&state[i]);
+            let s1 = _mm256_broadcast_ss(&state[i + 1]);
+            let s01 = _mm256_blend_ps(s0, s1, 0b11110000);
+            let w01 = _mm256_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            sum0 = _mm256_fmadd_ps(w01, s01, sum0);
+            i += 2;
+        }
+
+        let sum01 = _mm256_add_ps(sum0, sum1);
+        let sum23 = _mm256_add_ps(sum2, sum3);
+        let sum = _mm256_add_ps(sum01, sum23);
+
+        let lower = _mm256_castps256_ps128(sum);
+        let upper = _mm256_extractf128_ps(sum, 1);
+        let mut sum128 = _mm_add_ps(lower, upper);
+
+        while i < len {
+            let s0 = _mm_load1_ps(state.as_ptr().add(i));
+            let w0 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            sum128 = _mm_fmadd_ps(w0, s0, sum128);
+            i += 1;
+        }
+
+        let mut out = [0.0; 4];
+        _mm_storeu_ps(out.as_mut_ptr(), sum128);
+        out
+    }
+}
+
+/// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
+/// Otimizado especificamente para as 4 portas do LSTM interfolhadas.
+///
+/// # Safety
+/// O chamador deve assegurar que a CPU suporta os recursos "avx512f" e "avx512vl".
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    let len = state.len();
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+
+        while i + 8 <= len {
+            let s0 = state[i];
+            let s1 = state[i + 1];
+            let s2 = state[i + 2];
+            let s3 = state[i + 3];
+            let vs0 = _mm512_set_ps(
+                s3, s3, s3, s3, s2, s2, s2, s2, s1, s1, s1, s1, s0, s0, s0, s0,
+            );
+            let vw0 = _mm512_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            sum0 = _mm512_fmadd_ps(vw0, vs0, sum0);
+
+            let s4 = state[i + 4];
+            let s5 = state[i + 5];
+            let s6 = state[i + 6];
+            let s7 = state[i + 7];
+            let vs1 = _mm512_set_ps(
+                s7, s7, s7, s7, s6, s6, s6, s6, s5, s5, s5, s5, s4, s4, s4, s4,
+            );
+            let vw1 = _mm512_loadu_ps(weights.as_ptr().add(i + 4) as *const f32);
+            sum1 = _mm512_fmadd_ps(vw1, vs1, sum1);
+
+            i += 8;
+        }
+
+        while i + 4 <= len {
+            let s0 = state[i];
+            let s1 = state[i + 1];
+            let s2 = state[i + 2];
+            let s3 = state[i + 3];
+            let vs0 = _mm512_set_ps(
+                s3, s3, s3, s3, s2, s2, s2, s2, s1, s1, s1, s1, s0, s0, s0, s0,
+            );
+            let vw0 = _mm512_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            sum0 = _mm512_fmadd_ps(vw0, vs0, sum0);
+            i += 4;
+        }
+
+        let sum = _mm512_add_ps(sum0, sum1);
+
+        let lower256 = _mm512_castps512_ps256(sum);
+        let upper256 = _mm512_extractf32x8_ps(sum, 1);
+        let sum256 = _mm256_add_ps(lower256, upper256);
+
+        let lower128 = _mm256_castps256_ps128(sum256);
+        let upper128 = _mm256_extractf128_ps(sum256, 1);
+        let mut sum128 = _mm_add_ps(lower128, upper128);
+
+        while i < len {
+            let s0 = _mm_load1_ps(state.as_ptr().add(i));
+            let w0 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            sum128 = _mm_fmadd_ps(w0, s0, sum128);
+            i += 1;
+        }
+
+        let mut out = [0.0; 4];
+        _mm_storeu_ps(out.as_mut_ptr(), sum128);
+        out
+    }
+}
+
 /// Despacho Dinâmico Global de Funções Matemáticas SIMD.
 /// Resolve o multiversionamento (AVX2/AVX-512) para a inferência sem causar alocações.
 ///
@@ -366,6 +517,9 @@ pub unsafe fn dot_product_4x_avx512(
 /// Assinatura da função para 4 Dot Products simultâneos (ILP máximo) reutilizando o state.
 pub type DotProduct4xFn = unsafe fn(&[f32], &[f32], &[f32], &[f32], &[f32]) -> [f32; 4];
 
+/// Assinatura da função para 4 Dot Products simultâneos para pesos interfolhados.
+pub type DotProduct4xInterleavedFn = unsafe fn(&[[f32; 4]], &[f32]) -> [f32; 4];
+
 /// Despacho Dinâmico Global de Funções Matemáticas SIMD.
 /// Resolve o multiversionamento (AVX2/AVX-512) para a inferência sem causar alocações.
 ///
@@ -375,8 +529,10 @@ pub type DotProduct4xFn = unsafe fn(&[f32], &[f32], &[f32], &[f32], &[f32]) -> [
 pub struct SimdMathConfig {
     /// Função inlined dinamicamente agendada para computar fma vetorial.
     pub dot_product: unsafe fn(&[f32], &[f32]) -> f32,
-    /// Fused GEMV de 4 portas compartilhando um mesmo vetor de estado.
+    /// Fused GEMV de 4 portas (para Conv1d do WaveNet).
     pub dot_product_4x: DotProduct4xFn,
+    /// Fused GEMV de 4 portas interfolhadas (para LSTM).
+    pub dot_product_4x_interleaved: DotProduct4xInterleavedFn,
     /// Loop ativado via fptr para iterar `tanh(x)` na matriz especificada.
     pub tanh_slice: unsafe fn(&mut [f32]),
     /// Loop ativado via fptr para iterar `sigmoid(x)` na matriz especificada.
@@ -396,16 +552,18 @@ impl SimdMathConfig {
     pub fn current() -> Self {
         if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
             return Self {
-                dot_product: dot_product_avx512,
-                dot_product_4x: dot_product_4x_avx512,
-                tanh_slice: crate::math::fastmath::tanh_slice_avx512,
-                sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx512,
+                dot_product: <Avx512Math as SimdMath>::dot_product,
+                dot_product_4x: <Avx512Math as SimdMath>::dot_product_4x,
+                dot_product_4x_interleaved: <Avx512Math as SimdMath>::dot_product_4x_interleaved,
+                tanh_slice: <Avx512Math as SimdMath>::tanh_slice,
+                sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
             };
         }
 
         Self {
             dot_product: dot_product_avx2,
             dot_product_4x: dot_product_4x_avx2,
+            dot_product_4x_interleaved: dot_product_4x_interleaved_avx2,
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
         }
@@ -429,7 +587,7 @@ pub trait SimdMath {
     /// # Safety
     /// Depende da arquitetura SIMD alvo suportar as instruções emitidas e os slices terem o mesmo tamanho.
     unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32;
-    /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado).
+    /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado) para WaveNet.
     ///
     /// # Safety
     /// Depende de HW support, slices dimensionados corretamente, e ponteiros alinhados.
@@ -440,6 +598,11 @@ pub trait SimdMath {
         w3: &[f32],
         state: &[f32],
     ) -> [f32; 4];
+    /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado.
+    ///
+    /// # Safety
+    /// Depende de HW support, fatias com tamanhos compatíveis e ponteiros alinhados.
+    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4];
     /// Aplica Tanh em-lugar no slice usando aproximação minimax polinomial fastmath.
     ///
     /// # Safety
@@ -470,6 +633,10 @@ impl SimdMath for Avx2Math {
         unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
     }
     #[inline(always)]
+    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_avx2(weights, state) }
+    }
+    #[inline(always)]
     unsafe fn tanh_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
     }
@@ -495,6 +662,10 @@ impl SimdMath for Avx512Math {
         state: &[f32],
     ) -> [f32; 4] {
         unsafe { dot_product_4x_avx512(w0, w1, w2, w3, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_avx512(weights, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn tanh_slice(slice: &mut [f32]) {

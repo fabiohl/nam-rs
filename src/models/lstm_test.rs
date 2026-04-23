@@ -75,8 +75,8 @@ mod tests {
         // Define alguns pesos para que o estado mude significativamente
         for i in 0..32 {
             model.layer.bias[i] = 0.1;
-            for j in 0..9 {
-                model.layer.input_hidden_weights[i][j] = 0.05;
+            for j in 0..16 {
+                model.layer.input_hidden_weights[i][j] = [0.05; 4];
             }
         }
 
@@ -119,8 +119,8 @@ mod tests {
             // Atribui pesos determinísticos para testar output idêntico
             for i in 0..32 {
                 model.layer.bias[i] = 0.1;
-                for j in 0..9 {
-                    model.layer.input_hidden_weights[i][j] = 0.05;
+                for j in 0..16 {
+                    model.layer.input_hidden_weights[i][j] = [0.05; 4];
                 }
             }
             for i in 0..8 {
