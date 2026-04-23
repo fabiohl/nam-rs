@@ -190,6 +190,7 @@ pub fn run_pipewire_host(
             *pw::keys::PRIORITY_DRIVER => "2000",
             "audio.position" => "FL,FR",
             "node.group" => "nam-rs-dsp", // Sincroniza clock com playback stream
+            "node.link-group" => "nam-rs-link-group", // Evita feedback loop (WirePlumber não linka nós do mesmo link-group)
         };
 
         let latency_str = format!("{}/48000", buffer_size);
@@ -664,6 +665,7 @@ pub fn run_pipewire_host(
             *pw::keys::NODE_DESCRIPTION => "NAM-rs Processed Output",
             "audio.position" => "FL,FR",
             "node.group" => "nam-rs-dsp", // Clock sync com capture stream
+            "node.link-group" => "nam-rs-link-group", // Evita feedback loop (WirePlumber não linka nós do mesmo link-group)
         };
 
         if buffer_size > 0 {

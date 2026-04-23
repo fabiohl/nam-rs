@@ -194,7 +194,7 @@ impl SystemSnapshot {
     pub fn emit_irq_advisory(&self, core: usize) {
         let mask = 0xFFFFFFFFu32 ^ (1u32 << core);
         log::info!(
-            "{} Para latência mínima, isole o core {} das IRQs do sistema (como sudo):\n   echo {:X} > /proc/irq/default_smp_affinity",
+            "{} Para latência mínima, isole o core {} das IRQs do sistema (como sudo): echo {:X} > /proc/irq/default_smp_affinity",
             "💡".yellow(),
             core,
             mask
