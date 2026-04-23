@@ -742,12 +742,8 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// Combina as saídas de ambas as arrays: `sum(head1) + sum(head2)` × `head_scale`.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl")
-            {
-                return unsafe { self.process_avx512(input, output) };
-            }
+        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+            return unsafe { self.process_avx512(input, output) };
         }
         unsafe { self.process_avx2(input, output) }
     }
@@ -806,12 +802,8 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
     /// Estabiliza os transientes inicias causais por tempo de propagação (Zero Input).
     pub fn prewarm(&mut self) {
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl")
-            {
-                return unsafe { self.prewarm_avx512() };
-            }
+        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+            return unsafe { self.prewarm_avx512() };
         }
         unsafe { self.prewarm_avx2() }
     }

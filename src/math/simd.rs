@@ -65,6 +65,10 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
 
         // Loop principal: 4×8 = 32 floats/iteração (throughput-bound)
         while i + 32 <= len {
+            // Software prefetch 2 cache lines ahead (128 bytes = 32 floats)
+            _mm_prefetch::<_MM_HINT_T0>(a.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(b.as_ptr().add(i + 32) as *const i8);
+
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
@@ -198,28 +202,70 @@ pub unsafe fn dot_product_4x_avx2(
     let mut i = 0;
 
     unsafe {
-        let mut sum0 = _mm256_setzero_ps();
-        let mut sum1 = _mm256_setzero_ps();
-        let mut sum2 = _mm256_setzero_ps();
-        let mut sum3 = _mm256_setzero_ps();
+        let mut sum0_0 = _mm256_setzero_ps();
+        let mut sum0_1 = _mm256_setzero_ps();
+        let mut sum1_0 = _mm256_setzero_ps();
+        let mut sum1_1 = _mm256_setzero_ps();
+        let mut sum2_0 = _mm256_setzero_ps();
+        let mut sum2_1 = _mm256_setzero_ps();
+        let mut sum3_0 = _mm256_setzero_ps();
+        let mut sum3_1 = _mm256_setzero_ps();
+
+        while i + 16 <= len {
+            _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w0.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w1.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w2.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(w3.as_ptr().add(i + 32) as *const i8);
+
+            let vs_0 = _mm256_loadu_ps(state.as_ptr().add(i));
+            let vs_1 = _mm256_loadu_ps(state.as_ptr().add(i + 8));
+
+            let vw0_0 = _mm256_loadu_ps(w0.as_ptr().add(i));
+            let vw0_1 = _mm256_loadu_ps(w0.as_ptr().add(i + 8));
+            sum0_0 = _mm256_fmadd_ps(vw0_0, vs_0, sum0_0);
+            sum0_1 = _mm256_fmadd_ps(vw0_1, vs_1, sum0_1);
+
+            let vw1_0 = _mm256_loadu_ps(w1.as_ptr().add(i));
+            let vw1_1 = _mm256_loadu_ps(w1.as_ptr().add(i + 8));
+            sum1_0 = _mm256_fmadd_ps(vw1_0, vs_0, sum1_0);
+            sum1_1 = _mm256_fmadd_ps(vw1_1, vs_1, sum1_1);
+
+            let vw2_0 = _mm256_loadu_ps(w2.as_ptr().add(i));
+            let vw2_1 = _mm256_loadu_ps(w2.as_ptr().add(i + 8));
+            sum2_0 = _mm256_fmadd_ps(vw2_0, vs_0, sum2_0);
+            sum2_1 = _mm256_fmadd_ps(vw2_1, vs_1, sum2_1);
+
+            let vw3_0 = _mm256_loadu_ps(w3.as_ptr().add(i));
+            let vw3_1 = _mm256_loadu_ps(w3.as_ptr().add(i + 8));
+            sum3_0 = _mm256_fmadd_ps(vw3_0, vs_0, sum3_0);
+            sum3_1 = _mm256_fmadd_ps(vw3_1, vs_1, sum3_1);
+
+            i += 16;
+        }
 
         while i + 8 <= len {
             let vs = _mm256_loadu_ps(state.as_ptr().add(i));
 
             let vw0 = _mm256_loadu_ps(w0.as_ptr().add(i));
-            sum0 = _mm256_fmadd_ps(vw0, vs, sum0);
+            sum0_0 = _mm256_fmadd_ps(vw0, vs, sum0_0);
 
             let vw1 = _mm256_loadu_ps(w1.as_ptr().add(i));
-            sum1 = _mm256_fmadd_ps(vw1, vs, sum1);
+            sum1_0 = _mm256_fmadd_ps(vw1, vs, sum1_0);
 
             let vw2 = _mm256_loadu_ps(w2.as_ptr().add(i));
-            sum2 = _mm256_fmadd_ps(vw2, vs, sum2);
+            sum2_0 = _mm256_fmadd_ps(vw2, vs, sum2_0);
 
             let vw3 = _mm256_loadu_ps(w3.as_ptr().add(i));
-            sum3 = _mm256_fmadd_ps(vw3, vs, sum3);
+            sum3_0 = _mm256_fmadd_ps(vw3, vs, sum3_0);
 
             i += 8;
         }
+
+        let sum0 = _mm256_add_ps(sum0_0, sum0_1);
+        let sum1 = _mm256_add_ps(sum1_0, sum1_1);
+        let sum2 = _mm256_add_ps(sum2_0, sum2_1);
+        let sum3 = _mm256_add_ps(sum3_0, sum3_1);
 
         // Horizontal sum para cada acumulador
         let mut temp0 = [0.0f32; 8];
