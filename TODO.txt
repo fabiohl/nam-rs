@@ -1,6 +1,3 @@
-## Testes finais de audição em ambiente real com tests/*.nam e github.com/mikeoliphant/NeuralAudio/Utils/Models/*.nam
-## Testar performance no PC Gamer. Comparar um "cargo bench".
-
 ## Leitura geral do código fonte (pós limpeza final)
 ## Limpeza geral de código-fonte:
 - Verificar funções pouco usadas (próprias do NAM-rs ou de crates) que possam ser unificadas ou substituidas por outras.

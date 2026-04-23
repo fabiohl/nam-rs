@@ -183,8 +183,8 @@ pub fn run_pipewire_host(
             *pw::keys::MEDIA_CATEGORY => "Duplex",
             *pw::keys::MEDIA_ROLE => "DSP",
             *pw::keys::MEDIA_CLASS => "Audio/Sink", // Virtual Sink — recebe áudio dos apps
-            *pw::keys::NODE_NAME => "NAM-rs-standalone",
-            *pw::keys::NODE_DESCRIPTION => "Neural Amp Modeler (Virtual Sink)",
+            *pw::keys::NODE_NAME => "NAM-rs-input",
+            *pw::keys::NODE_DESCRIPTION => "NAM-rs Input",
             *pw::keys::NODE_VIRTUAL => "true",
             *pw::keys::PRIORITY_SESSION => "2000",
             *pw::keys::PRIORITY_DRIVER => "2000",
@@ -656,6 +656,33 @@ pub fn run_pipewire_host(
         // Ponteiro raw para o bridge, compartilhado com o playback callback.
         let bridge_ptr_playback = bridge_ptr;
 
+        // Tenta descobrir o sink de hardware padrão via pw-metadata (ignorando Sinks Virtuais)
+        let hardware_target = match std::process::Command::new("pw-metadata")
+            .args(["-n", "default", "0", "default.audio.sink"])
+            .output()
+        {
+            Ok(out) => {
+                let s = String::from_utf8_lossy(&out.stdout);
+                if let Some(start) = s.find("\"name\":\"") {
+                    let rest = &s[start + 8..];
+                    if let Some(end) = rest.find("\"") {
+                        let name = &rest[..end];
+                        // Ignora se o default detectado for o próprio NAM-rs (pode ocorrer se foi salvo pelo WP)
+                        if name != "NAM-rs-input" && name != "NAM-rs-standalone" {
+                            Some(name.to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        };
+
         let mut playback_props = properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
             *pw::keys::MEDIA_CATEGORY => "Playback",
@@ -667,6 +694,15 @@ pub fn run_pipewire_host(
             "node.group" => "nam-rs-dsp", // Clock sync com capture stream
             "node.link-group" => "nam-rs-link-group", // Evita feedback loop (WirePlumber não linka nós do mesmo link-group)
         };
+
+        if let Some(target) = hardware_target {
+            playback_props.insert("node.target", target.as_str());
+            log::info!(
+                "{} Saída roteada automaticamente para o hardware padrão: {}",
+                "🔌".green(),
+                target
+            );
+        }
 
         if buffer_size > 0 {
             playback_props.insert("node.latency", latency_str.as_str());
