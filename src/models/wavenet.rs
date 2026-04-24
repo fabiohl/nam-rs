@@ -787,13 +787,42 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
                     .process_block_internal::<M>(array1_outputs, in_slice, num_frames);
             }
 
-            // Somatório das projeções Head de ambas as arrays e escala
+            // Somatório SIMD das projeções Head de ambas as arrays e escala.
+            //
+            // Para HEAD=8 (Standard): um único `_mm256_loadu_ps` + horizontal sum
+            // substitui 8 loads escalares + 8 adds sequenciais.
+            // Para HEAD=4 (Nano): `_mm_loadu_ps` + `_mm_hadd_ps` × 2.
+            // Fallback escalar para dimensões não-canônicas.
             for i in 0..num_frames {
-                let mut final_sum = 0.0f32;
-                for j in 0..HEAD {
-                    final_sum += self.array1.head_outputs[i * HEAD + j];
-                }
-                final_sum += self.array2.head_outputs[i]; // HEAD2=1
+                let head_ptr = self.array1.head_outputs.as_ptr();
+                let head1_sum = if HEAD == 8 {
+                    unsafe {
+                        let v = core::arch::x86_64::_mm256_loadu_ps(head_ptr.add(i * HEAD));
+                        // Horizontal sum: [a b c d e f g h]
+                        // hadd → [a+b c+d e+f g+h _ _ _ _] (128-bit lanes)
+                        let h1 = core::arch::x86_64::_mm256_hadd_ps(v, v);
+                        let h2 = core::arch::x86_64::_mm256_hadd_ps(h1, h1);
+                        // Extrair lane 0 (a+b+c+d) e lane 4 (e+f+g+h)
+                        let lo = core::arch::x86_64::_mm256_castps256_ps128(h2);
+                        let hi = core::arch::x86_64::_mm256_extractf128_ps::<1>(h2);
+                        let sum128 = core::arch::x86_64::_mm_add_ss(lo, hi);
+                        core::arch::x86_64::_mm_cvtss_f32(sum128)
+                    }
+                } else if HEAD == 4 {
+                    unsafe {
+                        let v = core::arch::x86_64::_mm_loadu_ps(head_ptr.add(i * HEAD));
+                        let h1 = core::arch::x86_64::_mm_hadd_ps(v, v);
+                        let h2 = core::arch::x86_64::_mm_hadd_ps(h1, h1);
+                        core::arch::x86_64::_mm_cvtss_f32(h2)
+                    }
+                } else {
+                    let mut s = 0.0f32;
+                    for j in 0..HEAD {
+                        s += unsafe { *head_ptr.add(i * HEAD + j) };
+                    }
+                    s
+                };
+                let final_sum = head1_sum + self.array2.head_outputs[i]; // HEAD2=1
                 output[pos + i] = final_sum * self.head_scale;
             }
             pos += num_frames;
@@ -801,8 +830,13 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     }
 
     /// Estabiliza o modelo processando silêncio (Zero Input) para aquecimento (Pre-warm).
+    ///
+    /// O dispatch AVX-512 vs AVX2 é feito via `SimdMathConfig::get().is_avx512` —
+    /// leitura atômica Relaxed de um `LazyLock` inicializado no startup, sem chamar
+    /// `is_x86_feature_detected!` a cada invocação (cold-path, mas consistente com
+    /// o padrão de dispatch do restante do codebase).
     pub fn prewarm(&mut self) {
-        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             return unsafe { self.prewarm_avx512() };
         }
         unsafe { self.prewarm_avx2() }

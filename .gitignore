@@ -20,7 +20,7 @@ repomix-*.xml
 *.log
 
 # Ignorar artefatos do Rust
-Cargo.lock
+#Cargo.lock
 /target
 
 # Ignorar diretório de scratch (artefatos de debug/protótipos temporários)

@@ -548,6 +548,9 @@ pub struct SimdMathConfig {
     pub tanh_slice: unsafe fn(&mut [f32]),
     /// Loop ativado via fptr para iterar `sigmoid(x)` na matriz especificada.
     pub sigmoid_slice: unsafe fn(&mut [f32]),
+    /// Indica se a CPU suporta AVX-512 (avx512f + avx512vl).
+    /// Usado para dispatch de modelos sem comparação de ponteiros de função.
+    pub is_avx512: bool,
 }
 
 /// V-Table SIMD global, inicializada uma única vez via `LazyLock`.
@@ -568,6 +571,7 @@ impl SimdMathConfig {
                 dot_product_4x_interleaved: <Avx512Math as SimdMath>::dot_product_4x_interleaved,
                 tanh_slice: <Avx512Math as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
+                is_avx512: true,
             };
         }
 
@@ -577,6 +581,7 @@ impl SimdMathConfig {
             dot_product_4x_interleaved: dot_product_4x_interleaved_avx2,
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
+            is_avx512: false,
         }
     }
 

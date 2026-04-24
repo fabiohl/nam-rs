@@ -266,7 +266,9 @@ pub fn run_pipewire_host(
         let mut input_gain_mult: f32 = 1.0;
         let mut output_gain_mult: f32 = 1.0;
 
-        // Função local para recomputar os fatores lineares
+        // Função local para recomputar os fatores de ganho linear a partir dos valores em dB.
+        // COLD-PATH: chamada apenas quando `param_changed` é true, i.e., ao receber
+        // novo `ParamPayload` via SPSC. Não é executada por frame — o `powf` é seguro aqui.
         let update_gain_multipliers =
             |u_in: f32,
              u_out: f32,
@@ -340,8 +342,6 @@ pub fn run_pipewire_host(
                     configure_realtime_thread(target_cpu, rt_status_for_process.clone());
                     thread_configured = true;
                 }
-
-                let start_time = std::time::Instant::now();
 
                 // Drena resamplers pré-construídos pela thread principal (zero-alloc swap).
                 // O Drop do resampler antigo é aceitável aqui (~50ns free(), evento raro).
@@ -497,6 +497,8 @@ pub fn run_pipewire_host(
                                     &samples_r[..n_samples],
                                 );
 
+                                let start_time = std::time::Instant::now();
+
                                 // O resampler de entrada pode expandir amostras
                                 // (ex: 44100→48000 = ratio ~1.088x), portanto os buffers
                                 // intermediários de inferência usam MAX_RESAMP_BUF.
@@ -587,10 +589,22 @@ pub fn run_pipewire_host(
                                 let back_buf = &mut bridge_ref.buffers[back_idx];
 
                                 let n_bridge = n_copy.min(MAX_BRIDGE_BUF);
-                                back_buf.buf_l[..n_bridge]
-                                    .copy_from_slice(&resamp_out_l[..n_bridge]);
-                                back_buf.buf_r[..n_bridge]
-                                    .copy_from_slice(&resamp_out_r[..n_bridge]);
+                                // SAFETY: `n_bridge` ≤ min(n_copy, MAX_BRIDGE_BUF)
+                                // e ambos os buffers são pré-alocados com MAX_BRIDGE_BUF.
+                                // `ptr::copy_nonoverlapping` elimina o bounds-check
+                                // implícito de `copy_from_slice` no hot-path RT.
+                                unsafe {
+                                    core::ptr::copy_nonoverlapping(
+                                        resamp_out_l.as_ptr(),
+                                        back_buf.buf_l.as_mut_ptr(),
+                                        n_bridge,
+                                    );
+                                    core::ptr::copy_nonoverlapping(
+                                        resamp_out_r.as_ptr(),
+                                        back_buf.buf_r.as_mut_ptr(),
+                                        n_bridge,
+                                    );
+                                }
                                 back_buf.n_samples = n_bridge as u32;
 
                                 std::sync::atomic::fence(Ordering::Release);
@@ -600,6 +614,9 @@ pub fn run_pipewire_host(
                                 bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 
                                 // Monitoramento de carga de DSP (DSP Load Monitoring)
+                                // `start_time` é inicializado antes da inferência (L507) e medido
+                                // aqui após o ganho de saída — captura apenas o tempo computacional
+                                // DSP puro, excluindo overhead de dequeue, SPSC drain e bridge write.
                                 let elapsed = start_time.elapsed();
                                 // Calcula o budget máximo tolerável (85% do tempo real do buffer)
                                 let budget_secs =

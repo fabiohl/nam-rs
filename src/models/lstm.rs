@@ -261,13 +261,10 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
 
     /// Processa o array em tempo de execução via v-table estática LazyLock.
     ///
-    /// Utiliza `SimdMathConfig::get()` para determinar o path AVX-512 vs AVX2
+    /// Utiliza `SimdMathConfig::get().is_avx512` para determinar o path AVX-512 vs AVX2
     /// sem repetir `is_x86_feature_detected!` (leitura atômica) a cada bloco.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        let math = crate::math::simd::SimdMathConfig::get();
-        if (math.dot_product as usize)
-            == (crate::math::simd::dot_product_avx512 as *const () as usize)
-        {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             unsafe { self.process_avx512(input, output) }
         } else {
             unsafe { self.process_avx2(input, output) }
@@ -348,13 +345,10 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
 
     /// Processa o array em tempo de execução via v-table estática LazyLock.
     ///
-    /// Utiliza `SimdMathConfig::get()` para determinar o path AVX-512 vs AVX2
+    /// Utiliza `SimdMathConfig::get().is_avx512` para determinar o path AVX-512 vs AVX2
     /// sem repetir `is_x86_feature_detected!` (leitura atômica) a cada bloco.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        let math = crate::math::simd::SimdMathConfig::get();
-        if (math.dot_product as usize)
-            == (crate::math::simd::dot_product_avx512 as *const () as usize)
-        {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             unsafe { self.process_avx512(input, output) }
         } else {
             unsafe { self.process_avx2(input, output) }

@@ -75,12 +75,14 @@ pub fn detect_clipping_stereo_simd(left: &[f32], right: &[f32]) -> bool {
             let cmp_r = _mm256_cmp_ps(abs_r, limit, _CMP_GT_OQ);
             // Acumula: se qualquer lane clipou, any_clip terá bits setados.
             any_clip = _mm256_or_ps(any_clip, _mm256_or_ps(cmp_l, cmp_r));
-            i += 8;
-        }
 
-        // Verifica se algum lane do acumulador tem bits setados.
-        if _mm256_movemask_ps(any_clip) != 0 {
-            return true;
+            // Early-exit: clipping é evento raro — se já detectou, retorna imediatamente
+            // sem percorrer o restante do buffer.
+            if _mm256_movemask_ps(any_clip) != 0 {
+                return true;
+            }
+
+            i += 8;
         }
 
         // Loop tail escalar para remainder

@@ -376,7 +376,7 @@ fn main() -> anyhow::Result<()> {
     if initial_in_gain != 0.0 {
         let _ = producer.push(ParamPayload::InputGain(initial_in_gain));
         log::info!(
-            "{} Ganho de entrada (CLI): {:+.1} dB",
+            "{} Ganho de entrada: {:+.1} dB",
             "🎚️ [CLI]".cyan(),
             initial_in_gain
         );
@@ -384,7 +384,7 @@ fn main() -> anyhow::Result<()> {
     if initial_out_gain != 0.0 {
         let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
         log::info!(
-            "{} Ganho de saída (CLI): {:+.1} dB",
+            "{} Ganho de saída: {:+.1} dB",
             "🎚️ [CLI]".cyan(),
             initial_out_gain
         );
