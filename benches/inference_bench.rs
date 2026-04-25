@@ -9,14 +9,14 @@
 //!
 //! ## Benchmarks disponíveis
 //!
-//! | ID | Descrição | Contexto prático |
-//! |----|-----------|------------------|
-//! | `WaveNet_Standard_CH16_64samp_48kHz` | Inferência WaveNet Standard completa | Modelo ~284 KB, 10+10 layers dilatadas |
-//! | `LSTM_2x16_64samp_48kHz` | Inferência LSTM 2 camadas × 16 hidden | Rede recorrente mais pesada suportada |
-//! | `FastMath_tanh_AVX2_256elem` | Ativação tanh Padé×rsqrt sobre 256 f32 | Kernel chamado N×layers/bloco no WaveNet |
-//! | `FastMath_sigmoid_AVX2_256elem` | Ativação sigmoid derivada de tanh | Kernel chamado N×gates/bloco no LSTM |
-//! | `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback) | Mede overhead do path sem const generics |
-//! | `LSTM_Dynamic_1x16_64samp_48kHz` | Inferência LSTM Dynamic 1×16 (fallback) | Mede overhead do path sem const generics |
+//! | ID                                      | Descrição                               | Contexto prático                         |
+//! | --------------------------------------- | --------------------------------------- | ---------------------------------------- |
+//! | `WaveNet_Standard_CH16_64samp_48kHz`    | Inferência WaveNet Standard completa    | Modelo ~284 KB, 10+10 layers dilatadas   |
+//! | `LSTM_2x16_64samp_48kHz`                | Inferência LSTM 2 camadas × 16 hidden   | Rede recorrente mais pesada suportada    |
+//! | `FastMath_tanh_AVX2_256elem`            | Ativação tanh Padé×rsqrt sobre 256 f32  | Kernel chamado N×layers/bloco no WaveNet |
+//! | `FastMath_sigmoid_AVX2_256elem`         | Ativação sigmoid derivada de tanh       | Kernel chamado N×gates/bloco no LSTM     |
+//! | `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback)   | Mede overhead do path sem const generics |
+//! | `LSTM_Dynamic_1x16_64samp_48kHz`        | Inferência LSTM Dynamic 1×16 (fallback) | Mede overhead do path sem const generics |
 //!
 //! ## Interpretação dos resultados
 //!

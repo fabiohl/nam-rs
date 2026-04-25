@@ -2,21 +2,23 @@
 
 ## Arquivos neste diretório
 
-   golden_wavenet_standard.bin  — Gerado pelo C++ NeuralAudio (BossWN-standard.nam)
-   golden_lstm_1x16.bin         — Gerado pelo C++ NeuralAudio (BossLSTM-1x16.nam)
+    golden_wavenet_standard.bin — Gerado pelo C++ NeuralAudio (BossWN-standard.nam)
+    golden_wavenet_feather.bin  — Gerado pelo C++ NeuralAudio (BossWN-feather.nam)
+    golden_wavenet_nano.bin     — Gerado pelo C++ NeuralAudio (BossWN-nano.nam)
+    golden_lstm_1x16.bin        — Gerado pelo C++ NeuralAudio (BossLSTM-1x16.nam)
 
 ## Formato binário (.golden.bin)
 
-   [u32 num_samples LE]
-   [f32×N input samples LE]       — senoidal 440Hz a 48kHz (512 amostras)
-   [f32×N expected output LE]     — output do C++ NeuralAudio Internal mode
+    [u32 num_samples LE]
+    [f32×N input samples LE]       — senoidal 440Hz a 48kHz (512 amostras)
+    [f32×N expected output LE]     — output do C++ NeuralAudio Internal mode
 
 ## Para regenerar
 
-   ./utils/golden_gen_build.sh
+    ./tests/fixtures/golden_gen_build.sh
 
 Estes arquivos são commitados no repositório para que os testes Rust
-(test_golden_vectors_wavenet, test_golden_vectors_lstm) executem sem
+(test_golden_vectors_wavenet, test_golden_vectors_lstm, etc.) executem sem
 precisar recompilar o NeuralAudio C++.
 Se os golden vectors não existirem, os testes fazem skip gracioso.
 
@@ -32,10 +34,12 @@ Métrica primária de regressão, sensível à escala absoluta do erro.
 - Detecta erros estruturais: transposição de pesos, offset de bias, gate invertido.
 - Falha ruídos de baixa magnitude que SNR acomodaria (ex: DC offset sistemático).
 
-| Modelo           | Threshold MSE | MSE medido (2026-04-15) | Headroom |
+| Modelo           | Threshold MSE | MSE medido (2026-04-24) | Headroom |
 | ---------------- |:-------------:|:-----------------------:|:--------:|
 | WaveNet Standard | `< 5e-2`      | 3.21e-2                 | ~1.56×   |
-| LSTM 1×16        | `< 1e-3`      | —                       | —        |
+| WaveNet Feather  | `< 5e-2`      | 8.34e-3                 | ~6.00×   |
+| WaveNet Nano     | `< 5e-2`      | 2.08e-3                 | ~24.0×   |
+| LSTM 1×16        | `< 1e-3`      | 6.02e-4                 | ~1.66×   |
 
 ### SNR — Signal-to-Noise Ratio em dB
 
@@ -46,10 +50,12 @@ padrão da indústria DSP. Complementa o MSE:
 - SNR fornece interpretação DSP padrão (útil para engenheiros de áudio):
   valores > 20 dB são imperceptíveis; valores < 6 dB indicam falha grave.
 
-| Modelo           | Threshold SNR | SNR medido (2026-04-15) | Headroom |
+| Modelo           | Threshold SNR | SNR medido (2026-04-24) | Headroom |
 | ---------------- |:-------------:|:-----------------------:|:--------:|
 | WaveNet Standard | `≥ 9 dB`      | 10.1 dB                 | ~1.1×    |
-| LSTM 1×16        | `≥ 22 dB`     | 26.0 dB                 | ~0.85×   |
+| WaveNet Feather  | `≥ 9 dB`      | 13.8 dB                 | ~1.5×    |
+| WaveNet Nano     | `≥ 9 dB`      | 20.0 dB                 | ~2.2×    |
+| LSTM 1×16        | `≥ 22 dB`     | 24.5 dB                 | ~1.1×    |
 
 As métricas são **aditivas, não substitutivas**: uma regressão pode passar
 em SNR mas falhar em MSE (ex: erro estrutural de baixa potência) ou vice-versa.
@@ -66,16 +72,10 @@ Esta divergência é **intencional e esperada**:
 
 - Acumulação em profundidade: **sublinear** — cada camada aplica ativação
   não-linear que reescala o resíduo. Modelo empírico:
-  
-  ```text
-  erro_máx_acumulado ≈ √N_camadas × erro_por_camada
-  ```
+  `erro_máx_acumulado ≈ √N_camadas × erro_por_camada`
 
 - Para WaveNet Standard (20 camadas: 2 arrays × 10 layers):
-  
-  ```text
-  √20 × 5e-3 ≈ 2.2e-2  →  MSE medido: 3.21e-2  →  SNR medido: 10.1 dB
-  ```
+  `√20 × 5e-3 ≈ 2.2e-2  →  MSE medido: 3.21e-2  →  SNR medido: 10.1 dB`
 
 Os thresholds `MSE < 5e-2` e `SNR ≥ 9 dB` foram calibrados contra estas
 medições reais com headroom suficiente para absorver variações de compilador

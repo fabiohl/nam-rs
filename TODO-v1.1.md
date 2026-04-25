@@ -1,9 +1,5 @@
 # 🚀 Backlog do Produto — Versão 1.1 (Próxima Temporada)
 
-Este documento centraliza as iniciativas técnicas planejadas para a evolução do **NAM-rs**. Como Product Owner e Scrum Master, este backlog foi refinado para priorizar o ganho de performance e a redução de latência, mantendo a estabilidade real-time.
-
----
-
 ## 📊 Dashboard de Prioridades (Quick View)
 
 | ID     | Iniciativa                           | Impacto  | Esforço  | Risco    | Prioridade | Status   | Tags              |

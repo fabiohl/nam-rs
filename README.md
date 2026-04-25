@@ -1,56 +1,49 @@
 # 🎸 NAM-rs
 
-![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/rust-1.94%2B-orange.svg) ![Platform](https://img.shields.io/badge/platform-Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-1.6%2B-green.svg)
+![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
-O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de estúdio. Na medida do possível, ele tenta manter paridade com a implementação padrão do NAM, mas com algumas melhorias e otimizações.
+O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de estúdio. Ele tenta manter paridade com a implementação padrão do NAM, mas com muitas melhorias e otimizações.
+
+Nesta versão 1.x ele foca em rodar em modo standalone. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
 
 O motor de inferência é uma transposição otimizada da biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático.
 
-Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux. Caprichei na busca intensiva pelo estado de arte em matéria de otimização!
+Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux.
+
+Caprichei na busca intensiva pelo estado da arte em matéria de otimização! Isto totalmente se pagou se você considerar que as cadeias de áudio no computador costumam ser stereo. Então, na verdade, são DOIS canais de áudio sendo processados simultâneamente em baixíssima latência e usando muito pouca CPU.
 
 ## **🇺🇲 English Version (International)**
 
 **NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
 
+In version 1.x, the focus is on standalone mode. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. My intention was to test the technology quickly without spending time on more complex abstractions.
+
 The inference engine is an optimized port of Mike Oliphant’s [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, rewritten from scratch in native, idiomatic Rust.
 
-It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features. Our goal is to achieve state-of-the-art performance and efficiency.
+It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features.
 
-*Note: A full translation of this documentation is planned. For now, our primary focus remains on the development of the project itself.*
+I worked hard to achieve state-of-the-art optimization! This effort truly pays off when you consider that computer audio signals are usually stereo. As a result, two audio channels are processed simultaneously with extremely low latency and very low CPU usage.
+
+*Note: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself.*
 
 ## ✨ Arquitetura
 
 O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
-1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire via `pipewire-rs` como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no *Graph Engine* do PipeWire.
-2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning estático no WaveNet via trait `SimdMath` com `#[target_feature]` (zero v-table no hot-loop); AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
+1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no *Graph Engine* do PipeWire.
+2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
-4. **CLI Interativa e Hot-Swap de Modelos:** Interface de linha de comando com `lexopt` para configuração inicial (`--model`, `--input-gain`, `--output-gain`, `--buffer-size`) e loop `stdin` interativo em runtime. Troca de modelos (.nam/.namb) sem interromper o PipeWire, com delegação do `Drop` do modelo antigo para thread GC (lock-free Drop-Delegation).
-5. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de garantias de segurança e de performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++ - trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
-
-## **🇺🇲 Architecture**
-
-NAM-rs follows an opinionated architecture focused on several key pillars:
-
-1. **Native Standalone PipeWire:** It integrates directly with the PipeWire server using `pipewire-rs`. It runs as a native client without VST/LV2/CLAP abstractions (for now), managing its audio ports directly within the PipeWire Graph Engine.
-2. **Ultra-Fast SIMD Inference:** The baseline is x86-64-v3 (AVX2 + FMA required). Activation functions (tanh, sigmoid) use FastMath approximations (Padé + Newton-Raphson rsqrt) in 256-bit registers. WaveNet uses static multiversioning via the `SimdMath` trait with `#[target_feature]` (zero v-table overhead in the hot loop). AVX-512 is supported via `Avx512Math` for ZMM hardware (Intel Xeon, AMD Zen 4+), processing 16 floats per instruction. WaveNet operates using **Batch GEMM** (blocks of up to 64 frames per invocation).
-3. **Real-Time Determinism:** The DSP thread is promoted to `SCHED_FIFO` with strict CPU affinity, preventing migrations and cache misses. Communication between CLI and DSP occurs via a 128-byte aligned SPSC ring buffer. There are **zero heap allocations** during audio processing.
-4. **Interactive CLI and Model Hot-Swapping:** A command-line interface using `lexopt` handles initial configuration (`--model`, `--input-gain`, `--output-gain`, `--buffer-size`) and an interactive `stdin` loop at runtime. Models (.nam/.namb) can be swapped without interrupting audio, with the old model's cleanup delegated to a GC thread (lock-free Drop-Delegation).
-5. **Pure Rust:** Rust was chosen for its strong guarantees in safety and performance. As a compiled language similar to C/C++, it offers modern, expressive syntax. Static implementations (e.g., in `wavenet.rs`) allow the compiler (LLVM) to perform aggressive loop unrolling when kernel sizes and channels are known at compile time.
-
-*Note: A full translation of this documentation is planned. For now, our primary focus remains on the development of the project itself.*
+4. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de alta performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++, trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
 
 ## 🚀 Guia Rápido
 
 ### Pré-requisitos
 
-* Linha de base: Ubuntu 26.04+ / Linux kernel 7.0+ com PipeWire 1.6+ (possivelmente funciona em versões anteriores também).
+* Kernel Linux e servidor de áudio Pipewire relativamente recentes devem ser suficientes. Eu testei usando Ubuntu 25.10.
 
-* Processador x86-64-v3 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015).
+* Processador x86-64-v3 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). CPUs de 2019 para cá são muito recomendáveis para redes neurais NAM.
 
-* Hadware recomendado para redes neurais NAM: Intel Core 9ª Geração (2019) ou AMD Ryzen 3000 (Zen 2) ou superior.
-
-* Toolchain do Rust 1.94+ (`cargo`).
+* Toolchain Rust recente (`rustup`/`cargo`). Eu usei a versão 1.94 durante a maior parte do desenvolvimento.
 
 * Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph`
 
@@ -66,18 +59,22 @@ NAM-rs follows an opinionated architecture focused on several key pillars:
 @audio   -  memlock    unlimited
 ```
 
-1. Crie uma regra no *udev* para permitir que o grupo `audio` bloqueie a latência de despertar da CPU (C-states), (ex: `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`):
-   *(Reinicie a máquina ou execute `sudo udevadm control --reload-rules && sudo udevadm trigger` para aplicar as regras)*
+* Crie uma regra no *udev* para permitir que o grupo `audio` bloqueie a latência de despertar da CPU (C-states),
+  1. `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`
+  2. Reinicie a máquina ou execute `sudo udevadm control --reload-rules && sudo udevadm trigger` para aplicar as regras
 
 ```text
 KERNEL=="cpu_dma_latency", GROUP="audio", MODE="0664"
 ```
 
-1. Também é muito recomendável configurar o governador da sua CPU (`intel_pstate` ou `amd_pstate`) para o modo **Performance**.
-   * Desktop modernos (como GNOME no Ubuntu/Fedora ou KDE Plasma), o sistema já gerencia isso nativamente via power-profiles-daemon.
-   * Caso você prefira o `tlp`, pode editar o /etc/tlp.conf
-     `CPU_SCALING_GOVERNOR_ON_AC=performance`
-     `CPU_SCALING_GOVERNOR_ON_BAT=powersave`
+* Também é muito recomendável configurar o governador de performence da sua CPU (`intel_pstate` ou `amd_pstate`) para o modo **Performance**.
+  * Desktop modernos (como GNOME no Ubuntu/Fedora ou KDE Plasma), o sistema já gerencia isso nativamente via power-profiles-daemon.
+  * Caso você prefira o `tlp`, pode editar o /etc/tlp.conf
+
+```text
+CPU_SCALING_GOVERNOR_ON_AC=performance
+CPU_SCALING_GOVERNOR_ON_BAT=powersave
+```
 
 ### Build e Execução
 
@@ -91,14 +88,14 @@ Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire.
 Para iniciar o processamento:
 
 ```bash
-target/release/nam-rs --model tests/Neve31102-Pre30-R.nam
+target/release/nam-rs --model tests/nam_files/NEVE1073-Standard.nam
 target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
-
 # Em máquinas fracas ou setups de desktop, aumente o buffer para aliviar a CPU:
-target/release/nam-rs --model tests/HeavyModel.nam --buffer-size 512
+target/release/nam-rs --model HeavyModel.nam --buffer-size 512
 ```
 
-Após a inicialização, o nodo aparece na matriz PipeWire. Use `qpwgraph` ou `pw-link` para conectar a entrada de instrumento e a saída para monitores.
+Após a inicialização, o nodo aparece na matriz PipeWire. O NAM-rs deve estar disponível como um dispositivo de saída no seu player de áudio.
+Se necessário, use `qpwgraph` ou `pw-link` para fazer os devidos roteamentos.
 
 ## 📚 Documentação
 
@@ -117,16 +114,16 @@ O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquiv
 
 ## 🧪 Testes e Validação
 
-O NAM-rs mantém uma suíte de **138 verificações** automatizadas distribuídas em cinco camadas:
+O NAM-rs mantém uma suíte de aproximandamente **138 verificações** automatizadas distribuídas em cinco camadas:
 
 ```bash
 # Testes unitários + integração + proptest + fuzz + E2E PipeWire
 cargo test
 
-# Apenas testes unitários inline (95 testes)
+# Apenas testes unitários inline
 cargo test --lib
 
-# Apenas testes de integração (29 testes, incluindo zero-alloc, block sizes, golden vectors Feather/Nano, modelos comunitários)
+# Apenas testes de integração (incluindo zero-alloc, block sizes, golden vectors Feather/Nano, modelos comunitários)
 cargo test --test nam_infer_test
 
 # Fuzz testing dos parsers (9 testes × 5000 cases = ~45.000 inputs)
@@ -146,8 +143,8 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 Contribuições são bem-vindas! O projeto está em fase ativa de desenvolvimento.
 
 * Testes + testes + testes + testes....
-* Apesar do suporte a AVX-512, eu não tenho uma CPU suportado pra testar. Se alguém tiver alguma por ai, seria muito útil..
-* Para validar alterações: execute `cargo test` e `utils/lints.sh` antes de submeter PRs.
+* Apesar do suporte a AVX-512, eu não tenho uma CPU capacitada pra testar. Se alguém tiver alguma por ai, seria muito útil..
+* Antes de submeter PRs execute a bateria completa de testes citada acima. Use e abuse das skills de IA agênticas em .agents/.
 
 ## 🙏 Créditos e Agradecimentos
 
@@ -155,12 +152,11 @@ Este projeto herda lógica, inspiração e ciência de trabalhos notáveis na co
 Impossível mapear todos os que contribuíram para o avanço desta tecnologia. Mas no escopo dos nosso projeto, impossível não mencionar:
 
 * **Steven Atkinson** — Pelo desenvolvimento pioneiro do [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler), sua pesquisa original sobre modelagem de amplificadores com deep learning e por compartilhar o ecossistema abertamente.
-* **Mike Oliphant** — Pela excepcional biblioteca [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio), que serviu de base direta e fonte de pesquisa para a transposição das lógicas de inferência e FastMath vetorial (SIMD) portadas para este motor estrutural.
+* **Mike Oliphant** — Pela excepcional biblioteca [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio), que serviu de base direta e fonte de pesquisa para a transposição das lógicas de inferência para este motor estrutural.
 
 ## ⚖️ Licença e Transparência (Vibe Coding)
 
+**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi e gerado iterado com o auxílio de Inteligência Artificial (*Vibe Coding*). Mais especificamente, usando a IDE Google Antigravity.
+
 Este projeto é duplamente licenciado sob **MIT** ou **Apache License, Version 2.0**, à sua escolha. Veja os arquivos `LICENSE-MIT` e `LICENSE-APACHE` para mais detalhes.
-
-**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi iterado e gerado integralmente com o auxílio de Inteligência Artificial (*Vibe Coding*). Mais especificamente, usando a IDE Google Antigravity.
-
 O uso da licença Apache 2.0 visa justamente oferecer maior segurança jurídica aos contribuidores e usuários em relação a patentes, dado este modelo moderno de desenvolvimento de software. A estrutura está aberta para a comunidade refatorar, auditar e expandir livremente.

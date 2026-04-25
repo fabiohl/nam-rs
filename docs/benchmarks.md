@@ -1,7 +1,5 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-
 # Benchmarks de Performance (Criterion)
 
 O projeto NAM-rs utiliza o **Criterion.rs** como sua suíte oficial de benchmarks de performance. Dada a natureza sensível de latência de um motor de áudio em tempo real (DSP), realizar medições com rigor estatístico é fundamental para não ser enganado por variações do sistema operacional (ruído, context switches, flutuações de clock).
@@ -53,7 +51,6 @@ Found 5 outliers among 50 measurements (10.00%)
 
 Você não precisa comparar os tempos mentalmente. **O Criterion salva a linha de base (baseline) da sua última execução automaticamente**.
 
-Todas as métricas históricas de acompanhamento temporal são gravadas em arquivos locais dentro do seu projeto em:
-`target/criterion/`
+Todas as métricas históricas de acompanhamento temporal são gravadas em arquivos locais dentro do seu projeto em: `target/criterion/`
 
 *(Nota: O NAM-rs mantém a geração de relatórios HTML com gráficos temporais propositalmente desativada no arquivo `Cargo.toml` (`default-features = false`) para omitir o download de extensas dependências visuais, limitando a avaliação ao console).*

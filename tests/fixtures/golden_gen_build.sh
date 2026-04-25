@@ -14,10 +14,12 @@
 #
 # Saída:
 #   tests/fixtures/golden_wavenet_standard.bin
+#   tests/fixtures/golden_wavenet_feather.bin
+#   tests/fixtures/golden_wavenet_nano.bin
 #   tests/fixtures/golden_lstm_1x16.bin
 #
 # Estes arquivos devem ser commitados no repositório para que os testes Rust
-# de golden vectors (`test_golden_vectors_wavenet`, `test_golden_vectors_lstm`)
+# de golden vectors (test_golden_vectors_wavenet[_feather|_nano], test_golden_vectors_lstm)
 # possam executar sem recompilação C++.
 
 set -euo pipefail

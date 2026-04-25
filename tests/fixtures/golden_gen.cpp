@@ -5,6 +5,7 @@
 ///
 /// Uso: ./golden_gen <model.nam> <output.golden.bin>
 ///
+/// Baseia-se no motor C++ NeuralAudio (github.com/mikeoliphant/NeuralAudio).
 /// Gera 512 amostras de sinal senoidal 440 Hz a 48 kHz, processa pelo motor
 /// NeuralAudio Internal (C++), e grava o par (input, output) em formato binário
 /// little-endian para validação cross-reference no motor Rust.
