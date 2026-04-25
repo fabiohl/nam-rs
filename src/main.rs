@@ -53,8 +53,10 @@ fn load_and_send_model(
         return;
     }
 
+    // Determina o parser adequado (binário ou JSON) com base na extensão do arquivo.
     let ext_lower = ext.to_lowercase();
     let result = if ext_lower == "namb" {
+        // Caso .namb: Leitura e processamento de modelos em formato binário.
         std::fs::read(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
                 .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
@@ -98,6 +100,7 @@ fn load_and_send_model(
             })
         })
     } else if ext_lower == "nam" {
+        // Caso .nam: Leitura e processamento de modelos em formato JSON.
         std::fs::read_to_string(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
                 .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
@@ -127,6 +130,7 @@ fn load_and_send_model(
             })
         })
     } else {
+        // Extensão desconhecida: emite diagnóstico de erro e encerra o pipeline.
         NamDiagnostic::new(NamErrorCode::UnknownExtension, sys)
             .message(format!(
                 "Não suportamos arquivos do tipo \".{}\".",
@@ -139,6 +143,8 @@ fn load_and_send_model(
         return;
     };
 
+    // Extrai os metadados do modelo carregado, definindo valores padrão caso o arquivo
+    // não os contenha ou campos específicos (ganho de entrada, loudness) estejam ausentes.
     match result {
         Ok(model_data) => {
             let meta = model_data
@@ -208,6 +214,7 @@ fn load_and_send_model(
                 }
             };
 
+            // Para suporte a "True Stereo", instanciamos uma segunda via idêntica para o canal direito.
             let model_r = if model_l.is_some() {
                 match loader::dispatcher::build_model(&model_data) {
                     Ok(mut model) => {
@@ -227,6 +234,7 @@ fn load_and_send_model(
                 );
             }
 
+            // Tenta enviar o modelo carregado e os ajustes de calibração para o motor de áudio via SPSC.
             if producer
                 .push(ParamPayload::LoadModel {
                     model_l,
@@ -249,6 +257,7 @@ fn load_and_send_model(
                     output_db_adj
                 );
             } else {
+                // Caso a fila SPSC esteja cheia (sistema sobrecarregado), emite um diagnóstico de erro.
                 NamDiagnostic::new(NamErrorCode::ParamChannelFull, sys)
                     .message("O sistema de áudio está temporariamente ocupado.")
                     .hint(
@@ -269,7 +278,7 @@ fn load_and_send_model(
 /// Orquestra o startup completo do engine:
 /// 1. Parse de argumentos CLI via [`lexopt`].
 /// 2. Captura do [`SystemSnapshot`] (propagado para todos os diagnósticos).
-/// 3. Detecção de features SIMD (AVX2+FMA) com aviso se ausentes.
+/// 3. Detecção de features SIMD avançadas (AVX-512, VNNI) para multiversioning.
 /// 4. Inicialização do PipeWire e handler de Ctrl-C.
 /// 5. Setup dos canais SPSC (parâmetros, GC, resampler) via [`spsc::setup_spsc`].
 /// 6. Spawn da thread GC (drop-delegation fora do RT).
@@ -313,6 +322,15 @@ fn main() -> anyhow::Result<()> {
     pipewire::init();
     log::info!("{} PipeWire inicializado.", "🔌".bright_blue());
 
+    // Exibe features de CPU avançadas detectadas (acima do baseline v3)
+    if !sys.features.is_empty() {
+        log::info!(
+            "{} SIMD avançado detectado: {}",
+            "⚡".yellow(),
+            sys.features.join(", ").bright_cyan()
+        );
+    }
+
     // Handler de SIGINT direto via libc::sigaction — substitui crate `ctrlc`.
     // Usa apenas operações async-signal-safe: AtomicBool + libc::_exit.
     extern "C" fn sigint_handler(_sig: libc::c_int) {
@@ -341,6 +359,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    // Inicializa a infraestrutura de comunicação lock-free (SPSC) entre a CLI e a thread de áudio.
     let channels = spsc::setup_spsc(64);
     let mut producer = channels.param_producer;
     let consumer = channels.param_consumer;
@@ -395,6 +414,7 @@ fn main() -> anyhow::Result<()> {
     // parâmetros em tempo de execução permanece intacta para uso futuro.
     std::mem::forget(producer);
 
+    // Executa o host PipeWire. Esta é uma chamada bloqueante que orquestra o processamento de áudio.
     pw_host::run_pipewire_host(
         consumer,
         gc_producer,
@@ -405,6 +425,7 @@ fn main() -> anyhow::Result<()> {
         buffer_size,
     )?;
 
+    // Finaliza a sessão do PipeWire e libera os recursos antes de sair.
     unsafe {
         pipewire::deinit();
     }

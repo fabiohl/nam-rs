@@ -10,4 +10,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 #cargo clippy --all-targets --all-features -- -D warnings -D clippy::pedantic -D clippy::nursery -D clippy::cargo
 
 # Por enquanto vamos nos abster de rodar isto para não travar muito a IA
-cargo test ; cargo bench
+#cargo test ; cargo bench

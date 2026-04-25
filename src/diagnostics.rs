@@ -4,7 +4,7 @@
 //! Sistema de diagnósticos estruturados do NAM-rs.
 //!
 //! Fornece mensagens de erro em duas camadas:
-//! 1. **Mensagem amigável** — texto legível para o usuário final (pt-BR).
+//! 1. **Mensagem amigável** — texto legível para o usuário final.
 //! 2. **Bloco de suporte** — código de erro tipado, parâmetros contextuais,
 //!    versão, arquitetura e timestamp para triagem precisa por devs/IA.
 //!
@@ -171,6 +171,8 @@ pub struct SystemSnapshot {
     pub os: &'static str,
     /// Versão do kernel Linux (lida de /proc/version).
     pub kernel: String,
+    /// Features de CPU detectadas (acima do baseline x86-64-v3).
+    pub features: Vec<String>,
 }
 
 impl SystemSnapshot {
@@ -180,12 +182,14 @@ impl SystemSnapshot {
     /// para as funções que emitem diagnósticos.
     pub fn capture() -> Self {
         let kernel = read_kernel_version();
+        let features = detect_advanced_features();
 
         Self {
             version: NAM_VERSION,
             arch: std::env::consts::ARCH,
             os: std::env::consts::OS,
             kernel,
+            features,
         }
     }
 
@@ -211,6 +215,31 @@ fn read_kernel_version() -> String {
             v.split_whitespace().nth(2).map(String::from)
         })
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Detecta features de CPU avançadas (acima do baseline x86-64-v3).
+fn detect_advanced_features() -> Vec<String> {
+    let mut features = Vec::new();
+    // Features de x86-64-v4 (AVX-512)
+    if std::is_x86_feature_detected!("avx512f") {
+        features.push("avx512f".to_string());
+    }
+    if std::is_x86_feature_detected!("avx512bw") {
+        features.push("avx512bw".to_string());
+    }
+    if std::is_x86_feature_detected!("avx512dq") {
+        features.push("avx512dq".to_string());
+    }
+    if std::is_x86_feature_detected!("avx512vl") {
+        features.push("avx512vl".to_string());
+    }
+    if std::is_x86_feature_detected!("avx512vnni") {
+        features.push("avx512vnni".to_string());
+    }
+    if std::is_x86_feature_detected!("avx512bf16") {
+        features.push("avx512bf16".to_string());
+    }
+    features
 }
 
 // =============================================================================
@@ -311,12 +340,18 @@ impl NamDiagnostic {
         block.push_str(&format!(
             "arch={}\n\
              os={} kernel={}\n\
+             features={}\n\
              timestamp={}\n\
              {separator}\n\
              Copie o bloco acima ao abrir um ticket de suporte.",
             self.system.arch,
             self.system.os,
             self.system.kernel,
+            if self.system.features.is_empty() {
+                "none (baseline x86-64-v3 only)".to_string()
+            } else {
+                self.system.features.join(", ")
+            },
             Self::timestamp(),
         ));
 
@@ -389,6 +424,7 @@ fn days_to_date(days: u64) -> (u64, u64, u64) {
 mod tests {
     use super::*;
 
+    /// Valida a formatação visual e consistência do código de erro e seu mnemônico.
     #[test]
     fn test_error_code_display() {
         let code = NamErrorCode::NambCrc32Mismatch;
@@ -397,6 +433,8 @@ mod tests {
         assert_eq!(format!("{}", code), "E1201 | NAMB_CRC32_MISMATCH");
     }
 
+    /// Garante a integridade do registro de erros, impedindo duplicidade de códigos numéricos (E####).
+    /// Essencial para manter a estabilidade de logs e protocolos de suporte.
     #[test]
     fn test_all_codes_have_unique_numeric() {
         use NamErrorCode::*;
@@ -436,6 +474,7 @@ mod tests {
         );
     }
 
+    /// Verifica se a captura de informações do sistema (OS, Arch, Versão) está ativa e retornando dados válidos.
     #[test]
     fn test_system_snapshot_capture() {
         let snap = SystemSnapshot::capture();
@@ -444,6 +483,8 @@ mod tests {
         assert!(!snap.os.is_empty());
     }
 
+    /// Valida a geração do "bloco de suporte" para o usuário, garantindo que contenha o erro,
+    /// mnemônico, parâmetros contextuais e instruções de cópia.
     #[test]
     fn test_diagnostic_support_block_contains_code() {
         let snap = SystemSnapshot::capture();
@@ -473,6 +514,7 @@ mod tests {
         );
     }
 
+    /// Testa a representação simplificada do diagnóstico para exibição direta via trait Display.
     #[test]
     fn test_diagnostic_display() {
         let snap = SystemSnapshot::capture();
@@ -481,12 +523,15 @@ mod tests {
         assert_eq!(format!("{}", diag), "[E1100] Modelo não encontrado");
     }
 
+    /// Valida o algoritmo manual de conversão de dias desde o epoch para data (Ano, Mês, Dia),
+    /// permitindo manter o binário leve sem dependências externas de tempo (como chrono).
     #[test]
     fn test_days_to_date_epoch() {
         let (y, m, d) = days_to_date(0);
         assert_eq!((y, m, d), (1970, 1, 1));
     }
 
+    /// Testa a precisão do algoritmo de data com uma data conhecida (2026-04-10).
     #[test]
     fn test_days_to_date_known() {
         // 2026-04-10 = ~20553 days since epoch
@@ -497,6 +542,7 @@ mod tests {
         assert_eq!(d, 10);
     }
 
+    /// Garante que o timestamp gerado segue rigorosamente o padrão ISO 8601 (YYYY-MM-DDTHH:MM:SSZ).
     #[test]
     fn test_timestamp_format() {
         let ts = NamDiagnostic::timestamp();

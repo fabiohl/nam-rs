@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Módulo interno para substituição do crate `colored`.
-//!
 //! Fornece uma trait simples `Colorize` para formatar strings com
 //! sequências de escape ANSI em terminais POSIX.
-
 /// Trait simples para formatar strings com sequências de escape ANSI em terminais POSIX.
 pub trait Colorize {
     /// Aplica formatação em negrito.

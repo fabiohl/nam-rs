@@ -341,7 +341,22 @@ O arquivo `tests/proptest_parsers.rs` exercita os parsers de entrada com **~45.0
 - **Modelos de teste opcionais:** Testes que dependem de arquivos `.nam` reais fazem `if !path.exists() { eprintln!("SKIP: ..."); return; }`, permitindo execução parcial sem falsos positivos.
 - **Comando de execução:** `cargo test` dispara todas as camadas (122 verificações). `cargo test --lib` executa apenas os 79 unitários inline; `cargo test --test nam_infer_test` os 29 de inferência; `cargo test --test proptest_parsers` os 9 de fuzz testing; `cargo test --test proptest_math` os 4 estocásticos; `cargo test --test pw_integration_test` o headless PipeWire.
 
-## 7. Referências
+## 8. Sistema de Logging e Gestão de Erros
+
+O NAM-rs adota uma arquitetura de erros em três camadas que separa a infraestrutura de transporte da experiência do usuário e do controle de fluxo interno:
+
+- **Transporte Unificado (`env_logger` + `log` crate):** A "espinha dorsal" de comunicação. O `env_logger` é inicializado no startup e atua como o coletor final de todas as mensagens. Ele respeita a variável `RUST_LOG`, permitindo auditoria técnica sem alteração de código.
+- **Camada de Apresentação e UX (`NamDiagnostic`):** Um sistema de diagnósticos estruturados em texto legível para o usuário final. Ele encapsula erros técnicos, adicionando mensagens amigáveis, dicas de solução (*hints*) e um bloco de suporte técnico formatado (com versão, kernel, features e timestamp). Quando um `NamDiagnostic` é emitido via `.emit()`, ele despacha a mensagem formatada através da macro `log::error!`, convergindo para o sistema de logging unificado.
+- **Controle de Fluxo e Propagação (`anyhow`):** Utilizado internamente para gerenciar o "borbulhamento" de erros e o curto-circuito de pipelines (ex: falha na leitura de arquivo impede o parse). Ao contrário de um `panic!`, o uso de `anyhow` permite que a aplicação capture a falha no limite de uma função (como `load_and_send_model`), reporte ao usuário via `NamDiagnostic` e continue operando normalmente (contenção de falha).
+
+### Fluxo Típico de Erro (Ex: Carga de Modelo)
+
+1. **Falha de I/O:** `std::fs::read` retorna `std::io::Error`.
+2. **Diagnóstico:** Um `NamDiagnostic` é construído com o erro capturado e emitido. O usuário vê a falha estilizada no terminal.
+3. **Curto-circuito:** O erro é convertido para `anyhow::Error`, interrompendo a cadeia de parsing.
+4. **Recuperação:** A função chamadora recebe o `Err`, ignora-o (pois o diagnóstico já foi emitido) e mantém o loop principal do programa ativo.
+
+## 9. Referências
 
 Os seguintes repositórios GitHub são a principal base de referência para a implementação do NAM-rs:
 

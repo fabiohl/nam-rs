@@ -181,6 +181,9 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    /// Valida a comunicação Lock-Free entre threads de prioridades diferentes.
+    /// Simula o comportamento real do NAM-rs: uma thread CLI (produtor) enviando
+    /// comandos para uma thread DSP (consumidor) de alta rotação.
     #[test]
     fn test_spsc_concurrency() {
         // Configura o SPSC Ring Buffer para testes
@@ -196,15 +199,20 @@ mod tests {
         let dsp_handle = thread::spawn(move || {
             let mut consumer = consumer; // rebind mut: pop() requer &mut self
             let mut processed_messages = 0;
-            // Laço de super rotação (semelhante ao DSP real)
+            // Laço de "super rotação" que mimetiza o comportamento de uma thread de Áudio RT.
+            // Ele verifica o buffer continuamente em busca de atualizações sem nunca bloquear a execução.
             while !shutdown_for_dsp.load(Ordering::Relaxed) {
+                // Tenta extrair um pacote do buffer circular (SPSC).
+                // Operação atômica e não-bloqueante: se o buffer estiver vazio, o Ok(payload) falha e o loop segue imediatamente.
                 if let Ok(payload) = consumer.pop() {
                     match payload {
                         ParamPayload::InputGain(gain) => {
+                            // Valida se o ganho de entrada respeita a física de estúdio configurada no motor (-60 a +24 dB).
                             assert!((-60.0..=24.0).contains(&gain));
                             processed_messages += 1;
                         }
                         ParamPayload::OutputGain(gain) => {
+                            // Valida se o ganho de saída está dentro dos limites de segurança operacional.
                             assert!((-60.0..=24.0).contains(&gain));
                             processed_messages += 1;
                         }
@@ -213,6 +221,7 @@ mod tests {
                             model_r: _,
                             ..
                         } => {
+                            // Confirma o recebimento de um comando de troca de topologia (LoadModel).
                             processed_messages += 1;
                         }
                     }
@@ -262,6 +271,8 @@ mod tests {
         );
     }
 
+    /// Verifica se o estado inicial das flags de tempo real está correto e seguro.
+    /// Garante que o motor de áudio comece com parâmetros de sample rate previsíveis.
     #[test]
     fn test_rt_status_flags_default() {
         let flags = RtStatusFlags::new();
@@ -272,6 +283,8 @@ mod tests {
         assert!(!flags.resampler_rebuild_failed.load(Ordering::Relaxed));
     }
 
+    /// Valida a orquestração da função `setup_spsc`, garantindo que todos os canais
+    /// (status, parâmetros e sinalização) sejam criados e vinculados corretamente.
     #[test]
     fn test_setup_spsc_returns_all_channels() {
         let channels = setup_spsc(16);
