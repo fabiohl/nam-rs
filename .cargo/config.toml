@@ -6,14 +6,13 @@ rustflags = [
   # --- Configuração de Arquitetura e Otimização (march / mtune) ---
 
   # OPÇÃO 1 (Padrão Distribuível): 
-  # Requisito base: CPUs com AVX2, FMA e BMI2 (2013+).
-  # Nota: No Rust Estável (1.95), '-Ctarget-cpu' define TANTO o ISA (march) quanto o Tuning genérico (mtune).
+  # Requisito mínimo indispensável: CPUs com AVX2, FMA e BMI2 (2013+).
+  # Nota: No Rust Estável (Ex: 1.95), '-Ctarget-cpu' define TANTO o ISA (march) quanto o Tuning genérico (mtune).
   "-Ctarget-cpu=x86-64-v3",
 
   # OPÇÃO 2 (Tuning Específico para CPUs 2019+ - REQUER RUST NIGHTLY):
   # Mantém a compatibilidade x86-64-v3, mas otimiza o agendamento de instruções (mtune) 
   # para microarquiteturas modernas (ex: AMD Zen 2 ou Intel Ice Lake / Skylake).
-  # NOTA PARA O SCRIPT: O script espera essa linha formatada com # no início.
   # "-Ctarget-cpu=x86-64-v3", "-Ztune-cpu=znver2",
 
   # OPÇÃO 3 (Otimização Máxima Local - "Native"):

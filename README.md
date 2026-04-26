@@ -84,6 +84,8 @@ cd nam-rs
 cargo build --release
 ```
 
+**Obs:** O .cargo/config.toml permite configurar uma compilação ainda mais otimizada para a sua CPU atual ("march=native"). O script utils/switchMarch.sh automatiza esta troca.
+
 Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire.
 Para iniciar o processamento:
 
