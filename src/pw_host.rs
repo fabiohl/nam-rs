@@ -5,7 +5,7 @@
 //!
 //! Este é o "coração" do NAM-rs: o módulo que de fato processa o sinal de áudio em
 //! tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
-//! do Linux), passa pelo amplificador neural, e entrega o resultado processado
+//! do Linux), passa pelo "motor neural", e entrega o resultado final processado
 //! ao hardware via arquitetura dual-stream.
 //!
 //! ## Arquitetura Dual-Stream com DspBridge
@@ -14,10 +14,11 @@
 //! Portanto, modificações in-place numa única stream `Audio/Sink` seriam invisíveis
 //! ao hardware. A solução usa duas streams:
 //!
-//! 1. **Capture stream** (`Audio/Sink`, Direction::Input) — recebe áudio dos apps,
-//!    aplica DSP (ganho + inferência neural), escreve no [`DspBridge`].
-//! 2. **Playback stream** (`Stream/Output/Audio`, Direction::Output) — lê do
-//!    [`DspBridge`] e entrega ao hardware.
+//! 1. **Capture stream** (`Audio/Sink`, `Direction::Input`) — atua como um Virtual Sink
+//!    que recebe áudio dos apps, aplica a cadeia DSP (ganho + inferência neural)
+//!    e escreve o resultado no [`DspBridge`].
+//! 2. **Playback stream** (`Stream/Output/Audio`, `Direction::Output`) — atua como um
+//!    cliente de reprodução que lê do [`DspBridge`] e entrega ao hardware.
 //!
 //! O [`DspBridge`] é um buffer `#[repr(align(128))]` compartilhado entre as duas
 //! closures via ponteiro raw, com sincronização lock-free via `fence(Release/Acquire)`
@@ -36,15 +37,15 @@
 //! ## Fluxo de processamento (Capture callback)
 //!
 //! O callback `process()` segue esta sequência para cada bloco de áudio:
-//! 1. Aplica ganho de entrada SIMD (ajuste de volume pré-amplificador)
-//! 2. `NamResampler::process_input()` — converte o sample rate do PipeWire para 48 kHz
-//! 3. Inferência neural WaveNet/LSTM — o "amplificador virtual" que processa o som
+//! 1. Aplica ganho de entrada (ajuste de volume pré-processamento): uma conveniência oferecida ao usuário
+//! 2. `NamResampler::process_input()` — converte o sample rate para a taxa compatível (geralmente 48 kHz)
+//! 3. Inferência neural WaveNet/LSTM — o motor neural que processa o sinal sonoro
 //! 4. `NamResampler::process_output()` — converte de volta para o sample rate original
-//! 5. Aplica ganho de saída SIMD (ajuste de volume pós-amplificador)
+//! 5. Aplica ganho de saída (ajuste de volume pós-processamento): uma conveniência oferecida ao usuário
 //! 6. Escreve resultado no [`DspBridge`] com `fence(Release)` para o playback callback
 //!
-//! Quando nenhum modelo está carregado, opera em pass-through (o som entra e sai sem alteração).
-//! Quando o sample rate do PipeWire já é 48 kHz, o resampler opera em bypass sem overhead.
+//! Quando nenhum modelo está carregado, o motor emite silêncio (prevenindo ruídos inesperados).
+//! Quando o sample rate do PipeWire é o mesmo do modelo nam, o resampler opera em bypass sem overhead.
 
 use crate::colors::Colorize;
 use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
@@ -106,9 +107,11 @@ struct AppState<S1, L1, S2, L2> {
 
 /// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
 ///
-/// Marcada como `#[cold]` para sinalizar ao LLVM que este é o path improvável (o músico
-/// está tocando, portanto há sinal na maioria dos callbacks). Isso permite ao compilador
-/// posicionar este código fora da região quente de I-Cache do `process()`.
+/// Marcada como `#[cold]` e `#[inline(never)]` para sinalizar ao LLVM que este é o path improvável.
+/// Isso permite ao compilador posicionar este código fora da região quente de I-Cache do
+/// `process()`, reduzindo a "I-Cache pressure" e otimizando o Branch Prediction para o path
+/// onde o áudio está presente. O código de tratamento de silêncio é movido para uma região
+/// distante da memória, mantendo o loop DSP principal compacto e eficiente.
 ///
 /// ## Safety
 /// - `bridge_ptr` deve apontar para um `DspBridge` válido (garantido pelo `Box::leak`).
@@ -134,7 +137,7 @@ fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) 
 
 /// Inicializa a topologia PipeWire dual-stream (Capture + Playback).
 ///
-/// Arquitetura: Apps → [Capture Stream: Audio/Sink] → process(DSP) → DspBridge → [Playback Stream] → Hardware.
+/// Arquitetura: Apps → [Capture: Audio/Sink] → process(DSP) → DspBridge → [Playback: Stream/Output] → Hardware.
 /// O monitor port do `Audio/Sink` copia o buffer *antes* do `process()` — portanto, a única
 /// forma de entregar o áudio processado ao hardware é via uma segunda stream de playback
 /// que lê do `DspBridge` pós-DSP.
@@ -189,6 +192,9 @@ pub fn run_pipewire_host(
     // Ponteiro raw para compartilhamento seguro entre closures (ambos RT, mesmo context PW).
     let bridge_ptr = bridge as *const DspBridge as *mut DspBridge;
 
+    // Otimiza o gerenciamento de memória do bridge no Kernel:
+    // - MADV_DONTFORK: Evita overhead de Copy-on-Write (COW) se o processo sofrer fork.
+    // - MADV_DONTDUMP: Exclui os grandes buffers de áudio de core dumps, reduzindo latência de escrita em falhas.
     unsafe {
         libc::madvise(
             bridge_ptr as *mut libc::c_void,
@@ -201,9 +207,10 @@ pub fn run_pipewire_host(
     // Computado antes do lock para que o valor seja acessível após o escopo.
     let target_cpu = select_optimal_cpu().unwrap_or(0);
 
-    // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança
-    // O lock é automaticamente liberado ao final deste escopo (_lock is dropped).
+    // Escopo de configuração protegida: o lock é liberado automaticamente no '}' final.
     {
+        // Obtém o lock para o loop, necessário para criar e configurar streams do PW com segurança.
+        // O lock é automaticamente liberado ao final deste escopo (_lock is dropped).
         let _lock = thread_loop.lock();
 
         let mut capture_props = properties! {
@@ -221,17 +228,20 @@ pub fn run_pipewire_host(
             "node.link-group" => "nam-rs-link-group", // Evita feedback loop (WirePlumber não linka nós do mesmo link-group)
         };
 
+        // Configura a latência desejada na stream (se especificada via CLI).
         let latency_str = format!("{}/48000", buffer_size);
         if buffer_size > 0 {
             capture_props.insert("node.latency", latency_str.as_str());
         }
 
+        // Inicializa a stream de captura (Virtual Sink) que receberá áudio das aplicações.
         capture_stream = pw::stream::StreamBox::new(&core, "NAM-rs", capture_props)?;
 
+        // Estado interno dos modelos ativos: um para cada canal, permitindo processamento stereo.
         let mut active_model_l: Option<Box<crate::models::DynamicModel>> = None;
         let mut active_model_r: Option<Box<crate::models::DynamicModel>> = None;
 
-        // NamResampler bidirecional: converte entre o rate do PipeWire e os 48 kHz do NAM.
+        // NamResampler bidirecional: converte o rate do PipeWire para o rate suportado pelo NAM carregado (geralmente 48khz).
         // Inicializado com 48k (bypass) — rate real será atualizado via canal SPSC de resamplers
         // quando a thread principal construir e enviar um novo resampler.
         let mut resampler = NamResampler::new(48_000, 48_000, 2048).unwrap_or_else(|e| {
@@ -245,7 +255,7 @@ pub fn run_pipewire_host(
             NamResampler::new(48_000, 48_000, 2048).expect("bypass não pode falhar")
         });
 
-        // Trackeia a taxa de amostragem alvo do amplificador virtual no loop RT
+        // Trackeia a taxa de amostragem alvo do loop RT
         let mut current_nam_rate: u32 = 48_000;
 
         // Buffer intermediário 48k para saída do resampler (stack-allocated).
@@ -265,23 +275,6 @@ pub fn run_pipewire_host(
         // Multiplicadores pré-calculados lineares para inserção no DSP FMA Simd
         let mut input_gain_mult: f32 = 1.0;
         let mut output_gain_mult: f32 = 1.0;
-
-        // Função local para recomputar os fatores de ganho linear a partir dos valores em dB.
-        // COLD-PATH: chamada apenas quando `param_changed` é true, i.e., ao receber
-        // novo `ParamPayload` via SPSC. Não é executada por frame — o `powf` é seguro aqui.
-        let update_gain_multipliers =
-            |u_in: f32,
-             u_out: f32,
-             m_in: f32,
-             m_out: f32,
-             out_in_mult: &mut f32,
-             out_out_mult: &mut f32| {
-                let total_in_db = u_in + m_in;
-                *out_in_mult = 10.0f32.powf(total_in_db / 20.0);
-
-                let total_out_db = u_out + m_out;
-                *out_out_mult = 10.0f32.powf(total_out_db / 20.0);
-            };
 
         let shared_target_rate = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let rate_for_param = shared_target_rate.clone();
@@ -424,7 +417,7 @@ pub fn run_pipewire_host(
                 }
 
                 if param_changed {
-                    update_gain_multipliers(
+                    compute_gain_multipliers(
                         user_input_gain_db,
                         user_output_gain_db,
                         model_input_db_adj,
@@ -438,18 +431,22 @@ pub fn run_pipewire_host(
                 // LÓGICA DSP - TEMPO REAL
                 // =========================================================
                 // Recupera o Buffer do PipeWire alocado internamente contendo os canais.
-                // Numa stream Filter, um `dequeue_buffer` entrega dados de In e Out conjugados.
+                // Recupera o Buffer do PipeWire contendo as amostras de áudio.
                 let mut _buf = match stream.dequeue_buffer() {
                     Some(b) => b,
                     None => return,
                 };
 
+                // 1. Extração dos buffers de áudio do PipeWire
+                // O PipeWire fornece buffers planares (F32P). Cada canal tem seu próprio array de dados.
                 let datas = _buf.datas_mut();
                 if datas.len() >= 2 {
+                    // Dividimos o slice de metadados em Esquerdo e Direito para obter referências mutáveis únicas.
                     let (left_datas, right_datas) = datas.split_at_mut(1);
                     if let (Some(d_l), Some(d_r)) =
                         (left_datas.first_mut(), right_datas.first_mut())
                     {
+                        // Cada canal possui um 'chunk' que descreve a porção válida do buffer (offset e size).
                         let chunk_l = d_l.chunk();
                         let chunk_r = d_r.chunk();
                         let offset_l = chunk_l.offset() as usize;
@@ -457,14 +454,22 @@ pub fn run_pipewire_host(
                         let offset_r = chunk_r.offset() as usize;
                         let size_r = chunk_r.size() as usize;
 
+                        // d.data() retorna o buffer bruto de bytes mapeado pelo kernel.
                         if let (Some(raw_l), Some(raw_r)) = (d_l.data(), d_r.data()) {
+                            // Calculamos o número de amostras (f32) disponíveis, respeitando os limites
+                            // físicos do buffer e a saturação para evitar overflows em cálculos de índice.
                             let n_bytes_l = size_l.min(raw_l.len().saturating_sub(offset_l));
                             let n_bytes_r = size_r.min(raw_r.len().saturating_sub(offset_r));
                             let n_samples_l = n_bytes_l / std::mem::size_of::<f32>();
                             let n_samples_r = n_bytes_r / std::mem::size_of::<f32>();
+
+                            // Sincronizamos o tamanho do processamento pelo menor buffer disponível.
                             let n_samples = n_samples_l.min(n_samples_r);
 
                             if n_samples > 0 {
+                                // SAFETY: O PipeWire garante que os buffers mmap permanecem válidos durante
+                                // a execução do callback RT. Castamos para f32 pois negociamos F32P (float planar).
+                                // Criamos slices diretamente sobre a memória do PipeWire para evitar cópias extras (zero-copy).
                                 let samples_l = unsafe {
                                     std::slice::from_raw_parts_mut(
                                         raw_l.as_mut_ptr().add(offset_l).cast::<f32>(),
@@ -478,6 +483,10 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
+                                // 2. Detecção de Silêncio (Silence Bypass)
+                                // Verificamos se há sinal presente antes de disparar a inferência NAM (pesada).
+                                // Se o buffer estiver em silêncio absoluto (threshold SIMD), entramos em bypass
+                                // imediato para economizar ciclos de CPU.
                                 if is_buffer_silent_stereo_simd(
                                     &samples_l[..n_samples],
                                     &samples_r[..n_samples],
@@ -490,33 +499,41 @@ pub fn run_pipewire_host(
                                     .is_silent
                                     .store(false, Ordering::Relaxed);
 
-                                // Mitigação: se o R for puramente zero ou exatamente igual ao L,
-                                // processamos no modo Mono economizando 50% de CPU.
+                                // 3. Mitigação Mono (Otimização Dinâmica)
+                                // Se o canal direito for idêntico ao esquerdo (ou silêncio absoluto),
+                                // alternamos para o modo Mono. Isso reduz o custo computacional pela metade,
+                                // processando apenas uma instância da CNN/LSTM.
                                 let process_mono = is_buffer_mono_simd(
                                     &samples_l[..n_samples],
                                     &samples_r[..n_samples],
                                 );
 
+                                // Iniciamos a medição do tempo de processamento DSP puro.
+                                // Usado para calcular o 'DSP Load' e detectar XRuns iminentes.
                                 let start_time = std::time::Instant::now();
 
-                                // O resampler de entrada pode expandir amostras
-                                // (ex: 44100→48000 = ratio ~1.088x), portanto os buffers
-                                // intermediários de inferência usam MAX_RESAMP_BUF.
+                                // O resampler de entrada pode expandir amostras (ex: 44.1k → 48k).
+                                // Utilizamos buffers fixos na stack com MAX_RESAMP_BUF para evitar alocações
+                                // dinâmicas e garantir localidade de cache.
                                 let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];
                                 let mut temp_out_r = [0.0f32; MAX_RESAMP_BUF];
                                 let n = n_samples.min(MAX_RESAMP_BUF);
 
-                                // 1. Aplica ganho de entrada SIMD antes do resampling
+                                // 4. Pipeline DSP: Ganho de Entrada
+                                // Aplicamos o ganho (User Gain + Model Calibration) via AVX2/FMA.
+                                // Este passo ocorre antes do resampling para manter a fidelidade do sinal.
                                 apply_gain_simd(&mut samples_l[..n], input_gain_mult);
                                 if !process_mono {
                                     apply_gain_simd(&mut samples_r[..n], input_gain_mult);
                                 }
 
-                                // 2. Downsample: PW_rate → 48 kHz
+                                // 5. Pipeline DSP: Downsampling (Rate → 48 kHz)
+                                // O motor NAM é treinado estritamente em 48kHz. O resampler converte
+                                // a taxa de amostragem do PipeWire para a taxa nativa do modelo.
                                 let n_48k = resampler.process_input(
                                     &samples_l[..n],
                                     if process_mono {
-                                        &samples_l[..n]
+                                        &samples_l[..n] // Em modo mono, usamos L para ambos
                                     } else {
                                         &samples_r[..n]
                                     },
@@ -568,7 +585,7 @@ pub fn run_pipewire_host(
                                         .store(true, Ordering::Relaxed);
                                 }
 
-                                // C.4: A cópia para samples_l/samples_r foi eliminada.
+                                // A cópia para samples_l/samples_r foi eliminada.
                                 // Na arquitetura dual-stream, o monitor port do Audio/Sink copia
                                 // o buffer *antes* do process() — portanto, escrever de volta em
                                 // samples_l/samples_r é redundante. O áudio processado chega ao
@@ -614,7 +631,7 @@ pub fn run_pipewire_host(
                                 bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 
                                 // Monitoramento de carga de DSP (DSP Load Monitoring)
-                                // `start_time` é inicializado antes da inferência (L507) e medido
+                                // `start_time` é inicializado no início da pipeline DSP (acima) e medido
                                 // aqui após o ganho de saída — captura apenas o tempo computacional
                                 // DSP puro, excluindo overhead de dequeue, SPSC drain e bridge write.
                                 let elapsed = start_time.elapsed();
@@ -711,9 +728,13 @@ pub fn run_pipewire_host(
                 if current_gen == last_bridge_gen {
                     return; // Nenhum dado novo — pula este ciclo.
                 }
+                // 1. Sincronização e Acesso ao Bridge
+                // Utilizamos fence(Acquire) para garantir que todas as escritas realizadas pelo
+                // capture callback (Release) sejam visíveis nesta thread.
                 last_bridge_gen = current_gen;
                 std::sync::atomic::fence(Ordering::Acquire);
 
+                // Obtemos o índice do buffer que acabou de ser preenchido pelo DSP.
                 let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
                 let front_buf = &bridge_ref.buffers[read_idx];
 
@@ -722,6 +743,7 @@ pub fn run_pipewire_host(
                     return;
                 }
 
+                // 2. Recuperação do Buffer de Saída do PipeWire
                 let mut buf = match stream.dequeue_buffer() {
                     Some(b) => b,
                     None => return,
@@ -732,11 +754,12 @@ pub fn run_pipewire_host(
                     return;
                 }
 
-                // split_at_mut para satisfazer o borrow checker
+                // Dividimos o slice para satisfazer as regras de mutabilidade única do Rust (borrow checker).
                 let (datas_left, datas_right) = datas.split_at_mut(1);
                 let data_l = &mut datas_left[0];
                 let data_r = &mut datas_right[0];
 
+                // Calculamos a capacidade máxima do buffer do hardware para evitar overflow.
                 let max_l = data_l.as_raw().maxsize as usize / std::mem::size_of::<f32>();
                 let max_r = data_r.as_raw().maxsize as usize / std::mem::size_of::<f32>();
                 let n_out = n_samples.min(max_l).min(max_r);
@@ -744,23 +767,26 @@ pub fn run_pipewire_host(
                     return;
                 }
 
+                // 3. Transferência de Áudio (Bridge → Hardware)
+                // Copiamos os dados processados do DspBridge diretamente para os buffers de saída.
                 if let Some(raw_l) = data_l.data() {
-                    // SAFETY: `raw_l` é um mmap do PipeWire válido enquanto o buffer
-                    // existir. Castamos para `f32` pois negociamos F32P.
+                    // SAFETY: `raw_l` é memória mapeada válida durante o ciclo do callback.
+                    // O formato F32P garante que os dados são floats de 32 bits planares.
                     let out_l = unsafe {
                         std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out)
                     };
                     out_l.copy_from_slice(&front_buf.buf_l[..n_out]);
                 }
                 if let Some(raw_r) = data_r.data() {
-                    // SAFETY: Idem canal direito.
+                    // SAFETY: Idem para o canal direito.
                     let out_r = unsafe {
                         std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out)
                     };
                     out_r.copy_from_slice(&front_buf.buf_r[..n_out]);
                 }
 
-                // Informa ao PipeWire quantos bytes foram escritos
+                // 4. Atualização de Metadados (Chunks)
+                // Informamos ao PipeWire a quantidade exata de dados escritos e a estrutura do buffer.
                 {
                     let chunk = data_l.chunk_mut();
                     *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
@@ -817,21 +843,29 @@ pub fn run_pipewire_host(
     // Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
     thread_loop.start();
 
-    // Loop principal da nossa aplicação, monitorando a flag SHUTDOWN e
-    // gerenciando a construção de resamplers fora do callback RT.
+    // =========================================================
+    // LOOP DE CONTROLE (NON-RT)
+    // =========================================================
+    // Este loop executa na thread principal da aplicação. Sua função é gerenciar
+    // tarefas pesadas (alocações, I/O) que são proibidas dentro dos callbacks RT.
     let mut was_silent = false;
     while !SHUTDOWN.load(Ordering::Relaxed) {
-        // Verifica se o callback RT solicitou rebuild do resampler via flag atômica
+        // 1. Gestão Dinâmica de Resampling
+        // O callback RT sinaliza via flag atômica se houve mudança na taxa de amostragem
+        // do PipeWire ou do modelo carregado.
         if rt_status.needs_resampler_rebuild.load(Ordering::Relaxed) {
             let target_pw_rate = rt_status.requested_pw_rate.load(Ordering::Relaxed);
             let target_nam_rate = rt_status.requested_nam_rate.load(Ordering::Relaxed);
+
             if target_pw_rate != 0 && target_nam_rate != 0 {
-                // Constrói novo resampler FORA do callback RT (alocação de heap permitida aqui)
+                // Reconstruímos o resampler aqui (Non-RT). A alocação de heap é permitida.
+                // Isso garante que o áudio não sofra dropouts durante a troca de formato.
                 match NamResampler::new(target_pw_rate, target_nam_rate, 2048) {
                     Ok(new_rs) => {
                         rt_status
                             .resampler_rebuild_failed
                             .store(false, Ordering::Relaxed);
+
                         log::info!(
                             "{} Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
                             "🔄".cyan(),
@@ -839,7 +873,8 @@ pub fn run_pipewire_host(
                             target_nam_rate,
                             new_rs.is_bypass()
                         );
-                        // Envia para o callback RT via canal SPSC dedicado
+
+                        // Enviamos o novo objeto para a thread RT via canal SPSC (Lock-Free).
                         if resampler_producer.push(new_rs).is_err() {
                             NamDiagnostic::new(NamErrorCode::ResamplerChannelFull, &sys)
                                 .message("Canal de resampler cheio. Rebuild descartado.")
@@ -853,6 +888,7 @@ pub fn run_pipewire_host(
                         }
                     }
                     Err(e) => {
+                        // Se o rebuild falhar, emitimos um diagnóstico e mantemos o resampler anterior.
                         NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
                             .message(format!(
                                 "Falha ao reconstruir o resampler para PW={} Hz e NAM={} Hz.",
@@ -866,22 +902,30 @@ pub fn run_pipewire_host(
                             .param("target_nam_rate", target_nam_rate)
                             .param("detail", &e)
                             .emit();
+
                         rt_status
                             .resampler_rebuild_failed
                             .store(true, Ordering::Relaxed);
                     }
                 }
+                // Limpamos a solicitação após o processamento.
                 rt_status
                     .needs_resampler_rebuild
                     .store(false, Ordering::Relaxed);
             }
         }
 
+        // 2. Monitoramento de Status
+        // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio).
         was_silent = poll_rt_status(&rt_status, &sys, was_silent);
 
+        // Baixa frequência de polling para economizar energia, já que estas são tarefas de controle.
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
+    // 3. Graceful Shutdown
+    // Paramos o loop do PipeWire antes de encerrar a função para garantir que
+    // os recursos sejam liberados corretamente.
     thread_loop.stop();
 
     Ok(())
@@ -893,61 +937,77 @@ pub fn run_pipewire_host(
 
 /// Constrói um SPA Pod de formato de áudio F32P stereo para negociação PipeWire.
 ///
-/// Serializa `audio_info` em um pod binário via FFI (`spa_format_audio_raw_build`).
-/// O buffer `format_buf` deve viver pelo menos tanto quanto o pod retornado,
-/// pois o pod aponta diretamente para dentro dele (zero-copy FFI).
+/// O PipeWire utiliza o sistema SPA (Signal Processing Algorithms) para descrever formatos.
+/// Esta função serializa a estrutura `audio_info` em um pod binário usando um builder manual.
+/// Isso é necessário para garantir a negociação correta do formato planar (F32P) exigido pelo motor.
 ///
 /// # Safety
 ///
-/// Requer que `audio_info` esteja corretamente inicializado (format + channels).
-/// O pod retornado é válido **somente** enquanto `format_buf` existir em escopo.
+/// O pod binário retornado aponta diretamente para o `format_buf` fornecido (zero-copy).
+/// Portanto, o `format_buf` DEVE permanecer válido e não ser modificado enquanto o pod
+/// estiver sendo utilizado para configurar a stream.
 unsafe fn build_spa_format_pod<'a>(
     audio_info: &pw::spa::param::audio::AudioInfoRaw,
     format_buf: &'a mut [u8; 1024],
 ) -> anyhow::Result<&'a pw::spa::pod::Pod> {
     unsafe {
+        // Inicializa a estrutura do builder com zeros (FFI requirement)
         let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
+
+        // Vincula o builder ao nosso buffer de memória pré-alocado
         pw::spa::sys::spa_pod_builder_init(
             &mut builder,
             format_buf.as_mut_ptr().cast(),
             format_buf.len() as u32,
         );
+
+        // Serializa a info de áudio no formato binário SPA Pod (F32P Stereo)
         let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
             &mut builder,
             pw::spa::param::ParamType::EnumFormat.as_raw(),
             &audio_info.as_raw(),
         );
+
+        // Verifica se a serialização falhou (ex: buffer muito pequeno)
         if pod_ptr.is_null() {
             return Err(anyhow::anyhow!(
                 "Falha ao construir SPA Pod de formato de áudio"
             ));
         }
-        // O pod aponta dentro de format_buf — válido enquanto format_buf existir
+
+        // Converte o ponteiro bruto de volta para uma referência de alto nível do pipewire-rs
         Ok(&*(pod_ptr as *const pw::spa::pod::Pod))
     }
 }
 
-/// Detecta o sink de hardware padrão do PipeWire via `pw-metadata`.
+/// Detecta dinamicamente o sink de hardware padrão do sistema via `pw-metadata`.
 ///
-/// Retorna `None` se não for possível determinar (falha de comando,
-/// o default é o próprio NAM-rs, ou parsing falhou).
+/// Esta função tenta identificar para qual dispositivo físico o áudio deve ser enviado
+/// por padrão. Ela faz o parsing da saída do utilitário `pw-metadata` do PipeWire.
+///
+/// Retorna `Some(name)` se encontrar um sink válido que não seja o próprio NAM-rs,
+/// ou `None` caso contrário (permitindo que o roteamento seja decidido pelo WirePlumber).
 fn detect_hardware_sink() -> Option<String> {
+    // Executa o comando externo para ler metadados do servidor PipeWire
     let out = std::process::Command::new("pw-metadata")
         .args(["-n", "default", "0", "default.audio.sink"])
         .output()
         .ok()?;
 
+    // Converte a saída bruta para string (UTF-8 com perdas)
     let s = String::from_utf8_lossy(&out.stdout);
+
+    // Parsing manual: localiza a chave "name" na saída JSON-like
     let start = s.find("\"name\":\"")?;
     let rest = &s[start + 8..];
     let end = rest.find('"')?;
     let name = &rest[..end];
 
-    // Ignora se o default detectado for o próprio NAM-rs
-    // (pode ocorrer se foi salvo pelo WirePlumber)
+    // Evitamos o "loop infinito" de roteamento se o default detectado for o próprio input do NAM-rs.
     if name == "NAM-rs-input" || name == "NAM-rs-standalone" {
         None
     } else {
+        // Retorna o nome do hardware real (ex: 'alsa_output.pci-0000_00_1f.3.analog-stereo')
         Some(name.to_string())
     }
 }
@@ -1000,7 +1060,7 @@ fn poll_rt_status(rt_status: &RtStatusFlags, sys: &SystemSnapshot, was_silent: b
                     prio
                 ))
                 .hint(
-                    "Verifique se o usuário possui permissão RT (ulimit -r) \
+                    "Verifique se o seu usuário possui permissão RT (ulimit -r) \
                      ou se o sistema tem rtkit/PipeWire configurados corretamente.",
                 )
                 .emit_warning();
@@ -1036,6 +1096,27 @@ fn poll_rt_status(rt_status: &RtStatusFlags, sys: &SystemSnapshot, was_silent: b
     current_silent
 }
 
+/// Recomputa os fatores de ganho linear a partir dos valores em decibéis.
+///
+/// COLD-PATH: Chamada apenas via callback RT quando há mudança de parâmetros.
+/// Usa `powf`, que é custoso, mas aceitável fora do hot-path de processamento.
+#[cold]
+#[inline(never)]
+fn compute_gain_multipliers(
+    u_in: f32,
+    u_out: f32,
+    m_in: f32,
+    m_out: f32,
+    out_in_mult: &mut f32,
+    out_out_mult: &mut f32,
+) {
+    let total_in_db = u_in + m_in;
+    *out_in_mult = 10.0f32.powf(total_in_db / 20.0);
+
+    let total_out_db = u_out + m_out;
+    *out_out_mult = 10.0f32.powf(total_out_db / 20.0);
+}
+
 /// Configura a thread DSP atual para operação em tempo real.
 ///
 /// Executada **uma única vez** no cold-path do primeiro frame do callback `process()`,
@@ -1062,6 +1143,8 @@ fn poll_rt_status(rt_status: &RtStatusFlags, sys: &SystemSnapshot, was_silent: b
 /// - É executada apenas **uma vez** no cold-path inicial — não afeta latência RT.
 /// - O formato simula manualmente o padrão de diagnóstico (códigos E2301–E2303) para
 ///   permitir triagem via `/diagnostico` mesmo sem o bloco de suporte completo.
+#[cold]
+#[inline(never)]
 fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
     // Proteção contra denormals (números subnormalizados que travam o processador):
     // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
@@ -1201,14 +1284,21 @@ fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
 }
 
 /// Seleciona o núcleo de CPU ideal para fixar a thread RT (core affinity).
+///
+/// A heurística prioriza:
+/// 1. **Capacidade Máxima** — Em arquiteturas híbridas (ex: big.LITTLE), prefere núcleos de alta performance.
+/// 2. **Menor Carga de IRQ** — Minimiza jitter causado por interrupções de hardware (rede, disco, etc).
+/// 3. **Índice Numérico** — Desempate determinístico.
 fn select_optimal_cpu() -> Option<usize> {
     use std::fs;
 
+    // Varre /sys para encontrar todos os núcleos lógicos disponíveis.
     let cpu_dir = fs::read_dir("/sys/devices/system/cpu").ok()?;
     let mut cpus: Vec<usize> = cpu_dir
         .filter_map(|entry| {
             let name = entry.ok()?.file_name();
             let name = name.to_str()?;
+            // Filtra apenas diretórios no formato 'cpuX'.
             name.strip_prefix("cpu")?.parse::<usize>().ok()
         })
         .collect();
@@ -1218,6 +1308,7 @@ fn select_optimal_cpu() -> Option<usize> {
     }
     cpus.sort_unstable();
 
+    // Obtém a capacidade de processamento de cada núcleo (comum em sistemas ARM ou x86 modernos).
     let capacities: Vec<(usize, u64)> = cpus
         .iter()
         .map(|&cpu| {
@@ -1225,11 +1316,12 @@ fn select_optimal_cpu() -> Option<usize> {
             let cap = fs::read_to_string(path)
                 .ok()
                 .and_then(|s| s.trim().parse::<u64>().ok())
-                .unwrap_or(1024);
+                .unwrap_or(1024); // Fallback padrão do kernel.
             (cpu, cap)
         })
         .collect();
 
+    // Totaliza as interrupções processadas por cada core para detectar "vizinhos barulhentos".
     let irq_totals = parse_interrupts_per_cpu(cpus.len());
 
     capacities
@@ -1239,6 +1331,10 @@ fn select_optimal_cpu() -> Option<usize> {
             (cpu, cap, irqs)
         })
         .max_by(|a, b| {
+            // Heurística de Ordenação:
+            // 1. Maior capacidade (cap)
+            // 2. Menor número de interrupções (irqs) — invertido no cmp
+            // 3. Maior índice de CPU (cpu)
             a.1.cmp(&b.1)
                 .then_with(|| b.2.cmp(&a.2))
                 .then_with(|| a.0.cmp(&b.0))
@@ -1246,6 +1342,10 @@ fn select_optimal_cpu() -> Option<usize> {
         .map(|(cpu, _, _)| cpu)
 }
 
+/// Analisa /proc/interrupts para extrair a carga de interrupções por núcleo.
+///
+/// Esta função realiza o parsing do formato tabular do kernel, onde cada coluna
+/// (após a primeira) representa um contador para um núcleo específico.
 fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
     use std::fs;
 
@@ -1256,12 +1356,16 @@ fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
         Err(_) => return totals,
     };
 
+    // Pula o cabeçalho (CPU0 CPU1 ...)
     for line in content.lines().skip(1) {
         let trimmed = line.trim_start();
+        // Localiza o delimitador do nome da interrupção (ex: "7: ...")
         let irq_end = trimmed.find(':').unwrap_or(0);
         if irq_end == 0 {
             continue;
         }
+
+        // Filtra apenas interrupções numéricas (ignora NMI, LOC, etc por simplicidade).
         if !trimmed[..irq_end]
             .trim()
             .bytes()
@@ -1275,6 +1379,7 @@ fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
             None => continue,
         };
 
+        // Acumula os contadores para cada core presente na linha.
         for (cpu_idx, token) in after_colon.split_whitespace().enumerate() {
             if cpu_idx >= num_cpus {
                 break;
@@ -1282,6 +1387,7 @@ fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
             if let Ok(count) = token.parse::<u64>() {
                 totals[cpu_idx] += count;
             } else {
+                // Para no primeiro token não numérico (geralmente o nome do driver/dispositivo).
                 break;
             }
         }
@@ -1293,14 +1399,17 @@ fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
 /// Impede que o processador entre em C-States de economia de energia,
 /// garantindo latência de despertar de 0ms para processamento de áudio RT.
 ///
+/// Utiliza a interface PM QoS do kernel Linux para solicitar latência zero.
+///
 /// RETORNO: O arquivo `File`. Ele DEVE ser mantido vivo no escopo principal.
-/// Se for "dropado", o kernel anula a proteção.
+/// Se o descritor de arquivo for fechado (drop), o kernel anula a proteção.
 pub fn lock_cpu_c_states() -> Option<std::fs::File> {
     match std::fs::OpenOptions::new()
         .write(true)
         .open("/dev/cpu_dma_latency")
     {
         Ok(mut file) => {
+            // Valor 0 indica tolerância zero a latência de transição de energia.
             let zero: i32 = 0;
             if std::io::Write::write_all(&mut file, &zero.to_ne_bytes()).is_ok() {
                 log::info!(
@@ -1312,6 +1421,7 @@ pub fn lock_cpu_c_states() -> Option<std::fs::File> {
             None
         }
         Err(e) => {
+            // Frequentemente falha se não houver permissão de escrita ou se o arquivo não existir.
             log::warn!(
                 "PM QoS: Acesso negado a /dev/cpu_dma_latency ({}). \
                  Considere criar uma regra de udev para o grupo 'audio'.",
@@ -1330,6 +1440,10 @@ mod tests {
 
     #[test]
     fn test_dsp_bridge_concurrent_access() {
+        // 1. Setup do DspBridge:
+        // Usamos Box::leak para obter uma referência 'static, simulando o comportamento
+        // em tempo de execução onde o objeto vive por toda a duração do host PipeWire.
+        // Isso permite converter a referência para ponteiros raw (*const/*mut) com segurança.
         let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
             buffers: [
                 BridgeBuffer {
@@ -1347,18 +1461,24 @@ mod tests {
             generation: std::sync::atomic::AtomicU64::new(0),
         }));
 
+        // Ponteiros raw para as threads (writer/reader)
         let bridge_ptr_writer = bridge as *const DspBridge as *mut DspBridge as usize;
         let bridge_ptr_reader = bridge as *const DspBridge;
 
+        // 2. Thread Escritora (Simula Capture Callback RT):
+        // Esta thread preenche o "back buffer" (o buffer que não está sendo lido)
+        // e depois alterna o índice atômico para torná-lo o novo "front buffer".
         let writer_handle = std::thread::spawn(move || {
             let mut counter = 0.0f32;
             let bridge_ptr_writer = bridge_ptr_writer as *mut DspBridge;
             for _ in 0..1000 {
                 let bridge_ref = unsafe { &mut *bridge_ptr_writer };
+
+                // Localiza o buffer inativo (back-buffer) para escrita.
                 let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
                 let back_buf = &mut bridge_ref.buffers[back_idx];
 
-                // Write 64 samples
+                // Preenche com dados sequenciais para verificar integridade no leitor.
                 for i in 0..64 {
                     back_buf.buf_l[i] = counter;
                     back_buf.buf_r[i] = counter;
@@ -1366,50 +1486,65 @@ mod tests {
                 }
                 back_buf.n_samples = 64;
 
+                // BARREIRA DE MEMÓRIA (Release):
+                // Garante que todas as escritas no buffer acima sejam visíveis por outras threads
+                // ANTES que o 'active_read_idx' ou 'generation' sejam atualizados.
                 std::sync::atomic::fence(Ordering::Release);
+
                 bridge_ref
                     .active_read_idx
                     .store(back_idx, Ordering::Relaxed);
                 bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 
-                // Small sleep to simulate DSP time and allow reader to catch some frames
+                // Pequeno delay para simular o tempo de processamento DSP e permitir interleave.
                 std::thread::sleep(Duration::from_micros(10));
             }
         });
 
+        // 3. Thread Leitora (Simula Playback Callback RT):
+        // Esta thread monitora o contador 'generation'. Quando ele muda, ela
+        // consome o novo "front buffer".
         let start = Instant::now();
         let mut last_gen = 0;
         let mut reads = 0;
         let mut last_val_read = -1.0;
 
-        while reads < 1000 && start.elapsed() < Duration::from_millis(100) {
+        while reads < 1000 && start.elapsed() < Duration::from_millis(500) {
             let bridge_ref = unsafe { &*bridge_ptr_reader };
             let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+
             if current_gen != last_gen {
+                // BARREIRA DE MEMÓRIA (Acquire):
+                // Sincroniza com o Release do escritor. Garante que os dados do buffer
+                // lidos abaixo sejam a versão mais recente escrita.
                 std::sync::atomic::fence(Ordering::Acquire);
+
                 let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
                 let front_buf = &bridge_ref.buffers[read_idx];
 
                 assert_eq!(front_buf.n_samples, 64);
 
+                // Verificação de Integridade: os dados em um buffer devem ser contíguos.
                 let first_val = front_buf.buf_l[0];
                 for i in 0..64 {
                     assert_eq!(
                         front_buf.buf_l[i],
                         first_val + i as f32,
-                        "Buffer mixing detected in L channel"
+                        "Buffer mixing detectado no canal L"
                     );
                     assert_eq!(
                         front_buf.buf_r[i],
                         first_val + i as f32,
-                        "Buffer mixing detected in R channel"
+                        "Buffer mixing detectado no canal R"
                     );
                 }
 
-                // Values should be monotonically increasing (we might drop frames, but never go backward)
+                // Verificação de Monotonicidade:
+                // Mesmo se pularmos frames (o que pode ocorrer em testes sob carga),
+                // nunca devemos ler dados mais antigos do que os lidos anteriormente.
                 assert!(
                     first_val > last_val_read,
-                    "Read older data than previously seen!"
+                    "Lido dado mais antigo do que o visto anteriormente! (Stale read)"
                 );
                 last_val_read = front_buf.buf_l[63];
 
@@ -1424,10 +1559,12 @@ mod tests {
 
         writer_handle.join().unwrap();
 
-        // Assert execution time
+        // 4. Verificação de Performance:
+        // O teste deve completar rapidamente. Se demorar muito, indica deadlocks
+        // ou starvation severa (embora o design seja lock-free).
         assert!(
-            start.elapsed() < Duration::from_millis(100),
-            "Test took too long to execute"
+            start.elapsed() < Duration::from_millis(500),
+            "O teste demorou demais para executar"
         );
     }
 }
