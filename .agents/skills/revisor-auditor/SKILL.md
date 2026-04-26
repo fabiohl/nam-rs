@@ -56,4 +56,4 @@ Inspecione linha-de-código detectando categoricamente:
 
 ### 3. Retificações Bit-Perfect
 
-Submeta patches cirurgicamente, sem alterar padrões consolidados (canais SPSC, `RtStatusFlags`, estrutura de módulos). A operação final exige validação incondicional pelo ciclo local `utils/lints.sh`. Tudo deve operar nas janelas perfeccionistas de baixa latência.
+Submeta patches cirurgicamente, sem alterar padrões consolidados (canais SPSC, `RtStatusFlags`, estrutura de módulos). A operação final exige validação incondicional pela skill `.agents/rules/linting.md`. Tudo deve operar nas janelas perfeccionistas de baixa latência.

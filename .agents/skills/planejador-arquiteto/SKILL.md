@@ -22,5 +22,5 @@ Organizar as atividades em Sprints e Tarefas Técnicas coerentes, auto-contidas,
 
 ### 2. Atividades Finais
 
-- Ao concluir o planejamento, valide a consistência com `utils/lints.sh` (rule `.agents/rules/linting.md`) antes de fechar a sessão.
+- Ao concluir o planejamento, valide a consistência com a rule `.agents/rules/linting.md` antes de fechar a sessão.
 - Acione a skill `documentador` para sincronizar `as documentações com o estado atual do código.

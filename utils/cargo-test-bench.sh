@@ -3,5 +3,5 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 set -xeuo pipefail
-cargo fmt --all
-cargo clippy --all-targets --all-features -- -D warnings
+cargo test
+cargo bench

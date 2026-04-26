@@ -72,4 +72,4 @@ Consulte o enum `NamErrorCode` em `src/diagnostics.rs` para a lista completa de 
 ### 6. AVX2/AVX-512 e Clean Builds
 
 - Use `std::simd` com `const generics` SoA para dot-products LSTM/WaveNet. AVX2 é obrigatório (baseline x86-64-v3); AVX-512 é opcional via multiversioning (`#[target_feature(enable = "avx512f")]`) quando oferecer boas oportunidades de otimização de performance.
-- O código deve passar sem warnings em `utils/lints.sh` (inclui `cargo fmt`, `cargo clippy`, e validação de copyright).
+- O código deve passar sem warnings pelas skills `.agents/rules/copyright.md` e `.agents/rules/linting.md`.
