@@ -14,6 +14,7 @@
                 "rust-lang.rust-analyzer",
                 "vadimcn.vscode-lldb",
                 "davidanson.vscode-markdownlint",
+                "RooVeterinaryInc.roo-cline",
                 "tamasfe.even-better-toml"
             ]
         }
@@ -21,7 +22,8 @@
     "remoteUser": "vscode",
     "runArgs": [
         "--cap-add=SYS_NICE",
-        "--security-opt", "seccomp=unconfined",
+        "--security-opt",
+        "seccomp=unconfined",
         "--ipc=host",
         "--group-add=audio"
     ],

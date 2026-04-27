@@ -1,0 +1,17 @@
+# Roo/Cline Bridge Rules for NAM-rs
+
+## Antes de agir leia
+
+1. `docs/architecture.md`
+2. `README.md`
+3. `TODO*`
+4. `.agents/*/*.md`
+
+## Use a persona/mode adequada
+
+* Planning/architecture → modo arquitetural (`.agents/skills/planejador-arquiteto/SKILL.md`)
+* Coding/implementation → modo de código (`.agents/skills/implementador/SKILL.md` e `.agents/rules/rust.md`)
+* Debug → modo de depuração (`.agents/skills/debugger/SKILL.md`)
+* Docs/comments → modo de documentação (`.agents/skills/documentador/SKILL.md`)
+* Validação final: (`.agents/rules/copyright.md` e `.agents/rules/linting.md`)
+* Demais rules em `.agents/rules/*.md`, skills em `.agents/skills/*/*.md` e workflows automatizadas em `.agents/workflows/*.md`.
