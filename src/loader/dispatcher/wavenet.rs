@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-use anyhow::{Context, bail};
-use log::info;
-
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topology};
 use crate::models::DynamicModel;
@@ -13,6 +10,8 @@ use crate::models::wavenet::{
 use crate::models::wavenet_dyn::{
     Conv1dDyn, DenseLayerDyn, WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn,
 };
+use anyhow::{Context, bail};
+use log::info;
 
 /// Valida o campo `activation` em todas as layers de um modelo WaveNet.
 ///
@@ -93,7 +92,10 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
     // Rastrear allocNum global conforme C++ WaveNetModelT::constructor
     let mut alloc_num = 0usize;
 
-    // Array 1: IN=1, COND=1, HasHeadBias=false
+    // O WaveNet é organizado em dois grandes blocos chamados "Arrays".
+    // Imagine cada Array como um rack de efeitos complexo.
+
+    // Array 1: O primeiro estágio de processamento.
     let array1 = build_wavenet_array::<1, 1, CH, K, HEAD>(
         &mut cursor,
         dils_0,
@@ -101,8 +103,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
         &mut alloc_num,
     )?;
 
-    // Array 2: IN=CH, COND=1, CH2=HEAD, HEAD2=1, HasHeadBias=true
-    // C++: WaveNetLayerArrayT<CH, 1, 1, HEAD, K, Dilations, true>
+    // Array 2: O segundo estágio, que recebe o que o primeiro processou.
     let array2 = build_wavenet_array::<CH, 1, HEAD, K, 1>(
         &mut cursor,
         dils_1,
@@ -110,7 +111,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
         &mut alloc_num,
     )?;
 
-    // Último peso do modelo: head_scale (C++ WaveNet.h L372)
+    // O 'head_scale' é o botão de volume final do modelo inteiro.
     let head_scale = cursor.read_f32()?;
 
     // Garante exaustão completa dos pesos
@@ -161,19 +162,23 @@ pub(crate) fn build_wavenet_array<
     has_head_bias: bool,
     alloc_num: &mut usize,
 ) -> anyhow::Result<WaveNetLayerArray<IN, COND, CH, K, HEAD>> {
-    // 1. Rechannel: Dense<IN, CH> sem bias (C++: DenseLayerT<InputSize, Channels, false>)
+    // 1. Rechannel: Aqui transformamos o sinal de entrada (1 fio) em vários
+    // canais internos (ex: 16 fios) para que a rede tenha mais "espaço" para pensar.
     let rechannel = read_dense_layer::<IN, CH>(cursor, false)?;
 
-    // 2. Layers: uma para cada dilatação
+    // 2. Camadas (Layers): Criamos uma camada para cada "dilatação".
+    // Uma dilatação é como um eco: a rede olha para o que aconteceu há 1, 2, 4, 8... amostras atrás.
     let mut layers = Vec::with_capacity(dilations.len());
     let mut states = Vec::with_capacity(dilations.len());
 
     for &dilation in dilations {
-        // conv1d: Conv1d<CH, CH, K> com bias (C++: Conv1DT<Ch, Ch, K, true, D>)
+        // conv1d: É o filtro matemático principal que processa o áudio e seus "ecos".
         let conv1d = read_conv1d_weights::<CH, CH, K>(cursor, dilation, true)?;
-        // input_mixin: Dense<COND, CH> sem bias (C++: DenseLayerT<Cond, Ch, false>)
+
+        // input_mixin: Adiciona informações externas ao processamento (como ajustes do usuário).
         let input_mixin = read_dense_layer::<COND, CH>(cursor, false)?;
-        // one_by_one: Dense<CH, CH> com bias (C++: DenseLayerT<Ch, Ch, true>)
+
+        // one_by_one: Um ajuste final de "mistura" de canais para cada momento do som.
         let one_by_one = read_dense_layer::<CH, CH>(cursor, true)?;
 
         layers.push(WaveNetLayer {
@@ -188,10 +193,11 @@ pub(crate) fn build_wavenet_array<
         *alloc_num += 1;
     }
 
-    // 3. Head Rechannel: Dense<CH, HEAD> bias condicional (HasHeadBias)
+    // 3. Head Rechannel: Transforma os vários canais internos de volta no
+    // formato de saída (geralmente reduzindo para preparar para o próximo estágio).
     let head_rechannel = read_dense_layer::<CH, HEAD>(cursor, has_head_bias)?;
 
-    // Campo receptivo total do array = soma dos RF individuais
+    // Campo receptivo: É o tempo total de "memória" que este bloco tem (quantas amostras do passado ele olha).
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 
     Ok(WaveNetLayerArray {
@@ -237,6 +243,10 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
 
     let mut alloc_num = 0usize;
 
+    // No WaveNet dinâmico, criamos os Arrays sem saber os tamanhos fixos de antemão.
+    // É como montar um rack de efeitos onde os módulos podem ter qualquer tamanho.
+
+    // Primeiro bloco de processamento.
     let array1 = build_wavenet_array_dyn(
         &mut cursor,
         1,
@@ -250,6 +260,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
         &mut alloc_num,
     )?;
 
+    // Segundo bloco, que recebe o sinal já "expandido" pelo primeiro.
     let array2 = build_wavenet_array_dyn(
         &mut cursor,
         ch1,
@@ -263,6 +274,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
         &mut alloc_num,
     )?;
 
+    // Volume final do modelo.
     let head_scale = cursor.read_f32()?;
 
     cursor.verify_exhausted()?;
@@ -299,7 +311,11 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
     let total = OUT * IN * K;
     let raw = cursor.read_slice(total)?;
 
-    // Transposição: C++ lê (out, in, k) → Rust layout (out, k, in)
+    // Aqui acontece uma reorganização importante (Transposição):
+    // Os pesos do modelo original (treinado em Python/C++) estão em uma ordem
+    // que não é a melhor para o Rust processar áudio em tempo real.
+    // Nós "embaralhamos" os dados aqui para que o processador possa ler os
+    // números em sequência perfeita durante o processamento, o que é muito mais rápido.
     let mut weights = vec![0.0f32; total];
     let mut idx = 0;
     for out_c in 0..OUT {
@@ -421,7 +437,8 @@ pub(crate) fn build_wavenet_array_dyn(
     gated: bool,
     alloc_num: &mut usize,
 ) -> anyhow::Result<WaveNetLayerArrayDyn> {
-    // out_ch do conv1d: dobrado quando gated para produzir slots tanh + sigmoid.
+    // Se a rede for "gated" (com comportas), ela precisa de duas vezes mais espaço
+    // de saída para calcular as funções Tanh e Sigmoid simultaneamente.
     let conv_out_ch = if gated { 2 * ch } else { ch };
 
     let rechannel = read_dense_layer_dyn(cursor, in_size, ch, false)?;
@@ -430,6 +447,7 @@ pub(crate) fn build_wavenet_array_dyn(
     let mut states = Vec::with_capacity(dilations.len());
 
     for &dilation in dilations {
+        // Criamos cada camada com sua respectiva "distância de memória" (dilatação).
         let conv1d = read_conv1d_weights_dyn(cursor, ch, conv_out_ch, k, dilation, true)?;
         let input_mixin = read_dense_layer_dyn(cursor, cond_size, ch, false)?;
         let one_by_one = read_dense_layer_dyn(cursor, ch, ch, true)?;
@@ -442,6 +460,7 @@ pub(crate) fn build_wavenet_array_dyn(
             gated,
         });
 
+        // O 'rf' (Receptive Field) é quanto tempo de áudio esta camada consegue "lembrar".
         let rf = (k - 1) * dilation;
         states.push(WaveNetLayerState::new(ch, rf, *alloc_num));
         *alloc_num += 1;

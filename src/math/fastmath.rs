@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-// Otimizações matemáticas portadas dos polinômios de NeuralAudio / math_approx.
 
 //! Módulo de FastMath (Minimax & Pade) para otimização de ativação não linear.
+#![allow(clippy::missing_safety_doc)]
 //!
 //! Implementa aproximações de alta performance em `core::arch::x86_64` (FMA)
 //! mitigando gargalos de ALU ao calcular `tanh` e `sigmoid` na `WaveNet`/`LSTM`.
@@ -10,6 +10,7 @@
 
 use core::arch::x86_64::*;
 
+/// Otimizações matemáticas portadas dos polinômios de NeuralAudio / math_approx.
 /// Aplica aproximação vetorial de `tanh(x)` iterando um polinômio de grau 5.
 ///
 /// Algoritmo otimizado correspondente ao `tanh<5>` usado no NAM core. O polinômio
@@ -47,9 +48,6 @@ use core::arch::x86_64::*;
 /// O MSE golden medido (3.21e-2 em 2026-04-15) é consistente com esta estimativa
 /// — ver `docs/architecture.md §2` e docstring de `test_golden_vectors_wavenet`
 /// para a justificativa completa do threshold `5e-2`.
-///
-/// # Safety
-/// O chamador deve assegurar que a máquina host tem as features `avx2` e `fma` ativadas.
 pub unsafe fn simd_tanh(x: __m256) -> __m256 {
     unsafe {
         // Coeficientes do polinômio Minimax de grau 7
@@ -97,11 +95,7 @@ pub unsafe fn simd_tanh(x: __m256) -> __m256 {
 }
 
 /// Aplica aproximação vetorial de `sigmoid(x)` através da identidade logarítimica da tanh.
-///
 /// Baseia-se matematicamente em `sigmoid(x) = 0.5 * (1.0 + tanh(0.5 * x))`.
-///
-/// # Safety
-/// Requer suporte nativo `avx2` e `fma` instanciado pelo chamador dinâmico.
 pub unsafe fn simd_sigmoid(x: __m256) -> __m256 {
     unsafe {
         let half = _mm256_set1_ps(0.5);
@@ -122,9 +116,6 @@ pub unsafe fn simd_sigmoid(x: __m256) -> __m256 {
 }
 
 /// Aplica aproximação vetorial de `tanh(x)` iterando um polinômio de grau 5 (AVX-512).
-///
-/// # Safety
-/// O chamador deve assegurar suporte a `avx512f` e `avx512vl`.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     // Coeficientes do polinômio Minimax de grau 7
@@ -171,9 +162,6 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
 }
 
 /// Aplica aproximação vetorial de `sigmoid(x)` através da identidade logarítimica da tanh (AVX-512).
-///
-/// # Safety
-/// Requer suporte nativo `avx512f` e `avx512vl`.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     unsafe {
@@ -196,9 +184,6 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
 
 /// Processa uma fatia in-place aplicando a `simd_tanh` otimizada baseada em AVX2 (YMM).
 /// Abstrai a carga iterativa de 8 elementos da camada neural.
-///
-/// # Safety
-/// Requer suporte garantido a instruções AVX2 e FMA no hardware de destino x86_64.
 pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
     unsafe {
         let mut i = 0;
@@ -217,9 +202,6 @@ pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
 
 /// Processa uma fatia in-place aplicando a `simd_tanh_avx512` otimizada baseada em AVX-512 (ZMM).
 /// Abstrai a carga iterativa de 16 elementos da camada neural.
-///
-/// # Safety
-/// Requer suporte garantido a instruções AVX-512 no hardware de destino x86_64.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
     unsafe {
@@ -238,9 +220,6 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
 }
 
 /// Processa uma fatia in-place aplicando a `simd_sigmoid` otimizada baseada em AVX2 (YMM).
-///
-/// # Safety
-/// Requer suporte garantido a instruções AVX2 e FMA no hardware de destino x86_64.
 pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
     unsafe {
         let mut i = 0;
@@ -259,9 +238,6 @@ pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
 }
 
 /// Processa uma fatia in-place aplicando a `simd_sigmoid_avx512` otimizada baseada em AVX-512 (ZMM).
-///
-/// # Safety
-/// Requer suporte garantido a instruções AVX-512 no hardware de destino x86_64.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
     unsafe {
@@ -339,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_simd_fastmath_tanh_avx512_mse() {
-        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             let input: [f32; 16] = [
                 -4.0, -2.5, -0.75, 0.0, 0.8, 1.2, 3.5, 6.0, -3.2, -1.1, -0.25, 0.1, 0.5, 2.2, 4.5,
                 8.0,
@@ -369,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_simd_fastmath_sigmoid_avx512_mse() {
-        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             let input: [f32; 16] = [
                 -5.0, -1.0, -0.33, 0.0, 0.22, 1.1, 2.8, 4.0, -4.2, -2.1, -0.15, 0.5, 0.88, 1.9,
                 3.2, 7.0,

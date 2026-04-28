@@ -10,10 +10,9 @@
 //! Os pesos são consumidos sequencialmente por um `WeightCursor` cursor-forward,
 //! com verificação de exaustão ao final para detectar modelos inconsistentes.
 
-use anyhow::bail;
-
 use crate::loader::nam_json::NamModelData;
 use crate::models::DynamicModel;
+use anyhow::bail;
 
 // =============================================================================
 // WeightCursor — Leitura sequencial determinística dos pesos planificados

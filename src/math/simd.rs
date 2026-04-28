@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Engenharia de Registradores baseada em instruções explícitas x86_64.
+#![allow(clippy::missing_safety_doc)]
 //!
 //! Este módulo exporta funções analíticas implementadas com instrinsics de AVX2 e FMA,
 //! otimizando os cálculos críticos (como Fused Multiply-Add) limitando os
@@ -22,8 +23,6 @@ use core::arch::x86_64::*;
 /// - **FTZ (bit 15):** Resultados subnormais são truncados para zero.
 /// - **DAZ (bit 6):** Operandos subnormais são tratados como zero.
 ///
-/// # Safety
-/// O chamador deve assegurar que a CPU é x86_64 com suporte SSE2+.
 /// Esta função altera estado global do processador (MXCSR) — deve ser
 /// chamada apenas uma vez por thread (tipicamente no início do callback RT).
 pub unsafe fn set_daz_ftz() {
@@ -49,9 +48,6 @@ pub unsafe fn set_daz_ftz() {
 ///
 /// Para vetores curtos (H=8..16, típicos de LSTM/WaveNet NAM), o loop de 8-em-8
 /// com 2 acumuladores captura a maior parte do ganho sem overhead excessivo.
-///
-/// # Safety
-/// O chamador deve assegurar que a CPU suporta os recursos "avx2" e "fma".
 pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
@@ -143,9 +139,6 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
 /// usando 2 acumuladores de 512 bits. Com ZMM (16 floats), 2 acumuladores
 /// processam 32 floats/iteração e são suficientes para saturar o pipeline
 /// AVX-512 (que tipicamente tem 1–2 FMA ports em Zen4/Sapphire Rapids).
-///
-/// # Safety
-/// O chamador deve assegurar que a CPU suporta os recursos "avx512f" e "avx512vl".
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
@@ -192,10 +185,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
 }
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
-///
 /// Otimizado especificamente para as 4 portas do LSTM (Input, Forget, Cell, Output).
-/// # Safety
-/// O chamador deve assegurar que a CPU suporta os recursos "avx2" e "fma".
 pub unsafe fn dot_product_4x_avx2(
     w0: &[f32],
     w1: &[f32],
@@ -307,9 +297,6 @@ pub unsafe fn dot_product_4x_avx2(
 }
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
-///
-/// # Safety
-/// O chamador deve assegurar que a CPU suporta os recursos "avx512f" e "avx512vl".
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_avx512(
     w0: &[f32],
@@ -364,9 +351,6 @@ pub unsafe fn dot_product_4x_avx512(
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
 /// Otimizado especificamente para as 4 portas do LSTM interfolhadas (Input, Forget, Cell, Output).
-///
-/// # Safety
-/// O chamador deve assegurar que a CPU suporta os recursos "avx2" e "fma".
 pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
     let mut i = 0;
@@ -441,9 +425,6 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
 /// Otimizado especificamente para as 4 portas do LSTM interfolhadas.
-///
-/// # Safety
-/// O chamador deve assegurar que a CPU suporta os recursos "avx512f" e "avx512vl".
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
@@ -599,14 +580,8 @@ impl SimdMathConfig {
 /// Trait de abstração para despacho estático de operações matemáticas SIMD.
 pub trait SimdMath {
     /// Calcula o produto escalar entre dois vetores.
-    ///
-    /// # Safety
-    /// Depende da arquitetura SIMD alvo suportar as instruções emitidas e os slices terem o mesmo tamanho.
     unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32;
     /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado) para WaveNet.
-    ///
-    /// # Safety
-    /// Depende de HW support, slices dimensionados corretamente, e ponteiros alinhados.
     unsafe fn dot_product_4x(
         w0: &[f32],
         w1: &[f32],
@@ -615,19 +590,10 @@ pub trait SimdMath {
         state: &[f32],
     ) -> [f32; 4];
     /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado.
-    ///
-    /// # Safety
-    /// Depende de HW support, fatias com tamanhos compatíveis e ponteiros alinhados.
     unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4];
     /// Aplica Tanh em-lugar no slice usando aproximação minimax polinomial fastmath.
-    ///
-    /// # Safety
-    /// Depende do suporte de hardware correspondente para iterações vetorizadas.
     unsafe fn tanh_slice(slice: &mut [f32]);
     /// Aplica Sigmoid em-lugar no slice via fastmath.
-    ///
-    /// # Safety
-    /// Hardware SIMD requerido e iteradores vetorizados inseguros sem bounds checking.
     unsafe fn sigmoid_slice(slice: &mut [f32]);
 }
 
@@ -719,7 +685,7 @@ mod tests {
 
     #[test]
     fn test_dot_product_avx512() {
-        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             let vec_a = vec![
                 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
                 16.0, 17.0,

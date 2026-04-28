@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-use anyhow::Context;
-use log::info;
-
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
 use crate::models::DynamicModel;
 use crate::models::lstm::{LstmLayer, LstmModel1, LstmModel2};
 use crate::models::lstm_dyn::{LstmDynLayer, LstmDynModel};
+use anyhow::Context;
+use log::info;
 
 /// Detecta a geometria LSTM (num_layers × hidden_size) e despacha ao construtor correto.
 pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
@@ -129,15 +128,21 @@ pub fn build_lstm_dynamic(
     let mut cursor = WeightCursor::new(&data.weights);
     let mut layers = Vec::with_capacity(num_layers);
 
-    let mut current_input_size = 1;
+    let mut current_input_size = 1; // O primeiro sinal que entra tem tamanho 1 (um único valor de áudio)
 
+    // Processamos cada "camada" (layer) do modelo. Pense nelas como estágios de uma linha de montagem.
     for _ in 0..num_layers {
+        // Lemos todos os pesos (a "inteligência" treinada) desta camada de uma vez só.
         let raw_weights =
             cursor.read_slice(hidden_size * 4 * (current_input_size + hidden_size))?;
 
         let ih = current_input_size + hidden_size;
         let mut input_hidden_weights = vec![0.0; raw_weights.len()];
 
+        // Aqui fazemos uma "mágica" técnica: os pesos vêm organizados em blocos grandes,
+        // mas para o computador processar rápido (4 de uma vez), nós os reorganizamos
+        // intercalando-os (Input, Forget, Cell, Output). É como separar cartas de 4 baralhos
+        // diferentes e montá-los em uma sequência 1,2,3,4, 1,2,3,4...
         for i in 0..hidden_size {
             for j in 0..ih {
                 input_hidden_weights[(i * ih + j) * 4] = raw_weights[i * ih + j];
@@ -150,14 +155,16 @@ pub fn build_lstm_dynamic(
             }
         }
 
+        // O 'bias' é um ajuste fixo somado ao final de cada conta, como uma "calibração".
         let bias = cursor.read_slice(hidden_size * 4)?.to_vec();
 
-        // initial_hidden_state [H] -> loaded into state[current_input_size..current_input_size+hidden_size]
+        // O 'state' (estado oculto) e o 'cell_state' (estado da célula) são a memória da rede.
+        // Eles guardam informações sobre os sons que passaram milissegundos atrás para
+        // ajudar a prever o som atual.
         let hidden_init = cursor.read_slice(hidden_size)?;
         let mut state = vec![0.0; current_input_size + hidden_size];
         state[current_input_size..current_input_size + hidden_size].copy_from_slice(hidden_init);
 
-        // initial_cell_state [H]
         let cell_init = cursor.read_slice(hidden_size)?;
         let mut cell_state = vec![0.0; hidden_size];
         cell_state.copy_from_slice(cell_init);
@@ -176,9 +183,12 @@ pub fn build_lstm_dynamic(
         current_input_size = hidden_size;
     }
 
+    // A "Head" (cabeça) é o estágio final. Ela pega toda a memória acumulada
+    // e a transforma de volta em um único valor de volume de som (amostra de áudio).
     let head_weights = cursor.read_slice(hidden_size)?.to_vec();
     let head_bias = cursor.read_f32()?;
 
+    // Verifica se lemos exatamente tudo o que precisávamos, sem sobrar nada.
     cursor.verify_exhausted()?;
 
     let model = LstmDynModel {
@@ -210,7 +220,11 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
 ) -> anyhow::Result<LstmLayer<I, H, IH, H4>> {
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
-    // 1. input_hidden_weights: [H][IH][4] intercalado (I, F, C, O por neurônio e entrada)
+    // Reorganização de Pesos:
+    // Uma rede LSTM tem 4 "portas" (Input, Forget, Cell, Output).
+    // Para que o processamento de áudio seja ultrarrápido, nós misturamos os pesos
+    // dessas 4 portas em uma sequência intercalada. Isso permite que o processador
+    // faça as 4 contas de uma vez só (usando uma técnica chamada SIMD).
     let raw_weights = cursor.read_slice(H4 * IH)?;
     for i in 0..H {
         for j in 0..IH {

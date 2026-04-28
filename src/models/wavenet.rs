@@ -742,7 +742,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// Combina as saídas de ambas as arrays: `sum(head1) + sum(head2)` × `head_scale`.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        if crate::math::simd::SimdMathConfig::get().is_avx512 {
             return unsafe { self.process_avx512(input, output) };
         }
         unsafe { self.process_avx2(input, output) }
