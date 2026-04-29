@@ -299,24 +299,50 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     /// Exige compatibilidade com `avx2` e `fma` ativados no processador x86_64 hospedeiro.
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            // Diferente de uma CNN, uma LSTM tem dependência temporal (recorrência).
-            // Por isso, processamos amostra por amostra para atualizar o estado interno (hidden/cell)
-            // que será usado na amostra seguinte.
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer.process_sample_avx2(&[input[i]]);
+                h0.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx2(&[input[i + 1]]);
+                h1.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx2(&[input[i + 2]]);
+                h2.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx2(&[input[i + 3]]);
+                h3.copy_from_slice(self.layer.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx2(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
-                // 1. Atualiza o estado da camada LSTM com a nova amostra
                 self.layer.process_sample_avx2(&sample);
-
-                // 2. Extrai o Hidden State resultante
                 let hidden = self.layer.get_hidden_state();
-
-                // 3. Projeção de Saída (Extraction Head):
-                // Fazemos o produto escalar entre o estado oculto e os pesos da "cabeça" do modelo.
-                // Isso colapsa o vetor do Hidden State em um único valor escalar (a amostra de áudio).
                 let dot = crate::math::simd::dot_product_avx2(hidden, &self.head_weights);
-
-                // 4. Aplica o bias final e salva no buffer de saída
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -324,14 +350,50 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            // Lógica idêntica ao path AVX2, mas utilizando intrinsics AVX-512
-            // para o cálculo interno da camada e para o dot product final.
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer.process_sample_avx512(&[input[i]]);
+                h0.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx512(&[input[i + 1]]);
+                h1.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx512(&[input[i + 2]]);
+                h2.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx512(&[input[i + 3]]);
+                h3.copy_from_slice(self.layer.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx512(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
                 self.layer.process_sample_avx512(&sample);
                 let hidden = self.layer.get_hidden_state();
                 let dot = crate::math::simd::dot_product_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -339,12 +401,50 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     #[target_feature(enable = "avxvnni")]
     unsafe fn process_avx2vnni(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer.process_sample_avx2vnni(&[input[i]]);
+                h0.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx2vnni(&[input[i + 1]]);
+                h1.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx2vnni(&[input[i + 2]]);
+                h2.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx2vnni(&[input[i + 3]]);
+                h3.copy_from_slice(self.layer.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx2(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
                 self.layer.process_sample_avx2vnni(&sample);
                 let hidden = self.layer.get_hidden_state();
                 let dot = crate::math::simd::dot_product_avx2(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -352,12 +452,50 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn process_avx512vnni(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer.process_sample_avx512vnni(&[input[i]]);
+                h0.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx512vnni(&[input[i + 1]]);
+                h1.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx512vnni(&[input[i + 2]]);
+                h2.copy_from_slice(self.layer.get_hidden_state());
+
+                self.layer.process_sample_avx512vnni(&[input[i + 3]]);
+                h3.copy_from_slice(self.layer.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx512(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
                 self.layer.process_sample_avx512vnni(&sample);
                 let hidden = self.layer.get_hidden_state();
                 let dot = crate::math::simd::dot_product_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -420,20 +558,62 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     /// Exige compatibilidade com `avx2` e `fma` em sistema de processamento com arquitetura x86_64.
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            // Em modelos empilhados (Stacked LSTM), a saída de uma camada alimenta a entrada da próxima.
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer1.process_sample_avx2(&[input[i]]);
+                self.layer2
+                    .process_sample_avx2(self.layer1.get_hidden_state());
+                h0.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx2(&[input[i + 1]]);
+                self.layer2
+                    .process_sample_avx2(self.layer1.get_hidden_state());
+                h1.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx2(&[input[i + 2]]);
+                self.layer2
+                    .process_sample_avx2(self.layer1.get_hidden_state());
+                h2.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx2(&[input[i + 3]]);
+                self.layer2
+                    .process_sample_avx2(self.layer1.get_hidden_state());
+                h3.copy_from_slice(self.layer2.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx2(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
-                // 1. Processa a primeira camada
                 self.layer1.process_sample_avx2(&sample);
                 let hidden1 = self.layer1.get_hidden_state();
 
-                // 2. O Hidden State da Camada 1 entra como input na Camada 2
                 self.layer2.process_sample_avx2(hidden1);
                 let hidden2 = self.layer2.get_hidden_state();
 
-                // 3. Extração final a partir do Hidden State da última camada
                 let dot = crate::math::simd::dot_product_avx2(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -441,8 +621,52 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            // Lógica idêntica ao path AVX2, utilizando intrinsics AVX-512
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer1.process_sample_avx512(&[input[i]]);
+                self.layer2
+                    .process_sample_avx512(self.layer1.get_hidden_state());
+                h0.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx512(&[input[i + 1]]);
+                self.layer2
+                    .process_sample_avx512(self.layer1.get_hidden_state());
+                h1.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx512(&[input[i + 2]]);
+                self.layer2
+                    .process_sample_avx512(self.layer1.get_hidden_state());
+                h2.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx512(&[input[i + 3]]);
+                self.layer2
+                    .process_sample_avx512(self.layer1.get_hidden_state());
+                h3.copy_from_slice(self.layer2.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx512(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
                 self.layer1.process_sample_avx512(&sample);
                 let hidden1 = self.layer1.get_hidden_state();
@@ -452,6 +676,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
 
                 let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -459,7 +684,52 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     #[target_feature(enable = "avxvnni")]
     unsafe fn process_avx2vnni(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer1.process_sample_avx2vnni(&[input[i]]);
+                self.layer2
+                    .process_sample_avx2vnni(self.layer1.get_hidden_state());
+                h0.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx2vnni(&[input[i + 1]]);
+                self.layer2
+                    .process_sample_avx2vnni(self.layer1.get_hidden_state());
+                h1.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx2vnni(&[input[i + 2]]);
+                self.layer2
+                    .process_sample_avx2vnni(self.layer1.get_hidden_state());
+                h2.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx2vnni(&[input[i + 3]]);
+                self.layer2
+                    .process_sample_avx2vnni(self.layer1.get_hidden_state());
+                h3.copy_from_slice(self.layer2.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx2(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
                 self.layer1.process_sample_avx2vnni(&sample);
                 let hidden1 = self.layer1.get_hidden_state();
@@ -469,6 +739,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
 
                 let dot = crate::math::simd::dot_product_avx2(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }
@@ -476,7 +747,52 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn process_avx512vnni(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            for i in 0..input.len() {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0.0; H];
+                let mut h1 = [0.0; H];
+                let mut h2 = [0.0; H];
+                let mut h3 = [0.0; H];
+
+                self.layer1.process_sample_avx512vnni(&[input[i]]);
+                self.layer2
+                    .process_sample_avx512vnni(self.layer1.get_hidden_state());
+                h0.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx512vnni(&[input[i + 1]]);
+                self.layer2
+                    .process_sample_avx512vnni(self.layer1.get_hidden_state());
+                h1.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx512vnni(&[input[i + 2]]);
+                self.layer2
+                    .process_sample_avx512vnni(self.layer1.get_hidden_state());
+                h2.copy_from_slice(self.layer2.get_hidden_state());
+
+                self.layer1.process_sample_avx512vnni(&[input[i + 3]]);
+                self.layer2
+                    .process_sample_avx512vnni(self.layer1.get_hidden_state());
+                h3.copy_from_slice(self.layer2.get_hidden_state());
+
+                let dots = crate::math::simd::dot_product_batch_4x_avx512(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
                 let sample = [input[i]];
                 self.layer1.process_sample_avx512vnni(&sample);
                 let hidden1 = self.layer1.get_hidden_state();
@@ -486,6 +802,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
 
                 let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
+                i += 1;
             }
         }
     }

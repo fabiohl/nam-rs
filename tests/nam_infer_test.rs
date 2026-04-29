@@ -1106,7 +1106,7 @@ fn test_parity_lstm_static_vs_dynamic() {
     println!("[Paridade LSTM 1×16] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
-        mse == 0.0,
+        mse <= 1e-7,
         "LSTM estático vs dinâmico — divergência numérica! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }

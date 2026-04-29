@@ -812,6 +812,154 @@ macro_rules! dispatch_simd {
 }
 pub use dispatch_simd;
 
+/// Calcula o Dot Product de um lote de 4 vetores (h0..h3) com o mesmo vetor de pesos.
+/// Otimizado para processamento em lote da cabeça do LSTM.
+#[target_feature(enable = "f16c")]
+pub unsafe fn dot_product_batch_4x_avx2(
+    h0: &[f32],
+    h1: &[f32],
+    h2: &[f32],
+    h3: &[f32],
+    weights: &[u16],
+) -> [f32; 4] {
+    let len = core::cmp::min(weights.len(), h0.len());
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut sum2 = _mm256_setzero_ps();
+        let mut sum3 = _mm256_setzero_ps();
+
+        while i + 16 <= len {
+            _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h0.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h1.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h2.as_ptr().add(i + 32) as *const i8);
+            _mm_prefetch::<_MM_HINT_T0>(h3.as_ptr().add(i + 32) as *const i8);
+
+            let vw_0 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+            let vh0_0 = _mm256_loadu_ps(h0.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(vw_0, vh0_0, sum0);
+            let vh1_0 = _mm256_loadu_ps(h1.as_ptr().add(i));
+            sum1 = _mm256_fmadd_ps(vw_0, vh1_0, sum1);
+            let vh2_0 = _mm256_loadu_ps(h2.as_ptr().add(i));
+            sum2 = _mm256_fmadd_ps(vw_0, vh2_0, sum2);
+            let vh3_0 = _mm256_loadu_ps(h3.as_ptr().add(i));
+            sum3 = _mm256_fmadd_ps(vw_0, vh3_0, sum3);
+
+            let vw_1 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 8) as *const __m128i
+            ));
+            let vh0_1 = _mm256_loadu_ps(h0.as_ptr().add(i + 8));
+            sum0 = _mm256_fmadd_ps(vw_1, vh0_1, sum0);
+            let vh1_1 = _mm256_loadu_ps(h1.as_ptr().add(i + 8));
+            sum1 = _mm256_fmadd_ps(vw_1, vh1_1, sum1);
+            let vh2_1 = _mm256_loadu_ps(h2.as_ptr().add(i + 8));
+            sum2 = _mm256_fmadd_ps(vw_1, vh2_1, sum2);
+            let vh3_1 = _mm256_loadu_ps(h3.as_ptr().add(i + 8));
+            sum3 = _mm256_fmadd_ps(vw_1, vh3_1, sum3);
+
+            i += 16;
+        }
+
+        while i + 8 <= len {
+            let vw = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+            let vh0 = _mm256_loadu_ps(h0.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(vw, vh0, sum0);
+            let vh1 = _mm256_loadu_ps(h1.as_ptr().add(i));
+            sum1 = _mm256_fmadd_ps(vw, vh1, sum1);
+            let vh2 = _mm256_loadu_ps(h2.as_ptr().add(i));
+            sum2 = _mm256_fmadd_ps(vw, vh2, sum2);
+            let vh3 = _mm256_loadu_ps(h3.as_ptr().add(i));
+            sum3 = _mm256_fmadd_ps(vw, vh3, sum3);
+
+            i += 8;
+        }
+
+        #[inline(always)]
+        unsafe fn hsum_avx2(v: __m256) -> f32 {
+            unsafe {
+                let hi = _mm256_extractf128_ps(v, 1);
+                let lo = _mm256_castps256_ps128(v);
+                let s128 = _mm_add_ps(lo, hi);
+                let shuf = _mm_movehdup_ps(s128);
+                let sums = _mm_add_ps(s128, shuf);
+                let shuf2 = _mm_movehl_ps(sums, sums);
+                let r = _mm_add_ss(sums, shuf2);
+                let mut out = 0.0f32;
+                _mm_store_ss(&mut out, r);
+                out
+            }
+        }
+
+        let mut s0 = hsum_avx2(sum0);
+        let mut s1 = hsum_avx2(sum1);
+        let mut s2 = hsum_avx2(sum2);
+        let mut s3 = hsum_avx2(sum3);
+
+        while i < len {
+            let w = half::f16::from_bits(weights[i]).to_f32();
+            s0 += w * h0[i];
+            s1 += w * h1[i];
+            s2 += w * h2[i];
+            s3 += w * h3[i];
+            i += 1;
+        }
+
+        [s0, s1, s2, s3]
+    }
+}
+
+/// Calcula o Dot Product de um lote de 4 vetores via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn dot_product_batch_4x_avx512(
+    h0: &[f32],
+    h1: &[f32],
+    h2: &[f32],
+    h3: &[f32],
+    weights: &[u16],
+) -> [f32; 4] {
+    let len = core::cmp::min(weights.len(), h0.len());
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+        let mut sum2 = _mm512_setzero_ps();
+        let mut sum3 = _mm512_setzero_ps();
+
+        while i + 16 <= len {
+            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
+            let vh0 = _mm512_loadu_ps(h0.as_ptr().add(i));
+            sum0 = _mm512_fmadd_ps(vw, vh0, sum0);
+            let vh1 = _mm512_loadu_ps(h1.as_ptr().add(i));
+            sum1 = _mm512_fmadd_ps(vw, vh1, sum1);
+            let vh2 = _mm512_loadu_ps(h2.as_ptr().add(i));
+            sum2 = _mm512_fmadd_ps(vw, vh2, sum2);
+            let vh3 = _mm512_loadu_ps(h3.as_ptr().add(i));
+            sum3 = _mm512_fmadd_ps(vw, vh3, sum3);
+
+            i += 16;
+        }
+
+        let mut s0 = _mm512_reduce_add_ps(sum0);
+        let mut s1 = _mm512_reduce_add_ps(sum1);
+        let mut s2 = _mm512_reduce_add_ps(sum2);
+        let mut s3 = _mm512_reduce_add_ps(sum3);
+
+        while i < len {
+            let w = half::f16::from_bits(weights[i]).to_f32();
+            s0 += w * h0[i];
+            s1 += w * h1[i];
+            s2 += w * h2[i];
+            s3 += w * h3[i];
+            i += 1;
+        }
+
+        [s0, s1, s2, s3]
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

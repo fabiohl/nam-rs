@@ -48,7 +48,7 @@
 - **Nota (Pós-T1):** Com o `<M: SimdMath>` estabelecido, qualquer nova rotina matemática de compressão deverá estender este trait. Além disso, a inicialização e os arrays dos modelos (atualmente `f32`) precisarão suportar layouts compactados em tempo de alocação, para que as rotinas SIMD de descompressão funcionem na leitura.
 - **Tags:** #simd #model #memory
 
-### [T7] LSTM Batch Head Dot-Product (Mini-GEMM)
+### [T7] LSTM Batch Head Dot-Product (Mini-GEMM) [Concluido]
 
 - **Problema:** Overhead redundante de setup de registradores para o head dot-product em cada sample.
 - **Solução:** Acumular hidden states de K samples e processar como mini-GEMM (1 load de pesos para K FMAs).
