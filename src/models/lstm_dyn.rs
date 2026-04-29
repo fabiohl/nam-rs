@@ -9,8 +9,6 @@
 //! Para respeitar o path RT Lock-Free, toda manipulação de memória é
 //! resolvida com buffers passados diretamente à pipeline iterativa vetorial math da SIMMathConfig.
 
-use crate::math::simd::SimdMathConfig;
-
 /// Camada Dinâmica LSMT gerida em tempo de execução
 #[derive(Clone)]
 pub struct LstmDynLayer {
@@ -37,7 +35,7 @@ impl LstmDynLayer {
     ///
     /// # Safety
     /// Depende nativamente das matrizes preenchidas via alocador estrito no C++ Fallback parser (Loader CLI).
-    pub unsafe fn process_sample(&mut self, input: &[f32], math: &SimdMathConfig) {
+    pub unsafe fn process_sample<M: crate::math::simd::SimdMath>(&mut self, input: &[f32]) {
         // ih = Input + Hidden: O tamanho total do vetor que entra no cálculo (X_t + H_t-1)
         let ih = self.input_size + self.hidden_size;
         // h = Hidden: A dimensão do estado interno e da saída desta camada
@@ -81,7 +79,7 @@ impl LstmDynLayer {
 
             // Calcula o produto escalar quádruplo: soma(peso_gate[0..3] * state_val)
             // O resultado 'dots' contém 4 valores: [Soma_I, Soma_F, Soma_C, Soma_O]
-            let dots = unsafe { (math.dot_product_4x_interleaved)(w_slice, &self.state) };
+            let dots = unsafe { M::dot_product_4x_interleaved(w_slice, &self.state) };
 
             // Distribui os resultados para o buffer de portas (gates) somando o bias correspondente.
             // O buffer 'gates' armazena os valores de forma contígua por porta:
@@ -99,11 +97,11 @@ impl LstmDynLayer {
         // A porta 2 (Cell/G) usa Tanh para normalizar a nova informação entre -1 e 1.
         unsafe {
             // gates[0..h] : Input (Sigmoid) | gates[h..2h] : Forget (Sigmoid)
-            (math.sigmoid_slice)(&mut self.gates[0..2 * h]);
+            M::sigmoid_slice(&mut self.gates[0..2 * h]);
             // gates[2h..3h] : Cell/Grau-G (Tanh)
-            (math.tanh_slice)(&mut self.gates[2 * h..3 * h]);
+            M::tanh_slice(&mut self.gates[2 * h..3 * h]);
             // gates[3h..4h] : Output (Sigmoid)
-            (math.sigmoid_slice)(&mut self.gates[3 * h..4 * h]);
+            M::sigmoid_slice(&mut self.gates[3 * h..4 * h]);
         }
 
         // 4. Element-wise: state propagation para o cell_state e hidden_state
@@ -125,7 +123,7 @@ impl LstmDynLayer {
         // 5. Calcula Tanh(New Cell State) usando o vetor alocador.
         // Normalizamos o estado da célula para ser filtrado pela porta de saída.
         unsafe {
-            (math.tanh_slice)(&mut self.tanh_cs[0..h]);
+            M::tanh_slice(&mut self.tanh_cs[0..h]);
         }
 
         // 6. Fecha Output state e avança momento
@@ -173,8 +171,23 @@ pub struct LstmDynModel {
 impl LstmDynModel {
     /// Processamento Síncrono de Áudio. Requer instanciamento RT.
     /// Esta função processa um bloco de áudio, amostra por amostra.
+    ///
+    /// **Para Cientistas e Devs:** A macro `dispatch_simd!` inspeciona o CPU (ex: tem AVX-512? AVX2?)
+    /// de forma imediata (pré-resolvida no startup) e despacha para a função `process_internal`
+    /// parametrizada com o tipo de matemática SIMD otimizado (`M: SimdMath`).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        let math = crate::math::simd::SimdMathConfig::get();
+        unsafe {
+            crate::math::simd::dispatch_simd!(self, process_internal, input, output);
+        }
+    }
+
+    /// Função restrita para processamento neural onde o compilador substitui genéricos `M`
+    /// pelas instruções intrínsecas adequadas (como FMA AVX2) da SIMDMath selecionada.
+    unsafe fn process_internal<M: crate::math::simd::SimdMath>(
+        &mut self,
+        input: &[f32],
+        output: &mut [f32],
+    ) {
         let num_frames = input.len();
 
         for i in 0..num_frames {
@@ -187,9 +200,7 @@ impl LstmDynModel {
             // Loop de camadas: A saída (hidden state) da camada N
             // serve como entrada (input) para a camada N+1.
             for layer in self.layers.iter_mut() {
-                unsafe {
-                    layer.process_sample(hidden_out, math);
-                }
+                unsafe { layer.process_sample::<M>(hidden_out) };
                 // Pega o estado oculto que acabou de ser calculado para a próxima camada
                 hidden_out = layer.get_hidden_state();
             }
@@ -197,7 +208,7 @@ impl LstmDynModel {
             // Camada de Saída (Head): Multiplicamos o estado oculto da última camada
             // pelos pesos do 'head' e somamos o bias para obter o sample final.
             let head_out =
-                unsafe { (math.dot_product)(&self.head_weights, hidden_out) } + self.head_bias;
+                unsafe { M::dot_product(&self.head_weights, hidden_out) } + self.head_bias;
 
             // Salva o resultado no buffer de saída
             output[i] = head_out;
@@ -206,13 +217,17 @@ impl LstmDynModel {
 
     /// Processamento Síncrono de Áudio (Fallback)
     /// Executa o aquecimento (Pre-warm) do estado interno da LSTM.
-    ///
-    /// O 'prewarm' é essencial em modelos recursivos como a LSTM. Como ela possui
-    /// "memória" (Cell State), processar alguns milhares de samples de silêncio
-    /// garante que os filtros internos se estabilizem e evita estalos (clicks)
-    /// quando o áudio real começar a passar.
+    /// O dispatch garante que o silêncio de pre-warm seja calculado na mesma velocidade
+    /// que o processamento real.
     pub fn prewarm(&mut self, num_samples: usize) {
-        // Começa limpando qualquer lixo de memória
+        unsafe {
+            crate::math::simd::dispatch_simd!(self, prewarm_internal, num_samples);
+        }
+    }
+
+    /// # Safety
+    /// Call this via `dispatch_simd!` macro only.
+    unsafe fn prewarm_internal<M: crate::math::simd::SimdMath>(&mut self, num_samples: usize) {
         self.reset_states();
 
         const CHUNK: usize = 512;
@@ -220,18 +235,14 @@ impl LstmDynModel {
         let zero_in = [0.0f32; CHUNK];
         let mut rem = num_samples;
 
-        // Processa o silêncio em pedaços (chunks) para ser eficiente
         while rem > 0 {
             let n = rem.min(CHUNK);
-            // Reutiliza a função de processamento normal, mas com entrada zerada
-            self.process(&zero_in[..n], &mut zero_out[..n]);
+            unsafe { self.process_internal::<M>(&zero_in[..n], &mut zero_out[..n]) };
             rem -= n;
         }
     }
 
     /// Zera os estados internos de todas as camadas LSTM.
-    /// Útil quando trocamos de preset ou precisamos reiniciar o processamento
-    /// sem carregar "ecos" do áudio anterior.
     pub fn reset_states(&mut self) {
         for layer in self.layers.iter_mut() {
             layer.reset_states();

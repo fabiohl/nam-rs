@@ -529,9 +529,22 @@ pub struct SimdMathConfig {
     pub tanh_slice: unsafe fn(&mut [f32]),
     /// Loop ativado via fptr para iterar `sigmoid(x)` na matriz especificada.
     pub sigmoid_slice: unsafe fn(&mut [f32]),
-    /// Indica se a CPU suporta AVX-512 (avx512f + avx512vl).
-    /// Usado para dispatch de modelos sem comparação de ponteiros de função.
-    pub is_avx512: bool,
+    /// Conjunto de instruções SIMD detectado.
+    /// Define a trait matemática exata no macro `dispatch_simd!`.
+    pub instruction_set: SimdInstructionSet,
+}
+
+/// Conjuntos de instruções SIMD suportados e detectáveis na inicialização.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SimdInstructionSet {
+    /// Baseline (x86-64-v3): AVX2 + FMA
+    Avx2,
+    /// AVX2 com VNNI (Vector Neural Network Instructions)
+    Avx2Vnni,
+    /// AVX-512 (x86-64-v4)
+    Avx512,
+    /// AVX-512 com VNNI
+    Avx512Vnni,
 }
 
 /// V-Table SIMD global, inicializada uma única vez via `LazyLock`.
@@ -545,14 +558,42 @@ static SIMD_MATH_CONFIG: std::sync::LazyLock<SimdMathConfig> =
 impl SimdMathConfig {
     /// Inicia e aloca a v-table matemática inspecionando nativamente as capabilities da CPU.
     pub fn current() -> Self {
-        if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        let has_avx512 =
+            std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl");
+        let has_avx512_vnni = has_avx512 && std::is_x86_feature_detected!("avx512vnni");
+        let has_avx2_vnni = std::is_x86_feature_detected!("avxvnni");
+
+        if has_avx512_vnni {
+            return Self {
+                dot_product: <Avx512VnniMath as SimdMath>::dot_product,
+                dot_product_4x: <Avx512VnniMath as SimdMath>::dot_product_4x,
+                dot_product_4x_interleaved:
+                    <Avx512VnniMath as SimdMath>::dot_product_4x_interleaved,
+                tanh_slice: <Avx512VnniMath as SimdMath>::tanh_slice,
+                sigmoid_slice: <Avx512VnniMath as SimdMath>::sigmoid_slice,
+                instruction_set: SimdInstructionSet::Avx512Vnni,
+            };
+        }
+
+        if has_avx512 {
             return Self {
                 dot_product: <Avx512Math as SimdMath>::dot_product,
                 dot_product_4x: <Avx512Math as SimdMath>::dot_product_4x,
                 dot_product_4x_interleaved: <Avx512Math as SimdMath>::dot_product_4x_interleaved,
                 tanh_slice: <Avx512Math as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
-                is_avx512: true,
+                instruction_set: SimdInstructionSet::Avx512,
+            };
+        }
+
+        if has_avx2_vnni {
+            return Self {
+                dot_product: <Avx2VnniMath as SimdMath>::dot_product,
+                dot_product_4x: <Avx2VnniMath as SimdMath>::dot_product_4x,
+                dot_product_4x_interleaved: <Avx2VnniMath as SimdMath>::dot_product_4x_interleaved,
+                tanh_slice: <Avx2VnniMath as SimdMath>::tanh_slice,
+                sigmoid_slice: <Avx2VnniMath as SimdMath>::sigmoid_slice,
+                instruction_set: SimdInstructionSet::Avx2Vnni,
             };
         }
 
@@ -562,7 +603,7 @@ impl SimdMathConfig {
             dot_product_4x_interleaved: dot_product_4x_interleaved_avx2,
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
-            is_avx512: false,
+            instruction_set: SimdInstructionSet::Avx2,
         }
     }
 
@@ -659,6 +700,105 @@ impl SimdMath for Avx512Math {
     }
 }
 
+/// Implementação estática ancorada para microarquitetura com AVX2 e VNNI.
+/// Funciona como scaffolding (fallback provisório para AVX2) até a injeção em T3/T6.
+pub struct Avx2VnniMath;
+impl SimdMath for Avx2VnniMath {
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { dot_product_avx2(a, b) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_4x(
+        w0: &[f32],
+        w1: &[f32],
+        w2: &[f32],
+        w3: &[f32],
+        state: &[f32],
+    ) -> [f32; 4] {
+        unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_avx2(weights, state) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::sigmoid_slice_avx2(slice) }
+    }
+}
+
+/// Implementação estática ancorada para microarquitetura com AVX-512 e VNNI.
+/// Funciona como scaffolding (fallback provisório para AVX-512) até a injeção em T6.
+pub struct Avx512VnniMath;
+impl SimdMath for Avx512VnniMath {
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { dot_product_avx512(a, b) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn dot_product_4x(
+        w0: &[f32],
+        w1: &[f32],
+        w2: &[f32],
+        w3: &[f32],
+        state: &[f32],
+    ) -> [f32; 4] {
+        unsafe { dot_product_4x_avx512(w0, w1, w2, w3, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_avx512(weights, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::tanh_slice_avx512(slice) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::sigmoid_slice_avx512(slice) }
+    }
+}
+
+/// Macro de despacho dinâmico no hot-path.
+/// Baseia-se no `SimdMathConfig::get().instruction_set` avaliado no startup
+/// para monomorfizar o bloco DSP de modelos com a trait mais otimizada disponível,
+/// garantindo zero-overhead na thread RT.
+#[macro_export]
+macro_rules! dispatch_simd {
+    // Formato 2: Dispatch explícito (LSTM)
+    ($self:ident, $m_a512v:ident, $m_a512:ident, $m_a2v:ident, $m_a2:ident $(, $arg:expr)*) => {
+        match $crate::math::simd::SimdMathConfig::get().instruction_set {
+            $crate::math::simd::SimdInstructionSet::Avx512Vnni => $self.$m_a512v($($arg),*),
+            $crate::math::simd::SimdInstructionSet::Avx512 => $self.$m_a512($($arg),*),
+            $crate::math::simd::SimdInstructionSet::Avx2Vnni => $self.$m_a2v($($arg),*),
+            $crate::math::simd::SimdInstructionSet::Avx2 => $self.$m_a2($($arg),*),
+        }
+    };
+    // Formato 1: Dispatch via monomorfização genérica (WaveNet)
+    ($self:ident, $method:ident $(, $arg:expr)*) => {
+        match $crate::math::simd::SimdMathConfig::get().instruction_set {
+            $crate::math::simd::SimdInstructionSet::Avx512Vnni => {
+                $self.$method::<$crate::math::simd::Avx512VnniMath>($($arg),*)
+            }
+            $crate::math::simd::SimdInstructionSet::Avx512 => {
+                $self.$method::<$crate::math::simd::Avx512Math>($($arg),*)
+            }
+            $crate::math::simd::SimdInstructionSet::Avx2Vnni => {
+                $self.$method::<$crate::math::simd::Avx2VnniMath>($($arg),*)
+            }
+            $crate::math::simd::SimdInstructionSet::Avx2 => {
+                $self.$method::<$crate::math::simd::Avx2Math>($($arg),*)
+            }
+        }
+    };
+}
+pub use dispatch_simd;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -685,7 +825,9 @@ mod tests {
 
     #[test]
     fn test_dot_product_avx512() {
-        if crate::math::simd::SimdMathConfig::get().is_avx512 {
+        if crate::math::simd::SimdMathConfig::get().instruction_set
+            >= crate::math::simd::SimdInstructionSet::Avx512
+        {
             let vec_a = vec![
                 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
                 16.0, 17.0,

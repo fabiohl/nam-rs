@@ -822,7 +822,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     /// silenciosamente para o limbo, garantindo que a primeira amostra de áudio ao ligar a placa
     /// soe orgânica e estável, sem estalos ou cliques (clicks/pops).
     #[inline(always)]
-    pub fn prewarm_internal<M: SimdMath>(&mut self, layer_inputs: &[f32], condition: &[f32]) {
+    /// # Safety
+    /// Call this via `dispatch_simd!` macro only.
+    pub unsafe fn prewarm_internal<M: SimdMath>(
+        &mut self,
+        layer_inputs: &[f32],
+        condition: &[f32],
+    ) {
         debug_assert_eq!(self.layers.len(), self.states.len());
         let states_ptr = self.states.as_mut_ptr();
 
@@ -921,31 +927,19 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// Resolve o forward total e produz amostras de onda em zero alocação (DSP).
     ///
     /// Combina as saídas de ambas as arrays: `sum(head1) + sum(head2)` × `head_scale`.
+    ///
+    /// **Para Cientistas e Devs:** Aqui acontece o "pulo do gato" da performance (SIMD Dispatch).
+    /// Em vez de usarmos `if/else` lentos a cada frame para checar a CPU (AVX2 vs AVX-512),
+    /// a macro `dispatch_simd!` avalia o hardware uma única vez e "teletransporta" a execução
+    /// para uma versão clonada (monomorfizada) desta função estritamente otimizada para o seu processador.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        if crate::math::simd::SimdMathConfig::get().is_avx512 {
-            return unsafe { self.process_avx512(input, output) };
-        }
-        unsafe { self.process_avx2(input, output) }
-    }
-
-    /// Processamento estritamente compilado para `avx512f` e `avx512vl`.
-    ///
-    /// # Safety
-    /// A CPU local deve suportar explicitamente as extensões AVX-512 invocadas.
-    #[target_feature(enable = "avx512f,avx512vl")]
-    pub unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe { self.process_internal::<crate::math::simd::Avx512Math>(input, output) }
-    }
-
-    /// Processamento estritamente compilado para `avx2` e `fma`.
-    ///
-    /// # Safety
-    /// A CPU local deve suportar explicitamente extensões x86-64-v3 (AVX2+FMA).
-    pub unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe { self.process_internal::<crate::math::simd::Avx2Math>(input, output) }
+        unsafe { crate::math::simd::dispatch_simd!(self, process_internal, input, output) };
     }
 
     #[inline(always)]
+    /// Rotina genérica e veloz que implementa a rede neural (WaveNet).
+    /// A restrição `<M: SimdMath>` obriga o compilador a gerar o assembly focado em
+    /// registradores grandes (256-bit ou 512-bit) sem ramificações (branchless).
     unsafe fn process_internal<M: SimdMath>(&mut self, input: &[f32], output: &mut [f32]) {
         let total_frames = input.len();
         if total_frames == 0 {
@@ -953,10 +947,11 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
         }
 
         let mut pos = 0;
-        // [PROCESSAMENTO EM CHUNKS]
-        // Para manter invariantes de zero-allocation e respeitar a hierarquia de Cache L1/L2,
-        // limitamos o processamento a `WAVENET_MAX_NUM_FRAMES` (tipicamente 64 amostras) por vez.
-        // Esse loop iterará até consumir todo o callback (ex: 256, 512, 1024 frames).
+        // [PROCESSAMENTO EM CHUNKS (BLOCOS)]
+        // Para manter invariantes de zero-allocation (sem alocar vetores RAM temporários)
+        // e respeitar a hierarquia restrita de Cache L1/L2, limitamos o processamento
+        // a `WAVENET_MAX_NUM_FRAMES` (tipicamente 64 amostras) por vez.
+        // Esse loop iterará até consumir todo o buffer (ex: 256, 512, 1024 frames).
         while pos < total_frames {
             let num_frames = (total_frames - pos).min(WAVENET_MAX_NUM_FRAMES);
             let in_slice = &input[pos..pos + num_frames];
@@ -1032,10 +1027,9 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// `is_x86_feature_detected!` a cada invocação (cold-path, mas consistente com
     /// o padrão de dispatch do restante do codebase).
     pub fn prewarm(&mut self) {
-        if crate::math::simd::SimdMathConfig::get().is_avx512 {
-            return unsafe { self.prewarm_avx512() };
+        unsafe {
+            crate::math::simd::dispatch_simd!(self, prewarm_internal);
         }
-        unsafe { self.prewarm_avx2() }
     }
 
     /// Prewarm estritamente otimizado para a arquitetura AVX-512.
@@ -1056,15 +1050,21 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     }
 
     #[inline(always)]
+    /// # Safety
+    /// Call this via `dispatch_simd!` macro only.
     unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
 
-        self.array1
-            .prewarm_internal::<M>(&layer_inputs_1, &condition);
+        unsafe {
+            self.array1
+                .prewarm_internal::<M>(&layer_inputs_1, &condition);
+        }
         let array1_outputs = &self.array1.array_outputs[0..CH];
-        self.array2
-            .prewarm_internal::<M>(array1_outputs, &condition);
+        unsafe {
+            self.array2
+                .prewarm_internal::<M>(array1_outputs, &condition);
+        }
     }
 }
 

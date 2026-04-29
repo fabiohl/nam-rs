@@ -10,7 +10,6 @@
 
 #![allow(clippy::needless_range_loop)]
 
-use crate::math::simd::SimdMathConfig;
 use crate::models::wavenet::WaveNetLayerState;
 
 /// Estrutura para convolução causal 1D com dimensões limitadas em runtime.
@@ -46,13 +45,12 @@ impl Conv1dDyn {
     /// Processa bloco iterativo.
     /// # Safety
     /// Pointer must be valid.
-    pub unsafe fn process_block(
+    pub unsafe fn process_block<M: crate::math::simd::SimdMath>(
         &self,
         layer_buffer: &[f32],
         block: &mut [f32],
         buffer_start: usize,
         num_frames: usize,
-        math: &SimdMathConfig,
     ) {
         // out_c_base controla o bloco de canais de saída sendo processado (batch de 4 canais para SIMD)
         let mut out_c_base = 0;
@@ -138,7 +136,7 @@ impl Conv1dDyn {
                         // permanece nos registradores enquanto as unidades de FMA (Fused Multiply-Add)
                         // processam os 4 canais de saída. Isso maximiza o throughput de dados.
                         let [r0, r1, r2, r3] =
-                            unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_slice) };
+                            unsafe { M::dot_product_4x(w0, w1, w2, w3, in_slice) };
 
                         // ESCRITA DIRETA + BIAS (k == 0):
                         // Como este é o primeiro "tap" (passo) do kernel temporal, estamos inicializando
@@ -162,7 +160,7 @@ impl Conv1dDyn {
                         // PRODUTO ESCALAR VETORIZADO (Simultâneo para 4 canais):
                         // Mesma lógica de alta performance aplicada no bloco acima.
                         let [r0, r1, r2, r3] =
-                            unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_slice) };
+                            unsafe { M::dot_product_4x(w0, w1, w2, w3, in_slice) };
 
                         // ACUMULAÇÃO (k > 0):
                         // Como não é o primeiro passo do kernel, não podemos sobrescrever a memória.
@@ -225,7 +223,7 @@ impl Conv1dDyn {
                         };
                         unsafe {
                             *block.get_unchecked_mut(i * self.out_ch + out_c) =
-                                bias + (math.dot_product)(in_slice, weight_slice);
+                                bias + M::dot_product(in_slice, weight_slice);
                         }
                     }
                 } else {
@@ -238,7 +236,7 @@ impl Conv1dDyn {
                         };
                         unsafe {
                             *block.get_unchecked_mut(i * self.out_ch + out_c) +=
-                                (math.dot_product)(in_slice, weight_slice);
+                                M::dot_product(in_slice, weight_slice);
                         }
                     }
                 }
@@ -270,12 +268,11 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Depende do `SimdMathConfig` estar validamente instanciado para a arquitetura alvo.
-    pub unsafe fn process_acc_block(
+    pub unsafe fn process_acc_block<M: crate::math::simd::SimdMath>(
         &self,
         input: &[f32],
         output: &mut [f32],
         num_frames: usize,
-        math: &SimdMathConfig,
     ) {
         // ITERAÇÃO VETORIZADA (Batch de 4 Neurônios):
         // Processamos os neurônios de saída em blocos de 4 para maximizar o uso dos registradores SIMD.
@@ -338,7 +335,7 @@ impl DenseLayerDyn {
 
                 // MULTIPLICAÇÃO VETORIZADA 4x:
                 // Realiza a projeção linear dos inputs para 4 neurônios de saída de uma só vez.
-                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
 
                 // ACUMULAÇÃO NA SAÍDA:
                 // Diferente de `process_block`, esta função USA `+=`.
@@ -365,7 +362,7 @@ impl DenseLayerDyn {
                 let in_frame = unsafe {
                     input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
                 };
-                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
                 unsafe {
                     *output.get_unchecked_mut(i * self.out_size + out_c) += sum + bias;
                 }
@@ -381,14 +378,13 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Requer `SimdMathConfig` válido e ponteiros de buffer com espaço suficiente para os strides.
-    pub unsafe fn process_acc_block_strided(
+    pub unsafe fn process_acc_block_strided<M: crate::math::simd::SimdMath>(
         &self,
         input: &[f32],
         output: &mut [f32],
         num_frames: usize,
         in_stride: usize,
         out_stride: usize,
-        math: &SimdMathConfig,
     ) {
         let mut out_c_base = 0;
         // Batch de 4 neurônios para otimização SIMD.
@@ -444,7 +440,7 @@ impl DenseLayerDyn {
                     unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
 
                 // Cálculo vetorizado idêntico ao processo contíguo.
-                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
 
                 // USO DO STRIDE NA SAÍDA:
                 // Também acumulamos (+=) respeitando o salto definido por `out_stride`.
@@ -467,7 +463,7 @@ impl DenseLayerDyn {
             for i in 0..num_frames {
                 let in_frame =
                     unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
-                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
                 unsafe {
                     *output.get_unchecked_mut(i * out_stride + out_c) += sum + bias;
                 }
@@ -482,14 +478,13 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Requer `SimdMathConfig` válido e ponteiros com acesso seguro conforme os strides.
-    pub unsafe fn process_block_strided(
+    pub unsafe fn process_block_strided<M: crate::math::simd::SimdMath>(
         &self,
         input: &[f32],
         output: &mut [f32],
         num_frames: usize,
         in_stride: usize,
         out_stride: usize,
-        math: &SimdMathConfig,
     ) {
         let mut out_c_base = 0;
         // Batch de 4 neurônios via SIMD.
@@ -542,7 +537,7 @@ impl DenseLayerDyn {
                 let in_frame =
                     unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
 
-                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
 
                 // ATRIBUIÇÃO DIRETA (=):
                 // Aqui o valor residual no buffer de saída é descartado.
@@ -566,7 +561,7 @@ impl DenseLayerDyn {
             for i in 0..num_frames {
                 let in_frame =
                     unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
-                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
                 unsafe {
                     *output.get_unchecked_mut(i * out_stride + out_c) = sum + bias;
                 }
@@ -581,12 +576,11 @@ impl DenseLayerDyn {
     ///
     /// # Safety
     /// Requer `SimdMathConfig` válido e buffers com tamanho compatível com `in_size` e `out_size`.
-    pub unsafe fn process_block(
+    pub unsafe fn process_block<M: crate::math::simd::SimdMath>(
         &self,
         input: &[f32],
         output: &mut [f32],
         num_frames: usize,
-        math: &SimdMathConfig,
     ) {
         let mut out_c_base = 0;
         // Batch de 4 neurônios via SIMD para máxima vazão (throughput).
@@ -641,7 +635,7 @@ impl DenseLayerDyn {
                 };
 
                 // Cálculo 4x simultâneo.
-                let [r0, r1, r2, r3] = unsafe { (math.dot_product_4x)(w0, w1, w2, w3, in_frame) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
 
                 // Atribuição direta: Sobrescreve o destino.
                 unsafe {
@@ -664,7 +658,7 @@ impl DenseLayerDyn {
                 let in_frame = unsafe {
                     input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
                 };
-                let sum = unsafe { (math.dot_product)(in_frame, weight_slice) };
+                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
                 unsafe {
                     *output.get_unchecked_mut(i * self.out_size + out_c) = sum + bias;
                 }
@@ -700,7 +694,7 @@ impl WaveNetLayerDyn {
     /// Requer instâncias estritas do buffer interno e `block` com tamanho
     /// `ch` (não-gated) ou `2*ch` (gated).
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn process_block_internal(
+    pub unsafe fn process_block_internal<M: crate::math::simd::SimdMath>(
         &self,
         condition: &[f32],
         head_input: &mut [f32],
@@ -709,7 +703,6 @@ impl WaveNetLayerDyn {
         buffer_start: usize,
         block: &mut [f32],
         num_frames: usize,
-        math: &SimdMathConfig,
     ) {
         let ch = self.ch;
 
@@ -725,19 +718,18 @@ impl WaveNetLayerDyn {
             // Aplica a convolução sobre o histórico de áudio (layer_buffer).
             // O resultado é escrito no buffer temporário `block`.
             self.conv1d
-                .process_block(layer_buffer, block, buffer_start, num_frames, math);
+                .process_block::<M>(layer_buffer, block, buffer_start, num_frames);
 
             // 2) MECANISMO DE GATING (Ativação):
             if self.gated {
                 // Mistura a condição externa (condition) nos canais do bloco.
                 // Usamos stride de 2*ch porque o bloco contém tanh e sigmoid intercalados.
-                self.input_mixin.process_acc_block_strided(
+                self.input_mixin.process_acc_block_strided::<M>(
                     condition,
                     block,
                     num_frames,
                     1,
                     2 * self.ch,
-                    math,
                 );
 
                 for i in 0..num_frames {
@@ -746,8 +738,8 @@ impl WaveNetLayerDyn {
 
                     // SPLIT GATED: O bloco é dividido em dois: Z1 (tanh) e Z2 (sigmoid).
                     let (z1, z2) = block_frame.split_at_mut(self.ch);
-                    (math.tanh_slice)(z1);
-                    (math.sigmoid_slice)(z2);
+                    M::tanh_slice(z1);
+                    M::sigmoid_slice(z2);
 
                     // OPERAÇÃO GATED: z1 = tanh(z1) * sigmoid(z2).
                     // Isso permite que o modelo aprenda quais informações deixar passar (gate).
@@ -758,8 +750,8 @@ impl WaveNetLayerDyn {
             } else {
                 // MODO NÃO-GATED: Mais simples, soma a condição e aplica apenas tanh.
                 self.input_mixin
-                    .process_acc_block_strided(condition, block, num_frames, 1, self.ch, math);
-                (math.tanh_slice)(&mut block[0..num_frames * self.ch]);
+                    .process_acc_block_strided::<M>(condition, block, num_frames, 1, self.ch);
+                M::tanh_slice(&mut block[0..num_frames * self.ch]);
             }
 
             // 3) SKIP CONNECTION (Saída para a Cabeça):
@@ -778,7 +770,7 @@ impl WaveNetLayerDyn {
             // Prepara o sinal para a próxima camada, reduzindo ou mantendo as dimensões.
             let in_stride = if self.gated { 2 * self.ch } else { self.ch };
             self.one_by_one
-                .process_block_strided(block, output, num_frames, in_stride, self.ch, math);
+                .process_block_strided::<M>(block, output, num_frames, in_stride, self.ch);
         }
 
         // 5) CONEXÃO RESIDUAL (Residual Connection):
@@ -834,12 +826,11 @@ impl WaveNetLayerArrayDyn {
     ///
     /// # Safety
     /// Depende da integridade das matrizes carregadas e dos estados de buffer circular.
-    pub unsafe fn process(
+    pub unsafe fn process<M: crate::math::simd::SimdMath>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
         num_frames: usize,
-        math: &SimdMathConfig,
     ) {
         debug_assert_eq!(
             self.layers.len(),
@@ -866,11 +857,10 @@ impl WaveNetLayerArrayDyn {
             // 2) RECHANNEL (Entrada -> Residual):
             // Projeta o áudio de entrada (1 canal) para a dimensão residual (`ch`).
             // O resultado é escrito DIRETAMENTE na fita de retardo (buffer circular) da 1ª camada.
-            self.rechannel.process_block(
+            self.rechannel.process_block::<M>(
                 layer_inputs,
                 &mut state_0.layer_buffer[start..start + num_frames * ch],
                 num_frames,
-                math,
             );
 
             let num_layers = self.layers.len();
@@ -885,7 +875,7 @@ impl WaveNetLayerArrayDyn {
 
                 if i == last_layer {
                     // ÚLTIMA CAMADA: O output residual final vai para `array_outputs`.
-                    layer.process_block_internal(
+                    layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..num_frames * ch],
                         &mut self.array_outputs[0..num_frames * ch],
@@ -893,7 +883,6 @@ impl WaveNetLayerArrayDyn {
                         current_state.buffer_start,
                         &mut self.block_buffer[0..num_frames * block_size],
                         num_frames,
-                        math,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
@@ -902,7 +891,7 @@ impl WaveNetLayerArrayDyn {
                     // CONEXÃO ENTRE CAMADAS:
                     // A saída residual da camada 'i' é injetada DIRETAMENTE no buffer da camada 'i+1'.
                     // Isso economiza cópias de memória e mantém os dados quentes no cache.
-                    layer.process_block_internal(
+                    layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..num_frames * ch],
                         &mut next_state.layer_buffer[next_start..next_start + num_frames * ch],
@@ -910,7 +899,6 @@ impl WaveNetLayerArrayDyn {
                         current_state.buffer_start,
                         &mut self.block_buffer[0..num_frames * block_size],
                         num_frames,
-                        math,
                     );
                 }
 
@@ -922,11 +910,10 @@ impl WaveNetLayerArrayDyn {
             // 5) HEAD RECHANNEL (Skip Sum -> Output):
             // Pega o somatório de todas as skip connections e realiza a projeção final 1x1.
             // O resultado (`head_outputs`) é o que será usado para prever o próximo valor do áudio.
-            self.head_rechannel.process_block(
+            self.head_rechannel.process_block::<M>(
                 &self.head_accum[0..num_frames * ch],
                 &mut self.head_outputs[0..num_frames * head],
                 num_frames,
-                math,
             );
         }
     }
@@ -934,7 +921,11 @@ impl WaveNetLayerArrayDyn {
     /// AQUECIMENTO DE ESTADO (Pre-warm):
     /// Preenche os buffers circulares com valores iniciais para evitar artefatos de áudio (cliques/pops)
     /// no início da reprodução. Essencial para redes com histórico (convoluções causais).
-    pub fn prewarm(&mut self, layer_inputs: &[f32], condition: &[f32], math: &SimdMathConfig) {
+    pub fn prewarm<M: crate::math::simd::SimdMath>(
+        &mut self,
+        layer_inputs: &[f32],
+        condition: &[f32],
+    ) {
         debug_assert_eq!(
             self.layers.len(),
             self.states.len(),
@@ -956,11 +947,10 @@ impl WaveNetLayerArrayDyn {
             let start = state_0.buffer_start * ch;
 
             // Projeção inicial do frame de aquecimento.
-            self.rechannel.process_block(
+            self.rechannel.process_block::<M>(
                 layer_inputs,
                 &mut state_0.layer_buffer[start..start + ch],
                 1, // O aquecimento processa frame a frame (1 frame).
-                math,
             );
 
             let num_layers = self.layers.len();
@@ -976,7 +966,7 @@ impl WaveNetLayerArrayDyn {
                 current_state.copy_buffer(ch);
 
                 if i == last_layer {
-                    layer.process_block_internal(
+                    layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..ch],
                         &mut self.array_outputs[0..ch],
@@ -984,13 +974,12 @@ impl WaveNetLayerArrayDyn {
                         current_state.buffer_start,
                         &mut self.block_buffer[0..block_size],
                         1,
-                        math,
                     );
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
 
-                    layer.process_block_internal(
+                    layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..ch],
                         &mut next_state.layer_buffer[next_start..next_start + ch],
@@ -998,17 +987,15 @@ impl WaveNetLayerArrayDyn {
                         current_state.buffer_start,
                         &mut self.block_buffer[0..block_size],
                         1,
-                        math,
                     );
                 }
             }
 
             // Projeção final do frame de aquecimento.
-            self.head_rechannel.process_block(
+            self.head_rechannel.process_block::<M>(
                 &self.head_accum[0..ch],
                 &mut self.head_outputs[0..head],
                 1,
-                math,
             );
         }
     }
@@ -1032,8 +1019,23 @@ pub struct WaveNetDynModel {
 
 impl WaveNetDynModel {
     /// Processa o bloco de áudio na matriz causal.
+    ///
+    /// **Para Cientistas e Devs:** Todo o processamento passa obrigatoriamente pela macro `dispatch_simd!`.
+    /// Essa tática de multiversioning anula custos de ramificação em tempo de execução (branches condicionais)
+    /// para selecionar qual conjunto de intruções de CPU usar (AVX2, AVX-512). O compilador gera clones desta
+    /// classe de processamento especializados para cada chipset.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        let math = crate::math::simd::SimdMathConfig::get();
+        unsafe {
+            crate::math::simd::dispatch_simd!(self, process_internal, input, output);
+        }
+    }
+
+    /// Variante clonada e puramente otimizada para SIMD `M` do processamento da rede inteira.
+    unsafe fn process_internal<M: crate::math::simd::SimdMath>(
+        &mut self,
+        input: &[f32],
+        output: &mut [f32],
+    ) {
         let total_frames = input.len();
 
         let mut pos = 0;
@@ -1046,13 +1048,13 @@ impl WaveNetDynModel {
 
             unsafe {
                 // array1 engloba a porção majoritária do campo receptivo da WaveNet.
-                self.array1.process(in_slice, in_slice, num_frames, math);
+                self.array1.process::<M>(in_slice, in_slice, num_frames);
 
                 let array1_outputs = &self.array1.array_outputs[0..num_frames * self.array1.ch];
                 // array2 recebe o processado do array1 e o sinal original no canal de condição.
                 // É utilizado para condensar o resultado ou aplicar finalizações paramétricas.
                 self.array2
-                    .process(array1_outputs, in_slice, num_frames, math);
+                    .process::<M>(array1_outputs, in_slice, num_frames);
             }
 
             // Mixagem Final (Master Blend):
@@ -1072,16 +1074,23 @@ impl WaveNetDynModel {
 
     /// Realiza o `Prewarm` inicial para estabilizar os buffers.
     pub fn prewarm(&mut self) {
-        let math = crate::math::simd::SimdMathConfig::get();
+        unsafe {
+            crate::math::simd::dispatch_simd!(self, prewarm_internal);
+        }
+    }
+
+    /// # Safety
+    /// Call this via `dispatch_simd!` macro only.
+    unsafe fn prewarm_internal<M: crate::math::simd::SimdMath>(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
 
         // Roda o estado com uma amostra preenchida de 0.0 para preencher os buffers internos
         // e impedir ruídos espúrios ao trocar modelos (os pipelines de convolução precisam
         // de amostras causais passadas).
-        self.array1.prewarm(&layer_inputs_1, &condition, math);
+        self.array1.prewarm::<M>(&layer_inputs_1, &condition);
         let array1_outputs = &self.array1.array_outputs[..];
-        self.array2.prewarm(array1_outputs, &condition, math);
+        self.array2.prewarm::<M>(array1_outputs, &condition);
     }
 }
 

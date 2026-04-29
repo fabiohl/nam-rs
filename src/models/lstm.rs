@@ -227,6 +227,32 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::fastmath::simd_sigmoid_avx512  // Sigmoid otimizada para AVX-512
     );
 
+    define_lstm_process!(
+        process_sample_avx2vnni,
+        target_feature(enable = "avxvnni"),
+        crate::math::simd::dot_product_4x_interleaved_avx2,
+        8,
+        _mm256_loadu_ps,
+        _mm256_storeu_ps,
+        _mm256_add_ps,
+        _mm256_mul_ps,
+        crate::math::fastmath::simd_tanh,
+        crate::math::fastmath::simd_sigmoid
+    );
+
+    define_lstm_process!(
+        process_sample_avx512vnni,
+        target_feature(enable = "avx512f,avx512vl,avx512vnni"),
+        crate::math::simd::dot_product_4x_interleaved_avx512,
+        16,
+        _mm512_loadu_ps,
+        _mm512_storeu_ps,
+        _mm512_add_ps,
+        _mm512_mul_ps,
+        crate::math::fastmath::simd_tanh_avx512,
+        crate::math::fastmath::simd_sigmoid_avx512
+    );
+
     /// Zera os estados internos (hidden e cell) da camada.
     /// Essencial ao trocar de preset ou iniciar um playback para evitar "estalos"
     /// ou carregar resíduos de áudios processados anteriormente.
@@ -310,15 +336,44 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         }
     }
 
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn process_avx2vnni(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            for i in 0..input.len() {
+                let sample = [input[i]];
+                self.layer.process_sample_avx2vnni(&sample);
+                let hidden = self.layer.get_hidden_state();
+                let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden);
+                output[i] = dot + self.head_bias;
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn process_avx512vnni(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            for i in 0..input.len() {
+                let sample = [input[i]];
+                self.layer.process_sample_avx512vnni(&sample);
+                let hidden = self.layer.get_hidden_state();
+                let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden);
+                output[i] = dot + self.head_bias;
+            }
+        }
+    }
+
     /// Processa o array em tempo de execução via v-table estática LazyLock.
-    ///
-    /// Utiliza `SimdMathConfig::get().is_avx512` para determinar o path AVX-512 vs AVX2
-    /// sem repetir `is_x86_feature_detected!` (leitura atômica) a cada bloco.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        if crate::math::simd::SimdMathConfig::get().is_avx512 {
-            unsafe { self.process_avx512(input, output) }
-        } else {
-            unsafe { self.process_avx2(input, output) }
+        unsafe {
+            crate::math::simd::dispatch_simd!(
+                self,
+                process_avx512vnni,
+                process_avx512,
+                process_avx2vnni,
+                process_avx2,
+                input,
+                output
+            );
         }
     }
 
@@ -401,18 +456,55 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         }
     }
 
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn process_avx2vnni(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            for i in 0..input.len() {
+                let sample = [input[i]];
+                self.layer1.process_sample_avx2vnni(&sample);
+                let hidden1 = self.layer1.get_hidden_state();
+
+                self.layer2.process_sample_avx2vnni(hidden1);
+                let hidden2 = self.layer2.get_hidden_state();
+
+                let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden2);
+                output[i] = dot + self.head_bias;
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn process_avx512vnni(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            for i in 0..input.len() {
+                let sample = [input[i]];
+                self.layer1.process_sample_avx512vnni(&sample);
+                let hidden1 = self.layer1.get_hidden_state();
+
+                self.layer2.process_sample_avx512vnni(hidden1);
+                let hidden2 = self.layer2.get_hidden_state();
+
+                let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden2);
+                output[i] = dot + self.head_bias;
+            }
+        }
+    }
+
     /// Processa o array em tempo de execução via v-table estática LazyLock.
     ///
-    /// Utiliza `SimdMathConfig::get().is_avx512` para determinar o path AVX-512 vs AVX2
-    /// sem repetir `is_x86_feature_detected!` (leitura atômica) a cada bloco.
-    /// Esta técnica de "Runtime Dispatch" permite que o mesmo binário rode de forma otimizada
-    /// em diferentes gerações de CPUs.
+    /// Utiliza `SimdMathConfig::get().instruction_set` avaliado no startup
+    /// para despachar sem leitura atômica em hot-path.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        // Verificamos uma única vez qual o melhor conjunto de instruções disponível
-        if crate::math::simd::SimdMathConfig::get().is_avx512 {
-            unsafe { self.process_avx512(input, output) }
-        } else {
-            unsafe { self.process_avx2(input, output) }
+        unsafe {
+            crate::math::simd::dispatch_simd!(
+                self,
+                process_avx512vnni,
+                process_avx512,
+                process_avx2vnni,
+                process_avx2,
+                input,
+                output
+            );
         }
     }
 

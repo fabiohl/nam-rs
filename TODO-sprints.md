@@ -25,10 +25,10 @@
 
 *Foco: Reduzir a pegada de memória e aumentar o throughput dos núcleos neurais.*
 
-### [T1] Suporte completo a processadores (AVX2 / AVX-512)
+### [T1] Suporte completo a processadores (AVX2 / AVX-512) [Concluido]
 
 - **Problema:** Fragmentação de performance em hardware heterogêneo; falta de suporte explícito a instruções modernas.
-- **Solução:** Maximizar a quantidade de código otimizado para AVX2-VNNI e AVX-512 via multiversioning.
+- **Solução:** Maximizar a quantidade de código otimizado para AVX2-VNNI e AVX-512 via multiversioning. *(Nota: Esta sprint trata estritamente da infraestrutura de despacho e detecção; a lógica matemática com intrinsics VNNI ocorrerá nas sprints T3 e T6).*
 - **Critérios de Aceite:** Binário otimizado detectando e usando o set de instruções mais rápido disponível no host.
 - **Tags:** #simd #cpu #x86
 
@@ -37,6 +37,7 @@
 - **Problema:** Overhead de vtable e falha de inlining devido ao `Box<dyn DynamicModel>` no hot-path.
 - **Solução:** Substituir o trait object por um `enum` que encapsule os tipos de modelos, permitindo despacho estático.
 - **Critérios de Aceite:** Redução do overhead de chamada e permissão para o compilador inlinar o kernel DSP.
+- **Nota (Pós-T1):** A abstração de despacho SIMD (`dispatch_simd!`) foi implementada com sucesso e provou que é possível eliminar o overhead de chamadas dinâmicas no kernel de math. Na T2, ao migrar de `Box<dyn DynamicModel>` para um `enum`, a transição entre as variantes do enum deve ocorrer no limite mais alto possível do loop de áudio para maximizar o inlining, combinando perfeitamente com o despacho estático das instruções SIMD já consolidado.
 - **Tags:** #simd #rust #performance
 
 ### [T3] SIMD F16C Weight Compression (VNNI-like)
@@ -44,6 +45,7 @@
 - **Problema:** Gargalo de Memory Bound (L1 Cache Misses) em redes grandes.
 - **Solução:** Implementar compressão f16 in-memory com expansão on-the-fly usando `_mm256_cvtph_ps`.
 - **Critérios de Aceite:** Redução de cache misses na L1 e passagem nos Golden Vectors de v1.0.
+- **Nota (Pós-T1):** Com o `<M: SimdMath>` estabelecido, qualquer nova rotina matemática de compressão deverá estender este trait. Além disso, a inicialização e os arrays dos modelos (atualmente `f32`) precisarão suportar layouts compactados em tempo de alocação, para que as rotinas SIMD de descompressão funcionem na leitura.
 - **Tags:** #simd #model #memory
 
 ### [T7] LSTM Batch Head Dot-Product (Mini-GEMM)
@@ -58,6 +60,7 @@
 - **Problema:** Throughput limitado pelo FMA FP32 tradicional em hardwares modernos.
 - **Solução:** Usar `_mm512_dpbf16_ps` para processar dot-products de 2×BF16 nativamente.
 - **Critérios de Aceite:** Suporte via dispatch `LazyLock` e estabilidade numérica validada.
+- **Nota (Pós-T1):** A infraestrutura base para `Avx2VnniMath` e `Avx512VnniMath` já está definida na macro `dispatch_simd!` e nas structs vazias do `fastmath`. O desafio aqui será unicamente a injeção do algoritmo matemático sem quebrar a assinatura genérica de arrays exigida pelo compilador nas classes dinâmicas e estáticas.
 - **Tags:** #simd #avx512
 
 ### [T8] Fusão Residual + One-by-One no WaveNet Layer

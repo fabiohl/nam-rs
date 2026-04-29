@@ -80,11 +80,11 @@ mod tests {
         let mut output = vec![0.0f32; ch]; // Saída para a próxima camada (residual path)
         let mut block = vec![0.0f32; 2 * ch]; // Buffer temporário para cálculos intermediários
 
-        let math = SimdMathConfig::current();
+        let _math = SimdMathConfig::current();
 
         // Executamos o processamento interno (unsafe pois lida com ponteiros/SIMD em produção).
         unsafe {
-            layer.process_block_internal(
+            layer.process_block_internal::<crate::math::simd::Avx2Math>(
                 &condition,
                 &mut head_input,
                 &mut output,
@@ -92,7 +92,6 @@ mod tests {
                 buffer_start,
                 &mut block,
                 1,
-                &math,
             );
         }
 
@@ -150,10 +149,10 @@ mod tests {
         let mut output = vec![0.0f32; ch];
         let mut block = vec![0.0f32; ch]; // Block buffer tem tamanho 'ch' (não 2*ch)
 
-        let math = SimdMathConfig::current();
+        let _math = SimdMathConfig::current();
 
         unsafe {
-            layer.process_block_internal(
+            layer.process_block_internal::<crate::math::simd::Avx2Math>(
                 &condition,
                 &mut head_input,
                 &mut output,
@@ -161,7 +160,6 @@ mod tests {
                 buffer_start,
                 &mut block,
                 1,
-                &math,
             );
         }
 
