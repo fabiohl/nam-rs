@@ -15,13 +15,34 @@ pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel
         .context("Geometria LSTM não detectável (verifique num_layers e hidden_size)")?;
 
     match (num_layers, hidden_size) {
-        (1, 8) => build_lstm_1layer::<8, 9, 32>(data, hidden_size),
-        (1, 12) => build_lstm_1layer::<12, 13, 48>(data, hidden_size),
-        (1, 16) => build_lstm_1layer::<16, 17, 64>(data, hidden_size),
-        (1, 24) => build_lstm_1layer::<24, 25, 96>(data, hidden_size),
-        (2, 8) => build_lstm_2layer::<8, 9, 16, 32>(data, num_layers, hidden_size),
-        (2, 12) => build_lstm_2layer::<12, 13, 24, 48>(data, num_layers, hidden_size),
-        (2, 16) => build_lstm_2layer::<16, 17, 32, 64>(data, num_layers, hidden_size),
+        (1, 8) => {
+            let model = build_lstm_1layer::<8, 9, 32>(data, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm1x8(Box::new(model))))
+        }
+        (1, 12) => {
+            let model = build_lstm_1layer::<12, 13, 48>(data, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm1x12(Box::new(model))))
+        }
+        (1, 16) => {
+            let model = build_lstm_1layer::<16, 17, 64>(data, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm1x16(Box::new(model))))
+        }
+        (1, 24) => {
+            let model = build_lstm_1layer::<24, 25, 96>(data, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm1x24(Box::new(model))))
+        }
+        (2, 8) => {
+            let model = build_lstm_2layer::<8, 9, 16, 32>(data, num_layers, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm2x8(Box::new(model))))
+        }
+        (2, 12) => {
+            let model = build_lstm_2layer::<12, 13, 24, 48>(data, num_layers, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm2x12(Box::new(model))))
+        }
+        (2, 16) => {
+            let model = build_lstm_2layer::<16, 17, 32, 64>(data, num_layers, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm2x16(Box::new(model))))
+        }
         _ => build_lstm_dynamic(data, num_layers, hidden_size),
     }
 }
@@ -40,7 +61,7 @@ pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel
 pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: usize>(
     data: &NamModelData,
     hidden_size: usize,
-) -> anyhow::Result<Box<DynamicModel>> {
+) -> anyhow::Result<LstmModel1<H, H1_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights);
 
     // Layer 1: input_size=1
@@ -66,7 +87,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
         data.weights.len()
     );
 
-    Ok(Box::new(DynamicModel(Box::new(model))))
+    Ok(model)
 }
 
 /// Constrói um `LstmModel2<H, H1_IH, H2_IH, H_H4>` com pesos lidos sequencialmente.
@@ -79,7 +100,7 @@ pub(crate) fn build_lstm_2layer<
     data: &NamModelData,
     num_layers: usize,
     hidden_size: usize,
-) -> anyhow::Result<Box<DynamicModel>> {
+) -> anyhow::Result<LstmModel2<H, H1_IH, H2_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights);
 
     // Layer 1: input_size=1
@@ -110,7 +131,7 @@ pub(crate) fn build_lstm_2layer<
         data.weights.len()
     );
 
-    Ok(Box::new(DynamicModel(Box::new(model))))
+    Ok(model)
 }
 
 // =============================================================================
@@ -204,7 +225,7 @@ pub fn build_lstm_dynamic(
         data.weights.len()
     );
 
-    Ok(Box::new(DynamicModel(Box::new(model))))
+    Ok(Box::new(DynamicModel::LstmDyn(Box::new(model))))
 }
 /// Lê os pesos de uma `LstmLayer<I, H, IH, H4>`.
 ///

@@ -51,6 +51,7 @@ use crate::colors::Colorize;
 use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::dsp::gain::{apply_gain_simd, is_buffer_mono_simd, is_buffer_silent_stereo_simd};
 use crate::dsp::resampler::NamResampler;
+use crate::models::NamModel;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
 use pipewire as pw;
 use pw::properties::properties;
@@ -544,7 +545,6 @@ pub fn run_pipewire_host(
                                 // 3. Inferência NAM a 48 kHz
                                 if let Some(ref mut model_l) = active_model_l {
                                     model_l
-                                        .0
                                         .process(&resamp_mid_l[..n_48k], &mut temp_out_l[..n_48k]);
                                 }
 
@@ -553,7 +553,6 @@ pub fn run_pipewire_host(
                                     temp_out_r[..n_48k].copy_from_slice(&temp_out_l[..n_48k]);
                                 } else if let Some(ref mut model_r) = active_model_r {
                                     model_r
-                                        .0
                                         .process(&resamp_mid_r[..n_48k], &mut temp_out_r[..n_48k]);
                                 }
 

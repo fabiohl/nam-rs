@@ -30,7 +30,7 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
-use nam_rs::models::wavenet;
+use nam_rs::models::{NamModel, wavenet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -324,7 +324,7 @@ fn process_in_blocks(
     let mut pos = 0;
     while pos < total {
         let end = (pos + block_size).min(total);
-        model.0.process(&input[pos..end], &mut output[pos..end]);
+        model.process(&input[pos..end], &mut output[pos..end]);
         pos = end;
     }
 }
@@ -560,7 +560,7 @@ fn test_wavenet_computational_stability() {
 /// Teste 3: `build_model()` com JSON real produz `DynamicModel` funcional.
 ///
 /// Carrega BossWN-standard.nam, invoca o dispatcher completo e verifica que
-/// `model.0.process()` com input de zeros retorna samples finitas.
+/// `model.process()` com input de zeros retorna samples finitas.
 #[test]
 fn test_dispatcher_build_model_real_json() {
     let path = model_path("BossWN-standard.nam");
@@ -579,12 +579,12 @@ fn test_dispatcher_build_model_real_json() {
         .expect("Dispatcher falhou ao construir DynamicModel a partir do JSON real");
 
     // Prewarm para estabilizar buffers convolucionais internos antes do processo
-    boxed.0.prewarm(2048);
+    boxed.prewarm(2048);
 
     // Processa um bloco de 64 zeros e verifica que a saída é finita
     let input = [0.0f32; 64];
     let mut output = [0.0f32; 64];
-    boxed.0.process(&input, &mut output);
+    boxed.process(&input, &mut output);
 
     for (i, &s) in output.iter().enumerate() {
         assert!(
@@ -614,11 +614,11 @@ fn test_dispatcher_build_model_real_lstm() {
     let mut boxed = build_model(&model_data)
         .expect("Dispatcher falhou ao construir DynamicModel LSTM a partir do JSON real");
 
-    boxed.0.prewarm(2048);
+    boxed.prewarm(2048);
 
     let input = [0.0f32; 64];
     let mut output = [0.0f32; 64];
-    boxed.0.process(&input, &mut output);
+    boxed.process(&input, &mut output);
 
     for (i, &s) in output.iter().enumerate() {
         assert!(
@@ -661,8 +661,8 @@ fn test_auto_consistency_wavenet() {
     let mut model_b =
         build_model(&model_data).expect("Dispatcher falhou (model_b) para auto-consistência");
 
-    model_a.0.prewarm(2048);
-    model_b.0.prewarm(2048);
+    model_a.prewarm(2048);
+    model_b.prewarm(2048);
 
     let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
     let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
@@ -706,8 +706,8 @@ fn test_auto_consistency_lstm() {
     let mut model_b =
         build_model(&model_data).expect("Dispatcher falhou (model_b) para auto-consistência LSTM");
 
-    model_a.0.prewarm(2048);
-    model_b.0.prewarm(2048);
+    model_a.prewarm(2048);
+    model_b.prewarm(2048);
 
     let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
     let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
@@ -817,7 +817,7 @@ fn test_golden_vectors_wavenet() {
         build_model(&model_data).expect("Dispatcher falhou ao construir WaveNet para golden test");
 
     // Prewarm + Processamento
-    model.0.prewarm(2048);
+    model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
@@ -883,7 +883,7 @@ fn test_golden_vectors_lstm() {
         build_model(&model_data).expect("Dispatcher falhou ao construir LSTM para golden test");
 
     // Prewarm + Processamento
-    model.0.prewarm(2048);
+    model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
@@ -921,7 +921,7 @@ fn test_golden_vectors_wavenet_feather() {
         .expect("Dispatcher falhou ao construir WaveNet Feather para golden test");
 
     // Prewarm + Processamento
-    model.0.prewarm(2048);
+    model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
@@ -959,7 +959,7 @@ fn test_golden_vectors_wavenet_nano() {
         .expect("Dispatcher falhou ao construir WaveNet Nano para golden test");
 
     // Prewarm + Processamento
-    model.0.prewarm(2048);
+    model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
@@ -1028,12 +1028,12 @@ fn test_end_to_end_spsc_pipeline() {
     let model = active_model
         .as_mut()
         .expect("Modelo nulo após drainagem SPSC");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     // 4. Processa sinal senoidal 440 Hz (64 amostras, 1 bloco)
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-    model.0.process(&input, &mut output);
+    model.process(&input, &mut output);
 
     // 5. Validação: finitude e magnitude razoável
     for (i, &s) in output.iter().enumerate() {
@@ -1080,8 +1080,8 @@ fn test_parity_lstm_static_vs_dynamic() {
     let mut model_dynamic =
         build_lstm_dynamic(&model_data, 1, 16).expect("Builder dinâmico falhou para paridade LSTM");
 
-    model_static.0.prewarm(2048);
-    model_dynamic.0.prewarm(2048);
+    model_static.prewarm(2048);
+    model_dynamic.prewarm(2048);
 
     let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
     let mut out_static = vec![0.0f32; GOLDEN_NUM_SAMPLES];
@@ -1143,8 +1143,8 @@ fn test_parity_wavenet_static_vs_dynamic() {
     let mut model_dynamic =
         build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou para paridade WaveNet");
 
-    model_static.0.prewarm(2048);
-    model_dynamic.0.prewarm(2048);
+    model_static.prewarm(2048);
+    model_dynamic.prewarm(2048);
 
     let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
     let mut out_static = vec![0.0f32; GOLDEN_NUM_SAMPLES];
@@ -1240,11 +1240,11 @@ fn test_namb_roundtrip_dispatcher_e2e() {
     let mut model = build_model(&model_data).expect("Dispatcher falhou no E2E NAMB");
 
     // 3. Prewarm e processamento
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-    model.0.process(&input, &mut output);
+    model.process(&input, &mut output);
 
     // 4. Validação: finitude
     for (i, &s) in output.iter().enumerate() {
@@ -1277,11 +1277,11 @@ fn test_wavenet_stability_feather() {
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
     let mut model = build_model(&model_data).expect("Dispatcher falhou no Feather");
 
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-    model.0.process(&input, &mut output);
+    model.process(&input, &mut output);
 
     for (i, &s) in output.iter().enumerate() {
         assert!(
@@ -1309,11 +1309,11 @@ fn test_wavenet_stability_nano() {
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
     let mut model = build_model(&model_data).expect("Dispatcher falhou no Nano");
 
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-    model.0.process(&input, &mut output);
+    model.process(&input, &mut output);
 
     for (i, &s) in output.iter().enumerate() {
         assert!(s.is_finite(), "[Nano] Sample não finita no índice {i}: {s}");
@@ -1340,11 +1340,11 @@ fn test_lstm_stability_2x8() {
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
     let mut model = build_model(&model_data).expect("Dispatcher falhou no LSTM 2x8");
 
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-    model.0.process(&input, &mut output);
+    model.process(&input, &mut output);
 
     for (i, &s) in output.iter().enumerate() {
         assert!(
@@ -1378,8 +1378,8 @@ fn test_auto_consistency_lstm_2x8() {
     let mut model_b = build_model(&model_data)
         .expect("Dispatcher falhou (model_b) para auto-consistência LSTM 2x8");
 
-    model_a.0.prewarm(2048);
-    model_b.0.prewarm(2048);
+    model_a.prewarm(2048);
+    model_b.prewarm(2048);
 
     let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
     let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
@@ -1442,7 +1442,7 @@ fn test_denormal_stability_silence() {
         let mut model =
             build_model(&model_data).expect("Dispatcher falhou para denormal test WaveNet");
 
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         let silence = [0.0f32; BLOCK_SIZE];
         let mut output = [0.0f32; BLOCK_SIZE];
@@ -1450,7 +1450,7 @@ fn test_denormal_stability_silence() {
 
         for block_idx in 0..SILENCE_BLOCKS {
             let start = std::time::Instant::now();
-            model.0.process(&silence, &mut output);
+            model.process(&silence, &mut output);
             let elapsed = start.elapsed().as_micros();
 
             if block_idx > 100 && elapsed > max_block_time_us {
@@ -1513,7 +1513,7 @@ fn test_denormal_stability_silence() {
         let mut model =
             build_model(&model_data).expect("Dispatcher falhou para denormal test LSTM");
 
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         let silence = [0.0f32; BLOCK_SIZE];
         let mut output = [0.0f32; BLOCK_SIZE];
@@ -1521,7 +1521,7 @@ fn test_denormal_stability_silence() {
 
         for block_idx in 0..SILENCE_BLOCKS {
             let start = std::time::Instant::now();
-            model.0.process(&silence, &mut output);
+            model.process(&silence, &mut output);
             let elapsed = start.elapsed().as_micros();
 
             if block_idx > 100 && elapsed > max_block_time_us {
@@ -1669,10 +1669,10 @@ fn test_rapid_hot_swap_spsc() {
         let model = active_model.as_mut().expect("Modelo nulo após pop SPSC");
 
         // 3. Prewarm + process
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         let mut output = vec![0.0f32; 64];
-        model.0.process(&input, &mut output);
+        model.process(&input, &mut output);
 
         // 4. Validação: finitude e magnitude razoável
         for (i, &s) in output.iter().enumerate() {
@@ -1716,14 +1716,14 @@ fn test_zero_alloc_process_wavenet() {
     let model_data = parse_nam_json(&json_data).expect("Falha no parser");
     let mut model = build_model(&model_data).expect("Falha ao construir modelo");
 
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     {
         let _guard = TrackingGuard::new();
-        model.0.process(&input, &mut output);
+        model.process(&input, &mut output);
     }
 
     assert_eq!(
@@ -1746,14 +1746,14 @@ fn test_zero_alloc_process_lstm() {
     let model_data = parse_nam_json(&json_data).expect("Falha no parser");
     let mut model = build_model(&model_data).expect("Falha ao construir modelo");
 
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     {
         let _guard = TrackingGuard::new();
-        model.0.process(&input, &mut output);
+        model.process(&input, &mut output);
     }
 
     assert_eq!(
@@ -1780,14 +1780,14 @@ fn test_zero_alloc_process_wavenet_dynamic() {
     // O BossWN-feather.nam possui 12 canais ou outra config.
     let mut model = build_model(&model_data).expect("Falha ao construir modelo dinâmico");
 
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     {
         let _guard = TrackingGuard::new();
-        model.0.process(&input, &mut output);
+        model.process(&input, &mut output);
     }
 
     let count = ALLOC_COUNT.load(Ordering::Relaxed);
@@ -1825,7 +1825,7 @@ fn test_wavenet_variable_block_sizes() {
 
     for &bs in &block_sizes {
         let mut model = build_model(&model_data).expect("Falha ao construir modelo");
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         let mut output = vec![0.0f32; 512];
         process_in_blocks(&mut model, &input, &mut output, bs);
@@ -1870,7 +1870,7 @@ fn test_lstm_variable_block_sizes() {
 
     for &bs in &block_sizes {
         let mut model = build_model(&model_data).expect("Falha ao construir modelo LSTM");
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         let mut output = vec![0.0f32; 512];
         process_in_blocks(&mut model, &input, &mut output, bs);
@@ -1922,7 +1922,7 @@ fn test_wavenet_dynamic_variable_block_sizes() {
     for &bs in &block_sizes {
         let mut model =
             build_wavenet_dynamic(&model_data).expect("Falha ao construir WaveNet dinâmico");
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         let mut output = vec![0.0f32; 512];
         process_in_blocks(&mut model, &input, &mut output, bs);
@@ -2009,11 +2009,11 @@ fn test_community_models_inference() {
         let mut model = build_model(&model_data).expect("Falha ao construir modelo comunitário");
 
         // 3. prewarm(2048)
-        model.0.prewarm(2048);
+        model.prewarm(2048);
 
         // 4. process() com 64 amostras
         let mut output = vec![0.0f32; 64];
-        model.0.process(&input, &mut output);
+        model.process(&input, &mut output);
 
         // 5. Verificar finitude e magnitude < 100.0 em todas as saídas
         for (i, &s) in output.iter().enumerate() {

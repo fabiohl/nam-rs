@@ -18,7 +18,7 @@ pub mod cli;
 
 use nam_rs::colors::Colorize;
 use nam_rs::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
-use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};
+use nam_rs::{loader, models::NamModel, pw_host, spsc, spsc::ParamPayload};
 use std::sync::atomic::Ordering;
 
 /// Carrega um arquivo de modelo (.nam ou .namb) e o envia para o callback DSP via SPSC.
@@ -181,7 +181,7 @@ fn load_and_send_model(
             // Para "True Stereo", instanciamos dois caminhos (L e R) de estados estritamente independentes.
             let model_l = match loader::dispatcher::build_model(&model_data) {
                 Ok(mut model) => {
-                    model.0.prewarm(2048);
+                    model.prewarm(2048);
                     Some(model)
                 }
                 Err(e) => {
@@ -218,7 +218,7 @@ fn load_and_send_model(
             let model_r = if model_l.is_some() {
                 match loader::dispatcher::build_model(&model_data) {
                     Ok(mut model) => {
-                        model.0.prewarm(2048);
+                        model.prewarm(2048);
                         Some(model)
                     }
                     Err(_) => None,

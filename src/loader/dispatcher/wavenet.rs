@@ -45,16 +45,20 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
 
     match topo_opt {
         Some(NamWavenetTopology::Standard) => {
-            build_wavenet_typed::<16, 3, 8>(data, NamWavenetTopology::Standard)
+            let model = build_wavenet_typed::<16, 3, 8>(data, NamWavenetTopology::Standard)?;
+            Ok(Box::new(DynamicModel::WavenetStandard(Box::new(model))))
         }
         Some(NamWavenetTopology::Lite) => {
-            build_wavenet_typed::<12, 3, 6>(data, NamWavenetTopology::Lite)
+            let model = build_wavenet_typed::<12, 3, 6>(data, NamWavenetTopology::Lite)?;
+            Ok(Box::new(DynamicModel::WavenetLite(Box::new(model))))
         }
         Some(NamWavenetTopology::Feather) => {
-            build_wavenet_typed::<8, 3, 4>(data, NamWavenetTopology::Feather)
+            let model = build_wavenet_typed::<8, 3, 4>(data, NamWavenetTopology::Feather)?;
+            Ok(Box::new(DynamicModel::WavenetFeather(Box::new(model))))
         }
         Some(NamWavenetTopology::Nano) => {
-            build_wavenet_typed::<4, 3, 2>(data, NamWavenetTopology::Nano)
+            let model = build_wavenet_typed::<4, 3, 2>(data, NamWavenetTopology::Nano)?;
+            Ok(Box::new(DynamicModel::WavenetNano(Box::new(model))))
         }
         None => build_wavenet_dynamic(data),
     }
@@ -71,7 +75,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
 pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: usize>(
     data: &NamModelData,
     topo: NamWavenetTopology,
-) -> anyhow::Result<Box<DynamicModel>> {
+) -> anyhow::Result<WaveNetModel<CH, K, HEAD>> {
     // Valida ativações antes de qualquer leitura de pesos
     validate_layer_activations(data)?;
 
@@ -136,7 +140,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
         data.weights.len()
     );
 
-    Ok(Box::new(DynamicModel(Box::new(model))))
+    Ok(model)
 }
 
 /// Constrói uma `WaveNetLayerArray` lendo pesos cursor-forward.
@@ -297,7 +301,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
         data.weights.len()
     );
 
-    Ok(Box::new(DynamicModel(Box::new(model))))
+    Ok(Box::new(DynamicModel::WavenetDyn(Box::new(model))))
 }
 /// Lê os pesos de um `Conv1d<IN, OUT, K>` aplicando transposição de layout.
 ///

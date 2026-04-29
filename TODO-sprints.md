@@ -32,7 +32,7 @@
 - **Critérios de Aceite:** Binário otimizado detectando e usando o set de instruções mais rápido disponível no host.
 - **Tags:** #simd #cpu #x86
 
-### [T2] Monomorfização de Modelos (Static Dispatch via Enums)
+### [T2] Monomorfização de Modelos (Static Dispatch via Enums) [Concluido]
 
 - **Problema:** Overhead de vtable e falha de inlining devido ao `Box<dyn DynamicModel>` no hot-path.
 - **Solução:** Substituir o trait object por um `enum` que encapsule os tipos de modelos, permitindo despacho estático.

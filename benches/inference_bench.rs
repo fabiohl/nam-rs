@@ -35,6 +35,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
+use nam_rs::models::NamModel;
 
 /// Gera sinal senoidal determinístico de 440 Hz a 48 kHz.
 fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
@@ -81,14 +82,14 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
     let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
     let mut model = build_model(&model_data).expect("Dispatcher falhou para benchmark");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     c.bench_function("WaveNet_Standard_CH16_64samp_48kHz", |b| {
         b.iter(|| {
-            model.0.process(&input, &mut output);
+            model.process(&input, &mut output);
         });
     });
 }
@@ -100,14 +101,14 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
 fn bench_lstm_2x16_process(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
     let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     c.bench_function("LSTM_2x16_64samp_48kHz", |b| {
         b.iter(|| {
-            model.0.process(&input, &mut output);
+            model.process(&input, &mut output);
         });
     });
 }
@@ -173,14 +174,14 @@ fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
     // Forçar construção pelo caminho dinâmico (sem const generics)
     let mut model =
         build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou para benchmark WaveNet");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     c.bench_function("WaveNet_Dynamic_Standard_64samp_48kHz", |b| {
         b.iter(|| {
-            model.0.process(&input, &mut output);
+            model.process(&input, &mut output);
         });
     });
 }
@@ -213,14 +214,14 @@ fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
     // Forçar construção pelo caminho dinâmico (sem const generics)
     let mut model = build_lstm_dynamic(&model_data, 1, 16)
         .expect("Builder dinâmico falhou para benchmark LSTM");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
 
     c.bench_function("LSTM_Dynamic_1x16_64samp_48kHz", |b| {
         b.iter(|| {
-            model.0.process(&input, &mut output);
+            model.process(&input, &mut output);
         });
     });
 }
@@ -241,14 +242,14 @@ fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
     let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
     let mut model = build_model(&model_data).expect("Dispatcher falhou para benchmark");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
         let mut output = vec![0.0f32; size];
         c.bench_function(&format!("WaveNet_Standard_CH16_{}samp_48kHz", size), |b| {
             b.iter(|| {
-                model.0.process(&input, &mut output);
+                model.process(&input, &mut output);
             });
         });
     }
@@ -258,14 +259,14 @@ fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
 fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
     let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
-    model.0.prewarm(2048);
+    model.prewarm(2048);
 
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
         let mut output = vec![0.0f32; size];
         c.bench_function(&format!("LSTM_2x16_{}samp_48kHz", size), |b| {
             b.iter(|| {
-                model.0.process(&input, &mut output);
+                model.process(&input, &mut output);
             });
         });
     }
@@ -414,7 +415,7 @@ fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
         b.iter_with_setup(
             || build_model(&model_data).expect("Dispatcher falhou para benchmark"),
             |mut model| {
-                model.0.prewarm(std::hint::black_box(2048));
+                model.prewarm(std::hint::black_box(2048));
             },
         );
     });
@@ -427,7 +428,7 @@ fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
         b.iter_with_setup(
             || build_model(&data).expect("Dispatcher falhou para benchmark"),
             |mut model| {
-                model.0.prewarm(std::hint::black_box(2048));
+                model.prewarm(std::hint::black_box(2048));
             },
         );
     });
