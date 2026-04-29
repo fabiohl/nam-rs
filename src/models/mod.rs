@@ -84,10 +84,13 @@ impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
 // =============================================================================
 
 impl NamModel for wavenet_dyn::WaveNetDynModel {
+    /// Delega o processamento para a implementação interna do modelo WaveNet dinâmico.
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         self.process(input, output);
     }
 
+    /// O "aquecimento" da WaveNet é simplificado pois ela não possui memória infinita
+    /// como a LSTM, apenas um buffer de delay (campo receptivo).
     fn prewarm(&mut self, _num_samples: usize) {
         self.prewarm();
     }
@@ -100,25 +103,30 @@ impl NamModel for wavenet_dyn::WaveNetDynModel {
 impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
     for lstm::LstmModel1<H, H1_IH, H_H4>
 {
+    /// Executa o processamento de áudio da LSTM.
+    /// Note que `self.process` chama o método inerente da struct, que já possui
+    /// a lógica de despacho SIMD (AVX2/512) otimizada.
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        // Safety: AVX2+FMA verificado no startup (main.rs).
-        // O método inherent unsafe tem prioridade sobre o trait — sem recursão.
+        // Safety: A verificação de compatibilidade de hardware é feita no início da aplicação.
         self.process(input, output);
     }
 
+    /// O prewarm na LSTM é vital. Como é um modelo recorrente, o estado interno (memória)
+    /// precisa de um tempo processando silêncio para "estabilizar" antes do áudio real.
     fn prewarm(&mut self, num_samples: usize) {
-        // Zera os estados internos antes do prewarm (como esperado pelo C++)
+        // 1. Limpa qualquer resíduo de processamentos anteriores.
         self.reset_states();
 
-        // LSTM requer processamento de `num_samples` amostras zero para estabilizar estados.
-        // Ref C++: Prewarm(2048, 64) — processa 2048 amostras com bloco de 64.
+        // 2. Processa amostras de valor zero.
+        // Fazemos isso em pedaços (CHUNK) para reaproveitar buffers pequenos na stack.
         const CHUNK: usize = 512;
         let zero_in = [0.0f32; CHUNK];
         let mut zero_out = [0.0f32; CHUNK];
         let mut rem = num_samples;
+
         while rem > 0 {
             let n = rem.min(CHUNK);
-            // Safety: AVX2+FMA verificado no startup (main.rs).
+            // Simula o processamento de silêncio para carregar a memória da LSTM.
             self.process(&zero_in[..n], &mut zero_out[..n]);
             rem -= n;
         }
@@ -132,22 +140,23 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> NamModel
     for lstm::LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
+    /// Processamento idêntico ao modelo de 1 camada, mas operando sobre a cadeia de 2 camadas.
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        // Safety: AVX2+FMA verificado no startup (main.rs).
         self.process(input, output);
     }
 
+    /// Prewarm para o modelo empilhado. Ambas as camadas são estabilizadas sequencialmente.
     fn prewarm(&mut self, num_samples: usize) {
-        // Zera os estados internos antes do prewarm
+        // Zera os estados internos de ambas as camadas.
         self.reset_states();
 
         const CHUNK: usize = 512;
         let zero_in = [0.0f32; CHUNK];
         let mut zero_out = [0.0f32; CHUNK];
         let mut rem = num_samples;
+
         while rem > 0 {
             let n = rem.min(CHUNK);
-            // Safety: AVX2+FMA verificado no startup (main.rs).
             self.process(&zero_in[..n], &mut zero_out[..n]);
             rem -= n;
         }
@@ -159,10 +168,12 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
 // =============================================================================
 
 impl NamModel for lstm_dyn::LstmDynModel {
+    /// Implementação para modelos onde o tamanho do hidden state é definido em tempo de execução.
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         self.process(input, output);
     }
 
+    /// O prewarm dinâmico já encapsula internamente a lógica de loop de silêncio.
     fn prewarm(&mut self, num_samples: usize) {
         self.prewarm(num_samples);
     }

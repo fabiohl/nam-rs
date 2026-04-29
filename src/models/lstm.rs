@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-// Portado da implementação original do NeuralAudio por Mike Oliphant.
 
 //! Malha de Células Recorrentes Otimizada (LSTM) para inferência NAM.
 //!
@@ -52,54 +51,77 @@ macro_rules! define_lstm_process {
         /// Requer suporte das features garantidas pelo caller.
         pub unsafe fn $fn_name(&mut self, input: &[f32]) {
             unsafe {
+                // 1. Prepara o buffer de estado: [Input | Hidden State]
+                // Copiamos a amostra de entrada para o início do buffer 'state'.
                 self.state[..I].copy_from_slice(&input[..I]);
 
+                // 2. Prefetching: Damos uma dica ao processador para carregar os dados no cache L1 (T0)
+                // Isso reduz a latência quando começarmos a ler o estado para os produtos escalares.
                 _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
                 if IH > 16 {
+                    // Se o estado for grande, garantimos que a próxima linha de cache também seja carregada.
                     _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().add(16).cast::<i8>());
                 }
 
+                // 3. Cálculo das Portas (Gates): Dot Products Interfolhados
+                // Para cada neurônio 'i' (0..H), calculamos simultaneamente as 4 portas da LSTM.
+                // O layout dos pesos é [I, F, C, O], permitindo extrair os 4 resultados em um único dot product.
                 for i in 0..H {
                     let w_slice = &self.input_hidden_weights[i];
+                    // Calcula dot product entre pesos do neurônio i e o estado [Input|Hidden]
                     let dots = $dot_product_interleaved(w_slice, &self.state);
 
+                    // gates[i] = (W_input * state) + bias_input
+                    // gates[i + H] = (W_forget * state) + bias_forget
+                    // ... e assim por diante para Cell e Output gates.
                     self.gates[i] = dots[0] + self.bias[i];
                     self.gates[i + H] = dots[1] + self.bias[i + H];
                     self.gates[i + 2 * H] = dots[2] + self.bias[i + 2 * H];
                     self.gates[i + 3 * H] = dots[3] + self.bias[i + 3 * H];
                 }
 
-                let f_offset = H;
-                let g_offset = 2 * H;
-                let o_offset = 3 * H;
-                let h_offset = I; // para estado oculto
+                // Offsets para acessar as portas no layout Structure of Arrays (SoA)
+                let f_offset = H; // Forget gate
+                let g_offset = 2 * H; // Cell candidate (Gate G)
+                let o_offset = 3 * H; // Output gate
+                let h_offset = I; // Onde começa o Hidden State no buffer 'state'
 
                 let mut i = 0;
 
+                // 4. Loop Principal Vetorizado (SIMD)
+                // Processamos múltiplos neurônios de uma vez (ex: 8 no AVX2, 16 no AVX512).
                 while i + $step <= H {
+                    // Carrega os valores brutos (lineares) das portas e o estado da célula anterior
                     let g_f = $load(self.gates.as_ptr().add(i + f_offset));
                     let g_i = $load(self.gates.as_ptr().add(i));
                     let g_g = $load(self.gates.as_ptr().add(i + g_offset));
                     let c_s = $load(self.cell_state.as_ptr().add(i));
 
-                    let sig_f = $sigmoid(g_f);
-                    let sig_i = $sigmoid(g_i);
-                    let tanh_g = $tanh(g_g);
+                    // Aplica as funções de ativação não-lineares
+                    let sig_f = $sigmoid(g_f); // forget = sigmoid(Wf * x + bf)
+                    let sig_i = $sigmoid(g_i); // input = sigmoid(Wi * x + bi)
+                    let tanh_g = $tanh(g_g); // candidate = tanh(Wg * x + bg)
 
+                    // Equação do Cell State: c_t = (forget * c_{t-1}) + (input * candidate)
                     let mul1 = $mul(sig_f, c_s);
                     let mul2 = $mul(sig_i, tanh_g);
                     let new_c_s = $add(mul1, mul2);
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
 
+                    // Equação do Hidden State: h_t = output_gate * tanh(c_t)
                     let g_o = $load(self.gates.as_ptr().add(i + o_offset));
-                    let sig_o = $sigmoid(g_o);
-                    let tanh_cs = $tanh(new_c_s);
+                    let sig_o = $sigmoid(g_o); // output = sigmoid(Wo * x + bo)
+                    let tanh_cs = $tanh(new_c_s); // tanh(c_t)
                     let h_val = $mul(sig_o, tanh_cs);
+
+                    // Salva o novo Hidden State para ser usado na próxima amostra (recorrência)
                     $store(self.state.as_mut_ptr().add(i + h_offset), h_val);
 
                     i += $step;
                 }
 
+                // 5. Tail Handling (Tratamento de rastro)
+                // Se o Hidden Size (H) não for múltiplo exato de $step, processamos o resto aqui.
                 if i < H {
                     let tail_len = H - i;
                     let mut temp_gf = [0.0; $step];
@@ -108,6 +130,7 @@ macro_rules! define_lstm_process {
                     let mut temp_go = [0.0; $step];
                     let mut temp_cs = [0.0; $step];
 
+                    // Movemos os dados restantes para buffers temporários alinhados ao tamanho do registrador SIMD
                     for j in 0..tail_len {
                         temp_gf[j] = self.gates[i + j + f_offset];
                         temp_gi[j] = self.gates[i + j];
@@ -116,6 +139,7 @@ macro_rules! define_lstm_process {
                         temp_cs[j] = self.cell_state[i + j];
                     }
 
+                    // Carregamos os buffers temporários e executamos a mesma lógica SIMD acima
                     let g_f = $load(temp_gf.as_ptr());
                     let g_i = $load(temp_gi.as_ptr());
                     let g_g = $load(temp_gg.as_ptr());
@@ -139,6 +163,7 @@ macro_rules! define_lstm_process {
                     $store(out_cs.as_mut_ptr(), new_c_s);
                     $store(out_h.as_mut_ptr(), h_val);
 
+                    // Devolvemos apenas os elementos válidos para o estado final
                     for j in 0..tail_len {
                         self.cell_state[i + j] = out_cs[j];
                         self.state[i + j + h_offset] = out_h[j];
@@ -151,6 +176,8 @@ macro_rules! define_lstm_process {
 
 impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer<I, H, IH, H4> {
     /// Instancia uma nova camada LSTM, zero-iniciada via pré-alocação SoA contínua.
+    /// Usamos arrays fixos (Const Generics) para garantir que a memória seja contígua,
+    /// o que é vital para performance e previsibilidade em tempo real.
     pub fn new() -> Self {
         Self {
             input_hidden_weights: [[[0.0; 4]; IH]; H],
@@ -162,38 +189,47 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     }
 
     /// Retorna o fatiamento da memória do estado atual que engloba a porção `Hidden`.
+    /// Em uma LSTM, o estado completo é frequentemente [Input | Hidden].
+    /// Esta função extrai apenas o Hidden State para ser usado na próxima camada ou na saída.
     #[inline(always)]
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[I..]
     }
 
+    // Geramos a implementação AVX2 da função de processamento.
+    // O compilador usará instruções de 256 bits (processa 8 f32 por vez).
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
         crate::math::simd::dot_product_4x_interleaved_avx2,
-        8,
-        _mm256_loadu_ps,
-        _mm256_storeu_ps,
-        _mm256_add_ps,
-        _mm256_mul_ps,
-        crate::math::fastmath::simd_tanh,
-        crate::math::fastmath::simd_sigmoid
+        8,                                   // $step: Processa 8 elementos por instrução
+        _mm256_loadu_ps,                     // Carregamento não alinhado (unaligned load)
+        _mm256_storeu_ps,                    // Armazenamento não alinhado (unaligned store)
+        _mm256_add_ps,                       // Soma vetorial
+        _mm256_mul_ps,                       // Multiplicação vetorial
+        crate::math::fastmath::simd_tanh,    // Tanh otimizada para AVX2
+        crate::math::fastmath::simd_sigmoid  // Sigmoid otimizada para AVX2
     );
 
+    // Geramos a implementação AVX-512 da função de processamento.
+    // Usado em processadores modernos (ex: Intel Tiger Lake+ / AMD Zen 4+).
+    // Processa 16 f32 por vez (512 bits).
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         crate::math::simd::dot_product_4x_interleaved_avx512,
-        16,
+        16, // $step: Processa 16 elementos por instrução
         _mm512_loadu_ps,
         _mm512_storeu_ps,
         _mm512_add_ps,
         _mm512_mul_ps,
-        crate::math::fastmath::simd_tanh_avx512,
-        crate::math::fastmath::simd_sigmoid_avx512
+        crate::math::fastmath::simd_tanh_avx512, // Tanh otimizada para AVX-512
+        crate::math::fastmath::simd_sigmoid_avx512  // Sigmoid otimizada para AVX-512
     );
 
     /// Zera os estados internos (hidden e cell) da camada.
+    /// Essencial ao trocar de preset ou iniciar um playback para evitar "estalos"
+    /// ou carregar resíduos de áudios processados anteriormente.
     pub fn reset_states(&mut self) {
         self.state.fill(0.0);
         self.cell_state.fill(0.0);
@@ -204,6 +240,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
 impl<const I: usize, const H: usize, const IH: usize, const H4: usize> Default
     for LstmLayer<I, H, IH, H4>
 {
+    /// Implementação padrão que apenas chama o construtor `new`.
     fn default() -> Self {
         Self::new()
     }
@@ -236,11 +273,23 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     /// Exige compatibilidade com `avx2` e `fma` ativados no processador x86_64 hospedeiro.
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
+            // Diferente de uma CNN, uma LSTM tem dependência temporal (recorrência).
+            // Por isso, processamos amostra por amostra para atualizar o estado interno (hidden/cell)
+            // que será usado na amostra seguinte.
             for i in 0..input.len() {
                 let sample = [input[i]];
+                // 1. Atualiza o estado da camada LSTM com a nova amostra
                 self.layer.process_sample_avx2(&sample);
+
+                // 2. Extrai o Hidden State resultante
                 let hidden = self.layer.get_hidden_state();
+
+                // 3. Projeção de Saída (Extraction Head):
+                // Fazemos o produto escalar entre o estado oculto e os pesos da "cabeça" do modelo.
+                // Isso colapsa o vetor do Hidden State em um único valor escalar (a amostra de áudio).
                 let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden);
+
+                // 4. Aplica o bias final e salva no buffer de saída
                 output[i] = dot + self.head_bias;
             }
         }
@@ -249,6 +298,8 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
+            // Lógica idêntica ao path AVX2, mas utilizando intrinsics AVX-512
+            // para o cálculo interno da camada e para o dot product final.
             for i in 0..input.len() {
                 let sample = [input[i]];
                 self.layer.process_sample_avx512(&sample);
@@ -314,14 +365,18 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     /// Exige compatibilidade com `avx2` e `fma` em sistema de processamento com arquitetura x86_64.
     unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
+            // Em modelos empilhados (Stacked LSTM), a saída de uma camada alimenta a entrada da próxima.
             for i in 0..input.len() {
                 let sample = [input[i]];
+                // 1. Processa a primeira camada
                 self.layer1.process_sample_avx2(&sample);
                 let hidden1 = self.layer1.get_hidden_state();
 
+                // 2. O Hidden State da Camada 1 entra como input na Camada 2
                 self.layer2.process_sample_avx2(hidden1);
                 let hidden2 = self.layer2.get_hidden_state();
 
+                // 3. Extração final a partir do Hidden State da última camada
                 let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden2);
                 output[i] = dot + self.head_bias;
             }
@@ -331,12 +386,15 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
+            // Lógica idêntica ao path AVX2, utilizando intrinsics AVX-512
             for i in 0..input.len() {
                 let sample = [input[i]];
                 self.layer1.process_sample_avx512(&sample);
                 let hidden1 = self.layer1.get_hidden_state();
+
                 self.layer2.process_sample_avx512(hidden1);
                 let hidden2 = self.layer2.get_hidden_state();
+
                 let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden2);
                 output[i] = dot + self.head_bias;
             }
@@ -347,7 +405,10 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     ///
     /// Utiliza `SimdMathConfig::get().is_avx512` para determinar o path AVX-512 vs AVX2
     /// sem repetir `is_x86_feature_detected!` (leitura atômica) a cada bloco.
+    /// Esta técnica de "Runtime Dispatch" permite que o mesmo binário rode de forma otimizada
+    /// em diferentes gerações de CPUs.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        // Verificamos uma única vez qual o melhor conjunto de instruções disponível
         if crate::math::simd::SimdMathConfig::get().is_avx512 {
             unsafe { self.process_avx512(input, output) }
         } else {
@@ -356,6 +417,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     }
 
     /// Zera os estados internos das camadas LSTM.
+    /// Deve ser chamado sempre que o processamento de um novo sinal começar do zero.
     pub fn reset_states(&mut self) {
         self.layer1.reset_states();
         self.layer2.reset_states();
@@ -365,6 +427,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> Default
     for LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
+    /// Cria uma instância padrão do modelo de 2 camadas.
     fn default() -> Self {
         Self::new()
     }

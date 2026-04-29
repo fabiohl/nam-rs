@@ -5,6 +5,8 @@
 mod tests {
     use crate::models::lstm::*;
 
+    // Verifica se os buffers internos (gates e state) são alocados com o tamanho
+    // correto baseado nos parâmetros de Const Generics.
     #[test]
     fn test_lstm_model1_allocation() {
         let model: LstmModel1<8, 9, 32> = LstmModel1::new();
@@ -12,6 +14,7 @@ mod tests {
         assert_eq!(model.layer.state.len(), 9);
     }
 
+    // Verifica a alocação em um modelo de duas camadas (LstmModel2).
     #[test]
     fn test_lstm_model2_allocation() {
         let model: LstmModel2<16, 17, 32, 64> = LstmModel2::new();
@@ -19,6 +22,8 @@ mod tests {
         assert_eq!(model.layer2.input_hidden_weights[0].len(), 32);
     }
 
+    // Teste de sanidade básica: processa alguns valores e garante que a saída
+    // não contém valores inválidos (NaN ou Infinito).
     #[test]
     fn test_lstm_model1_process_zeros() {
         {
@@ -34,6 +39,8 @@ mod tests {
         }
     }
 
+    // Garante que o processamento é determinístico: a mesma entrada deve
+    // sempre produzir a mesma saída se o estado inicial for igual.
     #[test]
     fn test_lstm_model2_process_deterministic() {
         {
@@ -59,6 +66,8 @@ mod tests {
         }
     }
 
+    // Valida se o layout de memória das portas LSTM [I, F, C, O] segue a ordem
+    // esperada para que as otimizações SIMD funcionem corretamente.
     #[test]
     fn test_lstm_gate_order_consistency() {
         // Valida que o layout [i|f|g|o] no offset [0, H, 2H, 3H] é respeitado.
@@ -68,6 +77,8 @@ mod tests {
         assert_eq!(model.layer.input_hidden_weights[0].len(), 9); // IH = I + H = 1 + 8 = 9
     }
 
+    // Verifica se o estado interno (memória) da LSTM evolui conforme processamos dados.
+    // O estado oculto após 10 amostras deve ser diferente do estado após 1 amostra.
     #[test]
     fn test_lstm_state_evolution() {
         let mut model: LstmModel1<8, 9, 32> = LstmModel1::new();
@@ -105,6 +116,9 @@ mod tests {
         }
     }
 
+    // TESTE CRÍTICO: Garante que o resultado é o mesmo independentemente do tamanho
+    // do bloco processado (ex: processar 64 amostras de uma vez ou 64 vezes uma amostra).
+    // Isso é vital para garantir que o áudio não mude se o driver mudar o tamanho do buffer.
     #[test]
     fn test_lstm_variable_block_sizes() {
         let mut input = [0.0f32; 64];
@@ -155,6 +169,7 @@ mod tests {
         }
     }
 
+    // Verifica se as funções de reset e prewarm estão limpando os estados corretamente.
     #[test]
     fn test_lstm_reset_on_prewarm() {
         use crate::models::NamModel; // trait
