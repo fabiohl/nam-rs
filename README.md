@@ -1,4 +1,4 @@
-# 🎸 NAM-rs
+# 🎸 NAM-rs 1.0
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
@@ -6,7 +6,7 @@ O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodel
 
 Nesta versão 1.x ele foca em rodar em modo standalone. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
 
-O motor de inferência é uma transposição otimizada da biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático.
+O motor de inferência é muito baseado na biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático e com muitas otimizações feitas sob medida.
 
 Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux.
 
@@ -18,7 +18,7 @@ Caprichei na busca intensiva pelo estado da arte em matéria de otimização! Is
 
 In version 1.x, the focus is on standalone mode. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. My intention was to test the technology quickly without spending time on more complex abstractions.
 
-The inference engine is an optimized port of Mike Oliphant’s [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, rewritten from scratch in native, idiomatic Rust.
+The inference engine is pretty much based from Mike Oliphant’s [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, rewritten from scratch in native, idiomatic Rust and with lots of optimizations.
 
 It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features.
 
@@ -50,7 +50,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 * Utilitários do Cargo (necessários para QA): `cargo install cargo-mutants cargo-edit`
 
 * Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
-  
+
   1. `sudo usermod -aG audio $USER`
   2. Crie ou edite o arquivo de limites (ex: `sudo nano /etc/security/limits.d/audio.conf`):
 
