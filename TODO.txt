@@ -1,1 +1,0 @@
-# Leitura/revisão final do código-fonte; Release 1.0 (Git Tag).

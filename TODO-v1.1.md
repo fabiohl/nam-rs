@@ -1,4 +1,4 @@
-# 🚀 Backlog do Produto — Versão 1.1 (Próxima Temporada)
+# 🚀 Backlog do Produto — Versão 1.1
 
 ## 📊 Dashboard de Prioridades (Quick View)
 
