@@ -16,7 +16,7 @@ use crate::models::wavenet::WaveNetLayerState;
 #[derive(Clone)]
 pub struct Conv1dDyn {
     /// Pesos da convolução arranjados contiguamente.
-    pub weights: Vec<f32>,
+    pub weights: Vec<u16>,
     /// Vetor de bias somado aos canais de saída.
     pub bias: Vec<f32>,
     /// Flag indicando se o bias deve ser aplicado.
@@ -250,7 +250,7 @@ impl Conv1dDyn {
 #[derive(Clone)]
 pub struct DenseLayerDyn {
     /// Matriz densa de pesos `[Output][Input]`.
-    pub weights: Vec<f32>,
+    pub weights: Vec<u16>,
     /// Bias unificado somado a saída.
     pub bias: Vec<f32>,
     /// Flag ativando bias.

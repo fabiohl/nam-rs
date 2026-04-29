@@ -20,7 +20,7 @@ use core::arch::x86_64::*;
 /// * `H4` = 4 * Hidden Size
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
     /// Matriz 3D agregada contendo os pesos interfolhados horizontalmente [I, F, C, O] por neurônio e entrada.
-    pub input_hidden_weights: [[[f32; 4]; IH]; H],
+    pub input_hidden_weights: [[[u16; 4]; IH]; H],
     /// Bias lineares extraídos do modelo (tamanho `4 * Hidden`).
     pub bias: [f32; H4],
     /// Estado global contendo [Input | Hidden].
@@ -180,7 +180,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// o que é vital para performance e previsibilidade em tempo real.
     pub fn new() -> Self {
         Self {
-            input_hidden_weights: [[[0.0; 4]; IH]; H],
+            input_hidden_weights: [[[0u16; 4]; IH]; H],
             bias: [0.0; H4],
             state: [0.0; IH],
             cell_state: [0.0; H],
@@ -277,7 +277,7 @@ pub struct LstmModel1<const H: usize, const H1_IH: usize, const H_H4: usize> {
     /// Camada única da malha.
     pub layer: LstmLayer<1, H, H1_IH, H_H4>,
     /// Pesos de extração direcional (Cabeça).
-    pub head_weights: [f32; H],
+    pub head_weights: [u16; H],
     /// Bias escalar da projeção de saída (cabeça linear).
     pub head_bias: f32,
 }
@@ -287,7 +287,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     pub fn new() -> Self {
         Self {
             layer: LstmLayer::new(),
-            head_weights: [0.0; H],
+            head_weights: [0u16; H],
             head_bias: 0.0,
         }
     }
@@ -313,7 +313,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 // 3. Projeção de Saída (Extraction Head):
                 // Fazemos o produto escalar entre o estado oculto e os pesos da "cabeça" do modelo.
                 // Isso colapsa o vetor do Hidden State em um único valor escalar (a amostra de áudio).
-                let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden);
+                let dot = crate::math::simd::dot_product_avx2(hidden, &self.head_weights);
 
                 // 4. Aplica o bias final e salva no buffer de saída
                 output[i] = dot + self.head_bias;
@@ -330,7 +330,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 let sample = [input[i]];
                 self.layer.process_sample_avx512(&sample);
                 let hidden = self.layer.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden);
+                let dot = crate::math::simd::dot_product_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }
@@ -343,7 +343,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 let sample = [input[i]];
                 self.layer.process_sample_avx2vnni(&sample);
                 let hidden = self.layer.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden);
+                let dot = crate::math::simd::dot_product_avx2(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }
@@ -356,7 +356,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 let sample = [input[i]];
                 self.layer.process_sample_avx512vnni(&sample);
                 let hidden = self.layer.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden);
+                let dot = crate::math::simd::dot_product_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }
@@ -396,7 +396,7 @@ pub struct LstmModel2<const H: usize, const H1_IH: usize, const H2_IH: usize, co
     /// Segunda camada da cadeia em profundidade.
     pub layer2: LstmLayer<H, H, H2_IH, H_H4>,
     /// Pesos densos para colapso de saída auditiva final.
-    pub head_weights: [f32; H],
+    pub head_weights: [u16; H],
     /// Constante bias para modulação de gain-staging global da malha empilhada.
     pub head_bias: f32,
 }
@@ -409,7 +409,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         Self {
             layer1: LstmLayer::new(),
             layer2: LstmLayer::new(),
-            head_weights: [0.0; H],
+            head_weights: [0u16; H],
             head_bias: 0.0,
         }
     }
@@ -432,7 +432,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 let hidden2 = self.layer2.get_hidden_state();
 
                 // 3. Extração final a partir do Hidden State da última camada
-                let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden2);
+                let dot = crate::math::simd::dot_product_avx2(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }
@@ -450,7 +450,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 self.layer2.process_sample_avx512(hidden1);
                 let hidden2 = self.layer2.get_hidden_state();
 
-                let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden2);
+                let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }
@@ -467,7 +467,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 self.layer2.process_sample_avx2vnni(hidden1);
                 let hidden2 = self.layer2.get_hidden_state();
 
-                let dot = crate::math::simd::dot_product_avx2(&self.head_weights, hidden2);
+                let dot = crate::math::simd::dot_product_avx2(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }
@@ -484,7 +484,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 self.layer2.process_sample_avx512vnni(hidden1);
                 let hidden2 = self.layer2.get_hidden_state();
 
-                let dot = crate::math::simd::dot_product_avx512(&self.head_weights, hidden2);
+                let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
             }
         }

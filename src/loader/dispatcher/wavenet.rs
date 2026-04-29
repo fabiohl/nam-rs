@@ -320,12 +320,12 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
     // que não é a melhor para o Rust processar áudio em tempo real.
     // Nós "embaralhamos" os dados aqui para que o processador possa ler os
     // números em sequência perfeita durante o processamento, o que é muito mais rápido.
-    let mut weights = vec![0.0f32; total];
+    let mut weights = vec![0u16; total];
     let mut idx = 0;
     for out_c in 0..OUT {
         for in_c in 0..IN {
             for k in 0..K {
-                weights[out_c * K * IN + k * IN + in_c] = raw[idx];
+                weights[out_c * K * IN + k * IN + in_c] = half::f16::from_f32(raw[idx]).to_bits();
                 idx += 1;
             }
         }
@@ -352,7 +352,11 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     cursor: &mut WeightCursor<'_>,
     do_bias: bool,
 ) -> anyhow::Result<DenseLayer<IN, OUT>> {
-    let weights = cursor.read_slice(OUT * IN)?.to_vec();
+    let raw_weights = cursor.read_slice(OUT * IN)?;
+    let mut weights = vec![0u16; OUT * IN];
+    for i in 0..OUT * IN {
+        weights[i] = half::f16::from_f32(raw_weights[i]).to_bits();
+    }
 
     let bias = if do_bias {
         cursor.read_slice(OUT)?.to_vec()
@@ -377,12 +381,13 @@ fn read_conv1d_weights_dyn(
     let total = out_size * in_size * k;
     let raw = cursor.read_slice(total)?;
 
-    let mut weights = vec![0.0f32; total];
+    let mut weights = vec![0u16; total];
     let mut idx = 0;
     for out_c in 0..out_size {
         for in_c in 0..in_size {
             for step in 0..k {
-                weights[out_c * k * in_size + step * in_size + in_c] = raw[idx];
+                weights[out_c * k * in_size + step * in_size + in_c] =
+                    half::f16::from_f32(raw[idx]).to_bits();
                 idx += 1;
             }
         }
@@ -411,7 +416,11 @@ fn read_dense_layer_dyn(
     out_size: usize,
     do_bias: bool,
 ) -> anyhow::Result<DenseLayerDyn> {
-    let weights = cursor.read_slice(out_size * in_size)?.to_vec();
+    let raw_weights = cursor.read_slice(out_size * in_size)?;
+    let mut weights = vec![0u16; out_size * in_size];
+    for i in 0..out_size * in_size {
+        weights[i] = half::f16::from_f32(raw_weights[i]).to_bits();
+    }
 
     let bias = if do_bias {
         cursor.read_slice(out_size)?.to_vec()

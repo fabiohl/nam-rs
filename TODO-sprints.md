@@ -40,7 +40,7 @@
 - **Nota (Pós-T1):** A abstração de despacho SIMD (`dispatch_simd!`) foi implementada com sucesso e provou que é possível eliminar o overhead de chamadas dinâmicas no kernel de math. Na T2, ao migrar de `Box<dyn DynamicModel>` para um `enum`, a transição entre as variantes do enum deve ocorrer no limite mais alto possível do loop de áudio para maximizar o inlining, combinando perfeitamente com o despacho estático das instruções SIMD já consolidado.
 - **Tags:** #simd #rust #performance
 
-### [T3] SIMD F16C Weight Compression (VNNI-like)
+### [T3] SIMD F16C Weight Compression (VNNI-like) [Concluido]
 
 - **Problema:** Gargalo de Memory Bound (L1 Cache Misses) em redes grandes.
 - **Solução:** Implementar compressão f16 in-memory com expansão on-the-fly usando `_mm256_cvtph_ps`.

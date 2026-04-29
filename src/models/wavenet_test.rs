@@ -30,7 +30,7 @@ mod tests {
                 conv1d: Conv1d {
                     // Dimensões: OUT * K * IN = 4 * 3 * 4.
                     // Aqui, IN=CH pois a camada recebe o sinal das camadas anteriores.
-                    weights: vec![0.01; 4 * 3 * 4],
+                    weights: vec![half::f16::from_f32(0.01).to_bits(); 4 * 3 * 4],
                     bias: vec![0.0; 4],
                     do_bias: false,
                     dilation,
@@ -38,14 +38,14 @@ mod tests {
                 // O input_mixin injeta o condicionamento (ex: metadados do timbre) no sinal.
                 // Dimensões: OUT * IN = 4 * 1.
                 input_mixin: DenseLayer {
-                    weights: vec![0.01; 4],
+                    weights: vec![half::f16::from_f32(0.01).to_bits(); 4],
                     bias: vec![0.0; 4],
                     do_bias: false,
                 },
                 // A projeção 1x1 (Dense) finaliza a célula, preparando o sinal para o residual.
                 // Dimensões: OUT * IN = 4 * 4.
                 one_by_one: DenseLayer {
-                    weights: vec![0.01; 4 * 4],
+                    weights: vec![half::f16::from_f32(0.01).to_bits(); 4 * 4],
                     bias: vec![0.0; 4],
                     do_bias: false,
                 },
@@ -60,20 +60,20 @@ mod tests {
             WaveNetLayer {
                 conv1d: Conv1d {
                     // Dimensões: OUT * K * IN = 2 * 3 * 2.
-                    weights: vec![0.01; 2 * 3 * 2],
+                    weights: vec![half::f16::from_f32(0.01).to_bits(); 2 * 3 * 2],
                     bias: vec![0.0; 2],
                     do_bias: false,
                     dilation,
                 },
                 input_mixin: DenseLayer {
                     // Dimensões: OUT * IN = 2 * 1.
-                    weights: vec![0.01; 2],
+                    weights: vec![half::f16::from_f32(0.01).to_bits(); 2],
                     bias: vec![0.0; 2],
                     do_bias: false,
                 },
                 one_by_one: DenseLayer {
                     // Dimensões: OUT * IN = 2 * 2.
-                    weights: vec![0.01; 2 * 2],
+                    weights: vec![half::f16::from_f32(0.01).to_bits(); 2 * 2],
                     bias: vec![0.0; 2],
                     do_bias: false,
                 },
@@ -104,13 +104,13 @@ mod tests {
             states: states_1,
             // Rechannel: Projeta a entrada bruta (Mono/Stereo) para a dimensão interna (Channels).
             rechannel: DenseLayer {
-                weights: vec![0.01; 4],
+                weights: vec![half::f16::from_f32(0.01).to_bits(); 4],
                 bias: vec![0.0; 4],
                 do_bias: false,
             },
             // Head Rechannel: Agrega as "skip connections" de todas as camadas para a saída do array.
             head_rechannel: DenseLayer {
-                weights: vec![0.01; 2 * 4],
+                weights: vec![half::f16::from_f32(0.01).to_bits(); 2 * 4],
                 bias: vec![0.0; 2],
                 do_bias: false,
             },
@@ -135,13 +135,13 @@ mod tests {
             states: states_2,
             // Projeta a saída do Array 1 (HEAD1=2) para a dimensão do Array 2 (CH2=2).
             rechannel: DenseLayer {
-                weights: vec![0.01; 4 * 2],
+                weights: vec![half::f16::from_f32(0.01).to_bits(); 4 * 2],
                 bias: vec![0.0; 2],
                 do_bias: false,
             },
             // A projeção final do modelo NAM reduz tudo para 1 canal (áudio mono).
             head_rechannel: DenseLayer {
-                weights: vec![0.01; 2],
+                weights: vec![half::f16::from_f32(0.01).to_bits(); 2],
                 bias: vec![0.0; 1],
                 do_bias: true, // Habilitamos bias na saída final para DC offset Correction.
             },
@@ -276,9 +276,9 @@ mod tests {
     fn test_conv1d_identity_kernel() {
         // Criamos uma matriz de pesos 4x4 (achatada para 16 floats).
         // Ao preencher apenas a diagonal principal com 1.0, criamos um "Kernel Identidade".
-        let mut weights = vec![0.0; 16]; // OUT=4 * K=1 * IN=4
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 16]; // OUT=4 * K=1 * IN=4
         for i in 0..4 {
-            weights[i * 4 + i] = 1.0;
+            weights[i * 4 + i] = half::f16::from_f32(1.0).to_bits();
         }
 
         // Instanciamos a Convolução 1D sem bias e com dilatação 1 (processamento linear).
@@ -311,9 +311,9 @@ mod tests {
     #[test]
     fn test_conv1d_with_bias() {
         // Novamente, usamos um kernel identidade para isolar o efeito do Bias.
-        let mut weights = vec![0.0; 16];
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 16];
         for i in 0..4 {
-            weights[i * 4 + i] = 1.0;
+            weights[i * 4 + i] = half::f16::from_f32(1.0).to_bits();
         }
 
         // Configuramos a camada com Bias de 0.5 em todos os canais de saída.
@@ -346,9 +346,9 @@ mod tests {
     #[test]
     fn test_conv1d_dilation() {
         // Configuramos pesos unitários (1.0) para somar todos os inputs diretamente.
-        let mut weights = vec![0.0; 2 * 3 * 2]; // OUT=2 * K=3 * IN=2
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 2 * 3 * 2]; // OUT=2 * K=3 * IN=2
         for i in 0..12 {
-            weights[i] = 1.0;
+            weights[i] = half::f16::from_f32(1.0).to_bits();
         }
 
         // Definimos dilation: 2. Isso fará o kernel "saltar" um frame a cada tap.
@@ -397,9 +397,9 @@ mod tests {
     #[test]
     fn test_conv1d_zero_input() {
         // Pesos extremamente altos para testar se qualquer ruído residual é amplificado.
-        let mut weights = vec![0.0; 2 * 3 * 2];
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 2 * 3 * 2];
         for i in 0..12 {
-            weights[i] = 100.0;
+            weights[i] = half::f16::from_f32(100.0).to_bits();
         }
 
         let mut conv = Conv1d::<2, 2, 3> {
@@ -441,15 +441,15 @@ mod tests {
     fn test_conv1d_known_output() {
         // Matriz de pesos heterogênea para validar o cruzamento de canais (Dot Product).
         // Estrutura: OUT=2, K=2, IN=2. Total 8 pesos.
-        let mut weights = vec![0.0; 2 * 2 * 2];
-        weights[0] = 0.5;
-        weights[1] = 1.0; // out0, k0
-        weights[2] = 1.5;
-        weights[3] = 2.0; // out0, k1
-        weights[4] = -0.5;
-        weights[5] = -1.0; // out1, k0
-        weights[6] = -1.5;
-        weights[7] = -2.0; // out1, k1
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 2 * 2 * 2];
+        weights[0] = half::f16::from_f32(0.5).to_bits();
+        weights[1] = half::f16::from_f32(1.0).to_bits(); // out0, k0
+        weights[2] = half::f16::from_f32(1.5).to_bits();
+        weights[3] = half::f16::from_f32(2.0).to_bits(); // out0, k1
+        weights[4] = half::f16::from_f32(-0.5).to_bits();
+        weights[5] = half::f16::from_f32(-1.0).to_bits(); // out1, k0
+        weights[6] = half::f16::from_f32(-1.5).to_bits();
+        weights[7] = half::f16::from_f32(-2.0).to_bits(); // out1, k1
 
         let conv = Conv1d::<2, 2, 2> {
             weights,
@@ -481,9 +481,9 @@ mod tests {
     #[test]
     fn test_dense_layer_identity() {
         // Matriz de pesos 4x4 Identity.
-        let mut weights = vec![0.0; 16]; // OUT=4 * IN=4
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 16]; // OUT=4 * IN=4
         for out_c in 0..4 {
-            weights[out_c * 4 + out_c] = 1.0;
+            weights[out_c * 4 + out_c] = half::f16::from_f32(1.0).to_bits();
         }
 
         let dense = DenseLayer::<4, 4> {
@@ -508,9 +508,9 @@ mod tests {
     #[test]
     fn test_dense_layer_with_bias() {
         // Pesos identidade + Bias de 1.0.
-        let mut weights = vec![0.0; 16];
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 16];
         for out_c in 0..4 {
-            weights[out_c * 4 + out_c] = 1.0;
+            weights[out_c * 4 + out_c] = half::f16::from_f32(1.0).to_bits();
         }
 
         let dense = DenseLayer::<4, 4> {
@@ -540,21 +540,21 @@ mod tests {
     fn test_dense_layer_rectangular() {
         // Matriz Assimétrica: IN=8, OUT=4.
         // Em modelos reais, isso acontece ao projetar CH (ex: 16) para HEAD (ex: 8).
-        let mut weights = vec![0.0; 32]; // 4 * 8
+        let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 32]; // 4 * 8
 
         // out_c = 0: Soma ponderada de in[0] e in[1]
-        weights[0] = 1.0;
-        weights[1] = 2.0;
+        weights[0] = half::f16::from_f32(1.0).to_bits();
+        weights[1] = half::f16::from_f32(2.0).to_bits();
 
         // out_c = 1: Soma ponderada de in[2] e in[3]
-        weights[10] = 3.0;
-        weights[11] = 4.0;
+        weights[10] = half::f16::from_f32(3.0).to_bits();
+        weights[11] = half::f16::from_f32(4.0).to_bits();
 
         // out_c = 2: Escala simples de in[4]
-        weights[20] = 0.5;
+        weights[20] = half::f16::from_f32(0.5).to_bits();
 
         // out_c = 3: Inversão de fase de in[7]
-        weights[31] = -1.0;
+        weights[31] = half::f16::from_f32(-1.0).to_bits();
 
         let dense = DenseLayer::<8, 4> {
             weights,

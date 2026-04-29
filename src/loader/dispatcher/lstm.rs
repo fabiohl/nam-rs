@@ -69,8 +69,10 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
 
     // Head: pesos da projeção linear de saída
     let head_weights_data = cursor.read_slice(H)?;
-    let mut head_weights = [0.0f32; H];
-    head_weights.copy_from_slice(head_weights_data);
+    let mut head_weights = [0u16; H];
+    for i in 0..H {
+        head_weights[i] = half::f16::from_f32(head_weights_data[i]).to_bits();
+    }
     let head_bias = cursor.read_f32()?;
 
     cursor.verify_exhausted()?;
@@ -111,8 +113,10 @@ pub(crate) fn build_lstm_2layer<
 
     // Head: pesos da projeção final
     let head_weights_data = cursor.read_slice(H)?;
-    let mut head_weights = [0.0f32; H];
-    head_weights.copy_from_slice(head_weights_data);
+    let mut head_weights = [0u16; H];
+    for i in 0..H {
+        head_weights[i] = half::f16::from_f32(head_weights_data[i]).to_bits();
+    }
     let head_bias = cursor.read_f32()?;
 
     cursor.verify_exhausted()?;
@@ -158,7 +162,7 @@ pub fn build_lstm_dynamic(
             cursor.read_slice(hidden_size * 4 * (current_input_size + hidden_size))?;
 
         let ih = current_input_size + hidden_size;
-        let mut input_hidden_weights = vec![0.0; raw_weights.len()];
+        let mut input_hidden_weights = vec![0u16; raw_weights.len()];
 
         // Aqui fazemos uma "mágica" técnica: os pesos vêm organizados em blocos grandes,
         // mas para o computador processar rápido (4 de uma vez), nós os reorganizamos
@@ -166,13 +170,14 @@ pub fn build_lstm_dynamic(
         // diferentes e montá-los em uma sequência 1,2,3,4, 1,2,3,4...
         for i in 0..hidden_size {
             for j in 0..ih {
-                input_hidden_weights[(i * ih + j) * 4] = raw_weights[i * ih + j];
+                input_hidden_weights[(i * ih + j) * 4] =
+                    half::f16::from_f32(raw_weights[i * ih + j]).to_bits();
                 input_hidden_weights[(i * ih + j) * 4 + 1] =
-                    raw_weights[(i + hidden_size) * ih + j];
+                    half::f16::from_f32(raw_weights[(i + hidden_size) * ih + j]).to_bits();
                 input_hidden_weights[(i * ih + j) * 4 + 2] =
-                    raw_weights[(i + 2 * hidden_size) * ih + j];
+                    half::f16::from_f32(raw_weights[(i + 2 * hidden_size) * ih + j]).to_bits();
                 input_hidden_weights[(i * ih + j) * 4 + 3] =
-                    raw_weights[(i + 3 * hidden_size) * ih + j];
+                    half::f16::from_f32(raw_weights[(i + 3 * hidden_size) * ih + j]).to_bits();
             }
         }
 
@@ -206,7 +211,11 @@ pub fn build_lstm_dynamic(
 
     // A "Head" (cabeça) é o estágio final. Ela pega toda a memória acumulada
     // e a transforma de volta em um único valor de volume de som (amostra de áudio).
-    let head_weights = cursor.read_slice(hidden_size)?.to_vec();
+    let raw_head_weights = cursor.read_slice(hidden_size)?;
+    let mut head_weights = vec![0u16; hidden_size];
+    for i in 0..hidden_size {
+        head_weights[i] = half::f16::from_f32(raw_head_weights[i]).to_bits();
+    }
     let head_bias = cursor.read_f32()?;
 
     // Verifica se lemos exatamente tudo o que precisávamos, sem sobrar nada.
@@ -249,10 +258,14 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
     let raw_weights = cursor.read_slice(H4 * IH)?;
     for i in 0..H {
         for j in 0..IH {
-            layer.input_hidden_weights[i][j][0] = raw_weights[i * IH + j];
-            layer.input_hidden_weights[i][j][1] = raw_weights[(i + H) * IH + j];
-            layer.input_hidden_weights[i][j][2] = raw_weights[(i + 2 * H) * IH + j];
-            layer.input_hidden_weights[i][j][3] = raw_weights[(i + 3 * H) * IH + j];
+            layer.input_hidden_weights[i][j][0] =
+                half::f16::from_f32(raw_weights[i * IH + j]).to_bits();
+            layer.input_hidden_weights[i][j][1] =
+                half::f16::from_f32(raw_weights[(i + H) * IH + j]).to_bits();
+            layer.input_hidden_weights[i][j][2] =
+                half::f16::from_f32(raw_weights[(i + 2 * H) * IH + j]).to_bits();
+            layer.input_hidden_weights[i][j][3] =
+                half::f16::from_f32(raw_weights[(i + 3 * H) * IH + j]).to_bits();
         }
     }
 

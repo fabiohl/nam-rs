@@ -20,7 +20,7 @@ pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
 #[derive(Clone)]
 pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     /// Matriz achatada de pesos do tamanho OUT * K * IN.
-    pub weights: Vec<f32>,
+    pub weights: Vec<u16>,
     /// Viés causal, atrelado se do_bias for verdadeiro. Total: OUT.
     pub bias: Vec<f32>,
     /// Determina se o array de bias deve ser somado.
@@ -164,7 +164,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 #[derive(Clone)]
 pub struct DenseLayer<const IN: usize, const OUT: usize> {
     /// Matriz de pesos lineares (OUT * IN).
-    pub weights: Vec<f32>,
+    pub weights: Vec<u16>,
     /// Condição temporal para o deslocador de tensor bias.
     pub bias: Vec<f32>,
     /// Determina se o array de bias deve ser somado.

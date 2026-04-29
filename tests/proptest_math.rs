@@ -103,7 +103,8 @@ proptest! {
     }
     #[test]
     fn prop_dot_product_avx2_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
-        let simd_result = unsafe { dot_product_avx2(&vec_a, &vec_b) };
+        let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| half::f16::from_f32(v).to_bits()).collect();
+        let simd_result = unsafe { dot_product_avx2(&vec_a, &vec_b_u16) };
 
         // Usamos f64 como "ground truth" porque a acumulação f32 iterativa perde precisão.
         // O SIMD usa FMA que possui precisão interna maior antes de arredondar.
@@ -111,7 +112,7 @@ proptest! {
         let l1_norm: f64 = vec_a.iter().zip(vec_b.iter()).map(|(&x, &y)| ((x as f64) * (y as f64)).abs()).sum();
 
         let error = (simd_result as f64 - scalar_result).abs();
-        let threshold = 1e-5 * l1_norm.max(1.0); // Erro escalado pelo L1 norm evita falso positivo por cancelamento
+        let threshold = 1e-2 * l1_norm.max(1.0); // Erro escalado pelo L1 norm evita falso positivo por cancelamento; 1e-2 para comportar a precisão f16c
 
         assert!(
             error <= threshold,
@@ -125,12 +126,13 @@ proptest! {
     #[test]
     fn prop_dot_product_avx512_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
         if std::is_x86_feature_detected!("avx512f") {
-            let simd_result = unsafe { dot_product_avx512(&vec_a, &vec_b) };
+            let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| half::f16::from_f32(v).to_bits()).collect();
+        let simd_result = unsafe { dot_product_avx512(&vec_a, &vec_b_u16) };
 
             let scalar_result: f64 = vec_a.iter().zip(vec_b.iter()).map(|(&x, &y)| (x as f64) * (y as f64)).sum();
 
             let error = (simd_result as f64 - scalar_result).abs();
-            let threshold = (1e-5 * scalar_result.abs()).max(1e-5); // Tolerância para cancelamento catastrófico
+            let threshold = (1e-2 * scalar_result.abs()).max(1e-2); // Tolerância F16C para cancelamento catastrófico
 
             assert!(
                 error <= threshold,

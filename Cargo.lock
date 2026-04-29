@@ -506,6 +506,7 @@ dependencies = [
  "anyhow",
  "criterion",
  "env_logger",
+ "half",
  "lexopt",
  "libc",
  "log",

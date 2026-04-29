@@ -341,18 +341,18 @@ fn make_wavenet_layer(
 ) -> wavenet::WaveNetLayer<1, 16, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
-            weights: vec![0.001; ch * 3 * ch],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); ch * 3 * ch],
             bias: vec![0.0; ch],
             do_bias: false,
             dilation,
         },
         input_mixin: wavenet::DenseLayer {
-            weights: vec![0.001; ch],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); ch],
             bias: vec![0.0; ch],
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
-            weights: vec![0.001; ch * ch],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); ch * ch],
             bias: vec![0.0; ch],
             do_bias: false,
         },
@@ -363,18 +363,18 @@ fn make_wavenet_layer(
 fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
-            weights: vec![0.001; 8 * 3 * 8],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); 8 * 3 * 8],
             bias: vec![0.0; 8],
             do_bias: false,
             dilation,
         },
         input_mixin: wavenet::DenseLayer {
-            weights: vec![0.001; 8],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); 8],
             bias: vec![0.0; 8],
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
-            weights: vec![0.001; 8 * 8],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); 8 * 8],
             bias: vec![0.0; 8],
             do_bias: false,
         },
@@ -417,12 +417,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_1,
         states: states_1,
         rechannel: wavenet::DenseLayer {
-            weights: vec![0.001; 16],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); 16],
             bias: vec![0.0; 16],
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
-            weights: vec![0.001; 8 * 16],
+            weights: vec![half::f16::from_f32(0.001).to_bits(); 8 * 16],
             bias: vec![0.0; 8],
             do_bias: false,
         },
@@ -451,12 +451,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_2,
         states: states_2,
         rechannel: wavenet::DenseLayer {
-            weights: vec![0.0; 16 * 8],
+            weights: vec![half::f16::from_f32(0.0).to_bits(); 16 * 8],
             bias: vec![0.0; 8],
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
-            weights: vec![0.0; 8],
+            weights: vec![half::f16::from_f32(0.0).to_bits(); 8],
             bias: vec![0.0; 1],
             do_bias: true,
         },

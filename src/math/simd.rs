@@ -48,7 +48,8 @@ pub unsafe fn set_daz_ftz() {
 ///
 /// Para vetores curtos (H=8..16, típicos de LSTM/WaveNet NAM), o loop de 8-em-8
 /// com 2 acumuladores captura a maior parte do ganho sem overhead excessivo.
-pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
+#[target_feature(enable = "f16c")]
+pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
 
@@ -66,19 +67,19 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
             _mm_prefetch::<_MM_HINT_T0>(b.as_ptr().add(i + 32) as *const i8);
 
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
-            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
+            let vb0 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
             sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
 
             let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
-            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
+            let vb1 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 8) as *const __m128i));
             sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
 
             let va2 = _mm256_loadu_ps(a.as_ptr().add(i + 16));
-            let vb2 = _mm256_loadu_ps(b.as_ptr().add(i + 16));
+            let vb2 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 16) as *const __m128i));
             sum2 = _mm256_fmadd_ps(va2, vb2, sum2);
 
             let va3 = _mm256_loadu_ps(a.as_ptr().add(i + 24));
-            let vb3 = _mm256_loadu_ps(b.as_ptr().add(i + 24));
+            let vb3 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 24) as *const __m128i));
             sum3 = _mm256_fmadd_ps(va3, vb3, sum3);
 
             i += 32;
@@ -87,11 +88,11 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
         // Remainder: 8-em-8 com 2 acumuladores (vetores curtos H=8..16)
         while i + 16 <= len {
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
-            let vb0 = _mm256_loadu_ps(b.as_ptr().add(i));
+            let vb0 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
             sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
 
             let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
-            let vb1 = _mm256_loadu_ps(b.as_ptr().add(i + 8));
+            let vb1 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 8) as *const __m128i));
             sum1 = _mm256_fmadd_ps(va1, vb1, sum1);
 
             i += 16;
@@ -100,7 +101,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
         // Remainder: 8-em-8 simples
         while i + 8 <= len {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
-            let vb = _mm256_loadu_ps(b.as_ptr().add(i));
+            let vb = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
             sum0 = _mm256_fmadd_ps(va, vb, sum0);
             i += 8;
         }
@@ -123,7 +124,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
 
         // Loop tail escalar
         while i < len {
-            scalar_sum += a[i] * b[i];
+            scalar_sum += a[i] * half::f16::from_bits(b[i]).to_f32();
             i += 1;
         }
 
@@ -140,7 +141,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[f32]) -> f32 {
 /// processam 32 floats/iteração e são suficientes para saturar o pipeline
 /// AVX-512 (que tipicamente tem 1–2 FMA ports em Zen4/Sapphire Rapids).
 #[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
+pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
 
@@ -152,11 +153,11 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
         // Loop principal: 2×16 = 32 floats/iteração
         while i + 32 <= len {
             let va0 = _mm512_loadu_ps(a.as_ptr().add(i));
-            let vb0 = _mm512_loadu_ps(b.as_ptr().add(i));
+            let vb0 = _mm512_cvtph_ps(_mm256_loadu_si256(b.as_ptr().add(i) as *const __m256i));
             sum0 = _mm512_fmadd_ps(va0, vb0, sum0);
 
             let va1 = _mm512_loadu_ps(a.as_ptr().add(i + 16));
-            let vb1 = _mm512_loadu_ps(b.as_ptr().add(i + 16));
+            let vb1 = _mm512_cvtph_ps(_mm256_loadu_si256(b.as_ptr().add(i + 16) as *const __m256i));
             sum1 = _mm512_fmadd_ps(va1, vb1, sum1);
 
             i += 32;
@@ -165,7 +166,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
         // Remainder: 16-em-16
         while i + 16 <= len {
             let va = _mm512_loadu_ps(a.as_ptr().add(i));
-            let vb = _mm512_loadu_ps(b.as_ptr().add(i));
+            let vb = _mm512_cvtph_ps(_mm256_loadu_si256(b.as_ptr().add(i) as *const __m256i));
             sum0 = _mm512_fmadd_ps(va, vb, sum0);
             i += 16;
         }
@@ -176,7 +177,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
 
         // Loop tail escalar
         while i < len {
-            scalar_sum += a[i] * b[i];
+            scalar_sum += a[i] * half::f16::from_bits(b[i]).to_f32();
             i += 1;
         }
 
@@ -186,11 +187,12 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[f32]) -> f32 {
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
 /// Otimizado especificamente para as 4 portas do LSTM (Input, Forget, Cell, Output).
+#[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_avx2(
-    w0: &[f32],
-    w1: &[f32],
-    w2: &[f32],
-    w3: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
     state: &[f32],
 ) -> [f32; 4] {
     let len = state.len();
@@ -216,23 +218,23 @@ pub unsafe fn dot_product_4x_avx2(
             let vs_0 = _mm256_loadu_ps(state.as_ptr().add(i));
             let vs_1 = _mm256_loadu_ps(state.as_ptr().add(i + 8));
 
-            let vw0_0 = _mm256_loadu_ps(w0.as_ptr().add(i));
-            let vw0_1 = _mm256_loadu_ps(w0.as_ptr().add(i + 8));
+            let vw0_0 = _mm256_cvtph_ps(_mm_loadu_si128(w0.as_ptr().add(i) as *const __m128i));
+            let vw0_1 = _mm256_cvtph_ps(_mm_loadu_si128(w0.as_ptr().add(i + 8) as *const __m128i));
             sum0_0 = _mm256_fmadd_ps(vw0_0, vs_0, sum0_0);
             sum0_1 = _mm256_fmadd_ps(vw0_1, vs_1, sum0_1);
 
-            let vw1_0 = _mm256_loadu_ps(w1.as_ptr().add(i));
-            let vw1_1 = _mm256_loadu_ps(w1.as_ptr().add(i + 8));
+            let vw1_0 = _mm256_cvtph_ps(_mm_loadu_si128(w1.as_ptr().add(i) as *const __m128i));
+            let vw1_1 = _mm256_cvtph_ps(_mm_loadu_si128(w1.as_ptr().add(i + 8) as *const __m128i));
             sum1_0 = _mm256_fmadd_ps(vw1_0, vs_0, sum1_0);
             sum1_1 = _mm256_fmadd_ps(vw1_1, vs_1, sum1_1);
 
-            let vw2_0 = _mm256_loadu_ps(w2.as_ptr().add(i));
-            let vw2_1 = _mm256_loadu_ps(w2.as_ptr().add(i + 8));
+            let vw2_0 = _mm256_cvtph_ps(_mm_loadu_si128(w2.as_ptr().add(i) as *const __m128i));
+            let vw2_1 = _mm256_cvtph_ps(_mm_loadu_si128(w2.as_ptr().add(i + 8) as *const __m128i));
             sum2_0 = _mm256_fmadd_ps(vw2_0, vs_0, sum2_0);
             sum2_1 = _mm256_fmadd_ps(vw2_1, vs_1, sum2_1);
 
-            let vw3_0 = _mm256_loadu_ps(w3.as_ptr().add(i));
-            let vw3_1 = _mm256_loadu_ps(w3.as_ptr().add(i + 8));
+            let vw3_0 = _mm256_cvtph_ps(_mm_loadu_si128(w3.as_ptr().add(i) as *const __m128i));
+            let vw3_1 = _mm256_cvtph_ps(_mm_loadu_si128(w3.as_ptr().add(i + 8) as *const __m128i));
             sum3_0 = _mm256_fmadd_ps(vw3_0, vs_0, sum3_0);
             sum3_1 = _mm256_fmadd_ps(vw3_1, vs_1, sum3_1);
 
@@ -242,16 +244,16 @@ pub unsafe fn dot_product_4x_avx2(
         while i + 8 <= len {
             let vs = _mm256_loadu_ps(state.as_ptr().add(i));
 
-            let vw0 = _mm256_loadu_ps(w0.as_ptr().add(i));
+            let vw0 = _mm256_cvtph_ps(_mm_loadu_si128(w0.as_ptr().add(i) as *const __m128i));
             sum0_0 = _mm256_fmadd_ps(vw0, vs, sum0_0);
 
-            let vw1 = _mm256_loadu_ps(w1.as_ptr().add(i));
+            let vw1 = _mm256_cvtph_ps(_mm_loadu_si128(w1.as_ptr().add(i) as *const __m128i));
             sum1_0 = _mm256_fmadd_ps(vw1, vs, sum1_0);
 
-            let vw2 = _mm256_loadu_ps(w2.as_ptr().add(i));
+            let vw2 = _mm256_cvtph_ps(_mm_loadu_si128(w2.as_ptr().add(i) as *const __m128i));
             sum2_0 = _mm256_fmadd_ps(vw2, vs, sum2_0);
 
-            let vw3 = _mm256_loadu_ps(w3.as_ptr().add(i));
+            let vw3 = _mm256_cvtph_ps(_mm_loadu_si128(w3.as_ptr().add(i) as *const __m128i));
             sum3_0 = _mm256_fmadd_ps(vw3, vs, sum3_0);
 
             i += 8;
@@ -285,10 +287,10 @@ pub unsafe fn dot_product_4x_avx2(
         let mut s3: f32 = hsum_avx2(sum3);
 
         while i < len {
-            s0 += w0[i] * state[i];
-            s1 += w1[i] * state[i];
-            s2 += w2[i] * state[i];
-            s3 += w3[i] * state[i];
+            s0 += half::f16::from_bits(w0[i]).to_f32() * state[i];
+            s1 += half::f16::from_bits(w1[i]).to_f32() * state[i];
+            s2 += half::f16::from_bits(w2[i]).to_f32() * state[i];
+            s3 += half::f16::from_bits(w3[i]).to_f32() * state[i];
             i += 1;
         }
 
@@ -299,10 +301,10 @@ pub unsafe fn dot_product_4x_avx2(
 /// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_avx512(
-    w0: &[f32],
-    w1: &[f32],
-    w2: &[f32],
-    w3: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
     state: &[f32],
 ) -> [f32; 4] {
     let len = state.len();
@@ -317,16 +319,16 @@ pub unsafe fn dot_product_4x_avx512(
         while i + 16 <= len {
             let vs = _mm512_loadu_ps(state.as_ptr().add(i));
 
-            let vw0 = _mm512_loadu_ps(w0.as_ptr().add(i));
+            let vw0 = _mm512_cvtph_ps(_mm256_loadu_si256(w0.as_ptr().add(i) as *const __m256i));
             sum0 = _mm512_fmadd_ps(vw0, vs, sum0);
 
-            let vw1 = _mm512_loadu_ps(w1.as_ptr().add(i));
+            let vw1 = _mm512_cvtph_ps(_mm256_loadu_si256(w1.as_ptr().add(i) as *const __m256i));
             sum1 = _mm512_fmadd_ps(vw1, vs, sum1);
 
-            let vw2 = _mm512_loadu_ps(w2.as_ptr().add(i));
+            let vw2 = _mm512_cvtph_ps(_mm256_loadu_si256(w2.as_ptr().add(i) as *const __m256i));
             sum2 = _mm512_fmadd_ps(vw2, vs, sum2);
 
-            let vw3 = _mm512_loadu_ps(w3.as_ptr().add(i));
+            let vw3 = _mm512_cvtph_ps(_mm256_loadu_si256(w3.as_ptr().add(i) as *const __m256i));
             sum3 = _mm512_fmadd_ps(vw3, vs, sum3);
 
             i += 16;
@@ -338,10 +340,10 @@ pub unsafe fn dot_product_4x_avx512(
         let mut s3 = _mm512_reduce_add_ps(sum3);
 
         while i < len {
-            s0 += w0[i] * state[i];
-            s1 += w1[i] * state[i];
-            s2 += w2[i] * state[i];
-            s3 += w3[i] * state[i];
+            s0 += half::f16::from_bits(w0[i]).to_f32() * state[i];
+            s1 += half::f16::from_bits(w1[i]).to_f32() * state[i];
+            s2 += half::f16::from_bits(w2[i]).to_f32() * state[i];
+            s3 += half::f16::from_bits(w3[i]).to_f32() * state[i];
             i += 1;
         }
 
@@ -351,7 +353,8 @@ pub unsafe fn dot_product_4x_avx512(
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
 /// Otimizado especificamente para as 4 portas do LSTM interfolhadas (Input, Forget, Cell, Output).
-pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+#[target_feature(enable = "f16c")]
+pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
     let mut i = 0;
 
@@ -369,25 +372,31 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32
             let s0 = _mm256_broadcast_ss(&state[i]);
             let s1 = _mm256_broadcast_ss(&state[i + 1]);
             let s01 = _mm256_blend_ps(s0, s1, 0b11110000);
-            let w01 = _mm256_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
             sum0 = _mm256_fmadd_ps(w01, s01, sum0);
 
             let s2 = _mm256_broadcast_ss(&state[i + 2]);
             let s3 = _mm256_broadcast_ss(&state[i + 3]);
             let s23 = _mm256_blend_ps(s2, s3, 0b11110000);
-            let w23 = _mm256_loadu_ps(weights.as_ptr().add(i + 2) as *const f32);
+            let w23 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 2) as *const __m128i
+            ));
             sum1 = _mm256_fmadd_ps(w23, s23, sum1);
 
             let s4 = _mm256_broadcast_ss(&state[i + 4]);
             let s5 = _mm256_broadcast_ss(&state[i + 5]);
             let s45 = _mm256_blend_ps(s4, s5, 0b11110000);
-            let w45 = _mm256_loadu_ps(weights.as_ptr().add(i + 4) as *const f32);
+            let w45 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 4) as *const __m128i
+            ));
             sum2 = _mm256_fmadd_ps(w45, s45, sum2);
 
             let s6 = _mm256_broadcast_ss(&state[i + 6]);
             let s7 = _mm256_broadcast_ss(&state[i + 7]);
             let s67 = _mm256_blend_ps(s6, s7, 0b11110000);
-            let w67 = _mm256_loadu_ps(weights.as_ptr().add(i + 6) as *const f32);
+            let w67 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 6) as *const __m128i
+            ));
             sum3 = _mm256_fmadd_ps(w67, s67, sum3);
 
             i += 8;
@@ -397,7 +406,7 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32
             let s0 = _mm256_broadcast_ss(&state[i]);
             let s1 = _mm256_broadcast_ss(&state[i + 1]);
             let s01 = _mm256_blend_ps(s0, s1, 0b11110000);
-            let w01 = _mm256_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
             sum0 = _mm256_fmadd_ps(w01, s01, sum0);
             i += 2;
         }
@@ -412,7 +421,7 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32
 
         while i < len {
             let s0 = _mm_load1_ps(state.as_ptr().add(i));
-            let w0 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let w0 = _mm_cvtph_ps(_mm_loadu_si64(weights.as_ptr().add(i) as *const u8));
             sum128 = _mm_fmadd_ps(w0, s0, sum128);
             i += 1;
         }
@@ -426,7 +435,7 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[f32; 4]], state: &[f32
 /// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
 /// Otimizado especificamente para as 4 portas do LSTM interfolhadas.
 #[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
     let mut i = 0;
 
@@ -442,7 +451,8 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f
             let vs0 = _mm512_set_ps(
                 s3, s3, s3, s3, s2, s2, s2, s2, s1, s1, s1, s1, s0, s0, s0, s0,
             );
-            let vw0 = _mm512_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let vw0 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
             sum0 = _mm512_fmadd_ps(vw0, vs0, sum0);
 
             let s4 = state[i + 4];
@@ -452,7 +462,9 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f
             let vs1 = _mm512_set_ps(
                 s7, s7, s7, s7, s6, s6, s6, s6, s5, s5, s5, s5, s4, s4, s4, s4,
             );
-            let vw1 = _mm512_loadu_ps(weights.as_ptr().add(i + 4) as *const f32);
+            let vw1 = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 4) as *const __m256i
+            ));
             sum1 = _mm512_fmadd_ps(vw1, vs1, sum1);
 
             i += 8;
@@ -466,7 +478,8 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f
             let vs0 = _mm512_set_ps(
                 s3, s3, s3, s3, s2, s2, s2, s2, s1, s1, s1, s1, s0, s0, s0, s0,
             );
-            let vw0 = _mm512_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let vw0 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
             sum0 = _mm512_fmadd_ps(vw0, vs0, sum0);
             i += 4;
         }
@@ -483,7 +496,7 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f
 
         while i < len {
             let s0 = _mm_load1_ps(state.as_ptr().add(i));
-            let w0 = _mm_loadu_ps(weights.as_ptr().add(i) as *const f32);
+            let w0 = _mm_cvtph_ps(_mm_loadu_si64(weights.as_ptr().add(i) as *const u8));
             sum128 = _mm_fmadd_ps(w0, s0, sum128);
             i += 1;
         }
@@ -507,10 +520,10 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[f32; 4]], state: &[f
 /// `SimdMathConfig::get()` uma referência `&'static` com overhead efetivo zero
 /// no hot-path RT.
 /// Assinatura da função para 4 Dot Products simultâneos (ILP máximo) reutilizando o state.
-pub type DotProduct4xFn = unsafe fn(&[f32], &[f32], &[f32], &[f32], &[f32]) -> [f32; 4];
+pub type DotProduct4xFn = unsafe fn(&[u16], &[u16], &[u16], &[u16], &[f32]) -> [f32; 4];
 
 /// Assinatura da função para 4 Dot Products simultâneos para pesos interfolhados.
-pub type DotProduct4xInterleavedFn = unsafe fn(&[[f32; 4]], &[f32]) -> [f32; 4];
+pub type DotProduct4xInterleavedFn = unsafe fn(&[[u16; 4]], &[f32]) -> [f32; 4];
 
 /// Despacho Dinâmico Global de Funções Matemáticas SIMD.
 /// Resolve o multiversionamento (AVX2/AVX-512) para a inferência sem causar alocações.
@@ -520,7 +533,7 @@ pub type DotProduct4xInterleavedFn = unsafe fn(&[[f32; 4]], &[f32]) -> [f32; 4];
 #[derive(Clone, Copy)]
 pub struct SimdMathConfig {
     /// Função inlined dinamicamente agendada para computar fma vetorial.
-    pub dot_product: unsafe fn(&[f32], &[f32]) -> f32,
+    pub dot_product: unsafe fn(&[f32], &[u16]) -> f32,
     /// Fused GEMV de 4 portas (para Conv1d do WaveNet).
     pub dot_product_4x: DotProduct4xFn,
     /// Fused GEMV de 4 portas interfolhadas (para LSTM).
@@ -621,17 +634,17 @@ impl SimdMathConfig {
 /// Trait de abstração para despacho estático de operações matemáticas SIMD.
 pub trait SimdMath {
     /// Calcula o produto escalar entre dois vetores.
-    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32;
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32;
     /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado) para WaveNet.
     unsafe fn dot_product_4x(
-        w0: &[f32],
-        w1: &[f32],
-        w2: &[f32],
-        w3: &[f32],
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
         state: &[f32],
     ) -> [f32; 4];
     /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado.
-    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4];
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4];
     /// Aplica Tanh em-lugar no slice usando aproximação minimax polinomial fastmath.
     unsafe fn tanh_slice(slice: &mut [f32]);
     /// Aplica Sigmoid em-lugar no slice via fastmath.
@@ -642,21 +655,21 @@ pub trait SimdMath {
 pub struct Avx2Math;
 impl SimdMath for Avx2Math {
     #[inline(always)]
-    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx2(a, b) }
     }
     #[inline(always)]
     unsafe fn dot_product_4x(
-        w0: &[f32],
-        w1: &[f32],
-        w2: &[f32],
-        w3: &[f32],
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
         state: &[f32],
     ) -> [f32; 4] {
         unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
     }
     #[inline(always)]
-    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
         unsafe { dot_product_4x_interleaved_avx2(weights, state) }
     }
     #[inline(always)]
@@ -673,21 +686,21 @@ impl SimdMath for Avx2Math {
 pub struct Avx512Math;
 impl SimdMath for Avx512Math {
     #[target_feature(enable = "avx512f,avx512vl")]
-    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx512(a, b) }
     }
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn dot_product_4x(
-        w0: &[f32],
-        w1: &[f32],
-        w2: &[f32],
-        w3: &[f32],
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
         state: &[f32],
     ) -> [f32; 4] {
         unsafe { dot_product_4x_avx512(w0, w1, w2, w3, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl")]
-    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
         unsafe { dot_product_4x_interleaved_avx512(weights, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl")]
@@ -705,21 +718,21 @@ impl SimdMath for Avx512Math {
 pub struct Avx2VnniMath;
 impl SimdMath for Avx2VnniMath {
     #[target_feature(enable = "avxvnni")]
-    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx2(a, b) }
     }
     #[target_feature(enable = "avxvnni")]
     unsafe fn dot_product_4x(
-        w0: &[f32],
-        w1: &[f32],
-        w2: &[f32],
-        w3: &[f32],
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
         state: &[f32],
     ) -> [f32; 4] {
         unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
     }
     #[target_feature(enable = "avxvnni")]
-    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
         unsafe { dot_product_4x_interleaved_avx2(weights, state) }
     }
     #[target_feature(enable = "avxvnni")]
@@ -737,21 +750,21 @@ impl SimdMath for Avx2VnniMath {
 pub struct Avx512VnniMath;
 impl SimdMath for Avx512VnniMath {
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
-    unsafe fn dot_product(a: &[f32], b: &[f32]) -> f32 {
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx512(a, b) }
     }
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn dot_product_4x(
-        w0: &[f32],
-        w1: &[f32],
-        w2: &[f32],
-        w3: &[f32],
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
         state: &[f32],
     ) -> [f32; 4] {
         unsafe { dot_product_4x_avx512(w0, w1, w2, w3, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
-    unsafe fn dot_product_4x_interleaved(weights: &[[f32; 4]], state: &[f32]) -> [f32; 4] {
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
         unsafe { dot_product_4x_interleaved_avx512(weights, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
@@ -807,8 +820,12 @@ mod tests {
     fn test_dot_product_avx2_fma() {
         let vec_a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
         let vec_b = vec![2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0];
+        let vec_b_u16: Vec<u16> = vec_b
+            .iter()
+            .map(|&x| half::f16::from_f32(x).to_bits())
+            .collect();
 
-        let result = unsafe { dot_product_avx2(&vec_a, &vec_b) };
+        let result = unsafe { dot_product_avx2(&vec_a, &vec_b_u16) };
 
         // Expected = (1*2 + 2*2 ... + 8*2) + 9*2
         // 72 * 2 + 18 = 144 + 18 = 90
@@ -835,8 +852,12 @@ mod tests {
             let vec_b = vec![
                 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0,
             ];
+            let vec_b_u16: Vec<u16> = vec_b
+                .iter()
+                .map(|&x| half::f16::from_f32(x).to_bits())
+                .collect();
 
-            let result = unsafe { dot_product_avx512(&vec_a, &vec_b) };
+            let result = unsafe { dot_product_avx512(&vec_a, &vec_b_u16) };
             let expected: f32 = vec_a.iter().zip(vec_b.iter()).map(|(a, b)| a * b).sum();
 
             assert!(

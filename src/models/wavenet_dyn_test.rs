@@ -14,7 +14,7 @@ mod tests {
     /// - `weight`: valor fixo para todos os pesos (facilita cálculo analítico)
     fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
         Conv1dDyn {
-            weights: vec![weight; out_ch * in_ch], // kernel=1
+            weights: vec![half::f16::from_f32(weight).to_bits(); out_ch * in_ch], // kernel=1
             bias: vec![0.0; out_ch],
             do_bias: false,
             dilation: 1,
@@ -27,7 +27,7 @@ mod tests {
     /// Constrói um `DenseLayerDyn` identidade (peso=0, bias=0, sem efeito).
     fn make_dense_zero(in_size: usize, out_size: usize) -> DenseLayerDyn {
         DenseLayerDyn {
-            weights: vec![0.0; out_size * in_size],
+            weights: vec![0u16; out_size * in_size],
             bias: vec![0.0; out_size],
             do_bias: false,
             in_size,
@@ -190,7 +190,7 @@ mod tests {
         let state = WaveNetLayerState::new(ch, 0, 0);
 
         let conv1d = Conv1dDyn {
-            weights: vec![0.0; 2 * ch * ch],
+            weights: vec![0u16; 2 * ch * ch],
             bias: vec![0.0; 2 * ch],
             do_bias: false,
             dilation: 1,

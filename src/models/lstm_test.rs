@@ -89,7 +89,7 @@ mod tests {
         }
         for i in 0..8 {
             for j in 0..9 {
-                model.layer.input_hidden_weights[i][j] = [0.05; 4];
+                model.layer.input_hidden_weights[i][j] = [half::f16::from_f32(0.05).to_bits(); 4];
             }
         }
 
@@ -138,11 +138,12 @@ mod tests {
             }
             for i in 0..8 {
                 for j in 0..9 {
-                    model.layer.input_hidden_weights[i][j] = [0.05; 4];
+                    model.layer.input_hidden_weights[i][j] =
+                        [half::f16::from_f32(0.05).to_bits(); 4];
                 }
             }
             for i in 0..8 {
-                model.head_weights[i] = 0.5;
+                model.head_weights[i] = half::f16::from_f32(0.5).to_bits();
             }
 
             let mut out = [0.0f32; 64];

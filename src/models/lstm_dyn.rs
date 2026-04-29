@@ -13,7 +13,7 @@
 #[derive(Clone)]
 pub struct LstmDynLayer {
     /// Peso `(Input + Hidden)` por `(4 * Hidden)` matriz dimensionada 1D e linearizada.
-    pub input_hidden_weights: Vec<f32>,
+    pub input_hidden_weights: Vec<u16>,
     /// Array linear (H * 4) com os desvios de ativação de cada porta.
     pub bias: Vec<f32>,
     /// Tensor de Estado local, funde o sample entrante e o momento final do frame anterior. [I + H]
@@ -74,7 +74,7 @@ impl LstmDynLayer {
             // Isso permite que a função de dot product processe os pesos das 4 portas de uma vez,
             // tratando cada conexão (input/hidden) como um vetor de 4 elementos.
             let w_slice = unsafe {
-                core::slice::from_raw_parts(w_interleaved.as_ptr() as *const [f32; 4], ih)
+                core::slice::from_raw_parts(w_interleaved.as_ptr() as *const [u16; 4], ih)
             };
 
             // Calcula o produto escalar quádruplo: soma(peso_gate[0..3] * state_val)
@@ -163,7 +163,7 @@ pub struct LstmDynModel {
     /// Filtro de predição linear da saída (Head).
     /// Após todas as camadas LSTM, aplicamos uma última camada linear para transformar
     /// o estado oculto final no valor do sample de áudio.
-    pub head_weights: Vec<f32>,
+    pub head_weights: Vec<u16>,
     /// Acumulador linear projetado de saída.
     pub head_bias: f32,
 }
@@ -208,7 +208,7 @@ impl LstmDynModel {
             // Camada de Saída (Head): Multiplicamos o estado oculto da última camada
             // pelos pesos do 'head' e somamos o bias para obter o sample final.
             let head_out =
-                unsafe { M::dot_product(&self.head_weights, hidden_out) } + self.head_bias;
+                unsafe { M::dot_product(hidden_out, &self.head_weights) } + self.head_bias;
 
             // Salva o resultado no buffer de saída
             output[i] = head_out;
