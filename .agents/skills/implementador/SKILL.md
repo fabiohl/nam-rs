@@ -41,6 +41,10 @@ Antes de implementar qualquer funcionalidade, consulte a referência mestra em `
 
 O NAM-rs possui um sistema de diagnósticos em `src/diagnostics.rs`. **Todo erro ou aviso visível ao usuário** deve usar este sistema — nunca `eprintln!("Erro: ...")` ad-hoc.
 
+### 5. Bons comentários de código-fonte
+
+Conforme for implementando a codificação, SEMPRE vá inserindo bom número de comentários de código-fonte. Um bom comentário ajuda o dev júnior a entender o que está acontecendo e o arquiteto sênior a auditar a implementação.
+
 #### Regras de uso
 
 1. **Sempre importe**: `use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};`
