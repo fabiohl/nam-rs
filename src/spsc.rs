@@ -18,7 +18,7 @@
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64};
 
 /// Flag global para shutdown coordenado e gracioso entre todas as threads.
 /// Definida como `true` pelo handler de CTRL+C.
@@ -77,6 +77,13 @@ pub struct RtStatusFlags {
     /// O callback RT seta `true` ao detectar silêncio e pular o pipeline DSP pesado.
     /// A thread principal lê para exibir/ocultar o status de "Silence Bypass" ativo.
     pub is_silent: AtomicBool,
+
+    /// Tempo de processamento do último ciclo DSP em ticks (RDTSC).
+    /// Lido pela thread principal e convertido para Duration via Anchor.
+    pub dsp_cycle_time: AtomicU64,
+
+    /// Número de amostras processadas no último ciclo (para cálculo de budget).
+    pub last_n_samples: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -93,6 +100,8 @@ impl RtStatusFlags {
             has_clipped: AtomicBool::new(false),
             dsp_overloads: AtomicU32::new(0),
             is_silent: AtomicBool::new(false),
+            dsp_cycle_time: AtomicU64::new(0),
+            last_n_samples: AtomicU32::new(0),
         }
     }
 }

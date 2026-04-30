@@ -75,6 +75,8 @@ pub enum NamErrorCode {
     SchedFifoDenied,
     /// Falha ao definir afinidade de CPU na thread DSP.
     CpuAffinityFailed,
+    /// Deadline do PipeWire estourado (Processamento DSP excedeu budget).
+    DeadlineExceeded,
 
     // E3xxx — SPSC / Comunicação
     /// Canal SPSC de parâmetros CLI→DSP cheio.
@@ -111,6 +113,7 @@ impl NamErrorCode {
             Self::ResamplerChannelFull => "E2201",
             Self::SchedFifoDenied => "E2300",
             Self::CpuAffinityFailed => "E2301",
+            Self::DeadlineExceeded => "E2001",
             Self::ParamChannelFull => "E3100",
             Self::InvalidGainValue => "E4100",
             Self::UnknownCommand => "E4101",
@@ -139,6 +142,7 @@ impl NamErrorCode {
             Self::ResamplerChannelFull => "RESAMPLER_CHANNEL_FULL",
             Self::SchedFifoDenied => "SCHED_FIFO_DENIED",
             Self::CpuAffinityFailed => "CPU_AFFINITY_FAILED",
+            Self::DeadlineExceeded => "DEADLINE_EXCEEDED",
             Self::ParamChannelFull => "PARAM_CHANNEL_FULL",
             Self::InvalidGainValue => "INVALID_GAIN_VALUE",
             Self::UnknownCommand => "UNKNOWN_COMMAND",

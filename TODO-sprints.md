@@ -82,7 +82,7 @@
 
 *Foco: Precisão audível, latência mínima e eficiência do ciclo RT.*
 
-### [T15] Timing de Baixa Latência (RDTSC / `minstant`)
+### [T15] Timing de Baixa Latência (RDTSC / `minstant`) [Concluido]
 
 - **Contexto Arquitetural:** O `Instant::now()` é usado para medir o custo de DSP e exportá-lo na struct `RtStatusFlags` via diagnósticos.
 - **Problema:** No kernel do linux, em determinados hosts, chamar Instant/Time triggers VDSO context switches onerosos, acarretando spikes inesperados de micro-stutter de CPU no SCHED_FIFO.
@@ -112,13 +112,23 @@
 - **Perfil do Implementador:** Engenheiro DSP / Áudio.
 - **Tags:** #dsp #optimization
 
+### [T18] Resampler Short-Circuit Bypass (Zero-Copy)
+
+- **Contexto Arquitetural:** Quando o hardware de áudio opera em 48.000 Hz, o resampler faz um bypass de software.
+- **Problema:** Apesar do bypass aliviar a matemática complexa FIR, ele ainda copia fatias (slices) por rotinas do tipo `.copy_from_slice()`. Isso tem custo de L1 em sessões de produção rigorosas.
+- **Solução Proposta:** Se `pw_rate == 48000`, o resampler não atua. Invés disso, os fatiadores recebem uma referência planar `&[f32]` provinda diretamente do Sink PipeWire do RT, canalizando os slices diretamente ao `DynamicModel` (que opera lock-free e in-place) sem intermediários.
+- **Arquivos-Alvo:** `src/pw_host.rs`, `src/dsp/resampler.rs`
+- **Critérios de Aceite:** Redução da pegada de memória do pipeline RT em 48kHz com ganhos no roundtrip-latency de ponta. Código unitário atestando estabilidade estática e comportamental do buffer original.
+- **Perfil do Implementador:** Arquiteto Rust sênior.
+- **Tags:** #dsp #resampler #zerocopy
+
 ---
 
 ## 🌐 Épico: Arquitetura de Áudio & PipeWire
 
 *Foco: Simplificação da infraestrutura de roteamento.*
 
-### [T18] Zero-Copy DspBridge (Processamento In-Place)
+### [T19] Zero-Copy DspBridge (Processamento In-Place)
 
 - **Contexto Arquitetural:** A abordagem PipeWire se declara como um `Audio/Sink` para receber fluxos do sistema, porém, a documentação atesta que o `pw_stream` copia os dados antes da callback. Devido a isso, NAM-rs injeta um segundo Node de Output e faz as vias de um `DspBridge` entre eles com atomics e buffers lock-free.
 - **Problema:** A macro-arquitetura atual requer um ping-pong de stream e aloca 8192 floats x2 canais ininterruptamente. Isso agrava L1 evictions gerais e dificulta sync-clocks absolutos com interface USB.
@@ -132,7 +142,17 @@
 - **Perfil do Implementador:** Especialista em Kernel Linux / PipeWire / Rust nativo.
 - **Tags:** #pipewire #arch #latency
 
-### [T19] Resampler Sinc-SIMD Nativo & Fase Mínima
+### [T20] Otimização de Escrita em Buffer (Non-Temporal Stores)
+
+- **Contexto Arquitetural:** Com a migração para `Audio/Filter` (T19), o áudio processado é escrito diretamente no buffer de saída do PipeWire.
+- **Problema:** Como os buffers da stream de saída jamais serão re-lidos pela CPU (apenas transportados ao DMA via hardware), povoar o Cache de L1 com estas amostras expulsa as tabelas vitais de pesos da rede Neural da RAM rápida.
+- **Solução Proposta:** Utilizar stores nativos não temporais (NTA) ao escrever no buffer final. A instrução `_mm256_stream_ps` joga o slice do Array alinhado a 128-bytes diretamente na main-memory, despoluindo as linhas do L1.
+- **Arquivos-Alvo:** `src/pw_host.rs`
+- **Critérios de Aceite:** Benefício notório em block_sizes de >128. Coerência dos dados intocável.
+- **Perfil do Implementador:** Especialista em Microarquitetura.
+- **Tags:** #performance #l1 #pipewire
+
+### [T21] Resampler Sinc-SIMD Nativo & Fase Mínima
 
 - **Contexto Arquitetural:** Hoje usamos o crate `rubato 0.16` operando em FIR Sinc de fase linear, bidirecional planar.
 - **Problema:** O filtro de fase linear causa ringing assimétrico "pré-eco" (pré-ringing), que em transients drásticos (e.g., palhetada forte de guitarras) suprime o *feel* de resposta da corda e adiciona ~1.5ms de latência pura matemática desnecessária (delay algorítmico).
@@ -141,23 +161,3 @@
 - **Critérios de Aceite:** Remoção drástica na latência final e fase audível mais cristalina e alinhada ao tempo zero; aderência total de `cargo bench` e `cargo test` para bypass planar 48kHz.
 - **Perfil do Implementador:** Cientista DSP.
 - **Tags:** #dsp #latency #simd
-
-### [T20] Resampler Short-Circuit Bypass (Zero-Copy)
-
-- **Contexto Arquitetural:** Quando o hardware de áudio opera em 48.000 Hz, o resampler faz um bypass de software.
-- **Problema:** Apesar do bypass aliviar a matemática complexa FIR, ele ainda copia fatias (slices) por rotinas do tipo `.copy_from_slice()`. Isso tem custo de L1 em sessões de produção rigorosas.
-- **Solução Proposta:** Se `pw_rate == 48000`, o resampler não atua. Invés disso, os fatiadores recebem uma referência planar `&[f32]` provinda diretamente do Sink PipeWire do RT, canalizando os slices diretamente ao `DynamicModel` (que opera lock-free e in-place) sem intermediários.
-- **Arquivos-Alvo:** `src/pw_host.rs`, `src/dsp/resampler.rs`
-- **Critérios de Aceite:** Redução da pegada de memória do pipeline RT em 48kHz com ganhos no roundtrip-latency de ponta. Código unitário atestando estabilidade estática e comportamental do buffer original.
-- **Perfil do Implementador:** Arquiteto Rust sênior.
-- **Tags:** #dsp #resampler #zerocopy
-
-### [T21] Otimização de Escrita em Buffer (Non-Temporal Stores)
-
-- **Contexto Arquitetural:** Com a migração para `Audio/Filter` (T18), o áudio processado é escrito diretamente no buffer de saída do PipeWire.
-- **Problema:** Como os buffers da stream de saída jamais serão re-lidos pela CPU (apenas transportados ao DMA via hardware), povoar o Cache de L1 com estas amostras expulsa as tabelas vitais de pesos da rede Neural da RAM rápida.
-- **Solução Proposta:** Utilizar stores nativos não temporais (NTA) ao escrever no buffer final. A instrução `_mm256_stream_ps` joga o slice do Array alinhado a 128-bytes diretamente na main-memory, despoluindo as linhas do L1.
-- **Arquivos-Alvo:** `src/pw_host.rs`
-- **Critérios de Aceite:** Benefício notório em block_sizes de >128. Coerência dos dados intocável.
-- **Perfil do Implementador:** Especialista em Microarquitetura.
-- **Tags:** #performance #l1 #pipewire

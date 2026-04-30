@@ -414,6 +414,9 @@ fn main() -> anyhow::Result<()> {
     // parâmetros em tempo de execução permanece intacta para uso futuro.
     std::mem::forget(producer);
 
+    // Inicializa a âncora de tempo para conversão RDTSC -> Duration fora da thread RT.
+    let tsc_anchor = minstant::Anchor::new();
+
     // Executa o host PipeWire. Esta é uma chamada bloqueante que orquestra o processamento de áudio.
     pw_host::run_pipewire_host(
         consumer,
@@ -423,6 +426,7 @@ fn main() -> anyhow::Result<()> {
         rt_status,
         sys,
         buffer_size,
+        tsc_anchor,
     )?;
 
     // Finaliza a sessão do PipeWire e libera os recursos antes de sair.

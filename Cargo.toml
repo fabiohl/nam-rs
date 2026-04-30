@@ -22,6 +22,7 @@ rubato = { version = "0.16", default-features = false }
 log = "0.4.29"
 env_logger = { version = "0.11.10", default-features = false }
 half = "2.7.1"
+minstant = "0.1.7"
 
 [profile.release]
 strip = true      # Remove symbols (smaller binary)

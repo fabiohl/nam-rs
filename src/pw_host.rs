@@ -53,11 +53,13 @@ use crate::dsp::gain::{apply_gain_simd, is_buffer_mono_simd, is_buffer_silent_st
 use crate::dsp::resampler::NamResampler;
 use crate::models::NamModel;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
+use minstant::{Anchor, Instant};
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 /// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
 /// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
@@ -152,6 +154,7 @@ fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) 
 /// - `resampler_producer`: Produtor do canal de resamplers — a thread principal
 ///   constrói `NamResampler::new()` aqui (alocação fora do RT) e envia para o callback.
 /// - `rt_status`: Flags atômicas para comunicação silenciosa RT→Main.
+#[allow(clippy::too_many_arguments)]
 pub fn run_pipewire_host(
     mut consumer: Consumer<ParamPayload>,
     mut gc_producer: rtrb::Producer<Box<crate::models::DynamicModel>>,
@@ -160,6 +163,7 @@ pub fn run_pipewire_host(
     rt_status: Arc<RtStatusFlags>,
     sys: SystemSnapshot,
     buffer_size: u32,
+    tsc_anchor: Anchor,
 ) -> anyhow::Result<()> {
     // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
     let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
@@ -509,9 +513,9 @@ pub fn run_pipewire_host(
                                     &samples_r[..n_samples],
                                 );
 
-                                // Iniciamos a medição do tempo de processamento DSP puro.
+                                // Iniciamos a medição do tempo de processamento DSP puro (RDTSC).
                                 // Usado para calcular o 'DSP Load' e detectar XRuns iminentes.
-                                let start_time = std::time::Instant::now();
+                                let start_time = Instant::now();
 
                                 // O resampler de entrada pode expandir amostras (ex: 44.1k → 48k).
                                 // Utilizamos buffers fixos na stack com MAX_RESAMP_BUF para evitar alocações
@@ -629,15 +633,24 @@ pub fn run_pipewire_host(
                                     .store(back_idx, Ordering::Relaxed);
                                 bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 
-                                // Monitoramento de carga de DSP (DSP Load Monitoring)
-                                // `start_time` é inicializado no início da pipeline DSP (acima) e medido
-                                // aqui após o ganho de saída — captura apenas o tempo computacional
-                                // DSP puro, excluindo overhead de dequeue, SPSC drain e bridge write.
+                                // Monitoramento de carga de DSP (DSP Load Monitoring via RDTSC)
+                                // `start_time` é inicializado no início da pipeline DSP (acima).
+                                // Reportamos o tempo bruto em nanos para a thread de controle.
                                 let elapsed = start_time.elapsed();
+                                rt_status_for_process
+                                    .dsp_cycle_time
+                                    .store(elapsed.as_nanos() as u64, Ordering::Relaxed);
+                                rt_status_for_process
+                                    .last_n_samples
+                                    .store(n_samples as u32, Ordering::Relaxed);
+
                                 // Calcula o budget máximo tolerável (85% do tempo real do buffer)
+                                // Ainda usamos uma aproximação escalar aqui para detecção rápida de overload,
+                                // mas a telemetria precisa via Anchor ocorre no poll_rt_status.
+                                let elapsed_secs = start_time.elapsed().as_secs_f64();
                                 let budget_secs =
                                     (n_samples as f64 / current_pw_rate as f64) * 0.85;
-                                if elapsed.as_secs_f64() > budget_secs {
+                                if elapsed_secs > budget_secs {
                                     rt_status_for_process
                                         .dsp_overloads
                                         .fetch_add(1, Ordering::Relaxed);
@@ -915,8 +928,8 @@ pub fn run_pipewire_host(
         }
 
         // 2. Monitoramento de Status
-        // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio).
-        was_silent = poll_rt_status(&rt_status, &sys, was_silent);
+        // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio, timing).
+        was_silent = poll_rt_status(&rt_status, &sys, was_silent, &tsc_anchor);
 
         // Baixa frequência de polling para economizar energia, já que estas são tarefas de controle.
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1018,7 +1031,12 @@ fn detect_hardware_sink() -> Option<String> {
 /// faz edge-detection no estado de silêncio.
 ///
 /// Retorna o novo estado de silêncio (para edge-detection no caller).
-fn poll_rt_status(rt_status: &RtStatusFlags, sys: &SystemSnapshot, was_silent: bool) -> bool {
+fn poll_rt_status(
+    rt_status: &RtStatusFlags,
+    sys: &SystemSnapshot,
+    was_silent: bool,
+    _tsc_anchor: &Anchor,
+) -> bool {
     // Rate do resampler ativado pelo callback RT
     let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
     if active_rate != 0 {
@@ -1074,6 +1092,32 @@ fn poll_rt_status(rt_status: &RtStatusFlags, sys: &SystemSnapshot, was_silent: b
             "🚨".red(),
             overloads
         );
+    }
+
+    // Telemetria de timing via RDTSC (minstant)
+    let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
+    if nanos > 0 {
+        let duration = Duration::from_nanos(nanos);
+        let active_rate = rt_status.active_rate.load(Ordering::Relaxed);
+        let n_samples = rt_status.last_n_samples.load(Ordering::Relaxed);
+
+        if active_rate > 0 && n_samples > 0 {
+            let budget_us = (n_samples as f64 / active_rate as f64) * 1_000_000.0;
+            let elapsed_us = duration.as_micros() as f64;
+
+            // Se o tempo de execução exceder o budget (100% do tempo do buffer),
+            // emitimos um diagnóstico crítico. O dsp_overloads já cuida de avisos a 85%.
+            if elapsed_us > budget_us {
+                NamDiagnostic::new(NamErrorCode::DeadlineExceeded, sys)
+                    .message("Deadline do PipeWire estourado (Possível Xrun detectado)")
+                    .hint("Verifique a topologia do modelo ou diminua a carga do sistema.")
+                    .param("exec_time_us", elapsed_us as u64)
+                    .param("budget_us", budget_us as u64)
+                    .param("n_samples", n_samples)
+                    .param("rate", active_rate)
+                    .emit();
+            }
+        }
     }
 
     // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
