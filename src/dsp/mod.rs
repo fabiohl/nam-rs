@@ -5,4 +5,5 @@
 //! pré e pós motor neural no NAM-rs.
 
 pub mod gain;
+pub mod gate;
 pub mod resampler;

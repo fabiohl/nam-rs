@@ -1707,6 +1707,132 @@ pub unsafe fn fused_add_gemv_avx512(
     }
 }
 
+/// Calcula a energia (Mean Square) de um bloco via AVX2.
+/// $E = \frac{1}{N} \sum x_i^2$
+///
+/// # Safety
+/// O slice `data` deve ser válido.
+pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
+    let len = data.len();
+    if len == 0 {
+        return 0.0;
+    }
+    let mut i = 0;
+    unsafe {
+        // Acumuladores vetoriais (8 floats cada) inicializados com zero.
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+
+        // Loop principal desenrolado: processa 16 amostras por iteração (2 vetores AVX).
+        // Isso melhora a ocupação das unidades de execução FMA da CPU.
+        while i + 16 <= len {
+            // Carregamento não-alinhado (unaligned load) de 8 floats por vez.
+            let v0 = _mm256_loadu_ps(data.as_ptr().add(i));
+            let v1 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
+
+            // Fused Multiply-Add (FMA): sum = (v * v) + sum.
+            // Quadrado da amostra acumulado diretamente, reduzindo erros de arredondamento.
+            sum0 = _mm256_fmadd_ps(v0, v0, sum0);
+            sum1 = _mm256_fmadd_ps(v1, v1, sum1);
+            i += 16;
+        }
+
+        // Processa blocos remanescentes de 8 amostras.
+        while i + 8 <= len {
+            let v = _mm256_loadu_ps(data.as_ptr().add(i));
+            sum0 = _mm256_fmadd_ps(v, v, sum0);
+            i += 8;
+        }
+
+        // Soma os dois acumuladores vetoriais.
+        let sum = _mm256_add_ps(sum0, sum1);
+
+        // --- Redução Horizontal: Somar os 8 floats dentro do registrador AVX ---
+        // 1. Extrai a metade alta (128 bits / 4 floats) e soma com a metade baixa.
+        let hi = _mm256_extractf128_ps(sum, 1);
+        let lo = _mm256_castps256_ps128(sum);
+        let s128 = _mm_add_ps(lo, hi); // [a+e, b+f, c+g, d+h]
+
+        // 2. Embaralha e soma pares internos (Shuffle + Add).
+        let shuf = _mm_movehdup_ps(s128);
+        let sums = _mm_add_ps(s128, shuf);
+        let shuf2 = _mm_movehl_ps(sums, sums);
+        let r = _mm_add_ss(sums, shuf2);
+
+        // Extrai o resultado final (scalar f32).
+        let mut total_sum = 0.0f32;
+        _mm_store_ss(&mut total_sum, r);
+
+        // Loop de limpeza (Tail Loop): Processa o que restou (menos de 8 amostras).
+        while i < len {
+            total_sum += data[i] * data[i];
+            i += 1;
+        }
+
+        total_sum / (len as f32)
+    }
+}
+
+/// Calcula a diferença absoluta máxima entre dois blocos via AVX2.
+/// $\max(|L_i - R_i|)$
+///
+/// # Safety
+/// Os slices `a` e `b` devem ter o mesmo tamanho.
+pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
+    let len = core::cmp::min(a.len(), b.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut i = 0;
+    unsafe {
+        // Acumulador do máximo absoluto (8 canais).
+        let mut max_v = _mm256_setzero_ps();
+        // Máscara para extrair o valor absoluto (limpa o bit de sinal).
+        let sign_mask = _mm256_set1_ps(-0.0f32);
+
+        while i + 8 <= len {
+            let va = _mm256_loadu_ps(a.as_ptr().add(i));
+            let vb = _mm256_loadu_ps(b.as_ptr().add(i));
+
+            // Diferença L - R.
+            let diff = _mm256_sub_ps(va, vb);
+
+            // Valor absoluto: ANDNOT da máscara de sinal com a diferença.
+            // Em IEEE-754, limpar o bit de sinal de um float resulta em abs().
+            let abs_diff = _mm256_andnot_ps(sign_mask, diff);
+
+            // Atualiza o vetor de máximos amostra a amostra.
+            max_v = _mm256_max_ps(max_v, abs_diff);
+            i += 8;
+        }
+
+        // --- Redução Horizontal para encontrar o valor máximo global ---
+        let hi = _mm256_extractf128_ps(max_v, 1);
+        let lo = _mm256_castps256_ps128(max_v);
+        let m128 = _mm_max_ps(lo, hi);
+
+        // Shuffle para comparar f32 adjacentes e encontrar o maior.
+        let shuf = _mm_shuffle_ps(m128, m128, 0xEE); // [3,2,3,2]
+        let m64 = _mm_max_ps(m128, shuf);
+        let shuf2 = _mm_shuffle_ps(m64, m64, 0x55); // [1,1,1,1]
+        let m32 = _mm_max_ps(m64, shuf2);
+
+        let mut max_diff = 0.0f32;
+        _mm_store_ss(&mut max_diff, m32);
+
+        // Tail loop para elementos restantes.
+        while i < len {
+            let d = (a[i] - b[i]).abs();
+            if d > max_diff {
+                max_diff = d;
+            }
+            i += 1;
+        }
+
+        max_diff
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1787,5 +1913,31 @@ mod tests {
             // Restaurar MXCSR original
             core::arch::asm!("ldmxcsr [{0}]", in(reg) &before);
         }
+    }
+
+    #[test]
+    fn test_compute_energy_avx2() {
+        let data = vec![1.0, 2.0, 3.0, 4.0];
+        let energy = unsafe { compute_energy_avx2(&data) };
+        // (1^2 + 2^2 + 3^2 + 4^2) / 4 = (1 + 4 + 9 + 16) / 4 = 30 / 4 = 7.5
+        assert!((energy - 7.5).abs() < 1e-6);
+
+        let data2 = vec![0.0; 16];
+        let energy2 = unsafe { compute_energy_avx2(&data2) };
+        assert_eq!(energy2, 0.0);
+    }
+
+    #[test]
+    fn test_compute_max_diff_avx2() {
+        let a = vec![1.0, 2.0, 3.0, 4.0];
+        let b = vec![1.1, 1.9, 3.5, 3.8];
+        let max_diff = unsafe { compute_max_diff_avx2(&a, &b) };
+        // diffs: [0.1, 0.1, 0.5, 0.2] -> max = 0.5
+        assert!((max_diff - 0.5).abs() < 1e-6);
+
+        let a2 = vec![1.0; 8];
+        let b2 = vec![1.0; 8];
+        let max_diff2 = unsafe { compute_max_diff_avx2(&a2, &b2) };
+        assert_eq!(max_diff2, 0.0);
     }
 }

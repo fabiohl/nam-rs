@@ -102,7 +102,7 @@
 - **Perfil do Implementador:** Matemático Computacional / Engenheiro Rust.
 - **Tags:** #dsp #performance
 
-### [T17] Histerese Dinâmica em Otimizações de Sinal (Mono/Silêncio)
+### [T17] Histerese Dinâmica em Otimizações de Sinal (Mono/Silêncio) [Concluido]
 
 - **Contexto Arquitetural:** Atualmente o `apply_gain_simd` e a inferência detectam instantaneamente blocos R/L clonados (uso mono) ou silêncio espectral puro (`0.0`), pulando ciclos matemáticos em R.
 - **Problema:** Tocar acordes ou inserir transientes dinâmicos causa um cenário em que a condição silêncio/mono oscila furiosamente a cada mini-bloco de áudio. Avaliar a lógica a cada chamada RT adiciona carga e intermitência de aquecimento.
@@ -112,7 +112,7 @@
 - **Perfil do Implementador:** Engenheiro DSP / Áudio.
 - **Tags:** #dsp #optimization
 
-### [T18] Resampler Short-Circuit Bypass (Zero-Copy)
+### [T18] Resampler Short-Circuit Bypass (Zero-Copy) [Concluido]
 
 - **Contexto Arquitetural:** Quando o hardware de áudio opera em 48.000 Hz, o resampler faz um bypass de software.
 - **Problema:** Apesar do bypass aliviar a matemática complexa FIR, ele ainda copia fatias (slices) por rotinas do tipo `.copy_from_slice()`. Isso tem custo de L1 em sessões de produção rigorosas.

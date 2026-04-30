@@ -49,8 +49,9 @@
 
 use crate::colors::Colorize;
 use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
-use crate::dsp::gain::{apply_gain_simd, is_buffer_mono_simd, is_buffer_silent_stereo_simd};
+use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 use crate::dsp::resampler::NamResampler;
+use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2};
 use crate::models::NamModel;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
 use minstant::{Anchor, Instant};
@@ -281,6 +282,12 @@ pub fn run_pipewire_host(
         let mut input_gain_mult: f32 = 1.0;
         let mut output_gain_mult: f32 = 1.0;
 
+        // Histerese Dinâmica para otimizações (Silêncio/Mono)
+        let mut gate_params = GateParams::default();
+        let mut silence_hysteresis = DynamicHysteresis::new();
+        let mut mono_hysteresis = DynamicHysteresis::new();
+        let mut process_mono = false;
+
         let shared_target_rate = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let rate_for_param = shared_target_rate.clone();
         let rate_for_process = shared_target_rate.clone();
@@ -390,6 +397,9 @@ pub fn run_pipewire_host(
                             user_output_gain_mult = mult;
                             param_changed = true;
                         }
+                        ParamPayload::GateConfig(params) => {
+                            gate_params = params;
+                        }
                     }
                 }
 
@@ -488,30 +498,65 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
-                                // 2. Detecção de Silêncio (Silence Bypass)
+                                // 2. Detecção de Silêncio com Histerese (Silence Bypass)
                                 // Verificamos se há sinal presente antes de disparar a inferência NAM (pesada).
-                                // Se o buffer estiver em silêncio absoluto (threshold SIMD), entramos em bypass
-                                // imediato para economizar ciclos de CPU.
-                                if is_buffer_silent_stereo_simd(
-                                    &samples_l[..n_samples],
-                                    &samples_r[..n_samples],
-                                ) {
+                                let energy_ms =
+                                    unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
+                                let threshold_open =
+                                    10.0f32.powf(gate_params.threshold_open_db / 20.0);
+                                let threshold_close =
+                                    10.0f32.powf(gate_params.threshold_close_db / 20.0);
+
+                                silence_hysteresis.update(
+                                    energy_ms,
+                                    threshold_open * threshold_open, // Compara MS com threshold^2
+                                    threshold_close * threshold_close,
+                                    &gate_params,
+                                    n_samples,
+                                );
+
+                                if silence_hysteresis.state() == GateState::Closed {
                                     handle_silence_bypass(bridge_ptr, &rt_status_for_process);
                                     return;
                                 }
-                                // Se chegou aqui, há sinal — reseta flag de silêncio
-                                rt_status_for_process
-                                    .is_silent
-                                    .store(false, Ordering::Relaxed);
 
-                                // 3. Mitigação Mono (Otimização Dinâmica)
-                                // Se o canal direito for idêntico ao esquerdo (ou silêncio absoluto),
-                                // alternamos para o modo Mono. Isso reduz o custo computacional pela metade,
-                                // processando apenas uma instância da CNN/LSTM.
-                                let process_mono = is_buffer_mono_simd(
-                                    &samples_l[..n_samples],
-                                    &samples_r[..n_samples],
+                                // Sinaliza silêncio via flag atômica se estiver em fade-out
+                                rt_status_for_process.is_silent.store(
+                                    silence_hysteresis.state() != GateState::Open,
+                                    Ordering::Relaxed,
                                 );
+
+                                // 3. Mitigação Mono com Histerese (Otimização Dinâmica)
+                                let max_diff = if !process_mono {
+                                    unsafe {
+                                        compute_max_diff_avx2(
+                                            &samples_l[..n_samples],
+                                            &samples_r[..n_samples],
+                                        )
+                                    }
+                                } else {
+                                    // Se já estamos em mono, a diferença é irrelevante para o processamento,
+                                    // mas precisamos dela para a histerese voltar para estéreo se R mudar.
+                                    // Porém, se estamos em mono, assume-se que R é igual a L ou zero.
+                                    // Para detectar se parou de ser mono, precisaríamos olhar para R.
+                                    unsafe {
+                                        compute_max_diff_avx2(
+                                            &samples_l[..n_samples],
+                                            &samples_r[..n_samples],
+                                        )
+                                    }
+                                };
+
+                                mono_hysteresis.update(
+                                    max_diff,
+                                    gate_params.mono_epsilon,
+                                    gate_params.mono_epsilon * 0.9, // Pequena histerese para o epsilon mono
+                                    &gate_params,
+                                    n_samples,
+                                );
+
+                                process_mono = mono_hysteresis.state() == GateState::Closed
+                                    || mono_hysteresis.state() == GateState::FadingOut;
 
                                 // Iniciamos a medição do tempo de processamento DSP puro (RDTSC).
                                 // Usado para calcular o 'DSP Load' e detectar XRuns iminentes.
@@ -527,50 +572,103 @@ pub fn run_pipewire_host(
                                 // 4. Pipeline DSP: Ganho de Entrada
                                 // Aplicamos o ganho (User Gain + Model Calibration) via AVX2/FMA.
                                 // Este passo ocorre antes do resampling para manter a fidelidade do sinal.
-                                apply_gain_simd(&mut samples_l[..n], input_gain_mult);
+                                crate::dsp::gain::apply_gain_simd(
+                                    &mut samples_l[..n],
+                                    input_gain_mult,
+                                );
                                 if !process_mono {
-                                    apply_gain_simd(&mut samples_r[..n], input_gain_mult);
+                                    crate::dsp::gain::apply_gain_simd(
+                                        &mut samples_r[..n],
+                                        input_gain_mult,
+                                    );
                                 }
 
-                                // 5. Pipeline DSP: Downsampling (Rate → 48 kHz)
-                                // O motor NAM é treinado estritamente em 48kHz. O resampler converte
-                                // a taxa de amostragem do PipeWire para a taxa nativa do modelo.
-                                let n_48k = resampler.process_input(
-                                    &samples_l[..n],
-                                    if process_mono {
-                                        &samples_l[..n] // Em modo mono, usamos L para ambos
+                                // --- ZERO-COPY BYPASS LOGIC (T18) ---
+                                // Se o resampler estiver em bypass (48kHz), canalizamos os fatiadores
+                                // diretamente para o modelo sem cópias intermediárias.
+                                let is_resamp_bypass = resampler.is_bypass();
+
+                                let n_pw = if is_resamp_bypass {
+                                    // Path A: Bypass Total (Zero-Copy)
+                                    // Usamos diretamente os buffers de entrada/saída do PipeWire
+                                    let model_in_l = &samples_l[..n];
+                                    let model_in_r = if process_mono {
+                                        &samples_l[..n]
                                     } else {
                                         &samples_r[..n]
-                                    },
-                                    &mut resamp_mid_l[..MAX_RESAMP_BUF],
-                                    &mut resamp_mid_r[..MAX_RESAMP_BUF],
-                                );
+                                    };
+                                    let model_out_l = &mut resamp_out_l[..n];
+                                    let model_out_r = &mut resamp_out_r[..n];
 
-                                // 3. Inferência NAM a 48 kHz
-                                if let Some(ref mut model_l) = active_model_l {
-                                    model_l
-                                        .process(&resamp_mid_l[..n_48k], &mut temp_out_l[..n_48k]);
-                                }
+                                    if let Some(ref mut model_l) = active_model_l {
+                                        model_l.process(model_in_l, model_out_l);
+                                    }
 
-                                if process_mono {
-                                    // Copia a saída L para R
-                                    temp_out_r[..n_48k].copy_from_slice(&temp_out_l[..n_48k]);
-                                } else if let Some(ref mut model_r) = active_model_r {
-                                    model_r
-                                        .process(&resamp_mid_r[..n_48k], &mut temp_out_r[..n_48k]);
-                                }
+                                    if process_mono {
+                                        model_out_r.copy_from_slice(model_out_l);
+                                    } else if let Some(ref mut model_r) = active_model_r {
+                                        model_r.process(model_in_r, model_out_r);
+                                    }
 
-                                // 4. Upsample: 48 kHz → PW_rate
-                                let n_pw = resampler.process_output(
-                                    &temp_out_l[..n_48k],
-                                    &temp_out_r[..n_48k],
-                                    &mut resamp_out_l[..MAX_RESAMP_BUF],
-                                    &mut resamp_out_r[..MAX_RESAMP_BUF],
-                                );
+                                    n // n_pw é igual a n em bypass
+                                } else {
+                                    // Path B: Resampling Ativo
+                                    // Realiza conversão de taxa (Downsample → Inferência → Upsample)
+                                    let n_48k = resampler.process_input(
+                                        &samples_l[..n],
+                                        if process_mono {
+                                            &samples_l[..n]
+                                        } else {
+                                            &samples_r[..n]
+                                        },
+                                        &mut resamp_mid_l[..MAX_RESAMP_BUF],
+                                        &mut resamp_mid_r[..MAX_RESAMP_BUF],
+                                    );
+
+                                    let model_in_l = &resamp_mid_l[..n_48k];
+                                    let model_in_r = &resamp_mid_r[..n_48k];
+                                    let model_out_l = &mut temp_out_l[..n_48k];
+                                    let model_out_r = &mut temp_out_r[..n_48k];
+
+                                    if let Some(ref mut model_l) = active_model_l {
+                                        model_l.process(model_in_l, model_out_l);
+                                    }
+
+                                    if process_mono {
+                                        model_out_r.copy_from_slice(model_out_l);
+                                    } else if let Some(ref mut model_r) = active_model_r {
+                                        model_r.process(model_in_r, model_out_r);
+                                    }
+
+                                    resampler.process_output(
+                                        model_out_l,
+                                        model_out_r,
+                                        &mut resamp_out_l[..MAX_RESAMP_BUF],
+                                        &mut resamp_out_r[..MAX_RESAMP_BUF],
+                                    )
+                                };
 
                                 // 5. Aplica ganho de saída SIMD após conversão de rate
-                                apply_gain_simd(&mut resamp_out_l[..n_pw], output_gain_mult);
-                                apply_gain_simd(&mut resamp_out_r[..n_pw], output_gain_mult);
+                                crate::dsp::gain::apply_gain_simd(
+                                    &mut resamp_out_l[..n_pw],
+                                    output_gain_mult,
+                                );
+                                crate::dsp::gain::apply_gain_simd(
+                                    &mut resamp_out_r[..n_pw],
+                                    output_gain_mult,
+                                );
+
+                                // 6. Aplica o Fading da Histerese de Silêncio
+                                silence_hysteresis.apply_gain_rt(
+                                    &mut resamp_out_l[..n_pw],
+                                    &gate_params,
+                                    n_pw,
+                                );
+                                silence_hysteresis.apply_gain_rt(
+                                    &mut resamp_out_r[..n_pw],
+                                    &gate_params,
+                                    n_pw,
+                                );
 
                                 // Copia resultado e detecta saturação
                                 let n_copy = n_pw.min(n);

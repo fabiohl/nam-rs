@@ -135,6 +135,8 @@ pub enum ParamPayload {
         /// Sample rate exigido pelo modelo (geralmente 48000).
         sample_rate: u32,
     },
+    /// Injeta as configurações do Gate de Silêncio/Mono.
+    GateConfig(crate::dsp::gate::GateParams),
 }
 
 /// Resultado da inicialização SPSC: canais de parâmetros, GC de modelos,
@@ -231,6 +233,9 @@ mod tests {
                             ..
                         } => {
                             // Confirma o recebimento de um comando de troca de topologia (LoadModel).
+                            processed_messages += 1;
+                        }
+                        ParamPayload::GateConfig(_) => {
                             processed_messages += 1;
                         }
                     }
