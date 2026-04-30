@@ -1,23 +1,4 @@
-# 🚀 Backlog do Produto — Versão 1.1
-
-## 📊 Dashboard de Prioridades (Quick View)
-
-| ID     | Iniciativa                           | Impacto  | Esforço  | Risco    | Prioridade | Status   | Tags              |
-|:------ |:------------------------------------ |:--------:|:--------:|:--------:|:----------:|:--------:|:----------------- |
-| **T1** | Suporte completo a processadores     | 🟢 Alto  | 🔴 Alto  | 🟡 Médio | **P1**     | No Radar | #simd #cpu        |
-| **T2** | Monomorfização de Modelos (Enums)    | 🟢 Alto  | 🟡 Médio | 🟢 Baixo | **P1**     | No Radar | #simd #rust       |
-| **T3** | SIMD F16C Weight Compression         | 🟢 Alto  | 🟡 Médio | 🟡 Médio | **P1**     | No Radar | #simd #model      |
-| **T4** | Fast Gain LUT (Eliminação do `powf`) | 🟡 Médio | 🟢 Baixo | 🟡 Médio | **P1**     | No Radar | #dsp #performance |
-| **T5** | Resampler Sinc-SIMD & Fase Mínima    | 🟢 Alto  | 🔴 Alto  | 🔴 Alto  | **P2**     | No Radar | #dsp #latency     |
-| **T6** | AVX-512 VNNI/BF16 Interleaved        | 🟢 Alto  | 🔴 Alto  | 🔴 Alto  | **P2**     | No Radar | #simd #avx512     |
-| **T7** | LSTM Batch Head Dot-Product          | 🟡 Médio | 🟡 Médio | 🟡 Médio | **P2**     | No Radar | #simd #lstm       |
-| **T8** | Fusão Residual + 1x1 (DenseLayer)    | 🟡 Médio | 🟡 Médio | 🟡 Médio | **P2**     | No Radar | #simd #wavenet    |
-| **T9** | Non-Temporal Bridge Copy             | 🟡 Médio | 🟢 Baixo | 🟡 Médio | **P2**     | No Radar | #performance #l1  |
-| **T10**| Timing de Baixa Latência (RDTSC)     | 🟡 Médio | 🟢 Baixo | 🟢 Baixo | **P2**     | No Radar | #performance      |
-| **T11**| Resampler Short-Circuit (Bypass)     | 🟡 Médio | 🟢 Baixo | 🟢 Baixo | **P2**     | No Radar | #dsp #resampler   |
-| **T12**| Zero-Copy DspBridge (In-Place)       | 🟡 Médio | 🟡 Médio | 🔴 Alto  | **P3**     | No Radar | #pipewire #arch   |
-| **T13**| Prefetch Adaptativo por Dilatação    | 🟡 Médio | 🟢 Baixo | 🟡 Médio | **P3**     | No Radar | #simd #l1         |
-| **T14**| Histerese em Otimizações de Sinal    | 🟢 Baixo | 🟢 Baixo | 🟢 Baixo | **P3**     | No Radar | #dsp              |
+# 🚀 Backlog do Produto
 
 ---
 
