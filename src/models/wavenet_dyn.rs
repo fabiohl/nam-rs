@@ -323,6 +323,11 @@ impl DenseLayerDyn {
         // [PASSO: Buffer Temporário Stack]
         // Para operações strided, projetamos o frame em um buffer contíguo local
         // e depois espalhamos (scatter) para o buffer de saída com os strides corretos.
+        debug_assert!(
+            self.out_size <= 1024,
+            "DenseLayerDyn::process_acc_block_strided: out_size ({}) excede o buffer stack (1024)",
+            self.out_size,
+        );
         let mut tmp = [0.0f32; 1024];
         let tmp_slice = &mut tmp[..self.out_size];
 
@@ -361,6 +366,11 @@ impl DenseLayerDyn {
         in_stride: usize,
         out_stride: usize,
     ) {
+        debug_assert!(
+            self.out_size <= 1024,
+            "DenseLayerDyn::process_block_strided: out_size ({}) excede o buffer stack (1024)",
+            self.out_size,
+        );
         let mut tmp = [0.0f32; 1024];
         let tmp_slice = &mut tmp[..self.out_size];
 

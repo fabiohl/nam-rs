@@ -4,9 +4,19 @@
 
 ---
 
-## 🏛️ Épico: Otimização de Modelos & Inferência
+## 🏛️ Épico: Otimização de Modelos & Inferência ✅ Concluído (2026-04-30)
 
 *Foco: Reduzir a pegada de memória e aumentar o throughput dos núcleos neurais.*
+
+> **Notas de Auditoria (2026-04-30):**
+>
+> - Todas as 7 tarefas (T1, T2, T3, T6, T7, T8, T13) aprovadas na revisão.
+> - Benchmarks: WaveNet Standard 64samp = ~198 µs (85% margem RT @48kHz).
+> - LSTM 2×16 64samp = ~19 µs (99% margem RT @48kHz).
+> - Path dinâmico (fallback): regressão de ~6% investigada e **descartada** (Criterion p=0.74, dentro do ruído estatístico).
+> - `clippy::missing_safety_doc` supressão removida; `# Safety` docs adicionadas a 16 funções em `simd.rs`.
+> - `debug_assert!` adicionados a buffers stack `[0.0f32; 1024]` em wavenet.rs e wavenet_dyn.rs.
+> - Artefatos de debug (`src/scratch.rs`, `src/scratch`) removidos.
 
 ### [T1] Suporte completo a processadores (AVX2 / AVX-512) [Concluido]
 

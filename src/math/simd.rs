@@ -2,7 +2,6 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Engenharia de Registradores baseada em instruções explícitas x86_64.
-#![allow(clippy::missing_safety_doc)]
 //!
 //! Este módulo exporta funções analíticas implementadas com instrinsics de AVX2 e FMA,
 //! otimizando os cálculos críticos (como Fused Multiply-Add) limitando os
@@ -62,6 +61,11 @@ pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
 ///
 /// Esta função altera estado global do processador (MXCSR) — deve ser
 /// chamada apenas uma vez por thread (tipicamente no início do callback RT).
+///
+/// # Safety
+/// O chamador deve garantir que a CPU suporte SSE2 (implícito em x86-64).
+/// Altera estado global (MXCSR), portanto deve ser chamada antes de iniciar
+/// processamento em paralelo na mesma thread.
 pub unsafe fn set_daz_ftz() {
     // 0x8040 = bit 15 (FTZ) | bit 6 (DAZ)
     unsafe {
@@ -85,6 +89,10 @@ pub unsafe fn set_daz_ftz() {
 ///
 /// Para vetores curtos (H=8..16, típicos de LSTM/WaveNet NAM), o loop de 8-em-8
 /// com 2 acumuladores captura a maior parte do ganho sem overhead excessivo.
+///
+/// # Safety
+/// Requer CPU com suporte a AVX2, FMA e F16C. Os slices `a` e `b` devem ser
+/// válidos e acessíveis. O cálculo usa `get_unchecked` no tail escalar.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
@@ -177,6 +185,10 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 /// usando 2 acumuladores de 512 bits. Com ZMM (16 floats), 2 acumuladores
 /// processam 32 floats/iteração e são suficientes para saturar o pipeline
 /// AVX-512 (que tipicamente tem 1–2 FMA ports em Zen4/Sapphire Rapids).
+///
+/// # Safety
+/// Requer CPU com suporte a AVX-512F, AVX-512VL e F16C. Os slices `a` e `b`
+/// devem ser válidos.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
@@ -229,6 +241,10 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
 /// Instrução `VDPBF16PS` processa 32 valores BF16 (16 pares) por registro ZMM,
 /// realizando a operação `acc[j] += a[2j]*b[2j] + a[2j+1]*b[2j+1]` em um único ciclo.
 /// Isso dobra o throughput em relação ao FMA32 (que processa 16 valores/ciclo).
+///
+/// # Safety
+/// Requer CPU com suporte a AVX-512F, AVX-512VL e AVX-512BF16.
+/// Os slices `a` e `b` contêm valores BF16 empacotados como u16.
 #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
 pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
@@ -302,6 +318,10 @@ pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
 /// Processa 8 linhas de 4 pesos ([I, F, C, O]) por iteração.
 /// O estado é carregado em 128 bits e expandido para 512 bits (broadcast 1:4 por elemento).
 /// A instrução `VDPBF16PS` então realiza o dot product de pares BF16, acumulando em F32.
+///
+/// # Safety
+/// Requer CPU com AVX-512F, AVX-512VL, AVX-512BW e AVX-512BF16.
+/// `weights` e `state` devem conter valores BF16 válidos.
 #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
 pub unsafe fn dot_product_4x_interleaved_bf16_avx512(
     weights: &[[u16; 4]],
@@ -357,6 +377,10 @@ pub unsafe fn dot_product_4x_interleaved_bf16_avx512(
 }
 
 /// Fallback escalar para dot product BF16.
+///
+/// # Safety
+/// Os slices `a` e `b` devem ser válidos. Usa `get_unchecked` para acesso
+/// sem verificação de limites no loop interno.
 pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut sum = 0.0f32;
@@ -369,6 +393,9 @@ pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
 }
 
 /// Fallback para dot product interleaved BF16.
+///
+/// # Safety
+/// `weights` e `state` devem conter dados BF16 válidos e ter tamanhos consistentes.
 pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
     weights: &[[u16; 4]],
     state: &[u16],
@@ -387,6 +414,10 @@ pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
 }
 
 /// Fallback para dot product BF16 em batch de 4.
+///
+/// # Safety
+/// Todos os slices devem ser válidos e conter dados BF16. Delega para
+/// `dot_product_bf16_fallback` que usa `get_unchecked`.
 pub unsafe fn dot_product_bf16_batch_4x_fallback(
     h0: &[u16],
     h1: &[u16],
@@ -404,6 +435,10 @@ pub unsafe fn dot_product_bf16_batch_4x_fallback(
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
 /// Otimizado especificamente para as 4 portas do LSTM (Input, Forget, Cell, Output).
+///
+/// # Safety
+/// Requer CPU com AVX2, FMA e F16C. Todos os slices de pesos (`w0`–`w3`)
+/// e `state` devem ter tamanhos compatíveis.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_avx2(
     w0: &[u16],
@@ -516,6 +551,10 @@ pub unsafe fn dot_product_4x_avx2(
 }
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
+///
+/// # Safety
+/// Requer CPU com AVX-512F e AVX-512VL. Os slices `w0`–`w3` (F16C) e `state`
+/// (f32) devem ser válidos e ter tamanhos compatíveis.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_avx512(
     w0: &[u16],
@@ -570,6 +609,10 @@ pub unsafe fn dot_product_4x_avx512(
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
 /// Otimizado especificamente para as 4 portas do LSTM interfolhadas (Input, Forget, Cell, Output).
+///
+/// # Safety
+/// Requer CPU com AVX2, FMA e F16C. `weights.len()` e `state.len()` devem ser
+/// consistentes. O layout `[u16; 4]` representa pesos interfolhados (I,F,C,O).
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
@@ -651,6 +694,10 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 reutilizando o state.
 /// Otimizado especificamente para as 4 portas do LSTM interfolhadas.
+///
+/// # Safety
+/// Requer CPU com AVX-512F e AVX-512VL. `weights` e `state` devem ter
+/// tamanhos consistentes.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
@@ -864,18 +911,36 @@ impl SimdMathConfig {
 }
 
 /// Trait de abstração para despacho estático de operações matemáticas SIMD.
+///
+/// # Safety
+/// Todas as implementações deste trait utilizam intrinsics SIMD x86-64 que requerem
+/// features de CPU específicas (AVX2/FMA mínimo). O chamador deve garantir que a CPU
+/// suporte as features declaradas via `#[target_feature]` na implementação concreta.
+/// Os slices passados devem ser válidos e acessíveis para leitura/escrita conforme indicado.
 pub trait SimdMath {
     /// Indica se esta implementação utiliza pesos e sinais em formato BF16.
     const IS_BF16: bool = false;
     /// Calcula o produto escalar entre dois vetores.
+    ///
+    /// # Safety
+    /// `a` (f32) e `b` (f16 como u16) devem ser válidos. Requer target feature da implementação.
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32;
     /// Converte f32 para BF16 (u16) de forma vetorizada.
+    ///
+    /// # Safety
+    /// `src` e `dst` devem ser válidos e `dst` deve ter ao menos `src.len()` elementos.
     unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]);
 
     /// Produto escalar 1x entre dois vetores BF16 (u16 bits).
+    ///
+    /// # Safety
+    /// `a` e `b` devem conter dados BF16 válidos empacotados como u16.
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32;
 
     /// Produto escalar 4x entre vetores BF16 (u16 bits).
+    ///
+    /// # Safety
+    /// Todos os slices devem conter dados BF16 válidos e ter tamanhos consistentes.
     unsafe fn dot_product_bf16_4x(
         w0: &[u16],
         w1: &[u16],
@@ -885,6 +950,9 @@ pub trait SimdMath {
     ) -> [f32; 4];
 
     /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado) para WaveNet.
+    ///
+    /// # Safety
+    /// `w0`–`w3` (f16 como u16) e `state` (f32) devem ter tamanhos compatíveis.
     unsafe fn dot_product_4x(
         w0: &[u16],
         w1: &[u16],
@@ -893,16 +961,32 @@ pub trait SimdMath {
         state: &[f32],
     ) -> [f32; 4];
     /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado.
+    ///
+    /// # Safety
+    /// `weights` e `state` devem ter tamanhos consistentes. Layout `[u16; 4]` = (I,F,C,O).
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4];
     /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado BF16.
+    ///
+    /// # Safety
+    /// `weights` e `state` devem conter dados BF16 válidos e ter tamanhos consistentes.
     unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4];
     /// Aplica Tanh em-lugar no slice usando aproximação minimax polinomial fastmath.
+    ///
+    /// # Safety
+    /// `slice` deve ser válido e acessível para leitura e escrita.
     unsafe fn tanh_slice(slice: &mut [f32]);
     /// Aplica Sigmoid em-lugar no slice via fastmath.
+    ///
+    /// # Safety
+    /// `slice` deve ser válido e acessível para leitura e escrita.
     unsafe fn sigmoid_slice(slice: &mut [f32]);
 
     /// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV).
     /// out_frame: vetor Y e X_res (in-place).
+    ///
+    /// # Safety
+    /// `weights` deve ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+    /// `bias` deve ter ao menos `out_len` elementos. `out_frame` é lido e escrito.
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
         weights: &[u16],
@@ -1363,6 +1447,10 @@ pub use dispatch_simd;
 
 /// Calcula o Dot Product de um lote de 4 vetores (h0..h3) com o mesmo vetor de pesos.
 /// Otimizado para processamento em lote da cabeça do LSTM.
+///
+/// # Safety
+/// Requer CPU com AVX2, FMA e F16C. Todos os slices devem ser válidos e
+/// ter `len() >= weights.len()`.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_batch_4x_avx2(
     h0: &[f32],
@@ -1461,6 +1549,10 @@ pub unsafe fn dot_product_batch_4x_avx2(
 }
 
 /// Calcula o Dot Product de um lote de 4 vetores via AVX-512.
+///
+/// # Safety
+/// Requer CPU com AVX-512F e AVX-512VL. Todos os slices devem ser válidos e
+/// ter `len() >= weights.len()`.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_batch_4x_avx512(
     h0: &[f32],
@@ -1511,6 +1603,11 @@ pub unsafe fn dot_product_batch_4x_avx512(
 }
 
 /// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX2.
+///
+/// # Safety
+/// Requer CPU com AVX2, FMA e F16C. `weights` deve ter `in_len * out_len`
+/// elementos no layout `[IN][OUT]`. `bias` deve ter ao menos `out_len` elementos.
+/// `out_frame` é lido e escrito (acumulação in-place sobre o residual).
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemv_avx2(
     in_frame: &[f32],
@@ -1559,6 +1656,10 @@ pub unsafe fn fused_add_gemv_avx2(
 }
 
 /// Realiza a operação fundida Y = X_res + Bias + W * Z via AVX-512.
+///
+/// # Safety
+/// Requer CPU com AVX-512F e AVX-512VL. Mesmos invariantes de layout de
+/// `fused_add_gemv_avx2`: `weights` em `[IN][OUT]`, `bias` com `out_len` elementos.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemv_avx512(
     in_frame: &[f32],
