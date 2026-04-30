@@ -279,6 +279,7 @@ pub fn is_buffer_mono_simd(left: &[f32], right: &[f32]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB};
 
     /// Testa a aplicação básica de ganho.
     /// Verifica bypass (1.0), amplificação (2.0) e comportamento com zeros.
@@ -311,18 +312,21 @@ mod tests {
     /// Garante que a conversão dB -> Linear e a aplicação estão corretas.
     #[test]
     fn test_combined_gain_staging() {
-        // Cenário: usuário define +6dB de input gain,
-        // modelo exige ajuste de -3dB (audioInputDBu - modelInputDBu).
-        // Total = +3dB → multiplicador linear = 10^(3/20) ≈ 1.4125
+        let lut = crate::math::fastmath::get_gain_lut();
         let user_input_db: f32 = 6.0;
         let model_input_adj_db: f32 = -3.0;
-        let total_db = user_input_db + model_input_adj_db;
-        let gain_linear = 10.0f32.powf(total_db / 20.0);
+
+        // Na nova arquitetura, a Main Thread envia multiplicadores lineares.
+        let user_input_mult = lut.db_to_linear(user_input_db);
+        let model_input_adj_mult = lut.db_to_linear(model_input_adj_db);
+
+        // A thread RT apenas os multiplica (zero powf/LUT no hot-path).
+        let gain_linear = user_input_mult * model_input_adj_mult;
 
         let mut buffer = [1.0f32; 16];
         apply_gain_simd(&mut buffer, gain_linear);
 
-        let expected = 10.0f32.powf(3.0 / 20.0);
+        let expected = lut.db_to_linear(3.0);
         for &sample in &buffer {
             assert!(
                 (sample - expected).abs() < 1e-5,
@@ -335,8 +339,9 @@ mod tests {
     /// e positivo (+24dB ≈ 15.85) sem underflow/overflow em Float32.
     #[test]
     fn test_extreme_gain_values() {
+        let lut = crate::math::fastmath::get_gain_lut();
         // -60 dB → gain ≈ 0.001
-        let gain_neg60 = 10.0f32.powf(-60.0 / 20.0);
+        let gain_neg60 = lut.db_to_linear(-60.0);
         assert!(gain_neg60 > 0.0 && gain_neg60.is_finite());
 
         let mut buffer = [1.0f32; 20];
@@ -349,7 +354,7 @@ mod tests {
         }
 
         // +24 dB → gain ≈ 15.85
-        let gain_pos24 = 10.0f32.powf(24.0 / 20.0);
+        let gain_pos24 = lut.db_to_linear(24.0);
         assert!(gain_pos24 > 10.0 && gain_pos24.is_finite());
 
         let mut buffer2 = [0.5f32; 20];
@@ -414,8 +419,9 @@ mod tests {
             .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
             .collect();
 
-        let gain_up = 10.0f32.powf(6.0 / 20.0); // +6 dB
-        let gain_down = 10.0f32.powf(-6.0 / 20.0); // -6 dB
+        let lut = crate::math::fastmath::get_gain_lut();
+        let gain_up = lut.db_to_linear(6.0); // +6 dB
+        let gain_down = lut.db_to_linear(-6.0); // -6 dB
 
         let mut buffer = original.clone();
         apply_gain_simd(&mut buffer, gain_up);
@@ -441,7 +447,10 @@ mod tests {
     /// Aplicar +96dB e -96dB sem gerar NaN/Inf (extremos de ganho em Float32).
     #[test]
     fn test_gain_extreme_values_96db() {
+        let lut = crate::math::fastmath::get_gain_lut();
         // +96 dB → gain ≈ 63095.7
+        // Nota: A LUT clampa em +24dB, mas para este teste de "estabilidade extrema"
+        // usamos o valor manual (powf) para garantir que o kernel SIMD não explode com valores altos.
         let gain_pos96 = 10.0f32.powf(96.0 / 20.0);
         assert!(
             gain_pos96.is_finite(),
@@ -458,7 +467,7 @@ mod tests {
         }
 
         // -96 dB → gain ≈ 1.585e-5
-        let gain_neg96 = 10.0f32.powf(-96.0 / 20.0);
+        let gain_neg96 = lut.db_to_linear(-96.0);
         assert!(
             gain_neg96.is_finite() && gain_neg96 > 0.0,
             "-96dB gain inválido: {gain_neg96}"
@@ -486,6 +495,36 @@ mod tests {
             );
             // -0.0 * 2.5 = -0.0 (IEEE 754), que é finito
         }
+    }
+
+    /// Valida a precisão da GainLUT em relação ao powf original.
+    /// O critério de aceite exige erro absoluto de atenuação < 0.001 dB.
+    #[test]
+    fn test_gain_lut_precision() {
+        let lut = crate::math::fastmath::get_gain_lut();
+
+        // Varredura de -96 dB a +24 dB (range nominal da LUT).
+        let mut db = -96.0;
+        while db <= 24.0 {
+            let expected = 10.0f32.powf(db / 20.0);
+            let actual = lut.db_to_linear(db);
+
+            // Calculamos a diferença em dB: error_db = |20 * log10(actual/expected)|
+            let error_db = (20.0 * (actual / expected).log10()).abs();
+
+            assert!(
+                error_db < 0.001,
+                "Erro de precisão na LUT excedeu 0.001 dB em {} dB. Erro: {:.6} dB",
+                db,
+                error_db
+            );
+
+            db += 0.1;
+        }
+
+        // Verifica clamping nos extremos
+        assert_eq!(lut.db_to_linear(-120.0), lut.db_to_linear(GAIN_MIN_DB));
+        assert_eq!(lut.db_to_linear(48.0), lut.db_to_linear(GAIN_MAX_DB));
     }
 
     // =========================================================================

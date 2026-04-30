@@ -271,11 +271,11 @@ pub fn run_pipewire_host(
         let mut resamp_mid_r = [0.0f32; MAX_RESAMP_BUF];
         let mut resamp_out_r = [0.0f32; MAX_RESAMP_BUF];
 
-        // Variáveis de ganho em decibéis
-        let mut user_input_gain_db: f32 = 0.0;
-        let mut user_output_gain_db: f32 = 0.0;
-        let mut model_input_db_adj: f32 = 0.0;
-        let mut model_output_db_adj: f32 = 0.0;
+        // Variáveis de ganho como multiplicadores lineares
+        let mut user_input_gain_mult: f32 = 1.0;
+        let mut user_output_gain_mult: f32 = 1.0;
+        let mut model_input_mult_adj: f32 = 1.0;
+        let mut model_output_mult_adj: f32 = 1.0;
 
         // Multiplicadores pré-calculados lineares para inserção no DSP FMA Simd
         let mut input_gain_mult: f32 = 1.0;
@@ -358,19 +358,19 @@ pub fn run_pipewire_host(
                         ParamPayload::LoadModel {
                             model_l,
                             model_r,
-                            input_db_adj,
-                            output_db_adj,
+                            input_mult_adj,
+                            output_mult_adj,
                             sample_rate,
                         } => {
                             let new_model_l = model_l;
                             let new_model_r = model_r;
                             if new_model_l.is_some() || new_model_r.is_some() {
-                                model_input_db_adj = input_db_adj;
-                                model_output_db_adj = output_db_adj;
+                                model_input_mult_adj = input_mult_adj;
+                                model_output_mult_adj = output_mult_adj;
                                 current_nam_rate = sample_rate;
                             } else {
-                                model_input_db_adj = 0.0;
-                                model_output_db_adj = 0.0;
+                                model_input_mult_adj = 1.0;
+                                model_output_mult_adj = 1.0;
                                 current_nam_rate = 48_000;
                             }
 
@@ -382,12 +382,12 @@ pub fn run_pipewire_host(
                             }
                             param_changed = true;
                         }
-                        ParamPayload::InputGain(gain_db) => {
-                            user_input_gain_db = gain_db;
+                        ParamPayload::InputGain(mult) => {
+                            user_input_gain_mult = mult;
                             param_changed = true;
                         }
-                        ParamPayload::OutputGain(gain_db) => {
-                            user_output_gain_db = gain_db;
+                        ParamPayload::OutputGain(mult) => {
+                            user_output_gain_mult = mult;
                             param_changed = true;
                         }
                     }
@@ -423,10 +423,10 @@ pub fn run_pipewire_host(
 
                 if param_changed {
                     compute_gain_multipliers(
-                        user_input_gain_db,
-                        user_output_gain_db,
-                        model_input_db_adj,
-                        model_output_db_adj,
+                        user_input_gain_mult,
+                        user_output_gain_mult,
+                        model_input_mult_adj,
+                        model_output_mult_adj,
                         &mut input_gain_mult,
                         &mut output_gain_mult,
                     );
@@ -1145,19 +1145,18 @@ fn poll_rt_status(
 /// Usa `powf`, que é custoso, mas aceitável fora do hot-path de processamento.
 #[cold]
 #[inline(never)]
+/// Calcula os multiplicadores finais combinando ganho do usuário e ajustes do modelo.
+/// Operação ultra-rápida (apenas multiplicações lineares) para manter o callback RT leve.
 fn compute_gain_multipliers(
-    u_in: f32,
-    u_out: f32,
-    m_in: f32,
-    m_out: f32,
+    u_in_mult: f32,
+    u_out_mult: f32,
+    m_in_mult: f32,
+    m_out_mult: f32,
     out_in_mult: &mut f32,
     out_out_mult: &mut f32,
 ) {
-    let total_in_db = u_in + m_in;
-    *out_in_mult = 10.0f32.powf(total_in_db / 20.0);
-
-    let total_out_db = u_out + m_out;
-    *out_out_mult = 10.0f32.powf(total_out_db / 20.0);
+    *out_in_mult = u_in_mult * m_in_mult;
+    *out_out_mult = u_out_mult * m_out_mult;
 }
 
 /// Configura a thread DSP atual para operação em tempo real.

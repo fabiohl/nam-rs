@@ -177,6 +177,11 @@ fn load_and_send_model(
             let output_db_adj = -18.0 - loudness;
             let nam_rate = model_data.sample_rate.unwrap_or(48000.0) as u32;
 
+            // Converte os ajustes de dB para multiplicadores lineares na Main Thread.
+            let lut = nam_rs::math::fastmath::get_gain_lut();
+            let input_mult_adj = lut.db_to_linear(input_db_adj);
+            let output_mult_adj = lut.db_to_linear(output_db_adj);
+
             // Dispatcher: converte NamModelData → Box<DynamicModel> (thread CLI)
             // Para "True Stereo", instanciamos dois caminhos (L e R) de estados estritamente independentes.
             let model_l = match loader::dispatcher::build_model(&model_data) {
@@ -239,8 +244,8 @@ fn load_and_send_model(
                 .push(ParamPayload::LoadModel {
                     model_l,
                     model_r,
-                    input_db_adj,
-                    output_db_adj,
+                    input_mult_adj,
+                    output_mult_adj,
                     sample_rate: nam_rate,
                 })
                 .is_ok()
@@ -393,7 +398,8 @@ fn main() -> anyhow::Result<()> {
         );
     }
     if initial_in_gain != 0.0 {
-        let _ = producer.push(ParamPayload::InputGain(initial_in_gain));
+        let lut = nam_rs::math::fastmath::get_gain_lut();
+        let _ = producer.push(ParamPayload::InputGain(lut.db_to_linear(initial_in_gain)));
         log::info!(
             "{} Ganho de entrada: {:+.1} dB",
             "🎚️ [CLI]".cyan(),
@@ -401,7 +407,8 @@ fn main() -> anyhow::Result<()> {
         );
     }
     if initial_out_gain != 0.0 {
-        let _ = producer.push(ParamPayload::OutputGain(initial_out_gain));
+        let lut = nam_rs::math::fastmath::get_gain_lut();
+        let _ = producer.push(ParamPayload::OutputGain(lut.db_to_linear(initial_out_gain)));
         log::info!(
             "{} Ganho de saída: {:+.1} dB",
             "🎚️ [CLI]".cyan(),

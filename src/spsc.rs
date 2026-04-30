@@ -116,9 +116,9 @@ impl Default for RtStatusFlags {
 /// Adota alinhamento a 128 bytes para mitigar False Sharing.
 #[repr(align(128))]
 pub enum ParamPayload {
-    /// Injeta o ganho de entrada (Input Gain) em dB.
+    /// Injeta o ganho de entrada (Input Gain) como multiplicador linear.
     InputGain(f32),
-    /// Injeta o ganho de saída (Output Gain) em dB.
+    /// Injeta o ganho de saída (Output Gain) como multiplicador linear.
     OutputGain(f32),
     /// Carrega a topologia matemática decodificada informando, simultaneamente, os limiares
     /// esperados pelo criador do modelo (resolvidos da tag input_level_dbu e loudness).
@@ -128,10 +128,10 @@ pub enum ParamPayload {
         model_l: Option<Box<crate::models::DynamicModel>>,
         /// O modelo encapsulado para a inferência neural (Canal Direito)
         model_r: Option<Box<crate::models::DynamicModel>>,
-        /// Ajuste de ganho esperado na entrada em dB (audioInputLevelDBu - modelInputLevelDBu)
-        input_db_adj: f32,
-        /// Ajuste de ganho esperado na saída em dB (-18 - modelLoudnessDB)
-        output_db_adj: f32,
+        /// Ajuste de ganho esperado na entrada como multiplicador linear.
+        input_mult_adj: f32,
+        /// Ajuste de ganho esperado na saída como multiplicador linear.
+        output_mult_adj: f32,
         /// Sample rate exigido pelo modelo (geralmente 48000).
         sample_rate: u32,
     },
@@ -244,17 +244,17 @@ mod tests {
         let cli_handle = thread::spawn(move || {
             // Envia vários pacotes enquanto simula CLI interactions
             let payloads = vec![
-                ParamPayload::InputGain(0.0),
-                ParamPayload::OutputGain(-12.5),
-                ParamPayload::InputGain(12.0),
+                ParamPayload::InputGain(1.0),
+                ParamPayload::OutputGain(0.25),
+                ParamPayload::InputGain(4.0),
                 ParamPayload::LoadModel {
                     model_l: None,
                     model_r: None,
-                    input_db_adj: 0.0,
-                    output_db_adj: 0.0,
+                    input_mult_adj: 1.0,
+                    output_mult_adj: 1.0,
                     sample_rate: 48000,
                 },
-                ParamPayload::OutputGain(3.5),
+                ParamPayload::OutputGain(1.5),
             ];
 
             for mut payload in payloads {

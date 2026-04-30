@@ -92,7 +92,7 @@
 - **Perfil do Implementador:** Engenheiro Kernel Linux.
 - **Tags:** #performance #lowlevel
 
-### [T16] Eliminação do `powf` no Callback RT (Gain Staging LUT)
+### [T16] Eliminação do `powf` no Callback RT (Gain Staging LUT) [Concluido]
 
 - **Contexto Arquitetural:** O motor normaliza níveis baseado na calibração DBu com a equação logarítmica exp2. O ganho de entrada e saída é calculado com base nos perfis do modelo ou configurações da linha de comando de maneira iterativa.
 - **Problema:** Empregos de `powf` vindo da biblioteca `libm` ou `std` destroem o pipeline de branch da CPU dentro de uma região crítica de inferência milisegundo e causam L1 I-Cache miss constante com saltos pesados de 200+ ciclos.

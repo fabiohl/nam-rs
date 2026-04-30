@@ -1003,8 +1003,8 @@ fn test_end_to_end_spsc_pipeline() {
         .push(nam_rs::spsc::ParamPayload::LoadModel {
             model_l: Some(boxed),
             model_r: None,
-            input_db_adj: 0.0,
-            output_db_adj: 0.0,
+            input_mult_adj: 1.0,
+            output_mult_adj: 1.0,
             sample_rate: 48000,
         })
         .expect("Falha ao enviar modelo via SPSC no E2E");
@@ -1015,13 +1015,7 @@ fn test_end_to_end_spsc_pipeline() {
         .expect("Falha ao receber modelo via SPSC no E2E");
 
     let mut active_model = match received {
-        nam_rs::spsc::ParamPayload::LoadModel {
-            model_l,
-            model_r: _,
-            input_db_adj: _,
-            output_db_adj: _,
-            sample_rate: _,
-        } => model_l,
+        nam_rs::spsc::ParamPayload::LoadModel { model_l, .. } => model_l,
         _ => panic!("Payload recebido não é LoadModel no E2E"),
     };
 
@@ -1633,8 +1627,8 @@ fn test_rapid_hot_swap_spsc() {
             .push(nam_rs::spsc::ParamPayload::LoadModel {
                 model_l: Some(boxed),
                 model_r: None,
-                input_db_adj: 0.0,
-                output_db_adj: 0.0,
+                input_mult_adj: 1.0,
+                output_mult_adj: 1.0,
                 sample_rate: 48000,
             })
             .unwrap_or_else(|_| panic!("SPSC push falhou para {label} — buffer cheio"));
@@ -1651,13 +1645,7 @@ fn test_rapid_hot_swap_spsc() {
 
         // Substituir o modelo ativo — o anterior é dropped aqui
         let new_model = match received {
-            nam_rs::spsc::ParamPayload::LoadModel {
-                model_l,
-                model_r: _,
-                input_db_adj: _,
-                output_db_adj: _,
-                sample_rate: _,
-            } => model_l,
+            nam_rs::spsc::ParamPayload::LoadModel { model_l, .. } => model_l,
             _ => panic!("Payload #{idx} não é LoadModel"),
         };
 

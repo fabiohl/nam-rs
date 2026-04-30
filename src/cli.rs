@@ -8,6 +8,7 @@
 
 use lexopt::prelude::*;
 use nam_rs::colors::Colorize;
+use nam_rs::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB};
 use std::path::PathBuf;
 
 /// Imprime as instruções de uso e ajuda no terminal.
@@ -82,6 +83,13 @@ pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
                             .into_string()
                             .map_err(|_| "Valor de ganho de entrada inválido.".to_string())?;
                         input_gain = val_str.parse::<f32>().map_err(|_| format!("Ganho de entrada inválido: '{}'. Deve ser um número em dB (ex: 3.5, -12).", val_str))?;
+
+                        if !(GAIN_MIN_DB..=GAIN_MAX_DB).contains(&input_gain) {
+                            return Err(format!(
+                                "Ganho de entrada ({:.1} dB) fora do intervalo permitido [{:.1}, {:.1}] dB.",
+                                input_gain, GAIN_MIN_DB, GAIN_MAX_DB
+                            ));
+                        }
                     }
                     // Configuração de ganho de saída (dB).
                     Short('o') | Long("output-gain") => {
@@ -90,6 +98,13 @@ pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
                             .into_string()
                             .map_err(|_| "Valor de ganho de saída inválido.".to_string())?;
                         output_gain = val_str.parse::<f32>().map_err(|_| format!("Ganho de saída inválido: '{}'. Deve ser um número em dB (ex: 3.5, -12).", val_str))?;
+
+                        if !(GAIN_MIN_DB..=GAIN_MAX_DB).contains(&output_gain) {
+                            return Err(format!(
+                                "Ganho de saída ({:.1} dB) fora do intervalo permitido [{:.1}, {:.1}] dB.",
+                                output_gain, GAIN_MIN_DB, GAIN_MAX_DB
+                            ));
+                        }
                     }
                     // Ajuste do tamanho do buffer do DSP (em samples).
                     Short('b') | Long("buffer-size") => {

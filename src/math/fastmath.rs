@@ -9,6 +9,69 @@
 //! As aproximações são derivadas de polinômios do ecossistema referencial (math_approx).
 
 use core::arch::x86_64::*;
+use std::sync::OnceLock;
+
+/// Tamanho da tabela LUT para ganho. 4096 pontos fornecem precisão sub-0.001 dB.
+pub const GAIN_LUT_SIZE: usize = 4096;
+/// Limite inferior em dB para a LUT (Piso de silêncio prático -96dB).
+pub const GAIN_MIN_DB: f32 = -96.0;
+/// Limite superior em dB para a LUT (+30dB é um boost extremo).
+pub const GAIN_MAX_DB: f32 = 30.0;
+const GAIN_DB_RANGE: f32 = GAIN_MAX_DB - GAIN_MIN_DB;
+const GAIN_DB_STEP: f32 = GAIN_DB_RANGE / (GAIN_LUT_SIZE as f32 - 1.0);
+const INV_GAIN_DB_STEP: f32 = 1.0 / GAIN_DB_STEP;
+
+/// Tabela de Look-Up para conversão ultra-rápida de dB para ganho linear.
+/// Projetada para ser instanciada via `OnceLock` e acessada em threads RT.
+pub struct GainLUT {
+    table: [f32; GAIN_LUT_SIZE],
+}
+
+impl GainLUT {
+    /// Inicializa a LUT pré-calculando os valores de ganho linear.
+    pub fn new() -> Self {
+        let mut table = [0.0f32; GAIN_LUT_SIZE];
+        for (i, item) in table.iter_mut().enumerate() {
+            let db = GAIN_MIN_DB + (i as f32 * GAIN_DB_STEP);
+            *item = 10.0f32.powf(db / 20.0);
+        }
+        Self { table }
+    }
+}
+
+impl Default for GainLUT {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GainLUT {
+    /// Converte dB para ganho linear usando interpolação linear na LUT.
+    /// Operação determinística, zero-allocation e amigável ao pipeline da CPU.
+    #[inline(always)]
+    pub fn db_to_linear(&self, db: f32) -> f32 {
+        // Clamp para garantir que o índice esteja dentro dos limites da tabela.
+        let db_clamped = db.clamp(GAIN_MIN_DB, GAIN_MAX_DB);
+        let exact_idx = (db_clamped - GAIN_MIN_DB) * INV_GAIN_DB_STEP;
+
+        let idx0 = exact_idx as usize;
+        let idx1 = (idx0 + 1).min(GAIN_LUT_SIZE - 1);
+        let frac = exact_idx - (idx0 as f32);
+
+        // Interpolação linear: y = y0 + frac * (y1 - y0)
+        let y0 = self.table[idx0];
+        let y1 = self.table[idx1];
+        y0 + frac * (y1 - y0)
+    }
+}
+
+/// Instância global da LUT de ganho, carregada no primeiro acesso.
+pub static GAIN_LUT: OnceLock<GainLUT> = OnceLock::new();
+
+/// Retorna a instância global da LUT, inicializando-a se necessário.
+pub fn get_gain_lut() -> &'static GainLUT {
+    GAIN_LUT.get_or_init(GainLUT::new)
+}
 
 /// Otimizações matemáticas portadas dos polinômios de NeuralAudio / math_approx.
 /// Aplica aproximação vetorial de `tanh(x)` iterando um polinômio de grau 5.
