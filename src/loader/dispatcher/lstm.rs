@@ -3,6 +3,7 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
+use crate::math::simd::f32_to_bf16;
 use crate::models::DynamicModel;
 use crate::models::lstm::{LstmLayer, LstmModel1, LstmModel2};
 use crate::models::lstm_dyn::{LstmDynLayer, LstmDynModel};
@@ -156,6 +157,9 @@ pub fn build_lstm_dynamic(
     let mut current_input_size = 1; // O primeiro sinal que entra tem tamanho 1 (um único valor de áudio)
 
     // Processamos cada "camada" (layer) do modelo. Pense nelas como estágios de uma linha de montagem.
+    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
+        == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
+
     for _ in 0..num_layers {
         // Lemos todos os pesos (a "inteligência" treinada) desta camada de uma vez só.
         let raw_weights =
@@ -168,16 +172,25 @@ pub fn build_lstm_dynamic(
         // mas para o computador processar rápido (4 de uma vez), nós os reorganizamos
         // intercalando-os (Input, Forget, Cell, Output). É como separar cartas de 4 baralhos
         // diferentes e montá-los em uma sequência 1,2,3,4, 1,2,3,4...
+
         for i in 0..hidden_size {
             for j in 0..ih {
-                input_hidden_weights[(i * ih + j) * 4] =
-                    half::f16::from_f32(raw_weights[i * ih + j]).to_bits();
-                input_hidden_weights[(i * ih + j) * 4 + 1] =
-                    half::f16::from_f32(raw_weights[(i + hidden_size) * ih + j]).to_bits();
-                input_hidden_weights[(i * ih + j) * 4 + 2] =
-                    half::f16::from_f32(raw_weights[(i + 2 * hidden_size) * ih + j]).to_bits();
-                input_hidden_weights[(i * ih + j) * 4 + 3] =
-                    half::f16::from_f32(raw_weights[(i + 3 * hidden_size) * ih + j]).to_bits();
+                let v0 = raw_weights[i * ih + j];
+                let v1 = raw_weights[(i + hidden_size) * ih + j];
+                let v2 = raw_weights[(i + 2 * hidden_size) * ih + j];
+                let v3 = raw_weights[(i + 3 * hidden_size) * ih + j];
+
+                if is_bf16 {
+                    input_hidden_weights[(i * ih + j) * 4] = f32_to_bf16(v0);
+                    input_hidden_weights[(i * ih + j) * 4 + 1] = f32_to_bf16(v1);
+                    input_hidden_weights[(i * ih + j) * 4 + 2] = f32_to_bf16(v2);
+                    input_hidden_weights[(i * ih + j) * 4 + 3] = f32_to_bf16(v3);
+                } else {
+                    input_hidden_weights[(i * ih + j) * 4] = half::f16::from_f32(v0).to_bits();
+                    input_hidden_weights[(i * ih + j) * 4 + 1] = half::f16::from_f32(v1).to_bits();
+                    input_hidden_weights[(i * ih + j) * 4 + 2] = half::f16::from_f32(v2).to_bits();
+                    input_hidden_weights[(i * ih + j) * 4 + 3] = half::f16::from_f32(v3).to_bits();
+                }
             }
         }
 
@@ -214,7 +227,11 @@ pub fn build_lstm_dynamic(
     let raw_head_weights = cursor.read_slice(hidden_size)?;
     let mut head_weights = vec![0u16; hidden_size];
     for i in 0..hidden_size {
-        head_weights[i] = half::f16::from_f32(raw_head_weights[i]).to_bits();
+        head_weights[i] = if is_bf16 {
+            f32_to_bf16(raw_head_weights[i])
+        } else {
+            half::f16::from_f32(raw_head_weights[i]).to_bits()
+        };
     }
     let head_bias = cursor.read_f32()?;
 

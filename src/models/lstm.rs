@@ -23,8 +23,10 @@ pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: 
     pub input_hidden_weights: [[[u16; 4]; IH]; H],
     /// Bias lineares extraídos do modelo (tamanho `4 * Hidden`).
     pub bias: [f32; H4],
-    /// Estado global contendo [Input | Hidden].
+    /// Estado global contendo [Input | Hidden] em F32.
     pub state: [f32; IH],
+    /// Estado global espelhado em BF16 para processamento VNNI.
+    pub state_bf16: [u16; IH],
     /// Estado da Célula Interna LSTM.
     pub cell_state: [f32; H],
     /// Ativações lineares antes das portas C e Tanh.
@@ -35,93 +37,82 @@ macro_rules! define_lstm_process {
     (
         $fn_name:ident,
         $target_meta:meta,
-        $dot_product_interleaved:path,
+        $dot_product_interleaved_f32:path,
+        $dot_product_interleaved_bf16:path,
         $step:expr,
         $load:ident,
         $store:ident,
         $add:ident,
         $mul:ident,
         $tanh:path,
-        $sigmoid:path
+        $sigmoid:path,
+        $is_bf16:expr
     ) => {
-        #[$target_meta]
-        /// Processa uma amostra de entrada com o estado interno da camada.
+        /// Executa o processamento de uma amostra de áudio através da camada LSTM.
         ///
         /// # Safety
-        /// Requer suporte das features garantidas pelo caller.
+        /// O chamador deve garantir que `input` tenha tamanho suficiente (pelo menos `I`)
+        /// e que as instruções SIMD solicitadas em `target_meta` estejam disponíveis.
+        #[$target_meta]
         pub unsafe fn $fn_name(&mut self, input: &[f32]) {
             unsafe {
                 // 1. Prepara o buffer de estado: [Input | Hidden State]
-                // Copiamos a amostra de entrada para o início do buffer 'state'.
                 self.state[..I].copy_from_slice(&input[..I]);
 
-                // 2. Prefetching: Damos uma dica ao processador para carregar os dados no cache L1 (T0)
-                // Isso reduz a latência quando começarmos a ler o estado para os produtos escalares.
+                // Mirror para BF16 se necessário
+                if $is_bf16 {
+                    for i in 0..IH {
+                        self.state_bf16[i] = (self.state[i].to_bits() >> 16) as u16;
+                    }
+                }
+
                 _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
                 if IH > 16 {
-                    // Se o estado for grande, garantimos que a próxima linha de cache também seja carregada.
                     _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().add(16).cast::<i8>());
                 }
 
-                // 3. Cálculo das Portas (Gates): Dot Products Interfolhados
-                // Para cada neurônio 'i' (0..H), calculamos simultaneamente as 4 portas da LSTM.
-                // O layout dos pesos é [I, F, C, O], permitindo extrair os 4 resultados em um único dot product.
+                // 3. Cálculo das Portas (Gates)
                 for i in 0..H {
                     let w_slice = &self.input_hidden_weights[i];
-                    // Calcula dot product entre pesos do neurônio i e o estado [Input|Hidden]
-                    let dots = $dot_product_interleaved(w_slice, &self.state);
+                    let dots = if $is_bf16 {
+                        $dot_product_interleaved_bf16(w_slice, &self.state_bf16)
+                    } else {
+                        $dot_product_interleaved_f32(w_slice, &self.state)
+                    };
 
-                    // gates[i] = (W_input * state) + bias_input
-                    // gates[i + H] = (W_forget * state) + bias_forget
-                    // ... e assim por diante para Cell e Output gates.
                     self.gates[i] = dots[0] + self.bias[i];
                     self.gates[i + H] = dots[1] + self.bias[i + H];
                     self.gates[i + 2 * H] = dots[2] + self.bias[i + 2 * H];
                     self.gates[i + 3 * H] = dots[3] + self.bias[i + 3 * H];
                 }
 
-                // Offsets para acessar as portas no layout Structure of Arrays (SoA)
-                let f_offset = H; // Forget gate
-                let g_offset = 2 * H; // Cell candidate (Gate G)
-                let o_offset = 3 * H; // Output gate
-                let h_offset = I; // Onde começa o Hidden State no buffer 'state'
+                let f_offset = H;
+                let g_offset = 2 * H;
+                let o_offset = 3 * H;
+                let h_offset = I;
 
                 let mut i = 0;
-
-                // 4. Loop Principal Vetorizado (SIMD)
-                // Processamos múltiplos neurônios de uma vez (ex: 8 no AVX2, 16 no AVX512).
                 while i + $step <= H {
-                    // Carrega os valores brutos (lineares) das portas e o estado da célula anterior
                     let g_f = $load(self.gates.as_ptr().add(i + f_offset));
                     let g_i = $load(self.gates.as_ptr().add(i));
                     let g_g = $load(self.gates.as_ptr().add(i + g_offset));
                     let c_s = $load(self.cell_state.as_ptr().add(i));
 
-                    // Aplica as funções de ativação não-lineares
-                    let sig_f = $sigmoid(g_f); // forget = sigmoid(Wf * x + bf)
-                    let sig_i = $sigmoid(g_i); // input = sigmoid(Wi * x + bi)
-                    let tanh_g = $tanh(g_g); // candidate = tanh(Wg * x + bg)
+                    let f = $sigmoid(g_f);
+                    let input_gate = $sigmoid(g_i);
+                    let cell_cand = $tanh(g_g);
 
-                    // Equação do Cell State: c_t = (forget * c_{t-1}) + (input * candidate)
-                    let mul1 = $mul(sig_f, c_s);
-                    let mul2 = $mul(sig_i, tanh_g);
-                    let new_c_s = $add(mul1, mul2);
+                    let new_c_s = $add($mul(f, c_s), $mul(input_gate, cell_cand));
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
 
-                    // Equação do Hidden State: h_t = output_gate * tanh(c_t)
                     let g_o = $load(self.gates.as_ptr().add(i + o_offset));
-                    let sig_o = $sigmoid(g_o); // output = sigmoid(Wo * x + bo)
-                    let tanh_cs = $tanh(new_c_s); // tanh(c_t)
-                    let h_val = $mul(sig_o, tanh_cs);
-
-                    // Salva o novo Hidden State para ser usado na próxima amostra (recorrência)
-                    $store(self.state.as_mut_ptr().add(i + h_offset), h_val);
+                    let o = $sigmoid(g_o);
+                    let h_s = $mul(o, $tanh(new_c_s));
+                    $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
 
                     i += $step;
                 }
 
-                // 5. Tail Handling (Tratamento de rastro)
-                // Se o Hidden Size (H) não for múltiplo exato de $step, processamos o resto aqui.
                 if i < H {
                     let tail_len = H - i;
                     let mut temp_gf = [0.0; $step];
@@ -130,7 +121,6 @@ macro_rules! define_lstm_process {
                     let mut temp_go = [0.0; $step];
                     let mut temp_cs = [0.0; $step];
 
-                    // Movemos os dados restantes para buffers temporários alinhados ao tamanho do registrador SIMD
                     for j in 0..tail_len {
                         temp_gf[j] = self.gates[i + j + f_offset];
                         temp_gi[j] = self.gates[i + j];
@@ -139,7 +129,6 @@ macro_rules! define_lstm_process {
                         temp_cs[j] = self.cell_state[i + j];
                     }
 
-                    // Carregamos os buffers temporários e executamos a mesma lógica SIMD acima
                     let g_f = $load(temp_gf.as_ptr());
                     let g_i = $load(temp_gi.as_ptr());
                     let g_g = $load(temp_gg.as_ptr());
@@ -163,7 +152,6 @@ macro_rules! define_lstm_process {
                     $store(out_cs.as_mut_ptr(), new_c_s);
                     $store(out_h.as_mut_ptr(), h_val);
 
-                    // Devolvemos apenas os elementos válidos para o estado final
                     for j in 0..tail_len {
                         self.cell_state[i + j] = out_cs[j];
                         self.state[i + j + h_offset] = out_h[j];
@@ -183,6 +171,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             input_hidden_weights: [[[0u16; 4]; IH]; H],
             bias: [0.0; H4],
             state: [0.0; IH],
+            state_bf16: [0u16; IH],
             cell_state: [0.0; H],
             gates: [0.0; H4],
         }
@@ -196,19 +185,27 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         &self.state[I..]
     }
 
+    /// Retorna o fatiamento da memória do estado atual em BF16.
+    #[inline(always)]
+    pub fn get_hidden_state_bf16(&self) -> &[u16] {
+        &self.state_bf16[I..]
+    }
+
     // Geramos a implementação AVX2 da função de processamento.
     // O compilador usará instruções de 256 bits (processa 8 f32 por vez).
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
         crate::math::simd::dot_product_4x_interleaved_avx2,
+        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
         8,                                   // $step: Processa 8 elementos por instrução
         _mm256_loadu_ps,                     // Carregamento não alinhado (unaligned load)
         _mm256_storeu_ps,                    // Armazenamento não alinhado (unaligned store)
         _mm256_add_ps,                       // Soma vetorial
         _mm256_mul_ps,                       // Multiplicação vetorial
         crate::math::fastmath::simd_tanh,    // Tanh otimizada para AVX2
-        crate::math::fastmath::simd_sigmoid  // Sigmoid otimizada para AVX2
+        crate::math::fastmath::simd_sigmoid, // Sigmoid otimizada para AVX2
+        false
     );
 
     // Geramos a implementação AVX-512 da função de processamento.
@@ -218,39 +215,60 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         crate::math::simd::dot_product_4x_interleaved_avx512,
+        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
         16, // $step: Processa 16 elementos por instrução
         _mm512_loadu_ps,
         _mm512_storeu_ps,
         _mm512_add_ps,
         _mm512_mul_ps,
         crate::math::fastmath::simd_tanh_avx512, // Tanh otimizada para AVX-512
-        crate::math::fastmath::simd_sigmoid_avx512  // Sigmoid otimizada para AVX-512
+        crate::math::fastmath::simd_sigmoid_avx512, // Sigmoid otimizada para AVX-512
+        false
     );
 
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
         crate::math::simd::dot_product_4x_interleaved_avx2,
+        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
         _mm256_add_ps,
         _mm256_mul_ps,
         crate::math::fastmath::simd_tanh,
-        crate::math::fastmath::simd_sigmoid
+        crate::math::fastmath::simd_sigmoid,
+        false
     );
 
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
         crate::math::simd::dot_product_4x_interleaved_avx512,
+        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
         _mm512_add_ps,
         _mm512_mul_ps,
         crate::math::fastmath::simd_tanh_avx512,
-        crate::math::fastmath::simd_sigmoid_avx512
+        crate::math::fastmath::simd_sigmoid_avx512,
+        false
+    );
+
+    define_lstm_process!(
+        process_sample_avx512_vnni_bf16,
+        target_feature(enable = "avx512f,avx512vl,avx512bf16"),
+        crate::math::simd::dot_product_4x_interleaved_avx512,
+        crate::math::simd::dot_product_4x_interleaved_bf16_fallback, // Por enquanto fallback, Phase 3 otimiza.
+        16,
+        _mm512_loadu_ps,
+        _mm512_storeu_ps,
+        _mm512_add_ps,
+        _mm512_mul_ps,
+        crate::math::fastmath::simd_tanh_avx512,
+        crate::math::fastmath::simd_sigmoid_avx512,
+        true
     );
 
     /// Zera os estados internos (hidden e cell) da camada.
@@ -499,12 +517,63 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
             }
         }
     }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
+    unsafe fn process_avx512_vnni_bf16(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0u16; H];
+                let mut h1 = [0u16; H];
+                let mut h2 = [0u16; H];
+                let mut h3 = [0u16; H];
+
+                self.layer.process_sample_avx512_vnni_bf16(&[input[i]]);
+                h0.copy_from_slice(self.layer.get_hidden_state_bf16());
+
+                self.layer.process_sample_avx512_vnni_bf16(&[input[i + 1]]);
+                h1.copy_from_slice(self.layer.get_hidden_state_bf16());
+
+                self.layer.process_sample_avx512_vnni_bf16(&[input[i + 2]]);
+                h2.copy_from_slice(self.layer.get_hidden_state_bf16());
+
+                self.layer.process_sample_avx512_vnni_bf16(&[input[i + 3]]);
+                h3.copy_from_slice(self.layer.get_hidden_state_bf16());
+
+                let dots = crate::math::simd::dot_product_bf16_batch_4x_fallback(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
+                let sample = [input[i]];
+                self.layer.process_sample_avx512_vnni_bf16(&sample);
+                let hidden = self.layer.get_hidden_state_bf16();
+                let dot = crate::math::simd::dot_product_bf16_fallback(hidden, &self.head_weights);
+                output[i] = dot + self.head_bias;
+                i += 1;
+            }
+        }
+    }
 
     /// Processa o array em tempo de execução via v-table estática LazyLock.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             crate::math::simd::dispatch_simd!(
                 self,
+                process_avx512_vnni_bf16,
                 process_avx512vnni,
                 process_avx512,
                 process_avx2vnni,
@@ -807,6 +876,67 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         }
     }
 
+    #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
+    unsafe fn process_avx512_vnni_bf16(&mut self, input: &[f32], output: &mut [f32]) {
+        unsafe {
+            let mut i = 0;
+            let len = input.len();
+
+            while i + 4 <= len {
+                let mut h0 = [0u16; H];
+                let mut h1 = [0u16; H];
+                let mut h2 = [0u16; H];
+                let mut h3 = [0u16; H];
+
+                self.layer1.process_sample_avx512_vnni_bf16(&[input[i]]);
+                self.layer2
+                    .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
+                h0.copy_from_slice(self.layer2.get_hidden_state_bf16());
+
+                self.layer1.process_sample_avx512_vnni_bf16(&[input[i + 1]]);
+                self.layer2
+                    .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
+                h1.copy_from_slice(self.layer2.get_hidden_state_bf16());
+
+                self.layer1.process_sample_avx512_vnni_bf16(&[input[i + 2]]);
+                self.layer2
+                    .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
+                h2.copy_from_slice(self.layer2.get_hidden_state_bf16());
+
+                self.layer1.process_sample_avx512_vnni_bf16(&[input[i + 3]]);
+                self.layer2
+                    .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
+                h3.copy_from_slice(self.layer2.get_hidden_state_bf16());
+
+                let dots = crate::math::simd::dot_product_bf16_batch_4x_fallback(
+                    &h0,
+                    &h1,
+                    &h2,
+                    &h3,
+                    &self.head_weights,
+                );
+
+                output[i] = dots[0] + self.head_bias;
+                output[i + 1] = dots[1] + self.head_bias;
+                output[i + 2] = dots[2] + self.head_bias;
+                output[i + 3] = dots[3] + self.head_bias;
+
+                i += 4;
+            }
+
+            while i < len {
+                let sample = [input[i]];
+                self.layer1.process_sample_avx512_vnni_bf16(&sample);
+                self.layer2
+                    .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
+                let hidden = self.layer2.get_hidden_state_bf16();
+                let dot = crate::math::simd::dot_product_bf16_fallback(hidden, &self.head_weights);
+                output[i] = dot + self.head_bias;
+                i += 1;
+            }
+        }
+    }
+
     /// Processa o array em tempo de execução via v-table estática LazyLock.
     ///
     /// Utiliza `SimdMathConfig::get().instruction_set` avaliado no startup
@@ -815,6 +945,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         unsafe {
             crate::math::simd::dispatch_simd!(
                 self,
+                process_avx512_vnni_bf16,
                 process_avx512vnni,
                 process_avx512,
                 process_avx2vnni,

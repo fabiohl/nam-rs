@@ -53,9 +53,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         frame_idx: usize,
     ) {
         // [PASSO 1: Inicialização do Acumulador]
-        // Prepara o vetor de saída `out_frame`. Se a convolução incluir um "bias" (deslocamento),
-        // nós copiamos esses valores diretamente. Se não, garantimos que comece em zero.
-        // Como o output é acumulativo (+=) mais adiante, esta base inicial é crítica.
         if self.do_bias {
             out_frame.copy_from_slice(&self.bias[0..OUT]);
         } else {
@@ -63,13 +60,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
 
         // [PASSO 2: Iteração do Kernel (Receptive Field)]
-        // Iteramos sobre cada "tap" do kernel. Para um WaveNet clássico, K = 3.
         for k in 0..K {
-            // [OTIMIZAÇÃO L1: Software Prefetching]
-            // A convolução dilatada significa que os frames passados não estão adjacentes na memória,
-            // mas sim afastados pelo fator `dilation`. Para evitar que o processador pare (stall)
-            // esperando o próximo dado vir da RAM, usamos uma instrução intrínseca `_mm_prefetch`.
-            // Ela solicita antecipadamente o carregamento do PRÓXIMO tap (k + 1) para o Cache L1.
             if k + 1 < K {
                 let next_offset = (self.dilation as isize) * ((k as isize) + 2 - (K as isize));
                 let next_frame_idx = (frame_idx as isize) + next_offset;
@@ -82,21 +73,13 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 }
             }
 
-            // [PASSO 3: Cálculo do Índice Dilatado]
-            // Encontra a posição temporal correta no `layer_buffer` do histórico (passado causal)
-            // baseando-se no tap atual `k` e fator de dilatação.
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let current_frame_idx = (frame_idx as isize) + offset;
             let in_slice_start = (current_frame_idx as usize) * IN;
 
-            // Fatiamos os dados de entrada de todos os canais para aquele instante histórico.
             let in_slice =
                 unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
-            // [PASSO 4: Multiplicação Acumulativa SIMD (Otimização FMA 4x)]
-            // Para maximizar o throughput, calculamos as saídas em blocos de 4 canais.
-            // Os dados da matriz de pesos (flat array) são acessados em pedaços de `IN` tamanho,
-            // executando 4 dot-products (produto escalar) simultaneamente contra o mesmo `in_slice`.
             let mut out_c = 0;
             while out_c + 4 <= OUT {
                 let w0_start = (out_c * K + k) * IN;
@@ -109,10 +92,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 let w2 = unsafe { self.weights.get_unchecked(w2_start..w2_start + IN) };
                 let w3 = unsafe { self.weights.get_unchecked(w3_start..w3_start + IN) };
 
-                // O dispatch SIMD resolve isso na microarquitetura alvo usando registradores vetoriais.
                 let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_slice) };
 
-                // Acumulamos o resultado do tap `k` no output final deste frame.
                 unsafe {
                     *out_frame.get_unchecked_mut(out_c) += r0;
                     *out_frame.get_unchecked_mut(out_c + 1) += r1;
@@ -122,12 +103,84 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 out_c += 4;
             }
 
-            // [PASSO 5: Cauda da Camada (Tail Loop)]
-            // Trata eventuais canais residuais se OUT não for múltiplo de 4.
             while out_c < OUT {
                 let w_start = (out_c * K + k) * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
                 let r = unsafe { M::dot_product(in_slice, w) };
+                unsafe {
+                    *out_frame.get_unchecked_mut(out_c) += r;
+                }
+                out_c += 1;
+            }
+        }
+    }
+
+    /// Processa um único frame usando buffers BF16 (VNNI).
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `layer_buffer` e `out_frame` tenham tamanhos
+    /// compatíveis com as dimensões `IN` e `OUT` da camada, e que as instruções
+    /// SIMD solicitadas pelo despachante `M` estejam disponíveis.
+    #[inline(always)]
+    pub unsafe fn process_single_frame_bf16<M: SimdMath>(
+        &self,
+        layer_buffer: &[u16],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+    ) {
+        if self.do_bias {
+            out_frame.copy_from_slice(&self.bias[0..OUT]);
+        } else {
+            out_frame.fill(0.0);
+        }
+
+        for k in 0..K {
+            if k + 1 < K {
+                let next_offset = (self.dilation as isize) * ((k as isize) + 2 - (K as isize));
+                let next_frame_idx = (frame_idx as isize) + next_offset;
+                let next_addr =
+                    unsafe { layer_buffer.as_ptr().add((next_frame_idx as usize) * IN) };
+                unsafe {
+                    core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
+                        next_addr.cast::<i8>(),
+                    );
+                }
+            }
+
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let current_frame_idx = (frame_idx as isize) + offset;
+            let in_slice_start = (current_frame_idx as usize) * IN;
+
+            let in_slice =
+                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+
+            let mut out_c = 0;
+            while out_c + 4 <= OUT {
+                let w0_start = (out_c * K + k) * IN;
+                let w1_start = ((out_c + 1) * K + k) * IN;
+                let w2_start = ((out_c + 2) * K + k) * IN;
+                let w3_start = ((out_c + 3) * K + k) * IN;
+
+                let w0 = unsafe { self.weights.get_unchecked(w0_start..w0_start + IN) };
+                let w1 = unsafe { self.weights.get_unchecked(w1_start..w1_start + IN) };
+                let w2 = unsafe { self.weights.get_unchecked(w2_start..w2_start + IN) };
+                let w3 = unsafe { self.weights.get_unchecked(w3_start..w3_start + IN) };
+
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_bf16_4x(w0, w1, w2, w3, in_slice) };
+
+                unsafe {
+                    *out_frame.get_unchecked_mut(out_c) += r0;
+                    *out_frame.get_unchecked_mut(out_c + 1) += r1;
+                    *out_frame.get_unchecked_mut(out_c + 2) += r2;
+                    *out_frame.get_unchecked_mut(out_c + 3) += r3;
+                }
+                out_c += 4;
+            }
+
+            while out_c < OUT {
+                let w_start = (out_c * K + k) * IN;
+                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
+                let r = unsafe { M::dot_product_bf16(in_slice, w) };
                 unsafe {
                     *out_frame.get_unchecked_mut(out_c) += r;
                 }
@@ -498,6 +551,76 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
             out_c += 1;
         }
     }
+
+    /// Processa a camada densa usando BF16.
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `input` e `output` tenham tamanhos
+    /// compatíveis com as dimensões `IN` e `OUT` da camada, e que as instruções
+    /// SIMD solicitadas pelo despachante `M` estejam disponíveis.
+    pub unsafe fn process_bf16<M: SimdMath>(&self, input: &[u16], output: &mut [f32]) {
+        let num_frames = output.len() / OUT;
+        let mut out_c = 0;
+
+        while out_c + 4 <= OUT {
+            let w0 = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
+            let w1 = unsafe {
+                self.weights
+                    .get_unchecked((out_c + 1) * IN..(out_c + 2) * IN)
+            };
+            let w2 = unsafe {
+                self.weights
+                    .get_unchecked((out_c + 2) * IN..(out_c + 3) * IN)
+            };
+            let w3 = unsafe {
+                self.weights
+                    .get_unchecked((out_c + 3) * IN..(out_c + 4) * IN)
+            };
+
+            let b0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            let b1 = if self.do_bias {
+                self.bias[out_c + 1]
+            } else {
+                0.0
+            };
+            let b2 = if self.do_bias {
+                self.bias[out_c + 2]
+            } else {
+                0.0
+            };
+            let b3 = if self.do_bias {
+                self.bias[out_c + 3]
+            } else {
+                0.0
+            };
+
+            for i in 0..num_frames {
+                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_bf16_4x(w0, w1, w2, w3, in_frame) };
+
+                unsafe {
+                    *output.get_unchecked_mut(i * OUT + out_c) = r0 + b0;
+                    *output.get_unchecked_mut(i * OUT + out_c + 1) = r1 + b1;
+                    *output.get_unchecked_mut(i * OUT + out_c + 2) = r2 + b2;
+                    *output.get_unchecked_mut(i * OUT + out_c + 3) = r3 + b3;
+                }
+            }
+            out_c += 4;
+        }
+
+        while out_c < OUT {
+            let weight_slice = unsafe { self.weights.get_unchecked(out_c * IN..out_c * IN + IN) };
+            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
+            for i in 0..num_frames {
+                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
+                let sum = unsafe { M::dot_product_bf16(in_frame, weight_slice) };
+                unsafe {
+                    *output.get_unchecked_mut(i * OUT + out_c) = sum + bias;
+                }
+            }
+            out_c += 1;
+        }
+    }
 }
 
 /// Célula Convolucional Completa (WaveNet Layer).
@@ -524,54 +647,73 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
         head_input: &mut [f32],
         output: &mut [f32],
         layer_buffer: &[f32],
+        layer_buffer_bf16: &[u16],
         buffer_start: usize,
         num_frames: usize,
     ) {
         unsafe {
+            // Buffer transiente em stack para condicionamento em BF16 se necessário.
+            let mut cond_bf16 = [0u16; COND];
+            if M::IS_BF16 {
+                M::f32_to_bf16(condition, &mut cond_bf16);
+            }
+
+            // [PASSO 2: Condicionamento (Input Mixin)]
+            let mut mixin_out = [0.0f32; 1024]; // Supondo max CH=1024 para simplificar stack
+            let mixin_out_slice = &mut mixin_out[..num_frames * CH];
+            if M::IS_BF16 {
+                self.input_mixin
+                    .process_bf16::<M>(&cond_bf16, mixin_out_slice);
+            } else {
+                self.input_mixin
+                    .process_block::<M>(condition, mixin_out_slice, num_frames);
+            }
+
             for i in 0..num_frames {
-                // Buffer transiente em stack. `CH` é pequeno e alinhado (ex: 8 ou 16).
-                // Isso evita completamente alocação dinâmica.
                 let mut temp = [0.0f32; CH];
+                let lb_start = (buffer_start + i) * CH;
 
                 // [PASSO 1: Convolução Causal Dilatada]
-                // Aplica o filtro da camada atual acessando o histórico no Ring Buffer.
-                // O resultado vai para `temp`.
-                self.conv1d
-                    .process_single_frame::<M>(layer_buffer, &mut temp, buffer_start + i);
-
-                // [PASSO 2: Condicionamento (Input Mixin)]
-                // Acumula (+-) a projeção da matriz densa sobre o sinal de entrada
-                // que condiciona globalmente o modelo. Isso soma direto em `temp`.
-                let cond_frame = &condition[i * COND..i * COND + COND];
-                self.input_mixin
-                    .process_acc_single_frame::<M>(cond_frame, &mut temp);
-
-                // [PASSO 3: Função de Ativação Tanh (FastMath Minimax)]
-                // Em vez do tradicional Gated Activation (tanh * sigm) do WaveNet original,
-                // arquiteturas eficientes de NAM usam frequentemente Tanh pura para velocidade,
-                // substituindo std::math por polinomiais AVX2.
-                M::tanh_slice(&mut temp);
-
-                // [PASSO 4: Projeção de Saída da Célula (Skip Connection / Head)]
-                // A saída ativada `temp` é acumulada no `head_input`, que agrega os resultados
-                // de TODAS as camadas para produzir o somatório que forma a amostra final de áudio.
-                let head_frame = &mut head_input[i * CH..i * CH + CH];
-                for j in 0..CH {
-                    *head_frame.get_unchecked_mut(j) += temp[j];
+                if M::IS_BF16 {
+                    self.conv1d.process_single_frame_bf16::<M>(
+                        layer_buffer_bf16,
+                        &mut temp,
+                        buffer_start + i,
+                    );
+                } else {
+                    self.conv1d.process_single_frame::<M>(
+                        layer_buffer,
+                        &mut temp,
+                        buffer_start + i,
+                    );
                 }
 
-                // [PASSO 5: Transformação 1x1 (Residual Connection)]
-                // Multiplicamos `temp` por uma matriz 1x1 (one_by_one) para gerar o output deste frame.
-                let out_frame = &mut output[i * CH..i * CH + CH];
-                self.one_by_one.process_single_frame::<M>(&temp, out_frame);
-
-                // [PASSO 6: Soma Residual]
-                // Somamos a saída transformativa ao sinal de entrada puro da camada
-                // (armazenado em `layer_buffer[buffer_start + i]`). Esse `out_frame`
-                // será o input da PRÓXIMA camada na rede.
-                let lb_start = (buffer_start + i) * CH;
+                // Aplica Mixin (já calculado em bloco para eficiência)
                 for j in 0..CH {
-                    *out_frame.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
+                    temp[j] += mixin_out[i * CH + j];
+                }
+
+                // [PASSO 3: Função de Ativação Tanh (Non-Gated)]
+                // Aplica Tanh a todos os canais. Topologias Standard/Lite são non-gated.
+                for j in 0..CH {
+                    temp[j] = crate::math::fastmath::tanh(temp[j]);
+                }
+
+                // [PASSO 4: Head Update (Skip-Connection)]
+                // Todas as camadas contribuem para o somatório global da cabeça.
+                for j in 0..CH {
+                    head_input[i * CH + j] += temp[j];
+                }
+
+                // [PASSO 5: Projeção 1x1 (Output)]
+                // Projeta o resultado de volta para o barramento residual.
+                let mut res_out = [0.0f32; 512];
+                let res_out_slice = &mut res_out[..CH];
+                self.one_by_one
+                    .process_acc_single_frame::<M>(&temp, res_out_slice);
+
+                for j in 0..CH {
+                    output[i * CH + j] = layer_buffer[lb_start + j] + res_out_slice[j];
                 }
             }
         }
@@ -596,6 +738,8 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 pub struct WaveNetLayerState {
     /// Vetor base plano linear do Ring Buffer (zero alocações em contexto DSP).
     pub layer_buffer: std::vec::Vec<f32>,
+    /// Vetor espelho em BF16 para processamento VNNI (alinhado a 64 bytes).
+    pub layer_buffer_bf16: std::vec::Vec<u16>,
     /// Ponteiro numérico do frame atual (avança a cada frame processado).
     pub buffer_start: usize,
     /// Dimensão física do espaço vetorial receptivo (tamanho do histórico de dilatação).
@@ -606,24 +750,18 @@ impl WaveNetLayerState {
     /// Construtor alocador estático do Estado (executar antes do Thread DSP).
     pub fn new(channels: usize, receptive_field_size: usize, alloc_num: usize) -> Self {
         // [PASSO 1: Cálculo do Tamanho do Buffer Temporal]
-        // O `buffer_frames` não é apenas o tamanho do histórico necessário (receptive_field_size).
-        // Adicionamos um "padding" circular (LAYER_ARRAY_BUFFER_PADDING + 1) vezes WAVENET_MAX_NUM_FRAMES.
-        // Isso nos dá folga suficiente para avançar o ponteiro linearmente muitas vezes antes de precisarmos
-        // fazer uma cópia em bloco (rewind) para resetar a posição e evitar vazamento de memória.
         let buffer_frames =
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
         let buffer = vec![0.0f32; buffer_frames * channels];
+        let buffer_bf16 = vec![0u16; buffer_frames * channels];
 
         // [PASSO 2: Offset Inicial (Jittering Alocado)]
-        // Subtraímos um valor baseado em `alloc_num`. Cada camada recebe um buffer_start sutilmente
-        // diferente. Isso garante que os eventos de "rewind_buffer" aconteçam em MOMENTOS DIFERENTES
-        // para cada camada durante a execução em tempo-real. Evita-se um pico (spike) de CPU concentrado,
-        // diluindo o custo computacional do rewind ao longo do tempo (Balanceamento de Carga temporal).
         let start = buffer_frames
             - (WAVENET_MAX_NUM_FRAMES * ((alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1));
 
         Self {
             layer_buffer: buffer,
+            layer_buffer_bf16: buffer_bf16,
             buffer_start: start,
             receptive_field_size,
         }
@@ -660,38 +798,24 @@ impl WaveNetLayerState {
             self.buffer_start,
             self.receptive_field_size
         );
-        // [PASSO 1: Cálculo de Limites]
-        // O `start` se torna a margem mínima estrita necessária (o tamanho do campo receptivo causal) para que,
-        // no próximo quadro, a convolução dilatada consiga "olhar para trás" o suficiente
-        // sem causar violação de segmento ou acesso sujo.
         let start = self.receptive_field_size;
 
-        // [PASSO 2: Fatias Base]
-        // Vamos capturar a porção EXATA do histórico válido (que tem o tamanho `receptive_field_size`)
-        // a partir da posição *atual* (`self.buffer_start`) para levá-la de volta ao início.
         let from = (self.buffer_start - self.receptive_field_size) * channels;
         let to = (start - self.receptive_field_size) * channels;
         let len = self.receptive_field_size * channels;
 
-        // [PASSO 3: Cópia Overlapada (Memmove nativo)]
-        // `copy_within` em Rust é extremamente rápido e compila intrinsecamente para um `memmove` otimizado
-        // em Assembly (como AVX). É aqui que a "rebobinagem" acontece efetivamente:
-        // deslizamos toda a janela temporal atual intacta para o início do buffer plano.
         self.layer_buffer.copy_within(from..from + len, to);
+        self.layer_buffer_bf16.copy_within(from..from + len, to);
         self.buffer_start = start;
     }
 
     /// Preenche o buffer histórico para estabilizar o modelo no estado de warm-up.
     pub fn copy_buffer(&mut self, channels: usize) {
-        // [PASSO: Propagação de Carga Constante]
-        // Na fase de "pre-warm" (quando ligamos o áudio), nós injetamos sinal zero (silêncio).
-        // Este loop copia o estado limpo para trás iterativamente preenchendo todo o `receptive_field_size`.
-        // É de vital importância para que o modelo numérico não exploda (produza NaNs ou "clicks" sonoros) ao
-        // tentar realizar as suas primeiras convoluções causais usando memória não-inicializada.
         for offset in 1..=self.receptive_field_size {
             let src = self.buffer_start * channels;
             let dst = (self.buffer_start - offset) * channels;
             self.layer_buffer.copy_within(src..src + channels, dst);
+            self.layer_buffer_bf16.copy_within(src..src + channels, dst);
         }
     }
 }
@@ -748,9 +872,6 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
         unsafe {
             // [PASSO 2: Abertura Dimensional (Rechannel)]
-            // A camada `rechannel` pega o sinal de áudio mono de entrada e o expande
-            // para `CH` canais (ex: de 1 para 16). O resultado é armazenado no buffer
-            // de histórico da PRIMEIRA camada (`state_0`).
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
             self.rechannel.process_block::<M>(
@@ -759,28 +880,31 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 num_frames,
             );
 
+            if M::IS_BF16 {
+                M::f32_to_bf16(
+                    &state_0.layer_buffer[start..start + num_frames * CH],
+                    &mut state_0.layer_buffer_bf16[start..start + num_frames * CH],
+                );
+            }
+
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
 
-            // [PASSO 3: Cascata de Camadas (Feed-Forward)]
-            // Iteramos em profundidade sobre a Array de WaveNet. O output (residual) de
-            // uma camada vira a entrada da PRÓXIMA camada, armazenada no buffer desta próxima.
+            // [PASSO 3: Cascata de Inferência das Camadas]
             for (i, layer) in self.layers.iter().enumerate() {
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
-                    // Para a última camada, não há "próximo estado" para salvar o residual.
-                    // Nós jogamos o residual no `self.array_outputs`, para ser o final da Array.
                     layer.process_block_internal::<M>(
                         condition,
                         &mut self.head_accum[0..num_frames * CH],
                         &mut self.array_outputs[0..num_frames * CH],
                         &current_state.layer_buffer,
+                        &current_state.layer_buffer_bf16,
                         current_state.buffer_start,
                         num_frames,
                     );
                 } else {
-                    // Preparamos o buffer da PRÓXIMA camada para receber o residual gerado aqui.
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
@@ -789,14 +913,20 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         &mut self.head_accum[0..num_frames * CH],
                         &mut next_state.layer_buffer[next_start..next_start + num_frames * CH],
                         &current_state.layer_buffer,
+                        &current_state.layer_buffer_bf16,
                         current_state.buffer_start,
                         num_frames,
                     );
+
+                    if M::IS_BF16 {
+                        M::f32_to_bf16(
+                            &next_state.layer_buffer[next_start..next_start + num_frames * CH],
+                            &mut next_state.layer_buffer_bf16
+                                [next_start..next_start + num_frames * CH],
+                        );
+                    }
                 }
 
-                // [PASSO 4: Avanço Temporal]
-                // Anda o ponteiro circular de histórico. Se passar do limite predefinido,
-                // ele rebobina automaticamente (`rewind_buffer`).
                 current_state.advance_frames(num_frames, CH);
             }
 
@@ -849,6 +979,13 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 1,
             );
 
+            if M::IS_BF16 {
+                M::f32_to_bf16(
+                    &state_0.layer_buffer[start..start + CH],
+                    &mut state_0.layer_buffer_bf16[start..start + CH],
+                );
+            }
+
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
 
@@ -871,6 +1008,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         &mut self.head_accum[0..CH],
                         &mut self.array_outputs[0..CH],
                         &current_state.layer_buffer,
+                        &current_state.layer_buffer_bf16,
                         current_state.buffer_start,
                         1,
                     );
@@ -883,9 +1021,17 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         &mut self.head_accum[0..CH],
                         &mut next_state.layer_buffer[next_start..next_start + CH],
                         &current_state.layer_buffer,
+                        &current_state.layer_buffer_bf16,
                         current_state.buffer_start,
                         1,
                     );
+
+                    if M::IS_BF16 {
+                        M::f32_to_bf16(
+                            &next_state.layer_buffer[next_start..next_start + CH],
+                            &mut next_state.layer_buffer_bf16[next_start..next_start + CH],
+                        );
+                    }
                 }
             }
 

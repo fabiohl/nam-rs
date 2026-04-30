@@ -256,6 +256,18 @@ pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
     }
 }
 
+/// Aproximação escalar de `tanh(x)`.
+#[inline(always)]
+pub fn tanh(x: f32) -> f32 {
+    x.tanh()
+}
+
+/// Aproximação escalar de `sigmoid(x)`.
+#[inline(always)]
+pub fn sigmoid(x: f32) -> f32 {
+    0.5 * (1.0 + (x * 0.5).tanh())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

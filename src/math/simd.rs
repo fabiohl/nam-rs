@@ -8,6 +8,12 @@
 //! otimizando os cálculos críticos (como Fused Multiply-Add) limitando os
 //! desvios matemáticos inerentes aos loops comuns e reduzindo latência nas CNNs.
 
+/// Converte F32 para os bits de um BF16 (truncamento simples).
+#[inline(always)]
+pub fn f32_to_bf16(f: f32) -> u16 {
+    (f.to_bits() >> 16) as u16
+}
+
 use core::arch::x86_64::*;
 
 /// Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) no registrador MXCSR.
@@ -183,6 +189,186 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
 
         scalar_sum
     }
+}
+
+/// Calcula o Dot Product (Produto Escalar) de duas fatias BF16 via AVX-512 VNNI.
+///
+/// ## Otimização: VDPBF16PS (BF16 Pairs)
+///
+/// Instrução `VDPBF16PS` processa 32 valores BF16 (16 pares) por registro ZMM,
+/// realizando a operação `acc[j] += a[2j]*b[2j] + a[2j+1]*b[2j+1]` em um único ciclo.
+/// Isso dobra o throughput em relação ao FMA32 (que processa 16 valores/ciclo).
+#[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
+pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
+    let len = core::cmp::min(a.len(), b.len());
+    let mut i = 0;
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+
+        // Loop principal: 2×32 = 64 BF16/iteração
+        while i + 64 <= len {
+            let va0 = _mm512_loadu_si512(a.as_ptr().add(i) as *const __m512i);
+            let vb0 = _mm512_loadu_si512(b.as_ptr().add(i) as *const __m512i);
+            sum0 = _mm512_dpbf16_ps(
+                sum0,
+                core::mem::transmute::<__m512i, __m512bh>(va0),
+                core::mem::transmute::<__m512i, __m512bh>(vb0),
+            );
+
+            let va1 = _mm512_loadu_si512(a.as_ptr().add(i + 32) as *const __m512i);
+            let vb1 = _mm512_loadu_si512(b.as_ptr().add(i + 32) as *const __m512i);
+            sum1 = _mm512_dpbf16_ps(
+                sum1,
+                core::mem::transmute::<__m512i, __m512bh>(va1),
+                core::mem::transmute::<__m512i, __m512bh>(vb1),
+            );
+
+            i += 64;
+        }
+
+        while i + 32 <= len {
+            let va = _mm512_loadu_si512(a.as_ptr().add(i) as *const __m512i);
+            let vb = _mm512_loadu_si512(b.as_ptr().add(i) as *const __m512i);
+            sum0 = _mm512_dpbf16_ps(
+                sum0,
+                core::mem::transmute::<__m512i, __m512bh>(va),
+                core::mem::transmute::<__m512i, __m512bh>(vb),
+            );
+            i += 32;
+        }
+
+        let sum = _mm512_add_ps(sum0, sum1);
+        // Redução horizontal 512 -> 256 -> 128 -> escalar
+        let v256 = _mm256_add_ps(
+            _mm512_extractf32x8_ps::<0>(sum),
+            _mm512_extractf32x8_ps::<1>(sum),
+        );
+        let v128 = _mm_add_ps(
+            _mm256_extractf128_ps::<0>(v256),
+            _mm256_extractf128_ps::<1>(v256),
+        );
+        let v64 = _mm_add_ps(v128, _mm_movehl_ps(v128, v128));
+        let v32 = _mm_add_ss(v64, _mm_shuffle_ps::<0x55>(v64, v64));
+        let mut scalar_sum = _mm_cvtss_f32(v32);
+
+        // Tail escalar (conversão manual BF16 -> F32)
+        while i < len {
+            let fa = f32::from_bits((a[i] as u32) << 16);
+            let fb = f32::from_bits((b[i] as u32) << 16);
+            scalar_sum += fa * fb;
+            i += 1;
+        }
+
+        scalar_sum
+    }
+}
+
+/// Calcula 4 produtos escalares interfolhados BF16 usando AVX-512 VNNI.
+///
+/// ## Mecânica: 1:4 Broadcast + VDPBF16PS
+///
+/// Processa 8 linhas de 4 pesos ([I, F, C, O]) por iteração.
+/// O estado é carregado em 128 bits e expandido para 512 bits (broadcast 1:4 por elemento).
+/// A instrução `VDPBF16PS` então realiza o dot product de pares BF16, acumulando em F32.
+#[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+pub unsafe fn dot_product_4x_interleaved_bf16_avx512(
+    weights: &[[u16; 4]],
+    state: &[u16],
+) -> [f32; 4] {
+    let len = core::cmp::min(weights.len(), state.len());
+    let mut i = 0;
+    let mut sum0 = _mm512_setzero_ps();
+
+    // Índice para broadcast 1:4 de u16: [0,0,0,0, 1,1,1,1, ..., 7,7,7,7]
+    let idx = _mm512_set_epi16(
+        7, 7, 7, 7, 6, 6, 6, 6, 5, 5, 5, 5, 4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1, 0, 0,
+        0, 0,
+    );
+
+    while i + 8 <= len {
+        unsafe {
+            let vw = _mm512_loadu_si512(weights.as_ptr().add(i) as *const __m512i);
+            let vs_raw = _mm_loadu_si128(state.as_ptr().add(i) as *const __m128i);
+            let vs = _mm512_permutexvar_epi16(idx, _mm512_castsi128_si512(vs_raw));
+
+            sum0 = _mm512_dpbf16_ps(
+                sum0,
+                core::mem::transmute::<__m512i, __m512bh>(vw),
+                core::mem::transmute::<__m512i, __m512bh>(vs),
+            );
+        }
+        i += 8;
+    }
+
+    let mut final_sum = [0.0f32; 4];
+    let mut res = [0.0f32; 16];
+    unsafe {
+        _mm512_storeu_ps(res.as_mut_ptr(), sum0);
+    }
+
+    for j in 0..4 {
+        final_sum[j] = res[j] + res[j + 4] + res[j + 8] + res[j + 12];
+    }
+
+    // Tail escalar
+    while i < len {
+        let s = f32::from_bits((state[i] as u32) << 16);
+        let w = weights[i];
+        final_sum[0] += f32::from_bits((w[0] as u32) << 16) * s;
+        final_sum[1] += f32::from_bits((w[1] as u32) << 16) * s;
+        final_sum[2] += f32::from_bits((w[2] as u32) << 16) * s;
+        final_sum[3] += f32::from_bits((w[3] as u32) << 16) * s;
+        i += 1;
+    }
+
+    final_sum
+}
+
+/// Fallback escalar para dot product BF16.
+pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
+    let len = core::cmp::min(a.len(), b.len());
+    let mut sum = 0.0f32;
+    for i in 0..len {
+        let fa = f32::from_bits(unsafe { *a.get_unchecked(i) as u32 } << 16);
+        let fb = f32::from_bits(unsafe { *b.get_unchecked(i) as u32 } << 16);
+        sum += fa * fb;
+    }
+    sum
+}
+
+/// Fallback para dot product interleaved BF16.
+pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
+    weights: &[[u16; 4]],
+    state: &[u16],
+) -> [f32; 4] {
+    let len = core::cmp::min(weights.len(), state.len());
+    let mut sum = [0.0f32; 4];
+    for i in 0..len {
+        let s = f32::from_bits((state[i] as u32) << 16);
+        let w = weights[i];
+        sum[0] += f32::from_bits((w[0] as u32) << 16) * s;
+        sum[1] += f32::from_bits((w[1] as u32) << 16) * s;
+        sum[2] += f32::from_bits((w[2] as u32) << 16) * s;
+        sum[3] += f32::from_bits((w[3] as u32) << 16) * s;
+    }
+    sum
+}
+
+/// Fallback para dot product BF16 em batch de 4.
+pub unsafe fn dot_product_bf16_batch_4x_fallback(
+    h0: &[u16],
+    h1: &[u16],
+    h2: &[u16],
+    h3: &[u16],
+    w: &[u16],
+) -> [f32; 4] {
+    [
+        unsafe { dot_product_bf16_fallback(h0, w) },
+        unsafe { dot_product_bf16_fallback(h1, w) },
+        unsafe { dot_product_bf16_fallback(h2, w) },
+        unsafe { dot_product_bf16_fallback(h3, w) },
+    ]
 }
 
 /// Calcula 4 Dot Products simultâneos (ILP máximo) reutilizando o mesmo carregamento do vetor state.
@@ -558,6 +744,8 @@ pub enum SimdInstructionSet {
     Avx512,
     /// AVX-512 com VNNI
     Avx512Vnni,
+    /// AVX-512 com VNNI e BF16 (x86-64-v4 + BF16)
+    Avx512VnniBf16,
 }
 
 /// V-Table SIMD global, inicializada uma única vez via `LazyLock`.
@@ -574,7 +762,20 @@ impl SimdMathConfig {
         let has_avx512 =
             std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl");
         let has_avx512_vnni = has_avx512 && std::is_x86_feature_detected!("avx512vnni");
+        let has_avx512_bf16 = has_avx512_vnni && std::is_x86_feature_detected!("avx512bf16");
         let has_avx2_vnni = std::is_x86_feature_detected!("avxvnni");
+
+        if has_avx512_bf16 {
+            return Self {
+                dot_product: <Avx512VnniBf16Math as SimdMath>::dot_product,
+                dot_product_4x: <Avx512VnniBf16Math as SimdMath>::dot_product_4x,
+                dot_product_4x_interleaved:
+                    <Avx512VnniBf16Math as SimdMath>::dot_product_4x_interleaved,
+                tanh_slice: <Avx512VnniBf16Math as SimdMath>::tanh_slice,
+                sigmoid_slice: <Avx512VnniBf16Math as SimdMath>::sigmoid_slice,
+                instruction_set: SimdInstructionSet::Avx512VnniBf16,
+            };
+        }
 
         if has_avx512_vnni {
             return Self {
@@ -633,8 +834,25 @@ impl SimdMathConfig {
 
 /// Trait de abstração para despacho estático de operações matemáticas SIMD.
 pub trait SimdMath {
+    /// Indica se esta implementação utiliza pesos e sinais em formato BF16.
+    const IS_BF16: bool = false;
     /// Calcula o produto escalar entre dois vetores.
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32;
+    /// Converte f32 para BF16 (u16) de forma vetorizada.
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]);
+
+    /// Produto escalar 1x entre dois vetores BF16 (u16 bits).
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32;
+
+    /// Produto escalar 4x entre vetores BF16 (u16 bits).
+    unsafe fn dot_product_bf16_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        in_frame: &[u16],
+    ) -> [f32; 4];
+
     /// Calcula 4 produtos escalares SIMD em paralelo (Loop Unrolling otimizado) para WaveNet.
     unsafe fn dot_product_4x(
         w0: &[u16],
@@ -645,6 +863,8 @@ pub trait SimdMath {
     ) -> [f32; 4];
     /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado.
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4];
+    /// Calcula 4 produtos escalares SIMD em paralelo para LSTM interfolhado BF16.
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4];
     /// Aplica Tanh em-lugar no slice usando aproximação minimax polinomial fastmath.
     unsafe fn tanh_slice(slice: &mut [f32]);
     /// Aplica Sigmoid em-lugar no slice via fastmath.
@@ -673,12 +893,109 @@ impl SimdMath for Avx2Math {
         unsafe { dot_product_4x_interleaved_avx2(weights, state) }
     }
     #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_bf16_fallback(weights, state) }
+    }
+    #[inline(always)]
     unsafe fn tanh_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
     }
     #[inline(always)]
     unsafe fn sigmoid_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::sigmoid_slice_avx2(slice) }
+    }
+    #[inline(always)]
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]) {
+        let len = core::cmp::min(src.len(), dst.len());
+        for i in 0..len {
+            unsafe {
+                *dst.get_unchecked_mut(i) = (src.get_unchecked(i).to_bits() >> 16) as u16;
+            }
+        }
+    }
+    #[inline(always)]
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        unsafe { dot_product_bf16_fallback(a, b) }
+    }
+    #[inline(always)]
+    unsafe fn dot_product_bf16_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        in_frame: &[u16],
+    ) -> [f32; 4] {
+        unsafe {
+            let r0 = dot_product_bf16_fallback(w0, in_frame);
+            let r1 = dot_product_bf16_fallback(w1, in_frame);
+            let r2 = dot_product_bf16_fallback(w2, in_frame);
+            let r3 = dot_product_bf16_fallback(w3, in_frame);
+            [r0, r1, r2, r3]
+        }
+    }
+}
+
+/// Implementação estática para microarquitetura x86-64-v3 com AVX-VNNI (Alder Lake+).
+pub struct Avx2VnniMath;
+impl SimdMath for Avx2VnniMath {
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        unsafe { dot_product_avx2(a, b) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        state: &[f32],
+    ) -> [f32; 4] {
+        unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_avx2(weights, state) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_bf16_fallback(weights, state) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::sigmoid_slice_avx2(slice) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]) {
+        let len = core::cmp::min(src.len(), dst.len());
+        for i in 0..len {
+            unsafe {
+                *dst.get_unchecked_mut(i) = (src.get_unchecked(i).to_bits() >> 16) as u16;
+            }
+        }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        unsafe { dot_product_bf16_fallback(a, b) }
+    }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn dot_product_bf16_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        in_frame: &[u16],
+    ) -> [f32; 4] {
+        unsafe {
+            let r0 = dot_product_bf16_fallback(w0, in_frame);
+            let r1 = dot_product_bf16_fallback(w1, in_frame);
+            let r2 = dot_product_bf16_fallback(w2, in_frame);
+            let r3 = dot_product_bf16_fallback(w3, in_frame);
+            [r0, r1, r2, r3]
+        }
     }
 }
 
@@ -704,6 +1021,20 @@ impl SimdMath for Avx512Math {
         unsafe { dot_product_4x_interleaved_avx512(weights, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        let len = core::cmp::min(weights.len(), state.len());
+        let mut sum = [0.0f32; 4];
+        for i in 0..len {
+            let s = f32::from_bits((state[i] as u32) << 16);
+            let w = weights[i];
+            sum[0] += f32::from_bits((w[0] as u32) << 16) * s;
+            sum[1] += f32::from_bits((w[1] as u32) << 16) * s;
+            sum[2] += f32::from_bits((w[2] as u32) << 16) * s;
+            sum[3] += f32::from_bits((w[3] as u32) << 16) * s;
+        }
+        sum
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn tanh_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::tanh_slice_avx512(slice) }
     }
@@ -711,42 +1042,38 @@ impl SimdMath for Avx512Math {
     unsafe fn sigmoid_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::sigmoid_slice_avx512(slice) }
     }
-}
-
-/// Implementação estática ancorada para microarquitetura com AVX2 e VNNI.
-/// Funciona como scaffolding (fallback provisório para AVX2) até a injeção em T3/T6.
-pub struct Avx2VnniMath;
-impl SimdMath for Avx2VnniMath {
-    #[target_feature(enable = "avxvnni")]
-    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
-        unsafe { dot_product_avx2(a, b) }
+    #[inline(always)]
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]) {
+        let len = core::cmp::min(src.len(), dst.len());
+        for i in 0..len {
+            unsafe {
+                *dst.get_unchecked_mut(i) = (src.get_unchecked(i).to_bits() >> 16) as u16;
+            }
+        }
     }
-    #[target_feature(enable = "avxvnni")]
-    unsafe fn dot_product_4x(
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        unsafe { dot_product_bf16_fallback(a, b) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn dot_product_bf16_4x(
         w0: &[u16],
         w1: &[u16],
         w2: &[u16],
         w3: &[u16],
-        state: &[f32],
+        in_frame: &[u16],
     ) -> [f32; 4] {
-        unsafe { dot_product_4x_avx2(w0, w1, w2, w3, state) }
-    }
-    #[target_feature(enable = "avxvnni")]
-    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
-        unsafe { dot_product_4x_interleaved_avx2(weights, state) }
-    }
-    #[target_feature(enable = "avxvnni")]
-    unsafe fn tanh_slice(slice: &mut [f32]) {
-        unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
-    }
-    #[target_feature(enable = "avxvnni")]
-    unsafe fn sigmoid_slice(slice: &mut [f32]) {
-        unsafe { crate::math::fastmath::sigmoid_slice_avx2(slice) }
+        unsafe {
+            let r0 = dot_product_bf16_fallback(w0, in_frame);
+            let r1 = dot_product_bf16_fallback(w1, in_frame);
+            let r2 = dot_product_bf16_fallback(w2, in_frame);
+            let r3 = dot_product_bf16_fallback(w3, in_frame);
+            [r0, r1, r2, r3]
+        }
     }
 }
 
-/// Implementação estática ancorada para microarquitetura com AVX-512 e VNNI.
-/// Funciona como scaffolding (fallback provisório para AVX-512) até a injeção em T6.
+/// Implementação estática para microarquitetura x86-64-v4 com AVX-512 VNNI (Ice Lake+).
 pub struct Avx512VnniMath;
 impl SimdMath for Avx512VnniMath {
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
@@ -768,12 +1095,134 @@ impl SimdMath for Avx512VnniMath {
         unsafe { dot_product_4x_interleaved_avx512(weights, state) }
     }
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        let len = core::cmp::min(weights.len(), state.len());
+        let mut sum = [0.0f32; 4];
+        for i in 0..len {
+            let s = f32::from_bits((state[i] as u32) << 16);
+            let w = weights[i];
+            sum[0] += f32::from_bits((w[0] as u32) << 16) * s;
+            sum[1] += f32::from_bits((w[1] as u32) << 16) * s;
+            sum[2] += f32::from_bits((w[2] as u32) << 16) * s;
+            sum[3] += f32::from_bits((w[3] as u32) << 16) * s;
+        }
+        sum
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn tanh_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::tanh_slice_avx512(slice) }
     }
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn sigmoid_slice(slice: &mut [f32]) {
         unsafe { crate::math::fastmath::sigmoid_slice_avx512(slice) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]) {
+        let len = core::cmp::min(src.len(), dst.len());
+        for i in 0..len {
+            unsafe {
+                *dst.get_unchecked_mut(i) = (src.get_unchecked(i).to_bits() >> 16) as u16;
+            }
+        }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        unsafe { dot_product_bf16_fallback(a, b) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn dot_product_bf16_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        in_frame: &[u16],
+    ) -> [f32; 4] {
+        unsafe {
+            let r0 = dot_product_bf16_fallback(w0, in_frame);
+            let r1 = dot_product_bf16_fallback(w1, in_frame);
+            let r2 = dot_product_bf16_fallback(w2, in_frame);
+            let r3 = dot_product_bf16_fallback(w3, in_frame);
+            [r0, r1, r2, r3]
+        }
+    }
+}
+
+/// Implementação estática para microarquitetura com AVX-512 e suporte a BF16 (VNNI).
+pub struct Avx512VnniBf16Math;
+impl SimdMath for Avx512VnniBf16Math {
+    const IS_BF16: bool = true;
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        unsafe { dot_product_avx512(a, b) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn dot_product_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        state: &[f32],
+    ) -> [f32; 4] {
+        unsafe { dot_product_4x_avx512(w0, w1, w2, w3, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_avx512(weights, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::tanh_slice_avx512(slice) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        unsafe { crate::math::fastmath::sigmoid_slice_avx512(slice) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]) {
+        let len = core::cmp::min(src.len(), dst.len());
+        let mut i = 0;
+        while i + 32 <= len {
+            unsafe {
+                let v = _mm512_loadu_ps(src.as_ptr().add(i));
+                let vbf16 = _mm512_cvtneps_pbh(v);
+                core::arch::x86_64::_mm256_storeu_si256(
+                    dst.as_mut_ptr().add(i) as *mut __m256i,
+                    core::mem::transmute::<__m256bh, __m256i>(vbf16),
+                );
+                i += 32;
+            }
+        }
+        while i < len {
+            unsafe {
+                *dst.get_unchecked_mut(i) = (src.get_unchecked(i).to_bits() >> 16) as u16;
+                i += 1;
+            }
+        }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_bf16_avx512(weights, state) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        unsafe { dot_product_bf16_avx512(a, b) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn dot_product_bf16_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        in_frame: &[u16],
+    ) -> [f32; 4] {
+        unsafe {
+            let r0 = dot_product_bf16_avx512(w0, in_frame);
+            let r1 = dot_product_bf16_avx512(w1, in_frame);
+            let r2 = dot_product_bf16_avx512(w2, in_frame);
+            let r3 = dot_product_bf16_avx512(w3, in_frame);
+            [r0, r1, r2, r3]
+        }
     }
 }
 
@@ -784,8 +1233,9 @@ impl SimdMath for Avx512VnniMath {
 #[macro_export]
 macro_rules! dispatch_simd {
     // Formato 2: Dispatch explícito (LSTM)
-    ($self:ident, $m_a512v:ident, $m_a512:ident, $m_a2v:ident, $m_a2:ident $(, $arg:expr)*) => {
+    ($self:ident, $m_bf16:ident, $m_a512v:ident, $m_a512:ident, $m_a2v:ident, $m_a2:ident $(, $arg:expr)*) => {
         match $crate::math::simd::SimdMathConfig::get().instruction_set {
+            $crate::math::simd::SimdInstructionSet::Avx512VnniBf16 => $self.$m_bf16($($arg),*),
             $crate::math::simd::SimdInstructionSet::Avx512Vnni => $self.$m_a512v($($arg),*),
             $crate::math::simd::SimdInstructionSet::Avx512 => $self.$m_a512($($arg),*),
             $crate::math::simd::SimdInstructionSet::Avx2Vnni => $self.$m_a2v($($arg),*),
@@ -795,6 +1245,9 @@ macro_rules! dispatch_simd {
     // Formato 1: Dispatch via monomorfização genérica (WaveNet)
     ($self:ident, $method:ident $(, $arg:expr)*) => {
         match $crate::math::simd::SimdMathConfig::get().instruction_set {
+            $crate::math::simd::SimdInstructionSet::Avx512VnniBf16 => {
+                $self.$method::<$crate::math::simd::Avx512VnniBf16Math>($($arg),*)
+            }
             $crate::math::simd::SimdInstructionSet::Avx512Vnni => {
                 $self.$method::<$crate::math::simd::Avx512VnniMath>($($arg),*)
             }

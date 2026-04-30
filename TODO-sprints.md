@@ -1,5 +1,7 @@
 # 🚀 Backlog do Produto e Planejamento de Sprints Técnicas
 
+**Modelo de prompt web:** Você é uma equipe de arquitetos sêniores e desenvolvedores especialistas na linguagem Rust e no subsistema de áudio Linux. Em anexo temos o aglutinado repomix do github atualizado do NAM-rs (vide subanexo README.md). Assumindo a persona/workflow .agents/workflows/diagnostico.md e .agents/skills/planejador-arquiteto/SKILL.md você vai detalhar ao máximo a implementação da tarefa técnica demandada logo abaixo. Sua resposta será concisa e direta, usando toda a sua janela de processamento e contexto para orientar o trabalho do(s) implementador(es).
+
 ---
 
 ## 🏛️ Épico: Otimização de Modelos & Inferência
@@ -34,7 +36,7 @@
 - **Critérios de Aceite:** Ganho de 5-10% em benchmarks de LSTM.
 - **Tags:** #simd #lstm
 
-### [T6] AVX-512 VNNI/BF16 para Dot Product Interleaved
+### [T6] AVX-512 VNNI/BF16 para Dot Product Interleaved [Concluido]
 
 - **Contexto Arquitetural:** O projeto já possui despacho inteligente (`SimdMathConfig`) que prevê sub-classes AVX2 e AVX512. No entanto, em hardware de altíssima gama, o path FP32 puro desperdiça a imensa capacidade FMA da `_mm512_dpbf16_ps` que calcula produtos escalares simultâneos BFloat16 nativamente.
 - **Problema:** O throughput do "dot product" nas convoluções é restrito pelo teto das portas FMA em FP32, limitando a execução de modelos densos com baixíssima latência.

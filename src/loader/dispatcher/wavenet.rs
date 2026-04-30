@@ -347,6 +347,8 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
 
 /// Lê os pesos de um `DenseLayer<IN, OUT>` (layout compatível sem transposição).
 ///
+use crate::math::simd::f32_to_bf16;
+
 /// Tanto C++ (`DenseLayerT::SetWeights`) quanto Rust usam layout `[out][in]` row-major.
 fn read_dense_layer<const IN: usize, const OUT: usize>(
     cursor: &mut WeightCursor<'_>,
@@ -354,8 +356,15 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
 ) -> anyhow::Result<DenseLayer<IN, OUT>> {
     let raw_weights = cursor.read_slice(OUT * IN)?;
     let mut weights = vec![0u16; OUT * IN];
+    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
+        == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
+
     for i in 0..OUT * IN {
-        weights[i] = half::f16::from_f32(raw_weights[i]).to_bits();
+        weights[i] = if is_bf16 {
+            f32_to_bf16(raw_weights[i])
+        } else {
+            half::f16::from_f32(raw_weights[i]).to_bits()
+        };
     }
 
     let bias = if do_bias {
@@ -380,14 +389,20 @@ fn read_conv1d_weights_dyn(
 ) -> anyhow::Result<Conv1dDyn> {
     let total = out_size * in_size * k;
     let raw = cursor.read_slice(total)?;
+    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
+        == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
     let mut weights = vec![0u16; total];
     let mut idx = 0;
     for out_c in 0..out_size {
         for in_c in 0..in_size {
             for step in 0..k {
-                weights[out_c * k * in_size + step * in_size + in_c] =
-                    half::f16::from_f32(raw[idx]).to_bits();
+                let val = if is_bf16 {
+                    f32_to_bf16(raw[idx])
+                } else {
+                    half::f16::from_f32(raw[idx]).to_bits()
+                };
+                weights[out_c * k * in_size + step * in_size + in_c] = val;
                 idx += 1;
             }
         }
@@ -418,8 +433,15 @@ fn read_dense_layer_dyn(
 ) -> anyhow::Result<DenseLayerDyn> {
     let raw_weights = cursor.read_slice(out_size * in_size)?;
     let mut weights = vec![0u16; out_size * in_size];
+    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
+        == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
+
     for i in 0..out_size * in_size {
-        weights[i] = half::f16::from_f32(raw_weights[i]).to_bits();
+        weights[i] = if is_bf16 {
+            f32_to_bf16(raw_weights[i])
+        } else {
+            half::f16::from_f32(raw_weights[i]).to_bits()
+        };
     }
 
     let bias = if do_bias {
