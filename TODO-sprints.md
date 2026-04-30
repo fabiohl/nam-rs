@@ -82,37 +82,7 @@
 
 *Foco: Precisão audível, latência mínima e eficiência do ciclo RT.*
 
-### [T5] Resampler Sinc-SIMD Nativo & Fase Mínima
-
-- **Contexto Arquitetural:** Hoje usamos o crate `rubato 0.16` operando em FIR Sinc de fase linear, bidirecional planar.
-- **Problema:** O filtro de fase linear causa ringing assimétrico "pré-eco" (pré-ringing), que em transients drásticos (e.g., palhetada forte de guitarras) suprime o *feel* de resposta da corda e adiciona ~1.5ms de latência pura matemática desnecessária (delay algorítmico).
-- **Solução Proposta:** Abandonar `rubato` no núcleo quente. Implementar localmente em `src/dsp/resampler.rs` um filtro FIR Sinc Polifásico customizado (com suporte à Fase Mínima), otimizado por via vetorial com loops const-generics parecidos com a arquitetura do modelo.
-- **Arquivos-Alvo:** `src/dsp/resampler.rs`
-- **Critérios de Aceite:** Remoção drástica na latência final e fase audível mais cristalina e alinhada ao tempo zero; aderência total de `cargo bench` e `cargo test` para bypass planar 48kHz.
-- **Perfil do Implementador:** Cientista DSP.
-- **Tags:** #dsp #latency #simd
-
-### [T4] Eliminação do `powf` no Callback RT (Gain Staging LUT)
-
-- **Contexto Arquitetural:** O motor normaliza níveis baseado na calibração DBu com a equação logarítmica exp2. O ganho de entrada e saída é calculado com base nos perfis do modelo ou configurações da linha de comando de maneira iterativa.
-- **Problema:** Empregos de `powf` vindo da biblioteca `libm` ou `std` destroem o pipeline de branch da CPU dentro de uma região crítica de inferência milisegundo e causam L1 I-Cache miss constante com saltos pesados de 200+ ciclos.
-- **Solução Proposta:** Introduzir tabela estática pré-calculada (LUT) no construtor DSP ou formular uma aproximação de Padé / Minimax em `fastmath.rs` nomeada `fast_exp2` / `fast_pow2_f32` voltada a `gain_staging`.
-- **Arquivos-Alvo:** `src/dsp/gain.rs`, `src/math/fastmath.rs`
-- **Critérios de Aceite:** Margem de desvio absoluto de atenuação em decibéis ficar rigidamente contida num intervalo < 0.001 dB se aferida usando golden tests ou testes unitários locais com extrema varredura de `-120dB` a `+24dB`. Loop RT liberado da stdlib.
-- **Perfil do Implementador:** Matemático Computacional / Engenheiro Rust.
-- **Tags:** #dsp #performance
-
-### [T9] Playback Bridge SIMD Copy (Non-Temporal Stores)
-
-- **Contexto Arquitetural:** O Buffer compartilhado `DspBridge` despacha áudio já computado (saída final) usando cópia simples para os consumos da thread do Playback no WirePlumber.
-- **Problema:** Como os buffers da stream de saída jamais serão re-lidos pela CPU (apenas transportados ao DMA via PipeWire), povoar o Cache de L1 com estas amostras expulsa as tabelas vitais de pesos da rede Neural da RAM rápida.
-- **Solução Proposta:** Utilizar stores nativos não temporais (NTA). A instrução `_mm256_stream_ps` joga o slice do Array alinhado a 128-bytes diretamente na main-memory, despoluindo as linhas do L1.
-- **Arquivos-Alvo:** `src/pw_host.rs` (nas operações do DspBridge).
-- **Critérios de Aceite:** Benefício notório em block_sizes de >128. Coerência dos dados intocável.
-- **Perfil do Implementador:** Especialista em Microarquitetura.
-- **Tags:** #performance #l1
-
-### [T10] Timing de Baixa Latência (RDTSC / `minstant`)
+### [T15] Timing de Baixa Latência (RDTSC / `minstant`)
 
 - **Contexto Arquitetural:** O `Instant::now()` é usado para medir o custo de DSP e exportá-lo na struct `RtStatusFlags` via diagnósticos.
 - **Problema:** No kernel do linux, em determinados hosts, chamar Instant/Time triggers VDSO context switches onerosos, acarretando spikes inesperados de micro-stutter de CPU no SCHED_FIFO.
@@ -122,17 +92,17 @@
 - **Perfil do Implementador:** Engenheiro Kernel Linux.
 - **Tags:** #performance #lowlevel
 
-### [T11] Resampler Short-Circuit Bypass (Zero-Copy)
+### [T16] Eliminação do `powf` no Callback RT (Gain Staging LUT)
 
-- **Contexto Arquitetural:** Quando o hardware de áudio opera em 48.000 Hz, o resampler faz um bypass de software.
-- **Problema:** Apesar do bypass aliviar a matemática complexa FIR, ele ainda copia fatias (slices) por rotinas do tipo `.copy_from_slice()`. Isso tem custo de L1 em sessões de produção rigorosas.
-- **Solução Proposta:** Se `pw_rate == 48000`, o resampler não atua. Invés disso, os fatiadores recebem uma referência planar `&[f32]` provinda diretamente do Sink PipeWire do RT, canalizando os slices diretamente ao `DynamicModel` (que opera lock-free e in-place) sem intermediários.
-- **Arquivos-Alvo:** `src/pw_host.rs`, `src/dsp/resampler.rs`
-- **Critérios de Aceite:** Redução da pegada de memória do pipeline RT em 48kHz com ganhos no roundtrip-latency de ponta. Código unitário atestando estabilidade estática e comportamental do buffer original.
-- **Perfil do Implementador:** Arquiteto Rust sênior.
-- **Tags:** #dsp #resampler #zerocopy
+- **Contexto Arquitetural:** O motor normaliza níveis baseado na calibração DBu com a equação logarítmica exp2. O ganho de entrada e saída é calculado com base nos perfis do modelo ou configurações da linha de comando de maneira iterativa.
+- **Problema:** Empregos de `powf` vindo da biblioteca `libm` ou `std` destroem o pipeline de branch da CPU dentro de uma região crítica de inferência milisegundo e causam L1 I-Cache miss constante com saltos pesados de 200+ ciclos.
+- **Solução Proposta:** Introduzir tabela estática pré-calculada (LUT) no construtor DSP ou formular uma aproximação de Padé / Minimax em `fastmath.rs` nomeada `fast_exp2` / `fast_pow2_f32` voltada a `gain_staging`.
+- **Arquivos-Alvo:** `src/dsp/gain.rs`, `src/math/fastmath.rs`
+- **Critérios de Aceite:** Margem de desvio absoluto de atenuação em decibéis ficar rigidamente contida num intervalo < 0.001 dB se aferida usando golden tests ou testes unitários locais com extrema varredura de `-120dB` a `+24dB`. Loop RT liberado da stdlib.
+- **Perfil do Implementador:** Matemático Computacional / Engenheiro Rust.
+- **Tags:** #dsp #performance
 
-### [T14] Histerese Dinâmica em Otimizações de Sinal (Mono/Silêncio)
+### [T17] Histerese Dinâmica em Otimizações de Sinal (Mono/Silêncio)
 
 - **Contexto Arquitetural:** Atualmente o `apply_gain_simd` e a inferência detectam instantaneamente blocos R/L clonados (uso mono) ou silêncio espectral puro (`0.0`), pulando ciclos matemáticos em R.
 - **Problema:** Tocar acordes ou inserir transientes dinâmicos causa um cenário em que a condição silêncio/mono oscila furiosamente a cada mini-bloco de áudio. Avaliar a lógica a cada chamada RT adiciona carga e intermitência de aquecimento.
@@ -148,7 +118,7 @@
 
 *Foco: Simplificação da infraestrutura de roteamento.*
 
-### [T12] Zero-Copy DspBridge (Processamento In-Place)
+### [T18] Zero-Copy DspBridge (Processamento In-Place)
 
 - **Contexto Arquitetural:** A abordagem PipeWire se declara como um `Audio/Sink` para receber fluxos do sistema, porém, a documentação atesta que o `pw_stream` copia os dados antes da callback. Devido a isso, NAM-rs injeta um segundo Node de Output e faz as vias de um `DspBridge` entre eles com atomics e buffers lock-free.
 - **Problema:** A macro-arquitetura atual requer um ping-pong de stream e aloca 8192 floats x2 canais ininterruptamente. Isso agrava L1 evictions gerais e dificulta sync-clocks absolutos com interface USB.
@@ -161,3 +131,33 @@
 - **Critérios de Aceite:** Carga de CPU em idle e inferência atestadamente menor. Nenhuma instabilidade na detecção do hardware de placa de som.
 - **Perfil do Implementador:** Especialista em Kernel Linux / PipeWire / Rust nativo.
 - **Tags:** #pipewire #arch #latency
+
+### [T19] Resampler Sinc-SIMD Nativo & Fase Mínima
+
+- **Contexto Arquitetural:** Hoje usamos o crate `rubato 0.16` operando em FIR Sinc de fase linear, bidirecional planar.
+- **Problema:** O filtro de fase linear causa ringing assimétrico "pré-eco" (pré-ringing), que em transients drásticos (e.g., palhetada forte de guitarras) suprime o *feel* de resposta da corda e adiciona ~1.5ms de latência pura matemática desnecessária (delay algorítmico).
+- **Solução Proposta:** Abandonar `rubato` no núcleo quente. Implementar localmente em `src/dsp/resampler.rs` um filtro FIR Sinc Polifásico customizado (com suporte à Fase Mínima), otimizado por via vetorial com loops const-generics parecidos com a arquitetura do modelo. Esta tarefa possui alta complexidade técnica e requer estudo detalhado antes da implementação.
+- **Arquivos-Alvo:** `src/dsp/resampler.rs`
+- **Critérios de Aceite:** Remoção drástica na latência final e fase audível mais cristalina e alinhada ao tempo zero; aderência total de `cargo bench` e `cargo test` para bypass planar 48kHz.
+- **Perfil do Implementador:** Cientista DSP.
+- **Tags:** #dsp #latency #simd
+
+### [T20] Resampler Short-Circuit Bypass (Zero-Copy)
+
+- **Contexto Arquitetural:** Quando o hardware de áudio opera em 48.000 Hz, o resampler faz um bypass de software.
+- **Problema:** Apesar do bypass aliviar a matemática complexa FIR, ele ainda copia fatias (slices) por rotinas do tipo `.copy_from_slice()`. Isso tem custo de L1 em sessões de produção rigorosas.
+- **Solução Proposta:** Se `pw_rate == 48000`, o resampler não atua. Invés disso, os fatiadores recebem uma referência planar `&[f32]` provinda diretamente do Sink PipeWire do RT, canalizando os slices diretamente ao `DynamicModel` (que opera lock-free e in-place) sem intermediários.
+- **Arquivos-Alvo:** `src/pw_host.rs`, `src/dsp/resampler.rs`
+- **Critérios de Aceite:** Redução da pegada de memória do pipeline RT em 48kHz com ganhos no roundtrip-latency de ponta. Código unitário atestando estabilidade estática e comportamental do buffer original.
+- **Perfil do Implementador:** Arquiteto Rust sênior.
+- **Tags:** #dsp #resampler #zerocopy
+
+### [T21] Otimização de Escrita em Buffer (Non-Temporal Stores)
+
+- **Contexto Arquitetural:** Com a migração para `Audio/Filter` (T18), o áudio processado é escrito diretamente no buffer de saída do PipeWire.
+- **Problema:** Como os buffers da stream de saída jamais serão re-lidos pela CPU (apenas transportados ao DMA via hardware), povoar o Cache de L1 com estas amostras expulsa as tabelas vitais de pesos da rede Neural da RAM rápida.
+- **Solução Proposta:** Utilizar stores nativos não temporais (NTA) ao escrever no buffer final. A instrução `_mm256_stream_ps` joga o slice do Array alinhado a 128-bytes diretamente na main-memory, despoluindo as linhas do L1.
+- **Arquivos-Alvo:** `src/pw_host.rs`
+- **Critérios de Aceite:** Benefício notório em block_sizes de >128. Coerência dos dados intocável.
+- **Perfil do Implementador:** Especialista em Microarquitetura.
+- **Tags:** #performance #l1 #pipewire
