@@ -359,12 +359,16 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
-    for i in 0..OUT * IN {
-        weights[i] = if is_bf16 {
-            f32_to_bf16(raw_weights[i])
-        } else {
-            half::f16::from_f32(raw_weights[i]).to_bits()
-        };
+    for out_c in 0..OUT {
+        for in_c in 0..IN {
+            let raw_val = raw_weights[out_c * IN + in_c];
+            let val = if is_bf16 {
+                f32_to_bf16(raw_val)
+            } else {
+                half::f16::from_f32(raw_val).to_bits()
+            };
+            weights[in_c * OUT + out_c] = val;
+        }
     }
 
     let bias = if do_bias {
@@ -436,12 +440,16 @@ fn read_dense_layer_dyn(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
-    for i in 0..out_size * in_size {
-        weights[i] = if is_bf16 {
-            f32_to_bf16(raw_weights[i])
-        } else {
-            half::f16::from_f32(raw_weights[i]).to_bits()
-        };
+    for out_c in 0..out_size {
+        for in_c in 0..in_size {
+            let raw_val = raw_weights[out_c * in_size + in_c];
+            let val = if is_bf16 {
+                f32_to_bf16(raw_val)
+            } else {
+                half::f16::from_f32(raw_val).to_bits()
+            };
+            weights[in_c * out_size + out_c] = val;
+        }
     }
 
     let bias = if do_bias {

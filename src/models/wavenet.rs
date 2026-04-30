@@ -235,163 +235,46 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         in_frame: &[f32],
         out_frame: &mut [f32],
     ) {
-        // [PASSO 1: Otimização Loop Unrolling 4x]
-        // Para uma camada densa 1x1, realizamos a projeção de IN canais para OUT canais.
-        // O `while` agrupa as operações em 4 canais de saída simultâneos, reduzindo
-        // substancialmente o gargalo de instruções (Instruction Bottleneck).
-        let mut out_c = 0;
-        while out_c + 4 <= OUT {
-            // Extrai fatias contíguas (IN floats) correspondentes a 4 filtros de peso.
-            let w0 = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 1) * IN..(out_c + 2) * IN)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 2) * IN..(out_c + 3) * IN)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 3) * IN..(out_c + 4) * IN)
-            };
-
-            // [PASSO 2: Produto Escalar Multi-Vetorial]
-            // M::dot_product_4x multiplica 4 vetores de pesos contra o ÚNICO vetor de input (in_frame).
-            // A arquitetura x86 lida com o "broadcast" do vetor in_frame nas unidades FMA,
-            // maximizando o uso dos registradores e economizando chamadas da RAM.
-            let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-            // Extração de bias de forma preditiva.
-            let b0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let b1 = if self.do_bias {
-                self.bias[out_c + 1]
-            } else {
-                0.0
-            };
-            let b2 = if self.do_bias {
-                self.bias[out_c + 2]
-            } else {
-                0.0
-            };
-            let b3 = if self.do_bias {
-                self.bias[out_c + 3]
-            } else {
-                0.0
-            };
-
-            // [PASSO 3: Acumulação In-Place]
-            // Como esta função é `process_acc` (Accumulate), nós SOMAMOS (`+=`)
-            // os resultados computados mais o bias ao valor já existente no buffer de saída.
-            // Isso é fundamental na arquitetura WaveNet para a mistura entre blocos.
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) += r0 + b0;
-                *out_frame.get_unchecked_mut(out_c + 1) += r1 + b1;
-                *out_frame.get_unchecked_mut(out_c + 2) += r2 + b2;
-                *out_frame.get_unchecked_mut(out_c + 3) += r3 + b3;
-            }
-            out_c += 4;
+        unsafe {
+            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
+    }
 
-        // [PASSO 4: Loop Residual (Tail)]
-        // Processa os canais remanescentes se `OUT` não for divisível por 4.
-        while out_c < OUT {
-            let w = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let r = unsafe { M::dot_product(in_frame, w) };
-            let b = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) += r + b;
-            }
-            out_c += 1;
+    /// Executa a projeção fundida (W*in + bias) somando ao buffer de saída (Residual Fusion).
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `IN` e `OUT`.
+    #[inline(always)]
+    pub unsafe fn process_fused<M: SimdMath>(&self, in_frame: &[f32], out_frame: &mut [f32]) {
+        unsafe {
+            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
     }
 
     /// Processa um único frame substituindo o buffer existente.
     ///
     /// # Safety
-    /// Depende dinamicamente da trait `SimdMath`.
+    /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `IN` e `OUT`.
     #[inline(always)]
     pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
         in_frame: &[f32],
         out_frame: &mut [f32],
     ) {
-        // [PASSO 1: Otimização Loop Unrolling 4x]
-        // Diferente de `process_acc_single_frame`, esta função SUBSTITUI (`=`) os valores no `out_frame`
-        // em vez de acumulá-los (`+=`). Executamos 4 projeções de canais em paralelo (SIMD 4x).
-        let mut out_c = 0;
-        while out_c + 4 <= OUT {
-            // [PASSO 1.1: Fatiamento Estático de Pesos]
-            // Pegamos 4 linhas da matriz de pesos (cada uma contendo IN elementos).
-            // Ao usar `.get_unchecked`, evitamos os branches de bounds check em rust,
-            // garantindo que o compilador vectorize e execute em O(1) de overhead.
-            let w0 = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 1) * IN..(out_c + 2) * IN)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 2) * IN..(out_c + 3) * IN)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 3) * IN..(out_c + 4) * IN)
-            };
+        // [PASSO 1: Limpeza do Buffer (Overwrite semantic)]
+        // Como o kernel fundido é acumulativo (+=), limpamos o buffer de saída
+        // para garantir que o resultado seja apenas a projeção desta camada.
+        out_frame.fill(0.0);
 
-            // [PASSO 2: Produto Escalar SIMD Simultâneo]
-            // Executa FMA (Fused Multiply-Add) de 4 canais contra a mesma entrada em um único dispatch.
-            let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-            // [PASSO 3: Resolução Preditiva de Bias]
-            // O pipeline FMA é profundo. Enquanto ele resolve o dot_product, nós usamos a ALU
-            // escalar para resolver a adição do Bias. O compilador emite branches CMOV (Conditional Move).
-            let b0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let b1 = if self.do_bias {
-                self.bias[out_c + 1]
-            } else {
-                0.0
-            };
-            let b2 = if self.do_bias {
-                self.bias[out_c + 2]
-            } else {
-                0.0
-            };
-            let b3 = if self.do_bias {
-                self.bias[out_c + 3]
-            } else {
-                0.0
-            };
-
-            // [PASSO 4: Substituição no Buffer de Saída]
-            // Realizamos a soma final e atribuímos DIRETAMENTE `=` ao output (não é cumulativo `+=`).
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) = r0 + b0;
-                *out_frame.get_unchecked_mut(out_c + 1) = r1 + b1;
-                *out_frame.get_unchecked_mut(out_c + 2) = r2 + b2;
-                *out_frame.get_unchecked_mut(out_c + 3) = r3 + b3;
-            }
-            out_c += 4;
-        }
-
-        // [PASSO 5: Cauda da Computação (Tail Loop)]
-        // Quando `OUT` não for múltiplo de 4, os canais excedentes caem aqui e são
-        // processados 1 a 1 de forma clássica.
-        while out_c < OUT {
-            let w = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let r = unsafe { M::dot_product(in_frame, w) };
-            let b = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) = r + b;
-            }
-            out_c += 1;
+        unsafe {
+            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
     }
 
     /// Processa o Dense acumulando com o estado corrente de output.
     ///
     /// # Safety
-    /// Despacho matemático via trait inlined.
+    /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
     #[inline(always)]
     pub unsafe fn process_acc_block<M: SimdMath>(
         &self,
@@ -399,156 +282,35 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        // [DIFERENCIAL: Processamento Contíguo de Bloco]
-        // Esta função investe os loops: em vez de iterar sobre quadros no anel externo e canais
-        // no interno (como Conv1D), ela itera sobre blocos de CANAIS no anel externo e sobre os QUADROS (frames)
-        // no anel interno. A matriz densa (`weights`) é lida apenas uma vez do L2 para o L1,
-        // e todo o `input` buffer é projetado contra ela, maximizando o reuso de registradores (Register Renaming).
-        let mut out_c = 0;
-        while out_c + 4 <= OUT {
-            // [PASSO 1: Lock dos Pesos L1]
-            // Carrega e segura os 4 perfis de peso no L1.
-            let w0 = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 1) * IN..(out_c + 2) * IN)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 2) * IN..(out_c + 3) * IN)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 3) * IN..(out_c + 4) * IN)
-            };
+        for i in 0..num_frames {
+            let in_slice = unsafe { input.get_unchecked(i * IN..(i + 1) * IN) };
+            let out_slice = unsafe { output.get_unchecked_mut(i * OUT..(i + 1) * OUT) };
 
-            let b0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let b1 = if self.do_bias {
-                self.bias[out_c + 1]
-            } else {
-                0.0
-            };
-            let b2 = if self.do_bias {
-                self.bias[out_c + 2]
-            } else {
-                0.0
-            };
-            let b3 = if self.do_bias {
-                self.bias[out_c + 3]
-            } else {
-                0.0
-            };
-
-            // [PASSO 2: Iteração Temporal Massiva (Frames)]
-            // Despacha os frames continuamente contra as matrizes de pesos trancadas (cacheadas) no topo.
-            // Para buffers `num_frames` = 64, são 64 FMA dispatches sem recarregar o `w0..w3`
-            // Isso aumenta drasticamente o TFLOPS alcançável em microarquiteturas modernas.
-            for i in 0..num_frames {
-                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-                // Acúmulo somativo (`+=`) que consolida o bypass/skip do Dense Layer.
-                unsafe {
-                    *output.get_unchecked_mut(i * OUT + out_c) += r0 + b0;
-                    *output.get_unchecked_mut(i * OUT + out_c + 1) += r1 + b1;
-                    *output.get_unchecked_mut(i * OUT + out_c + 2) += r2 + b2;
-                    *output.get_unchecked_mut(i * OUT + out_c + 3) += r3 + b3;
-                }
+            unsafe {
+                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
             }
-            out_c += 4;
-        }
-
-        // [PASSO 3: Loop Residual]
-        while out_c < OUT {
-            let weight_slice = unsafe { self.weights.get_unchecked(out_c * IN..out_c * IN + IN) };
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
-                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * OUT + out_c) += sum + bias;
-                }
-            }
-            out_c += 1;
         }
     }
 
     #[inline(always)]
     /// Processa bloco iterativo substituindo (OVERWRITE) os valores passados em vez de acumular.
-    /// É comumente invocado por instâncias de fechamento tensorial (ex: Rechannel Head) e portões de entrada.
     ///
     /// # Safety
-    /// Pointer must be valid.
+    /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         input: &[f32],
         output: &mut [f32],
         num_frames: usize,
     ) {
-        let mut out_c = 0;
-        // [PASSO 1: Distribuição FMA Paralela]
-        // Resolve blocos 4x de canais para utilizar plenamente a pipeline matemática AVX2 (256-bit).
-        while out_c + 4 <= OUT {
-            let w0 = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 1) * IN..(out_c + 2) * IN)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 2) * IN..(out_c + 3) * IN)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 3) * IN..(out_c + 4) * IN)
-            };
+        for i in 0..num_frames {
+            let in_slice = unsafe { input.get_unchecked(i * IN..(i + 1) * IN) };
+            let out_slice = unsafe { output.get_unchecked_mut(i * OUT..(i + 1) * OUT) };
 
-            let b0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let b1 = if self.do_bias {
-                self.bias[out_c + 1]
-            } else {
-                0.0
-            };
-            let b2 = if self.do_bias {
-                self.bias[out_c + 2]
-            } else {
-                0.0
-            };
-            let b3 = if self.do_bias {
-                self.bias[out_c + 3]
-            } else {
-                0.0
-            };
-
-            // [PASSO 2: Varredura de Otimização L1 (Frames Inner Loop)]
-            // Mantendo os pesos (`w0`, `w1`, etc) trancados na memória Cache L1 da CPU, iteramos sobre
-            // a temporalidade de quadros do áudio (frames) extraindo throughput superior.
-            for i in 0..num_frames {
-                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-                // Gravação direta (`=`) no buffer de saída da projeção desta camada Densa 1x1.
-                unsafe {
-                    *output.get_unchecked_mut(i * OUT + out_c) = r0 + b0;
-                    *output.get_unchecked_mut(i * OUT + out_c + 1) = r1 + b1;
-                    *output.get_unchecked_mut(i * OUT + out_c + 2) = r2 + b2;
-                    *output.get_unchecked_mut(i * OUT + out_c + 3) = r3 + b3;
-                }
+            out_slice.fill(0.0);
+            unsafe {
+                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
             }
-            out_c += 4;
-        }
-
-        while out_c < OUT {
-            let weight_slice = unsafe { self.weights.get_unchecked(out_c * IN..out_c * IN + IN) };
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
-                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * OUT + out_c) = sum + bias;
-                }
-            }
-            out_c += 1;
         }
     }
 
@@ -707,14 +469,14 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 
                 // [PASSO 5: Projeção 1x1 (Output)]
                 // Projeta o resultado de volta para o barramento residual.
-                let mut res_out = [0.0f32; 512];
-                let res_out_slice = &mut res_out[..CH];
-                self.one_by_one
-                    .process_acc_single_frame::<M>(&temp, res_out_slice);
+                // [PASSO 5: Projeção 1x1 (Output) + Soma Residual Fundida]
+                // Copiamos o buffer residual original para o output e então fundimos a projeção.
+                // Isso elimina o buffer intermediário `res_out` e reduz a pressão no L1.
+                let out_ptr = output.as_mut_ptr().add(i * CH);
+                let out_slice = core::slice::from_raw_parts_mut(out_ptr, CH);
+                out_slice.copy_from_slice(&layer_buffer[lb_start..lb_start + CH]);
 
-                for j in 0..CH {
-                    output[i * CH + j] = layer_buffer[lb_start + j] + res_out_slice[j];
-                }
+                self.one_by_one.process_fused::<M>(&temp, out_slice);
             }
         }
     }

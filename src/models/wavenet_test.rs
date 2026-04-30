@@ -543,18 +543,19 @@ mod tests {
         let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 32]; // 4 * 8
 
         // out_c = 0: Soma ponderada de in[0] e in[1]
-        weights[0] = half::f16::from_f32(1.0).to_bits();
-        weights[1] = half::f16::from_f32(2.0).to_bits();
+        // [IN][OUT] -> in_c * OUT + out_c
+        weights[0] = half::f16::from_f32(1.0).to_bits(); // in0, out0
+        weights[4] = half::f16::from_f32(2.0).to_bits(); // in1, out0
 
         // out_c = 1: Soma ponderada de in[2] e in[3]
-        weights[10] = half::f16::from_f32(3.0).to_bits();
-        weights[11] = half::f16::from_f32(4.0).to_bits();
+        weights[9] = half::f16::from_f32(3.0).to_bits(); // in2, out1
+        weights[13] = half::f16::from_f32(4.0).to_bits(); // in3, out1
 
         // out_c = 2: Escala simples de in[4]
-        weights[20] = half::f16::from_f32(0.5).to_bits();
+        weights[18] = half::f16::from_f32(0.5).to_bits(); // in4, out2
 
         // out_c = 3: Inversão de fase de in[7]
-        weights[31] = half::f16::from_f32(-1.0).to_bits();
+        weights[31] = half::f16::from_f32(-1.0).to_bits(); // in7, out3
 
         let dense = DenseLayer::<8, 4> {
             weights,

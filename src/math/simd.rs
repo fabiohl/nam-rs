@@ -869,6 +869,16 @@ pub trait SimdMath {
     unsafe fn tanh_slice(slice: &mut [f32]);
     /// Aplica Sigmoid em-lugar no slice via fastmath.
     unsafe fn sigmoid_slice(slice: &mut [f32]);
+
+    /// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV).
+    /// out_frame: vetor Y e X_res (in-place).
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    );
 }
 
 /// Implementação estática para microarquitetura x86-64-v3 (AVX2/FMA).
@@ -933,6 +943,17 @@ impl SimdMath for Avx2Math {
             [r0, r1, r2, r3]
         }
     }
+
+    #[inline(always)]
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
 }
 
 /// Implementação estática para microarquitetura x86-64-v3 com AVX-VNNI (Alder Lake+).
@@ -996,6 +1017,17 @@ impl SimdMath for Avx2VnniMath {
             let r3 = dot_product_bf16_fallback(w3, in_frame);
             [r0, r1, r2, r3]
         }
+    }
+
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
     }
 }
 
@@ -1071,6 +1103,17 @@ impl SimdMath for Avx512Math {
             [r0, r1, r2, r3]
         }
     }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
 }
 
 /// Implementação estática para microarquitetura x86-64-v4 com AVX-512 VNNI (Ice Lake+).
@@ -1144,6 +1187,17 @@ impl SimdMath for Avx512VnniMath {
             let r3 = dot_product_bf16_fallback(w3, in_frame);
             [r0, r1, r2, r3]
         }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
 }
 
@@ -1223,6 +1277,17 @@ impl SimdMath for Avx512VnniBf16Math {
             let r3 = dot_product_bf16_avx512(w3, in_frame);
             [r0, r1, r2, r3]
         }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
 }
 
@@ -1413,6 +1478,103 @@ pub unsafe fn dot_product_batch_4x_avx512(
         [s0, s1, s2, s3]
     }
 }
+
+/// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX2.
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn fused_add_gemv_avx2(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+
+    let mut out_c = 0;
+    while out_c + 8 <= out_len {
+        let mut accum = unsafe { _mm256_loadu_ps(out_frame.as_ptr().add(out_c)) };
+        if do_bias {
+            accum = unsafe { _mm256_add_ps(accum, _mm256_loadu_ps(bias.as_ptr().add(out_c))) };
+        }
+
+        for in_c in 0..in_len {
+            let vs = unsafe { _mm256_set1_ps(*in_frame.get_unchecked(in_c)) };
+            let weight_ptr = unsafe { weights.as_ptr().add(in_c * out_len + out_c) };
+            let vw = unsafe { _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i)) };
+            accum = _mm256_fmadd_ps(vs, vw, accum);
+        }
+
+        unsafe {
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+        }
+        out_c += 8;
+    }
+
+    while out_c < out_len {
+        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+        for in_c in 0..in_len {
+            let w = unsafe {
+                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum += unsafe { *in_frame.get_unchecked(in_c) } * w;
+        }
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) += sum;
+        }
+        out_c += 1;
+    }
+}
+
+/// Realiza a operação fundida Y = X_res + Bias + W * Z via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn fused_add_gemv_avx512(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+
+    let mut out_c = 0;
+    while out_c + 16 <= out_len {
+        let mut accum = unsafe { _mm512_loadu_ps(out_frame.as_ptr().add(out_c)) };
+        if do_bias {
+            accum = unsafe { _mm512_add_ps(accum, _mm512_loadu_ps(bias.as_ptr().add(out_c))) };
+        }
+
+        for in_c in 0..in_len {
+            let vs = unsafe { _mm512_set1_ps(*in_frame.get_unchecked(in_c)) };
+            let weight_ptr = unsafe { weights.as_ptr().add(in_c * out_len + out_c) };
+            let vw = unsafe { _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i)) };
+            accum = _mm512_fmadd_ps(vs, vw, accum);
+        }
+
+        unsafe {
+            _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+        }
+        out_c += 16;
+    }
+
+    while out_c < out_len {
+        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+        for in_c in 0..in_len {
+            let w = unsafe {
+                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum += unsafe { *in_frame.get_unchecked(in_c) } * w;
+        }
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) += sum;
+        }
+        out_c += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

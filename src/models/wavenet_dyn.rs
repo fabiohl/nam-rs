@@ -274,100 +274,28 @@ impl DenseLayerDyn {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        // ITERAÇÃO VETORIZADA (Batch de 4 Neurônios):
-        // Processamos os neurônios de saída em blocos de 4 para maximizar o uso dos registradores SIMD.
-        let mut out_c_base = 0;
-        while out_c_base + 4 <= self.out_size {
-            // LAYOUT DE MEMÓRIA E CACHE:
-            // A matriz de pesos está organizada como [out_size][in_size].
-            // Ao pegarmos 4 blocos de pesos seguidos, garantimos que a CPU leia a mesma fatia
-            // de entrada (in_frame) apenas UMA vez e a use contra 4 vetores de pesos diferentes.
-            let w_start0 = (out_c_base) * self.in_size;
-            let w_start1 = (out_c_base + 1) * self.in_size;
-            let w_start2 = (out_c_base + 2) * self.in_size;
-            let w_start3 = (out_c_base + 3) * self.in_size;
-
-            let w0 = unsafe {
-                self.weights
-                    .get_unchecked(w_start0..w_start0 + self.in_size)
-            };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked(w_start1..w_start1 + self.in_size)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked(w_start2..w_start2 + self.in_size)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked(w_start3..w_start3 + self.in_size)
-            };
-
-            // CARREGAMENTO DE BIAS:
-            // Preparamos os bias para os 4 canais. Se a camada não usar bias, o valor é 0.0.
-            let bias0 = if self.do_bias {
-                self.bias[out_c_base]
-            } else {
-                0.0
-            };
-            let bias1 = if self.do_bias {
-                self.bias[out_c_base + 1]
-            } else {
-                0.0
-            };
-            let bias2 = if self.do_bias {
-                self.bias[out_c_base + 2]
-            } else {
-                0.0
-            };
-            let bias3 = if self.do_bias {
-                self.bias[out_c_base + 3]
-            } else {
-                0.0
-            };
-
-            for i in 0..num_frames {
-                // Captura a janela de entrada para o frame atual.
-                let in_frame = unsafe {
-                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
-                };
-
-                // MULTIPLICAÇÃO VETORIZADA 4x:
-                // Realiza a projeção linear dos inputs para 4 neurônios de saída de uma só vez.
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-                // ACUMULAÇÃO NA SAÍDA:
-                // Diferente de `process_block`, esta função USA `+=`.
-                // Isso permite somar o resultado desta camada a algo que já existe no buffer
-                // (como a Skip Connection ou o Residual da WaveNet).
-                unsafe {
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base) += r0 + bias0;
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 1) += r1 + bias1;
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 2) += r2 + bias2;
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 3) += r3 + bias3;
-                }
+        for i in 0..num_frames {
+            let in_slice = unsafe { input.get_unchecked(i * self.in_size..(i + 1) * self.in_size) };
+            let out_slice =
+                unsafe { output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size) };
+            unsafe {
+                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
             }
-            out_c_base += 4;
         }
+    }
 
-        // PROCESSO DE CAUDA (REMAINDER):
-        // Trata os últimos 1 a 3 neurônios caso out_size não seja múltiplo de 4.
-        while out_c_base < self.out_size {
-            let out_c = out_c_base;
-            let weight_slice =
-                &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame = unsafe {
-                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
-                };
-                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * self.out_size + out_c) += sum + bias;
-                }
-            }
-            out_c_base += 1;
+    /// Executa a projeção fundida (W*in + bias) somando ao buffer de saída (Residual Fusion).
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `in_size` e `out_size`.
+    #[inline(always)]
+    pub unsafe fn process_fused<M: crate::math::simd::SimdMath>(
+        &self,
+        in_frame: &[f32],
+        out_frame: &mut [f32],
+    ) {
+        unsafe {
+            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
     }
 
@@ -386,89 +314,30 @@ impl DenseLayerDyn {
         in_stride: usize,
         out_stride: usize,
     ) {
-        let mut out_c_base = 0;
-        // Batch de 4 neurônios para otimização SIMD.
-        while out_c_base + 4 <= self.out_size {
-            let w_start0 = (out_c_base) * self.in_size;
-            let w_start1 = (out_c_base + 1) * self.in_size;
-            let w_start2 = (out_c_base + 2) * self.in_size;
-            let w_start3 = (out_c_base + 3) * self.in_size;
+        // [PASSO: Buffer Temporário Stack]
+        // Para operações strided, projetamos o frame em um buffer contíguo local
+        // e depois espalhamos (scatter) para o buffer de saída com os strides corretos.
+        let mut tmp = [0.0f32; 1024];
+        let tmp_slice = &mut tmp[..self.out_size];
 
-            let w0 = unsafe {
-                self.weights
-                    .get_unchecked(w_start0..w_start0 + self.in_size)
-            };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked(w_start1..w_start1 + self.in_size)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked(w_start2..w_start2 + self.in_size)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked(w_start3..w_start3 + self.in_size)
-            };
+        for i in 0..num_frames {
+            let in_slice =
+                unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+            let out_base = i * out_stride;
 
-            let bias0 = if self.do_bias {
-                self.bias[out_c_base]
-            } else {
-                0.0
-            };
-            let bias1 = if self.do_bias {
-                self.bias[out_c_base + 1]
-            } else {
-                0.0
-            };
-            let bias2 = if self.do_bias {
-                self.bias[out_c_base + 2]
-            } else {
-                0.0
-            };
-            let bias3 = if self.do_bias {
-                self.bias[out_c_base + 3]
-            } else {
-                0.0
-            };
+            // Limpa o buffer temporário
+            tmp_slice.fill(0.0);
 
-            for i in 0..num_frames {
-                // USO DO STRIDE NA ENTRADA:
-                // Em vez de i * self.in_size, usamos i * in_stride.
-                // Isso permite "pular" pedaços da memória que não pertencem a este canal/bloco.
-                let in_frame =
-                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+            unsafe {
+                M::fused_add_gemv(in_slice, &self.weights, &self.bias, tmp_slice, self.do_bias);
+            }
 
-                // Cálculo vetorizado idêntico ao processo contíguo.
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-                // USO DO STRIDE NA SAÍDA:
-                // Também acumulamos (+=) respeitando o salto definido por `out_stride`.
+            // Scatter (Acúmulo)
+            for (j, &val) in tmp_slice.iter().enumerate() {
                 unsafe {
-                    *output.get_unchecked_mut(i * out_stride + out_c_base) += r0 + bias0;
-                    *output.get_unchecked_mut(i * out_stride + out_c_base + 1) += r1 + bias1;
-                    *output.get_unchecked_mut(i * out_stride + out_c_base + 2) += r2 + bias2;
-                    *output.get_unchecked_mut(i * out_stride + out_c_base + 3) += r3 + bias3;
+                    *output.get_unchecked_mut(out_base + j) += val;
                 }
             }
-            out_c_base += 4;
-        }
-
-        // PROCESSO DE CAUDA (REMAINDER) STRIDED:
-        while out_c_base < self.out_size {
-            let out_c = out_c_base;
-            let weight_slice =
-                &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame =
-                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
-                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * out_stride + out_c) += sum + bias;
-                }
-            }
-            out_c_base += 1;
         }
     }
 
@@ -486,87 +355,26 @@ impl DenseLayerDyn {
         in_stride: usize,
         out_stride: usize,
     ) {
-        let mut out_c_base = 0;
-        // Batch de 4 neurônios via SIMD.
-        while out_c_base + 4 <= self.out_size {
-            let w_start0 = (out_c_base) * self.in_size;
-            let w_start1 = (out_c_base + 1) * self.in_size;
-            let w_start2 = (out_c_base + 2) * self.in_size;
-            let w_start3 = (out_c_base + 3) * self.in_size;
+        let mut tmp = [0.0f32; 1024];
+        let tmp_slice = &mut tmp[..self.out_size];
 
-            let w0 = unsafe {
-                self.weights
-                    .get_unchecked(w_start0..w_start0 + self.in_size)
-            };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked(w_start1..w_start1 + self.in_size)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked(w_start2..w_start2 + self.in_size)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked(w_start3..w_start3 + self.in_size)
-            };
+        for i in 0..num_frames {
+            let in_slice =
+                unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+            let out_base = i * out_stride;
 
-            let bias0 = if self.do_bias {
-                self.bias[out_c_base]
-            } else {
-                0.0
-            };
-            let bias1 = if self.do_bias {
-                self.bias[out_c_base + 1]
-            } else {
-                0.0
-            };
-            let bias2 = if self.do_bias {
-                self.bias[out_c_base + 2]
-            } else {
-                0.0
-            };
-            let bias3 = if self.do_bias {
-                self.bias[out_c_base + 3]
-            } else {
-                0.0
-            };
+            tmp_slice.fill(0.0);
 
-            for i in 0..num_frames {
-                // Cálculo de entrada respeitando o salto (in_stride).
-                let in_frame =
-                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+            unsafe {
+                M::fused_add_gemv(in_slice, &self.weights, &self.bias, tmp_slice, self.do_bias);
+            }
 
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-                // ATRIBUIÇÃO DIRETA (=):
-                // Aqui o valor residual no buffer de saída é descartado.
-                // Usado em pontos do pipeline onde esta camada é a única fonte do dado.
+            // Scatter (Atribuição Direta)
+            for (j, &val) in tmp_slice.iter().enumerate() {
                 unsafe {
-                    *output.get_unchecked_mut(i * out_stride + out_c_base) = r0 + bias0;
-                    *output.get_unchecked_mut(i * out_stride + out_c_base + 1) = r1 + bias1;
-                    *output.get_unchecked_mut(i * out_stride + out_c_base + 2) = r2 + bias2;
-                    *output.get_unchecked_mut(i * out_stride + out_c_base + 3) = r3 + bias3;
+                    *output.get_unchecked_mut(out_base + j) = val;
                 }
             }
-            out_c_base += 4;
-        }
-
-        // PROCESSO DE CAUDA (REMAINDER) STRIDED:
-        while out_c_base < self.out_size {
-            let out_c = out_c_base;
-            let weight_slice =
-                &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame =
-                    unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
-                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * out_stride + out_c) = sum + bias;
-                }
-            }
-            out_c_base += 1;
         }
     }
 
@@ -582,88 +390,15 @@ impl DenseLayerDyn {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        let mut out_c_base = 0;
-        // Batch de 4 neurônios via SIMD para máxima vazão (throughput).
-        while out_c_base + 4 <= self.out_size {
-            let w_start0 = (out_c_base) * self.in_size;
-            let w_start1 = (out_c_base + 1) * self.in_size;
-            let w_start2 = (out_c_base + 2) * self.in_size;
-            let w_start3 = (out_c_base + 3) * self.in_size;
+        for i in 0..num_frames {
+            let in_slice = unsafe { input.get_unchecked(i * self.in_size..(i + 1) * self.in_size) };
+            let out_slice =
+                unsafe { output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size) };
 
-            let w0 = unsafe {
-                self.weights
-                    .get_unchecked(w_start0..w_start0 + self.in_size)
-            };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked(w_start1..w_start1 + self.in_size)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked(w_start2..w_start2 + self.in_size)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked(w_start3..w_start3 + self.in_size)
-            };
-
-            let bias0 = if self.do_bias {
-                self.bias[out_c_base]
-            } else {
-                0.0
-            };
-            let bias1 = if self.do_bias {
-                self.bias[out_c_base + 1]
-            } else {
-                0.0
-            };
-            let bias2 = if self.do_bias {
-                self.bias[out_c_base + 2]
-            } else {
-                0.0
-            };
-            let bias3 = if self.do_bias {
-                self.bias[out_c_base + 3]
-            } else {
-                0.0
-            };
-
-            for i in 0..num_frames {
-                // Acesso contíguo: i * self.in_size.
-                let in_frame = unsafe {
-                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
-                };
-
-                // Cálculo 4x simultâneo.
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_frame) };
-
-                // Atribuição direta: Sobrescreve o destino.
-                unsafe {
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base) = r0 + bias0;
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 1) = r1 + bias1;
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 2) = r2 + bias2;
-                    *output.get_unchecked_mut(i * self.out_size + out_c_base + 3) = r3 + bias3;
-                }
+            out_slice.fill(0.0);
+            unsafe {
+                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
             }
-            out_c_base += 4;
-        }
-
-        // PROCESSO DE CAUDA (REMAINDER):
-        while out_c_base < self.out_size {
-            let out_c = out_c_base;
-            let weight_slice =
-                &self.weights[out_c * self.in_size..out_c * self.in_size + self.in_size];
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame = unsafe {
-                    input.get_unchecked(i * self.in_size..i * self.in_size + self.in_size)
-                };
-                let sum = unsafe { M::dot_product(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * self.out_size + out_c) = sum + bias;
-                }
-            }
-            out_c_base += 1;
         }
     }
 }
@@ -766,23 +501,22 @@ impl WaveNetLayerDyn {
                 }
             }
 
-            // 4) PROJEÇÃO 1x1:
-            // Prepara o sinal para a próxima camada, reduzindo ou mantendo as dimensões.
+            // 4) PROJEÇÃO 1x1 + FUSÃO RESIDUAL:
+            // Prepara o sinal para a próxima camada, fundindo a projeção com a soma residual.
             let in_stride = if self.gated { 2 * self.ch } else { self.ch };
-            self.one_by_one
-                .process_block_strided::<M>(block, output, num_frames, in_stride, self.ch);
-        }
 
-        // 5) CONEXÃO RESIDUAL (Residual Connection):
-        // Adicionamos a entrada original da camada à saída processada.
-        // Isso evita o desaparecimento do gradiente e ajuda o sinal a fluir através da rede profunda.
-        unsafe {
             for i in 0..num_frames {
                 let out_frame = output.get_unchecked_mut(i * ch..i * ch + ch);
                 let lb_start = (buffer_start + i) * ch;
-                for j in 0..ch {
-                    *out_frame.get_unchecked_mut(j) += *layer_buffer.get_unchecked(lb_start + j);
-                }
+                let block_frame = &block[i * in_stride..i * in_stride + ch];
+
+                // [PASSO: Residual Fusion]
+                // Inicializamos a saída com o dado residual (Skip original).
+                out_frame.copy_from_slice(layer_buffer.get_unchecked(lb_start..lb_start + ch));
+
+                // [PASSO: Fused GEMV]
+                // Somamos a projeção 1x1 diretamente sobre o residual.
+                self.one_by_one.process_fused::<M>(block_frame, out_frame);
             }
         }
     }

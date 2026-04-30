@@ -46,7 +46,7 @@
 - **Perfil do Implementador:** Engenheiro de Alta Performance (C/Rust Intrinsics).
 - **Tags:** #simd #avx512 #bf16
 
-### [T8] Fusão Residual + One-by-One no WaveNet Layer
+### [T8] Fusão Residual + One-by-One no WaveNet Layer [Concluido]
 
 - **Contexto Arquitetural:** A rotina do path do `DenseLayer` em WaveNet e `wavenet_dyn.rs` hoje divide computação de convolução, mix in, Tanh, e passes de 1x1 em estágios, resultando num array intermediário de soma e passes extras à cache L1.
 - **Problema:** Múltiplos descarregamentos (stores e loads) redundantes da L1 Cache durante saltos do one-by-one de volta pra onda residual.
