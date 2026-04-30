@@ -288,6 +288,14 @@ pub fn run_pipewire_host(
         let mut mono_hysteresis = DynamicHysteresis::new();
         let mut process_mono = false;
 
+        // Thresholds pré-calculados em valor linear² (MS) — cold-path only.
+        // Evita `powf` no callback RT (T16). Atualizados ao receber GateConfig.
+        let lut = crate::math::fastmath::get_gain_lut();
+        let open_lin = lut.db_to_linear(gate_params.threshold_open_db);
+        let close_lin = lut.db_to_linear(gate_params.threshold_close_db);
+        let mut threshold_open_sq: f32 = open_lin * open_lin;
+        let mut threshold_close_sq: f32 = close_lin * close_lin;
+
         let shared_target_rate = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
         let rate_for_param = shared_target_rate.clone();
         let rate_for_process = shared_target_rate.clone();
@@ -398,6 +406,12 @@ pub fn run_pipewire_host(
                             param_changed = true;
                         }
                         ParamPayload::GateConfig(params) => {
+                            // Pré-calcula thresholds lineares² (cold-path, evento raro).
+                            // Usa GainLUT interpolada (~4 ciclos) em vez de powf (~200+ ciclos).
+                            let open_lin = lut.db_to_linear(params.threshold_open_db);
+                            let close_lin = lut.db_to_linear(params.threshold_close_db);
+                            threshold_open_sq = open_lin * open_lin;
+                            threshold_close_sq = close_lin * close_lin;
                             gate_params = params;
                         }
                     }
@@ -500,17 +514,14 @@ pub fn run_pipewire_host(
 
                                 // 2. Detecção de Silêncio com Histerese (Silence Bypass)
                                 // Verificamos se há sinal presente antes de disparar a inferência NAM (pesada).
+                                // Os thresholds foram pré-calculados no cold-path via GainLUT (T16).
                                 let energy_ms =
                                     unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
-                                let threshold_open =
-                                    10.0f32.powf(gate_params.threshold_open_db / 20.0);
-                                let threshold_close =
-                                    10.0f32.powf(gate_params.threshold_close_db / 20.0);
 
                                 silence_hysteresis.update(
                                     energy_ms,
-                                    threshold_open * threshold_open, // Compara MS com threshold^2
-                                    threshold_close * threshold_close,
+                                    threshold_open_sq, // Pré-calculado: (GainLUT::db_to_linear(open_db))²
+                                    threshold_close_sq, // Pré-calculado: (GainLUT::db_to_linear(close_db))²
                                     &gate_params,
                                     n_samples,
                                 );

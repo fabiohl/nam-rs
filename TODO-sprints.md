@@ -122,6 +122,13 @@
 - **Perfil do Implementador:** Arquiteto Rust sênior.
 - **Tags:** #dsp #resampler #zerocopy
 
+> **Notas de Auditoria (2026-04-30):**
+>
+> - **T15 (RDTSC):** ✅ `minstant v0.1.7` integrado em `pw_host.rs` — resolve via `RDTSC` inline no Linux x86-64. Zero VDSO context switches no callback RT. `Anchor` recebida como parâmetro, `Instant::now()` é `minstant::Instant`.
+> - **T16 (Gain LUT):** ✅ Corrigido durante auditoria. Havia **2 chamadas `10.0f32.powf()` residuais no hot-path RT** (callback `process()`) para cálculo de thresholds de silêncio. Substituídas por thresholds lineares² pré-calculados no cold-path via `GainLUT::db_to_linear()`. Zero `powf` remanescente no código RT ativo.
+> - **T17 (Histerese):** ✅ FSM `DynamicHysteresis` (4 estados) em `src/dsp/gate.rs`. Duas instâncias: `silence_hysteresis` (Silence Bypass) e `mono_hysteresis` (Otimização Mono). `compute_energy_avx2` e `compute_max_diff_avx2` implementadas em `src/math/simd.rs` — codegen AVX2/FMA garantido pela baseline `x86-64-v3` em `.cargo/config.toml`.
+> - **T18 (Zero-Copy):** ✅ Path A (bypass zero-copy) e Path B (resampling ativo) separados. Em 48kHz, referência direta ao buffer mmap do PipeWire — zero `copy_from_slice` intermediário.
+
 ---
 
 ## 🌐 Épico: Arquitetura de Áudio & PipeWire
