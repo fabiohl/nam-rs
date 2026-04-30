@@ -1,1 +1,0 @@
-../../.agents/workflows/diagnostico.md
