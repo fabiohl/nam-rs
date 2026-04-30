@@ -16,6 +16,37 @@ pub fn f32_to_bf16(f: f32) -> u16 {
 
 use core::arch::x86_64::*;
 
+/// Prefetch adaptativo baseado na dilatação (Causal Conv1D).
+///
+/// O prefetcher nativo (hardware) do x86-64 lida bem com acessos sequenciais (dilatações baixas).
+/// Para dilatações maiores, o salto de memória excede a janela do hardware prefetcher, exigindo
+/// hints explícitos para evitar stalls no pipeline FMA.
+///
+/// - **D <= 8**: O hardware prefetcher resolve de forma ótima. Nenhum hint emitido.
+/// - **16 <= D <= 64**: Dados "quentes" necessários em breve. Hint `T0` (L1).
+/// - **D >= 128**: Acessos esparsos e longínquos. Hint `T1` (L2) para evitar L1 thrashing.
+///
+/// # Safety
+/// O ponteiro `ptr` deve ser válido ou estar dentro da margem de segurança do buffer.
+/// Como `_mm_prefetch` é apenas um hint, não causa falha de segmentação se o ponteiro for inválido,
+/// mas deve ser usado com cautela em regiões críticas.
+#[inline(always)]
+pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
+    if dilation <= 8 {
+        // Hardware prefetcher domina.
+    } else if dilation <= 64 {
+        // Traz para L1 (reuso iminente).
+        unsafe {
+            _mm_prefetch::<_MM_HINT_T0>(ptr as *const i8);
+        }
+    } else {
+        // Dilatações massivas: traz para L2 para poupar o L1 de evicção agressiva.
+        unsafe {
+            _mm_prefetch::<_MM_HINT_T1>(ptr as *const i8);
+        }
+    }
+}
+
 /// Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) no registrador MXCSR.
 ///
 /// Em CPUs x86-64, operações sobre números subnormais (denormals) incorrem em

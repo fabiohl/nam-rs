@@ -56,7 +56,7 @@
 - **Perfil do Implementador:** Engenheiro DSP / Performance.
 - **Tags:** #simd #wavenet #l1
 
-### [T13] Prefetch Adaptativo por Dilatação (WaveNet Conv1D)
+### [T13] Prefetch Adaptativo por Dilatação (WaveNet Conv1D) [Concluido]
 
 - **Contexto Arquitetural:** O loop WaveNet causal em suas camadas altas salta em taxas enormes de dilatação (e.g. D=512, D=1024), pulando trechos da memória.
 - **Problema:** Software prefetch forçado via `T0` (todas as caches) não distingue padrões curtos de longos. Dilatações curtas (ex. D=1) já são inferidas com perfeição pelo *hardware prefetcher*, o hint de software é custoso e redundante. Dilatações vastas acabam engarrafando L1 prematuramente.

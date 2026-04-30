@@ -58,28 +58,6 @@ impl Conv1dDyn {
         while out_c_base + 4 <= self.out_ch {
             // Itera sobre o tamanho do kernel causal temporal (geralmente kernel_size = 2 ou 3)
             for k in 0..self.kernel {
-                // Emissão de prefetch (Software Prefetching) para o próximo passo temporal do kernel
-                // Isso ajuda a evitar falhas de cache de L1 ao saltar na fita de retardo (layer_buffer)
-                if k + 1 < self.kernel {
-                    // Predição do próximo endereço:
-                    // A dilatação determina os saltos no tempo. Em vez de ler os quadros sequencialmente,
-                    // lemos quadros com espaçamento de `self.dilation`.
-                    // A fórmula `(k + 2 - kernel)` projeta onde estará o tap futuro do kernel em relação ao 'buffer_start'.
-                    let next_offset =
-                        (self.dilation as isize) * ((k as isize) + 2 - (self.kernel as isize));
-                    let next_frame_idx = (buffer_start as isize) + next_offset;
-                    let next_addr = unsafe {
-                        layer_buffer
-                            .as_ptr()
-                            .add((next_frame_idx as usize) * self.in_ch)
-                    };
-                    unsafe {
-                        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
-                            next_addr.cast::<i8>(),
-                        );
-                    }
-                }
-
                 // Calcula o offset do elemento passado no tempo baseado na dilatação
                 let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
                 let base_frame_idx = (buffer_start as isize) + offset;
@@ -124,6 +102,20 @@ impl Conv1dDyn {
                     for i in 0..num_frames {
                         let frame_idx = base_frame_idx + (i as isize);
                         let in_slice_start = (frame_idx as usize) * self.in_ch;
+
+                        // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
+                        if k + 1 < self.kernel {
+                            let prefetch_ptr = unsafe {
+                                layer_buffer.as_ptr().add(in_slice_start + self.dilation)
+                            };
+                            unsafe {
+                                crate::math::simd::adaptive_prefetch_f32(
+                                    prefetch_ptr,
+                                    self.dilation,
+                                );
+                            }
+                        }
+
                         let in_slice = unsafe {
                             layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
                         };
@@ -153,6 +145,20 @@ impl Conv1dDyn {
                     for i in 0..num_frames {
                         let frame_idx = base_frame_idx + (i as isize);
                         let in_slice_start = (frame_idx as usize) * self.in_ch;
+
+                        // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
+                        if k + 1 < self.kernel {
+                            let prefetch_ptr = unsafe {
+                                layer_buffer.as_ptr().add(in_slice_start + self.dilation)
+                            };
+                            unsafe {
+                                crate::math::simd::adaptive_prefetch_f32(
+                                    prefetch_ptr,
+                                    self.dilation,
+                                );
+                            }
+                        }
+
                         let in_slice = unsafe {
                             layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
                         };
@@ -183,24 +189,6 @@ impl Conv1dDyn {
         while out_c_base < self.out_ch {
             let out_c = out_c_base;
             for k in 0..self.kernel {
-                // Prefetch proativo também na cauda: pede ao hardware para carregar o próximo
-                // endereço de memória antes de precisarmos dele, reduzindo latência.
-                if k + 1 < self.kernel {
-                    let next_offset =
-                        (self.dilation as isize) * ((k as isize) + 2 - (self.kernel as isize));
-                    let next_frame_idx = (buffer_start as isize) + next_offset;
-                    let next_addr = unsafe {
-                        layer_buffer
-                            .as_ptr()
-                            .add((next_frame_idx as usize) * self.in_ch)
-                    };
-                    unsafe {
-                        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
-                            next_addr.cast::<i8>(),
-                        );
-                    }
-                }
-
                 // Cálculo do deslocamento (offset) temporal baseado na dilatação da camada.
                 let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
                 let base_frame_idx = (buffer_start as isize) + offset;
@@ -218,6 +206,15 @@ impl Conv1dDyn {
                     for i in 0..num_frames {
                         let frame_idx = base_frame_idx + (i as isize);
                         let in_slice_start = (frame_idx as usize) * self.in_ch;
+
+                        // Prefetch adaptativo com lookahead.
+                        let lookahead_offset = 16;
+                        let prefetch_ptr =
+                            unsafe { layer_buffer.as_ptr().add(in_slice_start + lookahead_offset) };
+                        unsafe {
+                            crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
+                        }
+
                         let in_slice = unsafe {
                             layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
                         };
@@ -231,6 +228,15 @@ impl Conv1dDyn {
                     for i in 0..num_frames {
                         let frame_idx = base_frame_idx + (i as isize);
                         let in_slice_start = (frame_idx as usize) * self.in_ch;
+
+                        // Prefetch adaptativo com lookahead.
+                        let lookahead_offset = 16;
+                        let prefetch_ptr =
+                            unsafe { layer_buffer.as_ptr().add(in_slice_start + lookahead_offset) };
+                        unsafe {
+                            crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
+                        }
+
                         let in_slice = unsafe {
                             layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
                         };

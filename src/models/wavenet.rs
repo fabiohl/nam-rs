@@ -61,21 +61,18 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 
         // [PASSO 2: Iteração do Kernel (Receptive Field)]
         for k in 0..K {
-            if k + 1 < K {
-                let next_offset = (self.dilation as isize) * ((k as isize) + 2 - (K as isize));
-                let next_frame_idx = (frame_idx as isize) + next_offset;
-                let next_addr =
-                    unsafe { layer_buffer.as_ptr().add((next_frame_idx as usize) * IN) };
-                unsafe {
-                    core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
-                        next_addr.cast::<i8>(),
-                    );
-                }
-            }
-
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let current_frame_idx = (frame_idx as isize) + offset;
             let in_slice_start = (current_frame_idx as usize) * IN;
+
+            // Prefetch adaptativo com lookahead para cobrir latência de memória.
+            // Avança 16 floats (2 vetores AVX2) à frente do ponteiro de leitura atual.
+            let lookahead_offset = 16;
+            let prefetch_ptr =
+                unsafe { layer_buffer.as_ptr().add(in_slice_start + lookahead_offset) };
+            unsafe {
+                crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
+            }
 
             let in_slice =
                 unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
@@ -135,21 +132,18 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
 
         for k in 0..K {
-            if k + 1 < K {
-                let next_offset = (self.dilation as isize) * ((k as isize) + 2 - (K as isize));
-                let next_frame_idx = (frame_idx as isize) + next_offset;
-                let next_addr =
-                    unsafe { layer_buffer.as_ptr().add((next_frame_idx as usize) * IN) };
-                unsafe {
-                    core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
-                        next_addr.cast::<i8>(),
-                    );
-                }
-            }
-
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let current_frame_idx = (frame_idx as isize) + offset;
             let in_slice_start = (current_frame_idx as usize) * IN;
+
+            // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
+            if k + 1 < K {
+                let prefetch_ptr =
+                    unsafe { layer_buffer.as_ptr().add(in_slice_start + self.dilation) };
+                unsafe {
+                    crate::math::simd::adaptive_prefetch_f32(prefetch_ptr.cast(), self.dilation);
+                }
+            }
 
             let in_slice =
                 unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
