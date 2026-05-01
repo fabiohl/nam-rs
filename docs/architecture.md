@@ -11,6 +11,16 @@ A arquitetura do NAM-rs é meticulosamente projetada para processamento DSP de b
 - **Integração Lock-Free end-to-end:** `CLI → Parser (.nam/.namb) → Model Dispatcher → Prewarm → Injeção Lock-free Dual via SPSC → Thread DSP (SCHED_FIFO) → Gain Stage Input → Inferência Neural (Capture Stream) → DspBridge → Gain Stage Output → Playback Stream → Hardware Sink.`
 - **True Stereo e Bypass Inteligente:** O callback `process()` negocia canais planares de 32 bits (`F32P` com canais = 2). Ele extrai os arrays e invoca inferência simétrica para L e R (`model_l`, `model_r`). Contudo, o sistema prevê uma mitigação vital de CPU: se o canal R for puro silêncio ou idênticamente replicado a L, a thread pula o processamento do R, inferindo apenas a percurso mono L e estampando bit-a-bit à saída R, poupando virtualmente 50% dos ciclos. Para instrumentos físicos (ex: Guitarra) tocarem por cima de "backing tracks", a rota do microfone deve ser conectada ao Sink do NAM-rs manualmente no `qpwgraph`.
 
+> **Decisão Arquitetural — Adiamento da Migração para `pw_filter` (2026-04-30):**
+>
+> A migração da topologia Dual-Stream (Audio/Sink + Stream/Output + DspBridge) para `pw_filter` (`Audio/Duplex`, processamento in-place) foi **avaliada e adiada** pelos seguintes motivos:
+>
+> 1. **Ausência de wrapper safe no crate `pipewire` 0.9.2:** O `pw_filter` possui FFI disponível em `pipewire-sys` (27 funções geradas automaticamente), mas o crate de alto nível não expõe nenhuma abstração segura. Toda a implementação exigiria FFI unsafe direto, criando uma superfície de manutenção frágil sem suporte upstream.
+> 2. **Risco de regressão no roteamento WirePlumber:** Com `Audio/Sink`, o WirePlumber elege o NAM-rs como default sink automaticamente — apps (YouTube, VLC) conectam sem intervenção. Com `Audio/Duplex`, o comportamento do gerenciador de sessão é incerto e poderia exigir configuração manual do usuário, quebrando a experiência "plug-and-play".
+> 3. **Estabilidade comprovada da arquitetura atual:** A topologia Dual-Stream com DspBridge está operacional, testada (inclusive sob concorrência em `test_dsp_bridge_concurrent_access`) e performando dentro das margens RT (WaveNet Standard 64samp ≈ 198 µs, 85% de margem). O overhead do bridge (~4 cópias `copy_nonoverlapping` + 5 operações atômicas por ciclo) é desprezível frente ao custo da inferência neural.
+>
+> **Condições para revisita futura:** (a) O crate `pipewire-rs` expor wrappers safe para `pw_filter`, ou (b) validação experimental isolada confirmando que `Audio/Duplex` preserva o roteamento automático do WirePlumber para Virtual Sinks com `priority.session` elevada.
+
 ## 2. Inferência FastMath e Microarquitetura (AVX2 / AVX-512)
 
 - **Supressão Algorítmica Rápida (FMA):** A base abandona o custo letárgico nas Unidades Lógicas (`std::math`) usando intrinsics `core::arch::x86_64` para processamento paralelo do polinômio Minimax/Padé nas portas lógicas LSTM e ativações WaveNet. Multiplicadores vetoriais processados em "Fused Multiply-Add" (FMA) reduzem a operação por ciclo massivamente.

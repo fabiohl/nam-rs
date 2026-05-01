@@ -133,32 +133,6 @@
 
 ## 🌐 Épico: Arquitetura de Áudio & PipeWire
 
-*Foco: Simplificação da infraestrutura de roteamento.*
-
-### [T19] Zero-Copy DspBridge (Processamento In-Place)
-
-- **Contexto Arquitetural:** A abordagem PipeWire se declara como um `Audio/Sink` para receber fluxos do sistema, porém, a documentação atesta que o `pw_stream` copia os dados antes da callback. Devido a isso, NAM-rs injeta um segundo Node de Output e faz as vias de um `DspBridge` entre eles com atomics e buffers lock-free.
-- **Problema:** A macro-arquitetura atual requer um ping-pong de stream e aloca 8192 floats x2 canais ininterruptamente. Isso agrava L1 evictions gerais e dificulta sync-clocks absolutos com interface USB.
-- **Solução Proposta:** Evoluir e refatorar a infraestrutura de PipeWire adotando o formato `Audio/Filter` (SPA Node Type). Este formato recebe *In* e *Out* no mesmo pulso de DSP RT do kernel, processando o áudio 100% via In-place Replacement e extirpando a barreira DspBridge por completo!
-- **Arquivos-Alvo:** `src/pw_host.rs`, `src/main.rs`
-- **Tarefas de Implementação:**
-  1. Alterar a lógica do PipeWire de Sink/Src para `pw_filter` e `media.class = Audio/Filter`.
-  2. Apagar toda a lógica de atomics, fence generation e copy slices pertinente ao DspBridge antigo.
-  3. Roteamento transparente via WirePlumber será garantido.
-- **Critérios de Aceite:** Carga de CPU em idle e inferência atestadamente menor. Nenhuma instabilidade na detecção do hardware de placa de som.
-- **Perfil do Implementador:** Especialista em Kernel Linux / PipeWire / Rust nativo.
-- **Tags:** #pipewire #arch #latency
-
-### [T20] Otimização de Escrita em Buffer (Non-Temporal Stores)
-
-- **Contexto Arquitetural:** Com a migração para `Audio/Filter` (T19), o áudio processado é escrito diretamente no buffer de saída do PipeWire.
-- **Problema:** Como os buffers da stream de saída jamais serão re-lidos pela CPU (apenas transportados ao DMA via hardware), povoar o Cache de L1 com estas amostras expulsa as tabelas vitais de pesos da rede Neural da RAM rápida.
-- **Solução Proposta:** Utilizar stores nativos não temporais (NTA) ao escrever no buffer final. A instrução `_mm256_stream_ps` joga o slice do Array alinhado a 128-bytes diretamente na main-memory, despoluindo as linhas do L1.
-- **Arquivos-Alvo:** `src/pw_host.rs`
-- **Critérios de Aceite:** Benefício notório em block_sizes de >128. Coerência dos dados intocável.
-- **Perfil do Implementador:** Especialista em Microarquitetura.
-- **Tags:** #performance #l1 #pipewire
-
 ### [T21] Resampler Sinc-SIMD Nativo & Fase Mínima
 
 - **Contexto Arquitetural:** Hoje usamos o crate `rubato 0.16` operando em FIR Sinc de fase linear, bidirecional planar.
