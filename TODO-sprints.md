@@ -133,7 +133,7 @@
 
 ## 🌐 Épico: Arquitetura de Áudio & PipeWire
 
-### [T21] Resampler Sinc-SIMD Nativo & Fase Mínima
+### [T21] Resampler Sinc-SIMD Nativo & Fase Mínima [Fica pra versão 1.2]
 
 - **Contexto Arquitetural:** Hoje usamos o crate `rubato 0.16` operando em FIR Sinc de fase linear, bidirecional planar.
 - **Problema:** O filtro de fase linear causa ringing assimétrico "pré-eco" (pré-ringing), que em transients drásticos (e.g., palhetada forte de guitarras) suprime o *feel* de resposta da corda e adiciona ~1.5ms de latência pura matemática desnecessária (delay algorítmico).
