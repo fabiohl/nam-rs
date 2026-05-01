@@ -1,4 +1,4 @@
-# 🎸 NAM-rs 1.0
+# 🎸 NAM-rs 1.1
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
