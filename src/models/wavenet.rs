@@ -460,9 +460,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 
                 // [PASSO 3: Função de Ativação Tanh (Non-Gated)]
                 // Aplica Tanh a todos os canais. Topologias Standard/Lite são non-gated.
-                for j in 0..CH {
-                    temp[j] = crate::math::fastmath::tanh(temp[j]);
-                }
+                M::activation_tanh_block(&mut temp);
 
                 // [PASSO 4: Head Update (Skip-Connection)]
                 // Todas as camadas contribuem para o somatório global da cabeça.

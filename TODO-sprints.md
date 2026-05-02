@@ -6,7 +6,7 @@
 
 ## Épico 1: Otimização de Modelos & Inferência SIMD
 
-### T1 — WaveNet: Ativação Tanh Vetorial no Hot-Path
+### T1 — WaveNet: Ativação Tanh Vetorial no Hot-Path [Concluído]
 
 **Prioridade:** 🔴 Crítica · **Estimativa:** 2h · **Impacto:** ~10-15% ciclos/frame WaveNet
 

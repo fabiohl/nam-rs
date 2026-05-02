@@ -12,6 +12,7 @@ Use esta skill focando em **Planejamento técnico sob metodologias ágeis**. Que
 ## Instructions
 
 Organizar as atividades em Sprints e Tarefas Técnicas coerentes, auto-contidas, realistas, que entregam valor e deixam o caminho pronto para o que vem à frente. Cada tarefa tem seu entregável e o perfil correto de quem é o mais indicado para executa-lo com sucesso. Melhoria contínua, adaptabilidade a um cenário incerto e em mudança.
+As tarefas DEVEM ser diretas, simples de entender e detalhadas a ponto de que mesmo uma IA mais leve (como o Gemini Flash) possa implementa-la sem riscos de erro.
 
 ### 1. Fundamentos e Diretrizes Analíticas
 

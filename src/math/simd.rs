@@ -806,6 +806,8 @@ pub struct SimdMathConfig {
     pub tanh_slice: unsafe fn(&mut [f32]),
     /// Loop ativado via fptr para iterar `sigmoid(x)` na matriz especificada.
     pub sigmoid_slice: unsafe fn(&mut [f32]),
+    /// Loop ativado via fptr para aplicar tanh em bloco pequeno com padding.
+    pub activation_tanh_block: unsafe fn(&mut [f32]),
     /// Conjunto de instruções SIMD detectado.
     /// Define a trait matemática exata no macro `dispatch_simd!`.
     pub instruction_set: SimdInstructionSet,
@@ -851,6 +853,7 @@ impl SimdMathConfig {
                     <Avx512VnniBf16Math as SimdMath>::dot_product_4x_interleaved,
                 tanh_slice: <Avx512VnniBf16Math as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512VnniBf16Math as SimdMath>::sigmoid_slice,
+                activation_tanh_block: <Avx512VnniBf16Math as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx512VnniBf16,
             };
         }
@@ -863,6 +866,7 @@ impl SimdMathConfig {
                     <Avx512VnniMath as SimdMath>::dot_product_4x_interleaved,
                 tanh_slice: <Avx512VnniMath as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512VnniMath as SimdMath>::sigmoid_slice,
+                activation_tanh_block: <Avx512VnniMath as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx512Vnni,
             };
         }
@@ -874,6 +878,7 @@ impl SimdMathConfig {
                 dot_product_4x_interleaved: <Avx512Math as SimdMath>::dot_product_4x_interleaved,
                 tanh_slice: <Avx512Math as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
+                activation_tanh_block: <Avx512Math as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx512,
             };
         }
@@ -885,6 +890,7 @@ impl SimdMathConfig {
                 dot_product_4x_interleaved: <Avx2VnniMath as SimdMath>::dot_product_4x_interleaved,
                 tanh_slice: <Avx2VnniMath as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx2VnniMath as SimdMath>::sigmoid_slice,
+                activation_tanh_block: <Avx2VnniMath as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx2Vnni,
             };
         }
@@ -895,6 +901,7 @@ impl SimdMathConfig {
             dot_product_4x_interleaved: dot_product_4x_interleaved_avx2,
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
+            activation_tanh_block: <Avx2Math as SimdMath>::activation_tanh_block,
             instruction_set: SimdInstructionSet::Avx2,
         }
     }
@@ -994,6 +1001,13 @@ pub trait SimdMath {
         out_frame: &mut [f32],
         do_bias: bool,
     );
+
+    /// Aplica Tanh em um bloco pequeno (CH sized) com padding para evitar loops escalares.
+    /// Otimizado para ativações WaveNet onde CH é tipicamente 4, 8, 12 ou 16.
+    ///
+    /// # Safety
+    /// `buf` deve ser válido e acessível para leitura e escrita.
+    unsafe fn activation_tanh_block(buf: &mut [f32]);
 }
 
 /// Implementação estática para microarquitetura x86-64-v3 (AVX2/FMA).
@@ -1069,6 +1083,35 @@ impl SimdMath for Avx2Math {
     ) {
         unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
     }
+
+    #[inline(always)]
+    unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        let len = buf.len();
+        if len <= 8 {
+            let mut tmp = [0.0f32; 8];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v = _mm256_loadu_ps(tmp.as_ptr());
+                let res = crate::math::fastmath::simd_tanh(v);
+                _mm256_storeu_ps(tmp.as_mut_ptr(), res);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else if len <= 16 {
+            let mut tmp = [0.0f32; 16];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v0 = _mm256_loadu_ps(tmp.as_ptr());
+                let v1 = _mm256_loadu_ps(tmp.as_ptr().add(8));
+                let res0 = crate::math::fastmath::simd_tanh(v0);
+                let res1 = crate::math::fastmath::simd_tanh(v1);
+                _mm256_storeu_ps(tmp.as_mut_ptr(), res0);
+                _mm256_storeu_ps(tmp.as_mut_ptr().add(8), res1);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else {
+            unsafe { Self::tanh_slice(buf) };
+        }
+    }
 }
 
 /// Implementação estática para microarquitetura x86-64-v3 com AVX-VNNI (Alder Lake+).
@@ -1143,6 +1186,35 @@ impl SimdMath for Avx2VnniMath {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        let len = buf.len();
+        if len <= 8 {
+            let mut tmp = [0.0f32; 8];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v = _mm256_loadu_ps(tmp.as_ptr());
+                let res = crate::math::fastmath::simd_tanh(v);
+                _mm256_storeu_ps(tmp.as_mut_ptr(), res);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else if len <= 16 {
+            let mut tmp = [0.0f32; 16];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v0 = _mm256_loadu_ps(tmp.as_ptr());
+                let v1 = _mm256_loadu_ps(tmp.as_ptr().add(8));
+                let res0 = crate::math::fastmath::simd_tanh(v0);
+                let res1 = crate::math::fastmath::simd_tanh(v1);
+                _mm256_storeu_ps(tmp.as_mut_ptr(), res0);
+                _mm256_storeu_ps(tmp.as_mut_ptr().add(8), res1);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else {
+            unsafe { Self::tanh_slice(buf) };
+        }
     }
 }
 
@@ -1229,6 +1301,35 @@ impl SimdMath for Avx512Math {
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        let len = buf.len();
+        if len <= 16 {
+            let mut tmp = [0.0f32; 16];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v = _mm512_loadu_ps(tmp.as_ptr());
+                let res = crate::math::fastmath::simd_tanh_avx512(v);
+                _mm512_storeu_ps(tmp.as_mut_ptr(), res);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else if len <= 32 {
+            let mut tmp = [0.0f32; 32];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v0 = _mm512_loadu_ps(tmp.as_ptr());
+                let v1 = _mm512_loadu_ps(tmp.as_ptr().add(16));
+                let res0 = crate::math::fastmath::simd_tanh_avx512(v0);
+                let res1 = crate::math::fastmath::simd_tanh_avx512(v1);
+                _mm512_storeu_ps(tmp.as_mut_ptr(), res0);
+                _mm512_storeu_ps(tmp.as_mut_ptr().add(16), res1);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else {
+            unsafe { Self::tanh_slice(buf) };
+        }
+    }
 }
 
 /// Implementação estática para microarquitetura x86-64-v4 com AVX-512 VNNI (Ice Lake+).
@@ -1313,6 +1414,35 @@ impl SimdMath for Avx512VnniMath {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        let len = buf.len();
+        if len <= 16 {
+            let mut tmp = [0.0f32; 16];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v = _mm512_loadu_ps(tmp.as_ptr());
+                let res = crate::math::fastmath::simd_tanh_avx512(v);
+                _mm512_storeu_ps(tmp.as_mut_ptr(), res);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else if len <= 32 {
+            let mut tmp = [0.0f32; 32];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v0 = _mm512_loadu_ps(tmp.as_ptr());
+                let v1 = _mm512_loadu_ps(tmp.as_ptr().add(16));
+                let res0 = crate::math::fastmath::simd_tanh_avx512(v0);
+                let res1 = crate::math::fastmath::simd_tanh_avx512(v1);
+                _mm512_storeu_ps(tmp.as_mut_ptr(), res0);
+                _mm512_storeu_ps(tmp.as_mut_ptr().add(16), res1);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else {
+            unsafe { Self::tanh_slice(buf) };
+        }
     }
 }
 
@@ -1403,6 +1533,35 @@ impl SimdMath for Avx512VnniBf16Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        let len = buf.len();
+        if len <= 16 {
+            let mut tmp = [0.0f32; 16];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v = _mm512_loadu_ps(tmp.as_ptr());
+                let res = crate::math::fastmath::simd_tanh_avx512(v);
+                _mm512_storeu_ps(tmp.as_mut_ptr(), res);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else if len <= 32 {
+            let mut tmp = [0.0f32; 32];
+            tmp[..len].copy_from_slice(buf);
+            unsafe {
+                let v0 = _mm512_loadu_ps(tmp.as_ptr());
+                let v1 = _mm512_loadu_ps(tmp.as_ptr().add(16));
+                let res0 = crate::math::fastmath::simd_tanh_avx512(v0);
+                let res1 = crate::math::fastmath::simd_tanh_avx512(v1);
+                _mm512_storeu_ps(tmp.as_mut_ptr(), res0);
+                _mm512_storeu_ps(tmp.as_mut_ptr().add(16), res1);
+            }
+            buf.copy_from_slice(&tmp[..len]);
+        } else {
+            unsafe { Self::tanh_slice(buf) };
+        }
     }
 }
 

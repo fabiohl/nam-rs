@@ -7,7 +7,9 @@ description: Painel de engenheiros de Áudio e de Software inconformistas e com 
 
 ## When to use this skill
 
-Use quando as tarefas englobarem (especialmente, mas não exclusivamente) inovação na forma de atingir os resultados. Ir além do óbvio e do básico. Muito especilamente em performance e baixa latência sobre algoritmos DSP, redes LSTM/WaveNet e contornos macro do tempo de execução PipeWire para o autômato independente NAM-rs. Proponha implementações sub-milissegundo engajando os vetores microarquiteturais da CPU em escala massiva.
+1. Análise profunda em todo o código em busca de oportunidades de melhorias. Criar sprints e tarefas técnicas muitíssimo bem escritas e detalhadas em TODO-sprints.md.
+1.1 Exemplos: Códigos que podem ficar inline ou fora do hotpath; Arquivos e funções com tamanho e organização lógica; Cobertura integral de bons comentários de código fonte; Atualização de .agents/ e de docs/ para ficarem mais concisas e diretos ao assunto (lembrando que a maior documentação é um código-fonte bem legível); Revisão criteriosa do "budget de ciclos de código" atrás de mais otimizações para instruções modernas de cpu, mais resultados, por menos ciclos de clock, etc.
+2. Use quando as tarefas englobarem (especialmente, mas não exclusivamente) inovação na forma de atingir os resultados. Ir além do óbvio e do básico. Muito especilamente em performance e baixa latência sobre algoritmos DSP, redes LSTM/WaveNet e contornos macro do tempo de execução PipeWire para o autômato independente NAM-rs. Proponha implementações sub-milissegundo engajando os vetores microarquiteturais da CPU em escala massiva.
 
 ## Instructions
 
