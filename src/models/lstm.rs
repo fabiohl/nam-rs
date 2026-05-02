@@ -182,7 +182,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         process_sample_avx2,
         inline(always),
         crate::math::simd::dot_product_4x_interleaved_avx2,
-        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
+        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
         8,                                   // $step: Processa 8 elementos por instrução
         _mm256_loadu_ps,                     // Carregamento não alinhado (unaligned load)
         _mm256_storeu_ps,                    // Armazenamento não alinhado (unaligned store)
@@ -201,7 +201,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         crate::math::simd::dot_product_4x_interleaved_avx512,
-        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
+        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
         16, // $step: Processa 16 elementos por instrução
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -217,7 +217,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
         crate::math::simd::dot_product_4x_interleaved_avx2,
-        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
+        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -233,7 +233,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
         crate::math::simd::dot_product_4x_interleaved_avx512,
-        crate::math::simd::dot_product_4x_interleaved_bf16_fallback,
+        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -249,7 +249,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
         crate::math::simd::dot_product_4x_interleaved_avx512,
-        crate::math::simd::dot_product_4x_interleaved_bf16_fallback, // Por enquanto fallback, Phase 3 otimiza.
+        crate::math::simd::dot_product_4x_interleaved_bf16_avx512, // Native AVX-512 BF16 VNNI
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -531,7 +531,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 self.layer.process_sample_avx512_vnni_bf16(&[input[i + 3]]);
                 h3.copy_from_slice(self.layer.get_hidden_state_bf16());
 
-                let dots = crate::math::simd::dot_product_bf16_batch_4x_fallback(
+                let dots = crate::math::simd::dot_product_bf16_4x_native_avx512(
                     &h0,
                     &h1,
                     &h2,
@@ -551,7 +551,8 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 let sample = [input[i]];
                 self.layer.process_sample_avx512_vnni_bf16(&sample);
                 let hidden = self.layer.get_hidden_state_bf16();
-                let dot = crate::math::simd::dot_product_bf16_fallback(hidden, &self.head_weights);
+                let dot =
+                    crate::math::simd::dot_product_bf16_native_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
                 i += 1;
             }
@@ -898,7 +899,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                     .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
                 h3.copy_from_slice(self.layer2.get_hidden_state_bf16());
 
-                let dots = crate::math::simd::dot_product_bf16_batch_4x_fallback(
+                let dots = crate::math::simd::dot_product_bf16_4x_native_avx512(
                     &h0,
                     &h1,
                     &h2,
@@ -920,7 +921,8 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 self.layer2
                     .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
                 let hidden = self.layer2.get_hidden_state_bf16();
-                let dot = crate::math::simd::dot_product_bf16_fallback(hidden, &self.head_weights);
+                let dot =
+                    crate::math::simd::dot_product_bf16_native_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
                 i += 1;
             }

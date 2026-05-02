@@ -81,7 +81,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T5 — BF16 Dot Product: Implementação Nativa AVX-512 BF16
+### T5 — BF16 Dot Product: Implementação Nativa AVX-512 BF16 [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 4h · **Impacto:** ~2x throughput em CPUs com `avx512bf16`
 

@@ -234,7 +234,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     }
 }
 
-/// Calcula o Dot Product (Produto Escalar) de duas fatias BF16 via AVX-512 VNNI.
+/// Calcula o Dot Product (Produto Escalar) de duas fatias BF16 via AVX-512 BF16 nativo.
 ///
 /// ## Otimização: VDPBF16PS (BF16 Pairs)
 ///
@@ -246,7 +246,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
 /// Requer CPU com suporte a AVX-512F, AVX-512VL e AVX-512BF16.
 /// Os slices `a` e `b` contêm valores BF16 empacotados como u16.
 #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
-pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
+pub unsafe fn dot_product_bf16_native_avx512(a: &[u16], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
     unsafe {
@@ -308,6 +308,81 @@ pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
         }
 
         scalar_sum
+    }
+}
+
+/// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX-512 BF16 nativo.
+///
+/// # Safety
+/// Requer CPU com suporte a AVX-512F, AVX-512VL e AVX-512BF16.
+#[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
+pub unsafe fn dot_product_bf16_4x_native_avx512(
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    in_frame: &[u16],
+) -> [f32; 4] {
+    let len = in_frame.len();
+    let mut i = 0;
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+        let mut sum2 = _mm512_setzero_ps();
+        let mut sum3 = _mm512_setzero_ps();
+
+        while i + 32 <= len {
+            let vi = _mm512_loadu_si512(in_frame.as_ptr().add(i) as *const __m512i);
+            let vi_bh = core::mem::transmute::<__m512i, __m512bh>(vi);
+
+            let vw0 = _mm512_loadu_si512(w0.as_ptr().add(i) as *const __m512i);
+            sum0 = _mm512_dpbf16_ps(sum0, vi_bh, core::mem::transmute::<__m512i, __m512bh>(vw0));
+
+            let vw1 = _mm512_loadu_si512(w1.as_ptr().add(i) as *const __m512i);
+            sum1 = _mm512_dpbf16_ps(sum1, vi_bh, core::mem::transmute::<__m512i, __m512bh>(vw1));
+
+            let vw2 = _mm512_loadu_si512(w2.as_ptr().add(i) as *const __m512i);
+            sum2 = _mm512_dpbf16_ps(sum2, vi_bh, core::mem::transmute::<__m512i, __m512bh>(vw2));
+
+            let vw3 = _mm512_loadu_si512(w3.as_ptr().add(i) as *const __m512i);
+            sum3 = _mm512_dpbf16_ps(sum3, vi_bh, core::mem::transmute::<__m512i, __m512bh>(vw3));
+
+            i += 32;
+        }
+
+        // Redução horizontal auxiliar
+        #[inline(always)]
+        unsafe fn hsum512(sum: __m512) -> f32 {
+            unsafe {
+                let v256 = _mm256_add_ps(
+                    _mm512_extractf32x8_ps::<0>(sum),
+                    _mm512_extractf32x8_ps::<1>(sum),
+                );
+                let v128 = _mm_add_ps(
+                    _mm256_extractf128_ps::<0>(v256),
+                    _mm256_extractf128_ps::<1>(v256),
+                );
+                let v64 = _mm_add_ps(v128, _mm_movehl_ps(v128, v128));
+                let v32 = _mm_add_ss(v64, _mm_shuffle_ps::<0x55>(v64, v64));
+                _mm_cvtss_f32(v32)
+            }
+        }
+
+        let mut s0 = hsum512(sum0);
+        let mut s1 = hsum512(sum1);
+        let mut s2 = hsum512(sum2);
+        let mut s3 = hsum512(sum3);
+
+        while i < len {
+            let vi = f32::from_bits((in_frame[i] as u32) << 16);
+            s0 += f32::from_bits((w0[i] as u32) << 16) * vi;
+            s1 += f32::from_bits((w1[i] as u32) << 16) * vi;
+            s2 += f32::from_bits((w2[i] as u32) << 16) * vi;
+            s3 += f32::from_bits((w3[i] as u32) << 16) * vi;
+            i += 1;
+        }
+
+        [s0, s1, s2, s3]
     }
 }
 
@@ -1706,8 +1781,9 @@ impl SimdMath for Avx512VnniBf16Math {
     }
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
-        unsafe { dot_product_bf16_avx512(a, b) }
+        unsafe { dot_product_bf16_native_avx512(a, b) }
     }
+
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
     unsafe fn dot_product_bf16_4x(
         w0: &[u16],
@@ -1716,13 +1792,7 @@ impl SimdMath for Avx512VnniBf16Math {
         w3: &[u16],
         in_frame: &[u16],
     ) -> [f32; 4] {
-        unsafe {
-            let r0 = dot_product_bf16_avx512(w0, in_frame);
-            let r1 = dot_product_bf16_avx512(w1, in_frame);
-            let r2 = dot_product_bf16_avx512(w2, in_frame);
-            let r3 = dot_product_bf16_avx512(w3, in_frame);
-            [r0, r1, r2, r3]
-        }
+        unsafe { dot_product_bf16_4x_native_avx512(w0, w1, w2, w3, in_frame) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
