@@ -255,13 +255,8 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         in_frame: &[f32],
         out_frame: &mut [f32],
     ) {
-        // [PASSO 1: Limpeza do Buffer (Overwrite semantic)]
-        // Como o kernel fundido é acumulativo (+=), limpamos o buffer de saída
-        // para garantir que o resultado seja apenas a projeção desta camada.
-        out_frame.fill(0.0);
-
         unsafe {
-            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
+            M::gemv_overwrite(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
     }
 
@@ -301,9 +296,8 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
             let in_slice = unsafe { input.get_unchecked(i * IN..(i + 1) * IN) };
             let out_slice = unsafe { output.get_unchecked_mut(i * OUT..(i + 1) * OUT) };
 
-            out_slice.fill(0.0);
             unsafe {
-                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
+                M::gemv_overwrite(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
             }
         }
     }

@@ -1005,6 +1005,20 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    /// Realiza a projeção linear Y = Bias + W * Z (GEMV) substituindo o conteúdo de out_frame.
+    /// out_frame: vetor Y (overwrite).
+    ///
+    /// # Safety
+    /// `weights` deve ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+    /// `bias` deve ter ao menos `out_len` elementos.
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    );
+
     /// Aplica Tanh em um bloco pequeno (CH sized) com padding para evitar loops escalares.
     /// Otimizado para ativações WaveNet onde CH é tipicamente 4, 8, 12 ou 16.
     ///
@@ -1104,6 +1118,17 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_avx2(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[inline(always)]
@@ -1283,6 +1308,17 @@ impl SimdMath for Avx2VnniMath {
     }
 
     #[target_feature(enable = "avxvnni")]
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avxvnni")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         unsafe { Avx2Math::activation_tanh_block(buf) }
     }
@@ -1387,6 +1423,17 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl")]
@@ -1567,6 +1614,17 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         unsafe { Avx512Math::activation_tanh_block(buf) }
     }
@@ -1676,6 +1734,17 @@ impl SimdMath for Avx512VnniBf16Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -1949,6 +2018,61 @@ pub unsafe fn fused_add_gemv_avx2(
     }
 }
 
+/// Realiza a projeção linear Y = Bias + W * Z (GEMV) substituindo o conteúdo de out_frame.
+/// out_frame: vetor Y (overwrite).
+///
+/// # Safety
+/// Requer CPU com AVX2, FMA e F16C. `weights` deve ter `in_len * out_len`
+/// elementos no layout `[IN][OUT]`. `bias` deve ter ao menos `out_len` elementos.
+/// `out_frame` é sobrescrito (overwrite).
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn gemv_overwrite_avx2(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+
+    let mut out_c = 0;
+    while out_c + 8 <= out_len {
+        let mut accum = if do_bias {
+            unsafe { _mm256_loadu_ps(bias.as_ptr().add(out_c)) }
+        } else {
+            _mm256_setzero_ps()
+        };
+
+        for in_c in 0..in_len {
+            let vs = unsafe { _mm256_set1_ps(*in_frame.get_unchecked(in_c)) };
+            let weight_ptr = unsafe { weights.as_ptr().add(in_c * out_len + out_c) };
+            let vw = unsafe { _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i)) };
+            accum = _mm256_fmadd_ps(vs, vw, accum);
+        }
+
+        unsafe {
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+        }
+        out_c += 8;
+    }
+
+    while out_c < out_len {
+        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+        for in_c in 0..in_len {
+            let w = unsafe {
+                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum += unsafe { *in_frame.get_unchecked(in_c) } * w;
+        }
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum;
+        }
+        out_c += 1;
+    }
+}
+
 /// Realiza a operação fundida Y = X_res + Bias + W * Z via AVX-512.
 ///
 /// # Safety
@@ -1996,6 +2120,58 @@ pub unsafe fn fused_add_gemv_avx512(
         }
         unsafe {
             *out_frame.get_unchecked_mut(out_c) += sum;
+        }
+        out_c += 1;
+    }
+}
+
+/// Realiza a projeção linear Y = Bias + W * Z via AVX-512.
+///
+/// # Safety
+/// Requer CPU com AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn gemv_overwrite_avx512(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+
+    let mut out_c = 0;
+    while out_c + 16 <= out_len {
+        let mut accum = if do_bias {
+            unsafe { _mm512_loadu_ps(bias.as_ptr().add(out_c)) }
+        } else {
+            _mm512_setzero_ps()
+        };
+
+        for in_c in 0..in_len {
+            let vs = unsafe { _mm512_set1_ps(*in_frame.get_unchecked(in_c)) };
+            let weight_ptr = unsafe { weights.as_ptr().add(in_c * out_len + out_c) };
+            let vw = unsafe { _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i)) };
+            accum = _mm512_fmadd_ps(vs, vw, accum);
+        }
+
+        unsafe {
+            _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+        }
+        out_c += 16;
+    }
+
+    while out_c < out_len {
+        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+        for in_c in 0..in_len {
+            let w = unsafe {
+                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum += unsafe { *in_frame.get_unchecked(in_c) } * w;
+        }
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum;
         }
         out_c += 1;
     }

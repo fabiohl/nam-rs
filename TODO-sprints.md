@@ -65,7 +65,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T4 — WaveNet DenseLayer: Overwrite Semântico sem `fill(0.0)`
+### T4 — WaveNet DenseLayer: Overwrite Semântico sem `fill(0.0)` [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 1h · **Impacto:** Eliminar ~CH×num_frames writes desnecessários
 
