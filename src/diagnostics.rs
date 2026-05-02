@@ -67,7 +67,7 @@ pub enum NamErrorCode {
     PipewireInitFailed,
     /// Falha ao conectar o stream do PipeWire.
     StreamConnectFailed,
-    /// Falha ao construir o NamResampler (rubato).
+    /// Falha ao construir o NamResampler (Sinc Polifásico nativo).
     ResamplerBuildFailed,
     /// Canal SPSC de resamplers cheio (rebuild descartado).
     ResamplerChannelFull,

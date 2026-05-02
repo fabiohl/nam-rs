@@ -1,4 +1,4 @@
-# 🎸 NAM-rs 1.1
+# 🎸 NAM-rs 1.2
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
@@ -84,6 +84,8 @@ cd nam-rs
 cargo build --release
 ```
 
+Por ser um projeto em intensa evolução, não é aconselhável usar a branch "main" para trabalhos em ambiente de produção. Recomenda-se uma uma das versões release disponíveis em <https://github.com/fabiohl/nam-rs/tags>.
+
 **Obs:** O .cargo/config.toml permite configurar uma compilação ainda mais otimizada para a sua CPU atual ("march=native"). O script utils/switchMarch.sh automatiza esta troca.
 
 Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire.
@@ -107,7 +109,9 @@ Se necessário, use `qpwgraph` ou `pw-link` para fazer os devidos roteamentos.
 
 ## 🧠 Modelos Suportados
 
-O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquivos de Impulse Response (.wav) não são suportados (ao menos não no momento). Oferece dois níveis de operação de parsing:
+O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquivos de Impulse Response (.wav) não são suportados (ao menos não no momento).
+No momento é suportado apenas a chamada "Arquitetura A1" do NAM. O suporte à "Arquitetura A2" já está no readmap.
+Oferece dois níveis de operação de parsing:
 
 * **Modo Estático (Altíssima Performance):** Construções de *Const Generics* dimensionadas em tempo de compilação.
   * **WaveNet:** Standard (16×8), Lite (12×8), Feather (8×4) e Nano (4×2)
@@ -139,6 +143,12 @@ utils/lints.sh
 ```
 
 Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip, hot-swap rápido de modelos, **block sizes variáveis** (1–512 amostras), **modelos comunitários** (5 modelos .nam) e **rejeição de formatos não-suportados** (Keras Legacy, ativações não-Tanh).
+
+## ⏲️ Changelog
+
+* 1.0 (28/04/2026): Release inicial. Suporte completo à "Arquitetura A1" do Neural Amp Modeler.
+* 1.1 (30/04/2026): Otimizações de performance sortidas.
+* 1.2 (02/05/2026): Algoritimo de resampling próprio.
 
 ## 🤝 Contribuindo
 

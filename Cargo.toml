@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 [package]
 name = "nam-rs"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 
 [dependencies]
@@ -13,16 +13,11 @@ rtrb = "0.3.4"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 lexopt = "0.3.2"
-# rubato 0.16.x: Fixado em 0.16 (não 2.0) — a API 2.0 introduziu dependência obrigatória de
-# audioadapter/audioadapter-buffers, que aumenta a superfície de dependência sem benefício
-# concreto para o nosso modelo RT-safe. O 0.16.x expõe SincFixedIn<f32> com Vec<Vec<f32>>
-# pré-alocados, compatível com zero-alloc na thread DSP (process_into_buffer é RT-safe).
-# fft_resampler desabilitado: remove dependência RustFFT (não usamos resampler síncrono FFT).
-rubato = { version = "0.16", default-features = false }
 log = "0.4.29"
 env_logger = { version = "0.11.10", default-features = false }
 half = "2.7.1"
 minstant = "0.1.7"
+rustfft = { version = "6.4.1", default-features = false }
 
 [profile.release]
 strip = true      # Remove symbols (smaller binary)
