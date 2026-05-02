@@ -33,7 +33,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T2 — WaveNet: Soma Horizontal Head SIMD Genérica
+### T2 — WaveNet: Soma Horizontal Head SIMD Genérica [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 1.5h · **Impacto:** Eliminação de branches no hot-path
 
@@ -41,15 +41,15 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 **Ação:**
 
-1. Criar `fn horizontal_sum_simd<const N: usize>(ptr: *const f32) -> f32` em `simd.rs` que use `_mm256_hadd_ps` para N≤8 e loop de 8 com `_mm256_add_ps` + tail para N>8.
-2. Substituir o bloco `if/else` por chamada única: `let head1_sum = unsafe { horizontal_sum_simd::<HEAD>(head_ptr.add(i * HEAD)) };`.
-3. Adicionar teste unitário com todos os perfis HEAD (1, 4, 6, 8, 12, 16).
+1. [X] Criar `fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32` em `simd.rs` (via trait `SimdMath`).
+2. [X] Substituir o bloco `if/else` por chamada única: `let head1_sum = unsafe { M::horizontal_sum::<HEAD>(head_ptr.add(i * HEAD)) };`.
+3. [X] Adicionar teste unitário com todos os perfis HEAD (1, 4, 6, 8, 12, 16).
 
 **Arquivos:** `src/math/simd.rs`, `src/models/wavenet.rs` (L894-922).
 
 ---
 
-### T3 — LSTM: Fused Gate Activation com SIMD Unificado
+### T3 — LSTM: Fused Gate Activation com SIMD Unificado [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 3h · **Impacto:** Redução de 2 loads/stores redundantes por neurônio
 

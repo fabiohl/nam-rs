@@ -245,6 +245,62 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     }
 }
 
+/// Executa a ativação fundida dos gates LSTM para AVX2.
+/// Computa as portas f, i, g, o e atualiza o estado da célula e saída oculta.
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+pub unsafe fn fused_lstm_gates_avx2(
+    gf: __m256,
+    gi: __m256,
+    gg: __m256,
+    go: __m256,
+    cs: __m256,
+) -> (__m256, __m256) {
+    unsafe {
+        let f = simd_sigmoid(gf);
+        let i = simd_sigmoid(gi);
+        let g = simd_tanh(gg);
+        let o = simd_sigmoid(go);
+
+        // new_cs = f * cs + i * g
+        let new_cs = _mm256_fmadd_ps(f, cs, _mm256_mul_ps(i, g));
+
+        // hidden = o * tanh(new_cs)
+        let hidden = _mm256_mul_ps(o, simd_tanh(new_cs));
+
+        (new_cs, hidden)
+    }
+}
+
+/// Executa a ativação fundida dos gates LSTM para AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn fused_lstm_gates_avx512(
+    gf: __m512,
+    gi: __m512,
+    gg: __m512,
+    go: __m512,
+    cs: __m512,
+) -> (__m512, __m512) {
+    unsafe {
+        let f = simd_sigmoid_avx512(gf);
+        let i = simd_sigmoid_avx512(gi);
+        let g = simd_tanh_avx512(gg);
+        let o = simd_sigmoid_avx512(go);
+
+        // new_cs = f * cs + i * g
+        let new_cs = _mm512_fmadd_ps(f, cs, _mm512_mul_ps(i, g));
+
+        // hidden = o * tanh(new_cs)
+        let hidden = _mm512_mul_ps(o, simd_tanh_avx512(new_cs));
+
+        (new_cs, hidden)
+    }
+}
+
 /// Processa uma fatia in-place aplicando a `simd_tanh` otimizada baseada em AVX2 (YMM).
 /// Abstrai a carga iterativa de 8 elementos da camada neural.
 pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {

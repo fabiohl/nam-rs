@@ -46,6 +46,7 @@ macro_rules! define_lstm_process {
         $mul:ident,
         $tanh:path,
         $sigmoid:path,
+        $fused_gates:path,
         $is_bf16:expr
     ) => {
         /// Executa o processamento de uma amostra de áudio através da camada LSTM.
@@ -96,18 +97,12 @@ macro_rules! define_lstm_process {
                     let g_f = $load(self.gates.as_ptr().add(i + f_offset));
                     let g_i = $load(self.gates.as_ptr().add(i));
                     let g_g = $load(self.gates.as_ptr().add(i + g_offset));
+                    let g_o = $load(self.gates.as_ptr().add(i + o_offset));
                     let c_s = $load(self.cell_state.as_ptr().add(i));
 
-                    let f = $sigmoid(g_f);
-                    let input_gate = $sigmoid(g_i);
-                    let cell_cand = $tanh(g_g);
+                    let (new_c_s, h_s) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
 
-                    let new_c_s = $add($mul(f, c_s), $mul(input_gate, cell_cand));
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
-
-                    let g_o = $load(self.gates.as_ptr().add(i + o_offset));
-                    let o = $sigmoid(g_o);
-                    let h_s = $mul(o, $tanh(new_c_s));
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
 
                     i += $step;
@@ -132,20 +127,10 @@ macro_rules! define_lstm_process {
                     let g_f = $load(temp_gf.as_ptr());
                     let g_i = $load(temp_gi.as_ptr());
                     let g_g = $load(temp_gg.as_ptr());
+                    let g_o = $load(temp_go.as_ptr());
                     let c_s = $load(temp_cs.as_ptr());
 
-                    let sig_f = $sigmoid(g_f);
-                    let sig_i = $sigmoid(g_i);
-                    let tanh_g = $tanh(g_g);
-
-                    let mul1 = $mul(sig_f, c_s);
-                    let mul2 = $mul(sig_i, tanh_g);
-                    let new_c_s = $add(mul1, mul2);
-
-                    let g_o = $load(temp_go.as_ptr());
-                    let sig_o = $sigmoid(g_o);
-                    let tanh_cs = $tanh(new_c_s);
-                    let h_val = $mul(sig_o, tanh_cs);
+                    let (new_c_s, h_val) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
 
                     let mut out_cs = [0.0; $step];
                     let mut out_h = [0.0; $step];
@@ -205,6 +190,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm256_mul_ps,                       // Multiplicação vetorial
         crate::math::fastmath::simd_tanh,    // Tanh otimizada para AVX2
         crate::math::fastmath::simd_sigmoid, // Sigmoid otimizada para AVX2
+        crate::math::fastmath::fused_lstm_gates_avx2,
         false
     );
 
@@ -223,6 +209,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm512_mul_ps,
         crate::math::fastmath::simd_tanh_avx512, // Tanh otimizada para AVX-512
         crate::math::fastmath::simd_sigmoid_avx512, // Sigmoid otimizada para AVX-512
+        crate::math::fastmath::fused_lstm_gates_avx512,
         false
     );
 
@@ -238,6 +225,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm256_mul_ps,
         crate::math::fastmath::simd_tanh,
         crate::math::fastmath::simd_sigmoid,
+        crate::math::fastmath::fused_lstm_gates_avx2,
         false
     );
 
@@ -253,6 +241,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm512_mul_ps,
         crate::math::fastmath::simd_tanh_avx512,
         crate::math::fastmath::simd_sigmoid_avx512,
+        crate::math::fastmath::fused_lstm_gates_avx512,
         false
     );
 
@@ -268,6 +257,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm512_mul_ps,
         crate::math::fastmath::simd_tanh_avx512,
         crate::math::fastmath::simd_sigmoid_avx512,
+        crate::math::fastmath::fused_lstm_gates_avx512,
         true
     );
 

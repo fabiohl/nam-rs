@@ -925,6 +925,9 @@ impl SimdMathConfig {
 /// suporte as features declaradas via `#[target_feature]` na implementação concreta.
 /// Os slices passados devem ser válidos e acessíveis para leitura/escrita conforme indicado.
 pub trait SimdMath {
+    /// Tipo de registrador SIMD utilizado (ex: __m256 ou __m512).
+    type V;
+
     /// Indica se esta implementação utiliza pesos e sinais em formato BF16.
     const IS_BF16: bool = false;
     /// Calcula o produto escalar entre dois vetores.
@@ -1008,11 +1011,30 @@ pub trait SimdMath {
     /// # Safety
     /// `buf` deve ser válido e acessível para leitura e escrita.
     unsafe fn activation_tanh_block(buf: &mut [f32]);
+
+    /// Calcula a soma horizontal de N elementos a partir de um ponteiro.
+    ///
+    /// # Safety
+    /// `ptr` deve ser válido para leitura de N floats.
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32;
+
+    /// Executa a ativação fundida dos gates LSTM.
+    ///
+    /// # Safety
+    /// Os argumentos devem ser vetores válidos.
+    unsafe fn fused_lstm_gates(
+        gf: Self::V,
+        gi: Self::V,
+        gg: Self::V,
+        go: Self::V,
+        cs: Self::V,
+    ) -> (Self::V, Self::V);
 }
 
 /// Implementação estática para microarquitetura x86-64-v3 (AVX2/FMA).
 pub struct Avx2Math;
 impl SimdMath for Avx2Math {
+    type V = __m256;
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx2(a, b) }
@@ -1085,6 +1107,17 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn fused_lstm_gates(
+        gf: Self::V,
+        gi: Self::V,
+        gg: Self::V,
+        go: Self::V,
+        cs: Self::V,
+    ) -> (Self::V, Self::V) {
+        unsafe { crate::math::fastmath::fused_lstm_gates_avx2(gf, gi, gg, go, cs) }
+    }
+
+    #[inline(always)]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         let len = buf.len();
         if len <= 8 {
@@ -1110,6 +1143,66 @@ impl SimdMath for Avx2Math {
             buf.copy_from_slice(&tmp[..len]);
         } else {
             unsafe { Self::tanh_slice(buf) };
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        if N == 0 {
+            return 0.0;
+        }
+        if N == 1 {
+            return unsafe { *ptr };
+        }
+
+        unsafe {
+            if N <= 4 {
+                let v = if N == 4 {
+                    _mm_loadu_ps(ptr)
+                } else {
+                    let mut tmp = [0.0f32; 4];
+                    core::ptr::copy_nonoverlapping(ptr, tmp.as_mut_ptr(), N);
+                    _mm_loadu_ps(tmp.as_ptr())
+                };
+                let h1 = _mm_hadd_ps(v, v);
+                let h2 = _mm_hadd_ps(h1, h1);
+                _mm_cvtss_f32(h2)
+            } else if N <= 8 {
+                let v = if N == 8 {
+                    _mm256_loadu_ps(ptr)
+                } else {
+                    let mut tmp = [0.0f32; 8];
+                    core::ptr::copy_nonoverlapping(ptr, tmp.as_mut_ptr(), N);
+                    _mm256_loadu_ps(tmp.as_ptr())
+                };
+                let h1 = _mm256_hadd_ps(v, v);
+                let h2 = _mm256_hadd_ps(h1, h1);
+                let lo = _mm256_castps256_ps128(h2);
+                let hi = _mm256_extractf128_ps::<1>(h2);
+                let sum128 = _mm_add_ss(lo, hi);
+                _mm_cvtss_f32(sum128)
+            } else {
+                let mut sum_v = _mm256_setzero_ps();
+                let mut i = 0;
+                while i + 8 <= N {
+                    let v = _mm256_loadu_ps(ptr.add(i));
+                    sum_v = _mm256_add_ps(sum_v, v);
+                    i += 8;
+                }
+
+                let h1 = _mm256_hadd_ps(sum_v, sum_v);
+                let h2 = _mm256_hadd_ps(h1, h1);
+                let lo = _mm256_castps256_ps128(h2);
+                let hi = _mm256_extractf128_ps::<1>(h2);
+                let sum128 = _mm_add_ss(lo, hi);
+                let mut total = _mm_cvtss_f32(sum128);
+
+                while i < N {
+                    total += *ptr.add(i);
+                    i += 1;
+                }
+                total
+            }
         }
     }
 }
@@ -1117,6 +1210,7 @@ impl SimdMath for Avx2Math {
 /// Implementação estática para microarquitetura x86-64-v3 com AVX-VNNI (Alder Lake+).
 pub struct Avx2VnniMath;
 impl SimdMath for Avx2VnniMath {
+    type V = __m256;
     #[target_feature(enable = "avxvnni")]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx2(a, b) }
@@ -1190,37 +1284,30 @@ impl SimdMath for Avx2VnniMath {
 
     #[target_feature(enable = "avxvnni")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
-        let len = buf.len();
-        if len <= 8 {
-            let mut tmp = [0.0f32; 8];
-            tmp[..len].copy_from_slice(buf);
-            unsafe {
-                let v = _mm256_loadu_ps(tmp.as_ptr());
-                let res = crate::math::fastmath::simd_tanh(v);
-                _mm256_storeu_ps(tmp.as_mut_ptr(), res);
-            }
-            buf.copy_from_slice(&tmp[..len]);
-        } else if len <= 16 {
-            let mut tmp = [0.0f32; 16];
-            tmp[..len].copy_from_slice(buf);
-            unsafe {
-                let v0 = _mm256_loadu_ps(tmp.as_ptr());
-                let v1 = _mm256_loadu_ps(tmp.as_ptr().add(8));
-                let res0 = crate::math::fastmath::simd_tanh(v0);
-                let res1 = crate::math::fastmath::simd_tanh(v1);
-                _mm256_storeu_ps(tmp.as_mut_ptr(), res0);
-                _mm256_storeu_ps(tmp.as_mut_ptr().add(8), res1);
-            }
-            buf.copy_from_slice(&tmp[..len]);
-        } else {
-            unsafe { Self::tanh_slice(buf) };
-        }
+        unsafe { Avx2Math::activation_tanh_block(buf) }
+    }
+
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        unsafe { Avx2Math::horizontal_sum::<N>(ptr) }
+    }
+
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn fused_lstm_gates(
+        gf: Self::V,
+        gi: Self::V,
+        gg: Self::V,
+        go: Self::V,
+        cs: Self::V,
+    ) -> (Self::V, Self::V) {
+        unsafe { crate::math::fastmath::fused_lstm_gates_avx2(gf, gi, gg, go, cs) }
     }
 }
 
 /// Implementação estática para microarquitetura x86-64-v4 (AVX-512).
 pub struct Avx512Math;
 impl SimdMath for Avx512Math {
+    type V = __m512;
     #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx512(a, b) }
@@ -1330,11 +1417,74 @@ impl SimdMath for Avx512Math {
             unsafe { Self::tanh_slice(buf) };
         }
     }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        if N == 0 {
+            return 0.0;
+        }
+        if N == 1 {
+            return unsafe { *ptr };
+        }
+
+        unsafe {
+            if N >= 16 {
+                let mut sum_v = _mm512_setzero_ps();
+                let mut i = 0;
+                while i + 16 <= N {
+                    let v = _mm512_loadu_ps(ptr.add(i));
+                    sum_v = _mm512_add_ps(sum_v, v);
+                    i += 16;
+                }
+                let mut total = _mm512_reduce_add_ps(sum_v);
+                while i < N {
+                    total += *ptr.add(i);
+                    i += 1;
+                }
+                total
+            } else if N >= 8 {
+                let v = if N == 8 {
+                    _mm256_loadu_ps(ptr)
+                } else {
+                    let mut tmp = [0.0f32; 8];
+                    core::ptr::copy_nonoverlapping(ptr, tmp.as_mut_ptr(), N);
+                    _mm256_loadu_ps(tmp.as_ptr())
+                };
+                let h1 = _mm256_hadd_ps(v, v);
+                let h2 = _mm256_hadd_ps(h1, h1);
+                let lo = _mm256_castps256_ps128(h2);
+                let hi = _mm256_extractf128_ps::<1>(h2);
+                let sum128 = _mm_add_ss(lo, hi);
+                let total = _mm_cvtss_f32(sum128);
+
+                // Como N < 16, o tail é pequeno
+                let mut final_sum = total;
+                for j in 8..N {
+                    final_sum += *ptr.add(j);
+                }
+                final_sum
+            } else {
+                Avx2Math::horizontal_sum::<N>(ptr)
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn fused_lstm_gates(
+        gf: Self::V,
+        gi: Self::V,
+        gg: Self::V,
+        go: Self::V,
+        cs: Self::V,
+    ) -> (Self::V, Self::V) {
+        unsafe { crate::math::fastmath::fused_lstm_gates_avx512(gf, gi, gg, go, cs) }
+    }
 }
 
 /// Implementação estática para microarquitetura x86-64-v4 com AVX-512 VNNI (Ice Lake+).
 pub struct Avx512VnniMath;
 impl SimdMath for Avx512VnniMath {
+    type V = __m512;
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         unsafe { dot_product_avx512(a, b) }
@@ -1418,37 +1568,30 @@ impl SimdMath for Avx512VnniMath {
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
-        let len = buf.len();
-        if len <= 16 {
-            let mut tmp = [0.0f32; 16];
-            tmp[..len].copy_from_slice(buf);
-            unsafe {
-                let v = _mm512_loadu_ps(tmp.as_ptr());
-                let res = crate::math::fastmath::simd_tanh_avx512(v);
-                _mm512_storeu_ps(tmp.as_mut_ptr(), res);
-            }
-            buf.copy_from_slice(&tmp[..len]);
-        } else if len <= 32 {
-            let mut tmp = [0.0f32; 32];
-            tmp[..len].copy_from_slice(buf);
-            unsafe {
-                let v0 = _mm512_loadu_ps(tmp.as_ptr());
-                let v1 = _mm512_loadu_ps(tmp.as_ptr().add(16));
-                let res0 = crate::math::fastmath::simd_tanh_avx512(v0);
-                let res1 = crate::math::fastmath::simd_tanh_avx512(v1);
-                _mm512_storeu_ps(tmp.as_mut_ptr(), res0);
-                _mm512_storeu_ps(tmp.as_mut_ptr().add(16), res1);
-            }
-            buf.copy_from_slice(&tmp[..len]);
-        } else {
-            unsafe { Self::tanh_slice(buf) };
-        }
+        unsafe { Avx512Math::activation_tanh_block(buf) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        unsafe { Avx512Math::horizontal_sum::<N>(ptr) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn fused_lstm_gates(
+        gf: Self::V,
+        gi: Self::V,
+        gg: Self::V,
+        go: Self::V,
+        cs: Self::V,
+    ) -> (Self::V, Self::V) {
+        unsafe { crate::math::fastmath::fused_lstm_gates_avx512(gf, gi, gg, go, cs) }
     }
 }
 
 /// Implementação estática para microarquitetura com AVX-512 e suporte a BF16 (VNNI).
 pub struct Avx512VnniBf16Math;
 impl SimdMath for Avx512VnniBf16Math {
+    type V = __m512;
     const IS_BF16: bool = true;
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -1537,31 +1680,23 @@ impl SimdMath for Avx512VnniBf16Math {
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
-        let len = buf.len();
-        if len <= 16 {
-            let mut tmp = [0.0f32; 16];
-            tmp[..len].copy_from_slice(buf);
-            unsafe {
-                let v = _mm512_loadu_ps(tmp.as_ptr());
-                let res = crate::math::fastmath::simd_tanh_avx512(v);
-                _mm512_storeu_ps(tmp.as_mut_ptr(), res);
-            }
-            buf.copy_from_slice(&tmp[..len]);
-        } else if len <= 32 {
-            let mut tmp = [0.0f32; 32];
-            tmp[..len].copy_from_slice(buf);
-            unsafe {
-                let v0 = _mm512_loadu_ps(tmp.as_ptr());
-                let v1 = _mm512_loadu_ps(tmp.as_ptr().add(16));
-                let res0 = crate::math::fastmath::simd_tanh_avx512(v0);
-                let res1 = crate::math::fastmath::simd_tanh_avx512(v1);
-                _mm512_storeu_ps(tmp.as_mut_ptr(), res0);
-                _mm512_storeu_ps(tmp.as_mut_ptr().add(16), res1);
-            }
-            buf.copy_from_slice(&tmp[..len]);
-        } else {
-            unsafe { Self::tanh_slice(buf) };
-        }
+        unsafe { Avx512Math::activation_tanh_block(buf) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        unsafe { Avx512Math::horizontal_sum::<N>(ptr) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn fused_lstm_gates(
+        gf: Self::V,
+        gi: Self::V,
+        gg: Self::V,
+        go: Self::V,
+        cs: Self::V,
+    ) -> (Self::V, Self::V) {
+        unsafe { crate::math::fastmath::fused_lstm_gates_avx512(gf, gi, gg, go, cs) }
     }
 }
 
@@ -2098,5 +2233,42 @@ mod tests {
         let b2 = vec![1.0; 8];
         let max_diff2 = unsafe { compute_max_diff_avx2(&a2, &b2) };
         assert_eq!(max_diff2, 0.0);
+    }
+
+    #[test]
+    fn test_horizontal_sum() {
+        fn test_n<const N: usize>() {
+            let data: Vec<f32> = (0..N).map(|i| i as f32 + 1.0).collect();
+            let expected: f32 = data.iter().sum();
+
+            let res_avx2 = unsafe { Avx2Math::horizontal_sum::<N>(data.as_ptr()) };
+            assert!(
+                (res_avx2 - expected).abs() < 1e-5,
+                "AVX2 N={} failed: got {}, expected {}",
+                N,
+                res_avx2,
+                expected
+            );
+
+            if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl")
+            {
+                let res_avx512 = unsafe { Avx512Math::horizontal_sum::<N>(data.as_ptr()) };
+                assert!(
+                    (res_avx512 - expected).abs() < 1e-5,
+                    "AVX512 N={} failed: got {}, expected {}",
+                    N,
+                    res_avx512,
+                    expected
+                );
+            }
+        }
+
+        test_n::<1>();
+        test_n::<4>();
+        test_n::<6>();
+        test_n::<8>();
+        test_n::<12>();
+        test_n::<16>();
+        test_n::<32>();
     }
 }

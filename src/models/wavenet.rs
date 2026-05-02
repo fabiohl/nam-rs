@@ -884,40 +884,9 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
             // [PASSO 3: Soma das Skips + Escala Final SIMD]
             // Somatório SIMD das projeções Head de ambas as arrays e escala pela `head_scale`.
-            //
-            // Para HEAD=8 (Standard): um único `_mm256_loadu_ps` carrega 8 floats consecutivos, e a
-            // soma horizontal gera um escalar, substituindo 8 loads + 8 adds sequenciais.
-            // Para HEAD=4 (Nano): usamos `_mm_loadu_ps` (128-bit) + `_mm_hadd_ps` × 2.
-            // Modelos customizados usarão o Fallback escalar automático.
             for i in 0..num_frames {
                 let head_ptr = self.array1.head_outputs.as_ptr();
-                let head1_sum = if HEAD == 8 {
-                    unsafe {
-                        let v = core::arch::x86_64::_mm256_loadu_ps(head_ptr.add(i * HEAD));
-                        // Horizontal sum: [a b c d e f g h]
-                        // hadd → [a+b c+d e+f g+h _ _ _ _] (128-bit lanes)
-                        let h1 = core::arch::x86_64::_mm256_hadd_ps(v, v);
-                        let h2 = core::arch::x86_64::_mm256_hadd_ps(h1, h1);
-                        // Extrair lane 0 (a+b+c+d) e lane 4 (e+f+g+h)
-                        let lo = core::arch::x86_64::_mm256_castps256_ps128(h2);
-                        let hi = core::arch::x86_64::_mm256_extractf128_ps::<1>(h2);
-                        let sum128 = core::arch::x86_64::_mm_add_ss(lo, hi);
-                        core::arch::x86_64::_mm_cvtss_f32(sum128)
-                    }
-                } else if HEAD == 4 {
-                    unsafe {
-                        let v = core::arch::x86_64::_mm_loadu_ps(head_ptr.add(i * HEAD));
-                        let h1 = core::arch::x86_64::_mm_hadd_ps(v, v);
-                        let h2 = core::arch::x86_64::_mm_hadd_ps(h1, h1);
-                        core::arch::x86_64::_mm_cvtss_f32(h2)
-                    }
-                } else {
-                    let mut s = 0.0f32;
-                    for j in 0..HEAD {
-                        s += unsafe { *head_ptr.add(i * HEAD + j) };
-                    }
-                    s
-                };
+                let head1_sum = unsafe { M::horizontal_sum::<HEAD>(head_ptr.add(i * HEAD)) };
 
                 // O head final do Array2 gera a amostra float. Somamos ao mix da Array1.
                 let final_sum = head1_sum + self.array2.head_outputs[i]; // HEAD2=1
