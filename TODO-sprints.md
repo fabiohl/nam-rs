@@ -181,7 +181,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T10 — Módulo `colors.rs`: Avaliação de Necessidade
+### T10 — Módulo `colors.rs`: Avaliação de Necessidade [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 0.5h · **Impacto:** Redução de código morto
 
@@ -326,7 +326,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 | 🟢   | T4  | Inferência | Dense Overwrite           | 1h         |
 | ✅   | T7  | Resampler  | Convolução AVX-512        | 2h         |
 | ✅   | T8  | Gate       | Rampa SIMD                | 1.5h       |
-| 🟢   | T10 | Higiene    | colors.rs Avaliação       | 0.5h       |
+| ✅   | T10 | Higiene    | colors.rs Avaliação       | 0.5h       |
 | 🟢   | T11 | Higiene    | Convenção Testes          | 1h         |
 | 🟢   | T13 | Docs       | dependencies.md           | 0.5h       |
 | 🟢   | T14 | Docs       | .agents/ Concisão         | 1h         |

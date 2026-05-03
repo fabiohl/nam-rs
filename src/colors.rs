@@ -3,6 +3,12 @@
 
 //! Fornece uma trait simples `Colorize` para formatar strings com
 //! sequências de escape ANSI em terminais POSIX.
+//!
+//! **Decisão de Design:** Optamos por manter esta implementação local minimalista
+//! em vez de adicionar crates externas (ex: `colored`, `owo-colors`) para manter
+//! o grafo de dependências o mais enxuto possível, já que a necessidade do
+//! projeto é básica e restrita a threads não-críticas (CLI/Logging).
+
 /// Trait simples para formatar strings com sequências de escape ANSI em terminais POSIX.
 pub trait Colorize {
     /// Aplica formatação em negrito.
