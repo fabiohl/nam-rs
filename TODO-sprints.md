@@ -157,7 +157,7 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 > **Objetivo:** Hardening do runtime, melhor telemetria e experiência de operação.
 
-### T26 — Telemetria RT: Histograma de Latência per-Callback via RDTSC ⬜
+### T26 — Telemetria RT: Histograma de Latência per-Callback via RDTSC ✅
 
 **Racional Científico:** O sistema atual armazena apenas o **último** `dsp_cycle_time` e um contador de overloads. Isso é insuficiente para detectar jitter intermitente (ex: spikes de 2× que não excedem o budget mas degradam a experiência). Um histograma exponencial (~256 bytes) mantido in-place no callback RT capturaria a distribuição completa de latências sem I/O.
 

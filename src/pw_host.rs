@@ -600,6 +600,9 @@ pub fn run_pipewire_host(
                                     .dsp_cycle_time
                                     .store(elapsed.as_nanos() as u64, Ordering::Relaxed);
                                 rt_status_for_process
+                                    .latency_hist
+                                    .record(elapsed.as_nanos() as u64);
+                                rt_status_for_process
                                     .last_n_samples
                                     .store(n_samples as u32, Ordering::Relaxed);
 

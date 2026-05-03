@@ -124,6 +124,23 @@ pub fn poll_rt_status(
         let active_rate = rt_status.active_rate.load(Ordering::Relaxed);
         let n_samples = rt_status.last_n_samples.load(Ordering::Relaxed);
 
+        // [T26] Exibe percentis acumulados nos últimos 100ms e reseta o histograma.
+        let p50 = rt_status.latency_hist.get_percentile(0.50) / 1000;
+        let p95 = rt_status.latency_hist.get_percentile(0.95) / 1000;
+        let p99 = rt_status.latency_hist.get_percentile(0.99) / 1000;
+        let max = rt_status.latency_hist.get_max() / 1000;
+
+        log::info!(
+            "{} DSP: P50={}µs P95={}µs P99={}µs Max={}µs ({} samples)",
+            "📊".bright_blue(),
+            p50,
+            p95,
+            p99,
+            max,
+            n_samples
+        );
+        rt_status.latency_hist.reset();
+
         if active_rate > 0 && n_samples > 0 {
             let budget_us = (n_samples as f64 / active_rate as f64) * 1_000_000.0;
             let elapsed_us = duration.as_micros() as f64;

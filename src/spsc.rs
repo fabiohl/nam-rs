@@ -84,6 +84,9 @@ pub struct RtStatusFlags {
 
     /// Número de amostras processadas no último ciclo (para cálculo de budget).
     pub last_n_samples: AtomicU32,
+
+    /// Histograma de latência para análise estatística (P50, P95, P99).
+    pub latency_hist: crate::dsp::telemetry::LatencyHistogram,
 }
 
 impl RtStatusFlags {
@@ -102,6 +105,7 @@ impl RtStatusFlags {
             is_silent: AtomicBool::new(false),
             dsp_cycle_time: AtomicU64::new(0),
             last_n_samples: AtomicU32::new(0),
+            latency_hist: crate::dsp::telemetry::LatencyHistogram::new(),
         }
     }
 }
