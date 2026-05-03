@@ -215,9 +215,11 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-## Épico 4: Documentação Concisa & Atualizada
+## Épico 4: Documentação Concisa & Atualizada ✅ Auditado (2026-05-03)
 
-### T12 — `docs/architecture.md`: Poda e Atualização Pós-Resampler Nativo
+> **Nota de Auditoria (2026-05-03):** Todas as 3 tarefas (T12–T14) implementadas e validadas. T12: `architecture.md` reduzido de 386 para 87 linhas (meta ≤250), seções rubato removidas, diagrama DSP atualizado com Gate FSM. T13: `dependencies.md` 100% sincronizado com `Cargo.toml` (12 deps + 2 dev-deps), rubato removido, minstant adicionado. T14: todas as 6 skills referenciam `rules/rust.md` — informação remanescente em cada skill é contextual e complementar, sem duplicação material. Testes: 123/123 passando. Copyrights: ✅ em todos os docs.
+
+### T12 — `docs/architecture.md`: Poda e Atualização Pós-Resampler Nativo [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 2h · **Impacto:** Documentação como fonte de verdade
 
@@ -234,7 +236,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T13 — `docs/dependencies.md`: Atualização Pós-Rubato
+### T13 — `docs/dependencies.md`: Atualização Pós-Rubato [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 0.5h
 
@@ -248,7 +250,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T14 — `.agents/`: Revisão de Concisão das Skills e Rules
+### T14 — `.agents/`: Revisão de Concisão das Skills e Rules [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 1h
 
@@ -322,7 +324,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 | 🟡   | T3  | Inferência | LSTM Fused Gates          | 3h         |
 | 🟡   | T5  | Inferência | BF16 Nativo AVX-512       | 4h         |
 | ✅   | T9  | Higiene    | Limpeza Clippy Allows     | 1h         |
-| 🟡   | T12 | Docs       | architecture.md Poda      | 2h         |
+| ✅   | T12 | Docs       | architecture.md Poda ✅   | 2h         |
 | 🟡   | T15 | Bench      | Benchmark LSTM            | 1h         |
 | 🟡   | T16 | Testes     | Golden Vectors            | 2h         |
 | 🟢   | T4  | Inferência | Dense Overwrite           | 1h         |
@@ -330,6 +332,6 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 | ✅   | T8  | Gate       | Rampa SIMD                | 1.5h       |
 | ✅   | T10 | Higiene    | colors.rs Avaliação       | 0.5h       |
 | 🟢   | T11 | Higiene    | Convenção Testes          | 1h         |
-| 🟢   | T13 | Docs       | dependencies.md           | 0.5h       |
-| 🟢   | T14 | Docs       | .agents/ Concisão         | 1h         |
+| ✅   | T13 | Docs       | dependencies.md ✅        | 0.5h       |
+| ✅   | T14 | Docs       | .agents/ Concisão ✅      | 1h         |
 | 🟢   | T17 | Testes     | DeadlineExceeded Test     | 0.5h       |

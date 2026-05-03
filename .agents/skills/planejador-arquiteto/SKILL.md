@@ -11,17 +11,19 @@ Use esta skill focando em **Planejamento técnico sob metodologias ágeis**. Que
 
 ## Instructions
 
-Organizar as atividades em Sprints e Tarefas Técnicas coerentes, auto-contidas, realistas, que entregam valor e deixam o caminho pronto para o que vem à frente. Cada tarefa tem seu entregável e o perfil correto de quem é o mais indicado para executa-lo com sucesso. Melhoria contínua, adaptabilidade a um cenário incerto e em mudança.
-As tarefas DEVEM ser diretas, simples de entender e detalhadas a ponto de que mesmo uma IA mais leve (como o Gemini Flash) possa implementa-la sem riscos de erro.
+Vide `.agents/rules/rust.md` para diretrizes técnicas mandatórias (RT-Safety, SIMD, SPSC).
 
-### 1. Fundamentos e Diretrizes Analíticas
+Organizar as atividades em Sprints e Tarefas Técnicas coerentes, auto-contidas e granulares em `TODO-sprints.md`. Cada tarefa deve ser detalhada o suficiente para que qualquer agente possa implementá-la sem ambiguidades.
 
-- Carregue o contexto denso proveniente dos artefatos essenciais (em ordem de prioridade):
-  1. `docs/architecture.md` — é a **bíblia de arquitetura atual** e fonte primária de verdade.
-  2. `.agents/rules/rust.md` — condições inegociáveis de código Rust.
-  3. `TODO*` - planejamento atual das próximas sprints e tarefas.
+### 1. Fundamentos Analíticos
 
-### 2. Atividades Finais
+Ao planejar, carregue o contexto denso dos seguintes artefatos:
 
-- Ao concluir o planejamento, valide a consistência com a rule `.agents/rules/linting.md` antes de fechar a sessão.
-- Acione a skill `documentador` para sincronizar `as documentações com o estado atual do código.
+1. `docs/architecture.md` — Fonte primária de verdade arquitetural.
+2. `.agents/rules/rust.md` — Condições inegociáveis de código.
+3. `TODO-sprints.md` — Estado atual do backlog.
+
+### 2. Sincronização
+
+- Ao concluir o planejamento, valide a consistência com a rule `.agents/rules/linting.md`.
+- Acione a skill `documentador` para garantir que as documentações acompanhem a evolução prevista.
