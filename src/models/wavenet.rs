@@ -60,6 +60,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 
     /// Variante fundida que adiciona um vetor Mixin (condicionamento) diretamente no acumulador.
     #[inline(always)]
+    /// Soma o mixin e processa a Conv1D para um único frame.
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `frame_idx` e `mixin` sejam válidos.
     pub unsafe fn process_single_frame_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
@@ -114,7 +118,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
             }
 
-            let in_slice = unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+            let in_slice =
+                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
             let mut out_c = 0;
             let num_blocks = OUT / 4;
@@ -169,6 +174,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 
     /// Variante fundida BF16 que adiciona um vetor Mixin diretamente no acumulador.
     #[inline(always)]
+    /// Soma o mixin e processa a Conv1D (BF16) para um único frame.
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `frame_idx` e `mixin` sejam válidos.
     pub unsafe fn process_single_frame_bf16_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[u16],
@@ -223,7 +232,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 }
             }
 
-            let in_slice = unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+            let in_slice =
+                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
             let mut out_c = 0;
             let num_blocks = OUT / 4;
@@ -235,7 +245,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
+                let [r0, r1, r2, r3] =
+                    unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
 
                 unsafe {
                     *out_frame.get_unchecked_mut(out_c) += r0;
@@ -335,7 +346,8 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Processa o Dense acumulando com o estado corrente de output.
+    /// Processa o Dense acumulando com o estado corrente de output em lote.
+    /// [TA3] Otimização: Chama diretamente o kernel GEMM Batch para maximizar reuso de pesos.
     ///
     /// # Safety
     /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
@@ -346,13 +358,39 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        for i in 0..num_frames {
-            let in_slice = unsafe { input.get_unchecked(i * IN..(i + 1) * IN) };
-            let out_slice = unsafe { output.get_unchecked_mut(i * OUT..(i + 1) * OUT) };
+        unsafe {
+            M::fused_add_gemm_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
+        }
+    }
 
-            unsafe {
-                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
-            }
+    /// Executa a projeção fundida (W*in + bias) somando ao buffer de saída em lote (Residual Fusion).
+    /// [TA3] Otimização: Chama o kernel Batch GEMM.
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
+    #[inline(always)]
+    pub unsafe fn process_fused_block<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
+        unsafe {
+            M::fused_add_gemm_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 
@@ -565,32 +603,24 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             M::activation_tanh_block(conv_slice);
 
             // [FASE 3: Não-Linear & Saída - Head Update + 1x1 Residual]
-            // Agora processamos os canais de saída. Os pesos da 1x1 entram na cache aqui.
-            for i in 0..num_frames {
-                let lb_start = (buffer_start + i) * CH;
-                let conv_idx = i * CH;
-                let temp = conv_slice.get_unchecked(conv_idx..conv_idx + CH);
+            // [TA3] Otimização: Processamento em lote para maximizar throughput e reuso de cache.
 
-                // Head Update (Skip-Connection)
-                let h_idx = i * CH;
-                M::accumulate_head(head_input.get_unchecked_mut(h_idx..h_idx + CH), temp);
+            // 1. Head Update (Skip-Connection) em lote
+            M::accumulate_head(head_input, conv_slice);
 
-                // Projeção 1x1 + Soma Residual
-                let out_ptr = output.as_mut_ptr().add(i * CH);
-                let out_slice = core::slice::from_raw_parts_mut(out_ptr, CH);
-                out_slice.copy_from_slice(layer_buffer.get_unchecked(lb_start..lb_start + CH));
+            // 2. Soma Residual: Copia o estado original para o output antes da projeção fundida
+            let lb_offset = buffer_start * CH;
+            output.copy_from_slice(
+                layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH),
+            );
 
-                self.one_by_one.process_fused::<M>(temp, out_slice);
+            // 3. Projeção 1x1 Residual fundida em lote
+            self.one_by_one
+                .process_fused_block::<M>(conv_slice, output, num_frames);
 
-                // [T25] Fusão BF16: Converte o output para BF16 enquanto ainda está "quente" no cache.
-                #[allow(clippy::collapsible_if)]
-                if M::IS_BF16 {
-                    if let Some(bf16_out) = output_bf16.as_mut() {
-                        let bf16_ptr = bf16_out.as_mut_ptr().add(i * CH);
-                        let bf16_slice = core::slice::from_raw_parts_mut(bf16_ptr, CH);
-                        M::f32_to_bf16(out_slice, bf16_slice);
-                    }
-                }
+            // 4. [T25] Fusão BF16: Conversão em lote se necessário
+            if let (true, Some(bf16_out)) = (M::IS_BF16, output_bf16.as_mut()) {
+                M::f32_to_bf16(output, bf16_out);
             }
         }
     }

@@ -29,15 +29,15 @@
 - [x] Manter path BF16 equivalente
 - [x] Benchmark comparativo
 
-### TA3 · Batch 1×1 Projection no WaveNet
+### TA3 · Batch 1×1 Projection no WaveNet [DONE]
 
 - **Arquivo(s):** `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal` PASSO 3)
 - **O quê:** Substituir N chamadas per-frame a `one_by_one.process_fused()` por uma única chamada em batch (GEMM sobre buffer contíguo de N×CH). Os pesos da 1×1 Dense são lidos N vezes hoje; em batch, seriam lidos 1×.
 - **Impacto estimado:** ~8% de redução no tempo por layer WaveNet.
 - **Pré-requisito:** Buffer temporário contíguo na stack (já existe `conv_plus_mixin` com 1024 slots).
-- [ ] Implementar `DenseLayer::process_fused_block<M>` (batch GEMV com soma residual)
-- [ ] Adaptar PASSO 3 para batch head_update + batch 1×1
-- [ ] Benchmark comparativo
+- [x] Implementar `DenseLayer::process_fused_block<M>` (batch GEMV com soma residual)
+- [x] Adaptar PASSO 3 para batch head_update + batch 1×1
+- [x] Benchmark comparativo
 
 ### TA4 · LSTM Temporal Interleaving (AVX-512)
 

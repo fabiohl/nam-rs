@@ -1095,6 +1095,21 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    /// Realiza a operação fundida Y = X_res + Bias + W * Z em batch (GEMM).
+    /// in_frames: [num_frames * IN]
+    /// out_frames: [num_frames * OUT] (in-place)
+    ///
+    /// # Safety
+    /// `weights` deve ter `IN * OUT` elementos. `bias` deve ter `OUT` elementos.
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    );
+
     /// Acumula o resultado de uma camada WaveNet no buffer da cabeça (skip connection).
     /// Realiza `dest += src` usando SIMD para maximizar o throughput de memória.
     ///
@@ -1227,6 +1242,20 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[inline(always)]
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_add_gemm_batch_avx2(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
     }
     #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
@@ -1442,6 +1471,19 @@ impl SimdMath for Avx2VnniMath {
     ) {
         unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
     }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_add_gemm_batch_avx2(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
+    }
 
     #[target_feature(enable = "avxvnni")]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
@@ -1587,6 +1629,19 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_add_gemm_batch_avx512(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
     }
 
     #[target_feature(enable = "avx512f,avx512vl")]
@@ -1804,6 +1859,19 @@ impl SimdMath for Avx512VnniMath {
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_add_gemm_batch_avx512(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
+    }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
@@ -1949,6 +2017,19 @@ impl SimdMath for Avx512VnniBf16Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_add_gemm_batch_avx512(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -2130,6 +2211,18 @@ impl SimdMath for ScalarMath {
                 sum += in_frame[in_c] * w;
             }
             out_frame[out_c] += sum;
+        }
+    }
+    unsafe fn fused_add_gemm_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_add_gemm_batch_fallback(in_frames, weights, bias, out_frames, num_frames, do_bias)
         }
     }
 
@@ -2685,8 +2778,254 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
             total_sum += data[i] * data[i];
             i += 1;
         }
-
         total_sum / (len as f32)
+    }
+}
+
+/// Versão em batch da operação fundida Y = X_res + Bias + W * Z.
+/// Maximiza o reuso de cache dos pesos ao processar múltiplos frames simultaneamente.
+///
+/// # Safety
+/// Requer AVX2, FMA e F16C.
+#[target_feature(enable = "avx2,fma,f16c")]
+pub unsafe fn fused_add_gemm_batch_avx2(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+
+    let mut f = 0;
+    while f + 4 <= num_frames {
+        let mut out_c = 0;
+        while out_c + 8 <= out_len {
+            unsafe {
+                use core::arch::x86_64::*;
+                let mut acc0 = _mm256_loadu_ps(out_frames.as_ptr().add(f * out_len + out_c));
+                let mut acc1 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 1) * out_len + out_c));
+                let mut acc2 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 2) * out_len + out_c));
+                let mut acc3 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 3) * out_len + out_c));
+
+                if do_bias {
+                    let b = _mm256_loadu_ps(bias.as_ptr().add(out_c));
+                    acc0 = _mm256_add_ps(acc0, b);
+                    acc1 = _mm256_add_ps(acc1, b);
+                    acc2 = _mm256_add_ps(acc2, b);
+                    acc3 = _mm256_add_ps(acc3, b);
+                }
+
+                for in_c in 0..in_len {
+                    let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                    let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
+
+                    let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vs1 = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                    let vs2 = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                    let vs3 = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
+
+                    acc0 = _mm256_fmadd_ps(vs0, vw, acc0);
+                    acc1 = _mm256_fmadd_ps(vs1, vw, acc1);
+                    acc2 = _mm256_fmadd_ps(vs2, vw, acc2);
+                    acc3 = _mm256_fmadd_ps(vs3, vw, acc3);
+                }
+
+                _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
+                _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
+                _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
+                _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 3) * out_len + out_c), acc3);
+            }
+            out_c += 8;
+        }
+
+        while out_c < out_len {
+            for i in 0..4 {
+                let frame_idx = f + i;
+                let mut sum = unsafe { *out_frames.get_unchecked(frame_idx * out_len + out_c) };
+                if do_bias {
+                    sum += unsafe { *bias.get_unchecked(out_c) };
+                }
+                for in_c in 0..in_len {
+                    let w_bits = unsafe { *weights.get_unchecked(in_c * out_len + out_c) };
+                    let w = half::f16::from_bits(w_bits).to_f32();
+                    sum += unsafe { *in_frames.get_unchecked(frame_idx * in_len + in_c) } * w;
+                }
+                unsafe {
+                    *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
+                }
+            }
+            out_c += 1;
+        }
+        f += 4;
+    }
+
+    while f < num_frames {
+        unsafe {
+            fused_add_gemv_avx2(
+                in_frames.get_unchecked(f * in_len..(f + 1) * in_len),
+                weights,
+                bias,
+                out_frames.get_unchecked_mut(f * out_len..(f + 1) * out_len),
+                do_bias,
+            );
+        }
+        f += 1;
+    }
+}
+
+/// Fallback escalar para operação GEMM em batch.
+///
+/// # Safety
+/// O chamador deve garantir que os buffers de entrada e saída tenham tamanhos compatíveis.
+pub unsafe fn fused_add_gemm_batch_fallback(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+
+    for f in 0..num_frames {
+        unsafe {
+            fused_add_gemv_fallback(
+                in_frames.get_unchecked(f * in_len..(f + 1) * in_len),
+                weights,
+                bias,
+                out_frames.get_unchecked_mut(f * out_len..(f + 1) * out_len),
+                do_bias,
+            );
+        }
+    }
+}
+
+/// Versão em batch AVX-512 da operação fundida Y = X_res + Bias + W * Z.
+///
+/// # Safety
+/// Requer AVX-512. O chamador deve garantir alinhamento e validade dos ponteiros.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn fused_add_gemm_batch_avx512(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+
+    let mut f = 0;
+    // No AVX-512 podemos processar 8 frames por iteração com reuso massivo de pesos.
+    while f + 8 <= num_frames {
+        let mut out_c = 0;
+        while out_c + 16 <= out_len {
+            unsafe {
+                use core::arch::x86_64::*;
+                let mut acc0 = _mm512_loadu_ps(out_frames.as_ptr().add(f * out_len + out_c));
+                let mut acc1 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 1) * out_len + out_c));
+                let mut acc2 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 2) * out_len + out_c));
+                let mut acc3 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 3) * out_len + out_c));
+                let mut acc4 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 4) * out_len + out_c));
+                let mut acc5 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 5) * out_len + out_c));
+                let mut acc6 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 6) * out_len + out_c));
+                let mut acc7 = _mm512_loadu_ps(out_frames.as_ptr().add((f + 7) * out_len + out_c));
+
+                if do_bias {
+                    let b = _mm512_loadu_ps(bias.as_ptr().add(out_c));
+                    acc0 = _mm512_add_ps(acc0, b);
+                    acc1 = _mm512_add_ps(acc1, b);
+                    acc2 = _mm512_add_ps(acc2, b);
+                    acc3 = _mm512_add_ps(acc3, b);
+                    acc4 = _mm512_add_ps(acc4, b);
+                    acc5 = _mm512_add_ps(acc5, b);
+                    acc6 = _mm512_add_ps(acc6, b);
+                    acc7 = _mm512_add_ps(acc7, b);
+                }
+
+                for in_c in 0..in_len {
+                    // Carrega 16 pesos (32 bytes em u16). AVX-512 permite broadcast do peso f16 expandido se suportado,
+                    // mas aqui usamos conversão explícita para f32.
+                    let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                    let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
+
+                    let vs0 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vs1 = _mm512_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
+                    let vs2 = _mm512_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
+                    let vs3 = _mm512_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
+                    let vs4 = _mm512_set1_ps(*in_frames.get_unchecked((f + 4) * in_len + in_c));
+                    let vs5 = _mm512_set1_ps(*in_frames.get_unchecked((f + 5) * in_len + in_c));
+                    let vs6 = _mm512_set1_ps(*in_frames.get_unchecked((f + 6) * in_len + in_c));
+                    let vs7 = _mm512_set1_ps(*in_frames.get_unchecked((f + 7) * in_len + in_c));
+
+                    acc0 = _mm512_fmadd_ps(vs0, vw, acc0);
+                    acc1 = _mm512_fmadd_ps(vs1, vw, acc1);
+                    acc2 = _mm512_fmadd_ps(vs2, vw, acc2);
+                    acc3 = _mm512_fmadd_ps(vs3, vw, acc3);
+                    acc4 = _mm512_fmadd_ps(vs4, vw, acc4);
+                    acc5 = _mm512_fmadd_ps(vs5, vw, acc5);
+                    acc6 = _mm512_fmadd_ps(vs6, vw, acc6);
+                    acc7 = _mm512_fmadd_ps(vs7, vw, acc7);
+                }
+
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 3) * out_len + out_c), acc3);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 4) * out_len + out_c), acc4);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 5) * out_len + out_c), acc5);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 6) * out_len + out_c), acc6);
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 7) * out_len + out_c), acc7);
+            }
+            out_c += 16;
+        }
+
+        while out_c < out_len {
+            for i in 0..8 {
+                let frame_idx = f + i;
+                let mut sum = unsafe { *out_frames.get_unchecked(frame_idx * out_len + out_c) };
+                if do_bias {
+                    sum += unsafe { *bias.get_unchecked(out_c) };
+                }
+                for in_c in 0..in_len {
+                    let w_bits = unsafe { *weights.get_unchecked(in_c * out_len + out_c) };
+                    let w = half::f16::from_bits(w_bits).to_f32();
+                    sum += unsafe { *in_frames.get_unchecked(frame_idx * in_len + in_c) } * w;
+                }
+                unsafe {
+                    *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
+                }
+            }
+            out_c += 1;
+        }
+        f += 8;
+    }
+
+    while f < num_frames {
+        unsafe {
+            fused_add_gemv_avx512(
+                in_frames.get_unchecked(f * in_len..(f + 1) * in_len),
+                weights,
+                bias,
+                out_frames.get_unchecked_mut(f * out_len..(f + 1) * out_len),
+                do_bias,
+            );
+        }
+        f += 1;
     }
 }
 
@@ -3234,5 +3573,25 @@ unsafe fn fused_add_gemv_avx512_small(
         }
 
         _mm512_storeu_ps(out_frame.as_mut_ptr(), accum0);
+    }
+}
+
+/// [TA3] Kernel Fused-Add-GEMV Fallback.
+unsafe fn fused_add_gemv_fallback(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+    for out_c in 0..out_len {
+        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+        for in_c in 0..in_len {
+            let w = half::f16::from_bits(weights[in_c * out_len + out_c]).to_f32();
+            sum += in_frame[in_c] * w;
+        }
+        out_frame[out_c] += sum;
     }
 }
