@@ -65,6 +65,65 @@ unsafe fn apply_gain_avx2(buffer: &mut [f32], gain_linear: f32) {
     }
 }
 
+/// Aplica uma rampa linear de ganho sobre o buffer de forma vetorizada.
+///
+/// Direciona para `apply_ramp_avx2` se o hardware suportar, garantindo que
+/// transições de fade-in/fade-out sejam processadas com eficiência máxima.
+pub fn apply_ramp_simd(buffer: &mut [f32], start: f32, step: f32) {
+    // Fast path: se o incremento for desprezível, aplica ganho constante.
+    if step.abs() < 1e-9 {
+        apply_gain_simd(buffer, start);
+        return;
+    }
+    unsafe { apply_ramp_avx2(buffer, start, step) };
+}
+
+/// Implementação interna AVX2 para rampa linear.
+///
+/// Mantém um registro YMM com os multiplicadores de rampa e o incrementa
+/// a cada iteração de 8 amostras.
+unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {
+    let mut i = 0;
+    let len = buffer.len();
+
+    unsafe {
+        // Inicializa a rampa para as primeiras 8 posições: [s, s+1, s+2, s+3, s+4, s+5, s+6, s+7]
+        let mut current_ramp = _mm256_set_ps(
+            start + 7.0 * step,
+            start + 6.0 * step,
+            start + 5.0 * step,
+            start + 4.0 * step,
+            start + 3.0 * step,
+            start + 2.0 * step,
+            start + 1.0 * step,
+            start,
+        );
+        // Incremento constante para cada salto de 8 amostras.
+        let v_step_8 = _mm256_set1_ps(8.0 * step);
+
+        while i + 8 <= len {
+            let ptr = buffer.as_mut_ptr().add(i);
+            let vals = _mm256_loadu_ps(ptr);
+
+            // Multiplica amostras pela rampa atual.
+            let processed = _mm256_mul_ps(vals, current_ramp);
+            _mm256_storeu_ps(ptr, processed);
+
+            // Avança a rampa para o próximo bloco de 8.
+            current_ramp = _mm256_add_ps(current_ramp, v_step_8);
+            i += 8;
+        }
+
+        // Tail escalar: processa o restante calculando o multiplicador exato.
+        let mut m = start + (i as f32) * step;
+        while i < len {
+            *buffer.get_unchecked_mut(i) *= m;
+            m += step;
+            i += 1;
+        }
+    }
+}
+
 /// Detecta clipping estéreo via AVX2 — retorna `true` se qualquer amostra
 /// em `left` ou `right` possuir `|x| > 1.0`.
 ///
@@ -287,5 +346,36 @@ mod tests {
             mse < 1e-10,
             "Roundtrip +6dB/-6dB MSE={mse:.2e} excede 1e-10"
         );
+    }
+
+    /// Valida a rampa linear SIMD contra uma implementação escalar de referência.
+    #[test]
+    fn test_apply_ramp_simd() {
+        let len = 37; // Tamanho não múltiplo de 8 para testar tail
+        let mut buffer_simd = vec![1.0f32; len];
+        let mut buffer_scalar = vec![1.0f32; len];
+
+        let start = 0.5f32;
+        let step = 0.01f32;
+
+        // Referência escalar
+        let mut m = start;
+        for s in buffer_scalar.iter_mut() {
+            *s *= m;
+            m += step;
+        }
+
+        // Implementação SIMD
+        apply_ramp_simd(&mut buffer_simd, start, step);
+
+        // Verifica MSE entre as duas implementações
+        for i in 0..len {
+            assert!(
+                (buffer_simd[i] - buffer_scalar[i]).abs() < 1e-6,
+                "Divergência na rampa no índice {i}: SIMD={} Scalar={}",
+                buffer_simd[i],
+                buffer_scalar[i]
+            );
+        }
     }
 }

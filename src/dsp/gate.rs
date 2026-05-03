@@ -184,13 +184,8 @@ impl DynamicHysteresis {
         if (start_mult - end_mult).abs() < 1e-6 {
             crate::dsp::gain::apply_gain_simd(buffer, end_mult);
         } else {
-            // Aplica rampa linear simples (escalar por enquanto, pode ser SIMD depois)
             let step = (end_mult - start_mult) / (n_samples as f32);
-            let mut m = start_mult;
-            for s in buffer.iter_mut() {
-                *s *= m;
-                m += step;
-            }
+            crate::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
         }
     }
 }

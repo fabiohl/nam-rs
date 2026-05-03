@@ -53,6 +53,7 @@ use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 use crate::dsp::resampler::NamResampler;
 use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2};
 use crate::models::NamModel;
+use crate::rt_setup;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
 use minstant::{Anchor, Instant};
 use pipewire as pw;
@@ -60,11 +61,11 @@ use pw::properties::properties;
 use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 /// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
 /// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
 const MAX_BRIDGE_BUF: usize = 8192;
+const MAX_RESAMP_BUF: usize = 4096;
 
 /// Buffer individual de áudio para o DspBridge (double-buffer).
 #[repr(align(128))]
@@ -211,7 +212,7 @@ pub fn run_pipewire_host(
 
     // Seleciona o núcleo ideal para a thread RT (capacidade + menor carga IRQ).
     // Computado antes do lock para que o valor seja acessível após o escopo.
-    let target_cpu = select_optimal_cpu().unwrap_or(0);
+    let target_cpu = rt_setup::select_optimal_cpu().unwrap_or(0);
 
     // Escopo de configuração protegida: o lock é liberado automaticamente no '}' final.
     {
@@ -266,7 +267,6 @@ pub fn run_pipewire_host(
 
         // Buffer intermediário 48k para saída do resampler (stack-allocated).
         // MAX_RESAMP_BUF comporta a expansão do resampler (ex: 44100→48000 = ~1.088x).
-        const MAX_RESAMP_BUF: usize = 4096;
         let mut resamp_mid_l = [0.0f32; MAX_RESAMP_BUF];
         let mut resamp_out_l = [0.0f32; MAX_RESAMP_BUF];
         let mut resamp_mid_r = [0.0f32; MAX_RESAMP_BUF];
@@ -352,7 +352,7 @@ pub fn run_pipewire_host(
 
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
                 if !thread_configured {
-                    configure_realtime_thread(target_cpu, rt_status_for_process.clone());
+                    rt_setup::configure_realtime_thread(target_cpu, rt_status_for_process.clone());
                     thread_configured = true;
                 }
 
@@ -446,7 +446,7 @@ pub fn run_pipewire_host(
                 }
 
                 if param_changed {
-                    compute_gain_multipliers(
+                    rt_setup::compute_gain_multipliers(
                         user_input_gain_mult,
                         user_output_gain_mult,
                         model_input_mult_adj,
@@ -512,235 +512,32 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
-                                // 2. Detecção de Silêncio com Histerese (Silence Bypass)
-                                // Verificamos se há sinal presente antes de disparar a inferência NAM (pesada).
-                                // Os thresholds foram pré-calculados no cold-path via GainLUT (T16).
-                                let energy_ms =
-                                    unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
-
-                                silence_hysteresis.update(
-                                    energy_ms,
-                                    threshold_open_sq, // Pré-calculado: (GainLUT::db_to_linear(open_db))²
-                                    threshold_close_sq, // Pré-calculado: (GainLUT::db_to_linear(close_db))²
-                                    &gate_params,
-                                    n_samples,
-                                );
-
-                                if silence_hysteresis.state() == GateState::Closed {
-                                    handle_silence_bypass(bridge_ptr, &rt_status_for_process);
-                                    return;
-                                }
-
-                                // Sinaliza silêncio via flag atômica se estiver em fade-out
-                                rt_status_for_process.is_silent.store(
-                                    silence_hysteresis.state() != GateState::Open,
-                                    Ordering::Relaxed,
-                                );
-
-                                // 3. Mitigação Mono com Histerese (Otimização Dinâmica)
-                                let max_diff = if !process_mono {
-                                    unsafe {
-                                        compute_max_diff_avx2(
-                                            &samples_l[..n_samples],
-                                            &samples_r[..n_samples],
-                                        )
-                                    }
-                                } else {
-                                    // Se já estamos em mono, a diferença é irrelevante para o processamento,
-                                    // mas precisamos dela para a histerese voltar para estéreo se R mudar.
-                                    // Porém, se estamos em mono, assume-se que R é igual a L ou zero.
-                                    // Para detectar se parou de ser mono, precisaríamos olhar para R.
-                                    unsafe {
-                                        compute_max_diff_avx2(
-                                            &samples_l[..n_samples],
-                                            &samples_r[..n_samples],
-                                        )
-                                    }
-                                };
-
-                                mono_hysteresis.update(
-                                    max_diff,
-                                    gate_params.mono_epsilon,
-                                    gate_params.mono_epsilon * 0.9, // Pequena histerese para o epsilon mono
-                                    &gate_params,
-                                    n_samples,
-                                );
-
-                                process_mono = mono_hysteresis.state() == GateState::Closed
-                                    || mono_hysteresis.state() == GateState::FadingOut;
-
                                 // Iniciamos a medição do tempo de processamento DSP puro (RDTSC).
                                 // Usado para calcular o 'DSP Load' e detectar XRuns iminentes.
                                 let start_time = Instant::now();
 
-                                // O resampler de entrada pode expandir amostras (ex: 44.1k → 48k).
-                                // Utilizamos buffers fixos na stack com MAX_RESAMP_BUF para evitar alocações
-                                // dinâmicas e garantir localidade de cache.
-                                let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];
-                                let mut temp_out_r = [0.0f32; MAX_RESAMP_BUF];
-                                let n = n_samples.min(MAX_RESAMP_BUF);
-
-                                // 4. Pipeline DSP: Ganho de Entrada
-                                // Aplicamos o ganho (User Gain + Model Calibration) via AVX2/FMA.
-                                // Este passo ocorre antes do resampling para manter a fidelidade do sinal.
-                                crate::dsp::gain::apply_gain_simd(
-                                    &mut samples_l[..n],
+                                capture_dsp_pipeline(
+                                    samples_l,
+                                    samples_r,
+                                    n_samples,
+                                    &mut resampler,
+                                    &mut active_model_l,
+                                    &mut active_model_r,
                                     input_gain_mult,
-                                );
-                                if !process_mono {
-                                    crate::dsp::gain::apply_gain_simd(
-                                        &mut samples_r[..n],
-                                        input_gain_mult,
-                                    );
-                                }
-
-                                // --- ZERO-COPY BYPASS LOGIC (T18) ---
-                                // Se o resampler estiver em bypass (48kHz), canalizamos os fatiadores
-                                // diretamente para o modelo sem cópias intermediárias.
-                                let is_resamp_bypass = resampler.is_bypass();
-
-                                let n_pw = if is_resamp_bypass {
-                                    // Path A: Bypass Total (Zero-Copy)
-                                    // Usamos diretamente os buffers de entrada/saída do PipeWire
-                                    let model_in_l = &samples_l[..n];
-                                    let model_in_r = if process_mono {
-                                        &samples_l[..n]
-                                    } else {
-                                        &samples_r[..n]
-                                    };
-                                    let model_out_l = &mut resamp_out_l[..n];
-                                    let model_out_r = &mut resamp_out_r[..n];
-
-                                    if let Some(ref mut model_l) = active_model_l {
-                                        model_l.process(model_in_l, model_out_l);
-                                    }
-
-                                    if process_mono {
-                                        model_out_r.copy_from_slice(model_out_l);
-                                    } else if let Some(ref mut model_r) = active_model_r {
-                                        model_r.process(model_in_r, model_out_r);
-                                    }
-
-                                    n // n_pw é igual a n em bypass
-                                } else {
-                                    // Path B: Resampling Ativo
-                                    // Realiza conversão de taxa (Downsample → Inferência → Upsample)
-                                    let n_48k = resampler.process_input(
-                                        &samples_l[..n],
-                                        if process_mono {
-                                            &samples_l[..n]
-                                        } else {
-                                            &samples_r[..n]
-                                        },
-                                        &mut resamp_mid_l[..MAX_RESAMP_BUF],
-                                        &mut resamp_mid_r[..MAX_RESAMP_BUF],
-                                    );
-
-                                    let model_in_l = &resamp_mid_l[..n_48k];
-                                    let model_in_r = &resamp_mid_r[..n_48k];
-                                    let model_out_l = &mut temp_out_l[..n_48k];
-                                    let model_out_r = &mut temp_out_r[..n_48k];
-
-                                    if let Some(ref mut model_l) = active_model_l {
-                                        model_l.process(model_in_l, model_out_l);
-                                    }
-
-                                    if process_mono {
-                                        model_out_r.copy_from_slice(model_out_l);
-                                    } else if let Some(ref mut model_r) = active_model_r {
-                                        model_r.process(model_in_r, model_out_r);
-                                    }
-
-                                    resampler.process_output(
-                                        model_out_l,
-                                        model_out_r,
-                                        &mut resamp_out_l[..MAX_RESAMP_BUF],
-                                        &mut resamp_out_r[..MAX_RESAMP_BUF],
-                                    )
-                                };
-
-                                // 5. Aplica ganho de saída SIMD após conversão de rate
-                                crate::dsp::gain::apply_gain_simd(
-                                    &mut resamp_out_l[..n_pw],
                                     output_gain_mult,
-                                );
-                                crate::dsp::gain::apply_gain_simd(
-                                    &mut resamp_out_r[..n_pw],
-                                    output_gain_mult,
-                                );
-
-                                // 6. Aplica o Fading da Histerese de Silêncio
-                                silence_hysteresis.apply_gain_rt(
-                                    &mut resamp_out_l[..n_pw],
                                     &gate_params,
-                                    n_pw,
+                                    &mut silence_hysteresis,
+                                    &mut mono_hysteresis,
+                                    threshold_open_sq,
+                                    threshold_close_sq,
+                                    &mut process_mono,
+                                    &rt_status_for_process,
+                                    bridge_ptr,
+                                    &mut resamp_mid_l,
+                                    &mut resamp_mid_r,
+                                    &mut resamp_out_l,
+                                    &mut resamp_out_r,
                                 );
-                                silence_hysteresis.apply_gain_rt(
-                                    &mut resamp_out_r[..n_pw],
-                                    &gate_params,
-                                    n_pw,
-                                );
-
-                                // Copia resultado e detecta saturação
-                                let n_copy = n_pw.min(n);
-                                let out_slice_l = &resamp_out_l[..n_copy];
-                                let out_slice_r = &resamp_out_r[..n_copy];
-
-                                // Detecção de clipping via AVX2 vetorial (Item 6):
-                                // 8 samples/iteração vs loop escalar (128 comparações).
-                                if crate::dsp::gain::detect_clipping_stereo_simd(
-                                    out_slice_l,
-                                    out_slice_r,
-                                ) {
-                                    rt_status_for_process
-                                        .has_clipped
-                                        .store(true, Ordering::Relaxed);
-                                }
-
-                                // A cópia para samples_l/samples_r foi eliminada.
-                                // Na arquitetura dual-stream, o monitor port do Audio/Sink copia
-                                // o buffer *antes* do process() — portanto, escrever de volta em
-                                // samples_l/samples_r é redundante. O áudio processado chega ao
-                                // hardware exclusivamente via playback stream ← DspBridge.
-                                // Ver TODO.txt para instruções de validação e reversão.
-
-                                // =========================================================
-                                // BRIDGE WRITE: copia resultado pós-DSP para o DspBridge
-                                // O playback callback lê daqui via fence(Acquire).
-                                // =========================================================
-                                // SAFETY: `bridge_ptr` aponta para `DspBridge` alocado via
-                                // `Box::leak` (vive até o shutdown). O capture callback é
-                                // o único escritor dos arrays `buf_l`/`buf_r` — não há
-                                // data race. Os campos atômicos são acessados via Ordering.
-                                let bridge_ref = unsafe { &mut *bridge_ptr };
-                                let back_idx =
-                                    1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
-                                let back_buf = &mut bridge_ref.buffers[back_idx];
-
-                                let n_bridge = n_copy.min(MAX_BRIDGE_BUF);
-                                // SAFETY: `n_bridge` ≤ min(n_copy, MAX_BRIDGE_BUF)
-                                // e ambos os buffers são pré-alocados com MAX_BRIDGE_BUF.
-                                // `ptr::copy_nonoverlapping` elimina o bounds-check
-                                // implícito de `copy_from_slice` no hot-path RT.
-                                unsafe {
-                                    core::ptr::copy_nonoverlapping(
-                                        resamp_out_l.as_ptr(),
-                                        back_buf.buf_l.as_mut_ptr(),
-                                        n_bridge,
-                                    );
-                                    core::ptr::copy_nonoverlapping(
-                                        resamp_out_r.as_ptr(),
-                                        back_buf.buf_r.as_mut_ptr(),
-                                        n_bridge,
-                                    );
-                                }
-                                back_buf.n_samples = n_bridge as u32;
-
-                                std::sync::atomic::fence(Ordering::Release);
-                                bridge_ref
-                                    .active_read_idx
-                                    .store(back_idx, Ordering::Relaxed);
-                                bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 
                                 // Monitoramento de carga de DSP (DSP Load Monitoring via RDTSC)
                                 // `start_time` é inicializado no início da pipeline DSP (acima).
@@ -756,7 +553,7 @@ pub fn run_pipewire_host(
                                 // Calcula o budget máximo tolerável (85% do tempo real do buffer)
                                 // Ainda usamos uma aproximação escalar aqui para detecção rápida de overload,
                                 // mas a telemetria precisa via Anchor ocorre no poll_rt_status.
-                                let elapsed_secs = start_time.elapsed().as_secs_f64();
+                                let elapsed_secs = elapsed.as_secs_f64();
                                 let budget_secs =
                                     (n_samples as f64 / current_pw_rate as f64) * 0.85;
                                 if elapsed_secs > budget_secs {
@@ -803,7 +600,7 @@ pub fn run_pipewire_host(
         // Ponteiro raw para o bridge, compartilhado com o playback callback.
         let bridge_ptr_playback = bridge_ptr;
 
-        let hardware_target = detect_hardware_sink();
+        let hardware_target = rt_setup::detect_hardware_sink();
 
         let mut playback_props = properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
@@ -955,7 +752,7 @@ pub fn run_pipewire_host(
         playback_listener,
     };
 
-    let _cpu_dma_lock = lock_cpu_c_states();
+    let _cpu_dma_lock = rt_setup::lock_cpu_c_states();
 
     // Emitido aqui (após PM QoS e antes do thread_loop.start()) para agrupar
     // todos os diagnósticos de hardening RT na saída do console.
@@ -1038,7 +835,7 @@ pub fn run_pipewire_host(
 
         // 2. Monitoramento de Status
         // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio, timing).
-        was_silent = poll_rt_status(&rt_status, &sys, was_silent, &tsc_anchor);
+        was_silent = rt_setup::poll_rt_status(&rt_status, &sys, was_silent, &tsc_anchor);
 
         // Baixa frequência de polling para economizar energia, já que estas são tarefas de controle.
         std::thread::sleep(std::time::Duration::from_millis(100));
@@ -1101,486 +898,272 @@ unsafe fn build_spa_format_pod<'a>(
     }
 }
 
-/// Detecta dinamicamente o sink de hardware padrão do sistema via `pw-metadata`.
-///
-/// Esta função tenta identificar para qual dispositivo físico o áudio deve ser enviado
-/// por padrão. Ela faz o parsing da saída do utilitário `pw-metadata` do PipeWire.
-///
-/// Retorna `Some(name)` se encontrar um sink válido que não seja o próprio NAM-rs,
-/// ou `None` caso contrário (permitindo que o roteamento seja decidido pelo WirePlumber).
-fn detect_hardware_sink() -> Option<String> {
-    // Executa o comando externo para ler metadados do servidor PipeWire
-    let out = std::process::Command::new("pw-metadata")
-        .args(["-n", "default", "0", "default.audio.sink"])
-        .output()
-        .ok()?;
+// =============================================================================
+// Estágios do Pipeline DSP (Modularizados e Inlinados)
+// =============================================================================
 
-    // Converte a saída bruta para string (UTF-8 com perdas)
-    let s = String::from_utf8_lossy(&out.stdout);
+/// Estágio 1: Gate, Ganhos de Entrada e Detecção de Mono.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn apply_input_stage(
+    samples_l: &mut [f32],
+    samples_r: &mut [f32],
+    n_samples: usize,
+    input_gain_mult: f32,
+    gate_params: &GateParams,
+    silence_hysteresis: &mut DynamicHysteresis,
+    mono_hysteresis: &mut DynamicHysteresis,
+    threshold_open_sq: f32,
+    threshold_close_sq: f32,
+    process_mono: &mut bool,
+) -> GateState {
+    // 1. Detecção de Silêncio com Histerese (Silence Bypass)
+    let energy_ms = unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
 
-    // Parsing manual: localiza a chave "name" na saída JSON-like
-    let start = s.find("\"name\":\"")?;
-    let rest = &s[start + 8..];
-    let end = rest.find('"')?;
-    let name = &rest[..end];
+    silence_hysteresis.update(
+        energy_ms,
+        threshold_open_sq,
+        threshold_close_sq,
+        gate_params,
+        n_samples,
+    );
 
-    // Evitamos o "loop infinito" de roteamento se o default detectado for o próprio input do NAM-rs.
-    if name == "NAM-rs-input" || name == "NAM-rs-standalone" {
-        None
-    } else {
-        // Retorna o nome do hardware real (ex: 'alsa_output.pci-0000_00_1f.3.analog-stereo')
-        Some(name.to_string())
+    if silence_hysteresis.state() == GateState::Closed {
+        return GateState::Closed;
     }
+
+    // 2. Mitigação Mono com Histerese (Otimização Dinâmica)
+    let max_diff =
+        unsafe { compute_max_diff_avx2(&samples_l[..n_samples], &samples_r[..n_samples]) };
+
+    mono_hysteresis.update(
+        max_diff,
+        gate_params.mono_epsilon,
+        gate_params.mono_epsilon * 0.9,
+        gate_params,
+        n_samples,
+    );
+
+    *process_mono = mono_hysteresis.state() == GateState::Closed
+        || mono_hysteresis.state() == GateState::FadingOut;
+
+    // 3. Pipeline DSP: Ganho de Entrada
+    crate::dsp::gain::apply_gain_simd(&mut samples_l[..n_samples], input_gain_mult);
+    if !*process_mono {
+        crate::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], input_gain_mult);
+    }
+
+    silence_hysteresis.state()
 }
 
-/// Lê flags atômicas de status RT e emite logs de monitoramento.
-///
-/// Chamada a cada iteração do loop principal (~100ms). Consome flags
-/// one-shot (active_rate, has_clipped, rt_priority, dsp_overloads) e
-/// faz edge-detection no estado de silêncio.
-///
-/// Retorna o novo estado de silêncio (para edge-detection no caller).
-fn poll_rt_status(
-    rt_status: &RtStatusFlags,
-    sys: &SystemSnapshot,
-    was_silent: bool,
-    _tsc_anchor: &Anchor,
-) -> bool {
-    // Rate do resampler ativado pelo callback RT
-    let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
-    if active_rate != 0 {
-        log::info!(
-            "{} Callback RT ativou resampler com rate = {} Hz",
-            "✅".green(),
-            active_rate
-        );
-    }
+/// Estágio 2: Inferência Neural e Resampling.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn run_inference(
+    samples_l: &[f32],
+    samples_r: &[f32],
+    n_samples: usize,
+    resampler: &mut NamResampler,
+    active_model_l: &mut Option<Box<crate::models::DynamicModel>>,
+    active_model_r: &mut Option<Box<crate::models::DynamicModel>>,
+    process_mono: bool,
+    resamp_mid_l: &mut [f32],
+    resamp_mid_r: &mut [f32],
+    resamp_out_l: &mut [f32],
+    resamp_out_r: &mut [f32],
+) -> usize {
+    let is_resamp_bypass = resampler.is_bypass();
+    let n = n_samples.min(MAX_RESAMP_BUF);
 
-    // Detecção de clipping na saída
-    if rt_status.has_clipped.swap(false, Ordering::Relaxed) {
-        log::warn!(
-            "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
-            "🔥".bright_red().bold()
-        );
-    }
-
-    // Confirmação programática de SCHED_FIFO — sentinela -1 significa "ainda não setado".
-    // A thread DSP publica este valor uma única vez no cold-path do primeiro frame.
-    let prio = rt_status.rt_priority.load(Ordering::Relaxed);
-    if prio != -1 {
-        let is_fifo = rt_status.rt_is_fifo.load(Ordering::Relaxed);
-        // Rearmamos sentinela para não logar novamente nas iterações seguintes.
-        rt_status.rt_priority.store(-1, Ordering::Relaxed);
-
-        if is_fifo {
-            log::info!(
-                "{} Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
-                "✅".green(),
-                prio
-            );
+    if is_resamp_bypass {
+        let model_in_l = &samples_l[..n];
+        let model_in_r = if process_mono {
+            &samples_l[..n]
         } else {
-            NamDiagnostic::new(NamErrorCode::SchedFifoDenied, sys)
-                .message(format!(
-                    "Thread DSP NÃO está em SCHED_FIFO (prioridade = {}). \
-                     O áudio pode sofrer jitter e xruns.",
-                    prio
-                ))
-                .hint(
-                    "Verifique se o seu usuário possui permissão RT (ulimit -r) \
-                     ou se o sistema tem rtkit/PipeWire configurados corretamente.",
-                )
-                .emit_warning();
-        }
-    }
-
-    // Contador de overloads de CPU
-    let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
-    if overloads > 0 {
-        log::warn!(
-            "{} Sobrecarga de CPU ({} buffers). Considere usar um modelo mais leve ou processador mais poderoso.",
-            "🚨".red(),
-            overloads
-        );
-    }
-
-    // Telemetria de timing via RDTSC (minstant)
-    let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
-    if nanos > 0 {
-        let duration = Duration::from_nanos(nanos);
-        let active_rate = rt_status.active_rate.load(Ordering::Relaxed);
-        let n_samples = rt_status.last_n_samples.load(Ordering::Relaxed);
-
-        if active_rate > 0 && n_samples > 0 {
-            let budget_us = (n_samples as f64 / active_rate as f64) * 1_000_000.0;
-            let elapsed_us = duration.as_micros() as f64;
-
-            // Se o tempo de execução exceder o budget (100% do tempo do buffer),
-            // emitimos um diagnóstico crítico. O dsp_overloads já cuida de avisos a 85%.
-            if elapsed_us > budget_us {
-                NamDiagnostic::new(NamErrorCode::DeadlineExceeded, sys)
-                    .message("Deadline do PipeWire estourado (Possível Xrun detectado)")
-                    .hint("Verifique a topologia do modelo ou diminua a carga do sistema.")
-                    .param("exec_time_us", elapsed_us as u64)
-                    .param("budget_us", budget_us as u64)
-                    .param("n_samples", n_samples)
-                    .param("rate", active_rate)
-                    .emit();
-            }
-        }
-    }
-
-    // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
-    let current_silent = rt_status.is_silent.load(Ordering::Relaxed);
-    if current_silent != was_silent {
-        if current_silent {
-            log::info!(
-                "{} Silence bypass ativado (entrada < −80 dBFS). DSP em idle.",
-                "🔇".blue()
-            );
-        } else {
-            log::info!(
-                "{} Sinal detectado. Processamento DSP retomado.",
-                "🔊".green()
-            );
-        }
-    }
-
-    current_silent
-}
-
-/// Recomputa os fatores de ganho linear a partir dos valores em decibéis.
-///
-/// COLD-PATH: Chamada apenas via callback RT quando há mudança de parâmetros.
-/// Usa `powf`, que é custoso, mas aceitável fora do hot-path de processamento.
-#[cold]
-#[inline(never)]
-/// Calcula os multiplicadores finais combinando ganho do usuário e ajustes do modelo.
-/// Operação ultra-rápida (apenas multiplicações lineares) para manter o callback RT leve.
-fn compute_gain_multipliers(
-    u_in_mult: f32,
-    u_out_mult: f32,
-    m_in_mult: f32,
-    m_out_mult: f32,
-    out_in_mult: &mut f32,
-    out_out_mult: &mut f32,
-) {
-    *out_in_mult = u_in_mult * m_in_mult;
-    *out_out_mult = u_out_mult * m_out_mult;
-}
-
-/// Configura a thread DSP atual para operação em tempo real.
-///
-/// Executada **uma única vez** no cold-path do primeiro frame do callback `process()`,
-/// antes do fluxo de dados começar de fato. Aplica:
-///
-/// 1. **DAZ/FTZ** — Habilita Denormals-Are-Zero e Flush-To-Zero no registro MXCSR
-///    para evitar penalidades de FPU em blocos de silêncio ("espiral da morte").
-/// 2. **Core Affinity** — Fixa a thread no núcleo físico ideal via
-///    `pthread_setaffinity_np`, evitando migração de core e cache misses L1/L2.
-/// 3. **SCHED_FIFO** — Eleva a prioridade para agendamento de tempo real (prio 90).
-///
-/// Após configurar, publica o resultado via `rt_status` (flags atômicas):
-/// - `rt_is_fifo`: `true` se `SCHED_FIFO` foi confirmado por `pthread_getschedparam`.
-/// - `rt_priority`: prioridade efetiva concedida pelo kernel (ou `0` se FIFO não obtido).
-///
-/// O loop principal em `run_pipewire_host` lê essas flags e emite log de confirmação
-/// (ou aviso) de forma auditável — **zero I/O adicional dentro do callback RT**.
-///
-/// # Diagnósticos
-///
-/// Esta função usa macros de `log` diretas (`log::error!`, etc) ao invés de `NamDiagnostic` porque:
-/// - É chamada dentro do callback RT (thread PipeWire), onde o `SystemSnapshot`
-///   não está disponível sem adicionar `Arc` ou parâmetro extra ao closure.
-/// - É executada apenas **uma vez** no cold-path inicial — não afeta latência RT.
-/// - O formato simula manualmente o padrão de diagnóstico (códigos E2301–E2303) para
-///   permitir triagem via `/diagnostico` mesmo sem o bloco de suporte completo.
-#[cold]
-#[inline(never)]
-fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
-    // Proteção contra denormals (números subnormalizados que travam o processador):
-    // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
-    // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
-    unsafe {
-        crate::math::simd::set_daz_ftz();
-    }
-
-    // Desabilita Transparent Huge Pages (THP) para este processo antes do mlockall,
-    // evitando latências de compactação em background pelo khugepaged.
-    unsafe {
-        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
-    }
-
-    // Bloqueia a memória atual e futura na RAM física, prevenindo page faults.
-    let ret_mlock = unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) };
-
-    if ret_mlock != 0 {
-        let err = std::io::Error::last_os_error();
-        log::warn!(
-            "⚠️ mlockall() falhou ({}). O áudio pode sofrer engasgos se o sistema usar swap.\n  Dica: Verifique o limite de 'memlock' no ulimits.",
-            err
-        );
-    } else {
-        log::info!(
-            "🔒 Memória do processo travada na RAM física (mlockall). Page faults prevenidos."
-        );
-    }
-
-    unsafe {
-        let thread_id = libc::pthread_self();
-
-        let name = b"nam_rs_dsp\0";
-        libc::pthread_setname_np(thread_id, name.as_ptr() as *const libc::c_char);
-
-        // 1. Afinidade de Núcleo: evita migração de core e invalidação de cache L1/L2
-        let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
-        libc::CPU_ZERO(&mut cpuset);
-        libc::CPU_SET(target_cpu, &mut cpuset);
-
-        let ret_aff = libc::pthread_setaffinity_np(
-            thread_id,
-            std::mem::size_of::<libc::cpu_set_t>(),
-            &cpuset,
-        );
-
-        if ret_aff != 0 {
-            log::error!(
-                "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).\n  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
-                target_cpu,
-                ret_aff,
-                target_cpu,
-                ret_aff
-            );
-        }
-
-        // 2. Verificação programática prévia: lê policy/prio concedidos pelo kernel via rtkit/PipeWire
-        let mut actual_policy = 0i32;
-        let mut actual_param: libc::sched_param = std::mem::zeroed();
-        let ret_getsched =
-            libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param);
-
-        let actual_cpu = libc::sched_getcpu();
-
-        if ret_getsched == 0 {
-            let reset_on_fork_flag = 0x40000000i32;
-            let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
-            let mut base_policy = actual_policy & !reset_on_fork_flag;
-
-            // 3. Se PipeWire não elevou para SCHED_FIFO via rtkit, tentamos forçar manualmente
-            if base_policy != libc::SCHED_FIFO {
-                let mut param: libc::sched_param = std::mem::zeroed();
-                param.sched_priority = 90;
-
-                let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
-                if ret_sched != 0 {
-                    log::error!(
-                        "⚠️ pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
-                        ret_sched
-                    );
-                } else {
-                    // Atualiza as variáveis refletindo a aplicação bem-sucedida
-                    base_policy = libc::SCHED_FIFO;
-                    actual_param.sched_priority = 90;
-                    has_reset_on_fork = false; // Nós não setamos a flag de reset on fork
-                }
-            }
-
-            let policy_str = match base_policy {
-                libc::SCHED_FIFO => "SCHED_FIFO",
-                libc::SCHED_RR => "SCHED_RR",
-                libc::SCHED_OTHER => "SCHED_OTHER",
-                libc::SCHED_BATCH => "SCHED_BATCH",
-                libc::SCHED_IDLE => "SCHED_IDLE",
-                _ => "UNKNOWN",
-            };
-
-            let confirmed_fifo = base_policy == libc::SCHED_FIFO;
-
-            // Publica resultado real via flags atômicas — zero I/O no caminho quente
-            rt_status
-                .rt_is_fifo
-                .store(confirmed_fifo, Ordering::Relaxed);
-            rt_status
-                .rt_priority
-                .store(actual_param.sched_priority, Ordering::Relaxed);
-
-            // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
-            if has_reset_on_fork {
-                log::info!(
-                    "{} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
-                    "🔍".blue(),
-                    actual_cpu.to_string().cyan(),
-                    policy_str.cyan(),
-                    actual_param.sched_priority.to_string().green()
-                );
-            } else {
-                log::info!(
-                    "{} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
-                    "🔍".blue(),
-                    actual_cpu.to_string().cyan(),
-                    policy_str.cyan(),
-                    actual_param.sched_priority.to_string().green()
-                );
-            }
-        } else {
-            // Publica sentinela de falha de verificação
-            rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
-            rt_status.rt_priority.store(0, Ordering::Relaxed);
-
-            log::error!(
-                "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam falhou (ret={}).\n",
-                ret_getsched
-            );
-        }
-    }
-}
-
-/// Seleciona o núcleo de CPU ideal para fixar a thread RT (core affinity).
-///
-/// A heurística prioriza:
-/// 1. **Capacidade Máxima** — Em arquiteturas híbridas (ex: big.LITTLE), prefere núcleos de alta performance.
-/// 2. **Menor Carga de IRQ** — Minimiza jitter causado por interrupções de hardware (rede, disco, etc).
-/// 3. **Índice Numérico** — Desempate determinístico.
-fn select_optimal_cpu() -> Option<usize> {
-    use std::fs;
-
-    // Varre /sys para encontrar todos os núcleos lógicos disponíveis.
-    let cpu_dir = fs::read_dir("/sys/devices/system/cpu").ok()?;
-    let mut cpus: Vec<usize> = cpu_dir
-        .filter_map(|entry| {
-            let name = entry.ok()?.file_name();
-            let name = name.to_str()?;
-            // Filtra apenas diretórios no formato 'cpuX'.
-            name.strip_prefix("cpu")?.parse::<usize>().ok()
-        })
-        .collect();
-
-    if cpus.is_empty() {
-        return None;
-    }
-    cpus.sort_unstable();
-
-    // Obtém a capacidade de processamento de cada núcleo (comum em sistemas ARM ou x86 modernos).
-    let capacities: Vec<(usize, u64)> = cpus
-        .iter()
-        .map(|&cpu| {
-            let path = format!("/sys/devices/system/cpu/cpu{cpu}/cpu_capacity");
-            let cap = fs::read_to_string(path)
-                .ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
-                .unwrap_or(1024); // Fallback padrão do kernel.
-            (cpu, cap)
-        })
-        .collect();
-
-    // Totaliza as interrupções processadas por cada core para detectar "vizinhos barulhentos".
-    let irq_totals = parse_interrupts_per_cpu(cpus.len());
-
-    capacities
-        .iter()
-        .map(|&(cpu, cap)| {
-            let irqs = irq_totals.get(cpu).copied().unwrap_or(u64::MAX);
-            (cpu, cap, irqs)
-        })
-        .max_by(|a, b| {
-            // Heurística de Ordenação:
-            // 1. Maior capacidade (cap)
-            // 2. Menor número de interrupções (irqs) — invertido no cmp
-            // 3. Maior índice de CPU (cpu)
-            a.1.cmp(&b.1)
-                .then_with(|| b.2.cmp(&a.2))
-                .then_with(|| a.0.cmp(&b.0))
-        })
-        .map(|(cpu, _, _)| cpu)
-}
-
-/// Analisa /proc/interrupts para extrair a carga de interrupções por núcleo.
-///
-/// Esta função realiza o parsing do formato tabular do kernel, onde cada coluna
-/// (após a primeira) representa um contador para um núcleo específico.
-fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
-    use std::fs;
-
-    let mut totals = vec![0u64; num_cpus];
-
-    let content = match fs::read_to_string("/proc/interrupts") {
-        Ok(c) => c,
-        Err(_) => return totals,
-    };
-
-    // Pula o cabeçalho (CPU0 CPU1 ...)
-    for line in content.lines().skip(1) {
-        let trimmed = line.trim_start();
-        // Localiza o delimitador do nome da interrupção (ex: "7: ...")
-        let irq_end = trimmed.find(':').unwrap_or(0);
-        if irq_end == 0 {
-            continue;
-        }
-
-        // Filtra apenas interrupções numéricas (ignora NMI, LOC, etc por simplicidade).
-        if !trimmed[..irq_end]
-            .trim()
-            .bytes()
-            .all(|b| b.is_ascii_digit())
-        {
-            continue;
-        }
-
-        let after_colon = match trimmed.get(irq_end + 1..) {
-            Some(s) => s,
-            None => continue,
+            &samples_r[..n]
         };
+        let model_out_l = &mut resamp_out_l[..n];
+        let model_out_r = &mut resamp_out_r[..n];
 
-        // Acumula os contadores para cada core presente na linha.
-        for (cpu_idx, token) in after_colon.split_whitespace().enumerate() {
-            if cpu_idx >= num_cpus {
-                break;
-            }
-            if let Ok(count) = token.parse::<u64>() {
-                totals[cpu_idx] += count;
-            } else {
-                // Para no primeiro token não numérico (geralmente o nome do driver/dispositivo).
-                break;
-            }
+        if let Some(model_l) = active_model_l {
+            model_l.process(model_in_l, model_out_l);
         }
-    }
 
-    totals
+        if process_mono {
+            model_out_r.copy_from_slice(model_out_l);
+        } else if let Some(model_r) = active_model_r {
+            model_r.process(model_in_r, model_out_r);
+        }
+
+        n
+    } else {
+        let n_48k = resampler.process_input(
+            &samples_l[..n],
+            if process_mono {
+                &samples_l[..n]
+            } else {
+                &samples_r[..n]
+            },
+            &mut resamp_mid_l[..MAX_RESAMP_BUF],
+            &mut resamp_mid_r[..MAX_RESAMP_BUF],
+        );
+
+        let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];
+        let mut temp_out_r = [0.0f32; MAX_RESAMP_BUF];
+
+        let model_in_l = &resamp_mid_l[..n_48k];
+        let model_in_r = &resamp_mid_r[..n_48k];
+        let model_out_l = &mut temp_out_l[..n_48k];
+        let model_out_r = &mut temp_out_r[..n_48k];
+
+        if let Some(model_l) = active_model_l {
+            model_l.process(model_in_l, model_out_l);
+        }
+
+        if process_mono {
+            model_out_r.copy_from_slice(model_out_l);
+        } else if let Some(model_r) = active_model_r {
+            model_r.process(model_in_r, model_out_r);
+        }
+
+        resampler.process_output(
+            model_out_l,
+            model_out_r,
+            &mut resamp_out_l[..MAX_RESAMP_BUF],
+            &mut resamp_out_r[..MAX_RESAMP_BUF],
+        )
+    }
 }
 
-/// Impede que o processador entre em C-States de economia de energia,
-/// garantindo latência de despertar de 0ms para processamento de áudio RT.
-///
-/// Utiliza a interface PM QoS do kernel Linux para solicitar latência zero.
-///
-/// RETORNO: O arquivo `File`. Ele DEVE ser mantido vivo no escopo principal.
-/// Se o descritor de arquivo for fechado (drop), o kernel anula a proteção.
-pub fn lock_cpu_c_states() -> Option<std::fs::File> {
-    match std::fs::OpenOptions::new()
-        .write(true)
-        .open("/dev/cpu_dma_latency")
-    {
-        Ok(mut file) => {
-            // Valor 0 indica tolerância zero a latência de transição de energia.
-            let zero: i32 = 0;
-            if std::io::Write::write_all(&mut file, &zero.to_ne_bytes()).is_ok() {
-                log::info!(
-                    "⚡ PM QoS Lock: C-States profundos da CPU desativados (Zero DMA Latency)."
-                );
-                return Some(file);
-            }
-            log::warn!("PM QoS: Falha ao escrever em /dev/cpu_dma_latency.");
-            None
-        }
-        Err(e) => {
-            // Frequentemente falha se não houver permissão de escrita ou se o arquivo não existir.
-            log::warn!(
-                "PM QoS: Acesso negado a /dev/cpu_dma_latency ({}). \
-                 Considere criar uma regra de udev para o grupo 'audio'.",
-                e
-            );
-            None
-        }
+/// Estágio 3: Ganho de Saída, Fading e Detecção de Clipping.
+#[inline(always)]
+fn apply_output_stage(
+    resamp_out_l: &mut [f32],
+    resamp_out_r: &mut [f32],
+    n_pw: usize,
+    output_gain_mult: f32,
+    gate_params: &GateParams,
+    silence_hysteresis: &mut DynamicHysteresis,
+    rt_status: &RtStatusFlags,
+) {
+    crate::dsp::gain::apply_gain_simd(&mut resamp_out_l[..n_pw], output_gain_mult);
+    crate::dsp::gain::apply_gain_simd(&mut resamp_out_r[..n_pw], output_gain_mult);
+
+    silence_hysteresis.apply_gain_rt(&mut resamp_out_l[..n_pw], gate_params, n_pw);
+    silence_hysteresis.apply_gain_rt(&mut resamp_out_r[..n_pw], gate_params, n_pw);
+
+    if crate::dsp::gain::detect_clipping_stereo_simd(&resamp_out_l[..n_pw], &resamp_out_r[..n_pw]) {
+        rt_status.has_clipped.store(true, Ordering::Relaxed);
     }
+}
+
+/// Estágio 4: Escrita no DspBridge.
+#[inline(always)]
+fn write_bridge(
+    resamp_out_l: &[f32],
+    resamp_out_r: &[f32],
+    n_pw: usize,
+    bridge_ptr: *mut DspBridge,
+) {
+    let bridge_ref = unsafe { &mut *bridge_ptr };
+    let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
+    let back_buf = &mut bridge_ref.buffers[back_idx];
+
+    let n_bridge = n_pw.min(MAX_BRIDGE_BUF);
+    unsafe {
+        core::ptr::copy_nonoverlapping(
+            resamp_out_l.as_ptr(),
+            back_buf.buf_l.as_mut_ptr(),
+            n_bridge,
+        );
+        core::ptr::copy_nonoverlapping(
+            resamp_out_r.as_ptr(),
+            back_buf.buf_r.as_mut_ptr(),
+            n_bridge,
+        );
+    }
+    back_buf.n_samples = n_bridge as u32;
+
+    std::sync::atomic::fence(Ordering::Release);
+    bridge_ref
+        .active_read_idx
+        .store(back_idx, Ordering::Relaxed);
+    bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Pipeline DSP Completo (Agregador).
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn capture_dsp_pipeline(
+    samples_l: &mut [f32],
+    samples_r: &mut [f32],
+    n_samples: usize,
+    resampler: &mut NamResampler,
+    active_model_l: &mut Option<Box<crate::models::DynamicModel>>,
+    active_model_r: &mut Option<Box<crate::models::DynamicModel>>,
+    input_gain_mult: f32,
+    output_gain_mult: f32,
+    gate_params: &GateParams,
+    silence_hysteresis: &mut DynamicHysteresis,
+    mono_hysteresis: &mut DynamicHysteresis,
+    threshold_open_sq: f32,
+    threshold_close_sq: f32,
+    process_mono: &mut bool,
+    rt_status: &RtStatusFlags,
+    bridge_ptr: *mut DspBridge,
+    // Buffers pré-alocados
+    resamp_mid_l: &mut [f32],
+    resamp_mid_r: &mut [f32],
+    resamp_out_l: &mut [f32],
+    resamp_out_r: &mut [f32],
+) {
+    let gate_state = apply_input_stage(
+        samples_l,
+        samples_r,
+        n_samples,
+        input_gain_mult,
+        gate_params,
+        silence_hysteresis,
+        mono_hysteresis,
+        threshold_open_sq,
+        threshold_close_sq,
+        process_mono,
+    );
+
+    if gate_state == GateState::Closed {
+        handle_silence_bypass(bridge_ptr, rt_status);
+        return;
+    }
+
+    rt_status
+        .is_silent
+        .store(gate_state != GateState::Open, Ordering::Relaxed);
+
+    let n_pw = run_inference(
+        samples_l,
+        samples_r,
+        n_samples,
+        resampler,
+        active_model_l,
+        active_model_r,
+        *process_mono,
+        resamp_mid_l,
+        resamp_mid_r,
+        resamp_out_l,
+        resamp_out_r,
+    );
+
+    apply_output_stage(
+        resamp_out_l,
+        resamp_out_r,
+        n_pw,
+        output_gain_mult,
+        gate_params,
+        silence_hysteresis,
+        rt_status,
+    );
+
+    write_bridge(resamp_out_l, resamp_out_r, n_pw, bridge_ptr);
 }
 
 #[cfg(test)]

@@ -4,7 +4,9 @@
 
 ---
 
-## Épico 1: Otimização de Modelos & Inferência SIMD
+## Épico 1: Otimização de Modelos & Inferência SIMD ✅ Auditado (2026-05-02)
+
+> **Nota de Auditoria (2026-05-02):** As 5 tarefas (T1–T5) foram implementadas, integradas e validadas. Lint: 0 warnings. Testes: 122/122 passando. Benchmarks dentro do deadline RT. Observações para T9: `#[allow(clippy::needless_range_loop)]` em wavenet.rs:10 e 2× `#[allow(clippy::too_many_arguments)]` em `process_block_internal` requerem avaliação caso a caso.
 
 ### T1 — WaveNet: Ativação Tanh Vetorial no Hot-Path [Concluído]
 
@@ -98,9 +100,9 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-## Épico 2: Arquitetura de Áudio & PipeWire
+## Épico 2: Arquitetura de Áudio & PipeWire [Concluído]
 
-### T6 — pw_host.rs: Extração do Capture Callback para Módulo Dedicado
+### T6 — pw_host.rs: Extração do Capture Callback para Módulo Dedicado [Concluído]
 
 **Prioridade:** 🔴 Crítica · **Estimativa:** 4h · **Impacto:** Legibilidade, testabilidade, manutenibilidade
 
@@ -115,11 +117,16 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 **Arquivos:** `src/pw_host.rs` → split em `src/pw_host.rs` + `src/rt_setup.rs` (novo).
 
+- [x] **T6** — pw_host.rs: Extração do Capture Callback para Módulo Dedicado
+  - [x] Criar `src/rt_setup.rs` para helpers de sistema (RT Priority, Core Affinity, PM QoS).
+  - [x] Modularizar pipeline DSP em sub-funções `#[inline(always)]`.
+  - [x] Validar latência e zero-allocation no hot-path.
+
 **Validação:** `cargo test` — todos os testes de `pw_host::tests` devem passar. Benchmarks inalterados.
 
 ---
 
-### T7 — Resampler: Convolução AVX-512 Opcional
+### T7 — Resampler: Convolução AVX-512 Opcional [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 2h · **Impacto:** ~1.5x throughput no resampler em CPUs AVX-512
 
@@ -135,7 +142,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T8 — Gate: Rampa de Fade SIMD no `apply_gain_rt`
+### T8 — Gate: Rampa de Fade SIMD no `apply_gain_rt` [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 1.5h · **Impacto:** Eliminar loop escalar no fade-in/out
 
@@ -166,6 +173,11 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 3. Resultado: zero `#[allow]` não documentados.
 
 **Arquivos:** `src/models/wavenet.rs`, `src/models/lstm.rs`.
+
+> **Nota da Auditoria Épico 1 (2026-05-02):** Supressões identificadas:
+>
+> - `wavenet.rs:10` — `#![allow(clippy::needless_range_loop)]` no nível de arquivo. Loops `for j in 0..CH` usam indexação de stride (`head_input[i * CH + j]`) — documentar justificativa inline.
+> - `wavenet.rs:393,615` — 2× `#[allow(clippy::too_many_arguments)]` em `process_block_internal` (8 params). Avaliar `ProcessContext` struct.
 
 ---
 
@@ -312,8 +324,8 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 | 🟡   | T15 | Bench      | Benchmark LSTM            | 1h         |
 | 🟡   | T16 | Testes     | Golden Vectors            | 2h         |
 | 🟢   | T4  | Inferência | Dense Overwrite           | 1h         |
-| 🟢   | T7  | Resampler  | Convolução AVX-512        | 2h         |
-| 🟢   | T8  | Gate       | Rampa SIMD                | 1.5h       |
+| ✅   | T7  | Resampler  | Convolução AVX-512        | 2h         |
+| ✅   | T8  | Gate       | Rampa SIMD                | 1.5h       |
 | 🟢   | T10 | Higiene    | colors.rs Avaliação       | 0.5h       |
 | 🟢   | T11 | Higiene    | Convenção Testes          | 1h         |
 | 🟢   | T13 | Docs       | dependencies.md           | 0.5h       |

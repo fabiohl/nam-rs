@@ -7,7 +7,7 @@ description: Painel de auditores, caçadores de bugs, cientistas, engenheiros s�
 
 ## When to use this skill
 
-Use para inspecionar, revisar e diagnosticar estrita aderência arquitetural, focando nos princípios cruciais de inferência via FMA (Fused Multiply-Add), PipeWire Assíncrono e detecção cirúrgica de violações computacionais e lock-free no buffer macro da thread principal (DSP) do projeto Standalone NAM-rs.
+Use para inspecionar, revisar e diagnosticar estrita aderência arquitetural e correta compatibilidade com a implementação de referência [Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore).
 Use também para revisar e auditar o projeto como todo em prol de correções de bugs, melhorias de segurança e performance.
 
 ## Instructions

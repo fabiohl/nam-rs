@@ -24,4 +24,5 @@ pub mod loader;
 pub mod math;
 pub mod models;
 pub mod pw_host;
+pub mod rt_setup;
 pub mod spsc;

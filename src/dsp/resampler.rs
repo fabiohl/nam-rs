@@ -158,14 +158,21 @@ impl ResamplerCore {
                 let x_l = self.state_l.window_ptr();
                 let x_r = self.state_r.window_ptr();
                 let taps = self.bank.taps_per_phase;
+                let is_avx512 = crate::math::simd::SimdMathConfig::get().is_avx512;
 
-                let y0_l = convolve_avx2(c0, x_l, taps);
-                let y1_l = convolve_avx2(c1, x_l, taps);
-                let y0_r = convolve_avx2(c0, x_r, taps);
-                let y1_r = convolve_avx2(c1, x_r, taps);
-
-                // Interpolação linear: y = y0 + frac * (y1 - y0)
-                (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
+                if is_avx512 {
+                    let y0_l = convolve_avx512(c0, x_l, taps);
+                    let y1_l = convolve_avx512(c1, x_l, taps);
+                    let y0_r = convolve_avx512(c0, x_r, taps);
+                    let y1_r = convolve_avx512(c1, x_r, taps);
+                    (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
+                } else {
+                    let y0_l = convolve_avx2(c0, x_l, taps);
+                    let y1_l = convolve_avx2(c1, x_l, taps);
+                    let y0_r = convolve_avx2(c0, x_r, taps);
+                    let y1_r = convolve_avx2(c1, x_r, taps);
+                    (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
+                }
             };
 
             out_l[out_idx] = y_l;
@@ -237,6 +244,59 @@ unsafe fn convolve_avx2(coeffs: *const f32, input: *const f32, taps: usize) -> f
         _mm_store_ss(&mut out, r);
 
         // Tail escalar (para taps não múltiplo de 8 — não deveria ocorrer com TAPS_PER_PHASE=32)
+        while i < taps {
+            out += *coeffs.add(i) * *input.add(i);
+            i += 1;
+        }
+
+        out
+    }
+}
+
+/// Inner product AVX-512 (ZMM) entre coeficientes alinhados e janela do delay line.
+///
+/// Processa `taps` amostras usando 2 acumuladores ZMM para maximizar o throughput
+/// do pipeline AVX-512 (32 floats/iteração).
+///
+/// # Safety
+/// - CPU deve suportar AVX-512F.
+/// - `coeffs` deve apontar para dados alinhados a 64 bytes (ou 32B se ZMM permitir)
+///   com pelo menos `taps` f32.
+/// - `input` deve apontar para pelo menos `taps` f32 contíguos.
+#[inline]
+#[target_feature(enable = "avx512f")]
+unsafe fn convolve_avx512(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+        let mut i = 0;
+
+        // Loop principal: 2×16 = 32 floats/iteração
+        while i + 32 <= taps {
+            let h0 = _mm512_loadu_ps(coeffs.add(i)); // Unaligned (coeffs are 32B aligned)
+            let x0 = _mm512_loadu_ps(input.add(i)); // Input não alinhado
+            sum0 = _mm512_fmadd_ps(h0, x0, sum0);
+
+            let h1 = _mm512_loadu_ps(coeffs.add(i + 16));
+            let x1 = _mm512_loadu_ps(input.add(i + 16));
+            sum1 = _mm512_fmadd_ps(h1, x1, sum1);
+
+            i += 32;
+        }
+
+        // Resto: 16-em-16
+        while i + 16 <= taps {
+            let h = _mm512_loadu_ps(coeffs.add(i));
+            let x = _mm512_loadu_ps(input.add(i));
+            sum0 = _mm512_fmadd_ps(h, x, sum0);
+            i += 16;
+        }
+
+        // Redução horizontal ZMM -> Escalar
+        let sum = _mm512_add_ps(sum0, sum1);
+        let mut out = _mm512_reduce_add_ps(sum);
+
+        // Tail escalar (para taps não múltiplo de 16)
         while i < taps {
             out += *coeffs.add(i) * *input.add(i);
             i += 1;

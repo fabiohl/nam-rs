@@ -886,6 +886,8 @@ pub struct SimdMathConfig {
     /// Conjunto de instruções SIMD detectado.
     /// Define a trait matemática exata no macro `dispatch_simd!`.
     pub instruction_set: SimdInstructionSet,
+    /// Cache do suporte a AVX-512 para despacho rápido fora do macro `dispatch_simd!`.
+    pub is_avx512: bool,
 }
 
 /// Conjuntos de instruções SIMD suportados e detectáveis na inicialização.
@@ -901,6 +903,14 @@ pub enum SimdInstructionSet {
     Avx512Vnni,
     /// AVX-512 com VNNI e BF16 (x86-64-v4 + BF16)
     Avx512VnniBf16,
+}
+
+impl SimdInstructionSet {
+    /// Retorna `true` se o conjunto de instruções suporta AVX-512 (Foundation).
+    #[inline(always)]
+    pub fn is_avx512(&self) -> bool {
+        matches!(self, Self::Avx512 | Self::Avx512Vnni | Self::Avx512VnniBf16)
+    }
 }
 
 /// V-Table SIMD global, inicializada uma única vez via `LazyLock`.
@@ -930,6 +940,7 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx512VnniBf16Math as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512VnniBf16Math as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx512VnniBf16,
+                is_avx512: true,
             };
         }
 
@@ -943,6 +954,7 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx512VnniMath as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512VnniMath as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx512Vnni,
+                is_avx512: true,
             };
         }
 
@@ -955,6 +967,7 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512Math as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx512,
+                is_avx512: true,
             };
         }
 
@@ -967,6 +980,7 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx2VnniMath as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx2VnniMath as SimdMath>::activation_tanh_block,
                 instruction_set: SimdInstructionSet::Avx2Vnni,
+                is_avx512: false,
             };
         }
 
@@ -978,6 +992,7 @@ impl SimdMathConfig {
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
             activation_tanh_block: <Avx2Math as SimdMath>::activation_tanh_block,
             instruction_set: SimdInstructionSet::Avx2,
+            is_avx512: false,
         }
     }
 
