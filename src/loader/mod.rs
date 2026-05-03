@@ -10,3 +10,4 @@
 pub mod dispatcher;
 pub mod nam_json;
 pub mod namb;
+pub mod namb_encoder;

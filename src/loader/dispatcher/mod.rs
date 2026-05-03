@@ -28,12 +28,18 @@ pub(crate) struct WeightCursor<'a> {
     data: &'a [f32],
     /// Posição corrente do cursor (avança a cada leitura).
     pos: usize,
+    /// Layout dos pesos informado no cabeçalho binário.
+    pub layout: crate::loader::nam_json::WeightsLayout,
 }
 
 impl<'a> WeightCursor<'a> {
-    /// Cria um novo cursor sobre a fatia de pesos.
-    fn new(data: &'a [f32]) -> Self {
-        Self { data, pos: 0 }
+    /// Cria um novo cursor sobre a fatia de pesos com layout especificado.
+    pub fn new(data: &'a [f32], layout: crate::loader::nam_json::WeightsLayout) -> Self {
+        Self {
+            data,
+            pos: 0,
+            layout,
+        }
     }
 
     /// Lê uma fatia contígua de `len` pesos, avançando o cursor.

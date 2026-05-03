@@ -57,6 +57,7 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
             hidden_size: Some(hidden_size),
         },
         weights: vec![0.01; total_weights],
+        weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
         sample_rate: Some(48000.0),
         metadata: None,
     }

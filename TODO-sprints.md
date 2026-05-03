@@ -197,7 +197,7 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 ---
 
-### T28 — Carregamento de Modelo: Formato `.namb` com Pesos Já Transpostos ⬜
+### T28 — Carregamento de Modelo: Formato `.namb` com Pesos Já Transpostos ✅
 
 **Racional Científico:** Atualmente, o `.namb` armazena os pesos no layout original do `.nam` (JSON). As transposições propostas em T18/T19 seriam executadas a cada carregamento. Evoluir o formato `.namb` para armazenar os pesos **já no layout otimizado para o kernel** eliminaria ~10-50 ms de CPU no cold-path de carregamento, tornando o hot-swap de modelos imperceptível.
 

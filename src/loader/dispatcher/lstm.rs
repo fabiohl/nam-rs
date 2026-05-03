@@ -63,7 +63,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     data: &NamModelData,
     hidden_size: usize,
 ) -> anyhow::Result<LstmModel1<H, H1_IH, H_H4>> {
-    let mut cursor = WeightCursor::new(&data.weights);
+    let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
     // Layer 1: input_size=1
     let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor)?;
@@ -104,7 +104,7 @@ pub(crate) fn build_lstm_2layer<
     num_layers: usize,
     hidden_size: usize,
 ) -> anyhow::Result<LstmModel2<H, H1_IH, H2_IH, H_H4>> {
-    let mut cursor = WeightCursor::new(&data.weights);
+    let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
     // Layer 1: input_size=1
     let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor)?;
@@ -151,7 +151,7 @@ pub fn build_lstm_dynamic(
     num_layers: usize,
     hidden_size: usize,
 ) -> anyhow::Result<Box<DynamicModel>> {
-    let mut cursor = WeightCursor::new(&data.weights);
+    let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
     let mut layers = Vec::with_capacity(num_layers);
 
     let mut current_input_size = 1; // O primeiro sinal que entra tem tamanho 1 (um único valor de áudio)
@@ -168,22 +168,29 @@ pub fn build_lstm_dynamic(
         let ih = current_input_size + hidden_size;
         let mut input_hidden_weights = vec![0u16; raw_weights.len()];
 
-        // Aqui fazemos uma "mágica" técnica: os pesos vêm organizados em blocos grandes,
-        // mas para o computador processar rápido (4 de uma vez), nós os reorganizamos
-        // intercalando-os (Input, Forget, Cell, Output). É como separar cartas de 4 baralhos
-        // diferentes e montá-los em uma sequência 1,2,3,4, 1,2,3,4...
-
-        for k in 0..4 {
-            let gate_offset = k * hidden_size * ih;
-            for i in 0..hidden_size {
-                for j in 0..ih {
-                    let v = raw_weights[k * hidden_size * ih + i * ih + j];
-                    let weight = if is_bf16 {
-                        f32_to_bf16(v)
-                    } else {
-                        half::f16::from_f32(v).to_bits()
-                    };
-                    input_hidden_weights[gate_offset + j * hidden_size + i] = weight;
+        if data.weights_layout == crate::loader::nam_json::WeightsLayout::GateMajorLstm {
+            // Layout já otimizado: [Gate][IH][H] — Cópia direta
+            for i in 0..raw_weights.len() {
+                input_hidden_weights[i] = if is_bf16 {
+                    f32_to_bf16(raw_weights[i])
+                } else {
+                    half::f16::from_f32(raw_weights[i]).to_bits()
+                };
+            }
+        } else {
+            // Layout original (Transposição necessária)
+            for k in 0..4 {
+                let gate_offset = k * hidden_size * ih;
+                for i in 0..hidden_size {
+                    for j in 0..ih {
+                        let v = raw_weights[k * hidden_size * ih + i * ih + j];
+                        let weight = if is_bf16 {
+                            f32_to_bf16(v)
+                        } else {
+                            half::f16::from_f32(v).to_bits()
+                        };
+                        input_hidden_weights[gate_offset + j * hidden_size + i] = weight;
+                    }
                 }
             }
         }
@@ -262,17 +269,30 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
 ) -> anyhow::Result<LstmLayer<I, H, IH, H4>> {
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
-    // Reorganização de Pesos:
-    // Uma rede LSTM tem 4 "portas" (Input, Forget, Cell, Output).
-    // Para que o processamento de áudio seja ultrarrápido, nós misturamos os pesos
-    // dessas 4 portas em uma sequência intercalada. Isso permite que o processador
-    // faça as 4 contas de uma vez só (usando uma técnica chamada SIMD).
     let raw_weights = cursor.read_slice(H4 * IH)?;
-    for k in 0..4 {
-        for i in 0..H {
+    if cursor.layout == crate::loader::nam_json::WeightsLayout::GateMajorLstm {
+        // Layout já otimizado: [Gate][IH][H] — Cópia direta
+        for k in 0..4 {
             for j in 0..IH {
-                let w = raw_weights[k * IH * H + i * IH + j];
-                layer.input_hidden_weights[k][j][i] = half::f16::from_f32(w).to_bits();
+                for i in 0..H {
+                    let idx = k * IH * H + j * H + i;
+                    layer.input_hidden_weights[k][j][i] =
+                        half::f16::from_f32(raw_weights[idx]).to_bits();
+                }
+            }
+        }
+    } else {
+        // Reorganização de Pesos:
+        // Uma rede LSTM tem 4 "portas" (Input, Forget, Cell, Output).
+        // Para que o processamento de áudio seja ultrarrápido, nós misturamos os pesos
+        // dessas 4 portas em uma sequência intercalada. Isso permite que o processador
+        // faça as 4 contas de uma vez só (usando uma técnica chamada SIMD).
+        for k in 0..4 {
+            for i in 0..H {
+                for j in 0..IH {
+                    let w = raw_weights[k * IH * H + i * IH + j];
+                    layer.input_hidden_weights[k][j][i] = half::f16::from_f32(w).to_bits();
+                }
             }
         }
     }

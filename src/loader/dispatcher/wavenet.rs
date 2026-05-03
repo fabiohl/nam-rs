@@ -79,7 +79,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
     // Valida ativações antes de qualquer leitura de pesos
     validate_layer_activations(data)?;
 
-    let mut cursor = WeightCursor::new(&data.weights);
+    let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
     // Extrair dilatações de cada array a partir da configuração JSON
     let l0 = &data.config.layers[0];
@@ -251,7 +251,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
     // Valida ativações antes de qualquer leitura de pesos
     validate_layer_activations(data)?;
 
-    let mut cursor = WeightCursor::new(&data.weights);
+    let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
 
     let l0 = &data.config.layers[0];
     let l1 = &data.config.layers[1];
@@ -339,40 +339,51 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
 
     let mut weights = vec![0u16; total];
 
-    // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
-    // Otimiza o carregamento de 4 pesos simultâneos via SIMD.
-    let num_blocks = OUT / 4;
-    for b in 0..num_blocks {
-        for k in 0..K {
+    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+        // Layout já otimizado (Intercalado 4-Wide) — Cópia direta
+        for i in 0..total {
+            weights[i] = if is_bf16 {
+                f32_to_bf16(raw[i])
+            } else {
+                half::f16::from_f32(raw[i]).to_bits()
+            };
+        }
+    } else {
+        // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
+        // Otimiza o carregamento de 4 pesos simultâneos via SIMD.
+        let num_blocks = OUT / 4;
+        for b in 0..num_blocks {
+            for k in 0..K {
+                for in_c in 0..IN {
+                    for lane in 0..4 {
+                        let out_c = b * 4 + lane;
+                        let raw_idx = (out_c * IN + in_c) * K + k;
+                        let val = if is_bf16 {
+                            f32_to_bf16(raw[raw_idx])
+                        } else {
+                            half::f16::from_f32(raw[raw_idx]).to_bits()
+                        };
+                        let target_idx = b * (K * IN * 4) + k * (IN * 4) + in_c * 4 + lane;
+                        weights[target_idx] = val;
+                    }
+                }
+            }
+        }
+
+        // Canais de cauda (Remainder) se OUT não for múltiplo de 4
+        let tail_start_ch = num_blocks * 4;
+        for out_c in tail_start_ch..OUT {
             for in_c in 0..IN {
-                for lane in 0..4 {
-                    let out_c = b * 4 + lane;
+                for k in 0..K {
                     let raw_idx = (out_c * IN + in_c) * K + k;
                     let val = if is_bf16 {
                         f32_to_bf16(raw[raw_idx])
                     } else {
                         half::f16::from_f32(raw[raw_idx]).to_bits()
                     };
-                    let target_idx = b * (K * IN * 4) + k * (IN * 4) + in_c * 4 + lane;
+                    let target_idx = out_c * K * IN + k * IN + in_c;
                     weights[target_idx] = val;
                 }
-            }
-        }
-    }
-
-    // Canais de cauda (Remainder) se OUT não for múltiplo de 4
-    let tail_start_ch = num_blocks * 4;
-    for out_c in tail_start_ch..OUT {
-        for in_c in 0..IN {
-            for k in 0..K {
-                let raw_idx = (out_c * IN + in_c) * K + k;
-                let val = if is_bf16 {
-                    f32_to_bf16(raw[raw_idx])
-                } else {
-                    half::f16::from_f32(raw[raw_idx]).to_bits()
-                };
-                let target_idx = out_c * K * IN + k * IN + in_c;
-                weights[target_idx] = val;
             }
         }
     }
@@ -405,15 +416,26 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
-    for out_c in 0..OUT {
-        for in_c in 0..IN {
-            let raw_val = raw_weights[out_c * IN + in_c];
-            let val = if is_bf16 {
-                f32_to_bf16(raw_val)
+    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+        // Para DenseLayer, Interleaved4WaveNet também implica layout já transposto [IN][OUT]
+        for i in 0..(OUT * IN) {
+            weights[i] = if is_bf16 {
+                f32_to_bf16(raw_weights[i])
             } else {
-                half::f16::from_f32(raw_val).to_bits()
+                half::f16::from_f32(raw_weights[i]).to_bits()
             };
-            weights[in_c * OUT + out_c] = val;
+        }
+    } else {
+        for out_c in 0..OUT {
+            for in_c in 0..IN {
+                let raw_val = raw_weights[out_c * IN + in_c];
+                let val = if is_bf16 {
+                    f32_to_bf16(raw_val)
+                } else {
+                    half::f16::from_f32(raw_val).to_bits()
+                };
+                weights[in_c * OUT + out_c] = val;
+            }
         }
     }
 
@@ -444,40 +466,50 @@ fn read_conv1d_weights_dyn(
 
     let mut weights = vec![0u16; total];
 
-    // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
-    let num_blocks = out_size / 4;
-    for b in 0..num_blocks {
-        for k in 0..k_size {
+    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+        for i in 0..total {
+            weights[i] = if is_bf16 {
+                f32_to_bf16(raw[i])
+            } else {
+                half::f16::from_f32(raw[i]).to_bits()
+            };
+        }
+    } else {
+        // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
+        let num_blocks = out_size / 4;
+        for b in 0..num_blocks {
+            for k in 0..k_size {
+                for in_c in 0..in_size {
+                    for lane in 0..4 {
+                        let out_c = b * 4 + lane;
+                        let raw_idx = (out_c * in_size + in_c) * k_size + k;
+                        let val = if is_bf16 {
+                            f32_to_bf16(raw[raw_idx])
+                        } else {
+                            half::f16::from_f32(raw[raw_idx]).to_bits()
+                        };
+                        let target_idx =
+                            b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane;
+                        weights[target_idx] = val;
+                    }
+                }
+            }
+        }
+
+        // Canais de cauda (Remainder)
+        let tail_start_ch = num_blocks * 4;
+        for out_c in tail_start_ch..out_size {
             for in_c in 0..in_size {
-                for lane in 0..4 {
-                    let out_c = b * 4 + lane;
+                for k in 0..k_size {
                     let raw_idx = (out_c * in_size + in_c) * k_size + k;
                     let val = if is_bf16 {
                         f32_to_bf16(raw[raw_idx])
                     } else {
                         half::f16::from_f32(raw[raw_idx]).to_bits()
                     };
-                    let target_idx =
-                        b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane;
+                    let target_idx = out_c * k_size * in_size + k * in_size + in_c;
                     weights[target_idx] = val;
                 }
-            }
-        }
-    }
-
-    // Canais de cauda (Remainder)
-    let tail_start_ch = num_blocks * 4;
-    for out_c in tail_start_ch..out_size {
-        for in_c in 0..in_size {
-            for k in 0..k_size {
-                let raw_idx = (out_c * in_size + in_c) * k_size + k;
-                let val = if is_bf16 {
-                    f32_to_bf16(raw[raw_idx])
-                } else {
-                    half::f16::from_f32(raw[raw_idx]).to_bits()
-                };
-                let target_idx = out_c * k_size * in_size + k * in_size + in_c;
-                weights[target_idx] = val;
             }
         }
     }
@@ -510,15 +542,25 @@ fn read_dense_layer_dyn(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
-    for out_c in 0..out_size {
-        for in_c in 0..in_size {
-            let raw_val = raw_weights[out_c * in_size + in_c];
-            let val = if is_bf16 {
-                f32_to_bf16(raw_val)
+    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+        for i in 0..(out_size * in_size) {
+            weights[i] = if is_bf16 {
+                f32_to_bf16(raw_weights[i])
             } else {
-                half::f16::from_f32(raw_val).to_bits()
+                half::f16::from_f32(raw_weights[i]).to_bits()
             };
-            weights[in_c * out_size + out_c] = val;
+        }
+    } else {
+        for out_c in 0..out_size {
+            for in_c in 0..in_size {
+                let raw_val = raw_weights[out_c * in_size + in_c];
+                let val = if is_bf16 {
+                    f32_to_bf16(raw_val)
+                } else {
+                    half::f16::from_f32(raw_val).to_bits()
+                };
+                weights[in_c * out_size + out_c] = val;
+            }
         }
     }
 

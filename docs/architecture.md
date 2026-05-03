@@ -80,7 +80,17 @@ PipeWire Input (Nk Hz)
 - **Fuzz Testing (`proptest`):** ~45.000 inputs adversários para garantir robustez absoluta dos parsers contra dados malformados.
 - **Golden Vectors:** Comparação bit-a-bit ou MSE contra referências C++ (NeuralAudio/NAMCore).
 
-## 7. Referências
+## 8. Formato Binário NAMB (Native Audio Model Binary)
+
+O formato `.namb` é uma evolução otimizada do JSON original para uso em tempo-real.
+
+- **NAMB v1:** Encapsula o JSON de metadados e os pesos em `f32` (Little-Endian) em um único bloco binário com CRC32.
+- **NAMB v2 (Pre-Transposed):** Armazena os pesos diretamente no layout final do kernel (Gate-Major para LSTM ou Interleaved-4 para WaveNet).
+  - Elimina a necessidade de transposição de memória durante o carregamento.
+  - Reduz latência de swap de modelo de ~50ms para <1ms (cold-path de carregamento).
+  - Identificado por flag no header `NambHeader::layout_type`.
+
+## 9. Referências
 
 Os seguintes repositórios GitHub são a principal base de referência para a implementação do NAM-rs:
 

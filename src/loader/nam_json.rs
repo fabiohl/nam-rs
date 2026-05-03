@@ -5,10 +5,10 @@
 //!
 //! Realiza o carregamento dos tensores e metadados fora do caminho RT.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Estrutura de data usada na seção metadata do `.nam`.
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct NamDate {
     /// Ano.
     pub year: Option<i32>,
@@ -26,7 +26,7 @@ pub struct NamDate {
 
 /// Metadados opcionais contidos no fim do formato `.nam`.
 /// Fonte: https://neural-amp-modeler.readthedocs.io/en/latest/model-file.html
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamMetadata {
     /// Data de autoria ou exportação do modelo.
     pub date: Option<NamDate>,
@@ -53,30 +53,43 @@ pub struct NamMetadata {
 }
 
 /// A configuração estrutural de uma única camada (layer) da rede (seja WaveNet ou LSTM).
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamLayerConfig {
-    /// O tamanho da entrada.
+    /// Opcional: Tamanho do tensor de entrada.
     pub input_size: Option<usize>,
-    /// Tamanho do condicionamento extra.
+    /// Opcional: Tamanho do tensor de condicionamento (ex: parâmetros externos).
     pub condition_size: Option<usize>,
-    /// O tamanho da dimensão de projeção de saída ("head" local).
+    /// Opcional: Tamanho do tensor de saída (head size).
     pub head_size: Option<usize>,
-    /// A quantidade de canais convolutivos.
+    /// Opcional: Quantidade de canais internos (ex: 16 ou 24).
     pub channels: Option<usize>,
-    /// Tamanho do kernel.
+    /// Opcional: Tamanho do kernel convolucional.
     pub kernel_size: Option<usize>,
-    /// Lista de dilatações causais desta camada.
+    /// Opcional: Array de fatores de dilatação.
     pub dilations: Option<Vec<usize>>,
-    /// Função de ativação (ex: "Tanh").
+    /// Opcional: Função de ativação (ex: "Tanh").
     pub activation: Option<String>,
-    /// Se possui `gates` internamente.
+    /// Opcional: Se a arquitetura usa portas (gating).
     pub gated: Option<bool>,
-    /// Se há bias acoplado à projeção dessa camada.
+    /// Opcional: Se a cabeça de processamento possui bias.
     pub head_bias: Option<bool>,
 }
 
+/// Opções de layout de pesos suportadas no formato `.namb`.
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum WeightsLayout {
+    /// Layout original (NAM padrão): [Gate][H][IH] para LSTM, [OUT][IN][K] para Conv1D.
+    #[default]
+    Original = 0,
+    /// Layout otimizado para LSTM: [Gate][IH][H].
+    GateMajorLstm = 1,
+    /// Layout otimizado para WaveNet: Intercalado 4-Wide ([OUT/4][K][IN][4]).
+    Interleaved4WaveNet = 2,
+}
+
 /// A configuração interna do nó da arquitetura no JSON.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamConfig {
     /// Lista das configurações das camadas empilhadas (presente em WaveNet, ausente em LSTM).
     #[serde(default)]
@@ -92,7 +105,7 @@ pub struct NamConfig {
 }
 
 /// Estrutura raiz de mapeamento dos arquivos `.nam`.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamModelData {
     /// Versão no cabeçalho do JSON (ex: "0.5.4")
     pub version: Option<String>,
@@ -106,6 +119,9 @@ pub struct NamModelData {
     pub sample_rate: Option<f32>,
     /// Propriedades físico-acústicas extras associadas.
     pub metadata: Option<NamMetadata>,
+    /// Layout dos pesos (usado apenas no formato binário .namb v2+).
+    #[serde(skip)]
+    pub weights_layout: WeightsLayout,
 }
 
 /// As Topologias fechadas e suportadas dentro da modelagem WaveNet nativa.
