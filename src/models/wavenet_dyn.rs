@@ -8,7 +8,7 @@
 //! (durante construtor) permitindo zero-allocation e RT-safety no caminho DSP, trocando
 //! unroll do compilador (estático) por iterações dinâmicas de matriz em SIMD.
 
-#![allow(clippy::needless_range_loop)]
+//! Malha CNN Causal Dinâmica para inferência WaveNet (Fallback).
 
 use crate::models::wavenet::WaveNetLayerState;
 
@@ -436,6 +436,24 @@ pub struct WaveNetLayerDyn {
     pub gated: bool,
 }
 
+/// Contexto de processamento para WaveNet dinâmico.
+pub struct WavenetDynProcessContext<'a> {
+    /// Buffer de condicionamento.
+    pub condition: &'a [f32],
+    /// Acumulador para a cabeça de saída.
+    pub head_input: &'a mut [f32],
+    /// Buffer de saída da camada.
+    pub output: &'a mut [f32],
+    /// Buffer circular de histórico.
+    pub layer_buffer: &'a [f32],
+    /// Índice inicial no buffer circular.
+    pub buffer_start: usize,
+    /// Buffer temporário de bloco (reutilizado).
+    pub block: &'a mut [f32],
+    /// Número de frames a processar.
+    pub num_frames: usize,
+}
+
 impl WaveNetLayerDyn {
     /// MOTOR DE PASSAGEM DA CAMADA (Fluxo WaveNet):
     /// Aqui as equações de uma camada WaveNet são executadas sequencialmente.
@@ -444,17 +462,19 @@ impl WaveNetLayerDyn {
     /// # Safety
     /// Requer instâncias estritas do buffer interno e `block` com tamanho
     /// `ch` (não-gated) ou `2*ch` (gated).
-    #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_block_internal<M: crate::math::simd::SimdMath>(
         &self,
-        condition: &[f32],
-        head_input: &mut [f32],
-        output: &mut [f32],
-        layer_buffer: &[f32],
-        buffer_start: usize,
-        block: &mut [f32],
-        num_frames: usize,
+        ctx: WavenetDynProcessContext<'_>,
     ) {
+        let WavenetDynProcessContext {
+            condition,
+            head_input,
+            output,
+            layer_buffer,
+            buffer_start,
+            block,
+            num_frames,
+        } = ctx;
         let ch = self.ch;
 
         // LIMPEZA DE ESTADO:
@@ -508,6 +528,7 @@ impl WaveNetLayerDyn {
             // 3) SKIP CONNECTION (Saída para a Cabeça):
             // O resultado processado (z1) é somado ao `head_input`.
             // Todas as camadas contribuem para este somatório global que gera o áudio final.
+            #[allow(clippy::needless_range_loop)]
             for i in 0..num_frames {
                 let head_frame = &mut head_input[i * ch..i * ch + ch];
                 let block_frame = &block[i * (if self.gated { 2 * ch } else { ch })
@@ -625,15 +646,15 @@ impl WaveNetLayerArrayDyn {
 
                 if i == last_layer {
                     // ÚLTIMA CAMADA: O output residual final vai para `array_outputs`.
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
-                        &mut self.head_accum[0..num_frames * ch],
-                        &mut self.array_outputs[0..num_frames * ch],
-                        &current_state.layer_buffer,
-                        current_state.buffer_start,
-                        &mut self.block_buffer[0..num_frames * block_size],
+                        head_input: &mut self.head_accum[0..num_frames * ch],
+                        output: &mut self.array_outputs[0..num_frames * ch],
+                        layer_buffer: &current_state.layer_buffer,
+                        buffer_start: current_state.buffer_start,
+                        block: &mut self.block_buffer[0..num_frames * block_size],
                         num_frames,
-                    );
+                    });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
@@ -641,15 +662,16 @@ impl WaveNetLayerArrayDyn {
                     // CONEXÃO ENTRE CAMADAS:
                     // A saída residual da camada 'i' é injetada DIRETAMENTE no buffer da camada 'i+1'.
                     // Isso economiza cópias de memória e mantém os dados quentes no cache.
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
-                        &mut self.head_accum[0..num_frames * ch],
-                        &mut next_state.layer_buffer[next_start..next_start + num_frames * ch],
-                        &current_state.layer_buffer,
-                        current_state.buffer_start,
-                        &mut self.block_buffer[0..num_frames * block_size],
+                        head_input: &mut self.head_accum[0..num_frames * ch],
+                        output: &mut next_state.layer_buffer
+                            [next_start..next_start + num_frames * ch],
+                        layer_buffer: &current_state.layer_buffer,
+                        buffer_start: current_state.buffer_start,
+                        block: &mut self.block_buffer[0..num_frames * block_size],
                         num_frames,
-                    );
+                    });
                 }
 
                 // 4) ATUALIZAÇÃO DOS PONTEIROS CIRCULARES:
@@ -716,28 +738,28 @@ impl WaveNetLayerArrayDyn {
                 current_state.copy_buffer(ch);
 
                 if i == last_layer {
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
-                        &mut self.head_accum[0..ch],
-                        &mut self.array_outputs[0..ch],
-                        &current_state.layer_buffer,
-                        current_state.buffer_start,
-                        &mut self.block_buffer[0..block_size],
-                        1,
-                    );
+                        head_input: &mut self.head_accum[0..ch],
+                        output: &mut self.array_outputs[0..ch],
+                        layer_buffer: &current_state.layer_buffer,
+                        buffer_start: current_state.buffer_start,
+                        block: &mut self.block_buffer[0..block_size],
+                        num_frames: 1,
+                    });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
 
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
-                        &mut self.head_accum[0..ch],
-                        &mut next_state.layer_buffer[next_start..next_start + ch],
-                        &current_state.layer_buffer,
-                        current_state.buffer_start,
-                        &mut self.block_buffer[0..block_size],
-                        1,
-                    );
+                        head_input: &mut self.head_accum[0..ch],
+                        output: &mut next_state.layer_buffer[next_start..next_start + ch],
+                        layer_buffer: &current_state.layer_buffer,
+                        buffer_start: current_state.buffer_start,
+                        block: &mut self.block_buffer[0..block_size],
+                        num_frames: 1,
+                    });
                 }
             }
 
@@ -810,6 +832,7 @@ impl WaveNetDynModel {
             // Mixagem Final (Master Blend):
             // Combina a predição condensada de head do Array1 com o Head do Array2,
             // e os redimensiona/escala para o intervalo de áudio -1.0 a +1.0.
+            #[allow(clippy::needless_range_loop)]
             for i in 0..num_frames {
                 let mut final_sum = 0.0f32;
                 for j in 0..self.head {

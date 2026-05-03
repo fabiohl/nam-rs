@@ -100,20 +100,20 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
     // Imagine cada Array como um rack de efeitos complexo.
 
     // Array 1: O primeiro estágio de processamento.
-    let array1 = build_wavenet_array::<1, 1, CH, K, HEAD>(
-        &mut cursor,
-        dils_0,
-        false, // HasHeadBias da array1 (C++: false)
-        &mut alloc_num,
-    )?;
+    let array1 = build_wavenet_array::<1, 1, CH, K, HEAD>(WaveNetArrayConfig {
+        cursor: &mut cursor,
+        dilations: dils_0,
+        has_head_bias: false, // HasHeadBias da array1 (C++: false)
+        alloc_num: &mut alloc_num,
+    })?;
 
     // Array 2: O segundo estágio, que recebe o que o primeiro processou.
-    let array2 = build_wavenet_array::<CH, 1, HEAD, K, 1>(
-        &mut cursor,
-        dils_1,
-        true, // HasHeadBias da array2 (C++: true)
-        &mut alloc_num,
-    )?;
+    let array2 = build_wavenet_array::<CH, 1, HEAD, K, 1>(WaveNetArrayConfig {
+        cursor: &mut cursor,
+        dilations: dils_1,
+        has_head_bias: true, // HasHeadBias da array2 (C++: true)
+        alloc_num: &mut alloc_num,
+    })?;
 
     // O 'head_scale' é o botão de volume final do modelo inteiro.
     let head_scale = cursor.read_f32()?;
@@ -154,6 +154,14 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
 ///     one_by_one.weights[CH*CH] + one_by_one.bias[CH]    (DoBias=true)
 /// head_rechannel.weights[CH*HEAD] + head_rechannel.bias[HEAD]? (HasHeadBias)
 /// ```
+/// Configurações para construção de um WaveNetLayerArray estático.
+pub(crate) struct WaveNetArrayConfig<'a, 'b, 'c> {
+    pub cursor: &'a mut WeightCursor<'b>,
+    pub dilations: &'c [usize],
+    pub has_head_bias: bool,
+    pub alloc_num: &'a mut usize,
+}
+
 pub(crate) fn build_wavenet_array<
     const IN: usize,
     const COND: usize,
@@ -161,11 +169,15 @@ pub(crate) fn build_wavenet_array<
     const K: usize,
     const HEAD: usize,
 >(
-    cursor: &mut WeightCursor<'_>,
-    dilations: &[usize],
-    has_head_bias: bool,
-    alloc_num: &mut usize,
+    config: WaveNetArrayConfig<'_, '_, '_>,
 ) -> anyhow::Result<WaveNetLayerArray<IN, COND, CH, K, HEAD>> {
+    let WaveNetArrayConfig {
+        cursor,
+        dilations,
+        has_head_bias,
+        alloc_num,
+    } = config;
+
     // 1. Rechannel: Aqui transformamos o sinal de entrada (1 fio) em vários
     // canais internos (ex: 16 fios) para que a rede tenha mais "espaço" para pensar.
     let rechannel = read_dense_layer::<IN, CH>(cursor, false)?;
@@ -251,32 +263,32 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
     // É como montar um rack de efeitos onde os módulos podem ter qualquer tamanho.
 
     // Primeiro bloco de processamento.
-    let array1 = build_wavenet_array_dyn(
-        &mut cursor,
-        1,
-        1,
-        ch1,
-        k1,
-        head1,
-        dils_0,
-        b1,
-        l0.gated.unwrap_or(false),
-        &mut alloc_num,
-    )?;
+    let array1 = build_wavenet_array_dyn(WaveNetArrayDynConfig {
+        cursor: &mut cursor,
+        in_size: 1,
+        cond_size: 1,
+        ch: ch1,
+        k: k1,
+        head: head1,
+        dilations: dils_0,
+        has_head_bias: b1,
+        gated: l0.gated.unwrap_or(false),
+        alloc_num: &mut alloc_num,
+    })?;
 
     // Segundo bloco, que recebe o sinal já "expandido" pelo primeiro.
-    let array2 = build_wavenet_array_dyn(
-        &mut cursor,
-        ch1,
-        1,
-        head1,
-        k1,
-        1, // HEAD2 sempre 1 para mono out
-        dils_1,
-        b2,
-        l1.gated.unwrap_or(false),
-        &mut alloc_num,
-    )?;
+    let array2 = build_wavenet_array_dyn(WaveNetArrayDynConfig {
+        cursor: &mut cursor,
+        in_size: ch1,
+        cond_size: 1,
+        ch: head1,
+        k: k1,
+        head: 1, // HEAD2 sempre 1 para mono out
+        dilations: dils_1,
+        has_head_bias: b2,
+        gated: l1.gated.unwrap_or(false),
+        alloc_num: &mut alloc_num,
+    })?;
 
     // Volume final do modelo.
     let head_scale = cursor.read_f32()?;
@@ -467,19 +479,36 @@ fn read_dense_layer_dyn(
     })
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Configurações para construção de um WaveNetLayerArrayDyn.
+pub(crate) struct WaveNetArrayDynConfig<'a, 'b, 'c> {
+    pub cursor: &'a mut WeightCursor<'b>,
+    pub in_size: usize,
+    pub cond_size: usize,
+    pub ch: usize,
+    pub k: usize,
+    pub head: usize,
+    pub dilations: &'c [usize],
+    pub has_head_bias: bool,
+    pub gated: bool,
+    pub alloc_num: &'a mut usize,
+}
+
 pub(crate) fn build_wavenet_array_dyn(
-    cursor: &mut WeightCursor<'_>,
-    in_size: usize,
-    cond_size: usize,
-    ch: usize,
-    k: usize,
-    head: usize,
-    dilations: &[usize],
-    has_head_bias: bool,
-    gated: bool,
-    alloc_num: &mut usize,
+    config: WaveNetArrayDynConfig<'_, '_, '_>,
 ) -> anyhow::Result<WaveNetLayerArrayDyn> {
+    let WaveNetArrayDynConfig {
+        cursor,
+        in_size,
+        cond_size,
+        ch,
+        k,
+        head,
+        dilations,
+        has_head_bias,
+        gated,
+        alloc_num,
+    } = config;
+
     // Se a rede for "gated" (com comportas), ela precisa de duas vezes mais espaço
     // de saída para calcular as funções Tanh e Sigmoid simultaneamente.
     let conv_out_ch = if gated { 2 * ch } else { ch };

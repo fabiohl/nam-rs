@@ -7,7 +7,7 @@
 //! garantindo uma política de instanciamento estrito (Zero-Allocation durante processamento).
 //! As loops dinâmicos resolvem cálculos em sequências FMA determinísticas via AVX2.
 
-#![allow(clippy::needless_range_loop)]
+//! Módulo de Inferência WaveNet (Arquitetura Causal Dilatada).
 
 use crate::math::simd::SimdMath;
 
@@ -384,23 +384,41 @@ pub struct WaveNetLayer<const COND: usize, const CH: usize, const K: usize> {
     pub one_by_one: DenseLayer<CH, CH>,
 }
 
+/// Contexto de processamento para otimizar a passagem de parâmetros no hot-path da WaveNet.
+pub struct WavenetProcessContext<'a> {
+    /// Buffer de condicionamento (sidechain).
+    pub condition: &'a [f32],
+    /// Acumulador para a cabeça de saída.
+    pub head_input: &'a mut [f32],
+    /// Buffer de saída da camada.
+    pub output: &'a mut [f32],
+    /// Buffer circular (fita de retardo) em F32.
+    pub layer_buffer: &'a [f32],
+    /// Buffer circular (fita de retardo) em BF16.
+    pub layer_buffer_bf16: &'a [u16],
+    /// Índice inicial no buffer circular.
+    pub buffer_start: usize,
+    /// Número de frames a processar.
+    pub num_frames: usize,
+}
+
 impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, K> {
     /// Processa uma camada integral do WaveNet, iterando `FastMath` em AVX2.
     ///
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
-    pub unsafe fn process_block_internal<M: SimdMath>(
-        &self,
-        condition: &[f32],
-        head_input: &mut [f32],
-        output: &mut [f32],
-        layer_buffer: &[f32],
-        layer_buffer_bf16: &[u16],
-        buffer_start: usize,
-        num_frames: usize,
-    ) {
+    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
+        let WavenetProcessContext {
+            condition,
+            head_input,
+            output,
+            layer_buffer,
+            layer_buffer_bf16,
+            buffer_start,
+            num_frames,
+        } = ctx;
+
         unsafe {
             // Buffer transiente em stack para condicionamento em BF16 se necessário.
             let mut cond_bf16 = [0u16; COND];
@@ -448,6 +466,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 }
 
                 // Aplica Mixin (já calculado em bloco para eficiência)
+                #[allow(clippy::needless_range_loop)]
                 for j in 0..CH {
                     temp[j] += mixin_out[i * CH + j];
                 }
@@ -458,6 +477,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 
                 // [PASSO 4: Head Update (Skip-Connection)]
                 // Todas as camadas contribuem para o somatório global da cabeça.
+                #[allow(clippy::needless_range_loop)]
                 for j in 0..CH {
                     head_input[i * CH + j] += temp[j];
                 }
@@ -612,7 +632,6 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     /// # Safety
     /// Ponteiros de states iteram internamente sem bounds checks.
     #[inline(always)]
-    #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_block_internal<M: SimdMath>(
         &mut self,
         layer_inputs: &[f32],
@@ -652,28 +671,29 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        &mut self.head_accum[0..num_frames * CH],
-                        &mut self.array_outputs[0..num_frames * CH],
-                        &current_state.layer_buffer,
-                        &current_state.layer_buffer_bf16,
-                        current_state.buffer_start,
+                        head_input: &mut self.head_accum[0..num_frames * CH],
+                        output: &mut self.array_outputs[0..num_frames * CH],
+                        layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                        buffer_start: current_state.buffer_start,
                         num_frames,
-                    );
+                    });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        &mut self.head_accum[0..num_frames * CH],
-                        &mut next_state.layer_buffer[next_start..next_start + num_frames * CH],
-                        &current_state.layer_buffer,
-                        &current_state.layer_buffer_bf16,
-                        current_state.buffer_start,
+                        head_input: &mut self.head_accum[0..num_frames * CH],
+                        output: &mut next_state.layer_buffer
+                            [next_start..next_start + num_frames * CH],
+                        layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                        buffer_start: current_state.buffer_start,
                         num_frames,
-                    );
+                    });
 
                     if M::IS_BF16 {
                         M::f32_to_bf16(
@@ -760,28 +780,28 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 // pela rede. Embora a entrada seja silêncio, camadas possuem matrizes de Bias que
                 // agregam valor real, ou seja, o "silêncio" de saída da rede *não* é exatamente zero.
                 if i == last_layer {
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        &mut self.head_accum[0..CH],
-                        &mut self.array_outputs[0..CH],
-                        &current_state.layer_buffer,
-                        &current_state.layer_buffer_bf16,
-                        current_state.buffer_start,
-                        1,
-                    );
+                        head_input: &mut self.head_accum[0..CH],
+                        output: &mut self.array_outputs[0..CH],
+                        layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                        buffer_start: current_state.buffer_start,
+                        num_frames: 1,
+                    });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
-                    layer.process_block_internal::<M>(
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
-                        &mut self.head_accum[0..CH],
-                        &mut next_state.layer_buffer[next_start..next_start + CH],
-                        &current_state.layer_buffer,
-                        &current_state.layer_buffer_bf16,
-                        current_state.buffer_start,
-                        1,
-                    );
+                        head_input: &mut self.head_accum[0..CH],
+                        output: &mut next_state.layer_buffer[next_start..next_start + CH],
+                        layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                        buffer_start: current_state.buffer_start,
+                        num_frames: 1,
+                    });
 
                     if M::IS_BF16 {
                         M::f32_to_bf16(

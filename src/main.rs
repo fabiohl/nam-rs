@@ -431,9 +431,11 @@ fn main() -> anyhow::Result<()> {
         resampler_consumer,
         resampler_producer,
         rt_status,
-        sys,
-        buffer_size,
-        tsc_anchor,
+        pw_host::PipewireHostConfig {
+            buffer_size,
+            tsc_anchor,
+            sys,
+        },
     )?;
 
     // Finaliza a sessão do PipeWire e libera os recursos antes de sair.

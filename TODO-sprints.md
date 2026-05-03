@@ -160,7 +160,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ## Épico 3: Organização de Código & Higiene
 
-### T9 — Limpeza de `#[allow(clippy::...)]` Residuais
+### T9 — Limpeza de `#[allow(clippy::...)]` Residuais [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 1h · **Impacto:** Conformidade com linting
 
@@ -319,7 +319,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 | 🟡   | T2  | Inferência | Head Sum SIMD Genérica    | 1.5h       |
 | 🟡   | T3  | Inferência | LSTM Fused Gates          | 3h         |
 | 🟡   | T5  | Inferência | BF16 Nativo AVX-512       | 4h         |
-| 🟡   | T9  | Higiene    | Limpeza Clippy Allows     | 1h         |
+| ✅   | T9  | Higiene    | Limpeza Clippy Allows     | 1h         |
 | 🟡   | T12 | Docs       | architecture.md Poda      | 2h         |
 | 🟡   | T15 | Bench      | Benchmark LSTM            | 1h         |
 | 🟡   | T16 | Testes     | Golden Vectors            | 2h         |

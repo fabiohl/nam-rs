@@ -347,8 +347,8 @@ mod tests {
     fn test_conv1d_dilation() {
         // Configuramos pesos unitários (1.0) para somar todos os inputs diretamente.
         let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 2 * 3 * 2]; // OUT=2 * K=3 * IN=2
-        for i in 0..12 {
-            weights[i] = half::f16::from_f32(1.0).to_bits();
+        for w in weights.iter_mut().take(12) {
+            *w = half::f16::from_f32(1.0).to_bits();
         }
 
         // Definimos dilation: 2. Isso fará o kernel "saltar" um frame a cada tap.
@@ -398,8 +398,8 @@ mod tests {
     fn test_conv1d_zero_input() {
         // Pesos extremamente altos para testar se qualquer ruído residual é amplificado.
         let mut weights = vec![half::f16::from_f32(0.0).to_bits(); 2 * 3 * 2];
-        for i in 0..12 {
-            weights[i] = half::f16::from_f32(100.0).to_bits();
+        for w in weights.iter_mut().take(12) {
+            *w = half::f16::from_f32(100.0).to_bits();
         }
 
         let mut conv = Conv1d::<2, 2, 3> {

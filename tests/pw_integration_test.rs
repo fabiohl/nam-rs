@@ -37,7 +37,16 @@ fn test_pipewire_headless_integration() {
     let pw_thread = thread::spawn(move || {
         // Exceções do tipo "Core Não encontrado" serão capturadas como Err().
         run_pipewire_host(
-            param_cons, gc_prod, res_cons, res_prod, rt_clone, sys, 0, anchor,
+            param_cons,
+            gc_prod,
+            res_cons,
+            res_prod,
+            rt_clone,
+            nam_rs::pw_host::PipewireHostConfig {
+                buffer_size: 0,
+                sys,
+                tsc_anchor: anchor,
+            },
         )
     });
 

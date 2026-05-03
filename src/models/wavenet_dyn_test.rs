@@ -84,15 +84,15 @@ mod tests {
 
         // Executamos o processamento interno (unsafe pois lida com ponteiros/SIMD em produção).
         unsafe {
-            layer.process_block_internal::<crate::math::simd::Avx2Math>(
-                &condition,
-                &mut head_input,
-                &mut output,
-                &layer_buffer,
+            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetDynProcessContext {
+                condition: &condition,
+                head_input: &mut head_input,
+                output: &mut output,
+                layer_buffer: &layer_buffer,
                 buffer_start,
-                &mut block,
-                1,
-            );
+                block: &mut block,
+                num_frames: 1,
+            });
         }
 
         // --- VALIDAÇÃO DA ATIVAÇÃO GATED ---
@@ -152,15 +152,15 @@ mod tests {
         let _math = SimdMathConfig::current();
 
         unsafe {
-            layer.process_block_internal::<crate::math::simd::Avx2Math>(
-                &condition,
-                &mut head_input,
-                &mut output,
-                &layer_buffer,
+            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetDynProcessContext {
+                condition: &condition,
+                head_input: &mut head_input,
+                output: &mut output,
+                layer_buffer: &layer_buffer,
                 buffer_start,
-                &mut block,
-                1,
-            );
+                block: &mut block,
+                num_frames: 1,
+            });
         }
 
         // --- VALIDAÇÃO DA ATIVAÇÃO PADRÃO ---
