@@ -215,7 +215,7 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 ---
 
-### T29 — `Instant::now()` → `RDTSC` Direto no Callback RT ⬜
+### T29 — `Instant::now()` → `RDTSC` Direto no Callback RT ✅
 
 **Racional Científico:** `Instant::now()` (linha 568 de `pw_host.rs`) invoca `clock_gettime(CLOCK_MONOTONIC)`, que é uma syscall vDSO (~15-25 ns). Em callbacks de 32 samples (~667 µs budget), 25 ns × 2 (start+end) = 50 ns é ~0.007% do budget — aceitável mas evitável. `RDTSC` é uma instrução de 1 ciclo (~0.3 ns) com resolução de ~1 ns via calibração.
 
@@ -223,10 +223,10 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 **Implementação:**
 
-1. Criar `rdtsc_nanos()` inline: `_rdtsc()` + divisão por `tsc_freq_ghz` (constante calibrada no startup via `/proc/cpuinfo` ou `calibrated_tsc_freq`).
-2. Calibrar `tsc_freq_ghz` no cold-path: ler `CPUID.15H` (TSC frequency) ou medir com `Instant::now()` + `_rdtsc()` em loop calibrado.
-3. Substituir `Instant::now()` no callback por `rdtsc_nanos()`.
-4. Fallback: se TSC invariante não disponível (`!is_x86_feature_detected!("tsc")`), manter `Instant::now()`.
+1. [x] Criar `rdtsc_nanos()` inline: `_rdtsc()` + divisão por `tsc_freq_ghz` (constante calibrada no startup via `/proc/cpuinfo` ou `calibrated_tsc_freq`).
+2. [x] Calibrar `tsc_freq_ghz` no cold-path: ler `CPUID.15H` (TSC frequency) ou medir com `Instant::now()` + `_rdtsc()` em loop calibrado.
+3. [x] Substituir `Instant::now()` no callback por `rdtsc_nanos()`.
+4. [x] Fallback: se TSC invariante não disponível (`!is_x86_feature_detected!("tsc")`), manter `Instant::now()`.
 
 **Critérios de aceite:** Zero syscalls no callback RT para medição de tempo. Erro de calibração < 1%.
 

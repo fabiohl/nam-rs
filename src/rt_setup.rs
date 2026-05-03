@@ -12,8 +12,71 @@ use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::spsc::RtStatusFlags;
 use minstant::Anchor;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+/// Frequência calibrada do TSC em GHz (ciclos por nanosegundo).
+/// Armazenado como ponto fixo (valor * 1000) para evitar floats no hot-path.
+static TSC_FREQ_GHZ_X1000: AtomicU64 = AtomicU64::new(0);
+
+/// Retorna o tempo atual em nanosegundos usando a instrução RDTSC.
+///
+/// Oferece precisão de ~1ns com custo de ~1 ciclo, evitando a syscall vDSO clock_gettime.
+/// Se o TSC não estiver calibrado ou disponível, faz fallback para Instant::now().
+#[inline(always)]
+pub fn rdtsc_nanos() -> u64 {
+    let freq_x1000 = TSC_FREQ_GHZ_X1000.load(Ordering::Relaxed);
+    if freq_x1000 == 0 {
+        return Instant::now().elapsed().as_nanos() as u64; // Fallback (aproximado)
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        let cycles = unsafe { core::arch::x86_64::_rdtsc() };
+        (cycles * 1000) / freq_x1000
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        Instant::now().elapsed().as_nanos() as u64
+    }
+}
+
+/// Calibra a frequência do TSC em relação ao clock do sistema.
+///
+/// Executada no startup (cold-path). Mede a variação do RDTSC durante 50ms
+/// para determinar a taxa de ciclos por nanosegundo.
+#[cold]
+pub fn calibrate_tsc() {
+    #[cfg(target_arch = "x86_64")]
+    {
+        use std::thread;
+
+        // Aquecimento (Ignora o primeiro intervalo para estabilizar caches)
+        let _ = unsafe { core::arch::x86_64::_rdtsc() };
+        thread::sleep(Duration::from_millis(10));
+
+        let start_inst = Instant::now();
+        let start_tsc = unsafe { core::arch::x86_64::_rdtsc() };
+
+        thread::sleep(Duration::from_millis(50));
+
+        let end_inst = Instant::now();
+        let end_tsc = unsafe { core::arch::x86_64::_rdtsc() };
+
+        let elapsed_nanos = end_inst.duration_since(start_inst).as_nanos() as u64;
+        let elapsed_cycles = end_tsc.wrapping_sub(start_tsc);
+
+        if let Some(freq_x1000) = (elapsed_cycles * 1000).checked_div(elapsed_nanos) {
+            TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::SeqCst);
+
+            log::info!(
+                "{} TSC calibrado: {:.3} GHz",
+                "⏱️".bright_blue(),
+                freq_x1000 as f64 / 1000.0
+            );
+        }
+    }
+}
 
 /// Detecta dinamicamente o sink de hardware padrão do sistema via `pw-metadata`.
 ///

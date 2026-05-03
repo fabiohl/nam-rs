@@ -32,6 +32,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
   - `mlockall` para evitar page faults.
   - PM QoS Lock (`/dev/cpu_dma_latency`) para desabilitar C-States profundos.
   - Desabilitação de THP (Transparent Huge Pages) via `prctl` para evitar spikes de compactação do kernel.
+- **Telemetria de Alta Precisão (RDTSC):** Substituição de `Instant::now()` (syscall vDSO) por leitura direta do TSC calibrado no callback RT. Garante precisão de ~1ns com overhead de ~1 ciclo de CPU, eliminando jitter induzido pelo kernel na medição de carga de DSP.
 - **Canais SPSC (rtrb):** Comunicação lock-free entre CLI (async) e DSP (RT). Payload alinhado (128B) para evitar False Sharing.
 
 ## 4. Estrutura de Módulos

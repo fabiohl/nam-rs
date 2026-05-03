@@ -327,6 +327,9 @@ fn main() -> anyhow::Result<()> {
     pipewire::init();
     log::info!("{} PipeWire inicializado.", "🔌".bright_blue());
 
+    // Calibra o TSC (Read Time-Step Counter) para medições de alta precisão e baixo overhead.
+    nam_rs::rt_setup::calibrate_tsc();
+
     // Exibe features de CPU avançadas detectadas (acima do baseline v3)
     if !sys.features.is_empty() {
         log::info!(

@@ -55,7 +55,7 @@ use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2};
 use crate::models::NamModel;
 use crate::rt_setup;
 use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
-use minstant::{Anchor, Instant};
+use minstant::Anchor;
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;
@@ -636,7 +636,7 @@ pub fn run_pipewire_host(
 
                                 // Iniciamos a medição do tempo de processamento DSP puro (RDTSC).
                                 // Usado para calcular o 'DSP Load' e detectar XRuns iminentes.
-                                let start_time = Instant::now();
+                                let start_nanos = rt_setup::rdtsc_nanos();
 
                                 capture_dsp_pipeline(
                                     samples_l,
@@ -664,15 +664,14 @@ pub fn run_pipewire_host(
                                 );
 
                                 // Monitoramento de carga de DSP (DSP Load Monitoring via RDTSC)
-                                // `start_time` é inicializado no início da pipeline DSP (acima).
+                                // `start_nanos` é capturado no início da pipeline DSP (acima).
                                 // Reportamos o tempo bruto em nanos para a thread de controle.
-                                let elapsed = start_time.elapsed();
+                                let elapsed_nanos =
+                                    rt_setup::rdtsc_nanos().wrapping_sub(start_nanos);
                                 rt_status_for_process
                                     .dsp_cycle_time
-                                    .store(elapsed.as_nanos() as u64, Ordering::Relaxed);
-                                rt_status_for_process
-                                    .latency_hist
-                                    .record(elapsed.as_nanos() as u64);
+                                    .store(elapsed_nanos, Ordering::Relaxed);
+                                rt_status_for_process.latency_hist.record(elapsed_nanos);
                                 rt_status_for_process
                                     .last_n_samples
                                     .store(n_samples as u32, Ordering::Relaxed);
@@ -680,7 +679,7 @@ pub fn run_pipewire_host(
                                 // Calcula o budget máximo tolerável (85% do tempo real do buffer)
                                 // Ainda usamos uma aproximação escalar aqui para detecção rápida de overload,
                                 // mas a telemetria precisa via Anchor ocorre no poll_rt_status.
-                                let elapsed_secs = elapsed.as_secs_f64();
+                                let elapsed_secs = elapsed_nanos as f64 / 1_000_000_000.0;
                                 let budget_secs =
                                     (n_samples as f64 / current_pw_rate as f64) * 0.85;
                                 if elapsed_secs > budget_secs {
