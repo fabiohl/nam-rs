@@ -186,6 +186,5 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 #[path = "spsc_test.rs"]
 mod spsc_test;

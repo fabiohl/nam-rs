@@ -182,6 +182,5 @@ pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 #[path = "nam_json_test.rs"]
 mod nam_json_test;

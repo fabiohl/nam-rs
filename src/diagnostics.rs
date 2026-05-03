@@ -425,6 +425,5 @@ fn days_to_date(days: u64) -> (u64, u64, u64) {
 // =============================================================================
 
 #[cfg(test)]
-#[cfg(test)]
 #[path = "diagnostics_test.rs"]
 mod diagnostics_test;

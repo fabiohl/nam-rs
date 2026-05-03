@@ -423,6 +423,5 @@ impl NamResampler {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 #[path = "resampler_test.rs"]
 mod resampler_test;

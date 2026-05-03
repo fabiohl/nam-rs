@@ -2560,6 +2560,5 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 #[path = "simd_test.rs"]
 mod simd_test;
