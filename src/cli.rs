@@ -8,8 +8,13 @@
 
 use lexopt::prelude::*;
 use nam_rs::colors::Colorize;
-use nam_rs::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB};
-use std::path::PathBuf;
+use nam_rs::diagnostics::SystemSnapshot;
+use nam_rs::loader::load_and_build_model;
+use nam_rs::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB, get_gain_lut};
+use nam_rs::spsc::{ParamPayload, SHUTDOWN};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 
 /// Imprime as instruções de uso e ajuda no terminal.
 pub fn print_help() {
@@ -132,4 +137,116 @@ pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
     }
 
     Ok((model_path, input_gain, output_gain, buffer_size))
+}
+
+/// Loop interativo de comandos (TUI simplificada).
+///
+/// Permite ao usuário ajustar parâmetros em tempo real sem reiniciar o processo.
+/// Comandos suportados: `gain <db>`, `out <db>`, `load <path>`, `help`, `exit`.
+pub fn cli_loop(
+    mut producer: rtrb::Producer<ParamPayload>,
+    sys: SystemSnapshot,
+) -> anyhow::Result<()> {
+    println!(
+        "\n{} {}",
+        "🚀".bright_green(),
+        "Modo Interativo Ativo. Digite 'help' para comandos.".bright_cyan()
+    );
+
+    let stdin = io::stdin();
+    let mut input = String::new();
+
+    loop {
+        if SHUTDOWN.load(Ordering::Relaxed) {
+            break;
+        }
+
+        print!("{} ", "nam-rs>".yellow().bold());
+        let _ = io::stdout().flush();
+
+        input.clear();
+        if stdin.read_line(&mut input)? == 0 {
+            break; // EOF
+        }
+
+        let parts: Vec<&str> = input.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+
+        match parts[0].to_lowercase().as_str() {
+            "help" => {
+                println!("\n{}", "Comandos Interativos:".yellow().bold());
+                println!("  gain <db>    Ajusta o ganho de entrada (ex: gain -3.5)");
+                println!("  out <db>     Ajusta o ganho de saída (ex: out 6)");
+                println!("  load <path>  Carrega um novo modelo (ex: load clean.namb)");
+                println!("  status       Mostra o estado atual (placeholder)");
+                println!("  exit, quit   Encerra o NAM-rs\n");
+            }
+            "exit" | "quit" => {
+                SHUTDOWN.store(true, Ordering::SeqCst);
+                break;
+            }
+            "gain" => {
+                if let Some(db_str) = parts.get(1) {
+                    if let Ok(db) = db_str.parse::<f32>() {
+                        if (GAIN_MIN_DB..=GAIN_MAX_DB).contains(&db) {
+                            let mult = get_gain_lut().db_to_linear(db);
+                            let _ = producer.push(ParamPayload::InputGain(mult));
+                            println!("{} Ganho de entrada: {:+.1} dB", "✅".green(), db);
+                        } else {
+                            println!("{} Ganho fora do intervalo permitido.", "❌".red());
+                        }
+                    } else {
+                        println!("{} Valor inválido para ganho.", "❌".red());
+                    }
+                }
+            }
+            "out" => {
+                if let Some(db_str) = parts.get(1) {
+                    if let Ok(db) = db_str.parse::<f32>() {
+                        if (GAIN_MIN_DB..=GAIN_MAX_DB).contains(&db) {
+                            let mult = get_gain_lut().db_to_linear(db);
+                            let _ = producer.push(ParamPayload::OutputGain(mult));
+                            println!("{} Ganho de saída: {:+.1} dB", "✅".green(), db);
+                        } else {
+                            println!("{} Ganho fora do intervalo permitido.", "❌".red());
+                        }
+                    } else {
+                        println!("{} Valor inválido para ganho.", "❌".red());
+                    }
+                }
+            }
+            "load" => {
+                if let Some(path_str) = parts.get(1) {
+                    let path = Path::new(path_str);
+                    println!("{} Carregando: {} ...", "📂".cyan(), path_str);
+                    match load_and_build_model(path, &sys) {
+                        Ok((model_l, model_r, in_adj, out_adj, rate)) => {
+                            let _ = producer.push(ParamPayload::LoadModel {
+                                model_l,
+                                model_r,
+                                input_mult_adj: in_adj,
+                                output_mult_adj: out_adj,
+                                sample_rate: rate,
+                            });
+                            println!("{} Modelo carregado com sucesso.", "✅".green());
+                        }
+                        Err(e) => {
+                            println!("{} Erro ao carregar modelo: {}", "❌".red(), e);
+                        }
+                    }
+                }
+            }
+            _ => {
+                println!(
+                    "{} Comando desconhecido: '{}'. Digite 'help'.",
+                    "❓".red(),
+                    parts[0]
+                );
+            }
+        }
+    }
+
+    Ok(())
 }

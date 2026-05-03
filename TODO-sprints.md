@@ -249,7 +249,7 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 ---
 
-### T31 — `main.rs` Refatoração: Extração da Lógica CLI ⬜
+### T31 — `main.rs` Refatoração: Extração da Lógica CLI ✅
 
 **Racional Científico:** `main.rs` (19 KB) mistura parsing de argumentos, lógica de carregamento de modelo, CLI interativa, e orquestração PipeWire. Extrair o CLI interativo para `src/cli.rs` (que já existe com 6 KB) e a lógica de setup/orquestração para funções nomeadas melhora testabilidade e legibilidade.
 
