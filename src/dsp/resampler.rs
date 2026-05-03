@@ -161,16 +161,12 @@ impl ResamplerCore {
                 let is_avx512 = crate::math::simd::SimdMathConfig::get().is_avx512;
 
                 if is_avx512 {
-                    let y0_l = convolve_avx512(c0, x_l, taps);
-                    let y1_l = convolve_avx512(c1, x_l, taps);
-                    let y0_r = convolve_avx512(c0, x_r, taps);
-                    let y1_r = convolve_avx512(c1, x_r, taps);
+                    let (y0_l, y0_r) = convolve_stereo_avx512(c0, x_l, x_r, taps);
+                    let (y1_l, y1_r) = convolve_stereo_avx512(c1, x_l, x_r, taps);
                     (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
                 } else {
-                    let y0_l = convolve_avx2(c0, x_l, taps);
-                    let y1_l = convolve_avx2(c1, x_l, taps);
-                    let y0_r = convolve_avx2(c0, x_r, taps);
-                    let y1_r = convolve_avx2(c1, x_r, taps);
+                    let (y0_l, y0_r) = convolve_stereo_avx2(c0, x_l, x_r, taps);
+                    let (y1_l, y1_r) = convolve_stereo_avx2(c1, x_l, x_r, taps);
                     (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
                 }
             };
@@ -194,115 +190,135 @@ impl ResamplerCore {
     }
 }
 
-/// Inner product AVX2+FMA entre coeficientes alinhados e janela do delay line.
-///
-/// Processa `taps` amostras usando 2 acumuladores YMM para quebrar a cadeia
-/// de dependência FMA, saturando o throughput de 2 FMA ports.
-///
-/// # Safety
-/// - CPU deve suportar AVX2 e FMA (garantido por x86-64-v3 em `.cargo/config.toml`).
-/// - `coeffs` deve apontar para dados alinhados a 32 bytes com pelo menos `taps` f32.
-/// - `input` deve apontar para pelo menos `taps` f32 contíguos.
+/// [T22] Convolução Stereo Interleaved AVX2.
+/// Carrega coeficientes uma única vez e aplica a ambos os canais.
 #[inline]
-unsafe fn convolve_avx2(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
+unsafe fn convolve_stereo_avx2(
+    coeffs: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> (f32, f32) {
     unsafe {
-        let mut sum0 = _mm256_setzero_ps();
-        let mut sum1 = _mm256_setzero_ps();
+        let mut sum_l0 = _mm256_setzero_ps();
+        let mut sum_l1 = _mm256_setzero_ps();
+        let mut sum_r0 = _mm256_setzero_ps();
+        let mut sum_r1 = _mm256_setzero_ps();
         let mut i = 0;
 
-        // Loop principal: 2×8 = 16 floats/iteração
         while i + 16 <= taps {
-            let h0 = _mm256_load_ps(coeffs.add(i)); // Aligned
-            let x0 = _mm256_loadu_ps(input.add(i)); // Input não alinhado
-            sum0 = _mm256_fmadd_ps(h0, x0, sum0);
+            let h0 = _mm256_load_ps(coeffs.add(i));
+            let x0_l = _mm256_loadu_ps(input_l.add(i));
+            let x0_r = _mm256_loadu_ps(input_r.add(i));
+            sum_l0 = _mm256_fmadd_ps(h0, x0_l, sum_l0);
+            sum_r0 = _mm256_fmadd_ps(h0, x0_r, sum_r0);
 
             let h1 = _mm256_load_ps(coeffs.add(i + 8));
-            let x1 = _mm256_loadu_ps(input.add(i + 8));
-            sum1 = _mm256_fmadd_ps(h1, x1, sum1);
+            let x1_l = _mm256_loadu_ps(input_l.add(i + 8));
+            let x1_r = _mm256_loadu_ps(input_r.add(i + 8));
+            sum_l1 = _mm256_fmadd_ps(h1, x1_l, sum_l1);
+            sum_r1 = _mm256_fmadd_ps(h1, x1_r, sum_r1);
 
             i += 16;
         }
 
-        // Resto: 8-em-8
         while i + 8 <= taps {
             let h = _mm256_load_ps(coeffs.add(i));
-            let x = _mm256_loadu_ps(input.add(i));
-            sum0 = _mm256_fmadd_ps(h, x, sum0);
+            let x_l = _mm256_loadu_ps(input_l.add(i));
+            let x_r = _mm256_loadu_ps(input_r.add(i));
+            sum_l0 = _mm256_fmadd_ps(h, x_l, sum_l0);
+            sum_r0 = _mm256_fmadd_ps(h, x_r, sum_r0);
             i += 8;
         }
 
-        // Redução horizontal: 2 acumuladores → escalar
-        let sum = _mm256_add_ps(sum0, sum1);
-        let hi128 = _mm256_extractf128_ps(sum, 1);
-        let lo128 = _mm256_castps256_ps128(sum);
-        let s128 = _mm_add_ps(lo128, hi128);
-        let shuf = _mm_movehdup_ps(s128);
-        let sums = _mm_add_ps(s128, shuf);
-        let shuf2 = _mm_movehl_ps(sums, sums);
-        let r = _mm_add_ss(sums, shuf2);
-        let mut out = 0.0f32;
-        _mm_store_ss(&mut out, r);
+        // Redução horizontal L
+        let sum_l = _mm256_add_ps(sum_l0, sum_l1);
+        let hi128_l = _mm256_extractf128_ps(sum_l, 1);
+        let lo128_l = _mm256_castps256_ps128(sum_l);
+        let s128_l = _mm_add_ps(lo128_l, hi128_l);
+        let shuf_l = _mm_movehdup_ps(s128_l);
+        let sums_l = _mm_add_ps(s128_l, shuf_l);
+        let shuf2_l = _mm_movehl_ps(sums_l, sums_l);
+        let r_l = _mm_add_ss(sums_l, shuf2_l);
+        let mut out_l = _mm_cvtss_f32(r_l);
 
-        // Tail escalar (para taps não múltiplo de 8 — não deveria ocorrer com TAPS_PER_PHASE=32)
+        // Redução horizontal R
+        let sum_r = _mm256_add_ps(sum_r0, sum_r1);
+        let hi128_r = _mm256_extractf128_ps(sum_r, 1);
+        let lo128_r = _mm256_castps256_ps128(sum_r);
+        let s128_r = _mm_add_ps(lo128_r, hi128_r);
+        let shuf_r = _mm_movehdup_ps(s128_r);
+        let sums_r = _mm_add_ps(s128_r, shuf_r);
+        let shuf2_r = _mm_movehl_ps(sums_r, sums_r);
+        let r_r = _mm_add_ss(sums_r, shuf2_r);
+        let mut out_r = _mm_cvtss_f32(r_r);
+
         while i < taps {
-            out += *coeffs.add(i) * *input.add(i);
+            let h = *coeffs.add(i);
+            out_l += h * *input_l.add(i);
+            out_r += h * *input_r.add(i);
             i += 1;
         }
 
-        out
+        (out_l, out_r)
     }
 }
 
-/// Inner product AVX-512 (ZMM) entre coeficientes alinhados e janela do delay line.
-///
-/// Processa `taps` amostras usando 2 acumuladores ZMM para maximizar o throughput
-/// do pipeline AVX-512 (32 floats/iteração).
-///
-/// # Safety
-/// - CPU deve suportar AVX-512F.
-/// - `coeffs` deve apontar para dados alinhados a 64 bytes (ou 32B se ZMM permitir)
-///   com pelo menos `taps` f32.
-/// - `input` deve apontar para pelo menos `taps` f32 contíguos.
+/// [T22] Convolução Stereo Interleaved AVX-512.
 #[inline]
 #[target_feature(enable = "avx512f")]
-unsafe fn convolve_avx512(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
+unsafe fn convolve_stereo_avx512(
+    coeffs: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> (f32, f32) {
     unsafe {
-        let mut sum0 = _mm512_setzero_ps();
-        let mut sum1 = _mm512_setzero_ps();
+        let mut sum_l0 = _mm512_setzero_ps();
+        let mut sum_l1 = _mm512_setzero_ps();
+        let mut sum_r0 = _mm512_setzero_ps();
+        let mut sum_r1 = _mm512_setzero_ps();
         let mut i = 0;
 
         // Loop principal: 2×16 = 32 floats/iteração
         while i + 32 <= taps {
-            let h0 = _mm512_loadu_ps(coeffs.add(i)); // Unaligned (coeffs are 32B aligned)
-            let x0 = _mm512_loadu_ps(input.add(i)); // Input não alinhado
-            sum0 = _mm512_fmadd_ps(h0, x0, sum0);
+            let h0 = _mm512_loadu_ps(coeffs.add(i));
+            let x0_l = _mm512_loadu_ps(input_l.add(i));
+            let x0_r = _mm512_loadu_ps(input_r.add(i));
+            sum_l0 = _mm512_fmadd_ps(h0, x0_l, sum_l0);
+            sum_r0 = _mm512_fmadd_ps(h0, x0_r, sum_r0);
 
             let h1 = _mm512_loadu_ps(coeffs.add(i + 16));
-            let x1 = _mm512_loadu_ps(input.add(i + 16));
-            sum1 = _mm512_fmadd_ps(h1, x1, sum1);
+            let x1_l = _mm512_loadu_ps(input_l.add(i + 16));
+            let x1_r = _mm512_loadu_ps(input_r.add(i + 16));
+            sum_l1 = _mm512_fmadd_ps(h1, x1_l, sum_l1);
+            sum_r1 = _mm512_fmadd_ps(h1, x1_r, sum_r1);
 
             i += 32;
         }
 
-        // Resto: 16-em-16
         while i + 16 <= taps {
             let h = _mm512_loadu_ps(coeffs.add(i));
-            let x = _mm512_loadu_ps(input.add(i));
-            sum0 = _mm512_fmadd_ps(h, x, sum0);
+            let x_l = _mm512_loadu_ps(input_l.add(i));
+            let x_r = _mm512_loadu_ps(input_r.add(i));
+            sum_l0 = _mm512_fmadd_ps(h, x_l, sum_l0);
+            sum_r0 = _mm512_fmadd_ps(h, x_r, sum_r0);
             i += 16;
         }
 
-        // Redução horizontal ZMM -> Escalar
-        let sum = _mm512_add_ps(sum0, sum1);
-        let mut out = _mm512_reduce_add_ps(sum);
+        let sum_l = _mm512_add_ps(sum_l0, sum_l1);
+        let sum_r = _mm512_add_ps(sum_r0, sum_r1);
+        let mut out_l = _mm512_reduce_add_ps(sum_l);
+        let mut out_r = _mm512_reduce_add_ps(sum_r);
 
-        // Tail escalar (para taps não múltiplo de 16)
         while i < taps {
-            out += *coeffs.add(i) * *input.add(i);
+            let h = *coeffs.add(i);
+            out_l += h * *input_l.add(i);
+            out_r += h * *input_r.add(i);
             i += 1;
         }
 
-        out
+        (out_l, out_r)
     }
 }
 

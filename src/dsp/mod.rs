@@ -8,3 +8,4 @@ pub mod gain;
 pub mod gate;
 pub mod resampler;
 pub mod sinc_kernel;
+pub mod vring;

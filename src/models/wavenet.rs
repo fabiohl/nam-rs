@@ -9,6 +9,7 @@
 
 //! Módulo de Inferência WaveNet (Arquitetura Causal Dilatada).
 
+use crate::dsp::vring::VirtualRingBuffer;
 use crate::math::simd::SimdMath;
 
 /// Máximo de frames a processar em um pulso do callback.
@@ -529,10 +530,10 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 #[repr(align(64))]
 #[derive(Clone)]
 pub struct WaveNetLayerState {
-    /// Vetor base plano linear do Ring Buffer (zero alocações em contexto DSP).
-    pub layer_buffer: std::vec::Vec<f32>,
-    /// Vetor espelho em BF16 para processamento VNNI (alinhado a 64 bytes).
-    pub layer_buffer_bf16: std::vec::Vec<u16>,
+    /// Buffer Circular Virtual (zero alocações em contexto DSP, eliminação de rewind).
+    pub layer_buffer: VirtualRingBuffer<f32>,
+    /// Buffer Circular Virtual em BF16 para processamento VNNI.
+    pub layer_buffer_bf16: VirtualRingBuffer<u16>,
     /// Ponteiro numérico do frame atual (avança a cada frame processado).
     pub buffer_start: usize,
     /// Dimensão física do espaço vetorial receptivo (tamanho do histórico de dilatação).
@@ -543,14 +544,21 @@ impl WaveNetLayerState {
     /// Construtor alocador estático do Estado (executar antes do Thread DSP).
     pub fn new(channels: usize, receptive_field_size: usize, alloc_num: usize) -> Self {
         // [PASSO 1: Cálculo do Tamanho do Buffer Temporal]
-        let buffer_frames =
+        // O buffer precisa acomodar o campo receptivo e o padding de blocos.
+        // Arredondamento para página é feito internamente pelo VirtualRingBuffer.
+        let min_buffer_frames =
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
-        let buffer = vec![0.0f32; buffer_frames * channels];
-        let buffer_bf16 = vec![0u16; buffer_frames * channels];
+
+        let buffer = VirtualRingBuffer::<f32>::new(min_buffer_frames * channels);
+        let buffer_bf16 = VirtualRingBuffer::<u16>::new(min_buffer_frames * channels);
+
+        let actual_buffer_frames = buffer.size() / channels;
 
         // [PASSO 2: Offset Inicial (Jittering Alocado)]
-        let start = buffer_frames
-            - (WAVENET_MAX_NUM_FRAMES * ((alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1));
+        // Posicionamos o ponteiro inicial na segunda metade do mapeamento virtual (offset N).
+        // Isso permite olhar para trás (receptive field) sem cruzar o início do buffer virtual.
+        let jitter = (alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1;
+        let start = actual_buffer_frames * 2 - (WAVENET_MAX_NUM_FRAMES * jitter);
 
         Self {
             layer_buffer: buffer,
@@ -560,55 +568,17 @@ impl WaveNetLayerState {
         }
     }
 
-    /// Executa um passo do ponteiro do Ring Buffer. Se chegar na margem, chama Re-Wind.
+    /// Executa um passo do ponteiro do Ring Buffer. Se chegar na margem, volta para o início.
     pub fn advance_frames(&mut self, num_frames: usize, channels: usize) {
-        // [PASSO 1: Avanço Linear]
-        // Diferente de Ring Buffers tradicionais que usam operações de módulo (ex: `ptr % size`) no hot-path,
-        // o que custa ciclos consideráveis de CPU nas interações do L1, nós simplesmente andamos com o ponteiro
-        // de forma puramente linear.
         self.buffer_start += num_frames;
-        let buffer_frames = self.layer_buffer.len() / channels;
+        let buffer_frames = self.layer_buffer.size() / channels;
 
-        // [PASSO 2: Condição de Borda (Threshold)]
-        // Se, ao avançar, percebermos que não sobrará espaço para processar o próximo bloco
-        // completo (WAVENET_MAX_NUM_FRAMES), nós deflagramos o evento de rebobinagem.
-        if self.buffer_start + WAVENET_MAX_NUM_FRAMES > buffer_frames {
-            self.rewind_buffer(channels);
-        }
-    }
-
-    /// Rebina a memória do Ring Buffer para evitar overflow circular conservando o hitspace L1.
-    ///
-    /// # Invariante
-    ///
-    /// `buffer_start >= receptive_field_size` (garantido por `advance_frames`).
-    /// Violar este invariante causaria underflow na subtração `buffer_start - receptive_field_size`,
-    /// resultando em acesso fora dos limites do buffer e comportamento indefinido.
-    pub fn rewind_buffer(&mut self, channels: usize) {
-        debug_assert!(
-            self.buffer_start >= self.receptive_field_size,
-            "rewind_buffer: buffer_start ({}) < receptive_field_size ({})",
-            self.buffer_start,
-            self.receptive_field_size
-        );
-        let start = self.receptive_field_size;
-
-        let from = (self.buffer_start - self.receptive_field_size) * channels;
-        let to = (start - self.receptive_field_size) * channels;
-        let len = self.receptive_field_size * channels;
-
-        self.layer_buffer.copy_within(from..from + len, to);
-        self.layer_buffer_bf16.copy_within(from..from + len, to);
-        self.buffer_start = start;
-    }
-
-    /// Preenche o buffer histórico para estabilizar o modelo no estado de warm-up.
-    pub fn copy_buffer(&mut self, channels: usize) {
-        for offset in 1..=self.receptive_field_size {
-            let src = self.buffer_start * channels;
-            let dst = (self.buffer_start - offset) * channels;
-            self.layer_buffer.copy_within(src..src + channels, dst);
-            self.layer_buffer_bf16.copy_within(src..src + channels, dst);
+        // [VIRTUAL RING BUFFER]
+        // Se o ponteiro avançar demais, nós simplesmente subtraímos o tamanho base (N).
+        // Como o buffer é mapeado em 2*N, e buffer_start está sempre entre N e 2*N-1,
+        // o acesso a [buffer_start - receptive_field] é sempre seguro (>= 0).
+        if self.buffer_start >= buffer_frames * 2 {
+            self.buffer_start -= buffer_frames;
         }
     }
 }
@@ -787,9 +757,18 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
                 // [PASSO 3: Propagação do Estado Estático]
                 // DIFERENCIAL IMPORTANTE: Em vez de avançar o ponteiro (como no áudio em tempo real),
-                // nós chamamos `copy_buffer` que literalmente recopia o valor recém-processado
-                // retroativamente, preenchendo TODO o Receptive Field desta camada específica de uma só vez.
-                current_state.copy_buffer(CH);
+                // nós preenchemos todo o histórico (Receptive Field) com o valor recém-processado.
+                // Com VirtualRingBuffer, como buffer_start >= N, podemos recuar linearmente com segurança.
+                let start_idx = current_state.buffer_start * CH;
+                for offset in 1..=current_state.receptive_field_size {
+                    let dst_idx = (current_state.buffer_start - offset) * CH;
+                    for j in 0..CH {
+                        current_state.layer_buffer[dst_idx + j] =
+                            current_state.layer_buffer[start_idx + j];
+                        current_state.layer_buffer_bf16[dst_idx + j] =
+                            current_state.layer_buffer_bf16[start_idx + j];
+                    }
+                }
 
                 // [PASSO 4: Avaliação Numérica "Fantasma"]
                 // Efetua um ciclo de avaliação completo do tensor da camada, propagando o sinal nulo

@@ -190,12 +190,12 @@ mod tests {
 
         // Verificar que os buffers internos não contêm NaN/Inf após prewarm
         for state in &model.array1.states {
-            for &v in &state.layer_buffer {
+            for &v in state.layer_buffer.iter() {
                 assert!(v.is_finite(), "NaN/Inf detectado no array1 após prewarm");
             }
         }
         for state in &model.array2.states {
-            for &v in &state.layer_buffer {
+            for &v in state.layer_buffer.iter() {
                 assert!(v.is_finite(), "NaN/Inf detectado no array2 após prewarm");
             }
         }

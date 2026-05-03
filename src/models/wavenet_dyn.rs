@@ -718,8 +718,18 @@ impl WaveNetLayerArrayDyn {
                 let current_state = &mut *states_ptr.add(i);
 
                 // POPULANDO O HISTÓRICO:
-                // Copia o valor atual para o histórico do buffer circular da camada.
-                current_state.copy_buffer(ch);
+                // Preenche todo o histórico (Receptive Field) com o valor recém-processado.
+                // Com VirtualRingBuffer, como buffer_start >= N, podemos recuar linearmente com segurança.
+                let start_idx = current_state.buffer_start * ch;
+                for offset in 1..=current_state.receptive_field_size {
+                    let dst_idx = (current_state.buffer_start - offset) * ch;
+                    for j in 0..ch {
+                        current_state.layer_buffer[dst_idx + j] =
+                            current_state.layer_buffer[start_idx + j];
+                        current_state.layer_buffer_bf16[dst_idx + j] =
+                            current_state.layer_buffer_bf16[start_idx + j];
+                    }
+                }
 
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetDynProcessContext {

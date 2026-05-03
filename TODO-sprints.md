@@ -79,7 +79,7 @@ Uma inovação: pré-computar a **soma Conv1D + Mixin** em batch para múltiplos
 
 ---
 
-### T22 — Resampler: Convolução AVX-512 com FMA Interleaved Stereo ⬜
+### T22 — Resampler: Convolução AVX-512 com FMA Interleaved Stereo ✅
 
 **Racional Científico:** O resampler em `resampler.rs` processa L e R sequencialmente — `convolve_fir` é chamado 2× por amostra (uma vez por canal). Os coeficientes do filtro são idênticos para ambos os canais. Uma convolução **stereo interleaved** carregaria os coeficientes uma única vez e aplicaria FMA com 2 acumuladores independentes (L, R), cortando pela metade o bandwidth de coeficientes do L1 e eliminando a redundância de loads.
 
@@ -101,7 +101,7 @@ Uma inovação: pré-computar a **soma Conv1D + Mixin** em batch para múltiplos
 
 > **Objetivo:** Evolução arquitetural do modelo WaveNet para eliminar gargalos estruturais herdados do C++ e explorar oportunidades únicas do Rust.
 
-### T23 — WaveNet Ring Buffer: Eliminação do Rewind via Mapeamento Virtual ⬜
+### T23 — WaveNet Ring Buffer: Eliminação do Rewind via Mapeamento Virtual ✅
 
 **Racional Científico:** O `WaveNetLayerState::rewind_buffer()` (linhas 571-587 de `wavenet.rs`) executa `copy_within` de `receptive_field_size × CH` floats a cada ~1536 amostras. Para WaveNet Standard (RF=1024, CH=16), isso significa copiar `1024×16×4 = 64 KB` a cada ~32 ms — um spike de ~6-10 µs que pode coincidir com um callback curto (32 samples = ~667 µs budget). A técnica de **virtual ring buffer** via `mmap` com mirror (2 mapeamentos virtuais contíguos do mesmo backing store físico) elimina o rewind completamente.
 
