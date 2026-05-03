@@ -53,27 +53,23 @@ impl Conv1dDyn {
         num_frames: usize,
     ) {
         // out_c_base controla o bloco de canais de saída sendo processado (batch de 4 canais para SIMD)
-        let mut out_c_base = 0;
+        let mut out_c_base;
         // Processa os canais de saída em blocos de 4 para otimizar o uso de registradores SIMD
-        while out_c_base + 4 <= self.out_ch {
+        let num_blocks = self.out_ch / 4;
+        for b in 0..num_blocks {
+            out_c_base = b * 4;
             // Itera sobre o tamanho do kernel causal temporal (geralmente kernel_size = 2 ou 3)
             for k in 0..self.kernel {
                 // Calcula o offset do elemento passado no tempo baseado na dilatação
                 let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
                 let base_frame_idx = (buffer_start as isize) + offset;
 
-                // Calcula os offsets iniciais dos pesos para os 4 canais de saída simultâneos.
-                // Na NAM, os pesos contíguos de convolução 1D são dispostos no formato [out_ch][kernel][in_ch].
-                // Isso maximiza o acesso sequencial à memória do canal de entrada (que tem tamanho `in_ch`).
-                let w_start0 = ((out_c_base) * self.kernel + k) * self.in_ch;
-                let w_start1 = ((out_c_base + 1) * self.kernel + k) * self.in_ch;
-                let w_start2 = ((out_c_base + 2) * self.kernel + k) * self.in_ch;
-                let w_start3 = ((out_c_base + 3) * self.kernel + k) * self.in_ch;
-
-                let w0 = unsafe { self.weights.get_unchecked(w_start0..w_start0 + self.in_ch) };
-                let w1 = unsafe { self.weights.get_unchecked(w_start1..w_start1 + self.in_ch) };
-                let w2 = unsafe { self.weights.get_unchecked(w_start2..w_start2 + self.in_ch) };
-                let w3 = unsafe { self.weights.get_unchecked(w_start3..w_start3 + self.in_ch) };
+                // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
+                let w_start = b * self.kernel * self.in_ch * 4 + k * self.in_ch * 4;
+                let w_slice: &[[u16; 4]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                    core::slice::from_raw_parts(ptr, self.in_ch)
+                };
 
                 // Se for o primeiro tap do kernel (k == 0), devemos sobrescrever o lixo da memória (= assignment direto)
                 // e já somar o bias. Nos taps subsequentes (k > 0), acumulamos (+=).
@@ -120,20 +116,11 @@ impl Conv1dDyn {
                             layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
                         };
 
-                        // OPERAÇÃO CORE (SIMD 4x):
-                        // Aqui acontece a "mágica" da aceleração: calculamos o produto escalar (dot product)
-                        // de uma única fatia de entrada (in_slice) contra 4 conjuntos de pesos diferentes
-                        // (w0 a w3) simultaneamente.
-                        // Benefício: A fatia de entrada (in_slice) é lida apenas uma vez da memória e
-                        // permanece nos registradores enquanto as unidades de FMA (Fused Multiply-Add)
-                        // processam os 4 canais de saída. Isso maximiza o throughput de dados.
+                        // OPERAÇÃO CORE (SIMD 4x Interleaved):
                         let [r0, r1, r2, r3] =
-                            unsafe { M::dot_product_4x(w0, w1, w2, w3, in_slice) };
+                            unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
 
                         // ESCRITA DIRETA + BIAS (k == 0):
-                        // Como este é o primeiro "tap" (passo) do kernel temporal, estamos inicializando
-                        // a memória do bloco de saída. Substituímos qualquer valor residual pelo bias
-                        // somado ao resultado do produto escalar.
                         unsafe {
                             *block.get_unchecked_mut(i * self.out_ch + out_c_base) = bias0 + r0;
                             *block.get_unchecked_mut(i * self.out_ch + out_c_base + 1) = bias1 + r1;
@@ -164,13 +151,10 @@ impl Conv1dDyn {
                         };
 
                         // PRODUTO ESCALAR VETORIZADO (Simultâneo para 4 canais):
-                        // Mesma lógica de alta performance aplicada no bloco acima.
                         let [r0, r1, r2, r3] =
-                            unsafe { M::dot_product_4x(w0, w1, w2, w3, in_slice) };
+                            unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
 
                         // ACUMULAÇÃO (k > 0):
-                        // Como não é o primeiro passo do kernel, não podemos sobrescrever a memória.
-                        // Somamos (+=) o novo resultado ao que já foi calculado nos taps anteriores.
                         unsafe {
                             *block.get_unchecked_mut(i * self.out_ch + out_c_base) += r0;
                             *block.get_unchecked_mut(i * self.out_ch + out_c_base + 1) += r1;
@@ -180,8 +164,8 @@ impl Conv1dDyn {
                     }
                 }
             }
-            out_c_base += 4;
         }
+        out_c_base = num_blocks * 4;
 
         // PROCESSO DE CAUDA (REMAINDER):
         // Se a quantidade de canais de saída (out_ch) não for múltiplo de 4, os canais restantes

@@ -25,7 +25,7 @@
 
 ---
 
-### T19 — WaveNet Conv1D: Pesos Interleaved 4-Wide para Eliminação de Stride ⬜
+### T19 — WaveNet Conv1D: Pesos Interleaved 4-Wide para Eliminação de Stride ✅
 
 **Racional Científico:** O inner loop de `Conv1d::process_single_frame` (linhas 80-101 de `wavenet.rs`) calcula 4 dot products independentes (`dot_product_4x`). Porém, os pesos estão em layout `[OUT×K][IN]` e o loop precisa calcular 4 offsets `w0_start..w3_start` a cada iteração `out_c`. Um layout **interleaved** `[OUT/4][K][IN][4]` permitiria carregar os 4 pesos contiguamente com um único load (128 bits → 4 × f16), eliminando os 4 cálculos de offset e melhorando a localidade de cache.
 

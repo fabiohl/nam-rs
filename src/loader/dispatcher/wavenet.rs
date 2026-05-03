@@ -326,19 +326,45 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
 ) -> anyhow::Result<Conv1d<IN, OUT, K>> {
     let total = OUT * IN * K;
     let raw = cursor.read_slice(total)?;
+    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
+        == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
-    // Aqui acontece uma reorganização importante (Transposição):
-    // Os pesos do modelo original (treinado em Python/C++) estão em uma ordem
-    // que não é a melhor para o Rust processar áudio em tempo real.
-    // Nós "embaralhamos" os dados aqui para que o processador possa ler os
-    // números em sequência perfeita durante o processamento, o que é muito mais rápido.
     let mut weights = vec![0u16; total];
-    let mut idx = 0;
-    for out_c in 0..OUT {
+
+    // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
+    // Otimiza o carregamento de 4 pesos simultâneos via SIMD.
+    let num_blocks = OUT / 4;
+    for b in 0..num_blocks {
+        for k in 0..K {
+            for in_c in 0..IN {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let raw_idx = (out_c * IN + in_c) * K + k;
+                    let val = if is_bf16 {
+                        f32_to_bf16(raw[raw_idx])
+                    } else {
+                        half::f16::from_f32(raw[raw_idx]).to_bits()
+                    };
+                    let target_idx = b * (K * IN * 4) + k * (IN * 4) + in_c * 4 + lane;
+                    weights[target_idx] = val;
+                }
+            }
+        }
+    }
+
+    // Canais de cauda (Remainder) se OUT não for múltiplo de 4
+    let tail_start_ch = num_blocks * 4;
+    for out_c in tail_start_ch..OUT {
         for in_c in 0..IN {
             for k in 0..K {
-                weights[out_c * K * IN + k * IN + in_c] = half::f16::from_f32(raw[idx]).to_bits();
-                idx += 1;
+                let raw_idx = (out_c * IN + in_c) * K + k;
+                let val = if is_bf16 {
+                    f32_to_bf16(raw[raw_idx])
+                } else {
+                    half::f16::from_f32(raw[raw_idx]).to_bits()
+                };
+                let target_idx = out_c * K * IN + k * IN + in_c;
+                weights[target_idx] = val;
             }
         }
     }
@@ -399,27 +425,51 @@ fn read_conv1d_weights_dyn(
     cursor: &mut WeightCursor<'_>,
     in_size: usize,
     out_size: usize,
-    k: usize,
+    k_size: usize,
     dilation: usize,
     do_bias: bool,
 ) -> anyhow::Result<Conv1dDyn> {
-    let total = out_size * in_size * k;
+    let total = out_size * in_size * k_size;
     let raw = cursor.read_slice(total)?;
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
 
     let mut weights = vec![0u16; total];
-    let mut idx = 0;
-    for out_c in 0..out_size {
+
+    // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
+    let num_blocks = out_size / 4;
+    for b in 0..num_blocks {
+        for k in 0..k_size {
+            for in_c in 0..in_size {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let raw_idx = (out_c * in_size + in_c) * k_size + k;
+                    let val = if is_bf16 {
+                        f32_to_bf16(raw[raw_idx])
+                    } else {
+                        half::f16::from_f32(raw[raw_idx]).to_bits()
+                    };
+                    let target_idx =
+                        b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane;
+                    weights[target_idx] = val;
+                }
+            }
+        }
+    }
+
+    // Canais de cauda (Remainder)
+    let tail_start_ch = num_blocks * 4;
+    for out_c in tail_start_ch..out_size {
         for in_c in 0..in_size {
-            for step in 0..k {
+            for k in 0..k_size {
+                let raw_idx = (out_c * in_size + in_c) * k_size + k;
                 let val = if is_bf16 {
-                    f32_to_bf16(raw[idx])
+                    f32_to_bf16(raw[raw_idx])
                 } else {
-                    half::f16::from_f32(raw[idx]).to_bits()
+                    half::f16::from_f32(raw[raw_idx]).to_bits()
                 };
-                weights[out_c * k * in_size + step * in_size + in_c] = val;
-                idx += 1;
+                let target_idx = out_c * k_size * in_size + k * in_size + in_c;
+                weights[target_idx] = val;
             }
         }
     }
@@ -437,7 +487,7 @@ fn read_conv1d_weights_dyn(
         dilation,
         in_ch: in_size,
         out_ch: out_size,
-        kernel: k,
+        kernel: k_size,
     })
 }
 

@@ -78,18 +78,18 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
             let mut out_c = 0;
-            while out_c + 4 <= OUT {
-                let w0_start = (out_c * K + k) * IN;
-                let w1_start = ((out_c + 1) * K + k) * IN;
-                let w2_start = ((out_c + 2) * K + k) * IN;
-                let w3_start = ((out_c + 3) * K + k) * IN;
+            let num_blocks = OUT / 4;
 
-                let w0 = unsafe { self.weights.get_unchecked(w0_start..w0_start + IN) };
-                let w1 = unsafe { self.weights.get_unchecked(w1_start..w1_start + IN) };
-                let w2 = unsafe { self.weights.get_unchecked(w2_start..w2_start + IN) };
-                let w3 = unsafe { self.weights.get_unchecked(w3_start..w3_start + IN) };
+            // [T19] Loop Interleaved: Processa 4 canais de saída por iteração
+            // com um único stream de leitura de pesos (contiguidade máxima).
+            for b in 0..num_blocks {
+                let w_start = b * K * IN * 4 + k * IN * 4;
+                let w_slice: &[[u16; 4]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                    core::slice::from_raw_parts(ptr, IN)
+                };
 
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x(w0, w1, w2, w3, in_slice) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
 
                 unsafe {
                     *out_frame.get_unchecked_mut(out_c) += r0;
@@ -100,8 +100,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 out_c += 4;
             }
 
+            // Loop de Cauda (Remainder): Processa canais restantes se OUT % 4 != 0
             while out_c < OUT {
-                let w_start = (out_c * K + k) * IN;
+                let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
                 let r = unsafe { M::dot_product(in_slice, w) };
                 unsafe {
@@ -149,18 +150,18 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
             let mut out_c = 0;
-            while out_c + 4 <= OUT {
-                let w0_start = (out_c * K + k) * IN;
-                let w1_start = ((out_c + 1) * K + k) * IN;
-                let w2_start = ((out_c + 2) * K + k) * IN;
-                let w3_start = ((out_c + 3) * K + k) * IN;
+            let num_blocks = OUT / 4;
 
-                let w0 = unsafe { self.weights.get_unchecked(w0_start..w0_start + IN) };
-                let w1 = unsafe { self.weights.get_unchecked(w1_start..w1_start + IN) };
-                let w2 = unsafe { self.weights.get_unchecked(w2_start..w2_start + IN) };
-                let w3 = unsafe { self.weights.get_unchecked(w3_start..w3_start + IN) };
+            // [T19] Loop Interleaved BF16: Eficiência máxima para VNNI
+            for b in 0..num_blocks {
+                let w_start = b * K * IN * 4 + k * IN * 4;
+                let w_slice: &[[u16; 4]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                    core::slice::from_raw_parts(ptr, IN)
+                };
 
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_bf16_4x(w0, w1, w2, w3, in_slice) };
+                let [r0, r1, r2, r3] =
+                    unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
 
                 unsafe {
                     *out_frame.get_unchecked_mut(out_c) += r0;
@@ -171,8 +172,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 out_c += 4;
             }
 
+            // Loop de Cauda BF16
             while out_c < OUT {
-                let w_start = (out_c * K + k) * IN;
+                let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
                 let r = unsafe { M::dot_product_bf16(in_slice, w) };
                 unsafe {

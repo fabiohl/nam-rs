@@ -116,9 +116,9 @@ fn fill_lstm1_weights<const H: usize, const IH: usize, const H4: usize>(
     val: f32,
 ) {
     let bits = half::f16::from_f32(val).to_bits();
-    for i in 0..H {
+    for k in 0..4 {
         for j in 0..IH {
-            model.layer.input_hidden_weights[i][j].fill(bits);
+            model.layer.input_hidden_weights[k][j].fill(bits);
         }
     }
     model.layer.bias.fill(val);
@@ -131,15 +131,15 @@ fn fill_lstm2_weights<const H: usize, const H1_IH: usize, const H2_IH: usize, co
     val: f32,
 ) {
     let bits = half::f16::from_f32(val).to_bits();
-    for i in 0..H {
+    for k in 0..4 {
         for j in 0..H1_IH {
-            model.layer1.input_hidden_weights[i][j].fill(bits);
+            model.layer1.input_hidden_weights[k][j].fill(bits);
         }
     }
     model.layer1.bias.fill(val);
-    for i in 0..H {
+    for k in 0..4 {
         for j in 0..H2_IH {
-            model.layer2.input_hidden_weights[i][j].fill(bits);
+            model.layer2.input_hidden_weights[k][j].fill(bits);
         }
     }
     model.layer2.bias.fill(val);
