@@ -2419,6 +2419,12 @@ pub unsafe fn fused_add_gemv_avx512(
     let out_len = out_frame.len();
     let in_len = in_frame.len();
 
+    // [T21] Especialização para Standard WaveNet (CH=16)
+    if out_len == 16 {
+        unsafe { fused_add_gemv_avx512_small(in_frame, weights, bias, out_frame, do_bias) };
+        return;
+    }
+
     let mut out_c = 0;
     while out_c + 16 <= out_len {
         let mut accum = unsafe { _mm512_loadu_ps(out_frame.as_ptr().add(out_c)) };
@@ -2469,6 +2475,12 @@ pub unsafe fn gemv_overwrite_avx512(
     use core::arch::x86_64::*;
     let out_len = out_frame.len();
     let in_len = in_frame.len();
+
+    // [T21] Especialização para Standard WaveNet (CH=16)
+    if out_len == 16 {
+        unsafe { gemv_overwrite_avx512_small(in_frame, weights, bias, out_frame, do_bias) };
+        return;
+    }
 
     let mut out_c = 0;
     while out_c + 16 <= out_len {
@@ -2663,3 +2675,118 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 #[path = "simd_test.rs"]
 mod simd_test;
+
+/// [T21] Kernel GEMV AVX-512 especializado para Standard WaveNet (CH=16).
+/// Explora unrolling x4 e 2 acumuladores ZMM para quebrar dependências de FMA.
+#[target_feature(enable = "avx512f,avx512vl")]
+unsafe fn gemv_overwrite_avx512_small(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let in_len = in_frame.len();
+
+    unsafe {
+        // Acumulador persistente em ZMM
+        let mut accum0 = if do_bias {
+            _mm512_loadu_ps(bias.as_ptr())
+        } else {
+            _mm512_setzero_ps()
+        };
+        let mut accum1 = _mm512_setzero_ps();
+
+        let mut in_c = 0;
+        while in_c + 4 <= in_len {
+            let v_in0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let v_in1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
+            let v_in2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
+            let v_in3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
+
+            let w_ptr = weights.as_ptr().add(in_c * 16);
+            let vw0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
+            let vw1 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(16) as *const __m256i));
+            let vw2 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(32) as *const __m256i));
+            let vw3 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(48) as *const __m256i));
+
+            accum0 = _mm512_fmadd_ps(v_in0, vw0, accum0);
+            accum1 = _mm512_fmadd_ps(v_in1, vw1, accum1);
+            accum0 = _mm512_fmadd_ps(v_in2, vw2, accum0);
+            accum1 = _mm512_fmadd_ps(v_in3, vw3, accum1);
+
+            in_c += 4;
+        }
+
+        // Acumula os resultados parciais
+        accum0 = _mm512_add_ps(accum0, accum1);
+
+        while in_c < in_len {
+            let v_in = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(in_c * 16) as *const __m256i
+            ));
+            accum0 = _mm512_fmadd_ps(v_in, vw, accum0);
+            in_c += 1;
+        }
+
+        _mm512_storeu_ps(out_frame.as_mut_ptr(), accum0);
+    }
+}
+
+/// [T21] Kernel Fused-Add-GEMV AVX-512 especializado para Standard WaveNet (CH=16).
+#[target_feature(enable = "avx512f,avx512vl")]
+unsafe fn fused_add_gemv_avx512_small(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let in_len = in_frame.len();
+
+    unsafe {
+        // Carrega o residual e soma o bias
+        let mut accum0 = _mm512_loadu_ps(out_frame.as_ptr());
+        if do_bias {
+            accum0 = _mm512_add_ps(accum0, _mm512_loadu_ps(bias.as_ptr()));
+        }
+        let mut accum1 = _mm512_setzero_ps();
+
+        let mut in_c = 0;
+        while in_c + 4 <= in_len {
+            let v_in0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let v_in1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
+            let v_in2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
+            let v_in3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
+
+            let w_ptr = weights.as_ptr().add(in_c * 16);
+            let vw0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
+            let vw1 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(16) as *const __m256i));
+            let vw2 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(32) as *const __m256i));
+            let vw3 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(48) as *const __m256i));
+
+            accum0 = _mm512_fmadd_ps(v_in0, vw0, accum0);
+            accum1 = _mm512_fmadd_ps(v_in1, vw1, accum1);
+            accum0 = _mm512_fmadd_ps(v_in2, vw2, accum0);
+            accum1 = _mm512_fmadd_ps(v_in3, vw3, accum1);
+
+            in_c += 4;
+        }
+
+        accum0 = _mm512_add_ps(accum0, accum1);
+
+        while in_c < in_len {
+            let v_in = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(in_c * 16) as *const __m256i
+            ));
+            accum0 = _mm512_fmadd_ps(v_in, vw, accum0);
+            in_c += 1;
+        }
+
+        _mm512_storeu_ps(out_frame.as_mut_ptr(), accum0);
+    }
+}

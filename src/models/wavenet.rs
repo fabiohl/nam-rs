@@ -477,8 +477,9 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
 
                 // Soma o Mixin (Condicionamento pré-calculado)
                 let mix_idx = i * CH;
-                for j in 0..CH {
-                    *out_frame.get_unchecked_mut(j) += mixin_out[mix_idx + j];
+                let mixin_slice = mixin_out.get_unchecked(mix_idx..mix_idx + CH);
+                for (o, m) in out_frame.iter_mut().zip(mixin_slice) {
+                    *o += *m;
                 }
             }
 
@@ -496,8 +497,9 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 let temp = conv_slice.get_unchecked(conv_idx..conv_idx + CH);
 
                 // Head Update (Skip-Connection)
-                for j in 0..CH {
-                    *head_input.get_unchecked_mut(i * CH + j) += temp[j];
+                let head_ptr = head_input.as_mut_ptr().add(i * CH);
+                for (j, &val) in temp.iter().enumerate() {
+                    *head_ptr.add(j) += val;
                 }
 
                 // Projeção 1x1 + Soma Residual

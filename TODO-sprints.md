@@ -62,7 +62,7 @@ Uma inovação: pré-computar a **soma Conv1D + Mixin** em batch para múltiplos
 
 ---
 
-### T21 — GEMV AVX-512: Convolução 1×1 com Registradores ZMM (16-wide) ⬜
+### T21 — GEMV AVX-512: Convolução 1×1 com Registradores ZMM (16-wide) ✅
 
 **Racional Científico:** As funções `fused_add_gemv_avx512` e `gemv_overwrite_avx512` em `simd.rs` (linhas 2338-2434) processam 16 floats por iteração — porém suas invocações pela WaveNet Dense Layer (`CH=16`) resultam em exatamente **1 iteração** do loop SIMD + 0 tail. Isso é ótimo, mas o overhead de setup (broadcast de `in_frame[in_c]` para ZMM, carga do ponteiro de pesos) domina. Uma versão **especializada para CH≤16** que desdobra o loop `in_len` com register renaming explícito (2 acumuladores ZMM alternados) pode eliminar ~30% do overhead.
 
