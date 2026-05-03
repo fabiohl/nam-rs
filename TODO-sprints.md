@@ -18,16 +18,16 @@
 - [x] Manter fallback escalar para testes
 - [x] Benchmark comparativo
 
-### TA2 · Fused Conv1d + Mixin no WaveNet
+### TA2 · Fused Conv1d + Mixin no WaveNet [DONE]
 
 - **Arquivo(s):** `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal`)
 - **O quê:** Eliminar o loop escalar `for (o, m) in out_frame.iter_mut().zip(mixin_slice)` na fase linear (PASSO 2). Fundir a soma do Mixin diretamente no acumulador SIMD do `Conv1d::process_single_frame`, evitando load/store intermediário.
 - **Impacto estimado:** ~10% de redução no tempo por layer WaveNet.
 - **Cuidado:** O Mixin já está pré-calculado em bloco (`process_block`). A fusão deve receber um ponteiro para o slice correto do Mixin no frame `i`.
-- [ ] Criar variante `process_single_frame_with_mixin<M>` em `Conv1d`
-- [ ] Integrar no `process_block_internal`
-- [ ] Manter path BF16 equivalente
-- [ ] Benchmark comparativo
+- [x] Criar variante `process_single_frame_with_mixin<M>` em `Conv1d`
+- [x] Integrar no `process_block_internal`
+- [x] Manter path BF16 equivalente
+- [x] Benchmark comparativo
 
 ### TA3 · Batch 1×1 Projection no WaveNet
 

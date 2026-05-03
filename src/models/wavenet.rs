@@ -53,8 +53,49 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         out_frame: &mut [f32],
         frame_idx: usize,
     ) {
+        unsafe {
+            self.process_single_frame_internal::<M>(layer_buffer, out_frame, frame_idx, None);
+        }
+    }
+
+    /// Variante fundida que adiciona um vetor Mixin (condicionamento) diretamente no acumulador.
+    #[inline(always)]
+    pub unsafe fn process_single_frame_with_mixin<M: SimdMath>(
+        &self,
+        layer_buffer: &[f32],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: &[f32],
+    ) {
+        unsafe {
+            self.process_single_frame_internal::<M>(
+                layer_buffer,
+                out_frame,
+                frame_idx,
+                Some(mixin),
+            );
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn process_single_frame_internal<M: SimdMath>(
+        &self,
+        layer_buffer: &[f32],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: Option<&[f32]>,
+    ) {
         // [PASSO 1: Inicialização do Acumulador]
-        if self.do_bias {
+        if let Some(m) = mixin {
+            if self.do_bias {
+                out_frame.copy_from_slice(&self.bias[0..OUT]);
+                unsafe {
+                    M::accumulate_head(out_frame, m);
+                }
+            } else {
+                out_frame.copy_from_slice(m);
+            }
+        } else if self.do_bias {
             out_frame.copy_from_slice(&self.bias[0..OUT]);
         } else {
             out_frame.fill(0.0);
@@ -67,22 +108,17 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let in_slice_start = (current_frame_idx as usize) * IN;
 
             // Prefetch adaptativo com lookahead para cobrir latência de memória.
-            // Avança 16 floats (2 vetores AVX2) à frente do ponteiro de leitura atual.
             let lookahead_offset = 16;
-            let prefetch_ptr =
-                unsafe { layer_buffer.as_ptr().add(in_slice_start + lookahead_offset) };
             unsafe {
+                let prefetch_ptr = layer_buffer.as_ptr().add(in_slice_start + lookahead_offset);
                 crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
             }
 
-            let in_slice =
-                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+            let in_slice = unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
             let mut out_c = 0;
             let num_blocks = OUT / 4;
 
-            // [T19] Loop Interleaved: Processa 4 canais de saída por iteração
-            // com um único stream de leitura de pesos (contiguidade máxima).
             for b in 0..num_blocks {
                 let w_start = b * K * IN * 4 + k * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
@@ -101,7 +137,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 out_c += 4;
             }
 
-            // Loop de Cauda (Remainder): Processa canais restantes se OUT % 4 != 0
             while out_c < OUT {
                 let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
@@ -127,7 +162,49 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         out_frame: &mut [f32],
         frame_idx: usize,
     ) {
-        if self.do_bias {
+        unsafe {
+            self.process_single_frame_bf16_internal::<M>(layer_buffer, out_frame, frame_idx, None);
+        }
+    }
+
+    /// Variante fundida BF16 que adiciona um vetor Mixin diretamente no acumulador.
+    #[inline(always)]
+    pub unsafe fn process_single_frame_bf16_with_mixin<M: SimdMath>(
+        &self,
+        layer_buffer: &[u16],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: &[f32],
+    ) {
+        unsafe {
+            self.process_single_frame_bf16_internal::<M>(
+                layer_buffer,
+                out_frame,
+                frame_idx,
+                Some(mixin),
+            );
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn process_single_frame_bf16_internal<M: SimdMath>(
+        &self,
+        layer_buffer: &[u16],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: Option<&[f32]>,
+    ) {
+        // [PASSO 1: Inicialização do Acumulador]
+        if let Some(m) = mixin {
+            if self.do_bias {
+                out_frame.copy_from_slice(&self.bias[0..OUT]);
+                unsafe {
+                    M::accumulate_head(out_frame, m);
+                }
+            } else {
+                out_frame.copy_from_slice(m);
+            }
+        } else if self.do_bias {
             out_frame.copy_from_slice(&self.bias[0..OUT]);
         } else {
             out_frame.fill(0.0);
@@ -140,20 +217,17 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 
             // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
             if k + 1 < K {
-                let prefetch_ptr =
-                    unsafe { layer_buffer.as_ptr().add(in_slice_start + self.dilation) };
                 unsafe {
+                    let prefetch_ptr = layer_buffer.as_ptr().add(in_slice_start + self.dilation);
                     crate::math::simd::adaptive_prefetch_f32(prefetch_ptr.cast(), self.dilation);
                 }
             }
 
-            let in_slice =
-                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+            let in_slice = unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
 
             let mut out_c = 0;
             let num_blocks = OUT / 4;
 
-            // [T19] Loop Interleaved BF16: Eficiência máxima para VNNI
             for b in 0..num_blocks {
                 let w_start = b * K * IN * 4 + k * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
@@ -161,8 +235,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [r0, r1, r2, r3] =
-                    unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
+                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
 
                 unsafe {
                     *out_frame.get_unchecked_mut(out_c) += r0;
@@ -173,7 +246,6 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 out_c += 4;
             }
 
-            // Loop de Cauda BF16
             while out_c < OUT {
                 let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
@@ -465,25 +537,24 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 let out_ptr = conv_slice.as_mut_ptr().add(i * CH);
                 let out_frame = core::slice::from_raw_parts_mut(out_ptr, CH);
 
-                if M::IS_BF16 {
-                    self.conv1d.process_single_frame_bf16::<M>(
-                        layer_buffer_bf16,
-                        out_frame,
-                        buffer_start + i,
-                    );
-                } else {
-                    self.conv1d.process_single_frame::<M>(
-                        layer_buffer,
-                        out_frame,
-                        buffer_start + i,
-                    );
-                }
-
                 // Soma o Mixin (Condicionamento pré-calculado)
                 let mix_idx = i * CH;
                 let mixin_slice = mixin_out.get_unchecked(mix_idx..mix_idx + CH);
-                for (o, m) in out_frame.iter_mut().zip(mixin_slice) {
-                    *o += *m;
+
+                if M::IS_BF16 {
+                    self.conv1d.process_single_frame_bf16_with_mixin::<M>(
+                        layer_buffer_bf16,
+                        out_frame,
+                        buffer_start + i,
+                        mixin_slice,
+                    );
+                } else {
+                    self.conv1d.process_single_frame_with_mixin::<M>(
+                        layer_buffer,
+                        out_frame,
+                        buffer_start + i,
+                        mixin_slice,
+                    );
                 }
             }
 
