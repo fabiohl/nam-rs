@@ -38,8 +38,8 @@ macro_rules! define_lstm_process {
     (
         $fn_name:ident,
         $target_meta:meta,
-        $gemv_overwrite:path,
-        $gemv_overwrite_bf16:path,
+        $gemv_4gate:path,
+        $gemv_4gate_bf16:path,
         $step:expr,
         $load:ident,
         $store:ident,
@@ -73,63 +73,27 @@ macro_rules! define_lstm_process {
                     _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().add(16).cast::<i8>());
                 }
 
-                // 3. Cálculo das Portas (Gates) via GEMV Gate-Major
+                // 3. Cálculo das Portas (Gates) via GEMV Fundido (4-Gate)
                 if $is_bf16 {
-                    $gemv_overwrite_bf16(
+                    $gemv_4gate_bf16(
                         &self.state_bf16,
                         self.input_hidden_weights[0].as_flattened(),
-                        &self.bias[0..H],
-                        &mut self.gates[0..H],
-                        true,
-                    );
-                    $gemv_overwrite_bf16(
-                        &self.state_bf16,
                         self.input_hidden_weights[1].as_flattened(),
-                        &self.bias[H..2 * H],
-                        &mut self.gates[H..2 * H],
-                        true,
-                    );
-                    $gemv_overwrite_bf16(
-                        &self.state_bf16,
                         self.input_hidden_weights[2].as_flattened(),
-                        &self.bias[2 * H..3 * H],
-                        &mut self.gates[2 * H..3 * H],
-                        true,
-                    );
-                    $gemv_overwrite_bf16(
-                        &self.state_bf16,
                         self.input_hidden_weights[3].as_flattened(),
-                        &self.bias[3 * H..4 * H],
-                        &mut self.gates[3 * H..4 * H],
+                        &self.bias,
+                        &mut self.gates,
                         true,
                     );
                 } else {
-                    $gemv_overwrite(
+                    $gemv_4gate(
                         &self.state,
                         self.input_hidden_weights[0].as_flattened(),
-                        &self.bias[0..H],
-                        &mut self.gates[0..H],
-                        true,
-                    );
-                    $gemv_overwrite(
-                        &self.state,
                         self.input_hidden_weights[1].as_flattened(),
-                        &self.bias[H..2 * H],
-                        &mut self.gates[H..2 * H],
-                        true,
-                    );
-                    $gemv_overwrite(
-                        &self.state,
                         self.input_hidden_weights[2].as_flattened(),
-                        &self.bias[2 * H..3 * H],
-                        &mut self.gates[2 * H..3 * H],
-                        true,
-                    );
-                    $gemv_overwrite(
-                        &self.state,
                         self.input_hidden_weights[3].as_flattened(),
-                        &self.bias[3 * H..4 * H],
-                        &mut self.gates[3 * H..4 * H],
+                        &self.bias,
+                        &mut self.gates,
                         true,
                     );
                 }
@@ -228,8 +192,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
-        crate::math::simd::gemv_overwrite_avx2,
-        crate::math::simd::gemv_overwrite_bf16_fallback,
+        crate::math::simd::gemv_4gate_avx2,
+        crate::math::simd::gemv_4gate_bf16_fallback,
         8,                                   // $step: Processa 8 elementos por instrução
         _mm256_loadu_ps,                     // Carregamento não alinhado (unaligned load)
         _mm256_storeu_ps,                    // Armazenamento não alinhado (unaligned store)
@@ -247,8 +211,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
-        crate::math::simd::gemv_overwrite_avx512,
-        crate::math::simd::gemv_overwrite_bf16_fallback,
+        crate::math::simd::gemv_4gate_avx512,
+        crate::math::simd::gemv_4gate_bf16_fallback,
         16, // $step: Processa 16 elementos por instrução
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -263,8 +227,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
-        crate::math::simd::gemv_overwrite_avx2,
-        crate::math::simd::gemv_overwrite_bf16_fallback,
+        crate::math::simd::gemv_4gate_avx2,
+        crate::math::simd::gemv_4gate_bf16_fallback,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -279,8 +243,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
-        crate::math::simd::gemv_overwrite_avx512,
-        crate::math::simd::gemv_overwrite_bf16_fallback,
+        crate::math::simd::gemv_4gate_avx512,
+        crate::math::simd::gemv_4gate_bf16_fallback,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -295,8 +259,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
-        crate::math::simd::gemv_overwrite_avx512,
-        crate::math::simd::gemv_overwrite_bf16_fallback, // Placeholder
+        crate::math::simd::gemv_4gate_avx512,
+        crate::math::simd::gemv_4gate_bf16_fallback,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,

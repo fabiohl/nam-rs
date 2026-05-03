@@ -2690,6 +2690,346 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
     }
 }
 
+/// Realiza a projeção linear fundida para as 4 portas do LSTM (I, F, G, O) via AVX2.
+/// Reduz o overhead de carregamento do vetor de entrada `in_frame` ao processar
+/// as 4 matrizes de pesos simultaneamente.
+///
+/// # Safety
+/// Requer CPU com AVX2, FMA e F16C. `bias` e `out_frame` devem ter ao menos `4 * out_len`.
+/// `w0`–`w3` devem ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+#[target_feature(enable = "avx2,fma,f16c")]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn gemv_4gate_avx2(
+    in_frame: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let out_len = out_frame.len() / 4;
+    let in_len = in_frame.len();
+
+    let mut out_c = 0;
+    while out_c + 8 <= out_len {
+        let mut acc0 = if do_bias {
+            unsafe { _mm256_loadu_ps(bias.as_ptr().add(out_c)) }
+        } else {
+            _mm256_setzero_ps()
+        };
+        let mut acc1 = if do_bias {
+            unsafe { _mm256_loadu_ps(bias.as_ptr().add(out_len + out_c)) }
+        } else {
+            _mm256_setzero_ps()
+        };
+        let mut acc2 = if do_bias {
+            unsafe { _mm256_loadu_ps(bias.as_ptr().add(2 * out_len + out_c)) }
+        } else {
+            _mm256_setzero_ps()
+        };
+        let mut acc3 = if do_bias {
+            unsafe { _mm256_loadu_ps(bias.as_ptr().add(3 * out_len + out_c)) }
+        } else {
+            _mm256_setzero_ps()
+        };
+
+        for in_c in 0..in_len {
+            let vs = unsafe { _mm256_set1_ps(*in_frame.get_unchecked(in_c)) };
+
+            let wp0 = unsafe { w0.as_ptr().add(in_c * out_len + out_c) };
+            let vw0 = unsafe { _mm256_cvtph_ps(_mm_loadu_si128(wp0 as *const __m128i)) };
+            acc0 = _mm256_fmadd_ps(vs, vw0, acc0);
+
+            let wp1 = unsafe { w1.as_ptr().add(in_c * out_len + out_c) };
+            let vw1 = unsafe { _mm256_cvtph_ps(_mm_loadu_si128(wp1 as *const __m128i)) };
+            acc1 = _mm256_fmadd_ps(vs, vw1, acc1);
+
+            let wp2 = unsafe { w2.as_ptr().add(in_c * out_len + out_c) };
+            let vw2 = unsafe { _mm256_cvtph_ps(_mm_loadu_si128(wp2 as *const __m128i)) };
+            acc2 = _mm256_fmadd_ps(vs, vw2, acc2);
+
+            let wp3 = unsafe { w3.as_ptr().add(in_c * out_len + out_c) };
+            let vw3 = unsafe { _mm256_cvtph_ps(_mm_loadu_si128(wp3 as *const __m128i)) };
+            acc3 = _mm256_fmadd_ps(vs, vw3, acc3);
+        }
+
+        unsafe {
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_len + out_c), acc1);
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(2 * out_len + out_c), acc2);
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(3 * out_len + out_c), acc3);
+        }
+        out_c += 8;
+    }
+
+    while out_c < out_len {
+        let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
+        let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
+        let mut sum2 = if do_bias {
+            bias[2 * out_len + out_c]
+        } else {
+            0.0
+        };
+        let mut sum3 = if do_bias {
+            bias[3 * out_len + out_c]
+        } else {
+            0.0
+        };
+
+        for in_c in 0..in_len {
+            let s = unsafe { *in_frame.get_unchecked(in_c) };
+            sum0 += s * unsafe {
+                half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum1 += s * unsafe {
+                half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum2 += s * unsafe {
+                half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum3 += s * unsafe {
+                half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+        }
+
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum0;
+            *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
+            *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;
+            *out_frame.get_unchecked_mut(3 * out_len + out_c) = sum3;
+        }
+        out_c += 1;
+    }
+}
+
+/// Realiza a projeção linear fundida para as 4 portas do LSTM via AVX-512.
+///
+/// # Safety
+/// Requer CPU com AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn gemv_4gate_avx512(
+    in_frame: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+    let out_len = out_frame.len() / 4;
+    let in_len = in_frame.len();
+
+    let mut out_c = 0;
+    while out_c + 16 <= out_len {
+        let mut acc0 = if do_bias {
+            unsafe { _mm512_loadu_ps(bias.as_ptr().add(out_c)) }
+        } else {
+            _mm512_setzero_ps()
+        };
+        let mut acc1 = if do_bias {
+            unsafe { _mm512_loadu_ps(bias.as_ptr().add(out_len + out_c)) }
+        } else {
+            _mm512_setzero_ps()
+        };
+        let mut acc2 = if do_bias {
+            unsafe { _mm512_loadu_ps(bias.as_ptr().add(2 * out_len + out_c)) }
+        } else {
+            _mm512_setzero_ps()
+        };
+        let mut acc3 = if do_bias {
+            unsafe { _mm512_loadu_ps(bias.as_ptr().add(3 * out_len + out_c)) }
+        } else {
+            _mm512_setzero_ps()
+        };
+
+        for in_c in 0..in_len {
+            let vs = unsafe { _mm512_set1_ps(*in_frame.get_unchecked(in_c)) };
+
+            let wp0 = unsafe { w0.as_ptr().add(in_c * out_len + out_c) };
+            let vw0 = unsafe { _mm512_cvtph_ps(_mm256_loadu_si256(wp0 as *const __m256i)) };
+            acc0 = _mm512_fmadd_ps(vs, vw0, acc0);
+
+            let wp1 = unsafe { w1.as_ptr().add(in_c * out_len + out_c) };
+            let vw1 = unsafe { _mm512_cvtph_ps(_mm256_loadu_si256(wp1 as *const __m256i)) };
+            acc1 = _mm512_fmadd_ps(vs, vw1, acc1);
+
+            let wp2 = unsafe { w2.as_ptr().add(in_c * out_len + out_c) };
+            let vw2 = unsafe { _mm512_cvtph_ps(_mm256_loadu_si256(wp2 as *const __m256i)) };
+            acc2 = _mm512_fmadd_ps(vs, vw2, acc2);
+
+            let wp3 = unsafe { w3.as_ptr().add(in_c * out_len + out_c) };
+            let vw3 = unsafe { _mm512_cvtph_ps(_mm256_loadu_si256(wp3 as *const __m256i)) };
+            acc3 = _mm512_fmadd_ps(vs, vw3, acc3);
+        }
+
+        unsafe {
+            _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
+            _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_len + out_c), acc1);
+            _mm512_storeu_ps(out_frame.as_mut_ptr().add(2 * out_len + out_c), acc2);
+            _mm512_storeu_ps(out_frame.as_mut_ptr().add(3 * out_len + out_c), acc3);
+        }
+        out_c += 16;
+    }
+
+    while out_c < out_len {
+        let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
+        let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
+        let mut sum2 = if do_bias {
+            bias[2 * out_len + out_c]
+        } else {
+            0.0
+        };
+        let mut sum3 = if do_bias {
+            bias[3 * out_len + out_c]
+        } else {
+            0.0
+        };
+
+        for in_c in 0..in_len {
+            let s = unsafe { *in_frame.get_unchecked(in_c) };
+            sum0 += s * unsafe {
+                half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum1 += s * unsafe {
+                half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum2 += s * unsafe {
+                half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum3 += s * unsafe {
+                half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+        }
+
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum0;
+            *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
+            *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;
+            *out_frame.get_unchecked_mut(3 * out_len + out_c) = sum3;
+        }
+        out_c += 1;
+    }
+}
+
+/// Fallback escalar para o GEMV fundido de 4 portas.
+///
+/// # Safety
+/// `w0`–`w3` devem ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn gemv_4gate_fallback(
+    in_frame: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    let out_len = out_frame.len() / 4;
+    let in_len = in_frame.len();
+    for out_c in 0..out_len {
+        let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
+        let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
+        let mut sum2 = if do_bias {
+            bias[2 * out_len + out_c]
+        } else {
+            0.0
+        };
+        let mut sum3 = if do_bias {
+            bias[3 * out_len + out_c]
+        } else {
+            0.0
+        };
+
+        for in_c in 0..in_len {
+            let s = unsafe { *in_frame.get_unchecked(in_c) };
+            sum0 += s * unsafe {
+                half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum1 += s * unsafe {
+                half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum2 += s * unsafe {
+                half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+            sum3 += s * unsafe {
+                half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32()
+            };
+        }
+
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum0;
+            *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
+            *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;
+            *out_frame.get_unchecked_mut(3 * out_len + out_c) = sum3;
+        }
+    }
+}
+
+/// Fallback escalar fundido para BF16.
+///
+/// # Safety
+/// `w0`–`w3` devem ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn gemv_4gate_bf16_fallback(
+    in_frame: &[u16],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    let out_len = out_frame.len() / 4;
+    let in_len = in_frame.len();
+    for out_c in 0..out_len {
+        let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
+        let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
+        let mut sum2 = if do_bias {
+            bias[2 * out_len + out_c]
+        } else {
+            0.0
+        };
+        let mut sum3 = if do_bias {
+            bias[3 * out_len + out_c]
+        } else {
+            0.0
+        };
+
+        for in_c in 0..in_len {
+            let s_bits = unsafe { *in_frame.get_unchecked(in_c) };
+            let s = f32::from_bits((s_bits as u32) << 16);
+            sum0 += s * f32::from_bits(
+                (unsafe { *w0.get_unchecked(in_c * out_len + out_c) } as u32) << 16,
+            );
+            sum1 += s * f32::from_bits(
+                (unsafe { *w1.get_unchecked(in_c * out_len + out_c) } as u32) << 16,
+            );
+            sum2 += s * f32::from_bits(
+                (unsafe { *w2.get_unchecked(in_c * out_len + out_c) } as u32) << 16,
+            );
+            sum3 += s * f32::from_bits(
+                (unsafe { *w3.get_unchecked(in_c * out_len + out_c) } as u32) << 16,
+            );
+        }
+
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum0;
+            *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
+            *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;
+            *out_frame.get_unchecked_mut(3 * out_len + out_c) = sum3;
+        }
+    }
+}
+
 /// Fallback escalar para o GEMV BF16.
 ///
 /// # Safety
