@@ -448,52 +448,64 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                     .process_block::<M>(condition, mixin_out_slice, num_frames);
             }
 
-            for i in 0..num_frames {
-                let mut temp = [0.0f32; CH];
-                let lb_start = (buffer_start + i) * CH;
+            // [T20] "Ahead-of-Time Conditioning": Otimização de Fusão Temporal
+            // Buffer temporário na stack para armazenar os resultados intermediários (Conv1D + Mixin)
+            // antes da ativação. CH=16 * MAX_FRAMES=64 = 1024 elementos (4KB).
+            let mut conv_plus_mixin = [0.0f32; 1024];
+            let conv_slice = &mut conv_plus_mixin[..num_frames * CH];
 
-                // [PASSO 1: Convolução Causal Dilatada]
+            // [FASE 1: Linear - Conv1D + Mixin]
+            // Iteramos sobre todos os frames apenas para as operações lineares.
+            // Isso maximiza o reuso dos pesos da Conv1D (que são grandes) na Cache L1.
+            for i in 0..num_frames {
+                let out_ptr = conv_slice.as_mut_ptr().add(i * CH);
+                let out_frame = core::slice::from_raw_parts_mut(out_ptr, CH);
+
                 if M::IS_BF16 {
                     self.conv1d.process_single_frame_bf16::<M>(
                         layer_buffer_bf16,
-                        &mut temp,
+                        out_frame,
                         buffer_start + i,
                     );
                 } else {
                     self.conv1d.process_single_frame::<M>(
                         layer_buffer,
-                        &mut temp,
+                        out_frame,
                         buffer_start + i,
                     );
                 }
 
-                // Aplica Mixin (já calculado em bloco para eficiência)
-                #[allow(clippy::needless_range_loop)]
+                // Soma o Mixin (Condicionamento pré-calculado)
+                let mix_idx = i * CH;
                 for j in 0..CH {
-                    temp[j] += mixin_out[i * CH + j];
+                    *out_frame.get_unchecked_mut(j) += mixin_out[mix_idx + j];
+                }
+            }
+
+            // [FASE 2: Ativação em Lote]
+            // Aplicamos a Tanh em todo o bloco de uma vez só.
+            // O throughput SIMD é muito maior processando 1024 elementos contíguos
+            // do que 16 elementos por chamada.
+            M::activation_tanh_block(conv_slice);
+
+            // [FASE 3: Não-Linear & Saída - Head Update + 1x1 Residual]
+            // Agora processamos os canais de saída. Os pesos da 1x1 entram na cache aqui.
+            for i in 0..num_frames {
+                let lb_start = (buffer_start + i) * CH;
+                let conv_idx = i * CH;
+                let temp = conv_slice.get_unchecked(conv_idx..conv_idx + CH);
+
+                // Head Update (Skip-Connection)
+                for j in 0..CH {
+                    *head_input.get_unchecked_mut(i * CH + j) += temp[j];
                 }
 
-                // [PASSO 3: Função de Ativação Tanh (Non-Gated)]
-                // Aplica Tanh a todos os canais. Topologias Standard/Lite são non-gated.
-                M::activation_tanh_block(&mut temp);
-
-                // [PASSO 4: Head Update (Skip-Connection)]
-                // Todas as camadas contribuem para o somatório global da cabeça.
-                #[allow(clippy::needless_range_loop)]
-                for j in 0..CH {
-                    head_input[i * CH + j] += temp[j];
-                }
-
-                // [PASSO 5: Projeção 1x1 (Output)]
-                // Projeta o resultado de volta para o barramento residual.
-                // [PASSO 5: Projeção 1x1 (Output) + Soma Residual Fundida]
-                // Copiamos o buffer residual original para o output e então fundimos a projeção.
-                // Isso elimina o buffer intermediário `res_out` e reduz a pressão no L1.
+                // Projeção 1x1 + Soma Residual
                 let out_ptr = output.as_mut_ptr().add(i * CH);
                 let out_slice = core::slice::from_raw_parts_mut(out_ptr, CH);
-                out_slice.copy_from_slice(&layer_buffer[lb_start..lb_start + CH]);
+                out_slice.copy_from_slice(layer_buffer.get_unchecked(lb_start..lb_start + CH));
 
-                self.one_by_one.process_fused::<M>(&temp, out_slice);
+                self.one_by_one.process_fused::<M>(temp, out_slice);
             }
         }
     }

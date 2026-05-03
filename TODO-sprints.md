@@ -42,7 +42,7 @@
 
 ---
 
-### T20 — WaveNet Mixin+Conv1D Fusão Temporal: "Ahead-of-Time Conditioning" ⬜
+### T20 — WaveNet Mixin+Conv1D Fusão Temporal: "Ahead-of-Time Conditioning" ✅
 
 **Racional Científico:** No `process_block_internal` de `WaveNetLayer` (linhas 449-494 de `wavenet.rs`), o loop `for i in 0..num_frames` executa para **cada frame**: (1) Conv1D, (2) soma Mixin, (3) Tanh, (4) Head update, (5) 1×1 residual. Passos 3-5 somam apenas `CH` operações escalares (~16 ops). Mas o Conv1D com dilatação alta executa dot products contra dados potencialmente frios na cache.
 
