@@ -232,7 +232,7 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 ---
 
-### T30 — `pw_host.rs` Modularização: Extrair `capture_dsp_pipeline` ⬜
+### T30 — `pw_host.rs` Modularização: Extrair `capture_dsp_pipeline` ✅
 
 **Racional Científico:** `pw_host.rs` tem 1169 linhas — o maior arquivo do projeto. A função `capture_dsp_pipeline` e seu `DspPipelineContext` formam uma unidade coesa testável que deveria viver em seu próprio módulo (`src/dsp/pipeline.rs`). Isso melhora legibilidade, habilita testes unitários isolados do pipeline DSP, e reduz o tempo de compilação incremental.
 
