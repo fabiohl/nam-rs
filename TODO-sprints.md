@@ -158,7 +158,9 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-## Épico 3: Organização de Código & Higiene
+## Épico 3: Organização de Código & Higiene ✅ Auditado (2026-05-03)
+
+> **Nota de Auditoria (2026-05-03):** Todas as 3 tarefas (T9–T11) implementadas e validadas. Lint: 0 warnings. Testes: 123/123 passando. T9: 4 supressões `needless_range_loop` residuais documentadas inline (stride indexing no hot-path). T10: `colors.rs` mantido com justificativa no `//!` doc. T11: Convenção documentada em `.agents/rules/testing.md`, todos os arquivos ≥300 LOC agora usam `_test.rs` separado.
 
 ### T9 — Limpeza de `#[allow(clippy::...)]` Residuais [Concluído]
 
@@ -197,7 +199,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T11 — Consolidação de Testes: Arquivo Separado vs Inline
+### T11 — Consolidação de Testes: Arquivo Separado vs Inline [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 1h · **Impacto:** Consistência do projeto
 
