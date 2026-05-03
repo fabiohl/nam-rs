@@ -1095,6 +1095,13 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    /// Acumula o resultado de uma camada WaveNet no buffer da cabeça (skip connection).
+    /// Realiza `dest += src` usando SIMD para maximizar o throughput de memória.
+    ///
+    /// # Safety
+    /// `dest` e `src` devem ter ao menos o mesmo comprimento e ser acessíveis.
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]);
+
     /// Realiza a projeção linear Y = Bias + W * Z (GEMV) substituindo o conteúdo de out_frame.
     /// out_frame: vetor Y (overwrite).
     ///
@@ -1220,6 +1227,23 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
+    #[inline(always)]
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        let len = core::cmp::min(dest.len(), src.len());
+        let mut i = 0;
+        unsafe {
+            while i + 8 <= len {
+                let vd = _mm256_loadu_ps(dest.as_ptr().add(i));
+                let vs = _mm256_loadu_ps(src.as_ptr().add(i));
+                _mm256_storeu_ps(dest.as_mut_ptr().add(i), _mm256_add_ps(vd, vs));
+                i += 8;
+            }
+            while i < len {
+                *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+                i += 1;
+            }
+        }
     }
 
     #[inline(always)]
@@ -1420,6 +1444,24 @@ impl SimdMath for Avx2VnniMath {
     }
 
     #[target_feature(enable = "avxvnni")]
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        let len = core::cmp::min(dest.len(), src.len());
+        let mut i = 0;
+        unsafe {
+            while i + 8 <= len {
+                let vd = _mm256_loadu_ps(dest.as_ptr().add(i));
+                let vs = _mm256_loadu_ps(src.as_ptr().add(i));
+                _mm256_storeu_ps(dest.as_mut_ptr().add(i), _mm256_add_ps(vd, vs));
+                i += 8;
+            }
+            while i < len {
+                *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+                i += 1;
+            }
+        }
+    }
+
+    #[target_feature(enable = "avxvnni")]
     unsafe fn gemv_overwrite(
         in_frame: &[f32],
         weights: &[u16],
@@ -1545,6 +1587,24 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        let len = core::cmp::min(dest.len(), src.len());
+        let mut i = 0;
+        unsafe {
+            while i + 16 <= len {
+                let vd = _mm512_loadu_ps(dest.as_ptr().add(i));
+                let vs = _mm512_loadu_ps(src.as_ptr().add(i));
+                _mm512_storeu_ps(dest.as_mut_ptr().add(i), _mm512_add_ps(vd, vs));
+                i += 16;
+            }
+            while i < len {
+                *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+                i += 1;
+            }
+        }
     }
 
     #[target_feature(enable = "avx512f,avx512vl")]
@@ -1746,6 +1806,24 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        let len = core::cmp::min(dest.len(), src.len());
+        let mut i = 0;
+        unsafe {
+            while i + 16 <= len {
+                let vd = _mm512_loadu_ps(dest.as_ptr().add(i));
+                let vs = _mm512_loadu_ps(src.as_ptr().add(i));
+                _mm512_storeu_ps(dest.as_mut_ptr().add(i), _mm512_add_ps(vd, vs));
+                i += 16;
+            }
+            while i < len {
+                *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+                i += 1;
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn gemv_overwrite(
         in_frame: &[f32],
         weights: &[u16],
@@ -1871,6 +1949,24 @@ impl SimdMath for Avx512VnniBf16Math {
         do_bias: bool,
     ) {
         unsafe { fused_add_gemv_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        let len = core::cmp::min(dest.len(), src.len());
+        let mut i = 0;
+        unsafe {
+            while i + 16 <= len {
+                let vd = _mm512_loadu_ps(dest.as_ptr().add(i));
+                let vs = _mm512_loadu_ps(src.as_ptr().add(i));
+                _mm512_storeu_ps(dest.as_mut_ptr().add(i), _mm512_add_ps(vd, vs));
+                i += 16;
+            }
+            while i < len {
+                *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+                i += 1;
+            }
+        }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -2034,6 +2130,16 @@ impl SimdMath for ScalarMath {
                 sum += in_frame[in_c] * w;
             }
             out_frame[out_c] += sum;
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        let len = core::cmp::min(dest.len(), src.len());
+        for i in 0..len {
+            unsafe {
+                *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
+            }
         }
     }
 

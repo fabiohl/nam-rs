@@ -141,3 +141,29 @@ fn test_horizontal_sum() {
     test_n::<16>(data.as_ptr(), data[..16].iter().sum());
     test_n::<32>(data.as_ptr(), data[..32].iter().sum());
 }
+
+#[test]
+fn test_accumulate_head() {
+    fn test_backend<M: SimdMath>() {
+        let mut dest = vec![1.0; 32];
+        let src = vec![2.0; 32];
+        unsafe { M::accumulate_head(&mut dest, &src) };
+        for val in dest {
+            assert!((val - 3.0).abs() < 1e-6);
+        }
+
+        // Test with odd length
+        let mut dest2 = vec![1.0; 7];
+        let src2 = vec![3.0; 7];
+        unsafe { M::accumulate_head(&mut dest2, &src2) };
+        for val in dest2 {
+            assert!((val - 4.0).abs() < 1e-6);
+        }
+    }
+
+    test_backend::<ScalarMath>();
+    test_backend::<Avx2Math>();
+    if std::is_x86_feature_detected!("avx512f") {
+        test_backend::<Avx512Math>();
+    }
+}

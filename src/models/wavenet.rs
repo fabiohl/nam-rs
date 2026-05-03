@@ -498,10 +498,8 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 let temp = conv_slice.get_unchecked(conv_idx..conv_idx + CH);
 
                 // Head Update (Skip-Connection)
-                let head_ptr = head_input.as_mut_ptr().add(i * CH);
-                for (j, &val) in temp.iter().enumerate() {
-                    *head_ptr.add(j) += val;
-                }
+                let h_idx = i * CH;
+                M::accumulate_head(head_input.get_unchecked_mut(h_idx..h_idx + CH), temp);
 
                 // Projeção 1x1 + Soma Residual
                 let out_ptr = output.as_mut_ptr().add(i * CH);

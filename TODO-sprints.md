@@ -119,7 +119,7 @@ Uma inovação: pré-computar a **soma Conv1D + Mixin** em batch para múltiplos
 
 ---
 
-### T24 — WaveNet: Skip-Connection Accumulator em Registrador ⬜
+### T24 — WaveNet: Skip-Connection Accumulator em Registrador ✅
 
 **Racional Científico:** O head accumulator (`head_input`) é atualizado amostra-a-amostra com `head_input[i*CH + j] += temp[j]` (linhas 480-483 de `wavenet.rs`). Para CH=16, são 16 stores para memória a cada frame. Se o acumulador fosse mantido em **registradores YMM/ZMM** (2 registradores YMM para 16 floats), os 16 stores/loads seriam eliminados, mantendo o acumulador "in-flight" entre camadas.
 
