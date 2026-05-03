@@ -22,6 +22,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para "morar" na Cache L1 (32KB). A descompressão para `f32` ocorre on-the-fly via `_mm256_cvtph_ps`, eliminando gargalos de banda de memória (Memory-Bound).
 - **Gate-Major Layout (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`, permitindo que cada porta seja calculada via GEMV (General Matrix-Vector multiplication) contíguo, maximizando o prefetch de cache e o throughput VNNI/FMA.
 - **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` para CPUs modernas (Sapphire Rapids/Zen5), dobrando o throughput em relação ao fallback.
+- **Lazy BF16 Conditioning:** Mecanismo de cache stateful que detecta mudanças no vetor de condicionamento. A conversão de `f32` para `bf16` e a mixagem inicial só ocorrem se o parâmetro mudar, reduzindo o custo computacional de modelos com muitos frames e condicionamento estático.
 
 ## 3. Gestão e Isolação Temporais (Strict RT)
 

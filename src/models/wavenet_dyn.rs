@@ -401,6 +401,80 @@ impl DenseLayerDyn {
             }
         }
     }
+
+    /// ACUMULAÇÃO STRIDED BF16:
+    ///
+    /// # Safety
+    /// Requer `SimdMathConfig` válido e buffers com tamanho compatível.
+    pub unsafe fn process_acc_block_strided_bf16<M: crate::math::simd::SimdMath>(
+        &self,
+        input: &[u16],
+        output: &mut [f32],
+        num_frames: usize,
+        in_stride: usize,
+        out_stride: usize,
+    ) {
+        debug_assert!(
+            self.out_size <= 1024,
+            "DenseLayerDyn::process_acc_block_strided_bf16: out_size ({}) excede o buffer stack (1024)",
+            self.out_size,
+        );
+        let mut tmp = [0.0f32; 1024];
+        let tmp_slice = &mut tmp[..self.out_size];
+
+        for i in 0..num_frames {
+            let in_slice =
+                unsafe { input.get_unchecked(i * in_stride..i * in_stride + self.in_size) };
+            let out_base = i * out_stride;
+
+            tmp_slice.fill(0.0);
+
+            unsafe {
+                M::gemv_overwrite_bf16(
+                    in_slice,
+                    &self.weights,
+                    &self.bias,
+                    tmp_slice,
+                    self.do_bias,
+                );
+            }
+
+            // Scatter (Acúmulo)
+            for (j, &val) in tmp_slice.iter().enumerate() {
+                unsafe {
+                    *output.get_unchecked_mut(out_base + j) += val;
+                }
+            }
+        }
+    }
+
+    /// PROCESSO DENSO BF16:
+    ///
+    /// # Safety
+    /// Requer `SimdMathConfig` válido e buffers com tamanho compatível.
+    pub unsafe fn process_block_bf16<M: crate::math::simd::SimdMath>(
+        &self,
+        input: &[u16],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
+        for i in 0..num_frames {
+            let in_slice = unsafe { input.get_unchecked(i * self.in_size..(i + 1) * self.in_size) };
+            let out_slice =
+                unsafe { output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size) };
+
+            out_slice.fill(0.0);
+            unsafe {
+                M::gemv_overwrite_bf16(
+                    in_slice,
+                    &self.weights,
+                    &self.bias,
+                    out_slice,
+                    self.do_bias,
+                );
+            }
+        }
+    }
 }
 
 /// O elemento atomizado de conexão na malha, que interliga as equações diferenciais convolutivas.
@@ -424,6 +498,8 @@ pub struct WaveNetLayerDyn {
 pub struct WavenetDynProcessContext<'a> {
     /// Buffer de condicionamento.
     pub condition: &'a [f32],
+    /// Buffer de condicionamento pré-convertido para BF16.
+    pub condition_bf16: &'a [u16],
     /// Acumulador para a cabeça de saída.
     pub head_input: &'a mut [f32],
     /// Buffer de saída da camada.
@@ -452,6 +528,7 @@ impl WaveNetLayerDyn {
     ) {
         let WavenetDynProcessContext {
             condition,
+            condition_bf16,
             head_input,
             output,
             layer_buffer,
@@ -479,13 +556,23 @@ impl WaveNetLayerDyn {
             if self.gated {
                 // Mistura a condição externa (condition) nos canais do bloco.
                 // Usamos stride de 2*ch porque o bloco contém tanh e sigmoid intercalados.
-                self.input_mixin.process_acc_block_strided::<M>(
-                    condition,
-                    block,
-                    num_frames,
-                    1,
-                    2 * self.ch,
-                );
+                if M::IS_BF16 {
+                    self.input_mixin.process_acc_block_strided_bf16::<M>(
+                        condition_bf16,
+                        block,
+                        num_frames,
+                        1,
+                        2 * self.ch,
+                    );
+                } else {
+                    self.input_mixin.process_acc_block_strided::<M>(
+                        condition,
+                        block,
+                        num_frames,
+                        1,
+                        2 * self.ch,
+                    );
+                }
 
                 for i in 0..num_frames {
                     let block_start = i * self.conv1d.out_ch;
@@ -504,8 +591,18 @@ impl WaveNetLayerDyn {
                 }
             } else {
                 // MODO NÃO-GATED: Mais simples, soma a condição e aplica apenas tanh.
-                self.input_mixin
-                    .process_acc_block_strided::<M>(condition, block, num_frames, 1, self.ch);
+                if M::IS_BF16 {
+                    self.input_mixin.process_acc_block_strided_bf16::<M>(
+                        condition_bf16,
+                        block,
+                        num_frames,
+                        1,
+                        self.ch,
+                    );
+                } else {
+                    self.input_mixin
+                        .process_acc_block_strided::<M>(condition, block, num_frames, 1, self.ch);
+                }
                 M::tanh_slice(&mut block[0..num_frames * self.ch]);
             }
 
@@ -572,6 +669,12 @@ pub struct WaveNetLayerArrayDyn {
     pub ch: usize,
     /// Redução projetada somatória.
     pub head: usize,
+    /// Cache do último condicionamento f32.
+    pub last_condition: Vec<f32>,
+    /// Cache do último condicionamento BF16.
+    pub last_condition_bf16: Vec<u16>,
+    /// Flag de inicialização do cache.
+    pub condition_init: bool,
 }
 
 impl WaveNetLayerArrayDyn {
@@ -605,6 +708,22 @@ impl WaveNetLayerArrayDyn {
             *v = 0.0;
         }
 
+        // [PASSO 2: Lazy BF16 Conversion]
+        if M::IS_BF16 {
+            let mut changed = !self.condition_init;
+            if !changed && condition != self.last_condition.as_slice() {
+                changed = true;
+            }
+
+            if changed {
+                unsafe {
+                    M::f32_to_bf16(condition, &mut self.last_condition_bf16);
+                }
+                self.last_condition.copy_from_slice(condition);
+                self.condition_init = true;
+            }
+        }
+
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
@@ -632,6 +751,7 @@ impl WaveNetLayerArrayDyn {
                     // ÚLTIMA CAMADA: O output residual final vai para `array_outputs`.
                     layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..num_frames * ch],
                         output: &mut self.array_outputs[0..num_frames * ch],
                         layer_buffer: &current_state.layer_buffer,
@@ -648,6 +768,7 @@ impl WaveNetLayerArrayDyn {
                     // Isso economiza cópias de memória e mantém os dados quentes no cache.
                     layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..num_frames * ch],
                         output: &mut next_state.layer_buffer
                             [next_start..next_start + num_frames * ch],
@@ -698,6 +819,22 @@ impl WaveNetLayerArrayDyn {
             *v = 0.0;
         }
 
+        // [PASSO 2: Lazy BF16 Conversion]
+        if M::IS_BF16 {
+            let mut changed = !self.condition_init;
+            if !changed && condition != self.last_condition.as_slice() {
+                changed = true;
+            }
+
+            if changed {
+                unsafe {
+                    M::f32_to_bf16(condition, &mut self.last_condition_bf16);
+                }
+                self.last_condition.copy_from_slice(condition);
+                self.condition_init = true;
+            }
+        }
+
         unsafe {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
@@ -734,6 +871,7 @@ impl WaveNetLayerArrayDyn {
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..ch],
                         output: &mut self.array_outputs[0..ch],
                         layer_buffer: &current_state.layer_buffer,
@@ -747,6 +885,7 @@ impl WaveNetLayerArrayDyn {
 
                     layer.process_block_internal::<M>(WavenetDynProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..ch],
                         output: &mut next_state.layer_buffer[next_start..next_start + ch],
                         layer_buffer: &current_state.layer_buffer,

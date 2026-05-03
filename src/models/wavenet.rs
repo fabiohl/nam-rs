@@ -388,14 +388,18 @@ pub struct WaveNetLayer<const COND: usize, const CH: usize, const K: usize> {
 }
 
 /// Contexto de processamento para otimizar a passagem de parâmetros no hot-path da WaveNet.
-pub struct WavenetProcessContext<'a> {
+pub struct WavenetProcessContext<'a, const COND: usize> {
     /// Buffer de condicionamento (sidechain).
     pub condition: &'a [f32],
-    /// Acumulador para a cabeça de saída.
+    /// Buffer de condicionamento pré-convertido em BF16.
+    pub condition_bf16: &'a [u16; COND],
+    /// Acumulador Head (Skip-Connection).
     pub head_input: &'a mut [f32],
-    /// Buffer de saída da camada.
+    /// Buffer de saída da camada (para a próxima camada ou output final).
     pub output: &'a mut [f32],
-    /// Buffer circular (fita de retardo) em F32.
+    /// Buffer de saída opcional em BF16 (para a próxima camada em CPUs BF16).
+    pub output_bf16: Option<&'a mut [u16]>,
+    /// Buffer circular da camada corrente (delay line).
     pub layer_buffer: &'a [f32],
     /// Buffer circular (fita de retardo) em BF16.
     pub layer_buffer_bf16: &'a [u16],
@@ -403,6 +407,8 @@ pub struct WavenetProcessContext<'a> {
     pub buffer_start: usize,
     /// Número de frames a processar.
     pub num_frames: usize,
+    /// Buffer temporário na stack para cálculos intermediários.
+    pub block: &'a mut [f32],
 }
 
 impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, K> {
@@ -411,24 +417,21 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
     #[inline(always)]
-    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
+    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_, COND>) {
         let WavenetProcessContext {
             condition,
+            condition_bf16,
             head_input,
             output,
+            mut output_bf16,
             layer_buffer,
             layer_buffer_bf16,
             buffer_start,
             num_frames,
+            ..
         } = ctx;
 
         unsafe {
-            // Buffer transiente em stack para condicionamento em BF16 se necessário.
-            let mut cond_bf16 = [0u16; COND];
-            if M::IS_BF16 {
-                M::f32_to_bf16(condition, &mut cond_bf16);
-            }
-
             // [PASSO 2: Condicionamento (Input Mixin)]
             // Buffer stack de 1024 f32 = WAVENET_MAX_NUM_FRAMES(64) × max_CH(16).
             // O Rust estável não permite `CH` em expressões const, então usamos
@@ -443,7 +446,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             let mixin_out_slice = &mut mixin_out[..num_frames * CH];
             if M::IS_BF16 {
                 self.input_mixin
-                    .process_bf16::<M>(&cond_bf16, mixin_out_slice);
+                    .process_bf16::<M>(condition_bf16, mixin_out_slice);
             } else {
                 self.input_mixin
                     .process_block::<M>(condition, mixin_out_slice, num_frames);
@@ -507,6 +510,16 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 out_slice.copy_from_slice(layer_buffer.get_unchecked(lb_start..lb_start + CH));
 
                 self.one_by_one.process_fused::<M>(temp, out_slice);
+
+                // [T25] Fusão BF16: Converte o output para BF16 enquanto ainda está "quente" no cache.
+                #[allow(clippy::collapsible_if)]
+                if M::IS_BF16 {
+                    if let Some(bf16_out) = output_bf16.as_mut() {
+                        let bf16_ptr = bf16_out.as_mut_ptr().add(i * CH);
+                        let bf16_slice = core::slice::from_raw_parts_mut(bf16_ptr, CH);
+                        M::f32_to_bf16(out_slice, bf16_slice);
+                    }
+                }
             }
         }
     }
@@ -606,6 +619,17 @@ pub struct WaveNetLayerArray<
     pub head_outputs: std::vec::Vec<f32>,
     /// Tamanho do campo dimensional (receptive field global) para roteamentos.
     pub receptive_field_size: usize,
+    /// Tamanho do buffer compartilhado de ativação.
+    pub block_size: usize,
+    /// Acumulador temporário para blocos (pre-alocado).
+    pub block_buffer: std::vec::Vec<f32>,
+
+    /// Buffer de condicionamento cacheado em BF16.
+    pub last_condition_bf16: [u16; COND],
+    /// Cópia do último condicionamento f32 para comparação.
+    pub last_condition: [f32; COND],
+    /// Flag para primeira inicialização do cache.
+    pub condition_init: bool,
 }
 
 impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const HEAD: usize>
@@ -627,11 +651,29 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
         // [PASSO 1: Zero-Acumulador]
         // Zera o acumulador das saídas "Skip Connections" (Head) para este bloco de frames.
+        // [PASSO 1: Zero-Acumulador]
+        // Zera o acumulador das saídas "Skip Connections" (Head) para este bloco de frames.
         // É essencial pois cada camada do array somará sua contribuição aqui.
         self.head_accum[0..num_frames * CH].fill(0.0);
 
+        // [PASSO 2: Lazy BF16 Conversion]
+        if M::IS_BF16 {
+            let mut changed = !self.condition_init;
+            if !changed && condition != self.last_condition {
+                changed = true;
+            }
+
+            if changed {
+                unsafe {
+                    M::f32_to_bf16(condition, &mut self.last_condition_bf16);
+                }
+                self.last_condition.copy_from_slice(condition);
+                self.condition_init = true;
+            }
+        }
+
         unsafe {
-            // [PASSO 2: Abertura Dimensional (Rechannel)]
+            // [PASSO 3: Abertura Dimensional (Rechannel)]
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * CH;
             self.rechannel.process_block::<M>(
@@ -650,42 +692,46 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             let num_layers = self.layers.len();
             let last_layer = num_layers - 1;
 
-            // [PASSO 3: Cascata de Inferência das Camadas]
+            // [PASSO 4: Cascata de Inferência das Camadas]
             for (i, layer) in self.layers.iter().enumerate() {
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..num_frames * CH],
                         output: &mut self.array_outputs[0..num_frames * CH],
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                        output_bf16: None,
+                        layer_buffer: &current_state.layer_buffer[..],
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16[..],
                         buffer_start: current_state.buffer_start,
                         num_frames,
+                        block: &mut self.block_buffer[0..num_frames * self.block_size],
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
-                    let next_start = next_state.buffer_start * CH;
+                    let n_start = next_state.buffer_start * CH;
+                    let next_layer_buffer =
+                        &mut next_state.layer_buffer[n_start..n_start + num_frames * CH];
+                    let next_layer_buffer_bf16 = if M::IS_BF16 {
+                        Some(&mut next_state.layer_buffer_bf16[n_start..n_start + num_frames * CH])
+                    } else {
+                        None
+                    };
 
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..num_frames * CH],
-                        output: &mut next_state.layer_buffer
-                            [next_start..next_start + num_frames * CH],
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                        output: next_layer_buffer,
+                        output_bf16: next_layer_buffer_bf16,
+                        layer_buffer: &current_state.layer_buffer[..],
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16[..],
                         buffer_start: current_state.buffer_start,
                         num_frames,
+                        block: &mut self.block_buffer[0..num_frames * self.block_size],
                     });
-
-                    if M::IS_BF16 {
-                        M::f32_to_bf16(
-                            &next_state.layer_buffer[next_start..next_start + num_frames * CH],
-                            &mut next_state.layer_buffer_bf16
-                                [next_start..next_start + num_frames * CH],
-                        );
-                    }
                 }
 
                 current_state.advance_frames(num_frames, CH);
@@ -775,33 +821,38 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..CH],
                         output: &mut self.array_outputs[0..CH],
+                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer,
                         layer_buffer_bf16: &current_state.layer_buffer_bf16,
                         buffer_start: current_state.buffer_start,
                         num_frames: 1,
+                        block: &mut self.block_buffer[0..self.block_size],
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * CH;
 
+                    let next_layer_bf16 = if M::IS_BF16 {
+                        Some(&mut next_state.layer_buffer_bf16[next_start..next_start + CH])
+                    } else {
+                        None
+                    };
+
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
+                        condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..CH],
                         output: &mut next_state.layer_buffer[next_start..next_start + CH],
+                        output_bf16: next_layer_bf16,
                         layer_buffer: &current_state.layer_buffer,
                         layer_buffer_bf16: &current_state.layer_buffer_bf16,
                         buffer_start: current_state.buffer_start,
                         num_frames: 1,
+                        block: &mut self.block_buffer[0..self.block_size],
                     });
-
-                    if M::IS_BF16 {
-                        M::f32_to_bf16(
-                            &next_state.layer_buffer[next_start..next_start + CH],
-                            &mut next_state.layer_buffer_bf16[next_start..next_start + CH],
-                        );
-                    }
                 }
             }
 

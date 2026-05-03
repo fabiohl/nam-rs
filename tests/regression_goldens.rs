@@ -91,6 +91,11 @@ fn build_wavenet_layer_array<
         head_accum: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES],
         receptive_field_size: rf,
+        block_size: CH,
+        block_buffer: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
+        last_condition: [0.0; COND],
+        last_condition_bf16: [0; COND],
+        condition_init: false,
     }
 }
 

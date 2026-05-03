@@ -86,6 +86,7 @@ mod tests {
         unsafe {
             layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetDynProcessContext {
                 condition: &condition,
+                condition_bf16: &[0u16],
                 head_input: &mut head_input,
                 output: &mut output,
                 layer_buffer: &layer_buffer,
@@ -154,6 +155,7 @@ mod tests {
         unsafe {
             layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetDynProcessContext {
                 condition: &condition,
+                condition_bf16: &[0u16],
                 head_input: &mut head_input,
                 output: &mut output,
                 layer_buffer: &layer_buffer,
@@ -218,11 +220,14 @@ mod tests {
             array_outputs: vec![0.0; ch],
             head_accum: vec![0.0; ch],
             head_outputs: vec![0.0; 1],
-            block_buffer: vec![0.0; block_size], // O buffer compartilhado
+            block_buffer: vec![0.0; block_size],
             block_size,
             receptive_field_size: 0,
             ch,
             head: 1,
+            last_condition: vec![0.0; 1],
+            last_condition_bf16: vec![0u16; 1],
+            condition_init: false,
         };
 
         // Verificação crucial: se o buffer não tiver 2*ch, o processamento gated causaria

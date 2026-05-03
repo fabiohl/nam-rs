@@ -216,6 +216,9 @@ pub(crate) fn build_wavenet_array<
     // Campo receptivo: É o tempo total de "memória" que este bloco tem (quantas amostras do passado ele olha).
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 
+    let block_size = CH;
+    let block_buffer = vec![0.0; block_size * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES];
+
     Ok(WaveNetLayerArray {
         layers,
         states,
@@ -225,6 +228,11 @@ pub(crate) fn build_wavenet_array<
         head_accum: vec![0.0; CH * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; HEAD * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
         receptive_field_size,
+        block_size,
+        block_buffer,
+        last_condition: [0.0; COND],
+        last_condition_bf16: [0; COND],
+        condition_init: false,
     })
 }
 
@@ -608,5 +616,8 @@ pub(crate) fn build_wavenet_array_dyn(
         receptive_field_size,
         ch,
         head,
+        last_condition: vec![0.0; cond_size],
+        last_condition_bf16: vec![0; cond_size],
+        condition_init: false,
     })
 }

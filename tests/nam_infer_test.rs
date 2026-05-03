@@ -430,6 +430,11 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         head_accum: vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
         receptive_field_size: rf1,
+        block_size: 16,
+        block_buffer: vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES],
+        last_condition: [0.0; 1],
+        last_condition_bf16: [0; 1],
+        condition_init: false,
     };
 
     // Array2: IN=16(=CH), COND=1, CH=8(=HEAD1), HEAD2=1, HasHeadBias=true
@@ -464,6 +469,11 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         head_accum: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
         head_outputs: vec![0.0; wavenet::WAVENET_MAX_NUM_FRAMES],
         receptive_field_size: rf2,
+        block_size: 8,
+        block_buffer: vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES],
+        last_condition: [0.0; 1],
+        last_condition_bf16: [0; 1],
+        condition_init: false,
     };
 
     WaveNetStandard {

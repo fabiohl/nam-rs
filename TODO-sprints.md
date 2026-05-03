@@ -135,7 +135,7 @@ Uma inovação: pré-computar a **soma Conv1D + Mixin** em batch para múltiplos
 
 ---
 
-### T25 — WaveNet BF16 Pipeline: Conversão Lazy com Dirty Flag ⬜
+### T25 — WaveNet BF16 Pipeline: Conversão Lazy com Dirty Flag ✅
 
 **Racional Científico:** Atualmente, `f32_to_bf16` é chamado incondicionalmente para cada chunk escrito no `layer_buffer` (linhas 659-663, 698-703 de `wavenet.rs`), mesmo quando o dispatch ativo é AVX2 (que não usa BF16). Isso desperdiça ~2-4 µs por callback em CPUs sem AVX-512-BF16. Uma flag `is_bf16_active` resolvida no startup (já temos `SimdMathConfig`) eliminaria esta conversão redundante em CPUs v3.
 

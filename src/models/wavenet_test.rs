@@ -119,6 +119,11 @@ mod tests {
             head_accum: vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES],
             head_outputs: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
             receptive_field_size: rf1,
+            block_size: 4,
+            block_buffer: vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES],
+            last_condition: [0.0; 1],
+            last_condition_bf16: [0; 1],
+            condition_init: false,
         };
 
         // Array2 (Head Definition): O array secundário atua nas predições refinadas finais.
@@ -149,6 +154,11 @@ mod tests {
             head_accum: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
             head_outputs: vec![0.0; WAVENET_MAX_NUM_FRAMES],
             receptive_field_size: rf2,
+            block_size: 2,
+            block_buffer: vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES],
+            last_condition: [0.0; 1],
+            last_condition_bf16: [0; 1],
+            condition_init: false,
         };
 
         // O WaveNetModel orquestra a cascata de arrays e aplica o ganho final.
