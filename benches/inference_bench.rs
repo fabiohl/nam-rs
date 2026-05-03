@@ -113,6 +113,66 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
     });
 }
 
+/// Benchmark Comparativo (T15): LSTM 1x8 Escalar vs SIMD (Gates Fundidos T3).
+fn bench_lstm_1x8_comparison(c: &mut Criterion) {
+    let data = make_lstm_data(1, 8, 345);
+    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 1x8 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 1x8 benchmark");
+    model_simd.prewarm(1024);
+    model_scalar.prewarm(1024);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    let mut group = c.benchmark_group("LSTM_1x8_Comparison");
+    group.bench_function("SIMD_Fused_T3", |b| {
+        b.iter(|| {
+            model_simd.process(&input, &mut output);
+        });
+    });
+
+    group.bench_function("Scalar_Baseline", |b| {
+        // Usamos downcast interno ou chamamos diretamente o método scalar se disponível via trait?
+        // Como o DynamicModel não expõe process_scalar, vamos usar o tipo concreto se possível
+        // ou adicionar process_scalar ao trait NamModel (menos limpo).
+        // Melhor: adicionar process_scalar ao DynamicModel.
+        match &mut *model_scalar {
+            nam_rs::models::DynamicModel::Lstm1x8(m) => {
+                b.iter(|| m.process_scalar(&input, &mut output));
+            }
+            _ => panic!("Modelo não é Lstm1x8"),
+        }
+    });
+    group.finish();
+}
+
+/// Benchmark Comparativo (T15): LSTM 2x16 Escalar vs SIMD (Gates Fundidos T3).
+fn bench_lstm_2x16_comparison(c: &mut Criterion) {
+    let data = make_lstm_data(2, 16, 3345);
+    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 2x16 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 2x16 benchmark");
+    model_simd.prewarm(1024);
+    model_scalar.prewarm(1024);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    let mut group = c.benchmark_group("LSTM_2x16_Comparison");
+    group.bench_function("SIMD_Fused_T3", |b| {
+        b.iter(|| {
+            model_simd.process(&input, &mut output);
+        });
+    });
+
+    group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
+        nam_rs::models::DynamicModel::Lstm2x16(m) => {
+            b.iter(|| m.process_scalar(&input, &mut output));
+        }
+        _ => panic!("Modelo não é Lstm2x16"),
+    });
+    group.finish();
+}
+
 /// Benchmark: kernel FastMath `tanh_slice_avx2` sobre 256 elementos f32.
 ///
 /// Este kernel é chamado em cada layer×bloco do WaveNet e do LSTM para computar
@@ -445,6 +505,8 @@ criterion_group!(
     bench_wavenet_standard_block_sizes,
     bench_lstm_2x16_process,
     bench_lstm_2x16_block_sizes,
+    bench_lstm_1x8_comparison,
+    bench_lstm_2x16_comparison,
     bench_tanh_slice_256,
     bench_sigmoid_slice_256,
     bench_wavenet_dynamic_standard,

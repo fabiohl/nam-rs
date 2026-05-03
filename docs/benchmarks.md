@@ -17,7 +17,7 @@ cargo bench --bench inference_bench
 Quando você roda um benchmark, o Criterion reporta uma saída similar a esta:
 
 ```text
-WaveNet_Standard_CH16_64samp_48kHz                                                                           
+WaveNet_Standard_CH16_64samp_48kHz
                         time:   [107.03 µs 107.32 µs 107.61 µs]
                         change: [−9.3273% −6.2506% −3.5233%] (p = 0.00 < 0.05)
                         Performance has improved.
@@ -54,3 +54,18 @@ Você não precisa comparar os tempos mentalmente. **O Criterion salva a linha d
 Todas as métricas históricas de acompanhamento temporal são gravadas em arquivos locais dentro do seu projeto em: `target/criterion/`
 
 *(Nota: O NAM-rs mantém a geração de relatórios HTML com gráficos temporais propositalmente desativada no arquivo `Cargo.toml` (`default-features = false`) para omitir o download de extensas dependências visuais, limitando a avaliação ao console).*
+
+## Resultados Comparativos: LSTM Escalar vs SIMD (Fused Gates T3)
+
+As otimizações do **Épico 5 (Tarefa T3)** introduziram a fusão de portas (*fused gates*) e ativações SIMD (AVX2/AVX-512) no hot-path das redes recorrentes. Abaixo, os ganhos medidos em uma arquitetura x86-64-v3 (AVX2/FMA) para blocos de 64 amostras:
+
+| Topologia | Implementação | Latência (Média) | Speedup |
+| :--- | :--- | :--- | :--- |
+| **LSTM 1x8** | Escalar (Baseline) | ~22.45 µs | - |
+| **LSTM 1x8** | **SIMD Fused (T3)** | **~6.36 µs** | **3.53x** |
+| **LSTM 2x16** | Escalar (Baseline) | ~83.66 µs | - |
+| **LSTM 2x16** | **SIMD Fused (T3)** | **~20.29 µs** | **4.12x** |
+
+### Conclusão Técnica
+
+O ganho de performance superior a **4x** em modelos complexos (2x16) valida a estratégia de fusão de kernels. Ao processar as 4 portas LSTM simultaneamente via vetores SIMD e manter os dados em registradores entre as ativações Sigmoid e Tanh, reduzimos drasticamente os ciclos de CPU desperdiçados com *loads/stores* redundantes e latência de memória.

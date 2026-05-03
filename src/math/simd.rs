@@ -1854,6 +1854,177 @@ impl SimdMath for Avx512VnniBf16Math {
     }
 }
 
+/// Implementação puramente escalar (fallback universal).
+pub struct ScalarMath;
+impl SimdMath for ScalarMath {
+    type V = f32;
+    const IS_BF16: bool = false;
+
+    #[inline(always)]
+    unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        let len = core::cmp::min(a.len(), b.len());
+        let mut sum = 0.0;
+        for i in 0..len {
+            sum += a[i] * half::f16::from_bits(b[i]).to_f32();
+        }
+        sum
+    }
+
+    #[inline(always)]
+    unsafe fn f32_to_bf16(src: &[f32], dst: &mut [u16]) {
+        let len = core::cmp::min(src.len(), dst.len());
+        for i in 0..len {
+            dst[i] = (src[i].to_bits() >> 16) as u16;
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        unsafe { dot_product_bf16_fallback(a, b) }
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_bf16_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        in_frame: &[u16],
+    ) -> [f32; 4] {
+        unsafe {
+            [
+                dot_product_bf16_fallback(w0, in_frame),
+                dot_product_bf16_fallback(w1, in_frame),
+                dot_product_bf16_fallback(w2, in_frame),
+                dot_product_bf16_fallback(w3, in_frame),
+            ]
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x(
+        w0: &[u16],
+        w1: &[u16],
+        w2: &[u16],
+        w3: &[u16],
+        state: &[f32],
+    ) -> [f32; 4] {
+        let len = state.len();
+        let mut res = [0.0; 4];
+        for i in 0..len {
+            let s = state[i];
+            res[0] += half::f16::from_bits(w0[i]).to_f32() * s;
+            res[1] += half::f16::from_bits(w1[i]).to_f32() * s;
+            res[2] += half::f16::from_bits(w2[i]).to_f32() * s;
+            res[3] += half::f16::from_bits(w3[i]).to_f32() * s;
+        }
+        res
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
+        let len = state.len();
+        let mut res = [0.0; 4];
+        for i in 0..len {
+            let s = state[i];
+            let w = weights[i];
+            res[0] += half::f16::from_bits(w[0]).to_f32() * s;
+            res[1] += half::f16::from_bits(w[1]).to_f32() * s;
+            res[2] += half::f16::from_bits(w[2]).to_f32() * s;
+            res[3] += half::f16::from_bits(w[3]).to_f32() * s;
+        }
+        res
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        unsafe { dot_product_4x_interleaved_bf16_fallback(weights, state) }
+    }
+
+    #[inline(always)]
+    unsafe fn tanh_slice(slice: &mut [f32]) {
+        for x in slice.iter_mut() {
+            *x = x.tanh();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        for x in slice.iter_mut() {
+            *x = 0.5 * (1.0 + (*x * 0.5).tanh());
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn fused_add_gemv(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        let out_len = out_frame.len();
+        let in_len = in_frame.len();
+        for out_c in 0..out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            for in_c in 0..in_len {
+                let w = half::f16::from_bits(weights[in_c * out_len + out_c]).to_f32();
+                sum += in_frame[in_c] * w;
+            }
+            out_frame[out_c] += sum;
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        let out_len = out_frame.len();
+        let in_len = in_frame.len();
+        for out_c in 0..out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            for in_c in 0..in_len {
+                let w = half::f16::from_bits(weights[in_c * out_len + out_c]).to_f32();
+                sum += in_frame[in_c] * w;
+            }
+            out_frame[out_c] = sum;
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        for x in buf.iter_mut() {
+            *x = x.tanh();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        let mut sum = 0.0;
+        for i in 0..N {
+            // SAFETY: Caller must ensure ptr is valid for N elements.
+            sum += unsafe { *ptr.add(i) };
+        }
+        sum
+    }
+
+    #[inline(always)]
+    unsafe fn fused_lstm_gates(gf: f32, gi: f32, gg: f32, go: f32, cs: f32) -> (f32, f32) {
+        let f = 0.5 * (1.0 + (gf * 0.5).tanh());
+        let i = 0.5 * (1.0 + (gi * 0.5).tanh());
+        let g = gg.tanh();
+        let o = 0.5 * (1.0 + (go * 0.5).tanh());
+
+        let new_cs = f * cs + i * g;
+        let hidden = o * new_cs.tanh();
+        (new_cs, hidden)
+    }
+}
+
 /// Macro de despacho dinâmico no hot-path.
 /// Baseia-se no `SimdMathConfig::get().instruction_set` avaliado no startup
 /// para monomorfizar o bloco DSP de modelos com a trait mais otimizada disponível,

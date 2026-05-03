@@ -266,9 +266,11 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-## Épico 5: Qualidade, Testes & Benchmarks
+## Épico 5: Qualidade, Testes & Benchmarks ✅ Auditado (2026-05-03)
 
-### T15 — Benchmark Comparativo: LSTM Escalar vs SIMD Gates Fundidos (T3)
+> **Nota de Auditoria (2026-05-03):** Todas as 3 tarefas (T15–T17) implementadas e validadas. T15: benchmarks `criterion` LSTM 1x8 e 2x16 (Escalar vs SIMD Fused) implementados em `benches/inference_bench.rs` com resultados registrados em `docs/benchmarks.md` (~3.5x e ~4.1x speedup). T16: 7 golden vectors (.bin) gerados para WaveNet Standard/Lite/Feather/Nano e LSTM 1x8/1x16/2x16, validados em `tests/regression_goldens.rs` com MSE < 1e-6. T17: `DeadlineExceeded` coberto no `diagnostics_test.rs`. **Correção durante auditoria:** `.gitignore` corrigido — `tests/golden/*.bin` estava silenciosamente ignorado pela regra `*.bin`; adicionada exceção `!tests/golden/*.bin` para garantir rastreamento dos golden vectors pelo git. Lint: 0 warnings. Testes: passando.
+
+### T15 — Benchmark Comparativo: LSTM Escalar vs SIMD Gates Fundidos (T3) [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 1h (após T3)
 
@@ -282,7 +284,7 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 ---
 
-### T16 — Testes de Regressão Numérica: Golden Vectors
+### T16 — Testes de Regressão Numérica: Golden Vectors [Concluído]
 
 **Prioridade:** 🟡 Média · **Estimativa:** 2h
 
@@ -290,25 +292,25 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 **Ação:**
 
-1. Gerar golden vectors executando cada perfil (WaveNet Standard/Lite/Feather/Nano, LSTM 1x8/1x16/2x16) com input senoidal de 1024 samples.
-2. Salvar como `.bin` em `tests/golden/`.
-3. Adicionar teste `#[test] fn test_golden_wavenet_standard()` que carrega o golden e compara com MSE < 1e-6.
+1. [x] Gerar golden vectors executando cada perfil (WaveNet Standard/Lite/Feather/Nano e LSTM 1x8/1x16/2x16) com input senoidal de 1024 samples.
+2. [x] Salvar como .bin no diretório `tests/golden/` (ex: `wavenet_standard.bin`).
+3. [x] Adicionar teste (`tests/regression_goldens.rs`) que carrega o sinal de referência e valida o output da implementação atual com erro MSE < 1e-6.
 4. Re-gerar goldens após cada otimização validada.
 
 **Arquivos:** `tests/golden/` (novo), `src/models/wavenet_test.rs`, `src/models/lstm_test.rs`.
 
 ---
 
-### T17 — Cobertura de Testes: `diagnostics.rs` — Variante `DeadlineExceeded`
+### T17 — Cobertura de Testes: `diagnostics.rs` — Variante `DeadlineExceeded` [Concluído]
 
 **Prioridade:** 🟢 Baixa · **Estimativa:** 0.5h
 
-**Contexto:** O teste `test_all_codes_have_unique_numeric` em `diagnostics.rs:443-478` lista todos os códigos mas omite `DeadlineExceeded` do array `all`. Isso permite que o código `E2001` seja duplicado sem detecção.
+**Contexto:** O teste `test_all_codes_have_unique_numeric` em `diagnostics_test.rs` agora inclui explicitamente a variante `DeadlineExceeded`, garantindo que seu código `E2001` seja verificado contra duplicidade.
 
 **Ação:**
 
-1. Adicionar `DeadlineExceeded` ao array `all` no teste.
-2. Verificar que nenhum outro código está faltando.
+1. [x] Adicionar `DeadlineExceeded` ao array `all` no teste.
+2. [x] Verificar que nenhum outro código está faltando.
 
 **Arquivos:** `src/diagnostics.rs` (L443-478).
 
@@ -318,20 +320,20 @@ Isso gera `CH` chamadas escalares (`f32`) quando `CH` é tipicamente 4, 8, 12 ou
 
 | Prio | ID  | Épico      | Tarefa                    | Estimativa |
 | ---- | --- | ---------- | ------------------------- | ---------- |
-| 🔴   | T1  | Inferência | WaveNet Tanh Vetorial     | 2h         |
-| 🔴   | T6  | PipeWire   | Extração Capture Callback | 4h         |
-| 🟡   | T2  | Inferência | Head Sum SIMD Genérica    | 1.5h       |
-| 🟡   | T3  | Inferência | LSTM Fused Gates          | 3h         |
-| 🟡   | T5  | Inferência | BF16 Nativo AVX-512       | 4h         |
-| ✅   | T9  | Higiene    | Limpeza Clippy Allows     | 1h         |
-| ✅   | T12 | Docs       | architecture.md Poda ✅   | 2h         |
-| 🟡   | T15 | Bench      | Benchmark LSTM            | 1h         |
-| 🟡   | T16 | Testes     | Golden Vectors            | 2h         |
-| 🟢   | T4  | Inferência | Dense Overwrite           | 1h         |
+| ✅   | T1  | Inferência | WaveNet Tanh Vetorial     | 2h         |
+| ✅   | T2  | Inferência | Head Sum SIMD Genérica    | 1.5h       |
+| ✅   | T3  | Inferência | LSTM Fused Gates          | 3h         |
+| ✅   | T4  | Inferência | Dense Overwrite           | 1h         |
+| ✅   | T5  | Inferência | BF16 Nativo AVX-512       | 4h         |
+| ✅   | T6  | PipeWire   | Extração Capture Callback | 4h         |
 | ✅   | T7  | Resampler  | Convolução AVX-512        | 2h         |
 | ✅   | T8  | Gate       | Rampa SIMD                | 1.5h       |
+| ✅   | T9  | Higiene    | Limpeza Clippy Allows     | 1h         |
 | ✅   | T10 | Higiene    | colors.rs Avaliação       | 0.5h       |
-| 🟢   | T11 | Higiene    | Convenção Testes          | 1h         |
-| ✅   | T13 | Docs       | dependencies.md ✅        | 0.5h       |
-| ✅   | T14 | Docs       | .agents/ Concisão ✅      | 1h         |
-| 🟢   | T17 | Testes     | DeadlineExceeded Test     | 0.5h       |
+| ✅   | T11 | Higiene    | Convenção Testes          | 1h         |
+| ✅   | T12 | Docs       | architecture.md Poda      | 2h         |
+| ✅   | T13 | Docs       | dependencies.md           | 0.5h       |
+| ✅   | T14 | Docs       | .agents/ Concisão         | 1h         |
+| ✅   | T15 | Bench      | Benchmark LSTM            | 1h         |
+| ✅   | T16 | Testes     | Golden Vectors            | 2h         |
+| ✅   | T17 | Testes     | Diagnostics Deadline      | 0.5h       |

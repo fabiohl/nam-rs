@@ -33,3 +33,7 @@ Inspecione linha-de-código detectando categoricamente:
 ### 3. Retificações Bit-Perfect
 
 Submeta patches cirurgicamente, sem alterar padrões consolidados. A operação final exige validação incondicional pelas skills de linting e testes. Tudo deve operar nas janelas perfeccionistas de baixa latência.
+
+### 4. Acionar o Planejamento e Execução
+
+- Acione a skill `planejador-arquiteto` para transformar as ideias levantadas em sprints e tarefas técnicas granulares em `TODO-sprints.md`.

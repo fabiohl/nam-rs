@@ -261,6 +261,53 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         true
     );
 
+    /// Executa o processamento escalar (para benchmark e fallback).
+    pub fn process_sample_scalar(&mut self, input: &[f32]) {
+        //ih = Input + Hidden
+        let ih = I + H;
+        let h = H;
+
+        self.state[..I].copy_from_slice(&input[..I]);
+
+        // Cálculo das Portas (Gates) escalares
+        for i in 0..h {
+            let w_slice = &self.input_hidden_weights[i];
+            let mut dots = [0.0f32; 4];
+            for (j, &s) in self.state.iter().enumerate().take(ih) {
+                let w = &w_slice[j];
+                dots[0] += half::f16::from_bits(w[0]).to_f32() * s;
+                dots[1] += half::f16::from_bits(w[1]).to_f32() * s;
+                dots[2] += half::f16::from_bits(w[2]).to_f32() * s;
+                dots[3] += half::f16::from_bits(w[3]).to_f32() * s;
+            }
+
+            self.gates[i] = dots[0] + self.bias[i];
+            self.gates[i + h] = dots[1] + self.bias[i + h];
+            self.gates[i + 2 * h] = dots[2] + self.bias[i + 2 * h];
+            self.gates[i + 3 * h] = dots[3] + self.bias[i + 3 * h];
+        }
+
+        // Ativações e Propagação Escalar
+        for j in 0..h {
+            let gf = self.gates[j + h];
+            let gi = self.gates[j];
+            let gg = self.gates[j + 2 * h];
+            let go = self.gates[j + 3 * h];
+            let cs = self.cell_state[j];
+
+            let f = 0.5 * (1.0 + (gf * 0.5).tanh());
+            let i = 0.5 * (1.0 + (gi * 0.5).tanh());
+            let g = gg.tanh();
+            let o = 0.5 * (1.0 + (go * 0.5).tanh());
+
+            let new_cs = f * cs + i * g;
+            let h_val = o * new_cs.tanh();
+
+            self.cell_state[j] = new_cs;
+            self.state[I + j] = h_val;
+        }
+    }
+
     /// Zera os estados internos (hidden e cell) da camada.
     /// Essencial ao trocar de preset ou iniciar um playback para evitar "estalos"
     /// ou carregar resíduos de áudios processados anteriormente.
@@ -572,6 +619,19 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
                 input,
                 output
             );
+        }
+    }
+
+    /// Processa o array de forma puramente escalar (Benchmark).
+    pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        for i in 0..input.len() {
+            self.layer.process_sample_scalar(&[input[i]]);
+            let hidden = self.layer.get_hidden_state();
+            let mut dot = 0.0;
+            for (j, &h_val) in hidden.iter().enumerate().take(H) {
+                dot += h_val * half::f16::from_bits(self.head_weights[j]).to_f32();
+            }
+            output[i] = dot + self.head_bias;
         }
     }
 
@@ -945,6 +1005,21 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 input,
                 output
             );
+        }
+    }
+
+    /// Processa o array de forma puramente escalar (Benchmark).
+    pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        for i in 0..input.len() {
+            self.layer1.process_sample_scalar(&[input[i]]);
+            self.layer2
+                .process_sample_scalar(self.layer1.get_hidden_state());
+            let hidden = self.layer2.get_hidden_state();
+            let mut dot = 0.0;
+            for (j, &h_val) in hidden.iter().enumerate().take(H) {
+                dot += h_val * half::f16::from_bits(self.head_weights[j]).to_f32();
+            }
+            output[i] = dot + self.head_bias;
         }
     }
 
