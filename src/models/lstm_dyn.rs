@@ -18,6 +18,8 @@ pub struct LstmDynLayer {
     pub bias: Vec<f32>,
     /// Tensor de Estado local, funde o sample entrante e o momento final do frame anterior. [I + H]
     pub state: Vec<f32>,
+    /// Estado global espelhado em BF16 para processamento VNNI.
+    pub state_bf16: Vec<u16>,
     /// Bloco restrito de recursividade matemática da célula LSTM. [H]
     pub cell_state: Vec<f32>,
     /// Buffers de acúmulo da avaliação vetorial sobre a camada. [H * 4]
@@ -61,33 +63,73 @@ impl LstmDynLayer {
             }
         }
 
-        // 2. Linear Dot Products -> Preenche GATES e adiciona BIAS
-        // Aqui processamos cada unidade oculta (h). Os pesos estão organizados de forma
-        // "intercalada" (interleaved) para que possamos calcular as 4 portas da LSTM
-        // (Input, Forget, Cell, Output) simultaneamente usando otimizações SIMD.
-        for i in 0..h {
-            // Calcula o deslocamento inicial no array linear de pesos para esta unidade 'i'
-            let start = i * ih * 4;
-            let w_interleaved = &self.input_hidden_weights[start..start + ih * 4];
+        // 2. Linear Dot Products -> Preenche GATES e adiciona BIAS via GEMV
+        let stride = ih * h;
+        if M::IS_BF16 {
+            // Sincroniza estado BF16
+            unsafe { M::f32_to_bf16(&self.state, &mut self.state_bf16) };
 
-            // PERFORMANCE: Convertemos o slice de f32 em um slice de blocos [f32; 4].
-            // Isso permite que a função de dot product processe os pesos das 4 portas de uma vez,
-            // tratando cada conexão (input/hidden) como um vetor de 4 elementos.
-            let w_slice = unsafe {
-                core::slice::from_raw_parts(w_interleaved.as_ptr() as *const [u16; 4], ih)
-            };
-
-            // Calcula o produto escalar quádruplo: soma(peso_gate[0..3] * state_val)
-            // O resultado 'dots' contém 4 valores: [Soma_I, Soma_F, Soma_C, Soma_O]
-            let dots = unsafe { M::dot_product_4x_interleaved(w_slice, &self.state) };
-
-            // Distribui os resultados para o buffer de portas (gates) somando o bias correspondente.
-            // O buffer 'gates' armazena os valores de forma contígua por porta:
-            // [Input...|Forget...|Cell...|Output...] -> cada bloco tem tamanho 'h'.
-            self.gates[i] = dots[0] + self.bias[i]; // Gate I (Input)
-            self.gates[i + h] = dots[1] + self.bias[i + h]; // Gate F (Forget)
-            self.gates[i + 2 * h] = dots[2] + self.bias[i + 2 * h]; // Gate C (Cell/G)
-            self.gates[i + 3 * h] = dots[3] + self.bias[i + 3 * h]; // Gate O (Output)
+            unsafe {
+                M::gemv_overwrite_bf16(
+                    &self.state_bf16,
+                    &self.input_hidden_weights[0..stride],
+                    &self.bias[0..h],
+                    &mut self.gates[0..h],
+                    true,
+                );
+                M::gemv_overwrite_bf16(
+                    &self.state_bf16,
+                    &self.input_hidden_weights[stride..2 * stride],
+                    &self.bias[h..2 * h],
+                    &mut self.gates[h..2 * h],
+                    true,
+                );
+                M::gemv_overwrite_bf16(
+                    &self.state_bf16,
+                    &self.input_hidden_weights[2 * stride..3 * stride],
+                    &self.bias[2 * h..3 * h],
+                    &mut self.gates[2 * h..3 * h],
+                    true,
+                );
+                M::gemv_overwrite_bf16(
+                    &self.state_bf16,
+                    &self.input_hidden_weights[3 * stride..4 * stride],
+                    &self.bias[3 * h..4 * h],
+                    &mut self.gates[3 * h..4 * h],
+                    true,
+                );
+            }
+        } else {
+            unsafe {
+                M::gemv_overwrite(
+                    &self.state,
+                    &self.input_hidden_weights[0..stride],
+                    &self.bias[0..h],
+                    &mut self.gates[0..h],
+                    true,
+                );
+                M::gemv_overwrite(
+                    &self.state,
+                    &self.input_hidden_weights[stride..2 * stride],
+                    &self.bias[h..2 * h],
+                    &mut self.gates[h..2 * h],
+                    true,
+                );
+                M::gemv_overwrite(
+                    &self.state,
+                    &self.input_hidden_weights[2 * stride..3 * stride],
+                    &self.bias[2 * h..3 * h],
+                    &mut self.gates[2 * h..3 * h],
+                    true,
+                );
+                M::gemv_overwrite(
+                    &self.state,
+                    &self.input_hidden_weights[3 * stride..4 * stride],
+                    &self.bias[3 * h..4 * h],
+                    &mut self.gates[3 * h..4 * h],
+                    true,
+                );
+            }
         }
 
         // 3. Funções de Ativação (FastMath SIMD via Slices in-place)

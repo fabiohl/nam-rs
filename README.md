@@ -6,7 +6,7 @@ O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodel
 
 Nesta versão 1.x ele foca em rodar em modo standalone. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
 
-O motor de inferência é muito baseado na biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático e com muitas otimizações feitas sob medida.
+O motor de inferência é muito baseado na biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático e com muitas otimizações feitas sob medida. Em muitos locais do _Hot Path_ praticamente alcançando a meta teórica de throughput da microarquitetura.
 
 Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux.
 
@@ -18,21 +18,21 @@ Caprichei na busca intensiva pelo estado da arte em matéria de otimização! Is
 
 In version 1.x, the focus is on standalone mode. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. My intention was to test the technology quickly without spending time on more complex abstractions.
 
-The inference engine is pretty much based from Mike Oliphant’s [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, rewritten from scratch in native, idiomatic Rust and with lots of optimizations.
+The inference engine is heavily based on Mike Oliphant's [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, but entirely rewritten in native and idiomatic Rust with numerous tailor-made optimizations. In many parts of the _Hot Path_, it practically achieves the theoretical microarchitecture throughput target.
 
 It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features.
 
 I worked hard to achieve state-of-the-art optimization! This effort truly pays off when you consider that computer audio signals are usually stereo. As a result, two audio channels are processed simultaneously with extremely low latency and very low CPU usage.
 
-*Note: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself.*
+_Note: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself._
 
 ## ✨ Arquitetura
 
 O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
-1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no *Graph Engine* do PipeWire.
+1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no _Graph Engine_ do PipeWire.
 2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
-3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (*Core Affinity*), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
+3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (_Core Affinity_), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
 4. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de alta performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++, trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
 
 ## 🚀 Guia Rápido
@@ -59,7 +59,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 @audio   -  memlock    unlimited
 ```
 
-* Crie uma regra no *udev* para permitir que o grupo `audio` bloqueie a latência de despertar da CPU (C-states),
+* Crie uma regra no _udev_ para permitir que o grupo `audio` bloqueie a latência de despertar da CPU (C-states),
   1. `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`
   2. Reinicie a máquina ou execute `sudo udevadm control --reload-rules && sudo udevadm trigger` para aplicar as regras
 
@@ -113,10 +113,10 @@ O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquiv
 No momento é suportado apenas a chamada "Arquitetura A1" do NAM. O suporte à "Arquitetura A2" já está no readmap.
 Oferece dois níveis de operação de parsing:
 
-* **Modo Estático (Altíssima Performance):** Construções de *Const Generics* dimensionadas em tempo de compilação.
+* **Modo Estático (Altíssima Performance):** Construções de _Const Generics_ dimensionadas em tempo de compilação.
   * **WaveNet:** Standard (16×8), Lite (12×8), Feather (8×4) e Nano (4×2)
   * **LSTM:** 1 e 2 Camadas (8 a 24 de Hidden Size: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
-* **Modo Dinâmico (Flexibilidade Absoluta):** Fallback ativado automaticamente ao carregar arranjos `.nam` com geometrias extrassensoriais não catalogadas (`num_layers` e `channels` arbitrários), operando sem *loop unrolling*.
+* **Modo Dinâmico (Flexibilidade Absoluta):** Fallback ativado automaticamente ao carregar arranjos `.nam` com geometrias extrassensoriais não catalogadas (`num_layers` e `channels` arbitrários), operando sem _loop unrolling_.
 
 ## 🧪 Testes e Validação
 
@@ -168,7 +168,7 @@ Impossível mapear todos os que contribuíram para o avanço desta tecnologia. M
 
 ## ⚖️ Licença e Transparência (Vibe Coding)
 
-**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi e gerado iterado com o auxílio de Inteligência Artificial (*Vibe Coding*). Mais especificamente, usando a IDE Google Antigravity.
+**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi e gerado iterado com o auxílio de Inteligência Artificial (_Vibe Coding_). Mais especificamente, usando a IDE Google Antigravity.
 
 Este projeto é duplamente licenciado sob **MIT** ou **Apache License, Version 2.0**, à sua escolha. Veja os arquivos `LICENSE-MIT` e `LICENSE-APACHE` para mais detalhes.
 O uso da licença Apache 2.0 visa justamente oferecer maior segurança jurídica aos contribuidores e usuários em relação a patentes, dado este modelo moderno de desenvolvimento de software. A estrutura está aberta para a comunidade refatorar, auditar e expandir livremente.

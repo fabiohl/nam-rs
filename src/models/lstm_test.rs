@@ -18,7 +18,7 @@ mod tests {
     #[test]
     fn test_lstm_model2_allocation() {
         let model: LstmModel2<16, 17, 32, 64> = LstmModel2::new();
-        assert_eq!(model.layer1.input_hidden_weights.len(), 16);
+        assert_eq!(model.layer1.input_hidden_weights.len(), 4);
         assert_eq!(model.layer2.input_hidden_weights[0].len(), 32);
     }
 
@@ -73,7 +73,7 @@ mod tests {
         // Valida que o layout [i|f|g|o] no offset [0, H, 2H, 3H] é respeitado.
         let model: LstmModel1<8, 9, 32> = LstmModel1::new();
         assert_eq!(model.layer.gates.len(), 32); // 4 * H = 4 * 8 = 32
-        assert_eq!(model.layer.input_hidden_weights.len(), 8); // H = 8
+        assert_eq!(model.layer.input_hidden_weights.len(), 4); // Gates = 4
         assert_eq!(model.layer.input_hidden_weights[0].len(), 9); // IH = I + H = 1 + 8 = 9
     }
 
@@ -87,9 +87,11 @@ mod tests {
         for i in 0..32 {
             model.layer.bias[i] = 0.1;
         }
-        for i in 0..8 {
+        for k in 0..4 {
             for j in 0..9 {
-                model.layer.input_hidden_weights[i][j] = [half::f16::from_f32(0.05).to_bits(); 4];
+                for i in 0..8 {
+                    model.layer.input_hidden_weights[k][j][i] = half::f16::from_f32(0.05).to_bits();
+                }
             }
         }
 
@@ -136,10 +138,12 @@ mod tests {
             for i in 0..32 {
                 model.layer.bias[i] = 0.1;
             }
-            for i in 0..8 {
+            for k in 0..4 {
                 for j in 0..9 {
-                    model.layer.input_hidden_weights[i][j] =
-                        [half::f16::from_f32(0.05).to_bits(); 4];
+                    for i in 0..8 {
+                        model.layer.input_hidden_weights[k][j][i] =
+                            half::f16::from_f32(0.05).to_bits();
+                    }
                 }
             }
             for i in 0..8 {

@@ -173,23 +173,17 @@ pub fn build_lstm_dynamic(
         // intercalando-os (Input, Forget, Cell, Output). É como separar cartas de 4 baralhos
         // diferentes e montá-los em uma sequência 1,2,3,4, 1,2,3,4...
 
-        for i in 0..hidden_size {
-            for j in 0..ih {
-                let v0 = raw_weights[i * ih + j];
-                let v1 = raw_weights[(i + hidden_size) * ih + j];
-                let v2 = raw_weights[(i + 2 * hidden_size) * ih + j];
-                let v3 = raw_weights[(i + 3 * hidden_size) * ih + j];
-
-                if is_bf16 {
-                    input_hidden_weights[(i * ih + j) * 4] = f32_to_bf16(v0);
-                    input_hidden_weights[(i * ih + j) * 4 + 1] = f32_to_bf16(v1);
-                    input_hidden_weights[(i * ih + j) * 4 + 2] = f32_to_bf16(v2);
-                    input_hidden_weights[(i * ih + j) * 4 + 3] = f32_to_bf16(v3);
-                } else {
-                    input_hidden_weights[(i * ih + j) * 4] = half::f16::from_f32(v0).to_bits();
-                    input_hidden_weights[(i * ih + j) * 4 + 1] = half::f16::from_f32(v1).to_bits();
-                    input_hidden_weights[(i * ih + j) * 4 + 2] = half::f16::from_f32(v2).to_bits();
-                    input_hidden_weights[(i * ih + j) * 4 + 3] = half::f16::from_f32(v3).to_bits();
+        for k in 0..4 {
+            let gate_offset = k * hidden_size * ih;
+            for i in 0..hidden_size {
+                for j in 0..ih {
+                    let v = raw_weights[k * hidden_size * ih + i * ih + j];
+                    let weight = if is_bf16 {
+                        f32_to_bf16(v)
+                    } else {
+                        half::f16::from_f32(v).to_bits()
+                    };
+                    input_hidden_weights[gate_offset + j * hidden_size + i] = weight;
                 }
             }
         }
@@ -211,7 +205,8 @@ pub fn build_lstm_dynamic(
         layers.push(LstmDynLayer {
             input_hidden_weights,
             bias,
-            state,
+            state: state.clone(),
+            state_bf16: vec![0u16; current_input_size + hidden_size],
             cell_state,
             gates: vec![0.0; hidden_size * 4],
             tanh_cs: vec![0.0; hidden_size],
@@ -273,16 +268,12 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
     // dessas 4 portas em uma sequência intercalada. Isso permite que o processador
     // faça as 4 contas de uma vez só (usando uma técnica chamada SIMD).
     let raw_weights = cursor.read_slice(H4 * IH)?;
-    for i in 0..H {
-        for j in 0..IH {
-            layer.input_hidden_weights[i][j][0] =
-                half::f16::from_f32(raw_weights[i * IH + j]).to_bits();
-            layer.input_hidden_weights[i][j][1] =
-                half::f16::from_f32(raw_weights[(i + H) * IH + j]).to_bits();
-            layer.input_hidden_weights[i][j][2] =
-                half::f16::from_f32(raw_weights[(i + 2 * H) * IH + j]).to_bits();
-            layer.input_hidden_weights[i][j][3] =
-                half::f16::from_f32(raw_weights[(i + 3 * H) * IH + j]).to_bits();
+    for k in 0..4 {
+        for i in 0..H {
+            for j in 0..IH {
+                let w = raw_weights[k * IH * H + i * IH + j];
+                layer.input_hidden_weights[k][j][i] = half::f16::from_f32(w).to_bits();
+            }
         }
     }
 

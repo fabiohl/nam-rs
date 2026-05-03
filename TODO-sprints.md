@@ -8,7 +8,7 @@
 
 > **Objetivo:** Extrair mais ciclos de clock por amostra, estreitando o gap entre a implementação atual e o limite teórico de throughput da microarquitetura x86-64-v3/v4.
 
-### T18 — LSTM: Weight Layout Transposição para Dot Product Contíguo ⬜
+### T18 — LSTM: Weight Layout Transposição para Dot Product Contíguo ✅
 
 **Racional Científico:** O loop mais quente do LSTM (`define_lstm_process!`, linhas 76-88 de `lstm.rs`) itera `H` vezes com dot products de `IH` elementos cada. O layout interleaved `[H][IH][4]` impõe que cada iteração salte `IH×4×2 = IH×8 bytes` na memória — um stride que gera cache line splits em modelos `H≥16`. Uma transposição para um layout **"gate-major"** `[4][H][IH]` (4 gates × H neurons × IH weights), processado com um único dot product vectorizado `4H`-dimensonal por gate, eliminaria os H saltos discretos e permitiria streaming contíguo de pesos pela cache.
 

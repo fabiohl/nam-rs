@@ -19,8 +19,9 @@ use core::arch::x86_64::*;
 /// * `IH` = Input + Hidden Size
 /// * `H4` = 4 * Hidden Size
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
-    /// Matriz 3D agregada contendo os pesos interfolhados horizontalmente [I, F, C, O] por neurônio e entrada.
-    pub input_hidden_weights: [[[u16; 4]; IH]; H],
+    /// Pesos da camada Gate-Major: [Gate(4)][IH][H]
+    /// Layout contíguo para Dot Product / GEMV.
+    pub input_hidden_weights: [[[u16; H]; IH]; 4],
     /// Bias lineares extraídos do modelo (tamanho `4 * Hidden`).
     pub bias: [f32; H4],
     /// Estado global contendo [Input | Hidden] em F32.
@@ -37,8 +38,8 @@ macro_rules! define_lstm_process {
     (
         $fn_name:ident,
         $target_meta:meta,
-        $dot_product_interleaved_f32:path,
-        $dot_product_interleaved_bf16:path,
+        $gemv_overwrite:path,
+        $gemv_overwrite_bf16:path,
         $step:expr,
         $load:ident,
         $store:ident,
@@ -72,19 +73,65 @@ macro_rules! define_lstm_process {
                     _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().add(16).cast::<i8>());
                 }
 
-                // 3. Cálculo das Portas (Gates)
-                for i in 0..H {
-                    let w_slice = &self.input_hidden_weights[i];
-                    let dots = if $is_bf16 {
-                        $dot_product_interleaved_bf16(w_slice, &self.state_bf16)
-                    } else {
-                        $dot_product_interleaved_f32(w_slice, &self.state)
-                    };
-
-                    self.gates[i] = dots[0] + self.bias[i];
-                    self.gates[i + H] = dots[1] + self.bias[i + H];
-                    self.gates[i + 2 * H] = dots[2] + self.bias[i + 2 * H];
-                    self.gates[i + 3 * H] = dots[3] + self.bias[i + 3 * H];
+                // 3. Cálculo das Portas (Gates) via GEMV Gate-Major
+                if $is_bf16 {
+                    $gemv_overwrite_bf16(
+                        &self.state_bf16,
+                        self.input_hidden_weights[0].as_flattened(),
+                        &self.bias[0..H],
+                        &mut self.gates[0..H],
+                        true,
+                    );
+                    $gemv_overwrite_bf16(
+                        &self.state_bf16,
+                        self.input_hidden_weights[1].as_flattened(),
+                        &self.bias[H..2 * H],
+                        &mut self.gates[H..2 * H],
+                        true,
+                    );
+                    $gemv_overwrite_bf16(
+                        &self.state_bf16,
+                        self.input_hidden_weights[2].as_flattened(),
+                        &self.bias[2 * H..3 * H],
+                        &mut self.gates[2 * H..3 * H],
+                        true,
+                    );
+                    $gemv_overwrite_bf16(
+                        &self.state_bf16,
+                        self.input_hidden_weights[3].as_flattened(),
+                        &self.bias[3 * H..4 * H],
+                        &mut self.gates[3 * H..4 * H],
+                        true,
+                    );
+                } else {
+                    $gemv_overwrite(
+                        &self.state,
+                        self.input_hidden_weights[0].as_flattened(),
+                        &self.bias[0..H],
+                        &mut self.gates[0..H],
+                        true,
+                    );
+                    $gemv_overwrite(
+                        &self.state,
+                        self.input_hidden_weights[1].as_flattened(),
+                        &self.bias[H..2 * H],
+                        &mut self.gates[H..2 * H],
+                        true,
+                    );
+                    $gemv_overwrite(
+                        &self.state,
+                        self.input_hidden_weights[2].as_flattened(),
+                        &self.bias[2 * H..3 * H],
+                        &mut self.gates[2 * H..3 * H],
+                        true,
+                    );
+                    $gemv_overwrite(
+                        &self.state,
+                        self.input_hidden_weights[3].as_flattened(),
+                        &self.bias[3 * H..4 * H],
+                        &mut self.gates[3 * H..4 * H],
+                        true,
+                    );
                 }
 
                 let f_offset = H;
@@ -153,7 +200,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// o que é vital para performance e previsibilidade em tempo real.
     pub fn new() -> Self {
         Self {
-            input_hidden_weights: [[[0u16; 4]; IH]; H],
+            input_hidden_weights: [[[0u16; H]; IH]; 4],
             bias: [0.0; H4],
             state: [0.0; IH],
             state_bf16: [0u16; IH],
@@ -181,8 +228,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
-        crate::math::simd::dot_product_4x_interleaved_avx2,
-        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
+        crate::math::simd::gemv_overwrite_avx2,
+        crate::math::simd::gemv_overwrite_bf16_fallback,
         8,                                   // $step: Processa 8 elementos por instrução
         _mm256_loadu_ps,                     // Carregamento não alinhado (unaligned load)
         _mm256_storeu_ps,                    // Armazenamento não alinhado (unaligned store)
@@ -200,8 +247,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
-        crate::math::simd::dot_product_4x_interleaved_avx512,
-        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
+        crate::math::simd::gemv_overwrite_avx512,
+        crate::math::simd::gemv_overwrite_bf16_fallback,
         16, // $step: Processa 16 elementos por instrução
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -216,8 +263,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
-        crate::math::simd::dot_product_4x_interleaved_avx2,
-        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
+        crate::math::simd::gemv_overwrite_avx2,
+        crate::math::simd::gemv_overwrite_bf16_fallback,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -232,8 +279,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
-        crate::math::simd::dot_product_4x_interleaved_avx512,
-        crate::math::simd::dot_product_4x_interleaved_bf16_avx512,
+        crate::math::simd::gemv_overwrite_avx512,
+        crate::math::simd::gemv_overwrite_bf16_fallback,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -248,8 +295,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
-        crate::math::simd::dot_product_4x_interleaved_avx512,
-        crate::math::simd::dot_product_4x_interleaved_bf16_avx512, // Native AVX-512 BF16 VNNI
+        crate::math::simd::gemv_overwrite_avx512,
+        crate::math::simd::gemv_overwrite_bf16_fallback, // Placeholder
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -269,22 +316,17 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
 
         self.state[..I].copy_from_slice(&input[..I]);
 
-        // Cálculo das Portas (Gates) escalares
-        for i in 0..h {
-            let w_slice = &self.input_hidden_weights[i];
-            let mut dots = [0.0f32; 4];
-            for (j, &s) in self.state.iter().enumerate().take(ih) {
-                let w = &w_slice[j];
-                dots[0] += half::f16::from_bits(w[0]).to_f32() * s;
-                dots[1] += half::f16::from_bits(w[1]).to_f32() * s;
-                dots[2] += half::f16::from_bits(w[2]).to_f32() * s;
-                dots[3] += half::f16::from_bits(w[3]).to_f32() * s;
+        // Cálculo das Portas (Gates) escalares via Gate-Major
+        for k in 0..4 {
+            let target_gate_offset = k * h;
+            for i in 0..h {
+                let mut sum = 0.0;
+                for (j, &s) in self.state.iter().enumerate().take(ih) {
+                    let w = self.input_hidden_weights[k][j][i];
+                    sum += half::f16::from_bits(w).to_f32() * s;
+                }
+                self.gates[target_gate_offset + i] = sum + self.bias[target_gate_offset + i];
             }
-
-            self.gates[i] = dots[0] + self.bias[i];
-            self.gates[i + h] = dots[1] + self.bias[i + h];
-            self.gates[i + 2 * h] = dots[2] + self.bias[i + 2 * h];
-            self.gates[i + 3 * h] = dots[3] + self.bias[i + 3 * h];
         }
 
         // Ativações e Propagação Escalar

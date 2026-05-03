@@ -1109,6 +1109,18 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    /// Realiza a projeção linear Y = Bias + W * Z (GEMV) para BF16.
+    ///
+    /// # Safety
+    /// `weights` deve ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    );
+
     /// Aplica Tanh em um bloco pequeno (CH sized) com padding para evitar loops escalares.
     /// Otimizado para ativações WaveNet onde CH é tipicamente 4, 8, 12 ou 16.
     ///
@@ -1219,6 +1231,16 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe { gemv_overwrite_avx2(in_frame, weights, bias, out_frame, do_bias) }
+    }
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[inline(always)]
@@ -1407,6 +1429,16 @@ impl SimdMath for Avx2VnniMath {
     ) {
         unsafe { gemv_overwrite_avx2(in_frame, weights, bias, out_frame, do_bias) }
     }
+    #[target_feature(enable = "avxvnni")]
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
+    }
 
     #[target_feature(enable = "avxvnni")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
@@ -1524,6 +1556,16 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe { gemv_overwrite_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl")]
@@ -1713,6 +1755,16 @@ impl SimdMath for Avx512VnniMath {
     ) {
         unsafe { gemv_overwrite_avx512(in_frame, weights, bias, out_frame, do_bias) }
     }
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
+    }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
@@ -1830,6 +1882,16 @@ impl SimdMath for Avx512VnniBf16Math {
         do_bias: bool,
     ) {
         unsafe { gemv_overwrite_avx512(in_frame, weights, bias, out_frame, do_bias) }
+    }
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -1993,6 +2055,17 @@ impl SimdMath for ScalarMath {
             }
             out_frame[out_c] = sum;
         }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frame: &mut [f32],
+        do_bias: bool,
+    ) {
+        unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     #[inline(always)]
@@ -2496,6 +2569,34 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
         }
 
         total_sum / (len as f32)
+    }
+}
+
+/// Fallback escalar para o GEMV BF16.
+///
+/// # Safety
+/// `weights` deve ter `in_len * out_len` elementos no layout `[IN][OUT]`.
+pub unsafe fn gemv_overwrite_bf16_fallback(
+    in_frame: &[u16],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+    for (out_c, b) in bias.iter().enumerate().take(out_len) {
+        let mut sum = if do_bias { *b } else { 0.0 };
+        for in_c in 0..in_len {
+            let w_bits = unsafe { *weights.get_unchecked(in_c * out_len + out_c) };
+            let in_bits = unsafe { *in_frame.get_unchecked(in_c) };
+            let w = f32::from_bits((w_bits as u32) << 16);
+            let in_val = f32::from_bits((in_bits as u32) << 16);
+            sum += in_val * w;
+        }
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) = sum;
+        }
     }
 }
 
