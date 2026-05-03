@@ -175,18 +175,23 @@ Adicionalmente, para CPUs BF16: a conversão poderia ser **fundida** com o store
 
 ---
 
-### T27 — SPSC GC Channel: Eliminação do Drop no Hot-Path ⬜
+### T27 — SPSC GC Channel: Eliminação do Drop no Hot-Path ✅
 
-**Racional Científico:** Em `pw_host.rs` linhas 443-448, quando um modelo é swapped via `std::mem::replace`, o modelo antigo é enviado ao `gc_producer`. Porém, se o GC SPSC estiver cheio, `let _ = gc_producer.push(old);` causa o **Drop** do `Box<dyn NamModel>` inline no callback RT — o que implica uma chamada `free()` (~50-200 ns + possível syscall `madvise`). Embora raro, violar zero-alloc é inaceitável.
+**Racional Científico:** Em `pw_host.rs` linhas 443-448, quando um modelo é swapped via `std::mem::replace`, o modelo antigo é enviado ao `gc_producer`. Porém, se o GC SPSC estiver cheio, o drop implícito causa `free()` no RT. A solução implementa um "Parking Lot" na stack e um fallback de leak intencional em casos patológicos.
 
-**Arquivo-alvo:** `src/pw_host.rs`
+**Arquivo-alvo:** `src/pw_host.rs`, `src/spsc.rs`
 
 **Implementação:**
 
-1. Aumentar o GC channel de 4 para 8 slots (ou ajustar dinamicamente).
-2. **Alternativa superior:** Criar um "GC parking lot" — um array fixo de `Option<Box<dyn NamModel>>` de tamanho 8 na stack do closure. Se o SPSC GC estiver cheio, estacionar o modelo no parking lot. Na próxima iteração do `process()`, tentar drenar o parking lot para o GC.
-3. Se o parking lot também estiver cheio (situação patológica: 8 swaps consecutivos sem dreno), leak o modelo — preferível a invocar `free()` no hot-path.
-4. Sinalizar via `RtStatusFlags::gc_overflow` para diagnóstico.
+1. [x] Implementação de GC para `NamResampler` (evita `free()` no swap de rate).
+2. [x] Implementação de "Parking Lot" na stack do callback RT (buffer de 8 slots).
+3. [x] Implementação de Fallback Determinístico: `Box::leak` / `std::mem::forget` em overflow crítico.
+4. [x] Adição de flag `gc_overflow` em `RtStatusFlags` para observabilidade.
+
+5. Aumentar o GC channel de 4 para 8 slots (ou ajustar dinamicamente).
+6. **Alternativa superior:** Criar um "GC parking lot" — um array fixo de `Option<Box<dyn NamModel>>` de tamanho 8 na stack do closure. Se o SPSC GC estiver cheio, estacionar o modelo no parking lot. Na próxima iteração do `process()`, tentar drenar o parking lot para o GC.
+7. Se o parking lot também estiver cheio (situação patológica: 8 swaps consecutivos sem dreno), leak o modelo — preferível a invocar `free()` no hot-path.
+8. Sinalizar via `RtStatusFlags::gc_overflow` para diagnóstico.
 
 **Critérios de aceite:** Zero chamadas `free()` no callback RT mesmo sob stress-test de hot-swap rápido (100 swaps/segundo).
 

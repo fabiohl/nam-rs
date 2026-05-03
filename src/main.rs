@@ -370,6 +370,8 @@ fn main() -> anyhow::Result<()> {
     let consumer = channels.param_consumer;
     let gc_producer = channels.gc_producer;
     let mut gc_consumer = channels.gc_consumer;
+    let gc_resampler_producer = channels.gc_resampler_producer;
+    let mut gc_resampler_consumer = channels.gc_resampler_consumer;
     let resampler_producer = channels.resampler_producer;
     let resampler_consumer = channels.resampler_consumer;
     let rt_status = channels.rt_status;
@@ -377,8 +379,13 @@ fn main() -> anyhow::Result<()> {
     // Thread GC para "Drop-Delegation" lock-free
     std::thread::spawn(move || {
         while !spsc::SHUTDOWN.load(std::sync::atomic::Ordering::Relaxed) {
+            // Drena modelos obsoletos
             while let Ok(model) = gc_consumer.pop() {
                 drop(model);
+            }
+            // Drena resamplers obsoletos
+            while let Ok(rs) = gc_resampler_consumer.pop() {
+                drop(rs);
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
@@ -428,6 +435,7 @@ fn main() -> anyhow::Result<()> {
     pw_host::run_pipewire_host(
         consumer,
         gc_producer,
+        gc_resampler_producer,
         resampler_consumer,
         resampler_producer,
         rt_status,

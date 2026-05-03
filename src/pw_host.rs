@@ -207,6 +207,7 @@ fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) 
 pub fn run_pipewire_host(
     mut consumer: Consumer<ParamPayload>,
     mut gc_producer: rtrb::Producer<Box<crate::models::DynamicModel>>,
+    mut gc_resampler_producer: rtrb::Producer<NamResampler>,
     mut resampler_consumer: Consumer<NamResampler>,
     mut resampler_producer: rtrb::Producer<NamResampler>,
     rt_status: Arc<RtStatusFlags>,
@@ -351,6 +352,11 @@ pub fn run_pipewire_host(
         let rate_for_param = shared_target_rate.clone();
         let rate_for_process = shared_target_rate.clone();
 
+        // Parking Lots para garantir zero-drop mesmo se os canais GC estiverem cheios.
+        let mut parking_lot_model: [Option<Box<crate::models::DynamicModel>>; 8] =
+            Default::default();
+        let mut parking_lot_resampler: [Option<NamResampler>; 8] = Default::default();
+
         // Clonar Arc das flags para uso dentro do callback
         let rt_status_for_process = rt_status.clone();
 
@@ -407,14 +413,47 @@ pub fn run_pipewire_host(
                     thread_configured = true;
                 }
 
+                for slot in parking_lot_model.iter_mut() {
+                    let Some(old) = slot.take() else { continue };
+                    if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old) {
+                        *slot = Some(old_back);
+                        break; // Canal ainda cheio
+                    }
+                }
+                for slot in parking_lot_resampler.iter_mut() {
+                    let Some(old) = slot.take() else { continue };
+                    if let Err(rtrb::PushError::Full(old_back)) = gc_resampler_producer.push(old) {
+                        *slot = Some(old_back);
+                        break; // Canal ainda cheio
+                    }
+                }
+
                 // Drena resamplers pré-construídos pela thread principal (zero-alloc swap).
-                // O Drop do resampler antigo é aceitável aqui (~50ns free(), evento raro).
                 while let Ok(new_rs) = resampler_consumer.pop() {
                     // Reporta rate ativo via flag atômica (sem println!)
                     rt_status_for_process
                         .active_rate
                         .store(new_rs.pw_rate(), Ordering::Relaxed);
-                    resampler = new_rs;
+
+                    let old_rs = std::mem::replace(&mut resampler, new_rs);
+                    if let Err(rtrb::PushError::Full(old_back)) = gc_resampler_producer.push(old_rs)
+                    {
+                        // Se falhar o push, tenta o parking lot
+                        let mut to_park = Some(old_back);
+                        for slot in parking_lot_resampler.iter_mut() {
+                            if slot.is_none() {
+                                *slot = to_park.take();
+                                break;
+                            }
+                        }
+                        if let Some(still_here) = to_park {
+                            // Pathológico: vaza para evitar drop
+                            std::mem::forget(still_here);
+                            rt_status_for_process
+                                .gc_overflow
+                                .store(true, Ordering::Relaxed);
+                        }
+                    }
                 }
 
                 // Drena parâmetros guiados da thread CLI (Lock-Free) via SPSC Ring Buffer
@@ -441,10 +480,42 @@ pub fn run_pipewire_host(
                             }
 
                             if let Some(old) = std::mem::replace(&mut active_model_l, new_model_l) {
-                                let _ = gc_producer.push(old);
+                                #[allow(clippy::collapsible_if)]
+                                if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old)
+                                {
+                                    let mut to_park = Some(old_back);
+                                    for slot in parking_lot_model.iter_mut() {
+                                        if slot.is_none() {
+                                            *slot = to_park.take();
+                                            break;
+                                        }
+                                    }
+                                    if let Some(still_here) = to_park {
+                                        Box::leak(still_here);
+                                        rt_status_for_process
+                                            .gc_overflow
+                                            .store(true, Ordering::Relaxed);
+                                    }
+                                }
                             }
                             if let Some(old) = std::mem::replace(&mut active_model_r, new_model_r) {
-                                let _ = gc_producer.push(old);
+                                #[allow(clippy::collapsible_if)]
+                                if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old)
+                                {
+                                    let mut to_park = Some(old_back);
+                                    for slot in parking_lot_model.iter_mut() {
+                                        if slot.is_none() {
+                                            *slot = to_park.take();
+                                            break;
+                                        }
+                                    }
+                                    if let Some(still_here) = to_park {
+                                        Box::leak(still_here);
+                                        rt_status_for_process
+                                            .gc_overflow
+                                            .store(true, Ordering::Relaxed);
+                                    }
+                                }
                             }
                             param_changed = true;
                         }

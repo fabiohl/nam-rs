@@ -87,6 +87,11 @@ pub struct RtStatusFlags {
 
     /// Histograma de latência para análise estatística (P50, P95, P99).
     pub latency_hist: crate::dsp::telemetry::LatencyHistogram,
+
+    /// Flag indicando que houve overflow no canal de GC.
+    /// Se `true`, modelos ou resamplers obsoletos foram "vazados" (leaked)
+    /// para evitar um `drop()` no hot-path.
+    pub gc_overflow: AtomicBool,
 }
 
 impl RtStatusFlags {
@@ -106,6 +111,7 @@ impl RtStatusFlags {
             dsp_cycle_time: AtomicU64::new(0),
             last_n_samples: AtomicU32::new(0),
             latency_hist: crate::dsp::telemetry::LatencyHistogram::new(),
+            gc_overflow: AtomicBool::new(false),
         }
     }
 }
@@ -154,6 +160,10 @@ pub struct SpscChannels {
     pub gc_producer: Producer<Box<crate::models::DynamicModel>>,
     /// Consumidor GC: thread background executa `drop()` dos modelos.
     pub gc_consumer: Consumer<Box<crate::models::DynamicModel>>,
+    /// Produtor GC de resamplers: thread DSP envia resamplers obsoletos para drop fora do RT.
+    pub gc_resampler_producer: Producer<crate::dsp::resampler::NamResampler>,
+    /// Consumidor GC de resamplers: thread background executa `drop()`.
+    pub gc_resampler_consumer: Consumer<crate::dsp::resampler::NamResampler>,
     /// Produtor de resamplers: thread principal constrói e envia para o callback RT.
     pub resampler_producer: Producer<crate::dsp::resampler::NamResampler>,
     /// Consumidor de resamplers: callback RT drena para substituir o resampler ativo.
@@ -174,6 +184,7 @@ pub struct SpscChannels {
 pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (param_prod, param_cons) = RingBuffer::new(capacity);
     let (gc_prod, gc_cons) = RingBuffer::new(capacity * 2); // Capacidade dobrada para garbage collection dupla (L+R)
+    let (gc_rs_prod, gc_rs_cons) = RingBuffer::new(16); // GC de resamplers (raro)
     // Canal de resampler: capacidade pequena (apenas 1 em trânsito por vez, tipicamente)
     let (rs_prod, rs_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
@@ -183,6 +194,8 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
         param_consumer: param_cons,
         gc_producer: gc_prod,
         gc_consumer: gc_cons,
+        gc_resampler_producer: gc_rs_prod,
+        gc_resampler_consumer: gc_rs_cons,
         resampler_producer: rs_prod,
         resampler_consumer: rs_cons,
         rt_status,
