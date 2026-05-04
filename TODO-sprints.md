@@ -77,7 +77,7 @@ de paridade escalar passam.
 
 ---
 
-#### `TA3` — FastMath Tanh: Clamp de Saturação para Valores Extremos
+#### `TA3` — FastMath Tanh: Clamp de Saturação para Valores Extremos [DONE]
 
 **Arquivos:** `src/math/fastmath.rs` (linhas 115-159)
 **Prioridade:** Média (Estabilidade Numérica)

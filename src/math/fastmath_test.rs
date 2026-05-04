@@ -122,3 +122,60 @@ fn test_simd_fastmath_sigmoid_avx512_mse() {
         }
     }
 }
+
+#[test]
+fn test_simd_fastmath_tanh_extremes() {
+    // Valores que anteriormente causariam NaN devido a overflow em p(x)^2
+    let input: [f32; 8] = [
+        2000.0,
+        5000.0,
+        10000.0,
+        1e20,
+        -2000.0,
+        -1e10,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+    ];
+    let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
+    let result_vector = unsafe { simd_tanh(vector) };
+
+    let mut result = [0.0f32; 8];
+    unsafe { _mm256_storeu_ps(result.as_mut_ptr(), result_vector) };
+
+    for i in 0..8 {
+        let actual = result[i];
+        assert!(
+            !actual.is_nan(),
+            "Resultado NaN para entrada extrema {}",
+            input[i]
+        );
+
+        if input[i] > 0.0 {
+            assert!(
+                actual > 0.99,
+                "Falha na saturação positiva para {}: {}",
+                input[i],
+                actual
+            );
+            assert!(
+                actual <= 1.0001,
+                "Saturação excedeu limite superior para {}: {}",
+                input[i],
+                actual
+            );
+        } else {
+            assert!(
+                actual < -0.99,
+                "Falha na saturação negativa para {}: {}",
+                input[i],
+                actual
+            );
+            assert!(
+                actual >= -1.0001,
+                "Saturação excedeu limite inferior para {}: {}",
+                input[i],
+                actual
+            );
+        }
+    }
+}

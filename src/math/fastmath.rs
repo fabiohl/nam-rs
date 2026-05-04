@@ -17,6 +17,8 @@ pub const GAIN_MAX_DB: f32 = 30.0;
 const GAIN_DB_RANGE: f32 = GAIN_MAX_DB - GAIN_MIN_DB;
 const GAIN_DB_STEP: f32 = GAIN_DB_RANGE / (GAIN_LUT_SIZE as f32 - 1.0);
 const INV_GAIN_DB_STEP: f32 = 1.0 / GAIN_DB_STEP;
+/// Limite de segurança para evitar overflow no polinômio de tanh (evita NaN).
+const TANH_CLAMP_LIMIT: f32 = 15.0;
 
 /// Tabela de Look-Up para conversão ultra-rápida de dB para ganho linear.
 /// Projetada para ser instanciada via `OnceLock` e acessada em threads RT.
@@ -119,6 +121,11 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
         let c1 = _mm256_set1_ps(0.008_153_17_f32);
         let c2 = _mm256_set1_ps(0.000_246_32_f32);
         let one = _mm256_set1_ps(1.0);
+        let min_limit = _mm256_set1_ps(-TANH_CLAMP_LIMIT);
+        let max_limit = _mm256_set1_ps(TANH_CLAMP_LIMIT);
+
+        // Clamp de saturação para evitar overflow no cálculo de p(x)^2
+        let x = _mm256_max_ps(min_limit, _mm256_min_ps(max_limit, x));
 
         // x_sq = x * x
         let x_sq = _mm256_mul_ps(x, x);
@@ -193,6 +200,11 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     let c1 = _mm512_set1_ps(0.008_153_17_f32);
     let c2 = _mm512_set1_ps(0.000_246_32_f32);
     let one = _mm512_set1_ps(1.0);
+    let min_limit = _mm512_set1_ps(-TANH_CLAMP_LIMIT);
+    let max_limit = _mm512_set1_ps(TANH_CLAMP_LIMIT);
+
+    // Clamp de saturação para evitar overflow no cálculo de p(x)^2
+    let x = _mm512_max_ps(min_limit, _mm512_min_ps(max_limit, x));
 
     // x_sq = x * x
     let x_sq = _mm512_mul_ps(x, x);
