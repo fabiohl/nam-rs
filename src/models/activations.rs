@@ -146,8 +146,10 @@ fn fast_tanh(x: f32) -> f32 {
     let ax = x.abs();
     let x2 = x * x;
 
-    (x * (2.4555075 + 2.4555075 * ax + (0.89322985 + 0.82122667 * ax) * x2))
-        / (2.4450663 + (2.4450663 + x2) * (x + 0.81464273 * x * ax).abs())
+    (x * (2.45550750702956
+        + 2.45550750702956 * ax
+        + (0.893229853513558 + 0.821226666969744 * ax) * x2))
+        / (2.44506634652299 + (2.44506634652299 + x2) * (x + 0.814642734961073 * x * ax).abs())
 }
 
 #[cfg(test)]
@@ -155,87 +157,128 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tanh() {
-        let mut data = [0.0, 1.0, -1.0];
+    fn test_activation_tanh() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::Tanh.apply(&mut data);
-        assert_eq!(data[0], 0.0f32.tanh());
-        assert_eq!(data[1], 1.0f32.tanh());
-        assert_eq!(data[2], (-1.0f32).tanh());
+        let expected = [
+            -5.0f32.tanh(),
+            -1.0f32.tanh(),
+            0.0f32.tanh(),
+            1.0f32.tanh(),
+            5.0f32.tanh(),
+        ];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_hard_tanh() {
-        let mut data = [-2.0, -0.5, 0.0, 0.5, 2.0];
+    fn test_activation_hard_tanh() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::HardTanh.apply(&mut data);
-        assert_eq!(data, [-1.0, -0.5, 0.0, 0.5, 1.0]);
+        let expected = [-1.0, -1.0, 0.0, 1.0, 1.0];
+        assert_eq!(data, expected);
     }
 
     #[test]
-    fn test_relu() {
-        let mut data = [-1.0, 0.0, 1.0];
+    fn test_activation_fast_tanh() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
+        ActivationType::FastTanh.apply(&mut data);
+        // Valores devem estar no domínio de saída de tanh: (-1, 1).
+        for &v in data.iter() {
+            assert!((-1.0..=1.0).contains(&v));
+        }
+        // Paridade com tanh em 0: fast_tanh(0) = 0 exato.
+        assert!((data[2] - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_activation_relu() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::ReLU.apply(&mut data);
-        assert_eq!(data, [0.0, 0.0, 1.0]);
+        let expected = [0.0, 0.0, 0.0, 1.0, 5.0];
+        assert_eq!(data, expected);
     }
 
     #[test]
-    fn test_leaky_relu() {
-        let mut data = [-1.0, 0.0, 1.0];
+    fn test_activation_leaky_relu() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::LeakyReLU {
-            negative_slope: 0.01,
+            negative_slope: 0.1,
         }
         .apply(&mut data);
-        assert_eq!(data, [-0.01, 0.0, 1.0]);
+        let expected = [-0.5, -0.1, 0.0, 1.0, 5.0];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_prelu() {
-        let mut data = [-1.0, -2.0, 1.0];
+    fn test_activation_prelu() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::PReLU {
             negative_slopes: vec![0.1, 0.2],
         }
         .apply(&mut data);
-        // data[0] -> -1.0 * 0.1 = -0.1
-        // data[1] -> -2.0 * 0.2 = -0.4
-        // data[2] -> 1.0 (positive)
-        assert_eq!(data, [-0.1, -0.4, 1.0]);
+        // data[0] (-5.0) uses slope[0]=0.1 -> -0.5
+        // data[1] (-1.0) uses slope[1]=0.2 -> -0.2
+        // data[2] (0.0) -> 0.0
+        // data[3] (1.0) -> 1.0 (positive, passthrough)
+        // data[4] (5.0) -> 5.0 (positive, passthrough)
+        let expected = [-0.5, -0.2, 0.0, 1.0, 5.0];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_sigmoid() {
-        let mut data = [0.0];
+    fn test_activation_sigmoid() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::Sigmoid.apply(&mut data);
-        assert_eq!(data[0], 0.5);
+        fn sig(x: f32) -> f32 {
+            1.0 / (1.0 + (-x).exp())
+        }
+        let expected = [sig(-5.0), sig(-1.0), sig(0.0), sig(1.0), sig(5.0)];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_silu() {
-        let mut data = [1.0];
+    fn test_activation_silu() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::SiLU.apply(&mut data);
-        let expected = 1.0 * (1.0 / (1.0 + (-1.0f32).exp()));
-        assert!((data[0] - expected).abs() < 1e-6);
+        fn silu(x: f32) -> f32 {
+            x / (1.0 + (-x).exp())
+        }
+        let expected = [silu(-5.0), silu(-1.0), silu(0.0), silu(1.0), silu(5.0)];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_hard_swish() {
-        let mut data = [-4.0, 0.0, 4.0];
+    fn test_activation_hard_swish() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::HardSwish.apply(&mut data);
-        // -4.0: t=-1, clamp=0 -> 0
-        // 0.0: t=3, clamp=3 -> 0 * 3 / 6 = 0
-        // 4.0: t=7, clamp=6 -> 4 * 6 / 6 = 4
-        assert_eq!(data, [0.0, 0.0, 4.0]);
+        fn hswish(x: f32) -> f32 {
+            x * (x + 3.0).clamp(0.0, 6.0) / 6.0
+        }
+        let expected = [
+            hswish(-5.0),
+            hswish(-1.0),
+            hswish(0.0),
+            hswish(1.0),
+            hswish(5.0),
+        ];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_softsign() {
-        let mut data = [1.0, -1.0];
-        ActivationType::Softsign.apply(&mut data);
-        assert_eq!(data[0], 1.0 / 2.0);
-        assert_eq!(data[1], -1.0 / 2.0);
-    }
-
-    #[test]
-    fn test_leaky_hardtanh() {
-        let mut data = [-2.0, 0.0, 2.0];
+    fn test_activation_leaky_hardtanh() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::LeakyHardTanh {
             min_val: -1.0,
             max_val: 1.0,
@@ -243,19 +286,49 @@ mod tests {
             max_slope: 0.2,
         }
         .apply(&mut data);
-        // -2.0: < -1.0 -> (-2 - -1)*0.1 + -1 = -1.1
-        // 0.0: in range -> 0.0
-        // 2.0: > 1.0 -> (2 - 1)*0.2 + 1 = 1.2
-        assert!((data[0] - (-1.1)).abs() < 1e-6);
-        assert_eq!(data[1], 0.0);
-        assert!((data[2] - 1.2).abs() < 1e-6);
+        // -5.0: < -1.0 -> (-5 - -1)*0.1 + -1 = -4*0.1 - 1 = -1.4
+        // -1.0: in range -> -1.0
+        // 0.0:  in range -> 0.0
+        // 1.0:  in range -> 1.0
+        // 5.0:  > 1.0   -> (5 - 1)*0.2 + 1 = 4*0.2 + 1 = 1.8
+        let expected = [-1.4, -1.0, 0.0, 1.0, 1.8];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
     }
 
     #[test]
-    fn test_fast_tanh_parity() {
-        // Just a smoke test to ensure it runs
-        let mut data = [0.5];
-        ActivationType::FastTanh.apply(&mut data);
-        assert!(data[0] > 0.0 && data[0] < 1.0);
+    fn test_activation_softsign() {
+        let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
+        ActivationType::Softsign.apply(&mut data);
+        fn ss(x: f32) -> f32 {
+            x / (1.0 + x.abs())
+        }
+        let expected = [ss(-5.0), ss(-1.0), ss(0.0), ss(1.0), ss(5.0)];
+        for (i, &v) in data.iter().enumerate() {
+            assert!((v - expected[i]).abs() < 1e-6, "At index {}", i);
+        }
+    }
+
+    #[test]
+    fn test_prelu_empty_slopes() {
+        let mut data = [-1.0, 1.0];
+        ActivationType::PReLU {
+            negative_slopes: vec![],
+        }
+        .apply(&mut data);
+        // Com slopes vazio, deve operar como identidade (early return).
+        assert_eq!(data, [-1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_prelu_cycle() {
+        let mut data = [-1.0, -1.0, -1.0, -1.0];
+        ActivationType::PReLU {
+            negative_slopes: vec![0.1, 0.5],
+        }
+        .apply(&mut data);
+        // Slopes ciclam: [0.1, 0.5, 0.1, 0.5]
+        assert_eq!(data, [-0.1, -0.5, -0.1, -0.5]);
     }
 }

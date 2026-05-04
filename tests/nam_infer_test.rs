@@ -567,79 +567,6 @@ fn test_wavenet_computational_stability() {
     );
 }
 
-/// Teste 3: `build_model()` com JSON real produz `DynamicModel` funcional.
-///
-/// Carrega BossWN-standard.nam, invoca o dispatcher completo e verifica que
-/// `model.process()` com input de zeros retorna samples finitas.
-#[test]
-fn test_dispatcher_build_model_real_json() {
-    let path = model_path("BossWN-standard.nam");
-
-    if !path.exists() {
-        eprintln!(
-            "SKIP: Modelo de teste WaveNet não encontrado em {path:?}. Ignorando dispatcher test."
-        );
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler o arquivo JSON de modelo");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-
-    let mut boxed = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir DynamicModel a partir do JSON real");
-
-    // Prewarm para estabilizar buffers convolucionais internos antes do processo
-    boxed.prewarm(2048);
-
-    // Processa um bloco de 64 zeros e verifica que a saída é finita
-    let input = [0.0f32; 64];
-    let mut output = [0.0f32; 64];
-    boxed.process(&input, &mut output);
-
-    for (i, &s) in output.iter().enumerate() {
-        assert!(
-            s.is_finite(),
-            "DynamicModel (real JSON) retornou sample não finita no índice {i}: {s}"
-        );
-    }
-
-    println!(
-        "Dispatcher OK — DynamicModel construído e inferência estável (64 zeros processados)."
-    );
-}
-
-/// Teste 4: `build_model()` com LSTM real produz `DynamicModel` funcional.
-#[test]
-fn test_dispatcher_build_model_real_lstm() {
-    let path = model_path("BossLSTM-1x16.nam");
-
-    if !path.exists() {
-        eprintln!("SKIP: Modelo LSTM não encontrado em {path:?}. Ignorando dispatcher LSTM test.");
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler o arquivo JSON LSTM");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON LSTM");
-
-    let mut boxed = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir DynamicModel LSTM a partir do JSON real");
-
-    boxed.prewarm(2048);
-
-    let input = [0.0f32; 64];
-    let mut output = [0.0f32; 64];
-    boxed.process(&input, &mut output);
-
-    for (i, &s) in output.iter().enumerate() {
-        assert!(
-            s.is_finite(),
-            "DynamicModel LSTM (real JSON) retornou sample não finita no índice {i}: {s}"
-        );
-    }
-
-    println!("Dispatcher LSTM OK — 1×16 construído e inferência estável (64 zeros processados).");
-}
-
 // =============================================================================
 // Testes de Auto-Consistência (Determinismo Rust-Only)
 // =============================================================================
@@ -937,51 +864,6 @@ fn test_golden_vectors_wavenet_feather() {
 
     // Validação dual MSE + SNR — single-pass fusion
     assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet Feather");
-}
-
-/// Teste 8d: Forward-compatibility WaveNet A2.
-///
-/// Verifica que o loader detecta um modelo A2 (via mock_a2.nam) e,
-/// em vez de falhar por ativação não suportada, faz o fallback
-/// gracioso para o `WavenetA2Placeholder` (que retorna silêncio).
-#[test]
-fn test_forward_compatibility_wavenet_a2() {
-    let path = model_path("mock_a2.nam");
-
-    if !path.exists() {
-        panic!("Fixture mock_a2.nam não encontrada em {path:?}");
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler mock_a2.nam");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-
-    assert!(
-        model_data.is_wavenet_a2(),
-        "mock_a2.nam deve ser detectado como A2"
-    );
-
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher falhou ao carregar A2 (deveria ter feito fallback)");
-
-    // Verifica se o modelo construído é o variante WavenetA2
-    match *model {
-        nam_rs::models::DynamicModel::WavenetA2(_) => {
-            println!("Fallback para WavenetA2Placeholder confirmado.");
-        }
-        _ => panic!("Esperado DynamicModel::WavenetA2, mas obteve outro variante"),
-    }
-
-    // Verifica se o processamento retorna silêncio (comportamento do placeholder)
-    let input = [1.0f32; 64];
-    let mut output = [1.0f32; 64];
-    model.process(&input, &mut output);
-
-    for (i, &s) in output.iter().enumerate() {
-        assert_eq!(
-            s, 0.0,
-            "Placeholder A2 deve retornar silêncio absoluto. Erro no índice {i}"
-        );
-    }
 }
 
 /// Teste 8c: Golden Vectors WaveNet Nano — cross-reference C++ ↔ Rust.

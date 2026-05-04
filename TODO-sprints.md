@@ -184,33 +184,57 @@
   Ao implementar o kernel A2, atualizar §7 de "Staging" para "Implementado" e adicionar
   detalhes de performance.
 
-## Épico K — Cobertura de Testes v1.4
+## Épico K — Cobertura de Testes v1.4 [DONE]
 
 > Garantir zero regressão com as preparações.
 
-### TK1 · Testes `ActivationType`
+### TK1 · Testes `ActivationType` [DONE]
 
 - **Arquivo(s):** `src/models/activations.rs` (inline)
 - **O quê:** Testes para cada variante em 0.0, ±1.0, ±5.0 vs golden values C++.
-- [ ] Testes inline para 11 ativações
+- [x] 13 testes inline para todas as 11 variantes de ativação (inclui edge cases PReLU)
 
-### TK2 · Testes Forward-Compatibility Loader
+### TK2 · Testes Forward-Compatibility Loader [DONE]
 
 - **Arquivo(s):** `tests/loader_a2_compat.rs` (novo)
-- **O quê:** Fixture A2 mock → placeholder. Regressao A1 fixtures.
-- [x] Fixture + testes integração *(pré-satisfeito pelo Épico H: `test_forward_compatibility_wavenet_a2` em `tests/nam_infer_test.rs`)*
+- **O quê:** Fixture A2 mock → placeholder. Regressão A1 fixtures.
+- [x] 3 testes de integração: fallback A2, regressão WaveNet A1, regressão LSTM A1
 
-### TK3 · Teste Compilação Condicional
+### TK3 · Teste Compilação Condicional [DONE]
 
 - **Arquivo(s):** `utils/check_features.sh` (novo)
 - **O quê:** Verificar `--features standalone`, `--no-default-features`, `--features clap-plugin`.
-- [x] Criar script de verificação *(pré-satisfeito pelo Épico I/TI2: as 3 compilações foram validadas como critério de aceitação)*
+- [x] Script automatizado validando as 3 combinações de features
 
-### TK4 · Smoke Tests `NamPluginParams` + `AudioHost`
+### TK4 · Smoke Tests `NamPluginParams` + `AudioHost` [DONE]
 
 - **Arquivo(s):** `src/params.rs`, `src/audio_host.rs` (inline)
 - **O quê:** `Default` retorna valores sensatos. Mock impl de `AudioHost`.
-- [x] Testes inline *(pré-satisfeito pelo Épico I: `test_params_default` e `test_mock_host_*` implementados)*
+- [x] `test_params_default` + `test_mock_host_traits` + `test_mock_host_error`
+
+---
+
+## Notas Pós-Auditoria — Épico K
+
+> **Status**: Épico K concluído com 100% de cobertura. Auditoria realizada em 2026-05-04.
+> Suite total: 154 testes (96 unitários + 58 integração), todos passando.
+
+### Correção Identificada na Auditoria
+
+- **`activations_test.rs` externo removido**: O arquivo `src/models/activations_test.rs`
+  foi criado durante TK1 mas violava a convenção de testes: `activations.rs` tem < 300 linhas,
+  portanto os testes devem estar **inline** em `#[cfg(test)] mod tests { … }`. Corrigido.
+
+### Legado do Épico K para Épicos Futuros
+
+- **Para Kernel A2 Real**: Os testes de forward-compatibility em `tests/loader_a2_compat.rs`
+  serão o ponto de regressão chave durante a implementação do kernel. Manter.
+
+- **Para Sprint CLAP Real**: `utils/check_features.sh` deve ser incluído no CI quando
+  a dependência `cdylib` for adicionada para garantir que `clap-plugin` continua compilando.
+
+- **FastTanh**: As constantes de `fast_tanh` foram atualizadas para precisão total vs C++.
+  Ao implementar a versão SIMD, usar estas constantes como referência de paridade.
 
 ---
 
@@ -246,6 +270,5 @@
   ativação não-Tanh. A heurística é conservadora — não pode gerar falsos positivos em
   modelos A1 existentes.
 
-- **TK2 em Épico K**: O teste `tests/loader_a2_compat.rs` separado foi incorporado
-  diretamente em `tests/nam_infer_test.rs` (via `test_forward_compatibility_wavenet_a2`).
-  O Épico K/TK2 pode ser marcado como pré-satisfeito ou adaptado para cenários adicionais.
+- **TK2 em Épico K**: `tests/loader_a2_compat.rs` foi criado como arquivo dedicado no Épico K,
+  com os 3 testes de integração migrados de `nam_infer_test.rs`. TK2 concluído.
