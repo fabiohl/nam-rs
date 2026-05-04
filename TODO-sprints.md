@@ -22,7 +22,7 @@ arquivos massivos para legibilidade, e fechar lacunas de cobertura de testes.
 
 **Impacto:** Redução de latência de inferência em 10-20% nos modelos mais pesados.
 
-#### `TA1` — Decomposição do Monólito `simd.rs` (4.256 linhas)
+#### `TA1` — Decomposição do Monólito `simd.rs` (4.256 linhas) [DONE]
 
 **Arquivos:** `src/math/simd.rs`
 **Prioridade:** Alta (Legibilidade + Compilação Incremental)

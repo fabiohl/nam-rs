@@ -158,7 +158,7 @@ pub fn build_lstm_dynamic(
 
     // Processamos cada "camada" (layer) do modelo. Pense nelas como estágios de uma linha de montagem.
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
-        == crate::math::simd::SimdInstructionSet::Avx512VnniBf16;
+        == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
     for _ in 0..num_layers {
         // Lemos todos os pesos (a "inteligência" treinada) desta camada de uma vez só.

@@ -363,8 +363,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
             while i < len {
                 self.layer.process_sample_avx512_vnni_bf16(&[input[i]]);
                 let hidden = self.layer.get_hidden_state_bf16();
-                let dot =
-                    crate::math::simd::dot_product_bf16_native_avx512(hidden, &self.head_weights);
+                let dot = crate::math::simd::dot_product_bf16_avx512(hidden, &self.head_weights);
                 output[i] = dot + self.head_bias;
                 i += 1;
             }
@@ -514,8 +513,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 self.layer2
                     .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
                 let hidden2 = self.layer2.get_hidden_state_bf16();
-                let dot =
-                    crate::math::simd::dot_product_bf16_native_avx512(hidden2, &self.head_weights);
+                let dot = crate::math::simd::dot_product_bf16_avx512(hidden2, &self.head_weights);
                 output[i] = dot + self.head_bias;
                 i += 1;
             }

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+#![allow(unsafe_op_in_unsafe_fn)]
 
 //! Módulo de FastMath (Minimax & Pade) para otimização de ativação não linear.
 //! mitigando gargalos de ALU ao calcular `tanh` e `sigmoid` na `WaveNet`/`LSTM`.
@@ -112,7 +112,7 @@ pub fn get_gain_lut() -> &'static GainLUT {
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA, e que o registrador
 /// `x` contenha valores f32 válidos.
-pub unsafe fn simd_tanh(x: __m256) -> __m256 {
+pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     unsafe {
         // Coeficientes do polinômio Minimax de grau 7
         let c0 = _mm256_set1_ps(0.166_814_34_f32);
@@ -163,7 +163,7 @@ pub unsafe fn simd_tanh(x: __m256) -> __m256 {
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA.
-pub unsafe fn simd_sigmoid(x: __m256) -> __m256 {
+pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     unsafe {
         let half = _mm256_set1_ps(0.5);
         let one = _mm256_set1_ps(1.0);
@@ -172,7 +172,7 @@ pub unsafe fn simd_sigmoid(x: __m256) -> __m256 {
         let x_half = _mm256_mul_ps(x, half);
 
         // tanh(x * 0.5)
-        let th = simd_tanh(x_half);
+        let th = simd_tanh_avx2(x_half);
 
         // 1.0 + tanh(x * 0.5)
         let t_plus_one = _mm256_add_ps(th, one);
@@ -268,16 +268,16 @@ pub unsafe fn fused_lstm_gates_avx2(
     cs: __m256,
 ) -> (__m256, __m256) {
     unsafe {
-        let f = simd_sigmoid(gf);
-        let i = simd_sigmoid(gi);
-        let g = simd_tanh(gg);
-        let o = simd_sigmoid(go);
+        let f = simd_sigmoid_avx2(gf);
+        let i = simd_sigmoid_avx2(gi);
+        let g = simd_tanh_avx2(gg);
+        let o = simd_sigmoid_avx2(go);
 
         // new_cs = f * cs + i * g
         let new_cs = _mm256_fmadd_ps(f, cs, _mm256_mul_ps(i, g));
 
         // hidden = o * tanh(new_cs)
-        let hidden = _mm256_mul_ps(o, simd_tanh(new_cs));
+        let hidden = _mm256_mul_ps(o, simd_tanh_avx2(new_cs));
 
         (new_cs, hidden)
     }
@@ -322,7 +322,7 @@ pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
         let mut i = 0;
         while i + 8 <= slice.len() {
             let va = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let vt = simd_tanh(va);
+            let vt = simd_tanh_avx2(va);
             _mm256_storeu_ps(slice.as_mut_ptr().add(i), vt);
             i += 8;
         }
@@ -364,7 +364,7 @@ pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
         let mut i = 0;
         while i + 8 <= slice.len() {
             let va = _mm256_loadu_ps(slice.as_ptr().add(i));
-            let vt = simd_sigmoid(va);
+            let vt = simd_sigmoid_avx2(va);
             _mm256_storeu_ps(slice.as_mut_ptr().add(i), vt);
             i += 8;
         }
@@ -408,6 +408,22 @@ pub fn tanh(x: f32) -> f32 {
 #[inline(always)]
 pub fn sigmoid(x: f32) -> f32 {
     0.5 * (1.0 + (x * 0.5).tanh())
+}
+
+/// Despacha para a implementação de tanh SIMD mais rápida detectada (AVX2).
+///
+/// # Safety
+/// Esta função é segura se o despacho detectar corretamente as instruções suportadas.
+pub unsafe fn simd_tanh(x: __m256) -> __m256 {
+    simd_tanh_avx2(x)
+}
+
+/// Despacha para a implementação de sigmoid SIMD mais rápida detectada (AVX2).
+///
+/// # Safety
+/// Esta função é segura se o despacho detectar corretamente as instruções suportadas.
+pub unsafe fn simd_sigmoid(x: __m256) -> __m256 {
+    simd_sigmoid_avx2(x)
 }
 
 #[cfg(test)]

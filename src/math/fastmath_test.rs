@@ -60,8 +60,7 @@ fn test_simd_fastmath_sigmoid_mse() {
 fn test_simd_fastmath_tanh_avx512_mse() {
     if matches!(
         crate::math::simd::SimdMathConfig::get().instruction_set,
-        crate::math::simd::SimdInstructionSet::Avx512
-            | crate::math::simd::SimdInstructionSet::Avx512Vnni
+        crate::math::simd::InstructionSet::Avx512 | crate::math::simd::InstructionSet::Avx512Vnni
     ) {
         let input: [f32; 16] = [
             -4.0, -2.5, -0.75, 0.0, 0.8, 1.2, 3.5, 6.0, -3.2, -1.1, -0.25, 0.1, 0.5, 2.2, 4.5, 8.0,
@@ -93,8 +92,7 @@ fn test_simd_fastmath_tanh_avx512_mse() {
 fn test_simd_fastmath_sigmoid_avx512_mse() {
     if matches!(
         crate::math::simd::SimdMathConfig::get().instruction_set,
-        crate::math::simd::SimdInstructionSet::Avx512
-            | crate::math::simd::SimdInstructionSet::Avx512Vnni
+        crate::math::simd::InstructionSet::Avx512 | crate::math::simd::InstructionSet::Avx512Vnni
     ) {
         let input: [f32; 16] = [
             -5.0, -1.0, -0.33, 0.0, 0.22, 1.1, 2.8, 4.0, -4.2, -2.1, -0.15, 0.5, 0.88, 1.9, 3.2,
