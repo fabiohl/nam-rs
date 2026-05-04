@@ -136,7 +136,16 @@ fn apply_input_stage(
     n_samples: usize,
     ctx: &mut DspPipelineContext<'_>,
 ) -> GateState {
-    let energy_ms = unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
+    // Usa o máximo das energias de ambos os canais: qualquer canal com sinal ativo
+    // deve manter o gate aberto. Usando apenas L anteriormente, um sinal "Somente Direita"
+    // (L=0, R≠0) era erroneamente classificado como silêncio → bug de mudo no canal R.
+    let energy_l = unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
+    let energy_r = unsafe { compute_energy_avx2(&samples_r[..n_samples]) };
+    let energy_ms = if energy_l >= energy_r {
+        energy_l
+    } else {
+        energy_r
+    };
 
     ctx.silence_hysteresis.update(
         energy_ms,
