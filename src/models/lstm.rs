@@ -134,6 +134,49 @@ macro_rules! define_lstm_process {
     };
 }
 
+macro_rules! define_lstm2_process_pipelined {
+    (
+        $fn_name:ident,
+        $target_meta:meta,
+        $layer_proc:ident,
+        $dot_prod:path,
+        $get_h2:ident
+    ) => {
+        #[$target_meta]
+        unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
+            unsafe {
+                let len = input.len();
+                if len >= 1 {
+                    // Prólogo: processa o primeiro frame apenas na camada 1
+                    self.layer1.$layer_proc(&[input[0]]);
+                    let mut prev_h1 = [0.0; H];
+                    prev_h1.copy_from_slice(self.layer1.get_hidden_state());
+
+                    // Loop principal: overlap entre camada 1 (frame i) e camada 2 (frame i-1)
+                    for i in 1..len {
+                        let current_input = [input[i]];
+                        // Estas duas chamadas são agora independentes (processam frames diferentes)!
+                        self.layer1.$layer_proc(&current_input);
+                        self.layer2.$layer_proc(&prev_h1);
+
+                        let h2 = self.layer2.$get_h2();
+                        let dot = $dot_prod(h2, &self.head_weights);
+                        output[i - 1] = dot + self.head_bias;
+
+                        prev_h1.copy_from_slice(self.layer1.get_hidden_state());
+                    }
+
+                    // Epílogo: processa o último frame na camada 2
+                    self.layer2.$layer_proc(&prev_h1);
+                    let h2 = self.layer2.$get_h2();
+                    let dot = $dot_prod(h2, &self.head_weights);
+                    output[len - 1] = dot + self.head_bias;
+                }
+            }
+        }
+    };
+}
+
 impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer<I, H, IH, H4> {
     /// Cria uma nova camada LSTM zerada.
     pub fn new() -> Self {
@@ -432,93 +475,45 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             head_bias: 0.0,
         }
     }
-    unsafe fn process_avx2(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe {
-            let mut i = 0;
-            let len = input.len();
-            while i < len {
-                self.layer1.process_sample_avx2(&[input[i]]);
-                self.layer2
-                    .process_sample_avx2(self.layer1.get_hidden_state());
-                let hidden2 = self.layer2.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx2(hidden2, &self.head_weights);
-                output[i] = dot + self.head_bias;
-                i += 1;
-            }
-        }
-    }
-    #[target_feature(enable = "avx512f,avx512vl")]
-    unsafe fn process_avx512(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe {
-            let len = input.len();
-            if len >= 1 {
-                self.layer1.process_sample_avx512(&[input[0]]);
-                let mut prev_h1 = [0.0; H];
-                prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-                for i in 1..len {
-                    let current_input = [input[i]];
-                    self.layer1.process_sample_avx512(&current_input);
-                    self.layer2.process_sample_avx512(&prev_h1);
-                    let hidden2 = self.layer2.get_hidden_state();
-                    let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
-                    output[i - 1] = dot + self.head_bias;
-                    prev_h1.copy_from_slice(self.layer1.get_hidden_state());
-                }
-                self.layer2.process_sample_avx512(&prev_h1);
-                let hidden2 = self.layer2.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
-                output[len - 1] = dot + self.head_bias;
-            }
-        }
-    }
-    #[target_feature(enable = "avxvnni")]
-    unsafe fn process_avx2vnni(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe {
-            let mut i = 0;
-            let len = input.len();
-            while i < len {
-                self.layer1.process_sample_avx2vnni(&[input[i]]);
-                self.layer2
-                    .process_sample_avx2vnni(self.layer1.get_hidden_state());
-                let hidden2 = self.layer2.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx2(hidden2, &self.head_weights);
-                output[i] = dot + self.head_bias;
-                i += 1;
-            }
-        }
-    }
-    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
-    unsafe fn process_avx512vnni(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe {
-            let mut i = 0;
-            let len = input.len();
-            while i < len {
-                self.layer1.process_sample_avx512vnni(&[input[i]]);
-                self.layer2
-                    .process_sample_avx512vnni(self.layer1.get_hidden_state());
-                let hidden2 = self.layer2.get_hidden_state();
-                let dot = crate::math::simd::dot_product_avx512(hidden2, &self.head_weights);
-                output[i] = dot + self.head_bias;
-                i += 1;
-            }
-        }
-    }
-    #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
-    unsafe fn process_avx512_vnni_bf16(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe {
-            let mut i = 0;
-            let len = input.len();
-            while i < len {
-                self.layer1.process_sample_avx512_vnni_bf16(&[input[i]]);
-                self.layer2
-                    .process_sample_avx512_vnni_bf16(self.layer1.get_hidden_state());
-                let hidden2 = self.layer2.get_hidden_state_bf16();
-                let dot = crate::math::simd::dot_product_bf16_avx512(hidden2, &self.head_weights);
-                output[i] = dot + self.head_bias;
-                i += 1;
-            }
-        }
-    }
+    define_lstm2_process_pipelined!(
+        process_avx2,
+        inline(always),
+        process_sample_avx2,
+        crate::math::simd::dot_product_avx2,
+        get_hidden_state
+    );
+
+    define_lstm2_process_pipelined!(
+        process_avx512,
+        target_feature(enable = "avx512f,avx512vl"),
+        process_sample_avx512,
+        crate::math::simd::dot_product_avx512,
+        get_hidden_state
+    );
+
+    define_lstm2_process_pipelined!(
+        process_avx2vnni,
+        target_feature(enable = "avxvnni"),
+        process_sample_avx2vnni,
+        crate::math::simd::dot_product_avx2,
+        get_hidden_state
+    );
+
+    define_lstm2_process_pipelined!(
+        process_avx512vnni,
+        target_feature(enable = "avx512f,avx512vl,avx512vnni"),
+        process_sample_avx512vnni,
+        crate::math::simd::dot_product_avx512,
+        get_hidden_state
+    );
+
+    define_lstm2_process_pipelined!(
+        process_avx512_vnni_bf16,
+        target_feature(enable = "avx512f,avx512vl,avx512bf16"),
+        process_sample_avx512_vnni_bf16,
+        crate::math::simd::dot_product_bf16_avx512,
+        get_hidden_state_bf16
+    );
     /// Processa um bloco de áudio através do modelo (SIMD dispatch).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
@@ -562,3 +557,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "lstm_test.rs"]
+mod lstm_test;

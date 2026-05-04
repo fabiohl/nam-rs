@@ -51,7 +51,7 @@ Nenhum arquivo individual excede 700 linhas.
 
 ---
 
-#### `TA2` — LSTM 2-Layer Pipelining (Layer Overlap)
+#### `TA2` — LSTM 2-Layer Pipelining (Layer Overlap) [DONE]
 
 **Arquivos:** `src/models/lstm.rs` (linhas 436-506)
 **Prioridade:** Alta (Throughput LSTM 2x16)

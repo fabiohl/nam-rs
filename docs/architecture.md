@@ -22,6 +22,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Dot Product ILP:** Implementação com 4 acumuladores independentes que saturam o throughput de portas FMA, quebrando cadeias de dependência.
 - **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para "morar" na Cache L1 (32KB). A descompressão para `f32` ocorre on-the-fly via `_mm256_cvtph_ps`, eliminando gargalos de banda de memória (Memory-Bound).
 - **Gate-Major Layout & Fused 4-Gate GEMV (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`. A inferência funde o cálculo das 4 portas em uma única passagem sobre o vetor de estado, reduzindo o tráfego de memória em 75% para o vetor de estado.
+- **Layer Overlap Pipelining (LSTM 2-Layer):** Implementação de paralelismo de grão fino onde a Camada 2 processa o frame `N-1` simultaneamente ao processamento do frame `N` pela Camada 1. Unificado via macro para todas as variantes SIMD, eliminando o gargalo sequencial e aumentando a vazão em modelos multicamada.
 - **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` para CPUs modernas (Sapphire Rapids/Zen5), dobrando o throughput em relação ao fallback.
 - **Fused Conv1d+Mixin (WaveNet):** Mecanismo de cache stateful para condicionamento. A soma do vetor de mixagem é fundida diretamente no acumulador da Conv1D, eliminando passagens redundantes de memória (load/store).
 - **Fused Tanh + Head Accumulate (WaveNet):** Unificação das fases de ativação e skip-connection em uma única passagem pelos registradores SIMD.

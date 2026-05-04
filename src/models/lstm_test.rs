@@ -210,4 +210,55 @@ mod tests {
             assert_eq!(*val, 0.0);
         }
     }
+
+    // TESTE DE PARIDADE: Garante que a versão pipelined (SIMD) produz o mesmo
+    // resultado que a versão sequencial (Scalar).
+    #[test]
+    fn test_lstm_model2_pipelining_parity() {
+        let mut model_simd: LstmModel2<8, 9, 17, 32> = LstmModel2::new();
+        let mut model_scalar: LstmModel2<8, 9, 17, 32> = LstmModel2::new();
+
+        // Atribui pesos determinísticos
+        for i in 0..32 {
+            model_simd.layer1.bias[i] = 0.1;
+            model_scalar.layer1.bias[i] = 0.1;
+            model_simd.layer2.bias[i] = -0.05;
+            model_scalar.layer2.bias[i] = -0.05;
+        }
+        for k in 0..4 {
+            for j in 0..17 {
+                for i in 0..8 {
+                    let w = half::f16::from_f32(0.01 * (i + j + k) as f32).to_bits();
+                    if j < 9 {
+                        model_simd.layer1.input_hidden_weights[k][j][i] = w;
+                        model_scalar.layer1.input_hidden_weights[k][j][i] = w;
+                    }
+                    model_simd.layer2.input_hidden_weights[k][j][i] = w;
+                    model_scalar.layer2.input_hidden_weights[k][j][i] = w;
+                }
+            }
+        }
+        for i in 0..8 {
+            let w = half::f16::from_f32(0.1 * i as f32).to_bits();
+            model_simd.head_weights[i] = w;
+            model_scalar.head_weights[i] = w;
+        }
+
+        let input: Vec<f32> = (0..64).map(|i| (i as f32 * 0.1).sin()).collect();
+        let mut out_simd = [0.0f32; 64];
+        let mut out_scalar = [0.0f32; 64];
+
+        model_simd.process(&input, &mut out_simd);
+        model_scalar.process_scalar(&input, &mut out_scalar);
+
+        for i in 0..64 {
+            assert!(
+                (out_simd[i] - out_scalar[i]).abs() < 1e-3,
+                "Paridade SIMD/Pipelined vs Scalar falhou em [{}]: {} vs {}",
+                i,
+                out_simd[i],
+                out_scalar[i]
+            );
+        }
+    }
 }
