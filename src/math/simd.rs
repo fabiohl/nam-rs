@@ -917,6 +917,8 @@ pub struct SimdMathConfig {
     pub activation_tanh_block: unsafe fn(&mut [f32]),
     /// Loop fundido para aplicar tanh e acumular no head em passagem única.
     pub tanh_and_accumulate_block: unsafe fn(&mut [f32], &mut [f32]),
+    /// Loop fundido para ativação gated (tanh * sigmoid) e acumulação no head.
+    pub gated_activation_and_accumulate_block: unsafe fn(&mut [f32], &mut [f32], usize),
     /// Conjunto de instruções SIMD detectado.
     /// Define a trait matemática exata no macro `dispatch_simd!`.
     pub instruction_set: SimdInstructionSet,
@@ -975,6 +977,8 @@ impl SimdMathConfig {
                 activation_tanh_block: <Avx512VnniBf16Math as SimdMath>::activation_tanh_block,
                 tanh_and_accumulate_block:
                     <Avx512VnniBf16Math as SimdMath>::tanh_and_accumulate_block,
+                gated_activation_and_accumulate_block:
+                    <Avx512VnniBf16Math as SimdMath>::gated_activation_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx512VnniBf16,
                 is_avx512: true,
             };
@@ -990,6 +994,8 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx512VnniMath as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512VnniMath as SimdMath>::activation_tanh_block,
                 tanh_and_accumulate_block: <Avx512VnniMath as SimdMath>::tanh_and_accumulate_block,
+                gated_activation_and_accumulate_block:
+                    <Avx512VnniMath as SimdMath>::gated_activation_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx512Vnni,
                 is_avx512: true,
             };
@@ -1004,6 +1010,8 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512Math as SimdMath>::activation_tanh_block,
                 tanh_and_accumulate_block: <Avx512Math as SimdMath>::tanh_and_accumulate_block,
+                gated_activation_and_accumulate_block:
+                    <Avx512Math as SimdMath>::gated_activation_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx512,
                 is_avx512: true,
             };
@@ -1018,6 +1026,8 @@ impl SimdMathConfig {
                 sigmoid_slice: <Avx2VnniMath as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx2VnniMath as SimdMath>::activation_tanh_block,
                 tanh_and_accumulate_block: <Avx2VnniMath as SimdMath>::tanh_and_accumulate_block,
+                gated_activation_and_accumulate_block:
+                    <Avx2VnniMath as SimdMath>::gated_activation_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx2Vnni,
                 is_avx512: false,
             };
@@ -1031,6 +1041,8 @@ impl SimdMathConfig {
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
             activation_tanh_block: <Avx2Math as SimdMath>::activation_tanh_block,
             tanh_and_accumulate_block: <Avx2Math as SimdMath>::tanh_and_accumulate_block,
+            gated_activation_and_accumulate_block:
+                <Avx2Math as SimdMath>::gated_activation_and_accumulate_block,
             instruction_set: SimdInstructionSet::Avx2,
             is_avx512: false,
         }
@@ -1197,6 +1209,14 @@ pub trait SimdMath {
     /// `dest` e `buf` devem ter comprimentos compatíveis e ser acessíveis.
     unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]);
 
+    /// Aplica a ativação Gated (Tanh * Sigmoid) e acumula no Skip Connection.
+    /// Realiza `res = tanh(z1) * sigmoid(z2)`, `z1 = res` e `dest += res` em uma única passagem.
+    ///
+    /// # Safety
+    /// `dest` deve ter tamanho `num_frames * ch`.
+    /// `buf` deve ter tamanho `num_frames * 2 * ch`.
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize);
+
     /// Calcula a soma horizontal de N elementos a partir de um ponteiro.
     ///
     /// # Safety
@@ -1214,6 +1234,23 @@ pub trait SimdMath {
         go: Self::V,
         cs: Self::V,
     ) -> (Self::V, Self::V);
+
+    /// Realiza a operação fundida Y = Residual + Bias + W * X em batch (GEMM).
+    /// in_frames: [num_frames * IN]
+    /// residual: [num_frames * OUT]
+    /// out_frames: [num_frames * OUT] (destino final)
+    ///
+    /// # Safety
+    /// `weights` deve ter `IN * OUT` elementos. `bias` deve ter `OUT` elementos.
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    );
 }
 
 /// Implementação estática para microarquitetura x86-64-v3 (AVX2/FMA).
@@ -1302,6 +1339,23 @@ impl SimdMath for Avx2Math {
     ) {
         unsafe {
             fused_add_gemm_batch_avx2(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_gemm_residual_batch_avx2(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
         }
     }
     #[inline(always)]
@@ -1402,6 +1456,44 @@ impl SimdMath for Avx2Math {
                 *buf.get_unchecked_mut(i) = t;
                 *dest.get_unchecked_mut(i) += t;
                 i += 1;
+            }
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize) {
+        let num_frames = dest.len() / ch;
+        unsafe {
+            for f in 0..num_frames {
+                let frame_start_dest = f * ch;
+                let frame_start_buf = f * 2 * ch;
+                let mut j = 0;
+                while j + 8 <= ch {
+                    let vz1 = _mm256_loadu_ps(buf.as_ptr().add(frame_start_buf + j));
+                    let vz2 = _mm256_loadu_ps(buf.as_ptr().add(frame_start_buf + ch + j));
+
+                    let vt = crate::math::fastmath::simd_tanh(vz1);
+                    let vs = crate::math::fastmath::simd_sigmoid(vz2);
+                    let vr = _mm256_mul_ps(vt, vs);
+
+                    _mm256_storeu_ps(buf.as_mut_ptr().add(frame_start_buf + j), vr);
+
+                    let vd = _mm256_loadu_ps(dest.as_ptr().add(frame_start_dest + j));
+                    _mm256_storeu_ps(
+                        dest.as_mut_ptr().add(frame_start_dest + j),
+                        _mm256_add_ps(vd, vr),
+                    );
+
+                    j += 8;
+                }
+                while j < ch {
+                    let z1 = *buf.get_unchecked(frame_start_buf + j);
+                    let z2 = *buf.get_unchecked(frame_start_buf + ch + j);
+                    let r = crate::math::fastmath::tanh(z1) * crate::math::fastmath::sigmoid(z2);
+                    *buf.get_unchecked_mut(frame_start_buf + j) = r;
+                    *dest.get_unchecked_mut(frame_start_dest + j) += r;
+                    j += 1;
+                }
             }
         }
     }
@@ -1556,6 +1648,23 @@ impl SimdMath for Avx2VnniMath {
     }
 
     #[target_feature(enable = "avxvnni")]
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_gemm_residual_batch_avx2(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
+    #[target_feature(enable = "avxvnni")]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         let len = core::cmp::min(dest.len(), src.len());
         let mut i = 0;
@@ -1602,6 +1711,10 @@ impl SimdMath for Avx2VnniMath {
     #[target_feature(enable = "avxvnni")]
     unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
         unsafe { Avx2Math::tanh_and_accumulate_block(dest, buf) }
+    }
+    #[target_feature(enable = "avx2,fma")]
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize) {
+        unsafe { Avx2Math::gated_activation_and_accumulate_block(dest, buf, ch) }
     }
 
     #[target_feature(enable = "avxvnni")]
@@ -1720,6 +1833,23 @@ impl SimdMath for Avx512Math {
     }
 
     #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_gemm_residual_batch_avx512(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         let len = core::cmp::min(dest.len(), src.len());
         let mut i = 0;
@@ -1806,6 +1936,44 @@ impl SimdMath for Avx512Math {
                 *buf.get_unchecked_mut(i) = t;
                 *dest.get_unchecked_mut(i) += t;
                 i += 1;
+            }
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize) {
+        let num_frames = dest.len() / ch;
+        unsafe {
+            for f in 0..num_frames {
+                let frame_start_dest = f * ch;
+                let frame_start_buf = f * 2 * ch;
+                let mut j = 0;
+                while j + 16 <= ch {
+                    let vz1 = _mm512_loadu_ps(buf.as_ptr().add(frame_start_buf + j));
+                    let vz2 = _mm512_loadu_ps(buf.as_ptr().add(frame_start_buf + ch + j));
+
+                    let vt = crate::math::fastmath::simd_tanh_avx512(vz1);
+                    let vs = crate::math::fastmath::simd_sigmoid_avx512(vz2);
+                    let vr = _mm512_mul_ps(vt, vs);
+
+                    _mm512_storeu_ps(buf.as_mut_ptr().add(frame_start_buf + j), vr);
+
+                    let vd = _mm512_loadu_ps(dest.as_ptr().add(frame_start_dest + j));
+                    _mm512_storeu_ps(
+                        dest.as_mut_ptr().add(frame_start_dest + j),
+                        _mm512_add_ps(vd, vr),
+                    );
+
+                    j += 16;
+                }
+                while j < ch {
+                    let z1 = *buf.get_unchecked(frame_start_buf + j);
+                    let z2 = *buf.get_unchecked(frame_start_buf + ch + j);
+                    let r = crate::math::fastmath::tanh(z1) * crate::math::fastmath::sigmoid(z2);
+                    *buf.get_unchecked_mut(frame_start_buf + j) = r;
+                    *dest.get_unchecked_mut(frame_start_dest + j) += r;
+                    j += 1;
+                }
             }
         }
     }
@@ -1972,6 +2140,23 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_gemm_residual_batch_avx512(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         let len = core::cmp::min(dest.len(), src.len());
         let mut i = 0;
@@ -2018,6 +2203,11 @@ impl SimdMath for Avx512VnniMath {
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
         unsafe { Avx512Math::tanh_and_accumulate_block(dest, buf) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize) {
+        unsafe { Avx512Math::gated_activation_and_accumulate_block(dest, buf, ch) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
@@ -2136,6 +2326,23 @@ impl SimdMath for Avx512VnniBf16Math {
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_gemm_residual_batch_avx512(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         let len = core::cmp::min(dest.len(), src.len());
         let mut i = 0;
@@ -2182,6 +2389,11 @@ impl SimdMath for Avx512VnniBf16Math {
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
     unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
         unsafe { Avx512Math::tanh_and_accumulate_block(dest, buf) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize) {
+        unsafe { Avx512Math::gated_activation_and_accumulate_block(dest, buf, ch) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -2247,7 +2459,6 @@ impl SimdMath for ScalarMath {
             ]
         }
     }
-
     #[inline(always)]
     unsafe fn dot_product_4x(
         w0: &[u16],
@@ -2335,6 +2546,23 @@ impl SimdMath for ScalarMath {
     }
 
     #[inline(always)]
+    unsafe fn fused_gemm_residual_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        residual: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            fused_gemm_residual_batch_fallback(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         let len = core::cmp::min(dest.len(), src.len());
         for i in 0..len {
@@ -2390,6 +2618,24 @@ impl SimdMath for ScalarMath {
                 let t = buf.get_unchecked(i).tanh();
                 *buf.get_unchecked_mut(i) = t;
                 *dest.get_unchecked_mut(i) += t;
+            }
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gated_activation_and_accumulate_block(dest: &mut [f32], buf: &mut [f32], ch: usize) {
+        let num_frames = dest.len() / ch;
+        for f in 0..num_frames {
+            let frame_start_dest = f * ch;
+            let frame_start_buf = f * 2 * ch;
+            for j in 0..ch {
+                unsafe {
+                    let z1 = *buf.get_unchecked(frame_start_buf + j);
+                    let z2 = *buf.get_unchecked(frame_start_buf + ch + j);
+                    let r = crate::math::fastmath::tanh(z1) * crate::math::fastmath::sigmoid(z2);
+                    *buf.get_unchecked_mut(frame_start_buf + j) = r;
+                    *dest.get_unchecked_mut(frame_start_dest + j) += r;
+                }
             }
         }
     }
@@ -3863,5 +4109,147 @@ unsafe fn fused_add_gemv_fallback(
             sum += in_frame[in_c] * w;
         }
         out_frame[out_c] += sum;
+    }
+}
+
+/// [TF3] Kernel GEMM com residual fundido Fallback.
+unsafe fn fused_gemm_residual_batch_fallback(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    residual: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+    for f in 0..num_frames {
+        let in_frame = &in_frames[f * in_len..(f + 1) * in_len];
+        let out_frame = &mut out_frames[f * out_len..(f + 1) * out_len];
+        let res_frame = &residual[f * out_len..(f + 1) * out_len];
+        for out_c in 0..out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            sum += res_frame[out_c];
+            for in_c in 0..in_len {
+                let w = half::f16::from_bits(weights[in_c * out_len + out_c]).to_f32();
+                sum += in_frame[in_c] * w;
+            }
+            out_frame[out_c] = sum;
+        }
+    }
+}
+
+/// [TF3] Kernel GEMM com residual fundido AVX2.
+#[target_feature(enable = "avx2,fma,f16c")]
+unsafe fn fused_gemm_residual_batch_avx2(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    residual: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+
+    for f in 0..num_frames {
+        let in_frame = &in_frames[f * in_len..(f + 1) * in_len];
+        let out_frame = &mut out_frames[f * out_len..(f + 1) * out_len];
+        let res_frame = &residual[f * out_len..(f + 1) * out_len];
+
+        let mut out_c = 0;
+        while out_c + 8 <= out_len {
+            unsafe {
+                let mut accum = _mm256_loadu_ps(res_frame.as_ptr().add(out_c));
+                if do_bias {
+                    accum = _mm256_add_ps(accum, _mm256_loadu_ps(bias.as_ptr().add(out_c)));
+                }
+
+                for in_c in 0..in_len {
+                    let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
+                    let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                    let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
+                    accum = _mm256_fmadd_ps(vs, vw, accum);
+                }
+
+                _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+            }
+            out_c += 8;
+        }
+
+        while out_c < out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            sum += res_frame[out_c];
+            for in_c in 0..in_len {
+                unsafe {
+                    let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c))
+                        .to_f32();
+                    sum += *in_frame.get_unchecked(in_c) * w;
+                }
+            }
+            unsafe {
+                *out_frame.get_unchecked_mut(out_c) = sum;
+            }
+            out_c += 1;
+        }
+    }
+}
+
+/// [TF3] Kernel GEMM com residual fundido AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+unsafe fn fused_gemm_residual_batch_avx512(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    residual: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+
+    for f in 0..num_frames {
+        let in_frame = &in_frames[f * in_len..(f + 1) * in_len];
+        let out_frame = &mut out_frames[f * out_len..(f + 1) * out_len];
+        let res_frame = &residual[f * out_len..(f + 1) * out_len];
+
+        let mut out_c = 0;
+        while out_c + 16 <= out_len {
+            unsafe {
+                let mut accum = _mm512_loadu_ps(res_frame.as_ptr().add(out_c));
+                if do_bias {
+                    accum = _mm512_add_ps(accum, _mm512_loadu_ps(bias.as_ptr().add(out_c)));
+                }
+
+                for in_c in 0..in_len {
+                    let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+                    let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                    let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
+                    accum = _mm512_fmadd_ps(vs, vw, accum);
+                }
+
+                _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+            }
+            out_c += 16;
+        }
+
+        while out_c < out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            sum += res_frame[out_c];
+            for in_c in 0..in_len {
+                unsafe {
+                    let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c))
+                        .to_f32();
+                    sum += *in_frame.get_unchecked(in_c) * w;
+                }
+            }
+            unsafe {
+                *out_frame.get_unchecked_mut(out_c) = sum;
+            }
+            out_c += 1;
+        }
     }
 }

@@ -495,6 +495,32 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
+    /// Executa a projeção 1x1 fundida com a soma do residual: Y = X_res + Bias + W * Z.
+    /// [TF3] Otimização: Elimina a necessidade de cópia prévia do residual para o output.
+    ///
+    /// # Safety
+    /// O chamador deve garantir tamanhos compatíveis e validade dos buffers.
+    #[inline(always)]
+    pub unsafe fn process_residual_batch<M: SimdMath>(
+        &self,
+        input: &[f32],
+        residual: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
+        unsafe {
+            M::fused_gemm_residual_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                residual,
+                output,
+                num_frames,
+                self.do_bias,
+            );
+        }
+    }
+
     #[inline(always)]
     /// Processa bloco iterativo substituindo (OVERWRITE) os valores passados em vez de acumular.
     ///
@@ -703,15 +729,17 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             M::tanh_and_accumulate_block(head_input, conv_slice);
 
             // [FASE 3: Saída - 1x1 Residual]
-            // 1. Soma Residual: Copia o estado original para o output antes da projeção fundida
+            // [TF3] Otimização: Projeção 1x1 fundida com a soma do residual em lote.
+            // Elimina a cópia prévia do estado original (layer_buffer) para o output.
             let lb_offset = buffer_start * CH;
-            output.copy_from_slice(
-                layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH),
-            );
+            let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH);
 
-            // 3. Projeção 1x1 Residual fundida em lote
-            self.one_by_one
-                .process_fused_block::<M>(conv_slice, output, num_frames);
+            self.one_by_one.process_residual_batch::<M>(
+                conv_slice,
+                residual_slice,
+                output,
+                num_frames,
+            );
 
             // 4. [T25] Fusão BF16: Conversão em lote se necessário
             if let (true, Some(bf16_out)) = (M::IS_BF16, output_bf16.as_mut()) {

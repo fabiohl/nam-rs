@@ -112,6 +112,55 @@
 
 ---
 
+## Épico F — Paridade WaveNet Dyn + Fusões Avançadas
+
+> Origem: Auditoria `pesquisador-inovador` (2026-05-03, 4ª rodada).
+> Objetivo: Fechar o gap de **240% overhead** entre o path estático (`wavenet.rs`)
+> e o dinâmico (`wavenet_dyn.rs`), e aplicar fusões avançadas de kernels SIMD
+> que beneficiam TODAS as topologias WaveNet (Standard, Lite, Feather, Nano + Dyn).
+> Prioridade: ganhos de 2 dígitos percentuais.
+
+### TF1 · Backport de Otimizações A+E para `wavenet_dyn.rs` ⭐ MAIOR IMPACTO DO PROJETO [DONE]
+
+- **Arquivo(s):** `src/models/wavenet_dyn.rs` (refatoração principal), `src/math/simd.rs` (reuso)
+- **O quê:** O path dinâmico estava **3 Épicos atrás** do estático. Backport metódico de 5 otimizações já validadas:
+  1. **TA2** — Fused Conv1D+Mixin: Criar `Conv1dDyn::process_block_with_mixin<M>`
+  2. **TE1** — Channel-First Tiling: Inverter loop Conv1D Dyn com pre-carregamento de taps
+  3. **TE2** — Prefetch 2-stage: Integrar `adaptive_prefetch_2stage_f32` para `dilation ≥ 128`
+  4. **TE3** — Tanh+Head Fusion: Substituir `M::tanh_slice` + head accumulate por `M::tanh_and_accumulate_block`
+  5. **TA3** — Batch 1×1 Projection: Criar `DenseLayerDyn::process_fused_block<M>`
+- **Impacto estimado:** **~40-60%** de redução no tempo do path dinâmico (120 µs → ~55-70 µs)
+- [ ] Benchmark comparativo (antes/depois)
+
+### TF2 · Fusão da Ativação Gated em SIMD [DONE]
+
+- **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/math/fastmath.rs`, `src/models/wavenet_dyn.rs`
+- **O quê:** Modelos WaveNet com `gated=true` executam 3 passagens separadas sobre os mesmos dados (`tanh_slice`, `sigmoid_slice`, multiplicação escalar). Fundir em um único kernel `fused_gated_activation_block` que aplica `tanh(z1) × sigmoid(z2)` em uma passagem SIMD, eliminando 2 loads e 1 store intermediário.
+- **Impacto estimado:** **~15-25%** no tempo da ativação gated. Ganho global em modelos gated: **~5-8%**.
+- **Variantes:** AVX2 (`fused_gated_activation_avx2`) e AVX-512 (`fused_gated_activation_avx512`).
+- **Validação:** Paridade numérica bit-a-bit (fusão determinística).
+- [ ] Implementar `fused_gated_activation_block_avx2` em `simd.rs`
+- [ ] Implementar variante AVX-512
+- [ ] Adicionar ao trait `SimdMath` e V-table
+- [ ] Integrar em `WaveNetLayerDyn::process_block_internal` (branch gated)
+- [ ] Benchmark comparativo com modelo gated
+
+### TF3 · Eliminação do Residual Copy + GEMV Fundido (Todas as Topologias) [DONE]
+
+- **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/models/wavenet.rs`, `src/models/wavenet_dyn.rs`
+- **O quê:** Na FASE 3 do `process_block_internal`, o `copy_from_slice` do layer_buffer (residual) seguido de `process_fused_block` causa 2 passagens de memória. Criar `fused_gemv_residual_batch` que faz `out[i] = residual[i] + Σ(W[j] × in[j]) + bias` em uma única passagem, carregando o residual diretamente no acumulador SIMD.
+- **Impacto estimado:** **~10-15%** no tempo da FASE 3. Ganho global end-to-end: **~5-8%**.
+- **Risco:** Médio. Exige novo kernel SIMD (variação do `fused_add_gemm_batch`).
+- **Abrangência:** Todas as topologias (Standard, Lite, Feather, Nano) + Dyn.
+- [ ] Implementar `fused_gemv_residual_batch_avx2` em `simd.rs`
+- [ ] Implementar variante AVX-512
+- [ ] Adicionar ao trait `SimdMath`
+- [ ] Substituir `copy_from_slice` + `process_fused_block` em `wavenet.rs`
+- [ ] Substituir equivalente em `wavenet_dyn.rs`
+- [ ] Benchmark comparativo (antes/depois)
+
+---
+
 ## Observações — Itens Diferidos
 
 > Itens identificados na auditoria `pesquisador-inovador` mas **não priorizados**
@@ -139,4 +188,9 @@
 ### Tarefas E não priorizadas *(diferidas)*
 
 - **TE4** · Winograd F(2,3) para Conv1D K=3 — Redução teórica de 33% em mults, mas aplicável apenas a layers com dilation=1 (2 de 10). Ganho global ~3-5%. Complexidade alta: exige processamento de 2 frames simultâneos, conflito com semântica causal dilatada. **Custo/benefício desfavorável.**
-- **TE6** · Eliminação do Residual Copy na Projeção 1×1 — Fundir `copy_from_slice` do layer_buffer no kernel `fused_add_gemm_batch` com parâmetro `residual`. Ganho ~3-5% na FASE 3. Exige novo kernel SIMD ou variante. **Candidata para Sprint F.**
+
+### Propostas descartadas (pesquisador-inovador, 4ª rodada)
+
+- **Padding CH=12→16 (Lite):** Ganho ~10-15% apenas Conv1D Lite, mas requer padding em loading + aumento de footprint. Complexidade alta para benefício localizado.
+- **SSE path para Nano CH=4:** Nano já é ultra-rápido (~5 µs). Ganho absoluto de ~1-2 µs não justifica path SSE separado.
+- **Multi-frame pipelining entre layers:** Quebraria cadeia de dependência causal. Incompatível com WaveNet.

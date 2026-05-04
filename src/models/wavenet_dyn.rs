@@ -32,19 +32,14 @@ pub struct Conv1dDyn {
 }
 
 impl Conv1dDyn {
-    /// Processa um frame temporal aplicando a convolução sobre o histórico em buffer livre de alocação.
+    /// Processa um bloco temporal aplicando a convolução sobre o histórico em buffer livre de alocação.
     ///
-    /// ## Otimização: Software Prefetch Proativo
-    ///
-    /// Idêntico ao `Conv1d` estático: para dilatações grandes, emite `_mm_prefetch`
-    /// para o próximo tap do kernel enquanto o tap atual é processado via FMA,
-    /// eliminando L1 cache misses previsíveis (~5–10% ganho em layers dilatadas).
+    /// [TA2] Fused Conv1D+Mixin: Inicializa acumuladores com bias + mixin opcional.
+    /// [TE1] Channel-First Tiling: Inverte loops para manter acumuladores SIMD quentes.
+    /// [TE2] Prefetch 2-stage: Hint agressivo para dilatações >= 128.
     ///
     /// # Safety
     /// Depende da instância estrita de `SimdMathConfig` referenciar uma SIMD suportada.
-    /// Processa bloco iterativo.
-    /// # Safety
-    /// Pointer must be valid.
     pub unsafe fn process_block<M: crate::math::simd::SimdMath>(
         &self,
         layer_buffer: &[f32],
@@ -52,186 +47,198 @@ impl Conv1dDyn {
         buffer_start: usize,
         num_frames: usize,
     ) {
-        // out_c_base controla o bloco de canais de saída sendo processado (batch de 4 canais para SIMD)
-        let mut out_c_base;
-        // Processa os canais de saída em blocos de 4 para otimizar o uso de registradores SIMD
-        let num_blocks = self.out_ch / 4;
-        for b in 0..num_blocks {
-            out_c_base = b * 4;
-            // Itera sobre o tamanho do kernel causal temporal (geralmente kernel_size = 2 ou 3)
-            for k in 0..self.kernel {
-                // Calcula o offset do elemento passado no tempo baseado na dilatação
-                let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
-                let base_frame_idx = (buffer_start as isize) + offset;
-
-                // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
-                let w_start = b * self.kernel * self.in_ch * 4 + k * self.in_ch * 4;
-                let w_slice: &[[u16; 4]] = unsafe {
-                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
-                    core::slice::from_raw_parts(ptr, self.in_ch)
-                };
-
-                // Se for o primeiro tap do kernel (k == 0), devemos sobrescrever o lixo da memória (= assignment direto)
-                // e já somar o bias. Nos taps subsequentes (k > 0), acumulamos (+=).
-                if k == 0 {
-                    let bias0 = if self.do_bias {
-                        self.bias[out_c_base]
-                    } else {
-                        0.0
-                    };
-                    let bias1 = if self.do_bias {
-                        self.bias[out_c_base + 1]
-                    } else {
-                        0.0
-                    };
-                    let bias2 = if self.do_bias {
-                        self.bias[out_c_base + 2]
-                    } else {
-                        0.0
-                    };
-                    let bias3 = if self.do_bias {
-                        self.bias[out_c_base + 3]
-                    } else {
-                        0.0
-                    };
-
-                    for i in 0..num_frames {
-                        let frame_idx = base_frame_idx + (i as isize);
-                        let in_slice_start = (frame_idx as usize) * self.in_ch;
-
-                        // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
-                        if k + 1 < self.kernel {
-                            let prefetch_ptr = unsafe {
-                                layer_buffer.as_ptr().add(in_slice_start + self.dilation)
-                            };
-                            unsafe {
-                                crate::math::simd::adaptive_prefetch_f32(
-                                    prefetch_ptr,
-                                    self.dilation,
-                                );
-                            }
-                        }
-
-                        let in_slice = unsafe {
-                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
-                        };
-
-                        // OPERAÇÃO CORE (SIMD 4x Interleaved):
-                        let [r0, r1, r2, r3] =
-                            unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
-
-                        // ESCRITA DIRETA + BIAS (k == 0):
-                        unsafe {
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base) = bias0 + r0;
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 1) = bias1 + r1;
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 2) = bias2 + r2;
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 3) = bias3 + r3;
-                        }
-                    }
-                } else {
-                    for i in 0..num_frames {
-                        let frame_idx = base_frame_idx + (i as isize);
-                        let in_slice_start = (frame_idx as usize) * self.in_ch;
-
-                        // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
-                        if k + 1 < self.kernel {
-                            let prefetch_ptr = unsafe {
-                                layer_buffer.as_ptr().add(in_slice_start + self.dilation)
-                            };
-                            unsafe {
-                                crate::math::simd::adaptive_prefetch_f32(
-                                    prefetch_ptr,
-                                    self.dilation,
-                                );
-                            }
-                        }
-
-                        let in_slice = unsafe {
-                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
-                        };
-
-                        // PRODUTO ESCALAR VETORIZADO (Simultâneo para 4 canais):
-                        let [r0, r1, r2, r3] =
-                            unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
-
-                        // ACUMULAÇÃO (k > 0):
-                        unsafe {
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base) += r0;
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 1) += r1;
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 2) += r2;
-                            *block.get_unchecked_mut(i * self.out_ch + out_c_base + 3) += r3;
-                        }
-                    }
-                }
-            }
+        unsafe {
+            self.process_block_internal::<M>(layer_buffer, block, buffer_start, num_frames, None);
         }
-        out_c_base = num_blocks * 4;
+    }
 
-        // PROCESSO DE CAUDA (REMAINDER):
-        // Se a quantidade de canais de saída (out_ch) não for múltiplo de 4, os canais restantes
-        // (1, 2 ou 3 canais) são processados individualmente aqui para garantir a corretude.
-        while out_c_base < self.out_ch {
-            let out_c = out_c_base;
-            for k in 0..self.kernel {
-                // Cálculo do deslocamento (offset) temporal baseado na dilatação da camada.
+    /// Processa um bloco de amostras com mixin.
+    ///
+    /// # Safety
+    /// O chamador deve garantir que `layer_buffer`, `block` e `mixin` possuam o tamanho
+    /// correto para o número de frames e canais.
+    pub unsafe fn process_block_with_mixin<M: crate::math::simd::SimdMath>(
+        &self,
+        layer_buffer: &[f32],
+        block: &mut [f32],
+        buffer_start: usize,
+        num_frames: usize,
+        mixin: &[f32],
+    ) {
+        unsafe {
+            self.process_block_internal::<M>(
+                layer_buffer,
+                block,
+                buffer_start,
+                num_frames,
+                Some(mixin),
+            );
+        }
+    }
+
+    /// Processa o bloco completo da camada, incluindo mixin, ativação e acumulação de head.
+    ///
+    /// # Safety
+    /// O chamador deve garantir que todos os buffers de estado e o `block` de entrada/saída
+    /// estejam corretamente alinhados e possuam o tamanho exigido pela topologia.
+    #[inline(always)]
+    unsafe fn process_block_internal<M: crate::math::simd::SimdMath>(
+        &self,
+        layer_buffer: &[f32],
+        block: &mut [f32],
+        buffer_start: usize,
+        num_frames: usize,
+        mixin: Option<&[f32]>,
+    ) {
+        // [TE1] Inversão de Loop: Channel-First Tiling.
+        // Itera sobre frames, então blocos de canais, então taps.
+        // Isso mantém os acumuladores nos registros SIMD para todos os taps de um frame.
+        let num_blocks = self.out_ch / 4;
+
+        for i in 0..num_frames {
+            let out_frame_start = i * self.out_ch;
+            let current_frame_idx = buffer_start + i;
+
+            // [TE1] Tap Pointers: Pre-calculamos os ponteiros para cada "tap" da convolução.
+            // Evita o re-calculo de dilatação/offsets dentro do loop de blocos de canais.
+            let mut tap_ptrs = [core::ptr::null::<f32>(); 8];
+            let k_limit = self.kernel.min(8);
+            for (k, tap_ptr) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
                 let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
-                let base_frame_idx = (buffer_start as isize) + offset;
+                let in_slice_start = ((current_frame_idx as isize) + offset) as usize * self.in_ch;
+                unsafe {
+                    *tap_ptr = layer_buffer.as_ptr().add(in_slice_start);
 
-                // Localiza a fatia de pesos específica para este canal de saída e tap do kernel.
-                let weight_slice_start = (out_c * self.kernel + k) * self.in_ch;
-                let weight_slice = unsafe {
-                    self.weights
-                        .get_unchecked(weight_slice_start..weight_slice_start + self.in_ch)
-                };
-
-                if k == 0 {
-                    // Inicialização com Bias: Primeiro tap limpa a memória com o bias + dot product.
-                    let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-                    for i in 0..num_frames {
-                        let frame_idx = base_frame_idx + (i as isize);
-                        let in_slice_start = (frame_idx as usize) * self.in_ch;
-
-                        // Prefetch adaptativo com lookahead.
-                        let lookahead_offset = 16;
-                        let prefetch_ptr =
-                            unsafe { layer_buffer.as_ptr().add(in_slice_start + lookahead_offset) };
-                        unsafe {
-                            crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
+                    // [TE2] Prefetch adaptativo de 2 estágios
+                    if self.dilation >= 128 {
+                        if k + 1 < self.kernel {
+                            let ptr_n1 = layer_buffer
+                                .as_ptr()
+                                .add(in_slice_start + self.dilation * self.in_ch);
+                            let ptr_n2 = if k + 2 < self.kernel {
+                                layer_buffer
+                                    .as_ptr()
+                                    .add(in_slice_start + 2 * self.dilation * self.in_ch)
+                            } else {
+                                ptr_n1
+                            };
+                            crate::math::simd::adaptive_prefetch_2stage_f32(
+                                ptr_n1,
+                                ptr_n2,
+                                self.dilation,
+                            );
                         }
-
-                        let in_slice = unsafe {
-                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
-                        };
-                        unsafe {
-                            *block.get_unchecked_mut(i * self.out_ch + out_c) =
-                                bias + M::dot_product(in_slice, weight_slice);
-                        }
-                    }
-                } else {
-                    // Acumulação: Taps subsequentes somam o resultado ao acumulado.
-                    for i in 0..num_frames {
-                        let frame_idx = base_frame_idx + (i as isize);
-                        let in_slice_start = (frame_idx as usize) * self.in_ch;
-
-                        // Prefetch adaptativo com lookahead.
-                        let lookahead_offset = 16;
-                        let prefetch_ptr =
-                            unsafe { layer_buffer.as_ptr().add(in_slice_start + lookahead_offset) };
-                        unsafe {
-                            crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
-                        }
-
-                        let in_slice = unsafe {
-                            layer_buffer.get_unchecked(in_slice_start..in_slice_start + self.in_ch)
-                        };
-                        unsafe {
-                            *block.get_unchecked_mut(i * self.out_ch + out_c) +=
-                                M::dot_product(in_slice, weight_slice);
-                        }
+                    } else {
+                        crate::math::simd::adaptive_prefetch_f32((*tap_ptr).add(16), self.dilation);
                     }
                 }
             }
-            out_c_base += 1;
+
+            // Processamento dos blocos de canais
+            for b in 0..num_blocks {
+                let out_c = b * 4;
+                let mut r0;
+                let mut r1;
+                let mut r2;
+                let mut r3;
+
+                unsafe {
+                    // [TA2] Inicialização com Bias + Mixin
+                    if let Some(m) = mixin {
+                        let mix_idx = i * self.out_ch + out_c;
+                        if self.do_bias {
+                            r0 = *self.bias.get_unchecked(out_c) + *m.get_unchecked(mix_idx);
+                            r1 =
+                                *self.bias.get_unchecked(out_c + 1) + *m.get_unchecked(mix_idx + 1);
+                            r2 =
+                                *self.bias.get_unchecked(out_c + 2) + *m.get_unchecked(mix_idx + 2);
+                            r3 =
+                                *self.bias.get_unchecked(out_c + 3) + *m.get_unchecked(mix_idx + 3);
+                        } else {
+                            r0 = *m.get_unchecked(mix_idx);
+                            r1 = *m.get_unchecked(mix_idx + 1);
+                            r2 = *m.get_unchecked(mix_idx + 2);
+                            r3 = *m.get_unchecked(mix_idx + 3);
+                        }
+                    } else if self.do_bias {
+                        r0 = *self.bias.get_unchecked(out_c);
+                        r1 = *self.bias.get_unchecked(out_c + 1);
+                        r2 = *self.bias.get_unchecked(out_c + 2);
+                        r3 = *self.bias.get_unchecked(out_c + 3);
+                    } else {
+                        r0 = 0.0;
+                        r1 = 0.0;
+                        r2 = 0.0;
+                        r3 = 0.0;
+                    }
+
+                    for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
+                        let w_start = (b * self.kernel + k) * self.in_ch * 4;
+                        let w_slice: &[[u16; 4]] = {
+                            let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                            core::slice::from_raw_parts(ptr, self.in_ch)
+                        };
+
+                        let [t0, t1, t2, t3] = if !tap_ptr.is_null() {
+                            let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
+                            M::dot_product_4x_interleaved(w_slice, in_slice)
+                        } else {
+                            let offset = (self.dilation as isize)
+                                * ((k as isize) + 1 - (self.kernel as isize));
+                            let in_slice_start =
+                                ((current_frame_idx as isize) + offset) as usize * self.in_ch;
+                            let in_slice = layer_buffer
+                                .get_unchecked(in_slice_start..in_slice_start + self.in_ch);
+                            M::dot_product_4x_interleaved(w_slice, in_slice)
+                        };
+                        r0 += t0;
+                        r1 += t1;
+                        r2 += t2;
+                        r3 += t3;
+                    }
+
+                    *block.get_unchecked_mut(out_frame_start + out_c) = r0;
+                    *block.get_unchecked_mut(out_frame_start + out_c + 1) = r1;
+                    *block.get_unchecked_mut(out_frame_start + out_c + 2) = r2;
+                    *block.get_unchecked_mut(out_frame_start + out_c + 3) = r3;
+                }
+            }
+
+            // Cauda de canais (Remainder)
+            let mut out_c = num_blocks * 4;
+            while out_c < self.out_ch {
+                let mut r;
+                unsafe {
+                    if let Some(m) = mixin {
+                        let mix_idx = i * self.out_ch + out_c;
+                        r = if self.do_bias { self.bias[out_c] } else { 0.0 } + m[mix_idx];
+                    } else {
+                        r = if self.do_bias { self.bias[out_c] } else { 0.0 };
+                    }
+
+                    for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
+                        let r_tap = if !tap_ptr.is_null() {
+                            let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
+                            let w_start = (out_c * self.kernel + k) * self.in_ch;
+                            let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
+                            M::dot_product(in_slice, w)
+                        } else {
+                            let offset = (self.dilation as isize)
+                                * ((k as isize) + 1 - (self.kernel as isize));
+                            let in_slice_start =
+                                ((current_frame_idx as isize) + offset) as usize * self.in_ch;
+                            let in_slice = layer_buffer
+                                .get_unchecked(in_slice_start..in_slice_start + self.in_ch);
+                            let w_start = (out_c * self.kernel + k) * self.in_ch;
+                            let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
+                            M::dot_product(in_slice, w)
+                        };
+                        r += r_tap;
+                    }
+                    *block.get_unchecked_mut(out_frame_start + out_c) = r;
+                }
+                out_c += 1;
+            }
         }
     }
 }
@@ -254,7 +261,7 @@ pub struct DenseLayerDyn {
 impl DenseLayerDyn {
     /// ACUMULAÇÃO DENSA (Projeção Linear 1x1):
     /// Processa a multiplicação de matriz (entrada x pesos) e ACUMULA o resultado no vetor `output`.
-    /// É fundamentalmente uma camada Fully-Connected executada dinamicamente.
+    /// [TA3] Otimização: Chama o kernel Batch GEMM para maximizar reuso de pesos.
     ///
     /// # Safety
     /// Depende do `SimdMathConfig` estar validamente instanciado para a arquitetura alvo.
@@ -264,13 +271,41 @@ impl DenseLayerDyn {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        for i in 0..num_frames {
-            let in_slice = unsafe { input.get_unchecked(i * self.in_size..(i + 1) * self.in_size) };
-            let out_slice =
-                unsafe { output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size) };
-            unsafe {
-                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
-            }
+        unsafe {
+            M::fused_add_gemm_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
+        }
+    }
+
+    /// Executa a projeção 1x1 fundida com a soma do residual: Y = X_res + Bias + W * Z.
+    /// [TF3] Otimização: Elimina a necessidade de cópia prévia do residual para o output.
+    ///
+    /// # Safety
+    /// O chamador deve garantir tamanhos compatíveis e validade dos buffers.
+    #[inline(always)]
+    pub unsafe fn process_residual_batch<M: crate::math::simd::SimdMath>(
+        &self,
+        input: &[f32],
+        residual: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
+        unsafe {
+            M::fused_gemm_residual_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                residual,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 
@@ -304,9 +339,6 @@ impl DenseLayerDyn {
         in_stride: usize,
         out_stride: usize,
     ) {
-        // [PASSO: Buffer Temporário Stack]
-        // Para operações strided, projetamos o frame em um buffer contíguo local
-        // e depois espalhamos (scatter) para o buffer de saída com os strides corretos.
         debug_assert!(
             self.out_size <= 1024,
             "DenseLayerDyn::process_acc_block_strided: out_size ({}) excede o buffer stack (1024)",
@@ -538,103 +570,83 @@ impl WaveNetLayerDyn {
         } = ctx;
         let ch = self.ch;
 
-        // LIMPEZA DE ESTADO:
-        // Zeramos o bloco temporário para garantir que não haja vazamento de áudio
-        // entre camadas ou frames passados.
-        for v in block.iter_mut() {
-            *v = 0.0;
-        }
-
         unsafe {
-            // 1) CONVOLUÇÃO CAUSAL:
-            // Aplica a convolução sobre o histórico de áudio (layer_buffer).
-            // O resultado é escrito no buffer temporário `block`.
-            self.conv1d
-                .process_block::<M>(layer_buffer, block, buffer_start, num_frames);
+            // [PASSO 1: Condicionamento (Input Mixin)]
+            // Buffer temporário na stack para o Mixin.
+            // 4096 f32 = 16KB. Cobre até 64 canais com 64 frames.
+            let mut mixin_out = [0.0f32; 4096];
+            let mixin_len = num_frames * self.conv1d.out_ch;
 
-            // 2) MECANISMO DE GATING (Ativação):
+            // Verificação de segurança para o buffer de stack.
+            // Se exceder (raro em NAM), processamos em modo degradado ou panic em debug.
+            debug_assert!(
+                mixin_len <= 4096,
+                "Mixin buffer overflow: {} > 4096",
+                mixin_len
+            );
+            let mixin_out_slice = &mut mixin_out[..mixin_len.min(4096)];
+
+            // Zeramos apenas o necessário.
+            for v in mixin_out_slice.iter_mut() {
+                *v = 0.0;
+            }
+            if M::IS_BF16 {
+                self.input_mixin.process_block_bf16::<M>(
+                    condition_bf16,
+                    mixin_out_slice,
+                    num_frames,
+                );
+            } else {
+                self.input_mixin
+                    .process_block::<M>(condition, mixin_out_slice, num_frames);
+            }
+
+            // [FASE 1: Linear - Conv1D + Mixin]
+            // [TA2] Convolução fundida com o Mixin.
+            self.conv1d.process_block_with_mixin::<M>(
+                layer_buffer,
+                block,
+                buffer_start,
+                num_frames,
+                mixin_out_slice,
+            );
+
+            // [FASE 2 & 3: Ativação e Head Update]
             if self.gated {
-                // Mistura a condição externa (condition) nos canais do bloco.
-                // Usamos stride de 2*ch porque o bloco contém tanh e sigmoid intercalados.
-                if M::IS_BF16 {
-                    self.input_mixin.process_acc_block_strided_bf16::<M>(
-                        condition_bf16,
-                        block,
-                        num_frames,
-                        1,
-                        2 * self.ch,
-                    );
-                } else {
-                    self.input_mixin.process_acc_block_strided::<M>(
-                        condition,
-                        block,
-                        num_frames,
-                        1,
-                        2 * self.ch,
-                    );
-                }
+                // [TF2] Fused Gated Activation SIMD.
+                M::gated_activation_and_accumulate_block(
+                    head_input,
+                    &mut block[..num_frames * 2 * self.ch],
+                    self.ch,
+                );
+            } else {
+                // [TE3] Fusão Tanh + Head Accumulate em passagem única.
+                M::tanh_and_accumulate_block(head_input, &mut block[..num_frames * ch]);
+            }
 
+            // [FASE 3: Saída - 1x1 Residual]
+            // [TF3] Otimização: Projeção 1x1 fundida com a soma do residual em lote.
+            let in_stride = if self.gated { 2 * self.ch } else { self.ch };
+            let lb_offset = buffer_start * ch;
+            let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * ch);
+
+            if self.gated || in_stride != ch {
+                // Se o stride for diferente (gated), processamos per-frame.
                 for i in 0..num_frames {
-                    let block_start = i * self.conv1d.out_ch;
-                    let block_frame = &mut block[block_start..block_start + self.conv1d.out_ch];
-
-                    // SPLIT GATED: O bloco é dividido em dois: Z1 (tanh) e Z2 (sigmoid).
-                    let (z1, z2) = block_frame.split_at_mut(self.ch);
-                    M::tanh_slice(z1);
-                    M::sigmoid_slice(z2);
-
-                    // OPERAÇÃO GATED: z1 = tanh(z1) * sigmoid(z2).
-                    // Isso permite que o modelo aprenda quais informações deixar passar (gate).
-                    for j in 0..self.ch {
-                        *z1.get_unchecked_mut(j) *= *z2.get_unchecked(j);
-                    }
+                    let out_frame = output.get_unchecked_mut(i * ch..i * ch + ch);
+                    let res_frame = &residual_slice[i * ch..i * ch + ch];
+                    out_frame.copy_from_slice(res_frame);
+                    let block_frame = &block[i * in_stride..i * in_stride + ch];
+                    self.one_by_one.process_fused::<M>(block_frame, out_frame);
                 }
             } else {
-                // MODO NÃO-GATED: Mais simples, soma a condição e aplica apenas tanh.
-                if M::IS_BF16 {
-                    self.input_mixin.process_acc_block_strided_bf16::<M>(
-                        condition_bf16,
-                        block,
-                        num_frames,
-                        1,
-                        self.ch,
-                    );
-                } else {
-                    self.input_mixin
-                        .process_acc_block_strided::<M>(condition, block, num_frames, 1, self.ch);
-                }
-                M::tanh_slice(&mut block[0..num_frames * self.ch]);
-            }
-
-            // 3) SKIP CONNECTION (Saída para a Cabeça):
-            // O resultado processado (z1) é somado ao `head_input`.
-            // Todas as camadas contribuem para este somatório global que gera o áudio final.
-            #[allow(clippy::needless_range_loop)]
-            for i in 0..num_frames {
-                let head_frame = &mut head_input[i * ch..i * ch + ch];
-                let block_frame = &block[i * (if self.gated { 2 * ch } else { ch })
-                    ..i * (if self.gated { 2 * ch } else { ch }) + ch];
-                for j in 0..ch {
-                    *head_frame.get_unchecked_mut(j) += *block_frame.get_unchecked(j);
-                }
-            }
-
-            // 4) PROJEÇÃO 1x1 + FUSÃO RESIDUAL:
-            // Prepara o sinal para a próxima camada, fundindo a projeção com a soma residual.
-            let in_stride = if self.gated { 2 * self.ch } else { self.ch };
-
-            for i in 0..num_frames {
-                let out_frame = output.get_unchecked_mut(i * ch..i * ch + ch);
-                let lb_start = (buffer_start + i) * ch;
-                let block_frame = &block[i * in_stride..i * in_stride + ch];
-
-                // [PASSO: Residual Fusion]
-                // Inicializamos a saída com o dado residual (Skip original).
-                out_frame.copy_from_slice(layer_buffer.get_unchecked(lb_start..lb_start + ch));
-
-                // [PASSO: Fused GEMV]
-                // Somamos a projeção 1x1 diretamente sobre o residual.
-                self.one_by_one.process_fused::<M>(block_frame, out_frame);
+                // Caso comum: Elimina cópia via kernel fundido.
+                self.one_by_one.process_residual_batch::<M>(
+                    block,
+                    residual_slice,
+                    output,
+                    num_frames,
+                );
             }
         }
     }

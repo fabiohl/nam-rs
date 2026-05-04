@@ -1,4 +1,4 @@
-# 🎸 NAM-rs 1.2
+# 🎸 NAM-rs 1.3
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
@@ -149,6 +149,7 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.0 (28/04/2026): Release inicial. Suporte completo à "Arquitetura A1" do Neural Amp Modeler.
 * 1.1 (30/04/2026): Otimizações de performance sortidas.
 * 1.2 (02/05/2026): Algoritimo de resampling próprio.
+* 1.3 (04/05/2026): Um caminhão de otimizações
 
 ## 🤝 Contribuindo
 
