@@ -1,8 +1,8 @@
 # Planos para próximas versões
 
-* Rodada de `/pesquisador-inovador`
 * Leitura crítica de toda a base de código
+* Tradução completa pra Inglês Internacional
+
 * Suporte a modo plugin CLAP (matriz de decisão de "quem implementar primeiro?")
 * Arquitetura "A2" (Quando sdatkinson declarar o A2 oficialmente "pronto")
-* Tradução completa pra Inglês Internacional
 * Integração e feedback da comunidade NAM e Áudio DSP Linux

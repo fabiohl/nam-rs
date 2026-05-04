@@ -4,4 +4,4 @@
 
 set -xeuo pipefail
 cargo test
-#cargo bench
+cargo bench

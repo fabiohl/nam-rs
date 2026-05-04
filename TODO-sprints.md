@@ -1,274 +1,424 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-# 🚀 Backlog do Produto e Planejamento de Sprints Técnicas
+# TODO-sprints.md — Backlog Técnico NAM-rs
 
-## Épicos A–G — Sprints Anteriores (v1.1–v1.3) [DONE]
-
-> Todos os épicos A–G foram concluídos. Consulte o histórico git para detalhes.
-> Resumo: Otimizações SIMD (LSTM fused GEMV, WaveNet Conv1D tiling, prefetch,
-> tanh+head fusion, gated activation fusion, fused GEMV residual), fuzz testing,
-> paridade WaveNet Dyn, documentação atualizada.
-
----
-
-## Sprint v1.4 — Preparações para A2 e CLAP
-
-> **Meta**: "Organizar a casa e preparar o terreno" para a Arquitetura A2 e suporte CLAP.
-> Nenhuma implementação de inferência A2 ou plugin CLAP. Apenas scaffolding,
-> refatoração de boundaries, docs e testes de regressão.
+> **Gerado em:** 2026-05-04 — Pesquisador Inovador (Auditoria Completa)
 >
-> **Referência**: Relatório em `v1.4_research_and_planning.md`
-> **Snapshot C++**: `/github.com/sdatkinson/NeuralAmpModelerCore/` (v0.5.2)
+> **Contexto:** Análise profunda de ~12.600 linhas de código-fonte, com foco em
+> performance microarquitetural, higiene de código, cobertura de testes e
+> aderência operacional RT. Cada tarefa é auto-contida e implementável sem
+> ambiguidades.
 
 ---
 
-## Épico H — Staging Arquitetura A2 (Scaffolding) [DONE]
+## Sprint — "Refinamento Microarquitetural e Higiene"
 
-> Criar tipos, enums e módulos-esqueleto para A2. Zero lógica de inferência.
-> Ref: `github.com/sdatkinson/NeuralAmpModelerCore/NAM/`
-> O repositório `https://github.com/sdatkinson/NeuralAmpModelerCore` está espelhado na subpasta `/github.com/sdatkinson/NeuralAmpModelerCore/`.
-
-### TH1 · Enum `ActivationType` e Trait `ActivationFn` [DONE]
-
-- **Arquivo(s):** `src/models/activations.rs` (novo)
-- **O quê:** Enum com 11 variantes do C++ (`NAM/activations.h` L27-40: Tanh, HardTanh, FastTanh, ReLU, LeakyReLU, PReLU, Sigmoid, SiLU, HardSwish, LeakyHardTanh, Softsign). Trait `ActivationFn` com `apply(&self, data: &mut [f32])`. Impls escalares. Registrar em `src/models/mod.rs`.
-- **Ref C++:** `NAM/activations.h` L59-428
-- **Validação:** Testes unitários vs valores C++.
-- [x] Criar módulo + enum + trait + impls
-- [x] Testes unitários (golden values)
-
-### TH2 · Enum `GatingMode` e Structs de Gating [DONE]
-
-- **Arquivo(s):** `src/models/gating.rs` (novo)
-- **O quê:** Enum `GatingMode { None, Gated, Blended }` (`NAM/wavenet/params.h` L18-22). Config structs para GatingActivation/BlendingActivation. Sem `process()`.
-- **Ref C++:** `NAM/gating_activations.h` L25-246
-- [x] Criar módulo com enums + config structs
-- [x] Doc-tests
-
-### TH3 · Struct `FiLMConfig` (Stub) [DONE]
-
-- **Arquivo(s):** `src/models/film.rs` (novo)
-- **O quê:** `FiLMConfig { active: bool, shift: bool, groups: u32 }` de `_FiLMParams` (`NAM/wavenet/params.h` L76-91). Trait `FiLMLayer` com `process()` → `todo!()`.
-- **Ref C++:** `NAM/film.h` L19-209
-- [x] Criar módulo com config + trait stub
-
-### TH4 · Structs de Parâmetros A2 WaveNet [DONE]
-
-- **Arquivo(s):** `src/models/wavenet_params.rs` (novo)
-- **O quê:** Portar structs data-only de `NAM/wavenet/params.h`: `Head1x1Params`, `Layer1x1Params`, `LayerParamsA2` (19+ campos), `LayerArrayParamsA2`, `HeadParams`.
-- **Ref C++:** `NAM/wavenet/params.h` L36-316
-- [x] Criar módulo com todas as structs A2
-- [x] Doc-tests de construção
-
-### TH5 · Variante `DynamicModel::WavenetA2` (Placeholder) [DONE]
-
-- **Arquivo(s):** `src/models/mod.rs`
-- **O quê:** Adicionar `WavenetA2(Box<WavenetA2Placeholder>)` ao enum. Impl `NamModel` com `process()` que retorna zeros + log warning. Permite loader aceitar A2 sem panic.
-- **Ref:** `DynamicModel` em `src/models/mod.rs` L62-89
-- [x] Criar placeholder struct + NamModel impl
-- [x] Adicionar variante ao enum + match arms
-- [x] Teste unitário
-
-### TH6 · Forward-Compatible Parsing no Loader [DONE]
-
-- **Arquivo(s):** `src/loader/nam_json.rs`, `src/loader/dispatcher/wavenet.rs`
-- **O quê:** Garantir que JSON com campos A2 extras não cause panic → fallback gracioso para placeholder. Modelos A1 inalterados.
-- **Ref C++:** `NAM/get_dsp.cpp` L237-260
-- [x] Auditar forward-compatibility do loader (`NamModelData::is_wavenet_a2()`)
-- [x] Fixture JSON mock A2 em `tests/fixtures/models/mock_a2.nam`
-- [x] Teste integração: A2 mock → placeholder (`test_forward_compatibility_wavenet_a2`)
-- [x] Teste regressão: A1 fixtures ok (`test_accept_a2_activation_with_fallback` + suite completa)
+**Objetivo:** Extrair os últimos ciclos de clock dos kernels SIMD, refatorar
+arquivos massivos para legibilidade, e fechar lacunas de cobertura de testes.
 
 ---
 
-## Épico I — Staging CLAP Plugin (Trait `AudioHost`)
+### Épico A — Otimização Microarquitetural SIMD
 
-> Desacoplar motor DSP do PipeWire. Zero dependência CLAP adicionada.
-> Ref: [free-audio/clap](https://github.com/free-audio/clap)
-> Opções futuras: `nih-plug` (framework) ou `clack` (safe wrapper)
+**Impacto:** Redução de latência de inferência em 10-20% nos modelos mais pesados.
 
-### TI1 · Trait `AudioHost` [DONE]
+#### `TA1` — Decomposição do Monólito `simd.rs` (4.256 linhas)
 
-- **Arquivo(s):** `src/audio_host.rs` (novo)
-- **O quê:** Trait com `sample_rate()`, `max_buffer_size()`, `run()`. Abstrai lifecycle (não hot-path). Será implementado para PipeWireHost e futuramente ClapPlugin.
-- [x] Criar trait + registrar em `lib.rs`
+**Arquivos:** `src/math/simd.rs`
+**Prioridade:** Alta (Legibilidade + Compilação Incremental)
 
-### TI2 · Feature Flags: `standalone` vs `clap-plugin` [DONE]
+O arquivo `simd.rs` possui **4.256 linhas** — é o maior do projeto por uma
+margem de 3x. Isso dificulta a navegação, aumenta o tempo de compilação
+incremental e viola o princípio de coesão modular.
 
-- **Arquivo(s):** `Cargo.toml`, `src/lib.rs`, `src/main.rs`
-- **O quê:** Feature `standalone` (default) → `dep:pipewire`. Feature `clap-plugin` vazia. Condicionar `pw_host.rs`/`rt_setup.rs` a `#[cfg(feature = "standalone")]`.
-- **Cuidado:** `cargo build` default inalterado. `cargo check --no-default-features` compila engine puro.
-- [x] Feature flags no `Cargo.toml`
-- [x] `#[cfg]` em `lib.rs`, `pw_host.rs`, `rt_setup.rs`, `main.rs`
-- [x] Verificar ambas compilações
+**Ação:**
 
-### TI3 · Struct `NamPluginParams` [DONE]
+1. Criar subdiretório `src/math/simd/` com `mod.rs` re-exportando a API pública.
+2. Mover para arquivos temáticos:
+   - `dot_product.rs` — Dot products AVX2/AVX-512/BF16 (~300 linhas)
+   - `gemv.rs` — GEMV 4-gate, fused_add_gemv, batch kernels (~600 linhas)
+   - `gemm_batch.rs` — GEMM batch e residual fusion (~400 linhas)
+   - `activation.rs` — tanh_and_accumulate, sigmoid_slice, etc. (~200 linhas)
+   - `dispatch.rs` — SimdMathConfig, dispatch_simd!, trait SimdMath + impls (~500 linhas)
+   - `conversion.rs` — f32↔bf16, f32↔f16c helpers (~150 linhas)
+   - `utility.rs` — prefetch, energy, max_diff, horizontal_sum (~200 linhas)
+3. Manter `pub use` completo no `mod.rs` para zero breaking changes.
+4. Testes `simd_test.rs` permanecem em `src/math/simd_test.rs` referenciando o
+   módulo consolidado.
 
-- **Arquivo(s):** `src/params.rs` (novo)
-- **O quê:** Parâmetros agnósticos ao host: `input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`, `bypass`. Coexiste com `ParamPayload`.
-- [x] Criar struct + `Default` impl + registrar em `lib.rs`
-
-### TI4 · Documentação CLAP [DONE]
-
-- **Arquivo(s):** `docs/clap_integration.md` (novo)
-- **O quê:** Thread model CLAP vs NAM-rs, mapeamento de params, estratégia de compilação, DAWs alvo, decisão de crate pendente.
-- [x] Criar documento
+**Critério de Aceite:** `cargo test` + `cargo bench` passam sem regressão.
+Nenhum arquivo individual excede 700 linhas.
 
 ---
 
-## Notas Pós-Auditoria — Épico I
+#### `TA2` — LSTM 2-Layer Pipelining (Layer Overlap)
 
-> **Status**: Épico I concluído. Todas as 4 tarefas (TI1–TI4) implementadas e validadas.
-> 94 testes unitários + integração passando. Builds `standalone` e `clap-plugin` funcionais.
+**Arquivos:** `src/models/lstm.rs` (linhas 436-506)
+**Prioridade:** Alta (Throughput LSTM 2x16)
 
-### Legado do Épico I para Épicos Futuros
+O `LstmModel2::process_avx2` processa sequencialmente: `layer1` completa
+todos os frames, depois `layer2` processa todos os frames. Porém, o método
+`process_avx512` (linhas 451-474) já implementa um **pipelining parcial**
+onde layer1 avança 1 frame enquanto layer2 processa o frame anterior.
 
-- **Para Épico K (TK3)**: O script `utils/check_features.sh` foi considerado dispensável —
-  o Épico I já valida as 3 compilações requeridas (`standalone`, `--no-default-features`,
-  `clap-plugin`) como critério de aceitação do TI2. Marcar TK3 como pré-satisfeito.
+**Observação:** Este overlap está implementado *apenas* no path AVX-512.
+Os paths AVX2, AVX2-VNNI, AVX-512-VNNI e AVX-512-BF16 **não** fazem overlap.
 
-- **Para Épico K (TK4)**: Os smoke tests de `NamPluginParams` e `AudioHost` estão cobertos
-  pelos testes inline adicionados em TI1/TI3. Marcar TK4 como pré-satisfeito.
+**Ação:**
 
-- **Para Sprint CLAP Real (futura)**: Quando a feature `clap-plugin` for implementada de
-  fato, será necessário adicionar `crate-type = ["cdylib"]` ao `[lib]` do `Cargo.toml`.
-  Registrado em `docs/clap_integration.md §4`. A decisão de framework (nih-plug vs clack)
-  deve ser feita nessa sprint — ambas as opções estão documentadas com prós/contras.
+1. Unificar o padrão de overlap em todas as variantes do `LstmModel2`
+   (AVX2, AVX2-VNNI, AVX-512-VNNI, AVX-512-BF16).
+2. Adaptar a macro `define_lstm_process!` ou criar uma nova macro
+   `define_lstm2_process_pipelined!` que encapsule o pattern de pipelining.
+3. Benchmark antes/depois com `criterion` no modelo `LSTM_2x16_64samp_48kHz`.
 
-- **Recomendação de Framework**: `nih-plug` é o caminho mais pragmático (battle-tested,
-  multi-formato CLAP+VST3). `clack` é preferível se controle granular da RT thread for
-  prioritário. Decisão diferida conforme `v1.4_research_and_planning.md §2.3`.
-
-## Épico J — Consolidação de Documentação
-
-> Atualizar docs para v1.3 (completo) + preparações v1.4.
-
-### TJ1 · Atualização de `docs/architecture.md` [DONE]
-
-- **Arquivo(s):** `docs/architecture.md`
-- **O quê:** Kernels SIMD dos Épicos E/F, seção "Preparação A2", seção "Roadmap CLAP", tabela de módulos atualizada.
-- [x] Atualizar e acionar skill `documentador`
-
-### TJ2 · Enxugamento de `.agents/rules/rust.md` [DONE]
-
-- **Arquivo(s):** `.agents/rules/rust.md`
-- **O quê:** Adicionar menção a feature flags, compilação sem PW, módulos A2 stub. Manter < 40 linhas.
-- [x] Revisar e condensar
-
-### TJ3 · Atualização do `README.md` [DONE]
-
-- **Arquivo(s):** `README.md`
-- **O quê:** Seção "Roadmap" (A2 + CLAP como futuro). Versão 1.4.0-staging.
-- [x] Atualizar README
-
-## Notas Pós-Auditoria — Épico J
-
-> **Status**: Épico J concluído. TJ1 + TJ2 + TJ3 implementados e validados.
-
-### Correções Identificadas na Auditoria (além do escopo original)
-
-- **`docs/dependencies.md` desatualizado**: A dependência `pipewire` estava listada como incondicional.
-  Corrigida para refletir que é **condicional à feature `standalone`**. Builds com
-  `--no-default-features` ou `--features clap-plugin` não a incluem.
-
-- **Link `docs/clap_integration.md` ausente no README**: O documento criado no Épico I
-  (`docs/clap_integration.md`) não estava linkado na seção "📚 Documentação". Corrigido.
-
-### Legado do Épico J para Épicos Futuros
-
-- **Para Sprint CLAP Real**: O `README.md` já tem a seção "Roadmap" posicionando CLAP como
-  próximo passo. O `docs/clap_integration.md` tem os detalhes técnicos. Quando a sprint
-  iniciar, apenas atualizar o status de "planejado" para "em desenvolvimento".
-
-- **Para Sprint A2 Real**: A seção §7 de `docs/architecture.md` já descreve o staging.
-  Ao implementar o kernel A2, atualizar §7 de "Staging" para "Implementado" e adicionar
-  detalhes de performance.
-
-## Épico K — Cobertura de Testes v1.4 [DONE]
-
-> Garantir zero regressão com as preparações.
-
-### TK1 · Testes `ActivationType` [DONE]
-
-- **Arquivo(s):** `src/models/activations.rs` (inline)
-- **O quê:** Testes para cada variante em 0.0, ±1.0, ±5.0 vs golden values C++.
-- [x] 13 testes inline para todas as 11 variantes de ativação (inclui edge cases PReLU)
-
-### TK2 · Testes Forward-Compatibility Loader [DONE]
-
-- **Arquivo(s):** `tests/loader_a2_compat.rs` (novo)
-- **O quê:** Fixture A2 mock → placeholder. Regressão A1 fixtures.
-- [x] 3 testes de integração: fallback A2, regressão WaveNet A1, regressão LSTM A1
-
-### TK3 · Teste Compilação Condicional [DONE]
-
-- **Arquivo(s):** `utils/check_features.sh` (novo)
-- **O quê:** Verificar `--features standalone`, `--no-default-features`, `--features clap-plugin`.
-- [x] Script automatizado validando as 3 combinações de features
-
-### TK4 · Smoke Tests `NamPluginParams` + `AudioHost` [DONE]
-
-- **Arquivo(s):** `src/params.rs`, `src/audio_host.rs` (inline)
-- **O quê:** `Default` retorna valores sensatos. Mock impl de `AudioHost`.
-- [x] `test_params_default` + `test_mock_host_traits` + `test_mock_host_error`
+**Critério de Aceite:** Speedup mensurável (>3%) em LSTM 2-layer. Testes
+de paridade escalar passam.
 
 ---
 
-## Notas Pós-Auditoria — Épico K
+#### `TA3` — FastMath Tanh: Clamp de Saturação para Valores Extremos
 
-> **Status**: Épico K concluído com 100% de cobertura. Auditoria realizada em 2026-05-04.
-> Suite total: 154 testes (96 unitários + 58 integração), todos passando.
+**Arquivos:** `src/math/fastmath.rs` (linhas 115-159)
+**Prioridade:** Média (Estabilidade Numérica)
 
-### Correção Identificada na Auditoria
+O polinômio Minimax de grau 7 diverge para `|x| > ~8.0`, onde `tanh(x)` deveria
+saturar em ±1.0. Atualmente não há clamping explícito — para modelos com pesos
+atípicos, a divergência pode acumular erro.
 
-- **`activations_test.rs` externo removido**: O arquivo `src/models/activations_test.rs`
-  foi criado durante TK1 mas violava a convenção de testes: `activations.rs` tem < 300 linhas,
-  portanto os testes devem estar **inline** em `#[cfg(test)] mod tests { … }`. Corrigido.
+**Ação:**
 
-### Legado do Épico K para Épicos Futuros
+1. Adicionar clamp SIMD pré-polinômio: `x = min(max(x, -8.0), 8.0)` via
+   `_mm256_min_ps` / `_mm256_max_ps` (custo: 2 instruções, ~0.5 ciclos).
+2. Aplicar o mesmo para a variante AVX-512 (`_mm512_min_ps`/`_mm512_max_ps`).
+3. Validar com test case de stress: `tanh([-100.0, -10.0, -8.0, 0.0, 8.0, 10.0, 100.0])`.
+4. Verificar que os golden vectors de regressão continuam passando (threshold 5e-2).
 
-- **Para Kernel A2 Real**: Os testes de forward-compatibility em `tests/loader_a2_compat.rs`
-  serão o ponto de regressão chave durante a implementação do kernel. Manter.
-
-- **Para Sprint CLAP Real**: `utils/check_features.sh` deve ser incluído no CI quando
-  a dependência `cdylib` for adicionada para garantir que `clap-plugin` continua compilando.
-
-- **FastTanh**: As constantes de `fast_tanh` foram atualizadas para precisão total vs C++.
-  Ao implementar a versão SIMD, usar estas constantes como referência de paridade.
+**Critério de Aceite:** `simd_tanh(±100.0)` retorna ±1.0 (±1e-4). Nenhuma
+regressão em benchmarks.
 
 ---
 
-## Observações — Itens Diferidos (v1.4)
+#### `TA4` — Conv1D: Eliminação de Branch no Prefetch Adaptativo
 
-### Diferidos A2
+**Arquivos:** `src/models/wavenet.rs` (linhas 127-153)
+**Prioridade:** Baixa (Microoptimização)
 
-- Implementação FiLM SIMD, ConvNet model, Slimmable inference, ConfigParserRegistry, NAMB v3
+O `process_single_frame_internal` possui um `if self.dilation >= 128` dentro
+do loop de taps. Para K=3, são apenas 3 iterações, mas o branch predictor é
+exercitado em cada frame.
 
-### Diferidos CLAP
+**Ação:**
 
-- Dependência CLAP (clap-sys/nih-plug/clack), cdylib target, GUI, MIDI, State save/load
+1. Mover a decisão de prefetch para fora do loop: pré-calcular um ponteiro de
+   função (`adaptive_prefetch_f32` vs `adaptive_prefetch_2stage_f32`) baseado
+   em `self.dilation` durante o loading do modelo (cold-path).
+2. Alternativamente, usar `#[cold]` / `#[inline(never)]` no branch de alta
+   dilatação para ajudar o preditor.
+
+**Critério de Aceite:** Sem regressão no benchmark WaveNet Standard.
 
 ---
 
-## Notas Pós-Auditoria — Épico H
+#### `TA5` — Head Sum SIMD Horizontal: Unificar Patterns Duplicados
 
-> **Status**: Épico H concluído com 100% de cobertura. Todos os 6 TH tasks implementados
-> e validados. Suite de testes: 91 unitários + 30 integração, todos passando.
+**Arquivos:** `src/math/simd.rs` (múltiplas ocorrências de `hsum_avx2` inline)
+**Prioridade:** Média (DRY / Manutenibilidade)
 
-### Legado do Épico H para Épicos Futuros
+Existem pelo menos **4 implementações independentes** de `hsum_avx2` (redução
+horizontal YMM→escalar) espalhadas como `#[inline(always)] unsafe fn` locais
+dentro de dot products e GEMV. O mesmo ocorre para `hsum512`.
 
-- **Para Épico I (CLAP)**: O trait `NamModel` existente + enum `DynamicModel` já suportam
-  A2 via `WavenetA2Placeholder`. A interface de plugin pode usar `build_model()` sem
-  modificações — o dispatcher já é forward-compatible.
+**Ação:**
 
-- **Para Kernel A2 Real**: Quando o kernel A2 for implementado, o caminho de substituição
-  é trivial: substituir `WavenetA2Placeholder` por `WavenetA2Kernel` em `DynamicModel`.
-  Toda a estrutura de parâmetros (`LayerParamsA2`, `FiLMConfig`, `GatingMode`) já está
-  pronta em `src/models/`.
+1. Consolidar em `pub(crate) unsafe fn hsum_avx2(v: __m256) -> f32` e
+   `pub(crate) unsafe fn hsum_avx512(v: __m512) -> f32` no módulo
+   `simd/utility.rs`.
+2. Substituir todas as ocorrências inline por chamadas à versão canônica.
+3. O `#[inline(always)]` na função pública garante zero overhead.
 
-- **Detecção A2**: `NamModelData::is_wavenet_a2()` detecta via versão (`0.6.x`) OU
-  ativação não-Tanh. A heurística é conservadora — não pode gerar falsos positivos em
-  modelos A1 existentes.
+**Critério de Aceite:** Nenhuma regressão em benchmarks. Redução de ~80 linhas
+de código duplicado.
 
-- **TK2 em Épico K**: `tests/loader_a2_compat.rs` foi criado como arquivo dedicado no Épico K,
-  com os 3 testes de integração migrados de `nam_infer_test.rs`. TK2 concluído.
+---
+
+#### `TA6` — Explorar `_mm256_fnmadd_ps` para Sigmoid Direto
+
+**Arquivos:** `src/math/fastmath.rs` (linhas 166-183)
+**Prioridade:** Baixa (Pesquisa)
+
+Atualmente `sigmoid(x) = 0.5 * (1.0 + tanh(x * 0.5))`. Isso invoca
+`simd_tanh` completo (~12 instruções) + 3 multiplicações/adições extras.
+
+**Ação:**
+
+1. Investigar um polinômio Minimax direto para sigmoid no intervalo [-8, 8]
+   que evite chamar `tanh` como sub-rotina.
+2. Candidatos: Padé [3/3] ou polinômio de grau 5 com `_mm256_rcp_ps` ao invés
+   de `_mm256_rsqrt_ps` (denominador `1 + exp(-x)` → recíproco).
+3. Se o speedup for <5%, manter a implementação atual (tanh-based é mais
+   numericamente estável).
+
+**Critério de Aceite:** Se implementado, erro máximo < 2e-5 vs `f32::sigmoid()`.
+Speedup mensurável em benchmark LSTM fused gates.
+
+---
+
+### Épico B — Organização e Legibilidade do Código
+
+**Impacto:** Manutenibilidade de longo prazo, onboarding mais rápido, compilação
+incremental mais eficiente.
+
+#### `TB1` — Decomposição de `wavenet_dyn.rs` (1.021 linhas)
+
+**Arquivos:** `src/models/wavenet_dyn.rs`
+**Prioridade:** Alta
+
+O módulo dinâmico replica ~70% da estrutura do estático (`wavenet.rs`) mas com
+`Vec` em vez de const generics. Grande parte é boilerplate de processamento
+idêntico.
+
+**Ação:**
+
+1. Extrair as partes comuns (Conv1D, DenseLayer dinâmico, WaveNetLayer dinâmico)
+   para structs genéricos ou traits compartilhados com o estático.
+2. Considerar parametrizar via `enum { Static(CH), Dynamic(usize) }` ao invés
+   de duplicar toda a lógica.
+3. Se a unificação for muito invasiva, ao menos extrair o loop de processamento
+   `process_block_internal` como função livre parametrizada.
+
+**Critério de Aceite:** Paridade numérica com testes `dynamic_parity.rs`.
+Redução total de LOC em `wavenet_dyn.rs` > 30%.
+
+---
+
+#### `TB2` — Unificação dos Patterns de Dispatch SIMD nos Modelos LSTM
+
+**Arquivos:** `src/models/lstm.rs` (linhas 303-387 — 5 variantes quase idênticas)
+**Prioridade:** Média (DRY)
+
+`LstmModel1` possui 5 métodos `process_*` (avx2, avx512, avx2vnni,
+avx512vnni, avx512_vnni_bf16) que diferem apenas na chamada a
+`layer.process_sample_*` e `dot_product_*`. Código boilerplate ~90% idêntico.
+
+**Ação:**
+
+1. Criar uma macro `define_lstm_model_process!` análoga à `define_lstm_process!`
+   já existente para as camadas.
+2. Alternativamente, usar a trait `SimdMath` para parametrizar o modelo
+   (já que as camadas WaveNet usam `M: SimdMath` com sucesso).
+
+**Critério de Aceite:** Redução de ~150 linhas de boilerplate. Todos os testes
+passam.
+
+---
+
+#### `TB3` — Limpeza do Comentário Duplicado em `wavenet.rs`
+
+**Arquivos:** `src/models/wavenet.rs` (linhas 876-880)
+**Prioridade:** Trivial
+
+Há um comentário `[PASSO 1: Zero-Acumulador]` duplicado literalmente em linhas
+consecutivas (876-878 e 878-880).
+
+**Ação:** Remover a duplicata.
+
+---
+
+### Épico C — Hardening RT e Resiliência
+
+**Impacto:** Estabilidade em produção, proteção contra cenários adversos.
+
+#### `TC1` — Guard contra Underflow no Resampler Phase Accumulator
+
+**Arquivos:** `src/dsp/resampler.rs` (linhas 130-190)
+**Prioridade:** Alta (Segurança)
+
+O `phase_accum` é um `f64` que avança por `phase_step` e recua por
+`NUM_PHASES`. Em taxas exóticas (ex: 22050 Hz → 48000 Hz), acumulação
+de erro de ponto flutuante pode causar `phase_accum` ligeiramente negativo
+após muitas horas de operação contínua.
+
+**Ação:**
+
+1. Adicionar `debug_assert!(self.phase_accum >= 0.0)` no hot-path.
+2. No release, usar `self.phase_accum = self.phase_accum.max(0.0)` como
+   guard defensivo (custo: 1 instrução `maxsd`).
+3. Considerar usar aritmética de ponto fixo (`u64` com fração implícita)
+   para eliminar a questão de drift completamente.
+
+**Critério de Aceite:** Nenhum panic ou artefato de áudio após 24h de
+operação contínua em taxas não-padrão (22050, 44100, 96000 Hz).
+
+---
+
+#### `TC2` — Timeout Gracioso no SPSC GC Consumer
+
+**Arquivos:** `src/spsc.rs`, `src/pw_host.rs`
+**Prioridade:** Média (Robustez)
+
+Se o consumidor GC não drenar a fila a tempo (ex: thread principal bloqueada),
+o produtor RT chama `mem::forget` e seta `gc_overflow: true`. Mas não há
+mecanismo de recuperação: a flag é sinalizada mas nunca resulta em ação
+corretiva no loop principal.
+
+**Ação:**
+
+1. No `poll_rt_status`, verificar `gc_overflow` e emitir diagnóstico
+   `NamDiagnostic` com sugestão de ação.
+2. Drenar o buffer GC agressivamente quando detectado overflow.
+3. Considerar aumentar a capacidade do ring buffer GC de `capacity * 2`
+   para `capacity * 4` (tradeoff: ~512 bytes extra de memória).
+
+**Critério de Aceite:** Log de diagnóstico emitido quando GC overflow ocorre.
+
+---
+
+#### `TC3` — Proteção contra Divisão por Zero no Telemetry Budget
+
+**Arquivos:** `src/rt_setup.rs` (linhas 213-229)
+**Prioridade:** Baixa (Defensivo)
+
+Se `active_rate == 0` ou `n_samples == 0` no cálculo de `budget_us`, a
+divisão produz `inf` ou `NaN`. Atualmente o guard `if active_rate > 0 &&
+n_samples > 0` protege, mas o `active_rate` lido na linha 187 é diferente
+do valor usado para a comparação — é um segundo `load` que pode retornar
+0 se o callback RT ainda não setou o valor.
+
+**Ação:**
+
+1. Usar o mesmo valor de `active_rate` para ambas as verificações (ler uma
+   vez, armazenar em local).
+2. O `active_rate` na linha 187 está **sobrecarregado** — ele já foi swapped
+   para 0 na linha 127 e depois relido. Corrigir para usar o valor do swap
+   ou uma segunda flag dedicada.
+
+**Critério de Aceite:** Nenhum `NaN` ou `inf` em logs de telemetria.
+
+---
+
+### Épico D — Cobertura de Testes e Qualidade
+
+**Impacto:** Confiança para refatorações futuras, detecção precoce de regressões.
+
+#### `TD1` — Testes Unitários para `DynamicHysteresis` (Gate FSM)
+
+**Arquivos:** `src/dsp/gate.rs` (192 linhas, 0 testes)
+**Prioridade:** Alta
+
+O módulo `gate.rs` implementa uma FSM com 4 estados e lógica de transição
+complexa (hold, fade-in, fade-out) mas **não possui nenhum teste unitário**.
+
+**Ação:**
+
+1. Criar `src/dsp/gate_test.rs` com testes para:
+   - Transição Open → FadingOut → Closed (silêncio prolongado).
+   - Transição Closed → FadingIn → Open (sinal detectado).
+   - Reversal: FadingOut → FadingIn (sinal reaparece durante fade).
+   - Reversal: FadingIn → FadingOut (silêncio durante fade-in).
+   - Hold timer: verificar que o hold_counter acumula corretamente.
+   - Multiplicador de rampa: verificar valores intermediários.
+2. Adicionar `#[cfg(test)] #[path = "gate_test.rs"] mod gate_test;` no final
+   de `gate.rs`.
+
+**Critério de Aceite:** Cobertura de todas as 4 transições e 2 reversals.
+
+---
+
+#### `TD2` — Teste de Estabilidade de Longa Duração (Soak Test)
+
+**Arquivos:** `tests/` (novo arquivo)
+**Prioridade:** Média
+
+Não há nenhum teste que exercite o pipeline por milhões de frames para
+detectar drift numérico, leaks de estado ou overflow de contadores.
+
+**Ação:**
+
+1. Criar `tests/soak_test.rs` que processa 10M frames de silêncio + ruído
+   alternado por LSTM e WaveNet.
+2. Verificar que a saída permanece boundada (`[-2.0, 2.0]`) após 10M frames.
+3. Verificar que os contadores internos (buffer_start, phase_accum) não
+   overflowam ou divergem.
+4. Marcar com `#[ignore]` para não rodar no CI rápido.
+
+**Critério de Aceite:** 10M frames sem panic, NaN, inf ou divergência.
+
+---
+
+#### `TD3` — Testes para `VirtualRingBuffer` Edge Cases
+
+**Arquivos:** `src/dsp/vring.rs` (187 linhas, 0 testes)
+**Prioridade:** Média
+
+O `VirtualRingBuffer` usa `memfd_create` + `mmap` duplo — uma técnica
+poderosa mas que pode falhar silenciosamente em ambientes restritos
+(containers, seccomp). Não há testes unitários.
+
+**Ação:**
+
+1. Criar testes inline (arquivo < 300 linhas):
+   - Escrita na fronteira do buffer → leitura contígua na segunda metade.
+   - `Clone` produz cópia independente.
+   - Tamanhos não-múltiplos de página são arredondados corretamente.
+   - `Drop` desaloca corretamente (usar `valgrind` ou verificar `/proc/self/maps`).
+
+**Critério de Aceite:** 4+ testes cobrindo boundary conditions.
+
+---
+
+#### `TD4` — Benchmark de Resampler Isolado
+
+**Arquivos:** `benches/inference_bench.rs` (atualmente não benchmarka resampler)
+**Prioridade:** Baixa
+
+O resampler FIR sinc é invocado 2x por callback (input + output) mas não possui
+benchmark isolado. Qualquer regressão no resampler ficaria oculta no benchmark
+E2E.
+
+**Ação:**
+
+1. Adicionar grupo `Resampler_44100_to_48000_256samp` e `Resampler_96000_to_48000_256samp`
+   ao `inference_bench.rs`.
+2. Benchmarkar `process_input` e `process_output` separadamente.
+
+**Critério de Aceite:** Baseline gravada no Criterion. Latência <15µs para
+256 amostras estéreo em AVX2.
+
+---
+
+### Épico E — Documentação e Developer Experience
+
+**Impacto:** Onboarding, contribuições externas, manutenção de longo prazo.
+
+#### `TE1` — Documentar o Fluxo de Dados WaveNet com Diagrama Mermaid
+
+**Arquivos:** `docs/architecture.md`
+**Prioridade:** Baixa
+
+A seção 2 (Inferência) lista otimizações mas não tem um diagrama visual
+do fluxo de dados: Input → Rechannel → Conv1D cascade → Gated Activation →
+Skip → Head → Output.
+
+**Ação:**
+
+1. Adicionar diagrama Mermaid mostrando o fluxo de dados através das Arrays
+   e camadas, incluindo as fusões (tanh+accumulate, residual GEMV).
+
+---
+
+#### `TE2` — Documentar Budget de Ciclos por Operação no Hot-Path
+
+**Arquivos:** `docs/benchmarks.md`
+**Prioridade:** Média (Referência para futuras otimizações)
+
+O benchmark reporta latência total mas não decompõe por estágio:
+Conv1D, Mixin, Activation, 1x1, Head.
+
+**Ação:**
+
+1. Adicionar instrumentação temporária (RDTSC) por estágio no
+   `process_block_internal` do WaveNet.
+2. Documentar a distribuição percentual em `docs/benchmarks.md`.
+3. Remover a instrumentação após a coleta (não deve ficar no hot-path
+   de produção).
