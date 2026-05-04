@@ -1,223 +1,180 @@
+<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 # 🚀 Backlog do Produto e Planejamento de Sprints Técnicas
 
-## Épico A — Otimizações de Throughput SIMD
+## Épicos A–G — Sprints Anteriores (v1.1–v1.3) [DONE]
 
-> Origem: Auditoria `pesquisador-inovador` (2026-05-03).
-> Objetivo: Extrair ganhos incrementais de throughput nos kernels de inferência
-> LSTM e WaveNet através de fusão de operações e melhor reuso de cache.
-
-### TA1 · Fused 4-Gate GEMV para LSTM [DONE]
-
-- **Arquivo(s):** `src/math/simd.rs`, `src/models/lstm.rs`
-- **O quê:** Substituir as 4 chamadas separadas a `gemv_overwrite_*()` (uma por gate I, F, G, O) por uma única passagem sobre `state[]` que compute as 4 gates simultaneamente. O state é lido 4× hoje; com fusão, seria lido 1×.
-- **Impacto estimado:** ~20-30% de redução no tempo da `LstmLayer` para H ≤ 24 (state cabe em L1).
-- **Macro `define_lstm_process!`:** Deverá receber a nova função `gemv_4gate_*` em vez de chamar `$gemv_overwrite` 4 vezes.
-- **Validação:** Regressão numérica (golden vectors) + benchmark Criterion comparativo (antes/depois).
-- [x] Implementar `gemv_4gate_avx2` e `gemv_4gate_avx512` em `simd.rs`
-- [x] Atualizar macro `define_lstm_process!` para consumir o novo kernel
-- [x] Manter fallback escalar para testes
-- [x] Benchmark comparativo
-
-### TA2 · Fused Conv1d + Mixin no WaveNet [DONE]
-
-- **Arquivo(s):** `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal`)
-- **O quê:** Eliminar o loop escalar `for (o, m) in out_frame.iter_mut().zip(mixin_slice)` na fase linear (PASSO 2). Fundir a soma do Mixin diretamente no acumulador SIMD do `Conv1d::process_single_frame`, evitando load/store intermediário.
-- **Impacto estimado:** ~10% de redução no tempo por layer WaveNet.
-- **Cuidado:** O Mixin já está pré-calculado em bloco (`process_block`). A fusão deve receber um ponteiro para o slice correto do Mixin no frame `i`.
-- [x] Criar variante `process_single_frame_with_mixin<M>` em `Conv1d`
-- [x] Integrar no `process_block_internal`
-- [x] Manter path BF16 equivalente
-- [x] Benchmark comparativo
-
-### TA3 · Batch 1×1 Projection no WaveNet [DONE]
-
-- **Arquivo(s):** `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal` PASSO 3)
-- **O quê:** Substituir N chamadas per-frame a `one_by_one.process_fused()` por uma única chamada em batch (GEMM sobre buffer contíguo de N×CH). Os pesos da 1×1 Dense são lidos N vezes hoje; em batch, seriam lidos 1×.
-- **Impacto estimado:** ~8% de redução no tempo por layer WaveNet.
-- **Pré-requisito:** Buffer temporário contíguo na stack (já existe `conv_plus_mixin` com 1024 slots).
-- [x] Implementar `DenseLayer::process_fused_block<M>` (batch GEMV com soma residual)
-- [x] Adaptar PASSO 3 para batch head_update + batch 1×1
-- [x] Benchmark comparativo
-
-### TA4 · LSTM Temporal Interleaving (AVX-512) [DONE]
-
-- **Arquivo(s):** `src/models/lstm.rs`, `src/math/simd.rs`
-- **O quê:** Implementar *Temporal Interleaving* entre camadas para esconder a latência de cálculo do estado recorrente. Processamento paralelo da Camada 1 (amostra $T$) e Camada 2 (amostra $T-1$) utilizando núcleos GEMV fundidos e AVX-512.
-- **Impacto estimado:** ~15-20% de redução no tempo para modelos de 2 camadas ($H=8, H=16$).
-- **Complexidade:** Alta. Requer sincronização rigorosa de buffers e pipeline "Prime/Drain".
-- [x] Implementar pipeline interleaving no `LstmModel2`
-- [x] Otimizar kernels `gemv_4gate_avx512` para $H=8$ e $H=16$ (BF16 native)
-- [x] Validar paridade numérica via Golden Vectors
-- [x] Benchmark comparativo final
+> Todos os épicos A–G foram concluídos. Consulte o histórico git para detalhes.
+> Resumo: Otimizações SIMD (LSTM fused GEMV, WaveNet Conv1D tiling, prefetch,
+> tanh+head fusion, gated activation fusion, fused GEMV residual), fuzz testing,
+> paridade WaveNet Dyn, documentação atualizada.
 
 ---
 
-## Épico C — Qualidade e Testes (Parcial)
+## Sprint v1.4 — Preparações para A2 e CLAP
 
-> Apenas a tarefa TC2 foi aprovada para execução imediata.
-
-### TC2 · Fuzz Testing dos Parsers NAMB/JSON [DONE]
-
-- **Arquivo(s):** `tests/` (novo), `src/loader/namb.rs`, `src/loader/nam_json.rs`
-- **O quê:** Integrar `cargo-fuzz` para encontrar panics e crashes em edge cases dos parsers de formato `.nam` (JSON) e `.namb` (binário). Cobrir: headers malformados, tamanhos inválidos, truncamento, valores NaN/Inf nos pesos, versões futuras desconhecidas.
-- **Impacto:** Segurança e robustez contra arquivos corrompidos ou adversariais.
-- [x] Criar `fuzz/` directory com targets `fuzz_namb` e `fuzz_nam_json`
-- [x] Seed corpus a partir de modelos válidos existentes
-- [x] Executar e corrigir quaisquer panics encontrados (Zero crashes em 7M+ execuções)
-- [ ] Integrar no CI (opcional: limitar a 60s por target)
+> **Meta**: "Organizar a casa e preparar o terreno" para a Arquitetura A2 e suporte CLAP.
+> Nenhuma implementação de inferência A2 ou plugin CLAP. Apenas scaffolding,
+> refatoração de boundaries, docs e testes de regressão.
+>
+> **Referência**: Relatório em `v1.4_research_and_planning.md`
+> **Snapshot C++**: `github.com/sdatkinson/NeuralAmpModelerCore/` (v0.5.2)
 
 ---
 
-## Épico E — Otimizações WaveNet (Throughput Microarquitetural)
+## Épico H — Staging Arquitetura A2 (Scaffolding)
 
-> Origem: Auditoria `pesquisador-inovador` (2026-05-03, 3ª rodada).
-> Objetivo: Extrair ganhos incrementais no pipeline de inferência WaveNet
-> através de fusão de operações de memória e otimização de cache hierarchy.
-> Foco exclusivo no modelo mais popular (WaveNet Standard CH=16, K=3).
+> Criar tipos, enums e módulos-esqueleto para A2. Zero lógica de inferência.
+> Ref: `github.com/sdatkinson/NeuralAmpModelerCore/NAM/`
 
-### TE1 · Inversão de Loop Conv1D: Channel-First Tiling [DONE]
+### TH1 · Enum `ActivationType` e Trait `ActivationFn`
 
-- **Arquivo(s):** `src/models/wavenet.rs` (`Conv1d::process_single_frame_internal`)
-- **O quê:** Inverter os loops da Conv1D de `for k { for b { FMA } }` para `for b { for k { FMA } }`. Isso mantém os registradores de saída "quentes" nos YMM/ZMM ao processar todos os K taps de um bloco antes de mover para o próximo, reduzindo stores intermediários de `K × OUT/4` para `OUT/4`.
-- **Impacto estimado:** ~5-8% nos layers com dilatação baixa (1, 2, 4) onde os dados de entrada estão em L1. Impacto menor em dilatações altas (memory-bound).
-- **Cuidado:** Validar que a mudança de ordem dos taps não afeta a acumulação numérica (comutatividade da soma FP — pode haver micro-diferenças em ULP). Manter fallback escalar inalterado para comparação.
-- **Validação:** Regressão numérica (golden vectors WaveNet) + benchmark Criterion comparativo.
-- [x] Refatorar loop interno em `process_single_frame_internal` (f32 path)
-- [x] Refatorar loop interno em `process_single_frame_bf16_internal` (BF16 path)
-- [x] Validar paridade numérica
-- [x] Benchmark comparativo (Ganho: **~8.8%**)
+- **Arquivo(s):** `src/models/activations.rs` (novo)
+- **O quê:** Enum com 11 variantes do C++ (`NAM/activations.h` L27-40: Tanh, HardTanh, FastTanh, ReLU, LeakyReLU, PReLU, Sigmoid, SiLU, HardSwish, LeakyHardTanh, Softsign). Trait `ActivationFn` com `apply(&self, data: &mut [f32])`. Impls escalares. Registrar em `src/models/mod.rs`.
+- **Ref C++:** `NAM/activations.h` L59-428
+- **Validação:** Testes unitários vs valores C++.
+- [ ] Criar módulo + enum + trait + impls
+- [ ] Testes unitários (golden values)
 
-### TE2 · Prefetch Bidirecional para Dilatações Extremas (256/512) [DONE]
+### TH2 · Enum `GatingMode` e Structs de Gating
 
-- **Arquivo(s):** `src/models/wavenet.rs` (`Conv1d::process_single_frame_internal`), `src/math/simd.rs`
-- **O quê:** Para layers com `dilation ≥ 128`, emitir 2 prefetches escalonados por tap: `T1` (L2) para tap T+2 e `T0` (L1) para tap T+1. Isso cria um pipeline de 2 estágios no cache subsystem que resolve o gap de latência DRAM→L1 (~180 ciclos) ao preparar os dados com 2 taps de antecedência.
-- **Impacto estimado:** ~8-12% nos layers de dilatação máxima (512). Efeito global: ~2-3%.
-- **Cuidado:** Prefetches são hints sem impacto na corretude. Validar em CPUs com prefetcher agressivo (Zen4) vs conservador.
-- [x] Implementar `adaptive_prefetch_2stage_f32` em `simd.rs`
-- [x] Integrar no loop da Conv1D para `k + 2 < K`
-- [x] Benchmark comparativo em diferentes dilatações
+- **Arquivo(s):** `src/models/gating.rs` (novo)
+- **O quê:** Enum `GatingMode { None, Gated, Blended }` (`NAM/wavenet/params.h` L18-22). Config structs para GatingActivation/BlendingActivation. Sem `process()`.
+- **Ref C++:** `NAM/gating_activations.h` L25-246
+- [ ] Criar módulo com enums + config structs
+- [ ] Doc-tests
 
-### TE3 · Fusão Tanh + Head Accumulate em Passagem Única [DONE]
+### TH3 · Struct `FiLMConfig` (Stub)
 
-- **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal`)
-- **O quê:** Fundir as FASES 2 e 3 do `process_block_internal` em uma única passagem de memória: `activation_tanh_block` seguido de `accumulate_head` lê os mesmos 1024 floats 2 vezes. Um kernel fundido `tanh_and_accumulate_block(conv, head)` aplica tanh, armazena de volta e acumula no head — tudo com dados nos registros YMM/ZMM, sem viagem extra ao L1.
-- **Impacto estimado:** ~5-7% no tempo total de `process_block_internal`. Elimina 1 passagem de leitura (4KB por bloco).
-- **Macro:** Criar variantes AVX2 (`tanh_and_accumulate_avx2`) e AVX-512 (`tanh_and_accumulate_avx512`), adicionando ao trait `SimdMath`.
-- **Validação:** Paridade numérica bit-a-bit (a fusão é determinística).
-- [x] Implementar `tanh_and_accumulate_block_avx2` em `simd.rs`
-- [x] Implementar variante AVX-512
-- [x] Adicionar método ao trait `SimdMath`
-- [x] Substituir FASES 2+3 em `process_block_internal`
-- [x] Benchmark comparativo
+- **Arquivo(s):** `src/models/film.rs` (novo)
+- **O quê:** `FiLMConfig { active: bool, shift: bool, groups: u32 }` de `_FiLMParams` (`NAM/wavenet/params.h` L76-91). Trait `FiLMLayer` com `process()` → `todo!()`.
+- **Ref C++:** `NAM/film.h` L19-209
+- [ ] Criar módulo com config + trait stub
 
----
+### TH4 · Structs de Parâmetros A2 WaveNet
 
-## Épico F — Paridade WaveNet Dyn + Fusões Avançadas
+- **Arquivo(s):** `src/models/wavenet_params.rs` (novo)
+- **O quê:** Portar structs data-only de `NAM/wavenet/params.h`: `Head1x1Params`, `Layer1x1Params`, `LayerParamsA2` (19+ campos), `LayerArrayParamsA2`, `HeadParams`.
+- **Ref C++:** `NAM/wavenet/params.h` L36-316
+- [ ] Criar módulo com todas as structs A2
+- [ ] Doc-tests de construção
 
-> Origem: Auditoria `pesquisador-inovador` (2026-05-03, 4ª rodada).
-> Objetivo: Fechar o gap de **240% overhead** entre o path estático (`wavenet.rs`)
-> e o dinâmico (`wavenet_dyn.rs`), e aplicar fusões avançadas de kernels SIMD
-> que beneficiam TODAS as topologias WaveNet (Standard, Lite, Feather, Nano + Dyn).
-> Prioridade: ganhos de 2 dígitos percentuais.
+### TH5 · Variante `DynamicModel::WavenetA2` (Placeholder)
 
-### TF1 · Backport de Otimizações A+E para `wavenet_dyn.rs` ⭐ MAIOR IMPACTO DO PROJETO [DONE]
+- **Arquivo(s):** `src/models/mod.rs`
+- **O quê:** Adicionar `WavenetA2(Box<WavenetA2Placeholder>)` ao enum. Impl `NamModel` com `process()` que retorna zeros + log warning. Permite loader aceitar A2 sem panic.
+- **Ref:** `DynamicModel` em `src/models/mod.rs` L62-89
+- [ ] Criar placeholder struct + NamModel impl
+- [ ] Adicionar variante ao enum + match arms
+- [ ] Teste unitário
 
-- **Arquivo(s):** `src/models/wavenet_dyn.rs` (refatoração principal), `src/math/simd.rs` (reuso)
-- **O quê:** O path dinâmico estava **3 Épicos atrás** do estático. Backport metódico de 5 otimizações já validadas:
-  1. **TA2** — Fused Conv1D+Mixin: Criar `Conv1dDyn::process_block_with_mixin<M>`
-  2. **TE1** — Channel-First Tiling: Inverter loop Conv1D Dyn com pre-carregamento de taps
-  3. **TE2** — Prefetch 2-stage: Integrar `adaptive_prefetch_2stage_f32` para `dilation ≥ 128`
-  4. **TE3** — Tanh+Head Fusion: Substituir `M::tanh_slice` + head accumulate por `M::tanh_and_accumulate_block`
-  5. **TA3** — Batch 1×1 Projection: Criar `DenseLayerDyn::process_fused_block<M>`
-- **Impacto estimado:** **~40-60%** de redução no tempo do path dinâmico (120 µs → ~55-70 µs)
-- **Impacto medido:** Gap reduzido de 240% → ~71% overhead (120 µs dyn vs 70 µs estático @ 64samp). Gap residual é estrutural (vtable + loops não-unrolled).
-- [x] Benchmark comparativo (antes/depois)
+### TH6 · Forward-Compatible Parsing no Loader
 
-### TF2 · Fusão da Ativação Gated em SIMD [DONE]
-
-- **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/math/fastmath.rs`, `src/models/wavenet_dyn.rs`
-- **O quê:** Modelos WaveNet com `gated=true` executam 3 passagens separadas sobre os mesmos dados (`tanh_slice`, `sigmoid_slice`, multiplicação escalar). Fundir em um único kernel `fused_gated_activation_block` que aplica `tanh(z1) × sigmoid(z2)` em uma passagem SIMD, eliminando 2 loads e 1 store intermediário.
-- **Impacto estimado:** **~15-25%** no tempo da ativação gated. Ganho global em modelos gated: **~5-8%**.
-- **Variantes:** AVX2 (`fused_gated_activation_avx2`) e AVX-512 (`fused_gated_activation_avx512`).
-- **Validação:** Paridade numérica bit-a-bit (fusão determinística).
-- **Nota de implementação:** Kernel implementado como `gated_activation_and_accumulate_block` (nome refatorado para descrever a semântica completa: ativação gated + acumulação no head em passagem única). Usa `_mm256_loadu_ps`, `simd_tanh`, `simd_sigmoid`, `_mm256_mul_ps` no path AVX2. Registrado na V-table `SimdMathConfig` para todas as 5 microarquiteturas.
-- [x] Implementar `fused_gated_activation_block_avx2` em `simd.rs`
-- [x] Implementar variante AVX-512
-- [x] Adicionar ao trait `SimdMath` e V-table
-- [x] Integrar em `WaveNetLayerDyn::process_block_internal` (branch gated)
-- [ ] Benchmark comparativo com modelo gated (pendente: sem fixture gated nos benches atuais)
-
-### TF3 · Eliminação do Residual Copy + GEMV Fundido (Todas as Topologias) [DONE]
-
-- **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/models/wavenet.rs`, `src/models/wavenet_dyn.rs`
-- **O quê:** Na FASE 3 do `process_block_internal`, o `copy_from_slice` do layer_buffer (residual) seguido de `process_fused_block` causa 2 passagens de memória. Criar `fused_gemv_residual_batch` que faz `out[i] = residual[i] + Σ(W[j] × in[j]) + bias` em uma única passagem, carregando o residual diretamente no acumulador SIMD.
-- **Impacto estimado:** **~10-15%** no tempo da FASE 3. Ganho global end-to-end: **~5-8%**.
-- **Risco:** Médio. Exige novo kernel SIMD (variação do `fused_add_gemm_batch`).
-- **Abrangência:** Todas as topologias (Standard, Lite, Feather, Nano) + Dyn.
-- **Impacto medido:** WaveNet Standard −6.2% (256samp), −6.7% (64samp). Prewarm −23.5%. DotProduct AVX2 −17.4%.
-- [x] Implementar `fused_gemv_residual_batch_avx2` em `simd.rs`
-- [x] Implementar variante AVX-512
-- [x] Adicionar ao trait `SimdMath`
-- [x] Substituir `copy_from_slice` + `process_fused_block` em `wavenet.rs`
-- [x] Substituir equivalente em `wavenet_dyn.rs`
-- [x] Benchmark comparativo (antes/depois)
+- **Arquivo(s):** `src/loader/nam_json.rs`, `src/loader/namb.rs`
+- **O quê:** Garantir que JSON com campos A2 extras não cause panic → fallback gracioso para placeholder. Modelos A1 inalterados.
+- **Ref C++:** `NAM/get_dsp.cpp` L237-260
+- [ ] Auditar forward-compatibility do loader
+- [ ] Fixture JSON mock A2 em `tests/fixtures/`
+- [ ] Teste integração: A2 mock → placeholder
+- [ ] Teste regressão: A1 fixtures ok
 
 ---
 
-## Observações — Itens Diferidos
+## Épico I — Staging CLAP Plugin (Trait `AudioHost`)
 
-> Itens identificados na auditoria `pesquisador-inovador` mas **não priorizados**
-> para o momento atual. Mantidos aqui para referência futura.
+> Desacoplar motor DSP do PipeWire. Zero dependência CLAP adicionada.
+> Ref: [free-audio/clap](https://github.com/free-audio/clap)
+> Opções futuras: `nih-plug` (framework) ou `clack` (safe wrapper)
 
-### Épico B — Modernização e Portabilidade *(diferido)*
+### TI1 · Trait `AudioHost`
 
-- **TB1** · Preparação CLAP Plugin — Separar `pw_host.rs` em trait `AudioHost`.
-- **TB2** · Internacionalização (i18n) — Migrar strings PT-BR para constantes EN.
-- **TB3** · ARM64/NEON Port — Abstrair `SimdMath` para suportar NEON.
-- **Razão:** Não é o momento. Foco atual é otimização de throughput SIMD x86-64.
+- **Arquivo(s):** `src/audio_host.rs` (novo)
+- **O quê:** Trait com `sample_rate()`, `max_buffer_size()`, `run()`. Abstrai lifecycle (não hot-path). Será implementado para PipeWireHost e futuramente ClapPlugin.
+- [ ] Criar trait + registrar em `lib.rs`
 
-### Épico D — Arquitetura A2 *(diferido)*
+### TI2 · Feature Flags: `standalone` vs `clap-plugin`
 
-- **TD1** · Scaffold A2 Architecture — Módulo `models/a2.rs` + variante `DynamicModel::A2`.
-- **TD2** · A2 Weight Loader — Estender dispatcher para formato A2.
-- **Razão:** Não é o momento. Aguardando definição oficial do formato A2 upstream.
+- **Arquivo(s):** `Cargo.toml`, `src/lib.rs`, `src/main.rs`
+- **O quê:** Feature `standalone` (default) → `dep:pipewire`. Feature `clap-plugin` vazia. Condicionar `pw_host.rs`/`rt_setup.rs` a `#[cfg(feature = "standalone")]`.
+- **Cuidado:** `cargo build` default inalterado. `cargo check --no-default-features` compila engine puro.
+- [ ] Feature flags no `Cargo.toml`
+- [ ] `#[cfg]` em `lib.rs`, `pw_host.rs`, `rt_setup.rs`, `main.rs`
+- [ ] Verificar ambas compilações
 
-### Tarefas C não priorizadas *(diferidas)*
+### TI3 · Struct `NamPluginParams`
 
-- **TC1** · Benchmark VirtualRingBuffer vs copy_within — Quantificar ganho do mmap espelhado.
-- **TC3** · Stress Test de GC Channel Overflow — Validar leak path sob carga extrema.
-- **Razão:** Ganho marginal de validação. Podem ser retomadas após o Épico A.
+- **Arquivo(s):** `src/params.rs` (novo)
+- **O quê:** Parâmetros agnósticos ao host: `input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`, `bypass`. Coexiste com `ParamPayload`.
+- [ ] Criar struct + `Default` impl + registrar em `lib.rs`
 
-### Tarefas E não priorizadas *(diferidas)*
+### TI4 · Documentação CLAP
 
-- **TE4** · Winograd F(2,3) para Conv1D K=3 — Redução teórica de 33% em mults, mas aplicável apenas a layers com dilation=1 (2 de 10). Ganho global ~3-5%. Complexidade alta: exige processamento de 2 frames simultâneos, conflito com semântica causal dilatada. **Custo/benefício desfavorável.**
-
-- **Padding CH=12→16 (Lite):** Ganho ~10-15% apenas Conv1D Lite, mas requer padding em loading + aumento de footprint. Complexidade alta para benefício localizado.
-- **SSE path para Nano CH=4:** Nano já é ultra-rápido (~5 µs). Ganho absoluto de ~1-2 µs não justifica path SSE separado.
-- **Multi-frame pipelining entre layers:** Quebraria cadeia de dependência causal. Incompatível com WaveNet.
+- **Arquivo(s):** `docs/clap_integration.md` (novo)
+- **O quê:** Thread model CLAP vs NAM-rs, mapeamento de params, estratégia de compilação, DAWs alvo, decisão de crate pendente.
+- [ ] Criar documento
 
 ---
 
-## Épico G — Consolidação e Higiene Pós-Épico F
+## Épico J — Consolidação de Documentação
 
-> Origem: Auditoria pós-implementação Épico F (2026-05-04).
-> Objetivo: Fechar os itens residuais identificados na auditoria: benchmark de modelos gated
-> e atualização da documentação arquitetural para refletir todos os novos kernels SIMD.
+> Atualizar docs para v1.3 (completo) + preparações v1.4.
 
-### TG1 · Fixture de Benchmark para Modelos WaveNet Gated
-
-- **Arquivo(s):** `benches/inference_bench.rs`
-- **O quê:** Adicionar um caso de benchmark `WaveNet_Dynamic_Gated_CH16_64samp_48kHz` que exercite o caminho `gated=true` e valide empiricamente o ganho do kernel `gated_activation_and_accumulate_block`. Sem este benchmark, o impacto da TF2 permanece apenas estimado.
-- **Impacto:** Validação de dados + baseline para futuras otimizações de modelos gated.
-- [ ] Criar fixture de modelo gated no `benches/` (struct ou helper)
-- [ ] Adicionar caso ao `inference_bench.rs`
-- [ ] Documentar resultado no TODO-sprints.md
-
-### TG2 · Atualização da Documentação Arquitetural
+### TJ1 · Atualização de `docs/architecture.md`
 
 - **Arquivo(s):** `docs/architecture.md`
-- **O quê:** A documentação arquitetural não reflete os novos kernels introduzidos nos Épicos E e F: `tanh_and_accumulate_block`, `gated_activation_and_accumulate_block`, `fused_gemm_residual_batch`. Atualizar o diagrama/seção do pipeline de inferência WaveNet e a tabela de kernels SIMD.
-- **Impacto:** Consistência entre código e documentação. Essencial para onboarding de novos contribuidores.
-- [ ] Atualizar seção "Pipeline de Inferência WaveNet" em `docs/architecture.md`
-- [ ] Atualizar tabela de kernels SIMD disponíveis e suas microarquiteturas alvo
-- [ ] Acionar skill `documentador` para validação
+- **O quê:** Kernels SIMD dos Épicos E/F, seção "Preparação A2", seção "Roadmap CLAP", tabela de módulos atualizada.
+- [ ] Atualizar e acionar skill `documentador`
+
+### TJ2 · Enxugamento de `.agents/rules/rust.md`
+
+- **Arquivo(s):** `.agents/rules/rust.md`
+- **O quê:** Adicionar menção a feature flags, compilação sem PW, módulos A2 stub. Manter < 40 linhas.
+- [ ] Revisar e condensar
+
+### TJ3 · Atualização do `README.md`
+
+- **Arquivo(s):** `README.md`
+- **O quê:** Seção "Roadmap" (A2 + CLAP como futuro). Versão 1.4.0-staging.
+- [ ] Atualizar README
+
+---
+
+## Épico K — Cobertura de Testes v1.4
+
+> Garantir zero regressão com as preparações.
+
+### TK1 · Testes `ActivationType`
+
+- **Arquivo(s):** `src/models/activations.rs` (inline)
+- **O quê:** Testes para cada variante em 0.0, ±1.0, ±5.0 vs golden values C++.
+- [ ] Testes inline para 11 ativações
+
+### TK2 · Testes Forward-Compatibility Loader
+
+- **Arquivo(s):** `tests/loader_a2_compat.rs` (novo)
+- **O quê:** Fixture A2 mock → placeholder. Regressão A1 fixtures.
+- [ ] Fixture + testes integração
+
+### TK3 · Teste Compilação Condicional
+
+- **Arquivo(s):** `utils/check_features.sh` (novo)
+- **O quê:** Verificar `--features standalone`, `--no-default-features`, `--features clap-plugin`.
+- [ ] Criar script de verificação
+
+### TK4 · Smoke Tests `NamPluginParams` + `AudioHost`
+
+- **Arquivo(s):** `src/params.rs`, `src/audio_host.rs` (inline)
+- **O quê:** `Default` retorna valores sensatos. Mock impl de `AudioHost`.
+- [ ] Testes inline
+
+---
+
+## Observações — Itens Diferidos (v1.4)
+
+### Diferidos A2
+
+- Implementação FiLM SIMD, ConvNet model, Slimmable inference, ConfigParserRegistry, NAMB v3
+
+### Diferidos CLAP
+
+- Dependência CLAP (clap-sys/nih-plug/clack), cdylib target, GUI, MIDI, State save/load

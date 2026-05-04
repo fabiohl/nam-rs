@@ -18,10 +18,11 @@ Durante o hot-loop da inferência de áudio, quando o motor precisa tocar os ~80
 A solução arquitetural do NAM-rs para eviscerar as falhas de Cache L1 foi traduzir, antecipadamente no momento da alocação de heap (`loader`), todas as matrizes estruturais estáticas do modelo (Conv1d, DenseLayer e as projeções interfolhadas LSTM) para **Half-Precision (16 bits)**, dividindo pela metade a exigência volumétrica no hardware.
 Com isso, os impressionantes 80 KB do WaveNet Standard caem para meros **40 KB**, adequando-se exponencialmente melhor na franja térmica da Cache L1.
 
-**"Mas e o custo de descompressão antes do cálculo?"**
+### **"Mas e o custo de descompressão antes do cálculo?"**
 
 A CPU executa uma mágica via *Hardware Dedicado* suportada pelos conjuntos de instruções F16C e as extensões AVX2/AVX-512.
 O processo ocorre durante o carregamento de barramento (load):
+
 - Uma instrução SIMD de leitura `_mm_loadu_si128` carrega 8 tensores (agora compactados em `u16` ocupando 128 bits de banda).
 - Simultaneamente e *on-the-fly*, uma instrução base de downcast de hardware como `_mm256_cvtph_ps` decodifica esses `f16` minúsculos de volta em robustos escalares flutuantes de 32-bits (Single-Precision) espalhados ao longo dos generosos e imensos registradores lógicos de 256 bits (YMM/ZMM).
 - A instrução leva cerca de `~4` a `~5` ciclos operacionais em hardware nativo para upcast. No entanto, por causa das rotinas implacáveis de Out-Of-Order Execution (OoO), a CPU consegue executar outras contas matemáticas cruciais escondendo ou absorvendo quase 100% desta latência intrínseca.
@@ -41,13 +42,16 @@ Um valor em `f32` (Precisão Simples) nos diz volumes e frações altíssimas co
 
 Estatisticamente e na prática de código, este desalinhamento entre o ponto-flutuante original de 32-bits não comprimido reflete-se em um desvio vetorial de Erro Médio Quadrático (*Mean Squared Error*, ou **MSE**) oscilante próximo de `1e-4` nos outputs dos testes integrados.
 
-### O Impacto Psicoacústico na Timbragem (Transparência):
+### O Impacto Psicoacústico na Timbragem (Transparência)
+
 De forma categórica: **É Impossível para a biologia humana, mesmo no cenário auditivo mais crítico, separar um amplificador que emula timbres em `f32` puro contra `f16c` com esta margem de precisão.**
 
 O motivo é balizado pela física da gravação de áudio digital:
+
 1. **O Chão Analógico (Noise Floor):** Erros quantizados de `1e-4` significam distorções algorítmicas adicionadas ao sinal final próximas de **-80 dB a -100 dBFS**. Literalmente qualquer captador Single-Coil barato, cabo de cobre mediano ou amplificador valvulado saturado possui intrinsecamente pisos de ruído (noise floor), vazamentos passivos (crosstalk) e correntes difusas incrivelmente mais volumosas (às vezes em torno dos respeitáveis `-60 dB`).
 2. **Mascaramento por Distorção de Alto Ganho:** Equipamentos emulados de guitarra baseiam-se eminentemente na indução de saturação severa (Overdrive e Fuzz), cortando o sinal analógico em harmônicas altas que engolem completamente minúsculos espúrios numéricos no limiar de `-80 dB`.
 3. **Paralelo de Produção (*Dithering*):** Sob o ponto de vista de Mixagem, perder 10 bits no cálculo de predição temporal é analiticamente semelhante à injeção da técnica conhecida como de *Dither* orgânico na conversão bit-depth em um Master de Rock clássico muito espesso. As perdas atuam como pequenas imprecisões no piso imperceptível ao longo do transiente, resultando em transparência musical perfeita, mantendo integral a compressão dinâmica e o punch orgânico de transientes (Feel) do amplificador Neural.
 
 ## Conclusão
+
 O NAM-rs atesta o compromisso arquitetônico em fornecer o maior ganho infraestrutural possível, trocando ciclos estagnados numa barreira de silício por processamento sônico massivo de latência-zero, assumindo uma insignificante distorção computacional invisível à biologia.
