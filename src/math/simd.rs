@@ -46,6 +46,38 @@ pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
     }
 }
 
+/// Prefetch adaptativo de 2 estágios para dilatações extremas (Causal Conv1D).
+///
+/// Para dilatações >= 128, o hardware prefetcher falha completamente e o atraso
+/// DRAM -> L1 é massivo (~180-300 ciclos). Usamos prefetch bidirecional escalonado:
+/// - **T1 (L2)** para o dado que será usado daqui a 2 taps (preparação de longo prazo).
+/// - **T0 (L1)** para o dado que será usado no próximo tap (aquecimento imediato).
+///
+/// Isso cria um pipeline no cache subsystem que esconde a latência da memória principal.
+///
+/// # Safety
+/// Os ponteiros devem ser válidos ou estar dentro da margem de segurança do buffer.
+#[inline(always)]
+pub unsafe fn adaptive_prefetch_2stage_f32(
+    ptr_next: *const f32,
+    ptr_next_next: *const f32,
+    dilation: usize,
+) {
+    if dilation >= 128 {
+        unsafe {
+            // Traz o próximo tap para L1 (uso imediato no próximo k)
+            _mm_prefetch::<_MM_HINT_T0>(ptr_next as *const i8);
+            // Traz o tap subsequente para L2 (prepara para k+2)
+            _mm_prefetch::<_MM_HINT_T1>(ptr_next_next as *const i8);
+        }
+    } else {
+        // Fallback para prefetch simples para dilatações menores
+        unsafe {
+            adaptive_prefetch_f32(ptr_next, dilation);
+        }
+    }
+}
+
 /// Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) no registrador MXCSR.
 ///
 /// Em CPUs x86-64, operações sobre números subnormais (denormals) incorrem em

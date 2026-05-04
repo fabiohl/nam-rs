@@ -87,7 +87,7 @@
 - [x] Validar paridade numérica
 - [x] Benchmark comparativo (Ganho: **~8.8%**)
 
-### TE2 · Prefetch Bidirecional para Dilatações Extremas (256/512)
+### TE2 · Prefetch Bidirecional para Dilatações Extremas (256/512) [DONE]
 
 - **Arquivo(s):** `src/models/wavenet.rs` (`Conv1d::process_single_frame_internal`), `src/math/simd.rs`
 - **O quê:** Para layers com `dilation ≥ 128`, emitir 2 prefetches escalonados por tap: `T1` (L2) para tap T+2 e `T0` (L1) para tap T+1. Isso cria um pipeline de 2 estágios no cache subsystem que resolve o gap de latência DRAM→L1 (~180 ciclos) ao preparar os dados com 2 taps de antecedência.
