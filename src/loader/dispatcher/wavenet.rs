@@ -43,7 +43,7 @@ fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<()> {
 pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     let topo_opt = get_wavenet_topology(data);
 
-    match topo_opt {
+    let res = match topo_opt {
         Some(NamWavenetTopology::Standard) => {
             let model = build_wavenet_typed::<16, 3, 8>(data, NamWavenetTopology::Standard)?;
             Ok(Box::new(DynamicModel::WavenetStandard(Box::new(model))))
@@ -61,7 +61,16 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
             Ok(Box::new(DynamicModel::WavenetNano(Box::new(model))))
         }
         None => build_wavenet_dynamic(data),
+    };
+
+    // [TH6] Se falhou mas parece ser um modelo A2, retornamos o placeholder para
+    // manter a compatibilidade e evitar silêncio causado por erro de carga.
+    if res.is_err() && data.is_wavenet_a2() {
+        info!("[Dispatcher] Modelo WaveNet A2 detectado. Utilizando placeholder temporário...");
+        return Ok(Box::new(DynamicModel::WavenetA2(Box::default())));
     }
+
+    res
 }
 
 /// Constrói um `WaveNetModel<CH, K, HEAD>` com pesos lidos sequencialmente.

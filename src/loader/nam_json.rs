@@ -124,6 +124,37 @@ pub struct NamModelData {
     pub weights_layout: WeightsLayout,
 }
 
+impl NamModelData {
+    /// Detecta se o modelo utiliza a arquitetura WaveNet A2.
+    ///
+    /// Um modelo é considerado A2 se a arquitetura for "WaveNet" e:
+    /// 1. A versão declarada for >= 0.6.0.
+    /// 2. Utilizar funções de ativação diferentes de "Tanh".
+    pub fn is_wavenet_a2(&self) -> bool {
+        if self.architecture != "WaveNet" {
+            return false;
+        }
+
+        // Versão >= 0.6.0 introduziu A2
+        if let Some(ref v) = self.version
+            && (v.starts_with("0.6") || v.starts_with("0.7") || v.starts_with("0.8"))
+        {
+            return true;
+        }
+
+        // Ativações customizadas são marca registrada do A2
+        for layer in &self.config.layers {
+            if let Some(ref act) = layer.activation
+                && act != "Tanh"
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
 /// As Topologias fechadas e suportadas dentro da modelagem WaveNet nativa.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NamWavenetTopology {

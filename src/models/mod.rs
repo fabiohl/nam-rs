@@ -12,10 +12,14 @@
 // Sub-módulos
 // =============================================================================
 
+pub mod activations;
+pub mod film;
+pub mod gating;
 pub mod lstm;
 pub mod lstm_dyn;
 pub mod wavenet;
 pub mod wavenet_dyn;
+pub mod wavenet_params;
 
 // =============================================================================
 // Type Aliases — Perfis LSTM NAM Comuns
@@ -70,6 +74,8 @@ pub enum DynamicModel {
     WavenetNano(Box<wavenet::WaveNetModel<4, 3, 2>>),
     /// WaveNet Dinâmico (usado como fallback para arquiteturas não-padrão).
     WavenetDyn(Box<wavenet_dyn::WaveNetDynModel>),
+    /// WaveNet A2 (Placeholder para arquitetura nova).
+    WavenetA2(Box<WavenetA2Placeholder>),
     /// LSTM 1 Camada × 8 unidades ocultas.
     Lstm1x8(Box<Lstm1x8>),
     /// LSTM 1 Camada × 12 unidades ocultas.
@@ -97,6 +103,7 @@ impl NamModel for DynamicModel {
             Self::WavenetFeather(m) => m.process(input, output),
             Self::WavenetNano(m) => m.process(input, output),
             Self::WavenetDyn(m) => m.process(input, output),
+            Self::WavenetA2(m) => m.process(input, output),
             Self::Lstm1x8(m) => m.process(input, output),
             Self::Lstm1x12(m) => m.process(input, output),
             Self::Lstm1x16(m) => m.process(input, output),
@@ -115,6 +122,7 @@ impl NamModel for DynamicModel {
             Self::WavenetFeather(m) => m.prewarm(),
             Self::WavenetNano(m) => m.prewarm(),
             Self::WavenetDyn(m) => m.prewarm(),
+            Self::WavenetA2(m) => m.prewarm(num_samples),
             Self::Lstm1x8(m) => m.prewarm(num_samples),
             Self::Lstm1x12(m) => m.prewarm(num_samples),
             Self::Lstm1x16(m) => m.prewarm(num_samples),
@@ -243,5 +251,43 @@ impl NamModel for lstm_dyn::LstmDynModel {
     /// O prewarm dinâmico já encapsula internamente a lógica de loop de silêncio.
     fn prewarm(&mut self, num_samples: usize) {
         self.prewarm(num_samples);
+    }
+}
+
+// =============================================================================
+// Placeholder para WaveNet A2 (Staging)
+// =============================================================================
+
+/// Placeholder para a arquitetura WaveNet A2.
+///
+/// Este struct permite que o sistema carregue modelos A2 sem falhar, retornando
+/// silêncio até que a implementação completa do motor de inferência esteja pronta.
+#[derive(Default)]
+pub struct WavenetA2Placeholder {}
+
+impl NamModel for WavenetA2Placeholder {
+    fn process(&mut self, _input: &[f32], output: &mut [f32]) {
+        // Retorna silêncio absoluto.
+        output.fill(0.0);
+    }
+
+    fn prewarm(&mut self, _num_samples: usize) {
+        // No-op para o placeholder.
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wavenet_a2_placeholder_silence() {
+        let mut model = WavenetA2Placeholder::default();
+        let input = [1.0f32; 10];
+        let mut output = [1.0f32; 10];
+        model.process(&input, &mut output);
+        for val in output.iter() {
+            assert_eq!(*val, 0.0);
+        }
     }
 }

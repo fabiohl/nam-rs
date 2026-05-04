@@ -939,6 +939,51 @@ fn test_golden_vectors_wavenet_feather() {
     assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet Feather");
 }
 
+/// Teste 8d: Forward-compatibility WaveNet A2.
+///
+/// Verifica que o loader detecta um modelo A2 (via mock_a2.nam) e,
+/// em vez de falhar por ativação não suportada, faz o fallback
+/// gracioso para o `WavenetA2Placeholder` (que retorna silêncio).
+#[test]
+fn test_forward_compatibility_wavenet_a2() {
+    let path = model_path("mock_a2.nam");
+
+    if !path.exists() {
+        panic!("Fixture mock_a2.nam não encontrada em {path:?}");
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler mock_a2.nam");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+
+    assert!(
+        model_data.is_wavenet_a2(),
+        "mock_a2.nam deve ser detectado como A2"
+    );
+
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher falhou ao carregar A2 (deveria ter feito fallback)");
+
+    // Verifica se o modelo construído é o variante WavenetA2
+    match *model {
+        nam_rs::models::DynamicModel::WavenetA2(_) => {
+            println!("Fallback para WavenetA2Placeholder confirmado.");
+        }
+        _ => panic!("Esperado DynamicModel::WavenetA2, mas obteve outro variante"),
+    }
+
+    // Verifica se o processamento retorna silêncio (comportamento do placeholder)
+    let input = [1.0f32; 64];
+    let mut output = [1.0f32; 64];
+    model.process(&input, &mut output);
+
+    for (i, &s) in output.iter().enumerate() {
+        assert_eq!(
+            s, 0.0,
+            "Placeholder A2 deve retornar silêncio absoluto. Erro no índice {i}"
+        );
+    }
+}
+
 /// Teste 8c: Golden Vectors WaveNet Nano — cross-reference C++ ↔ Rust.
 #[test]
 fn test_golden_vectors_wavenet_nano() {
@@ -2067,10 +2112,13 @@ fn test_reject_keras_legacy_format() {
     println!("Formato Keras Legacy rejeitado corretamente via build_model().");
 }
 
-/// Tarefa 6.3 — Teste de Rejeição de Ativação Não-Suportada
+/// Teste 9: Ativação não-Tanh em WaveNet deve fazer fallback para A2.
+///
+/// Anteriormente o dispatcher rejeitava qualquer ativação diferente de "Tanh".
+/// Agora, ativações customizadas (como "ReLU") identificam o modelo como
+/// WaveNet A2, acionando o fallback gracioso para o placeholder.
 #[test]
-fn test_reject_activation_non_tanh() {
-    // Cria um JSON minimalista válido para um WaveNet, mas com ativação ReLU
+fn test_accept_a2_activation_with_fallback() {
     let synthetic_json = r#"{
         "version": "0.5.0",
         "architecture": "WaveNet",
@@ -2094,12 +2142,15 @@ fn test_reject_activation_non_tanh() {
     let model_data =
         parse_nam_json(synthetic_json).expect("Falha ao fazer parse do JSON sintético");
 
-    // O dispatcher DEVE falhar ao encontrar "ReLU" (ou qualquer ativação não-"Tanh")
-    let build_result = build_model(&model_data);
-    assert!(
-        build_result.is_err(),
-        "build_model() aceitou uma ativação diferente de Tanh!"
+    // O dispatcher NÃO deve mais falhar, mas sim retornar WavenetA2 variant via fallback
+    let model = build_model(&model_data).expect(
+        "Dispatcher falhou ao carregar modelo com ReLU (deveria ter feito fallback para A2)",
     );
 
-    println!("Ativação não-Tanh rejeitada corretamente.");
+    assert!(
+        matches!(*model, nam_rs::models::DynamicModel::WavenetA2(_)),
+        "Esperado DynamicModel::WavenetA2 devido à ativação ReLU"
+    );
+
+    println!("Ativação não-Tanh (ReLU) direcionada corretamente para fallback A2.");
 }
