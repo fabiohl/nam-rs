@@ -130,7 +130,8 @@
   4. **TE3** — Tanh+Head Fusion: Substituir `M::tanh_slice` + head accumulate por `M::tanh_and_accumulate_block`
   5. **TA3** — Batch 1×1 Projection: Criar `DenseLayerDyn::process_fused_block<M>`
 - **Impacto estimado:** **~40-60%** de redução no tempo do path dinâmico (120 µs → ~55-70 µs)
-- [ ] Benchmark comparativo (antes/depois)
+- **Impacto medido:** Gap reduzido de 240% → ~71% overhead (120 µs dyn vs 70 µs estático @ 64samp). Gap residual é estrutural (vtable + loops não-unrolled).
+- [x] Benchmark comparativo (antes/depois)
 
 ### TF2 · Fusão da Ativação Gated em SIMD [DONE]
 
@@ -139,11 +140,12 @@
 - **Impacto estimado:** **~15-25%** no tempo da ativação gated. Ganho global em modelos gated: **~5-8%**.
 - **Variantes:** AVX2 (`fused_gated_activation_avx2`) e AVX-512 (`fused_gated_activation_avx512`).
 - **Validação:** Paridade numérica bit-a-bit (fusão determinística).
-- [ ] Implementar `fused_gated_activation_block_avx2` em `simd.rs`
-- [ ] Implementar variante AVX-512
-- [ ] Adicionar ao trait `SimdMath` e V-table
-- [ ] Integrar em `WaveNetLayerDyn::process_block_internal` (branch gated)
-- [ ] Benchmark comparativo com modelo gated
+- **Nota de implementação:** Kernel implementado como `gated_activation_and_accumulate_block` (nome refatorado para descrever a semântica completa: ativação gated + acumulação no head em passagem única). Usa `_mm256_loadu_ps`, `simd_tanh`, `simd_sigmoid`, `_mm256_mul_ps` no path AVX2. Registrado na V-table `SimdMathConfig` para todas as 5 microarquiteturas.
+- [x] Implementar `fused_gated_activation_block_avx2` em `simd.rs`
+- [x] Implementar variante AVX-512
+- [x] Adicionar ao trait `SimdMath` e V-table
+- [x] Integrar em `WaveNetLayerDyn::process_block_internal` (branch gated)
+- [ ] Benchmark comparativo com modelo gated (pendente: sem fixture gated nos benches atuais)
 
 ### TF3 · Eliminação do Residual Copy + GEMV Fundido (Todas as Topologias) [DONE]
 
@@ -152,12 +154,13 @@
 - **Impacto estimado:** **~10-15%** no tempo da FASE 3. Ganho global end-to-end: **~5-8%**.
 - **Risco:** Médio. Exige novo kernel SIMD (variação do `fused_add_gemm_batch`).
 - **Abrangência:** Todas as topologias (Standard, Lite, Feather, Nano) + Dyn.
-- [ ] Implementar `fused_gemv_residual_batch_avx2` em `simd.rs`
-- [ ] Implementar variante AVX-512
-- [ ] Adicionar ao trait `SimdMath`
-- [ ] Substituir `copy_from_slice` + `process_fused_block` em `wavenet.rs`
-- [ ] Substituir equivalente em `wavenet_dyn.rs`
-- [ ] Benchmark comparativo (antes/depois)
+- **Impacto medido:** WaveNet Standard −6.2% (256samp), −6.7% (64samp). Prewarm −23.5%. DotProduct AVX2 −17.4%.
+- [x] Implementar `fused_gemv_residual_batch_avx2` em `simd.rs`
+- [x] Implementar variante AVX-512
+- [x] Adicionar ao trait `SimdMath`
+- [x] Substituir `copy_from_slice` + `process_fused_block` em `wavenet.rs`
+- [x] Substituir equivalente em `wavenet_dyn.rs`
+- [x] Benchmark comparativo (antes/depois)
 
 ---
 
@@ -189,8 +192,32 @@
 
 - **TE4** · Winograd F(2,3) para Conv1D K=3 — Redução teórica de 33% em mults, mas aplicável apenas a layers com dilation=1 (2 de 10). Ganho global ~3-5%. Complexidade alta: exige processamento de 2 frames simultâneos, conflito com semântica causal dilatada. **Custo/benefício desfavorável.**
 
-### Propostas descartadas (pesquisador-inovador, 4ª rodada)
-
 - **Padding CH=12→16 (Lite):** Ganho ~10-15% apenas Conv1D Lite, mas requer padding em loading + aumento de footprint. Complexidade alta para benefício localizado.
 - **SSE path para Nano CH=4:** Nano já é ultra-rápido (~5 µs). Ganho absoluto de ~1-2 µs não justifica path SSE separado.
 - **Multi-frame pipelining entre layers:** Quebraria cadeia de dependência causal. Incompatível com WaveNet.
+
+---
+
+## Épico G — Consolidação e Higiene Pós-Épico F
+
+> Origem: Auditoria pós-implementação Épico F (2026-05-04).
+> Objetivo: Fechar os itens residuais identificados na auditoria: benchmark de modelos gated
+> e atualização da documentação arquitetural para refletir todos os novos kernels SIMD.
+
+### TG1 · Fixture de Benchmark para Modelos WaveNet Gated
+
+- **Arquivo(s):** `benches/inference_bench.rs`
+- **O quê:** Adicionar um caso de benchmark `WaveNet_Dynamic_Gated_CH16_64samp_48kHz` que exercite o caminho `gated=true` e valide empiricamente o ganho do kernel `gated_activation_and_accumulate_block`. Sem este benchmark, o impacto da TF2 permanece apenas estimado.
+- **Impacto:** Validação de dados + baseline para futuras otimizações de modelos gated.
+- [ ] Criar fixture de modelo gated no `benches/` (struct ou helper)
+- [ ] Adicionar caso ao `inference_bench.rs`
+- [ ] Documentar resultado no TODO-sprints.md
+
+### TG2 · Atualização da Documentação Arquitetural
+
+- **Arquivo(s):** `docs/architecture.md`
+- **O quê:** A documentação arquitetural não reflete os novos kernels introduzidos nos Épicos E e F: `tanh_and_accumulate_block`, `gated_activation_and_accumulate_block`, `fused_gemm_residual_batch`. Atualizar o diagrama/seção do pipeline de inferência WaveNet e a tabela de kernels SIMD.
+- **Impacto:** Consistência entre código e documentação. Essencial para onboarding de novos contribuidores.
+- [ ] Atualizar seção "Pipeline de Inferência WaveNet" em `docs/architecture.md`
+- [ ] Atualizar tabela de kernels SIMD disponíveis e suas microarquiteturas alvo
+- [ ] Acionar skill `documentador` para validação
