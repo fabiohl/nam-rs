@@ -6,18 +6,22 @@
 //! Este módulo isola a lógica de processamento de áudio da orquestração do PipeWire.
 //! Ele contém o "hot-path" que é executado a cada ciclo de áudio na thread de tempo real.
 
+#[cfg(feature = "standalone")]
 use crate::diagnostics::SystemSnapshot;
 use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 use crate::dsp::resampler::NamResampler;
 use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2};
 use crate::models::{DynamicModel, NamModel};
 use crate::spsc::RtStatusFlags;
+#[cfg(feature = "standalone")]
 use minstant::Anchor;
+#[cfg(feature = "standalone")]
 use pipewire as pw;
 use std::sync::atomic::Ordering;
 
 /// Estrutura de posse explícita para evitar o leak de memória
 /// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
+#[cfg(feature = "standalone")]
 pub(crate) struct AppState<S1, L1, S2, L2> {
     #[allow(dead_code)]
     pub capture_stream: S1,
@@ -30,6 +34,7 @@ pub(crate) struct AppState<S1, L1, S2, L2> {
 }
 
 /// Configurações para inicialização do host PipeWire.
+#[cfg(feature = "standalone")]
 pub struct PipewireHostConfig {
     /// Tamanho do buffer de áudio solicitado.
     pub buffer_size: u32,
@@ -343,6 +348,7 @@ pub(crate) fn capture_dsp_pipeline(
 }
 
 /// Pipeline DSP de Reprodução (Bridge → Hardware).
+#[cfg(feature = "standalone")]
 #[inline(always)]
 pub(crate) fn playback_dsp_cycle(
     stream: &pw::stream::Stream,
@@ -415,6 +421,7 @@ pub(crate) fn playback_dsp_cycle(
 ///
 /// # Safety
 /// O pod binário retornado aponta diretamente para o `format_buf` fornecido.
+#[cfg(feature = "standalone")]
 pub(crate) unsafe fn build_spa_format_pod<'a>(
     audio_info: &pw::spa::param::audio::AudioInfoRaw,
     format_buf: &'a mut [u8; 1024],

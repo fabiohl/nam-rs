@@ -254,6 +254,7 @@ fn detect_advanced_features() -> Vec<String> {
 ///
 /// Combina uma mensagem amigável para o usuário com um bloco técnico
 /// copiável para suporte. Formatado para triagem precisa.
+#[derive(Debug)]
 pub struct NamDiagnostic {
     /// Código de erro tipado.
     code: NamErrorCode,
@@ -396,6 +397,8 @@ impl fmt::Display for NamDiagnostic {
         write!(f, "[{}] {}", self.code.code(), self.user_message)
     }
 }
+
+impl std::error::Error for NamDiagnostic {}
 
 // =============================================================================
 // Helpers — Conversão de dias epoch → data gregoriana

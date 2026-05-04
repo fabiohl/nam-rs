@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
+#![cfg(feature = "standalone")]
+
 //! Teste de Integração (End-to-End) para a Pipeline do PipeWire
 //!
 //! Este teste garante o correto inicializador do contexto do PipeWire Core.
