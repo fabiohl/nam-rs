@@ -686,10 +686,10 @@ impl WaveNetLayerState {
         let buffer_frames = self.layer_buffer.size() / channels;
 
         // [VIRTUAL RING BUFFER]
-        // Se o ponteiro avançar demais, nós simplesmente subtraímos o tamanho base (N).
-        // Como o buffer é mapeado em 2*N, e buffer_start está sempre entre N e 2*N-1,
-        // o acesso a [buffer_start - receptive_field] é sempre seguro (>= 0).
-        if self.buffer_start >= buffer_frames * 2 {
+        // Se o próximo bloco de tamanho máximo (64) puder ultrapassar o limite do mapeamento 2N,
+        // retrocedemos o ponteiro para a primeira metade (mantendo a paridade de endereço virtual).
+        // Isso garante que [buffer_start .. buffer_start + 64] seja sempre um acesso seguro.
+        if self.buffer_start + WAVENET_MAX_NUM_FRAMES > buffer_frames * 2 {
             self.buffer_start -= buffer_frames;
         }
     }

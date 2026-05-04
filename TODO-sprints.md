@@ -68,6 +68,50 @@
 
 ---
 
+## Épico E — Otimizações WaveNet (Throughput Microarquitetural)
+
+> Origem: Auditoria `pesquisador-inovador` (2026-05-03, 3ª rodada).
+> Objetivo: Extrair ganhos incrementais no pipeline de inferência WaveNet
+> através de fusão de operações de memória e otimização de cache hierarchy.
+> Foco exclusivo no modelo mais popular (WaveNet Standard CH=16, K=3).
+
+### TE1 · Inversão de Loop Conv1D: Channel-First Tiling
+
+- **Arquivo(s):** `src/models/wavenet.rs` (`Conv1d::process_single_frame_internal`)
+- **O quê:** Inverter os loops da Conv1D de `for k { for b { FMA } }` para `for b { for k { FMA } }`. Isso mantém os registradores de saída "quentes" nos YMM/ZMM ao processar todos os K taps de um bloco antes de mover para o próximo, reduzindo stores intermediários de `K × OUT/4` para `OUT/4`.
+- **Impacto estimado:** ~5-8% nos layers com dilatação baixa (1, 2, 4) onde os dados de entrada estão em L1. Impacto menor em dilatações altas (memory-bound).
+- **Cuidado:** Validar que a mudança de ordem dos taps não afeta a acumulação numérica (comutatividade da soma FP — pode haver micro-diferenças em ULP). Manter fallback escalar inalterado para comparação.
+- **Validação:** Regressão numérica (golden vectors WaveNet) + benchmark Criterion comparativo.
+- [ ] Refatorar loop interno em `process_single_frame_internal` (f32 path)
+- [ ] Refatorar loop interno em `process_single_frame_bf16_internal` (BF16 path)
+- [ ] Validar paridade numérica
+- [ ] Benchmark comparativo
+
+### TE2 · Prefetch Bidirecional para Dilatações Extremas (256/512)
+
+- **Arquivo(s):** `src/models/wavenet.rs` (`Conv1d::process_single_frame_internal`), `src/math/simd.rs`
+- **O quê:** Para layers com `dilation ≥ 128`, emitir 2 prefetches escalonados por tap: `T1` (L2) para tap T+2 e `T0` (L1) para tap T+1. Isso cria um pipeline de 2 estágios no cache subsystem que resolve o gap de latência DRAM→L1 (~180 ciclos) ao preparar os dados com 2 taps de antecedência.
+- **Impacto estimado:** ~8-12% nos layers de dilatação máxima (512). Efeito global: ~2-3%.
+- **Cuidado:** Prefetches são hints sem impacto na corretude. Validar em CPUs com prefetcher agressivo (Zen4) vs conservador.
+- [ ] Implementar `adaptive_prefetch_2stage_f32` em `simd.rs`
+- [ ] Integrar no loop da Conv1D para `k + 2 < K`
+- [ ] Benchmark comparativo em diferentes dilatações
+
+### TE3 · Fusão Tanh + Head Accumulate em Passagem Única
+
+- **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal`)
+- **O quê:** Fundir as FASES 2 e 3 do `process_block_internal` em uma única passagem de memória: `activation_tanh_block` seguido de `accumulate_head` lê os mesmos 1024 floats 2 vezes. Um kernel fundido `tanh_and_accumulate_block(conv, head)` aplica tanh, armazena de volta e acumula no head — tudo com dados nos registros YMM/ZMM, sem viagem extra ao L1.
+- **Impacto estimado:** ~5-7% no tempo total de `process_block_internal`. Elimina 1 passagem de leitura (4KB por bloco).
+- **Macro:** Criar variantes AVX2 (`tanh_and_accumulate_avx2`) e AVX-512 (`tanh_and_accumulate_avx512`), adicionando ao trait `SimdMath`.
+- **Validação:** Paridade numérica bit-a-bit (a fusão é determinística).
+- [ ] Implementar `tanh_and_accumulate_block_avx2` em `simd.rs`
+- [ ] Implementar variante AVX-512
+- [ ] Adicionar método ao trait `SimdMath`
+- [ ] Substituir FASES 2+3 em `process_block_internal`
+- [ ] Benchmark comparativo
+
+---
+
 ## Observações — Itens Diferidos
 
 > Itens identificados na auditoria `pesquisador-inovador` mas **não priorizados**
@@ -91,3 +135,8 @@
 - **TC1** · Benchmark VirtualRingBuffer vs copy_within — Quantificar ganho do mmap espelhado.
 - **TC3** · Stress Test de GC Channel Overflow — Validar leak path sob carga extrema.
 - **Razão:** Ganho marginal de validação. Podem ser retomadas após o Épico A.
+
+### Tarefas E não priorizadas *(diferidas)*
+
+- **TE4** · Winograd F(2,3) para Conv1D K=3 — Redução teórica de 33% em mults, mas aplicável apenas a layers com dilation=1 (2 de 10). Ganho global ~3-5%. Complexidade alta: exige processamento de 2 frames simultâneos, conflito com semântica causal dilatada. **Custo/benefício desfavorável.**
+- **TE6** · Eliminação do Residual Copy na Projeção 1×1 — Fundir `copy_from_slice` do layer_buffer no kernel `fused_add_gemm_batch` com parâmetro `residual`. Ganho ~3-5% na FASE 3. Exige novo kernel SIMD ou variante. **Candidata para Sprint F.**
