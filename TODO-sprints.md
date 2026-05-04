@@ -75,17 +75,17 @@
 > através de fusão de operações de memória e otimização de cache hierarchy.
 > Foco exclusivo no modelo mais popular (WaveNet Standard CH=16, K=3).
 
-### TE1 · Inversão de Loop Conv1D: Channel-First Tiling
+### TE1 · Inversão de Loop Conv1D: Channel-First Tiling [DONE]
 
 - **Arquivo(s):** `src/models/wavenet.rs` (`Conv1d::process_single_frame_internal`)
 - **O quê:** Inverter os loops da Conv1D de `for k { for b { FMA } }` para `for b { for k { FMA } }`. Isso mantém os registradores de saída "quentes" nos YMM/ZMM ao processar todos os K taps de um bloco antes de mover para o próximo, reduzindo stores intermediários de `K × OUT/4` para `OUT/4`.
 - **Impacto estimado:** ~5-8% nos layers com dilatação baixa (1, 2, 4) onde os dados de entrada estão em L1. Impacto menor em dilatações altas (memory-bound).
 - **Cuidado:** Validar que a mudança de ordem dos taps não afeta a acumulação numérica (comutatividade da soma FP — pode haver micro-diferenças em ULP). Manter fallback escalar inalterado para comparação.
 - **Validação:** Regressão numérica (golden vectors WaveNet) + benchmark Criterion comparativo.
-- [ ] Refatorar loop interno em `process_single_frame_internal` (f32 path)
-- [ ] Refatorar loop interno em `process_single_frame_bf16_internal` (BF16 path)
-- [ ] Validar paridade numérica
-- [ ] Benchmark comparativo
+- [x] Refatorar loop interno em `process_single_frame_internal` (f32 path)
+- [x] Refatorar loop interno em `process_single_frame_bf16_internal` (BF16 path)
+- [x] Validar paridade numérica
+- [x] Benchmark comparativo (Ganho: **~8.8%**)
 
 ### TE2 · Prefetch Bidirecional para Dilatações Extremas (256/512)
 

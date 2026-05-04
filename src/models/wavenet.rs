@@ -106,51 +106,81 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
 
         // [PASSO 2: Iteração do Kernel (Receptive Field)]
-        for k in 0..K {
-            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
-            let current_frame_idx = (frame_idx as isize) + offset;
-            let in_slice_start = (current_frame_idx as usize) * IN;
+        // [TE1] Inversão de Loop: Channel-First Tiling.
+        // Processamos todos os taps (K) para um bloco de canais de saída antes de mover para o próximo.
+        // Isso mantém os acumuladores nos registros SIMD, reduzindo tráfego de cache L1.
 
-            // Prefetch adaptativo com lookahead para cobrir latência de memória.
+        // Pre-carregamento dos taps (Input data) para o bloco atual.
+        // Como K e IN são pequenos (ex: 3 e 16), o custo de cópia para a stack é compensado
+        // pela eliminação de re-cálculos de endereços e maior localidade no loop b-first.
+        let mut in_taps = [[0.0f32; IN]; K];
+        for (k, in_tap) in in_taps.iter_mut().enumerate() {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
+            unsafe {
+                in_tap.copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN),
+                );
+            }
+
+            // Prefetch adaptativo (original f32)
             let lookahead_offset = 16;
             unsafe {
                 let prefetch_ptr = layer_buffer.as_ptr().add(in_slice_start + lookahead_offset);
                 crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
             }
+        }
 
-            let in_slice =
-                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+        let num_blocks = OUT / 4;
+        let mut out_c = 0;
 
-            let mut out_c = 0;
-            let num_blocks = OUT / 4;
+        for b in 0..num_blocks {
+            let mut r0;
+            let mut r1;
+            let mut r2;
+            let mut r3;
 
-            for b in 0..num_blocks {
-                let w_start = b * K * IN * 4 + k * IN * 4;
+            unsafe {
+                r0 = *out_frame.get_unchecked(out_c);
+                r1 = *out_frame.get_unchecked(out_c + 1);
+                r2 = *out_frame.get_unchecked(out_c + 2);
+                r3 = *out_frame.get_unchecked(out_c + 3);
+            }
+
+            for (k, in_slice) in in_taps.iter().enumerate() {
+                let w_start = (b * K + k) * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
                     let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
-
-                unsafe {
-                    *out_frame.get_unchecked_mut(out_c) += r0;
-                    *out_frame.get_unchecked_mut(out_c + 1) += r1;
-                    *out_frame.get_unchecked_mut(out_c + 2) += r2;
-                    *out_frame.get_unchecked_mut(out_c + 3) += r3;
-                }
-                out_c += 4;
+                let [t0, t1, t2, t3] = unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
+                r0 += t0;
+                r1 += t1;
+                r2 += t2;
+                r3 += t3;
             }
 
-            while out_c < OUT {
+            unsafe {
+                *out_frame.get_unchecked_mut(out_c) = r0;
+                *out_frame.get_unchecked_mut(out_c + 1) = r1;
+                *out_frame.get_unchecked_mut(out_c + 2) = r2;
+                *out_frame.get_unchecked_mut(out_c + 3) = r3;
+            }
+            out_c += 4;
+        }
+
+        while out_c < OUT {
+            let mut r = unsafe { *out_frame.get_unchecked(out_c) };
+            for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                let r = unsafe { M::dot_product(in_slice, w) };
-                unsafe {
-                    *out_frame.get_unchecked_mut(out_c) += r;
-                }
-                out_c += 1;
+                r += unsafe { M::dot_product(in_slice, w) };
             }
+            unsafe {
+                *out_frame.get_unchecked_mut(out_c) = r;
+            }
+            out_c += 1;
         }
     }
 
@@ -219,53 +249,81 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_frame.fill(0.0);
         }
 
-        for k in 0..K {
-            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
-            let current_frame_idx = (frame_idx as isize) + offset;
-            let in_slice_start = (current_frame_idx as usize) * IN;
+        // [PASSO 2: Iteração do Kernel (Receptive Field)]
+        // [TE1] Inversão de Loop: Channel-First Tiling.
 
-            // Prefetch adaptativo para o próximo "tap" do kernel temporal (dilation-aware).
+        // Pre-carregamento dos taps (Input data) para o bloco atual em BF16.
+        let mut in_taps = [[0u16; IN]; K];
+        for (k, in_tap) in in_taps.iter_mut().enumerate() {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
+            unsafe {
+                in_tap.copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN),
+                );
+            }
+
+            // Prefetch adaptativo (original BF16)
             if k + 1 < K {
                 unsafe {
                     let prefetch_ptr = layer_buffer.as_ptr().add(in_slice_start + self.dilation);
                     crate::math::simd::adaptive_prefetch_f32(prefetch_ptr.cast(), self.dilation);
                 }
             }
+        }
 
-            let in_slice =
-                unsafe { layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN) };
+        let num_blocks = OUT / 4;
+        let mut out_c = 0;
 
-            let mut out_c = 0;
-            let num_blocks = OUT / 4;
+        for b in 0..num_blocks {
+            let mut r0;
+            let mut r1;
+            let mut r2;
+            let mut r3;
 
-            for b in 0..num_blocks {
-                let w_start = b * K * IN * 4 + k * IN * 4;
+            unsafe {
+                r0 = *out_frame.get_unchecked(out_c);
+                r1 = *out_frame.get_unchecked(out_c + 1);
+                r2 = *out_frame.get_unchecked(out_c + 2);
+                r3 = *out_frame.get_unchecked(out_c + 3);
+            }
+
+            for (k, in_slice) in in_taps.iter().enumerate() {
+                let w_start = (b * K + k) * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
                     let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [r0, r1, r2, r3] =
+                let [t0, t1, t2, t3] =
                     unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
-
-                unsafe {
-                    *out_frame.get_unchecked_mut(out_c) += r0;
-                    *out_frame.get_unchecked_mut(out_c + 1) += r1;
-                    *out_frame.get_unchecked_mut(out_c + 2) += r2;
-                    *out_frame.get_unchecked_mut(out_c + 3) += r3;
-                }
-                out_c += 4;
+                r0 += t0;
+                r1 += t1;
+                r2 += t2;
+                r3 += t3;
             }
 
-            while out_c < OUT {
+            unsafe {
+                *out_frame.get_unchecked_mut(out_c) = r0;
+                *out_frame.get_unchecked_mut(out_c + 1) = r1;
+                *out_frame.get_unchecked_mut(out_c + 2) = r2;
+                *out_frame.get_unchecked_mut(out_c + 3) = r3;
+            }
+            out_c += 4;
+        }
+
+        while out_c < OUT {
+            let mut r = unsafe { *out_frame.get_unchecked(out_c) };
+            for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                let r = unsafe { M::dot_product_bf16(in_slice, w) };
-                unsafe {
-                    *out_frame.get_unchecked_mut(out_c) += r;
-                }
-                out_c += 1;
+                let r_tap = unsafe { M::dot_product_bf16(in_slice, w) };
+                r += r_tap;
             }
+            unsafe {
+                *out_frame.get_unchecked_mut(out_c) = r;
+            }
+            out_c += 1;
         }
     }
 
