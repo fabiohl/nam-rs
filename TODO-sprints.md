@@ -143,25 +143,46 @@
 
 > Atualizar docs para v1.3 (completo) + preparações v1.4.
 
-### TJ1 · Atualização de `docs/architecture.md`
+### TJ1 · Atualização de `docs/architecture.md` [DONE]
 
 - **Arquivo(s):** `docs/architecture.md`
 - **O quê:** Kernels SIMD dos Épicos E/F, seção "Preparação A2", seção "Roadmap CLAP", tabela de módulos atualizada.
-- [ ] Atualizar e acionar skill `documentador`
+- [x] Atualizar e acionar skill `documentador`
 
-### TJ2 · Enxugamento de `.agents/rules/rust.md`
+### TJ2 · Enxugamento de `.agents/rules/rust.md` [DONE]
 
 - **Arquivo(s):** `.agents/rules/rust.md`
 - **O quê:** Adicionar menção a feature flags, compilação sem PW, módulos A2 stub. Manter < 40 linhas.
-- [ ] Revisar e condensar
+- [x] Revisar e condensar
 
-### TJ3 · Atualização do `README.md`
+### TJ3 · Atualização do `README.md` [DONE]
 
 - **Arquivo(s):** `README.md`
 - **O quê:** Seção "Roadmap" (A2 + CLAP como futuro). Versão 1.4.0-staging.
-- [ ] Atualizar README
+- [x] Atualizar README
 
----
+## Notas Pós-Auditoria — Épico J
+
+> **Status**: Épico J concluído. TJ1 + TJ2 + TJ3 implementados e validados.
+
+### Correções Identificadas na Auditoria (além do escopo original)
+
+- **`docs/dependencies.md` desatualizado**: A dependência `pipewire` estava listada como incondicional.
+  Corrigida para refletir que é **condicional à feature `standalone`**. Builds com
+  `--no-default-features` ou `--features clap-plugin` não a incluem.
+
+- **Link `docs/clap_integration.md` ausente no README**: O documento criado no Épico I
+  (`docs/clap_integration.md`) não estava linkado na seção "📚 Documentação". Corrigido.
+
+### Legado do Épico J para Épicos Futuros
+
+- **Para Sprint CLAP Real**: O `README.md` já tem a seção "Roadmap" posicionando CLAP como
+  próximo passo. O `docs/clap_integration.md` tem os detalhes técnicos. Quando a sprint
+  iniciar, apenas atualizar o status de "planejado" para "em desenvolvimento".
+
+- **Para Sprint A2 Real**: A seção §7 de `docs/architecture.md` já descreve o staging.
+  Ao implementar o kernel A2, atualizar §7 de "Staging" para "Implementado" e adicionar
+  detalhes de performance.
 
 ## Épico K — Cobertura de Testes v1.4
 

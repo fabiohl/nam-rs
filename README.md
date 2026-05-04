@@ -1,12 +1,12 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-# 🎸 NAM-rs 1.3.2
+# 🎸 NAM-rs 1.4.0-staging
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
 O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de estúdio. Ele tenta manter paridade com a implementação padrão do NAM, mas com muitas melhorias e otimizações.
 
-Nesta versão 1.x ele foca em rodar em modo standalone. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
+Nesta versão 1.4 ele foca em rodar em modo standalone, mas já prepara o terreno para plugins. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
 
 O motor de inferência é muito baseado na biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático e com muitas otimizações feitas sob medida. Em muitos locais do _Hot Path_ praticamente alcançando a meta teórica de throughput da microarquitetura.
 
@@ -119,11 +119,12 @@ Se necessário, use `qpwgraph` ou `pw-link` para fazer os devidos roteamentos.
 * [docs/architecture.md](docs/architecture.md) — Topologia, módulos e decisões de design
 * [docs/dependencies.md](docs/dependencies.md) — Dependências sistêmicas e crates Rust
 * [docs/benchmarks.md](docs/benchmarks.md) — Como interpretar as métricas de performance do Criterion
+* [docs/clap_integration.md](docs/clap_integration.md) — Estratégia e roadmap de integração CLAP
 
 ## 🧠 Modelos Suportados
 
 O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquivos de Impulse Response (.wav) não são suportados (ao menos não no momento).
-No momento é suportado apenas a chamada "Arquitetura A1" do NAM. O suporte à "Arquitetura A2" já está no readmap.
+No momento é suportado nativamente a "Arquitetura A1" do NAM. O suporte à "Arquitetura A2" está em fase de **staging** (scaffolding e loader prontos na v1.4).
 Oferece dois níveis de operação de parsing:
 
 * **Modo Estático (Altíssima Performance):** Construções de _Const Generics_ dimensionadas em tempo de compilação.
@@ -162,7 +163,17 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.0 (28/04/2026): Release inicial. Suporte completo à "Arquitetura A1" do Neural Amp Modeler.
 * 1.1 (30/04/2026): Otimizações de performance sortidas.
 * 1.2 (02/05/2026): Algoritimo de resampling próprio.
-* 1.3 (04/05/2026): Um caminhão de otimizações
+* 1.3 (04/05/2026): Otimizações intensivas de SIMD e refatoração de telemetria.
+* 1.4 (04/05/2026): Staging para A2 (scaffolding) e abstração para CLAP (v1.4.0-staging).
+
+## 🛣️ Próximos Passos (Roadmap)
+
+O NAM-rs está em transição para a v1.4+, focada em expandir as fronteiras de compatibilidade e portabilidade:
+
+* **Arquitetura A2:** Implementação do kernel de inferência para modelos A2 (v0.6+), suportando FiLM, Gating dinâmico e 11 novas funções de ativação. Atualmente em fase de _staging_ (scaffolding e loader compatível prontos).
+* **Integração CLAP:** Transformação do motor DSP em um plugin nativo CLAP (Clever Audio Plug-in), permitindo o uso do NAM-rs dentro de qualquer DAW (Bitwig, REAPER, etc.) sem dependência de PipeWire.
+* **Interface Gráfica (GUI):** Planejamento de uma interface visual minimalista para carregamento de modelos e ajuste de parâmetros em tempo real.
+* **Otimizações A2 SIMD:** Portar as novas ativações e camadas FiLM para kernels AVX2/AVX-512 altamente otimizados.
 
 ## 🤝 Contribuindo
 
