@@ -83,6 +83,11 @@ impl LatencyHistogram {
         0
     }
 
+    /// Retorna o número total de observações registradas desde o último reset.
+    pub fn total_count(&self) -> u32 {
+        self.bins.iter().map(|b| b.load(Ordering::Relaxed)).sum()
+    }
+
     /// Zera todos os bins do histograma.
     pub fn reset(&self) {
         for bin in &self.bins {

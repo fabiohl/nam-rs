@@ -100,6 +100,17 @@ target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-
 target/release/nam-rs --model HeavyModel.nam --buffer-size 512
 ```
 
+### Telemetria e Monitoramento
+
+A cada 10 segundos, o NAM-rs exibe um relatório de performance no terminal para garantir a saúde do processamento:
+
+`📊 Telemetria DSP (10s): 262µs (Mediana) | 524µs (P99) | 1048µs (Máx) [938 blocos]`
+
+* **Mediana**: Indica o custo típico de processamento por bloco. Valores próximos de 0µs indicam que o `Silence Bypass` está poupando CPU.
+* **P99 (Estabilidade)**: O indicador mais crítico. Mostra que 99% dos blocos foram processados abaixo deste tempo. Se o P99 se aproximar do tempo do seu buffer (ex: 5333µs para buffer 256 - o padrão do nam-rs), o risco de estalos aumenta.
+* **Máx**: O pior caso registrado no intervalo, útil para detectar picos causados por interferências do sistema operacional.
+* **Blocos**: O volume total de dados processados que compõem a estatística do intervalo.
+
 Após a inicialização, o nodo aparece na matriz PipeWire. O NAM-rs deve estar disponível como um dispositivo de saída no seu player de áudio.
 Se necessário, use `qpwgraph` ou `pw-link` para fazer os devidos roteamentos.
 

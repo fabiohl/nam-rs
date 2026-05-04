@@ -12,7 +12,7 @@ use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::spsc::RtStatusFlags;
 use minstant::Anchor;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Frequência calibrada do TSC em GHz (ciclos por nanosegundo).
@@ -70,7 +70,7 @@ pub fn calibrate_tsc() {
             TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::SeqCst);
 
             log::info!(
-                "{} TSC calibrado: {:.3} GHz",
+                "{} Relógio de Alta Precisão (TSC) calibrado em {:.3} GHz",
                 "⏱️".bright_blue(),
                 freq_x1000 as f64 / 1000.0
             );
@@ -187,22 +187,28 @@ pub fn poll_rt_status(
         let active_rate = rt_status.active_rate.load(Ordering::Relaxed);
         let n_samples = rt_status.last_n_samples.load(Ordering::Relaxed);
 
-        // [T26] Exibe percentis acumulados nos últimos 100ms e reseta o histograma.
-        let p50 = rt_status.latency_hist.get_percentile(0.50) / 1000;
-        let p95 = rt_status.latency_hist.get_percentile(0.95) / 1000;
-        let p99 = rt_status.latency_hist.get_percentile(0.99) / 1000;
-        let max = rt_status.latency_hist.get_max() / 1000;
+        // [T26] Exibe percentis acumulados e reseta o histograma a cada ~10 segundos (100 ciclos de poll).
+        // Isso reduz drasticamente a verbosidade do terminal mantendo a observabilidade.
+        static TELEMETRY_THROTTLE: AtomicU32 = AtomicU32::new(0);
+        if TELEMETRY_THROTTLE
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(100)
+        {
+            let p50 = rt_status.latency_hist.get_percentile(0.50) / 1000;
+            let p99 = rt_status.latency_hist.get_percentile(0.99) / 1000;
+            let max = rt_status.latency_hist.get_max() / 1000;
+            let total_calls = rt_status.latency_hist.total_count();
 
-        log::info!(
-            "{} DSP: P50={}µs P95={}µs P99={}µs Max={}µs ({} samples)",
-            "📊".bright_blue(),
-            p50,
-            p95,
-            p99,
-            max,
-            n_samples
-        );
-        rt_status.latency_hist.reset();
+            log::info!(
+                "{} Telemetria DSP (10s): {}µs (Mediana) | {}µs (P99) | {}µs (Máx) [{} blocos]",
+                "📊".bright_blue(),
+                p50,
+                p99,
+                max,
+                total_calls
+            );
+            rt_status.latency_hist.reset();
+        }
 
         if active_rate > 0 && n_samples > 0 {
             let budget_us = (n_samples as f64 / active_rate as f64) * 1_000_000.0;
@@ -228,12 +234,12 @@ pub fn poll_rt_status(
     if current_silent != was_silent {
         if current_silent {
             log::info!(
-                "{} Silence bypass ativado (entrada < −80 dBFS). DSP em idle.",
+                "{} Modo Silencioso: Entrada abaixo de −80 dBFS (DSP em espera).",
                 "🔇".blue()
             );
         } else {
             log::info!(
-                "{} Sinal detectado. Processamento DSP retomado.",
+                "{} Sinal de Áudio Detectado: Processamento DSP retomado.",
                 "🔊".green()
             );
         }
@@ -300,7 +306,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
         );
     } else {
         log::info!(
-            "🔒 Memória do processo travada na RAM física (mlockall). Page faults prevenidos."
+            "🔒 Proteção de Memória: Travada na RAM física para evitar engasgos (mlockall)."
         );
     }
 
@@ -363,15 +369,6 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                 }
             }
 
-            let policy_str = match base_policy {
-                libc::SCHED_FIFO => "SCHED_FIFO",
-                libc::SCHED_RR => "SCHED_RR",
-                libc::SCHED_OTHER => "SCHED_OTHER",
-                libc::SCHED_BATCH => "SCHED_BATCH",
-                libc::SCHED_IDLE => "SCHED_IDLE",
-                _ => "UNKNOWN",
-            };
-
             let confirmed_fifo = base_policy == libc::SCHED_FIFO;
 
             // Publica resultado real via flags atômicas — zero I/O no caminho quente
@@ -383,23 +380,18 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                 .store(actual_param.sched_priority, Ordering::Relaxed);
 
             // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
-            if has_reset_on_fork {
-                log::info!(
-                    "{} Data/RT Thread PW: CPU Core = {}, Policy = {} | SCHED_RESET_ON_FORK, Priority = {}",
-                    "🔍".blue(),
-                    actual_cpu.to_string().cyan(),
-                    policy_str.cyan(),
-                    actual_param.sched_priority.to_string().green()
-                );
+            let reset_info = if has_reset_on_fork {
+                " | Reset-on-Fork"
             } else {
-                log::info!(
-                    "{} Data/RT Thread PW: CPU Core = {}, Policy = {}, Priority = {}",
-                    "🔍".blue(),
-                    actual_cpu.to_string().cyan(),
-                    policy_str.cyan(),
-                    actual_param.sched_priority.to_string().green()
-                );
-            }
+                ""
+            };
+            log::info!(
+                "{} Otimização de Thread: Núcleo {} dedicado com prioridade Real-Time (FIFO{}, Prio={})",
+                "🔍".blue(),
+                actual_cpu.to_string().cyan(),
+                reset_info,
+                actual_param.sched_priority.to_string().green()
+            );
         } else {
             // Publica sentinela de falha de verificação
             rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
