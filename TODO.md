@@ -4,6 +4,7 @@
   * Arquitetura "A2" embrionária.
   * Suporte a DAWs via CLAP: VST3 não é escopo; Separar modo standalone pipewire e modo plugin.
   * Enxugamento e revisão de `.agents/` e de `docs/`
+  * Assegurar cobertura de testes adequados aos objetivos propostos.
   * Rodada de `/pesquisador-inovador`
   * Leitura crítica de toda a base de código.
 

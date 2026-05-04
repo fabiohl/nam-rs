@@ -40,8 +40,16 @@ scratch.rs
 *.proptest-regressions
 
 # Espelho dos projetos de referência no GitHub
-/github.com
+/github.com/
+
+# Fuzzing (cargo-fuzz)
+# Mantemos apenas os targets e a configuração. Ignoramos o corpus evoluído e artefatos de crash.
+fuzz/target/
+fuzz/artifacts/
+fuzz/corpus/
+fuzz/Cargo.lock
 
 # Artefatos do cargo-mutants
-mutants.out/
+.mutants/
+.out/
 mutants.out.old/

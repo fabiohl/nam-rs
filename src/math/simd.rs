@@ -3164,6 +3164,23 @@ pub unsafe fn gemv_4gate_avx512(
     let out_len = out_frame.len() / 4;
     let in_len = in_frame.len();
 
+    // Especialização para H=8: Interleava 2 gates em um registrador de 512 bits.
+    // Isso evita o fallback escalar e amortece a latência de instrução.
+    if out_len == 8 {
+        unsafe {
+            gemv_4gate_h8_avx512(in_frame, w0, w1, w2, w3, bias, out_frame, do_bias);
+            return;
+        }
+    }
+
+    // Especialização para H=16: Ocupa exatamente um registrador ZMM por gate.
+    if out_len == 16 {
+        unsafe {
+            gemv_4gate_h16_avx512(in_frame, w0, w1, w2, w3, bias, out_frame, do_bias);
+            return;
+        }
+    }
+
     let mut out_c = 0;
     while out_c + 16 <= out_len {
         let mut acc0 = if do_bias {
@@ -3253,6 +3270,139 @@ pub unsafe fn gemv_4gate_avx512(
             *out_frame.get_unchecked_mut(3 * out_len + out_c) = sum3;
         }
         out_c += 1;
+    }
+}
+
+/// Kernel especializado para LSTM 1x8 via AVX-512.
+/// Interleava 2 gates em cada registrador de 512 bits (2x256-bit ops).
+///
+/// # Safety
+/// Requer AVX-512F e AVX-512VL. `out_frame.len()` deve ser 32.
+/// # Safety
+/// Requer AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn gemv_4gate_h8_avx512(
+    in_frame: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+
+    // Bias layout: [G0_8, G1_8, G2_8, G3_8]
+    let mut acc01 = if do_bias {
+        unsafe { _mm512_loadu_ps(bias.as_ptr()) }
+    } else {
+        _mm512_setzero_ps()
+    };
+    let mut acc23 = if do_bias {
+        unsafe { _mm512_loadu_ps(bias.as_ptr().add(16)) }
+    } else {
+        _mm512_setzero_ps()
+    };
+
+    for in_c in 0..in_frame.len() {
+        let s = unsafe { *in_frame.get_unchecked(in_c) };
+        let vs = _mm512_set1_ps(s);
+
+        // Carrega 8 pesos de f16 para cada um de 2 gates (128 bits cada)
+        let wp0 = unsafe { w0.as_ptr().add(in_c * 8) };
+        let wp1 = unsafe { w1.as_ptr().add(in_c * 8) };
+        let vw0 = unsafe { _mm_loadu_si128(wp0 as *const __m128i) };
+        let vw1 = unsafe { _mm_loadu_si128(wp1 as *const __m128i) };
+
+        // Combina dois XMM (128-bit) em um YMM (256-bit) e converte para ZMM (512-bit)
+        let vweights01 = _mm512_cvtph_ps(_mm256_set_m128i(vw1, vw0));
+        acc01 = _mm512_fmadd_ps(vs, vweights01, acc01);
+
+        let wp2 = unsafe { w2.as_ptr().add(in_c * 8) };
+        let wp3 = unsafe { w3.as_ptr().add(in_c * 8) };
+        let vw2 = unsafe { _mm_loadu_si128(wp2 as *const __m128i) };
+        let vw3 = unsafe { _mm_loadu_si128(wp3 as *const __m128i) };
+        let vweights23 = _mm512_cvtph_ps(_mm256_set_m128i(vw3, vw2));
+        acc23 = _mm512_fmadd_ps(vs, vweights23, acc23);
+    }
+
+    unsafe {
+        _mm512_storeu_ps(out_frame.as_mut_ptr(), acc01);
+        _mm512_storeu_ps(out_frame.as_mut_ptr().add(16), acc23);
+    }
+}
+
+/// Kernel especializado para LSTM 1x16 via AVX-512.
+/// Desenrola os cálculos de gate para maximizar ILP (Instruction Level Parallelism).
+///
+/// # Safety
+/// Requer AVX-512F e AVX-512VL. `out_frame.len()` deve ser 64.
+/// # Safety
+/// Requer AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn gemv_4gate_h16_avx512(
+    in_frame: &[f32],
+    w0: &[u16],
+    w1: &[u16],
+    w2: &[u16],
+    w3: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    use core::arch::x86_64::*;
+
+    let mut acc0 = if do_bias {
+        unsafe { _mm512_loadu_ps(bias.as_ptr()) }
+    } else {
+        _mm512_setzero_ps()
+    };
+    let mut acc1 = if do_bias {
+        unsafe { _mm512_loadu_ps(bias.as_ptr().add(16)) }
+    } else {
+        _mm512_setzero_ps()
+    };
+    let mut acc2 = if do_bias {
+        unsafe { _mm512_loadu_ps(bias.as_ptr().add(32)) }
+    } else {
+        _mm512_setzero_ps()
+    };
+    let mut acc3 = if do_bias {
+        unsafe { _mm512_loadu_ps(bias.as_ptr().add(48)) }
+    } else {
+        _mm512_setzero_ps()
+    };
+
+    for in_c in 0..in_frame.len() {
+        let vs = unsafe { _mm512_set1_ps(*in_frame.get_unchecked(in_c)) };
+
+        unsafe {
+            let vw0 = _mm256_loadu_si256(w0.as_ptr().add(in_c * 16) as *const __m256i);
+            let vweights0 = _mm512_cvtph_ps(vw0);
+            acc0 = _mm512_fmadd_ps(vs, vweights0, acc0);
+
+            let vw1 = _mm256_loadu_si256(w1.as_ptr().add(in_c * 16) as *const __m256i);
+            let vweights1 = _mm512_cvtph_ps(vw1);
+            acc1 = _mm512_fmadd_ps(vs, vweights1, acc1);
+
+            let vw2 = _mm256_loadu_si256(w2.as_ptr().add(in_c * 16) as *const __m256i);
+            let vweights2 = _mm512_cvtph_ps(vw2);
+            acc2 = _mm512_fmadd_ps(vs, vweights2, acc2);
+
+            let vw3 = _mm256_loadu_si256(w3.as_ptr().add(in_c * 16) as *const __m256i);
+            let vweights3 = _mm512_cvtph_ps(vw3);
+            acc3 = _mm512_fmadd_ps(vs, vweights3, acc3);
+        }
+    }
+
+    unsafe {
+        _mm512_storeu_ps(out_frame.as_mut_ptr(), acc0);
+        _mm512_storeu_ps(out_frame.as_mut_ptr().add(16), acc1);
+        _mm512_storeu_ps(out_frame.as_mut_ptr().add(32), acc2);
+        _mm512_storeu_ps(out_frame.as_mut_ptr().add(48), acc3);
     }
 }
 

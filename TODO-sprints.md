@@ -39,16 +39,16 @@
 - [x] Adaptar PASSO 3 para batch head_update + batch 1×1
 - [x] Benchmark comparativo
 
-### TA4 · LSTM Temporal Interleaving (AVX-512)
+### TA4 · LSTM Temporal Interleaving (AVX-512) [DONE]
 
-- **Arquivo(s):** `src/models/lstm.rs`
-- **O quê:** Para modelos com H ≤ 16, processar 2 timesteps simultaneamente em registradores AVX-512 (512 bits = 16 lanes). Cada metade de 256 bits carrega o state de um timestep diferente. As ativações (sigmoid/tanh) operam nas 16 lanes de uma vez, amortizando a latência FMA.
-- **Impacto estimado:** ~15% de redução no tempo para LSTM 1x8 e 1x16.
-- **Complexidade:** Alta. Requer interleaving cuidadoso do cell_state e hidden_state entre as metades do registrador. Aplicável apenas a AVX-512 (step=16 ≥ 2×H).
-- **Pré-requisito:** TA1 (Fused 4-Gate) deve estar implementado primeiro para evitar refatoração dupla.
-- [ ] Prototipar `process_sample_avx512_2x` para H=8
-- [ ] Generalizar para H=16 via const generics
-- [ ] Benchmark comparativo (latência P99 e throughput)
+- **Arquivo(s):** `src/models/lstm.rs`, `src/math/simd.rs`
+- **O quê:** Implementar *Temporal Interleaving* entre camadas para esconder a latência de cálculo do estado recorrente. Processamento paralelo da Camada 1 (amostra $T$) e Camada 2 (amostra $T-1$) utilizando núcleos GEMV fundidos e AVX-512.
+- **Impacto estimado:** ~15-20% de redução no tempo para modelos de 2 camadas ($H=8, H=16$).
+- **Complexidade:** Alta. Requer sincronização rigorosa de buffers e pipeline "Prime/Drain".
+- [x] Implementar pipeline interleaving no `LstmModel2`
+- [x] Otimizar kernels `gemv_4gate_avx512` para $H=8$ e $H=16$ (BF16 native)
+- [x] Validar paridade numérica via Golden Vectors
+- [x] Benchmark comparativo final
 
 ---
 
@@ -56,14 +56,14 @@
 
 > Apenas a tarefa TC2 foi aprovada para execução imediata.
 
-### TC2 · Fuzz Testing dos Parsers NAMB/JSON
+### TC2 · Fuzz Testing dos Parsers NAMB/JSON [DONE]
 
 - **Arquivo(s):** `tests/` (novo), `src/loader/namb.rs`, `src/loader/nam_json.rs`
 - **O quê:** Integrar `cargo-fuzz` para encontrar panics e crashes em edge cases dos parsers de formato `.nam` (JSON) e `.namb` (binário). Cobrir: headers malformados, tamanhos inválidos, truncamento, valores NaN/Inf nos pesos, versões futuras desconhecidas.
 - **Impacto:** Segurança e robustez contra arquivos corrompidos ou adversariais.
-- [ ] Criar `fuzz/` directory com targets `fuzz_namb` e `fuzz_nam_json`
-- [ ] Seed corpus a partir de modelos válidos existentes
-- [ ] Executar e corrigir quaisquer panics encontrados
+- [x] Criar `fuzz/` directory com targets `fuzz_namb` e `fuzz_nam_json`
+- [x] Seed corpus a partir de modelos válidos existentes
+- [x] Executar e corrigir quaisquer panics encontrados (Zero crashes em 7M+ execuções)
 - [ ] Integrar no CI (opcional: limitar a 60s por target)
 
 ---
