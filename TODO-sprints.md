@@ -93,22 +93,22 @@
 - **O quê:** Para layers com `dilation ≥ 128`, emitir 2 prefetches escalonados por tap: `T1` (L2) para tap T+2 e `T0` (L1) para tap T+1. Isso cria um pipeline de 2 estágios no cache subsystem que resolve o gap de latência DRAM→L1 (~180 ciclos) ao preparar os dados com 2 taps de antecedência.
 - **Impacto estimado:** ~8-12% nos layers de dilatação máxima (512). Efeito global: ~2-3%.
 - **Cuidado:** Prefetches são hints sem impacto na corretude. Validar em CPUs com prefetcher agressivo (Zen4) vs conservador.
-- [ ] Implementar `adaptive_prefetch_2stage_f32` em `simd.rs`
-- [ ] Integrar no loop da Conv1D para `k + 2 < K`
-- [ ] Benchmark comparativo em diferentes dilatações
+- [x] Implementar `adaptive_prefetch_2stage_f32` em `simd.rs`
+- [x] Integrar no loop da Conv1D para `k + 2 < K`
+- [x] Benchmark comparativo em diferentes dilatações
 
-### TE3 · Fusão Tanh + Head Accumulate em Passagem Única
+### TE3 · Fusão Tanh + Head Accumulate em Passagem Única [DONE]
 
 - **Arquivo(s):** `src/math/simd.rs` (novo kernel), `src/models/wavenet.rs` (`WaveNetLayer::process_block_internal`)
 - **O quê:** Fundir as FASES 2 e 3 do `process_block_internal` em uma única passagem de memória: `activation_tanh_block` seguido de `accumulate_head` lê os mesmos 1024 floats 2 vezes. Um kernel fundido `tanh_and_accumulate_block(conv, head)` aplica tanh, armazena de volta e acumula no head — tudo com dados nos registros YMM/ZMM, sem viagem extra ao L1.
 - **Impacto estimado:** ~5-7% no tempo total de `process_block_internal`. Elimina 1 passagem de leitura (4KB por bloco).
 - **Macro:** Criar variantes AVX2 (`tanh_and_accumulate_avx2`) e AVX-512 (`tanh_and_accumulate_avx512`), adicionando ao trait `SimdMath`.
 - **Validação:** Paridade numérica bit-a-bit (a fusão é determinística).
-- [ ] Implementar `tanh_and_accumulate_block_avx2` em `simd.rs`
-- [ ] Implementar variante AVX-512
-- [ ] Adicionar método ao trait `SimdMath`
-- [ ] Substituir FASES 2+3 em `process_block_internal`
-- [ ] Benchmark comparativo
+- [x] Implementar `tanh_and_accumulate_block_avx2` em `simd.rs`
+- [x] Implementar variante AVX-512
+- [x] Adicionar método ao trait `SimdMath`
+- [x] Substituir FASES 2+3 em `process_block_internal`
+- [x] Benchmark comparativo
 
 ---
 

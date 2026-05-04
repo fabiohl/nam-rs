@@ -915,6 +915,8 @@ pub struct SimdMathConfig {
     pub sigmoid_slice: unsafe fn(&mut [f32]),
     /// Loop ativado via fptr para aplicar tanh em bloco pequeno com padding.
     pub activation_tanh_block: unsafe fn(&mut [f32]),
+    /// Loop fundido para aplicar tanh e acumular no head em passagem única.
+    pub tanh_and_accumulate_block: unsafe fn(&mut [f32], &mut [f32]),
     /// Conjunto de instruções SIMD detectado.
     /// Define a trait matemática exata no macro `dispatch_simd!`.
     pub instruction_set: SimdInstructionSet,
@@ -971,6 +973,8 @@ impl SimdMathConfig {
                 tanh_slice: <Avx512VnniBf16Math as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512VnniBf16Math as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512VnniBf16Math as SimdMath>::activation_tanh_block,
+                tanh_and_accumulate_block:
+                    <Avx512VnniBf16Math as SimdMath>::tanh_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx512VnniBf16,
                 is_avx512: true,
             };
@@ -985,6 +989,7 @@ impl SimdMathConfig {
                 tanh_slice: <Avx512VnniMath as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512VnniMath as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512VnniMath as SimdMath>::activation_tanh_block,
+                tanh_and_accumulate_block: <Avx512VnniMath as SimdMath>::tanh_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx512Vnni,
                 is_avx512: true,
             };
@@ -998,6 +1003,7 @@ impl SimdMathConfig {
                 tanh_slice: <Avx512Math as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx512Math as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx512Math as SimdMath>::activation_tanh_block,
+                tanh_and_accumulate_block: <Avx512Math as SimdMath>::tanh_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx512,
                 is_avx512: true,
             };
@@ -1011,6 +1017,7 @@ impl SimdMathConfig {
                 tanh_slice: <Avx2VnniMath as SimdMath>::tanh_slice,
                 sigmoid_slice: <Avx2VnniMath as SimdMath>::sigmoid_slice,
                 activation_tanh_block: <Avx2VnniMath as SimdMath>::activation_tanh_block,
+                tanh_and_accumulate_block: <Avx2VnniMath as SimdMath>::tanh_and_accumulate_block,
                 instruction_set: SimdInstructionSet::Avx2Vnni,
                 is_avx512: false,
             };
@@ -1023,6 +1030,7 @@ impl SimdMathConfig {
             tanh_slice: crate::math::fastmath::tanh_slice_avx2,
             sigmoid_slice: crate::math::fastmath::sigmoid_slice_avx2,
             activation_tanh_block: <Avx2Math as SimdMath>::activation_tanh_block,
+            tanh_and_accumulate_block: <Avx2Math as SimdMath>::tanh_and_accumulate_block,
             instruction_set: SimdInstructionSet::Avx2,
             is_avx512: false,
         }
@@ -1181,6 +1189,13 @@ pub trait SimdMath {
     /// # Safety
     /// `buf` deve ser válido e acessível para leitura e escrita.
     unsafe fn activation_tanh_block(buf: &mut [f32]);
+
+    /// Aplica Tanh em um bloco e acumula o resultado no buffer de saída (Skip Connection).
+    /// Realiza `buf = tanh(buf)` e `dest += buf` em uma única passagem de memória.
+    ///
+    /// # Safety
+    /// `dest` e `buf` devem ter comprimentos compatíveis e ser acessíveis.
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]);
 
     /// Calcula a soma horizontal de N elementos a partir de um ponteiro.
     ///
@@ -1365,6 +1380,29 @@ impl SimdMath for Avx2Math {
             buf.copy_from_slice(&tmp[..len]);
         } else {
             unsafe { Self::tanh_slice(buf) };
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
+        let len = core::cmp::min(dest.len(), buf.len());
+        let mut i = 0;
+        unsafe {
+            while i + 8 <= len {
+                let vb = _mm256_loadu_ps(buf.as_ptr().add(i));
+                let vt = crate::math::fastmath::simd_tanh(vb);
+                _mm256_storeu_ps(buf.as_mut_ptr().add(i), vt);
+
+                let vd = _mm256_loadu_ps(dest.as_ptr().add(i));
+                _mm256_storeu_ps(dest.as_mut_ptr().add(i), _mm256_add_ps(vd, vt));
+                i += 8;
+            }
+            while i < len {
+                let t = crate::math::fastmath::tanh(*buf.get_unchecked(i));
+                *buf.get_unchecked_mut(i) = t;
+                *dest.get_unchecked_mut(i) += t;
+                i += 1;
+            }
         }
     }
 
@@ -1562,6 +1600,11 @@ impl SimdMath for Avx2VnniMath {
     }
 
     #[target_feature(enable = "avxvnni")]
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
+        unsafe { Avx2Math::tanh_and_accumulate_block(dest, buf) }
+    }
+
+    #[target_feature(enable = "avxvnni")]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
         unsafe { Avx2Math::horizontal_sum::<N>(ptr) }
     }
@@ -1741,6 +1784,29 @@ impl SimdMath for Avx512Math {
             buf.copy_from_slice(&tmp[..len]);
         } else {
             unsafe { Self::tanh_slice(buf) };
+        }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl")]
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
+        let len = core::cmp::min(dest.len(), buf.len());
+        let mut i = 0;
+        unsafe {
+            while i + 16 <= len {
+                let vb = _mm512_loadu_ps(buf.as_ptr().add(i));
+                let vt = crate::math::fastmath::simd_tanh_avx512(vb);
+                _mm512_storeu_ps(buf.as_mut_ptr().add(i), vt);
+
+                let vd = _mm512_loadu_ps(dest.as_ptr().add(i));
+                _mm512_storeu_ps(dest.as_mut_ptr().add(i), _mm512_add_ps(vd, vt));
+                i += 16;
+            }
+            while i < len {
+                let t = crate::math::fastmath::tanh(*buf.get_unchecked(i));
+                *buf.get_unchecked_mut(i) = t;
+                *dest.get_unchecked_mut(i) += t;
+                i += 1;
+            }
         }
     }
 
@@ -1950,6 +2016,11 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
+        unsafe { Avx512Math::tanh_and_accumulate_block(dest, buf) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512vnni")]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
         unsafe { Avx512Math::horizontal_sum::<N>(ptr) }
     }
@@ -2106,6 +2177,11 @@ impl SimdMath for Avx512VnniBf16Math {
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         unsafe { Avx512Math::activation_tanh_block(buf) }
+    }
+
+    #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
+        unsafe { Avx512Math::tanh_and_accumulate_block(dest, buf) }
     }
 
     #[target_feature(enable = "avx512f,avx512vl,avx512bw,avx512bf16")]
@@ -2303,6 +2379,18 @@ impl SimdMath for ScalarMath {
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         for x in buf.iter_mut() {
             *x = x.tanh();
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn tanh_and_accumulate_block(dest: &mut [f32], buf: &mut [f32]) {
+        let len = core::cmp::min(dest.len(), buf.len());
+        for i in 0..len {
+            unsafe {
+                let t = buf.get_unchecked(i).tanh();
+                *buf.get_unchecked_mut(i) = t;
+                *dest.get_unchecked_mut(i) += t;
+            }
         }
     }
 

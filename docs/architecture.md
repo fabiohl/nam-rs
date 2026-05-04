@@ -23,6 +23,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Gate-Major Layout & Fused 4-Gate GEMV (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`. A inferência funde o cálculo das 4 portas em uma única passagem sobre o vetor de estado, reduzindo o tráfego de memória em 75% para o vetor de estado e melhorando o throughput em ~30-35% para tamanhos típicos (H ≤ 24).
 - **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` para CPUs modernas (Sapphire Rapids/Zen5), dobrando o throughput em relação ao fallback.
 - **Lazy BF16 Conditioning & Fused Conv1d+Mixin (WaveNet):** Mecanismo de cache stateful para condicionamento. A soma do vetor de mixagem é fundida diretamente no acumulador da Conv1D, eliminando passagens redundantes de memória (load/store) e melhorando o throughput da camada em ~10%.
+- **Fused Tanh + Head Accumulate (WaveNet):** Unificação das fases de ativação e skip-connection em uma única passagem pelos registradores SIMD. Elimina ciclos redundantes de leitura/escrita no acumulador Head, resultando em um ganho de performance de ~4-7% em modelos WaveNet padrão.
 
 ## 3. Gestão e Isolação Temporais (Strict RT)
 

@@ -697,19 +697,13 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                 }
             }
 
-            // [FASE 2: Ativação em Lote]
-            // Aplicamos a Tanh em todo o bloco de uma vez só.
-            // O throughput SIMD é muito maior processando 1024 elementos contíguos
-            // do que 16 elementos por chamada.
-            M::activation_tanh_block(conv_slice);
+            // [FASE 2 & 3: Ativação e Head Update Fundidos]
+            // Aplicamos a Tanh e acumulamos no Head em uma única passagem de memória.
+            // Isso reduz a pressão sobre a largura de banda (evita 1 leitura e 1 escrita extra).
+            M::tanh_and_accumulate_block(head_input, conv_slice);
 
-            // [FASE 3: Não-Linear & Saída - Head Update + 1x1 Residual]
-            // [TA3] Otimização: Processamento em lote para maximizar throughput e reuso de cache.
-
-            // 1. Head Update (Skip-Connection) em lote
-            M::accumulate_head(head_input, conv_slice);
-
-            // 2. Soma Residual: Copia o estado original para o output antes da projeção fundida
+            // [FASE 3: Saída - 1x1 Residual]
+            // 1. Soma Residual: Copia o estado original para o output antes da projeção fundida
             let lb_offset = buffer_start * CH;
             output.copy_from_slice(
                 layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * CH),
