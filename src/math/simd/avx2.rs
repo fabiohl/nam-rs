@@ -71,15 +71,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
         sum2 = _mm256_add_ps(sum2, sum3);
         let sum = _mm256_add_ps(sum0, sum2);
 
-        let hi128 = _mm256_extractf128_ps(sum, 1);
-        let lo128 = _mm256_castps256_ps128(sum);
-        let sum128 = _mm_add_ps(lo128, hi128);
-        let shuf = _mm_movehdup_ps(sum128);
-        let sums = _mm_add_ps(sum128, shuf);
-        let shuf2 = _mm_movehl_ps(sums, sums);
-        let final_ss = _mm_add_ss(sums, shuf2);
-        let mut scalar_sum = 0.0f32;
-        _mm_store_ss(&mut scalar_sum, final_ss);
+        let mut scalar_sum = super::utility::hsum_avx2(sum);
 
         while i < len {
             scalar_sum += a[i] * half::f16::from_bits(b[i]).to_f32();
@@ -168,26 +160,10 @@ pub unsafe fn dot_product_4x_avx2(
         let sum2 = _mm256_add_ps(sum2_0, sum2_1);
         let sum3 = _mm256_add_ps(sum3_0, sum3_1);
 
-        #[inline(always)]
-        unsafe fn hsum_avx2(v: __m256) -> f32 {
-            unsafe {
-                let hi = _mm256_extractf128_ps(v, 1);
-                let lo = _mm256_castps256_ps128(v);
-                let s128 = _mm_add_ps(lo, hi);
-                let shuf = _mm_movehdup_ps(s128);
-                let sums = _mm_add_ps(s128, shuf);
-                let shuf2 = _mm_movehl_ps(sums, sums);
-                let r = _mm_add_ss(sums, shuf2);
-                let mut out = 0.0f32;
-                _mm_store_ss(&mut out, r);
-                out
-            }
-        }
-
-        let mut s0: f32 = hsum_avx2(sum0);
-        let mut s1: f32 = hsum_avx2(sum1);
-        let mut s2: f32 = hsum_avx2(sum2);
-        let mut s3: f32 = hsum_avx2(sum3);
+        let mut s0: f32 = super::utility::hsum_avx2(sum0);
+        let mut s1: f32 = super::utility::hsum_avx2(sum1);
+        let mut s2: f32 = super::utility::hsum_avx2(sum2);
+        let mut s3: f32 = super::utility::hsum_avx2(sum3);
 
         while i < len {
             s0 += half::f16::from_bits(w0[i]).to_f32() * state[i];
@@ -347,26 +323,10 @@ pub unsafe fn dot_product_batch_4x_avx2(
             i += 8;
         }
 
-        #[inline(always)]
-        unsafe fn hsum_avx2(v: __m256) -> f32 {
-            unsafe {
-                let hi = _mm256_extractf128_ps(v, 1);
-                let lo = _mm256_castps256_ps128(v);
-                let s128 = _mm_add_ps(lo, hi);
-                let shuf = _mm_movehdup_ps(s128);
-                let sums = _mm_add_ps(s128, shuf);
-                let shuf2 = _mm_movehl_ps(sums, sums);
-                let r = _mm_add_ss(sums, shuf2);
-                let mut out = 0.0f32;
-                _mm_store_ss(&mut out, r);
-                out
-            }
-        }
-
-        let mut s0 = hsum_avx2(sum0);
-        let mut s1 = hsum_avx2(sum1);
-        let mut s2 = hsum_avx2(sum2);
-        let mut s3 = hsum_avx2(sum3);
+        let mut s0 = super::utility::hsum_avx2(sum0);
+        let mut s1 = super::utility::hsum_avx2(sum1);
+        let mut s2 = super::utility::hsum_avx2(sum2);
+        let mut s3 = super::utility::hsum_avx2(sum3);
 
         while i < len {
             let w = half::f16::from_bits(weights[i]).to_f32();
@@ -1018,14 +978,7 @@ pub unsafe fn horizontal_sum_avx2<const N: usize>(ptr: *const f32) -> f32 {
         }
         i += 8;
     }
-    let mut sum = 0.0;
-    let mut res = [0.0f32; 8];
-    unsafe {
-        _mm256_storeu_ps(res.as_mut_ptr(), sum_v);
-    }
-    for x in res {
-        sum += x;
-    }
+    let mut sum = super::utility::hsum_avx2(sum_v);
     while i < N {
         unsafe {
             sum += *ptr.add(i);

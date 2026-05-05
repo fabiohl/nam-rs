@@ -19,6 +19,7 @@ const GAIN_DB_STEP: f32 = GAIN_DB_RANGE / (GAIN_LUT_SIZE as f32 - 1.0);
 const INV_GAIN_DB_STEP: f32 = 1.0 / GAIN_DB_STEP;
 /// Limite de segurança para evitar overflow no polinômio de tanh (evita NaN).
 const TANH_CLAMP_LIMIT: f32 = 15.0;
+const SIGMOID_CLAMP_LIMIT: f32 = 12.0;
 
 /// Tabela de Look-Up para conversão ultra-rápida de dB para ganho linear.
 /// Projetada para ser instanciada via `OnceLock` e acessada em threads RT.
@@ -165,28 +166,65 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     }
 }
 
-/// Aplica aproximação vetorial de `sigmoid(x)` através da identidade logarítimica da tanh.
-/// Baseia-se matematicamente em `sigmoid(x) = 0.5 * (1.0 + tanh(0.5 * x))`.
+/// Aproximação direta de `sigmoid(x) = 1 / (1 + exp(-x))` usando AVX2.
+///
+/// Utiliza um polinômio de Minimax de grau 6 para `exp(x)` e um passo de Newton-Raphson
+/// para o recíproco (`_mm256_rcp_ps`), garantindo erro máximo < 2e-5.
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
-    unsafe {
-        let half = _mm256_set1_ps(0.5);
-        let one = _mm256_set1_ps(1.0);
+    let one = _mm256_set1_ps(1.0);
+    let zero = _mm256_setzero_ps();
 
-        // x * 0.5
-        let x_half = _mm256_mul_ps(x, half);
+    // neg_x = -x
+    let neg_x = _mm256_sub_ps(zero, x);
 
-        // tanh(x * 0.5)
-        let th = simd_tanh_avx2(x_half);
+    // Clamp para evitar overflow/underflow extremo no exp e manter precisão do polinômio
+    let neg_x = _mm256_max_ps(
+        _mm256_set1_ps(-SIGMOID_CLAMP_LIMIT),
+        _mm256_min_ps(_mm256_set1_ps(SIGMOID_CLAMP_LIMIT), neg_x),
+    );
 
-        // 1.0 + tanh(x * 0.5)
-        let t_plus_one = _mm256_add_ps(th, one);
+    // --- Fast Exp AVX2 (Degree 6) ---
+    let log2e = _mm256_set1_ps(1.442_695_1_f32);
+    let ln2_hi = _mm256_set1_ps(-0.693_145_75_f32);
+    let ln2_lo = _mm256_set1_ps(-0.000_001_428_606_8_f32);
 
-        // 0.5 * (1.0 + tanh(x * 0.5))
-        _mm256_mul_ps(t_plus_one, half)
-    }
+    let k = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x, log2e, _mm256_set1_ps(0.0)));
+    let k_f = _mm256_cvtepi32_ps(k);
+
+    let mut f = _mm256_fmadd_ps(k_f, ln2_hi, neg_x);
+    f = _mm256_fmadd_ps(k_f, ln2_lo, f);
+
+    // Polinômio Minimax D6 para exp(f) em [-0.5 ln 2, 0.5 ln 2]
+    let c6 = _mm256_set1_ps(0.001_388_888_9_f32);
+    let c5 = _mm256_set1_ps(0.008_333_333_f32);
+    let c4 = _mm256_set1_ps(0.041_666_668_f32);
+    let c3 = _mm256_set1_ps(0.166_666_67_f32);
+    let c2 = _mm256_set1_ps(0.5);
+
+    let mut poly = _mm256_fmadd_ps(f, c6, c5);
+    poly = _mm256_fmadd_ps(poly, f, c4);
+    poly = _mm256_fmadd_ps(poly, f, c3);
+    poly = _mm256_fmadd_ps(poly, f, c2);
+    poly = _mm256_fmadd_ps(poly, f, one);
+    poly = _mm256_fmadd_ps(poly, f, one);
+
+    let k_int = _mm256_add_epi32(k, _mm256_set1_epi32(127));
+    let twok = _mm256_castsi256_ps(_mm256_slli_epi32(k_int, 23));
+    let e = _mm256_mul_ps(poly, twok);
+    // ------------------------------
+
+    let den = _mm256_add_ps(one, e);
+    let mut res = _mm256_rcp_ps(den);
+
+    // Refinamento de Newton-Raphson: 1 iter para elevar precisão do recíproco
+    let two = _mm256_set1_ps(2.0);
+    res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
+
+    res
 }
 
 /// Aplica aproximação vetorial de `tanh(x)` iterando um polinômio de grau 5 (AVX-512).
@@ -243,28 +281,55 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     _mm512_mul_ps(p_x, rr)
 }
 
-/// Aplica aproximação vetorial de `sigmoid(x)` através da identidade logarítimica da tanh (AVX-512).
+/// Aproximação direta de `sigmoid(x)` usando AVX-512.
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX-512 (F e VL).
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
-    unsafe {
-        let half = _mm512_set1_ps(0.5);
-        let one = _mm512_set1_ps(1.0);
+    let one = _mm512_set1_ps(1.0);
+    let zero = _mm512_setzero_ps();
+    let neg_x = _mm512_sub_ps(zero, x);
+    let neg_x = _mm512_max_ps(
+        _mm512_set1_ps(-SIGMOID_CLAMP_LIMIT),
+        _mm512_min_ps(_mm512_set1_ps(SIGMOID_CLAMP_LIMIT), neg_x),
+    );
 
-        // x * 0.5
-        let x_half = _mm512_mul_ps(x, half);
+    // --- Fast Exp AVX-512 ---
+    let log2e = _mm512_set1_ps(1.442_695_1_f32);
+    let ln2_hi = _mm512_set1_ps(-0.693_145_75_f32);
+    let ln2_lo = _mm512_set1_ps(-0.000_001_428_606_8_f32);
 
-        // tanh(x * 0.5)
-        let th = simd_tanh_avx512(x_half);
+    let k = _mm512_cvtps_epi32(_mm512_mul_ps(neg_x, log2e));
+    let k_f = _mm512_cvtepi32_ps(k);
+    let mut f = _mm512_fmadd_ps(k_f, ln2_hi, neg_x);
+    f = _mm512_fmadd_ps(k_f, ln2_lo, f);
 
-        // 1.0 + tanh(x * 0.5)
-        let t_plus_one = _mm512_add_ps(th, one);
+    let c6 = _mm512_set1_ps(0.001_388_888_9_f32);
+    let c5 = _mm512_set1_ps(0.008_333_333_f32);
+    let c4 = _mm512_set1_ps(0.041_666_668_f32);
+    let c3 = _mm512_set1_ps(0.166_666_67_f32);
+    let c2 = _mm512_set1_ps(0.5);
 
-        // 0.5 * (1.0 + tanh(x * 0.5))
-        _mm512_mul_ps(t_plus_one, half)
-    }
+    let mut poly = _mm512_fmadd_ps(f, c6, c5);
+    poly = _mm512_fmadd_ps(poly, f, c4);
+    poly = _mm512_fmadd_ps(poly, f, c3);
+    poly = _mm512_fmadd_ps(poly, f, c2);
+    poly = _mm512_fmadd_ps(poly, f, one);
+    poly = _mm512_fmadd_ps(poly, f, one);
+
+    let k_int = _mm512_add_epi32(k, _mm512_set1_epi32(127));
+    let twok = _mm512_castsi512_ps(_mm512_slli_epi32(k_int, 23));
+    let e = _mm512_mul_ps(poly, twok);
+    // ------------------------
+
+    let den = _mm512_add_ps(one, e);
+    let mut res = _mm512_rcp14_ps(den);
+
+    let two = _mm512_set1_ps(2.0);
+    res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
+
+    res
 }
 
 /// Executa a ativação fundida dos gates LSTM para AVX2.

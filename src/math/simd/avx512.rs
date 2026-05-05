@@ -833,7 +833,7 @@ pub unsafe fn horizontal_sum_avx512<const N: usize>(ptr: *const f32) -> f32 {
         sum_v = _mm512_add_ps(sum_v, _mm512_loadu_ps(ptr.add(i)));
         i += 16;
     }
-    let mut sum = _mm512_reduce_add_ps(sum_v);
+    let mut sum = super::utility::hsum_avx512(sum_v);
     while i < N {
         sum += *ptr.add(i);
         i += 1;
@@ -853,7 +853,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
         sum_v = _mm512_fmadd_ps(va, vb, sum_v);
         i += 16;
     }
-    let mut sum = _mm512_reduce_add_ps(sum_v);
+    let mut sum = super::utility::hsum_avx512(sum_v);
     while i < len {
         sum += *a.get_unchecked(i) * half::f16::from_bits(*b.get_unchecked(i)).to_f32();
         i += 1;
@@ -887,7 +887,7 @@ pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
         );
         i += 32;
     }
-    let mut sum = _mm512_reduce_add_ps(sum_v);
+    let mut sum = super::utility::hsum_avx512(sum_v);
     while i < len {
         let fa = half::f16::from_bits(*a.get_unchecked(i)).to_f32();
         let fb = half::f16::from_bits(*b.get_unchecked(i)).to_f32();

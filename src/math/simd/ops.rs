@@ -78,7 +78,9 @@ pub unsafe fn prefetch_strategy_simple(
     // Hardware prefetcher domina em dilatações curtas.
     // Hint para L1 (64 bytes à frente).
     unsafe {
-        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(base_ptr.add(16).cast());
+        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
+            base_ptr.add(16).cast(),
+        );
     }
 }
 
@@ -98,11 +100,13 @@ pub unsafe fn prefetch_strategy_2stage(
             let ptr_n1 = base_ptr.add(step);
             // Hint T0 (L1) para o próximo tap
             core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(ptr_n1.cast());
-            
+
             if k + 2 < k_limit {
                 let ptr_n2 = base_ptr.add(2 * step);
                 // Hint T1 (L2) para o tap seguinte
-                core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T1 }>(ptr_n2.cast());
+                core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T1 }>(
+                    ptr_n2.cast(),
+                );
             }
         }
     }

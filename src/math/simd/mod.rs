@@ -11,6 +11,7 @@ pub mod dispatch;
 pub mod fallback;
 pub mod ops;
 pub mod traits;
+pub mod utility;
 
 pub use avx2::*;
 pub use avx512::*;
