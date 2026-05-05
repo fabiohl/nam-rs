@@ -301,19 +301,34 @@ do valor usado para a comparação — é um segundo `load` que pode retornar
 
 **Critério de Aceite:** Nenhum `NaN` ou `inf` em logs de telemetria.
 
+**Nota de auditoria (Auditoria Épico C):** O caminho RT em `pw_host.rs:566`
+(`current_pw_rate as f64`) não está suscetível ao mesmo bug — o `NamResampler`
+é sempre inicializado com `pw_rate=48_000` garantindo valor não-zero desde a
+primeira chamada ao callback.
+
+---
+
+> **✅ Auditoria do Épico C — APROVADO (2026-05-05)**
+>
+> Todos os 3 hardening items (TC1, TC2, TC3) foram verificados in-code.
+> Nenhuma lacuna crítica encontrada. Achados menores transferidos para o Épico D
+> (TD1 e TD3 têm prioridade elevada como consequência da auditoria).
+
 ---
 
 ### Épico D — Cobertura de Testes e Qualidade
 
 **Impacto:** Confiança para refatorações futuras, detecção precoce de regressões.
 
-#### `TD1` — Testes Unitários para `DynamicHysteresis` (Gate FSM)
+#### `TD1` — [x] Testes Unitários para `DynamicHysteresis` (Gate FSM) [DONE]
 
 **Arquivos:** `src/dsp/gate.rs` (192 linhas, 0 testes)
-**Prioridade:** Alta
+**Prioridade:** Alta ⬆️ (elevada pela auditoria do Épico C)
 
 O módulo `gate.rs` implementa uma FSM com 4 estados e lógica de transição
 complexa (hold, fade-in, fade-out) mas **não possui nenhum teste unitário**.
+A lógica de `FadingOut → FadingIn` usa `saturating_sub` que pode mascarar
+behavior incorreto silenciosamente em reversals.
 
 **Ação:**
 
@@ -355,11 +370,11 @@ detectar drift numérico, leaks de estado ou overflow de contadores.
 #### `TD3` — Testes para `VirtualRingBuffer` Edge Cases
 
 **Arquivos:** `src/dsp/vring.rs` (187 linhas, 0 testes)
-**Prioridade:** Média
+**Prioridade:** Média ⬆️ (elevada pela auditoria do Épico C)
 
 O `VirtualRingBuffer` usa `memfd_create` + `mmap` duplo — uma técnica
 poderosa mas que pode falhar silenciosamente em ambientes restritos
-(containers, seccomp). Não há testes unitários.
+(containers, seccomp, GitHub Actions). Não há testes unitários.
 
 **Ação:**
 
