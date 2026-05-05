@@ -156,7 +156,7 @@ o ground truth mais preciso é `1.0f32 / (1.0 + (-val).exp())`.
 **Impacto:** Manutenibilidade de longo prazo, onboarding mais rápido, compilação
 incremental mais eficiente.
 
-#### `TB1` — Decomposição de `wavenet_dyn.rs` (1.021 linhas)
+#### [x] `TB1` — Decomposição de `wavenet_dyn.rs` (1.021 linhas) -> `wavenet_common.rs`. [DONE]
 
 **Arquivos:** `src/models/wavenet_dyn.rs`
 **Prioridade:** Alta
@@ -179,7 +179,7 @@ Redução total de LOC em `wavenet_dyn.rs` > 30%.
 
 ---
 
-#### `TB2` — Unificação dos Patterns de Dispatch SIMD nos Modelos LSTM
+#### [x] `TB2` — Unificação dos Patterns de Dispatch SIMD nos Modelos LSTM [DONE]
 
 **Arquivos:** `src/models/lstm.rs` (linhas 303-387 — 5 variantes quase idênticas)
 **Prioridade:** Média (DRY)
@@ -200,7 +200,7 @@ passam.
 
 ---
 
-#### `TB3` — Limpeza do Comentário Duplicado em `wavenet.rs`
+#### [x] `TB3` — Limpeza do Comentário Duplicado em `wavenet.rs` [DONE]
 
 **Arquivos:** `src/models/wavenet.rs` (linhas 876-880)
 **Prioridade:** Trivial

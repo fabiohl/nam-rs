@@ -18,6 +18,7 @@ pub mod gating;
 pub mod lstm;
 pub mod lstm_dyn;
 pub mod wavenet;
+pub mod wavenet_common;
 pub mod wavenet_dyn;
 pub mod wavenet_params;
 

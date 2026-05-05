@@ -841,8 +841,6 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
         // [PASSO 1: Zero-Acumulador]
         // Zera o acumulador das saídas "Skip Connections" (Head) para este bloco de frames.
-        // [PASSO 1: Zero-Acumulador]
-        // Zera o acumulador das saídas "Skip Connections" (Head) para este bloco de frames.
         // É essencial pois cada camada do array somará sua contribuição aqui.
         self.head_accum[0..num_frames * CH].fill(0.0);
 
