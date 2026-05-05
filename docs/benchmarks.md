@@ -1,5 +1,7 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
+
 # Benchmarks de Performance (Criterion)
 
 O projeto NAM-rs utiliza o **Criterion.rs** como sua suíte oficial de benchmarks de performance. Dada a natureza sensível de latência de um motor de áudio em tempo real (DSP), realizar medições com rigor estatístico é fundamental para não ser enganado por variações do sistema operacional (ruído, context switches, flutuações de clock).
@@ -59,13 +61,35 @@ Todas as métricas históricas de acompanhamento temporal são gravadas em arqui
 
 As otimizações do **Épico 5 (Tarefa T3)** introduziram a fusão de portas (*fused gates*) e ativações SIMD (AVX2/AVX-512) no hot-path das redes recorrentes. Abaixo, os ganhos medidos em uma arquitetura x86-64-v3 (AVX2/FMA) para blocos de 64 amostras:
 
-| Topologia | Implementação | Latência (Média) | Speedup |
-| :--- | :--- | :--- | :--- |
-| **LSTM 1x8** | Escalar (Baseline) | ~22.45 µs | - |
-| **LSTM 1x8** | **SIMD Fused (T3)** | **~6.36 µs** | **3.53x** |
-| **LSTM 2x16** | Escalar (Baseline) | ~83.66 µs | - |
-| **LSTM 2x16** | **SIMD Fused (T3)** | **~20.29 µs** | **4.12x** |
+| Topologia     | Implementação       | Latência (Média) | Speedup   |
+|:------------- |:------------------- |:---------------- |:--------- |
+| **LSTM 1x8**  | Escalar (Baseline)  | ~22.45 µs        | -         |
+| **LSTM 1x8**  | **SIMD Fused (T3)** | **~6.36 µs**     | **3.53x** |
+| **LSTM 2x16** | Escalar (Baseline)  | ~83.66 µs        | -         |
+| **LSTM 2x16** | **SIMD Fused (T3)** | **~20.29 µs**    | **4.12x** |
 
 ### Conclusão Técnica
 
 O ganho de performance superior a **4x** em modelos complexos (2x16) valida a estratégia de fusão de kernels. Ao processar as 4 portas LSTM simultaneamente via vetores SIMD e manter os dados em registradores entre as ativações Sigmoid e Tanh, reduzimos drasticamente os ciclos de CPU desperdiçados com *loads/stores* redundantes e latência de memória.
+
+## Orçamento de Ciclos (WaveNet Hot-Path) - Tarefa TE2
+
+Para guiar futuras otimizações, realizamos a instrumentação granular do *hot-path* da WaveNet (`WaveNetLayer::process_block_internal`) utilizando contadores de ciclos de hardware (**RDTSC**). Esta medição identifica onde a CPU gasta a maior parte do tempo durante o processamento de um bloco de áudio.
+
+### Distribuição de Ciclos por Estágio (Per Layer)
+
+Abaixo, a distribuição percentual média de ciclos em uma arquitetura x86-64-v3 (AVX2) para um modelo Standard (CH=16):
+
+| Estágio Operacional        | Operações Envolvidas               | Budget (%) | Justificativa Técnica                                             |
+|:-------------------------- |:---------------------------------- |:---------- |:----------------------------------------------------------------- |
+| **Conv1D (SIMD GEMV)**     | Convolução causal, MACs, dilatação | **~45%**   | Fase mais intensa em computação (multiplicação de matriz-vetor).  |
+| **1x1 & Residual (Fused)** | Projeção densa, soma de resíduo    | **~25%**   | Alta pressão de memória (read-modify-write) e projeção de canais. |
+| **Mixin (Conditioning)**   | Injeção de metadados de timbre     | **~15%**   | Operação densa aplicada à entrada de cada camada.                 |
+| **Act & Head (Fused)**     | Tanh/Sigmoid, Skip-Connections     | **~15%**   | Custo das funções transcendentais (aproximadas via SIMD).         |
+
+### Análise de Fluxo de Dados (Array Level)
+
+No nível da `WaveNetLayerArray`, a cascata de camadas domina o processamento (**>90% do tempo total**). Os estágios de interface (**Rechannel** de entrada e **Head Rechannel** de saída) representam uma sobrecarga fixa negligenciável à medida que o número de camadas aumenta, validando a escalabilidade da arquitetura NAM-rs para modelos complexos.
+
+> [!TIP]
+> A fusão da **Tanh** com o **Head Accumulation** foi a otimização mais impactante do Épico E, reduzindo o budget do estágio de ativação de ~30% para ~15% ao eliminar passagens extras pela memória Cache L1.

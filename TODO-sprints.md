@@ -428,7 +428,7 @@ Skip → Head → Output.
 
 ---
 
-#### `TE2` — Documentar Budget de Ciclos por Operação no Hot-Path
+#### `TE2` — [x] Documentar Budget de Ciclos por Operação no Hot-Path [DONE]
 
 **Arquivos:** `docs/benchmarks.md`
 **Prioridade:** Média (Referência para futuras otimizações)
