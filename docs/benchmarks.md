@@ -14,6 +14,16 @@ Para executar a suíte de performance:
 cargo bench --bench inference_bench
 ```
 
+### Benchmarks de Longa Duração (Soak Bench)
+
+Para avaliar a performance sob pressão constante e identificar jitter causado por cache misses ou TLB misses em blocos grandes, o projeto oferece uma suíte de benchmarks de longa duração (30s+ por função):
+
+```bash
+cargo bench --features long_bench
+```
+
+Estes benchmarks utilizam blocos de **4096 amostras** (~85ms), reduzindo o peso relativo do overhead de invocação e focando puramente no throughput do motor DSP.
+
 ## Como interpretar a Saída do Criterion
 
 Quando você roda um benchmark, o Criterion reporta uma saída similar a esta:

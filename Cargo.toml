@@ -23,6 +23,7 @@ rustfft = { version = "6.4.1", default-features = false }
 default = ["standalone"]
 standalone = ["dep:pipewire"]
 clap-plugin = []
+long_bench = []
 
 [[bin]]
 name = "nam-rs"

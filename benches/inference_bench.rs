@@ -64,19 +64,11 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
 }
 
 /// Benchmark: WaveNet Standard (modelo real BossWN-standard.nam).
-///
-/// Mede a latência de `process()` para 64 amostras (1 bloco DSP a 48 kHz).
-/// O deadline de tempo-real para este buffer é 1.33 ms — se o benchmark
-/// exceder esse valor, o engine causará xruns em produção.
 fn bench_wavenet_standard_process(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
 
     if !path.exists() {
-        eprintln!(
-            "SKIP bench: BossWN-standard.nam não encontrado em {path:?}. \
-             Copie modelos para tests/fixtures/models/ (veja TODO.txt)."
-        );
         return;
     }
 
@@ -96,9 +88,6 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
 }
 
 /// Benchmark: LSTM 2×16 (sintético, 3345 pesos).
-///
-/// Mede a latência de `process()` para 64 amostras (1 bloco DSP a 48 kHz).
-/// A rede LSTM 2×16 é a topologia recorrente mais pesada suportada pelo NAM-rs.
 fn bench_lstm_2x16_process(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
     let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
@@ -132,17 +121,11 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
         });
     });
 
-    group.bench_function("Scalar_Baseline", |b| {
-        // Usamos downcast interno ou chamamos diretamente o método scalar se disponível via trait?
-        // Como o DynamicModel não expõe process_scalar, vamos usar o tipo concreto se possível
-        // ou adicionar process_scalar ao trait NamModel (menos limpo).
-        // Melhor: adicionar process_scalar ao DynamicModel.
-        match &mut *model_scalar {
-            nam_rs::models::DynamicModel::Lstm1x8(m) => {
-                b.iter(|| m.process_scalar(&input, &mut output));
-            }
-            _ => panic!("Modelo não é Lstm1x8"),
+    group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
+        nam_rs::models::DynamicModel::Lstm1x8(m) => {
+            b.iter(|| m.process_scalar(&input, &mut output));
         }
+        _ => panic!("Modelo não é Lstm1x8"),
     });
     group.finish();
 }
@@ -175,10 +158,6 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
 }
 
 /// Benchmark: kernel FastMath `tanh_slice_avx2` sobre 256 elementos f32.
-///
-/// Este kernel é chamado em cada layer×bloco do WaveNet e do LSTM para computar
-/// a função de ativação tanh via polinômio Padé grau 5 + rsqrt_ps Newton-Raphson.
-/// Processar 256 floats por invocação é representativo do workload interno.
 fn bench_tanh_slice_256(c: &mut Criterion) {
     let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
@@ -192,9 +171,6 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
 }
 
 /// Benchmark: kernel FastMath `sigmoid_slice_avx2` sobre 256 elementos f32.
-///
-/// O sigmoid é derivado via identidade `0.5*(1+tanh(0.5*x))` e é usado
-/// nas portas i/f/o do LSTM. Processar 256 floats é representativo.
 fn bench_sigmoid_slice_256(c: &mut Criterion) {
     let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
@@ -207,39 +183,20 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
-/// Benchmark: WaveNet Dynamic Standard (mesmo modelo BossWN-standard.nam via path dinâmico).
-///
-/// Constrói o modelo usando `build_wavenet_dynamic()` em vez do path estático
-/// const-generic. Mede o overhead absoluto do fallback dinâmico que não possui
-/// loop unrolling via const generics.
-///
-/// **Overhead esperado:** ≤ 50% mais lento que o estático para WaveNet,
-/// pois as convoluções 1D dinâmicas não beneficiam de unrolling do compilador.
+/// Benchmark: WaveNet Dynamic Standard.
 fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
     use nam_rs::loader::dispatcher::build_wavenet_dynamic;
-
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
-
     if !path.exists() {
-        eprintln!(
-            "SKIP bench: BossWN-standard.nam não encontrado em {path:?}. \
-             Copie modelos para tests/fixtures/models/."
-        );
         return;
     }
-
     let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-
-    // Forçar construção pelo caminho dinâmico (sem const generics)
-    let mut model =
-        build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou para benchmark WaveNet");
+    let mut model = build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou");
     model.prewarm(2048);
-
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-
     c.bench_function("WaveNet_Dynamic_Standard_64samp_48kHz", |b| {
         b.iter(|| {
             model.process(&input, &mut output);
@@ -247,39 +204,20 @@ fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
     });
 }
 
-/// Benchmark: LSTM Dynamic 1×16 (mesmo modelo BossLSTM-1x16.nam via path dinâmico).
-///
-/// Constrói o modelo usando `build_lstm_dynamic()` em vez do path estático
-/// const-generic. Mede o overhead absoluto do fallback dinâmico.
-///
-/// **Overhead esperado:** ≤ 30% mais lento que o estático para LSTM,
-/// pois o LSTM dinâmico realiza os mesmos dot products AVX2 mas sem
-/// unrolling de loops proporcionado por const generics.
+/// Benchmark: LSTM Dynamic 1×16.
 fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
     use nam_rs::loader::dispatcher::build_lstm_dynamic;
-
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossLSTM-1x16.nam");
-
     if !path.exists() {
-        eprintln!(
-            "SKIP bench: BossLSTM-1x16.nam não encontrado em {path:?}. \
-             Copie modelos para tests/fixtures/models/."
-        );
         return;
     }
-
     let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-
-    // Forçar construção pelo caminho dinâmico (sem const generics)
-    let mut model = build_lstm_dynamic(&model_data, 1, 16)
-        .expect("Builder dinâmico falhou para benchmark LSTM");
+    let mut model = build_lstm_dynamic(&model_data, 1, 16).expect("Builder dinâmico falhou");
     model.prewarm(2048);
-
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
-
     c.bench_function("LSTM_Dynamic_1x16_64samp_48kHz", |b| {
         b.iter(|| {
             model.process(&input, &mut output);
@@ -290,21 +228,13 @@ fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
 fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
-
     if !path.exists() {
-        eprintln!(
-            "SKIP bench: BossWN-standard.nam não encontrado em {:?}. \
-             Copie modelos para tests/fixtures/models/ (veja TODO.txt).",
-            path
-        );
         return;
     }
-
     let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou para benchmark");
+    let mut model = build_model(&model_data).expect("Dispatcher falhou");
     model.prewarm(2048);
-
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
         let mut output = vec![0.0f32; size];
@@ -316,12 +246,10 @@ fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
     }
 }
 
-/// Benchmark: LSTM 2×16 (sintético, 3345 pesos) com buffers variáveis.
 fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
-    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    let mut model = build_model(&data).expect("Dispatcher falhou");
     model.prewarm(2048);
-
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
         let mut output = vec![0.0f32; size];
@@ -338,7 +266,6 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
     let vec_b: Vec<u16> = (0..256)
         .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
         .collect();
-
     c.bench_function("DotProduct_AVX2_256elem", |b| {
         b.iter(|| unsafe {
             nam_rs::math::simd::dot_product_avx2(
@@ -354,7 +281,6 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
     let vec_b: Vec<u16> = (0..64)
         .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
         .collect();
-
     c.bench_function("DotProduct_AVX2_64elem", |b| {
         b.iter(|| unsafe {
             nam_rs::math::simd::dot_product_avx2(
@@ -368,31 +294,20 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
 fn bench_resampler_44100_to_48000_256samp(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
     let size = 256;
-    let mut rs = NamResampler::new(44_100, 48_000, size).expect("Failed to create NamResampler");
+    let mut rs = NamResampler::new(44_100, 48_000, size).unwrap();
     let in_l = vec![0.0f32; size];
     let in_r = vec![0.0f32; size];
     let mut out_l = vec![0.0f32; size * 2];
     let mut out_r = vec![0.0f32; size * 2];
-
     let mut group = c.benchmark_group("Resampler_44100_to_48000_256samp");
     group.bench_function("process_input", |b| {
         b.iter(|| {
-            rs.process_input(
-                std::hint::black_box(&in_l),
-                std::hint::black_box(&in_r),
-                std::hint::black_box(&mut out_l),
-                std::hint::black_box(&mut out_r),
-            );
+            rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
     group.bench_function("process_output", |b| {
         b.iter(|| {
-            rs.process_output(
-                std::hint::black_box(&in_l),
-                std::hint::black_box(&in_r),
-                std::hint::black_box(&mut out_l),
-                std::hint::black_box(&mut out_r),
-            );
+            rs.process_output(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
     group.finish();
@@ -401,31 +316,20 @@ fn bench_resampler_44100_to_48000_256samp(c: &mut Criterion) {
 fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
     let size = 256;
-    let mut rs = NamResampler::new(96_000, 48_000, size).expect("Failed to create NamResampler");
+    let mut rs = NamResampler::new(96_000, 48_000, size).unwrap();
     let in_l = vec![0.0f32; size];
     let in_r = vec![0.0f32; size];
     let mut out_l = vec![0.0f32; size * 2];
     let mut out_r = vec![0.0f32; size * 2];
-
     let mut group = c.benchmark_group("Resampler_96000_to_48000_256samp");
     group.bench_function("process_input", |b| {
         b.iter(|| {
-            rs.process_input(
-                std::hint::black_box(&in_l),
-                std::hint::black_box(&in_r),
-                std::hint::black_box(&mut out_l),
-                std::hint::black_box(&mut out_r),
-            );
+            rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
     group.bench_function("process_output", |b| {
         b.iter(|| {
-            rs.process_output(
-                std::hint::black_box(&in_l),
-                std::hint::black_box(&in_r),
-                std::hint::black_box(&mut out_l),
-                std::hint::black_box(&mut out_r),
-            );
+            rs.process_output(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
     group.finish();
@@ -434,20 +338,14 @@ fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
 fn bench_resampler_48000_bypass(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
     let size = 256;
-    let mut rs = NamResampler::new(48_000, 48_000, size).expect("Failed to create NamResampler");
+    let mut rs = NamResampler::new(48_000, 48_000, size).unwrap();
     let in_l = vec![0.0f32; size];
     let in_r = vec![0.0f32; size];
     let mut out_l = vec![0.0f32; size];
     let mut out_r = vec![0.0f32; size];
-
     c.bench_function("Resampler_48000_bypass_256samp", |b| {
         b.iter(|| {
-            rs.process_input(
-                std::hint::black_box(&in_l),
-                std::hint::black_box(&in_r),
-                std::hint::black_box(&mut out_l),
-                std::hint::black_box(&mut out_r),
-            );
+            rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
 }
@@ -455,7 +353,6 @@ fn bench_resampler_48000_bypass(c: &mut Criterion) {
 fn bench_tanh_avx512_256elem(c: &mut Criterion) {
     if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
-
         c.bench_function("FastMath_tanh_AVX512_256elem", |b| {
             let mut buf = base.clone();
             b.iter(|| {
@@ -463,17 +360,12 @@ fn bench_tanh_avx512_256elem(c: &mut Criterion) {
                 unsafe { nam_rs::math::fastmath::tanh_slice_avx512(&mut buf) };
             });
         });
-    } else {
-        eprintln!(
-            "SKIP bench: Hardware does not support AVX-512 (avx512f/avx512vl) for FastMath_tanh_AVX512_256elem"
-        );
     }
 }
 
 fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
     if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
-
         c.bench_function("FastMath_sigmoid_AVX512_256elem", |b| {
             let mut buf = base.clone();
             b.iter(|| {
@@ -481,28 +373,20 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
                 unsafe { nam_rs::math::fastmath::sigmoid_slice_avx512(&mut buf) };
             });
         });
-    } else {
-        eprintln!(
-            "SKIP bench: Hardware does not support AVX-512 (avx512f/avx512vl) for FastMath_sigmoid_AVX512_256elem"
-        );
     }
 }
 
 fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
-
     if !path.exists() {
-        eprintln!("SKIP bench: BossWN-standard.nam não encontrado em {path:?}.");
         return;
     }
-
     let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-
     c.bench_function("Prewarm_WaveNet_Standard_2048samp", |b| {
         b.iter_with_setup(
-            || build_model(&model_data).expect("Dispatcher falhou para benchmark"),
+            || build_model(&model_data).expect("Dispatcher falhou"),
             |mut model| {
                 model.prewarm(std::hint::black_box(2048));
             },
@@ -512,15 +396,80 @@ fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
 
 fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
-
     c.bench_function("Prewarm_LSTM_2x16_2048samp", |b| {
         b.iter_with_setup(
-            || build_model(&data).expect("Dispatcher falhou para benchmark"),
+            || build_model(&data).expect("Dispatcher falhou"),
             |mut model| {
                 model.prewarm(std::hint::black_box(2048));
             },
         );
     });
+}
+
+// --- Long Benchmarks ---
+
+#[cfg(feature = "long_bench")]
+fn bench_wavenet_long_run(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/BossWN-standard.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data).expect("Dispatcher falhou");
+    model.prewarm(4096);
+    let size = 4096;
+    let input = generate_sine_440hz(size);
+    let mut output = vec![0.0f32; size];
+    let mut group = c.benchmark_group("Long_Run_WaveNet");
+    group.measurement_time(std::time::Duration::from_secs(30));
+    group.sample_size(100);
+    group.bench_function("Long_WaveNet_Standard_CH16_4096samp", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+    group.finish();
+}
+
+#[cfg(feature = "long_bench")]
+fn bench_lstm_long_run(c: &mut Criterion) {
+    let data = make_lstm_data(2, 16, 3345);
+    let mut model = build_model(&data).expect("Dispatcher falhou");
+    model.prewarm(4096);
+    let size = 4096;
+    let input = generate_sine_440hz(size);
+    let mut output = vec![0.0f32; size];
+    let mut group = c.benchmark_group("Long_Run_LSTM");
+    group.measurement_time(std::time::Duration::from_secs(30));
+    group.sample_size(100);
+    group.bench_function("Long_LSTM_2x16_4096samp", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+    group.finish();
+}
+
+#[cfg(feature = "long_bench")]
+fn bench_resampler_long_run(c: &mut Criterion) {
+    use nam_rs::dsp::resampler::NamResampler;
+    let size = 4096;
+    let mut rs = NamResampler::new(44_100, 48_000, size).unwrap();
+    let in_l = vec![0.0f32; size];
+    let in_r = vec![0.0f32; size];
+    let mut out_l = vec![0.0f32; size * 2];
+    let mut out_r = vec![0.0f32; size * 2];
+    let mut group = c.benchmark_group("Long_Run_Resampler");
+    group.measurement_time(std::time::Duration::from_secs(30));
+    group.sample_size(100);
+    group.bench_function("Long_Resampler_44100_to_48000_4096samp", |b| {
+        b.iter(|| {
+            rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
+        });
+    });
+    group.finish();
 }
 
 criterion_group!(
@@ -546,4 +495,16 @@ criterion_group!(
     bench_prewarm_wavenet_standard,
     bench_prewarm_lstm_2x16
 );
+
+#[cfg(feature = "long_bench")]
+criterion_group!(
+    name = long_benches;
+    config = Criterion::default();
+    targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run
+);
+
+#[cfg(not(feature = "long_bench"))]
 criterion_main!(benches);
+
+#[cfg(feature = "long_bench")]
+criterion_main!(benches, long_benches);

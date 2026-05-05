@@ -9,8 +9,9 @@
 
 > **Nota:** É executado manualmente sob demanda, fora do CI/CD. O objetivo é estressar os **algoritmos**, não a máquina.
 
-### `TZ1` — Soak Test: Suíte de Estabilidade Numérica
+### [x] `TZ1` — Soak Test: Suíte de Estabilidade Numérica
 
+**Chat:** Implementing Soak Test Suite
 **Arquivos:** `tests/soak_test.rs` (novo)
 **Prioridade:** Alta (executado manualmente, não no CI)
 
@@ -41,7 +42,7 @@ Testes ignorados por padrão. Rodam sob `cargo test -- --ignored --nocapture`.
 
 ---
 
-### `TZ2` — Linha de Comando para Disparo Manual do Soak Test
+### [x] `TZ2` — Linha de Comando para Disparo Manual do Soak Test
 
 **Arquivos:** `utils/soak-test.sh` (novo)
 **Prioridade:** Alta
@@ -63,7 +64,7 @@ O log é gravado. O script é idempotente.
 
 ---
 
-### `TZ3` — Benchmarks Longos para Avaliação de Desempenho Fora de Aleatoriedades
+### [x] `TZ3` — Benchmarks Longos para Avaliação de Desempenho Fora de Aleatoriedades
 
 **Arquivos:** `benches/inference_bench.rs` (modificação)
 **Prioridade:** Média

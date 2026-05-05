@@ -154,7 +154,21 @@ cargo bench --bench inference_bench
 
 # Lint rigoroso de código fonte (formatação + clippy)
 utils/lints.sh
+
+# Bateria de Estabilidade (Soak Test) - Manutenção de Longa Duração
+utils/soak-test.sh
 ```
+
+### Teste de Estabilidade (Soak Test)
+
+Para garantir que o motor permaneça estável durante horas de uso contínuo, o NAM-rs inclui uma suíte de **Soak Test** que processa milhões de frames (ex: 10M+ de silêncio/ruído, 100M+ ciclos de buffer circular). Estes testes são projetados para detectar:
+
+* **Drift Numérico**: Acúmulo de erro de arredondamento em filtros e resamplers.
+* **Estabilidade de FSM**: Integridade de contadores de Gate e transições de fade.
+* **Resiliência de Memória**: Estresse de fronteiras em `VirtualRingBuffer`.
+
+Para executar a bateria completa (pode levar vários minutos/horas):
+`bash utils/soak-test.sh`
 
 Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip, hot-swap rápido de modelos, **block sizes variáveis** (1–512 amostras), **modelos comunitários** (5 modelos .nam) e **rejeição de formatos não-suportados** (Keras Legacy, ativações não-Tanh).
 
