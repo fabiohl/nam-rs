@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-# 🎸 NAM-rs 1.4.0-staging
+# 🎸 NAM-rs 1.4.0
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
@@ -169,6 +169,9 @@ Para garantir que o motor permaneça estável durante horas de uso contínuo, o 
 
 Para executar a bateria completa (pode levar vários minutos/horas):
 `bash utils/soak-test.sh`
+
+Para executar os benchmarks de longa duração (estatística de 30s):
+`bash utils/long-bench.sh`
 
 Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip, hot-swap rápido de modelos, **block sizes variáveis** (1–512 amostras), **modelos comunitários** (5 modelos .nam) e **rejeição de formatos não-suportados** (Keras Legacy, ativações não-Tanh).
 

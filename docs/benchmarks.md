@@ -22,6 +22,12 @@ Para avaliar a performance sob pressão constante e identificar jitter causado p
 cargo bench --features long_bench
 ```
 
+Ou via script de disparo manual (recomendado):
+
+```bash
+bash utils/long-bench.sh
+```
+
 Estes benchmarks utilizam blocos de **4096 amostras** (~85ms), reduzindo o peso relativo do overhead de invocação e focando puramente no throughput do motor DSP.
 
 ## Como interpretar a Saída do Criterion
