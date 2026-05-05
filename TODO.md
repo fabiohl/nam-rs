@@ -1,6 +1,6 @@
 # Planos para próximas versões
 
-* Pacote de testes de estresse extremos
+* Pacote de testes de estresse extremos (TD2)
 Selecionar criteriosamente, dentre os atualmente disponíveis, os testes que mais se beneficiariam disto.
 Criar uma linha de comando, acionada apenas sob demanda fora de CI/CD, que dispare esta suíte de testes.
 A bateria pode até durar uma noite inteira (ex: 8 a 10 horas seguidas) buscando condições de falhas raras.

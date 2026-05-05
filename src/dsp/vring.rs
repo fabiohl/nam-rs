@@ -185,3 +185,89 @@ impl<T: Clone> Clone for VirtualRingBuffer<T> {
 
 unsafe impl<T: Send> Send for VirtualRingBuffer<T> {}
 unsafe impl<T: Sync> Sync for VirtualRingBuffer<T> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_vring_page_alignment() {
+        let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
+        let element_size = std::mem::size_of::<f32>();
+
+        // Pede 1 elemento, deve arredondar para 1 página
+        let vring = VirtualRingBuffer::<f32>::new(1);
+        let expected_elements = page_size / element_size;
+
+        assert_eq!(vring.size(), expected_elements);
+        assert_eq!(vring.len(), expected_elements * 2);
+    }
+
+    #[test]
+    fn test_vring_mirroring() {
+        // Cria um buffer pequeno (será arredondado para 1 página)
+        let mut vring = VirtualRingBuffer::<u32>::new(1);
+        let size = vring.size();
+
+        // 1. Escrita no início da primeira metade
+        vring[0] = 0x12345678;
+        // Deve ser visível no início da segunda metade (espelho)
+        assert_eq!(vring[size], 0x12345678);
+
+        // 2. Escrita no final da primeira metade
+        vring[size - 1] = 0xDEADBEEF;
+        // Deve ser visível no final da segunda metade
+        assert_eq!(vring[2 * size - 1], 0xDEADBEEF);
+
+        // 3. Acesso contíguo cruzando a fronteira (o "pulo do gato")
+        // Vamos escrever 16 valores cruzando o meio
+        let middle = size;
+        let start = middle - 8;
+        for i in 0..16 {
+            vring[start + i] = i as u32;
+        }
+
+        // Verifica se a primeira metade (original) reflete as mudanças
+        // Os primeiros 8 valores foram escritos no final da primeira metade
+        for i in 0..8 {
+            assert_eq!(vring[size - 8 + i], i as u32);
+        }
+        // Os próximos 8 valores foram escritos no início da segunda metade,
+        // o que deve ter modificado o início da PRIMEIRA metade física.
+        for i in 8..16 {
+            assert_eq!(vring[i - 8], i as u32);
+        }
+    }
+
+    #[test]
+    fn test_vring_clone() {
+        let mut vring = VirtualRingBuffer::<i32>::new(100);
+        vring[0] = 42;
+
+        let vring2 = vring.clone();
+        assert_eq!(vring2[0], 42);
+        assert_eq!(vring2.size(), vring.size());
+
+        // Modifica o original, o clone deve permanecer inalterado
+        vring[0] = 99;
+        assert_eq!(
+            vring2[0], 42,
+            "Clones de VirtualRingBuffer devem ser independentes"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "VirtualRingBuffer não suporta Zero Sized Types")]
+    fn test_vring_zst_panic() {
+        let _ = VirtualRingBuffer::<()>::new(1024);
+    }
+
+    #[test]
+    fn test_vring_large_allocation() {
+        // Testa alocação de ~1MB
+        let size = 1024 * 1024 / 4;
+        let vring = VirtualRingBuffer::<f32>::new(size);
+        assert!(vring.size() >= size);
+        // Apenas garante que não deu panic e o mmap foi bem sucedido
+    }
+}

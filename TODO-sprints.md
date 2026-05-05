@@ -346,7 +346,7 @@ behavior incorreto silenciosamente em reversals.
 
 ---
 
-#### `TD2` — Teste de Estabilidade de Longa Duração (Soak Test)
+#### `TD2` — Teste de Estabilidade de Longa Duração (Soak Test) [Adiado]
 
 **Arquivos:** `tests/` (novo arquivo)
 **Prioridade:** Média
@@ -367,7 +367,7 @@ detectar drift numérico, leaks de estado ou overflow de contadores.
 
 ---
 
-#### `TD3` — Testes para `VirtualRingBuffer` Edge Cases
+#### `TD3` — [x] Testes para `VirtualRingBuffer` Edge Cases [DONE]
 
 **Arquivos:** `src/dsp/vring.rs` (187 linhas, 0 testes)
 **Prioridade:** Média ⬆️ (elevada pela auditoria do Épico C)
