@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 #![allow(
     unsafe_op_in_unsafe_fn,
@@ -352,7 +353,108 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
 
-    for f in 0..num_frames {
+    let mut f = 0;
+    while f + 8 <= num_frames {
+        let mut out_c = 0;
+        while out_c + 16 <= out_len {
+            let mut acc0 = _mm512_loadu_ps(residual.as_ptr().add(f * out_len + out_c));
+            let mut acc1 = _mm512_loadu_ps(residual.as_ptr().add((f + 1) * out_len + out_c));
+            let mut acc2 = _mm512_loadu_ps(residual.as_ptr().add((f + 2) * out_len + out_c));
+            let mut acc3 = _mm512_loadu_ps(residual.as_ptr().add((f + 3) * out_len + out_c));
+            let mut acc4 = _mm512_loadu_ps(residual.as_ptr().add((f + 4) * out_len + out_c));
+            let mut acc5 = _mm512_loadu_ps(residual.as_ptr().add((f + 5) * out_len + out_c));
+            let mut acc6 = _mm512_loadu_ps(residual.as_ptr().add((f + 6) * out_len + out_c));
+            let mut acc7 = _mm512_loadu_ps(residual.as_ptr().add((f + 7) * out_len + out_c));
+
+            if do_bias {
+                let b = _mm512_loadu_ps(bias.as_ptr().add(out_c));
+                acc0 = _mm512_add_ps(acc0, b);
+                acc1 = _mm512_add_ps(acc1, b);
+                acc2 = _mm512_add_ps(acc2, b);
+                acc3 = _mm512_add_ps(acc3, b);
+                acc4 = _mm512_add_ps(acc4, b);
+                acc5 = _mm512_add_ps(acc5, b);
+                acc6 = _mm512_add_ps(acc6, b);
+                acc7 = _mm512_add_ps(acc7, b);
+            }
+
+            for in_c in 0..in_len {
+                let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
+
+                acc0 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c)),
+                    vw,
+                    acc0,
+                );
+                acc1 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c)),
+                    vw,
+                    acc1,
+                );
+                acc2 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c)),
+                    vw,
+                    acc2,
+                );
+                acc3 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c)),
+                    vw,
+                    acc3,
+                );
+                acc4 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 4) * in_len + in_c)),
+                    vw,
+                    acc4,
+                );
+                acc5 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 5) * in_len + in_c)),
+                    vw,
+                    acc5,
+                );
+                acc6 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 6) * in_len + in_c)),
+                    vw,
+                    acc6,
+                );
+                acc7 = _mm512_fmadd_ps(
+                    _mm512_set1_ps(*in_frames.get_unchecked((f + 7) * in_len + in_c)),
+                    vw,
+                    acc7,
+                );
+            }
+
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 3) * out_len + out_c), acc3);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 4) * out_len + out_c), acc4);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 5) * out_len + out_c), acc5);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 6) * out_len + out_c), acc6);
+            _mm512_storeu_ps(out_frames.as_mut_ptr().add((f + 7) * out_len + out_c), acc7);
+            out_c += 16;
+        }
+
+        while out_c < out_len {
+            for i in 0..8 {
+                let frame_idx = f + i;
+                let mut sum = *residual.get_unchecked(frame_idx * out_len + out_c);
+                if do_bias {
+                    sum += *bias.get_unchecked(out_c);
+                }
+                for in_c in 0..in_len {
+                    let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c))
+                        .to_f32();
+                    sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
+                }
+                *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) = sum;
+            }
+            out_c += 1;
+        }
+        f += 8;
+    }
+
+    while f < num_frames {
         let in_frame = &in_frames[f * in_len..(f + 1) * in_len];
         let out_frame = &mut out_frames[f * out_len..(f + 1) * out_len];
         let res_frame = &residual[f * out_len..(f + 1) * out_len];
@@ -386,6 +488,7 @@ pub unsafe fn fused_gemm_residual_batch_avx512(
             *out_frame.get_unchecked_mut(out_c) = sum;
             out_c += 1;
         }
+        f += 1;
     }
 }
 
@@ -510,7 +613,7 @@ impl SimdMath for Avx512Math {
         block: &mut [f32],
         ch: usize,
     ) {
-        gated_activation_and_accumulate_block_fallback(head_input, block, ch)
+        unsafe { gated_activation_and_accumulate_block_avx512(head_input, block, ch) }
     }
 
     #[inline(always)]
@@ -914,4 +1017,44 @@ pub unsafe fn gemv_4gate_avx512(
 ) {
     // Stub: Usar fallback por enquanto
     gemv_4gate_fallback(in_frame, w0, w1, w2, w3, bias, out, do_bias);
+}
+
+/// Aplica gated activation (tanh * sigmoid) in-place em block e acumula em head_input usando AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn gated_activation_and_accumulate_block_avx512(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    ch: usize,
+) {
+    let num_frames = head_input.len() / ch;
+    for f in 0..num_frames {
+        let block_offset = f * 2 * ch;
+        let head_offset = f * ch;
+        let mut c = 0;
+        while c + 16 <= ch {
+            let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
+            let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
+
+            let tanh_z1 = crate::math::fastmath::simd_tanh_avx512(z1);
+            let sig_z2 = crate::math::fastmath::simd_sigmoid_avx512(z2);
+            let activated = _mm512_mul_ps(tanh_z1, sig_z2);
+
+            _mm512_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
+
+            let vh = _mm512_loadu_ps(head_input.as_ptr().add(head_offset + c));
+            _mm512_storeu_ps(
+                head_input.as_mut_ptr().add(head_offset + c),
+                _mm512_add_ps(vh, activated),
+            );
+            c += 16;
+        }
+        while c < ch {
+            let z1 = block[block_offset + c];
+            let z2 = block[block_offset + ch + c];
+            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+            block[block_offset + c] = activated;
+            head_input[head_offset + c] += activated;
+            c += 1;
+        }
+    }
 }

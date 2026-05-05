@@ -16,18 +16,18 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 
 ## 2. Inferência & Microarquitetura (SIMD x86-64-v3/v4)
 
-- **Multiversioning via Trait `SimdMath`:** Despacho estático via monomorfização genérica (`Avx2Math`, `Avx512Math`). O código é emitido com intrinsics nativos (`fma`, `avx2`, `avx512f`) sem overhead de v-table no hot-path.
-- **FastMath Activations:** `simd_tanh` e `simd_sigmoid` usam polinômios Minimax de grau 7 com refinamento Newton-Raphson. Erro máximo ~1.2e-5, otimizado para o intervalo [-8, 8].
-- **Gated Activation Fusion (WaveNet):** Unificação de `tanh` e `sigmoid` em um único kernel SIMD, reduzindo a pressão de registradores e evitando passagens múltiplas sobre o vetor de ativação. Ganho de ~5-8% em modelos grandes.
+- **Multiversioning via Macro `dispatch_simd!`:** Despacho dinâmico no carregamento do modelo que seleciona a melhor v-table de kernels SIMD (`Avx2Math`, `Avx512Math`, etc.). O uso de macros para monomorfização garante que o compilador emita intrinsics nativos sem overhead de v-table no hot-path de inferência.
+- **FastMath Activations:** `simd_tanh` e `simd_sigmoid` usam polinômios Minimax de grau 7 com refinamento Newton-Raphson. Erro máximo < 2e-5, otimizado para o intervalo [-8, 8].
+- **Gated Activation Fusion (WaveNet A2):** Unificação de `tanh` e `sigmoid` em um único kernel SIMD nativo, reduzindo a pressão de registradores e evitando passagens múltiplas sobre o vetor de ativação.
 - **Dot Product ILP:** Implementação com 4 acumuladores independentes que saturam o throughput de portas FMA, quebrando cadeias de dependência.
-- **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para "morar" na Cache L1 (32KB). A descompressão para `f32` ocorre on-the-fly via `_mm256_cvtph_ps`, eliminando gargalos de banda de memória (Memory-Bound).
-- **Gate-Major Layout & Fused 4-Gate GEMV (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`. A inferência funde o cálculo das 4 portas em uma única passagem sobre o vetor de estado, reduzindo o tráfego de memória em 75% para o vetor de estado.
-- **Layer Overlap Pipelining (LSTM 2-Layer):** Implementação de paralelismo de grão fino onde a Camada 2 processa o frame `N-1` simultaneamente ao processamento do frame `N` pela Camada 1. Unificado via macro para todas as variantes SIMD, eliminando o gargalo sequencial e aumentando a vazão em modelos multicamada.
-- **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` para CPUs modernas (Sapphire Rapids/Zen5), dobrando o throughput em relação ao fallback.
-- **Fused Conv1d+Mixin (WaveNet):** Mecanismo de cache stateful para condicionamento. A soma do vetor de mixagem é fundida diretamente no acumulador da Conv1D, eliminando passagens redundantes de memória (load/store).
-- **Fused Tanh + Head Accumulate (WaveNet):** Unificação das fases de ativação e skip-connection em uma única passagem pelos registradores SIMD.
-- **Fused Residual GEMV (WaveNet):** O cálculo do resíduo (skip-connection) é fundido diretamente no GEMV da camada subsequente, minimizando ciclos de load/store e aumentando o throughput em ~12%.
-- **Conv1D Tiling:** Processamento de múltiplos canais em blocos (tiling) para maximizar o reúso de dados nos registradores SIMD e reduzir latência de cache em modelos com dilatação profunda.
+- **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para maximizar o hit-rate da Cache L1. A descompressão ocorre on-the-fly via `_mm256_cvtph_ps`.
+- **Gate-Major Layout & Fused 4-Gate GEMV (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`. A inferência funde o cálculo das 4 portas em uma única passagem sobre o vetor de estado.
+- **Layer Overlap Pipelining (LSTM 2-Layer):** Paralelismo de grão fino onde a Camada 2 processa o frame `N-1` simultaneamente ao frame `N` da Camada 1, aumentando a vazão em modelos multicamada.
+- **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` para CPUs modernas, dobrando o throughput.
+- **Fused Conv1d+Mixin (WaveNet):** A soma do vetor de mixagem é fundida diretamente no acumulador da Conv1D.
+- **Fused Tanh + Head Accumulate (WaveNet):** Unificação nativa das fases de ativação e skip-connection (head) em um único kernel SIMD (`tanh_and_accumulate_block`).
+- **Fused Residual GEMV com Frame Tiling (WaveNet):** O cálculo do resíduo é fundido no GEMV da camada seguinte, utilizando **4-frame tiling (AVX2)** ou **8-frame tiling (AVX-512)** para maximizar o reuso de pesos nos registradores.
+- **Conv1D Tiling:** Processamento de múltiplos canais em blocos para maximizar o reúso de dados nos registradores SIMD e reduzir latência de cache em modelos com dilatação profunda.
 
 ### Fluxo de Dados WaveNet (Pipeline de Inferência)
 
@@ -82,11 +82,12 @@ graph TD
 | Módulo | Responsabilidade |
 | :--- | :--- |
 | `pw_host` / `rt_setup` | Orquestração PipeWire, afinidade, RT priority e isolamento. |
-| `models/` | Implementações WaveNet (CNN) e LSTM recorrente (Static/Dynamic). |
+| `models/` | Implementações de inferência: `wavenet.rs` (Static), `wavenet_dyn.rs` (Dynamic), `lstm.rs`. |
 | `models/activations` | Enum `ActivationType` e implementações escalares de 11 funções de ativação. |
 | `models/gating` | Configurações de Noise Gate e Blending para WaveNet A2. |
 | `models/film` | Suporte a camadas FiLM (Feature-wise Linear Modulation). |
-| `math/` | `SimdMath` trait, FastMath, dot products e suporte BF16. |
+| `math/simd/` | Abstração SIMD: `avx2.rs`, `avx512.rs`, `fallback.rs`, `ops.rs` e `traits.rs`. |
+| `math/fastmath` | Implementações Minimax de `tanh`, `sigmoid` e exponenciais nativas. |
 | `dsp/resampler` | Resampler Sinc Polifásico nativo (Minimum Phase). |
 | `dsp/gate` | FSM de Histerese Dinâmica e rampa linear SIMD. |
 | `loader/` | Parsing de modelos `.nam` (JSON) e `.namb` (binário). |

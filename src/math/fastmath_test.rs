@@ -38,7 +38,7 @@ fn test_simd_fastmath_sigmoid_mse() {
     let mut result = [0.0f32; 8];
     unsafe { _mm256_storeu_ps(result.as_mut_ptr(), result_vector) };
 
-    let std_sigmoid = |val: f32| -> f32 { 0.5 * (1.0 + (val * 0.5).tanh()) };
+    let std_sigmoid = |val: f32| -> f32 { 1.0 / (1.0 + (-val).exp()) };
 
     for i in 0..8 {
         let expected = std_sigmoid(input[i]);
@@ -104,7 +104,7 @@ fn test_simd_fastmath_sigmoid_avx512_mse() {
         let mut result = [0.0f32; 16];
         unsafe { _mm512_storeu_ps(result.as_mut_ptr(), result_vector) };
 
-        let std_sigmoid = |val: f32| -> f32 { 0.5 * (1.0 + (val * 0.5).tanh()) };
+        let std_sigmoid = |val: f32| -> f32 { 1.0 / (1.0 + (-val).exp()) };
 
         for i in 0..16 {
             let expected = std_sigmoid(input[i]);
@@ -112,7 +112,7 @@ fn test_simd_fastmath_sigmoid_avx512_mse() {
             let error = (expected - actual).abs();
 
             assert!(
-                error < 1e-4,
+                error < 2e-5,
                 "Falha ao validar FastMath Sigmoid AVX-512 em {}. Esperado: {}, Obtido: {}, Delta: {}",
                 input[i],
                 expected,
