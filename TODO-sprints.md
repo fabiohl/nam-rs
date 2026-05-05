@@ -151,10 +151,26 @@ o ground truth mais preciso é `1.0f32 / (1.0 + (-val).exp())`.
 
 ---
 
-### Épico B — Organização e Legibilidade do Código
+### ✅ Épico B — Organização e Legibilidade do Código [CONCLUÍDO — commit 6cb79d3]
 
 **Impacto:** Manutenibilidade de longo prazo, onboarding mais rápido, compilação
 incremental mais eficiente.
+
+> **Nota de Auditoria (2026-05-05):** Todas as 3 tarefas concluídas e validadas.
+> - `wavenet_dyn.rs` reduzido de 1021 → 302 linhas (**−70.4%**); critério exigia >30%.
+> - `wavenet_common.rs` criado como base compartilhada DRY para futuros modelos A2.
+> - `define_lstm1_process!` e `define_lstm2_process_pipelined!` tornam o padrão de
+>   dispatch SIMD uniforme em todo o módulo `lstm.rs`.
+> - Paridade numérica perfeita: MSE estático vs dinâmico = **0** em `dynamic_parity.rs`.
+>
+> **Impacto nos épicos futuros:**
+> - **Épico C (Hardening RT):** `WavenetDynProcessContext` facilita validação de invariantes
+>   em runtime (ex: `debug_assert` de tamanhos de buffer) sem custo no release path.
+> - **A2 Integration:** `wavenet_common.rs` serve de ponto de extensão natural para os
+>   novos tipos `FiLM`, `GatingMode` e `ActivationType` sem replicação de código.
+> - **TB2 insight:** A macro `define_lstm1_process!` é menos parametrizada que a
+>   `define_lstm2_process_pipelined!` (sem lógica de pipelining). Se o modelo 1-camada
+>   precisar de pipelining no futuro, uma tarefa de extensão da macro deve ser planejada.
 
 #### [x] `TB1` — Decomposição de `wavenet_dyn.rs` (1.021 linhas) -> `wavenet_common.rs`. [DONE]
 
