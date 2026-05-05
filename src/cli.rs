@@ -30,6 +30,7 @@ pub fn print_help() {
     println!(
         "  -b, --buffer-size <SAMPLES> Tamanho fixo do bloco (ex: 64, 256, 512). Use 0 para automático [padrão: 256]"
     );
+    println!("  -I, --interactive       Ativa o modo interativo (ajuste de ganhos em tempo real)");
     println!("  -h, --help              Mostra esta ajuda e sai");
 }
 
@@ -40,12 +41,14 @@ pub fn print_help() {
 /// - Ganho de entrada em dB (`f32`)
 /// - Ganho de saída em dB (`f32`)
 /// - Tamanho de buffer desejado (`u32`)
-pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
+/// - Se o modo interativo deve ser ativado (`bool`)
+pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32, bool), String> {
     // Valores padrão e inicialização do estado capturado da linha de comando.
     let mut model_path = None;
     let mut input_gain = 0.0;
     let mut output_gain = 0.0;
     let mut buffer_size = 256;
+    let mut interactive = false;
     let mut has_args = false;
 
     // Inicializa o parser lexopt a partir dos argumentos fornecidos pelo sistema operacional.
@@ -111,6 +114,10 @@ pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
                             ));
                         }
                     }
+                    // Ativa o modo interativo (CLI).
+                    Short('I') | Long("interactive") => {
+                        interactive = true;
+                    }
                     // Ajuste do tamanho do buffer do DSP (em samples).
                     Short('b') | Long("buffer-size") => {
                         let val = parser.value().map_err(|e| e.to_string())?;
@@ -136,7 +143,13 @@ pub fn parse_args() -> Result<(Option<PathBuf>, f32, f32, u32), String> {
         std::process::exit(0);
     }
 
-    Ok((model_path, input_gain, output_gain, buffer_size))
+    Ok((
+        model_path,
+        input_gain,
+        output_gain,
+        buffer_size,
+        interactive,
+    ))
 }
 
 /// Loop interativo de comandos (TUI simplificada).
