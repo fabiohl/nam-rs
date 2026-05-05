@@ -35,6 +35,9 @@ pub struct RtStatusFlags {
     /// Setado pela thread DSP ao consumir um novo `NamResampler` do canal SPSC.
     /// Valor `0` indica ausência de atualização pendente.
     pub active_rate: AtomicU32,
+    /// Notificação de mudança de rate para fins de log.
+    /// Valor `0` indica nenhuma mudança desde o último poll.
+    pub active_rate_changed: AtomicU32,
 
     /// Rate alvo que a thread DSP detectou do pw mas não conseguiu aplicar (aguardando rebuild).
     /// A thread principal lê este valor para saber qual rate construir.
@@ -99,6 +102,7 @@ impl RtStatusFlags {
     pub fn new() -> Self {
         Self {
             active_rate: AtomicU32::new(0),
+            active_rate_changed: AtomicU32::new(0),
             requested_pw_rate: AtomicU32::new(0),
             requested_nam_rate: AtomicU32::new(48_000),
             needs_resampler_rebuild: AtomicBool::new(false),

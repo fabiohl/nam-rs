@@ -313,6 +313,9 @@ pub fn run_pipewire_host(
                     rt_status_for_process
                         .active_rate
                         .store(new_rs.pw_rate(), Ordering::Relaxed);
+                    rt_status_for_process
+                        .active_rate_changed
+                        .store(new_rs.pw_rate(), Ordering::Relaxed);
 
                     let old_rs = std::mem::replace(&mut resampler, new_rs);
                     if let Err(rtrb::PushError::Full(old_back)) = gc_resampler_producer.push(old_rs)

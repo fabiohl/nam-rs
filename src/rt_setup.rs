@@ -135,13 +135,13 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
-    // Rate do resampler ativado pelo callback RT
-    let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
-    if active_rate != 0 {
+    // Rate do resampler ativado pelo callback RT (notificação de mudança)
+    let rate_notif = rt_status.active_rate_changed.swap(0, Ordering::Relaxed);
+    if rate_notif != 0 {
         log::info!(
             "{} Callback RT ativou resampler com rate = {} Hz",
             "✅".green(),
-            active_rate
+            rate_notif
         );
     }
 
@@ -196,8 +196,6 @@ pub fn poll_rt_status(
     let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
     if nanos > 0 {
         let duration = Duration::from_nanos(nanos);
-        let active_rate = rt_status.active_rate.load(Ordering::Relaxed);
-        let n_samples = rt_status.last_n_samples.load(Ordering::Relaxed);
 
         // [T26] Exibe percentis acumulados e reseta o histograma a cada ~10 segundos (100 ciclos de poll).
         // Isso reduz drasticamente a verbosidade do terminal mantendo a observabilidade.
@@ -222,8 +220,12 @@ pub fn poll_rt_status(
             rt_status.latency_hist.reset();
         }
 
-        if active_rate > 0 && n_samples > 0 {
-            let budget_us = (n_samples as f64 / active_rate as f64) * 1_000_000.0;
+        // Carregamos os valores estáveis uma única vez para evitar race conditions na divisão.
+        let rate_val = rt_status.active_rate.load(Ordering::Relaxed);
+        let samples_val = rt_status.last_n_samples.load(Ordering::Relaxed);
+
+        if rate_val > 0 && samples_val > 0 {
+            let budget_us = (samples_val as f64 / rate_val as f64) * 1_000_000.0;
             let elapsed_us = duration.as_micros() as f64;
 
             // Se o tempo de execução exceder o budget (100% do tempo do buffer),
@@ -234,8 +236,8 @@ pub fn poll_rt_status(
                     .hint("Verifique a topologia do modelo ou diminua a carga do sistema.")
                     .param("exec_time_us", elapsed_us as u64)
                     .param("budget_us", budget_us as u64)
-                    .param("n_samples", n_samples)
-                    .param("rate", active_rate)
+                    .param("n_samples", samples_val)
+                    .param("rate", rate_val)
                     .emit();
             }
         }

@@ -280,7 +280,7 @@ corretiva no loop principal.
 
 ---
 
-#### `TC3` — Proteção contra Divisão por Zero no Telemetry Budget
+#### [x] `TC3` — Proteção contra Divisão por Zero no Telemetry Budget [DONE]
 
 **Arquivos:** `src/rt_setup.rs` (linhas 213-229)
 **Prioridade:** Baixa (Defensivo)
