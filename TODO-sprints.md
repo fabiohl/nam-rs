@@ -408,6 +408,17 @@ E2E.
 
 ---
 
+> **✅ Auditoria do Épico D — APROVADO (2026-05-05)**
+>
+> Todas as tarefas executáveis (TD1, TD3, TD4) verificadas in-code e em conformidade.
+> **TD2 (Soak Test)** permanece [Adiado] por decisão explícita do stakeholder — tratado à parte.
+> **Gap corrigido na auditoria:** Testes do `gate.rs` (354 linhas) migrados para
+> `src/dsp/gate_test.rs` conforme a regra de testing.md para arquivos ≥ 300 linhas.
+> Critérios de aceite de TD3 e TD4 superados (TD3: 5 testes cobrindo boundary conditions;
+> TD4: baseline do resampler gravada com benchmark de bypass extra além do especificado).
+
+---
+
 ### Épico E — Documentação e Developer Experience
 
 **Impacto:** Onboarding, contribuições externas, manutenção de longo prazo.
@@ -443,3 +454,15 @@ Conv1D, Mixin, Activation, 1x1, Head.
 2. Documentar a distribuição percentual em `docs/benchmarks.md`.
 3. Remover a instrumentação após a coleta (não deve ficar no hot-path
    de produção).
+
+---
+
+> **✅ Auditoria do Épico E — APROVADO (2026-05-05)**
+>
+> Ambas as tarefas (TE1, TE2) foram concluídas e verificadas.
+> TE1: Diagrama Mermaid integrado em `docs/architecture.md` cobrindo o pipeline completo
+> (Input → Rechannel → Conv1D cascade → SIMD Fusions → Head → Output).
+> TE2: Instrumentação RDTSC realizada, dados coletados, documentados em `docs/benchmarks.md`
+> e sondas removidas do hot-path de produção. Budget documentado por estágio (Conv1D ~45%,
+> 1x1+Residual ~25%, Mixin ~15%, Act+Head ~15%).
+> Higiene confirmada: código de produção livre de telemetria após a coleta.
