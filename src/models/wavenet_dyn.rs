@@ -29,6 +29,8 @@ pub struct Conv1dDyn {
     pub out_ch: usize,
     /// Tamanho físico do kernel (fator de retardo causais no buffer).
     pub kernel: usize,
+    /// Estratégia de prefetch pré-calculada (Eliminação de Branch).
+    pub prefetch_fn: crate::math::simd::PrefetchFn,
 }
 
 impl Conv1dDyn {
@@ -109,28 +111,14 @@ impl Conv1dDyn {
                 unsafe {
                     *tap_ptr = layer_buffer.as_ptr().add(in_slice_start);
 
-                    // [TE2] Prefetch adaptativo de 2 estágios
-                    if self.dilation >= 128 {
-                        if k + 1 < self.kernel {
-                            let ptr_n1 = layer_buffer
-                                .as_ptr()
-                                .add(in_slice_start + self.dilation * self.in_ch);
-                            let ptr_n2 = if k + 2 < self.kernel {
-                                layer_buffer
-                                    .as_ptr()
-                                    .add(in_slice_start + 2 * self.dilation * self.in_ch)
-                            } else {
-                                ptr_n1
-                            };
-                            crate::math::simd::adaptive_prefetch_2stage_f32(
-                                ptr_n1,
-                                ptr_n2,
-                                self.dilation,
-                            );
-                        }
-                    } else {
-                        crate::math::simd::adaptive_prefetch_f32((*tap_ptr).add(16), self.dilation);
-                    }
+                    // Prefetch via estratégia pré-calculada (Branchless)
+                    (self.prefetch_fn)(
+                        *tap_ptr,
+                        self.dilation * self.in_ch,
+                        k,
+                        self.kernel,
+                        self.dilation,
+                    );
                 }
             }
 

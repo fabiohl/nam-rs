@@ -28,6 +28,8 @@ pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     pub do_bias: bool,
     /// Fator de diluição no eixo temporal causacional (Ex: 1, 2, 4.. 512).
     pub dilation: usize,
+    /// Estratégia de prefetch pré-calculada (Eliminação de Branch).
+    pub prefetch_fn: crate::math::simd::PrefetchFn,
 }
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
@@ -123,33 +125,15 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 );
             }
 
-            // Prefetch adaptativo: 2 estágios para dilatações extremas, simples para o resto
-            if self.dilation >= 128 {
-                if k + 1 < K {
-                    unsafe {
-                        let ptr_n1 = layer_buffer
-                            .as_ptr()
-                            .add(in_slice_start + self.dilation * IN);
-                        let ptr_n2 = if k + 2 < K {
-                            layer_buffer
-                                .as_ptr()
-                                .add(in_slice_start + 2 * self.dilation * IN)
-                        } else {
-                            ptr_n1
-                        };
-                        crate::math::simd::adaptive_prefetch_2stage_f32(
-                            ptr_n1,
-                            ptr_n2,
-                            self.dilation,
-                        );
-                    }
-                }
-            } else {
-                let lookahead_offset = 16;
-                unsafe {
-                    let prefetch_ptr = layer_buffer.as_ptr().add(in_slice_start + lookahead_offset);
-                    crate::math::simd::adaptive_prefetch_f32(prefetch_ptr, self.dilation);
-                }
+            // Prefetch via estratégia pré-calculada (Branchless)
+            unsafe {
+                (self.prefetch_fn)(
+                    layer_buffer.as_ptr().add(in_slice_start),
+                    self.dilation * IN,
+                    k,
+                    K,
+                    self.dilation,
+                );
             }
         }
 
@@ -285,33 +269,15 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 );
             }
 
-            // Prefetch adaptativo: 2 estágios para dilatações extremas, simples para o resto (BF16)
-            if self.dilation >= 128 {
-                if k + 1 < K {
-                    unsafe {
-                        let ptr_n1 = layer_buffer
-                            .as_ptr()
-                            .add(in_slice_start + self.dilation * IN);
-                        let ptr_n2 = if k + 2 < K {
-                            layer_buffer
-                                .as_ptr()
-                                .add(in_slice_start + 2 * self.dilation * IN)
-                        } else {
-                            ptr_n1
-                        };
-
-                        crate::math::simd::adaptive_prefetch_2stage_f32(
-                            ptr_n1.cast(),
-                            ptr_n2.cast(),
-                            self.dilation,
-                        );
-                    }
-                }
-            } else {
-                unsafe {
-                    let prefetch_ptr = layer_buffer.as_ptr().add(in_slice_start + IN);
-                    crate::math::simd::adaptive_prefetch_f32(prefetch_ptr.cast(), self.dilation);
-                }
+            // Prefetch via estratégia pré-calculada (Branchless)
+            unsafe {
+                (self.prefetch_fn)(
+                    layer_buffer.as_ptr().add(in_slice_start).cast(),
+                    self.dilation * IN,
+                    k,
+                    K,
+                    self.dilation,
+                );
             }
         }
 

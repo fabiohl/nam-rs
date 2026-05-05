@@ -55,6 +55,11 @@ fn build_wavenet_layer_array<
                 bias: vec![val; CH],
                 do_bias: true,
                 dilation,
+                prefetch_fn: if dilation >= 128 {
+                    nam_rs::math::simd::prefetch_strategy_2stage
+                } else {
+                    nam_rs::math::simd::prefetch_strategy_simple
+                },
             },
             input_mixin: DenseLayer {
                 weights: vec![bits; CH * COND],

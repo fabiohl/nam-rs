@@ -408,6 +408,11 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
         bias,
         do_bias,
         dilation,
+        prefetch_fn: if dilation >= 128 {
+            crate::math::simd::prefetch_strategy_2stage
+        } else {
+            crate::math::simd::prefetch_strategy_simple
+        },
     })
 }
 
@@ -537,6 +542,11 @@ fn read_conv1d_weights_dyn(
         in_ch: in_size,
         out_ch: out_size,
         kernel: k_size,
+        prefetch_fn: if dilation >= 128 {
+            crate::math::simd::prefetch_strategy_2stage
+        } else {
+            crate::math::simd::prefetch_strategy_simple
+        },
     })
 }
 

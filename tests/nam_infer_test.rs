@@ -345,6 +345,11 @@ fn make_wavenet_layer(
             bias: vec![0.0; ch],
             do_bias: false,
             dilation,
+            prefetch_fn: if dilation >= 128 {
+                nam_rs::math::simd::prefetch_strategy_2stage
+            } else {
+                nam_rs::math::simd::prefetch_strategy_simple
+            },
         },
         input_mixin: wavenet::DenseLayer {
             weights: vec![half::f16::from_f32(0.001).to_bits(); ch],
@@ -367,6 +372,11 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
             bias: vec![0.0; 8],
             do_bias: false,
             dilation,
+            prefetch_fn: if dilation >= 128 {
+                nam_rs::math::simd::prefetch_strategy_2stage
+            } else {
+                nam_rs::math::simd::prefetch_strategy_simple
+            },
         },
         input_mixin: wavenet::DenseLayer {
             weights: vec![half::f16::from_f32(0.001).to_bits(); 8],

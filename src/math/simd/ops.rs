@@ -57,6 +57,57 @@ pub unsafe fn adaptive_prefetch_2stage_f32(
     }
 }
 
+/// Assinatura unificada para estratégias de prefetch.
+///
+/// Permite eliminar branches (`if dilation >= 128`) do loop interno de Conv1D
+/// através de despacho por ponteiro de função pré-calculado.
+pub type PrefetchFn =
+    unsafe fn(base_ptr: *const f32, step: usize, k: usize, k_limit: usize, dilation: usize);
+
+/// Estratégia de prefetch simples para dilatações pequenas/médias.
+///
+/// # Safety
+/// O ponteiro base deve ser válido.
+pub unsafe fn prefetch_strategy_simple(
+    base_ptr: *const f32,
+    _step: usize,
+    _k: usize,
+    _k_limit: usize,
+    _dilation: usize,
+) {
+    // Hardware prefetcher domina em dilatações curtas.
+    // Hint para L1 (64 bytes à frente).
+    unsafe {
+        core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(base_ptr.add(16).cast());
+    }
+}
+
+/// Estratégia de prefetch de 2 estágios para dilatações extremas.
+///
+/// # Safety
+/// O ponteiro base e os saltos calculados devem ser válidos.
+pub unsafe fn prefetch_strategy_2stage(
+    base_ptr: *const f32,
+    step: usize,
+    k: usize,
+    k_limit: usize,
+    _dilation: usize,
+) {
+    if k + 1 < k_limit {
+        unsafe {
+            let ptr_n1 = base_ptr.add(step);
+            // Hint T0 (L1) para o próximo tap
+            core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(ptr_n1.cast());
+            
+            if k + 2 < k_limit {
+                let ptr_n2 = base_ptr.add(2 * step);
+                // Hint T1 (L2) para o tap seguinte
+                core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T1 }>(ptr_n2.cast());
+            }
+        }
+    }
+}
+
 /// Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) no registrador MXCSR.
 ///
 /// # Safety

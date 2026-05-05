@@ -21,6 +21,7 @@ mod tests {
             in_ch,
             out_ch,
             kernel: 1,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         }
     }
 
@@ -199,6 +200,7 @@ mod tests {
             in_ch: ch,
             out_ch: 2 * ch,
             kernel: 1,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         };
 
         let layer = WaveNetLayerDyn {

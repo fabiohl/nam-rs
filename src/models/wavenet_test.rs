@@ -34,6 +34,11 @@ mod tests {
                     bias: vec![0.0; 4],
                     do_bias: false,
                     dilation,
+                    prefetch_fn: if dilation >= 128 {
+                        crate::math::simd::prefetch_strategy_2stage
+                    } else {
+                        crate::math::simd::prefetch_strategy_simple
+                    },
                 },
                 // O input_mixin injeta o condicionamento (ex: metadados do timbre) no sinal.
                 // Dimensões: OUT * IN = 4 * 1.
@@ -64,6 +69,11 @@ mod tests {
                     bias: vec![0.0; 2],
                     do_bias: false,
                     dilation,
+                    prefetch_fn: if dilation >= 128 {
+                        crate::math::simd::prefetch_strategy_2stage
+                    } else {
+                        crate::math::simd::prefetch_strategy_simple
+                    },
                 },
                 input_mixin: DenseLayer {
                     // Dimensões: OUT * IN = 2 * 1.
@@ -297,6 +307,7 @@ mod tests {
             bias: vec![0.0; 4],
             do_bias: false,
             dilation: 1,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         };
 
         // Simulamos um buffer de camada (input) com valores sequenciais.
@@ -332,6 +343,7 @@ mod tests {
             bias: vec![0.5; 4],
             do_bias: true, // Habilita a adição do vetor de bias.
             dilation: 1,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         };
 
         let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
@@ -367,6 +379,7 @@ mod tests {
             bias: vec![0.0; 2],
             do_bias: false,
             dilation: 2,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         };
 
         // Criamos um histórico de 6 frames (12 floats).
@@ -417,6 +430,7 @@ mod tests {
             bias: vec![0.0; 2],
             do_bias: false,
             dilation: 1,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         };
 
         // Buffer preenchido com zeros.
@@ -466,6 +480,7 @@ mod tests {
             bias: vec![1.0, -1.0],
             do_bias: true,
             dilation: 1,
+            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
         };
 
         // Layer buffer com 2 frames: F0=(2.0, 3.0), F1=(4.0, 5.0).
