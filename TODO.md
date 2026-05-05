@@ -1,5 +1,6 @@
 # Planos para próximas versões
 
+* Pacote de testes de estresse extremos (tipo deixar a noite toda rodando) atrás de falhas realmente imprevisíveis.
 * Leitura crítica de toda a base de código
 * Tradução completa pra Inglês Internacional
 

@@ -188,3 +188,68 @@ fn test_impulse_response_output() {
     let peak = output[..n].iter().map(|x| x.abs()).fold(0.0f32, f32::max);
     assert!(peak <= 4.0, "Pico excessivo (output): {peak:.4}");
 }
+
+#[test]
+fn test_phase_accum_underflow_guard() {
+    // Usamos ResamplerCore diretamente para testar a lógica interna
+    let mut core = ResamplerCore::new(44100, 48000);
+
+    // Simula um drift negativo (underflow)
+    core.phase_accum = -1e-15;
+
+    let in_l = [0.0f32; 64];
+    let in_r = [0.0f32; 64];
+    let mut out_l = [0.0f32; 64];
+    let mut out_r = [0.0f32; 64];
+
+    // O processamento deve ocorrer sem pânico (o 'as usize' do clamp 0.0 é seguro)
+    let n = core.process(&in_l, &in_r, &mut out_l, &mut out_r);
+    assert!(n > 0);
+    assert!(
+        core.phase_accum >= 0.0,
+        "Accumulator deve ter sido clampado para >= 0"
+    );
+}
+
+#[test]
+fn test_resampler_micro_soak() {
+    // Teste de "micro-estabilidade" para CI.
+    // Processa 1M de amostras para diversas taxas e verifica invariantes.
+    let rate_pairs = [
+        (44100, 48000),
+        (48000, 44100),
+        (96000, 48000),
+        (22050, 48000),
+        (88200, 48000),
+    ];
+
+    let chunk_size = 512;
+    let n_iterations = 2000; // Total ~1M samples per pair
+    
+    let in_l = vec![0.1f32; chunk_size];
+    let in_r = vec![0.1f32; chunk_size];
+    let mut out_l = vec![0.0f32; chunk_size * 4];
+    let mut out_r = vec![0.0f32; chunk_size * 4];
+
+    for (from, to) in rate_pairs {
+        let mut rs = NamResampler::new(from, to, chunk_size).unwrap();
+        
+        for _ in 0..n_iterations {
+            let n = rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
+            
+            // Invariante básico: saída deve ser finita
+            for i in 0..n {
+                assert!(out_l[i].is_finite());
+                assert!(out_r[i].is_finite());
+            }
+
+            // Acessa o core interno para verificar o acumulador (via ResamplerCore)
+            if let Some(ref core) = rs.inner {
+                assert!(core.phase_accum >= 0.0, "Underflow detectado em {}->{}", from, to);
+                // O acumulador pode ser >= NUM_PHASES se o bloco de entrada terminou
+                // antes de consumir o necessário para a próxima amostra de saída.
+                assert!(core.phase_accum < NUM_PHASES as f64 + core.phase_step * 2.0, "Overflow detectado em {}->{}", from, to);
+            }
+        }
+    }
+}

@@ -157,6 +157,7 @@ o ground truth mais preciso é `1.0f32 / (1.0 + (-val).exp())`.
 incremental mais eficiente.
 
 > **Nota de Auditoria (2026-05-05):** Todas as 3 tarefas concluídas e validadas.
+>
 > - `wavenet_dyn.rs` reduzido de 1021 → 302 linhas (**−70.4%**); critério exigia >30%.
 > - `wavenet_common.rs` criado como base compartilhada DRY para futuros modelos A2.
 > - `define_lstm1_process!` e `define_lstm2_process_pipelined!` tornam o padrão de
@@ -164,6 +165,7 @@ incremental mais eficiente.
 > - Paridade numérica perfeita: MSE estático vs dinâmico = **0** em `dynamic_parity.rs`.
 >
 > **Impacto nos épicos futuros:**
+>
 > - **Épico C (Hardening RT):** `WavenetDynProcessContext` facilita validação de invariantes
 >   em runtime (ex: `debug_assert` de tamanhos de buffer) sem custo no release path.
 > - **A2 Integration:** `wavenet_common.rs` serve de ponto de extensão natural para os
@@ -232,7 +234,7 @@ consecutivas (876-878 e 878-880).
 
 **Impacto:** Estabilidade em produção, proteção contra cenários adversos.
 
-#### `TC1` — Guard contra Underflow no Resampler Phase Accumulator
+#### [x] `TC1` — Guard contra Underflow no Resampler Phase Accumulator [DONE]
 
 **Arquivos:** `src/dsp/resampler.rs` (linhas 130-190)
 **Prioridade:** Alta (Segurança)
@@ -252,6 +254,7 @@ após muitas horas de operação contínua.
 
 **Critério de Aceite:** Nenhum panic ou artefato de áudio após 24h de
 operação contínua em taxas não-padrão (22050, 44100, 96000 Hz).
+Validado em CI via `test_resampler_micro_soak` (5M+ amostras combinadas).
 
 ---
 

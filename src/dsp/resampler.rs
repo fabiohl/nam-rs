@@ -136,6 +136,9 @@ impl ResamplerCore {
                 self.state_l.push(in_l[in_idx]);
                 self.state_r.push(in_r[in_idx]);
                 self.phase_accum -= NUM_PHASES as f64;
+                // Guard contra underflow por drift de ponto flutuante
+                debug_assert!(self.phase_accum >= -1e-12);
+                self.phase_accum = self.phase_accum.max(0.0);
                 in_idx += 1;
             }
 
@@ -183,6 +186,9 @@ impl ResamplerCore {
             self.state_l.push(in_l[in_idx]);
             self.state_r.push(in_r[in_idx]);
             self.phase_accum -= NUM_PHASES as f64;
+            // Guard contra underflow por drift de ponto flutuante
+            debug_assert!(self.phase_accum >= -1e-12);
+            self.phase_accum = self.phase_accum.max(0.0);
             in_idx += 1;
         }
 
