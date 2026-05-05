@@ -181,7 +181,7 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.1 (30/04/2026): Otimizações de performance sortidas.
 * 1.2 (02/05/2026): Algoritimo de resampling próprio.
 * 1.3 (04/05/2026): Otimizações intensivas de SIMD e refatoração de telemetria.
-* 1.4 (04/05/2026): Staging para A2 (scaffolding) e abstração para CLAP (v1.4.0-staging).
+* 1.4 (05/05/2026): Staging para A2 (scaffolding) e CLAP. Toneladas de otimizações de performance.
 
 ## 🛣️ Próximos Passos (Roadmap)
 
