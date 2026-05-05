@@ -29,6 +29,43 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Fused Residual GEMV (WaveNet):** O cálculo do resíduo (skip-connection) é fundido diretamente no GEMV da camada subsequente, minimizando ciclos de load/store e aumentando o throughput em ~12%.
 - **Conv1D Tiling:** Processamento de múltiplos canais em blocos (tiling) para maximizar o reúso de dados nos registradores SIMD e reduzir latência de cache em modelos com dilatação profunda.
 
+### Fluxo de Dados WaveNet (Pipeline de Inferência)
+
+O diagrama abaixo ilustra o fluxo de dados em um bloco de inferência WaveNet, destacando as operações fundidas (fused) que minimizam o tráfego de memória e maximizam o throughput SIMD:
+
+```mermaid
+graph TD
+    In[/"Input Block (f32)"/] --> RC["Rechannel (Dense 1x1)"]
+    RC --> VRB["Virtual Ring Buffer (Delay Line)"]
+
+    subgraph LayerCascade ["Cascata de Camadas (WaveNet Layers)"]
+        direction TB
+        L1["Layer 1"] --> L2["Layer 2"]
+        L2 -.-> LN["Layer N"]
+    end
+
+    VRB --> LayerCascade
+
+    subgraph Internal ["Micro-Arquitetura da Camada (Hot-Path)"]
+        direction TB
+        S1["Conv1D Tap Fetch (SIMD Prefetch)"] --> S2["Fused: Conv1D + Input Mixin"]
+        S2 --> S3["Fused: Gated Activation (Tanh/Sigmoid)"]
+        S3 --> S4["Fused: Head Accumulate (Skip Connection)"]
+        S3 --> S5["Fused: 1x1 GEMV + Residual Addition"]
+    end
+
+    LayerCascade -.-> Internal
+
+    LN --> HR["Head Rechannel (Final Dense)"]
+    S4 -.-> HA["Head Accumulator (Skip Sum)"]
+    HA --> HR
+    HR --> SC["Output Scale + Clipping"]
+    SC --> Out[/"Output Block (f32)"/]
+
+    classDef fused fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    class S2,S3,S4,S5 fused;
+```
+
 ## 3. Gestão e Isolação Temporais (Strict RT)
 
 - **Thread DSP (SCHED_FIFO):** Afixada via Core Affinity (`select_optimal_cpu`) preferindo cores com menor carga de IRQs.

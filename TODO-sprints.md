@@ -412,7 +412,7 @@ E2E.
 
 **Impacto:** Onboarding, contribuições externas, manutenção de longo prazo.
 
-#### `TE1` — Documentar o Fluxo de Dados WaveNet com Diagrama Mermaid
+#### `TE1` — [x] Documentar o Fluxo de Dados WaveNet com Diagrama Mermaid [DONE]
 
 **Arquivos:** `docs/architecture.md`
 **Prioridade:** Baixa
