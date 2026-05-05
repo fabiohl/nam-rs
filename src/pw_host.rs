@@ -80,6 +80,7 @@ use std::sync::atomic::Ordering;
 /// - `resampler_producer`: Produtor do canal de resamplers — a thread principal
 ///   constrói `NamResampler::new()` aqui (alocação fora do RT) e envia para o callback.
 /// - `rt_status`: Flags atômicas para comunicação silenciosa RT→Main.
+#[allow(clippy::too_many_arguments)]
 pub fn run_pipewire_host(
     mut consumer: Consumer<ParamPayload>,
     mut gc_producer: rtrb::Producer<Box<crate::models::DynamicModel>>,
@@ -88,6 +89,8 @@ pub fn run_pipewire_host(
     mut resampler_producer: rtrb::Producer<NamResampler>,
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
+    mut gc_consumer: Consumer<Box<crate::models::DynamicModel>>,
+    mut gc_resampler_consumer: Consumer<NamResampler>,
 ) -> anyhow::Result<()> {
     let PipewireHostConfig {
         buffer_size,
@@ -754,9 +757,12 @@ pub fn run_pipewire_host(
             }
         }
 
-        // 2. Monitoramento de Status
+        // 2. Monitoramento de Status e Limpeza de Memória (GC)
         // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio, timing).
         was_silent = rt_setup::poll_rt_status(&rt_status, &sys, was_silent, &tsc_anchor);
+
+        // Executa a drenagem de modelos e resamplers obsoletos (Drop-Delegation).
+        rt_setup::drain_gc_channels(&mut gc_consumer, &mut gc_resampler_consumer);
 
         // Baixa frequência de polling para economizar energia, já que estas são tarefas de controle.
         std::thread::sleep(std::time::Duration::from_millis(100));

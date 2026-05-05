@@ -123,6 +123,18 @@ pub fn poll_rt_status(
     was_silent: bool,
     _tsc_anchor: &Anchor,
 ) -> bool {
+    // Verificação de overflow no GC (vazamento de memória para proteger RT)
+    if rt_status.gc_overflow.swap(false, Ordering::Relaxed) {
+        NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
+            .message("Overflow detectado no canal de Garbage Collection (GC).")
+            .hint(
+                "A thread de áudio teve que 'vazar' memória para evitar drop no hot-path. \
+                   Isso pode ocorrer durante trocas ultra-rápidas de modelo. \
+                   O NAM-rs drenará o buffer agressivamente agora.",
+            )
+            .emit_warning();
+    }
+
     // Rate do resampler ativado pelo callback RT
     let active_rate = rt_status.active_rate.swap(0, Ordering::Relaxed);
     if active_rate != 0 {
@@ -246,6 +258,24 @@ pub fn poll_rt_status(
     }
 
     current_silent
+}
+
+/// Drena agressivamente os canais de Garbage Collection para liberar memória.
+///
+/// Esta função deve ser chamada periodicamente pela thread principal (CLI/UI)
+/// ou pelo loop de eventos do host (PipeWire, CLAP). Ela executa o `drop()`
+/// dos objetos obsoletos (modelos, resamplers) fora da thread RT.
+pub fn drain_gc_channels(
+    gc_model: &mut rtrb::Consumer<Box<crate::models::DynamicModel>>,
+    gc_rs: &mut rtrb::Consumer<crate::dsp::resampler::NamResampler>,
+) {
+    // Drena até esvaziar. O drop() pode ser pesado (liberação de heap).
+    while let Ok(model) = gc_model.pop() {
+        drop(model);
+    }
+    while let Ok(rs) = gc_rs.pop() {
+        drop(rs);
+    }
 }
 
 /// Calcula os multiplicadores finais combinando ganho do usuário e ajustes do modelo.

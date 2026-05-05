@@ -28,8 +28,8 @@ fn test_pipewire_headless_integration() {
     println!("✔ PipeWire Inicializado com sucesso.");
 
     let (mut param_prod, param_cons) = RingBuffer::new(4);
-    let (gc_prod, mut gc_cons) = RingBuffer::new(4);
-    let (gc_rs_prod, mut gc_rs_cons) = RingBuffer::new(2);
+    let (gc_prod, gc_cons) = RingBuffer::new(4);
+    let (gc_rs_prod, gc_rs_cons) = RingBuffer::new(2);
     let (res_prod, res_cons) = RingBuffer::new(2);
 
     let rt_status = Arc::new(RtStatusFlags::default());
@@ -51,6 +51,8 @@ fn test_pipewire_headless_integration() {
                 sys,
                 tsc_anchor: anchor,
             },
+            gc_cons,
+            gc_rs_cons,
         )
     });
 
@@ -75,10 +77,6 @@ fn test_pipewire_headless_integration() {
         }
         Err(_) => panic!("A Thread de PipeWire falhou (panic interno) de forma grave!"),
     }
-
-    // Limpar o GC
-    while gc_cons.pop().is_ok() {}
-    while gc_rs_cons.pop().is_ok() {}
 
     println!("Integração Concluída.")
 }

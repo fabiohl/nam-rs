@@ -183,7 +183,7 @@ pub struct SpscChannels {
 /// `capacity` deve ser preferencialmente potência de 2.
 pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (param_prod, param_cons) = RingBuffer::new(capacity);
-    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 2); // Capacidade dobrada para garbage collection dupla (L+R)
+    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 4); // Capacidade quadruplicada para garbage collection segura (L+R + folga)
     let (gc_rs_prod, gc_rs_cons) = RingBuffer::new(16); // GC de resamplers (raro)
     // Canal de resampler: capacidade pequena (apenas 1 em trânsito por vez, tipicamente)
     let (rs_prod, rs_cons) = RingBuffer::new(4);

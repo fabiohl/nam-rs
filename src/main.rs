@@ -64,25 +64,12 @@ fn main() -> anyhow::Result<()> {
     let mut producer = channels.param_producer;
     let consumer = channels.param_consumer;
     let gc_producer = channels.gc_producer;
-    let mut gc_consumer = channels.gc_consumer;
+    let gc_consumer = channels.gc_consumer;
     let gc_resampler_producer = channels.gc_resampler_producer;
-    let mut gc_resampler_consumer = channels.gc_resampler_consumer;
+    let gc_resampler_consumer = channels.gc_resampler_consumer;
     let resampler_producer = channels.resampler_producer;
     let resampler_consumer = channels.resampler_consumer;
     let rt_status = channels.rt_status;
-
-    // Thread GC
-    std::thread::spawn(move || {
-        while !spsc::SHUTDOWN.load(Ordering::Relaxed) {
-            while let Ok(model) = gc_consumer.pop() {
-                drop(model);
-            }
-            while let Ok(rs) = gc_resampler_consumer.pop() {
-                drop(rs);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-    });
 
     // Carga inicial do modelo
     if let Some(path) = model_path {
@@ -136,6 +123,8 @@ fn main() -> anyhow::Result<()> {
             tsc_anchor,
             sys,
         },
+        gc_consumer,
+        gc_resampler_consumer,
     )?;
 
     unsafe {

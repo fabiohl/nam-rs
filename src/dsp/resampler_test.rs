@@ -225,7 +225,7 @@ fn test_resampler_micro_soak() {
 
     let chunk_size = 512;
     let n_iterations = 2000; // Total ~1M samples per pair
-    
+
     let in_l = vec![0.1f32; chunk_size];
     let in_r = vec![0.1f32; chunk_size];
     let mut out_l = vec![0.0f32; chunk_size * 4];
@@ -233,10 +233,10 @@ fn test_resampler_micro_soak() {
 
     for (from, to) in rate_pairs {
         let mut rs = NamResampler::new(from, to, chunk_size).unwrap();
-        
+
         for _ in 0..n_iterations {
             let n = rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
-            
+
             // Invariante básico: saída deve ser finita
             for i in 0..n {
                 assert!(out_l[i].is_finite());
@@ -245,10 +245,20 @@ fn test_resampler_micro_soak() {
 
             // Acessa o core interno para verificar o acumulador (via ResamplerCore)
             if let Some(ref core) = rs.inner {
-                assert!(core.phase_accum >= 0.0, "Underflow detectado em {}->{}", from, to);
+                assert!(
+                    core.phase_accum >= 0.0,
+                    "Underflow detectado em {}->{}",
+                    from,
+                    to
+                );
                 // O acumulador pode ser >= NUM_PHASES se o bloco de entrada terminou
                 // antes de consumir o necessário para a próxima amostra de saída.
-                assert!(core.phase_accum < NUM_PHASES as f64 + core.phase_step * 2.0, "Overflow detectado em {}->{}", from, to);
+                assert!(
+                    core.phase_accum < NUM_PHASES as f64 + core.phase_step * 2.0,
+                    "Overflow detectado em {}->{}",
+                    from,
+                    to
+                );
             }
         }
     }

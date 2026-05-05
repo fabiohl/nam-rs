@@ -258,7 +258,7 @@ Validado em CI via `test_resampler_micro_soak` (5M+ amostras combinadas).
 
 ---
 
-#### `TC2` — Timeout Gracioso no SPSC GC Consumer
+#### [x] `TC2` — Timeout Gracioso no SPSC GC Consumer [DONE]
 
 **Arquivos:** `src/spsc.rs`, `src/pw_host.rs`
 **Prioridade:** Média (Robustez)

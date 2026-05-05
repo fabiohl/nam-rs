@@ -89,6 +89,8 @@ pub enum NamErrorCode {
     UnknownCommand,
     /// Falha ao configurar o handler de Ctrl-C.
     CtrlCHandlerFailed,
+    /// Overflow detectado no canal de Garbage Collection (GC).
+    GcOverflow,
 }
 
 impl NamErrorCode {
@@ -115,6 +117,7 @@ impl NamErrorCode {
             Self::CpuAffinityFailed => "E2301",
             Self::DeadlineExceeded => "E2001",
             Self::ParamChannelFull => "E3100",
+            Self::GcOverflow => "E3101",
             Self::InvalidGainValue => "E4100",
             Self::UnknownCommand => "E4101",
             Self::CtrlCHandlerFailed => "E4102",
@@ -144,6 +147,7 @@ impl NamErrorCode {
             Self::CpuAffinityFailed => "CPU_AFFINITY_FAILED",
             Self::DeadlineExceeded => "DEADLINE_EXCEEDED",
             Self::ParamChannelFull => "PARAM_CHANNEL_FULL",
+            Self::GcOverflow => "GC_OVERFLOW",
             Self::InvalidGainValue => "INVALID_GAIN_VALUE",
             Self::UnknownCommand => "UNKNOWN_COMMAND",
             Self::CtrlCHandlerFailed => "CTRL_C_HANDLER_FAILED",
