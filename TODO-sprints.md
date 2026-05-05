@@ -388,7 +388,7 @@ poderosa mas que pode falhar silenciosamente em ambientes restritos
 
 ---
 
-#### `TD4` — Benchmark de Resampler Isolado
+#### `TD4` — [x] Benchmark de Resampler Isolado [DONE]
 
 **Arquivos:** `benches/inference_bench.rs` (atualmente não benchmarka resampler)
 **Prioridade:** Baixa

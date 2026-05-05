@@ -365,16 +365,17 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
     });
 }
 
-fn bench_resampler_44100_to_48000(c: &mut Criterion) {
+fn bench_resampler_44100_to_48000_256samp(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
-    let chunk = 1024;
-    let mut rs = NamResampler::new(44_100, 48_000, chunk).expect("Failed to create NamResampler");
-    let in_l = vec![0.0f32; chunk];
-    let in_r = vec![0.0f32; chunk];
-    let mut out_l = vec![0.0f32; chunk * 2];
-    let mut out_r = vec![0.0f32; chunk * 2];
+    let size = 256;
+    let mut rs = NamResampler::new(44_100, 48_000, size).expect("Failed to create NamResampler");
+    let in_l = vec![0.0f32; size];
+    let in_r = vec![0.0f32; size];
+    let mut out_l = vec![0.0f32; size * 2];
+    let mut out_r = vec![0.0f32; size * 2];
 
-    c.bench_function("Resampler_44100_to_48k_1024samp", |b| {
+    let mut group = c.benchmark_group("Resampler_44100_to_48000_256samp");
+    group.bench_function("process_input", |b| {
         b.iter(|| {
             rs.process_input(
                 std::hint::black_box(&in_l),
@@ -384,18 +385,30 @@ fn bench_resampler_44100_to_48000(c: &mut Criterion) {
             );
         });
     });
+    group.bench_function("process_output", |b| {
+        b.iter(|| {
+            rs.process_output(
+                std::hint::black_box(&in_l),
+                std::hint::black_box(&in_r),
+                std::hint::black_box(&mut out_l),
+                std::hint::black_box(&mut out_r),
+            );
+        });
+    });
+    group.finish();
 }
 
-fn bench_resampler_96000_to_48000(c: &mut Criterion) {
+fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
-    let chunk = 1024;
-    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("Failed to create NamResampler");
-    let in_l = vec![0.0f32; chunk];
-    let in_r = vec![0.0f32; chunk];
-    let mut out_l = vec![0.0f32; chunk * 2];
-    let mut out_r = vec![0.0f32; chunk * 2];
+    let size = 256;
+    let mut rs = NamResampler::new(96_000, 48_000, size).expect("Failed to create NamResampler");
+    let in_l = vec![0.0f32; size];
+    let in_r = vec![0.0f32; size];
+    let mut out_l = vec![0.0f32; size * 2];
+    let mut out_r = vec![0.0f32; size * 2];
 
-    c.bench_function("Resampler_96000_to_48k_1024samp", |b| {
+    let mut group = c.benchmark_group("Resampler_96000_to_48000_256samp");
+    group.bench_function("process_input", |b| {
         b.iter(|| {
             rs.process_input(
                 std::hint::black_box(&in_l),
@@ -405,18 +418,29 @@ fn bench_resampler_96000_to_48000(c: &mut Criterion) {
             );
         });
     });
+    group.bench_function("process_output", |b| {
+        b.iter(|| {
+            rs.process_output(
+                std::hint::black_box(&in_l),
+                std::hint::black_box(&in_r),
+                std::hint::black_box(&mut out_l),
+                std::hint::black_box(&mut out_r),
+            );
+        });
+    });
+    group.finish();
 }
 
 fn bench_resampler_48000_bypass(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
-    let chunk = 1024;
-    let mut rs = NamResampler::new(48_000, 48_000, chunk).expect("Failed to create NamResampler");
-    let in_l = vec![0.0f32; chunk];
-    let in_r = vec![0.0f32; chunk];
-    let mut out_l = vec![0.0f32; chunk * 2];
-    let mut out_r = vec![0.0f32; chunk * 2];
+    let size = 256;
+    let mut rs = NamResampler::new(48_000, 48_000, size).expect("Failed to create NamResampler");
+    let in_l = vec![0.0f32; size];
+    let in_r = vec![0.0f32; size];
+    let mut out_l = vec![0.0f32; size];
+    let mut out_r = vec![0.0f32; size];
 
-    c.bench_function("Resampler_48000_bypass_1024samp", |b| {
+    c.bench_function("Resampler_48000_bypass_256samp", |b| {
         b.iter(|| {
             rs.process_input(
                 std::hint::black_box(&in_l),
@@ -514,8 +538,8 @@ criterion_group!(
     bench_lstm_dynamic_1x16,
     bench_dot_product_avx2_256,
     bench_dot_product_avx2_64,
-    bench_resampler_44100_to_48000,
-    bench_resampler_96000_to_48000,
+    bench_resampler_44100_to_48000_256samp,
+    bench_resampler_96000_to_48000_256samp,
     bench_resampler_48000_bypass,
     bench_tanh_avx512_256elem,
     bench_sigmoid_avx512_256elem,
