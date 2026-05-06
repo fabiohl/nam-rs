@@ -170,7 +170,10 @@ fn test_wavenet_silence_soak() {
 
     let start = Instant::now();
     while processed < num_frames {
-        model.process(&input, &mut output);
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
         for &v in &output {
             assert!(v.is_finite(), "NaN/Inf detectado após {} frames", processed);
             assert!(
@@ -210,7 +213,10 @@ fn test_wavenet_noise_soak() {
         for v in &mut input {
             *v = pcg.next_f32();
         }
-        model.process(&input, &mut output);
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
         for &v in &output {
             assert!(v.is_finite(), "NaN/Inf detectado após {} frames", processed);
             min_val = min_val.min(v);
@@ -238,7 +244,10 @@ fn test_lstm_silence_soak() {
 
     let start = Instant::now();
     while processed < num_frames {
-        model.process(&input, &mut output);
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
         for &v in &output {
             assert!(
                 v.is_finite(),
@@ -278,7 +287,10 @@ fn test_lstm_noise_soak() {
         for v in &mut input {
             *v = pcg.next_f32();
         }
-        model.process(&input, &mut output);
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
         for &v in &output {
             assert!(v.is_finite(), "NaN/Inf detectado após {} frames", processed);
         }
@@ -312,7 +324,12 @@ fn test_resampler_drift_soak() {
             in_l[i] = pcg.next_f32();
             in_r[i] = pcg.next_f32();
         }
-        let n = resampler.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
+        let n = resampler.process_input(
+            std::hint::black_box(&in_l),
+            std::hint::black_box(&in_r),
+            std::hint::black_box(&mut out_l),
+            std::hint::black_box(&mut out_r),
+        );
         processed_in += 1024;
         processed_out += n;
 
@@ -341,7 +358,12 @@ fn test_resampler_drift_soak() {
             in_l[i] = pcg.next_f32();
             in_r[i] = pcg.next_f32();
         }
-        let n = resampler.process_input(&in_l, &in_r, &mut out_l[..512], &mut out_r[..512]);
+        let n = resampler.process_input(
+            std::hint::black_box(&in_l),
+            std::hint::black_box(&in_r),
+            std::hint::black_box(&mut out_l[..512]),
+            std::hint::black_box(&mut out_r[..512]),
+        );
         processed_in += 1024;
         processed_out += n;
         for i in 0..n {
@@ -367,7 +389,8 @@ fn test_vring_long_run() {
     for i in 0..(num_cycles / chunk) {
         // Simula escrita e avanço
         for j in 0..chunk {
-            vring[pos + j] = (i * chunk + j) as f32;
+            std::hint::black_box(&mut vring)[pos + j] =
+                std::hint::black_box((i * chunk + j) as f32);
         }
 
         // Verifica integridade na fronteira
@@ -406,10 +429,17 @@ fn test_gate_fsm_endurance() {
     for _ in 0..num_alternations {
         // Alterna entre sinal alto e baixo para forçar transições
         let val = if pcg.next_f32() > 0.0 { 1.0 } else { 0.0 };
-        gate.update(val, threshold_open, threshold_close, &params, 64);
+        gate.update(
+            std::hint::black_box(val),
+            threshold_open,
+            threshold_close,
+            &params,
+            64,
+        );
 
         // Verifica se multiplier está no range [0, 1]
-        assert!(gate.multiplier() >= 0.0 && gate.multiplier() <= 1.0);
+        let m = std::hint::black_box(gate.multiplier());
+        assert!((0.0..=1.0).contains(&m));
     }
     let duration = start.elapsed();
 
