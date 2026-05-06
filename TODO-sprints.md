@@ -6,12 +6,12 @@
 
 **Impacto:** Extrair a máxima performance da CPU através de otimizações não-óbvias e agressivas de pipeline de hardware, visando latências sub-milissegundo para os modelos WaveNet e LSTM.
 
-### `TA1` — Otimização do Hot-path: Temporal Tiling e Fusão de Kernel (WaveNet)
+### `TA1` — Otimização do Hot-path: Temporal Tiling e Fusão de Kernel (WaveNet) [DONE]
 
 **Status:** Parcialmente implementado. A lógica de Temporal Tiling foi validada matematicamente (sem quebra de regressão), porém o `cargo bench` apontou **regressão de 25% na performance**.
 **Motivo Identificado:** A barreira de abstração do trait `SimdMath::dot_product_4x_interleaved` exige o passe do slice de pesos, forçando o intrínseco (ex: em `avx2.rs`) a ler do cache L1 a cada frame independentemente. O reuso de registradores YMM0 (para evitar L1 hit) não ocorreu, pois a trait não suporta múltiplos frames simultâneos.
 
-### `TA1.5` — Extensão do Trait SimdMath para Multi-Frame Tiling
+### `TA1.5` — Extensão do Trait SimdMath para Multi-Frame Tiling [DONE]
 
 **Pesquisa e Implementação:**
 
@@ -23,8 +23,9 @@
   3. Aplicar o fallback escalar equivalente em `fallback.rs`.
   4. Retomar e re-aplicar o código de Temporal Tiling na `Conv1D` e `WaveNetLayer` usando a nova instrução.
 
-### `TA2` — Unrolling Agressivo e Hiding de Latência em FastMath
+### `TA2` — Unrolling Agressivo e Hiding de Latência em FastMath [DONE]
 
+**Status:** Implementado (loop unrolling 16-floats em `simd_tanh_dual_avx2` e `simd_sigmoid_dual_avx2` para melhor Instruction Level Parallelism).
 **Pesquisa e Implementação:**
 
 - **Problema:** Funções como `simd_tanh` em `fastmath.rs` dependem de intrínsecas como `_mm256_rsqrt_ps` (que possuem latência de 5~7 ciclos) e de aproximações de Newton-Raphson com longas cadeias de dependência de dados (dependency chains). O pipeline da CPU fica ocioso aguardando os resultados dessas operações.

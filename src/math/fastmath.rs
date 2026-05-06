@@ -167,6 +167,64 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     }
 }
 
+/// Aproximação vetorial de `tanh(x)` iterando um polinômio de grau 5 (Dual, 16 floats).
+/// Intercala instruções para otimizar Instruction Level Parallelism (Latency Hiding).
+///
+/// # Safety
+/// O chamador deve garantir suporte a AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let c0 = _mm256_set1_ps(0.166_814_34_f32);
+    let c1 = _mm256_set1_ps(0.008_153_17_f32);
+    let c2 = _mm256_set1_ps(0.000_246_32_f32);
+    let one = _mm256_set1_ps(1.0);
+    let min_limit = _mm256_set1_ps(-TANH_CLAMP_LIMIT);
+    let max_limit = _mm256_set1_ps(TANH_CLAMP_LIMIT);
+
+    let x1 = _mm256_max_ps(min_limit, _mm256_min_ps(max_limit, x1));
+    let x2 = _mm256_max_ps(min_limit, _mm256_min_ps(max_limit, x2));
+
+    let x_sq1 = _mm256_mul_ps(x1, x1);
+    let x_sq2 = _mm256_mul_ps(x2, x2);
+    let x_sq_sq1 = _mm256_mul_ps(x_sq1, x_sq1);
+    let x_sq_sq2 = _mm256_mul_ps(x_sq2, x_sq2);
+
+    let y_3_5_1 = _mm256_fmadd_ps(c1, x_sq1, c0);
+    let y_3_5_2 = _mm256_fmadd_ps(c1, x_sq2, c0);
+    let y_3_5_7_1 = _mm256_fmadd_ps(c2, x_sq_sq1, y_3_5_1);
+    let y_3_5_7_2 = _mm256_fmadd_ps(c2, x_sq_sq2, y_3_5_2);
+    let y_full1 = _mm256_fmadd_ps(y_3_5_7_1, x_sq1, one);
+    let y_full2 = _mm256_fmadd_ps(y_3_5_7_2, x_sq2, one);
+
+    let p_x1 = _mm256_mul_ps(x1, y_full1);
+    let p_x2 = _mm256_mul_ps(x2, y_full2);
+
+    let p_x_sq1 = _mm256_mul_ps(p_x1, p_x1);
+    let p_x_sq2 = _mm256_mul_ps(p_x2, p_x2);
+    let radicand1 = _mm256_add_ps(p_x_sq1, one);
+    let radicand2 = _mm256_add_ps(p_x_sq2, one);
+
+    let mut rr1 = _mm256_rsqrt_ps(radicand1);
+    let mut rr2 = _mm256_rsqrt_ps(radicand2);
+
+    let three = _mm256_set1_ps(3.0);
+    let half = _mm256_set1_ps(0.5);
+
+    let rr_sq1 = _mm256_mul_ps(rr1, rr1);
+    let rr_sq2 = _mm256_mul_ps(rr2, rr2);
+
+    let diff1 = _mm256_fnmadd_ps(radicand1, rr_sq1, three);
+    let diff2 = _mm256_fnmadd_ps(radicand2, rr_sq2, three);
+
+    let rr_half1 = _mm256_mul_ps(rr1, half);
+    let rr_half2 = _mm256_mul_ps(rr2, half);
+
+    rr1 = _mm256_mul_ps(rr_half1, diff1);
+    rr2 = _mm256_mul_ps(rr_half2, diff2);
+
+    (_mm256_mul_ps(p_x1, rr1), _mm256_mul_ps(p_x2, rr2))
+}
+
 /// Aproximação direta de `sigmoid(x) = 1 / (1 + exp(-x))` usando AVX2.
 ///
 /// Utiliza um polinômio de Minimax de grau 6 para `exp(x)` e um passo de Newton-Raphson
@@ -226,6 +284,77 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
 
     res
+}
+
+/// Aproximação direta de `sigmoid(x)` (Dual, 16 floats).
+/// Intercala instruções para otimizar Instruction Level Parallelism (Latency Hiding).
+///
+/// # Safety
+/// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let one = _mm256_set1_ps(1.0);
+    let zero = _mm256_setzero_ps();
+
+    let neg_x1 = _mm256_sub_ps(zero, x1);
+    let neg_x2 = _mm256_sub_ps(zero, x2);
+
+    let clamp_limit = _mm256_set1_ps(SIGMOID_CLAMP_LIMIT);
+    let clamp_min = _mm256_set1_ps(-SIGMOID_CLAMP_LIMIT);
+    let neg_x1 = _mm256_max_ps(clamp_min, _mm256_min_ps(clamp_limit, neg_x1));
+    let neg_x2 = _mm256_max_ps(clamp_min, _mm256_min_ps(clamp_limit, neg_x2));
+
+    let log2e = _mm256_set1_ps(1.442_695_1_f32);
+    let ln2_hi = _mm256_set1_ps(-0.693_145_75_f32);
+    let ln2_lo = _mm256_set1_ps(-0.000_001_428_606_8_f32);
+
+    let k1 = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x1, log2e, zero));
+    let k2 = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x2, log2e, zero));
+    let k_f1 = _mm256_cvtepi32_ps(k1);
+    let k_f2 = _mm256_cvtepi32_ps(k2);
+
+    let mut f1 = _mm256_fmadd_ps(k_f1, ln2_hi, neg_x1);
+    let mut f2 = _mm256_fmadd_ps(k_f2, ln2_hi, neg_x2);
+    f1 = _mm256_fmadd_ps(k_f1, ln2_lo, f1);
+    f2 = _mm256_fmadd_ps(k_f2, ln2_lo, f2);
+
+    let c6 = _mm256_set1_ps(0.001_388_888_9_f32);
+    let c5 = _mm256_set1_ps(0.008_333_333_f32);
+    let c4 = _mm256_set1_ps(0.041_666_668_f32);
+    let c3 = _mm256_set1_ps(0.166_666_67_f32);
+    let c2 = _mm256_set1_ps(0.5);
+
+    let mut poly1 = _mm256_fmadd_ps(f1, c6, c5);
+    let mut poly2 = _mm256_fmadd_ps(f2, c6, c5);
+    poly1 = _mm256_fmadd_ps(poly1, f1, c4);
+    poly2 = _mm256_fmadd_ps(poly2, f2, c4);
+    poly1 = _mm256_fmadd_ps(poly1, f1, c3);
+    poly2 = _mm256_fmadd_ps(poly2, f2, c3);
+    poly1 = _mm256_fmadd_ps(poly1, f1, c2);
+    poly2 = _mm256_fmadd_ps(poly2, f2, c2);
+    poly1 = _mm256_fmadd_ps(poly1, f1, one);
+    poly2 = _mm256_fmadd_ps(poly2, f2, one);
+    poly1 = _mm256_fmadd_ps(poly1, f1, one);
+    poly2 = _mm256_fmadd_ps(poly2, f2, one);
+
+    let bias = _mm256_set1_epi32(127);
+    let k_int1 = _mm256_add_epi32(k1, bias);
+    let k_int2 = _mm256_add_epi32(k2, bias);
+    let twok1 = _mm256_castsi256_ps(_mm256_slli_epi32(k_int1, 23));
+    let twok2 = _mm256_castsi256_ps(_mm256_slli_epi32(k_int2, 23));
+    let e1 = _mm256_mul_ps(poly1, twok1);
+    let e2 = _mm256_mul_ps(poly2, twok2);
+
+    let den1 = _mm256_add_ps(one, e1);
+    let den2 = _mm256_add_ps(one, e2);
+    let mut res1 = _mm256_rcp_ps(den1);
+    let mut res2 = _mm256_rcp_ps(den2);
+
+    let two = _mm256_set1_ps(2.0);
+    res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
+    res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
+
+    (res1, res2)
 }
 
 /// Aplica aproximação vetorial de `tanh(x)` iterando um polinômio de grau 5 (AVX-512).
@@ -346,8 +475,7 @@ pub unsafe fn fused_lstm_gates_avx2(
     cs: __m256,
 ) -> (__m256, __m256) {
     unsafe {
-        let f = simd_sigmoid_avx2(gf);
-        let i = simd_sigmoid_avx2(gi);
+        let (f, i) = simd_sigmoid_dual_avx2(gf, gi);
         let g = simd_tanh_avx2(gg);
         let o = simd_sigmoid_avx2(go);
 
@@ -398,6 +526,14 @@ pub unsafe fn fused_lstm_gates_avx512(
 pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
     unsafe {
         let mut i = 0;
+        while i + 16 <= slice.len() {
+            let va1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let va2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+            let (vt1, vt2) = simd_tanh_dual_avx2(va1, va2);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), vt1);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), vt2);
+            i += 16;
+        }
         while i + 8 <= slice.len() {
             let va = _mm256_loadu_ps(slice.as_ptr().add(i));
             let vt = simd_tanh_avx2(va);
@@ -440,6 +576,14 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
 pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
     unsafe {
         let mut i = 0;
+        while i + 16 <= slice.len() {
+            let va1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let va2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+            let (vt1, vt2) = simd_sigmoid_dual_avx2(va1, va2);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), vt1);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), vt2);
+            i += 16;
+        }
         while i + 8 <= slice.len() {
             let va = _mm256_loadu_ps(slice.as_ptr().add(i));
             let vt = simd_sigmoid_avx2(va);
