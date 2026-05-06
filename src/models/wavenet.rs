@@ -9,13 +9,8 @@
 
 //! Módulo de Inferência WaveNet (Arquitetura Causal Dilatada).
 
-use crate::dsp::vring::VirtualRingBuffer;
+use super::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext};
 use crate::math::simd::SimdMath;
-
-/// Máximo de frames a processar em um pulso do callback.
-pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
-/// Padding temporal circular das memórias no framework de Ring Buffers.
-pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
 
 /// Convolução Causal Dilatada (WaveNet Conv1D).
 #[derive(Clone)]
@@ -922,29 +917,7 @@ pub struct WaveNetLayer<const COND: usize, const CH: usize, const K: usize> {
     pub one_by_one: DenseLayer<CH, CH>,
 }
 
-/// Contexto de processamento para otimizar a passagem de parâmetros no hot-path da WaveNet.
-pub struct WavenetProcessContext<'a, const COND: usize> {
-    /// Buffer de condicionamento (sidechain).
-    pub condition: &'a [f32],
-    /// Buffer de condicionamento pré-convertido em BF16.
-    pub condition_bf16: &'a [u16; COND],
-    /// Acumulador Head (Skip-Connection).
-    pub head_input: &'a mut [f32],
-    /// Buffer de saída da camada (para a próxima camada ou output final).
-    pub output: &'a mut [f32],
-    /// Buffer de saída opcional em BF16 (para a próxima camada em CPUs BF16).
-    pub output_bf16: Option<&'a mut [u16]>,
-    /// Buffer circular da camada corrente (delay line).
-    pub layer_buffer: &'a [f32],
-    /// Buffer circular (fita de retardo) em BF16.
-    pub layer_buffer_bf16: &'a [u16],
-    /// Índice inicial no buffer circular.
-    pub buffer_start: usize,
-    /// Número de frames a processar.
-    pub num_frames: usize,
-    /// Buffer temporário na stack para cálculos intermediários.
-    pub block: &'a mut [f32],
-}
+// (Contexto de processamento movido para wavenet_common.rs)
 
 impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, K> {
     /// Processa uma camada integral do WaveNet, iterando `FastMath` em AVX2.
@@ -952,7 +925,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     /// # Safety
     /// Despacho matemático via ponteiro para funções intrínsecas inlined.
     #[inline(always)]
-    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_, COND>) {
+    pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
         let WavenetProcessContext {
             condition,
             condition_bf16,
@@ -1047,74 +1020,7 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
     }
 }
 
-/// Gerencia a memória buffer de uma célula WaveNet.
-///
-/// Alinhamento de 64 bytes (uma cache line) garante que `buffer_start` e
-/// `receptive_field_size` não compartilhem cache line com o estado da camada
-/// adjacente ao iterar `states_ptr.add(i)` no hot-path do `process()`.
-///
-/// # Rewind amortizado
-///
-/// O `rewind_buffer` executa `copy_within` de `receptive_field_size × CH` floats
-/// a cada ~24 × 64 = 1536 amostras processadas (~32 ms a 48 kHz). É um custo
-/// amortizado aceitável (~6–10 µs uma vez a cada ~24 callbacks). Spikes
-/// observados em benchmarks refletem esse evento caindo dentro do intervalo
-/// medido; em produção o efeito é diluído no jitter total do sistema.
-#[repr(align(64))]
-#[derive(Clone)]
-pub struct WaveNetLayerState {
-    /// Buffer Circular Virtual (zero alocações em contexto DSP, eliminação de rewind).
-    pub layer_buffer: VirtualRingBuffer<f32>,
-    /// Buffer Circular Virtual em BF16 para processamento VNNI.
-    pub layer_buffer_bf16: VirtualRingBuffer<u16>,
-    /// Ponteiro numérico do frame atual (avança a cada frame processado).
-    pub buffer_start: usize,
-    /// Dimensão física do espaço vetorial receptivo (tamanho do histórico de dilatação).
-    pub receptive_field_size: usize,
-}
-
-impl WaveNetLayerState {
-    /// Construtor alocador estático do Estado (executar antes do Thread DSP).
-    pub fn new(channels: usize, receptive_field_size: usize, alloc_num: usize) -> Self {
-        // [PASSO 1: Cálculo do Tamanho do Buffer Temporal]
-        // O buffer precisa acomodar o campo receptivo e o padding de blocos.
-        // Arredondamento para página é feito internamente pelo VirtualRingBuffer.
-        let min_buffer_frames =
-            receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
-
-        let buffer = VirtualRingBuffer::<f32>::new(min_buffer_frames * channels);
-        let buffer_bf16 = VirtualRingBuffer::<u16>::new(min_buffer_frames * channels);
-
-        let actual_buffer_frames = buffer.size() / channels;
-
-        // [PASSO 2: Offset Inicial (Jittering Alocado)]
-        // Posicionamos o ponteiro inicial na segunda metade do mapeamento virtual (offset N).
-        // Isso permite olhar para trás (receptive field) sem cruzar o início do buffer virtual.
-        let jitter = (alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1;
-        let start = actual_buffer_frames * 2 - (WAVENET_MAX_NUM_FRAMES * jitter);
-
-        Self {
-            layer_buffer: buffer,
-            layer_buffer_bf16: buffer_bf16,
-            buffer_start: start,
-            receptive_field_size,
-        }
-    }
-
-    /// Executa um passo do ponteiro do Ring Buffer. Se chegar na margem, volta para o início.
-    pub fn advance_frames(&mut self, num_frames: usize, channels: usize) {
-        self.buffer_start += num_frames;
-        let buffer_frames = self.layer_buffer.size() / channels;
-
-        // [VIRTUAL RING BUFFER]
-        // Se o próximo bloco de tamanho máximo (64) puder ultrapassar o limite do mapeamento 2N,
-        // retrocedemos o ponteiro para a primeira metade (mantendo a paridade de endereço virtual).
-        // Isso garante que [buffer_start .. buffer_start + 64] seja sempre um acesso seguro.
-        if self.buffer_start + WAVENET_MAX_NUM_FRAMES > buffer_frames * 2 {
-            self.buffer_start -= buffer_frames;
-        }
-    }
-}
+// (Estado da camada movido para wavenet_common.rs)
 
 /// Unidade de Múltiplos Layers agrupados do WaveNet.
 pub struct WaveNetLayerArray<

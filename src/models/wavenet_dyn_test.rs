@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use crate::math::simd::SimdMathConfig;
-    use crate::models::wavenet::WaveNetLayerState;
+    use crate::models::wavenet_common::{WaveNetLayerState, WavenetProcessContext};
     use crate::models::wavenet_dyn::*;
 
     /// Constrói um `Conv1dDyn` mínimo com `kernel=1`, `dilation=1`.
@@ -85,12 +85,14 @@ mod tests {
 
         // Executamos o processamento interno (unsafe pois lida com ponteiros/SIMD em produção).
         unsafe {
-            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetDynProcessContext {
+            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetProcessContext {
                 condition: &condition,
                 condition_bf16: &[0u16],
                 head_input: &mut head_input,
                 output: &mut output,
+                output_bf16: None,
                 layer_buffer: &layer_buffer,
+                layer_buffer_bf16: &[],
                 buffer_start,
                 block: &mut block,
                 num_frames: 1,
@@ -154,12 +156,14 @@ mod tests {
         let _math = SimdMathConfig::current();
 
         unsafe {
-            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetDynProcessContext {
+            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetProcessContext {
                 condition: &condition,
                 condition_bf16: &[0u16],
                 head_input: &mut head_input,
                 output: &mut output,
+                output_bf16: None,
                 layer_buffer: &layer_buffer,
+                layer_buffer_bf16: &[],
                 buffer_start,
                 block: &mut block,
                 num_frames: 1,

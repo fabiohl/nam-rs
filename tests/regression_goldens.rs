@@ -3,6 +3,7 @@
 
 use nam_rs::models::lstm::{LstmModel1, LstmModel2};
 use nam_rs::models::wavenet::*;
+use nam_rs::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use std::fs::{File, create_dir_all};
 use std::io::{Read, Write};
 

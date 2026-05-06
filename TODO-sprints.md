@@ -60,7 +60,7 @@
   2. Filtrar a lista total de cores disponíveis mantendo apenas aqueles presentes no bitmask autorizado.
   3. Aplicar a heurística de capacidade e contagem de interrupções APENAS nesse subconjunto permitido. Isso garante que nunca selecionaremos um núcleo inacessível, melhorando a resiliência em sistemas complexos de áudio Linux.
 
-### `TA5` — Reestruturação Lógica e Extração de Acessórios (`src/models/wavenet.rs`)
+### `TA5` — Reestruturação Lógica e Extração de Acessórios (`src/models/wavenet.rs`) [DONE]
 
 **Pesquisa e Implementação:**
 

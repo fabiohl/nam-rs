@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod tests {
     use crate::models::wavenet::*;
+    use crate::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 
     /// Constrói um WaveNetModel<4, 3, 2> mínimo para testes com dados estáticos e controlados.
     /// Esta função serve como um "mock" (modelo simulado) para os testes unitários.

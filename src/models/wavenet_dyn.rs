@@ -8,9 +8,9 @@
 //! (durante construtor) permitindo zero-allocation e RT-safety no caminho DSP, trocando
 //! unroll do compilador (estático) por iterações dinâmicas de matriz em SIMD.
 
-use crate::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 pub use crate::models::wavenet_common::{
-    Conv1dDyn, DenseLayerDyn, WaveNetLayerDyn, WavenetDynProcessContext,
+    Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
+    WavenetProcessContext,
 };
 
 /// Representa a topologia vertical inteira de um galho WaveNet dinâmico, suportando múltiplas dilatações seq.
@@ -99,12 +99,14 @@ impl WaveNetLayerArrayDyn {
                 let current_state = &mut *states_ptr.add(i);
 
                 if i == last_layer {
-                    layer.process_block_internal::<M>(WavenetDynProcessContext {
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
                         condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..num_frames * ch],
                         output: &mut self.array_outputs[0..num_frames * ch],
+                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
                         buffer_start: current_state.buffer_start,
                         block: &mut self.block_buffer[0..num_frames * block_size],
                         num_frames,
@@ -113,13 +115,15 @@ impl WaveNetLayerArrayDyn {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
 
-                    layer.process_block_internal::<M>(WavenetDynProcessContext {
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
                         condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..num_frames * ch],
                         output: &mut next_state.layer_buffer
                             [next_start..next_start + num_frames * ch],
+                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
                         buffer_start: current_state.buffer_start,
                         block: &mut self.block_buffer[0..num_frames * block_size],
                         num_frames,
@@ -187,12 +191,14 @@ impl WaveNetLayerArrayDyn {
                 }
 
                 if i == last_layer {
-                    layer.process_block_internal::<M>(WavenetDynProcessContext {
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
                         condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..ch],
                         output: &mut self.array_outputs[0..ch],
+                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
                         buffer_start: current_state.buffer_start,
                         block: &mut self.block_buffer[0..block_size],
                         num_frames: 1,
@@ -201,12 +207,14 @@ impl WaveNetLayerArrayDyn {
                     let next_state = &mut *states_ptr.add(i + 1);
                     let next_start = next_state.buffer_start * ch;
 
-                    layer.process_block_internal::<M>(WavenetDynProcessContext {
+                    layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
                         condition_bf16: &self.last_condition_bf16,
                         head_input: &mut self.head_accum[0..ch],
                         output: &mut next_state.layer_buffer[next_start..next_start + ch],
+                        output_bf16: None,
                         layer_buffer: &current_state.layer_buffer,
+                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
                         buffer_start: current_state.buffer_start,
                         block: &mut self.block_buffer[0..block_size],
                         num_frames: 1,

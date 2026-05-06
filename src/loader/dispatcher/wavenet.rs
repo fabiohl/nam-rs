@@ -4,9 +4,8 @@
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topology};
 use crate::models::DynamicModel;
-use crate::models::wavenet::{
-    Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState, WaveNetModel,
-};
+use crate::models::wavenet::{Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetModel};
+use crate::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use crate::models::wavenet_dyn::{
     Conv1dDyn, DenseLayerDyn, WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn,
 };
@@ -226,16 +225,16 @@ pub(crate) fn build_wavenet_array<
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 
     let block_size = CH;
-    let block_buffer = vec![0.0; block_size * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES];
+    let block_buffer = vec![0.0; block_size * WAVENET_MAX_NUM_FRAMES];
 
     Ok(WaveNetLayerArray {
         layers,
         states,
         rechannel,
         head_rechannel,
-        array_outputs: vec![0.0; CH * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; CH * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; HEAD * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
+        array_outputs: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
+        head_accum: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
+        head_outputs: vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES],
         receptive_field_size,
         block_size,
         block_buffer,
@@ -669,10 +668,10 @@ pub(crate) fn build_wavenet_array_dyn(
         states,
         rechannel,
         head_rechannel,
-        array_outputs: vec![0.0; ch * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; ch * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; head * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
-        block_buffer: vec![0.0; block_size * crate::models::wavenet::WAVENET_MAX_NUM_FRAMES],
+        array_outputs: vec![0.0; ch * WAVENET_MAX_NUM_FRAMES],
+        head_accum: vec![0.0; ch * WAVENET_MAX_NUM_FRAMES],
+        head_outputs: vec![0.0; head * WAVENET_MAX_NUM_FRAMES],
+        block_buffer: vec![0.0; block_size * WAVENET_MAX_NUM_FRAMES],
         block_size,
         receptive_field_size,
         ch,
