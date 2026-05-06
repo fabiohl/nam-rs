@@ -90,6 +90,86 @@ pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
     sum
 }
 
+/// Fallback para dot product interleaved com entrada f32 para dual frames.
+///
+/// # Safety
+/// Buffers devem ser válidos.
+pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
+    weights: &[[u16; 4]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 4], [f32; 4]) {
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
+    let mut sum_f0 = [0.0f32; 4];
+    let mut sum_f1 = [0.0f32; 4];
+    for i in 0..len {
+        unsafe {
+            let s0 = *state_f0.get_unchecked(i);
+            let s1 = *state_f1.get_unchecked(i);
+            let w = weights.get_unchecked(i);
+
+            let w0 = half::f16::from_bits(w[0]).to_f32();
+            let w1 = half::f16::from_bits(w[1]).to_f32();
+            let w2 = half::f16::from_bits(w[2]).to_f32();
+            let w3 = half::f16::from_bits(w[3]).to_f32();
+
+            sum_f0[0] += w0 * s0;
+            sum_f0[1] += w1 * s0;
+            sum_f0[2] += w2 * s0;
+            sum_f0[3] += w3 * s0;
+
+            sum_f1[0] += w0 * s1;
+            sum_f1[1] += w1 * s1;
+            sum_f1[2] += w2 * s1;
+            sum_f1[3] += w3 * s1;
+        }
+    }
+    (sum_f0, sum_f1)
+}
+
+/// Fallback para dot product interleaved BF16 para dual frames.
+///
+/// # Safety
+/// `weights`, `state_f0` e `state_f1` devem conter dados válidos.
+pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
+    weights: &[[u16; 4]],
+    state_f0: &[u16],
+    state_f1: &[u16],
+) -> ([f32; 4], [f32; 4]) {
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
+    let mut sum_f0 = [0.0f32; 4];
+    let mut sum_f1 = [0.0f32; 4];
+    for i in 0..len {
+        unsafe {
+            let s0 = f32::from_bits((*state_f0.get_unchecked(i) as u32) << 16);
+            let s1 = f32::from_bits((*state_f1.get_unchecked(i) as u32) << 16);
+            let w = weights.get_unchecked(i);
+
+            let w0 = f32::from_bits((w[0] as u32) << 16);
+            let w1 = f32::from_bits((w[1] as u32) << 16);
+            let w2 = f32::from_bits((w[2] as u32) << 16);
+            let w3 = f32::from_bits((w[3] as u32) << 16);
+
+            sum_f0[0] += w0 * s0;
+            sum_f0[1] += w1 * s0;
+            sum_f0[2] += w2 * s0;
+            sum_f0[3] += w3 * s0;
+
+            sum_f1[0] += w0 * s1;
+            sum_f1[1] += w1 * s1;
+            sum_f1[2] += w2 * s1;
+            sum_f1[3] += w3 * s1;
+        }
+    }
+    (sum_f0, sum_f1)
+}
+
 /// Fallback para dot product BF16 em batch de 4.
 ///
 /// # Safety
@@ -361,6 +441,24 @@ impl SimdMath for FallbackMath {
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
         unsafe { dot_product_4x_interleaved_bf16_fallback(weights, state) }
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]) {
+        unsafe { dot_product_4x_interleaved_dual_frame_fallback(weights, state_f0, state_f1) }
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]) {
+        unsafe { dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1) }
     }
 
     #[inline(always)]

@@ -75,7 +75,7 @@ Todas as métricas históricas de acompanhamento temporal são gravadas em arqui
 
 ## Resultados Comparativos: LSTM Escalar vs SIMD (Fused Gates T3)
 
-As otimizações do **Épico 5 (Tarefa T3)** introduziram a fusão de portas (*fused gates*) e ativações SIMD (AVX2/AVX-512) no hot-path das redes recorrentes. Abaixo, os ganhos medidos em uma arquitetura x86-64-v3 (AVX2/FMA) para blocos de 64 amostras:
+As otimizações introduziram a fusão de portas (*fused gates*) e ativações SIMD (AVX2/AVX-512) no hot-path das redes recorrentes. Abaixo, os ganhos medidos em uma arquitetura x86-64-v3 (AVX2/FMA) para blocos de 64 amostras:
 
 | Topologia     | Implementação       | Latência (Média) | Speedup   |
 |:------------- |:------------------- |:---------------- |:--------- |
@@ -88,7 +88,7 @@ As otimizações do **Épico 5 (Tarefa T3)** introduziram a fusão de portas (*f
 
 O ganho de performance superior a **4x** em modelos complexos (2x16) valida a estratégia de fusão de kernels. Ao processar as 4 portas LSTM simultaneamente via vetores SIMD e manter os dados em registradores entre as ativações Sigmoid e Tanh, reduzimos drasticamente os ciclos de CPU desperdiçados com *loads/stores* redundantes e latência de memória.
 
-## Orçamento de Ciclos (WaveNet Hot-Path) - Tarefa TE2
+## Orçamento de Ciclos (WaveNet Hot-Path)
 
 Para guiar futuras otimizações, realizamos a instrumentação granular do *hot-path* da WaveNet (`WaveNetLayer::process_block_internal`) utilizando contadores de ciclos de hardware (**RDTSC**). Esta medição identifica onde a CPU gasta a maior parte do tempo durante o processamento de um bloco de áudio.
 
@@ -109,3 +109,23 @@ No nível da `WaveNetLayerArray`, a cascata de camadas domina o processamento (*
 
 > [!TIP]
 > A fusão da **Tanh** com o **Head Accumulation** foi a otimização mais impactante do Épico E, reduzindo o budget do estágio de ativação de ~30% para ~15% ao eliminar passagens extras pela memória Cache L1.
+
+## Relatório de Experimento: Temporal Tiling (Dual-Frame) na Conv1D
+
+No Épico de otimização de hot-paths, foi projetada e testada uma variante **Temporal Tiling** (processamento "Dual-Frame") para os kernels de `Conv1D` e `Avx2VnniMath`, visando maximizar o reuso dos pesos na Cache L1, ao processar dois frames simultaneamente na inferência da WaveNet.
+
+### Resultados da Medição (64 samples, 48kHz, CH=16)
+
+* **Single-Frame (Baseline):** ~84 µs
+* **Dual-Frame Tiling:** ~100 µs (Regressão de ~19%)
+
+### Análise e Decisão Arquitetural
+
+Apesar da teoria sugerir que carregar os pesos da memória apenas metade das vezes pouparia largura de banda (L1 cache), na prática a arquitetura x86-64 (AVX2/FMA) revelou-se limitada pelo **Register Pressure** (Pressão de Registradores).
+Para processar dois frames em paralelo:
+
+1. O número de acumuladores SIMD necessários dobrou (de 4 YMM para 8 YMM).
+2. O overhead de instruções no frontend (ex: *broadcasts* e *blends*) superou a economia de *loads*.
+3. O compilador foi forçado a usar registers spilling ou atingiu gargalos de *execution ports* para instruções de mistura (Port 5).
+
+**Conclusão:** O gargalo primário da `Conv1D` não está atrelado à banda da Cache L1, e sim ao *throughput* computacional e contenção de registradores do backend (FMA). Por causa disto, a implementação do kernel foi **preservada** no trait `SimdMath` para experimentações futuras e portabilidade (possivelmente AVX-512 ou ARM NEON podem beneficiar-se), contudo, o loop principal na `WaveNetLayer` foi **revertido para o processamento Single-Frame** (garantindo que o throughput RT-safe permaneça intocado).

@@ -41,6 +41,27 @@ pub trait SimdMath {
     /// Buffers devem ser válidos.
     unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4];
 
+    /// Calcula 4 produtos escalares BF16 simultaneamente (interleaved) para 2 frames paralelos.
+    /// Retorna uma tupla com os 4 resultados do frame 0 e os 4 do frame 1.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]);
+
+    /// Calcula 4 produtos escalares BF16 simultaneamente (interleaved) para 2 frames paralelos (entrada BF16).
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]);
+
     /// Calcula 4 produtos escalares BF16 simultaneamente.
     ///
     /// # Safety

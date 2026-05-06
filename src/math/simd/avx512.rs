@@ -519,6 +519,24 @@ impl SimdMath for Avx512Math {
     }
 
     #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]) {
+        dot_product_4x_interleaved_dual_frame_avx512(weights, state_f0, state_f1)
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]) {
+        dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1)
+    }
+
+    #[inline(always)]
     unsafe fn dot_product_bf16_4x(
         w0: &[u16],
         w1: &[u16],
@@ -669,6 +687,24 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]) {
+        Avx512Math::dot_product_4x_interleaved_dual_frame(weights, state_f0, state_f1)
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]) {
+        Avx512Math::dot_product_4x_interleaved_dual_frame_bf16(weights, state_f0, state_f1)
+    }
+
+    #[inline(always)]
     unsafe fn dot_product_bf16_4x(
         w0: &[u16],
         w1: &[u16],
@@ -809,6 +845,24 @@ impl SimdMath for Avx512VnniBf16Math {
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
         dot_product_4x_interleaved_bf16_fallback(weights, state)
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]) {
+        dot_product_4x_interleaved_dual_frame_avx512(weights, state_f0, state_f1)
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]) {
+        dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1)
     }
 
     #[inline(always)]
@@ -969,6 +1023,15 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
 pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     // Para não quebrar o build, vamos delegar para o fallback por enquanto se a implementação SIMD for muito longa.
     unsafe { dot_product_4x_interleaved_fallback(weights, state) }
+}
+
+/// Processa dois frames simultaneamente, acumulando 4 weights para dot product com AVX-512
+pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
+    weights: &[[u16; 4]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 4], [f32; 4]) {
+    unsafe { dot_product_4x_interleaved_dual_frame_fallback(weights, state_f0, state_f1) }
 }
 
 /// Dot product BF16 usando AVX-512 BF16.

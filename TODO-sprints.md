@@ -8,16 +8,20 @@
 
 ### `TA1` — Otimização do Hot-path: Temporal Tiling e Fusão de Kernel (WaveNet)
 
+**Status:** Parcialmente implementado. A lógica de Temporal Tiling foi validada matematicamente (sem quebra de regressão), porém o `cargo bench` apontou **regressão de 25% na performance**.
+**Motivo Identificado:** A barreira de abstração do trait `SimdMath::dot_product_4x_interleaved` exige o passe do slice de pesos, forçando o intrínseco (ex: em `avx2.rs`) a ler do cache L1 a cada frame independentemente. O reuso de registradores YMM0 (para evitar L1 hit) não ocorreu, pois a trait não suporta múltiplos frames simultâneos.
+
+### `TA1.5` — Extensão do Trait SimdMath para Multi-Frame Tiling
+
 **Pesquisa e Implementação:**
 
-- **Problema:** A `Conv1D` itera frame a frame (`process_block` chama `process_single_frame`). Para cada frame, o kernel de convolução percorre todos os canais de saída e carrega os pesos da cache L1. O throughput fica limitado pelo *memory bandwidth* da CPU, visto que os mesmos pesos são relidos a cada frame (baixa intensidade aritmética).
-- **Solução (Temporal Tiling):** Processar múltiplos frames (ex: 2 a 4) ao mesmo tempo no loop mais interno.
+- **Problema:** Para que a `TA1` efetivamente reduza as leituras L1, a carga dos pesos para os registradores YMM deve ocorrer *antes* do loop sobre os múltiplos frames do Tiling.
+- **Solução:** Criar e implementar uma nova interface no trait `SimdMath` (ex: `dot_product_4x_interleaved_dual_frame`) que receba os estados de 2 frames (f0 e f1) e execute as multiplicações de ambos utilizando o mesmo carregamento `_mm256_loadu_si128` dos pesos.
 - **Como implementar:**
-  1. No `process_block` de `wavenet.rs`, processar o áudio em *chunks* de 2 frames (ou 4 se o registrador permitir sem register spilling).
-  2. Criar uma versão `process_dual_frame` para a `Conv1D`.
-  3. No loop interno (`for b in 0..num_blocks`), o vetor de pesos `w_slice` é carregado **apenas uma vez** do cache L1 para os registradores (ex: YMM0).
-  4. Este mesmo registrador YMM0 de pesos é multiplicado pelo `in_slice` do Frame 0 e acumulado, e imediatamente pelo `in_slice` do Frame 1 e acumulado.
-- **Otimização Esperada:** Redução pela metade do tráfego de leitura da cache L1 para os pesos, elevando a densidade aritmética (operações/byte transferido) e reduzindo a latência da convolução.
+  1. Modificar `src/math/simd/traits.rs` adicionando `dot_product_4x_interleaved_dual`.
+  2. Implementar em `avx2.rs`, mantendo os pesos em `vw` e acumulando `vs_0` e `vs_1` em registradores separados.
+  3. Aplicar o fallback escalar equivalente em `fallback.rs`.
+  4. Retomar e re-aplicar o código de Temporal Tiling na `Conv1D` e `WaveNetLayer` usando a nova instrução.
 
 ### `TA2` — Unrolling Agressivo e Hiding de Latência em FastMath
 

@@ -358,6 +358,338 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
     }
+
+    /// Variante fundida que processa dois frames simultaneamente, adicionando vetores Mixin (condicionamento) diretamente nos acumuladores.
+    /// Esta abordagem maximiza a utilização dos pesos carregados nos registradores (Temporal Tiling).
+    ///
+    /// # Safety
+    /// `layer_buffer` e `mixin` devem possuir os tamanhos adequados.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn process_dual_frame_with_mixin<M: SimdMath>(
+        &self,
+        layer_buffer: &[f32],
+        out_frame_f0: &mut [f32],
+        out_frame_f1: &mut [f32],
+        frame_idx_f0: usize,
+        frame_idx_f1: usize,
+        mixin_f0: &[f32],
+        mixin_f1: &[f32],
+    ) {
+        unsafe {
+            self.process_dual_frame_internal::<M>(
+                layer_buffer,
+                out_frame_f0,
+                out_frame_f1,
+                frame_idx_f0,
+                frame_idx_f1,
+                Some(mixin_f0),
+                Some(mixin_f1),
+            );
+        }
+    }
+
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn process_dual_frame_internal<M: SimdMath>(
+        &self,
+        layer_buffer: &[f32],
+        out_frame_f0: &mut [f32],
+        out_frame_f1: &mut [f32],
+        frame_idx_f0: usize,
+        frame_idx_f1: usize,
+        mixin_f0: Option<&[f32]>,
+        mixin_f1: Option<&[f32]>,
+    ) {
+        if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
+            if self.do_bias {
+                out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
+                out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
+                unsafe {
+                    M::accumulate_head(out_frame_f0, m0);
+                    M::accumulate_head(out_frame_f1, m1);
+                }
+            } else {
+                out_frame_f0.copy_from_slice(m0);
+                out_frame_f1.copy_from_slice(m1);
+            }
+        } else if self.do_bias {
+            out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
+            out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
+        } else {
+            out_frame_f0.fill(0.0);
+            out_frame_f1.fill(0.0);
+        }
+
+        let mut in_taps_f0 = [[0.0f32; IN]; K];
+        let mut in_taps_f1 = [[0.0f32; IN]; K];
+        for k in 0..K {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let in_slice_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
+            let in_slice_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * IN;
+            unsafe {
+                in_taps_f0[k].copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start_f0..in_slice_start_f0 + IN),
+                );
+                in_taps_f1[k].copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start_f1..in_slice_start_f1 + IN),
+                );
+                (self.prefetch_fn)(
+                    layer_buffer.as_ptr().add(in_slice_start_f0),
+                    self.dilation * IN,
+                    k,
+                    K,
+                    self.dilation,
+                );
+            }
+        }
+
+        let num_blocks = OUT / 4;
+        let mut out_c = 0;
+
+        for b in 0..num_blocks {
+            let mut r0_f0;
+            let mut r1_f0;
+            let mut r2_f0;
+            let mut r3_f0;
+            let mut r0_f1;
+            let mut r1_f1;
+            let mut r2_f1;
+            let mut r3_f1;
+
+            unsafe {
+                r0_f0 = *out_frame_f0.get_unchecked(out_c);
+                r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
+                r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
+                r3_f0 = *out_frame_f0.get_unchecked(out_c + 3);
+
+                r0_f1 = *out_frame_f1.get_unchecked(out_c);
+                r1_f1 = *out_frame_f1.get_unchecked(out_c + 1);
+                r2_f1 = *out_frame_f1.get_unchecked(out_c + 2);
+                r3_f1 = *out_frame_f1.get_unchecked(out_c + 3);
+            }
+
+            for k in 0..K {
+                let w_start = (b * K + k) * IN * 4;
+                let w_slice: &[[u16; 4]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                    core::slice::from_raw_parts(ptr, IN)
+                };
+
+                let in_slice_f0 = &in_taps_f0[k];
+                let in_slice_f1 = &in_taps_f1[k];
+
+                let (t_f0, t_f1) = unsafe {
+                    M::dot_product_4x_interleaved_dual_frame(w_slice, in_slice_f0, in_slice_f1)
+                };
+                r0_f0 += t_f0[0];
+                r1_f0 += t_f0[1];
+                r2_f0 += t_f0[2];
+                r3_f0 += t_f0[3];
+                r0_f1 += t_f1[0];
+                r1_f1 += t_f1[1];
+                r2_f1 += t_f1[2];
+                r3_f1 += t_f1[3];
+            }
+
+            unsafe {
+                *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
+                *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
+                *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
+                *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
+
+                *out_frame_f1.get_unchecked_mut(out_c) = r0_f1;
+                *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
+                *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
+                *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
+            }
+            out_c += 4;
+        }
+
+        while out_c < OUT {
+            let mut r_f0 = unsafe { *out_frame_f0.get_unchecked(out_c) };
+            let mut r_f1 = unsafe { *out_frame_f1.get_unchecked(out_c) };
+            for k in 0..K {
+                let w_start = out_c * K * IN + k * IN;
+                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
+                let in_slice_f0 = &in_taps_f0[k];
+                let in_slice_f1 = &in_taps_f1[k];
+                r_f0 += unsafe { M::dot_product(in_slice_f0, w) };
+                r_f1 += unsafe { M::dot_product(in_slice_f1, w) };
+            }
+            unsafe {
+                *out_frame_f0.get_unchecked_mut(out_c) = r_f0;
+                *out_frame_f1.get_unchecked_mut(out_c) = r_f1;
+            }
+            out_c += 1;
+        }
+    }
+
+    /// Variante fundida BF16 que processa dois frames simultaneamente, adicionando vetores Mixin diretamente nos acumuladores.
+    /// Esta abordagem maximiza a utilização dos pesos (VNNI) carregados nos registradores (Temporal Tiling).
+    ///
+    /// # Safety
+    /// `layer_buffer` e `mixin` devem possuir os tamanhos adequados.
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn process_dual_frame_bf16_with_mixin<M: SimdMath>(
+        &self,
+        layer_buffer: &[u16],
+        out_frame_f0: &mut [f32],
+        out_frame_f1: &mut [f32],
+        frame_idx_f0: usize,
+        frame_idx_f1: usize,
+        mixin_f0: &[f32],
+        mixin_f1: &[f32],
+    ) {
+        unsafe {
+            self.process_dual_frame_bf16_internal::<M>(
+                layer_buffer,
+                out_frame_f0,
+                out_frame_f1,
+                frame_idx_f0,
+                frame_idx_f1,
+                Some(mixin_f0),
+                Some(mixin_f1),
+            );
+        }
+    }
+
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn process_dual_frame_bf16_internal<M: SimdMath>(
+        &self,
+        layer_buffer: &[u16],
+        out_frame_f0: &mut [f32],
+        out_frame_f1: &mut [f32],
+        frame_idx_f0: usize,
+        frame_idx_f1: usize,
+        mixin_f0: Option<&[f32]>,
+        mixin_f1: Option<&[f32]>,
+    ) {
+        if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
+            if self.do_bias {
+                out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
+                out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
+                unsafe {
+                    M::accumulate_head(out_frame_f0, m0);
+                    M::accumulate_head(out_frame_f1, m1);
+                }
+            } else {
+                out_frame_f0.copy_from_slice(m0);
+                out_frame_f1.copy_from_slice(m1);
+            }
+        } else if self.do_bias {
+            out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
+            out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
+        } else {
+            out_frame_f0.fill(0.0);
+            out_frame_f1.fill(0.0);
+        }
+
+        let mut in_taps_f0 = [[0u16; IN]; K];
+        let mut in_taps_f1 = [[0u16; IN]; K];
+        for k in 0..K {
+            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
+            let in_slice_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
+            let in_slice_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * IN;
+            unsafe {
+                in_taps_f0[k].copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start_f0..in_slice_start_f0 + IN),
+                );
+                in_taps_f1[k].copy_from_slice(
+                    layer_buffer.get_unchecked(in_slice_start_f1..in_slice_start_f1 + IN),
+                );
+                (self.prefetch_fn)(
+                    layer_buffer.as_ptr().add(in_slice_start_f0) as *const f32,
+                    self.dilation * IN,
+                    k,
+                    K,
+                    self.dilation,
+                );
+            }
+        }
+
+        let num_blocks = OUT / 4;
+        let mut out_c = 0;
+
+        for b in 0..num_blocks {
+            let mut r0_f0;
+            let mut r1_f0;
+            let mut r2_f0;
+            let mut r3_f0;
+            let mut r0_f1;
+            let mut r1_f1;
+            let mut r2_f1;
+            let mut r3_f1;
+
+            unsafe {
+                r0_f0 = *out_frame_f0.get_unchecked(out_c);
+                r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
+                r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
+                r3_f0 = *out_frame_f0.get_unchecked(out_c + 3);
+
+                r0_f1 = *out_frame_f1.get_unchecked(out_c);
+                r1_f1 = *out_frame_f1.get_unchecked(out_c + 1);
+                r2_f1 = *out_frame_f1.get_unchecked(out_c + 2);
+                r3_f1 = *out_frame_f1.get_unchecked(out_c + 3);
+            }
+
+            for k in 0..K {
+                let w_start = (b * K + k) * IN * 4;
+                let w_slice: &[[u16; 4]] = unsafe {
+                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                    core::slice::from_raw_parts(ptr, IN)
+                };
+
+                let in_slice_f0 = &in_taps_f0[k];
+                let in_slice_f1 = &in_taps_f1[k];
+
+                let (t_f0, t_f1) = unsafe {
+                    M::dot_product_4x_interleaved_dual_frame_bf16(w_slice, in_slice_f0, in_slice_f1)
+                };
+                r0_f0 += t_f0[0];
+                r1_f0 += t_f0[1];
+                r2_f0 += t_f0[2];
+                r3_f0 += t_f0[3];
+                r0_f1 += t_f1[0];
+                r1_f1 += t_f1[1];
+                r2_f1 += t_f1[2];
+                r3_f1 += t_f1[3];
+            }
+
+            unsafe {
+                *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
+                *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
+                *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
+                *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
+
+                *out_frame_f1.get_unchecked_mut(out_c) = r0_f1;
+                *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
+                *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
+                *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
+            }
+            out_c += 4;
+        }
+
+        while out_c < OUT {
+            let mut r_f0 = unsafe { *out_frame_f0.get_unchecked(out_c) };
+            let mut r_f1 = unsafe { *out_frame_f1.get_unchecked(out_c) };
+            for k in 0..K {
+                let w_start = out_c * K * IN + k * IN;
+                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
+                let in_slice_f0 = &in_taps_f0[k];
+                let in_slice_f1 = &in_taps_f1[k];
+                r_f0 += unsafe { M::dot_product_bf16(in_slice_f0, w) };
+                r_f1 += unsafe { M::dot_product_bf16(in_slice_f1, w) };
+            }
+            unsafe {
+                *out_frame_f0.get_unchecked_mut(out_c) = r_f0;
+                *out_frame_f1.get_unchecked_mut(out_c) = r_f1;
+            }
+            out_c += 1;
+        }
+    }
 }
 
 /// Camada Densa 1x1 baseada num Matmul vetorizado linear.

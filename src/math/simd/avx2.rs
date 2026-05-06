@@ -260,6 +260,135 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32
     }
 }
 
+/// Calcula 4 Dot Products simultâneos para pesos interfolhados via AVX2 (Dual Frame).
+#[target_feature(enable = "f16c")]
+pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
+    weights: &[[u16; 4]],
+    state_f0: &[f32],
+    state_f1: &[f32],
+) -> ([f32; 4], [f32; 4]) {
+    let len = core::cmp::min(state_f0.len(), state_f1.len());
+    let mut i = 0;
+
+    unsafe {
+        let mut sum0_f0 = _mm256_setzero_ps();
+        let mut sum1_f0 = _mm256_setzero_ps();
+        let mut sum2_f0 = _mm256_setzero_ps();
+        let mut sum3_f0 = _mm256_setzero_ps();
+
+        let mut sum0_f1 = _mm256_setzero_ps();
+        let mut sum1_f1 = _mm256_setzero_ps();
+        let mut sum2_f1 = _mm256_setzero_ps();
+        let mut sum3_f1 = _mm256_setzero_ps();
+
+        while i + 8 <= len {
+            let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
+            let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
+            let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
+
+            let s0_f1 = _mm256_broadcast_ss(&state_f1[i]);
+            let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
+            let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
+
+            let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+            sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
+            sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
+
+            let s2_f0 = _mm256_broadcast_ss(&state_f0[i + 2]);
+            let s3_f0 = _mm256_broadcast_ss(&state_f0[i + 3]);
+            let s23_f0 = _mm256_blend_ps(s2_f0, s3_f0, 0b11110000);
+
+            let s2_f1 = _mm256_broadcast_ss(&state_f1[i + 2]);
+            let s3_f1 = _mm256_broadcast_ss(&state_f1[i + 3]);
+            let s23_f1 = _mm256_blend_ps(s2_f1, s3_f1, 0b11110000);
+
+            let w23 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 2) as *const __m128i
+            ));
+            sum1_f0 = _mm256_fmadd_ps(w23, s23_f0, sum1_f0);
+            sum1_f1 = _mm256_fmadd_ps(w23, s23_f1, sum1_f1);
+
+            let s4_f0 = _mm256_broadcast_ss(&state_f0[i + 4]);
+            let s5_f0 = _mm256_broadcast_ss(&state_f0[i + 5]);
+            let s45_f0 = _mm256_blend_ps(s4_f0, s5_f0, 0b11110000);
+
+            let s4_f1 = _mm256_broadcast_ss(&state_f1[i + 4]);
+            let s5_f1 = _mm256_broadcast_ss(&state_f1[i + 5]);
+            let s45_f1 = _mm256_blend_ps(s4_f1, s5_f1, 0b11110000);
+
+            let w45 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 4) as *const __m128i
+            ));
+            sum2_f0 = _mm256_fmadd_ps(w45, s45_f0, sum2_f0);
+            sum2_f1 = _mm256_fmadd_ps(w45, s45_f1, sum2_f1);
+
+            let s6_f0 = _mm256_broadcast_ss(&state_f0[i + 6]);
+            let s7_f0 = _mm256_broadcast_ss(&state_f0[i + 7]);
+            let s67_f0 = _mm256_blend_ps(s6_f0, s7_f0, 0b11110000);
+
+            let s6_f1 = _mm256_broadcast_ss(&state_f1[i + 6]);
+            let s7_f1 = _mm256_broadcast_ss(&state_f1[i + 7]);
+            let s67_f1 = _mm256_blend_ps(s6_f1, s7_f1, 0b11110000);
+
+            let w67 = _mm256_cvtph_ps(_mm_loadu_si128(
+                weights.as_ptr().add(i + 6) as *const __m128i
+            ));
+            sum3_f0 = _mm256_fmadd_ps(w67, s67_f0, sum3_f0);
+            sum3_f1 = _mm256_fmadd_ps(w67, s67_f1, sum3_f1);
+
+            i += 8;
+        }
+
+        while i + 2 <= len {
+            let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
+            let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
+            let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
+
+            let s0_f1 = _mm256_broadcast_ss(&state_f1[i]);
+            let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
+            let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
+
+            let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+            sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
+            sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
+            i += 2;
+        }
+
+        let sum01_f0 = _mm256_add_ps(sum0_f0, sum1_f0);
+        let sum23_f0 = _mm256_add_ps(sum2_f0, sum3_f0);
+        let sum_f0 = _mm256_add_ps(sum01_f0, sum23_f0);
+
+        let sum01_f1 = _mm256_add_ps(sum0_f1, sum1_f1);
+        let sum23_f1 = _mm256_add_ps(sum2_f1, sum3_f1);
+        let sum_f1 = _mm256_add_ps(sum01_f1, sum23_f1);
+
+        let lower_f0 = _mm256_castps256_ps128(sum_f0);
+        let upper_f0 = _mm256_extractf128_ps(sum_f0, 1);
+        let mut sum128_f0 = _mm_add_ps(lower_f0, upper_f0);
+
+        let lower_f1 = _mm256_castps256_ps128(sum_f1);
+        let upper_f1 = _mm256_extractf128_ps(sum_f1, 1);
+        let mut sum128_f1 = _mm_add_ps(lower_f1, upper_f1);
+
+        while i < len {
+            let s0_f0 = _mm_load1_ps(state_f0.as_ptr().add(i));
+            let s0_f1 = _mm_load1_ps(state_f1.as_ptr().add(i));
+            let w0 = _mm_cvtph_ps(_mm_loadu_si64(
+                weights.as_ptr().add(i) as *const u16 as *const u8
+            ));
+            sum128_f0 = _mm_fmadd_ps(w0, s0_f0, sum128_f0);
+            sum128_f1 = _mm_fmadd_ps(w0, s0_f1, sum128_f1);
+            i += 1;
+        }
+
+        let mut out_f0 = [0.0; 4];
+        let mut out_f1 = [0.0; 4];
+        _mm_storeu_ps(out_f0.as_mut_ptr(), sum128_f0);
+        _mm_storeu_ps(out_f1.as_mut_ptr(), sum128_f1);
+        (out_f0, out_f1)
+    }
+}
+
 /// Calcula o Dot Product de um lote de 4 vetores (h0..h3) com o mesmo vetor de pesos via AVX2.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_batch_4x_avx2(
@@ -766,6 +895,24 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]) {
+        unsafe { dot_product_4x_interleaved_dual_frame_avx2(weights, state_f0, state_f1) }
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]) {
+        unsafe { dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1) }
+    }
+
+    #[inline(always)]
     unsafe fn dot_product_bf16_4x(
         w0: &[u16],
         w1: &[u16],
@@ -908,7 +1055,25 @@ impl SimdMath for Avx2VnniMath {
 
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
-        unsafe { Avx2Math::dot_product_4x_interleaved_bf16(weights, state) }
+        Avx2Math::dot_product_4x_interleaved_bf16(weights, state)
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame(
+        weights: &[[u16; 4]],
+        state_f0: &[f32],
+        state_f1: &[f32],
+    ) -> ([f32; 4], [f32; 4]) {
+        Avx2Math::dot_product_4x_interleaved_dual_frame(weights, state_f0, state_f1)
+    }
+
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
+        weights: &[[u16; 4]],
+        state_f0: &[u16],
+        state_f1: &[u16],
+    ) -> ([f32; 4], [f32; 4]) {
+        Avx2Math::dot_product_4x_interleaved_dual_frame_bf16(weights, state_f0, state_f1)
     }
 
     #[inline(always)]
