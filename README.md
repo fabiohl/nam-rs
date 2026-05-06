@@ -35,7 +35,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no _Graph Engine_ do PipeWire.
 2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (_Core Affinity_), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
-4. **Rust puro:** A escolha do rusto não foi por "hype". Há motivos muito fortes que compelem a ele. Além de alta performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++, trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
+4. **Rust puro:** A escolha do Rust não foi por "hype". Há motivos muito fortes que compelem a ele. Além de alta performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++, trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
 
 ## 🚀 Guia Rápido
 
@@ -119,7 +119,7 @@ Se necessário, use `qpwgraph` ou `pw-link` para fazer os devidos roteamentos.
 * [docs/architecture.md](docs/architecture.md) — Topologia, módulos e decisões de design
 * [docs/dependencies.md](docs/dependencies.md) — Dependências sistêmicas e crates Rust
 * [docs/benchmarks.md](docs/benchmarks.md) — Como interpretar as métricas de performance do Criterion
-* [docs/clap_integration.md](docs/clap_integration.md) — Estratégia e roadmap de integração CLAP
+* [docs/clap_integration.md](docs/clap_integration.md) — Estratégia de integração CLAP (Clever Audio Plug-in)
 
 ## 🧠 Modelos Suportados
 
@@ -128,7 +128,7 @@ No momento é suportado nativamente a "Arquitetura A1" do NAM. O suporte à "Arq
 Oferece dois níveis de operação de parsing:
 
 * **Modo Estático (Altíssima Performance):** Construções de _Const Generics_ dimensionadas em tempo de compilação.
-  * **WaveNet:** Standard (16×8), Lite (12×8), Feather (8×4) e Nano (4×2)
+  * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4) e Nano (4×2)
   * **LSTM:** 1 e 2 Camadas (8 a 24 de Hidden Size: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
 * **Modo Dinâmico (Flexibilidade Absoluta):** Fallback ativado automaticamente ao carregar arranjos `.nam` com geometrias extrassensoriais não catalogadas (`num_layers` e `channels` arbitrários), operando sem _loop unrolling_.
 
