@@ -36,8 +36,9 @@
   3. Aplicar as macros do polinômio de forma intercalada: `let x_sq1 = _mm256_mul_ps(va1, va1); let x_sq2 = _mm256_mul_ps(va2, va2);`
   4. Quando `rr1 = _mm256_rsqrt_ps(radicand1)` for despachado para a Execution Unit, imediatamente despachar `rr2 = _mm256_rsqrt_ps(radicand2)`. A CPU processará ambas em paralelo (se tiver múltiplas portas FMA) ou esconderá a latência da primeira com o despacho da segunda.
 
-### `TA3` — Compactação de Status SPSC e Redução de Cache Bouncing
+### `TA3` — Compactação de Status SPSC e Redução de Cache Bouncing [DONE]
 
+**Status:** Implementado (condensação de `AtomicBool` em bitmask `AtomicU64`).
 **Pesquisa e Implementação:**
 
 - **Problema:** A struct `RtStatusFlags` (em `spsc.rs`) contém múltiplas variáveis atômicas separadas (`has_clipped: AtomicBool`, `gc_overflow: AtomicBool`, etc). Quando a thread RT atualiza essas flags e a Main Thread as lê em `poll_rt_status()`, ocorre contenção em múltiplas linhas de cache diferentes, exigindo sincronização de barramento de memória (Cache-line Bouncing) que gera jitter.

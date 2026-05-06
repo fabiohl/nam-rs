@@ -121,7 +121,7 @@ pub(crate) struct DspPipelineContext<'a> {
 #[cold]
 #[inline(never)]
 pub(crate) fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
-    rt_status.is_silent.store(true, Ordering::Relaxed);
+    rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
 
     let bridge_ref = unsafe { &mut *bridge_ptr };
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
@@ -275,7 +275,7 @@ fn apply_output_stage(
     silence_hysteresis.apply_gain_rt(&mut resamp_out_r[..n_pw], gate_params, n_pw);
 
     if crate::dsp::gain::detect_clipping_stereo_simd(&resamp_out_l[..n_pw], &resamp_out_r[..n_pw]) {
-        rt_status.has_clipped.store(true, Ordering::Relaxed);
+        rt_status.set_flag(crate::spsc::RT_STATUS_HAS_CLIPPED);
     }
 }
 
@@ -328,9 +328,11 @@ pub(crate) fn capture_dsp_pipeline(
         return;
     }
 
-    ctx.rt_status
-        .is_silent
-        .store(gate_state != GateState::Open, Ordering::Relaxed);
+    if gate_state != GateState::Open {
+        ctx.rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
+    } else {
+        ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);
+    }
 
     let n_pw = run_inference(samples_l, samples_r, n_samples, &mut ctx);
 

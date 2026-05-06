@@ -331,9 +331,7 @@ pub fn run_pipewire_host(
                         if let Some(still_here) = to_park {
                             // Pathológico: vaza para evitar drop
                             std::mem::forget(still_here);
-                            rt_status_for_process
-                                .gc_overflow
-                                .store(true, Ordering::Relaxed);
+                            rt_status_for_process.set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
                         }
                     }
                 }
@@ -375,8 +373,7 @@ pub fn run_pipewire_host(
                                     if let Some(still_here) = to_park {
                                         Box::leak(still_here);
                                         rt_status_for_process
-                                            .gc_overflow
-                                            .store(true, Ordering::Relaxed);
+                                            .set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
                                     }
                                 }
                             }
@@ -394,8 +391,7 @@ pub fn run_pipewire_host(
                                     if let Some(still_here) = to_park {
                                         Box::leak(still_here);
                                         rt_status_for_process
-                                            .gc_overflow
-                                            .store(true, Ordering::Relaxed);
+                                            .set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
                                     }
                                 }
                             }
@@ -444,9 +440,7 @@ pub fn run_pipewire_host(
                     rt_status_for_process
                         .requested_nam_rate
                         .store(current_nam_rate, Ordering::Relaxed);
-                    rt_status_for_process
-                        .needs_resampler_rebuild
-                        .store(true, Ordering::Relaxed);
+                    rt_status_for_process.set_flag(crate::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
                 }
 
                 if param_changed {
@@ -698,7 +692,7 @@ pub fn run_pipewire_host(
         // 1. Gestão Dinâmica de Resampling
         // O callback RT sinaliza via flag atômica se houve mudança na taxa de amostragem
         // do PipeWire ou do modelo carregado.
-        if rt_status.needs_resampler_rebuild.load(Ordering::Relaxed) {
+        if rt_status.check_flag(crate::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD) {
             let target_pw_rate = rt_status.requested_pw_rate.load(Ordering::Relaxed);
             let target_nam_rate = rt_status.requested_nam_rate.load(Ordering::Relaxed);
 
@@ -707,9 +701,7 @@ pub fn run_pipewire_host(
                 // Isso garante que o áudio não sofra dropouts durante a troca de formato.
                 match NamResampler::new(target_pw_rate, target_nam_rate, 2048) {
                     Ok(new_rs) => {
-                        rt_status
-                            .resampler_rebuild_failed
-                            .store(false, Ordering::Relaxed);
+                        rt_status.clear_flag(crate::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
 
                         log::info!(
                             "{} Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
@@ -748,15 +740,11 @@ pub fn run_pipewire_host(
                             .param("detail", &e)
                             .emit();
 
-                        rt_status
-                            .resampler_rebuild_failed
-                            .store(true, Ordering::Relaxed);
+                        rt_status.set_flag(crate::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
                     }
                 }
                 // Limpamos a solicitação após o processamento.
-                rt_status
-                    .needs_resampler_rebuild
-                    .store(false, Ordering::Relaxed);
+                rt_status.clear_flag(crate::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
             }
         }
 

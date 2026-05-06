@@ -124,7 +124,7 @@ pub fn poll_rt_status(
     _tsc_anchor: &Anchor,
 ) -> bool {
     // Verificação de overflow no GC (vazamento de memória para proteger RT)
-    if rt_status.gc_overflow.swap(false, Ordering::Relaxed) {
+    if rt_status.check_and_clear_flag(crate::spsc::RT_STATUS_GC_OVERFLOW) {
         NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
             .message("Overflow detectado no canal de Garbage Collection (GC).")
             .hint(
@@ -146,7 +146,7 @@ pub fn poll_rt_status(
     }
 
     // Detecção de clipping na saída
-    if rt_status.has_clipped.swap(false, Ordering::Relaxed) {
+    if rt_status.check_and_clear_flag(crate::spsc::RT_STATUS_HAS_CLIPPED) {
         log::warn!(
             "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
             "🔥".bright_red().bold()
@@ -157,7 +157,7 @@ pub fn poll_rt_status(
     // A thread DSP publica este valor uma única vez no cold-path do primeiro frame.
     let prio = rt_status.rt_priority.load(Ordering::Relaxed);
     if prio != -1 {
-        let is_fifo = rt_status.rt_is_fifo.load(Ordering::Relaxed);
+        let is_fifo = rt_status.check_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
         // Rearmamos sentinela para não logar novamente nas iterações seguintes.
         rt_status.rt_priority.store(-1, Ordering::Relaxed);
 
@@ -244,7 +244,7 @@ pub fn poll_rt_status(
     }
 
     // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
-    let current_silent = rt_status.is_silent.load(Ordering::Relaxed);
+    let current_silent = rt_status.check_flag(crate::spsc::RT_STATUS_IS_SILENT);
     if current_silent != was_silent {
         if current_silent {
             log::info!(
@@ -404,9 +404,11 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             let confirmed_fifo = base_policy == libc::SCHED_FIFO;
 
             // Publica resultado real via flags atômicas — zero I/O no caminho quente
-            rt_status
-                .rt_is_fifo
-                .store(confirmed_fifo, Ordering::Relaxed);
+            if confirmed_fifo {
+                rt_status.set_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
+            } else {
+                rt_status.clear_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
+            }
             rt_status
                 .rt_priority
                 .store(actual_param.sched_priority, Ordering::Relaxed);
@@ -426,7 +428,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             );
         } else {
             // Publica sentinela de falha de verificação
-            rt_status.rt_is_fifo.store(false, Ordering::Relaxed);
+            rt_status.clear_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
             rt_status.rt_priority.store(0, Ordering::Relaxed);
 
             log::error!(

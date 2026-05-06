@@ -18,11 +18,24 @@
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 
 /// Flag global para shutdown coordenado e gracioso entre todas as threads.
 /// Definida como `true` pelo handler de CTRL+C.
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+
+/// Flag indicando que a thread DSP precisa de um novo `NamResampler`.
+pub const RT_STATUS_NEEDS_RESAMPLER_REBUILD: u64 = 1 << 0;
+/// Indica se a última tentativa de rebuild do resampler pela thread principal falhou.
+pub const RT_STATUS_RESAMPLER_REBUILD_FAILED: u64 = 1 << 1;
+/// `true` se a thread DSP confirmou operação em `SCHED_FIFO`.
+pub const RT_STATUS_RT_IS_FIFO: u64 = 1 << 2;
+/// Flag indicando que houve saturação (clipping) no áudio de saída.
+pub const RT_STATUS_HAS_CLIPPED: u64 = 1 << 3;
+/// Flag indicando que o buffer atual está em silêncio (abaixo de −80 dBFS).
+pub const RT_STATUS_IS_SILENT: u64 = 1 << 4;
+/// Flag indicando que houve overflow no canal de GC.
+pub const RT_STATUS_GC_OVERFLOW: u64 = 1 << 5;
 
 /// Flags atômicas de status para comunicação silenciosa RT→Main.
 ///
@@ -47,39 +60,14 @@ pub struct RtStatusFlags {
     /// Rate alvo do modelo carregado (NAM). O padrão usual é 48000.
     pub requested_nam_rate: AtomicU32,
 
-    /// Flag indicando que a thread DSP precisa de um novo `NamResampler`.
-    /// Setada pelo callback quando detecta mudança de rate via `AtomicU32`.
-    /// Lida e consumida pela thread principal.
-    pub needs_resampler_rebuild: AtomicBool,
-
-    /// Indica se a última tentativa de rebuild do resampler pela thread principal falhou.
-    /// A thread principal seta `true` ao falhar e o callback pode ler para decidir
-    /// se continua com o resampler anterior.
-    pub resampler_rebuild_failed: AtomicBool,
-
-    /// `true` se a thread DSP confirmou operação em `SCHED_FIFO` via
-    /// `pthread_getschedparam`. Setado no cold-path do primeiro frame.
-    /// Lido pelo loop principal para confirmação auditável no log.
-    pub rt_is_fifo: AtomicBool,
-
     /// Prioridade RT efetiva confirmada por `pthread_getschedparam`.
     /// Valor `-1` indica que a verificação ainda não foi realizada.
     /// Setado no cold-path do primeiro frame da thread DSP.
     pub rt_priority: AtomicI32,
 
-    /// Flag atômica indicando que houve saturação (clipping) no áudio de saída.
-    /// Setada pelo callback RT ao detectar samples fora do intervalo [-1.0, 1.0].
-    /// A thread principal exibe um alerta e a reseta.
-    pub has_clipped: AtomicBool,
-
     /// Contador atômico de overloads de DSP (XRUNs virtuais).
     /// Incrementado pelo callback RT se o processamento exceder 85% do tempo limite (budget).
     pub dsp_overloads: AtomicU32,
-
-    /// Flag atômica indicando que o buffer atual está em silêncio (abaixo de −80 dBFS).
-    /// O callback RT seta `true` ao detectar silêncio e pular o pipeline DSP pesado.
-    /// A thread principal lê para exibir/ocultar o status de "Silence Bypass" ativo.
-    pub is_silent: AtomicBool,
 
     /// Tempo de processamento do último ciclo DSP em ticks (RDTSC).
     /// Lido pela thread principal e convertido para Duration via Anchor.
@@ -91,10 +79,9 @@ pub struct RtStatusFlags {
     /// Histograma de latência para análise estatística (P50, P95, P99).
     pub latency_hist: crate::dsp::telemetry::LatencyHistogram,
 
-    /// Flag indicando que houve overflow no canal de GC.
-    /// Se `true`, modelos ou resamplers obsoletos foram "vazados" (leaked)
-    /// para evitar um `drop()` no hot-path.
-    pub gc_overflow: AtomicBool,
+    /// Bitmask atômico contendo os estados binários (needs_rebuild, clipped, silent, etc).
+    /// Reduz Cache Bouncing ao condensar múltiplos estados em uma única linha de cache.
+    pub status_bits: AtomicU64,
 }
 
 impl RtStatusFlags {
@@ -105,18 +92,38 @@ impl RtStatusFlags {
             active_rate_changed: AtomicU32::new(0),
             requested_pw_rate: AtomicU32::new(0),
             requested_nam_rate: AtomicU32::new(48_000),
-            needs_resampler_rebuild: AtomicBool::new(false),
-            resampler_rebuild_failed: AtomicBool::new(false),
-            rt_is_fifo: AtomicBool::new(false),
             rt_priority: AtomicI32::new(-1),
-            has_clipped: AtomicBool::new(false),
             dsp_overloads: AtomicU32::new(0),
-            is_silent: AtomicBool::new(false),
             dsp_cycle_time: AtomicU64::new(0),
             last_n_samples: AtomicU32::new(0),
             latency_hist: crate::dsp::telemetry::LatencyHistogram::new(),
-            gc_overflow: AtomicBool::new(false),
+            status_bits: AtomicU64::new(0),
         }
+    }
+
+    /// Seta uma ou mais flags no bitmask.
+    #[inline(always)]
+    pub fn set_flag(&self, flag: u64) {
+        self.status_bits.fetch_or(flag, Ordering::Relaxed);
+    }
+
+    /// Limpa uma ou mais flags no bitmask.
+    #[inline(always)]
+    pub fn clear_flag(&self, flag: u64) {
+        self.status_bits.fetch_and(!flag, Ordering::Relaxed);
+    }
+
+    /// Verifica se uma flag está ativa.
+    #[inline(always)]
+    pub fn check_flag(&self, flag: u64) -> bool {
+        (self.status_bits.load(Ordering::Relaxed) & flag) != 0
+    }
+
+    /// Verifica se uma flag está ativa e a limpa atomicamente em uma única operação.
+    /// Retorna `true` se a flag estava ativa.
+    #[inline(always)]
+    pub fn check_and_clear_flag(&self, flag: u64) -> bool {
+        (self.status_bits.fetch_and(!flag, Ordering::Relaxed) & flag) != 0
     }
 }
 
