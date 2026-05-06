@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # Benchmarks de Performance (Criterion)
@@ -108,13 +107,13 @@ Abaixo, a distribuição percentual média de ciclos em uma arquitetura x86-64-v
 No nível da `WaveNetLayerArray`, a cascata de camadas domina o processamento (**>90% do tempo total**). Os estágios de interface (**Rechannel** de entrada e **Head Rechannel** de saída) representam uma sobrecarga fixa negligenciável à medida que o número de camadas aumenta, validando a escalabilidade da arquitetura NAM-rs para modelos complexos.
 
 > [!TIP]
-> A fusão da **Tanh** com o **Head Accumulation** foi a otimização mais impactante do Épico E, reduzindo o budget do estágio de ativação de ~30% para ~15% ao eliminar passagens extras pela memória Cache L1.
+> A fusão da **Tanh** com o **Head Accumulation** foi a otimização mais impactante do Épico E, reduzindo o budget do estágio de ativação de ~30% para ~15% ao eliminar passagens redundantes pela memória Cache L1.
 
 ## Relatório de Experimento: Temporal Tiling (Dual-Frame) na Conv1D
 
-No Épico de otimização de hot-paths, foi projetada e testada uma variante **Temporal Tiling** (processamento "Dual-Frame") para os kernels de `Conv1D` e `Avx2VnniMath`, visando maximizar o reuso dos pesos na Cache L1, ao processar dois frames simultaneamente na inferência da WaveNet.
+No Épico de otimização de hot-paths, foi projetada e testada uma variante **Temporal Tiling** (processamento "Dual-Frame") para os kernels de `Conv1D`, visando maximizar o reuso dos pesos na Cache L1 ao processar dois frames simultaneamente na inferência da WaveNet.
 
-### Resultados da Medição (64 samples, 48kHz, CH=16)
+### Resultados da Medição (64 samples, 48kHz, CH=16, AVX2)
 
 * **Single-Frame (Baseline):** ~84 µs
 * **Dual-Frame Tiling:** ~100 µs (Regressão de ~19%)
@@ -124,8 +123,8 @@ No Épico de otimização de hot-paths, foi projetada e testada uma variante **T
 Apesar da teoria sugerir que carregar os pesos da memória apenas metade das vezes pouparia largura de banda (L1 cache), na prática a arquitetura x86-64 (AVX2/FMA) revelou-se limitada pelo **Register Pressure** (Pressão de Registradores).
 Para processar dois frames em paralelo:
 
-1. O número de acumuladores SIMD necessários dobrou (de 4 YMM para 8 YMM).
+1. O número de acumuladores SIMD necessários dobrou (de 4 YMM para 8 YMM por canal).
 2. O overhead de instruções no frontend (ex: *broadcasts* e *blends*) superou a economia de *loads*.
-3. O compilador foi forçado a usar registers spilling ou atingiu gargalos de *execution ports* para instruções de mistura (Port 5).
+3. O compilador foi forçado a usar *register spilling* ou atingiu gargalos de *execution ports* para instruções de mistura (Port 5).
 
-**Conclusão:** O gargalo primário da `Conv1D` não está atrelado à banda da Cache L1, e sim ao *throughput* computacional e contenção de registradores do backend (FMA). Por causa disto, a implementação do kernel foi **preservada** no trait `SimdMath` para experimentações futuras e portabilidade (possivelmente AVX-512 ou ARM NEON podem beneficiar-se), contudo, o loop principal na `WaveNetLayer` foi **revertido para o processamento Single-Frame** (garantindo que o throughput RT-safe permaneça intocado).
+**Conclusão:** O gargalo primário da `Conv1D` no NAM-rs não está atrelado à largura de banda da Cache L1, e sim ao *throughput* computacional e contenção de registradores do backend (FMA). Por causa disto, embora a implementação do kernel tenha sido mantida no trait `SimdMath` para portabilidade e testes em arquiteturas com mais registradores (ex: AVX-512 ou ARM NEON), o loop principal na `WaveNetLayer` permanece utilizando **processamento Single-Frame** para garantir a menor latência e maior estabilidade em tempo real.

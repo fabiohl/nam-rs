@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -17,7 +18,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 ## 2. Inferência & Microarquitetura (SIMD x86-64-v3/v4)
 
 - **Multiversioning via Macro `dispatch_simd!`:** Despacho dinâmico no carregamento do modelo que seleciona a melhor v-table de kernels SIMD (`Avx2Math`, `Avx512Math`, etc.). O uso de macros para monomorfização garante que o compilador emita intrinsics nativos sem overhead de v-table no hot-path de inferência.
-- **FastMath Activations:** `simd_tanh` e `simd_sigmoid` usam polinômios Minimax de grau 7 com refinamento Newton-Raphson. Erro máximo < 2e-5, otimizado para o intervalo [-8, 8].
+- **FastMath Activations & Gain LUT:** `simd_tanh` e `simd_sigmoid` usam polinômios Minimax de grau 7 com refinamento Newton-Raphson. Erro máximo < 2e-5, otimizado para o intervalo [-8, 8]. Inclui uma **Gain LUT (Look-Up Table)** interpolada para conversão ultra-rápida dB → Linear no RT, evitando chamadas caras a `powf`.
 - **Gated Activation Fusion (WaveNet A2):** Unificação de `tanh` e `sigmoid` em um único kernel SIMD nativo, reduzindo a pressão de registradores e evitando passagens múltiplas sobre o vetor de ativação.
 - **Dot Product ILP:** Implementação com 4 acumuladores independentes que saturam o throughput de portas FMA, quebrando cadeias de dependência.
 - **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para maximizar o hit-rate da Cache L1. A descompressão ocorre on-the-fly via `_mm256_cvtph_ps`.
@@ -79,20 +80,20 @@ graph TD
 
 ## 4. Estrutura de Módulos
 
-| Módulo | Responsabilidade |
-| :--- | :--- |
-| `pw_host` / `rt_setup` | Orquestração PipeWire, afinidade, RT priority e isolamento. |
-| `models/` | Implementações de inferência: `wavenet.rs` (Static), `wavenet_dyn.rs` (Dynamic), `lstm.rs`. |
-| `models/activations` | Enum `ActivationType` e implementações escalares de 11 funções de ativação. |
-| `models/gating` | Configurações de Noise Gate e Blending para WaveNet A2. |
-| `models/film` | Suporte a camadas FiLM (Feature-wise Linear Modulation). |
-| `math/simd/` | Abstração SIMD: `avx2.rs`, `avx512.rs`, `fallback.rs`, `ops.rs` e `traits.rs`. |
-| `math/fastmath` | Implementações Minimax de `tanh`, `sigmoid` e exponenciais nativas. |
-| `dsp/resampler` | Resampler Sinc Polifásico nativo (Minimum Phase). |
-| `dsp/gate` | FSM de Histerese Dinâmica e rampa linear SIMD. |
-| `loader/` | Parsing de modelos `.nam` (JSON) e `.namb` (binário). |
-| `audio_host` | Trait `AudioHost` para abstração de backend (PipeWire/CLAP). |
-| `params` | Parâmetros de plugin agnósticos ao host (`NamPluginParams`). |
+| Módulo                 | Responsabilidade                                                                            |
+|:---------------------- |:------------------------------------------------------------------------------------------- |
+| `pw_host` / `rt_setup` | Orquestração PipeWire, afinidade, RT priority e isolamento.                                 |
+| `models/`              | Implementações de inferência: `wavenet.rs` (Static), `wavenet_dyn.rs` (Dynamic), `lstm.rs`. |
+| `models/activations`   | Enum `ActivationType` e implementações escalares de 11 funções de ativação.                 |
+| `models/gating`        | Configurações de Noise Gate e Blending para WaveNet A2.                                     |
+| `models/film`          | Suporte a camadas FiLM (Feature-wise Linear Modulation).                                    |
+| `math/simd/`           | Abstração SIMD: `avx2.rs`, `avx512.rs`, `fallback.rs`, `ops.rs` e `traits.rs`.              |
+| `math/fastmath`        | Implementações Minimax de `tanh`, `sigmoid` e exponenciais nativas.                         |
+| `dsp/resampler`        | Resampler Sinc Polifásico nativo (Minimum Phase).                                           |
+| `dsp/gate`             | FSM de Histerese Dinâmica e rampa linear SIMD.                                              |
+| `loader/`              | Parsing de modelos `.nam` (JSON) e `.namb` (binário).                                       |
+| `audio_host`           | Trait `AudioHost` para abstração de backend (PipeWire/CLAP).                                |
+| `params`               | Parâmetros de plugin agnósticos ao host (`NamPluginParams`).                                |
 
 ## 5. DSP & Resampling Nativo
 
@@ -155,10 +156,10 @@ Os seguintes repositórios GitHub são a principal base de referência para a im
 - [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore)
 - [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio)
 
-## 10. Suporte a Plugins (CLAP Roadmap)
+## 10. Suporte a Plugins (CLAP Integration)
 
-A arquitetura está sendo desacoplada do PipeWire para permitir a exportação como plugin CLAP (Clever Audio Plug-in).
+A arquitetura do NAM-rs v1.4.0 já suporta o desacoplamento necessário para execução como plugin CLAP (Clever Audio Plug-in), permitindo o uso em DAWs (Digital Audio Workstations).
 
-- **Trait `AudioHost`:** Define a interface de comunicação entre o motor DSP e o host (DAW ou Standalone). Permite que o mesmo código de inferência rode em diferentes contextos de execução.
-- **Feature Flags:** O build é controlado por flags (`standalone` vs `clap-plugin`), garantindo que dependências pesadas como `pipewire` não sejam incluídas no binário do plugin.
-- **Parâmetros Agnósticos:** `NamPluginParams` centraliza o estado do plugin (gain, threshold, model path), facilitando o mapeamento para automação de DAW e persistência de estado.
+- **Trait `AudioHost`:** Define a interface agnóstica de comunicação entre o motor DSP e o host.
+- **Feature Flags:** O build é controlado por flags (`standalone` vs `clap-plugin`), garantindo que dependências de sistema (como `pipewire`) sejam removidas no binário do plugin para máxima portabilidade.
+- **Parâmetros Agnósticos:** `NamPluginParams` centraliza o estado do plugin (`input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`), facilitando o mapeamento para automação de DAW e persistência de estado (save/load).
