@@ -14,6 +14,7 @@ use nam_rs::models::NamModel;
 use std::fs;
 use std::path::PathBuf;
 
+/// Helper: resolve o caminho absoluto para as fixtures de teste.
 fn model_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models");
@@ -21,12 +22,16 @@ fn model_path(filename: &str) -> PathBuf {
     path
 }
 
+/// Gera um sinal de teste senoidal estável.
 fn generate_sine(num_samples: usize) -> Vec<f32> {
     (0..num_samples)
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect()
 }
 
+/// Computa o Erro Quadrático Médio (MSE) usando precisão dupla (`f64`).
+/// O uso de `f64` é mandatório aqui para evitar que erros de arredondamento
+/// na acumulação mascarem divergências sutis entre os layouts de pesos.
 fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
     let n = a.len();
     let sum: f64 = a
@@ -40,6 +45,11 @@ fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
     sum / (n as f64)
 }
 
+/// Valida a paridade do formato NAMB v2 com layout `GateMajorLstm`.
+///
+/// Tradicionalmente, os pesos da LSTM são carregados e transpostos em runtime.
+/// O formato v2 permite que os pesos já venham organizados por porta (Gate-Major),
+/// eliminando a necessidade de rearranjo de memória durante o carregamento inicial.
 #[test]
 fn test_lstm_v2_gate_major_parity() {
     let path = model_path("BossLSTM-1x16.nam");
@@ -50,21 +60,22 @@ fn test_lstm_v2_gate_major_parity() {
     let json_data = fs::read_to_string(&path).unwrap();
     let original_data = parse_nam_json(&json_data).unwrap();
 
-    // 1. Constrói modelo original (runtime transposition)
+    // 1. Constrói modelo original (com transposição em runtime via JSON)
     let mut model_orig = build_model(&original_data).unwrap();
     model_orig.prewarm(1024);
 
-    // 2. Codifica para NAMB v2 Gate-Major
+    // 2. Codifica para NAMB v2 usando o layout Gate-Major
     let namb_v2 = encode_namb(&original_data, 2, WeightsLayout::GateMajorLstm).unwrap();
 
-    // 3. Carrega NAMB v2 (direct copy)
+    // 3. Decodifica o binário v2 e verifica se o layout foi preservado
     let v2_data = parse_namb(&namb_v2).unwrap();
     assert_eq!(v2_data.weights_layout, WeightsLayout::GateMajorLstm);
 
+    // 4. Constrói o modelo v2 (carregamento direto, sem transposição)
     let mut model_v2 = build_model(&v2_data).unwrap();
     model_v2.prewarm(1024);
 
-    // 4. Compara saídas
+    // 5. Compara a saída numérica para garantir paridade absoluta (MSE próximo de zero)
     let input = generate_sine(512);
     let mut out_orig = vec![0.0f32; 512];
     let mut out_v2 = vec![0.0f32; 512];
@@ -74,9 +85,17 @@ fn test_lstm_v2_gate_major_parity() {
 
     let mse = compute_mse(&out_orig, &out_v2);
     println!("[LSTM v2 Parity] MSE: {:.2e}", mse);
-    assert!(mse < 1e-12, "Paridade LSTM falhou! MSE={:e}", mse);
+    assert!(
+        mse < 1e-12,
+        "Divergência detectada no layout GateMajorLstm! MSE={:e}",
+        mse
+    );
 }
 
+/// Valida a paridade do formato NAMB v2 com layout `Interleaved4WaveNet`.
+///
+/// Este layout organiza os pesos das convoluções dilatadas em blocos de 4 (tiling),
+/// o que é otimizado para os kernels AVX2 `fused_gemm_residual` do NAM-rs.
 #[test]
 fn test_wavenet_v2_interleaved4_parity() {
     let path = model_path("BossWN-nano.nam");
@@ -87,21 +106,21 @@ fn test_wavenet_v2_interleaved4_parity() {
     let json_data = fs::read_to_string(&path).unwrap();
     let original_data = parse_nam_json(&json_data).unwrap();
 
-    // 1. Constrói modelo original (runtime transposition)
+    // 1. Constrói modelo original (carregamento JSON padrão)
     let mut model_orig = build_model(&original_data).unwrap();
     model_orig.prewarm(2048);
 
-    // 2. Codifica para NAMB v2 Interleaved-4
+    // 2. Codifica para NAMB v2 com intercalamento de 4 floats (fator de tiling AVX2)
     let namb_v2 = encode_namb(&original_data, 2, WeightsLayout::Interleaved4WaveNet).unwrap();
 
-    // 3. Carrega NAMB v2 (direct copy)
+    // 3. Carrega o binário v2
     let v2_data = parse_namb(&namb_v2).unwrap();
     assert_eq!(v2_data.weights_layout, WeightsLayout::Interleaved4WaveNet);
 
     let mut model_v2 = build_model(&v2_data).unwrap();
     model_v2.prewarm(2048);
 
-    // 4. Compara saídas
+    // 4. Validação numérica
     let input = generate_sine(512);
     let mut out_orig = vec![0.0f32; 512];
     let mut out_v2 = vec![0.0f32; 512];
@@ -111,5 +130,9 @@ fn test_wavenet_v2_interleaved4_parity() {
 
     let mse = compute_mse(&out_orig, &out_v2);
     println!("[WaveNet v2 Parity] MSE: {:.2e}", mse);
-    assert!(mse < 1e-12, "Paridade WaveNet falhou! MSE={:e}", mse);
+    assert!(
+        mse < 1e-12,
+        "Divergência detectada no layout Interleaved4WaveNet! MSE={:e}",
+        mse
+    );
 }

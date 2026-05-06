@@ -20,25 +20,42 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
+/// Testa a inicialização e a comunicação básica da pipeline PipeWire em modo Headless.
+///
+/// Este teste simula o ciclo de vida completo do motor:
+/// 1. Criação de RingBuffers SPSC (Single-Producer Single-Consumer) para comandos e telemetria.
+/// 2. Spawning da thread de áudio (host).
+/// 3. Envio de parâmetros de ganho via canal de controle.
+/// 4. Desligamento sinalizado via flag atômica.
 #[test]
 fn test_pipewire_headless_integration() {
-    // Inicializa binding nativo de sistema do PipeWire (se possível)
+    // Inicializa a biblioteca nativa. Em ambientes sem libpipewire instalada, isso causará pânico.
     pipewire::init();
 
     println!("✔ PipeWire Inicializado com sucesso.");
 
+    // RingBuffers para comunicação Thread-Safe sem Locks:
+    // param: Comandos da UI -> DSP
     let (mut param_prod, param_cons) = RingBuffer::new(4);
+    // gc: Garbage Collection de recursos DSP (Thread DSP -> Background)
     let (gc_prod, gc_cons) = RingBuffer::new(4);
+    // gc_rs: GC específico para o resampler
     let (gc_rs_prod, gc_rs_cons) = RingBuffer::new(2);
+    // res: Respostas/Telemetria (DSP -> UI)
     let (res_prod, res_cons) = RingBuffer::new(2);
 
+    // Flags de status compartilhado (xruns, cpu load, etc)
     let rt_status = Arc::new(RtStatusFlags::default());
 
     let rt_clone = rt_status.clone();
+    // Captura metadados do sistema para diagnóstico inicial
     let sys = SystemSnapshot::capture();
+    // Sincroniza o relógio TSC para medições de nanosegundos de baixa latência
     let anchor = Anchor::new();
+
+    // Inicia a Thread de Áudio
     let pw_thread = thread::spawn(move || {
-        // Exceções do tipo "Core Não encontrado" serão capturadas como Err().
+        // run_pipewire_host é o loop principal que interage com o daemon do sistema.
         run_pipewire_host(
             param_cons,
             gc_prod,
@@ -47,7 +64,7 @@ fn test_pipewire_headless_integration() {
             res_prod,
             rt_clone,
             nam_rs::pw_host::PipewireHostConfig {
-                buffer_size: 0,
+                buffer_size: 0, // 0 = Usar padrão do sistema (PipeWire quantum)
                 sys,
                 tsc_anchor: anchor,
             },
@@ -56,27 +73,30 @@ fn test_pipewire_headless_integration() {
         )
     });
 
-    // Enviar comandos simples via SPSC
+    // Simulação de interação do usuário: ajuste de ganhos de entrada/saída
     thread::sleep(Duration::from_millis(50));
     let _ = param_prod.push(nam_rs::spsc::ParamPayload::InputGain(2.5));
     let _ = param_prod.push(nam_rs::spsc::ParamPayload::OutputGain(-1.0));
 
-    // Desligamento sinalizado em SHUTDOWN atômico global
+    // Sinaliza o desligamento da pipeline.
+    // O motor monitora esta flag a cada iteração do loop de áudio.
     thread::sleep(Duration::from_millis(150));
     spsc::SHUTDOWN.store(true, Ordering::Relaxed);
 
-    // O daemon virtual deverá retornar nativamente aqui o encerramento do thread loop
+    // Aguarda a finalização da thread de áudio e valida o resultado
     match pw_thread.join() {
         Ok(result) => {
             if let Err(e) = result {
-                // Erro de Daemon Ausente é tolerado no CI, mas Erro de Context/SegFault não é.
-                eprintln!("Pipewire host exit_code expected offline/daemon failure: {e}");
+                // Erro de Daemon Ausente (ex: no CI) é reportado mas não quebra o teste
+                eprintln!(
+                    "O host PipeWire encerrou com erro esperado (possível ausência de daemon): {e}"
+                );
             } else {
-                println!("Pipeline host executado perfeitamente Headless.");
+                println!("Pipeline host executado e finalizado graciosamente.");
             }
         }
-        Err(_) => panic!("A Thread de PipeWire falhou (panic interno) de forma grave!"),
+        Err(_) => panic!("A Thread de PipeWire sofreu um pânico fatal (Panic)!"),
     }
 
-    println!("Integração Concluída.")
+    println!("Teste de integração concluído.")
 }

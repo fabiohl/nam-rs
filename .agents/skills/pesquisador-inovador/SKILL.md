@@ -21,6 +21,7 @@ Pensar além, inovar e criar soluções proativas além do óbvio, visando moder
 
 - Pesquise técnicas criativas para ajudar o compilador a otimizar ao máximo o binário, extraindo o máximo de throughput pelo mínimo de ciclos de clock.
 - Identifique oportunidades de multiversioning (AVX-512) e otimização de funções FastMath (polinômios Minimax) para reduzir o desvio preditivo na CPU.
+- O projeto já parte do princípio de baseline mínima x86-64-v3. Então use AVX2, FMA e assemelhados em toda a parte.
 
 ### 2. Aderência Operacional de Tempo Real
 

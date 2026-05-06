@@ -1739,10 +1739,15 @@ fn test_zero_alloc_process_wavenet_dynamic() {
 }
 
 // =============================================================================
-// Testes com Block Sizes Variáveis (Tarefa 6.1)
+// Testes de Invariância de Bloco (Block Size Agnostic)
 // =============================================================================
 
-/// Verifica processamento WaveNet estático com diversos block sizes
+/// Verifica a invariância de Block Size na implementação WaveNet Estática.
+///
+/// O motor de inferência deve produzir o mesmo resultado matemático (MSE ≈ 0)
+/// independentemente do tamanho do bloco fornecido pelo host (DAW/Soundcard).
+/// Isso garante que o estado interno das convoluções dilatadas e os buffers
+/// circulares são preservados corretamente nas fronteiras dos blocos.
 #[test]
 fn test_wavenet_variable_block_sizes() {
     let path = model_path("BossWN-standard.nam");
@@ -1787,7 +1792,12 @@ fn test_wavenet_variable_block_sizes() {
     }
 }
 
-/// Verifica processamento LSTM com diversos block sizes
+/// Verifica o processamento LSTM com diversos tamanhos de bloco (Block Size).
+///
+/// O motor de inferência deve ser invariante ao tamanho do bloco processado:
+/// processar 512 amostras de 1 em 1 deve produzir o mesmo resultado (MSE ~0)
+/// que processar em blocos de 64 ou 512. Isso é crítico para garantir que o
+/// som não mude dependendo da configuração do buffer do host (DAW/Soundcard).
 #[test]
 fn test_lstm_variable_block_sizes() {
     let path = model_path("BossLSTM-1x16.nam");
@@ -1814,13 +1824,18 @@ fn test_lstm_variable_block_sizes() {
         for &s in &output {
             assert!(
                 s.is_finite(),
-                "LSTM Block size {} gerou saída não finita",
+                "LSTM Block size {} gerou saída não finita (NaN/Inf)",
                 bs
             );
             tot_energy += (s as f64) * (s as f64);
         }
         let rms = (tot_energy / 512.0).sqrt();
-        assert!(rms <= 10.0, "LSTM Block size {} tem RMS alto: {}", bs, rms);
+        assert!(
+            rms <= 10.0,
+            "Instabilidade detectada: LSTM Block size {} tem RMS excessivo: {}",
+            bs,
+            rms
+        );
 
         if bs == 1 {
             ref_output.copy_from_slice(&output);
@@ -1828,7 +1843,7 @@ fn test_lstm_variable_block_sizes() {
             let mse = compute_mse(&ref_output, &output);
             assert!(
                 mse < 1e-7,
-                "LSTM: Divergência entre block_size=1 e block_size={} (MSE={})",
+                "Invariância de Bloco falhou na LSTM: Divergência entre bs=1 e bs={} (MSE={})",
                 bs,
                 mse
             );
@@ -1836,7 +1851,11 @@ fn test_lstm_variable_block_sizes() {
     }
 }
 
-/// Verifica processamento WaveNet dinâmico com diversos block sizes
+/// Verifica a independência de Block Size na implementação WaveNet Dinâmica.
+///
+/// Garante que o dispatch dinâmico (que usa layouts de memória flexíveis) mantém
+/// o estado interno corretamente entre blocos, permitindo que o motor atenda
+/// a qualquer buffer size (de 1 a 1024 amostras) sem artefatos de fase.
 #[test]
 fn test_wavenet_dynamic_variable_block_sizes() {
     use nam_rs::loader::dispatcher::build_wavenet_dynamic;
@@ -1866,7 +1885,7 @@ fn test_wavenet_dynamic_variable_block_sizes() {
         for &s in &output {
             assert!(
                 s.is_finite(),
-                "Dynamic WaveNet Block size {} gerou saída não finita",
+                "Dynamic WaveNet Block size {} gerou saída não finita (NaN/Inf)",
                 bs
             );
             tot_energy += (s as f64) * (s as f64);
@@ -1897,7 +1916,15 @@ fn test_wavenet_dynamic_variable_block_sizes() {
 // Testes com Modelos Comunitários (Tarefa 6.2)
 // =============================================================================
 
-/// Tarefa 6.2 — Exercita Modelos Comunitários de `tests/nam_files/`
+/// Validação de Inferência em Modelos Comunitários Reais (Regressão de Ecossistema).
+///
+/// Este teste carrega uma coleção de modelos exportados pela comunidade para garantir
+/// que o loader e o dispatcher lidam corretamente com as sutilezas de metadados
+/// e topologias reais (ex: Standard vs Lite) geradas por diferentes versões
+/// do exportador oficial (NeuralAmpModeler/NAM).
+///
+/// A validação em modelos reais é crítica pois detecta regressões que não aparecem
+/// em modelos sintéticos ideais, como truncamento de bias ou normalização de ganho.
 #[test]
 fn test_community_models_inference() {
     let models = [
@@ -1925,52 +1952,63 @@ fn test_community_models_inference() {
         path.push(filename);
 
         if !path.exists() {
-            panic!("Modelo comunitário não encontrado: {:?}", path);
+            // Nota: Se as fixtures de modelos reais não estiverem presentes, o teste falha
+            // para garantir que a cobertura de regressão comunitária não seja perdida silenciosamente.
+            panic!(
+                "Modelo comunitário não encontrado: {:?}. Verifique os submódulos de teste.",
+                path
+            );
         }
 
-        // 1. parse_nam_json() -> sucesso
+        // 1. Validação do Parsing JSON
         let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
         let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
 
-        // Verifica topologia detectada
+        // 2. Validação da Identificação de Topologia
         let topo = get_wavenet_topology(&model_data);
         assert_eq!(
             topo, expected_topo,
-            "Topologia incorreta para o modelo {}",
+            "Topologia detectada incorretamente para o modelo comunitário {}",
             filename
         );
 
-        // 2. build_model() -> sucesso
-        let mut model = build_model(&model_data).expect("Falha ao construir modelo comunitário");
+        // 3. Validação do Dispatcher e Construção de Modelo
+        let mut model = build_model(&model_data)
+            .expect("O dispatcher falhou ao construir o modelo comunitário");
 
-        // 3. prewarm(2048)
+        // 4. Preaquecimento de filtros/delays
         model.prewarm(2048);
 
-        // 4. process() com 64 amostras
+        // 5. Execução da Inferência (64 samples @ 48kHz)
         let mut output = vec![0.0f32; 64];
         model.process(&input, &mut output);
 
-        // 5. Verificar finitude e magnitude < 100.0 em todas as saídas
+        // 6. Verificação de Segurança Numérica e Ganho
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
-                "Modelo {} retornou sample não finita no índice {}",
+                "Modelo {} produziu sample inválida (NaN/Inf) no índice {}",
                 filename,
                 i
             );
+            // Magnitude < 100.0 é um limite conservador para detectar explosão numérica
             assert!(
                 s.abs() < 100.0,
-                "Modelo {} gerou magnitude >= 100.0 no índice {}: {}",
+                "Modelo {} gerou pico de magnitude excessivo no índice {}: {}. Possível instabilidade.",
                 filename,
                 i,
                 s
             );
         }
-        println!("Modelo comunitário {} OK.", filename);
+        println!("✔ Modelo comunitário {} validado com sucesso.", filename);
     }
 }
 
-/// Tarefa 6.3 — Teste de Rejeição de Formatos Não-Suportados (Keras)
+/// Teste de Rejeição de Formatos Legados (Keras/H5).
+///
+/// O motor NAM-rs foca no formato moderno baseado em JSON (v0.5+) e NAMB (v1/v2).
+/// Modelos antigos baseados em Keras/TensorFlow H5 devem ser rejeitados
+/// graciosamente pelo dispatcher, evitando crashes por falta de pesos.
 #[test]
 fn test_reject_keras_legacy_format() {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -2004,11 +2042,12 @@ fn test_reject_keras_legacy_format() {
     println!("Formato Keras Legacy rejeitado corretamente via build_model().");
 }
 
-/// Teste 9: Ativação não-Tanh em WaveNet deve fazer fallback para A2.
+/// Validação de Fallback Arquitetural: Ativação não-Tanh em WaveNet → Fallback A2.
 ///
-/// Anteriormente o dispatcher rejeitava qualquer ativação diferente de "Tanh".
-/// Agora, ativações customizadas (como "ReLU") identificam o modelo como
-/// WaveNet A2, acionando o fallback gracioso para o placeholder.
+/// Historicamente, o NAM suportava apenas Tanh. O surgimento de ativações customizadas
+/// (ReLU, SiLU) em modelos comunitários exige que o motor identifique estas variantes
+/// como "WaveNet A2" (ou futura v0.6+). Este teste garante que o dispatcher não quebra
+/// ao encontrar "ReLU", redirecionando para o placeholder de compatibilidade.
 #[test]
 fn test_accept_a2_activation_with_fallback() {
     let synthetic_json = r#"{
