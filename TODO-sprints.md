@@ -49,7 +49,7 @@
   3. Na thread DSP (escrita rápida): Usar `status_bits.fetch_or(FLAG_CLIPPED, Ordering::Relaxed)`. Sendo um único endereço de memória, a invalidação do cache ocorre em apenas uma cache line (64 bytes).
   4. Na Main Thread (leitura/limpeza): Usar `fetch_and(!mask, Ordering::Relaxed)` para ler e zerar simultaneamente de forma segura.
 
-### `TA4` — Isolamento Térmico e Avanços no `SCHED_FIFO`
+### `TA4` — Isolamento Térmico e Avanços no `SCHED_FIFO` [DONE]
 
 **Pesquisa e Implementação:**
 

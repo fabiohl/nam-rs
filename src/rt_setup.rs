@@ -442,11 +442,20 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
 /// Seleciona o núcleo de CPU ideal para fixar a thread RT (core affinity).
 ///
 /// A heurística prioriza:
-/// 1. **Capacidade Máxima** — Em arquiteturas híbridas (ex: big.LITTLE), prefere núcleos de alta performance.
-/// 2. **Menor Carga de IRQ** — Minimiza jitter causado por interrupções de hardware (rede, disco, etc).
-/// 3. **Índice Numérico** — Desempate determinístico.
+/// 1. **Filtro de Afinidade** — Respeita os núcleos autorizados pelo SO (isolcpus, cgroups).
+/// 2. **Capacidade Máxima** — Em arquiteturas híbridas (ex: big.LITTLE), prefere núcleos de alta performance.
+/// 3. **Menor Carga de IRQ** — Minimiza jitter causado por interrupções de hardware (rede, disco, etc).
+/// 4. **Índice Numérico** — Desempate determinístico.
 pub fn select_optimal_cpu() -> Option<usize> {
     use std::fs;
+
+    // 1. Obtém os núcleos que o sistema operacional permitiu para este processo.
+    let allowed_cpus = get_allowed_cpus();
+    if allowed_cpus.is_empty() {
+        log::warn!(
+            "Não foi possível detectar CPUs permitidas via sched_getaffinity. Usando fallback total."
+        );
+    }
 
     // Varre /sys para encontrar todos os núcleos lógicos disponíveis.
     let cpu_dir = fs::read_dir("/sys/devices/system/cpu").ok()?;
@@ -455,7 +464,14 @@ pub fn select_optimal_cpu() -> Option<usize> {
             let name = entry.ok()?.file_name();
             let name = name.to_str()?;
             // Filtra apenas diretórios no formato 'cpuX'.
-            name.strip_prefix("cpu")?.parse::<usize>().ok()
+            let cpu_idx = name.strip_prefix("cpu")?.parse::<usize>().ok()?;
+
+            // Se tivermos a lista de permitidos, filtramos por ela.
+            if !allowed_cpus.is_empty() && !allowed_cpus.contains(&cpu_idx) {
+                return None;
+            }
+
+            Some(cpu_idx)
         })
         .collect();
 
@@ -496,6 +512,28 @@ pub fn select_optimal_cpu() -> Option<usize> {
                 .then_with(|| a.0.cmp(&b.0))
         })
         .map(|(cpu, _, _)| cpu)
+}
+
+/// Obtém a lista de CPUs permitidas para o processo atual via `sched_getaffinity`.
+///
+/// Respeita isolamento de CPUs (isolcpus), cgroups e máscaras de afinidade
+/// impostas pelo sistema operacional ou pelo usuário (ex: taskset).
+fn get_allowed_cpus() -> Vec<usize> {
+    let mut allowed = Vec::new();
+    unsafe {
+        let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
+        libc::CPU_ZERO(&mut cpuset);
+
+        // Chamada ao kernel para obter a máscara de afinidade do processo atual (pid 0)
+        if libc::sched_getaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &mut cpuset) == 0 {
+            for i in 0..libc::CPU_SETSIZE as usize {
+                if libc::CPU_ISSET(i, &cpuset) {
+                    allowed.push(i);
+                }
+            }
+        }
+    }
+    allowed
 }
 
 /// Analisa /proc/interrupts para extrair a carga de interrupções por núcleo.
@@ -587,3 +625,7 @@ pub fn lock_cpu_c_states() -> Option<std::fs::File> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "rt_setup_test.rs"]
+mod rt_setup_test;
