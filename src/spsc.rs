@@ -18,7 +18,7 @@
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, AtomicU64, Ordering};
 
 /// Flag global para shutdown coordenado e gracioso entre todas as threads.
 /// Definida como `true` pelo handler de CTRL+C.
@@ -160,6 +160,79 @@ pub enum ParamPayload {
     GateConfig(crate::dsp::gate::GateParams),
 }
 
+/// Item a ser coletado pelo Garbage Collector fora da thread de tempo real.
+///
+/// Encapsula tanto modelos neurais quanto resamplers obsoletos em uma única
+/// estrutura para simplificar a gestão de memória (Drop-Delegation).
+#[allow(clippy::large_enum_variant)]
+pub enum GcItem {
+    /// Um modelo dinâmico (LSTM ou WaveNet).
+    Model(Box<crate::models::DynamicModel>),
+    /// Um resampler.
+    Resampler(crate::dsp::resampler::NamResampler),
+    /// Variante de teste para validação de integridade e stress.
+    #[cfg(test)]
+    Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
+}
+
+/// Um buffer circular de sobrescrita (overwrite ring buffer) para ponteiros de GC.
+///
+/// Atua como "parking lot" compartilhado entre RT e Main. Se o canal SPSC principal
+/// estiver cheio, o RT estaciona o ponteiro aqui. Se este buffer também encher,
+/// ele sobrescreve o mais antigo (causando leak, mas apenas em cenários extremos).
+/// Projetado para suportar apenas `Box<GcItem>` via ponteiro raw para garantir RT-safety.
+pub struct GcOverflowBuffer {
+    slots: [AtomicPtr<GcItem>; 64],
+    write_idx: AtomicU64,
+}
+
+impl GcOverflowBuffer {
+    /// Cria um novo buffer de sobrescrita vazio.
+    pub fn new() -> Self {
+        Self {
+            slots: std::array::from_fn(|_| AtomicPtr::new(std::ptr::null_mut())),
+            write_idx: AtomicU64::new(0),
+        }
+    }
+
+    /// Tenta estacionar um item no buffer.
+    ///
+    /// # Safety
+    /// O item deve ser convertido para `Box<GcItem>` antes de ser passado via ponteiro.
+    /// RT-Safe: usa `swap` atômico sem locks.
+    pub fn push_raw(&self, ptr: *mut GcItem) -> Option<*mut GcItem> {
+        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % 64) as usize;
+        let old_ptr = self.slots[idx].swap(ptr, Ordering::Acquire);
+        if old_ptr.is_null() {
+            None
+        } else {
+            Some(old_ptr)
+        }
+    }
+
+    /// Drena todos os itens presentes no buffer.
+    /// Chamado pela thread de controle (Non-RT).
+    pub fn drain(&self) -> Vec<GcItem> {
+        let mut items = Vec::with_capacity(64);
+        for slot in &self.slots {
+            let ptr = slot.swap(std::ptr::null_mut(), Ordering::Release);
+            if !ptr.is_null() {
+                unsafe {
+                    let item = *Box::from_raw(ptr);
+                    items.push(item);
+                }
+            }
+        }
+        items
+    }
+}
+
+impl Default for GcOverflowBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Resultado da inicialização SPSC: canais de parâmetros, GC de modelos,
 /// canal de resamplers RT-safe, e flags de status atômicas.
 pub struct SpscChannels {
@@ -167,14 +240,12 @@ pub struct SpscChannels {
     pub param_producer: Producer<ParamPayload>,
     /// Consumidor de parâmetros CLI→DSP (movido para o callback RT).
     pub param_consumer: Consumer<ParamPayload>,
-    /// Produtor GC: thread DSP envia modelos obsoletos para drop fora do RT.
-    pub gc_producer: Producer<Box<crate::models::DynamicModel>>,
-    /// Consumidor GC: thread background executa `drop()` dos modelos.
-    pub gc_consumer: Consumer<Box<crate::models::DynamicModel>>,
-    /// Produtor GC de resamplers: thread DSP envia resamplers obsoletos para drop fora do RT.
-    pub gc_resampler_producer: Producer<crate::dsp::resampler::NamResampler>,
-    /// Consumidor GC de resamplers: thread background executa `drop()`.
-    pub gc_resampler_consumer: Consumer<crate::dsp::resampler::NamResampler>,
+    /// Produtor GC: thread DSP envia itens obsoletos para drop fora do RT.
+    pub gc_producer: Producer<GcItem>,
+    /// Consumidor GC: thread background executa `drop()`.
+    pub gc_consumer: Consumer<GcItem>,
+    /// Buffer de fallback para overflow de GC (overwrite).
+    pub gc_overflow: Arc<GcOverflowBuffer>,
     /// Produtor de resamplers: thread principal constrói e envia para o callback RT.
     pub resampler_producer: Producer<crate::dsp::resampler::NamResampler>,
     /// Consumidor de resamplers: callback RT drena para substituir o resampler ativo.
@@ -194,19 +265,18 @@ pub struct SpscChannels {
 /// `capacity` deve ser preferencialmente potência de 2.
 pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (param_prod, param_cons) = RingBuffer::new(capacity);
-    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 4); // Capacidade quadruplicada para garbage collection segura (L+R + folga)
-    let (gc_rs_prod, gc_rs_cons) = RingBuffer::new(16); // GC de resamplers (raro)
+    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 4); // Capacidade quadruplicada para garbage collection segura
     // Canal de resampler: capacidade pequena (apenas 1 em trânsito por vez, tipicamente)
     let (rs_prod, rs_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
+    let gc_overflow = Arc::new(GcOverflowBuffer::new());
 
     SpscChannels {
         param_producer: param_prod,
         param_consumer: param_cons,
         gc_producer: gc_prod,
         gc_consumer: gc_cons,
-        gc_resampler_producer: gc_rs_prod,
-        gc_resampler_consumer: gc_rs_cons,
+        gc_overflow,
         resampler_producer: rs_prod,
         resampler_consumer: rs_cons,
         rt_status,

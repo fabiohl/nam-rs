@@ -35,10 +35,15 @@ Tarefas que corrigem bugs que afetam o comportamento audível ou a estabilidade 
 #### Tarefa 2.1 · Overwrite Ring Buffer para GC de Modelos e Resamplers *(Bug — Severidade Média)*
 
 - **Arquivo:** `src/pw_host.rs`.
-- [ ] Projetar um mecanismo de overwrite ring buffer (ou parking lot com tamanho fixo) que substitua o fallback `Box::leak`.
-- [ ] Remover `Box::leak(still_here)` nas linhas 374 e 392 (modelos L e R).
-- [ ] Remover `std::mem::forget(still_here)` na linha 333 (resampler) — atualmente vaza `NamResampler` de forma irrecuperável.
-- [ ] Atualizar o `gc_producer` para acomodar tanto modelos quanto resamplers.
+- [x] Projetar um mecanismo de overwrite ring buffer (ou parking lot com tamanho fixo) que substitua o fallback `Box::leak`.
+- [x] Remover `Box::leak(still_here)` nas linhas 374 e 392 (modelos L e R).
+- [x] Remover `std::mem::forget(still_here)` na linha 333 (resampler) — atualmente vaza `NamResampler` de forma irrecuperável.
+- [x] Atualizar o `gc_producer` para acomodar tanto modelos quanto resamplers.
+
+#### Tarefa 2.2 · Testes de Estresse para GC *(Cobertura)*
+
+- [x] Criar um teste que force o GC a encher o buffer de sobrescrita e validar que o mais antigo é sobrescrito.
+- [x] Validar que o GC não vaza memória sob carga contínua de modelos/resamplers.
 
 ---
 

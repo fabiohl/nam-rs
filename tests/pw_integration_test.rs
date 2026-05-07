@@ -39,15 +39,17 @@ fn test_pipewire_headless_integration() {
     let (mut param_prod, param_cons) = RingBuffer::new(4);
     // gc: Garbage Collection de recursos DSP (Thread DSP -> Background)
     let (gc_prod, gc_cons) = RingBuffer::new(4);
-    // gc_rs: GC específico para o resampler
-    let (gc_rs_prod, gc_rs_cons) = RingBuffer::new(2);
     // res: Respostas/Telemetria (DSP -> UI)
     let (res_prod, res_cons) = RingBuffer::new(2);
+
+    // Buffer de fallback para overflow de GC
+    let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new());
 
     // Flags de status compartilhado (xruns, cpu load, etc)
     let rt_status = Arc::new(RtStatusFlags::default());
 
     let rt_clone = rt_status.clone();
+    let gc_overflow_clone = gc_overflow.clone();
     // Captura metadados do sistema para diagnóstico inicial
     let sys = SystemSnapshot::capture();
     // Sincroniza o relógio TSC para medições de nanosegundos de baixa latência
@@ -59,7 +61,7 @@ fn test_pipewire_headless_integration() {
         run_pipewire_host(
             param_cons,
             gc_prod,
-            gc_rs_prod,
+            gc_overflow_clone,
             res_cons,
             res_prod,
             rt_clone,
@@ -69,7 +71,6 @@ fn test_pipewire_headless_integration() {
                 tsc_anchor: anchor,
             },
             gc_cons,
-            gc_rs_cons,
         )
     });
 

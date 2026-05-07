@@ -268,15 +268,27 @@ pub fn poll_rt_status(
 /// ou pelo loop de eventos do host (PipeWire, CLAP). Ela executa o `drop()`
 /// dos objetos obsoletos (modelos, resamplers) fora da thread RT.
 pub fn drain_gc_channels(
-    gc_model: &mut rtrb::Consumer<Box<crate::models::DynamicModel>>,
-    gc_rs: &mut rtrb::Consumer<crate::dsp::resampler::NamResampler>,
+    gc_consumer: &mut rtrb::Consumer<crate::spsc::GcItem>,
+    gc_overflow: &crate::spsc::GcOverflowBuffer,
 ) {
-    // Drena até esvaziar. O drop() pode ser pesado (liberação de heap).
-    while let Ok(model) = gc_model.pop() {
-        drop(model);
+    // 1. Drena o canal SPSC principal (Drop-Delegation)
+    while let Ok(item) = gc_consumer.pop() {
+        match item {
+            crate::spsc::GcItem::Model(model) => drop(model),
+            crate::spsc::GcItem::Resampler(rs) => drop(rs),
+            #[cfg(test)]
+            crate::spsc::GcItem::Test(counter) => drop(counter),
+        }
     }
-    while let Ok(rs) = gc_rs.pop() {
-        drop(rs);
+
+    // 2. Drena o buffer de overflow (overwrite ring buffer)
+    for item in gc_overflow.drain() {
+        match item {
+            crate::spsc::GcItem::Model(model) => drop(model),
+            crate::spsc::GcItem::Resampler(rs) => drop(rs),
+            #[cfg(test)]
+            crate::spsc::GcItem::Test(counter) => drop(counter),
+        }
     }
 }
 

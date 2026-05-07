@@ -66,8 +66,7 @@ fn main() -> anyhow::Result<()> {
     let consumer = channels.param_consumer;
     let gc_producer = channels.gc_producer;
     let gc_consumer = channels.gc_consumer;
-    let gc_resampler_producer = channels.gc_resampler_producer;
-    let gc_resampler_consumer = channels.gc_resampler_consumer;
+    let gc_overflow = channels.gc_overflow;
     let resampler_producer = channels.resampler_producer;
     let resampler_consumer = channels.resampler_consumer;
     let rt_status = channels.rt_status;
@@ -117,7 +116,7 @@ fn main() -> anyhow::Result<()> {
     pw_host::run_pipewire_host(
         consumer,
         gc_producer,
-        gc_resampler_producer,
+        gc_overflow,
         resampler_consumer,
         resampler_producer,
         rt_status,
@@ -127,7 +126,6 @@ fn main() -> anyhow::Result<()> {
             sys,
         },
         gc_consumer,
-        gc_resampler_consumer,
     )?;
 
     unsafe {

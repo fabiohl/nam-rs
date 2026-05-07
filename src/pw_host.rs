@@ -57,7 +57,7 @@ use crate::dsp::pipeline::{
 };
 use crate::dsp::resampler::NamResampler;
 use crate::rt_setup;
-use crate::spsc::{ParamPayload, RtStatusFlags, SHUTDOWN};
+use crate::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, SHUTDOWN};
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;
@@ -83,14 +83,13 @@ use std::sync::atomic::Ordering;
 #[allow(clippy::too_many_arguments)]
 pub fn run_pipewire_host(
     mut consumer: Consumer<ParamPayload>,
-    mut gc_producer: rtrb::Producer<Box<crate::models::DynamicModel>>,
-    mut gc_resampler_producer: rtrb::Producer<NamResampler>,
+    mut gc_producer: rtrb::Producer<GcItem>,
+    gc_overflow: Arc<GcOverflowBuffer>,
     mut resampler_consumer: Consumer<NamResampler>,
     mut resampler_producer: rtrb::Producer<NamResampler>,
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
-    mut gc_consumer: Consumer<Box<crate::models::DynamicModel>>,
-    mut gc_resampler_consumer: Consumer<NamResampler>,
+    mut gc_consumer: Consumer<GcItem>,
 ) -> anyhow::Result<()> {
     let PipewireHostConfig {
         buffer_size,
@@ -231,13 +230,13 @@ pub fn run_pipewire_host(
         let rate_for_param = shared_target_rate.clone();
         let rate_for_process = shared_target_rate.clone();
 
-        // Parking Lots para garantir zero-drop mesmo se os canais GC estiverem cheios.
-        let mut parking_lot_model: [Option<Box<crate::models::DynamicModel>>; 8] =
-            Default::default();
-        let mut parking_lot_resampler: [Option<NamResampler>; 8] = Default::default();
+        // Parking Lot para garantir zero-drop mesmo se o canal GC estiver cheio.
+        // Unificado para modelos e resamplers via GcItem.
+        let mut parking_lot: [Option<GcItem>; 16] = Default::default();
 
         // Clonar Arc das flags para uso dentro do callback
         let rt_status_for_process = rt_status.clone();
+        let gc_overflow_for_process = gc_overflow.clone();
 
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         capture_listener = capture_stream
@@ -292,16 +291,9 @@ pub fn run_pipewire_host(
                     thread_configured = true;
                 }
 
-                for slot in parking_lot_model.iter_mut() {
+                for slot in parking_lot.iter_mut() {
                     let Some(old) = slot.take() else { continue };
                     if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old) {
-                        *slot = Some(old_back);
-                        break; // Canal ainda cheio
-                    }
-                }
-                for slot in parking_lot_resampler.iter_mut() {
-                    let Some(old) = slot.take() else { continue };
-                    if let Err(rtrb::PushError::Full(old_back)) = gc_resampler_producer.push(old) {
                         *slot = Some(old_back);
                         break; // Canal ainda cheio
                     }
@@ -318,19 +310,28 @@ pub fn run_pipewire_host(
                         .store(new_rs.pw_rate(), Ordering::Relaxed);
 
                     let old_rs = std::mem::replace(&mut resampler, new_rs);
-                    if let Err(rtrb::PushError::Full(old_back)) = gc_resampler_producer.push(old_rs)
+                    if let Err(rtrb::PushError::Full(old_rs)) =
+                        gc_producer.push(GcItem::Resampler(old_rs))
                     {
                         // Se falhar o push, tenta o parking lot
-                        let mut to_park = Some(old_back);
-                        for slot in parking_lot_resampler.iter_mut() {
+                        let mut to_park = Some(old_rs);
+                        for slot in parking_lot.iter_mut() {
                             if slot.is_none() {
                                 *slot = to_park.take();
                                 break;
                             }
                         }
                         if let Some(still_here) = to_park {
-                            // Pathológico: vaza para evitar drop
-                            std::mem::forget(still_here);
+                            // Pathológico: Usa o overwrite buffer compartilhado para evitar leak.
+                            // Convertemos para Box<GcItem> e passamos o ponteiro raw.
+                            let ptr = Box::into_raw(Box::new(still_here));
+                            if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
+                                // Se o overflow também encheu, o swap retornou o ponteiro antigo.
+                                // Como último recurso, vazamos para não dar drop no RT.
+                                unsafe {
+                                    std::mem::forget(Box::from_raw(leaked_ptr));
+                                }
+                            }
                             rt_status_for_process.set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
                         }
                     }
@@ -361,17 +362,25 @@ pub fn run_pipewire_host(
 
                             if let Some(old) = std::mem::replace(&mut active_model_l, new_model_l) {
                                 #[allow(clippy::collapsible_if)]
-                                if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old)
+                                if let Err(rtrb::PushError::Full(old_item)) =
+                                    gc_producer.push(GcItem::Model(old))
                                 {
-                                    let mut to_park = Some(old_back);
-                                    for slot in parking_lot_model.iter_mut() {
+                                    let mut to_park = Some(old_item);
+                                    for slot in parking_lot.iter_mut() {
                                         if slot.is_none() {
                                             *slot = to_park.take();
                                             break;
                                         }
                                     }
                                     if let Some(still_here) = to_park {
-                                        Box::leak(still_here);
+                                        let ptr = Box::into_raw(Box::new(still_here));
+                                        if let Some(leaked_ptr) =
+                                            gc_overflow_for_process.push_raw(ptr)
+                                        {
+                                            unsafe {
+                                                std::mem::forget(Box::from_raw(leaked_ptr));
+                                            }
+                                        }
                                         rt_status_for_process
                                             .set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
                                     }
@@ -379,17 +388,25 @@ pub fn run_pipewire_host(
                             }
                             if let Some(old) = std::mem::replace(&mut active_model_r, new_model_r) {
                                 #[allow(clippy::collapsible_if)]
-                                if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old)
+                                if let Err(rtrb::PushError::Full(old_item)) =
+                                    gc_producer.push(GcItem::Model(old))
                                 {
-                                    let mut to_park = Some(old_back);
-                                    for slot in parking_lot_model.iter_mut() {
+                                    let mut to_park = Some(old_item);
+                                    for slot in parking_lot.iter_mut() {
                                         if slot.is_none() {
                                             *slot = to_park.take();
                                             break;
                                         }
                                     }
                                     if let Some(still_here) = to_park {
-                                        Box::leak(still_here);
+                                        let ptr = Box::into_raw(Box::new(still_here));
+                                        if let Some(leaked_ptr) =
+                                            gc_overflow_for_process.push_raw(ptr)
+                                        {
+                                            unsafe {
+                                                std::mem::forget(Box::from_raw(leaked_ptr));
+                                            }
+                                        }
                                         rt_status_for_process
                                             .set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
                                     }
@@ -753,7 +770,7 @@ pub fn run_pipewire_host(
         was_silent = rt_setup::poll_rt_status(&rt_status, &sys, was_silent, &tsc_anchor);
 
         // Executa a drenagem de modelos e resamplers obsoletos (Drop-Delegation).
-        rt_setup::drain_gc_channels(&mut gc_consumer, &mut gc_resampler_consumer);
+        rt_setup::drain_gc_channels(&mut gc_consumer, &gc_overflow);
 
         // Baixa frequência de polling para economizar energia, já que estas são tarefas de controle.
         std::thread::sleep(std::time::Duration::from_millis(100));
