@@ -137,6 +137,32 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    /// Kernel de GEMV com sobrescrita para 4 portas simultâneas.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    );
+
+    /// Kernel de GEMV com sobrescrita para 4 portas simultâneas (entrada BF16).
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    );
+
     /// Acumula o conteúdo de um vetor em outro.
     ///
     /// # Safety
@@ -164,6 +190,12 @@ pub trait SimdMath {
     /// # Safety
     /// Buffers devem ser válidos.
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]);
+
+    /// Armazena o conteúdo de um registrador SIMD como BF16 (truncado).
+    ///
+    /// # Safety
+    /// O ponteiro deve ser válido e ter espaço suficiente.
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V);
 
     /// Aplica Tanh em um slice.
     ///

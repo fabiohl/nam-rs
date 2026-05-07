@@ -616,6 +616,56 @@ impl SimdMath for Avx512Math {
     }
 
     #[inline(always)]
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        let ih = in_frame.len();
+        let stride = ih * hidden_size;
+        unsafe {
+            gemv_4gate_avx512(
+                in_frame,
+                &weights[0..stride],
+                &weights[stride..2 * stride],
+                &weights[2 * stride..3 * stride],
+                &weights[3 * stride..4 * stride],
+                bias,
+                out_gates,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        let ih = in_frame.len();
+        let stride = ih * hidden_size;
+        unsafe {
+            gemv_4gate_bf16_fallback(
+                in_frame,
+                &weights[0..stride],
+                &weights[stride..2 * stride],
+                &weights[2 * stride..3 * stride],
+                &weights[3 * stride..4 * stride],
+                bias,
+                out_gates,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         accumulate_head_fallback(dest, src)
     }
@@ -637,6 +687,16 @@ impl SimdMath for Avx512Math {
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         f32_to_bf16_fallback(src, dest)
+    }
+
+    #[inline(always)]
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
+        unsafe {
+            let v_i = _mm512_castps_si512(v);
+            let v_shifted = _mm512_srli_epi32(v_i, 16);
+            let packed = _mm512_cvtepi32_epi16(v_shifted);
+            _mm256_storeu_si256(ptr as *mut __m256i, packed);
+        }
     }
 
     #[inline(always)]
@@ -776,6 +836,48 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[inline(always)]
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            Avx512Math::gemv_overwrite_4gate(
+                in_frame,
+                weights,
+                bias,
+                out_gates,
+                hidden_size,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            Avx512Math::gemv_overwrite_bf16_4gate(
+                in_frame,
+                weights,
+                bias,
+                out_gates,
+                hidden_size,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         Avx512Math::accumulate_head(dest, src)
     }
@@ -797,6 +899,11 @@ impl SimdMath for Avx512VnniMath {
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         Avx512Math::f32_to_bf16(src, dest)
+    }
+
+    #[inline(always)]
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
+        Avx512Math::store_bf16(ptr, v)
     }
 
     #[inline(always)]
@@ -937,6 +1044,48 @@ impl SimdMath for Avx512VnniBf16Math {
     }
 
     #[inline(always)]
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            Avx512Math::gemv_overwrite_4gate(
+                in_frame,
+                weights,
+                bias,
+                out_gates,
+                hidden_size,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            Avx512Math::gemv_overwrite_bf16_4gate(
+                in_frame,
+                weights,
+                bias,
+                out_gates,
+                hidden_size,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         Avx512Math::accumulate_head(dest, src)
     }
@@ -958,6 +1107,11 @@ impl SimdMath for Avx512VnniBf16Math {
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         Avx512Math::f32_to_bf16(src, dest)
+    }
+
+    #[inline(always)]
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
+        Avx512Math::store_bf16(ptr, v)
     }
 
     #[inline(always)]

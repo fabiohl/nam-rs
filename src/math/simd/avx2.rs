@@ -988,6 +988,56 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        let ih = in_frame.len();
+        let stride = ih * hidden_size;
+        unsafe {
+            gemv_4gate_avx2(
+                in_frame,
+                &weights[0..stride],
+                &weights[stride..2 * stride],
+                &weights[2 * stride..3 * stride],
+                &weights[3 * stride..4 * stride],
+                bias,
+                out_gates,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        let ih = in_frame.len();
+        let stride = ih * hidden_size;
+        unsafe {
+            gemv_4gate_bf16_fallback(
+                in_frame,
+                &weights[0..stride],
+                &weights[stride..2 * stride],
+                &weights[2 * stride..3 * stride],
+                &weights[3 * stride..4 * stride],
+                bias,
+                out_gates,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         unsafe { accumulate_head_avx2(dest, src) }
     }
@@ -1009,6 +1059,18 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         unsafe { f32_to_bf16_fallback(src, dest) }
+    }
+
+    #[inline(always)]
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
+        unsafe {
+            let v_i = _mm256_castps_si256(v);
+            let v_shifted = _mm256_srli_epi32(v_i, 16);
+            let permute_mask = _mm256_set_epi32(7, 5, 3, 1, 6, 4, 2, 0);
+            let v_perm = _mm256_permutevar8x32_epi32(v_shifted, permute_mask);
+            let v_low = _mm256_castsi256_si128(v_perm);
+            _mm_storeu_si128(ptr as *mut __m128i, v_low);
+        }
     }
 
     #[inline(always)]
@@ -1154,6 +1216,41 @@ impl SimdMath for Avx2VnniMath {
     }
 
     #[inline(always)]
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            Avx2Math::gemv_overwrite_4gate(in_frame, weights, bias, out_gates, hidden_size, do_bias)
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            Avx2Math::gemv_overwrite_bf16_4gate(
+                in_frame,
+                weights,
+                bias,
+                out_gates,
+                hidden_size,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         unsafe { Avx2Math::accumulate_head(dest, src) }
     }
@@ -1175,6 +1272,11 @@ impl SimdMath for Avx2VnniMath {
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         unsafe { Avx2Math::f32_to_bf16(src, dest) }
+    }
+
+    #[inline(always)]
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
+        unsafe { Avx2Math::store_bf16(ptr, v) }
     }
 
     #[inline(always)]

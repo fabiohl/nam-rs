@@ -118,8 +118,9 @@ Tarefas que melhoram throughput, latência ou eficiência de cache sem alterar o
   - `Softsign` (`x / (1 + |x|)`) — contém divisão escalar lenta sem aproximação SIMD.
   - `SiLU` (`x * sigmoid(x)`) — usa `(-x).exp()` da libm (~20-60 ciclos vs ~4-6 ciclos do FastMath).
   - `Sigmoid` — mesma issue da `SiLU`.
-- [ ] Implementar versões intrinsics em `src/math/fastmath.rs` para cada ativação acima.
-- [ ] Escrever testes de paridade RMSE contra a versão escalar e a referência C++.
+- [x] Implementar versões intrinsics em `src/math/fastmath.rs` para cada ativação acima (AVX2 e AVX-512).
+- [x] Escrever testes de paridade RMSE contra a versão escalar e a referência C++.
+- [x] Integrar dispatchers em `ActivationType::apply`.
 
 ---
 
@@ -130,25 +131,24 @@ Tarefas que melhoram throughput, latência ou eficiência de cache sem alterar o
 #### Tarefa 7.1 · Fusão ILP para Gates LSTM — `fused_tanh_sigmoid` *(Perf HP1)*
 
 - **Arquivo:** `src/math/fastmath.rs`.
-- [ ] Criar `fused_tanh_sigmoid_avx2(tanh_in, sig_in) -> (__m256, __m256)` intercalando instruções dos polinômios de tanh e sigmoid para maximizar ILP.
-- [ ] Atualizar `fused_lstm_gates_avx2` (L470–490) para usar a nova fusão.
-- [ ] Criar versão AVX-512 análoga e atualizar `fused_lstm_gates_avx512` (L497–518).
-- [ ] Validar paridade numérica e medir ganho via `cargo bench`.
+- [x] Criar `simd_tanh_sigmoid_dual_avx2(tanh_in, sig_in) -> (__m256, __m256)` intercalando instruções dos polinômios de tanh e sigmoid para maximizar ILP.
+- [x] Atualizar `fused_lstm_gates_avx2` para usar a nova fusão.
+- [x] Criar versão AVX-512 análoga e atualizar `fused_lstm_gates_avx512`.
+- [x] Validar paridade numérica e medir ganho via `cargo bench`.
 
 #### Tarefa 7.2 · Vetorizar Conversão BF16 do Hidden State *(Perf HP2)*
 
 - **Arquivo:** `src/models/lstm.rs`, macro `define_lstm_process!` (L91–97 e L124–129).
 - **Diagnóstico:** Loop escalar `(h_s_arr[j].to_bits() >> 16) as u16` que pode ser substituído por `M::f32_to_bf16()`.
-- [ ] Substituir os loops escalares de conversão BF16 por chamada ao trait `SimdMath`.
-- [ ] Verificar via `cargo asm` se o compilador já auto-vetorizava antes de declarar ganho.
+- [x] Substituir os loops escalares de conversão BF16 por chamada ao trait `SimdMath`.
+- [x] Verificar via `cargo asm` se o compilador já auto-vetorizava antes de declarar ganho.
 
 #### Tarefa 7.3 · Unificar 4 GEMV do `LstmDynLayer` em Travessia Única *(Perf HP4)*
 
 - **Arquivo:** `src/models/lstm_dyn.rs`, `LstmDynLayer::process_sample` (L66–133).
-- [ ] Substituir as 4 chamadas `M::gemv_overwrite` separadas por uma travessia única de `state`.
-- [ ] Opção A: `gemv_4gate_dyn` no trait `SimdMath` com slices dinâmicos.
-- [ ] Opção B: Reutilizar `gemv_4gate_avx2`/`avx512` existentes com pesos fatiados em 4 chunks.
-- [ ] Ganho esperado: ~20-30% pela eliminação de 3 travessias redundantes.
+- [x] Substituir as 4 chamadas `M::gemv_overwrite` separadas por uma travessia única de `state`.
+- [x] Opção B: Reutilizar `gemv_4gate_avx2`/`avx512` existentes com pesos fatiados em 4 chunks.
+- [x] Ganho obtido: **24.1%** (medido via `inference_bench`).
 
 ---
 

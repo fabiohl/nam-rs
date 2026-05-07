@@ -25,6 +25,7 @@ macro_rules! define_lstm_process {
     (
         $fn_name:ident,
         $target_meta:meta,
+        $simd_math:ty,
         $gemv_4gate:path,
         $gemv_4gate_bf16:path,
         $step:expr,
@@ -46,9 +47,8 @@ macro_rules! define_lstm_process {
             unsafe {
                 self.state[..I].copy_from_slice(&input[..I]);
                 if $is_bf16 {
-                    for i in 0..I {
-                        self.state_bf16[i] = (self.state[i].to_bits() >> 16) as u16;
-                    }
+                    use $crate::math::simd::SimdMath;
+                    <$simd_math>::f32_to_bf16(&self.state[..I], &mut self.state_bf16[..I]);
                 }
                 _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
                 if $is_bf16 {
@@ -89,11 +89,11 @@ macro_rules! define_lstm_process {
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
                     if $is_bf16 {
-                        let mut h_s_arr = [0.0; $step];
-                        $store(h_s_arr.as_mut_ptr(), h_s);
-                        for j in 0..$step {
-                            self.state_bf16[h_offset + i + j] = (h_s_arr[j].to_bits() >> 16) as u16;
-                        }
+                        use $crate::math::simd::SimdMath;
+                        <$simd_math>::store_bf16(
+                            self.state_bf16.as_mut_ptr().add(h_offset + i),
+                            h_s,
+                        );
                     }
                     i += $step;
                 }
@@ -225,6 +225,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
+        crate::math::simd::Avx2Math,
         crate::math::simd::gemv_4gate_avx2,
         crate::math::simd::gemv_4gate_bf16_fallback,
         8,
@@ -240,6 +241,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
+        crate::math::simd::Avx512Math,
         crate::math::simd::gemv_4gate_avx512,
         crate::math::simd::gemv_4gate_bf16_fallback,
         16,
@@ -255,6 +257,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
+        crate::math::simd::Avx2Math,
         crate::math::simd::gemv_4gate_avx2,
         crate::math::simd::gemv_4gate_bf16_fallback,
         8,
@@ -270,6 +273,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
+        crate::math::simd::Avx512VnniMath,
         crate::math::simd::gemv_4gate_avx512,
         crate::math::simd::gemv_4gate_bf16_fallback,
         16,
@@ -285,6 +289,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
+        crate::math::simd::Avx512VnniBf16Math,
         crate::math::simd::gemv_4gate_avx512,
         crate::math::simd::gemv_4gate_bf16_fallback,
         16,

@@ -286,6 +286,194 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     res
 }
 
+/// Aproximação vetorial de `ReLU(x) = max(0, x)` usando AVX2.
+///
+/// # Safety
+/// Requer suporte a AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn simd_relu_avx2(x: __m256) -> __m256 {
+    _mm256_max_ps(_mm256_setzero_ps(), x)
+}
+
+/// Aproximação vetorial de `PReLU(x) = x > 0 ? x : alpha * x` usando AVX2.
+///
+/// # Safety
+/// Requer suporte a AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn simd_prelu_avx2(x: __m256, alpha: __m256) -> __m256 {
+    // Máscara de valores positivos (x > 0)
+    let mask = _mm256_cmp_ps(x, _mm256_setzero_ps(), _CMP_GT_OQ);
+    // alpha * x para a região negativa
+    let neg_part = _mm256_mul_ps(alpha, x);
+    // Seleciona x se mask for true, senão neg_part
+    _mm256_blendv_ps(neg_part, x, mask)
+}
+
+/// Aproximação vetorial de `Softsign(x) = x / (1 + |x|)` usando AVX2.
+///
+/// Utiliza `_mm256_rcp_ps` com uma iteração de Newton-Raphson para precisão de ~24 bits.
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_softsign_avx2(x: __m256) -> __m256 {
+    let one = _mm256_set1_ps(1.0);
+    let two = _mm256_set1_ps(2.0);
+    // abs_x = x & 0x7FFFFFFF
+    let abs_x = _mm256_andnot_ps(_mm256_set1_ps(-0.0), x);
+    let den = _mm256_add_ps(one, abs_x);
+
+    // Recíproco com Newton-Raphson
+    let mut res = _mm256_rcp_ps(den);
+    res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
+
+    _mm256_mul_ps(x, res)
+}
+
+/// Aproximação vetorial de `ReLU(x)` (Dual, 16 floats).
+///
+/// # Safety
+/// Requer suporte a AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn simd_relu_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let zero = _mm256_setzero_ps();
+    (_mm256_max_ps(zero, x1), _mm256_max_ps(zero, x2))
+}
+
+/// Aproximação vetorial de `Softsign(x)` (Dual, 16 floats).
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_softsign_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let one = _mm256_set1_ps(1.0);
+    let two = _mm256_set1_ps(2.0);
+    let zero_minus = _mm256_set1_ps(-0.0);
+
+    let abs_x1 = _mm256_andnot_ps(zero_minus, x1);
+    let abs_x2 = _mm256_andnot_ps(zero_minus, x2);
+    let den1 = _mm256_add_ps(one, abs_x1);
+    let den2 = _mm256_add_ps(one, abs_x2);
+
+    let mut res1 = _mm256_rcp_ps(den1);
+    let mut res2 = _mm256_rcp_ps(den2);
+
+    res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
+    res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
+
+    (_mm256_mul_ps(x1, res1), _mm256_mul_ps(x2, res2))
+}
+
+/// Aproximação vetorial fundida de `tanh(x)` e `sigmoid(y)` usando AVX2.
+/// Intercala instruções para maximizar o Instruction Level Parallelism (ILP).
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_tanh_sigmoid_dual_avx2(xt: __m256, xs: __m256) -> (__m256, __m256) {
+    let one = _mm256_set1_ps(1.0);
+    let zero = _mm256_setzero_ps();
+
+    // --- Sigmoid Prep (y) ---
+    let neg_xs = _mm256_sub_ps(zero, xs);
+    let xs_clamped = _mm256_max_ps(
+        _mm256_set1_ps(-SIGMOID_CLAMP_LIMIT),
+        _mm256_min_ps(_mm256_set1_ps(SIGMOID_CLAMP_LIMIT), neg_xs),
+    );
+
+    // --- Tanh Prep (x) ---
+    let xt_clamped = _mm256_max_ps(
+        _mm256_set1_ps(-TANH_CLAMP_LIMIT),
+        _mm256_min_ps(_mm256_set1_ps(TANH_CLAMP_LIMIT), xt),
+    );
+
+    // --- Sigmoid Exp Step 1 ---
+    let log2e = _mm256_set1_ps(1.442_695_1_f32);
+    let ks = _mm256_cvtps_epi32(_mm256_fmadd_ps(xs_clamped, log2e, zero));
+    let ks_f = _mm256_cvtepi32_ps(ks);
+
+    // --- Tanh Poly Step 1 ---
+    let xt_sq = _mm256_mul_ps(xt_clamped, xt_clamped);
+    let xt_sq_sq = _mm256_mul_ps(xt_sq, xt_sq);
+
+    // --- Sigmoid Exp Step 2 ---
+    let ln2_hi = _mm256_set1_ps(-0.693_145_75_f32);
+    let ln2_lo = _mm256_set1_ps(-0.000_001_428_606_8_f32);
+    let mut fs = _mm256_fmadd_ps(ks_f, ln2_hi, xs_clamped);
+    fs = _mm256_fmadd_ps(ks_f, ln2_lo, fs);
+
+    // --- Tanh Poly Step 2 ---
+    let tc0 = _mm256_set1_ps(0.166_814_34_f32);
+    let tc1 = _mm256_set1_ps(0.008_153_17_f32);
+    let tc2 = _mm256_set1_ps(0.000_246_32_f32);
+    let yt_3_5 = _mm256_fmadd_ps(tc1, xt_sq, tc0);
+    let yt_3_5_7 = _mm256_fmadd_ps(tc2, xt_sq_sq, yt_3_5);
+    let yt_full = _mm256_fmadd_ps(yt_3_5_7, xt_sq, one);
+    let pt_x = _mm256_mul_ps(xt_clamped, yt_full);
+
+    // --- Sigmoid Poly ---
+    let sc6 = _mm256_set1_ps(0.001_388_888_9_f32);
+    let sc5 = _mm256_set1_ps(0.008_333_333_f32);
+    let sc4 = _mm256_set1_ps(0.041_666_668_f32);
+    let sc3 = _mm256_set1_ps(0.166_666_67_f32);
+    let sc2 = _mm256_set1_ps(0.5);
+    let mut polys = _mm256_fmadd_ps(fs, sc6, sc5);
+    polys = _mm256_fmadd_ps(polys, fs, sc4);
+    polys = _mm256_fmadd_ps(polys, fs, sc3);
+    polys = _mm256_fmadd_ps(polys, fs, sc2);
+    polys = _mm256_fmadd_ps(polys, fs, one);
+    polys = _mm256_fmadd_ps(polys, fs, one);
+
+    // --- Tanh Rsqrt Prep ---
+    let pt_x_sq = _mm256_mul_ps(pt_x, pt_x);
+    let radicand_t = _mm256_add_ps(pt_x_sq, one);
+
+    // --- Sigmoid Finalize Exp ---
+    let ks_int = _mm256_add_epi32(ks, _mm256_set1_epi32(127));
+    let twoks = _mm256_castsi256_ps(_mm256_slli_epi32(ks_int, 23));
+    let es = _mm256_mul_ps(polys, twoks);
+    let dens = _mm256_add_ps(one, es);
+
+    // --- Inverse Ops (Interleaved) ---
+    let mut rrt = _mm256_rsqrt_ps(radicand_t);
+    let mut res_s = _mm256_rcp_ps(dens);
+
+    // --- Newton-Raphson Tanh ---
+    let three = _mm256_set1_ps(3.0);
+    let half = _mm256_set1_ps(0.5);
+    let rrt_sq = _mm256_mul_ps(rrt, rrt);
+    let diff_t = _mm256_fnmadd_ps(radicand_t, rrt_sq, three);
+    rrt = _mm256_mul_ps(_mm256_mul_ps(rrt, half), diff_t);
+
+    // --- Newton-Raphson Sigmoid ---
+    let two = _mm256_set1_ps(2.0);
+    res_s = _mm256_mul_ps(res_s, _mm256_fnmadd_ps(dens, res_s, two));
+
+    (_mm256_mul_ps(pt_x, rrt), res_s)
+}
+
+/// Aproximação vetorial de `SiLU(x)` (Dual, 16 floats).
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_silu_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
+    let (s1, s2) = simd_sigmoid_dual_avx2(x1, x2);
+    (_mm256_mul_ps(x1, s1), _mm256_mul_ps(x2, s2))
+}
+
+/// Aproximação vetorial de `SiLU(x) = x * sigmoid(x)` usando AVX2.
+///
+/// Reutiliza o kernel `simd_sigmoid_avx2` (Minimax D6).
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn simd_silu_avx2(x: __m256) -> __m256 {
+    let s = simd_sigmoid_avx2(x);
+    _mm256_mul_ps(x, s)
+}
+
 /// Aproximação direta de `sigmoid(x)` (Dual, 16 floats).
 /// Intercala instruções para otimizar Instruction Level Parallelism (Latency Hiding).
 ///
@@ -462,6 +650,126 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     res
 }
 
+/// Aproximação vetorial de `ReLU(x) = max(0, x)` usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_relu_avx512(x: __m512) -> __m512 {
+    _mm512_max_ps(_mm512_setzero_ps(), x)
+}
+
+/// Aproximação vetorial de `Softsign(x) = x / (1 + |x|)` usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_softsign_avx512(x: __m512) -> __m512 {
+    let one = _mm512_set1_ps(1.0);
+    let two = _mm512_set1_ps(2.0);
+    // abs_x = x & 0x7FFFFFFF
+    let abs_x = _mm512_andnot_ps(_mm512_set1_ps(-0.0), x);
+    let den = _mm512_add_ps(one, abs_x);
+
+    // Recíproco com `Newton-Raphson`
+    let mut res = _mm512_rcp14_ps(den);
+    res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
+
+    _mm512_mul_ps(x, res)
+}
+
+/// Aproximação vetorial de `SiLU(x) = x * sigmoid(x)` usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_silu_avx512(x: __m512) -> __m512 {
+    let s = simd_sigmoid_avx512(x);
+    _mm512_mul_ps(x, s)
+}
+
+/// Aproximação vetorial fundida de `tanh(x)` e `sigmoid(y)` usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_tanh_sigmoid_dual_avx512(xt: __m512, xs: __m512) -> (__m512, __m512) {
+    let one = _mm512_set1_ps(1.0);
+    let zero = _mm512_setzero_ps();
+
+    // --- Sigmoid Prep ---
+    let neg_xs = _mm512_sub_ps(zero, xs);
+    let xs_clamped = _mm512_max_ps(
+        _mm512_set1_ps(-SIGMOID_CLAMP_LIMIT),
+        _mm512_min_ps(_mm512_set1_ps(SIGMOID_CLAMP_LIMIT), neg_xs),
+    );
+
+    // --- Tanh Prep ---
+    let xt_clamped = _mm512_max_ps(
+        _mm512_set1_ps(-TANH_CLAMP_LIMIT),
+        _mm512_min_ps(_mm512_set1_ps(TANH_CLAMP_LIMIT), xt),
+    );
+
+    // --- Sigmoid Exp ---
+    let log2e = _mm512_set1_ps(1.442_695_1_f32);
+    let ks = _mm512_cvtps_epi32(_mm512_fmadd_ps(xs_clamped, log2e, zero));
+    let ks_f = _mm512_cvtepi32_ps(ks);
+    let ln2_hi = _mm512_set1_ps(-0.693_145_75_f32);
+    let ln2_lo = _mm512_set1_ps(-0.000_001_428_606_8_f32);
+    let mut fs = _mm512_fmadd_ps(ks_f, ln2_hi, xs_clamped);
+    fs = _mm512_fmadd_ps(ks_f, ln2_lo, fs);
+
+    let sc6 = _mm512_set1_ps(0.001_388_888_9_f32);
+    let sc5 = _mm512_set1_ps(0.008_333_333_f32);
+    let sc4 = _mm512_set1_ps(0.041_666_668_f32);
+    let sc3 = _mm512_set1_ps(0.166_666_67_f32);
+    let sc2 = _mm512_set1_ps(0.5);
+    let mut polys = _mm512_fmadd_ps(fs, sc6, sc5);
+    polys = _mm512_fmadd_ps(polys, fs, sc4);
+    polys = _mm512_fmadd_ps(polys, fs, sc3);
+    polys = _mm512_fmadd_ps(polys, fs, sc2);
+    polys = _mm512_fmadd_ps(polys, fs, one);
+    polys = _mm512_fmadd_ps(polys, fs, one);
+
+    let ks_int = _mm512_add_epi32(ks, _mm512_set1_epi32(127));
+    let twoks = _mm512_castsi512_ps(_mm512_slli_epi32(ks_int, 23));
+    let es = _mm512_mul_ps(polys, twoks);
+    let dens = _mm512_add_ps(one, es);
+
+    // --- Tanh Poly ---
+    let xt_sq = _mm512_mul_ps(xt_clamped, xt_clamped);
+    let xt_sq_sq = _mm512_mul_ps(xt_sq, xt_sq);
+    let tc0 = _mm512_set1_ps(0.166_814_34_f32);
+    let tc1 = _mm512_set1_ps(0.008_153_17_f32);
+    let tc2 = _mm512_set1_ps(0.000_246_32_f32);
+    let yt_3_5 = _mm512_fmadd_ps(tc1, xt_sq, tc0);
+    let yt_3_5_7 = _mm512_fmadd_ps(tc2, xt_sq_sq, yt_3_5);
+    let yt_full = _mm512_fmadd_ps(yt_3_5_7, xt_sq, one);
+    let pt_x = _mm512_mul_ps(xt_clamped, yt_full);
+    let pt_x_sq = _mm512_mul_ps(pt_x, pt_x);
+    let radicand_t = _mm512_add_ps(pt_x_sq, one);
+
+    // --- Inverse Ops ---
+    let mut rrt = _mm512_rsqrt14_ps(radicand_t);
+    let mut res_s = _mm512_rcp14_ps(dens);
+
+    let three = _mm512_set1_ps(3.0);
+    let half = _mm512_set1_ps(0.5);
+    let two = _mm512_set1_ps(2.0);
+
+    // NR Tanh
+    let rrt_sq = _mm512_mul_ps(rrt, rrt);
+    rrt = _mm512_mul_ps(
+        _mm512_mul_ps(rrt, half),
+        _mm512_fnmadd_ps(radicand_t, rrt_sq, three),
+    );
+
+    // NR Sigmoid
+    res_s = _mm512_mul_ps(res_s, _mm512_fnmadd_ps(dens, res_s, two));
+
+    (_mm512_mul_ps(pt_x, rrt), res_s)
+}
+
 /// Executa a ativação fundida dos gates LSTM para AVX2.
 /// Computa as portas f, i, g, o e atualiza o estado da célula e saída oculta.
 ///
@@ -476,8 +784,7 @@ pub unsafe fn fused_lstm_gates_avx2(
 ) -> (__m256, __m256) {
     unsafe {
         let (f, i) = simd_sigmoid_dual_avx2(gf, gi);
-        let g = simd_tanh_avx2(gg);
-        let o = simd_sigmoid_avx2(go);
+        let (g, o) = simd_tanh_sigmoid_dual_avx2(gg, go);
 
         // new_cs = f * cs + i * g
         let new_cs = _mm256_fmadd_ps(f, cs, _mm256_mul_ps(i, g));
@@ -504,8 +811,7 @@ pub unsafe fn fused_lstm_gates_avx512(
     unsafe {
         let f = simd_sigmoid_avx512(gf);
         let i = simd_sigmoid_avx512(gi);
-        let g = simd_tanh_avx512(gg);
-        let o = simd_sigmoid_avx512(go);
+        let (g, o) = simd_tanh_sigmoid_dual_avx512(gg, go);
 
         // new_cs = f * cs + i * g
         let new_cs = _mm512_fmadd_ps(f, cs, _mm512_mul_ps(i, g));
@@ -617,6 +923,239 @@ pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
             slice[i] = 0.5 * (1.0 + (val * 0.5).tanh());
             i += 1;
         }
+    }
+}
+
+/// Aplica `ReLU` in-place usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn relu_slice_avx512(slice: &mut [f32]) {
+    let mut i = 0;
+    while i + 16 <= slice.len() {
+        let va = _mm512_loadu_ps(slice.as_ptr().add(i));
+        let vr = simd_relu_avx512(va);
+        _mm512_storeu_ps(slice.as_mut_ptr().add(i), vr);
+        i += 16;
+    }
+    while i < slice.len() {
+        if slice[i] < 0.0 {
+            slice[i] = 0.0;
+        }
+        i += 1;
+    }
+}
+
+/// Aplica `Softsign` in-place usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn softsign_slice_avx512(slice: &mut [f32]) {
+    let mut i = 0;
+    while i + 16 <= slice.len() {
+        let va = _mm512_loadu_ps(slice.as_ptr().add(i));
+        let vr = simd_softsign_avx512(va);
+        _mm512_storeu_ps(slice.as_mut_ptr().add(i), vr);
+        i += 16;
+    }
+    while i < slice.len() {
+        slice[i] /= 1.0 + slice[i].abs();
+        i += 1;
+    }
+}
+
+/// Aplica `SiLU` in-place usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn silu_slice_avx512(slice: &mut [f32]) {
+    let mut i = 0;
+    while i + 16 <= slice.len() {
+        let va = _mm512_loadu_ps(slice.as_ptr().add(i));
+        let vr = simd_silu_avx512(va);
+        _mm512_storeu_ps(slice.as_mut_ptr().add(i), vr);
+        i += 16;
+    }
+    while i < slice.len() {
+        let x = slice[i];
+        slice[i] = x / (1.0 + (-x).exp());
+        i += 1;
+    }
+}
+
+/// Aplica `PReLU` in-place usando AVX-512 com inclinações periódicas.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn prelu_slice_avx512(slice: &mut [f32], slopes: &[f32]) {
+    if slopes.is_empty() {
+        return;
+    }
+    let mut i = 0;
+    let n = slice.len();
+    let m = slopes.len();
+
+    if m == 1 {
+        let alpha = _mm512_set1_ps(slopes[0]);
+        while i + 16 <= n {
+            let va = _mm512_loadu_ps(slice.as_ptr().add(i));
+            let vr = simd_prelu_avx512(va, alpha);
+            _mm512_storeu_ps(slice.as_mut_ptr().add(i), vr);
+            i += 16;
+        }
+    } else if (m & 15 == 0) && (n & 15 == 0) {
+        while i + 16 <= n {
+            let alpha = _mm512_loadu_ps(slopes.as_ptr().add(i % m));
+            let va = _mm512_loadu_ps(slice.as_ptr().add(i));
+            let vr = simd_prelu_avx512(va, alpha);
+            _mm512_storeu_ps(slice.as_mut_ptr().add(i), vr);
+            i += 16;
+        }
+    }
+
+    while i < n {
+        if slice[i] < 0.0 {
+            slice[i] *= slopes[i % m];
+        }
+        i += 1;
+    }
+}
+
+/// Aproximação vetorial de `PReLU(x) = x > 0 ? x : alpha * x` usando AVX-512.
+///
+/// # Safety
+/// Requer suporte a AVX-512F e AVX-512VL.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn simd_prelu_avx512(x: __m512, alpha: __m512) -> __m512 {
+    let mask = _mm512_cmp_ps_mask(x, _mm512_setzero_ps(), _CMP_GT_OQ);
+    _mm512_mask_blend_ps(mask, _mm512_mul_ps(alpha, x), x)
+}
+
+/// Aplica `ReLU` in-place usando AVX2.
+///
+/// # Safety
+/// Requer suporte a AVX2.
+pub unsafe fn relu_slice_avx2(slice: &mut [f32]) {
+    let mut i = 0;
+    while i + 16 <= slice.len() {
+        let va1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+        let va2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+        let (vr1, vr2) = simd_relu_dual_avx2(va1, va2);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr1);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), vr2);
+        i += 16;
+    }
+    while i + 8 <= slice.len() {
+        let va = _mm256_loadu_ps(slice.as_ptr().add(i));
+        let vr = simd_relu_avx2(va);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr);
+        i += 8;
+    }
+    while i < slice.len() {
+        if slice[i] < 0.0 {
+            slice[i] = 0.0;
+        }
+        i += 1;
+    }
+}
+
+/// Aplica `Softsign` in-place usando AVX2.
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+pub unsafe fn softsign_slice_avx2(slice: &mut [f32]) {
+    let mut i = 0;
+    while i + 16 <= slice.len() {
+        let va1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+        let va2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+        let (vr1, vr2) = simd_softsign_dual_avx2(va1, va2);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr1);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), vr2);
+        i += 16;
+    }
+    while i + 8 <= slice.len() {
+        let va = _mm256_loadu_ps(slice.as_ptr().add(i));
+        let vr = simd_softsign_avx2(va);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr);
+        i += 8;
+    }
+    while i < slice.len() {
+        slice[i] /= 1.0 + slice[i].abs();
+        i += 1;
+    }
+}
+
+/// Aplica `SiLU` in-place usando AVX2.
+///
+/// # Safety
+/// Requer suporte a AVX2 e FMA.
+pub unsafe fn silu_slice_avx2(slice: &mut [f32]) {
+    let mut i = 0;
+    while i + 16 <= slice.len() {
+        let va1 = _mm256_loadu_ps(slice.as_ptr().add(i));
+        let va2 = _mm256_loadu_ps(slice.as_ptr().add(i + 8));
+        let (vr1, vr2) = simd_silu_dual_avx2(va1, va2);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr1);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i + 8), vr2);
+        i += 16;
+    }
+    while i + 8 <= slice.len() {
+        let va = _mm256_loadu_ps(slice.as_ptr().add(i));
+        let vr = simd_silu_avx2(va);
+        _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr);
+        i += 8;
+    }
+    while i < slice.len() {
+        let x = slice[i];
+        slice[i] = x / (1.0 + (-x).exp());
+        i += 1;
+    }
+}
+
+/// Aplica `PReLU` in-place usando AVX2 com inclinações periódicas.
+/// Útil para WaveNet onde as inclinações são por canal.
+///
+/// # Safety
+/// Requer suporte a AVX2.
+#[allow(clippy::manual_is_multiple_of)]
+pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
+    if slopes.is_empty() {
+        return;
+    }
+    let mut i = 0;
+    let n = slice.len();
+    let m = slopes.len();
+
+    // Se houver apenas uma inclinação, é equivalente a LeakyReLU (global).
+    if m == 1 {
+        let alpha = _mm256_set1_ps(slopes[0]);
+        while i + 8 <= n {
+            let va = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let vr = simd_prelu_avx2(va, alpha);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr);
+            i += 8;
+        }
+    } else if (m & 7 == 0) && (n & 7 == 0) {
+        // Otimização: se o número de canais for múltiplo de 8, podemos carregar blocos de slopes.
+        while i + 8 <= n {
+            let alpha = _mm256_loadu_ps(slopes.as_ptr().add(i % m));
+            let va = _mm256_loadu_ps(slice.as_ptr().add(i));
+            let vr = simd_prelu_avx2(va, alpha);
+            _mm256_storeu_ps(slice.as_mut_ptr().add(i), vr);
+            i += 8;
+        }
+    }
+
+    // Fallback escalar para o restante (ou se m não for amigável ao SIMD).
+    while i < n {
+        if slice[i] < 0.0 {
+            slice[i] *= slopes[i % m];
+        }
+        i += 1;
     }
 }
 

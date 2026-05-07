@@ -537,6 +537,56 @@ impl SimdMath for FallbackMath {
     }
 
     #[inline(always)]
+    unsafe fn gemv_overwrite_4gate(
+        in_frame: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        let ih = in_frame.len();
+        let stride = ih * hidden_size;
+        unsafe {
+            gemv_4gate_fallback(
+                in_frame,
+                &weights[0..stride],
+                &weights[stride..2 * stride],
+                &weights[2 * stride..3 * stride],
+                &weights[3 * stride..4 * stride],
+                bias,
+                out_gates,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_bf16_4gate(
+        in_frame: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_gates: &mut [f32],
+        hidden_size: usize,
+        do_bias: bool,
+    ) {
+        let ih = in_frame.len();
+        let stride = ih * hidden_size;
+        unsafe {
+            gemv_4gate_bf16_fallback(
+                in_frame,
+                &weights[0..stride],
+                &weights[stride..2 * stride],
+                &weights[2 * stride..3 * stride],
+                &weights[3 * stride..4 * stride],
+                bias,
+                out_gates,
+                do_bias,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
         unsafe { accumulate_head_fallback(dest, src) }
     }
@@ -558,6 +608,14 @@ impl SimdMath for FallbackMath {
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         unsafe { f32_to_bf16_fallback(src, dest) }
+    }
+
+    #[inline(always)]
+    unsafe fn store_bf16(ptr: *mut u16, _v: Self::V) {
+        // No fallback, store_bf16 is intended for SIMD registers
+        // but for completeness we can implement for V=f32 if it was used.
+        // Since FallbackMath::V = f32, we store one value.
+        *ptr = (_v.to_bits() >> 16) as u16;
     }
 
     #[inline(always)]

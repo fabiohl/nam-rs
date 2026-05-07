@@ -64,69 +64,28 @@ impl LstmDynLayer {
         }
 
         // 2. Linear Dot Products -> Preenche GATES e adiciona BIAS via GEMV
-        let stride = ih * h;
         if M::IS_BF16 {
             // Sincroniza estado BF16
             unsafe { M::f32_to_bf16(&self.state, &mut self.state_bf16) };
 
             unsafe {
-                M::gemv_overwrite_bf16(
+                M::gemv_overwrite_bf16_4gate(
                     &self.state_bf16,
-                    &self.input_hidden_weights[0..stride],
-                    &self.bias[0..h],
-                    &mut self.gates[0..h],
-                    true,
-                );
-                M::gemv_overwrite_bf16(
-                    &self.state_bf16,
-                    &self.input_hidden_weights[stride..2 * stride],
-                    &self.bias[h..2 * h],
-                    &mut self.gates[h..2 * h],
-                    true,
-                );
-                M::gemv_overwrite_bf16(
-                    &self.state_bf16,
-                    &self.input_hidden_weights[2 * stride..3 * stride],
-                    &self.bias[2 * h..3 * h],
-                    &mut self.gates[2 * h..3 * h],
-                    true,
-                );
-                M::gemv_overwrite_bf16(
-                    &self.state_bf16,
-                    &self.input_hidden_weights[3 * stride..4 * stride],
-                    &self.bias[3 * h..4 * h],
-                    &mut self.gates[3 * h..4 * h],
+                    &self.input_hidden_weights,
+                    &self.bias,
+                    &mut self.gates,
+                    h,
                     true,
                 );
             }
         } else {
             unsafe {
-                M::gemv_overwrite(
+                M::gemv_overwrite_4gate(
                     &self.state,
-                    &self.input_hidden_weights[0..stride],
-                    &self.bias[0..h],
-                    &mut self.gates[0..h],
-                    true,
-                );
-                M::gemv_overwrite(
-                    &self.state,
-                    &self.input_hidden_weights[stride..2 * stride],
-                    &self.bias[h..2 * h],
-                    &mut self.gates[h..2 * h],
-                    true,
-                );
-                M::gemv_overwrite(
-                    &self.state,
-                    &self.input_hidden_weights[2 * stride..3 * stride],
-                    &self.bias[2 * h..3 * h],
-                    &mut self.gates[2 * h..3 * h],
-                    true,
-                );
-                M::gemv_overwrite(
-                    &self.state,
-                    &self.input_hidden_weights[3 * stride..4 * stride],
-                    &self.bias[3 * h..4 * h],
-                    &mut self.gates[3 * h..4 * h],
+                    &self.input_hidden_weights,
+                    &self.bias,
+                    &mut self.gates,
+                    h,
                     true,
                 );
             }
