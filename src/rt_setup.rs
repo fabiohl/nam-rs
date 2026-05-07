@@ -556,17 +556,25 @@ fn get_allowed_cpus() -> Vec<usize> {
 /// Esta função realiza o parsing do formato tabular do kernel, onde cada coluna
 /// (após a primeira) representa um contador para um núcleo específico.
 pub fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
-    use std::fs;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
 
     let mut totals = vec![0u64; num_cpus];
 
-    let content = match fs::read_to_string("/proc/interrupts") {
-        Ok(c) => c,
+    // [T9] Refatoração para Streaming: Evita alocação monolítica de string para /proc/interrupts.
+    // Essencial para sistemas com alto número de CPUs onde o arquivo pode ser grande.
+    let file = match File::open("/proc/interrupts") {
+        Ok(f) => f,
         Err(_) => return totals,
     };
+    let reader = BufReader::new(file);
 
     // Pula o cabeçalho (CPU0 CPU1 ...)
-    for line in content.lines().skip(1) {
+    for line_result in reader.lines().skip(1) {
+        let line = match line_result {
+            Ok(l) => l,
+            Err(_) => break,
+        };
         let trimmed = line.trim_start();
         // Localiza o delimitador do nome da interrupção (ex: "7: ...")
         let irq_end = trimmed.find(':').unwrap_or(0);

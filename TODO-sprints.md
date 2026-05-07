@@ -170,10 +170,11 @@ Tarefas que melhoram throughput, latência ou eficiência de cache sem alterar o
 
 **Objetivo:** Tornar a varredura de `/proc/interrupts` escalável para sistemas com muitos núcleos.
 
-#### Tarefa 9.1 · Refatorar `parse_interrupts_per_cpu()` para Streaming *(Perf — Cold Path)*
+#### Tarefa 9.1 · Refatorar `parse_interrupts_per_cpu()` para Streaming *(Perf — Cold Path)* [x]
 
 - **Arquivo:** `src/rt_setup.rs`, linha 548.
-- [ ] Substituir `fs::read_to_string("/proc/interrupts")` por `BufReader::new(File::open(...)).lines()` para evitar alocação monolítica em sistemas com alto número de CPUs.
+- [x] Substituir `fs::read_to_string("/proc/interrupts")` por `BufReader::new(File::open(...)).lines()` para evitar alocação monolítica em sistemas com alto número de CPUs.
+- **Status:** Concluído. Refatoração para streaming implementada para garantir escalabilidade em sistemas HPC/Workstations.
 
 ---
 
