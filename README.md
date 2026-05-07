@@ -47,7 +47,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 * Toolchain Rust recente (`rustup`/`cargo`). Eu usei a versão 1.94 durante a maior parte do desenvolvimento.
 
-* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph`
+* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
 
 * Utilitários do Cargo (necessários para QA): `cargo install cargo-mutants cargo-edit`
 
