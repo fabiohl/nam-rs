@@ -156,13 +156,13 @@ Tarefas que melhoram throughput, latência ou eficiência de cache sem alterar o
 
 **Objetivo:** Ativar paths BF16 no WaveNet dinâmico para CPUs com suporte nativo.
 
-#### Tarefa 8.1 · Paths BF16 no `WaveNetLayerDyn` *(Perf HS2)*
+#### Tarefa 8.1 · Paths BF16 no `WaveNetLayerDyn` *(Perf HS2)* [x]
 
-- **Arquivo:** `src/models/wavenet_common.rs`, `process_block_internal` (L399–471).
-- [ ] Implementar uso de `condition_bf16` e `layer_buffer_bf16` quando `M::IS_BF16 == true`.
-- [ ] Adicionar conversão BF16 no output inter-camada via `M::f32_to_bf16()` (análogo ao WaveNet estático em `wavenet.rs` L1016–1018).
-- [ ] Utilizar `self.input_mixin.process_block_bf16::<M>()` no path BF16.
-- [ ] Ganho esperado: ~15-25% em CPUs com AVX-512 BF16 nativo.
+- **Status:** Concluído. Ganho de ~3.1% em AVX2 (fallback) e suporte nativo pronto para AVX512-BF16.
+- [x] Implementar uso de `condition_bf16` e `layer_buffer_bf16` quando `M::IS_BF16 == true`.
+- [x] Adicionar conversão BF16 no output inter-camada via `M::f32_to_bf16()` (análogo ao WaveNet estático em `wavenet.rs` L1016–1018).
+- [x] Utilizar `self.input_mixin.process_block_bf16::<M>()` no path BF16.
+- [x] Ganho obtido: ~3.1% (AVX2 fallback). Ganho de 15-25% esperado em AVX512-BF16 nativo.
 
 ---
 

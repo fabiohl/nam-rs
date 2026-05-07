@@ -156,6 +156,127 @@ impl Conv1dDyn {
             }
         }
     }
+
+    /// Processa um bloco de amostras usando BF16 na memória circular (layer_buffer).
+    ///
+    /// # Safety
+    ///
+    /// Buffers devem ser válidos e `M::IS_BF16` deve ser true.
+    #[inline(always)]
+    pub unsafe fn process_block_bf16<M: SimdMath>(
+        &self,
+        layer_buffer: &[u16],
+        block: &mut [f32],
+        buffer_start: usize,
+        num_frames: usize,
+        mixin: Option<&[f32]>,
+    ) {
+        let num_blocks = self.out_ch / 4;
+
+        for i in 0..num_frames {
+            let out_frame_start = i * self.out_ch;
+            let current_frame_idx = buffer_start + i;
+
+            // [TE1] Tap Pointers: Pre-calculamos os ponteiros para cada "tap" da convolução em BF16.
+            let mut tap_ptrs = [core::ptr::null::<u16>(); 8];
+            let k_limit = self.kernel.min(8);
+            for (k, tap_ptr) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
+                let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
+                let in_slice_start = ((current_frame_idx as isize) + offset) as usize * self.in_ch;
+                unsafe {
+                    *tap_ptr = layer_buffer.as_ptr().add(in_slice_start);
+
+                    // Prefetch continua operando em f32-ptr por simplicidade, cast seguro aqui.
+                    (self.prefetch_fn)(
+                        *tap_ptr as *const f32,
+                        self.dilation * self.in_ch,
+                        k,
+                        self.kernel,
+                        self.dilation,
+                    );
+                }
+            }
+
+            for b in 0..num_blocks {
+                let out_c = b * 4;
+                let mut r0;
+                let mut r1;
+                let mut r2;
+                let mut r3;
+
+                unsafe {
+                    if let Some(m) = mixin {
+                        let mix_idx = i * self.out_ch + out_c;
+                        if self.do_bias {
+                            r0 = *self.bias.get_unchecked(out_c) + *m.get_unchecked(mix_idx);
+                            r1 =
+                                *self.bias.get_unchecked(out_c + 1) + *m.get_unchecked(mix_idx + 1);
+                            r2 =
+                                *self.bias.get_unchecked(out_c + 2) + *m.get_unchecked(mix_idx + 2);
+                            r3 =
+                                *self.bias.get_unchecked(out_c + 3) + *m.get_unchecked(mix_idx + 3);
+                        } else {
+                            r0 = *m.get_unchecked(mix_idx);
+                            r1 = *m.get_unchecked(mix_idx + 1);
+                            r2 = *m.get_unchecked(mix_idx + 2);
+                            r3 = *m.get_unchecked(mix_idx + 3);
+                        }
+                    } else if self.do_bias {
+                        r0 = *self.bias.get_unchecked(out_c);
+                        r1 = *self.bias.get_unchecked(out_c + 1);
+                        r2 = *self.bias.get_unchecked(out_c + 2);
+                        r3 = *self.bias.get_unchecked(out_c + 3);
+                    } else {
+                        r0 = 0.0;
+                        r1 = 0.0;
+                        r2 = 0.0;
+                        r3 = 0.0;
+                    }
+
+                    for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
+                        let w_start = (b * self.kernel + k) * self.in_ch * 4;
+                        let w_slice: &[[u16; 4]] = {
+                            let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
+                            core::slice::from_raw_parts(ptr, self.in_ch)
+                        };
+
+                        let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
+                        let [t0, t1, t2, t3] =
+                            M::dot_product_4x_interleaved_bf16(w_slice, in_slice);
+                        r0 += t0;
+                        r1 += t1;
+                        r2 += t2;
+                        r3 += t3;
+                    }
+
+                    *block.get_unchecked_mut(out_frame_start + out_c) = r0;
+                    *block.get_unchecked_mut(out_frame_start + out_c + 1) = r1;
+                    *block.get_unchecked_mut(out_frame_start + out_c + 2) = r2;
+                    *block.get_unchecked_mut(out_frame_start + out_c + 3) = r3;
+                }
+            }
+
+            // Remainder canais
+            let mut out_c = num_blocks * 4;
+            while out_c < self.out_ch {
+                let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
+                if let Some(m) = mixin {
+                    r += m[i * self.out_ch + out_c];
+                }
+
+                for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
+                    unsafe {
+                        let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
+                        let w_start = (out_c * self.kernel + k) * self.in_ch;
+                        let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
+                        r += M::dot_product_bf16(in_slice, w);
+                    }
+                }
+                block[out_frame_start + out_c] = r;
+                out_c += 1;
+            }
+        }
+    }
 }
 
 /// Camada Dense 1x1 com dimensões dinâmicas.
@@ -403,11 +524,11 @@ impl WaveNetLayerDyn {
             head_input,
             output,
             layer_buffer,
-            layer_buffer_bf16: _, // Não usado no Dyn ainda? (Padrão common mantém para paridade)
+            layer_buffer_bf16,
             buffer_start,
             block,
             num_frames,
-            output_bf16: _,
+            mut output_bf16,
         } = ctx;
         let ch = self.ch;
 
@@ -426,23 +547,33 @@ impl WaveNetLayerDyn {
 
         unsafe {
             if M::IS_BF16 {
+                // [T25] Path BF16 Otimizado: Uso de memórias circulares BF16 e kernels interleaved BF16.
                 self.input_mixin.process_block_bf16::<M>(
                     condition_bf16,
                     mixin_out_slice,
                     num_frames,
                 );
+
+                self.conv1d.process_block_bf16::<M>(
+                    layer_buffer_bf16,
+                    block,
+                    buffer_start,
+                    num_frames,
+                    Some(mixin_out_slice),
+                );
             } else {
+                // Path f32 padrão.
                 self.input_mixin
                     .process_block::<M>(condition, mixin_out_slice, num_frames);
-            }
 
-            self.conv1d.process_block::<M>(
-                layer_buffer,
-                block,
-                buffer_start,
-                num_frames,
-                Some(mixin_out_slice),
-            );
+                self.conv1d.process_block::<M>(
+                    layer_buffer,
+                    block,
+                    buffer_start,
+                    num_frames,
+                    Some(mixin_out_slice),
+                );
+            }
 
             if self.gated {
                 M::gated_activation_and_accumulate_block(
@@ -472,6 +603,11 @@ impl WaveNetLayerDyn {
                     output,
                     num_frames,
                 );
+            }
+
+            // 4. [T25] Fusão BF16: Conversão em lote se necessário para a próxima camada.
+            if let (true, Some(bf16_out)) = (M::IS_BF16, output_bf16.as_mut()) {
+                M::f32_to_bf16(output, bf16_out);
             }
         }
     }
