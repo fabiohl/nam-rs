@@ -13,18 +13,18 @@ Tarefas que corrigem bugs que afetam o comportamento audível ou a estabilidade 
 
 **Objetivo:** Quando nenhum modelo estiver carregado, a saída deve ser o sinal de entrada inalterado (dry pass-through), em vez de silêncio ou lixo de memória.
 
-#### Tarefa 1.1 · Implementar True-Bypass em `run_inference()` *(Bug — Severidade Alta)*
+#### Tarefa 1.1 · Implementar True-Bypass em `run_inference()` *(Bug — Severidade Alta)* [x]
 
 - **Arquivo:** `src/dsp/pipeline.rs`, função `run_inference()`.
-- [ ] No caminho **sem resampler** (L200–220): quando `active_model_l` é `None`, copiar `model_in_l` → `model_out_l`.
-- [ ] Aplicar lógica análoga para `active_model_r` no modo estéreo.
-- [ ] No caminho **com resampler** (L221–257): quando `active_model_l` é `None`, copiar `model_in_l` → `temp_out_l` (atualmente `temp_out_l` fica zerado, matando o sinal dry).
-- [ ] Validar que o bypass funciona independentemente do estado do resampler e do modo mono/estéreo.
+- [x] No caminho **sem resampler** (L200–220): quando `active_model_l` é `None`, copiar `model_in_l` → `model_out_l`.
+- [x] Aplicar lógica análoga para `active_model_r` no modo estéreo.
+- [x] No caminho **com resampler** (L221–257): quando `active_model_l` é `None`, copiar `model_in_l` → `temp_out_l` (atualmente `temp_out_l` fica zerado, matando o sinal dry).
+- [x] Validar que o bypass funciona independentemente do estado do resampler e do modo mono/estéreo.
 
-#### Tarefa 1.2 · Testes de Integração para Bypass *(Cobertura)*
+#### Tarefa 1.2 · Testes de Integração para Bypass *(Cobertura)* [x]
 
-- [ ] Criar testes que validem: `output == input` (bit-exact) quando nenhum modelo está carregado.
-- [ ] Cobrir os 4 cenários: {resampler bypass, resampler ativo} × {mono, estéreo}.
+- [x] Criar testes que validem: `output == input` (bit-exact) quando nenhum modelo está carregado.
+- [x] Cobrir os 4 cenários: {resampler bypass, resampler ativo} × {mono, estéreo}.
 
 ---
 

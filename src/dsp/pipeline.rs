@@ -209,12 +209,19 @@ fn run_inference(
 
         if let Some(model_l) = ctx.active_model_l {
             model_l.process(model_in_l, model_out_l);
+        } else {
+            // True-Bypass: se não há modelo carregado, o sinal passa limpo (dry pass-through)
+            model_out_l.copy_from_slice(model_in_l);
         }
 
         if *ctx.process_mono {
+            // No modo mono, o canal direito é uma cópia do esquerdo processado
             model_out_r.copy_from_slice(model_out_l);
         } else if let Some(model_r) = ctx.active_model_r {
             model_r.process(model_in_r, model_out_r);
+        } else {
+            // True-Bypass para o canal R em modo estéreo
+            model_out_r.copy_from_slice(model_in_r);
         }
 
         n
@@ -240,12 +247,18 @@ fn run_inference(
 
         if let Some(model_l) = ctx.active_model_l {
             model_l.process(model_in_l, model_out_l);
+        } else {
+            // True-Bypass: sinal resampleado passa limpo para o output temporário
+            model_out_l.copy_from_slice(model_in_l);
         }
 
         if *ctx.process_mono {
             model_out_r.copy_from_slice(model_out_l);
         } else if let Some(model_r) = ctx.active_model_r {
             model_r.process(model_in_r, model_out_r);
+        } else {
+            // True-Bypass R
+            model_out_r.copy_from_slice(model_in_r);
         }
 
         ctx.resampler.process_output(
@@ -451,3 +464,7 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
         Ok(&*(pod_ptr as *const pw::spa::pod::Pod))
     }
 }
+
+#[cfg(test)]
+#[path = "pipeline_test.rs"]
+mod pipeline_test;
