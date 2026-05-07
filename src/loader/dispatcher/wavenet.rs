@@ -3,12 +3,13 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topology};
+use crate::math::simd::{AlignedVec, f32_to_bf16};
 use crate::models::DynamicModel;
 use crate::models::wavenet::{Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetModel};
-use crate::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
-use crate::models::wavenet_dyn::{
-    Conv1dDyn, DenseLayerDyn, WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn,
+use crate::models::wavenet_common::{
+    Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
 };
+use crate::models::wavenet_dyn::{WaveNetDynModel, WaveNetLayerArrayDyn};
 use anyhow::{Context, bail};
 use log::info;
 
@@ -225,16 +226,16 @@ pub(crate) fn build_wavenet_array<
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 
     let block_size = CH;
-    let block_buffer = vec![0.0; block_size * WAVENET_MAX_NUM_FRAMES];
+    let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0);
 
     Ok(WaveNetLayerArray {
         layers,
         states,
         rechannel,
         head_rechannel,
-        array_outputs: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_accum: AlignedVec::new(CH * WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_outputs: AlignedVec::new(HEAD * WAVENET_MAX_NUM_FRAMES, 0.0),
         receptive_field_size,
         block_size,
         block_buffer,
@@ -345,7 +346,7 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
-    let mut weights = vec![0u16; total];
+    let mut weights = AlignedVec::new(total, 0u16);
 
     if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
         // Layout já otimizado (Intercalado 4-Wide) — Cópia direta
@@ -397,9 +398,9 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
     }
 
     let bias = if do_bias {
-        cursor.read_slice(OUT)?.to_vec()
+        AlignedVec::from_vec(cursor.read_slice(OUT)?.to_vec())
     } else {
-        vec![0.0; OUT]
+        AlignedVec::new(OUT, 0.0)
     };
 
     Ok(Conv1d {
@@ -417,15 +418,13 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
 
 /// Lê os pesos de um `DenseLayer<IN, OUT>` (layout compatível sem transposição).
 ///
-use crate::math::simd::f32_to_bf16;
-
 /// Tanto C++ (`DenseLayerT::SetWeights`) quanto Rust usam layout `[out][in]` row-major.
 fn read_dense_layer<const IN: usize, const OUT: usize>(
     cursor: &mut WeightCursor<'_>,
     do_bias: bool,
 ) -> anyhow::Result<DenseLayer<IN, OUT>> {
     let raw_weights = cursor.read_slice(OUT * IN)?;
-    let mut weights = vec![0u16; OUT * IN];
+    let mut weights = AlignedVec::new(OUT * IN, 0u16);
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
@@ -453,9 +452,9 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     }
 
     let bias = if do_bias {
-        cursor.read_slice(OUT)?.to_vec()
+        AlignedVec::from_vec(cursor.read_slice(OUT)?.to_vec())
     } else {
-        vec![0.0; OUT]
+        AlignedVec::new(OUT, 0.0)
     };
 
     Ok(DenseLayer {
@@ -477,7 +476,7 @@ fn read_conv1d_weights_dyn(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
-    let mut weights = vec![0u16; total];
+    let mut weights = AlignedVec::new(total, 0u16);
 
     if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
         for i in 0..total {
@@ -528,9 +527,9 @@ fn read_conv1d_weights_dyn(
     }
 
     let bias = if do_bias {
-        cursor.read_slice(out_size)?.to_vec()
+        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
     } else {
-        vec![0.0; out_size]
+        AlignedVec::new(out_size, 0.0)
     };
 
     Ok(Conv1dDyn {
@@ -556,7 +555,7 @@ fn read_dense_layer_dyn(
     do_bias: bool,
 ) -> anyhow::Result<DenseLayerDyn> {
     let raw_weights = cursor.read_slice(out_size * in_size)?;
-    let mut weights = vec![0u16; out_size * in_size];
+    let mut weights = AlignedVec::new(out_size * in_size, 0u16);
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
@@ -583,9 +582,9 @@ fn read_dense_layer_dyn(
     }
 
     let bias = if do_bias {
-        cursor.read_slice(out_size)?.to_vec()
+        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
     } else {
-        vec![0.0; out_size]
+        AlignedVec::new(out_size, 0.0)
     };
 
     Ok(DenseLayerDyn {
@@ -668,16 +667,16 @@ pub(crate) fn build_wavenet_array_dyn(
         states,
         rechannel,
         head_rechannel,
-        array_outputs: vec![0.0; ch * WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; ch * WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; head * WAVENET_MAX_NUM_FRAMES],
-        block_buffer: vec![0.0; block_size * WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_accum: AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0),
+        head_outputs: AlignedVec::new(head * WAVENET_MAX_NUM_FRAMES, 0.0),
+        block_buffer: AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0),
         block_size,
         receptive_field_size,
         ch,
         head,
-        last_condition: vec![0.0; cond_size],
-        last_condition_bf16: vec![0; cond_size],
+        last_condition: AlignedVec::new(cond_size, 0.0),
+        last_condition_bf16: AlignedVec::new(cond_size, 0),
         condition_init: false,
     })
 }

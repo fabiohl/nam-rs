@@ -3,8 +3,8 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::math::simd::SimdMathConfig;
-    use crate::models::wavenet_common::{WaveNetLayerState, WavenetProcessContext};
+    use crate::math::simd::{AlignedVec, SimdMathConfig};
+    use crate::models::wavenet_common::{Conv1dDyn, WaveNetLayerState, WavenetProcessContext};
     use crate::models::wavenet_dyn::*;
 
     /// Constrói um `Conv1dDyn` mínimo com `kernel=1`, `dilation=1`.
@@ -14,8 +14,11 @@ mod tests {
     /// - `weight`: valor fixo para todos os pesos (facilita cálculo analítico)
     fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
         Conv1dDyn {
-            weights: vec![half::f16::from_f32(weight).to_bits(); out_ch * in_ch], // kernel=1
-            bias: vec![0.0; out_ch],
+            weights: AlignedVec::from_vec(vec![
+                half::f16::from_f32(weight).to_bits();
+                out_ch * in_ch
+            ]), // kernel=1
+            bias: AlignedVec::from_vec(vec![0.0; out_ch]),
             do_bias: false,
             dilation: 1,
             in_ch,
@@ -28,8 +31,8 @@ mod tests {
     /// Constrói um `DenseLayerDyn` identidade (peso=0, bias=0, sem efeito).
     fn make_dense_zero(in_size: usize, out_size: usize) -> DenseLayerDyn {
         DenseLayerDyn {
-            weights: vec![0u16; out_size * in_size],
-            bias: vec![0.0; out_size],
+            weights: AlignedVec::from_vec(vec![0u16; out_size * in_size]),
+            bias: AlignedVec::from_vec(vec![0.0; out_size]),
             do_bias: false,
             in_size,
             out_size,
@@ -197,8 +200,8 @@ mod tests {
         let state = WaveNetLayerState::new(ch, 0, 0);
 
         let conv1d = Conv1dDyn {
-            weights: vec![0u16; 2 * ch * ch],
-            bias: vec![0.0; 2 * ch],
+            weights: AlignedVec::from_vec(vec![0u16; 2 * ch * ch]),
+            bias: AlignedVec::from_vec(vec![0.0; 2 * ch]),
             do_bias: false,
             dilation: 1,
             in_ch: ch,
@@ -223,16 +226,16 @@ mod tests {
             states: vec![state],
             rechannel: make_dense_zero(1, ch),
             head_rechannel: make_dense_zero(ch, 1),
-            array_outputs: vec![0.0; ch],
-            head_accum: vec![0.0; ch],
-            head_outputs: vec![0.0; 1],
-            block_buffer: vec![0.0; block_size],
+            array_outputs: AlignedVec::from_vec(vec![0.0; ch]),
+            head_accum: AlignedVec::from_vec(vec![0.0; ch]),
+            head_outputs: AlignedVec::from_vec(vec![0.0; 1]),
+            block_buffer: AlignedVec::from_vec(vec![0.0; block_size]),
             block_size,
             receptive_field_size: 0,
             ch,
             head: 1,
-            last_condition: vec![0.0; 1],
-            last_condition_bf16: vec![0u16; 1],
+            last_condition: AlignedVec::from_vec(vec![0.0; 1]),
+            last_condition_bf16: AlignedVec::from_vec(vec![0u16; 1]),
             condition_init: false,
         };
 

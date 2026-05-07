@@ -55,6 +55,8 @@ pub struct DynamicHysteresis {
     hold_counter: usize,
     fade_counter: usize,
     current_multiplier: f32,
+    ramp_start_multiplier: f32,
+    ramp_samples: usize,
 }
 
 impl Default for DynamicHysteresis {
@@ -71,6 +73,8 @@ impl DynamicHysteresis {
             hold_counter: 0,
             fade_counter: 0,
             current_multiplier: 1.0,
+            ramp_start_multiplier: 1.0,
+            ramp_samples: 0,
         }
     }
 
@@ -100,6 +104,8 @@ impl DynamicHysteresis {
         params: &GateParams,
         n_samples: usize,
     ) {
+        self.ramp_start_multiplier = self.current_multiplier;
+
         match self.state {
             GateState::Open => {
                 if value < threshold_close {
@@ -107,19 +113,38 @@ impl DynamicHysteresis {
                     if self.hold_counter >= params.hold_frames {
                         self.state = GateState::FadingOut;
                         self.fade_counter = params.fade_frames;
+                        self.ramp_samples = 0;
+                    } else {
+                        self.ramp_samples = 0;
                     }
                 } else {
                     self.hold_counter = 0;
+                    self.ramp_samples = 0;
                 }
             }
             GateState::FadingOut => {
                 if value >= threshold_open {
                     self.state = GateState::FadingIn;
                     self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
+
+                    if self.fade_counter + n_samples < params.fade_frames {
+                        self.fade_counter += n_samples;
+                        self.current_multiplier =
+                            self.fade_counter as f32 / params.fade_frames as f32;
+                        self.ramp_samples = n_samples;
+                    } else {
+                        self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+                        self.state = GateState::Open;
+                        self.current_multiplier = 1.0;
+                        self.fade_counter = params.fade_frames;
+                        self.hold_counter = 0;
+                    }
                 } else if self.fade_counter > n_samples {
                     self.fade_counter -= n_samples;
                     self.current_multiplier = self.fade_counter as f32 / params.fade_frames as f32;
+                    self.ramp_samples = n_samples;
                 } else {
+                    self.ramp_samples = self.fade_counter;
                     self.state = GateState::Closed;
                     self.current_multiplier = 0.0;
                     self.fade_counter = 0;
@@ -130,16 +155,44 @@ impl DynamicHysteresis {
                     self.state = GateState::FadingIn;
                     self.fade_counter = 0;
                     self.hold_counter = 0;
+
+                    if self.fade_counter + n_samples < params.fade_frames {
+                        self.fade_counter += n_samples;
+                        self.current_multiplier =
+                            self.fade_counter as f32 / params.fade_frames as f32;
+                        self.ramp_samples = n_samples;
+                    } else {
+                        self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+                        self.state = GateState::Open;
+                        self.current_multiplier = 1.0;
+                        self.fade_counter = params.fade_frames;
+                    }
+                } else {
+                    self.ramp_samples = 0;
                 }
             }
             GateState::FadingIn => {
                 if value < threshold_close {
                     self.state = GateState::FadingOut;
                     self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
+
+                    if self.fade_counter > n_samples {
+                        self.fade_counter -= n_samples;
+                        self.current_multiplier =
+                            self.fade_counter as f32 / params.fade_frames as f32;
+                        self.ramp_samples = n_samples;
+                    } else {
+                        self.ramp_samples = self.fade_counter;
+                        self.state = GateState::Closed;
+                        self.current_multiplier = 0.0;
+                        self.fade_counter = 0;
+                    }
                 } else if self.fade_counter + n_samples < params.fade_frames {
                     self.fade_counter += n_samples;
                     self.current_multiplier = self.fade_counter as f32 / params.fade_frames as f32;
+                    self.ramp_samples = n_samples;
                 } else {
+                    self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
                     self.state = GateState::Open;
                     self.current_multiplier = 1.0;
                     self.fade_counter = params.fade_frames;
@@ -150,40 +203,49 @@ impl DynamicHysteresis {
     }
 
     /// Aplica o multiplicador de ganho atual ao buffer.
-    /// Se o estado for FadingIn ou FadingOut, aplica uma rampa linear.
+    /// Se o estado for FadingIn ou FadingOut, aplica uma rampa linear estritamente
+    /// até o sample onde o fade encerra (Interpolação Sub-Bloco).
     ///
     /// # Safety
     /// Esta função deve ser chamada apenas na thread RT.
-    pub fn apply_gain_rt(&self, buffer: &mut [f32], params: &GateParams, n_samples: usize) {
-        if self.state == GateState::Closed {
-            buffer.fill(0.0);
-            return;
-        }
-        if self.state == GateState::Open {
-            // Se o multiplicador for 1.0, não faz nada (bypass).
-            if (self.current_multiplier - 1.0).abs() > 1e-6 {
+    pub fn apply_gain_rt(&self, buffer: &mut [f32], _params: &GateParams, n_samples: usize) {
+        if self.ramp_samples == 0 {
+            if self.current_multiplier == 0.0 {
+                buffer.fill(0.0);
+            } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
                 crate::dsp::gain::apply_gain_simd(buffer, self.current_multiplier);
             }
             return;
         }
 
-        // Caso FadingIn ou FadingOut: aplica rampa linear.
-        let start_mult = match self.state {
-            GateState::FadingIn => {
-                (self.fade_counter.saturating_sub(n_samples) as f32) / (params.fade_frames as f32)
-            }
-            GateState::FadingOut => {
-                ((self.fade_counter + n_samples) as f32 / params.fade_frames as f32).min(1.0)
-            }
-            _ => self.current_multiplier,
-        };
+        let start_mult = self.ramp_start_multiplier;
         let end_mult = self.current_multiplier;
 
-        if (start_mult - end_mult).abs() < 1e-6 {
-            crate::dsp::gain::apply_gain_simd(buffer, end_mult);
+        if self.ramp_samples >= n_samples {
+            // A rampa ocupa o bloco inteiro
+            if (start_mult - end_mult).abs() < 1e-6 {
+                crate::dsp::gain::apply_gain_simd(buffer, end_mult);
+            } else {
+                let step = (end_mult - start_mult) / (n_samples as f32);
+                crate::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
+            }
         } else {
-            let step = (end_mult - start_mult) / (n_samples as f32);
-            crate::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
+            // Interpolação Sub-Bloco! A rampa termina antes do fim do bloco.
+            let (ramp_part, const_part) = buffer.split_at_mut(self.ramp_samples);
+
+            if (start_mult - end_mult).abs() < 1e-6 {
+                crate::dsp::gain::apply_gain_simd(ramp_part, end_mult);
+            } else {
+                let step = (end_mult - start_mult) / (self.ramp_samples as f32);
+                crate::dsp::gain::apply_ramp_simd(ramp_part, start_mult, step);
+            }
+
+            // Preenche o resto do buffer com a constante final
+            if end_mult == 0.0 {
+                const_part.fill(0.0);
+            } else if (end_mult - 1.0).abs() > 1e-6 {
+                crate::dsp::gain::apply_gain_simd(const_part, end_mult);
+            }
         }
     }
 }

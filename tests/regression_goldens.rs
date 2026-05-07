@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
+use nam_rs::math::simd::AlignedVec;
 use nam_rs::models::lstm::{LstmModel1, LstmModel2};
 use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
@@ -52,8 +53,8 @@ fn build_wavenet_layer_array<
     let make_layer = |dilation: usize| -> WaveNetLayer<COND, CH, K> {
         WaveNetLayer {
             conv1d: Conv1d {
-                weights: vec![bits; CH * K * CH],
-                bias: vec![val; CH],
+                weights: AlignedVec::from_vec(vec![bits; CH * K * CH]),
+                bias: AlignedVec::from_vec(vec![val; CH]),
                 do_bias: true,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
@@ -63,13 +64,13 @@ fn build_wavenet_layer_array<
                 },
             },
             input_mixin: DenseLayer {
-                weights: vec![bits; CH * COND],
-                bias: vec![val; CH],
+                weights: AlignedVec::from_vec(vec![bits; CH * COND]),
+                bias: AlignedVec::from_vec(vec![val; CH]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: vec![bits; CH * CH],
-                bias: vec![val; CH],
+                weights: AlignedVec::from_vec(vec![bits; CH * CH]),
+                bias: AlignedVec::from_vec(vec![val; CH]),
                 do_bias: true,
             },
         }
@@ -84,21 +85,21 @@ fn build_wavenet_layer_array<
         layers,
         states,
         rechannel: DenseLayer {
-            weights: vec![bits; CH * IN],
-            bias: vec![val; CH],
+            weights: AlignedVec::from_vec(vec![bits; CH * IN]),
+            bias: AlignedVec::from_vec(vec![val; CH]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: vec![bits; HEAD * CH],
-            bias: vec![val; HEAD],
+            weights: AlignedVec::from_vec(vec![bits; HEAD * CH]),
+            bias: AlignedVec::from_vec(vec![val; HEAD]),
             do_bias: has_head_bias,
         },
-        array_outputs: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; HEAD * WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf,
         block_size: CH,
-        block_buffer: vec![0.0; CH * WAVENET_MAX_NUM_FRAMES],
+        block_buffer: AlignedVec::from_vec(vec![0.0; CH * WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; COND],
         last_condition_bf16: [0; COND],
         condition_init: false,

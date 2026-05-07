@@ -5,7 +5,7 @@
 
 ---
 
-## Épico A — Corretude e Segurança do Hot-Path
+## Épico A — Corretude e Segurança do Hot-Path ✅
 
 Tarefas que corrigem bugs que afetam o comportamento audível ou a estabilidade do sistema em tempo real.
 
@@ -79,17 +79,17 @@ Tarefas que melhoram throughput, latência ou eficiência de cache sem alterar o
 
 **Objetivo:** Eliminar "zipper noises" no final do fade-out/in do Noise Gate.
 
-#### Tarefa 4.1 · Interpolação Sub-Bloco no Gate *(Perf — Qualidade de Áudio)*
+#### Tarefa 4.1 · Interpolação Sub-Bloco no Gate *(Perf — Qualidade de Áudio)* [x]
 
 - **Arquivo:** `src/dsp/gate.rs`, função `apply_gain_rt`.
-- [ ] Calcular a rampa estritamente até o sample de encerramento do fade.
-- [ ] Preencher o restante do buffer com a constante final (`0.0` ou `1.0`).
+- [x] Calcular a rampa estritamente até o sample de encerramento do fade.
+- [x] Preencher o restante do buffer com a constante final (`0.0` ou `1.0`).
 
-#### Tarefa 4.2 · Testes de Granularidade *(Cobertura)*
+#### Tarefa 4.2 · Testes de Granularidade *(Cobertura)* [x]
 
 - **Arquivo:** `src/dsp/gate_test.rs`.
-- [ ] Adicionar cenários com buffers grandes (`n_samples = 4096`) e fades curtos (`fade_frames = 256`).
-- [ ] Assertir que não há saltos de transição não interpolados.
+- [x] Adicionar cenários com buffers grandes (`n_samples = 4096`) e fades curtos (`fade_frames = 256`).
+- [x] Assertir que não há saltos de transição não interpolados.
 
 ---
 
@@ -100,9 +100,9 @@ Tarefas que melhoram throughput, latência ou eficiência de cache sem alterar o
 #### Tarefa 5.1 · Auditoria e Alinhamento de `WaveNetDyn` e `Conv1dDyn` *(Perf — Cache)*
 
 - **Arquivos:** `src/models/wavenet_common.rs`, `src/models/wavenet_dyn.rs`.
-- [ ] Revisar todos os buffers dinâmicos que atingem o hot-path SIMD e impor alinhamento de 32 bytes (AVX2) ou 64 bytes (AVX-512).
-- [ ] Substituir `debug_assert!(mixin_len <= 4096)` por `assert!` em `WaveNetLayerDyn::process_block_internal` (L417) — evita buffer overrun silencioso em release para topologias A2 com `bottleneck > 64`.
-- [ ] Auditar o remainder loop escalar de `Conv1dDyn::process_block` (L139–156) para topologias com `out_ch % 4 != 0`.
+- [x] Revisar todos os buffers dinâmicos que atingem o hot-path SIMD e impor alinhamento de 32 bytes (AVX2) ou 64 bytes (AVX-512).
+- [x] Substituir `debug_assert!(mixin_len <= 4096)` por `assert!` em `WaveNetLayerDyn::process_block_internal` (L417) — evita buffer overrun silencioso em release para topologias A2 com `bottleneck > 64`.
+- [x] Auditar o remainder loop escalar de `Conv1dDyn::process_block` (L139–156) para topologias com `out_ch % 4 != 0`.
 
 ---
 

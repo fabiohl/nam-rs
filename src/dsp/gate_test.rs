@@ -62,12 +62,12 @@ mod tests {
         assert_eq!(dh.state(), GateState::FadingIn);
         assert_eq!(
             dh.multiplier(),
-            0.0,
-            "Transição inicial de Closed para FadingIn mantém mult=0"
+            0.1,
+            "Transição inicial de Closed para FadingIn inicia o fade imediatamente"
         );
 
         // 6. Progresso do fade in
-        dh.update(2.0, th_open, th_close, &params, 5);
+        dh.update(2.0, th_open, th_close, &params, 4);
         assert_eq!(dh.state(), GateState::FadingIn);
         assert_eq!(dh.multiplier(), 0.5); // 5/10
 
@@ -96,35 +96,29 @@ mod tests {
         dh.update(0.1, th_open, th_close, &params, 5);
         assert_eq!(dh.multiplier(), 0.5);
 
-        // Interrompe com sinal alto -> Deve entrar em FadingIn a partir de onde parou
+        // Interrompe com sinal alto -> Deve entrar em FadingIn IMEDIATAMENTE a partir de onde parou
         dh.update(2.0, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingIn);
-        assert_eq!(dh.multiplier(), 0.5);
+        assert_eq!(dh.multiplier(), 0.6);
 
         // Avança um pouco o fade in
         dh.update(2.0, th_open, th_close, &params, 2);
-        assert_eq!(dh.multiplier(), 0.7);
+        assert_eq!(dh.multiplier(), 0.8);
 
         // Interrompe novamente com silêncio
         dh.update(0.1, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingOut);
-        assert_eq!(dh.multiplier(), 0.7);
+        assert_eq!(dh.multiplier(), 0.1);
     }
 
     #[test]
     fn test_hysteresis_apply_gain_ramp() {
-        let mut dh = DynamicHysteresis::new();
         let params = GateParams {
+            hold_frames: 2048,
             fade_frames: 100,
             ..Default::default()
         };
         let mut buffer = [1.0f32; 10];
-
-        // Caso FadingOut: deve aplicar rampa descendente
-        dh.update(0.0, 1.0, 0.5, &params, 2048 + 10); // Passa hold e inicia fade
-        // fade_counter era 100, agora deve ser 90 (decrementado na segunda chamada de update se n=10)
-        // Mas o update acima foi n=2048+10.
-        // Vamos fazer passo a passo.
 
         let mut dh = DynamicHysteresis::new();
         dh.update(0.0, 1.0, 0.5, &params, 2047); // Quase no limite do hold
@@ -153,14 +147,86 @@ mod tests {
         dh.update(0.0, 1.0, 0.5, &params, 101); // Passa fade -> Closed
         assert_eq!(dh.state(), GateState::Closed);
 
-        dh.update(2.0, 1.0, 0.5, &params, 1); // Transição para FadingIn, counter=0
-        dh.update(2.0, 1.0, 0.5, &params, 10); // Avança fade in, counter=10, mult=0.1
-        assert_eq!(dh.multiplier(), 0.1);
+        dh.update(2.0, 1.0, 0.5, &params, 1); // Transição para FadingIn, counter=0 -> 1
+        assert_eq!(dh.multiplier(), 0.01);
+
+        dh.update(2.0, 1.0, 0.5, &params, 10); // Avança fade in, counter=11, mult=0.11
+        assert_eq!(dh.multiplier(), 0.11);
 
         buffer.fill(1.0);
         dh.apply_gain_rt(&mut buffer, &params, 10);
-        // Deve ser rampa de 0.0 a 0.1. O primeiro sample (index 0) recebe o ganho 'start' (0.0).
-        assert!((buffer[0] - 0.0).abs() < 1e-3);
-        assert!((buffer[9] - 0.09).abs() < 1e-3);
+        // Deve ser rampa de 0.01 a 0.11. O primeiro sample recebe 0.01.
+        assert!((buffer[0] - 0.01).abs() < 1e-3);
+        assert!((buffer[9] - 0.10).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_sub_block_granularity() {
+        // Teste da Tarefa 4.1 / 4.2
+        let mut dh = DynamicHysteresis::new();
+        let params = GateParams {
+            hold_frames: 2048,
+            fade_frames: 256,
+            ..Default::default()
+        };
+        let th_open = 1.0;
+        let th_close = 0.5;
+
+        // Força transição para FadingOut
+        dh.update(0.0, th_open, th_close, &params, 2048);
+        assert_eq!(dh.state(), GateState::FadingOut);
+
+        // Passa um bloco enorme de 4096 amostras, mas o fade_frames é só 256!
+        // A rampa deve acontecer estritamente nos primeiros 256 samples,
+        // e o resto do bloco (3840 samples) deve ser zerado.
+        dh.update(0.0, th_open, th_close, &params, 4096);
+        assert_eq!(dh.state(), GateState::Closed);
+        assert_eq!(dh.multiplier(), 0.0);
+
+        let mut buffer = vec![1.0f32; 4096];
+        dh.apply_gain_rt(&mut buffer, &params, 4096);
+
+        // Verifica a interpolação estrita nos primeiros 256 samples
+        assert!(
+            (buffer[0] - 1.0).abs() < 1e-3,
+            "Início do fade-out deve ser 1.0"
+        );
+        assert!(
+            (buffer[128] - 0.5).abs() < 1e-2,
+            "Meio do fade-out deve ser 0.5"
+        );
+
+        // A rampa termina no sample 255. O sample 255 deve ter (256 - 255) / 256 ~= 0.0039.
+        // O sample 256 deve ser estritamente 0.0.
+        assert_eq!(buffer[256], 0.0, "Fim da rampa não zerou estritamente");
+        assert_eq!(
+            buffer[4095], 0.0,
+            "Restante do buffer não preenchido com zeros"
+        );
+
+        // Transição imediata de Closed para Open (FadingIn) com bloco de 4096
+        dh.update(2.0, th_open, th_close, &params, 4096);
+        assert_eq!(dh.state(), GateState::Open);
+        assert_eq!(dh.multiplier(), 1.0);
+
+        let mut buffer2 = vec![1.0f32; 4096];
+        dh.apply_gain_rt(&mut buffer2, &params, 4096);
+
+        // Verifica a interpolação estrita nos primeiros 256 samples (FadingIn)
+        assert_eq!(buffer2[0], 0.0, "Início do fade-in deve ser 0.0");
+        assert!(
+            (buffer2[128] - 0.5).abs() < 1e-2,
+            "Meio do fade-in deve ser 0.5"
+        );
+
+        // A partir do sample 256, o sinal deve estar 100% aberto
+        assert_eq!(
+            buffer2[256], 1.0,
+            "Fim da rampa não abriu estritamente para 1.0"
+        );
+        assert_eq!(
+            buffer2[4095], 1.0,
+            "Restante do buffer não preservado em 1.0"
+        );
     }
 }

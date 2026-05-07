@@ -30,6 +30,7 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
+use nam_rs::math::simd::AlignedVec;
 use nam_rs::models::{NamModel, wavenet, wavenet_common};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -341,8 +342,8 @@ fn make_wavenet_layer(
 ) -> wavenet::WaveNetLayer<1, 16, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); ch * 3 * ch],
-            bias: vec![0.0; ch],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); ch * 3 * ch]),
+            bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
             dilation,
             prefetch_fn: if dilation >= 128 {
@@ -352,13 +353,13 @@ fn make_wavenet_layer(
             },
         },
         input_mixin: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); ch],
-            bias: vec![0.0; ch],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); ch]),
+            bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); ch * ch],
-            bias: vec![0.0; ch],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); ch * ch]),
+            bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
         },
     }
@@ -368,8 +369,8 @@ fn make_wavenet_layer(
 fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); 8 * 3 * 8],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8 * 3 * 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
             dilation,
             prefetch_fn: if dilation >= 128 {
@@ -379,13 +380,13 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
             },
         },
         input_mixin: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); 8],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); 8 * 8],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8 * 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
     }
@@ -427,21 +428,21 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_1,
         states: states_1,
         rechannel: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); 16],
-            bias: vec![0.0; 16],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 16]),
+            bias: AlignedVec::from_vec(vec![0.0; 16]),
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.001).to_bits(); 8 * 16],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8 * 16]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
-        array_outputs: vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf1,
         block_size: 16,
-        block_buffer: vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
+        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
@@ -466,21 +467,21 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_2,
         states: states_2,
         rechannel: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.0).to_bits(); 16 * 8],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16 * 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
-            weights: vec![half::f16::from_f32(0.0).to_bits(); 8],
-            bias: vec![0.0; 1],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,
         },
-        array_outputs: vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; wavenet_common::WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; wavenet_common::WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf2,
         block_size: 8,
-        block_buffer: vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES],
+        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,

@@ -5,6 +5,7 @@
 //!
 //! Fornece o macro `dispatch_simd!` e re-exporta os backends de hardware.
 
+pub mod aligned;
 pub mod avx2;
 pub mod avx512;
 pub mod dispatch;
@@ -13,6 +14,7 @@ pub mod ops;
 pub mod traits;
 pub mod utility;
 
+pub use aligned::AlignedVec;
 pub use avx2::*;
 pub use avx512::*;
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};

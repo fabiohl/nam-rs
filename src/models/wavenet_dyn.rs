@@ -8,8 +8,9 @@
 //! (durante construtor) permitindo zero-allocation e RT-safety no caminho DSP, trocando
 //! unroll do compilador (estático) por iterações dinâmicas de matriz em SIMD.
 
-pub use crate::models::wavenet_common::{
-    Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
+use crate::math::simd::AlignedVec;
+use crate::models::wavenet_common::{
+    DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
     WavenetProcessContext,
 };
 
@@ -24,13 +25,13 @@ pub struct WaveNetLayerArrayDyn {
     /// Redimensionador denso para a malha da cabeça de soma paramétrica.
     pub head_rechannel: DenseLayerDyn,
     /// Acumulador temporário das cadeias sequenciais.
-    pub array_outputs: std::vec::Vec<f32>,
+    pub array_outputs: AlignedVec<f32>,
     /// Acumulador das ativações projetadas pela malha Head.
-    pub head_accum: std::vec::Vec<f32>,
+    pub head_accum: AlignedVec<f32>,
     /// Projeções finais da cabeça em andamento (somatório de projeções de múltiplas camadas).
-    pub head_outputs: std::vec::Vec<f32>,
+    pub head_outputs: AlignedVec<f32>,
     /// Buffer de estado auxiliar reutilizado para inibir heap allocation nas threads de RT.
-    pub block_buffer: std::vec::Vec<f32>,
+    pub block_buffer: AlignedVec<f32>,
     /// Tamanho efetivo do `block_buffer`. Igual a `ch` ou `2*ch` conforme gated.
     pub block_size: usize,
     /// Tamanho analítico global de latência causal desta cascata.
@@ -40,9 +41,9 @@ pub struct WaveNetLayerArrayDyn {
     /// Redução projetada somatória.
     pub head: usize,
     /// Cache do último condicionamento f32.
-    pub last_condition: Vec<f32>,
+    pub last_condition: AlignedVec<f32>,
     /// Cache do último condicionamento BF16.
-    pub last_condition_bf16: Vec<u16>,
+    pub last_condition_bf16: AlignedVec<u16>,
     /// Flag de inicialização do cache.
     pub condition_init: bool,
 }
@@ -69,7 +70,7 @@ impl WaveNetLayerArrayDyn {
 
         // 2) Lazy BF16 Conversion
         if M::IS_BF16 {
-            let changed = !self.condition_init || condition != self.last_condition.as_slice();
+            let changed = !self.condition_init || condition != &self.last_condition[..];
             if changed {
                 unsafe {
                     M::f32_to_bf16(condition, &mut self.last_condition_bf16);

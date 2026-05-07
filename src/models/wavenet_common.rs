@@ -8,7 +8,7 @@
 //! e futuros estágios da arquitetura A2.
 
 use crate::dsp::vring::VirtualRingBuffer;
-use crate::math::simd::SimdMath;
+use crate::math::simd::{AlignedVec, SimdMath};
 
 /// Máximo de frames a processar em um pulso do callback.
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
@@ -19,9 +19,9 @@ pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
 #[derive(Clone)]
 pub struct Conv1dDyn {
     /// Pesos da convolução [OUT][KERNEL][IN] (quantizados u16).
-    pub weights: Vec<u16>,
+    pub weights: AlignedVec<u16>,
     /// Vetor de bias [OUT].
-    pub bias: Vec<f32>,
+    pub bias: AlignedVec<f32>,
     /// Flag indicando se o bias deve ser aplicado.
     pub do_bias: bool,
     /// Fator de dilatação temporal.
@@ -162,9 +162,9 @@ impl Conv1dDyn {
 #[derive(Clone)]
 pub struct DenseLayerDyn {
     /// Pesos da matriz [OUT][IN].
-    pub weights: Vec<u16>,
+    pub weights: AlignedVec<u16>,
     /// Bias [OUT].
-    pub bias: Vec<f32>,
+    pub bias: AlignedVec<f32>,
     /// Flag de aplicação de bias.
     pub do_bias: bool,
     /// Dimensão da entrada.
@@ -411,11 +411,18 @@ impl WaveNetLayerDyn {
         } = ctx;
         let ch = self.ch;
 
-        // Buffer temporário na stack para o Mixin (16KB).
-        let mut mixin_out = [0.0f32; 4096];
+        // Buffer temporário na stack para o Mixin (16KB) com alinhamento de 64 bytes.
+        #[repr(align(64))]
+        struct AlignedMixinBuffer([f32; 4096]);
+        let mut mixin_out = AlignedMixinBuffer([0.0f32; 4096]);
+
         let mixin_len = num_frames * self.conv1d.out_ch;
-        debug_assert!(mixin_len <= 4096);
-        let mixin_out_slice = &mut mixin_out[..mixin_len.min(4096)];
+        assert!(
+            mixin_len <= 4096,
+            "mixin_len overflow: {} (max 4096)",
+            mixin_len
+        );
+        let mixin_out_slice = &mut mixin_out.0[..mixin_len];
 
         unsafe {
             if M::IS_BF16 {

@@ -12,6 +12,7 @@
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::resampler::*;
 use nam_rs::dsp::vring::*;
+use nam_rs::math::simd::AlignedVec;
 use nam_rs::models::lstm::*;
 use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
@@ -55,8 +56,11 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
         WaveNetLayer {
             conv1d: Conv1d {
-                weights: vec![half::f16::from_f32(0.01).to_bits(); 16 * 3 * 16],
-                bias: vec![0.001; 16],
+                weights: AlignedVec::from_vec(vec![
+                    half::f16::from_f32(0.01).to_bits();
+                    16 * 3 * 16
+                ]),
+                bias: AlignedVec::from_vec(vec![0.001; 16]),
                 do_bias: true,
                 dilation,
                 // A estratégia de prefetch muda para dilatações grandes para testar
@@ -68,13 +72,13 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 },
             },
             input_mixin: DenseLayer {
-                weights: vec![half::f16::from_f32(0.01).to_bits(); 16],
-                bias: vec![0.0; 16],
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16]),
+                bias: AlignedVec::from_vec(vec![0.0; 16]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: vec![half::f16::from_f32(0.01).to_bits(); 16 * 16],
-                bias: vec![0.0; 16],
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16 * 16]),
+                bias: AlignedVec::from_vec(vec![0.0; 16]),
                 do_bias: false,
             },
         }
@@ -94,21 +98,21 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         layers: layers_1,
         states: states_1,
         rechannel: DenseLayer {
-            weights: vec![half::f16::from_f32(0.01).to_bits(); 16],
-            bias: vec![0.0; 16],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16]),
+            bias: AlignedVec::from_vec(vec![0.0; 16]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: vec![half::f16::from_f32(0.01).to_bits(); 8 * 16],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 16]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
-        array_outputs: vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf,
         block_size: 16,
-        block_buffer: vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES],
+        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
@@ -118,20 +122,20 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
         WaveNetLayer {
             conv1d: Conv1d {
-                weights: vec![half::f16::from_f32(0.01).to_bits(); 8 * 3 * 8],
-                bias: vec![0.001; 8],
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 3 * 8]),
+                bias: AlignedVec::from_vec(vec![0.001; 8]),
                 do_bias: true,
                 dilation,
                 prefetch_fn: nam_rs::math::simd::prefetch_strategy_simple,
             },
             input_mixin: DenseLayer {
-                weights: vec![half::f16::from_f32(0.01).to_bits(); 8],
-                bias: vec![0.0; 8],
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),
+                bias: AlignedVec::from_vec(vec![0.0; 8]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                weights: vec![half::f16::from_f32(0.01).to_bits(); 8 * 8],
-                bias: vec![0.0; 8],
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 8]),
+                bias: AlignedVec::from_vec(vec![0.0; 8]),
                 do_bias: false,
             },
         }
@@ -146,21 +150,21 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         layers: layers_2,
         states: states_2,
         rechannel: DenseLayer {
-            weights: vec![half::f16::from_f32(0.01).to_bits(); 16 * 8],
-            bias: vec![0.0; 8],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16 * 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
-            weights: vec![half::f16::from_f32(0.01).to_bits(); 8],
-            bias: vec![0.0; 1],
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,
         },
-        array_outputs: vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES],
-        head_accum: vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES],
-        head_outputs: vec![0.0; WAVENET_MAX_NUM_FRAMES],
+        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: 2,
         block_size: 8,
-        block_buffer: vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES],
+        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,

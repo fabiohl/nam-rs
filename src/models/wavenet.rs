@@ -10,21 +10,21 @@
 //! Módulo de Inferência WaveNet (Arquitetura Causal Dilatada).
 
 use super::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext};
-use crate::math::simd::SimdMath;
+use crate::math::simd::{AlignedVec, PrefetchFn, SimdMath};
 
 /// Convolução Causal Dilatada (WaveNet Conv1D).
 #[derive(Clone)]
 pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     /// Matriz achatada de pesos do tamanho OUT * K * IN.
-    pub weights: Vec<u16>,
+    pub weights: AlignedVec<u16>,
     /// Viés causal, atrelado se do_bias for verdadeiro. Total: OUT.
-    pub bias: Vec<f32>,
+    pub bias: AlignedVec<f32>,
     /// Determina se o array de bias deve ser somado.
     pub do_bias: bool,
     /// Fator de diluição no eixo temporal causacional (Ex: 1, 2, 4.. 512).
     pub dilation: usize,
     /// Estratégia de prefetch pré-calculada (Eliminação de Branch).
-    pub prefetch_fn: crate::math::simd::PrefetchFn,
+    pub prefetch_fn: PrefetchFn,
 }
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
@@ -691,9 +691,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 #[derive(Clone)]
 pub struct DenseLayer<const IN: usize, const OUT: usize> {
     /// Matriz de pesos lineares (OUT * IN).
-    pub weights: Vec<u16>,
+    pub weights: AlignedVec<u16>,
     /// Condição temporal para o deslocador de tensor bias.
-    pub bias: Vec<f32>,
+    pub bias: AlignedVec<f32>,
     /// Determina se o array de bias deve ser somado.
     pub do_bias: bool,
 }
@@ -1040,17 +1040,18 @@ pub struct WaveNetLayerArray<
     pub head_rechannel: DenseLayer<CH, HEAD>,
 
     /// Array temporário pre-alocado para saídas.
-    pub array_outputs: std::vec::Vec<f32>,
+    /// Acumulador temporário de saída do Array.
+    pub array_outputs: AlignedVec<f32>,
     /// Acumulador intermediário CH-sized para contribuições das camadas antes da projeção Head.
-    pub head_accum: std::vec::Vec<f32>,
+    pub head_accum: AlignedVec<f32>,
     /// Memória alocada da projeção Linear global (HEAD-sized).
-    pub head_outputs: std::vec::Vec<f32>,
+    pub head_outputs: AlignedVec<f32>,
     /// Tamanho do campo dimensional (receptive field global) para roteamentos.
     pub receptive_field_size: usize,
     /// Tamanho do buffer compartilhado de ativação.
     pub block_size: usize,
     /// Acumulador temporário para blocos (pre-alocado).
-    pub block_buffer: std::vec::Vec<f32>,
+    pub block_buffer: AlignedVec<f32>,
 
     /// Buffer de condicionamento cacheado em BF16.
     pub last_condition_bf16: [u16; COND],
@@ -1084,10 +1085,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
         // [PASSO 2: Lazy BF16 Conversion]
         if M::IS_BF16 {
-            let mut changed = !self.condition_init;
-            if !changed && condition != self.last_condition {
-                changed = true;
-            }
+            let changed = !self.condition_init || condition != &self.last_condition[..];
 
             if changed {
                 unsafe {
