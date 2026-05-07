@@ -204,7 +204,10 @@ impl SystemSnapshot {
     /// Emite aviso informativo recomendando o isolamento de IRQs do núcleo afixado
     /// pelo PipeWire, de modo a minimizar a preempção em tempo real.
     pub fn emit_irq_advisory(&self, core: usize) {
-        let mask = 0xFFFFFFFFu32 ^ (1u32 << core);
+        if core >= 64 {
+            return;
+        }
+        let mask = 0xFFFFFFFFFFFFFFFFu64 ^ (1u64 << core);
         log::info!(
             "{} Para latência mínima, isole o core {} das IRQs do sistema (como sudo): echo {:X} > /proc/irq/default_smp_affinity",
             "💡".yellow(),

@@ -55,19 +55,19 @@ Tarefas que corrigem bugs que afetam o comportamento audível ou a estabilidade 
 
 - **Arquivo:** `src/rt_setup.rs`, linhas 30 e 40.
 - **Diagnóstico:** `Instant::now().elapsed()` retorna ~0 ns (cria o instante e mede imediatamente).
-- [ ] Substituir por uma referência temporal estática (ex: `minstant::Instant` com âncora cold-path one-shot) para que o fallback produza valores monotônicos significativos.
-- [ ] Validar que a telemetria DSP reporta valores corretos quando o TSC não está calibrado.
+- [x] Substituir por uma referência temporal estática (ex: `minstant::Instant` com âncora cold-path one-shot) para que o fallback produza valores monotônicos significativos.
+- [x] Validar que a telemetria DSP reporta valores corretos quando o TSC não está calibrado.
 
 #### Tarefa 3.2 · Guardar Overflow de Shift em `emit_irq_advisory()` *(Bug B5 — Severidade Baixa)*
 
 - **Arquivo:** `src/diagnostics.rs`, linha 207.
 - **Diagnóstico:** `1u32 << core` causa panic se `core >= 32`.
-- [ ] Adicionar guarda `if core >= 32 { return; }` antes do cálculo, ou migrar para `u64` com `1u64 << core`.
+- [x] Adicionar guarda `if core >= 64 { return; }` antes do cálculo, ou migrar para `u64` com `1u64 << core`.
 
 #### Tarefa 3.3 · Feedback para Comandos CLI Incompletos *(Bug B3 — Severidade Baixa)*
 
 - **Arquivo:** `src/cli.rs`, blocos `"gain"`, `"out"` e `"load"` (linhas 203–252).
-- [ ] Adicionar `else` ao `if let Some(...)` com mensagem de uso quando o argumento obrigatório estiver ausente.
+- [x] Adicionar `else` ao `if let Some(...)` com mensagem de uso quando o argumento obrigatório estiver ausente.
 
 ---
 

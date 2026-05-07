@@ -12,12 +12,15 @@ use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::spsc::RtStatusFlags;
 use minstant::Anchor;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Frequência calibrada do TSC em GHz (ciclos por nanosegundo).
 /// Armazenado como ponto fixo (valor * 1000) para evitar floats no hot-path.
 static TSC_FREQ_GHZ_X1000: AtomicU64 = AtomicU64::new(0);
+/// Âncora temporal para o fallback de rdtsc (monotônico).
+static BOOT_TIME: OnceLock<Instant> = OnceLock::new();
 
 /// Retorna o tempo atual em nanosegundos usando a instrução RDTSC.
 ///
@@ -27,7 +30,7 @@ static TSC_FREQ_GHZ_X1000: AtomicU64 = AtomicU64::new(0);
 pub fn rdtsc_nanos() -> u64 {
     let freq_x1000 = TSC_FREQ_GHZ_X1000.load(Ordering::Relaxed);
     if freq_x1000 == 0 {
-        return Instant::now().elapsed().as_nanos() as u64; // Fallback (aproximado)
+        return BOOT_TIME.get_or_init(Instant::now).elapsed().as_nanos() as u64;
     }
 
     #[cfg(target_arch = "x86_64")]
@@ -37,7 +40,7 @@ pub fn rdtsc_nanos() -> u64 {
     }
     #[cfg(not(target_arch = "x86_64"))]
     {
-        Instant::now().elapsed().as_nanos() as u64
+        BOOT_TIME.get_or_init(Instant::now).elapsed().as_nanos() as u64
     }
 }
 

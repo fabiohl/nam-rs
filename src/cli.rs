@@ -213,6 +213,8 @@ pub fn cli_loop(
                     } else {
                         println!("{} Valor inválido para ganho.", "❌".red());
                     }
+                } else {
+                    println!("{} Uso: gain <db> (ex: gain -3.5)", "💡".yellow());
                 }
             }
             "out" => {
@@ -228,6 +230,8 @@ pub fn cli_loop(
                     } else {
                         println!("{} Valor inválido para ganho.", "❌".red());
                     }
+                } else {
+                    println!("{} Uso: out <db> (ex: out 6)", "💡".yellow());
                 }
             }
             "load" => {
@@ -249,6 +253,8 @@ pub fn cli_loop(
                             println!("{} Erro ao carregar modelo: {}", "❌".red(), e);
                         }
                     }
+                } else {
+                    println!("{} Uso: load <path> (ex: load clean.namb)", "💡".yellow());
                 }
             }
             _ => {

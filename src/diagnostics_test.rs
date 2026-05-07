@@ -132,3 +132,16 @@ fn test_timestamp_format() {
     assert_eq!(&ts[4..5], "-", "Separador de data");
     assert_eq!(&ts[10..11], "T", "Separador T");
 }
+
+/// Garante que o cálculo da máscara de IRQ não causa panic em sistemas com muitos cores (Bug B5).
+#[test]
+fn test_emit_irq_advisory_safety() {
+    let snap = SystemSnapshot::capture();
+    // Teste de cores baixos, limite de u32, e limite de u64
+    snap.emit_irq_advisory(0);
+    snap.emit_irq_advisory(31);
+    snap.emit_irq_advisory(32);
+    snap.emit_irq_advisory(63);
+    snap.emit_irq_advisory(64); // Deve retornar via guarda sem panic
+    snap.emit_irq_advisory(128); // Caso extremo
+}

@@ -53,15 +53,10 @@ fn test_dsp_bridge_concurrent_access() {
             }
             back_buf.n_samples = 64;
 
-            // BARREIRA DE MEMÓRIA (Release):
-            // Garante que todas as escritas no buffer acima sejam visíveis por outras threads
-            // ANTES que o 'active_read_idx' ou 'generation' sejam atualizados.
-            std::sync::atomic::fence(Ordering::Release);
-
             bridge_ref
                 .active_read_idx
-                .store(back_idx, Ordering::Relaxed);
-            bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+                .store(back_idx, Ordering::Release);
+            bridge_ref.generation.fetch_add(1, Ordering::Release);
 
             // Pequeno delay para simular o tempo de processamento DSP e permitir interleave.
             std::thread::sleep(Duration::from_micros(10));
@@ -78,15 +73,10 @@ fn test_dsp_bridge_concurrent_access() {
 
     while reads < 1000 && start.elapsed() < Duration::from_millis(500) {
         let bridge_ref = unsafe { &*bridge_ptr_reader };
-        let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+        let current_gen = bridge_ref.generation.load(Ordering::Acquire);
 
         if current_gen != last_gen {
-            // BARREIRA DE MEMÓRIA (Acquire):
-            // Sincroniza com o Release do escritor. Garante que os dados do buffer
-            // lidos abaixo sejam a versão mais recente escrita.
-            std::sync::atomic::fence(Ordering::Acquire);
-
-            let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
+            let read_idx = bridge_ref.active_read_idx.load(Ordering::Acquire);
             let front_buf = &bridge_ref.buffers[read_idx];
 
             assert_eq!(front_buf.n_samples, 64);
