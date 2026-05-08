@@ -1,6 +1,6 @@
 # Planos para próximas versões
 
-* Leitura e revisão humana do código
+* Leitura e revisão humana do código. Atentar a organizações pensando no CLAP e A2.
 * Suporte completo a modo plugin CLAP:
 O plan-clap.md é o estudo que define teoricamente a estratégia para implantação da funcionalidade de plugin no formato CLAP.
 Vamos adota-lo, usando os crates "clack-plugin" e "egui". Para testes com usuários humanos, adotaremos inicialmente apenas o Cockos Reaper como DAW host.

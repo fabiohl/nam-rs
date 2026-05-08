@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 [package]
 name = "nam-rs"
-version = "1.4.1"
+version = "1.4.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/fabiohl/nam-rs"
