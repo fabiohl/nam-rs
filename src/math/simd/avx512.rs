@@ -718,6 +718,16 @@ impl SimdMath for Avx512Math {
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         crate::math::fastmath::tanh_slice_avx512(buf)
     }
+
+    #[inline(always)]
+    unsafe fn fused_lstm_gates_dyn(
+        gates: &mut [f32],
+        cell_state: &mut [f32],
+        hidden_state: &mut [f32],
+        hidden_size: usize,
+    ) {
+        unsafe { fused_lstm_gates_dyn_avx512(gates, cell_state, hidden_state, hidden_size) }
+    }
 }
 
 /// Implementação estática para AVX-512 com suporte a VNNI.
@@ -924,6 +934,16 @@ impl SimdMath for Avx512VnniMath {
     #[inline(always)]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         Avx512Math::activation_tanh_block(buf)
+    }
+
+    #[inline(always)]
+    unsafe fn fused_lstm_gates_dyn(
+        gates: &mut [f32],
+        cell_state: &mut [f32],
+        hidden_state: &mut [f32],
+        hidden_size: usize,
+    ) {
+        Avx512Math::fused_lstm_gates_dyn(gates, cell_state, hidden_state, hidden_size)
     }
 }
 
@@ -1133,6 +1153,16 @@ impl SimdMath for Avx512VnniBf16Math {
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         Avx512Math::activation_tanh_block(buf)
     }
+
+    #[inline(always)]
+    unsafe fn fused_lstm_gates_dyn(
+        gates: &mut [f32],
+        cell_state: &mut [f32],
+        hidden_state: &mut [f32],
+        hidden_size: usize,
+    ) {
+        Avx512Math::fused_lstm_gates_dyn(gates, cell_state, hidden_state, hidden_size)
+    }
 }
 
 /// Soma horizontal de um buffer f32 de tamanho N (potência de 2) para AVX-512.
@@ -1273,5 +1303,41 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
             head_input[head_offset + c] += activated;
             c += 1;
         }
+    }
+}
+
+/// Kernel fundido para processamento de portas LSTM dinâmicas via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn fused_lstm_gates_dyn_avx512(
+    gates: &mut [f32],
+    cell_state: &mut [f32],
+    hidden_state: &mut [f32],
+    hidden_size: usize,
+) {
+    let mut j = 0;
+    while j + 16 <= hidden_size {
+        let gi = _mm512_loadu_ps(gates.as_ptr().add(j));
+        let gf = _mm512_loadu_ps(gates.as_ptr().add(j + hidden_size));
+        let gg = _mm512_loadu_ps(gates.as_ptr().add(j + 2 * hidden_size));
+        let go = _mm512_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
+        let cs = _mm512_loadu_ps(cell_state.as_ptr().add(j));
+
+        let (new_cs, hidden) = crate::math::fastmath::fused_lstm_gates_avx512(gf, gi, gg, go, cs);
+
+        _mm512_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
+        _mm512_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);
+
+        j += 16;
+    }
+    while j < hidden_size {
+        let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
+        let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());
+        let tanh_g = gates[j + 2 * hidden_size].tanh();
+        let sig_o = 1.0 / (1.0 + (-gates[j + 3 * hidden_size]).exp());
+
+        let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
+        cell_state[j] = new_cs;
+        hidden_state[j] = sig_o * new_cs.tanh();
+        j += 1;
     }
 }

@@ -307,13 +307,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         true
     );
 
-    /// Processamento escalar (fallback).
-    ///
-    /// # Atenção
-    /// Esta função é extremamente lenta (converte pesos f16 -> f32 em loops aninhados)
-    /// e serve apenas para testes de paridade numérica ou benchmarks comparativos.
-    /// Não deve ser usada em produção (hot-path).
-    #[cfg(any(test, feature = "long_bench"))]
+    /// Processamento escalar (fallback) para testes e benchmarks.
+    #[inline(always)]
     pub fn process_sample_scalar(&mut self, input: &[f32]) {
         let ih = I + H;
         let h = H;
@@ -438,7 +433,6 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     ///
     /// # Atenção
     /// Exclusivo para testes de paridade. Extremamente lento.
-    #[cfg(any(test, feature = "long_bench"))]
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
         for i in 0..input.len() {
             self.layer.process_sample_scalar(&[input[i]]);
@@ -544,7 +538,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     ///
     /// # Atenção
     /// Exclusivo para testes de paridade. Extremamente lento.
-    #[cfg(any(test, feature = "long_bench"))]
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
         for i in 0..input.len() {
             self.layer1.process_sample_scalar(&[input[i]]);

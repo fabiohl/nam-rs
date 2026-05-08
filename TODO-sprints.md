@@ -190,7 +190,7 @@
 - **Achado**: `process_sample_scalar` converte pesos via `half::f16::from_bits(w).to_f32()` dentro de um loop triplo aninhado. Este fallback nunca é chamado no hot-path (os SIMD variants são usados), mas se fosse, seria extremamente lento.
 - **Proposta**: Documentar que é exclusivo para testes de paridade numérica, não para produção. Considerar `#[cfg(test)]` se não for necessário em release.
 
-### 🟡 Tarefa 6.3 — `lstm_dyn.rs` — Portas LSTM Separadas em Loops Distintos
+### 🟡 Tarefa 6.3 — `lstm_dyn.rs` — Portas LSTM Separadas em Loops Distintos (CONCLUÍDO)
 
 - **Arquivo**: `lstm_dyn.rs:99-106`
 - **Achado**: As ativações são aplicadas em 3 chamadas SIMD separadas: `sigmoid_slice(0..2h)`, `tanh_slice(2h..3h)`, `sigmoid_slice(3h..4h)`. No C++ de referência, as portas são processadas em um kernel fundido `fused_lstm_gates` que faz sigmoid + tanh + element-wise em um único passo, evitando 3 passes sobre os dados.

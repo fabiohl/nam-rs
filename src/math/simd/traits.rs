@@ -220,4 +220,16 @@ pub trait SimdMath {
     /// # Safety
     /// Buffers devem ser válidos.
     unsafe fn activation_tanh_block(buf: &mut [f32]);
+
+    /// Kernel fundido para processamento de portas LSTM dinâmicas.
+    /// Realiza ativações (sigmoid/tanh) e atualização de estado (cell/hidden) em um único passo.
+    ///
+    /// # Safety
+    /// Buffers devem ter tamanhos compatíveis com `hidden_size`.
+    unsafe fn fused_lstm_gates_dyn(
+        gates: &mut [f32],
+        cell_state: &mut [f32],
+        hidden_state: &mut [f32],
+        hidden_size: usize,
+    );
 }

@@ -637,6 +637,25 @@ impl SimdMath for FallbackMath {
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
         unsafe { tanh_slice_fallback(buf) }
     }
+
+    #[inline(always)]
+    unsafe fn fused_lstm_gates_dyn(
+        gates: &mut [f32],
+        cell_state: &mut [f32],
+        hidden_state: &mut [f32],
+        hidden_size: usize,
+    ) {
+        for j in 0..hidden_size {
+            let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
+            let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());
+            let tanh_g = gates[j + 2 * hidden_size].tanh();
+            let sig_o = 1.0 / (1.0 + (-gates[j + 3 * hidden_size]).exp());
+
+            let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
+            cell_state[j] = new_cs;
+            hidden_state[j] = sig_o * new_cs.tanh();
+        }
+    }
 }
 
 /// Fallback escalar para GEMV de 4 gates (LSTM).

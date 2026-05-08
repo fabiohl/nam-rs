@@ -91,51 +91,16 @@ impl LstmDynLayer {
             }
         }
 
-        // 3. Funções de Ativação (FastMath SIMD via Slices in-place)
-        // No NAM (se IFGO), a ordem das portas concatenadas nos pesos é: Input, Forget, Cell, Output
-        // Aplicamos Sigmoid nas portas de controle (0, 1 e 3) para que os valores fiquem entre 0 e 1,
-        // funcionando como "válvulas" de fluxo de informação.
-        // A porta 2 (Cell/G) usa Tanh para normalizar a nova informação entre -1 e 1.
+        // 3. Kernel fundido: Ativações + Atualização de Estado
+        // Realiza sigmoids (I, F, O) e tanh (G), atualiza cell_state e hidden_state (state[input_size..])
+        // em um único passo fundido, reduzindo o tráfego de memória de 3 passes para 1.
         unsafe {
-            // gates[0..h] : Input (Sigmoid) | gates[h..2h] : Forget (Sigmoid)
-            M::sigmoid_slice(&mut self.gates[0..2 * h]);
-            // gates[2h..3h] : Cell/Grau-G (Tanh)
-            M::tanh_slice(&mut self.gates[2 * h..3 * h]);
-            // gates[3h..4h] : Output (Sigmoid)
-            M::sigmoid_slice(&mut self.gates[3 * h..4 * h]);
-        }
-
-        // 4. Element-wise: state propagation para o cell_state e hidden_state
-        // Esta é a "alma" da LSTM: a célula de memória (Cell State).
-        for j in 0..h {
-            let sig_i = self.gates[j]; // Válvula de Entrada
-            let sig_f = self.gates[j + h]; // Válvula de Esquecimento
-            let tanh_g = self.gates[j + 2 * h]; // Nova informação candidata
-
-            // Equação fundamental:
-            // Novo_Estado_Célula = (O que lembrar do passado) + (O que aprender do presente)
-            let new_cs = sig_f * self.cell_state[j] + sig_i * tanh_g;
-            self.cell_state[j] = new_cs;
-
-            // Preparamos uma cópia para o cálculo do Tanh na próxima etapa
-            self.tanh_cs[j] = new_cs;
-        }
-
-        // 5. Calcula Tanh(New Cell State) usando o vetor alocador.
-        // Normalizamos o estado da célula para ser filtrado pela porta de saída.
-        unsafe {
-            M::tanh_slice(&mut self.tanh_cs[0..h]);
-        }
-
-        // 6. Fecha Output state e avança momento
-        // O Hidden State (Saída) é o estado da célula "filtrado" pela porta de saída (Sigmoid).
-        for j in 0..h {
-            let sig_o = self.gates[j + 3 * h]; // Válvula de Saída
-            let h_val = sig_o * self.tanh_cs[j];
-
-            // IMPORTANTE: Atualizamos a segunda parte do vetor 'state'.
-            // Na próxima amostra de áudio (next sample), este h_val será o "Hidden anterior".
-            self.state[self.input_size + j] = h_val;
+            M::fused_lstm_gates_dyn(
+                &mut self.gates,
+                &mut self.cell_state,
+                &mut self.state[self.input_size..],
+                h,
+            );
         }
     }
 
