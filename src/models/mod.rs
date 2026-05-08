@@ -281,10 +281,20 @@ fn lstm_prewarm_common(model: &mut impl LstmLike, num_samples: usize) {
 /// Este struct permite que o sistema carregue modelos A2 sem falhar, retornando
 /// silêncio até que a implementação completa do motor de inferência esteja pronta.
 #[derive(Default)]
-pub struct WavenetA2Placeholder {}
+pub struct WavenetA2Placeholder {
+    /// Flag para emitir o aviso de log apenas uma vez por instância.
+    warned: bool,
+}
 
 impl NamModel for WavenetA2Placeholder {
     fn process(&mut self, _input: &[f32], output: &mut [f32]) {
+        if !self.warned {
+            log::warn!(
+                "Arquitetura WaveNet A2 detectada: Modo Placeholder (Silencioso) ativo. A implementação real está em desenvolvimento."
+            );
+            self.warned = true;
+        }
+
         // Retorna silêncio absoluto.
         output.fill(0.0);
     }

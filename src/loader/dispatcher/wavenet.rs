@@ -22,6 +22,8 @@ use log::info;
 /// # Errors
 /// Retorna `Err` se alguma layer declarar `activation != "Tanh"`.
 fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<()> {
+    // TODO(A2): Generalizar para ActivationType::from_str() quando a engine A2 for implementada.
+    // Por enquanto, as engines v0.5 (Standard/Dyn) suportam apenas Tanh.
     for (idx, layer) in data.config.layers.iter().enumerate() {
         let act = layer.activation.as_deref().unwrap_or("Tanh");
         if act != "Tanh" {
