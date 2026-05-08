@@ -2,93 +2,98 @@
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 # TODO-sprints.md — Roteiro Técnico de Auditoria NAM-rs
 
+---
+
 ## Épico 7 — Math & SIMD Backend
 
-> **Módulos**: `math/simd/mod.rs`, `math/simd/avx2.rs`, `math/simd/avx512.rs`, `math/simd/fallback.rs`, `math/fastmath.rs`
+> **Módulos**: `math/simd/traits.rs`, `math/simd/fallback.rs`, `math/fastmath.rs`, `math/fastmath_test.rs`
 
-### 🟡 Tarefa 7.1 — `dispatch_simd!` Macro — Fallback Usa AVX2
+### 🟡 Tarefa 7.2 — Trait `SimdMath` — Categorização por Grupos na Doc
 
-- **Arquivo**: `math/simd/mod.rs:48`
-- **Achado**: No Modo 2, `InstructionSet::Fallback => $target.$m256($($arg),*)` despacha para a variante AVX2 em vez de para o backend escalar. Se o fallback genuíno (`FallbackMath`) for necessário, isso é incorreto. No Modo 1, `Fallback => FallbackMath` está correto.
-- **Proposta**: Harmonizar: se o Modo 2 (LSTM) realmente nunca roda sem AVX2, documentar a invariante. Caso contrário, adicionar uma variante `$fallback` ao macro.
+- **Arquivo**: `math/simd/traits.rs`
+- **Achado**: O trait possui 20 métodos documentados individualmente, mas sem agrupamento por categoria no bloco `///` do próprio trait. Os grupos são: (A) Dot Products escalar/4x/dual-frame, (B) GEMV/GEMM fused, (C) Activations (tanh/sigmoid slices + gated fusion), (D) Conversions (f32↔bf16), (E) LSTM gates.
+- **Proposta**: Adicionar seção `# Grupos de Operações` no bloco do trait listando as categorias A–E. Baixa prioridade — não afeta comportamento.
 
-### 🟡 Tarefa 7.2 — Trait `SimdMath` — Superfície API Grande
+### 🔴 Tarefa 7.3 — `fastmath_test.rs` — Sweep de Erro Máximo Absoluto
 
-- **Arquivo**: `math/simd/traits.rs` (inferido de uso)
-- **Achado**: O trait `SimdMath` expõe muitos métodos (`dot_product`, `dot_product_bf16`, `dot_product_4x_interleaved`, `dot_product_4x_interleaved_bf16`, `dot_product_4x_interleaved_dual_frame`, `dot_product_4x_interleaved_dual_frame_bf16`, `accumulate_head`, `fused_add_gemv`, `gemv_overwrite`, `fused_add_gemm_batch`, `fused_gemm_residual_batch`, `gated_activation_and_accumulate_block`, `tanh_and_accumulate_block`, `f32_to_bf16`, `store_bf16`, `sigmoid_slice`, `tanh_slice`, `gemv_overwrite_bf16`, `gemv_overwrite_4gate`, `gemv_overwrite_bf16_4gate`, `IS_BF16`). A superfície é grande mas justificada pela necessidade de monomorphization SIMD.
-- **Proposta**: Documentar a rationale de cada grupo de métodos com categorias claras (Dot Products, GEMV, Activations, Conversions).
+- **Arquivo**: `math/fastmath_test.rs`
+- **Achado crítico**: A tolerância dos testes unitários (`test_simd_fastmath_tanh_mse`, `test_simd_fastmath_sigmoid_mse`) é `1e-4` sobre apenas **8 pontos fixos**. A `architecture.md` documenta erro máximo de `~6e-8` após NR duplo. A discrepância de **4 ordens de magnitude** significa que uma regressão severa de precisão passaria despercebida.
+- **Proposta concreta**:
+  1. Adicionar `test_tanh_max_abs_error_sweep`: varredura de 32.768 pontos em `[-8, 8]`, assertando `max_error < 5e-6`.
+  2. Idem `test_sigmoid_max_abs_error_sweep`.
+  3. Referência: `f64::tanh(x as f64) as f32`.
 
-### 🟢 Tarefa 7.3 — `fastmath.rs` — Verificar Paridade Numérica dos Polinômios Minimax
+### 🔴 Tarefa 7.4 — `FallbackMath` — Cobertura Direta de Testes
 
-- **Arquivo**: `math/fastmath.rs`
-- **Achado**: Os coeficientes Minimax para `simd_tanh`, `simd_sigmoid`, etc. foram derivados empiricamente. Seria valioso ter testes de golden vector comparando com `libm` (f64) para quantificar o erro máximo absoluto em todo o domínio.
-- **Proposta**: Adicionar testes parametrizados com varredura exaustiva de 2^16 pontos em domínios relevantes, comparando com referência f64.
+- **Arquivo**: `math/simd/fallback.rs` (ou `math/simd_test.rs`)
+- **Achado**: Em ambiente x86-64-v3, `FallbackMath` **nunca é selecionado em runtime**. Bugs nessa implementação são invisíveis em CI.
+- **Proposta**: Adicionar testes `#[cfg(test)]` que instanciem `FallbackMath` diretamente (chamada não-dinâmica). Cobrir ao menos: `dot_product`, `fused_add_gemv`, `gemv_overwrite_4gate` e `fused_lstm_gates_dyn`, assertando delta < 1e-5 vs. AVX2.
 
 ---
 
 ## Épico 8 — Loader & Parsing
 
-> **Módulos**: `loader/mod.rs`, `loader/nam_json.rs`, `loader/namb.rs`, `loader/namb_encoder.rs`, `loader/dispatcher/`
+> **Módulos**: `loader/mod.rs`, `loader/dispatcher/`
 
-### ✅ Tarefa 8.1 — `loader/dispatcher/wavenet.rs` — `validate_layer_activations` Limitada
+### 🔴 Tarefa 8.2 — `loader/mod.rs` — `io_error` Ausente no Diagnóstico `.nam`
 
-- **Arquivo**: `loader/dispatcher/wavenet.rs:24-36`
-- **Achado**: Valida apenas contra `"Tanh"`, mas a arquitetura A2 suporta múltiplas ativações (`activations.rs` tem 11 variantes). Quando o suporte A2 for implementado, este guard precisará ser generalizado.
-- **Proposta**: Marcar como `// TODO(A2): Generalizar para ActivationType::from_str()` e garantir que o placeholder A2 não passe por esta validação.
+- **Arquivo**: `loader/mod.rs:84-89`
+- **Achado**: O branch `.nam` **não inclui** `.param("io_error", &e)` no `NamDiagnostic`, ao contrário do branch `.namb` (linha 65). O diagnóstico perde o `io::Error` real (ex: "Permission denied", "No such file").
+- **Correção**:
 
-### 🟢 Tarefa 8.2 — Erro de I/O Sem Contexto de Errno
+  ```rust
+  let json = std::fs::read_to_string(path).map_err(|e| {
+      NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+          .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
+          .param("file", &path_str)
+          .param("io_error", &e)   // ← adicionar
+          .emit();
+      anyhow::Error::from(e)
+  })?;
+  ```
 
-- **Arquivo**: `loader/mod.rs:60-66`
-- **Achado**: O diagnostic para erro de leitura JSON emite `.param("file", &path_str)` mas não inclui o `io::Error` real (diferente do path `.namb` que inclui `.param("io_error", &e)`).
-- **Proposta**: Adicionar `.param("io_error", &e)` no branch `.nam` para paridade.
+### 🟡 Tarefa 8.3 — `WeightCursor` — Abstração do Campo `layout`
+
+- **Arquivo**: `loader/dispatcher/wavenet.rs` (múltiplos pontos)
+- **Achado**: `cursor.layout == WeightsLayout::Interleaved4WaveNet` é comparado diretamente em vários locais sem abstração. A adição de um terceiro layout (ex: NAMB v3) exigiria atualização manual de todos os `if/else`.
+- **Proposta**: Extrair método `cursor.is_interleaved4() -> bool` ou converter para `match` exaustivo. Reduz risco de regressão silenciosa ao evoluir o formato.
 
 ---
 
 ## Épico 9 — Testes, Benchmarks & CI
 
-### 🟡 Tarefa 9.1 — Cobertura de Testes para `pipeline.rs`
+> **Módulos**: `dsp/pipeline_test.rs`, `dsp/vring.rs`, `dsp/telemetry.rs`, `tests/nam_infer_test.rs`
 
-- **Achado**: `pipeline_test.rs` existe mas deve ser verificado se cobre os edge cases identificados (silence bypass ordering, resampler stack allocation, gate state transitions).
-- **Proposta**: Revisar e expandir testes de integração do pipeline.
+### 🔴 Tarefa 9.1 — `pipeline_test.rs` — Lacunas de Cobertura do Hot-Path
 
-### 🟡 Tarefa 9.2 — Golden Vectors para Paridade C++
+- **Arquivo**: `dsp/pipeline_test.rs`
+- **Achado**: Os 4 testes existentes cobrem apenas o **caminho de bypass** (sem modelo). Edge cases do hot-path não estão cobertos:
+  1. **Gate Closed**: verificar `n_samples == 0` no bridge e flag `RT_STATUS_IS_SILENT`.
+  2. **Gate Fading**: validar flag `RT_STATUS_IS_FADING` em `FadingIn/FadingOut`.
+  3. **Clipping Detection**: confirmar que `RT_STATUS_HAS_CLIPPED` é setado quando sinal satura.
+  4. **Dropped Frames**: exercitar a condição de drop no `write_bridge`/`handle_silence_bypass`.
+- **Proposta**: 4 testes unitários dedicados. Os que tocam o hot-path devem usar `CountingAllocator` para zero-alloc guard.
 
-- **Achado**: Os testes de integração existentes comparam NAM-rs vs referência, mas a cobertura de topologias (Nano, Feather, Lite, Standard, Dyn, Gated) precisa ser auditada.
-- **Proposta**: Garantir que cada variante de `DynamicModel` tenha pelo menos um golden test.
+### 🔴 Tarefa 9.3 — Zero-Alloc Guard para `capture_dsp_pipeline`
 
----
+- **Arquivo**: `tests/nam_infer_test.rs`
+- **Achado**: `test_zero_alloc_process_*` cobrem apenas `.process()` do modelo. O `capture_dsp_pipeline` completo (gate + resampler bypass + bridge write) **não tem guard de alocação**. Uma alocação acidental em `pipeline.rs` não seria detectada.
+- **Proposta**: Adicionar `test_zero_alloc_capture_pipeline` em `tests/nam_infer_test.rs` envolvendo `capture_dsp_pipeline` com `CountingAllocator`.
 
-## Épico 10 — Arquitetura A2 (Staging)
+### 🟡 Tarefa 9.2 — Golden — WaveNet Dyn Gated
 
-### ✅ Tarefa 10.1 — `WavenetA2Placeholder` — Placeholder Silencioso
+- **Arquivo**: `tests/regression_goldens.rs`
+- **Achado**: Não há golden auto-referência específico para WaveNet dinâmico com `gated=true`. A cobertura de `gated_activation_and_accumulate_block` em diferentes `block_size` é inferida indiretamente pelos testes de paridade.
+- **Proposta**: Adicionar `test_golden_wavenet_dyn_gated` com fixture dedicada. Baixa urgência — funcionalidade coberta pelos testes de paridade existentes.
 
-- **Arquivo**: `models/mod.rs:262-278`
-- **Achado**: O placeholder retorna silêncio absoluto. Quando a implementação A2 começar, este struct será substituído pela engine real.
-- **Proposta**: Manter como está, mas adicionar `log::warn!` no `process()` para que o usuário saiba que está em modo placeholder (evita confusão de "sem som").
+### 🟡 Tarefa 9.4 — `VirtualRingBuffer` — Teste Determinístico de Wraparound
 
-### ✅ Tarefa 10.2 — Stubs `film.rs` e `gating.rs` — Sem Implementação
+- **Arquivo**: `dsp/vring.rs`
+- **Achado**: Não há teste unitário determinístico para o caso exato de wraparound (write pointer cruzando o limite físico). `test_vring_long_run` (soak) cobre isso indiretamente mas está marcado `#[ignore]`.
+- **Proposta**: Adicionar `test_vring_wraparound_exact` que escreve exatamente `capacity` amostras e valida a leitura com dilatação `capacity/2` após o wraparound.
 
-- **Arquivo**: `models/film.rs`, `models/gating.rs`
-- **Achado**: Contêm apenas definições de types/traits/configs sem implementação funcional. São stubs corretos para staging.
-- **Proposta**: Sem ação necessária até o início da implementação A2.
+### 🟡 Tarefa 9.5 — `LatencyHistogram` — Teste de Regressão de Saturação
 
-### ✅ Tarefa 10.3 — `wavenet_params.rs` — Estruturas Completas sem Consumidores
-
-- **Arquivo**: `models/wavenet_params.rs`
-- **Achado**: Estruturas `LayerParamsA2`, `LayerArrayParamsA2`, `HeadParams` estão completamente definidas e testadas, mas não possuem consumidores ainda (serão usadas pelo construtor A2).
-- **Proposta**: Sem ação necessária até a implementação do construtor A2.
-
----
-
-## Ordem de Prioridade Sugerida
-
-1. **Sprint 1 — Corretude & RT-Safety**: E3.2, E3.3, E5.4, E7.1
-2. **Sprint 2 — Limpeza & Deduplicação**: E1.1, E1.2, E5.2, E5.3, E5.6, E6.4, E8.2
-3. **Sprint 3 — Robustez DSP**: E3.1, E3.4, E4.1, E6.3
-4. **Sprint 4 — Deduplicação Pesada**: E5.1, E5.5
-5. **Sprint 5 — Documentação & Testes**: E1.3, E2.2, E3.5, E3.6, E3.7, E4.2, E4.3, E6.1, E6.2, E7.2, E7.3, E9.1, E9.2, E9.3
-6. **Sprint 6 — Staging A2**: E8.1, E10.1, E10.2, E10.3
-
----
-
-> **Próximo Passo**: Desdobrar cada Sprint em Tarefas Técnicas granulares via workflow `/tarefa`.
+- **Arquivo**: `dsp/telemetry.rs`
+- **Achado**: `fetch_add` saturante está implementado. Não há teste unitário que exercite o limite superior, deixando a correção sem guarda contra regressão futura.
+- **Proposta**: Adicionar teste que incrementa o contador até o limite e confirma que ele satura (não faz overflow).
