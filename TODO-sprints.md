@@ -8,7 +8,7 @@
 
 > **Módulos**: `dsp/pipeline_test.rs`, `dsp/vring.rs`, `dsp/telemetry.rs`, `tests/nam_infer_test.rs`
 
-### 🔴 Tarefa 9.1 — `pipeline_test.rs` — Lacunas de Cobertura do Hot-Path
+### 🟢 Tarefa 9.1 — `pipeline_test.rs` — Lacunas de Cobertura do Hot-Path
 
 - **Arquivo**: `dsp/pipeline_test.rs`
 - **Achado**: Os 4 testes existentes cobrem apenas o **caminho de bypass** (sem modelo). Edge cases do hot-path não estão cobertos:
