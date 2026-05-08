@@ -57,8 +57,6 @@ struct AlignedBlock([f32; 8]);
 struct AlignedCoeffs {
     /// Blocos de 8 floats alinhados a 32 bytes.
     blocks: Vec<AlignedBlock>,
-    /// Número total de f32 válidos.
-    _len: usize,
 }
 
 impl AlignedCoeffs {
@@ -70,10 +68,7 @@ impl AlignedCoeffs {
             block[..chunk.len()].copy_from_slice(chunk);
             blocks.push(AlignedBlock(block));
         }
-        Self {
-            blocks,
-            _len: data.len(),
-        }
+        Self { blocks }
     }
 
     /// Retorna um ponteiro alinhado a 32 bytes para o início dos coeficientes.
@@ -109,7 +104,7 @@ impl PolyphaseBank {
     }
 }
 
-/// Calcula o MDC (Máximo Divisor Comum) via algoritmo de Euclides.
+/// Calcula o Máximo Divisor Comum (MDC) de dois números inteiros.
 pub fn gcd(mut a: u32, mut b: u32) -> u32 {
     while b != 0 {
         let t = b;

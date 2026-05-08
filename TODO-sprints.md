@@ -118,11 +118,11 @@
 - **Achado**: `DelayLine.buf` é um `Vec<f32>` sem alinhamento garantido. O `window_ptr()` é usado em `convolve_stereo_avx2` que usa `_mm256_loadu_ps` (unaligned), então funciona. Porém, se o load fosse trocado para `_mm256_load_ps` (aligned, 1 ciclo mais rápido), precisaria de alinhamento.
 - **Solução**: `DelayLine` migrado para `AlignedVec<f32>`, garantindo alinhamento de 64 bytes (Cache Line / AVX-512). O uso de `AlignedVec::new()` assegura a alocação correta no cold-path.
 
-### 🟡 Tarefa 4.2 — `sinc_kernel.rs` — `AlignedCoeffs._len` Nunca Usado
+### ✅ Tarefa 4.2 — `sinc_kernel.rs` — `AlignedCoeffs._len` Nunca Usado (CONCLUÍDO)
 
 - **Arquivo**: `sinc_kernel.rs:62`
-- **Achado**: O campo `_len` está prefixado com `_` e não é usado em nenhum método. Se a intenção é distinguir "dados válidos" de "padding zeros", deveria ter um accessor.
-- **Proposta**: Adicionar `pub fn len(&self) -> usize` ou remover o campo se desnecessário.
+- **Achado**: O campo `_len` estava prefixado com `_` e não era usado.
+- **Solução**: Removido o campo `len` (ex-`_len`) e a lógica associada em `AlignedCoeffs`, simplificando a struct já que o `PolyphaseBank` gerencia as dimensões e o padding (sempre múltiplo de 8). Lints validados via `cargo clippy`.
 
 ### 🟢 Tarefa 4.3 — `gcd()` — Função Pública Sem Consumidores Internos Visíveis
 
