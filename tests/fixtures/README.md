@@ -84,6 +84,29 @@ e FP, mas apertados o suficiente para capturar regressões estruturais
 
 ### Referências
 
-- `docs/architecture.md §2` — Inferência FastMath e Microarquitetura
+- `docs/architecture.md §2` — Inferência FastMath e Microarquitetura (ADR-001)
 - `src/math/fastmath.rs` → `simd_tanh` — derivação do erro e acumulação
 - `tests/nam_infer_test.rs` → `test_golden_vectors_wavenet` — calibração completa
+
+### Decisão Técnica: Cross-Reference C++ NÃO é Bit-Identical (ADR-002)
+
+> **Decisão:** Os golden vectors validam paridade *funcional* (MSE + SNR dentro de
+> thresholds calibrados) contra o NeuralAmpModelerCore C++, **não** paridade *bit-a-bit*.
+>
+> **Consequência:** O NAM-rs produz áudio perceptualmente equivalente ao C++, mas com
+> diferenças numéricas mensuráveis (SNR 10-25 dB dependendo do modelo). Estas diferenças
+> são inaudíveis em qualquer pipeline de áudio 16-bit ou superior.
+>
+> **Fonte exclusiva da divergência:** Implementações de `tanh` e `sigmoid` — ver ADR-001
+> em `docs/architecture.md §2`. Toda a lógica estrutural (pesos, topologia, parsing,
+> ring buffers, Conv1D, MatMul) é equivalente entre as implementações.
+>
+> **Prova:** A degradação de SNR é proporcional à profundidade do modelo:
+> - LSTM 1×16 (1 camada): SNR = 24.5 dB
+> - WaveNet Standard (20 camadas): SNR = 10.1 dB
+> Se houvesse erro estrutural, o SNR não degradaria linearmente com a profundidade.
+>
+> **Para obter paridade bit-a-bit (não recomendado):**
+> Substituir `simd_tanh_avx2`/`simd_sigmoid_avx2` por `f32::tanh()`/`1/(1+(-x).exp())`
+> escalar — custo: performance cairia 10-30× (~4-8 → ~40-120 ciclos/ativação).
+

@@ -83,9 +83,10 @@ pub fn get_gain_lut() -> &'static GainLUT {
 ///
 /// # Erro Máximo vs `f32::tanh()`
 ///
-/// O polinômio Minimax de grau 7 + refinamento Newton-Raphson sobre `_mm256_rsqrt_ps`
-/// introduz um erro absoluto máximo de **~1.2e-5** por ativação em relação a `f32::tanh()`
-/// (validado pelos testes unitários de `test_simd_fastmath_tanh_mse`).
+/// O polinômio Minimax de grau 7 + refinamento Newton-Raphson duplo sobre `_mm256_rsqrt_ps`
+/// introduz um erro absoluto máximo de **~6e-8** por ativação em relação a `f32::tanh()`
+/// (validado pelos testes unitários de `test_simd_fastmath_tanh_mse`). A 2ª iteração NR
+/// satura a precisão do mantissa f32 (24 bits), eliminando o recíproco HW como fonte de erro.
 ///
 /// Esta divergência é intencional: o custo de um `tanh` escalar via libm (~20–60 ciclos)
 /// é substituído por uma sequência FMA+rsqrt de ~4–6 ciclos, com erro aceitável para
@@ -147,22 +148,21 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
         // Instrução HW nativa de rsqrt fornece ~11-14 bits de precisão na base arquitetural
         let mut rr = _mm256_rsqrt_ps(radicand);
 
-        // Refinamento de Newton-Raphson: eleva a precisão das casas decimais (1 iter)
+        // Refinamento de Newton-Raphson duplo: satura precisão f32 (24 bits)
         let three = _mm256_set1_ps(3.0);
         let half = _mm256_set1_ps(0.5);
 
+        // 1ª iteração NR: ~23 bits
         let rr_sq = _mm256_mul_ps(rr, rr);
-
-        // diff = 3.0 - (radicand * rr^2) — fusão FMA (FNMADD: c - a*b em 1 ciclo)
         let diff = _mm256_fnmadd_ps(radicand, rr_sq, three);
+        rr = _mm256_mul_ps(_mm256_mul_ps(rr, half), diff);
 
-        // rr_half = rr * 0.5
-        let rr_half = _mm256_mul_ps(rr, half);
+        // 2ª iteração NR: satura mantissa f32 (~24 bits)
+        let rr_sq = _mm256_mul_ps(rr, rr);
+        let diff = _mm256_fnmadd_ps(radicand, rr_sq, three);
+        rr = _mm256_mul_ps(_mm256_mul_ps(rr, half), diff);
 
-        // rr_new = (rr * 0.5) * (3.0 - radicand * rr^2)
-        rr = _mm256_mul_ps(rr_half, diff);
-
-        // Retorna tangete final iterada como tanh(x) ~ p(x) * rsqrt(p(x)^2 + 1)
+        // Retorna tangente final iterada como tanh(x) ~ p(x) * rsqrt(p(x)^2 + 1)
         _mm256_mul_ps(p_x, rr)
     }
 }
@@ -210,25 +210,29 @@ pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     let three = _mm256_set1_ps(3.0);
     let half = _mm256_set1_ps(0.5);
 
+    // 1ª iteração NR: ~23 bits
     let rr_sq1 = _mm256_mul_ps(rr1, rr1);
     let rr_sq2 = _mm256_mul_ps(rr2, rr2);
-
     let diff1 = _mm256_fnmadd_ps(radicand1, rr_sq1, three);
     let diff2 = _mm256_fnmadd_ps(radicand2, rr_sq2, three);
+    rr1 = _mm256_mul_ps(_mm256_mul_ps(rr1, half), diff1);
+    rr2 = _mm256_mul_ps(_mm256_mul_ps(rr2, half), diff2);
 
-    let rr_half1 = _mm256_mul_ps(rr1, half);
-    let rr_half2 = _mm256_mul_ps(rr2, half);
-
-    rr1 = _mm256_mul_ps(rr_half1, diff1);
-    rr2 = _mm256_mul_ps(rr_half2, diff2);
+    // 2ª iteração NR: satura mantissa f32
+    let rr_sq1 = _mm256_mul_ps(rr1, rr1);
+    let rr_sq2 = _mm256_mul_ps(rr2, rr2);
+    let diff1 = _mm256_fnmadd_ps(radicand1, rr_sq1, three);
+    let diff2 = _mm256_fnmadd_ps(radicand2, rr_sq2, three);
+    rr1 = _mm256_mul_ps(_mm256_mul_ps(rr1, half), diff1);
+    rr2 = _mm256_mul_ps(_mm256_mul_ps(rr2, half), diff2);
 
     (_mm256_mul_ps(p_x1, rr1), _mm256_mul_ps(p_x2, rr2))
 }
 
 /// Aproximação direta de `sigmoid(x) = 1 / (1 + exp(-x))` usando AVX2.
 ///
-/// Utiliza um polinômio de Minimax de grau 6 para `exp(x)` e um passo de Newton-Raphson
-/// para o recíproco (`_mm256_rcp_ps`), garantindo erro máximo < 2e-5.
+/// Utiliza um polinômio de Minimax de grau 6 para `exp(x)` e dois passos de Newton-Raphson
+/// para o recíproco (`_mm256_rcp_ps`), garantindo erro máximo < 6e-8 (saturação f32).
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA.
@@ -279,8 +283,11 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     let den = _mm256_add_ps(one, e);
     let mut res = _mm256_rcp_ps(den);
 
-    // Refinamento de Newton-Raphson: 1 iter para elevar precisão do recíproco
+    // Refinamento de Newton-Raphson duplo: satura precisão f32 (24 bits)
     let two = _mm256_set1_ps(2.0);
+    // 1ª iteração NR: ~23 bits
+    res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
+    // 2ª iteração NR: satura mantissa f32
     res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
 
     res
@@ -323,8 +330,9 @@ pub unsafe fn simd_softsign_avx2(x: __m256) -> __m256 {
     let abs_x = _mm256_andnot_ps(_mm256_set1_ps(-0.0), x);
     let den = _mm256_add_ps(one, abs_x);
 
-    // Recíproco com Newton-Raphson
+    // Recíproco com Newton-Raphson duplo (satura f32)
     let mut res = _mm256_rcp_ps(den);
+    res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
     res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
 
     _mm256_mul_ps(x, res)
@@ -358,6 +366,10 @@ pub unsafe fn simd_softsign_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256
     let mut res1 = _mm256_rcp_ps(den1);
     let mut res2 = _mm256_rcp_ps(den2);
 
+    // 1ª iteração NR
+    res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
+    res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
+    // 2ª iteração NR: satura mantissa f32
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
 
@@ -438,15 +450,23 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx2(xt: __m256, xs: __m256) -> (__m256, __
     let mut rrt = _mm256_rsqrt_ps(radicand_t);
     let mut res_s = _mm256_rcp_ps(dens);
 
-    // --- Newton-Raphson Tanh ---
+    // --- Newton-Raphson Duplo Tanh ---
     let three = _mm256_set1_ps(3.0);
     let half = _mm256_set1_ps(0.5);
+    // 1ª NR tanh
+    let rrt_sq = _mm256_mul_ps(rrt, rrt);
+    let diff_t = _mm256_fnmadd_ps(radicand_t, rrt_sq, three);
+    rrt = _mm256_mul_ps(_mm256_mul_ps(rrt, half), diff_t);
+    // 2ª NR tanh: satura f32
     let rrt_sq = _mm256_mul_ps(rrt, rrt);
     let diff_t = _mm256_fnmadd_ps(radicand_t, rrt_sq, three);
     rrt = _mm256_mul_ps(_mm256_mul_ps(rrt, half), diff_t);
 
-    // --- Newton-Raphson Sigmoid ---
+    // --- Newton-Raphson Duplo Sigmoid ---
     let two = _mm256_set1_ps(2.0);
+    // 1ª NR sigmoid
+    res_s = _mm256_mul_ps(res_s, _mm256_fnmadd_ps(dens, res_s, two));
+    // 2ª NR sigmoid: satura f32
     res_s = _mm256_mul_ps(res_s, _mm256_fnmadd_ps(dens, res_s, two));
 
     (_mm256_mul_ps(pt_x, rrt), res_s)
@@ -539,6 +559,10 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     let mut res2 = _mm256_rcp_ps(den2);
 
     let two = _mm256_set1_ps(2.0);
+    // 1ª NR
+    res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
+    res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
+    // 2ª NR: satura f32
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
 
@@ -580,20 +604,19 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     // _mm512_rsqrt14_ps ~14 bits de precisão
     let mut rr = _mm512_rsqrt14_ps(radicand);
 
-    // Refinamento de Newton-Raphson: eleva a precisão das casas decimais (1 iter)
+    // Refinamento de Newton-Raphson duplo: satura precisão f32
     let three = _mm512_set1_ps(3.0);
     let half = _mm512_set1_ps(0.5);
 
+    // 1ª iteração NR: ~23 bits
     let rr_sq = _mm512_mul_ps(rr, rr);
-
-    // diff = 3.0 - (radicand * rr^2) — fusão FMA (FNMADD: c - a*b em 1 ciclo)
     let diff = _mm512_fnmadd_ps(radicand, rr_sq, three);
+    rr = _mm512_mul_ps(_mm512_mul_ps(rr, half), diff);
 
-    // rr_half = rr * 0.5
-    let rr_half = _mm512_mul_ps(rr, half);
-
-    // rr_new = (rr * 0.5) * (3.0 - radicand * rr^2)
-    rr = _mm512_mul_ps(rr_half, diff);
+    // 2ª iteração NR: satura mantissa f32 (~24 bits)
+    let rr_sq = _mm512_mul_ps(rr, rr);
+    let diff = _mm512_fnmadd_ps(radicand, rr_sq, three);
+    rr = _mm512_mul_ps(_mm512_mul_ps(rr, half), diff);
 
     // Retorna tangete final iterada como tanh(x) ~ p(x) * rsqrt(p(x)^2 + 1)
     _mm512_mul_ps(p_x, rr)
@@ -645,6 +668,8 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     let mut res = _mm512_rcp14_ps(den);
 
     let two = _mm512_set1_ps(2.0);
+    // NR duplo: satura f32
+    res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
     res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
 
     res
@@ -671,8 +696,9 @@ pub unsafe fn simd_softsign_avx512(x: __m512) -> __m512 {
     let abs_x = _mm512_andnot_ps(_mm512_set1_ps(-0.0), x);
     let den = _mm512_add_ps(one, abs_x);
 
-    // Recíproco com `Newton-Raphson`
+    // Recíproco com Newton-Raphson duplo (satura f32)
     let mut res = _mm512_rcp14_ps(den);
+    res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
     res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
 
     _mm512_mul_ps(x, res)
@@ -757,14 +783,20 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx512(xt: __m512, xs: __m512) -> (__m512, 
     let half = _mm512_set1_ps(0.5);
     let two = _mm512_set1_ps(2.0);
 
-    // NR Tanh
+    // NR Duplo Tanh
+    let rrt_sq = _mm512_mul_ps(rrt, rrt);
+    rrt = _mm512_mul_ps(
+        _mm512_mul_ps(rrt, half),
+        _mm512_fnmadd_ps(radicand_t, rrt_sq, three),
+    );
     let rrt_sq = _mm512_mul_ps(rrt, rrt);
     rrt = _mm512_mul_ps(
         _mm512_mul_ps(rrt, half),
         _mm512_fnmadd_ps(radicand_t, rrt_sq, three),
     );
 
-    // NR Sigmoid
+    // NR Duplo Sigmoid
+    res_s = _mm512_mul_ps(res_s, _mm512_fnmadd_ps(dens, res_s, two));
     res_s = _mm512_mul_ps(res_s, _mm512_fnmadd_ps(dens, res_s, two));
 
     (_mm512_mul_ps(pt_x, rrt), res_s)

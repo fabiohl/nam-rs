@@ -1,10 +1,6 @@
 # SPDX-License-Identifier: MIT OR Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-# Ignorar variáveis de ambiente
-.env
-*.env.*
-
 # Ignorar arquivos temporários
 /tmp.git
 *.tmp*
@@ -18,6 +14,9 @@ repomix-*.xml
 *.tar
 *.wav
 *.log
+
+# Espelho dos projetos de referência no GitHub
+/github.com/
 
 # Ignorar artefatos do Rust
 #Cargo.lock
@@ -38,9 +37,6 @@ scratch.rs
 
 # Proptest regression files (gerados automaticamente)
 *.proptest-regressions
-
-# Espelho dos projetos de referência no GitHub
-/github.com/
 
 # Fuzzing (cargo-fuzz)
 # Mantemos apenas os targets e a configuração. Ignoramos o corpus evoluído e artefatos de crash.

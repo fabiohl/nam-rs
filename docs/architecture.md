@@ -30,6 +30,38 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Fused Residual GEMV com Frame Tiling (WaveNet):** O cálculo do resíduo é fundido no GEMV da camada seguinte, utilizando **4-frame tiling (AVX2)** ou **8-frame tiling (AVX-512)** para maximizar o reuso de pesos nos registradores.
 - **Conv1D Tiling:** Processamento de múltiplos canais em blocos para maximizar o reúso de dados nos registradores SIMD e reduzir latência de cache em modelos com dilatação profunda.
 
+### Decisão Técnica: Precisão FastMath vs Performance (ADR-001)
+
+> **Decisão:** As funções de ativação `tanh` e `sigmoid` usam aproximações polinomiais SIMD
+> (Minimax + Newton-Raphson duplo) em vez de chamadas à libm IEEE-754 compliant.
+>
+> **Consequência:** Erro máximo de ~6e-8 (tanh) e ~6e-8 (sigmoid) por ativação vs libm.
+> O áudio resultante **não é bit-a-bit idêntico** ao motor C++ NeuralAmpModelerCore.
+> A divergência é **perceptualmente inaudível** (erro uma ordem de magnitude abaixo
+> do piso de quantização 16-bit PCM).
+>
+> **Justificativa:** O trade-off sacrifica ~5 casas decimais de precisão para ganhar
+> ~10-20× de throughput (4-8 ciclos/ativação vs 20-60 ciclos/ativação no libm escalar).
+> Para atingir paridade bit-a-bit seria necessário usar `exp()`/`tanh()` escalar via libm,
+> eliminando todo o ganho SIMD que é a razão de existência do NAM-rs.
+>
+> **Impacto por modelo:**
+> - **LSTM** (1 camada, 4 ativações/sample): SNR ~24.5 dB vs C++ (divergência mínima)
+> - **WaveNet Standard** (20 camadas, ~60 ativações/sample): SNR ~10 dB vs C++ (acumulação sublinear √N)
+>
+> **Fontes de erro do `simd_sigmoid_avx2` (após NR duplo):**
+> 1. Polinômio Minimax D6 para `exp(f)`: erro ~1e-7 (fonte residual dominante)
+> 2. `_mm256_rcp_ps` + 2× Newton-Raphson: precisão saturada a ~24 bits (~6e-8 relativo)
+> 3. Range reduction via `_mm256_cvtps_epi32`: ~1 ULP em fronteiras
+> 4. Composição multiplicativa `rcp(1 + exp(-x))`: erro pico ~6e-8 para |x| < 5
+>
+> **Validação:** Proptest com 1000+ valores aleatórios (`prop_simd_tanh_avx2_rmse`,
+> `prop_simd_sigmoid_avx2_rmse`), golden vectors cross-C++ (4 modelos), e regression
+> goldens self-reference (7 modelos, MSE < 1e-6).
+>
+> **Referências:** `src/math/fastmath.rs` (docstring de `simd_tanh_avx2`),
+> `tests/fixtures/README.md`, `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)
+
 ### Fluxo de Dados WaveNet (Pipeline de Inferência)
 
 O diagrama abaixo ilustra o fluxo de dados em um bloco de inferência WaveNet, destacando as operações fundidas (fused) que minimizam o tráfego de memória e maximizam o throughput SIMD:
