@@ -178,7 +178,7 @@
 
 > **Módulos**: `models/lstm.rs`, `models/lstm_dyn.rs`, `loader/dispatcher/lstm.rs`
 
-### 🟡 Tarefa 6.1 — `lstm.rs` — Macro Gera Funções com Assinatura Inconsistente
+### ✅ Tarefa 6.1 — `lstm.rs` — Macro Gera Funções com Assinatura Inconsistente (CONCLUÍDO)
 
 - **Arquivo**: `lstm.rs:24-135`
 - **Achado**: A macro `define_lstm_process!` gera `process_sample_*` com `#[$target_meta]` como atributo. Para a variante AVX2, usa `#[inline(always)]` (sem target_feature), enquanto AVX512 usa `#[target_feature(enable = "avx512f,...")]`. Isso é intencional (AVX2 é baseline do target), mas a inconsistência visual dificulta revisão.

@@ -42,6 +42,8 @@ macro_rules! define_lstm_process {
         ///
         /// # Safety
         /// O chamador deve garantir suporte às instruções SIMD especificadas.
+        // NOTE: $target_meta permite injetar #[inline(always)] para AVX2 (nosso baseline x86-64-v3)
+        // ou #[target_feature] para extensões superiores, garantindo codegen correto.
         #[$target_meta]
         pub unsafe fn $fn_name(&mut self, input: &[f32]) {
             unsafe {
@@ -142,6 +144,7 @@ macro_rules! define_lstm2_process_pipelined {
         $dot_prod:path,
         $get_h2:ident
     ) => {
+        // NOTE: Injeta #[inline(always)] para AVX2 ou #[target_feature] para extensões.
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
@@ -185,6 +188,7 @@ macro_rules! define_lstm1_process {
         $dot_prod:path,
         $get_h:ident
     ) => {
+        // NOTE: Injeta #[inline(always)] para AVX2 ou #[target_feature] para extensões.
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
