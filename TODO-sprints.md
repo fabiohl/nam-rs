@@ -100,11 +100,11 @@
 - **Achado**: `bins[index].fetch_add(1, Relaxed)` poderia silenciosamente wrapar em `u32::MAX` após ~4 bilhões de observações, invalidando cálculos de percentil.
 - **Solução**: Implementada adição saturante usando `fetch_update`. Embora o custo de um loop CAS seja ligeiramente superior a um `fetch_add`, a integridade estatística em sessões de longa duração é preservada.
 
-### 🟢 Tarefa 3.7 — `vring.rs` — `VirtualRingBuffer` Não Implementa `Debug`
+### ✅ Tarefa 3.7 — `vring.rs` — `VirtualRingBuffer` Não Implementa `Debug` (CONCLUÍDO)
 
 - **Arquivo**: `vring.rs:24-28`
-- **Achado**: A struct usa raw pointers e não pode derivar `Debug`, mas uma implementação manual mostrando `size_elements` e o endereço base seria útil para diagnóstico.
-- **Proposta**: Implementar `Debug` manualmente imprimindo apenas metadados (sem derreferenciar o ponteiro).
+- **Achado**: A struct usava raw pointers e não podia derivar `Debug`, dificultando o diagnóstico de alinhamento e mapeamento.
+- **Solução**: Implementado o trait `Debug` manualmente. Agora a struct exibe metadados seguros (endereço base, `size_elements` e `capacity_virtual`) sem derreferenciar ponteiros ou expor dados sensíveis do buffer no log.
 
 ---
 

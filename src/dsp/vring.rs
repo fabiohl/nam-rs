@@ -148,6 +148,16 @@ impl<T> VirtualRingBuffer<T> {
     }
 }
 
+impl<T> std::fmt::Debug for VirtualRingBuffer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VirtualRingBuffer")
+            .field("ptr", &self.ptr)
+            .field("size_elements", &self.size_elements)
+            .field("capacity_virtual", &(self.size_elements * 2))
+            .finish()
+    }
+}
+
 impl<T> Deref for VirtualRingBuffer<T> {
     type Target = [T];
 
@@ -269,5 +279,14 @@ mod tests {
         let vring = VirtualRingBuffer::<f32>::new(size);
         assert!(vring.size() >= size);
         // Apenas garante que não deu panic e o mmap foi bem sucedido
+    }
+
+    #[test]
+    fn test_vring_debug() {
+        let vring = VirtualRingBuffer::<f32>::new(1024);
+        let debug_str = format!("{:?}", vring);
+        assert!(debug_str.contains("VirtualRingBuffer"));
+        assert!(debug_str.contains("ptr"));
+        assert!(debug_str.contains("size_elements"));
     }
 }
