@@ -8,7 +8,7 @@
 
 > **Módulos**: `loader/mod.rs`, `loader/dispatcher/`
 
-### 🔴 Tarefa 8.2 — `loader/mod.rs` — `io_error` Ausente no Diagnóstico `.nam`
+- [x] Tarefa 8.1 — `loader/mod.rs` — `io_error` Ausente no Diagnóstico `.nam`
 
 - **Arquivo**: `loader/mod.rs:84-89`
 - **Achado**: O branch `.nam` **não inclui** `.param("io_error", &e)` no `NamDiagnostic`, ao contrário do branch `.namb` (linha 65). O diagnóstico perde o `io::Error` real (ex: "Permission denied", "No such file").
@@ -25,7 +25,7 @@
   })?;
   ```
 
-### 🟡 Tarefa 8.3 — `WeightCursor` — Abstração do Campo `layout`
+### 🟡 Tarefa 8.2 — `WeightCursor` — Abstração do Campo `layout`
 
 - **Arquivo**: `loader/dispatcher/wavenet.rs` (múltiplos pontos)
 - **Achado**: `cursor.layout == WeightsLayout::Interleaved4WaveNet` é comparado diretamente em vários locais sem abstração. A adição de um terceiro layout (ex: NAMB v3) exigiria atualização manual de todos os `if/else`.

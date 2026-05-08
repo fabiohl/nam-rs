@@ -84,7 +84,9 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         let json = std::fs::read_to_string(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
                 .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
+                .hint("Verifique as permissões de acesso ao arquivo.")
                 .param("file", &path_str)
+                .param("io_error", &e)
                 .emit();
             anyhow::Error::from(e)
         })?;
