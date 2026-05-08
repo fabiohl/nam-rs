@@ -223,11 +223,39 @@ pub unsafe fn fused_add_gemm_batch_fallback(
     }
 }
 
-/// Fallback escalar para GEMV fundido.
+/// Fallback escalar para GEMV fundido (Acumula).
 ///
 /// # Safety
 /// Buffers de entrada e saída devem ser válidos.
 pub unsafe fn fused_add_gemv_fallback(
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
+) {
+    let out_len = out_frame.len();
+    let in_len = in_frame.len();
+    for (out_c, &b) in bias.iter().enumerate().take(out_len) {
+        let mut sum = if do_bias { b } else { 0.0 };
+        for in_c in 0..in_len {
+            unsafe {
+                let w =
+                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                sum += *in_frame.get_unchecked(in_c) * w;
+            }
+        }
+        unsafe {
+            *out_frame.get_unchecked_mut(out_c) += sum;
+        }
+    }
+}
+
+/// Fallback escalar para GEMV com sobrescrita.
+///
+/// # Safety
+/// Buffers de entrada e saída devem ser válidos.
+pub unsafe fn gemv_overwrite_fallback(
     in_frame: &[f32],
     weights: &[u16],
     bias: &[f32],
@@ -283,20 +311,6 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
             }
         }
     }
-}
-
-/// Fallback escalar para GEMV com sobrescrita.
-///
-/// # Safety
-/// Buffers de entrada e saída devem ser válidos.
-pub unsafe fn gemv_overwrite_fallback(
-    in_frame: &[f32],
-    weights: &[u16],
-    bias: &[f32],
-    out_frame: &mut [f32],
-    do_bias: bool,
-) {
-    unsafe { fused_add_gemv_fallback(in_frame, weights, bias, out_frame, do_bias) }
 }
 
 /// Fallback escalar para GEMV com sobrescrita (entrada BF16).
@@ -676,28 +690,28 @@ pub unsafe fn gemv_4gate_fallback(
 ) {
     let out_len = out.len() / 4;
     unsafe {
-        fused_add_gemv_fallback(
+        gemv_overwrite_fallback(
             in_frame,
             w0,
             &bias[0..out_len],
             &mut out[0..out_len],
             do_bias,
         );
-        fused_add_gemv_fallback(
+        gemv_overwrite_fallback(
             in_frame,
             w1,
             &bias[out_len..2 * out_len],
             &mut out[out_len..2 * out_len],
             do_bias,
         );
-        fused_add_gemv_fallback(
+        gemv_overwrite_fallback(
             in_frame,
             w2,
             &bias[2 * out_len..3 * out_len],
             &mut out[2 * out_len..3 * out_len],
             do_bias,
         );
-        fused_add_gemv_fallback(
+        gemv_overwrite_fallback(
             in_frame,
             w3,
             &bias[3 * out_len..4 * out_len],
@@ -755,3 +769,7 @@ pub unsafe fn gemv_4gate_bf16_fallback(
         );
     }
 }
+
+#[cfg(test)]
+#[path = "fallback_test.rs"]
+mod fallback_test;

@@ -23,7 +23,7 @@
   2. Idem `test_sigmoid_max_abs_error_sweep`.
   3. Referência: `f64::tanh(x as f64) as f32`.
 
-### 🔴 Tarefa 7.3 — `FallbackMath` — Cobertura Direta de Testes
+### ✅ Tarefa 7.3 — `FallbackMath` — Cobertura Direta de Testes @done(2026-05-08)
 
 - **Arquivo**: `math/simd/fallback.rs` (ou `math/simd_test.rs`)
 - **Achado**: Em ambiente x86-64-v3, `FallbackMath` **nunca é selecionado em runtime**. Bugs nessa implementação são invisíveis em CI.
