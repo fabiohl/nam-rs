@@ -70,11 +70,11 @@
 - **Achado**: `let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];` e `temp_out_r` alocavam **32 KiB na stack** dentro do hot-path.
 - **Solução**: Buffers movidos para o `DspPipelineContext` e pré-alocados no estado da closure de processamento (heap-backed), garantindo RT-safety e eliminando risco de stack overflow. Contrato de tamanho documentado em `MAX_RESAMP_BUF`.
 
-### 🟡 Tarefa 3.2 — `handle_silence_bypass` — Ordering Inconsistente
+### ✅ Tarefa 3.2 — `handle_silence_bypass` — Ordering Inconsistente (CONCLUÍDO)
 
-- **Arquivo**: `pipeline.rs:127-133`
-- **Achado**: `active_read_idx.load(Relaxed)` seguido de `fence(Release)` e `store(Relaxed)` e `generation.fetch_add(Relaxed)`. A semântica é correta para um protocolo SeqLock simples, mas seria mais robusto usar `store(Release)` em `active_read_idx` em vez de `fence + store(Relaxed)`, eliminando a dependência em fence ordering manual.
-- **Proposta**: Considerar consolidar para `store(Release)` diretamente, removendo a fence explícita. Avaliar se a reordenação do `generation.fetch_add` em relação ao `store` é segura (deve vir DEPOIS no producer).
+- **Arquivo**: `pipeline.rs:140-155, 319-348, 391-410`
+- **Achado**: `active_read_idx.load(Relaxed)` seguido de `fence(Release)` e `store(Relaxed)`.
+- **Solução**: Refatorado para usar semântica explícita `Release/Acquire` em `active_read_idx` e `generation`. Removidas as fences manuais (`fence(Release)` e `fence(Acquire)`), consolidando o protocolo SeqLock de forma mais robusta e legível.
 
 ### 🟡 Tarefa 3.3 — `pipeline.rs` — Sinalização de Silêncio Invertida
 

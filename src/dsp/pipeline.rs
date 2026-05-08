@@ -147,11 +147,10 @@ pub(crate) fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtSt
     let bridge_ref = unsafe { &mut *bridge_ptr };
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
     bridge_ref.buffers[back_idx].n_samples = 0;
-    std::sync::atomic::fence(Ordering::Release);
     bridge_ref
         .active_read_idx
-        .store(back_idx, Ordering::Relaxed);
-    bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+        .store(back_idx, Ordering::Release);
+    bridge_ref.generation.fetch_add(1, Ordering::Release);
 }
 
 #[cfg(any(feature = "standalone", test))]
@@ -340,12 +339,10 @@ fn write_bridge(
         );
     }
     back_buf.n_samples = n_bridge as u32;
-
-    std::sync::atomic::fence(Ordering::Release);
     bridge_ref
         .active_read_idx
-        .store(back_idx, Ordering::Relaxed);
-    bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
+        .store(back_idx, Ordering::Release);
+    bridge_ref.generation.fetch_add(1, Ordering::Release);
 }
 
 #[cfg(any(feature = "standalone", test))]
@@ -394,12 +391,11 @@ pub(crate) fn playback_dsp_cycle(
     last_bridge_gen: &mut u64,
 ) {
     let bridge_ref = unsafe { &*bridge_ptr };
-    let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+    let current_gen = bridge_ref.generation.load(Ordering::Acquire);
     if current_gen == *last_bridge_gen {
         return;
     }
     *last_bridge_gen = current_gen;
-    std::sync::atomic::fence(Ordering::Acquire);
 
     let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
     let front_buf = &bridge_ref.buffers[read_idx];
