@@ -8,15 +8,21 @@
 
 #[cfg(feature = "standalone")]
 use crate::diagnostics::SystemSnapshot;
+#[cfg(any(feature = "standalone", test))]
 use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
+#[cfg(any(feature = "standalone", test))]
 use crate::dsp::resampler::NamResampler;
+#[cfg(any(feature = "standalone", test))]
 use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2};
+#[cfg(any(feature = "standalone", test))]
 use crate::models::{DynamicModel, NamModel};
+#[cfg(any(feature = "standalone", test))]
 use crate::spsc::RtStatusFlags;
 #[cfg(feature = "standalone")]
 use minstant::Anchor;
 #[cfg(feature = "standalone")]
 use pipewire as pw;
+#[cfg(any(feature = "standalone", test))]
 use std::sync::atomic::Ordering;
 
 /// Estrutura de posse explícita para evitar o leak de memória
@@ -44,12 +50,15 @@ pub struct PipewireHostConfig {
     pub sys: SystemSnapshot,
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
 /// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
 pub(crate) const MAX_BRIDGE_BUF: usize = 8192;
+#[cfg(any(feature = "standalone", test))]
 /// Tamanho máximo do buffer para resampling.
 pub(crate) const MAX_RESAMP_BUF: usize = 4096;
 
+#[cfg(any(feature = "standalone", test))]
 /// Buffer individual de áudio para o DspBridge (double-buffer).
 #[repr(align(128))]
 pub(crate) struct BridgeBuffer {
@@ -61,6 +70,7 @@ pub(crate) struct BridgeBuffer {
     pub n_samples: u32,
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Buffer compartilhado entre o callback de captura (DSP) e o callback de playback.
 ///
 /// O capture callback escreve o resultado processado aqui com `fence(Release)`;
@@ -79,6 +89,7 @@ pub(crate) struct DspBridge {
     pub generation: std::sync::atomic::AtomicU64,
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Contexto de dados para a pipeline DSP hot-path.
 pub(crate) struct DspPipelineContext<'a> {
     /// Resampler ativo para conversão de sample rate.
@@ -118,6 +129,7 @@ pub(crate) struct DspPipelineContext<'a> {
 }
 
 /// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
+#[cfg(any(feature = "standalone", test))]
 #[cold]
 #[inline(never)]
 pub(crate) fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
@@ -133,6 +145,7 @@ pub(crate) fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtSt
     bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Estágio 1: Gate, Ganhos de Entrada e Detecção de Mono.
 #[inline(always)]
 fn apply_input_stage(
@@ -186,6 +199,7 @@ fn apply_input_stage(
     ctx.silence_hysteresis.state()
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Estágio 2: Inferência Neural e Resampling.
 #[inline(always)]
 fn run_inference(
@@ -270,6 +284,7 @@ fn run_inference(
     }
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Estágio 3: Ganho de Saída, Fading e Detecção de Clipping.
 #[inline(always)]
 fn apply_output_stage(
@@ -292,6 +307,7 @@ fn apply_output_stage(
     }
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Estágio 4: Escrita no DspBridge.
 #[inline(always)]
 fn write_bridge(
@@ -326,6 +342,7 @@ fn write_bridge(
     bridge_ref.generation.fetch_add(1, Ordering::Relaxed);
 }
 
+#[cfg(any(feature = "standalone", test))]
 /// Pipeline DSP Completo (Agregador).
 #[inline(always)]
 pub(crate) fn capture_dsp_pipeline(

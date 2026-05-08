@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-# 🎸 NAM-rs 1.4.0
+# 🎸 NAM-rs 1.4.1
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
@@ -88,7 +88,7 @@ cargo build --release
 
 Por ser um projeto em intensa evolução, não é aconselhável usar a branch "main" para trabalhos em ambiente de produção. Recomenda-se uma uma das versões release disponíveis em <https://github.com/fabiohl/nam-rs/tags>.
 
-**Obs:** O .cargo/config.toml permite configurar uma compilação ainda mais otimizada para a sua CPU atual ("march=native"). O script utils/switchMarch.sh automatiza esta troca.
+**Obs:** O .cargo/config.toml permite configurar uma compilação ainda mais otimizada para a sua CPU atual ("march=native").
 
 Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire.
 Para iniciar o processamento:
@@ -152,11 +152,12 @@ cargo test --test proptest_parsers
 # Benchmarks de latência (17 funções benchmark, 23 medições criterion)
 cargo bench --bench inference_bench
 
-# Lint rigoroso de código fonte (formatação + clippy)
+# Lint rigoroso de código fonte (formatação + clippy + feature matrix)
 utils/lints.sh
 
-# Bateria de Estabilidade (Soak Test) - Manutenção de Longa Duração
-utils/soak-test.sh
+# Bateria de Estabilidade e Performance (Long Run)
+utils/long-tests.sh
+
 ```
 
 ### Teste de Estabilidade (Soak Test)
@@ -168,10 +169,7 @@ Para garantir que o motor permaneça estável durante horas de uso contínuo, o 
 * **Resiliência de Memória**: Estresse de fronteiras em `VirtualRingBuffer`.
 
 Para executar a bateria completa (pode levar vários minutos/horas):
-`bash utils/soak-test.sh`
-
-Para executar os benchmarks de longa duração (estatística de 30s):
-`bash utils/long-bench.sh`
+`bash utils/long-tests.sh`
 
 Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip, hot-swap rápido de modelos, **block sizes variáveis** (1–512 amostras), **modelos comunitários** (5 modelos .nam) e **rejeição de formatos não-suportados** (Keras Legacy, ativações não-Tanh).
 
@@ -182,6 +180,7 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.2 (02/05/2026): Algoritimo de resampling próprio.
 * 1.3 (04/05/2026): Otimizações intensivas de SIMD e refatoração de telemetria.
 * 1.4 (05/05/2026): Staging para A2 (scaffolding) e CLAP. Toneladas de otimizações de performance.
+* 1.4.1 (07/05/2026): Rodadas de limpezas e otimizações.
 
 ## 🛣️ Próximos Passos (Roadmap)
 

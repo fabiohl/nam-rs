@@ -493,7 +493,7 @@ fn test_auto_consistency_lstm() {
 /// Funções vivem exclusivamente em `#[test]` — zero impacto em produção.
 ///
 /// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
-/// Execute `utils/golden_gen_build.sh` para regenerar os golden vectors.
+/// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
 #[test]
 fn test_golden_vectors_wavenet() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -502,7 +502,7 @@ fn test_golden_vectors_wavenet() {
     if !golden_path.exists() {
         eprintln!(
             "SKIP: golden_wavenet_standard.bin não encontrado em {golden_path:?}. \
-             Execute utils/golden_gen_build.sh para gerar os golden vectors."
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
         );
         return;
     }
@@ -559,7 +559,7 @@ fn test_golden_vectors_wavenet() {
 /// substituindo as 2 passagens anteriores. Zero impacto em produção.
 ///
 /// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
-/// Execute `utils/golden_gen_build.sh` para regenerar os golden vectors.
+/// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
 #[test]
 fn test_golden_vectors_lstm() {
     let golden_path =
@@ -568,7 +568,7 @@ fn test_golden_vectors_lstm() {
     if !golden_path.exists() {
         eprintln!(
             "SKIP: golden_lstm_1x16.bin não encontrado em {golden_path:?}. \
-             Execute utils/golden_gen_build.sh para gerar os golden vectors."
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
         );
         return;
     }

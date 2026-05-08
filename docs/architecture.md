@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -46,10 +45,12 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > eliminando todo o ganho SIMD que é a razão de existência do NAM-rs.
 >
 > **Impacto por modelo:**
+>
 > - **LSTM** (1 camada, 4 ativações/sample): SNR ~24.5 dB vs C++ (divergência mínima)
 > - **WaveNet Standard** (20 camadas, ~60 ativações/sample): SNR ~10 dB vs C++ (acumulação sublinear √N)
 >
 > **Fontes de erro do `simd_sigmoid_avx2` (após NR duplo):**
+>
 > 1. Polinômio Minimax D6 para `exp(f)`: erro ~1e-7 (fonte residual dominante)
 > 2. `_mm256_rcp_ps` + 2× Newton-Raphson: precisão saturada a ~24 bits (~6e-8 relativo)
 > 3. Range reduction via `_mm256_cvtps_epi32`: ~1 ULP em fronteiras
@@ -160,8 +161,8 @@ PipeWire Input (Nk Hz)
 - **Zero-Allocation Guard:** Uso de um `CountingAllocator` customizado em testes para garantir rigorosamente que o hot-path não aloca heap.
 - **Fuzz Testing (`proptest`):** ~45.000 inputs adversários para garantir robustez absoluta dos parsers contra dados malformados.
 - **Golden Vectors:** Comparação bit-a-bit ou MSE contra referências C++ (NeuralAudio/NAMCore).
-- **Soak Test (`tests/soak_test.rs`):** Suíte de estabilidade numérica de longa duração — executa 10M+ frames de silêncio/ruído em WaveNet e LSTM, 50M+ amostras no resampler e 100M+ ciclos no VirtualRingBuffer. Todos marcados com `#[ignore]` para exclusão do CI. Disparados via `bash utils/soak-test.sh`.
-- **Long Run Benchmarks (`benches/inference_bench.rs`):** Grupo `Long_Run_*` ativado via feature `long_bench`, com blocos de 4096 amostras e `measurement_time(30s)` para medir throughput real em operação contínua, eliminando jitter de cache. Disparados via `bash utils/long-bench.sh`.
+- **Soak Test (`tests/soak_test.rs`):** Suíte de estabilidade numérica de longa duração — executa 10M+ frames de silêncio/ruído em WaveNet e LSTM, 50M+ amostras no resampler e 100M+ ciclos no VirtualRingBuffer. Todos marcados com `#[ignore]` para exclusão do CI. Disparados via `bash utils/long-tests.sh`.
+- **Long Run Benchmarks (`benches/inference_bench.rs`):** Grupo `Long_Run_*` ativado via feature `long_bench`, com blocos de 4096 amostras e `measurement_time(30s)` para medir throughput real em operação contínua, eliminando jitter de cache. Disparados via `bash utils/long-tests.sh`.
 
 ## 7. Preparação para Arquitetura A2 (v1.4 Staging)
 

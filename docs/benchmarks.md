@@ -24,7 +24,7 @@ cargo bench --features long_bench
 Ou via script de disparo manual (recomendado):
 
 ```bash
-bash utils/long-bench.sh
+bash utils/long-tests.sh
 ```
 
 Estes benchmarks utilizam blocos de **4096 amostras** (~85ms), reduzindo o peso relativo do overhead de invocação e focando puramente no throughput do motor DSP.
