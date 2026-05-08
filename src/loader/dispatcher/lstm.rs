@@ -270,7 +270,7 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
     let raw_weights = cursor.read_slice(H4 * IH)?;
-    if cursor.layout == crate::loader::nam_json::WeightsLayout::GateMajorLstm {
+    if cursor.is_gate_major_lstm() {
         // Layout já otimizado: [Gate][IH][H] — Cópia direta
         for k in 0..4 {
             for j in 0..IH {

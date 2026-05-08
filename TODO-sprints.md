@@ -25,7 +25,7 @@
   })?;
   ```
 
-### 🟡 Tarefa 8.2 — `WeightCursor` — Abstração do Campo `layout`
+### 🟢 Tarefa 8.2 — `WeightCursor` — Abstração do Campo `layout`
 
 - **Arquivo**: `loader/dispatcher/wavenet.rs` (múltiplos pontos)
 - **Achado**: `cursor.layout == WeightsLayout::Interleaved4WaveNet` é comparado diretamente em vários locais sem abstração. A adição de um terceiro layout (ex: NAMB v3) exigiria atualização manual de todos os `if/else`.

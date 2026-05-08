@@ -350,7 +350,7 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
 
     let mut weights = AlignedVec::new(total, 0u16);
 
-    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+    if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
         }
@@ -390,7 +390,7 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
-    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+    if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
         }
@@ -425,7 +425,7 @@ fn read_conv1d_weights_dyn(
 
     let mut weights = AlignedVec::new(total, 0u16);
 
-    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+    if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
         }
@@ -467,7 +467,7 @@ fn read_dense_layer_dyn(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
-    if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
+    if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
         }

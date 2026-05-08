@@ -42,6 +42,16 @@ impl<'a> WeightCursor<'a> {
         }
     }
 
+    /// Verifica se os pesos estão em formato entrelaçado (WaveNet v2).
+    pub fn is_interleaved4(&self) -> bool {
+        self.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet
+    }
+
+    /// Verifica se os pesos estão em formato Gate-Major (LSTM v2).
+    pub fn is_gate_major_lstm(&self) -> bool {
+        self.layout == crate::loader::nam_json::WeightsLayout::GateMajorLstm
+    }
+
     /// Lê uma fatia contígua de `len` pesos, avançando o cursor.
     fn read_slice(&mut self, len: usize) -> anyhow::Result<&'a [f32]> {
         if self.pos + len > self.data.len() {
