@@ -76,11 +76,11 @@
 - **Achado**: `active_read_idx.load(Relaxed)` seguido de `fence(Release)` e `store(Relaxed)`.
 - **Solução**: Refatorado para usar semântica explícita `Release/Acquire` em `active_read_idx` e `generation`. Removidas as fences manuais (`fence(Release)` e `fence(Acquire)`), consolidando o protocolo SeqLock de forma mais robusta e legível.
 
-### 🟡 Tarefa 3.3 — `pipeline.rs` — Sinalização de Silêncio Invertida
+### ✅ Tarefa 3.3 — `pipeline.rs` — Sinalização de Silêncio Invertida (CONCLUÍDO)
 
-- **Arquivo**: `pipeline.rs:344-348`
-- **Achado**: Quando `gate_state != GateState::Open` (ou seja, `FadingIn` ou `FadingOut`), a flag `IS_SILENT` é setada. Entretanto, durante `FadingIn` o sinal está se tornando ativo — setá-lo como "silencioso" pode confundir a CLI/UI. A intenção parece ser sinalizar "não-totalmente-ativo", mas o nome `IS_SILENT` é enganoso para `FadingIn`.
-- **Proposta**: Documentar a semântica exata ("IS_SILENT = gate não está 100% Open") ou criar flags separadas (`IS_FADING`, `IS_SILENT`).
+- **Arquivo**: `spsc.rs`, `pipeline.rs:364-380`, `rt_setup.rs:249-265`
+- **Achado**: `IS_SILENT` era setado durante `FadingIn`, o que é misleading pois o sinal está se tornando ativo.
+- **Solução**: Introduzida a flag `RT_STATUS_IS_FADING`. Agora `IS_SILENT` é setada apenas em silêncio total (`GateState::Closed`), enquanto `IS_FADING` cobre os estados de transição (`FadingIn`/`FadingOut`). Logs do host atualizados para refletir essa distinção.
 
 ### 🟡 Tarefa 3.4 — `DspBridge` — Double-Buffer sem Backpressure
 

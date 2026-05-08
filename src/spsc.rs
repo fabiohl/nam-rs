@@ -32,10 +32,12 @@ pub const RT_STATUS_RESAMPLER_REBUILD_FAILED: u64 = 1 << 1;
 pub const RT_STATUS_RT_IS_FIFO: u64 = 1 << 2;
 /// Flag indicando que houve saturação (clipping) no áudio de saída.
 pub const RT_STATUS_HAS_CLIPPED: u64 = 1 << 3;
-/// Flag indicando que o buffer atual está em silêncio (abaixo de −80 dBFS).
+/// Flag indicando que o buffer atual está em silêncio total (Gate fechado).
 pub const RT_STATUS_IS_SILENT: u64 = 1 << 4;
 /// Flag indicando que houve overflow no canal de GC.
 pub const RT_STATUS_GC_OVERFLOW: u64 = 1 << 5;
+/// Flag indicando que o gate está em transição (Fade-In ou Fade-Out).
+pub const RT_STATUS_IS_FADING: u64 = 1 << 6;
 
 /// Flags atômicas de status para comunicação silenciosa RT→Main.
 ///
@@ -51,8 +53,9 @@ pub const RT_STATUS_GC_OVERFLOW: u64 = 1 << 5;
 /// | 1 | `RESAMPLER_REBUILD_FAILED` | Falha no rebuild do resampler |
 /// | 2 | `RT_IS_FIFO` | Confirmação de SCHED_FIFO ativo |
 /// | 3 | `HAS_CLIPPED` | Saturação (clipping) na saída |
-/// | 4 | `IS_SILENT` | Buffer atual abaixo de −80 dBFS |
+/// | 4 | `IS_SILENT` | Buffer em silêncio total (Gate Closed) |
 /// | 5 | `GC_OVERFLOW` | Overflow no canal de Garbage Collection |
+/// | 6 | `IS_FADING` | Gate em transição (Fading In/Out) |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.

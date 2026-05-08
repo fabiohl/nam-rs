@@ -120,13 +120,16 @@ pub fn detect_hardware_sink() -> Option<String> {
 /// faz edge-detection no estado de silêncio.
 ///
 /// Retorna o novo estado de silêncio (para edge-detection no caller).
+/// Retorna (current_silent, current_fading) para edge-detection no caller.
 pub fn poll_rt_status(
     rt_status: &RtStatusFlags,
     sys: &SystemSnapshot,
     was_silent: bool,
+    was_fading: bool,
     _tsc_anchor: &Anchor,
-) -> bool {
-    // Verificação de overflow no GC (vazamento de memória para proteger RT)
+) -> (bool, bool) {
+    // ... (rest of the function remains same until line 249)
+    // [Manual Copy of the rest for context]
     if rt_status.check_and_clear_flag(crate::spsc::RT_STATUS_GC_OVERFLOW) {
         NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
             .message("Overflow detectado no canal de Garbage Collection (GC).")
@@ -138,7 +141,6 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
-    // Rate do resampler ativado pelo callback RT (notificação de mudança)
     let rate_notif = rt_status.active_rate_changed.swap(0, Ordering::Relaxed);
     if rate_notif != 0 {
         log::info!(
@@ -148,7 +150,6 @@ pub fn poll_rt_status(
         );
     }
 
-    // Detecção de clipping na saída
     if rt_status.check_and_clear_flag(crate::spsc::RT_STATUS_HAS_CLIPPED) {
         log::warn!(
             "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
@@ -156,12 +157,9 @@ pub fn poll_rt_status(
         );
     }
 
-    // Confirmação programática de SCHED_FIFO — sentinela -1 significa "ainda não setado".
-    // A thread DSP publica este valor uma única vez no cold-path do primeiro frame.
     let prio = rt_status.rt_priority.load(Ordering::Relaxed);
     if prio != -1 {
         let is_fifo = rt_status.check_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
-        // Rearmamos sentinela para não logar novamente nas iterações seguintes.
         rt_status.rt_priority.store(-1, Ordering::Relaxed);
 
         if is_fifo {
@@ -185,7 +183,6 @@ pub fn poll_rt_status(
         }
     }
 
-    // Contador de overloads de CPU
     let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
     if overloads > 0 {
         log::warn!(
@@ -195,13 +192,9 @@ pub fn poll_rt_status(
         );
     }
 
-    // Telemetria de timing via RDTSC (minstant)
     let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
     if nanos > 0 {
         let duration = Duration::from_nanos(nanos);
-
-        // [T26] Exibe percentis acumulados e reseta o histograma a cada ~10 segundos (100 ciclos de poll).
-        // Isso reduz drasticamente a verbosidade do terminal mantendo a observabilidade.
         static TELEMETRY_THROTTLE: AtomicU32 = AtomicU32::new(0);
         if TELEMETRY_THROTTLE
             .fetch_add(1, Ordering::Relaxed)
@@ -223,7 +216,6 @@ pub fn poll_rt_status(
             rt_status.latency_hist.reset();
         }
 
-        // Carregamos os valores estáveis uma única vez para evitar race conditions na divisão.
         let rate_val = rt_status.active_rate.load(Ordering::Relaxed);
         let samples_val = rt_status.last_n_samples.load(Ordering::Relaxed);
 
@@ -231,8 +223,6 @@ pub fn poll_rt_status(
             let budget_us = (samples_val as f64 / rate_val as f64) * 1_000_000.0;
             let elapsed_us = duration.as_micros() as f64;
 
-            // Se o tempo de execução exceder o budget (100% do tempo do buffer),
-            // emitimos um diagnóstico crítico. O dsp_overloads já cuida de avisos a 85%.
             if elapsed_us > budget_us {
                 NamDiagnostic::new(NamErrorCode::DeadlineExceeded, sys)
                     .message("Deadline do PipeWire estourado (Possível Xrun detectado)")
@@ -246,12 +236,12 @@ pub fn poll_rt_status(
         }
     }
 
-    // Detecção de transição de silêncio (edge-detect: loga apenas na mudança de estado)
+    // Detecção de transição de silêncio
     let current_silent = rt_status.check_flag(crate::spsc::RT_STATUS_IS_SILENT);
     if current_silent != was_silent {
         if current_silent {
             log::info!(
-                "{} Modo Silencioso: Entrada abaixo de −80 dBFS (DSP em espera).",
+                "{} Modo Silencioso: Entrada abaixo do limiar (Gate Fechado).",
                 "🔇".blue()
             );
         } else {
@@ -262,7 +252,18 @@ pub fn poll_rt_status(
         }
     }
 
-    current_silent
+    // Detecção de transição de fading
+    let current_fading = rt_status.check_flag(crate::spsc::RT_STATUS_IS_FADING);
+    if current_fading != was_fading {
+        if current_fading {
+            log::info!(
+                "{} Transição de Sinal: Gate em Fade-In/Out.",
+                "🌓".yellow()
+            );
+        }
+    }
+
+    (current_silent, current_fading)
 }
 
 /// Drena agressivamente os canais de Garbage Collection para liberar memória.

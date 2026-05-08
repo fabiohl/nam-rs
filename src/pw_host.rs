@@ -709,6 +709,7 @@ pub fn run_pipewire_host(
     // Este loop executa na thread principal da aplicação. Sua função é gerenciar
     // tarefas pesadas (alocações, I/O) que são proibidas dentro dos callbacks RT.
     let mut was_silent = false;
+    let mut was_fading = false;
     while !SHUTDOWN.load(Ordering::Relaxed) {
         // 1. Gestão Dinâmica de Resampling
         // O callback RT sinaliza via flag atômica se houve mudança na taxa de amostragem
@@ -771,7 +772,8 @@ pub fn run_pipewire_host(
 
         // 2. Monitoramento de Status e Limpeza de Memória (GC)
         // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio, timing).
-        was_silent = rt_setup::poll_rt_status(&rt_status, &sys, was_silent, &tsc_anchor);
+        (was_silent, was_fading) =
+            rt_setup::poll_rt_status(&rt_status, &sys, was_silent, was_fading, &tsc_anchor);
 
         // Executa a drenagem de modelos e resamplers obsoletos (Drop-Delegation).
         rt_setup::drain_gc_channels(&mut gc_consumer, &gc_overflow);

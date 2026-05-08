@@ -92,6 +92,10 @@ pub(crate) struct DspBridge {
     /// Contador de geração — incrementado a cada escrita pelo capture callback.
     /// O playback compara com sua cópia local para detectar novos dados.
     pub generation: std::sync::atomic::AtomicU64,
+    /// Contador de geração consumida — atualizado pelo playback callback.
+    pub consumed_gen: std::sync::atomic::AtomicU64,
+    /// Contador de frames descartados (sobrescritos sem consumo).
+    pub dropped_frames: std::sync::atomic::AtomicU32,
 }
 
 #[cfg(any(feature = "standalone", test))]
@@ -361,10 +365,19 @@ pub(crate) fn capture_dsp_pipeline(
         return;
     }
 
-    if gate_state != GateState::Open {
-        ctx.rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
-    } else {
-        ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);
+    match gate_state {
+        GateState::Closed => {
+            ctx.rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
+            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_FADING);
+        }
+        GateState::FadingIn | GateState::FadingOut => {
+            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);
+            ctx.rt_status.set_flag(crate::spsc::RT_STATUS_IS_FADING);
+        }
+        GateState::Open => {
+            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);
+            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_FADING);
+        }
     }
 
     let n_pw = run_inference(samples_l, samples_r, n_samples, &mut ctx);
@@ -396,6 +409,7 @@ pub(crate) fn playback_dsp_cycle(
         return;
     }
     *last_bridge_gen = current_gen;
+    bridge_ref.consumed_gen.store(current_gen, Ordering::Release);
 
     let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
     let front_buf = &bridge_ref.buffers[read_idx];
