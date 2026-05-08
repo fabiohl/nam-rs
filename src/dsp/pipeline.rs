@@ -311,15 +311,14 @@ fn apply_output_stage(
     resamp_out_r: &mut [f32],
     n_pw: usize,
     output_gain_mult: f32,
-    gate_params: &GateParams,
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
 ) {
     crate::dsp::gain::apply_gain_simd(&mut resamp_out_l[..n_pw], output_gain_mult);
     crate::dsp::gain::apply_gain_simd(&mut resamp_out_r[..n_pw], output_gain_mult);
 
-    silence_hysteresis.apply_gain_rt(&mut resamp_out_l[..n_pw], gate_params, n_pw);
-    silence_hysteresis.apply_gain_rt(&mut resamp_out_r[..n_pw], gate_params, n_pw);
+    silence_hysteresis.apply_gain_rt(&mut resamp_out_l[..n_pw], n_pw);
+    silence_hysteresis.apply_gain_rt(&mut resamp_out_r[..n_pw], n_pw);
 
     if crate::dsp::gain::detect_clipping_stereo_simd(&resamp_out_l[..n_pw], &resamp_out_r[..n_pw]) {
         rt_status.set_flag(crate::spsc::RT_STATUS_HAS_CLIPPED);
@@ -408,7 +407,6 @@ pub(crate) fn capture_dsp_pipeline(
         ctx.resamp_out_r,
         n_pw,
         ctx.output_gain_mult,
-        ctx.gate_params,
         ctx.silence_hysteresis,
         ctx.rt_status,
     );

@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(dh.multiplier(), 0.9); // 90/100
 
         buffer.fill(1.0);
-        dh.apply_gain_rt(&mut buffer, &params, 10);
+        dh.apply_gain_rt(&mut buffer, 10);
         // Deve ser rampa de 1.0 a 0.9. O primeiro sample (index 0) recebe o ganho 'start' (1.0).
         assert!((buffer[0] - 1.0).abs() < 1e-3);
         assert!((buffer[9] - 0.91).abs() < 1e-3);
@@ -154,7 +154,7 @@ mod tests {
         assert_eq!(dh.multiplier(), 0.11);
 
         buffer.fill(1.0);
-        dh.apply_gain_rt(&mut buffer, &params, 10);
+        dh.apply_gain_rt(&mut buffer, 10);
         // Deve ser rampa de 0.01 a 0.11. O primeiro sample recebe 0.01.
         assert!((buffer[0] - 0.01).abs() < 1e-3);
         assert!((buffer[9] - 0.10).abs() < 1e-3);
@@ -184,7 +184,7 @@ mod tests {
         assert_eq!(dh.multiplier(), 0.0);
 
         let mut buffer = vec![1.0f32; 4096];
-        dh.apply_gain_rt(&mut buffer, &params, 4096);
+        dh.apply_gain_rt(&mut buffer, 4096);
 
         // Verifica a interpolação estrita nos primeiros 256 samples
         assert!(
@@ -210,7 +210,7 @@ mod tests {
         assert_eq!(dh.multiplier(), 1.0);
 
         let mut buffer2 = vec![1.0f32; 4096];
-        dh.apply_gain_rt(&mut buffer2, &params, 4096);
+        dh.apply_gain_rt(&mut buffer2, 4096);
 
         // Verifica a interpolação estrita nos primeiros 256 samples (FadingIn)
         assert_eq!(buffer2[0], 0.0, "Início do fade-in deve ser 0.0");

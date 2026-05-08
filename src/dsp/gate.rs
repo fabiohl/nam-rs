@@ -208,7 +208,7 @@ impl DynamicHysteresis {
     ///
     /// # Safety
     /// Esta função deve ser chamada apenas na thread RT.
-    pub fn apply_gain_rt(&self, buffer: &mut [f32], _params: &GateParams, n_samples: usize) {
+    pub fn apply_gain_rt(&self, buffer: &mut [f32], n_samples: usize) {
         if self.ramp_samples == 0 {
             if self.current_multiplier == 0.0 {
                 buffer.fill(0.0);

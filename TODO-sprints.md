@@ -88,11 +88,11 @@
 - **Achado**: Se o capture callback produz mais rápido que o playback consome, o back-buffer é sobrescrito silenciosamente.
 - **Solução**: Introduzidos `consumed_gen` e `dropped_frames`. O capture detecta se a geração anterior ainda não foi consumida e incrementa a telemetria. Logs de aviso adicionados ao host para sinalizar drifting/drops.
 
-### 🟡 Tarefa 3.5 — `gate.rs` — Parâmetro `_params` Ignorado em `apply_gain_rt`
+### ✅ Tarefa 3.5 — `gate.rs` — Parâmetro `_params` Ignorado em `apply_gain_rt` (CONCLUÍDO)
 
-- **Arquivo**: `gate.rs:211`
-- **Achado**: O parâmetro `_params: &GateParams` está prefixado com `_` indicando que é intencionalmente não-utilizado, mas ele é passado em todos os call sites. Se não será usado, removê-lo simplifica a API; se será usado futuramente, remover o prefixo `_` e documentar o plano.
-- **Proposta**: Revisar se `params` é necessário para futuras melhorias (ex: configuração do slope da rampa). Se não, remover.
+- **Arquivo**: `gate.rs`, `pipeline.rs`, `gate_test.rs`
+- **Achado**: O parâmetro `_params: &GateParams` era intencionalmente não-utilizado em `apply_gain_rt`, mas passado em todos os call sites.
+- **Solução**: Removido o parâmetro `params` de `apply_gain_rt`, `apply_output_stage` e de todos os call sites (incluindo testes), simplificando a API e reduzindo o acoplamento desnecessário, já que o estado do gate já está "baked" no `DynamicHysteresis`.
 
 ### 🟢 Tarefa 3.6 — `telemetry.rs` — Histograma Sem Proteção Contra Overflow
 
