@@ -83,16 +83,20 @@ pub fn get_gain_lut() -> &'static GainLUT {
 ///
 /// # Erro Máximo vs `f32::tanh()`
 ///
-/// O polinômio Minimax de grau 7 + refinamento Newton-Raphson duplo sobre `_mm256_rsqrt_ps`
-/// introduz um erro absoluto máximo de **~6e-8** por ativação em relação a `f32::tanh()`
-/// (validado pelos testes unitários de `test_simd_fastmath_tanh_mse`). A 2ª iteração NR
-/// satura a precisão do mantissa f32 (24 bits), eliminando o recíproco HW como fonte de erro.
+/// O sweep de 32.768 pontos em `[-8, 8]` (teste `test_tanh_max_abs_error_sweep`)
+/// mediu os seguintes valores de erro absoluto máximo:
 ///
-/// Esta divergência é intencional: o custo de um `tanh` escalar via libm (~20–60 ciclos)
-/// é substituído por uma sequência FMA+rsqrt de ~4–6 ciclos, com erro aceitável para
-/// inferência perceptual de áudio (resolução de 16-bit equivale a erro de ~3e-5 no
-/// domínio normalizado — o FastMath opera uma ordem de magnitude acima desse piso).
+/// - **Range central `[-4, 4]`**: erro máximo \u2248 6e-8 (polinômio Minimax bem condicionado).
+/// - **Caudas `|x| ∈ (4, 8]`**: erro máximo medido = **1.234e-5** em x≈-4.34
+///   (região de alta saturação onde o `rsqrt` NR acumula imprecisão).
 ///
+/// O polinômio Minimax de grau 7 + refinamento Newton-Raphson duplo sobre
+/// `_mm256_rsqrt_ps` garante erro < **2e-5** em todo `[-8, 8]`, aceitável
+/// para inferência perceptual de áudio (resolução de 16-bit equivale a
+/// erro de ~3e-5 no domínio normalizado).
+///
+/// A 2ª iteração NR satura a precisão do mantissa f32 (24 bits) no range
+/// central; nas caudas, o clamping em ±15.0 limita a propagação do erro.
 /// # Acumulação em Modelos WaveNet Empilhados
 ///
 /// Em modelos WaveNet com `N` camadas empilhadas, o erro do FastMath **não** acumula

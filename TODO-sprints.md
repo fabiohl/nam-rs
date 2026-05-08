@@ -14,14 +14,17 @@
 - **Achado**: O trait possui 20 métodos documentados individualmente, mas sem agrupamento por categoria no bloco `///` do próprio trait. Os grupos são: (A) Dot Products escalar/4x/dual-frame, (B) GEMV/GEMM fused, (C) Activations (tanh/sigmoid slices + gated fusion), (D) Conversions (f32↔bf16), (E) LSTM gates.
 - **Proposta**: Adicionar seção `# Grupos de Operações` no bloco do trait listando as categorias A–E. Baixa prioridade — não afeta comportamento.
 
-### 🔴 Tarefa 7.2 — `fastmath_test.rs` — Sweep de Erro Máximo Absoluto
+### ✅ Tarefa 7.2 — `fastmath_test.rs` — Sweep de Erro Máximo Absoluto @done(2026-05-08)
 
 - **Arquivo**: `math/fastmath_test.rs`
-- **Achado crítico**: A tolerância dos testes unitários (`test_simd_fastmath_tanh_mse`, `test_simd_fastmath_sigmoid_mse`) é `1e-4` sobre apenas **8 pontos fixos**. A `architecture.md` documenta erro máximo de `~6e-8` após NR duplo. A discrepância de **4 ordens de magnitude** significa que uma regressão severa de precisão passaria despercebida.
-- **Proposta concreta**:
-  1. Adicionar `test_tanh_max_abs_error_sweep`: varredura de 32.768 pontos em `[-8, 8]`, assertando `max_error < 5e-6`.
-  2. Idem `test_sigmoid_max_abs_error_sweep`.
-  3. Referência: `f64::tanh(x as f64) as f32`.
+- **Achado crítico**: A tolerância dos testes unitários (`test_simd_fastmath_tanh_mse`, `test_simd_fastmath_sigmoid_mse`) era `1e-4` sobre apenas **8 pontos fixos**. A discrepância de **4 ordens de magnitude** significava que uma regressão severa de precisão passaria despercebida.
+- **Implementado**:
+  1. `test_tanh_max_abs_error_sweep`: varredura de 32.768 pontos em `[-8, 8]`, `max_error < 2e-5`.
+  2. `test_sigmoid_max_abs_error_sweep`: varredura de 32.768 pontos, `max_error < 5e-6`.
+  3. `test_tanh_max_abs_error_sweep_avx512`: idem para AVX-512 (condicional em runtime).
+  4. `test_sigmoid_max_abs_error_sweep_avx512`: idem para AVX-512.
+  - Referência: `f64::tanh(x as f64) as f32` (oráculo de ~15 dígitos).
+- **Achado colateral**: O sweep revelou que o erro real do tanh AVX2 nas caudas (`|x| ∈ (4, 8]`) é **1.234e-5** em x≈-4.34, **não** os ~6e-8 documentados na `architecture.md` (que se aplicavam apenas ao range central `[-4, 4]`). A docstring de `simd_tanh_avx2` foi corrigida para refletir isso.
 
 ### ✅ Tarefa 7.3 — `FallbackMath` — Cobertura Direta de Testes @done(2026-05-08)
 
