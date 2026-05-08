@@ -196,7 +196,7 @@
 - **Achado**: As ativações são aplicadas em 3 chamadas SIMD separadas: `sigmoid_slice(0..2h)`, `tanh_slice(2h..3h)`, `sigmoid_slice(3h..4h)`. No C++ de referência, as portas são processadas em um kernel fundido `fused_lstm_gates` que faz sigmoid + tanh + element-wise em um único passo, evitando 3 passes sobre os dados.
 - **Proposta**: Criar um `fused_lstm_gates_dyn` que aceite dimensões dinâmicas e processe tudo em um passo, similar ao que `lstm.rs` (estático) já faz via macro.
 
-### 🟢 Tarefa 6.4 — `models/mod.rs` — Prewarm Duplicado para LSTM 1 e 2 Camadas
+### ✅ Tarefa 6.4 — `models/mod.rs` — Prewarm Duplicado para LSTM 1 e 2 Camadas (CONCLUÍDO)
 
 - **Arquivo**: `models/mod.rs:192-239`
 - **Achado**: As implementações de `NamModel::prewarm` para `LstmModel1` e `LstmModel2` são idênticas (~15 linhas cada): `reset_states`, loop de chunks de 512 com silêncio.

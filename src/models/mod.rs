@@ -190,22 +190,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
     /// O prewarm na LSTM é vital. Como é um modelo recorrente, o estado interno (memória)
     /// precisa de um tempo processando silêncio para "estabilizar" antes do áudio real.
     fn prewarm(&mut self, num_samples: usize) {
-        // 1. Limpa qualquer resíduo de processamentos anteriores.
-        self.reset_states();
-
-        // 2. Processa amostras de valor zero.
-        // Fazemos isso em pedaços (CHUNK) para reaproveitar buffers pequenos na stack.
-        const CHUNK: usize = 512;
-        let zero_in = [0.0f32; CHUNK];
-        let mut zero_out = [0.0f32; CHUNK];
-        let mut rem = num_samples;
-
-        while rem > 0 {
-            let n = rem.min(CHUNK);
-            // Simula o processamento de silêncio para carregar a memória da LSTM.
-            self.process(&zero_in[..n], &mut zero_out[..n]);
-            rem -= n;
-        }
+        lstm_prewarm_common(self, num_samples);
     }
 }
 
@@ -223,19 +208,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
 
     /// Prewarm para o modelo empilhado. Ambas as camadas são estabilizadas sequencialmente.
     fn prewarm(&mut self, num_samples: usize) {
-        // Zera os estados internos de ambas as camadas.
-        self.reset_states();
-
-        const CHUNK: usize = 512;
-        let zero_in = [0.0f32; CHUNK];
-        let mut zero_out = [0.0f32; CHUNK];
-        let mut rem = num_samples;
-
-        while rem > 0 {
-            let n = rem.min(CHUNK);
-            self.process(&zero_in[..n], &mut zero_out[..n]);
-            rem -= n;
-        }
+        lstm_prewarm_common(self, num_samples);
     }
 }
 
@@ -252,6 +225,50 @@ impl NamModel for lstm_dyn::LstmDynModel {
     /// O prewarm dinâmico já encapsula internamente a lógica de loop de silêncio.
     fn prewarm(&mut self, num_samples: usize) {
         self.prewarm(num_samples);
+    }
+}
+
+// =============================================================================
+// Helpers Internos — Redução de Boilerplate
+// =============================================================================
+
+/// Trait interno para unificar modelos que possuem estado LSTM resetável.
+trait LstmLike: NamModel {
+    fn reset_states(&mut self);
+}
+
+impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmLike
+    for lstm::LstmModel1<H, H1_IH, H_H4>
+{
+    fn reset_states(&mut self) {
+        self.reset_states();
+    }
+}
+
+impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> LstmLike
+    for lstm::LstmModel2<H, H1_IH, H2_IH, H_H4>
+{
+    fn reset_states(&mut self) {
+        self.reset_states();
+    }
+}
+
+/// Implementação genérica de aquecimento (prewarm) para modelos baseados em LSTM.
+/// Injeta silêncio para estabilizar os estados internos antes do uso real.
+fn lstm_prewarm_common(model: &mut impl LstmLike, num_samples: usize) {
+    // 1. Limpa qualquer resíduo de processamentos anteriores.
+    model.reset_states();
+
+    // 2. Processa amostras de valor zero.
+    const CHUNK: usize = 512;
+    let zero_in = [0.0f32; CHUNK];
+    let mut zero_out = [0.0f32; CHUNK];
+    let mut rem = num_samples;
+
+    while rem > 0 {
+        let n = rem.min(CHUNK);
+        model.process(&zero_in[..n], &mut zero_out[..n]);
+        rem -= n;
     }
 }
 
