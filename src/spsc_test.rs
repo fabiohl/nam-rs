@@ -48,7 +48,7 @@ fn test_gc_overflow_overwrite() {
     use std::sync::Arc;
     use std::sync::atomic::AtomicU32;
 
-    let overflow = GcOverflowBuffer::new();
+    let overflow = GcOverflowBuffer::new(64);
     let counter = Arc::new(AtomicU32::new(0));
 
     // 1. Enche o buffer de 64 slots
@@ -85,7 +85,7 @@ fn test_gc_stress_no_leak() {
     use std::sync::atomic::AtomicU32;
 
     let (mut gc_prod, mut gc_cons) = RingBuffer::new(32);
-    let overflow = GcOverflowBuffer::new();
+    let overflow = GcOverflowBuffer::new(32);
     let counter = Arc::new(AtomicU32::new(0));
 
     // Stress: 1000 trocas de "recursos"
@@ -115,4 +115,10 @@ fn test_gc_stress_no_leak() {
         1,
         "Ainda existem referências ativas! Vazamento detectado."
     );
+}
+
+#[test]
+#[should_panic(expected = "GcOverflowBuffer: capacity deve ser maior que 0")]
+fn test_gc_overflow_invalid_capacity() {
+    let _ = GcOverflowBuffer::new(0);
 }

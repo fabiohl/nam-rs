@@ -46,7 +46,7 @@
 
 > **Módulos**: `diagnostics.rs`, `spsc.rs`, `cli.rs`
 
-### 🟡 Tarefa 2.1 — `GcOverflowBuffer` — Validação de Tamanho
+### ✅ Tarefa 2.1 — `GcOverflowBuffer` — Validação de Tamanho (CONCLUÍDO)
 
 - **Arquivo**: `spsc.rs`
 - **Achado**: O `GcOverflowBuffer` aceita `capacity = 0` silenciosamente, o que pode causar panic em index `0 % 0`. Embora na prática `capacity` seja sempre > 0, a API pública deveria ser defensiva.

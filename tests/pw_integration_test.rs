@@ -43,7 +43,7 @@ fn test_pipewire_headless_integration() {
     let (res_prod, res_cons) = RingBuffer::new(2);
 
     // Buffer de fallback para overflow de GC
-    let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new());
+    let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new(64));
 
     // Flags de status compartilhado (xruns, cpu load, etc)
     let rt_status = Arc::new(RtStatusFlags::default());

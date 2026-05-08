@@ -182,15 +182,26 @@ pub enum GcItem {
 /// ele sobrescreve o mais antigo (causando leak, mas apenas em cenários extremos).
 /// Projetado para suportar apenas `Box<GcItem>` via ponteiro raw para garantir RT-safety.
 pub struct GcOverflowBuffer {
-    slots: [AtomicPtr<GcItem>; 64],
+    slots: Box<[AtomicPtr<GcItem>]>,
     write_idx: AtomicU64,
 }
 
 impl GcOverflowBuffer {
-    /// Cria um novo buffer de sobrescrita vazio.
-    pub fn new() -> Self {
+    /// Cria um novo buffer de sobrescrita vazio com a capacidade especificada.
+    ///
+    /// # Panics
+    /// Panica se `capacity` for 0.
+    pub fn new(capacity: usize) -> Self {
+        assert!(
+            capacity > 0,
+            "GcOverflowBuffer: capacity deve ser maior que 0 para evitar panic por divisão por zero."
+        );
+        let mut slots = Vec::with_capacity(capacity);
+        for _ in 0..capacity {
+            slots.push(AtomicPtr::new(std::ptr::null_mut()));
+        }
         Self {
-            slots: std::array::from_fn(|_| AtomicPtr::new(std::ptr::null_mut())),
+            slots: slots.into_boxed_slice(),
             write_idx: AtomicU64::new(0),
         }
     }
@@ -201,7 +212,8 @@ impl GcOverflowBuffer {
     /// O item deve ser convertido para `Box<GcItem>` antes de ser passado via ponteiro.
     /// RT-Safe: usa `swap` atômico sem locks.
     pub fn push_raw(&self, ptr: *mut GcItem) -> Option<*mut GcItem> {
-        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % 64) as usize;
+        let len = self.slots.len() as u64;
+        let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
         let old_ptr = self.slots[idx].swap(ptr, Ordering::Acquire);
         if old_ptr.is_null() {
             None
@@ -213,7 +225,7 @@ impl GcOverflowBuffer {
     /// Drena todos os itens presentes no buffer.
     /// Chamado pela thread de controle (Non-RT).
     pub fn drain(&self) -> Vec<GcItem> {
-        let mut items = Vec::with_capacity(64);
+        let mut items = Vec::with_capacity(self.slots.len());
         for slot in &self.slots {
             let ptr = slot.swap(std::ptr::null_mut(), Ordering::Release);
             if !ptr.is_null() {
@@ -229,7 +241,7 @@ impl GcOverflowBuffer {
 
 impl Default for GcOverflowBuffer {
     fn default() -> Self {
-        Self::new()
+        Self::new(64)
     }
 }
 
@@ -269,7 +281,9 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
     // Canal de resampler: capacidade pequena (apenas 1 em trânsito por vez, tipicamente)
     let (rs_prod, rs_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
-    let gc_overflow = Arc::new(GcOverflowBuffer::new());
+    // O buffer de overflow deve ser grande o suficiente para acomodar picos de trocas de modelos.
+    // Usamos 64 como base, ou a capacidade solicitada se for maior.
+    let gc_overflow = Arc::new(GcOverflowBuffer::new(capacity.max(64)));
 
     SpscChannels {
         param_producer: param_prod,
