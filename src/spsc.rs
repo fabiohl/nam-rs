@@ -42,6 +42,17 @@ pub const RT_STATUS_GC_OVERFLOW: u64 = 1 << 5;
 /// A thread DSP seta flags atômicas ao invés de chamar `println!`/`eprintln!`.
 /// A thread principal lê estas flags periodicamente e imprime logs ao usuário.
 /// Isso garante que **zero I/O** ocorra no callback RT.
+///
+/// ### Mapa do Bitmask (`status_bits`)
+///
+/// | Bit | Constante | Descrição |
+/// | :--- | :--- | :--- |
+/// | 0 | `NEEDS_RESAMPLER_REBUILD` | Thread DSP solicita novo resampler |
+/// | 1 | `RESAMPLER_REBUILD_FAILED` | Falha no rebuild do resampler |
+/// | 2 | `RT_IS_FIFO` | Confirmação de SCHED_FIFO ativo |
+/// | 3 | `HAS_CLIPPED` | Saturação (clipping) na saída |
+/// | 4 | `IS_SILENT` | Buffer atual abaixo de −80 dBFS |
+/// | 5 | `GC_OVERFLOW` | Overflow no canal de Garbage Collection |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.

@@ -52,7 +52,7 @@
 - **Achado**: O `GcOverflowBuffer` aceita `capacity = 0` silenciosamente, o que pode causar panic em index `0 % 0`. Embora na prática `capacity` seja sempre > 0, a API pública deveria ser defensiva.
 - **Proposta**: Adicionar `assert!(capacity > 0)` ou validação na construção.
 
-### 🟢 Tarefa 2.2 — Docs de `RtStatusFlags` — Diagrama de Bits
+### ✅ Tarefa 2.2 — Docs de `RtStatusFlags` — Diagrama de Bits (CONCLUÍDO)
 
 - **Arquivo**: `spsc.rs`
 - **Achado**: A struct é bem documentada, mas um diagrama de bits no docstring (bit 0 = HAS_CLIPPED, etc.) facilitaria a leitura para novos contribuidores.
