@@ -32,6 +32,7 @@ use anyhow::{Result, bail};
 use core::arch::x86_64::*;
 
 use super::sinc_kernel::{NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank};
+use crate::math::simd::AlignedVec;
 
 /// Tamanho do delay line (double-buffer) para garantir acesso contíguo.
 /// Mantém 2 cópias do histórico para evitar lógica de wrap no hot-path SIMD.
@@ -47,7 +48,7 @@ const DELAY_LINE_LEN: usize = TAPS_PER_PHASE * 2;
 /// circular no inner loop SIMD.
 struct DelayLine {
     /// Buffer de amostras (tamanho = DELAY_LINE_LEN = 2 × TAPS_PER_PHASE).
-    buf: Vec<f32>,
+    buf: AlignedVec<f32>,
     /// Posição de escrita (0..TAPS_PER_PHASE-1, wrapping).
     pos: usize,
 }
@@ -55,7 +56,7 @@ struct DelayLine {
 impl DelayLine {
     fn new() -> Self {
         Self {
-            buf: vec![0.0f32; DELAY_LINE_LEN],
+            buf: AlignedVec::new(DELAY_LINE_LEN, 0.0f32),
             pos: 0,
         }
     }

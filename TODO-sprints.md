@@ -60,7 +60,7 @@
 
 ---
 
-## Épico 3 — DSP Pipeline & Gate
+## Épico 3 — DSP Pipeline & Gate (CONCLUÍDO)
 
 > **Módulos**: `dsp/pipeline.rs`, `dsp/gain.rs`, `dsp/gate.rs`, `dsp/telemetry.rs`, `dsp/vring.rs`
 
@@ -112,11 +112,11 @@
 
 > **Módulos**: `dsp/resampler.rs`, `dsp/sinc_kernel.rs`
 
-### 🟡 Tarefa 4.1 — `DelayLine` Usa `Vec` — Potencial para `AlignedVec`
+### ✅ Tarefa 4.1 — `DelayLine` Usa `Vec` — Potencial para `AlignedVec` (CONCLUÍDO)
 
 - **Arquivo**: `resampler.rs:51-53`
 - **Achado**: `DelayLine.buf` é um `Vec<f32>` sem alinhamento garantido. O `window_ptr()` é usado em `convolve_stereo_avx2` que usa `_mm256_loadu_ps` (unaligned), então funciona. Porém, se o load fosse trocado para `_mm256_load_ps` (aligned, 1 ciclo mais rápido), precisaria de alinhamento.
-- **Proposta**: Avaliar custo/benefício de trocar para `AlignedVec<f32>` com alinhamento 32B e `_mm256_load_ps` no input.
+- **Solução**: `DelayLine` migrado para `AlignedVec<f32>`, garantindo alinhamento de 64 bytes (Cache Line / AVX-512). O uso de `AlignedVec::new()` assegura a alocação correta no cold-path.
 
 ### 🟡 Tarefa 4.2 — `sinc_kernel.rs` — `AlignedCoeffs._len` Nunca Usado
 
