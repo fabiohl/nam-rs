@@ -60,6 +60,32 @@ impl WaveNetLayerArrayDyn {
         condition: &[f32],
         num_frames: usize,
     ) {
+        unsafe {
+            self.process_internal_generic::<M>(layer_inputs, condition, num_frames, false);
+        }
+    }
+
+    /// AQUECIMENTO DE ESTADO (Pre-warm).
+    pub fn prewarm<M: crate::math::simd::SimdMath>(
+        &mut self,
+        layer_inputs: &[f32],
+        condition: &[f32],
+    ) {
+        unsafe {
+            self.process_internal_generic::<M>(layer_inputs, condition, 1, true);
+        }
+    }
+
+    /// Implementação genérica que unifica o processamento normal e o pre-warm.
+    /// [TA5.5] Redução de duplicidade lógica em ~70%.
+    #[inline(always)]
+    unsafe fn process_internal_generic<M: crate::math::simd::SimdMath>(
+        &mut self,
+        layer_inputs: &[f32],
+        condition: &[f32],
+        num_frames: usize,
+        prewarm_mode: bool,
+    ) {
         debug_assert_eq!(self.layers.len(), self.states.len());
         let ch = self.ch;
         let head = self.head;
@@ -70,7 +96,8 @@ impl WaveNetLayerArrayDyn {
 
         // 2) Lazy BF16 Conversion
         if M::IS_BF16 {
-            let changed = !self.condition_init || condition != &self.last_condition[..];
+            let changed =
+                prewarm_mode || !self.condition_init || condition != &self.last_condition[..];
             if changed {
                 unsafe {
                     M::f32_to_bf16(condition, &mut self.last_condition_bf16);
@@ -96,41 +123,50 @@ impl WaveNetLayerArrayDyn {
             let block_size = self.block_size;
 
             // 4) CASCATEAMENTO DE CAMADAS
-            for (i, layer) in self.layers.iter().enumerate() {
+            for i in 0..num_layers {
+                let layer = &self.layers[i];
                 let current_state = &mut *states_ptr.add(i);
 
-                if i == last_layer {
-                    layer.process_block_internal::<M>(WavenetProcessContext {
-                        condition,
-                        condition_bf16: &self.last_condition_bf16,
-                        head_input: &mut self.head_accum[0..num_frames * ch],
-                        output: &mut self.array_outputs[0..num_frames * ch],
-                        output_bf16: None,
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
-                        buffer_start: current_state.buffer_start,
-                        block: &mut self.block_buffer[0..num_frames * block_size],
-                        num_frames,
-                    });
-                } else {
-                    let next_state = &mut *states_ptr.add(i + 1);
-                    let next_start = next_state.buffer_start * ch;
-
-                    layer.process_block_internal::<M>(WavenetProcessContext {
-                        condition,
-                        condition_bf16: &self.last_condition_bf16,
-                        head_input: &mut self.head_accum[0..num_frames * ch],
-                        output: &mut next_state.layer_buffer
-                            [next_start..next_start + num_frames * ch],
-                        output_bf16: None,
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
-                        buffer_start: current_state.buffer_start,
-                        block: &mut self.block_buffer[0..num_frames * block_size],
-                        num_frames,
-                    });
+                // [PASSO 4.1: Pre-fill Ring Buffer (Backwards)]
+                // Se estivermos em modo pre-warm, replicamos a entrada atual para todo o passado.
+                if prewarm_mode {
+                    let start_idx = current_state.buffer_start * ch;
+                    for offset in 1..=current_state.receptive_field_size {
+                        let dst_idx = (current_state.buffer_start - offset) * ch;
+                        for j in 0..ch {
+                            current_state.layer_buffer[dst_idx + j] =
+                                current_state.layer_buffer[start_idx + j];
+                            current_state.layer_buffer_bf16[dst_idx + j] =
+                                current_state.layer_buffer_bf16[start_idx + j];
+                        }
+                    }
                 }
-                current_state.advance_frames(num_frames, ch);
+
+                let ctx = WavenetProcessContext {
+                    condition,
+                    condition_bf16: &self.last_condition_bf16,
+                    head_input: &mut self.head_accum[0..num_frames * ch],
+                    output: if i == last_layer {
+                        &mut self.array_outputs[0..num_frames * ch]
+                    } else {
+                        let next_state = &mut *states_ptr.add(i + 1);
+                        let next_start = next_state.buffer_start * ch;
+                        &mut next_state.layer_buffer[next_start..next_start + num_frames * ch]
+                    },
+                    output_bf16: None,
+                    layer_buffer: &current_state.layer_buffer,
+                    layer_buffer_bf16: &current_state.layer_buffer_bf16,
+                    buffer_start: current_state.buffer_start,
+                    block: &mut self.block_buffer[0..num_frames * block_size],
+                    num_frames,
+                };
+
+                layer.process_block_internal::<M>(ctx);
+
+                // No modo pre-warm não avançamos o ponteiro circular (estabilização estática).
+                if !prewarm_mode {
+                    current_state.advance_frames(num_frames, ch);
+                }
             }
 
             // 5) HEAD RECHANNEL (Skip Sum -> Output)
@@ -138,95 +174,6 @@ impl WaveNetLayerArrayDyn {
                 &self.head_accum[0..num_frames * ch],
                 &mut self.head_outputs[0..num_frames * head],
                 num_frames,
-            );
-        }
-    }
-
-    /// AQUECIMENTO DE ESTADO (Pre-warm).
-    pub fn prewarm<M: crate::math::simd::SimdMath>(
-        &mut self,
-        layer_inputs: &[f32],
-        condition: &[f32],
-    ) {
-        debug_assert_eq!(self.layers.len(), self.states.len());
-        let ch = self.ch;
-        let head = self.head;
-        let states_ptr = self.states.as_mut_ptr();
-
-        self.head_accum[..ch].fill(0.0);
-
-        if M::IS_BF16 {
-            unsafe {
-                M::f32_to_bf16(condition, &mut self.last_condition_bf16);
-            }
-            self.last_condition.copy_from_slice(condition);
-            self.condition_init = true;
-        }
-
-        unsafe {
-            let state_0 = &mut *states_ptr.add(0);
-            let start = state_0.buffer_start * ch;
-
-            self.rechannel.process_block::<M>(
-                layer_inputs,
-                &mut state_0.layer_buffer[start..start + ch],
-                1,
-            );
-
-            let num_layers = self.layers.len();
-            let last_layer = num_layers - 1;
-            let block_size = self.block_size;
-
-            for (i, layer) in self.layers.iter().enumerate() {
-                let current_state = &mut *states_ptr.add(i);
-
-                let start_idx = current_state.buffer_start * ch;
-                for offset in 1..=current_state.receptive_field_size {
-                    let dst_idx = (current_state.buffer_start - offset) * ch;
-                    for j in 0..ch {
-                        current_state.layer_buffer[dst_idx + j] =
-                            current_state.layer_buffer[start_idx + j];
-                        current_state.layer_buffer_bf16[dst_idx + j] =
-                            current_state.layer_buffer_bf16[start_idx + j];
-                    }
-                }
-
-                if i == last_layer {
-                    layer.process_block_internal::<M>(WavenetProcessContext {
-                        condition,
-                        condition_bf16: &self.last_condition_bf16,
-                        head_input: &mut self.head_accum[0..ch],
-                        output: &mut self.array_outputs[0..ch],
-                        output_bf16: None,
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
-                        buffer_start: current_state.buffer_start,
-                        block: &mut self.block_buffer[0..block_size],
-                        num_frames: 1,
-                    });
-                } else {
-                    let next_state = &mut *states_ptr.add(i + 1);
-                    let next_start = next_state.buffer_start * ch;
-
-                    layer.process_block_internal::<M>(WavenetProcessContext {
-                        condition,
-                        condition_bf16: &self.last_condition_bf16,
-                        head_input: &mut self.head_accum[0..ch],
-                        output: &mut next_state.layer_buffer[next_start..next_start + ch],
-                        output_bf16: None,
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
-                        buffer_start: current_state.buffer_start,
-                        block: &mut self.block_buffer[0..block_size],
-                        num_frames: 1,
-                    });
-                }
-            }
-
-            self.head_rechannel.process_block::<M>(
-                &self.head_accum[0..ch],
-                &mut self.head_outputs[0..head],
-                1,
             );
         }
     }

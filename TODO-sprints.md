@@ -160,7 +160,7 @@
 - **Achado**: `assert!(mixin_len <= 4096, ...)` no `process_block_internal` é executado a cada chamada no hot-path DSP. Em release, se a condição falhar, causa panic (abort). Em debug, causa panic. Ambos violam RT-safety.
 - **Proposta**: Converter para `debug_assert!` (somente em debug) ou validar na construção/carregamento para garantir que `num_frames * out_ch ≤ 4096` é sempre verdade (contrato estático).
 
-### 🟡 Tarefa 5.5 — `wavenet_dyn.rs` — Duplicação entre `process` e `prewarm`
+### ✅ Tarefa 5.5 — `wavenet_dyn.rs` — Duplicação entre `process` e `prewarm` (CONCLUÍDO)
 
 - **Arquivo**: `wavenet_dyn.rs:51-233`
 - **Achado**: O método `process` e `prewarm` em `WaveNetLayerArrayDyn` compartilham ~70% da lógica (setup, rechannel, cascateamento, head_rechannel). A diferença principal é que `prewarm` processa 1 frame e preenche o RF backward.
