@@ -184,7 +184,7 @@
 - **Achado**: A macro `define_lstm_process!` gera `process_sample_*` com `#[$target_meta]` como atributo. Para a variante AVX2, usa `#[inline(always)]` (sem target_feature), enquanto AVX512 usa `#[target_feature(enable = "avx512f,...")]`. Isso é intencional (AVX2 é baseline do target), mas a inconsistência visual dificulta revisão.
 - **Proposta**: Documentar a decisão no próprio macro com um comentário inline.
 
-### 🟡 Tarefa 6.2 — `lstm.rs` — Fallback Escalar Usa `half::f16` Sem SIMD
+### ✅ Tarefa 6.2 — `lstm.rs` — Fallback Escalar Usa `half::f16` Sem SIMD (CONCLUÍDO)
 
 - **Arquivo**: `lstm.rs:307-337`
 - **Achado**: `process_sample_scalar` converte pesos via `half::f16::from_bits(w).to_f32()` dentro de um loop triplo aninhado. Este fallback nunca é chamado no hot-path (os SIMD variants são usados), mas se fosse, seria extremamente lento.

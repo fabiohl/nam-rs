@@ -144,6 +144,7 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
     });
 
     // Caminho escalar explícito para medir o "speedup" teórico
+    #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::DynamicModel::Lstm1x8(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
@@ -171,6 +172,7 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
         });
     });
 
+    #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::DynamicModel::Lstm2x16(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
