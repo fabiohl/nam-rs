@@ -94,11 +94,11 @@
 - **Achado**: O parâmetro `_params: &GateParams` era intencionalmente não-utilizado em `apply_gain_rt`, mas passado em todos os call sites.
 - **Solução**: Removido o parâmetro `params` de `apply_gain_rt`, `apply_output_stage` e de todos os call sites (incluindo testes), simplificando a API e reduzindo o acoplamento desnecessário, já que o estado do gate já está "baked" no `DynamicHysteresis`.
 
-### 🟢 Tarefa 3.6 — `telemetry.rs` — Histograma Sem Proteção Contra Overflow
+### ✅ Tarefa 3.6 — `telemetry.rs` — Histograma Sem Proteção Contra Overflow (CONCLUÍDO)
 
 - **Arquivo**: `telemetry.rs:49`
-- **Achado**: `bins[index].fetch_add(1, Relaxed)` pode silenciosamente wrapar em `u32::MAX` após ~4 bilhões de observações. Para sessões longas de gravação (horas), isso é improvável mas não impossível.
-- **Proposta**: Usar `fetch_update` com saturação ou aceitar o wrap e documentar.
+- **Achado**: `bins[index].fetch_add(1, Relaxed)` poderia silenciosamente wrapar em `u32::MAX` após ~4 bilhões de observações, invalidando cálculos de percentil.
+- **Solução**: Implementada adição saturante usando `fetch_update`. Embora o custo de um loop CAS seja ligeiramente superior a um `fetch_add`, a integridade estatística em sessões de longa duração é preservada.
 
 ### 🟢 Tarefa 3.7 — `vring.rs` — `VirtualRingBuffer` Não Implementa `Debug`
 

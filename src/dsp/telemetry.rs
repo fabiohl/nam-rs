@@ -36,7 +36,9 @@ impl LatencyHistogram {
     #[inline(always)]
     pub fn record(&self, duration_ns: u64) {
         if duration_ns == 0 {
-            self.bins[0].fetch_add(1, Ordering::Relaxed);
+            let _ = self.bins[0].fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_add(1))
+            });
             return;
         }
 
@@ -46,7 +48,9 @@ impl LatencyHistogram {
         let msb = 63 - duration_ns.leading_zeros();
         let index = msb.saturating_sub(5).min(31) as usize;
 
-        self.bins[index].fetch_add(1, Ordering::Relaxed);
+        let _ = self.bins[index].fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+            Some(v.saturating_add(1))
+        });
     }
 
     /// Calcula o valor aproximado de um percentil (ex: 0.95 para P95).
