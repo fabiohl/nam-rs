@@ -10,12 +10,23 @@
 /// features de CPU específicas (AVX2/FMA mínimo). O chamador deve garantir que a CPU
 /// suporte as features declaradas via `#[target_feature]` na implementação concreta.
 /// Os slices passados devem ser válidos e acessíveis para leitura/escrita conforme indicado.
+///
+/// # Grupos de Operações
+///
+/// As operações deste trait estão organizadas nos seguintes grupos:
+/// - **(A) Dot Products**: Produtos escalares escalar/4x/dual-frame (e.g., `dot_product`).
+/// - **(B) GEMV/GEMM Fused**: Kernels fundidos de matriz-vetor/matriz-matriz (e.g., `fused_add_gemv`).
+/// - **(C) Activations**: Funções de ativação tanh/sigmoid e fusões gated (e.g., `tanh_slice`).
+/// - **(D) Conversions**: Utilitários de conversão f32 ↔ bf16 (e.g., `f32_to_bf16`).
+/// - **(E) LSTM Gates**: Kernels específicos para portas de células LSTM (e.g., `fused_lstm_gates_dyn`).
 pub trait SimdMath {
     /// Tipo de registrador SIMD utilizado (ex: __m256 ou __m512).
     type V: Copy;
 
     /// Indica se esta implementação utiliza pesos e sinais em formato BF16.
     const IS_BF16: bool = false;
+
+    // --- (A) Dot Products ---
 
     /// Calcula o produto escalar entre dois vetores f32.
     ///
@@ -73,6 +84,14 @@ pub trait SimdMath {
         w3: &[u16],
         in_frame: &[u16],
     ) -> [f32; 4];
+
+    /// Soma horizontal de um buffer.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32;
+
+    // --- (B) GEMV/GEMM Fused ---
 
     /// Kernel fundido de adição e GEMV.
     ///
@@ -163,6 +182,8 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    // --- (C) Activations ---
+
     /// Acumula o conteúdo de um vetor em outro.
     ///
     /// # Safety
@@ -185,18 +206,6 @@ pub trait SimdMath {
         ch: usize,
     );
 
-    /// Conversão de F32 para BF16.
-    ///
-    /// # Safety
-    /// Buffers devem ser válidos.
-    unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]);
-
-    /// Armazena o conteúdo de um registrador SIMD como BF16 (truncado).
-    ///
-    /// # Safety
-    /// O ponteiro deve ser válido e ter espaço suficiente.
-    unsafe fn store_bf16(ptr: *mut u16, v: Self::V);
-
     /// Aplica Tanh em um slice.
     ///
     /// # Safety
@@ -209,17 +218,27 @@ pub trait SimdMath {
     /// Buffers devem ser válidos.
     unsafe fn sigmoid_slice(slice: &mut [f32]);
 
-    /// Soma horizontal de um buffer.
-    ///
-    /// # Safety
-    /// Buffers devem ser válidos.
-    unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32;
-
     /// Ativação Tanh em bloco.
     ///
     /// # Safety
     /// Buffers devem ser válidos.
     unsafe fn activation_tanh_block(buf: &mut [f32]);
+
+    // --- (D) Conversions ---
+
+    /// Conversão de F32 para BF16.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]);
+
+    /// Armazena o conteúdo de um registrador SIMD como BF16 (truncado).
+    ///
+    /// # Safety
+    /// O ponteiro deve ser válido e ter espaço suficiente.
+    unsafe fn store_bf16(ptr: *mut u16, v: Self::V);
+
+    // --- (E) LSTM Gates ---
 
     /// Kernel fundido para processamento de portas LSTM dinâmicas.
     /// Realiza ativações (sigmoid/tanh) e atualização de estado (cell/hidden) em um único passo.

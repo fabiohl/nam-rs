@@ -8,13 +8,13 @@
 
 > **Módulos**: `math/simd/traits.rs`, `math/simd/fallback.rs`, `math/fastmath.rs`, `math/fastmath_test.rs`
 
-### 🟡 Tarefa 7.2 — Trait `SimdMath` — Categorização por Grupos na Doc
+### ✅ Tarefa 7.1 — Trait `SimdMath` — Categorização por Grupos na Doc
 
 - **Arquivo**: `math/simd/traits.rs`
 - **Achado**: O trait possui 20 métodos documentados individualmente, mas sem agrupamento por categoria no bloco `///` do próprio trait. Os grupos são: (A) Dot Products escalar/4x/dual-frame, (B) GEMV/GEMM fused, (C) Activations (tanh/sigmoid slices + gated fusion), (D) Conversions (f32↔bf16), (E) LSTM gates.
 - **Proposta**: Adicionar seção `# Grupos de Operações` no bloco do trait listando as categorias A–E. Baixa prioridade — não afeta comportamento.
 
-### 🔴 Tarefa 7.3 — `fastmath_test.rs` — Sweep de Erro Máximo Absoluto
+### 🔴 Tarefa 7.2 — `fastmath_test.rs` — Sweep de Erro Máximo Absoluto
 
 - **Arquivo**: `math/fastmath_test.rs`
 - **Achado crítico**: A tolerância dos testes unitários (`test_simd_fastmath_tanh_mse`, `test_simd_fastmath_sigmoid_mse`) é `1e-4` sobre apenas **8 pontos fixos**. A `architecture.md` documenta erro máximo de `~6e-8` após NR duplo. A discrepância de **4 ordens de magnitude** significa que uma regressão severa de precisão passaria despercebida.
@@ -23,7 +23,7 @@
   2. Idem `test_sigmoid_max_abs_error_sweep`.
   3. Referência: `f64::tanh(x as f64) as f32`.
 
-### 🔴 Tarefa 7.4 — `FallbackMath` — Cobertura Direta de Testes
+### 🔴 Tarefa 7.3 — `FallbackMath` — Cobertura Direta de Testes
 
 - **Arquivo**: `math/simd/fallback.rs` (ou `math/simd_test.rs`)
 - **Achado**: Em ambiente x86-64-v3, `FallbackMath` **nunca é selecionado em runtime**. Bugs nessa implementação são invisíveis em CI.
