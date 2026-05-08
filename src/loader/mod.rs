@@ -16,17 +16,41 @@ pub mod nam_json;
 pub mod namb;
 pub mod namb_encoder;
 
-/// Resultado da carga de modelos (L, R, InAdj, OutAdj, Rate)
-pub type LoadedModels = (
-    Option<Box<DynamicModel>>,
-    Option<Box<DynamicModel>>,
-    f32,
-    f32,
-    u32,
-);
+/// Nível de entrada padrão em dBu para modelos que não especificam metadados.
+const DEFAULT_INPUT_LEVEL_DBU: f32 = 12.0;
+/// Loudness de referência padrão em dB para normalização.
+const DEFAULT_LOUDNESS_DB: f32 = -18.0;
+/// Taxa de amostragem padrão de referência (NAM standard).
+const DEFAULT_SAMPLE_RATE: f32 = 48000.0;
+
+/// Par de modelos carregados com metadados de calibração.
+pub struct LoadedModelPair {
+    /// Modelo para o canal esquerdo.
+    pub model_l: Option<Box<DynamicModel>>,
+    /// Modelo para o canal direito.
+    pub model_r: Option<Box<DynamicModel>>,
+    /// Multiplicador de ajuste de ganho de entrada.
+    pub input_mult_adj: f32,
+    /// Multiplicador de ajuste de ganho de saída.
+    pub output_mult_adj: f32,
+    /// Taxa de amostragem nativa do modelo.
+    pub sample_rate: u32,
+}
+
+impl std::fmt::Debug for LoadedModelPair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LoadedModelPair")
+            .field("model_l", &self.model_l.as_ref().map(|_| "DynamicModel"))
+            .field("model_r", &self.model_r.as_ref().map(|_| "DynamicModel"))
+            .field("input_mult_adj", &self.input_mult_adj)
+            .field("output_mult_adj", &self.output_mult_adj)
+            .field("sample_rate", &self.sample_rate)
+            .finish()
+    }
+}
 
 /// Carrega e constrói um par de modelos (L+R) a partir de um arquivo.
-pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result<LoadedModels> {
+pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result<LoadedModelPair> {
     let path_str = path.to_string_lossy();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let ext_lower = ext.to_lowercase();
@@ -78,28 +102,13 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
     };
 
     // 2. Extração de Metadados e Calibração
-    let meta = model_data
-        .metadata
-        .clone()
-        .unwrap_or(nam_json::NamMetadata {
-            date: None,
-            name: None,
-            modeled_by: None,
-            gear_make: None,
-            gear_model: None,
-            gear_type: None,
-            tone_type: None,
-            training: None,
-            input_level_dbu: None,
-            output_level_dbu: None,
-            loudness: None,
-        });
-    let in_level = meta.input_level_dbu.unwrap_or(12.0);
-    let loudness = meta.loudness.unwrap_or(-18.0);
+    let meta = model_data.metadata.clone().unwrap_or_default();
+    let in_level = meta.input_level_dbu.unwrap_or(DEFAULT_INPUT_LEVEL_DBU);
+    let loudness = meta.loudness.unwrap_or(DEFAULT_LOUDNESS_DB);
 
-    let input_db_adj = 12.0 - in_level;
-    let output_db_adj = -18.0 - loudness;
-    let nam_rate = model_data.sample_rate.unwrap_or(48000.0) as u32;
+    let input_db_adj = DEFAULT_INPUT_LEVEL_DBU - in_level;
+    let output_db_adj = DEFAULT_LOUDNESS_DB - loudness;
+    let nam_rate = model_data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as u32;
 
     let lut = crate::math::fastmath::get_gain_lut();
     let input_mult_adj = lut.db_to_linear(input_db_adj);
@@ -130,5 +139,11 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         m.prewarm(2048);
     }
 
-    Ok((model_l, model_r, input_mult_adj, output_mult_adj, nam_rate))
+    Ok(LoadedModelPair {
+        model_l,
+        model_r,
+        input_mult_adj,
+        output_mult_adj,
+        sample_rate: nam_rate,
+    })
 }

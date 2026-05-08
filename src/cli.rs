@@ -239,13 +239,19 @@ pub fn cli_loop(
                     let path = Path::new(path_str);
                     println!("{} Carregando: {} ...", "📂".cyan(), path_str);
                     match load_and_build_model(path, &sys) {
-                        Ok((model_l, model_r, in_adj, out_adj, rate)) => {
+                        Ok(nam_rs::loader::LoadedModelPair {
+                            model_l,
+                            model_r,
+                            input_mult_adj,
+                            output_mult_adj,
+                            sample_rate,
+                        }) => {
                             let _ = producer.push(ParamPayload::LoadModel {
                                 model_l,
                                 model_r,
-                                input_mult_adj: in_adj,
-                                output_mult_adj: out_adj,
-                                sample_rate: rate,
+                                input_mult_adj,
+                                output_mult_adj,
+                                sample_rate,
                             });
                             println!("{} Modelo carregado com sucesso.", "✅".green());
                         }

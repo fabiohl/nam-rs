@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Estrutura de data usada na seção metadata do `.nam`.
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct NamDate {
     /// Ano.
     pub year: Option<i32>,
@@ -26,7 +26,7 @@ pub struct NamDate {
 
 /// Metadados opcionais contidos no fim do formato `.nam`.
 /// Fonte: https://neural-amp-modeler.readthedocs.io/en/latest/model-file.html
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct NamMetadata {
     /// Data de autoria ou exportação do modelo.
     pub date: Option<NamDate>,

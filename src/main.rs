@@ -75,13 +75,19 @@ fn main() -> anyhow::Result<()> {
     if let Some(path) = model_path {
         log::info!("{} Carregando modelo inicial...", "📂".cyan());
         match loader::load_and_build_model(&path, &sys) {
-            Ok((model_l, model_r, in_adj, out_adj, rate)) => {
+            Ok(nam_rs::loader::LoadedModelPair {
+                model_l,
+                model_r,
+                input_mult_adj,
+                output_mult_adj,
+                sample_rate,
+            }) => {
                 let _ = producer.push(ParamPayload::LoadModel {
                     model_l,
                     model_r,
-                    input_mult_adj: in_adj,
-                    output_mult_adj: out_adj,
-                    sample_rate: rate,
+                    input_mult_adj,
+                    output_mult_adj,
+                    sample_rate,
                 });
             }
             Err(e) => log::error!("Falha na carga inicial: {}", e),
