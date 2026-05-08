@@ -168,7 +168,7 @@ pub fn build_lstm_dynamic(
         let ih = current_input_size + hidden_size;
         let mut input_hidden_weights = vec![0u16; raw_weights.len()];
 
-        if data.weights_layout == crate::loader::nam_json::WeightsLayout::GateMajorLstm {
+        if cursor.is_gate_major_lstm() {
             // Layout já otimizado: [Gate][IH][H] — Cópia direta
             for i in 0..raw_weights.len() {
                 input_hidden_weights[i] = if is_bf16 {
