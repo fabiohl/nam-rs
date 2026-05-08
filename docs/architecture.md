@@ -34,12 +34,15 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > **Decisão:** As funções de ativação `tanh` e `sigmoid` usam aproximações polinomiais SIMD
 > (Minimax + Newton-Raphson duplo) em vez de chamadas à libm IEEE-754 compliant.
 >
-> **Consequência:** Erro máximo de ~6e-8 (tanh) e ~6e-8 (sigmoid) por ativação vs libm.
+> **Consequência:** Erro máximo por ativação vs libm (range completo `[-8, 8]`):
+> - **tanh**: **< 2e-5** (sweep de 32.768 pontos, T7.2-2026-05-08); pior ponto em x≈-4.34 (1.234e-5).
+>   No range central `[-4, 4]` o erro cai para ~6e-8 (polinômio Minimax saturando o mantissa f32).
+> - **sigmoid**: **< 5e-6** (sweep de 32.768 pontos, T7.2-2026-05-08); erro uniforme por todo o range.
 > O áudio resultante **não é bit-a-bit idêntico** ao motor C++ NeuralAmpModelerCore.
 > A divergência é **perceptualmente inaudível** (erro uma ordem de magnitude abaixo
 > do piso de quantização 16-bit PCM).
 >
-> **Justificativa:** O trade-off sacrifica ~5 casas decimais de precisão para ganhar
+> **Justificativa:** O trade-off sacrifica ~4–5 casas decimais de precisão para ganhar
 > ~10-20× de throughput (4-8 ciclos/ativação vs 20-60 ciclos/ativação no libm escalar).
 > Para atingir paridade bit-a-bit seria necessário usar `exp()`/`tanh()` escalar via libm,
 > eliminando todo o ganho SIMD que é a razão de existência do NAM-rs.
@@ -49,16 +52,17 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > - **LSTM** (1 camada, 4 ativações/sample): SNR ~24.5 dB vs C++ (divergência mínima)
 > - **WaveNet Standard** (20 camadas, ~60 ativações/sample): SNR ~10 dB vs C++ (acumulação sublinear √N)
 >
-> **Fontes de erro do `simd_sigmoid_avx2` (após NR duplo):**
+> **Fontes de erro do `simd_sigmoid_avx2` (após NR duplo, range central):**
 >
 > 1. Polinômio Minimax D6 para `exp(f)`: erro ~1e-7 (fonte residual dominante)
 > 2. `_mm256_rcp_ps` + 2× Newton-Raphson: precisão saturada a ~24 bits (~6e-8 relativo)
 > 3. Range reduction via `_mm256_cvtps_epi32`: ~1 ULP em fronteiras
 > 4. Composição multiplicativa `rcp(1 + exp(-x))`: erro pico ~6e-8 para |x| < 5
 >
-> **Validação:** Proptest com 1000+ valores aleatórios (`prop_simd_tanh_avx2_rmse`,
-> `prop_simd_sigmoid_avx2_rmse`), golden vectors cross-C++ (4 modelos), e regression
-> goldens self-reference (7 modelos, MSE < 1e-6).
+> **Validação:** Sweep determinístico de 32.768 pontos em `[-8, 8]` (`test_tanh_max_abs_error_sweep`,
+> `test_sigmoid_max_abs_error_sweep`); proptest com 10.000 inputs aleatórios (`prop_simd_tanh_avx2_rmse`,
+> `prop_simd_sigmoid_avx2_rmse`); golden vectors cross-C++ (4 modelos); regression goldens
+> self-reference (7 modelos, MSE < 1e-6).
 >
 > **Referências:** `src/math/fastmath.rs` (docstring de `simd_tanh_avx2`),
 > `tests/fixtures/README.md`, `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)

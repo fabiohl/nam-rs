@@ -68,8 +68,10 @@ proptest! {
             // Garantia fundamental: nenhuma ativação pode gerar valores inválidos
             assert!(actual.is_finite(), "Saída NaN/Inf gerada pelo polinômio FastMath Tanh!");
 
-            // O threshold de 5e-3 é o limite superior do erro Minimax de grau 5 usado.
-            // Para modelagem de áudio (guitarra), esse erro é inaudível (-60dB+ de precisão).
+            // Limite de sanidade: o proptest varre [-10, 10] (além do range otimizado [-8, 8]).
+            // Nas caudas extremas |x| > 8 o polinômio Minimax de grau 7 pode ter erro maior
+            // (embora o clamp em ±15.0 mitigue isso). Para o range [-8, 8], o sweep T7.2
+            // confirmou max_error < 2e-5 (threshold muito mais apertado).
             assert!(
                 error <= 5e-3,
                 "Falha na precisão Tanh. Entrada: {}. Esperado: {}, Obtido: {}, Delta: {}",
