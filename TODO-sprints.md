@@ -18,7 +18,7 @@
 
 ---
 
-## Épico 1 — Fundação & Infraestrutura
+## Épico 1 — Fundação & Infraestrutura (CONCLUÍDO)
 
 > **Módulos**: `Cargo.toml`, `lib.rs`, `main.rs`, `params.rs`, `audio_host.rs`, `colors.rs`
 
