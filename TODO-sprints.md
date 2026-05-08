@@ -18,7 +18,7 @@
   4. **Dropped Frames**: exercitar a condição de drop no `write_bridge`/`handle_silence_bypass`.
 - **Proposta**: 4 testes unitários dedicados. Os que tocam o hot-path devem usar `CountingAllocator` para zero-alloc guard.
 
-### 🔴 Tarefa 9.2 — Zero-Alloc Guard para `capture_dsp_pipeline`
+### 🟢 Tarefa 9.2 — Zero-Alloc Guard para `capture_dsp_pipeline`
 
 - **Arquivo**: `tests/nam_infer_test.rs`
 - **Achado**: `test_zero_alloc_process_*` cobrem apenas `.process()` do modelo. O `capture_dsp_pipeline` completo (gate + resampler bypass + bridge write) **não tem guard de alocação**. Uma alocação acidental em `pipeline.rs` não seria detectada.

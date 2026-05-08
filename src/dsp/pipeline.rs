@@ -53,7 +53,7 @@ pub struct PipewireHostConfig {
 #[cfg(any(feature = "standalone", test))]
 /// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
 /// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
-pub(crate) const MAX_BRIDGE_BUF: usize = 8192;
+pub const MAX_BRIDGE_BUF: usize = 8192;
 #[cfg(any(feature = "standalone", test))]
 /// Tamanho máximo do buffer para resampling.
 ///
@@ -61,12 +61,12 @@ pub(crate) const MAX_BRIDGE_BUF: usize = 8192;
 /// no `DspPipelineContext`. Aumentar este valor impacta o tamanho do objeto da closure
 /// de processamento (que deve caber na stack da thread RT ou ser movido para o heap).
 /// Atualmente fixado em 4096 amostras (16 KiB por canal).
-pub(crate) const MAX_RESAMP_BUF: usize = 4096;
+pub const MAX_RESAMP_BUF: usize = 4096;
 
 #[cfg(any(feature = "standalone", test))]
 /// Buffer individual de áudio para o DspBridge (double-buffer).
 #[repr(align(128))]
-pub(crate) struct BridgeBuffer {
+pub struct BridgeBuffer {
     /// Buffer de saída processada, canal esquerdo.
     pub buf_l: [f32; MAX_BRIDGE_BUF],
     /// Buffer de saída processada, canal direito.
@@ -84,7 +84,7 @@ pub(crate) struct BridgeBuffer {
 ///
 /// Alinhado a 128 bytes para evitar false-sharing entre os dois callbacks RT.
 #[repr(align(128))]
-pub(crate) struct DspBridge {
+pub struct DspBridge {
     /// Os dois buffers físicos (front / back) para o double-buffering.
     pub buffers: [BridgeBuffer; 2],
     /// Índice do buffer ativo para LEITURA (0 ou 1). O capture sempre escreve no (1 - ativo).
@@ -100,7 +100,7 @@ pub(crate) struct DspBridge {
 
 #[cfg(any(feature = "standalone", test))]
 /// Contexto de dados para a pipeline DSP hot-path.
-pub(crate) struct DspPipelineContext<'a> {
+pub struct DspPipelineContext<'a> {
     /// Resampler ativo para conversão de sample rate.
     pub resampler: &'a mut NamResampler,
     /// Modelo ativo para o canal esquerdo.
@@ -145,7 +145,8 @@ pub(crate) struct DspPipelineContext<'a> {
 #[cfg(any(feature = "standalone", test))]
 #[cold]
 #[inline(never)]
-pub(crate) fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
     rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
 
     let bridge_ref = unsafe { &mut *bridge_ptr };
@@ -372,7 +373,8 @@ fn write_bridge(
 #[cfg(any(feature = "standalone", test))]
 /// Pipeline DSP Completo (Agregador).
 #[inline(always)]
-pub(crate) fn capture_dsp_pipeline(
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn capture_dsp_pipeline(
     samples_l: &mut [f32],
     samples_r: &mut [f32],
     n_samples: usize,

@@ -1497,6 +1497,105 @@ fn test_zero_alloc_process_wavenet_dynamic() {
     }
 }
 
+/// Teste de Verificação de Zero-Allocation para a DSP Pipeline Completa
+#[test]
+fn test_zero_alloc_capture_pipeline() {
+    use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
+    use nam_rs::dsp::pipeline::{
+        BridgeBuffer, DspBridge, DspPipelineContext, MAX_BRIDGE_BUF, MAX_RESAMP_BUF,
+        capture_dsp_pipeline,
+    };
+    use nam_rs::dsp::resampler::NamResampler;
+    use nam_rs::spsc::RtStatusFlags;
+
+    let path = model_path("BossWN-standard.nam");
+    if !path.exists() {
+        eprintln!("SKIP: BossWN-standard.nam não encontrado.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+    let mut model_l = build_model(&model_data).expect("Falha ao construir modelo (L)");
+    let mut model_r = build_model(&model_data).expect("Falha ao construir modelo (R)");
+
+    model_l.prewarm(2048);
+    model_r.prewarm(2048);
+
+    let n = 64;
+    let mut resampler = NamResampler::new(48000, 48000, n).unwrap();
+    let rt_status = RtStatusFlags::default();
+    let mut bridge = Box::new(DspBridge {
+        buffers: [
+            BridgeBuffer {
+                buf_l: [0.0; MAX_BRIDGE_BUF],
+                buf_r: [0.0; MAX_BRIDGE_BUF],
+                n_samples: 0,
+            },
+            BridgeBuffer {
+                buf_l: [0.0; MAX_BRIDGE_BUF],
+                buf_r: [0.0; MAX_BRIDGE_BUF],
+                n_samples: 0,
+            },
+        ],
+        active_read_idx: std::sync::atomic::AtomicUsize::new(0),
+        generation: std::sync::atomic::AtomicU64::new(0),
+        consumed_gen: std::sync::atomic::AtomicU64::new(0),
+        dropped_frames: std::sync::atomic::AtomicU32::new(0),
+    });
+
+    let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];
+    let mut resamp_mid_r = vec![0.0; MAX_RESAMP_BUF];
+    let mut resamp_out_l = vec![0.0; MAX_RESAMP_BUF];
+    let mut resamp_out_r = vec![0.0; MAX_RESAMP_BUF];
+    let mut model_out_l = vec![0.0; MAX_RESAMP_BUF];
+    let mut model_out_r = vec![0.0; MAX_RESAMP_BUF];
+
+    let gate_params = GateParams::default();
+    let mut silence_hysteresis = DynamicHysteresis::new();
+    let mut mono_hysteresis = DynamicHysteresis::new();
+    let mut process_mono = false;
+
+    let mut samples_l = generate_sine_440hz(n);
+    let mut samples_r = generate_sine_440hz(n);
+
+    let mut opt_model_l = Some(model_l);
+    let mut opt_model_r = Some(model_r);
+
+    let ctx = DspPipelineContext {
+        resampler: &mut resampler,
+        active_model_l: &mut opt_model_l,
+        active_model_r: &mut opt_model_r,
+        input_gain_mult: 1.0,
+        output_gain_mult: 1.0,
+        gate_params: &gate_params,
+        silence_hysteresis: &mut silence_hysteresis,
+        mono_hysteresis: &mut mono_hysteresis,
+        threshold_open_sq: 0.0,
+        threshold_close_sq: 0.0,
+        process_mono: &mut process_mono,
+        rt_status: &rt_status,
+        bridge_ptr: &mut *bridge as *mut DspBridge,
+        resamp_mid_l: &mut resamp_mid_l,
+        resamp_mid_r: &mut resamp_mid_r,
+        resamp_out_l: &mut resamp_out_l,
+        resamp_out_r: &mut resamp_out_r,
+        model_out_l: &mut model_out_l,
+        model_out_r: &mut model_out_r,
+    };
+
+    {
+        let _guard = TrackingGuard::new();
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+    }
+
+    let count = ALLOC_COUNT.load(Ordering::Relaxed);
+    assert_eq!(
+        count, 0,
+        "Alocação no capture_dsp_pipeline! A pipeline inteira deve ser zero-alloc."
+    );
+}
+
 // =============================================================================
 // Testes de Invariância de Bloco (Block Size Agnostic)
 // =============================================================================
