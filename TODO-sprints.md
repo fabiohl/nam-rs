@@ -132,11 +132,11 @@
 
 ---
 
-## Épico 5 — Modelo Neural: WaveNet
+## ✅ Épico 5 — Modelo Neural: WaveNet (CONCLUÍDO)
 
 > **Módulos**: `models/wavenet.rs`, `models/wavenet_common.rs`, `models/wavenet_dyn.rs`, `loader/dispatcher/wavenet.rs`
 
-### 🟡 Tarefa 5.1 — Duplicação Massiva entre `process_single_frame` e `process_single_frame_bf16`
+### ✅ Tarefa 5.1 — Duplicação Massiva entre `process_single_frame` e `process_single_frame_bf16` (CONCLUÍDO)
 
 - **Arquivo**: `wavenet.rs:82-332`
 - **Achado**: Os métodos `process_single_frame_internal` (~100 linhas) e `process_single_frame_bf16_internal` (~100 linhas) compartilham ~90% da estrutura lógica, diferindo apenas no tipo do `layer_buffer` (`&[f32]` vs `&[u16]`), no tipo de `in_taps` (`[f32; IN]` vs `[u16; IN]`), e no dispatch para `dot_product_4x_interleaved` vs `dot_product_4x_interleaved_bf16`. O mesmo padrão repete-se em `process_dual_frame_internal` (~165 linhas) vs `process_dual_frame_bf16_internal` (~125 linhas).
