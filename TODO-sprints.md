@@ -166,7 +166,7 @@
 - **Achado**: O método `process` e `prewarm` em `WaveNetLayerArrayDyn` compartilham ~70% da lógica (setup, rechannel, cascateamento, head_rechannel). A diferença principal é que `prewarm` processa 1 frame e preenche o RF backward.
 - **Proposta**: Extrair a lógica comum de cascateamento para um helper parametrizado por `num_frames` e "pre-fill mode".
 
-### 🟢 Tarefa 5.6 — `loader/dispatcher/wavenet.rs` — Duplicação de Lógica de Quantização
+### ✅ Tarefa 5.6 — `loader/dispatcher/wavenet.rs` — Duplicação de Lógica de Quantização (CONCLUÍDO)
 
 - **Arquivo**: `loader/dispatcher/wavenet.rs:346-397 + 466-527`
 - **Achado**: A lógica `if is_bf16 { f32_to_bf16(raw[i]) } else { half::f16::from_f32(raw[i]).to_bits() }` e o transpose Interleaved 4-Wide são duplicados verbatim entre `read_conv1d_weights` (const generic) e `read_conv1d_weights_dyn` (dinâmico). O mesmo ocorre com `read_dense_layer` vs `read_dense_layer_dyn`.

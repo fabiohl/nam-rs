@@ -349,52 +349,11 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
     let mut weights = AlignedVec::new(total, 0u16);
 
     if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
-        // Layout já otimizado (Intercalado 4-Wide) — Cópia direta
         for i in 0..total {
-            weights[i] = if is_bf16 {
-                f32_to_bf16(raw[i])
-            } else {
-                half::f16::from_f32(raw[i]).to_bits()
-            };
+            weights[i] = quantize_weight(raw[i], is_bf16);
         }
     } else {
-        // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
-        // Otimiza o carregamento de 4 pesos simultâneos via SIMD.
-        let num_blocks = OUT / 4;
-        for b in 0..num_blocks {
-            for k in 0..K {
-                for in_c in 0..IN {
-                    for lane in 0..4 {
-                        let out_c = b * 4 + lane;
-                        let raw_idx = (out_c * IN + in_c) * K + k;
-                        let val = if is_bf16 {
-                            f32_to_bf16(raw[raw_idx])
-                        } else {
-                            half::f16::from_f32(raw[raw_idx]).to_bits()
-                        };
-                        let target_idx = b * (K * IN * 4) + k * (IN * 4) + in_c * 4 + lane;
-                        weights[target_idx] = val;
-                    }
-                }
-            }
-        }
-
-        // Canais de cauda (Remainder) se OUT não for múltiplo de 4
-        let tail_start_ch = num_blocks * 4;
-        for out_c in tail_start_ch..OUT {
-            for in_c in 0..IN {
-                for k in 0..K {
-                    let raw_idx = (out_c * IN + in_c) * K + k;
-                    let val = if is_bf16 {
-                        f32_to_bf16(raw[raw_idx])
-                    } else {
-                        half::f16::from_f32(raw[raw_idx]).to_bits()
-                    };
-                    let target_idx = out_c * K * IN + k * IN + in_c;
-                    weights[target_idx] = val;
-                }
-            }
-        }
+        transpose_conv1d_interleaved_4wide(raw, &mut weights, IN, OUT, K, is_bf16);
     }
 
     let bias = if do_bias {
@@ -423,32 +382,18 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     cursor: &mut WeightCursor<'_>,
     do_bias: bool,
 ) -> anyhow::Result<DenseLayer<IN, OUT>> {
-    let raw_weights = cursor.read_slice(OUT * IN)?;
-    let mut weights = AlignedVec::new(OUT * IN, 0u16);
+    let total = OUT * IN;
+    let raw = cursor.read_slice(total)?;
+    let mut weights = AlignedVec::new(total, 0u16);
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
     if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
-        // Para DenseLayer, Interleaved4WaveNet também implica layout já transposto [IN][OUT]
-        for i in 0..(OUT * IN) {
-            weights[i] = if is_bf16 {
-                f32_to_bf16(raw_weights[i])
-            } else {
-                half::f16::from_f32(raw_weights[i]).to_bits()
-            };
+        for i in 0..total {
+            weights[i] = quantize_weight(raw[i], is_bf16);
         }
     } else {
-        for out_c in 0..OUT {
-            for in_c in 0..IN {
-                let raw_val = raw_weights[out_c * IN + in_c];
-                let val = if is_bf16 {
-                    f32_to_bf16(raw_val)
-                } else {
-                    half::f16::from_f32(raw_val).to_bits()
-                };
-                weights[in_c * OUT + out_c] = val;
-            }
-        }
+        transpose_dense_layer(raw, &mut weights, IN, OUT, is_bf16);
     }
 
     let bias = if do_bias {
@@ -480,50 +425,10 @@ fn read_conv1d_weights_dyn(
 
     if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
         for i in 0..total {
-            weights[i] = if is_bf16 {
-                f32_to_bf16(raw[i])
-            } else {
-                half::f16::from_f32(raw[i]).to_bits()
-            };
+            weights[i] = quantize_weight(raw[i], is_bf16);
         }
     } else {
-        // [T19] Interleaved 4-Wide Layout: [OUT/4][K][IN][4]
-        let num_blocks = out_size / 4;
-        for b in 0..num_blocks {
-            for k in 0..k_size {
-                for in_c in 0..in_size {
-                    for lane in 0..4 {
-                        let out_c = b * 4 + lane;
-                        let raw_idx = (out_c * in_size + in_c) * k_size + k;
-                        let val = if is_bf16 {
-                            f32_to_bf16(raw[raw_idx])
-                        } else {
-                            half::f16::from_f32(raw[raw_idx]).to_bits()
-                        };
-                        let target_idx =
-                            b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane;
-                        weights[target_idx] = val;
-                    }
-                }
-            }
-        }
-
-        // Canais de cauda (Remainder)
-        let tail_start_ch = num_blocks * 4;
-        for out_c in tail_start_ch..out_size {
-            for in_c in 0..in_size {
-                for k in 0..k_size {
-                    let raw_idx = (out_c * in_size + in_c) * k_size + k;
-                    let val = if is_bf16 {
-                        f32_to_bf16(raw[raw_idx])
-                    } else {
-                        half::f16::from_f32(raw[raw_idx]).to_bits()
-                    };
-                    let target_idx = out_c * k_size * in_size + k * in_size + in_c;
-                    weights[target_idx] = val;
-                }
-            }
-        }
+        transpose_conv1d_interleaved_4wide(raw, &mut weights, in_size, out_size, k_size, is_bf16);
     }
 
     let bias = if do_bias {
@@ -554,31 +459,18 @@ fn read_dense_layer_dyn(
     out_size: usize,
     do_bias: bool,
 ) -> anyhow::Result<DenseLayerDyn> {
-    let raw_weights = cursor.read_slice(out_size * in_size)?;
-    let mut weights = AlignedVec::new(out_size * in_size, 0u16);
+    let total = out_size * in_size;
+    let raw = cursor.read_slice(total)?;
+    let mut weights = AlignedVec::new(total, 0u16);
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
     if cursor.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet {
-        for i in 0..(out_size * in_size) {
-            weights[i] = if is_bf16 {
-                f32_to_bf16(raw_weights[i])
-            } else {
-                half::f16::from_f32(raw_weights[i]).to_bits()
-            };
+        for i in 0..total {
+            weights[i] = quantize_weight(raw[i], is_bf16);
         }
     } else {
-        for out_c in 0..out_size {
-            for in_c in 0..in_size {
-                let raw_val = raw_weights[out_c * in_size + in_c];
-                let val = if is_bf16 {
-                    f32_to_bf16(raw_val)
-                } else {
-                    half::f16::from_f32(raw_val).to_bits()
-                };
-                weights[in_c * out_size + out_c] = val;
-            }
-        }
+        transpose_dense_layer(raw, &mut weights, in_size, out_size, is_bf16);
     }
 
     let bias = if do_bias {
@@ -689,4 +581,74 @@ pub(crate) fn build_wavenet_array_dyn(
         last_condition_bf16: AlignedVec::new(cond_size, 0),
         condition_init: false,
     })
+}
+
+// =============================================================================
+// WaveNet — Auxiliares de Quantização e Transposição
+// =============================================================================
+
+/// Converte um peso f32 para o formato de armazenamento quantizado (BF16 ou F16).
+#[inline(always)]
+fn quantize_weight(raw: f32, is_bf16: bool) -> u16 {
+    if is_bf16 {
+        f32_to_bf16(raw)
+    } else {
+        half::f16::from_f32(raw).to_bits()
+    }
+}
+
+/// Aplica a transposição de layout Interleaved 4-Wide para convoluções.
+/// [T19] Otimiza o carregamento de 4 pesos simultâneos via SIMD.
+fn transpose_conv1d_interleaved_4wide(
+    raw: &[f32],
+    weights: &mut [u16],
+    in_ch: usize,
+    out_ch: usize,
+    kernel: usize,
+    is_bf16: bool,
+) {
+    let num_blocks = out_ch / 4;
+    for b in 0..num_blocks {
+        for k in 0..kernel {
+            for in_c in 0..in_ch {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let raw_idx = (out_c * in_ch + in_c) * kernel + k;
+                    let val = quantize_weight(raw[raw_idx], is_bf16);
+                    let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
+                    weights[target_idx] = val;
+                }
+            }
+        }
+    }
+
+    // Canais de cauda (Remainder)
+    let tail_start_ch = num_blocks * 4;
+    for out_c in tail_start_ch..out_ch {
+        for in_c in 0..in_ch {
+            for k in 0..kernel {
+                let raw_idx = (out_c * in_ch + in_c) * kernel + k;
+                let val = quantize_weight(raw[raw_idx], is_bf16);
+                let target_idx = out_c * kernel * in_ch + k * in_ch + in_c;
+                weights[target_idx] = val;
+            }
+        }
+    }
+}
+
+/// Aplica a transposição de layout [OUT][IN] -> [IN][OUT] para camadas densas.
+fn transpose_dense_layer(
+    raw: &[f32],
+    weights: &mut [u16],
+    in_size: usize,
+    out_size: usize,
+    is_bf16: bool,
+) {
+    for out_c in 0..out_size {
+        for in_c in 0..in_size {
+            let raw_val = raw[out_c * in_size + in_c];
+            let val = quantize_weight(raw_val, is_bf16);
+            weights[in_c * out_size + out_c] = val;
+        }
+    }
 }
