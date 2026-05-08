@@ -27,6 +27,73 @@ pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     pub prefetch_fn: PrefetchFn,
 }
 
+/// Trait auxiliar para unificar o processamento f32 e bf16 no WaveNet.
+trait ConvInput: Copy + Default {
+    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
+        weights: &[[u16; 4]],
+        state: &[Self],
+    ) -> [f32; 4];
+    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
+        weights: &[[u16; 4]],
+        state_f0: &[Self],
+        state_f1: &[Self],
+    ) -> ([f32; 4], [f32; 4]);
+    unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32;
+    fn cast_ptr(ptr: *const Self) -> *const f32;
+}
+
+impl ConvInput for f32 {
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
+        weights: &[[u16; 4]],
+        state: &[Self],
+    ) -> [f32; 4] {
+        unsafe { M::dot_product_4x_interleaved(weights, state) }
+    }
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
+        weights: &[[u16; 4]],
+        state_f0: &[Self],
+        state_f1: &[Self],
+    ) -> ([f32; 4], [f32; 4]) {
+        unsafe { M::dot_product_4x_interleaved_dual_frame(weights, state_f0, state_f1) }
+    }
+    #[inline(always)]
+    unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32 {
+        unsafe { M::dot_product(a, b) }
+    }
+    #[inline(always)]
+    fn cast_ptr(ptr: *const Self) -> *const f32 {
+        ptr
+    }
+}
+
+impl ConvInput for u16 {
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
+        weights: &[[u16; 4]],
+        state: &[Self],
+    ) -> [f32; 4] {
+        unsafe { M::dot_product_4x_interleaved_bf16(weights, state) }
+    }
+    #[inline(always)]
+    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
+        weights: &[[u16; 4]],
+        state_f0: &[Self],
+        state_f1: &[Self],
+    ) -> ([f32; 4], [f32; 4]) {
+        unsafe { M::dot_product_4x_interleaved_dual_frame_bf16(weights, state_f0, state_f1) }
+    }
+    #[inline(always)]
+    unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32 {
+        unsafe { M::dot_product_bf16(a, b) }
+    }
+    #[inline(always)]
+    fn cast_ptr(ptr: *const Self) -> *const f32 {
+        ptr as *const f32
+    }
+}
+
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Executa convolução causal num array bidirecional flat (`layer_buffer`).
     ///
@@ -86,6 +153,19 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
+        unsafe {
+            self.process_single_frame_generic::<M, f32>(layer_buffer, out_frame, frame_idx, mixin);
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn process_single_frame_generic<M: SimdMath, T: ConvInput>(
+        &self,
+        layer_buffer: &[T],
+        out_frame: &mut [f32],
+        frame_idx: usize,
+        mixin: Option<&[f32]>,
+    ) {
         // [PASSO 1: Inicialização do Acumulador]
         if let Some(m) = mixin {
             if self.do_bias {
@@ -110,7 +190,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         // Pre-carregamento dos taps (Input data) para o bloco atual.
         // Como K e IN são pequenos (ex: 3 e 16), o custo de cópia para a stack é compensado
         // pela eliminação de re-cálculos de endereços e maior localidade no loop b-first.
-        let mut in_taps = [[0.0f32; IN]; K];
+        let mut in_taps = [[T::default(); IN]; K];
         for (k, in_tap) in in_taps.iter_mut().enumerate() {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
@@ -123,7 +203,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Prefetch via estratégia pré-calculada (Branchless)
             unsafe {
                 (self.prefetch_fn)(
-                    layer_buffer.as_ptr().add(in_slice_start),
+                    T::cast_ptr(layer_buffer.as_ptr().add(in_slice_start)),
                     self.dilation * IN,
                     k,
                     K,
@@ -155,7 +235,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                let [t0, t1, t2, t3] = unsafe { M::dot_product_4x_interleaved(w_slice, in_slice) };
+                let [t0, t1, t2, t3] =
+                    unsafe { T::dot_product_4x_interleaved::<M>(w_slice, in_slice) };
                 r0 += t0;
                 r1 += t1;
                 r2 += t2;
@@ -176,7 +257,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                r += unsafe { M::dot_product(in_slice, w) };
+                r += unsafe { T::dot_product::<M>(in_slice, w) };
             }
             unsafe {
                 *out_frame.get_unchecked_mut(out_c) = r;
@@ -234,100 +315,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
-        // [PASSO 1: Inicialização do Acumulador]
-        if let Some(m) = mixin {
-            if self.do_bias {
-                out_frame.copy_from_slice(&self.bias[0..OUT]);
-                unsafe {
-                    M::accumulate_head(out_frame, m);
-                }
-            } else {
-                out_frame.copy_from_slice(m);
-            }
-        } else if self.do_bias {
-            out_frame.copy_from_slice(&self.bias[0..OUT]);
-        } else {
-            out_frame.fill(0.0);
-        }
-
-        // [PASSO 2: Iteração do Kernel (Receptive Field)]
-        // [TE1] Inversão de Loop: Channel-First Tiling.
-
-        // Pre-carregamento dos taps (Input data) para o bloco atual em BF16.
-        let mut in_taps = [[0u16; IN]; K];
-        for (k, in_tap) in in_taps.iter_mut().enumerate() {
-            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
-            let in_slice_start = ((frame_idx as isize) + offset) as usize * IN;
-            unsafe {
-                in_tap.copy_from_slice(
-                    layer_buffer.get_unchecked(in_slice_start..in_slice_start + IN),
-                );
-            }
-
-            // Prefetch via estratégia pré-calculada (Branchless)
-            unsafe {
-                (self.prefetch_fn)(
-                    layer_buffer.as_ptr().add(in_slice_start).cast(),
-                    self.dilation * IN,
-                    k,
-                    K,
-                    self.dilation,
-                );
-            }
-        }
-
-        let num_blocks = OUT / 4;
-        let mut out_c = 0;
-
-        for b in 0..num_blocks {
-            let mut r0;
-            let mut r1;
-            let mut r2;
-            let mut r3;
-
-            unsafe {
-                r0 = *out_frame.get_unchecked(out_c);
-                r1 = *out_frame.get_unchecked(out_c + 1);
-                r2 = *out_frame.get_unchecked(out_c + 2);
-                r3 = *out_frame.get_unchecked(out_c + 3);
-            }
-
-            for (k, in_slice) in in_taps.iter().enumerate() {
-                let w_start = (b * K + k) * IN * 4;
-                let w_slice: &[[u16; 4]] = unsafe {
-                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
-                    core::slice::from_raw_parts(ptr, IN)
-                };
-
-                let [t0, t1, t2, t3] =
-                    unsafe { M::dot_product_4x_interleaved_bf16(w_slice, in_slice) };
-                r0 += t0;
-                r1 += t1;
-                r2 += t2;
-                r3 += t3;
-            }
-
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) = r0;
-                *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                *out_frame.get_unchecked_mut(out_c + 3) = r3;
-            }
-            out_c += 4;
-        }
-
-        while out_c < OUT {
-            let mut r = unsafe { *out_frame.get_unchecked(out_c) };
-            for (k, in_slice) in in_taps.iter().enumerate() {
-                let w_start = out_c * K * IN + k * IN;
-                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                let r_tap = unsafe { M::dot_product_bf16(in_slice, w) };
-                r += r_tap;
-            }
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) = r;
-            }
-            out_c += 1;
+        unsafe {
+            self.process_single_frame_generic::<M, u16>(layer_buffer, out_frame, frame_idx, mixin);
         }
     }
 
@@ -396,6 +385,31 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
+        unsafe {
+            self.process_dual_frame_generic::<M, f32>(
+                layer_buffer,
+                out_frame_f0,
+                out_frame_f1,
+                frame_idx_f0,
+                frame_idx_f1,
+                mixin_f0,
+                mixin_f1,
+            );
+        }
+    }
+
+    #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn process_dual_frame_generic<M: SimdMath, T: ConvInput>(
+        &self,
+        layer_buffer: &[T],
+        out_frame_f0: &mut [f32],
+        out_frame_f1: &mut [f32],
+        frame_idx_f0: usize,
+        frame_idx_f1: usize,
+        mixin_f0: Option<&[f32]>,
+        mixin_f1: Option<&[f32]>,
+    ) {
         if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
             if self.do_bias {
                 out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
@@ -416,8 +430,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_frame_f1.fill(0.0);
         }
 
-        let mut in_taps_f0 = [[0.0f32; IN]; K];
-        let mut in_taps_f1 = [[0.0f32; IN]; K];
+        let mut in_taps_f0 = [[T::default(); IN]; K];
+        let mut in_taps_f1 = [[T::default(); IN]; K];
         for k in 0..K {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
             let in_slice_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
@@ -430,7 +444,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     layer_buffer.get_unchecked(in_slice_start_f1..in_slice_start_f1 + IN),
                 );
                 (self.prefetch_fn)(
-                    layer_buffer.as_ptr().add(in_slice_start_f0),
+                    T::cast_ptr(layer_buffer.as_ptr().add(in_slice_start_f0)),
                     self.dilation * IN,
                     k,
                     K,
@@ -475,7 +489,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 let in_slice_f1 = &in_taps_f1[k];
 
                 let (t_f0, t_f1) = unsafe {
-                    M::dot_product_4x_interleaved_dual_frame(w_slice, in_slice_f0, in_slice_f1)
+                    T::dot_product_4x_interleaved_dual_frame::<M>(w_slice, in_slice_f0, in_slice_f1)
                 };
                 r0_f0 += t_f0[0];
                 r1_f0 += t_f0[1];
@@ -509,8 +523,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
                 let in_slice_f0 = &in_taps_f0[k];
                 let in_slice_f1 = &in_taps_f1[k];
-                r_f0 += unsafe { M::dot_product(in_slice_f0, w) };
-                r_f1 += unsafe { M::dot_product(in_slice_f1, w) };
+                r_f0 += unsafe { T::dot_product::<M>(in_slice_f0, w) };
+                r_f1 += unsafe { T::dot_product::<M>(in_slice_f1, w) };
             }
             unsafe {
                 *out_frame_f0.get_unchecked_mut(out_c) = r_f0;
@@ -562,127 +576,16 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
-        if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
-            if self.do_bias {
-                out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
-                out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
-                unsafe {
-                    M::accumulate_head(out_frame_f0, m0);
-                    M::accumulate_head(out_frame_f1, m1);
-                }
-            } else {
-                out_frame_f0.copy_from_slice(m0);
-                out_frame_f1.copy_from_slice(m1);
-            }
-        } else if self.do_bias {
-            out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
-            out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
-        } else {
-            out_frame_f0.fill(0.0);
-            out_frame_f1.fill(0.0);
-        }
-
-        let mut in_taps_f0 = [[0u16; IN]; K];
-        let mut in_taps_f1 = [[0u16; IN]; K];
-        for k in 0..K {
-            let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
-            let in_slice_start_f0 = ((frame_idx_f0 as isize) + offset) as usize * IN;
-            let in_slice_start_f1 = ((frame_idx_f1 as isize) + offset) as usize * IN;
-            unsafe {
-                in_taps_f0[k].copy_from_slice(
-                    layer_buffer.get_unchecked(in_slice_start_f0..in_slice_start_f0 + IN),
-                );
-                in_taps_f1[k].copy_from_slice(
-                    layer_buffer.get_unchecked(in_slice_start_f1..in_slice_start_f1 + IN),
-                );
-                (self.prefetch_fn)(
-                    layer_buffer.as_ptr().add(in_slice_start_f0) as *const f32,
-                    self.dilation * IN,
-                    k,
-                    K,
-                    self.dilation,
-                );
-            }
-        }
-
-        let num_blocks = OUT / 4;
-        let mut out_c = 0;
-
-        for b in 0..num_blocks {
-            let mut r0_f0;
-            let mut r1_f0;
-            let mut r2_f0;
-            let mut r3_f0;
-            let mut r0_f1;
-            let mut r1_f1;
-            let mut r2_f1;
-            let mut r3_f1;
-
-            unsafe {
-                r0_f0 = *out_frame_f0.get_unchecked(out_c);
-                r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
-                r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
-                r3_f0 = *out_frame_f0.get_unchecked(out_c + 3);
-
-                r0_f1 = *out_frame_f1.get_unchecked(out_c);
-                r1_f1 = *out_frame_f1.get_unchecked(out_c + 1);
-                r2_f1 = *out_frame_f1.get_unchecked(out_c + 2);
-                r3_f1 = *out_frame_f1.get_unchecked(out_c + 3);
-            }
-
-            for k in 0..K {
-                let w_start = (b * K + k) * IN * 4;
-                let w_slice: &[[u16; 4]] = unsafe {
-                    let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
-                    core::slice::from_raw_parts(ptr, IN)
-                };
-
-                let in_slice_f0 = &in_taps_f0[k];
-                let in_slice_f1 = &in_taps_f1[k];
-
-                let (t_f0, t_f1) = unsafe {
-                    M::dot_product_4x_interleaved_dual_frame_bf16(w_slice, in_slice_f0, in_slice_f1)
-                };
-                r0_f0 += t_f0[0];
-                r1_f0 += t_f0[1];
-                r2_f0 += t_f0[2];
-                r3_f0 += t_f0[3];
-                r0_f1 += t_f1[0];
-                r1_f1 += t_f1[1];
-                r2_f1 += t_f1[2];
-                r3_f1 += t_f1[3];
-            }
-
-            unsafe {
-                *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
-                *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
-
-                *out_frame_f1.get_unchecked_mut(out_c) = r0_f1;
-                *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
-            }
-            out_c += 4;
-        }
-
-        while out_c < OUT {
-            let mut r_f0 = unsafe { *out_frame_f0.get_unchecked(out_c) };
-            let mut r_f1 = unsafe { *out_frame_f1.get_unchecked(out_c) };
-            for k in 0..K {
-                let w_start = out_c * K * IN + k * IN;
-                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                let in_slice_f0 = &in_taps_f0[k];
-                let in_slice_f1 = &in_taps_f1[k];
-                r_f0 += unsafe { M::dot_product_bf16(in_slice_f0, w) };
-                r_f1 += unsafe { M::dot_product_bf16(in_slice_f1, w) };
-            }
-            unsafe {
-                *out_frame_f0.get_unchecked_mut(out_c) = r_f0;
-                *out_frame_f1.get_unchecked_mut(out_c) = r_f1;
-            }
-            out_c += 1;
+        unsafe {
+            self.process_dual_frame_generic::<M, u16>(
+                layer_buffer,
+                out_frame_f0,
+                out_frame_f1,
+                frame_idx_f0,
+                frame_idx_f1,
+                mixin_f0,
+                mixin_f1,
+            );
         }
     }
 }
@@ -699,21 +602,6 @@ pub struct DenseLayer<const IN: usize, const OUT: usize> {
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
-    /// Processa um único frame do Dense Layer acumulando com o output atual (otimizado com FMA 4x).
-    ///
-    /// # Safety
-    /// Depende dinamicamente da trait `SimdMath`.
-    #[inline(always)]
-    pub unsafe fn process_acc_single_frame<M: SimdMath>(
-        &self,
-        in_frame: &[f32],
-        out_frame: &mut [f32],
-    ) {
-        unsafe {
-            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
-        }
-    }
-
     /// Executa a projeção fundida (W*in + bias) somando ao buffer de saída (Residual Fusion).
     ///
     /// # Safety
@@ -723,6 +611,19 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         unsafe {
             M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
+    }
+
+    /// Alias para `process_fused` (mantido por compatibilidade).
+    ///
+    /// # Safety
+    /// Depende da validade dos buffers e da trait `SimdMath`.
+    #[inline(always)]
+    pub unsafe fn process_acc_single_frame<M: SimdMath>(
+        &self,
+        in_frame: &[f32],
+        out_frame: &mut [f32],
+    ) {
+        unsafe { self.process_fused::<M>(in_frame, out_frame) }
     }
 
     /// Processa um único frame substituindo o buffer existente.
@@ -737,30 +638,6 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     ) {
         unsafe {
             M::gemv_overwrite(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
-        }
-    }
-
-    /// Processa o Dense acumulando com o estado corrente de output em lote.
-    /// [TA3] Otimização: Chama diretamente o kernel GEMM Batch para maximizar reuso de pesos.
-    ///
-    /// # Safety
-    /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
-    #[inline(always)]
-    pub unsafe fn process_acc_block<M: SimdMath>(
-        &self,
-        input: &[f32],
-        output: &mut [f32],
-        num_frames: usize,
-    ) {
-        unsafe {
-            M::fused_add_gemm_batch(
-                input,
-                &self.weights,
-                &self.bias,
-                output,
-                num_frames,
-                self.do_bias,
-            );
         }
     }
 
@@ -786,6 +663,20 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
                 self.do_bias,
             );
         }
+    }
+
+    /// Alias para `process_fused_block` (mantido por compatibilidade).
+    ///
+    /// # Safety
+    /// Depende da validade dos buffers e da trait `SimdMath`.
+    #[inline(always)]
+    pub unsafe fn process_acc_block<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
+        unsafe { self.process_fused_block::<M>(input, output, num_frames) }
     }
 
     /// Executa a projeção 1x1 fundida com a soma do residual: Y = X_res + Bias + W * Z.

@@ -108,7 +108,7 @@
 
 ---
 
-## Épico 4 — Resampler & Sinc Kernel
+## Épico 4 — Resampler & Sinc Kernel (CONCLUÍDO)
 
 > **Módulos**: `dsp/resampler.rs`, `dsp/sinc_kernel.rs`
 
