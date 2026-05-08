@@ -124,11 +124,11 @@
 - **Achado**: O campo `_len` estava prefixado com `_` e não era usado.
 - **Solução**: Removido o campo `len` (ex-`_len`) e a lógica associada em `AlignedCoeffs`, simplificando a struct já que o `PolyphaseBank` gerencia as dimensões e o padding (sempre múltiplo de 8). Lints validados via `cargo clippy`.
 
-### 🟢 Tarefa 4.3 — `gcd()` — Função Pública Sem Consumidores Internos Visíveis
+### ✅ Tarefa 4.3 — `gcd()` — Função Pública Sem Consumidores Internos Visíveis (CONCLUÍDO)
 
-- **Arquivo**: `sinc_kernel.rs:113`
-- **Achado**: `gcd` é `pub` mas não parece ser usada em nenhum código do resampler (a razão `from_rate/to_rate` é tratada como `f64`). Pode ser resíduo de um design anterior baseado em L/M racionais.
-- **Proposta**: Verificar se há consumidores externos (testes, benchmarks). Se não, tornar `pub(crate)` ou remover.
+- **Arquivo**: `sinc_kernel.rs:108`
+- **Achado**: `gcd` era `pub` mas usada apenas em testes unitários.
+- **Solução**: Removida a função `gcd` e seus respectivos testes, pois o resampler atual utiliza razões `f64` e não depende de lógica de Máximo Divisor Comum (resíduo de design anterior). Limpeza de dead-code validada pelo Clippy.
 
 ---
 

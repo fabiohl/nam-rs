@@ -104,16 +104,6 @@ impl PolyphaseBank {
     }
 }
 
-/// Calcula o Máximo Divisor Comum (MDC) de dois números inteiros.
-pub fn gcd(mut a: u32, mut b: u32) -> u32 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
-    }
-    a
-}
-
 /// Gera o banco polifásico completo para conversão `from_rate → to_rate`.
 ///
 /// Pipeline: Sinc+Kaiser → Fase Mínima (Cepstrum) → Partição Polifásica.

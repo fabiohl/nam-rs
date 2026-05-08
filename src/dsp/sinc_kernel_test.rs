@@ -4,14 +4,6 @@
 use super::*;
 
 #[test]
-fn test_gcd_basic() {
-    assert_eq!(gcd(44100, 48000), 300);
-    assert_eq!(gcd(48000, 96000), 48000);
-    assert_eq!(gcd(44100, 96000), 300);
-    assert_eq!(gcd(48000, 48000), 48000);
-}
-
-#[test]
 fn test_bessel_i0_known_values() {
     assert!((bessel_i0(0.0) - 1.0).abs() < 1e-12);
     // I0(1) ≈ 1.2660658...
