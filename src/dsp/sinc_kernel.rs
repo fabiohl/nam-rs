@@ -12,8 +12,9 @@
 //! 2. **Transformação de Fase Mínima (Cepstrum Real)** — elimina pré-ringing concentrando
 //!    a energia no menor atraso possível, usando FFT em f64 para precisão numérica.
 //! 3. **Partição Polifásica** — decompõe o protótipo em `num_phases` sub-filtros,
-//!    cada um com taps alinhados a 32 bytes para convolução AVX2+FMA.
+//!    cada um com taps alinhados a 64 bytes para convolução AVX2/AVX-512.
 
+use crate::math::simd::AlignedVec;
 use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Número de fases do banco polifásico sobreabundante.
@@ -37,51 +38,14 @@ const PROTO_LEN: usize = NUM_PHASES * TAPS_PER_PHASE;
 /// Banco de filtros polifásico com coeficientes alinhados para SIMD.
 ///
 /// Layout em memória: `coeffs[phase * TAPS_PER_PHASE .. (phase+1) * TAPS_PER_PHASE]`
-/// Cada fase é contígua e alinhada a 32 bytes para `_mm256_load_ps`.
+/// Cada fase é contígua e alinhada a 64 bytes para `_mm512_load_ps` / `_mm256_load_ps`.
 pub struct PolyphaseBank {
-    /// Coeficientes f32 alinhados. Tamanho = `NUM_PHASES * taps_padded`.
-    /// Cada fase é zero-padded para múltiplo de 8 (garantia AVX2).
-    coeffs: AlignedCoeffs,
+    /// Coeficientes f32 alinhados. Tamanho = `NUM_PHASES * TAPS_PER_PHASE`.
+    /// O alinhamento de 64 bytes do início do buffer garante que cada fase
+    // (128 bytes) também comece em um limite de 64 bytes.
+    coeffs: AlignedVec<f32>,
     /// Taps por fase (sempre TAPS_PER_PHASE, já múltiplo de 8).
     pub taps_per_phase: usize,
-}
-
-/// Wrapper para vetor de coeficientes com alinhamento de 32 bytes.
-///
-/// O alinhamento garante que `_mm256_load_ps` (aligned load) pode ser
-/// usado nos coeficientes do filtro, economizando 1 ciclo por load
-/// em relação a `_mm256_loadu_ps` (unaligned).
-#[repr(C, align(32))]
-struct AlignedBlock([f32; 8]);
-
-struct AlignedCoeffs {
-    /// Blocos de 8 floats alinhados a 32 bytes.
-    blocks: Vec<AlignedBlock>,
-}
-
-impl AlignedCoeffs {
-    fn new(data: &[f32]) -> Self {
-        let n_blocks = data.len().div_ceil(8);
-        let mut blocks = Vec::with_capacity(n_blocks);
-        for chunk in data.chunks(8) {
-            let mut block = [0.0f32; 8];
-            block[..chunk.len()].copy_from_slice(chunk);
-            blocks.push(AlignedBlock(block));
-        }
-        Self { blocks }
-    }
-
-    /// Retorna um ponteiro alinhado a 32 bytes para o início dos coeficientes.
-    #[inline]
-    pub fn as_ptr(&self) -> *const f32 {
-        self.blocks.as_ptr() as *const f32
-    }
-
-    /// Retorna o slice completo (incluindo padding zeros).
-    #[inline]
-    pub fn as_slice(&self) -> &[f32] {
-        unsafe { core::slice::from_raw_parts(self.as_ptr(), self.blocks.len() * 8) }
-    }
 }
 
 impl PolyphaseBank {
@@ -100,7 +64,7 @@ impl PolyphaseBank {
     pub fn phase_coeffs(&self, phase: usize) -> &[f32] {
         debug_assert!(phase < NUM_PHASES);
         let start = phase * self.taps_per_phase;
-        &self.coeffs.as_slice()[start..start + self.taps_per_phase]
+        &self.coeffs[start..start + self.taps_per_phase]
     }
 }
 
@@ -265,7 +229,7 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
 fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
     let taps = TAPS_PER_PHASE;
     let total = NUM_PHASES * taps;
-    let mut coeffs = vec![0.0f32; total];
+    let mut coeffs = AlignedVec::new(total, 0.0f32);
 
     // Escala por NUM_PHASES para compensar a decomposição polifásica.
     // No upsampling conceitual (inserção de L-1 zeros entre amostras),
@@ -282,7 +246,7 @@ fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
     }
 
     PolyphaseBank {
-        coeffs: AlignedCoeffs::new(&coeffs),
+        coeffs,
         taps_per_phase: taps,
     }
 }

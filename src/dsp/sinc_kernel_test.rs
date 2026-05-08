@@ -80,8 +80,7 @@ fn test_polyphase_bank_dimensions() {
 
 #[test]
 fn test_aligned_coeffs_alignment() {
-    let data = vec![1.0f32; 64];
-    let ac = AlignedCoeffs::new(&data);
-    let ptr = ac.as_ptr() as usize;
-    assert_eq!(ptr % 32, 0, "Coeficientes devem estar alinhados a 32 bytes");
+    let bank = generate_polyphase_bank(44100, 48000);
+    let ptr = bank.phase_ptr(0) as usize;
+    assert_eq!(ptr % 64, 0, "Coeficientes devem estar alinhados a 64 bytes");
 }

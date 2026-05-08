@@ -289,13 +289,13 @@ unsafe fn convolve_stereo_avx512(
 
         // Loop principal: 2×16 = 32 floats/iteração
         while i + 32 <= taps {
-            let h0 = _mm512_loadu_ps(coeffs.add(i));
+            let h0 = _mm512_load_ps(coeffs.add(i));
             let x0_l = _mm512_loadu_ps(input_l.add(i));
             let x0_r = _mm512_loadu_ps(input_r.add(i));
             sum_l0 = _mm512_fmadd_ps(h0, x0_l, sum_l0);
             sum_r0 = _mm512_fmadd_ps(h0, x0_r, sum_r0);
 
-            let h1 = _mm512_loadu_ps(coeffs.add(i + 16));
+            let h1 = _mm512_load_ps(coeffs.add(i + 16));
             let x1_l = _mm512_loadu_ps(input_l.add(i + 16));
             let x1_r = _mm512_loadu_ps(input_r.add(i + 16));
             sum_l1 = _mm512_fmadd_ps(h1, x1_l, sum_l1);
@@ -305,7 +305,7 @@ unsafe fn convolve_stereo_avx512(
         }
 
         while i + 16 <= taps {
-            let h = _mm512_loadu_ps(coeffs.add(i));
+            let h = _mm512_load_ps(coeffs.add(i));
             let x_l = _mm512_loadu_ps(input_l.add(i));
             let x_r = _mm512_loadu_ps(input_r.add(i));
             sum_l0 = _mm512_fmadd_ps(h, x_l, sum_l0);
