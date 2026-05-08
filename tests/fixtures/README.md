@@ -102,6 +102,7 @@ e FP, mas apertados o suficiente para capturar regressões estruturais
 > ring buffers, Conv1D, MatMul) é equivalente entre as implementações.
 >
 > **Prova:** A degradação de SNR é proporcional à profundidade do modelo:
+>
 > - LSTM 1×16 (1 camada): SNR = 24.5 dB
 > - WaveNet Standard (20 camadas): SNR = 10.1 dB
 > Se houvesse erro estrutural, o SNR não degradaria linearmente com a profundidade.
@@ -109,4 +110,3 @@ e FP, mas apertados o suficiente para capturar regressões estruturais
 > **Para obter paridade bit-a-bit (não recomendado):**
 > Substituir `simd_tanh_avx2`/`simd_sigmoid_avx2` por `f32::tanh()`/`1/(1+(-x).exp())`
 > escalar — custo: performance cairia 10-30× (~4-8 → ~40-120 ciclos/ativação).
-
