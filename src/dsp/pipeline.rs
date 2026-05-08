@@ -56,6 +56,11 @@ pub struct PipewireHostConfig {
 pub(crate) const MAX_BRIDGE_BUF: usize = 8192;
 #[cfg(any(feature = "standalone", test))]
 /// Tamanho máximo do buffer para resampling.
+///
+/// **Contrato de Segurança RT**: Este valor determina o tamanho dos buffers pré-alocados
+/// no `DspPipelineContext`. Aumentar este valor impacta o tamanho do objeto da closure
+/// de processamento (que deve caber na stack da thread RT ou ser movido para o heap).
+/// Atualmente fixado em 4096 amostras (16 KiB por canal).
 pub(crate) const MAX_RESAMP_BUF: usize = 4096;
 
 #[cfg(any(feature = "standalone", test))]
@@ -126,6 +131,10 @@ pub(crate) struct DspPipelineContext<'a> {
     pub resamp_out_l: &'a mut [f32],
     /// Buffer de saída R (pré-resampler output).
     pub resamp_out_r: &'a mut [f32],
+    /// Buffer intermediário para saída do modelo L (pós-modelo, pré-resampler output).
+    pub model_out_l: &'a mut [f32],
+    /// Buffer intermediário para saída do modelo R (pós-modelo, pré-resampler output).
+    pub model_out_r: &'a mut [f32],
 }
 
 /// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
@@ -251,13 +260,10 @@ fn run_inference(
             &mut ctx.resamp_mid_r[..MAX_RESAMP_BUF],
         );
 
-        let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];
-        let mut temp_out_r = [0.0f32; MAX_RESAMP_BUF];
-
         let model_in_l = &ctx.resamp_mid_l[..n_48k];
         let model_in_r = &ctx.resamp_mid_r[..n_48k];
-        let model_out_l = &mut temp_out_l[..n_48k];
-        let model_out_r = &mut temp_out_r[..n_48k];
+        let model_out_l = &mut ctx.model_out_l[..n_48k];
+        let model_out_r = &mut ctx.model_out_r[..n_48k];
 
         if let Some(model_l) = ctx.active_model_l {
             model_l.process(model_in_l, model_out_l);

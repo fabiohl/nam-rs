@@ -42,7 +42,7 @@
 
 ---
 
-## Épico 2 — Diagnóstico & Comunicação Inter-Thread
+## Épico 2 — Diagnóstico & Comunicação Inter-Thread (CONCLUÍDO)
 
 > **Módulos**: `diagnostics.rs`, `spsc.rs`, `cli.rs`
 
@@ -64,11 +64,11 @@
 
 > **Módulos**: `dsp/pipeline.rs`, `dsp/gain.rs`, `dsp/gate.rs`, `dsp/telemetry.rs`, `dsp/vring.rs`
 
-### 🟡 Tarefa 3.1 — `run_inference` — Stack Array no Hot-Path com Resampler
+### ✅ Tarefa 3.1 — `run_inference` — Stack Array no Hot-Path com Resampler (CONCLUÍDO)
 
-- **Arquivo**: `pipeline.rs:240-241`
-- **Achado**: `let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];` e `temp_out_r` alocam **32 KiB na stack** (4096 × 4 bytes × 2 buffers) dentro do hot-path quando resampler está ativo. Para `MAX_RESAMP_BUF = 4096`, isso é seguro para stacks típicas de RT (≥ 64 KiB), mas é um risco latente se `MAX_RESAMP_BUF` crescer.
-- **Proposta**: Documentar o contrato de tamanho máximo explicitamente e/ou usar buffers pré-alocados no `DspPipelineContext` em vez de stack arrays.
+- **Arquivo**: `pipeline.rs:240-241`, `pw_host.rs:200-203`
+- **Achado**: `let mut temp_out_l = [0.0f32; MAX_RESAMP_BUF];` e `temp_out_r` alocavam **32 KiB na stack** dentro do hot-path.
+- **Solução**: Buffers movidos para o `DspPipelineContext` e pré-alocados no estado da closure de processamento (heap-backed), garantindo RT-safety e eliminando risco de stack overflow. Contrato de tamanho documentado em `MAX_RESAMP_BUF`.
 
 ### 🟡 Tarefa 3.2 — `handle_silence_bypass` — Ordering Inconsistente
 

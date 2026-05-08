@@ -201,6 +201,8 @@ pub fn run_pipewire_host(
         let mut resamp_out_l = [0.0f32; MAX_RESAMP_BUF];
         let mut resamp_mid_r = [0.0f32; MAX_RESAMP_BUF];
         let mut resamp_out_r = [0.0f32; MAX_RESAMP_BUF];
+        let mut model_out_l = [0.0f32; MAX_RESAMP_BUF];
+        let mut model_out_r = [0.0f32; MAX_RESAMP_BUF];
 
         // Variáveis de ganho como multiplicadores lineares
         let mut user_input_gain_mult: f32 = 1.0;
@@ -553,6 +555,8 @@ pub fn run_pipewire_host(
                                         resamp_mid_r: &mut resamp_mid_r,
                                         resamp_out_l: &mut resamp_out_l,
                                         resamp_out_r: &mut resamp_out_r,
+                                        model_out_l: &mut model_out_l,
+                                        model_out_r: &mut model_out_r,
                                     },
                                 );
 

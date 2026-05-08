@@ -40,7 +40,9 @@ mod tests {
         let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_mid_r = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_out_l = vec![0.0; MAX_RESAMP_BUF];
-        let mut resamp_out_r = vec![0.0; MAX_RESAMP_BUF];
+        let mut resamp_out_r = [0.0; MAX_RESAMP_BUF];
+        let mut model_out_l = [0.0; MAX_RESAMP_BUF];
+        let mut model_out_r = [0.0; MAX_RESAMP_BUF];
 
         let mut gate_params = GateParams::default();
         if force_hold_zero {
@@ -72,6 +74,8 @@ mod tests {
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
             resamp_out_r: &mut resamp_out_r,
+            model_out_l: &mut model_out_l,
+            model_out_r: &mut model_out_r,
         };
 
         capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
