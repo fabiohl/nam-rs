@@ -630,6 +630,16 @@ pub(crate) fn build_wavenet_array_dyn(
     // de saída para calcular as funções Tanh e Sigmoid simultaneamente.
     let conv_out_ch = if gated { 2 * ch } else { ch };
 
+    // [TA5.4] Validação: O buffer temporário de Mixin em wavenet_common.rs
+    // possui tamanho fixo de 4096 elementos.
+    if conv_out_ch * WAVENET_MAX_NUM_FRAMES > 4096 {
+        bail!(
+            "Dimensões da WaveNet não suportadas: conv_out_ch ({}) * MAX_FRAMES ({}) > 4096",
+            conv_out_ch,
+            WAVENET_MAX_NUM_FRAMES
+        );
+    }
+
     let rechannel = read_dense_layer_dyn(cursor, in_size, ch, false)?;
 
     let mut layers = Vec::with_capacity(dilations.len());

@@ -538,7 +538,7 @@ impl WaveNetLayerDyn {
         let mut mixin_out = AlignedMixinBuffer([0.0f32; 4096]);
 
         let mixin_len = num_frames * self.conv1d.out_ch;
-        assert!(
+        debug_assert!(
             mixin_len <= 4096,
             "mixin_len overflow: {} (max 4096)",
             mixin_len

@@ -142,19 +142,19 @@
 - **Achado**: Os métodos `process_single_frame_internal` (~100 linhas) e `process_single_frame_bf16_internal` (~100 linhas) compartilham ~90% da estrutura lógica, diferindo apenas no tipo do `layer_buffer` (`&[f32]` vs `&[u16]`), no tipo de `in_taps` (`[f32; IN]` vs `[u16; IN]`), e no dispatch para `dot_product_4x_interleaved` vs `dot_product_4x_interleaved_bf16`. O mesmo padrão repete-se em `process_dual_frame_internal` (~165 linhas) vs `process_dual_frame_bf16_internal` (~125 linhas).
 - **Proposta**: Explorar uma abstração via trait ou macro que parametrize o tipo de buffer (`f32`/`u16`) e o método de dot product. Cuidado: qualquer abstração não pode introduzir overhead no hot-path. Uma macro `define_conv1d_process!` pode ser a solução mais segura.
 
-### 🟡 Tarefa 5.2 — `DenseLayer::process_acc_single_frame` e `process_fused` São Idênticos
+### ✅ Tarefa 5.2 — `DenseLayer::process_acc_single_frame` e `process_fused` São Idênticos (CONCLUÍDO)
 
 - **Arquivo**: `wavenet.rs:707-726`
 - **Achado**: `process_acc_single_frame` e `process_fused` chamam exatamente o mesmo `M::fused_add_gemv` com os mesmos argumentos. São aliases com nomes diferentes.
 - **Proposta**: Remover um e manter o outro como alias (`#[inline(always)] pub fn process_fused(...) { self.process_acc_single_frame(...) }`), ou consolidar em um único nome.
 
-### 🟡 Tarefa 5.3 — `DenseLayer::process_acc_block` e `process_fused_block` São Idênticos
+### ✅ Tarefa 5.3 — `DenseLayer::process_acc_block` e `process_fused_block` São Idênticos (CONCLUÍDO)
 
 - **Arquivo**: `wavenet.rs:749-789`
 - **Achado**: Mesmo caso do E5.2 mas para a variante batch.
 - **Proposta**: Idem E5.2.
 
-### 🟡 Tarefa 5.4 — `wavenet_common.rs` — `assert!` no Hot-Path
+### ✅ Tarefa 5.4 — `wavenet_common.rs` — `assert!` no Hot-Path (CONCLUÍDO)
 
 - **Arquivo**: `wavenet_common.rs:541-545`
 - **Achado**: `assert!(mixin_len <= 4096, ...)` no `process_block_internal` é executado a cada chamada no hot-path DSP. Em release, se a condição falhar, causa panic (abort). Em debug, causa panic. Ambos violam RT-safety.
