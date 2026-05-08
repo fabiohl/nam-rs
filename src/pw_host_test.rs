@@ -26,6 +26,8 @@ fn test_dsp_bridge_concurrent_access() {
         ],
         active_read_idx: std::sync::atomic::AtomicUsize::new(0),
         generation: std::sync::atomic::AtomicU64::new(0),
+        consumed_gen: std::sync::atomic::AtomicU64::new(0),
+        dropped_frames: std::sync::atomic::AtomicU32::new(0),
     }));
 
     // Ponteiros raw para as threads (writer/reader)

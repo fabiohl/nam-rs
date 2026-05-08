@@ -125,6 +125,8 @@ pub fn run_pipewire_host(
         ],
         active_read_idx: std::sync::atomic::AtomicUsize::new(0),
         generation: std::sync::atomic::AtomicU64::new(0),
+        consumed_gen: std::sync::atomic::AtomicU64::new(0),
+        dropped_frames: std::sync::atomic::AtomicU32::new(0),
     }));
     // Ponteiro raw para compartilhamento seguro entre closures (ambos RT, mesmo context PW).
     let bridge_ptr = bridge as *const DspBridge as *mut DspBridge;

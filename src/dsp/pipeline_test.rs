@@ -35,6 +35,8 @@ mod tests {
             ],
             active_read_idx: std::sync::atomic::AtomicUsize::new(0),
             generation: std::sync::atomic::AtomicU64::new(0),
+            consumed_gen: std::sync::atomic::AtomicU64::new(0),
+            dropped_frames: std::sync::atomic::AtomicU32::new(0),
         });
 
         let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];

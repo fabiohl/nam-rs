@@ -154,7 +154,17 @@ pub(crate) fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtSt
     bridge_ref
         .active_read_idx
         .store(back_idx, Ordering::Release);
-    bridge_ref.generation.fetch_add(1, Ordering::Release);
+    // Detecção de Drop: se a geração atual ainda não foi consumida pelo playback,
+    // a troca atual para silêncio irá 'pular' o bloco anterior.
+    let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+    let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
+    if current_gen > consumed_gen {
+        bridge_ref.dropped_frames.fetch_add(1, Ordering::Relaxed);
+    }
+
+    bridge_ref
+        .generation
+        .store(current_gen + 1, Ordering::Release);
 }
 
 #[cfg(any(feature = "standalone", test))]
@@ -346,7 +356,18 @@ fn write_bridge(
     bridge_ref
         .active_read_idx
         .store(back_idx, Ordering::Release);
-    bridge_ref.generation.fetch_add(1, Ordering::Release);
+
+    // Detecção de Drop: se a geração atual ainda não foi consumida pelo playback,
+    // a escrita atual irá 'pular' o bloco anterior.
+    let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
+    let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
+    if current_gen > consumed_gen {
+        bridge_ref.dropped_frames.fetch_add(1, Ordering::Relaxed);
+    }
+
+    bridge_ref
+        .generation
+        .store(current_gen + 1, Ordering::Release);
 }
 
 #[cfg(any(feature = "standalone", test))]
@@ -409,7 +430,9 @@ pub(crate) fn playback_dsp_cycle(
         return;
     }
     *last_bridge_gen = current_gen;
-    bridge_ref.consumed_gen.store(current_gen, Ordering::Release);
+    bridge_ref
+        .consumed_gen
+        .store(current_gen, Ordering::Release);
 
     let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
     let front_buf = &bridge_ref.buffers[read_idx];

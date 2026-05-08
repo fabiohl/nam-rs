@@ -192,6 +192,15 @@ pub fn poll_rt_status(
         );
     }
 
+    let drops = rt_status.dropped_frames.swap(0, Ordering::Relaxed);
+    if drops > 0 {
+        log::warn!(
+            "{} Drifting detectado: {} blocos de áudio descartados (capture > playback).",
+            "⚠️".yellow(),
+            drops
+        );
+    }
+
     let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
     if nanos > 0 {
         let duration = Duration::from_nanos(nanos);
@@ -254,13 +263,8 @@ pub fn poll_rt_status(
 
     // Detecção de transição de fading
     let current_fading = rt_status.check_flag(crate::spsc::RT_STATUS_IS_FADING);
-    if current_fading != was_fading {
-        if current_fading {
-            log::info!(
-                "{} Transição de Sinal: Gate em Fade-In/Out.",
-                "🌓".yellow()
-            );
-        }
+    if current_fading != was_fading && current_fading {
+        log::info!("{} Transição de Sinal: Gate em Fade-In/Out.", "🌓".yellow());
     }
 
     (current_silent, current_fading)

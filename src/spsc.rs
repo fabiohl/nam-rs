@@ -96,6 +96,9 @@ pub struct RtStatusFlags {
     /// Bitmask atômico contendo os estados binários (needs_rebuild, clipped, silent, etc).
     /// Reduz Cache Bouncing ao condensar múltiplos estados em uma única linha de cache.
     pub status_bits: AtomicU64,
+
+    /// Contador de frames descartados no DspBridge (capture > playback).
+    pub dropped_frames: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -112,6 +115,7 @@ impl RtStatusFlags {
             last_n_samples: AtomicU32::new(0),
             latency_hist: crate::dsp::telemetry::LatencyHistogram::new(),
             status_bits: AtomicU64::new(0),
+            dropped_frames: AtomicU32::new(0),
         }
     }
 

@@ -82,11 +82,11 @@
 - **Achado**: `IS_SILENT` era setado durante `FadingIn`, o que é misleading pois o sinal está se tornando ativo.
 - **Solução**: Introduzida a flag `RT_STATUS_IS_FADING`. Agora `IS_SILENT` é setada apenas em silêncio total (`GateState::Closed`), enquanto `IS_FADING` cobre os estados de transição (`FadingIn`/`FadingOut`). Logs do host atualizados para refletir essa distinção.
 
-### 🟡 Tarefa 3.4 — `DspBridge` — Double-Buffer sem Backpressure
+### ✅ Tarefa 3.4 — `DspBridge` — Double-Buffer sem Backpressure (CONCLUÍDO)
 
-- **Arquivo**: `pipeline.rs:72-80`
-- **Achado**: Se o capture callback produz mais rápido que o playback consome, o back-buffer é sobrescrito silenciosamente. Para áudio isso é aceitável (preferimos latência mínima), mas deveria haver uma contagem de "drops" para telemetria.
-- **Proposta**: Adicionar `dropped_frames: AtomicU32` para diagnóstico via CLI.
+- **Arquivo**: `pipeline.rs:95-100, 160-170, 350-365, 415`, `spsc.rs`, `rt_setup.rs`
+- **Achado**: Se o capture callback produz mais rápido que o playback consome, o back-buffer é sobrescrito silenciosamente.
+- **Solução**: Introduzidos `consumed_gen` e `dropped_frames`. O capture detecta se a geração anterior ainda não foi consumida e incrementa a telemetria. Logs de aviso adicionados ao host para sinalizar drifting/drops.
 
 ### 🟡 Tarefa 3.5 — `gate.rs` — Parâmetro `_params` Ignorado em `apply_gain_rt`
 
