@@ -43,6 +43,13 @@ fn test_dsp_bridge_concurrent_access() {
         for _ in 0..1000 {
             let bridge_ref = unsafe { &mut *bridge_ptr_writer };
 
+            // Evita que o escritor sobrescreva o buffer que está sendo lido
+            while bridge_ref.generation.load(Ordering::Acquire)
+                > bridge_ref.consumed_gen.load(Ordering::Acquire)
+            {
+                std::thread::yield_now();
+            }
+
             // Localiza o buffer inativo (back-buffer) para escrita.
             let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
             let back_buf = &mut bridge_ref.buffers[back_idx];
@@ -108,6 +115,9 @@ fn test_dsp_bridge_concurrent_access() {
             last_val_read = front_buf.buf_l[63];
 
             last_gen = current_gen;
+            bridge_ref
+                .consumed_gen
+                .store(current_gen, Ordering::Release);
             reads += 1;
         }
 

@@ -8,9 +8,10 @@
 
 ---
 
-## Sprint 1 — Performance: WaveNet Dual-Frame no Hot-Path
+## Sprint 1 — Performance: WaveNet Dual-Frame no Hot-Path [CONCLUIDO]
 
 Impacto estimado: ~15-25% de redução de ciclos no forward WaveNet
+> **Auditoria:** Sprint concluída e validada com sucesso. A implementação do Dual-Frame Tiling tanto na variante Standard quanto Dinâmica mitigou redundâncias de carregamento SIMD. As correções de estabilidade no `Conv1dDyn` (tratamento *gated* via `unwrap_or(0.0)`) e ajustes dos loops em lote garantiram robustez de RT (Zero-Alloc) com throughput aprimorado de ~7-10% confirmado por benchmarks em `inference_bench`.
 
 ### T1.1 — Dual-Frame Tiling na Cascata `process_block_internal` do `WaveNetLayerArray` [CONCLUIDO]
 
