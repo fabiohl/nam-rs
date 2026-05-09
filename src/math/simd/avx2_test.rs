@@ -68,6 +68,8 @@ mod tests {
                 gain,
             );
 
+            assert_eq!(clipped_simd, clipped_ref);
+            assert_eq!(left_simd, left_ref);
             assert_eq!(right_simd, right_ref);
         }
     }
@@ -79,8 +81,12 @@ mod tests {
         }
         use crate::math::simd::fallback::FallbackMath;
 
-        let left = [0.1, 0.5, 0.9, 1.2, -0.1, -0.5, -0.9, -1.2, 0.5, 0.6, 0.7, 0.8];
-        let right = [0.0, 0.2, 0.4, 0.6, -0.0, -0.2, -0.4, -0.6, 0.1, 0.1, 0.1, 0.1];
+        let left = [
+            0.1, 0.5, 0.9, 1.2, -0.1, -0.5, -0.9, -1.2, 0.5, 0.6, 0.7, 0.8,
+        ];
+        let right = [
+            0.0, 0.2, 0.4, 0.6, -0.0, -0.2, -0.4, -0.6, 0.1, 0.1, 0.1, 0.1,
+        ];
 
         unsafe {
             let res_simd = Avx2Math::compute_energy_stereo(&left, &right);
