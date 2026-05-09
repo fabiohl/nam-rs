@@ -1065,9 +1065,12 @@ impl SimdMath for Avx2Math {
         unsafe {
             let v_i = _mm256_castps_si256(v);
             let v_shifted = _mm256_srli_epi32(v_i, 16);
-            let permute_mask = _mm256_set_epi32(7, 5, 3, 1, 6, 4, 2, 0);
-            let v_perm = _mm256_permutevar8x32_epi32(v_shifted, permute_mask);
-            let v_low = _mm256_castsi256_si128(v_perm);
+            let packed = _mm256_packus_epi32(v_shifted, v_shifted);
+            // packed has chunk 0 = [A,B,C,D], chunk 1 = [A,B,C,D], chunk 2 = [E,F,G,H], chunk 3 = [E,F,G,H]
+            // We want chunk 0 at pos 0, chunk 2 at pos 1.
+            // Control byte: 0b00001000 = 8.
+            let permuted = _mm256_permute4x64_epi64(packed, 8);
+            let v_low = _mm256_castsi256_si128(permuted);
             _mm_storeu_si128(ptr as *mut __m128i, v_low);
         }
     }
