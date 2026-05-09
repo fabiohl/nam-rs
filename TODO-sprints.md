@@ -97,7 +97,7 @@ Impacto: Redução de ~20 linhas mortas + 1 branch eliminado no hot-path
 
 ## Sprint 4 — Performance
 
-### T4.1 — Habilitar o Path BF16 Real no GEMV 4-Gate LSTM
+### T4.1 — Habilitar o Path BF16 Real no GEMV 4-Gate LSTM [CONCLUIDO]
 
 Impacto estimado: ~10-20% para modelos LSTM 2-camadas em CPUs com AVX-512 BF16
 
@@ -114,7 +114,7 @@ Impacto estimado: ~10-20% para modelos LSTM 2-camadas em CPUs com AVX-512 BF16
 Impacto estimado: ~50-80% de redução no tempo de prewarm
 
 - **Arquivo:** `src/models/wavenet.rs` (linhas 1121-1130)
-- **Problema:** O prewarm do WaveNetLayerArray preenche o receptive field com um loop escalar `for offset in 1..=receptive_field_size` que copia elemento-a-elemento em ambos os buffers (`layer_buffer` e `layer_buffer_bf16`). Para um receptive field de 1024 frames × 16 canais = 16384 operações, isso é extremamente lento.
+- **Problema:** O prewarm do WaveNetLayerArray preenche o receptive field com um loop escalar `for offset in 1..=receptive_field_size` que copia elemento-a-elemento em ambos os buffers (`layer_buffer` e `layer_buffer_bf16`). Para um receptive field de 1024 frames × 16 canais = 16384 operações, isso é extremamente lento. Note-se que no benchmarking final da Sprint 3, observou-se uma leve regressão de performance adicional nesta função, tornando sua otimização ainda mais prioritária.
 - **Proposta:** Substituir por `copy_within` (que o compilador otimiza para `memmove`/`memcpy`) ou `ptr::copy_nonoverlapping`:
 
   ```rust

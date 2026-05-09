@@ -247,7 +247,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         target_feature(enable = "avx512f,avx512vl"),
         crate::math::simd::Avx512Math,
         crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_fallback,
+        crate::math::simd::gemv_4gate_bf16_fallback, // Sem BF16 nativo aqui
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -279,7 +279,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
         crate::math::simd::Avx512VnniMath,
         crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_fallback,
+        crate::math::simd::gemv_4gate_bf16_fallback, // VNNI é para int8, não bf16
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -295,7 +295,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
         crate::math::simd::Avx512VnniBf16Math,
         crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_fallback,
+        crate::math::simd::gemv_4gate_bf16_avx512,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
