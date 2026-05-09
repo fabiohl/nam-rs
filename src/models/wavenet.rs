@@ -858,27 +858,59 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             let conv_slice = &mut conv_plus_mixin[..num_frames * CH];
 
             // [FASE 1: Linear - Conv1D + Mixin]
-            // Iteramos sobre todos os frames apenas para as operações lineares.
-            // Isso maximiza o reuso dos pesos da Conv1D (que são grandes) na Cache L1.
-            for i in 0..num_frames {
-                let out_ptr = conv_slice.as_mut_ptr().add(i * CH);
-                let out_frame = core::slice::from_raw_parts_mut(out_ptr, CH);
+            // [T1.1] Dual-Frame Tiling: Processamos 2 frames por iteração para amortizar
+            // o carregamento de pesos da Conv1D nos registradores.
+            let mut i = 0;
+            let mut chunks = conv_slice.chunks_exact_mut(2 * CH);
+            for chunk in chunks.by_ref() {
+                let (out_frame_f0, out_frame_f1) = chunk.split_at_mut(CH);
 
-                // Soma o Mixin (Condicionamento pré-calculado)
+                let mix_idx_f0 = i * CH;
+                let mix_idx_f1 = (i + 1) * CH;
+                let mixin_f0 = mixin_out.get_unchecked(mix_idx_f0..mix_idx_f0 + CH);
+                let mixin_f1 = mixin_out.get_unchecked(mix_idx_f1..mix_idx_f1 + CH);
+
+                if M::IS_BF16 {
+                    self.conv1d.process_dual_frame_bf16_with_mixin::<M>(
+                        layer_buffer_bf16,
+                        out_frame_f0,
+                        out_frame_f1,
+                        buffer_start + i,
+                        buffer_start + i + 1,
+                        mixin_f0,
+                        mixin_f1,
+                    );
+                } else {
+                    self.conv1d.process_dual_frame_with_mixin::<M>(
+                        layer_buffer,
+                        out_frame_f0,
+                        out_frame_f1,
+                        buffer_start + i,
+                        buffer_start + i + 1,
+                        mixin_f0,
+                        mixin_f1,
+                    );
+                }
+                i += 2;
+            }
+
+            // Trata o frame residual (ímpar)
+            let rem = chunks.into_remainder();
+            if !rem.is_empty() {
                 let mix_idx = i * CH;
                 let mixin_slice = mixin_out.get_unchecked(mix_idx..mix_idx + CH);
 
                 if M::IS_BF16 {
                     self.conv1d.process_single_frame_bf16_with_mixin::<M>(
                         layer_buffer_bf16,
-                        out_frame,
+                        rem,
                         buffer_start + i,
                         mixin_slice,
                     );
                 } else {
                     self.conv1d.process_single_frame_with_mixin::<M>(
                         layer_buffer,
-                        out_frame,
+                        rem,
                         buffer_start + i,
                         mixin_slice,
                     );
