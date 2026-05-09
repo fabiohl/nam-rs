@@ -109,7 +109,7 @@ Impacto estimado: ~10-20% para modelos LSTM 2-camadas em CPUs com AVX-512 BF16
 - **Decisão:** Aplicar apenas se não envolver muita refatoração.
 - **Validação:** `cargo bench` + testes de paridade LSTM.
 
-### T4.2 — Substituir Loop Escalar de Backfill por `copy_within` no Prewarm
+### T4.2 — Substituir Loop Escalar de Backfill por `copy_within` no Prewarm [CONCLUIDO]
 
 Impacto estimado: ~50-80% de redução no tempo de prewarm
 

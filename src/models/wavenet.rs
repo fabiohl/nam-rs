@@ -1151,13 +1151,24 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 // nós preenchemos todo o histórico (Receptive Field) com o valor recém-processado.
                 // Com VirtualRingBuffer, como buffer_start >= N, podemos recuar linearmente com segurança.
                 let start_idx = current_state.buffer_start * CH;
-                for offset in 1..=current_state.receptive_field_size {
-                    let dst_idx = (current_state.buffer_start - offset) * CH;
-                    for j in 0..CH {
-                        current_state.layer_buffer[dst_idx + j] =
-                            current_state.layer_buffer[start_idx + j];
-                        current_state.layer_buffer_bf16[dst_idx + j] =
-                            current_state.layer_buffer_bf16[start_idx + j];
+                let src_range = start_idx..start_idx + CH;
+
+                if M::IS_BF16 {
+                    for offset in 1..=current_state.receptive_field_size {
+                        let dst_idx = (current_state.buffer_start - offset) * CH;
+                        current_state
+                            .layer_buffer
+                            .copy_within(src_range.clone(), dst_idx);
+                        current_state
+                            .layer_buffer_bf16
+                            .copy_within(src_range.clone(), dst_idx);
+                    }
+                } else {
+                    for offset in 1..=current_state.receptive_field_size {
+                        let dst_idx = (current_state.buffer_start - offset) * CH;
+                        current_state
+                            .layer_buffer
+                            .copy_within(src_range.clone(), dst_idx);
                     }
                 }
 
