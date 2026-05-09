@@ -135,10 +135,10 @@
 
 ### T2.1 — Remover `detect_clipping_stereo_simd` (Dead Code)
 
-- [ ] **Arquivo:** `src/dsp/gain.rs` (linhas 127-194)
-- [ ] **Problema:** A função `detect_clipping_stereo_simd` é definida e testada mas **nunca chamada** no pipeline. O clipping é detectado exclusivamente via `apply_gain_and_detect_clipping_stereo` do trait `SimdMath` (vtable em `dispatch.rs` L53). É dead code legado.
-- [ ] **Ação:** Remover a função `detect_clipping_stereo_simd` e os testes associados em `gain_test.rs` que a referenciam (procurar por `detect_clipping`). Manter a função `apply_gain_and_detect_clipping_stereo` no trait (essa é a versão ativa).
-- [ ] **Teste:** `cargo test` para confirmar que nada dependia dela.
+- [x] **Arquivo:** `src/dsp/gain.rs` (linhas 127-194)
+- [x] **Problema:** A função `detect_clipping_stereo_simd` é definida e testada mas **nunca chamada** no pipeline. O clipping é detectado exclusivamente via `apply_gain_and_detect_clipping_stereo` do trait `SimdMath` (vtable em `dispatch.rs` L53). É dead code legado.
+- [x] **Ação:** Remover a função `detect_clipping_stereo_simd` e os testes associados em `gain_test.rs` que a referenciam (procurar por `detect_clipping`). Manter a função `apply_gain_and_detect_clipping_stereo` no trait (essa é a versão ativa).
+- [x] **Teste:** `cargo test` para confirmar que nada dependia dela.
 
 ### T2.2 — Prefetch de `WaveNetLayerState` adjacente na cascata
 
