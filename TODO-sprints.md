@@ -136,7 +136,7 @@ Impacto estimado: ~50-80% de redução no tempo de prewarm
 - **Alternativa agressiva:** Usar `slice::fill()` se o valor é uniforme, ou `repeat_with` para preencher de uma vez.
 - **Validação:** `cargo test` + verificar que os goldens de inferência continuam idênticos.
 
-### T4.3 — Lazy Telemetria com Decimação
+### T4.3 — Lazy Telemetria com Decimação [CONCLUIDO]
 
 Impacto: Eliminação de 2 chamadas RDTSC + 1 multiplicação no callback
 

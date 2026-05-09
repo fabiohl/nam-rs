@@ -241,6 +241,7 @@ pub fn run_pipewire_host(
         // Clonar Arc das flags para uso dentro do callback
         let rt_status_for_process = rt_status.clone();
         let gc_overflow_for_process = gc_overflow.clone();
+        let mut frame_count: u32 = 0;
 
         // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
         capture_listener = capture_stream
@@ -531,9 +532,16 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
-                                // Iniciamos a medição do tempo de processamento DSP puro (RDTSC).
-                                // Usado para calcular o 'DSP Load' e detectar XRuns iminentes.
-                                let start_nanos = rt_setup::rdtsc_nanos();
+                                // Decimação de Telemetria (T4.3): Medimos o tempo apenas a cada 16 frames
+                                // para reduzir o overhead de RDTSC no hot-path.
+                                let should_measure = (frame_count & 0xF) == 0;
+                                frame_count = frame_count.wrapping_add(1);
+
+                                let start_nanos = if should_measure {
+                                    rt_setup::rdtsc_nanos()
+                                } else {
+                                    0
+                                };
 
                                 capture_dsp_pipeline(
                                     samples_l,
@@ -562,30 +570,33 @@ pub fn run_pipewire_host(
                                     },
                                 );
 
-                                // Monitoramento de carga de DSP (DSP Load Monitoring via RDTSC)
-                                // `start_nanos` é capturado no início da pipeline DSP (acima).
-                                // Reportamos o tempo bruto em nanos para a thread de controle.
-                                let elapsed_nanos =
-                                    rt_setup::rdtsc_nanos().wrapping_sub(start_nanos);
-                                rt_status_for_process
-                                    .dsp_cycle_time
-                                    .store(elapsed_nanos, Ordering::Relaxed);
-                                rt_status_for_process.latency_hist.record(elapsed_nanos);
+                                if should_measure {
+                                    // Monitoramento de carga de DSP (DSP Load Monitoring via RDTSC)
+                                    // `start_nanos` é capturado no início da pipeline DSP (acima).
+                                    // Reportamos o tempo bruto em nanos para a thread de controle.
+                                    let elapsed_nanos =
+                                        rt_setup::rdtsc_nanos().wrapping_sub(start_nanos);
+                                    rt_status_for_process
+                                        .dsp_cycle_time
+                                        .store(elapsed_nanos, Ordering::Relaxed);
+                                    rt_status_for_process.latency_hist.record(elapsed_nanos);
+
+                                    // Calcula o budget máximo tolerável (85% do tempo real do buffer)
+                                    // Ainda usamos uma aproximação escalar aqui para detecção rápida de overload,
+                                    // mas a telemetria precisa via Anchor ocorre no poll_rt_status.
+                                    let elapsed_secs = elapsed_nanos as f64 / 1_000_000_000.0;
+                                    let budget_secs =
+                                        (n_samples as f64 / current_pw_rate as f64) * 0.85;
+                                    if elapsed_secs > budget_secs {
+                                        rt_status_for_process
+                                            .dsp_overloads
+                                            .fetch_add(1, Ordering::Relaxed);
+                                    }
+                                }
+
                                 rt_status_for_process
                                     .last_n_samples
                                     .store(n_samples as u32, Ordering::Relaxed);
-
-                                // Calcula o budget máximo tolerável (85% do tempo real do buffer)
-                                // Ainda usamos uma aproximação escalar aqui para detecção rápida de overload,
-                                // mas a telemetria precisa via Anchor ocorre no poll_rt_status.
-                                let elapsed_secs = elapsed_nanos as f64 / 1_000_000_000.0;
-                                let budget_secs =
-                                    (n_samples as f64 / current_pw_rate as f64) * 0.85;
-                                if elapsed_secs > budget_secs {
-                                    rt_status_for_process
-                                        .dsp_overloads
-                                        .fetch_add(1, Ordering::Relaxed);
-                                }
                             }
                         }
                     }
