@@ -993,7 +993,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
     /// # Safety
     /// Ponteiros de states iteram internamente sem bounds checks.
     #[inline(always)]
-    pub unsafe fn process_block_internal<M: SimdMath>(
+    pub unsafe fn process_block_internal<M: SimdMath, const PREWARM: bool>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
@@ -1009,7 +1009,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
         // [PASSO 2: Lazy BF16 Conversion]
         if M::IS_BF16 {
-            let changed = !self.condition_init || condition != &self.last_condition[..];
+            let changed = PREWARM || !self.condition_init || condition != &self.last_condition[..];
 
             if changed {
                 unsafe {
@@ -1043,6 +1043,27 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             // [PASSO 4: Cascata de Inferência das Camadas]
             for (i, layer) in self.layers.iter().enumerate() {
                 let current_state = &mut *states_ptr.add(i);
+
+                if PREWARM {
+                    // [PASSO 4.1: Propagação do Estado Estático (Backfill)]
+                    // Em modo prewarm, replicamos a amostra atual para todo o histórico (Receptive Field).
+                    // Isso garante que a rede estabilize instantaneamente para o valor estacionário.
+                    let start_idx = current_state.buffer_start * CH;
+                    let src_range = start_idx..start_idx + CH;
+
+                    for offset in 1..=current_state.receptive_field_size {
+                        let dst_idx = (current_state.buffer_start - offset) * CH;
+                        current_state
+                            .layer_buffer
+                            .copy_within(src_range.clone(), dst_idx);
+
+                        if M::IS_BF16 {
+                            current_state
+                                .layer_buffer_bf16
+                                .copy_within(src_range.clone(), dst_idx);
+                        }
+                    }
+                }
 
                 // [T2.2] Software Prefetch do próximo estado na cascata.
                 // Trazemos a linha de cache do estado i+1 (e i+2 se possível) para o L1
@@ -1092,7 +1113,9 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                     });
                 }
 
-                current_state.advance_frames(num_frames, CH);
+                if !PREWARM {
+                    current_state.advance_frames(num_frames, CH);
+                }
             }
 
             // [PASSO 5: Fechamento Dimensional (Head Rechannel)]
@@ -1124,121 +1147,10 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         layer_inputs: &[f32],
         condition: &[f32],
     ) {
-        debug_assert_eq!(self.layers.len(), self.states.len());
-        let states_ptr = self.states.as_mut_ptr();
-
-        // [PASSO 1: Zero-Acumulador]
-        // Preparativos de warm-up. O acumulador de skip-connections é limpo para este 1 único
-        // frame iterativo (num_frames = 1).
-        self.head_accum[0..CH].fill(0.0);
-
         unsafe {
-            // [PASSO 2: Abertura Dimensional Simulada]
-            // Expande os `layer_inputs` estáticos (geralmente [0.0]) de mono para o barramento de `CH` canais
-            // e escreve na primeira camada temporal do modelo (`state_0`).
-            let state_0 = &mut *states_ptr.add(0);
-            let start = state_0.buffer_start * CH;
-            self.rechannel.process_block::<M>(
-                layer_inputs,
-                &mut state_0.layer_buffer[start..start + CH],
-                1,
-            );
-
-            if M::IS_BF16 {
-                M::f32_to_bf16(
-                    &state_0.layer_buffer[start..start + CH],
-                    &mut state_0.layer_buffer_bf16[start..start + CH],
-                );
-            }
-
-            let num_layers = self.layers.len();
-            let last_layer = num_layers - 1;
-
-            for (i, layer) in self.layers.iter().enumerate() {
-                let current_state = &mut *states_ptr.add(i);
-
-                // [T2.2] Prefetch proativo de estados adjacentes (Consistência RT-Safety).
-                if i + 1 < num_layers {
-                    _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 1) as *const i8);
-                }
-
-                // [PASSO 3: Propagação do Estado Estático]
-                // DIFERENCIAL IMPORTANTE: Em vez de avançar o ponteiro (como no áudio em tempo real),
-                // nós preenchemos todo o histórico (Receptive Field) com o valor recém-processado.
-                // Com VirtualRingBuffer, como buffer_start >= N, podemos recuar linearmente com segurança.
-                let start_idx = current_state.buffer_start * CH;
-                let src_range = start_idx..start_idx + CH;
-
-                if M::IS_BF16 {
-                    for offset in 1..=current_state.receptive_field_size {
-                        let dst_idx = (current_state.buffer_start - offset) * CH;
-                        current_state
-                            .layer_buffer
-                            .copy_within(src_range.clone(), dst_idx);
-                        current_state
-                            .layer_buffer_bf16
-                            .copy_within(src_range.clone(), dst_idx);
-                    }
-                } else {
-                    for offset in 1..=current_state.receptive_field_size {
-                        let dst_idx = (current_state.buffer_start - offset) * CH;
-                        current_state
-                            .layer_buffer
-                            .copy_within(src_range.clone(), dst_idx);
-                    }
-                }
-
-                // [PASSO 4: Avaliação Numérica "Fantasma"]
-                // Efetua um ciclo de avaliação completo do tensor da camada, propagando o sinal nulo
-                // pela rede. Embora a entrada seja silêncio, camadas possuem matrizes de Bias que
-                // agregam valor real, ou seja, o "silêncio" de saída da rede *não* é exatamente zero.
-                if i == last_layer {
-                    layer.process_block_internal::<M>(WavenetProcessContext {
-                        condition,
-                        condition_bf16: &self.last_condition_bf16,
-                        head_input: &mut self.head_accum[0..CH],
-                        output: &mut self.array_outputs[0..CH],
-                        output_bf16: None,
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
-                        buffer_start: current_state.buffer_start,
-                        num_frames: 1,
-                        block: &mut self.block_buffer[0..self.block_size],
-                    });
-                } else {
-                    let next_state = &mut *states_ptr.add(i + 1);
-                    let next_start = next_state.buffer_start * CH;
-
-                    let next_layer_bf16 = if M::IS_BF16 {
-                        Some(&mut next_state.layer_buffer_bf16[next_start..next_start + CH])
-                    } else {
-                        None
-                    };
-
-                    layer.process_block_internal::<M>(WavenetProcessContext {
-                        condition,
-                        condition_bf16: &self.last_condition_bf16,
-                        head_input: &mut self.head_accum[0..CH],
-                        output: &mut next_state.layer_buffer[next_start..next_start + CH],
-                        output_bf16: next_layer_bf16,
-                        layer_buffer: &current_state.layer_buffer,
-                        layer_buffer_bf16: &current_state.layer_buffer_bf16,
-                        buffer_start: current_state.buffer_start,
-                        num_frames: 1,
-                        block: &mut self.block_buffer[0..self.block_size],
-                    });
-                }
-            }
-
-            // [PASSO 5: Fechamento]
-            // Resolve a passagem do frame inicial nulo pela camada densa de fechamento (Head Rechannel).
-            // Ao final deste fluxo, a arquitetura está purgada, alinhada e perfeitamente equilibrada
-            // no ponto numérico inerte do amplificador real. Pronta para processar sinal musical.
-            self.head_rechannel.process_block::<M>(
-                &self.head_accum[0..CH],
-                &mut self.head_outputs[0..HEAD],
-                1,
-            );
+            // Unificação via código compartilhado: processamos 1 frame com flag de prewarm ativa.
+            // O [PASSO 4.1] dentro de `process_block_internal` cuidará do backfill.
+            self.process_block_internal::<M, true>(layer_inputs, condition, 1);
         }
     }
 }
@@ -1304,14 +1216,17 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
                 // (ex: de 1 a 512, 1 a 512 sucessivamente) para capturar sub-graves de amplificadores.
                 // Seu output entra em `array1.array_outputs` e os skips em `array1.head_outputs`.
                 self.array1
-                    .process_block_internal::<M>(in_slice, in_slice, num_frames);
+                    .process_block_internal::<M, false>(in_slice, in_slice, num_frames);
 
                 // [PASSO 2: Array2 Forward]
                 // A segunda array atua tipicamente como uma camada perceptron de fechamento
                 // (dimensões menores, dilatações apenas de 1, processando o "mix" vindo da Array1).
                 let array1_outputs = &self.array1.array_outputs[0..num_frames * CH];
-                self.array2
-                    .process_block_internal::<M>(array1_outputs, in_slice, num_frames);
+                self.array2.process_block_internal::<M, false>(
+                    array1_outputs,
+                    in_slice,
+                    num_frames,
+                );
             }
 
             // [PASSO 3: Soma das Skips + Escala Final SIMD]

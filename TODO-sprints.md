@@ -162,9 +162,9 @@
 
 ### T2.3 — Unificar `prewarm_internal` com `process_block_internal`
 
-- [ ] **Arquivo:** `src/models/wavenet.rs` (linhas 1098-1227)
-- [ ] **Problema:** `prewarm_internal` no `WaveNetLayerArray` é uma cópia quase verbatim de `process_block_internal` (L995-1096) com `num_frames=1` + backfill via `copy_within`. São ~130 linhas duplicadas sujeitas a drift silencioso.
-- [ ] **Ação:** Refatorar para que `prewarm_internal` **chame** `process_block_internal` com `num_frames=1` e depois execute apenas o backfill:
+- [x] **Arquivo:** `src/models/wavenet.rs` (linhas 1098-1227)
+- [x] **Problema:** `prewarm_internal` no `WaveNetLayerArray` é uma cópia quase verbatim de `process_block_internal` (L995-1096) com `num_frames=1` + backfill via `copy_within`. São ~130 linhas duplicadas sujeitas a drift silencioso.
+- [x] **Ação:** Refatorar para que `prewarm_internal` **chame** `process_block_internal` com `num_frames=1` e depois execute apenas o backfill:
 
   ```rust
   unsafe fn prewarm_internal<M: SimdMath>(&mut self, layer_inputs: &[f32], condition: &[f32]) {
