@@ -80,7 +80,7 @@ Impacto: Redução de ~20 linhas mortas + 1 branch eliminado no hot-path
 - **Benefício:** Elimina dead code e um branch desnecessário na predição do match.
 - **Validação:** `cargo test` (pipeline_test).
 
-### T3.2 — `apply_gain_rt` Chamado Duas Vezes no Output Stage (Potencial de Fusão)
+### T3.2 — `apply_gain_rt` Chamado Duas Vezes no Output Stage (Potencial de Fusão) [CONCLUIDO]
 
 - **Arquivo:** `src/dsp/pipeline.rs` (linhas 321-322)
 - **Observação:** `silence_hysteresis.apply_gain_rt` é chamado separadamente para L e R. Se a histerese aplica o mesmo multiplicador de fade para ambos os canais (o que é o caso — é um gate global), esses dois loops poderiam ser fundidos em uma passagem stereo única análoga à proposta T3.1.

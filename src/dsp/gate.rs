@@ -8,6 +8,8 @@
 //! O objetivo é evitar "chattering" (oscilação rápida de estado) e artefatos
 //! audíveis (clicks/zipper noise) ao alternar entre modos de processamento.
 
+use crate::math::simd::SimdMath;
+
 /// Parâmetros de configuração para a lógica de Gate e Histerese.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[repr(align(128))] // Evita false sharing no canal SPSC
@@ -245,6 +247,60 @@ impl DynamicHysteresis {
                 const_part.fill(0.0);
             } else if (end_mult - 1.0).abs() > 1e-6 {
                 crate::dsp::gain::apply_gain_simd(const_part, end_mult);
+            }
+        }
+    }
+
+    /// Aplica o multiplicador de ganho atual a um par de buffers estéreo.
+    /// Funde as passagens de memória para melhorar a localidade de cache.
+    ///
+    /// # Safety
+    /// Esta função deve ser chamada apenas na thread RT.
+    pub fn apply_gain_rt_stereo<M: SimdMath>(
+        &self,
+        left: &mut [f32],
+        right: &mut [f32],
+        n_samples: usize,
+    ) {
+        if self.ramp_samples == 0 {
+            if self.current_multiplier == 0.0 {
+                left.fill(0.0);
+                right.fill(0.0);
+            } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
+                unsafe { M::apply_gain_stereo(left, right, self.current_multiplier) };
+            }
+            return;
+        }
+
+        let start_mult = self.ramp_start_multiplier;
+        let end_mult = self.current_multiplier;
+
+        if self.ramp_samples >= n_samples {
+            // A rampa ocupa o bloco inteiro
+            if (start_mult - end_mult).abs() < 1e-6 {
+                unsafe { M::apply_gain_stereo(left, right, end_mult) };
+            } else {
+                let step = (end_mult - start_mult) / (n_samples as f32);
+                unsafe { M::apply_ramp_stereo(left, right, start_mult, step) };
+            }
+        } else {
+            // Interpolação Sub-Bloco! A rampa termina antes do fim do bloco.
+            let (ramp_l, const_l) = left.split_at_mut(self.ramp_samples);
+            let (ramp_r, const_r) = right.split_at_mut(self.ramp_samples);
+
+            if (start_mult - end_mult).abs() < 1e-6 {
+                unsafe { M::apply_gain_stereo(ramp_l, ramp_r, end_mult) };
+            } else {
+                let step = (end_mult - start_mult) / (self.ramp_samples as f32);
+                unsafe { M::apply_ramp_stereo(ramp_l, ramp_r, start_mult, step) };
+            }
+
+            // Preenche o resto do buffer com a constante final
+            if end_mult == 0.0 {
+                const_l.fill(0.0);
+                const_r.fill(0.0);
+            } else if (end_mult - 1.0).abs() > 1e-6 {
+                unsafe { M::apply_gain_stereo(const_l, const_r, end_mult) };
             }
         }
     }

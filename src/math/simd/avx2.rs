@@ -1123,6 +1123,16 @@ impl SimdMath for Avx2Math {
     ) -> bool {
         unsafe { apply_gain_and_detect_clipping_stereo_avx2(left, right, gain) }
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        unsafe { apply_gain_stereo_avx2(left, right, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        unsafe { apply_ramp_stereo_avx2(left, right, start, step) }
+    }
 }
 
 /// Implementação estática para AVX2 com suporte a VNNI.
@@ -1357,6 +1367,16 @@ impl SimdMath for Avx2VnniMath {
         gain: f32,
     ) -> bool {
         unsafe { Avx2Math::apply_gain_and_detect_clipping_stereo(left, right, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        unsafe { Avx2Math::apply_gain_stereo(left, right, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        unsafe { Avx2Math::apply_ramp_stereo(left, right, start, step) }
     }
 }
 
@@ -1619,6 +1639,59 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
         i += 1;
     }
     clipped
+}
+
+/// Aplica ganho constante em estéreo via AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_gain_stereo_avx2(left: &mut [f32], right: &mut [f32], gain: f32) {
+    let n = core::cmp::min(left.len(), right.len());
+    let mut i = 0;
+    let ymm_gain = _mm256_set1_ps(gain);
+    while i + 8 <= n {
+        let pl = left.as_mut_ptr().add(i);
+        let pr = right.as_mut_ptr().add(i);
+        _mm256_storeu_ps(pl, _mm256_mul_ps(_mm256_loadu_ps(pl), ymm_gain));
+        _mm256_storeu_ps(pr, _mm256_mul_ps(_mm256_loadu_ps(pr), ymm_gain));
+        i += 8;
+    }
+    while i < n {
+        *left.get_unchecked_mut(i) *= gain;
+        *right.get_unchecked_mut(i) *= gain;
+        i += 1;
+    }
+}
+
+/// Aplica rampa linear de ganho em estéreo via AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+    let n = core::cmp::min(left.len(), right.len());
+    let mut i = 0;
+    let mut current_ramp = _mm256_set_ps(
+        start + 7.0 * step,
+        start + 6.0 * step,
+        start + 5.0 * step,
+        start + 4.0 * step,
+        start + 3.0 * step,
+        start + 2.0 * step,
+        start + 1.0 * step,
+        start,
+    );
+    let v_step_8 = _mm256_set1_ps(8.0 * step);
+    while i + 8 <= n {
+        let pl = left.as_mut_ptr().add(i);
+        let pr = right.as_mut_ptr().add(i);
+        _mm256_storeu_ps(pl, _mm256_mul_ps(_mm256_loadu_ps(pl), current_ramp));
+        _mm256_storeu_ps(pr, _mm256_mul_ps(_mm256_loadu_ps(pr), current_ramp));
+        current_ramp = _mm256_add_ps(current_ramp, v_step_8);
+        i += 8;
+    }
+    let mut g = start + (i as f32) * step;
+    while i < n {
+        *left.get_unchecked_mut(i) *= g;
+        *right.get_unchecked_mut(i) *= g;
+        g += step;
+        i += 1;
+    }
 }
 
 #[cfg(test)]

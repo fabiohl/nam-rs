@@ -35,6 +35,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > (Minimax + Newton-Raphson duplo) em vez de chamadas à libm IEEE-754 compliant.
 >
 > **Consequência:** Erro máximo por ativação vs libm (range completo `[-8, 8]`):
+>
 > - **tanh**: **< 2e-5** (sweep de 32.768 pontos, T7.2-2026-05-08); pior ponto em x≈-4.34 (1.234e-5).
 >   No range central `[-4, 4]` o erro cai para ~6e-8 (polinômio Minimax saturando o mantissa f32).
 > - **sigmoid**: **< 5e-6** (sweep de 32.768 pontos, T7.2-2026-05-08); erro uniforme por todo o range.
@@ -137,7 +138,7 @@ graph TD
 O NAM-rs utiliza um **Resampler Sinc Polifásico de Fase Mínima** nativo, substituindo dependências externas.
 
 - **Vantagens:** Elimina pré-ringing (energia concentrada no início), reduz latência algorítmica de ~1.5ms para ~0.1ms e oferece performance ~9x superior via convolução AVX2/AVX-512 dedicada.
-- **Gate FSM:** Implementa histerese temporal e de amplitude (Schmitt Trigger) para evitar oscilações em níveis de ruído. Inclui rampa linear SIMD para transições suaves (fade-in/out).
+- **Gate FSM:** Implementa histerese temporal e de amplitude (Schmitt Trigger) para evitar oscilações em níveis de ruído. Inclui rampa linear SIMD para transições suaves (fade-in/out), fundida em uma passagem stereo única para otimizar a localidade de cache.
 
 ### Fluxo DSP Bidirecional
 

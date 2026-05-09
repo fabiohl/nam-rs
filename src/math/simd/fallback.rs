@@ -720,6 +720,26 @@ impl SimdMath for FallbackMath {
         }
         clipped
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        let n = core::cmp::min(left.len(), right.len());
+        for i in 0..n {
+            *left.get_unchecked_mut(i) *= gain;
+            *right.get_unchecked_mut(i) *= gain;
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        let n = core::cmp::min(left.len(), right.len());
+        let mut g = start;
+        for i in 0..n {
+            *left.get_unchecked_mut(i) *= g;
+            *right.get_unchecked_mut(i) *= g;
+            g += step;
+        }
+    }
 }
 
 /// Fallback escalar para GEMV de 4 gates (LSTM).

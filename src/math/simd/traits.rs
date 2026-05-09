@@ -275,4 +275,16 @@ pub trait SimdMath {
         right: &mut [f32],
         gain: f32,
     ) -> bool;
+
+    /// Aplica ganho constante em estéreo (sem detecção de clipping).
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32);
+
+    /// Aplica rampa linear de ganho em estéreo.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32);
 }

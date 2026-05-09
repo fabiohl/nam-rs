@@ -747,6 +747,16 @@ impl SimdMath for Avx512Math {
     ) -> bool {
         unsafe { apply_gain_and_detect_clipping_stereo_avx512(left, right, gain) }
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        unsafe { apply_gain_stereo_avx512(left, right, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        unsafe { apply_ramp_stereo_avx512(left, right, start, step) }
+    }
 }
 
 /// Implementação estática para AVX-512 com suporte a VNNI.
@@ -981,6 +991,16 @@ impl SimdMath for Avx512VnniMath {
         gain: f32,
     ) -> bool {
         Avx512Math::apply_gain_and_detect_clipping_stereo(left, right, gain)
+    }
+
+    #[inline(always)]
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        Avx512Math::apply_gain_stereo(left, right, gain)
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        Avx512Math::apply_ramp_stereo(left, right, start, step)
     }
 }
 
@@ -1217,6 +1237,16 @@ impl SimdMath for Avx512VnniBf16Math {
         gain: f32,
     ) -> bool {
         Avx512Math::apply_gain_and_detect_clipping_stereo(left, right, gain)
+    }
+
+    #[inline(always)]
+    unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        Avx512Math::apply_gain_stereo(left, right, gain)
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        Avx512Math::apply_ramp_stereo(left, right, start, step)
     }
 }
 /// Soma horizontal de um buffer f32 de tamanho N (potência de 2) para AVX-512.
@@ -1502,4 +1532,65 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
         i += 1;
     }
     clipped
+}
+
+/// Aplica ganho constante em estéreo via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn apply_gain_stereo_avx512(left: &mut [f32], right: &mut [f32], gain: f32) {
+    let n = core::cmp::min(left.len(), right.len());
+    let mut i = 0;
+    let zmm_gain = _mm512_set1_ps(gain);
+    while i + 16 <= n {
+        let pl = left.as_mut_ptr().add(i);
+        let pr = right.as_mut_ptr().add(i);
+        _mm512_storeu_ps(pl, _mm512_mul_ps(_mm512_loadu_ps(pl), zmm_gain));
+        _mm512_storeu_ps(pr, _mm512_mul_ps(_mm512_loadu_ps(pr), zmm_gain));
+        i += 16;
+    }
+    while i < n {
+        *left.get_unchecked_mut(i) *= gain;
+        *right.get_unchecked_mut(i) *= gain;
+        i += 1;
+    }
+}
+
+/// Aplica rampa linear de ganho em estéreo via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+    let n = core::cmp::min(left.len(), right.len());
+    let mut i = 0;
+    let mut current_ramp = _mm512_set_ps(
+        start + 15.0 * step,
+        start + 14.0 * step,
+        start + 13.0 * step,
+        start + 12.0 * step,
+        start + 11.0 * step,
+        start + 10.0 * step,
+        start + 9.0 * step,
+        start + 8.0 * step,
+        start + 7.0 * step,
+        start + 6.0 * step,
+        start + 5.0 * step,
+        start + 4.0 * step,
+        start + 3.0 * step,
+        start + 2.0 * step,
+        start + 1.0 * step,
+        start,
+    );
+    let v_step_16 = _mm512_set1_ps(16.0 * step);
+    while i + 16 <= n {
+        let pl = left.as_mut_ptr().add(i);
+        let pr = right.as_mut_ptr().add(i);
+        _mm512_storeu_ps(pl, _mm512_mul_ps(_mm512_loadu_ps(pl), current_ramp));
+        _mm512_storeu_ps(pr, _mm512_mul_ps(_mm512_loadu_ps(pr), current_ramp));
+        current_ramp = _mm512_add_ps(current_ramp, v_step_16);
+        i += 16;
+    }
+    let mut g = start + (i as f32) * step;
+    while i < n {
+        *left.get_unchecked_mut(i) *= g;
+        *right.get_unchecked_mut(i) *= g;
+        g += step;
+        i += 1;
+    }
 }

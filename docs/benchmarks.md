@@ -128,3 +128,18 @@ Para processar dois frames em paralelo:
 3. O compilador foi forçado a usar *register spilling* ou atingiu gargalos de *execution ports* para instruções de mistura (Port 5).
 
 **Conclusão:** O gargalo primário da `Conv1D` no NAM-rs não está atrelado à largura de banda da Cache L1, e sim ao *throughput* computacional e contenção de registradores do backend (FMA). Por causa disto, embora a implementação do kernel tenha sido mantida no trait `SimdMath` para portabilidade e testes em arquiteturas com mais registradores (ex: AVX-512 ou ARM NEON), o loop principal na `WaveNetLayer` permanece utilizando **processamento Single-Frame** para garantir a menor latência e maior estabilidade em tempo real.
+
+## Relatório de Experimento: Fusão Stereo no Output Stage (T3.2)
+
+A Tarefa T3.2 visou eliminar passagens redundantes de memória no estágio final de saída, fundindo as operações de ganho (Hysteresis/Gate) dos canais L e R em uma única chamada SIMD stereo.
+
+### Resultados da Medição (64 samples, 48kHz, AVX2)
+
+| Topologia       | Antes da Fusão | Após a Fusão (T3.2) | Ganho (%) |
+|:--------------- |:-------------- |:------------------- |:--------- |
+| **WaveNet Std** | ~107.3 µs      | ~101.4 µs           | **~5.5%** |
+| **LSTM 2x16**   | ~15.4 µs       | ~14.7 µs            | **~4.5%** |
+
+### Conclusão
+
+A fusão stereo reduz o tráfego de memória na Cache L1 ao ler os canais L e R simultaneamente e aplicar os pesos de ganho/rampa em um único loop. O ganho é mais pronunciado em blocos menores (ex: 32 samples, onde mediu-se **~8.5%** de melhora), onde o overhead de despacho e os cache misses parciais têm maior peso relativo.

@@ -13,7 +13,7 @@ use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 #[cfg(any(feature = "standalone", test))]
 use crate::dsp::resampler::NamResampler;
 #[cfg(any(feature = "standalone", test))]
-use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2};
+use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2, dispatch_simd};
 #[cfg(any(feature = "standalone", test))]
 use crate::models::{DynamicModel, NamModel};
 #[cfg(any(feature = "standalone", test))]
@@ -322,8 +322,13 @@ fn apply_output_stage(
         output_gain_mult
     ));
 
-    silence_hysteresis.apply_gain_rt(&mut resamp_out_l[..n_pw], n_pw);
-    silence_hysteresis.apply_gain_rt(&mut resamp_out_r[..n_pw], n_pw);
+    dispatch_simd!(
+        silence_hysteresis,
+        apply_gain_rt_stereo,
+        &mut resamp_out_l[..n_pw],
+        &mut resamp_out_r[..n_pw],
+        n_pw
+    );
 
     if has_clipped {
         rt_status.set_flag(crate::spsc::RT_STATUS_HAS_CLIPPED);
