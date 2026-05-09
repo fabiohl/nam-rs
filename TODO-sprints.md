@@ -197,8 +197,8 @@
 
 ### T2.4 — Limpeza de docstrings e documentação de alinhamento
 
-- [ ] **Arquivo:** `src/models/wavenet_common.rs`
-- [ ] **Ação 1 — Docstring duplicada (L783-789):** Remover o `/// # Safety` duplicado antes de `process_block_bf16`. Manter apenas:
+- [x] **Arquivo:** `src/models/wavenet_common.rs`
+- [x] **Ação 1 — Docstring duplicada (L783-789):** Remover o `/// # Safety` duplicado antes de `process_block_bf16`. Manter apenas:
 
   ```rust
   /// Processa a camada usando BF16.
@@ -208,7 +208,7 @@
   /// Requer que `M::IS_BF16` seja true e que os buffers de entrada/saída sejam válidos.
   ```
 
-- [ ] **Ação 2 — Alinhamento 64B (L857):** Adicionar comentário ao `#[repr(align(64))]` do `WaveNetLayerState`:
+- [x] **Ação 2 — Alinhamento 64B (L857):** Adicionar comentário ao `#[repr(align(64))]` do `WaveNetLayerState`:
 
   ```rust
   /// Alinhamento de 64B (cache line) é suficiente pois esta struct vive exclusivamente

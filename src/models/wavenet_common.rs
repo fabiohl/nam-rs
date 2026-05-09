@@ -759,11 +759,9 @@ impl DenseLayerDyn {
     /// Processa a camada substituindo o output.
     ///
     /// # Safety
-    ///
+    /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
     /// Depende da validade dos buffers de entrada e saída para num_frames.
     #[inline(always)]
-    /// # Safety
-    /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         input: &[f32],
@@ -781,8 +779,6 @@ impl DenseLayerDyn {
     }
 
     /// Processa a camada usando BF16.
-    ///
-    /// # Safety
     ///
     /// # Safety
     /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
@@ -850,9 +846,8 @@ pub struct WavenetProcessContext<'a> {
 
 /// Gerencia a memória buffer de uma célula WaveNet.
 ///
-/// Alinhamento de 64 bytes (uma cache line) garante que `buffer_start` e
-/// `receptive_field_size` não compartilhem cache line com o estado da camada
-/// adjacente ao iterar `states_ptr.add(i)` no hot-path do `process()`.
+/// Alinhamento de 64B (cache line) é suficiente pois esta struct vive exclusivamente
+/// na thread DSP — não há compartilhamento inter-thread que exija 128B anti-false-sharing.
 #[repr(align(64))]
 #[derive(Clone)]
 pub struct WaveNetLayerState {
