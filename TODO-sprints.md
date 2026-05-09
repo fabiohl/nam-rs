@@ -86,7 +86,7 @@ Impacto: Redução de ~20 linhas mortas + 1 branch eliminado no hot-path
 - **Observação:** `silence_hysteresis.apply_gain_rt` é chamado separadamente para L e R. Se a histerese aplica o mesmo multiplicador de fade para ambos os canais (o que é o caso — é um gate global), esses dois loops poderiam ser fundidos em uma passagem stereo única análoga à proposta T3.1.
 - **Ação:** Investigar e, se confirmado, criar `apply_gain_rt_stereo` que processa ambos os canais em uma passagem.
 
-### T3.3 — Saturação do Contador `dropped_frames` no DspBridge
+### T3.3 — Saturação do Contador `dropped_frames` no DspBridge [CONCLUIDO]
 
 - **Arquivo:** `src/dsp/pipeline.rs` (linhas 163, 365)
 - **Problema:** O `dropped_frames` em `DspBridge` usa `AtomicU32` com `fetch_add(1, Relaxed)`. Após 4.29 bilhões de drops (improvável mas possível em sessões de semanas), o contador faz wrapping silencioso para 0, ocultando problemas. O `LatencyHistogram` já foi corrigido para usar saturação.

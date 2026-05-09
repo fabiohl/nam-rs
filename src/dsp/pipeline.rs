@@ -161,7 +161,11 @@ pub fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFla
     let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
     let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
     if current_gen > consumed_gen {
-        bridge_ref.dropped_frames.fetch_add(1, Ordering::Relaxed);
+        let _ = bridge_ref
+            .dropped_frames
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_add(1))
+            });
     }
 
     bridge_ref
@@ -371,7 +375,11 @@ fn write_bridge(
     let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
     let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
     if current_gen > consumed_gen {
-        bridge_ref.dropped_frames.fetch_add(1, Ordering::Relaxed);
+        let _ = bridge_ref
+            .dropped_frames
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                Some(v.saturating_add(1))
+            });
     }
 
     bridge_ref
