@@ -13,6 +13,7 @@ use crate::models::wavenet_common::{
     DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
     WavenetProcessContext,
 };
+use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 
 /// Representa a topologia vertical inteira de um galho WaveNet dinâmico, suportando múltiplas dilatações seq.
 pub struct WaveNetLayerArrayDyn {
@@ -126,6 +127,14 @@ impl WaveNetLayerArrayDyn {
             for i in 0..num_layers {
                 let layer = &self.layers[i];
                 let current_state = &mut *states_ptr.add(i);
+
+                // [T2.2] Software Prefetch do próximo estado na cascata (L1).
+                if i + 1 < num_layers {
+                    _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 1) as *const i8);
+                }
+                if i + 2 < num_layers {
+                    _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 2) as *const i8);
+                }
 
                 // [PASSO 4.1: Pre-fill Ring Buffer (Backwards)]
                 // Se estivermos em modo pre-warm, replicamos a entrada atual para todo o passado.

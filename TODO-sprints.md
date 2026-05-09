@@ -142,9 +142,9 @@
 
 ### T2.2 — Prefetch de `WaveNetLayerState` adjacente na cascata
 
-- [ ] **Arquivos:** `src/models/wavenet.rs` (linhas 1043-1085), `src/models/wavenet_dyn.rs` (loop equivalente)
-- [ ] **Problema:** Na cascata de inferência (`PASSO 4`), ao processar a camada `i`, o `states_ptr.add(i+1)` será acessado na próxima iteração. `WaveNetLayerState` (64B aligned) contém ponteiros para `VirtualRingBuffer` que podem estar em L2/L3.
-- [ ] **Ação:** Inserir no início do loop `for (i, layer)`, antes da chamada a `process_block_internal`:
+- [x] **Arquivos:** `src/models/wavenet.rs` (linhas 1043-1085), `src/models/wavenet_dyn.rs` (loop equivalente)
+- [x] **Problema:** Na cascata de inferência (`PASSO 4`), ao processar a camada `i`, o `states_ptr.add(i+1)` será acessado na próxima iteração. `WaveNetLayerState` (64B aligned) contém ponteiros para `VirtualRingBuffer` que podem estar em L2/L3.
+- [x] **Ação:** Inserir no início do loop `for (i, layer)`, antes da chamada a `process_block_internal`:
 
   ```rust
   if i < last_layer {
@@ -158,7 +158,7 @@
   ```
 
   Fazer o mesmo no `wavenet_dyn.rs` se houver loop equivalente.
-- [ ] **Risco:** Se o bench não mostrar ganho, manter o prefetch (overhead = 1 instrução, nunca prejudica).
+- [x] **Risco:** Se o bench não mostrar ganho, manter o prefetch (overhead = 1 instrução, nunca prejudica).
 
 ### T2.3 — Unificar `prewarm_internal` com `process_block_internal`
 

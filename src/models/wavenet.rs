@@ -11,6 +11,7 @@
 
 use super::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext};
 use crate::math::simd::{AlignedVec, PrefetchFn, SimdMath};
+use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 
 /// Convolução Causal Dilatada (WaveNet Conv1D).
 #[derive(Clone)]
@@ -1043,6 +1044,16 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             for (i, layer) in self.layers.iter().enumerate() {
                 let current_state = &mut *states_ptr.add(i);
 
+                // [T2.2] Software Prefetch do próximo estado na cascata.
+                // Trazemos a linha de cache do estado i+1 (e i+2 se possível) para o L1
+                // enquanto o processador resolve o pipeline aritmético da camada atual.
+                if i + 1 < num_layers {
+                    _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 1) as *const i8);
+                }
+                if i + 2 < num_layers {
+                    _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 2) as *const i8);
+                }
+
                 if i == last_layer {
                     layer.process_block_internal::<M>(WavenetProcessContext {
                         condition,
@@ -1145,6 +1156,11 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
 
             for (i, layer) in self.layers.iter().enumerate() {
                 let current_state = &mut *states_ptr.add(i);
+
+                // [T2.2] Prefetch proativo de estados adjacentes (Consistência RT-Safety).
+                if i + 1 < num_layers {
+                    _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 1) as *const i8);
+                }
 
                 // [PASSO 3: Propagação do Estado Estático]
                 // DIFERENCIAL IMPORTANTE: Em vez de avançar o ponteiro (como no áudio em tempo real),
