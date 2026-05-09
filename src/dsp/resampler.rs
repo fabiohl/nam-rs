@@ -29,10 +29,9 @@
 //! operações zero-alloc que manipulam ring buffers pré-alocados.
 
 use anyhow::{Result, bail};
-use core::arch::x86_64::*;
 
 use super::sinc_kernel::{NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank};
-use crate::math::simd::AlignedVec;
+use crate::math::simd::{AlignedVec, SimdMath, dispatch_simd};
 
 /// Tamanho do delay line (double-buffer) para garantir acesso contíguo.
 /// Mantém 2 cópias do histórico para evitar lógica de wrap no hot-path SIMD.
@@ -116,7 +115,7 @@ impl ResamplerCore {
     /// Processa um bloco estéreo. RT-safe: zero alocações.
     ///
     /// Retorna o número de amostras escritas em `out_l` / `out_r`.
-    fn process(
+    fn process_internal<M: SimdMath>(
         &mut self,
         in_l: &[f32],
         in_r: &[f32],
@@ -162,17 +161,10 @@ impl ResamplerCore {
                 let x_l = self.state_l.window_ptr();
                 let x_r = self.state_r.window_ptr();
                 let taps = self.bank.taps_per_phase;
-                let is_avx512 = crate::math::simd::SimdMathConfig::get().is_avx512;
 
-                if is_avx512 {
-                    let (y0_l, y0_r) = convolve_stereo_avx512(c0, x_l, x_r, taps);
-                    let (y1_l, y1_r) = convolve_stereo_avx512(c1, x_l, x_r, taps);
-                    (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
-                } else {
-                    let (y0_l, y0_r) = convolve_stereo_avx2(c0, x_l, x_r, taps);
-                    let (y1_l, y1_r) = convolve_stereo_avx2(c1, x_l, x_r, taps);
-                    (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
-                }
+                let (y0_l, y0_r) = M::convolve_stereo(c0, x_l, x_r, taps);
+                let (y1_l, y1_r) = M::convolve_stereo(c1, x_l, x_r, taps);
+                (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
             };
 
             out_l[out_idx] = y_l;
@@ -194,138 +186,6 @@ impl ResamplerCore {
         }
 
         out_idx
-    }
-}
-
-/// [T22] Convolução Stereo Interleaved AVX2.
-/// Carrega coeficientes uma única vez e aplica a ambos os canais.
-#[inline]
-unsafe fn convolve_stereo_avx2(
-    coeffs: *const f32,
-    input_l: *const f32,
-    input_r: *const f32,
-    taps: usize,
-) -> (f32, f32) {
-    unsafe {
-        let mut sum_l0 = _mm256_setzero_ps();
-        let mut sum_l1 = _mm256_setzero_ps();
-        let mut sum_r0 = _mm256_setzero_ps();
-        let mut sum_r1 = _mm256_setzero_ps();
-        let mut i = 0;
-
-        while i + 16 <= taps {
-            let h0 = _mm256_load_ps(coeffs.add(i));
-            let x0_l = _mm256_loadu_ps(input_l.add(i));
-            let x0_r = _mm256_loadu_ps(input_r.add(i));
-            sum_l0 = _mm256_fmadd_ps(h0, x0_l, sum_l0);
-            sum_r0 = _mm256_fmadd_ps(h0, x0_r, sum_r0);
-
-            let h1 = _mm256_load_ps(coeffs.add(i + 8));
-            let x1_l = _mm256_loadu_ps(input_l.add(i + 8));
-            let x1_r = _mm256_loadu_ps(input_r.add(i + 8));
-            sum_l1 = _mm256_fmadd_ps(h1, x1_l, sum_l1);
-            sum_r1 = _mm256_fmadd_ps(h1, x1_r, sum_r1);
-
-            i += 16;
-        }
-
-        while i + 8 <= taps {
-            let h = _mm256_load_ps(coeffs.add(i));
-            let x_l = _mm256_loadu_ps(input_l.add(i));
-            let x_r = _mm256_loadu_ps(input_r.add(i));
-            sum_l0 = _mm256_fmadd_ps(h, x_l, sum_l0);
-            sum_r0 = _mm256_fmadd_ps(h, x_r, sum_r0);
-            i += 8;
-        }
-
-        // Redução horizontal L
-        let sum_l = _mm256_add_ps(sum_l0, sum_l1);
-        let hi128_l = _mm256_extractf128_ps(sum_l, 1);
-        let lo128_l = _mm256_castps256_ps128(sum_l);
-        let s128_l = _mm_add_ps(lo128_l, hi128_l);
-        let shuf_l = _mm_movehdup_ps(s128_l);
-        let sums_l = _mm_add_ps(s128_l, shuf_l);
-        let shuf2_l = _mm_movehl_ps(sums_l, sums_l);
-        let r_l = _mm_add_ss(sums_l, shuf2_l);
-        let mut out_l = _mm_cvtss_f32(r_l);
-
-        // Redução horizontal R
-        let sum_r = _mm256_add_ps(sum_r0, sum_r1);
-        let hi128_r = _mm256_extractf128_ps(sum_r, 1);
-        let lo128_r = _mm256_castps256_ps128(sum_r);
-        let s128_r = _mm_add_ps(lo128_r, hi128_r);
-        let shuf_r = _mm_movehdup_ps(s128_r);
-        let sums_r = _mm_add_ps(s128_r, shuf_r);
-        let shuf2_r = _mm_movehl_ps(sums_r, sums_r);
-        let r_r = _mm_add_ss(sums_r, shuf2_r);
-        let mut out_r = _mm_cvtss_f32(r_r);
-
-        while i < taps {
-            let h = *coeffs.add(i);
-            out_l += h * *input_l.add(i);
-            out_r += h * *input_r.add(i);
-            i += 1;
-        }
-
-        (out_l, out_r)
-    }
-}
-
-/// [T22] Convolução Stereo Interleaved AVX-512.
-#[inline]
-#[target_feature(enable = "avx512f")]
-unsafe fn convolve_stereo_avx512(
-    coeffs: *const f32,
-    input_l: *const f32,
-    input_r: *const f32,
-    taps: usize,
-) -> (f32, f32) {
-    unsafe {
-        let mut sum_l0 = _mm512_setzero_ps();
-        let mut sum_l1 = _mm512_setzero_ps();
-        let mut sum_r0 = _mm512_setzero_ps();
-        let mut sum_r1 = _mm512_setzero_ps();
-        let mut i = 0;
-
-        // Loop principal: 2×16 = 32 floats/iteração
-        while i + 32 <= taps {
-            let h0 = _mm512_load_ps(coeffs.add(i));
-            let x0_l = _mm512_loadu_ps(input_l.add(i));
-            let x0_r = _mm512_loadu_ps(input_r.add(i));
-            sum_l0 = _mm512_fmadd_ps(h0, x0_l, sum_l0);
-            sum_r0 = _mm512_fmadd_ps(h0, x0_r, sum_r0);
-
-            let h1 = _mm512_load_ps(coeffs.add(i + 16));
-            let x1_l = _mm512_loadu_ps(input_l.add(i + 16));
-            let x1_r = _mm512_loadu_ps(input_r.add(i + 16));
-            sum_l1 = _mm512_fmadd_ps(h1, x1_l, sum_l1);
-            sum_r1 = _mm512_fmadd_ps(h1, x1_r, sum_r1);
-
-            i += 32;
-        }
-
-        while i + 16 <= taps {
-            let h = _mm512_load_ps(coeffs.add(i));
-            let x_l = _mm512_loadu_ps(input_l.add(i));
-            let x_r = _mm512_loadu_ps(input_r.add(i));
-            sum_l0 = _mm512_fmadd_ps(h, x_l, sum_l0);
-            sum_r0 = _mm512_fmadd_ps(h, x_r, sum_r0);
-            i += 16;
-        }
-
-        let sum_l = _mm512_add_ps(sum_l0, sum_l1);
-        let sum_r = _mm512_add_ps(sum_r0, sum_r1);
-        let mut out_l = _mm512_reduce_add_ps(sum_l);
-        let mut out_r = _mm512_reduce_add_ps(sum_r);
-
-        while i < taps {
-            let h = *coeffs.add(i);
-            out_l += h * *input_l.add(i);
-            out_r += h * *input_r.add(i);
-            i += 1;
-        }
-
-        (out_l, out_r)
     }
 }
 
@@ -406,6 +266,7 @@ impl NamResampler {
     ///
     /// # Retorno
     /// Número de amostras escritas em `out_l` / `out_r`.
+    #[allow(unused_parens)]
     pub fn process_input(
         &mut self,
         in_l: &[f32],
@@ -419,7 +280,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
-        core.process(in_l, in_r, out_l, out_r)
+        dispatch_simd!(core, process_internal, (in_l), (in_r), (out_l), (out_r))
     }
 
     /// **Resampling de saída** (output path): `nam_rate → pw_rate`.
@@ -428,6 +289,7 @@ impl NamResampler {
     ///
     /// # Retorno
     /// Número de amostras escritas em `out_l` / `out_r`.
+    #[allow(unused_parens)]
     pub fn process_output(
         &mut self,
         in_l: &[f32],
@@ -441,7 +303,7 @@ impl NamResampler {
             out_r[..n].copy_from_slice(&in_r[..n]);
             return n;
         };
-        core.process(in_l, in_r, out_l, out_r)
+        dispatch_simd!(core, process_internal, (in_l), (in_r), (out_l), (out_r))
     }
 }
 

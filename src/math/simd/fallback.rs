@@ -431,6 +431,26 @@ pub unsafe fn horizontal_sum_fallback(ptr: *const f32, len: usize) -> f32 {
     slice.iter().sum()
 }
 
+/// Fallback escalar para convolução estéreo (resampler).
+///
+/// # Safety
+/// Ponteiros devem ser válidos.
+pub unsafe fn convolve_stereo_fallback(
+    coeffs: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    let mut sum_l = 0.0f32;
+    let mut sum_r = 0.0f32;
+    for i in 0..taps {
+        let h = *coeffs.add(i);
+        sum_l += h * *input_l.add(i);
+        sum_r += h * *input_r.add(i);
+    }
+    (sum_l, sum_r)
+}
+
 /// Estrutura para despacho via trait para o backend de fallback.
 pub struct FallbackMath;
 
@@ -669,6 +689,16 @@ impl SimdMath for FallbackMath {
             cell_state[j] = new_cs;
             hidden_state[j] = sig_o * new_cs.tanh();
         }
+    }
+
+    #[inline(always)]
+    unsafe fn convolve_stereo(
+        coeffs: *const f32,
+        input_l: *const f32,
+        input_r: *const f32,
+        taps: usize,
+    ) -> (f32, f32) {
+        unsafe { convolve_stereo_fallback(coeffs, input_l, input_r, taps) }
     }
 }
 

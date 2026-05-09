@@ -251,4 +251,17 @@ pub trait SimdMath {
         hidden_state: &mut [f32],
         hidden_size: usize,
     );
+
+    /// Convolução estéreo (usada no resampler).
+    /// Realiza o produto escalar entre um banco de coeficientes e dois buffers de entrada (L/R).
+    ///
+    /// # Safety
+    /// `coeffs`, `input_l` e `input_r` devem ser ponteiros válidos para pelo menos `taps` elementos.
+    /// `coeffs` deve estar alinhado conforme o registrador SIMD.
+    unsafe fn convolve_stereo(
+        coeffs: *const f32,
+        input_l: *const f32,
+        input_r: *const f32,
+        taps: usize,
+    ) -> (f32, f32);
 }

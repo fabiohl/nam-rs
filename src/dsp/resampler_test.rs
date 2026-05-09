@@ -203,7 +203,7 @@ fn test_phase_accum_underflow_guard() {
     let mut out_r = [0.0f32; 64];
 
     // O processamento deve ocorrer sem pânico (o 'as usize' do clamp 0.0 é seguro)
-    let n = core.process(&in_l, &in_r, &mut out_l, &mut out_r);
+    let n = dispatch_simd!(core, process_internal, &in_l, &in_r, &mut out_l, &mut out_r);
     assert!(n > 0);
     assert!(
         core.phase_accum >= 0.0,

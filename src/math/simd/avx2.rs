@@ -1101,6 +1101,16 @@ impl SimdMath for Avx2Math {
     ) {
         unsafe { fused_lstm_gates_dyn_avx2(gates, cell_state, hidden_state, hidden_size) }
     }
+
+    #[inline(always)]
+    unsafe fn convolve_stereo(
+        coeffs: *const f32,
+        input_l: *const f32,
+        input_r: *const f32,
+        taps: usize,
+    ) -> (f32, f32) {
+        unsafe { convolve_stereo_avx2(coeffs, input_l, input_r, taps) }
+    }
 }
 
 /// Implementação estática para AVX2 com suporte a VNNI.
@@ -1317,6 +1327,16 @@ impl SimdMath for Avx2VnniMath {
     ) {
         unsafe { Avx2Math::fused_lstm_gates_dyn(gates, cell_state, hidden_state, hidden_size) }
     }
+
+    #[inline(always)]
+    unsafe fn convolve_stereo(
+        coeffs: *const f32,
+        input_l: *const f32,
+        input_r: *const f32,
+        taps: usize,
+    ) -> (f32, f32) {
+        unsafe { Avx2Math::convolve_stereo(coeffs, input_l, input_r, taps) }
+    }
 }
 
 /// Soma horizontal de um buffer f32 de tamanho N (potência de 2).
@@ -1452,5 +1472,79 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
         cell_state[j] = new_cs;
         hidden_state[j] = sig_o * new_cs.tanh();
         j += 1;
+    }
+}
+
+/// Convolução Stereo Interleaved AVX2.
+/// Carrega coeficientes uma única vez e aplica a ambos os canais.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn convolve_stereo_avx2(
+    coeffs: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    unsafe {
+        let mut sum_l0 = _mm256_setzero_ps();
+        let mut sum_l1 = _mm256_setzero_ps();
+        let mut sum_r0 = _mm256_setzero_ps();
+        let mut sum_r1 = _mm256_setzero_ps();
+        let mut i = 0;
+
+        while i + 16 <= taps {
+            let h0 = _mm256_load_ps(coeffs.add(i));
+            let x0_l = _mm256_loadu_ps(input_l.add(i));
+            let x0_r = _mm256_loadu_ps(input_r.add(i));
+            sum_l0 = _mm256_fmadd_ps(h0, x0_l, sum_l0);
+            sum_r0 = _mm256_fmadd_ps(h0, x0_r, sum_r0);
+
+            let h1 = _mm256_load_ps(coeffs.add(i + 8));
+            let x1_l = _mm256_loadu_ps(input_l.add(i + 8));
+            let x1_r = _mm256_loadu_ps(input_r.add(i + 8));
+            sum_l1 = _mm256_fmadd_ps(h1, x1_l, sum_l1);
+            sum_r1 = _mm256_fmadd_ps(h1, x1_r, sum_r1);
+
+            i += 16;
+        }
+
+        while i + 8 <= taps {
+            let h = _mm256_load_ps(coeffs.add(i));
+            let x_l = _mm256_loadu_ps(input_l.add(i));
+            let x_r = _mm256_loadu_ps(input_r.add(i));
+            sum_l0 = _mm256_fmadd_ps(h, x_l, sum_l0);
+            sum_r0 = _mm256_fmadd_ps(h, x_r, sum_r0);
+            i += 8;
+        }
+
+        // Redução horizontal L
+        let sum_l = _mm256_add_ps(sum_l0, sum_l1);
+        let hi128_l = _mm256_extractf128_ps(sum_l, 1);
+        let lo128_l = _mm256_castps256_ps128(sum_l);
+        let s128_l = _mm_add_ps(lo128_l, hi128_l);
+        let shuf_l = _mm_movehdup_ps(s128_l);
+        let sums_l = _mm_add_ps(s128_l, shuf_l);
+        let shuf2_l = _mm_movehl_ps(sums_l, sums_l);
+        let r_l = _mm_add_ss(sums_l, shuf2_l);
+        let mut out_l = _mm_cvtss_f32(r_l);
+
+        // Redução horizontal R
+        let sum_r = _mm256_add_ps(sum_r0, sum_r1);
+        let hi128_r = _mm256_extractf128_ps(sum_r, 1);
+        let lo128_r = _mm256_castps256_ps128(sum_r);
+        let s128_r = _mm_add_ps(lo128_r, hi128_r);
+        let shuf_r = _mm_movehdup_ps(s128_r);
+        let sums_r = _mm_add_ps(s128_r, shuf_r);
+        let shuf2_r = _mm_movehl_ps(sums_r, sums_r);
+        let r_r = _mm_add_ss(sums_r, shuf2_r);
+        let mut out_r = _mm_cvtss_f32(r_r);
+
+        while i < taps {
+            let h = *coeffs.add(i);
+            out_l += h * *input_l.add(i);
+            out_r += h * *input_r.add(i);
+            i += 1;
+        }
+
+        (out_l, out_r)
     }
 }
