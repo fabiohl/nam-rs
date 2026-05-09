@@ -775,8 +775,7 @@ impl DenseLayerDyn {
                 let in_slice = input.get_unchecked(i * self.in_size..(i + 1) * self.in_size);
                 let out_slice =
                     output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size);
-                out_slice.fill(0.0);
-                M::fused_add_gemv(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
+                M::gemv_overwrite(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
             }
         }
     }
@@ -800,7 +799,6 @@ impl DenseLayerDyn {
                 let in_slice = input.get_unchecked(i * self.in_size..(i + 1) * self.in_size);
                 let out_slice =
                     output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size);
-                out_slice.fill(0.0);
                 M::gemv_overwrite_bf16(
                     in_slice,
                     &self.weights,
@@ -1002,9 +1000,8 @@ impl WaveNetLayerDyn {
                 }
             } else {
                 // 1. Mixin (Batch)
-                mixin_out_slice.fill(0.0);
                 self.input_mixin
-                    .process_acc_block::<M>(condition, mixin_out_slice, num_frames);
+                    .process_block::<M>(condition, mixin_out_slice, num_frames);
 
                 // 2. Conv1D (Tiled Loop)
                 let mut i = 0;
