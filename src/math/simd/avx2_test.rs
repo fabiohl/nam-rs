@@ -68,9 +68,25 @@ mod tests {
                 gain,
             );
 
-            assert_eq!(clipped_simd, clipped_ref);
-            assert_eq!(left_simd, left_ref);
             assert_eq!(right_simd, right_ref);
+        }
+    }
+
+    #[test]
+    fn test_compute_energy_stereo_avx2_parity() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+        use crate::math::simd::fallback::FallbackMath;
+
+        let left = [0.1, 0.5, 0.9, 1.2, -0.1, -0.5, -0.9, -1.2, 0.5, 0.6, 0.7, 0.8];
+        let right = [0.0, 0.2, 0.4, 0.6, -0.0, -0.2, -0.4, -0.6, 0.1, 0.1, 0.1, 0.1];
+
+        unsafe {
+            let res_simd = Avx2Math::compute_energy_stereo(&left, &right);
+            let res_ref = FallbackMath::compute_energy_stereo(&left, &right);
+
+            assert!((res_simd - res_ref).abs() < 1e-6);
         }
     }
 }

@@ -206,6 +206,13 @@ pub trait SimdMath {
         ch: usize,
     );
 
+    /// Calcula o máximo da energia entre dois canais (Estéreo).
+    /// Retorna `max(energy_l, energy_r)`.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32;
+
     /// Aplica Tanh em um slice.
     ///
     /// # Safety

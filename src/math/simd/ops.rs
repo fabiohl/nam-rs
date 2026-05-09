@@ -177,6 +177,15 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
     }
 }
 
+/// Calcula o máximo da energia entre dois canais de áudio via despacho SIMD.
+/// fundindo as passagens para reduzir o tráfego de leitura.
+///
+/// # Safety
+/// Utiliza despacho dinâmico via v-table global.
+pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+    crate::math::simd::dispatch_simd!(compute_energy_stereo(l, r))
+}
+
 /// Calcula a diferença absoluta máxima entre dois blocos via AVX2.
 /// $\max(|L_i - R_i|)$
 ///

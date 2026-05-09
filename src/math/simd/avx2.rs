@@ -1106,6 +1106,11 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        unsafe { compute_energy_stereo_avx2(l, r) }
+    }
+
+    #[inline(always)]
     unsafe fn convolve_stereo(
         coeffs: *const f32,
         input_l: *const f32,
@@ -1348,6 +1353,11 @@ impl SimdMath for Avx2VnniMath {
         hidden_size: usize,
     ) {
         unsafe { Avx2Math::fused_lstm_gates_dyn(gates, cell_state, hidden_state, hidden_size) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        unsafe { Avx2Math::compute_energy_stereo(l, r) }
     }
 
     #[inline(always)]
@@ -1692,6 +1702,76 @@ pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start:
         g += step;
         i += 1;
     }
+}
+
+/// Calcula o máximo da energia entre dois canais (Mean Square) via AVX2.
+/// Funde as duas passagens em uma para economizar banda de memória.
+#[target_feature(enable = "avx2")]
+pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
+    let len = core::cmp::min(l.len(), r.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut i = 0;
+    let mut sum_l0 = _mm256_setzero_ps();
+    let mut sum_l1 = _mm256_setzero_ps();
+    let mut sum_r0 = _mm256_setzero_ps();
+    let mut sum_r1 = _mm256_setzero_ps();
+
+    while i + 16 <= len {
+        let vl0 = _mm256_loadu_ps(l.as_ptr().add(i));
+        let vl1 = _mm256_loadu_ps(l.as_ptr().add(i + 8));
+        let vr0 = _mm256_loadu_ps(r.as_ptr().add(i));
+        let vr1 = _mm256_loadu_ps(r.as_ptr().add(i + 8));
+
+        sum_l0 = _mm256_fmadd_ps(vl0, vl0, sum_l0);
+        sum_l1 = _mm256_fmadd_ps(vl1, vl1, sum_l1);
+        sum_r0 = _mm256_fmadd_ps(vr0, vr0, sum_r0);
+        sum_r1 = _mm256_fmadd_ps(vr1, vr1, sum_r1);
+        i += 16;
+    }
+
+    while i + 8 <= len {
+        let vl = _mm256_loadu_ps(l.as_ptr().add(i));
+        let vr = _mm256_loadu_ps(r.as_ptr().add(i));
+        sum_l0 = _mm256_fmadd_ps(vl, vl, sum_l0);
+        sum_r0 = _mm256_fmadd_ps(vr, vr, sum_r0);
+        i += 8;
+    }
+
+    // Soma horizontal para L
+    let sum_l = _mm256_add_ps(sum_l0, sum_l1);
+    let hi_l = _mm256_extractf128_ps(sum_l, 1);
+    let lo_l = _mm256_castps256_ps128(sum_l);
+    let s128_l = _mm_add_ps(lo_l, hi_l);
+    let shuf_l = _mm_movehdup_ps(s128_l);
+    let sums_l = _mm_add_ps(s128_l, shuf_l);
+    let shuf2_l = _mm_movehl_ps(sums_l, sums_l);
+    let r_l = _mm_add_ss(sums_l, shuf2_l);
+    let mut total_sum_l = 0.0f32;
+    _mm_store_ss(&mut total_sum_l, r_l);
+
+    // Soma horizontal para R
+    let sum_r = _mm256_add_ps(sum_r0, sum_r1);
+    let hi_r = _mm256_extractf128_ps(sum_r, 1);
+    let lo_r = _mm256_castps256_ps128(sum_r);
+    let s128_r = _mm_add_ps(lo_r, hi_r);
+    let shuf_r = _mm_movehdup_ps(s128_r);
+    let sums_r = _mm_add_ps(s128_r, shuf_r);
+    let shuf2_r = _mm_movehl_ps(sums_r, sums_r);
+    let r_r = _mm_add_ss(sums_r, shuf2_r);
+    let mut total_sum_r = 0.0f32;
+    _mm_store_ss(&mut total_sum_r, r_r);
+
+    while i < len {
+        total_sum_l += l[i] * l[i];
+        total_sum_r += r[i] * r[i];
+        i += 1;
+    }
+
+    let energy_l = total_sum_l / (len as f32);
+    let energy_r = total_sum_r / (len as f32);
+    energy_l.max(energy_r)
 }
 
 #[cfg(test)]

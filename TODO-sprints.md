@@ -161,7 +161,7 @@ Impacto: Eliminação de 2 chamadas RDTSC + 1 multiplicação no callback
 - **Analogia:** É exatamente o que `DenseLayer::process_block` (estático, linha 713-727) já faz — chama `gemv_overwrite` diretamente.
 - **Validação:** `cargo test` + `cargo bench`.
 
-### T5.2 — `compute_energy_stereo_avx2` Fundido
+### T5.2 — `compute_energy_stereo_avx2` Fundido [CONCLUIDO]
 
 - **Arquivo:** `src/dsp/pipeline.rs` (linhas 183-189) + `src/math/simd/`
 - **Problema:** `apply_input_stage` calcula `compute_energy_avx2` separadamente para L e R, depois faz `max(energy_l, energy_r)`. Isso percorre os dois buffers em passagens separadas (2× leitura + 2× redução horizontal).

@@ -631,6 +631,21 @@ impl SimdMath for FallbackMath {
     }
 
     #[inline(always)]
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        let len = l.len().min(r.len());
+        if len == 0 {
+            return 0.0;
+        }
+        let mut sum_l = 0.0f32;
+        let mut sum_r = 0.0f32;
+        for i in 0..len {
+            sum_l += l[i] * l[i];
+            sum_r += r[i] * r[i];
+        }
+        (sum_l / len as f32).max(sum_r / len as f32)
+    }
+
+    #[inline(always)]
     unsafe fn gated_activation_and_accumulate_block(
         head_input: &mut [f32],
         block: &mut [f32],

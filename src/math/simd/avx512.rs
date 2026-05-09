@@ -749,6 +749,11 @@ impl SimdMath for Avx512Math {
     }
 
     #[inline(always)]
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        unsafe { compute_energy_stereo_avx512(l, r) }
+    }
+
+    #[inline(always)]
     unsafe fn convolve_stereo(
         coeffs: *const f32,
         input_l: *const f32,
@@ -783,6 +788,11 @@ pub struct Avx512VnniMath;
 
 impl SimdMath for Avx512VnniMath {
     type V = __m512;
+
+    #[inline(always)]
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        unsafe { Avx512Math::compute_energy_stereo(l, r) }
+    }
 
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
@@ -1034,6 +1044,11 @@ pub struct Avx512VnniBf16Math;
 impl SimdMath for Avx512VnniBf16Math {
     type V = __m512;
     const IS_BF16: bool = true;
+
+    #[inline(always)]
+    unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        unsafe { Avx512Math::compute_energy_stereo(l, r) }
+    }
 
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
@@ -1875,6 +1890,40 @@ pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], star
         g += step;
         i += 1;
     }
+}
+
+/// Calcula o máximo da energia entre dois canais (Mean Square) via AVX-512.
+/// Funde as duas passagens em uma para economizar banda de memória.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn compute_energy_stereo_avx512(l: &[f32], r: &[f32]) -> f32 {
+    let len = core::cmp::min(l.len(), r.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut i = 0;
+    let mut sum_lv = _mm512_setzero_ps();
+    let mut sum_rv = _mm512_setzero_ps();
+
+    while i + 16 <= len {
+        let lv = _mm512_loadu_ps(l.as_ptr().add(i));
+        let rv = _mm512_loadu_ps(r.as_ptr().add(i));
+        sum_lv = _mm512_fmadd_ps(lv, lv, sum_lv);
+        sum_rv = _mm512_fmadd_ps(rv, rv, sum_rv);
+        i += 16;
+    }
+
+    let mut sum_l = super::utility::hsum_avx512(sum_lv);
+    let mut sum_r = super::utility::hsum_avx512(sum_rv);
+
+    while i < len {
+        sum_l += l[i] * l[i];
+        sum_r += r[i] * r[i];
+        i += 1;
+    }
+
+    let energy_l = sum_l / (len as f32);
+    let energy_r = sum_r / (len as f32);
+    energy_l.max(energy_r)
 }
 
 #[cfg(test)]

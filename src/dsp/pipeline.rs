@@ -13,7 +13,7 @@ use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 #[cfg(any(feature = "standalone", test))]
 use crate::dsp::resampler::NamResampler;
 #[cfg(any(feature = "standalone", test))]
-use crate::math::simd::{compute_energy_avx2, compute_max_diff_avx2, dispatch_simd};
+use crate::math::simd::{compute_energy_stereo, compute_max_diff_avx2, dispatch_simd};
 #[cfg(any(feature = "standalone", test))]
 use crate::models::{DynamicModel, NamModel};
 #[cfg(any(feature = "standalone", test))]
@@ -183,15 +183,9 @@ fn apply_input_stage(
     ctx: &mut DspPipelineContext<'_>,
 ) -> GateState {
     // Usa o máximo das energias de ambos os canais: qualquer canal com sinal ativo
-    // deve manter o gate aberto. Usando apenas L anteriormente, um sinal "Somente Direita"
-    // (L=0, R≠0) era erroneamente classificado como silêncio → bug de mudo no canal R.
-    let energy_l = unsafe { compute_energy_avx2(&samples_l[..n_samples]) };
-    let energy_r = unsafe { compute_energy_avx2(&samples_r[..n_samples]) };
-    let energy_ms = if energy_l >= energy_r {
-        energy_l
-    } else {
-        energy_r
-    };
+    // deve manter o gate aberto. Usando o kernel fundido para reduzir o tráfego de cache.
+    let energy_ms =
+        unsafe { compute_energy_stereo(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
     ctx.silence_hysteresis.update(
         energy_ms,

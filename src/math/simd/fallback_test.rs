@@ -159,3 +159,21 @@ fn test_fallback_apply_gain_and_detect_clipping_stereo() {
     assert!(!clipped2);
     assert_eq!(left2[0], 0.05);
 }
+
+#[test]
+fn test_fallback_compute_energy_stereo() {
+    let l = [1.0, 2.0, 3.0, 4.0];
+    let r = [0.5, 1.5, 2.5, 3.5];
+
+    // energy_l = (1^2 + 2^2 + 3^2 + 4^2) / 4 = (1 + 4 + 9 + 16) / 4 = 30 / 4 = 7.5
+    // energy_r = (0.5^2 + 1.5^2 + 2.5^2 + 3.5^2) / 4 = (0.25 + 2.25 + 6.25 + 12.25) / 4 = 21 / 4 = 5.25
+    // max(7.5, 5.25) = 7.5
+
+    let result = unsafe { FallbackMath::compute_energy_stereo(&l, &r) };
+    assert!((result - 7.5).abs() < 1e-6);
+
+    let l2 = [0.1, 0.2];
+    let r2 = [1.0, 2.0]; // energy_r2 = (1 + 4)/2 = 2.5
+    let result2 = unsafe { FallbackMath::compute_energy_stereo(&l2, &r2) };
+    assert!((result2 - 2.5).abs() < 1e-6);
+}

@@ -91,4 +91,22 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_compute_energy_stereo_avx512_parity() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+        use crate::math::simd::fallback::FallbackMath;
+
+        let left: Vec<f32> = (0..64).map(|i| i as f32 * 0.01).collect();
+        let right: Vec<f32> = (0..64).map(|i| (64 - i) as f32 * 0.01).collect();
+
+        unsafe {
+            let res_simd = Avx512Math::compute_energy_stereo(&left, &right);
+            let res_ref = FallbackMath::compute_energy_stereo(&left, &right);
+
+            assert!((res_simd - res_ref).abs() < 1e-6);
+        }
+    }
 }
