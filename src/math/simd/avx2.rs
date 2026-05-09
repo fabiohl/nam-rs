@@ -505,8 +505,7 @@ pub unsafe fn fused_add_gemv_avx2(
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
-                let w =
-                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                let w = half::f16::from_bits(weights[in_c * out_len + out_c]).to_f32();
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
             *out_frame.get_unchecked_mut(out_c) += sum;

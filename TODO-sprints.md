@@ -12,7 +12,7 @@
 
 Impacto estimado: ~15-25% de redução de ciclos no forward WaveNet
 
-### T1.1 — Dual-Frame Tiling na Cascata `process_block_internal` do `WaveNetLayerArray`
+### T1.1 — Dual-Frame Tiling na Cascata `process_block_internal` do `WaveNetLayerArray` [CONCLUIDO]
 
 - **Arquivo:** `src/models/wavenet.rs` (linhas 958–1064)
 - **Problema:** O loop da cascata de camadas em `process_block_internal` invoca `WaveNetLayer::process_block_internal` que, internamente, faz a Conv1D frame-a-frame. Os pesos da Conv1D são carregados da L1 para registradores **a cada frame**, mesmo sendo idênticos entre frames consecutivos.
@@ -24,7 +24,7 @@ Impacto estimado: ~15-25% de redução de ciclos no forward WaveNet
 - **Risco:** Baixo. O kernel `process_dual_frame_generic` já está implementado e testado. Apenas a orquestração do loop muda.
 - **Validação:** `cargo bench` (inference_bench) comparando throughput antes/depois.
 
-### T1.2 — Dual-Frame Tiling no `WaveNetLayerDyn` (Modelo Dinâmico)
+### T1.2 — Dual-Frame Tiling no `WaveNetLayerDyn` (Modelo Dinâmico) [CONCLUIDO]
 
 - **Arquivo:** `src/models/wavenet_common.rs` (`WaveNetLayerDyn::process_block_internal`, linhas 520–613)
 - **Problema:** Análogo ao T1.1, mas para a variante dinâmica. O `Conv1dDyn::process_block` processa frame-a-frame sem reuso de pesos entre frames adjacentes.

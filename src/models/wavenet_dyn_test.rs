@@ -16,8 +16,8 @@ mod tests {
         Conv1dDyn {
             weights: AlignedVec::from_vec(vec![
                 half::f16::from_f32(weight).to_bits();
-                out_ch * in_ch
-            ]), // kernel=1
+                (out_ch * in_ch + 7) & !7
+            ]), // kernel=1, padded to 8
             bias: AlignedVec::from_vec(vec![0.0; out_ch]),
             do_bias: false,
             dilation: 1,
@@ -31,8 +31,8 @@ mod tests {
     /// Constrói um `DenseLayerDyn` identidade (peso=0, bias=0, sem efeito).
     fn make_dense_zero(in_size: usize, out_size: usize) -> DenseLayerDyn {
         DenseLayerDyn {
-            weights: AlignedVec::from_vec(vec![0u16; out_size * in_size]),
-            bias: AlignedVec::from_vec(vec![0.0; out_size]),
+            weights: AlignedVec::new(out_size * in_size, 0u16),
+            bias: AlignedVec::new(out_size, 0.0),
             do_bias: false,
             in_size,
             out_size,
@@ -79,10 +79,10 @@ mod tests {
         };
 
         // Inputs para o processamento:
-        let condition = [0.0f32]; // Condicionamento global (ex: parâmetros de EQ)
-        let mut head_input = vec![0.0f32; ch]; // Acumulador para as "heads" de saída (skip connections)
-        let mut output = vec![0.0f32; ch]; // Saída para a próxima camada (residual path)
-        let mut block = vec![0.0f32; 2 * ch]; // Buffer temporário para cálculos intermediários
+        let condition = AlignedVec::new(ch, 0.0);
+        let mut head_input = AlignedVec::new(ch, 0.0);
+        let mut output = AlignedVec::new(ch, 0.0);
+        let mut block = AlignedVec::new(2 * ch * WAVENET_MAX_NUM_FRAMES, 0.0);
 
         let _math = SimdMathConfig::current();
 
@@ -151,10 +151,10 @@ mod tests {
             gated: false, // Desativa a lógica de split tanh * sigmoid
         };
 
-        let condition = [0.0f32];
-        let mut head_input = vec![0.0f32; ch];
-        let mut output = vec![0.0f32; ch];
-        let mut block = vec![0.0f32; ch]; // Block buffer tem tamanho 'ch' (não 2*ch)
+        let condition = AlignedVec::new(ch, 0.0);
+        let mut head_input = AlignedVec::new(ch, 0.0);
+        let mut output = AlignedVec::new(ch, 0.0);
+        let mut block = AlignedVec::new(ch * WAVENET_MAX_NUM_FRAMES, 0.0);
 
         let _math = SimdMathConfig::current();
 
