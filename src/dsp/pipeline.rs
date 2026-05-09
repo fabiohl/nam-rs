@@ -148,6 +148,7 @@ pub struct DspPipelineContext<'a> {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
     rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
+    rt_status.clear_flag(crate::spsc::RT_STATUS_IS_FADING);
 
     let bridge_ref = unsafe { &mut *bridge_ptr };
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
@@ -385,15 +386,10 @@ pub fn capture_dsp_pipeline(
 ) {
     let gate_state = apply_input_stage(samples_l, samples_r, n_samples, &mut ctx);
 
-    if gate_state == GateState::Closed {
-        handle_silence_bypass(ctx.bridge_ptr, ctx.rt_status);
-        return;
-    }
-
     match gate_state {
         GateState::Closed => {
-            ctx.rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
-            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_FADING);
+            handle_silence_bypass(ctx.bridge_ptr, ctx.rt_status);
+            return;
         }
         GateState::FadingIn | GateState::FadingOut => {
             ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);

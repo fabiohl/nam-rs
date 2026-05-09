@@ -70,7 +70,7 @@ Impacto estimado: ~3-5% de redução no estágio de saída do pipeline
 
 ## Sprint 3 — Bug/Limpeza
 
-### T3.1 — Branch `GateState::Closed` Duplicado em `capture_dsp_pipeline`
+### T3.1 — Branch `GateState::Closed` Duplicado em `capture_dsp_pipeline` [CONCLUIDO]
 
 Impacto: Redução de ~20 linhas mortas + 1 branch eliminado no hot-path
 
