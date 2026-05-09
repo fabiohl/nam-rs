@@ -315,13 +315,16 @@ fn apply_output_stage(
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
 ) {
-    crate::dsp::gain::apply_gain_simd(&mut resamp_out_l[..n_pw], output_gain_mult);
-    crate::dsp::gain::apply_gain_simd(&mut resamp_out_r[..n_pw], output_gain_mult);
+    let has_clipped = crate::math::simd::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
+        &mut resamp_out_l[..n_pw],
+        &mut resamp_out_r[..n_pw],
+        output_gain_mult
+    ));
 
     silence_hysteresis.apply_gain_rt(&mut resamp_out_l[..n_pw], n_pw);
     silence_hysteresis.apply_gain_rt(&mut resamp_out_r[..n_pw], n_pw);
 
-    if crate::dsp::gain::detect_clipping_stereo_simd(&resamp_out_l[..n_pw], &resamp_out_r[..n_pw]) {
+    if has_clipped {
         rt_status.set_flag(crate::spsc::RT_STATUS_HAS_CLIPPED);
     }
 }

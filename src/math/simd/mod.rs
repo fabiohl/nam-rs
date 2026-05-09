@@ -80,8 +80,11 @@ macro_rules! dispatch_simd {
     // Modo 3: Chamada direta à v-table (legado/específico)
     ($method:ident ($($arg:expr),*)) => {
         {
-            use $crate::math::simd::SIMD_MATH;
-            unsafe { (SIMD_MATH.$method)($($arg),*) }
+            #[allow(clippy::macro_metavars_in_unsafe)]
+            {
+                use $crate::math::simd::SIMD_MATH;
+                unsafe { (SIMD_MATH.$method)($($arg),*) }
+            }
         }
     };
 }

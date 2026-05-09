@@ -49,6 +49,8 @@ pub struct SimdMathConfig {
     pub accumulate_head: unsafe fn(&mut [f32], &[f32]),
     /// Soma horizontal de um buffer.
     pub horizontal_sum: unsafe fn(*const f32, usize) -> f32,
+    /// Aplica ganho e detecta clipping em estéreo.
+    pub apply_gain_and_detect_clipping_stereo: unsafe fn(&mut [f32], &mut [f32], f32) -> bool,
 }
 
 impl SimdMathConfig {
@@ -83,6 +85,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     super::fallback::horizontal_sum_fallback(ptr, len)
                 },
+                apply_gain_and_detect_clipping_stereo:
+                    Avx512VnniBf16Math::apply_gain_and_detect_clipping_stereo,
             };
         }
         if is_x86_feature_detected!("avx512vnni") {
@@ -99,6 +103,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     super::fallback::horizontal_sum_fallback(ptr, len)
                 },
+                apply_gain_and_detect_clipping_stereo:
+                    Avx512VnniMath::apply_gain_and_detect_clipping_stereo,
             };
         }
         if is_x86_feature_detected!("avx512f") {
@@ -114,6 +120,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     super::fallback::horizontal_sum_fallback(ptr, len)
                 },
+                apply_gain_and_detect_clipping_stereo:
+                    Avx512Math::apply_gain_and_detect_clipping_stereo,
             };
         }
         if is_x86_feature_detected!("avxvnni") {
@@ -130,6 +138,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     super::fallback::horizontal_sum_fallback(ptr, len)
                 },
+                apply_gain_and_detect_clipping_stereo:
+                    Avx2VnniMath::apply_gain_and_detect_clipping_stereo,
             };
         }
         if is_x86_feature_detected!("avx2") {
@@ -145,6 +155,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     super::fallback::horizontal_sum_fallback(ptr, len)
                 },
+                apply_gain_and_detect_clipping_stereo:
+                    Avx2Math::apply_gain_and_detect_clipping_stereo,
             };
         }
     }
@@ -159,5 +171,6 @@ fn detect_best_simd() -> SimdMathConfig {
         gemv_overwrite: FallbackMath::gemv_overwrite,
         accumulate_head: FallbackMath::accumulate_head,
         horizontal_sum: |ptr, len| unsafe { super::fallback::horizontal_sum_fallback(ptr, len) },
+        apply_gain_and_detect_clipping_stereo: FallbackMath::apply_gain_and_detect_clipping_stereo,
     }
 }

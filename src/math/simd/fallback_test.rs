@@ -131,3 +131,31 @@ fn test_fallback_activations() {
     assert!((data_copy[1] - 0.5).abs() < 1e-6);
     assert!((data_copy[2] - (1.0 / (1.0 + (-1.0f32).exp()))).abs() < 1e-6);
 }
+
+#[test]
+fn test_fallback_apply_gain_and_detect_clipping_stereo() {
+    let mut left = [0.5, 0.8, -1.2, 0.1];
+    let mut right = [0.1, -0.9, 0.4, 0.2];
+    let gain = 2.0;
+
+    // Expected values after gain:
+    // left:  [1.0, 1.6, -2.4, 0.2] -> clipping at index 1 and 2
+    // right: [0.2, -1.8, 0.8, 0.4] -> clipping at index 1
+    let clipped =
+        unsafe { FallbackMath::apply_gain_and_detect_clipping_stereo(&mut left, &mut right, gain) };
+
+    assert!(clipped);
+    assert_eq!(left[0], 1.0);
+    assert_eq!(left[1], 1.6);
+    assert_eq!(right[1], -1.8);
+
+    // Test without clipping
+    let mut left2 = [0.1, 0.2];
+    let mut right2 = [0.3, 0.4];
+    let gain2 = 0.5;
+    let clipped2 = unsafe {
+        FallbackMath::apply_gain_and_detect_clipping_stereo(&mut left2, &mut right2, gain2)
+    };
+    assert!(!clipped2);
+    assert_eq!(left2[0], 0.05);
+}

@@ -36,7 +36,7 @@ Impacto estimado: ~15-25% de redução de ciclos no forward WaveNet
 
 ## Sprint 2 — Performance
 
-### T2.1 — Eliminar Branch `is_avx512` do Inner Loop do Resampler
+### T2.1 — Eliminar Branch `is_avx512` do Inner Loop do Resampler [CONCLUIDO]
 
 Impacto estimado: ~5-10% menos overhead por ciclo para 44.1→48 kHz
 
@@ -46,7 +46,7 @@ Impacto estimado: ~5-10% menos overhead por ciclo para 44.1→48 kHz
 - **Alternativa (mais elegante):** Refatorar `ResamplerCore::process` em `ResamplerCore::process_internal<ConvolveFn>` com o ponteiro de convolução como parâmetro genérico, e despachar no `NamResampler`.
 - **Validação:** `cargo bench` (resampler bench ou inference_bench com modelos 44.1k).
 
-### T2.2 — Fundir `apply_gain_simd` + `detect_clipping_stereo_simd` em Passagem Única
+### T2.2 — Fundir `apply_gain_simd` + `detect_clipping_stereo_simd` em Passagem Única [CONCLUIDO]
 
 Impacto estimado: ~3-5% de redução no estágio de saída do pipeline
 
@@ -59,6 +59,12 @@ Impacto estimado: ~3-5% de redução no estágio de saída do pipeline
 - **Proposta:** Criar `apply_gain_and_detect_clipping_stereo_simd(left, right, gain, threshold) -> bool` que aplica ganho e detecta clipping em uma única passagem AVX2. Dentro do loop de 8 amostras: `mul_ps(vals, gain)` + `andnot_ps(sign, result)` + `cmp_ps(abs, threshold)` + `or_ps(accumulator)`.
 - **Benefício extra:** Além de reduzir tráfego de cache, o early-exit do clipping agora acontece *durante* a aplicação de ganho, evitando a passagem final inteira quando clipping é detectado.
 - **Validação:** `cargo bench` + testes de pipeline existentes.
+
+#### 🔎 Auditoria de Revisão (Sprint 2)
+
+- **T2.1:** Implementado elegantemente via `dispatch_simd!` em `process_input` / `process_output` (em `src/dsp/resampler.rs`), eliminando branch preditivo do inner-loop de `process_internal`. Resampler benchmarked com sucesso.
+- **T2.2:** Fundido via kernel `apply_gain_and_detect_clipping_stereo` e integrado em `pipeline.rs`. O design da v-table global `SimdMathConfig` foi expandido.
+- **Impacto no Futuro (T3.2):** O stage `apply_output_stage` agora sofre 2 passagens de memória (uma para a fusão Gain+Clip, e outra separada `apply_gain_rt` L+R). A Tarefa **T3.2** é a continuação natural e deverá fundir as chamadas `apply_gain_rt` do hysteresis para eliminar de vez tráfego espúrio.
 
 ---
 

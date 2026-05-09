@@ -700,6 +700,26 @@ impl SimdMath for FallbackMath {
     ) -> (f32, f32) {
         unsafe { convolve_stereo_fallback(coeffs, input_l, input_r, taps) }
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool {
+        let n = core::cmp::min(left.len(), right.len());
+        let mut clipped = false;
+        for i in 0..n {
+            let vl = *left.get_unchecked(i) * gain;
+            let vr = *right.get_unchecked(i) * gain;
+            *left.get_unchecked_mut(i) = vl;
+            *right.get_unchecked_mut(i) = vr;
+            if !clipped && (vl.abs() > 1.0 || vr.abs() > 1.0) {
+                clipped = true;
+            }
+        }
+        clipped
+    }
 }
 
 /// Fallback escalar para GEMV de 4 gates (LSTM).

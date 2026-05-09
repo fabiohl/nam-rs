@@ -264,4 +264,15 @@ pub trait SimdMath {
         input_r: *const f32,
         taps: usize,
     ) -> (f32, f32);
+
+    /// Aplica ganho e detecta clipping em estéreo em uma única passagem.
+    /// Retorna `true` se qualquer amostra resultante possuir `|x| > 1.0`.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool;
 }

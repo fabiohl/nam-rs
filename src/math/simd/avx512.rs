@@ -738,6 +738,15 @@ impl SimdMath for Avx512Math {
     ) -> (f32, f32) {
         unsafe { convolve_stereo_avx512(coeffs, input_l, input_r, taps) }
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool {
+        unsafe { apply_gain_and_detect_clipping_stereo_avx512(left, right, gain) }
+    }
 }
 
 /// Implementação estática para AVX-512 com suporte a VNNI.
@@ -964,6 +973,14 @@ impl SimdMath for Avx512VnniMath {
         taps: usize,
     ) -> (f32, f32) {
         unsafe { Avx512Math::convolve_stereo(coeffs, input_l, input_r, taps) }
+    }
+    #[inline(always)]
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool {
+        Avx512Math::apply_gain_and_detect_clipping_stereo(left, right, gain)
     }
 }
 
@@ -1192,6 +1209,14 @@ impl SimdMath for Avx512VnniBf16Math {
         taps: usize,
     ) -> (f32, f32) {
         unsafe { Avx512Math::convolve_stereo(coeffs, input_l, input_r, taps) }
+    }
+    #[inline(always)]
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool {
+        Avx512Math::apply_gain_and_detect_clipping_stereo(left, right, gain)
     }
 }
 /// Soma horizontal de um buffer f32 de tamanho N (potência de 2) para AVX-512.
@@ -1426,4 +1451,55 @@ pub unsafe fn convolve_stereo_avx512(
 
         (out_l, out_r)
     }
+}
+/// Aplica ganho e detecta clipping em estéreo em uma única passagem usando AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
+    left: &mut [f32],
+    right: &mut [f32],
+    gain: f32,
+) -> bool {
+    let n = core::cmp::min(left.len(), right.len());
+    let mut i = 0;
+    let v_gain = _mm512_set1_ps(gain);
+    let v_limit = _mm512_set1_ps(1.0);
+    let sign_mask = _mm512_set1_ps(-0.0f32);
+    let mut k_clip = 0u16;
+
+    while i + 16 <= n {
+        let pl = left.as_mut_ptr().add(i);
+        let pr = right.as_mut_ptr().add(i);
+
+        let vl = _mm512_loadu_ps(pl);
+        let vr = _mm512_loadu_ps(pr);
+
+        let gl = _mm512_mul_ps(vl, v_gain);
+        let gr = _mm512_mul_ps(vr, v_gain);
+
+        _mm512_storeu_ps(pl, gl);
+        _mm512_storeu_ps(pr, gr);
+
+        let abs_l = _mm512_andnot_ps(sign_mask, gl);
+        let abs_r = _mm512_andnot_ps(sign_mask, gr);
+
+        let k_l = _mm512_cmp_ps_mask(abs_l, v_limit, _CMP_GT_OQ);
+        let k_r = _mm512_cmp_ps_mask(abs_r, v_limit, _CMP_GT_OQ);
+
+        k_clip |= k_l | k_r;
+        i += 16;
+    }
+
+    let mut clipped = k_clip != 0;
+
+    while i < n {
+        let vl = *left.get_unchecked(i) * gain;
+        let vr = *right.get_unchecked(i) * gain;
+        *left.get_unchecked_mut(i) = vl;
+        *right.get_unchecked_mut(i) = vr;
+        if !clipped && (vl.abs() > 1.0 || vr.abs() > 1.0) {
+            clipped = true;
+        }
+        i += 1;
+    }
+    clipped
 }

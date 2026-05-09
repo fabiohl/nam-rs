@@ -1111,6 +1111,15 @@ impl SimdMath for Avx2Math {
     ) -> (f32, f32) {
         unsafe { convolve_stereo_avx2(coeffs, input_l, input_r, taps) }
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool {
+        unsafe { apply_gain_and_detect_clipping_stereo_avx2(left, right, gain) }
+    }
 }
 
 /// Implementação estática para AVX2 com suporte a VNNI.
@@ -1337,6 +1346,15 @@ impl SimdMath for Avx2VnniMath {
     ) -> (f32, f32) {
         unsafe { Avx2Math::convolve_stereo(coeffs, input_l, input_r, taps) }
     }
+
+    #[inline(always)]
+    unsafe fn apply_gain_and_detect_clipping_stereo(
+        left: &mut [f32],
+        right: &mut [f32],
+        gain: f32,
+    ) -> bool {
+        unsafe { Avx2Math::apply_gain_and_detect_clipping_stereo(left, right, gain) }
+    }
 }
 
 /// Soma horizontal de um buffer f32 de tamanho N (potência de 2).
@@ -1548,3 +1566,58 @@ pub unsafe fn convolve_stereo_avx2(
         (out_l, out_r)
     }
 }
+/// Aplica ganho e detecta clipping em estéreo em uma única passagem usando AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
+    left: &mut [f32],
+    right: &mut [f32],
+    gain: f32,
+) -> bool {
+    let n = core::cmp::min(left.len(), right.len());
+    let mut i = 0;
+    let ymm_gain = _mm256_set1_ps(gain);
+    let limit = _mm256_set1_ps(1.0);
+    let sign_mask = _mm256_set1_ps(-0.0f32);
+    let mut any_clip = _mm256_setzero_ps();
+
+    while i + 8 <= n {
+        let pl = left.as_mut_ptr().add(i);
+        let pr = right.as_mut_ptr().add(i);
+
+        let vl = _mm256_loadu_ps(pl);
+        let vr = _mm256_loadu_ps(pr);
+
+        let gl = _mm256_mul_ps(vl, ymm_gain);
+        let gr = _mm256_mul_ps(vr, ymm_gain);
+
+        _mm256_storeu_ps(pl, gl);
+        _mm256_storeu_ps(pr, gr);
+
+        let abs_l = _mm256_andnot_ps(sign_mask, gl);
+        let abs_r = _mm256_andnot_ps(sign_mask, gr);
+
+        let cmp_l = _mm256_cmp_ps(abs_l, limit, _CMP_GT_OQ);
+        let cmp_r = _mm256_cmp_ps(abs_r, limit, _CMP_GT_OQ);
+
+        any_clip = _mm256_or_ps(any_clip, _mm256_or_ps(cmp_l, cmp_r));
+        i += 8;
+    }
+
+    let mut clipped = _mm256_movemask_ps(any_clip) != 0;
+
+    while i < n {
+        let vl = *left.get_unchecked(i) * gain;
+        let vr = *right.get_unchecked(i) * gain;
+        *left.get_unchecked_mut(i) = vl;
+        *right.get_unchecked_mut(i) = vr;
+        if !clipped && (vl.abs() > 1.0 || vr.abs() > 1.0) {
+            clipped = true;
+        }
+        i += 1;
+    }
+    clipped
+}
+
+#[cfg(test)]
+#[path = "avx2_test.rs"]
+mod avx2_test;
