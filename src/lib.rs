@@ -5,26 +5,36 @@
 
 //! Biblioteca do motor de inferência Neural Amp Modeler (NAM-rs).
 //!
-//! Este projeto segue uma arquitetura híbrida (Library + Binary):
-//! 1. **Core Engine (Library)**: Este arquivo (`lib.rs`) define o motor de inferência,
-//!    infraestrutura matemática (SIMD), utilitários Lock-Free e o host PipeWire.
-//! 2. **Interface (Binary)**: O arquivo `main.rs` consome esta biblioteca para prover
-//!    a interface de linha de comando (CLI).
+//! O NAM-rs é organizado em uma estrutura modular para suportar múltiplos alvos de build:
 //!
-//! Esta separação permite:
-//! - **Testabilidade**: Facilita a execução de testes de integração e benchmarks.
-//! - **Modularidade**: Isola a lógica de processamento de áudio em tempo real da interface.
-//! - **Reusabilidade**: Permite que o motor seja futuramente incorporado em outros
-//!   front-ends (GUIs) ou formatos de plugins (VST/CLAP).
+//! - **Common**: Infraestrutura agnóstica de host (diagnósticos, comunicação SPSC, parâmetros).
+//! - **Standalone**: Implementação nativa para PipeWire e utilitários de CLI.
+//!   Ativado via feature `standalone`.
+//! - **CLAP Plugin**: Integração como plugin no formato CLAP (CLever Audio Plug-in).
+//!   Ativado via feature `clap-plugin`.
+//!
+//! O motor de inferência, os kernels de processamento (SIMD) e a lógica de carregamento
+//! de modelos são compartilhados entre todos os front-ends para garantir paridade matemática.
 
+/// Camada de infraestrutura comum e agnóstica de host.
 pub mod common;
 pub use common::*;
 
+/// Infraestrutura para execução standalone (PipeWire + CLI).
+#[cfg(feature = "standalone")]
 pub mod standalone;
 #[cfg(feature = "standalone")]
 pub use standalone::*;
 
+/// Integração no formato de plugin CLAP.
+#[cfg(feature = "clap-plugin")]
+pub mod clap;
+
+/// Motor de processamento digital de sinais (DSP).
 pub mod dsp;
+/// Carregamento e construção de modelos (.nam, .namb).
 pub mod loader;
+/// Primitivas matemáticas e kernels SIMD otimizados.
 pub mod math;
+/// Definições de tensores e topologias de redes neurais.
 pub mod models;

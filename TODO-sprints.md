@@ -30,13 +30,13 @@
   - Criar `src/standalone/mod.rs` com `#[cfg(feature = "standalone")]` e re-exports
   - **Aceite:** `cargo check --features standalone` passa sem erros
 
-- [ ] **Tarefa 0.1.3** — Criar `src/clap/mod.rs` (stub)
+- [x] **Tarefa 0.1.3** — Criar `src/clap/mod.rs` (stub)
   - Criar diretório `src/clap/`
   - Criar `src/clap/mod.rs` com stub protegido por `#[cfg(feature = "clap-plugin")]`
   - Conteúdo mínimo: docstring do módulo + placeholder
   - **Aceite:** `cargo check --no-default-features --features clap-plugin` passa
 
-- [ ] **Tarefa 0.1.4** — Refatorar `src/lib.rs` como hub mínimo de re-exports
+- [x] **Tarefa 0.1.4** — Refatorar `src/lib.rs` como hub mínimo de re-exports
   - Expor `pub mod common;` (sempre)
   - Expor `pub mod standalone;` sob `#[cfg(feature = "standalone")]`
   - Expor `pub mod clap;` sob `#[cfg(feature = "clap-plugin")]`
