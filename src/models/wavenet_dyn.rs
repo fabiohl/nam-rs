@@ -258,7 +258,7 @@ impl WaveNetDynModel {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
         self.array1.prewarm::<M>(&layer_inputs_1, &condition);
-        let array1_outputs = &self.array1.array_outputs[..];
+        let array1_outputs = &self.array1.array_outputs[0..self.array1.ch];
         self.array2.prewarm::<M>(array1_outputs, &condition);
     }
 }
