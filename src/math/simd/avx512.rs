@@ -778,6 +778,20 @@ impl SimdMath for Avx512Math {
     }
 
     #[inline(always)]
+    unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        unsafe { apply_gain_avx512(data, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    ) {
+        unsafe { batch_wavenet_head_sum_avx512::<HEAD>(head1, head2, output, scale) }
+    }
+    #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         unsafe { apply_ramp_stereo_avx512(left, right, start, step) }
     }
@@ -1033,6 +1047,21 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[inline(always)]
+    unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        apply_gain_avx512(data, gain)
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    ) {
+        unsafe { batch_wavenet_head_sum_avx512::<HEAD>(head1, head2, output, scale) }
+    }
+
+    #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         Avx512Math::apply_ramp_stereo(left, right, start, step)
     }
@@ -1284,8 +1313,22 @@ impl SimdMath for Avx512VnniBf16Math {
     }
 
     #[inline(always)]
+    unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        apply_gain_avx512(data, gain)
+    }
+
+    #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         Avx512Math::apply_ramp_stereo(left, right, start, step)
+    }
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    ) {
+        unsafe { batch_wavenet_head_sum_avx512::<HEAD>(head1, head2, output, scale) }
     }
 }
 
@@ -1931,6 +1974,39 @@ pub unsafe fn horizontal_sum_avx512(ptr: *const f32, len: usize) -> f32 {
     }
 
     total
+}
+
+/// Aplica ganho constante em um buffer mono usando AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {
+    let len = data.len();
+    let vg = _mm512_set1_ps(gain);
+    let mut i = 0;
+    while i + 16 <= len {
+        let v = _mm512_loadu_ps(data.as_ptr().add(i));
+        _mm512_storeu_ps(data.as_mut_ptr().add(i), _mm512_mul_ps(v, vg));
+        i += 16;
+    }
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
+        _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_mul_ps(v, vg));
+    }
+}
+
+/// Kernel especializado para soma Head do WaveNet usando AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn batch_wavenet_head_sum_avx512<const HEAD: usize>(
+    head1: &[f32],
+    head2: &[f32],
+    output: &mut [f32],
+    scale: f32,
+) {
+    let num_frames = output.len();
+    for i in 0..num_frames {
+        let h1 = horizontal_sum_avx512(head1.as_ptr().add(i * HEAD), HEAD);
+        *output.get_unchecked_mut(i) = (h1 + *head2.get_unchecked(i)) * scale;
+    }
 }
 
 #[cfg(test)]

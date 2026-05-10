@@ -289,9 +289,27 @@ pub trait SimdMath {
     /// Buffers devem ser válidos.
     unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32);
 
+    /// Aplica ganho constante em um buffer mono.
+    ///
+    /// # Safety
+    /// O buffer deve ser válido.
+    unsafe fn apply_gain(data: &mut [f32], gain: f32);
+
     /// Aplica rampa linear de ganho em estéreo.
     ///
     /// # Safety
     /// Buffers devem ser válidos.
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32);
+
+    /// Kernel especializado para soma Head do WaveNet.
+    /// Vetoriza o somatório horizontal das projeções head1 (batch), soma head2 e escala final.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos e ter tamanhos compatíveis com HEAD e num_frames.
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    );
 }

@@ -51,6 +51,8 @@ pub struct SimdMathConfig {
     pub horizontal_sum: unsafe fn(*const f32, usize) -> f32,
     /// Aplica ganho e detecta clipping em estéreo.
     pub apply_gain_and_detect_clipping_stereo: unsafe fn(&mut [f32], &mut [f32], f32) -> bool,
+    /// Aplica ganho constante em um buffer mono.
+    pub apply_gain: unsafe fn(&mut [f32], f32),
     /// Calcula o máximo da energia entre dois canais.
     pub compute_energy_stereo: unsafe fn(&[f32], &[f32]) -> f32,
 }
@@ -89,6 +91,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx512VnniBf16Math::apply_gain_and_detect_clipping_stereo,
+                apply_gain: Avx512VnniBf16Math::apply_gain,
                 compute_energy_stereo: Avx512VnniBf16Math::compute_energy_stereo,
             };
         }
@@ -108,6 +111,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx512VnniMath::apply_gain_and_detect_clipping_stereo,
+                apply_gain: Avx512VnniMath::apply_gain,
                 compute_energy_stereo: Avx512VnniMath::compute_energy_stereo,
             };
         }
@@ -126,6 +130,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx512Math::apply_gain_and_detect_clipping_stereo,
+                apply_gain: Avx512Math::apply_gain,
                 compute_energy_stereo: Avx512Math::compute_energy_stereo,
             };
         }
@@ -143,6 +148,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe { super::avx2::horizontal_sum_avx2(ptr, len) },
                 apply_gain_and_detect_clipping_stereo:
                     Avx2VnniMath::apply_gain_and_detect_clipping_stereo,
+                apply_gain: Avx2VnniMath::apply_gain,
                 compute_energy_stereo: Avx2VnniMath::compute_energy_stereo,
             };
         }
@@ -159,6 +165,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe { super::avx2::horizontal_sum_avx2(ptr, len) },
                 apply_gain_and_detect_clipping_stereo:
                     Avx2Math::apply_gain_and_detect_clipping_stereo,
+                apply_gain: Avx2Math::apply_gain,
                 compute_energy_stereo: Avx2Math::compute_energy_stereo,
             };
         }
@@ -175,6 +182,7 @@ fn detect_best_simd() -> SimdMathConfig {
         accumulate_head: FallbackMath::accumulate_head,
         horizontal_sum: |ptr, len| unsafe { super::fallback::horizontal_sum_fallback(ptr, len) },
         apply_gain_and_detect_clipping_stereo: FallbackMath::apply_gain_and_detect_clipping_stereo,
+        apply_gain: FallbackMath::apply_gain,
         compute_energy_stereo: FallbackMath::compute_energy_stereo,
     }
 }

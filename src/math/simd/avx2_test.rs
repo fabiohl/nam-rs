@@ -95,4 +95,29 @@ mod tests {
             assert!((res_simd - res_ref).abs() < 1e-6);
         }
     }
+
+    #[test]
+    fn test_batch_wavenet_head_sum_avx2_parity() {
+        if !is_x86_feature_detected!("avx2") {
+            return;
+        }
+        use crate::math::simd::fallback::FallbackMath;
+
+        const HEAD_SIZE: usize = 16;
+        const NUM_FRAMES: usize = 4;
+        let head1 = vec![0.1f32; NUM_FRAMES * HEAD_SIZE];
+        let head2 = vec![0.5f32; NUM_FRAMES];
+        let mut out_simd = vec![0.0f32; NUM_FRAMES];
+        let mut out_ref = vec![0.0f32; NUM_FRAMES];
+        let scale = 0.5f32;
+
+        unsafe {
+            Avx2Math::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_simd, scale);
+            FallbackMath::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_ref, scale);
+        }
+
+        for i in 0..NUM_FRAMES {
+            assert!((out_simd[i] - out_ref[i]).abs() < 1e-6);
+        }
+    }
 }

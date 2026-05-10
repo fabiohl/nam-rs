@@ -1135,6 +1135,21 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        unsafe { apply_gain_avx2(data, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    ) {
+        unsafe { batch_wavenet_head_sum_avx2::<HEAD>(head1, head2, output, scale) }
+    }
+
+    #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         unsafe { apply_ramp_stereo_avx2(left, right, start, step) }
     }
@@ -1385,8 +1400,23 @@ impl SimdMath for Avx2VnniMath {
     }
 
     #[inline(always)]
+    unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        unsafe { apply_gain_avx2(data, gain) }
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    ) {
+        unsafe { batch_wavenet_head_sum_avx2::<HEAD>(head1, head2, output, scale) }
+    }
+
+    #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
-        unsafe { Avx2Math::apply_ramp_stereo(left, right, start, step) }
+        unsafe { apply_ramp_stereo_avx2(left, right, start, step) }
     }
 }
 
@@ -1403,6 +1433,23 @@ pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
     }
     while i < len {
         dest[i] += src[i];
+        i += 1;
+    }
+}
+
+/// Aplica ganho constante em um buffer mono usando AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_gain_avx2(data: &mut [f32], gain: f32) {
+    let len = data.len();
+    let vg = _mm256_set1_ps(gain);
+    let mut i = 0;
+    while i + 8 <= len {
+        let v = _mm256_loadu_ps(data.as_ptr().add(i));
+        _mm256_storeu_ps(data.as_mut_ptr().add(i), _mm256_mul_ps(v, vg));
+        i += 8;
+    }
+    while i < len {
+        data[i] *= gain;
         i += 1;
     }
 }
@@ -1773,6 +1820,22 @@ pub unsafe fn horizontal_sum_avx2(ptr: *const f32, len: usize) -> f32 {
     }
 
     total
+}
+
+/// Soma em lote (batch) das projeções Head do WaveNet usando AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn batch_wavenet_head_sum_avx2<const HEAD: usize>(
+    head1: &[f32],
+    head2: &[f32],
+    output: &mut [f32],
+    scale: f32,
+) {
+    let num_frames = output.len();
+    for i in 0..num_frames {
+        let ptr = head1.as_ptr().add(i * HEAD);
+        let sum = horizontal_sum_avx2(ptr, HEAD);
+        *output.get_unchecked_mut(i) = (sum + *head2.get_unchecked(i)) * scale;
+    }
 }
 
 #[cfg(test)]

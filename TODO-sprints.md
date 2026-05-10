@@ -50,12 +50,12 @@
      - Backends AVX2/Avx2Vnni: `horizontal_sum: |ptr, len| unsafe { super::avx2::horizontal_sum_avx2(ptr, len) }`
      - Backends AVX-512/*: `horizontal_sum: |ptr, len| unsafe { super::avx512::horizontal_sum_avx512(ptr, len) }`
      - Fallback: manter `horizontal_sum_fallback`.
-- [ ] **Teste:** Reutilizar ou criar teste unitário comparando saída SIMD vs fallback para len=1,4,8,16,32.
+- [x] **Teste:** Reutilizar ou criar teste unitário comparando saída SIMD vs fallback para len=1,4,8,16,32.
 
-### T1.3 — Vetorizar o loop de soma Head do WaveNet
+### T1.3 — Vetorizar o loop de soma Head do WaveNet [CONCLUIDO]
 
-- [ ] **Arquivo:** `src/models/wavenet.rs` (linhas 1303-1312)
-- [ ] **Problema:** O loop final em `process_internal` é:
+- [x] **Arquivo:** `src/models/wavenet.rs` (linhas 1303-1312)
+- [x] **Problema:** O loop final em `process_internal` é:
 
   ```rust
   for i in 0..num_frames {

@@ -1231,15 +1231,13 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
 
             // [PASSO 3: Soma das Skips + Escala Final SIMD]
             // Somatório SIMD das projeções Head de ambas as arrays e escala pela `head_scale`.
-            for i in 0..num_frames {
-                let head_ptr = self.array1.head_outputs.as_ptr();
-                let head1_sum = unsafe { M::horizontal_sum::<HEAD>(head_ptr.add(i * HEAD)) };
-
-                // O head final do Array2 gera a amostra float. Somamos ao mix da Array1.
-                let final_sum = head1_sum + self.array2.head_outputs[i]; // HEAD2=1
-
-                // Escrevemos a tensão elétrica analógica reconstruída no array de áudio local.
-                output[pos + i] = final_sum * self.head_scale;
+            unsafe {
+                M::batch_wavenet_head_sum::<HEAD>(
+                    &self.array1.head_outputs[0..num_frames * HEAD],
+                    &self.array2.head_outputs[0..num_frames],
+                    &mut output[pos..pos + num_frames],
+                    self.head_scale,
+                );
             }
             pos += num_frames;
         }

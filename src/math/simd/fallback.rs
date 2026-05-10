@@ -746,6 +746,11 @@ impl SimdMath for FallbackMath {
     }
 
     #[inline(always)]
+    unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        unsafe { apply_gain_fallback(data, gain) }
+    }
+
+    #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         let n = core::cmp::min(left.len(), right.len());
         let mut g = start;
@@ -753,6 +758,25 @@ impl SimdMath for FallbackMath {
             *left.get_unchecked_mut(i) *= g;
             *right.get_unchecked_mut(i) *= g;
             g += step;
+        }
+    }
+
+    #[inline(always)]
+    #[allow(clippy::needless_range_loop)]
+    unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        scale: f32,
+    ) {
+        let num_frames = output.len();
+        for i in 0..num_frames {
+            let start = i * HEAD;
+            let mut sum = 0.0;
+            for j in 0..HEAD {
+                sum += *head1.get_unchecked(start + j);
+            }
+            output[i] = (sum + *head2.get_unchecked(i)) * scale;
         }
     }
 }
@@ -852,6 +876,16 @@ pub unsafe fn gemv_4gate_bf16_fallback(
             &mut out[3 * out_len..4 * out_len],
             do_bias,
         );
+    }
+}
+
+/// Aplica ganho constante em um buffer mono (Fallback).
+///
+/// # Safety
+/// O buffer deve ser válido.
+pub unsafe fn apply_gain_fallback(data: &mut [f32], gain: f32) {
+    for x in data.iter_mut() {
+        *x *= gain;
     }
 }
 
