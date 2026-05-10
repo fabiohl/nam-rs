@@ -12,7 +12,7 @@
 
 ### Épico 0.1 — Reorganização de Diretórios
 
-- [ ] **Tarefa 0.1.1** — Criar `src/common/mod.rs` e mover módulos compartilhados
+- [x] **Tarefa 0.1.1** — Criar `src/common/mod.rs` e mover módulos compartilhados
   - Criar diretório `src/common/`
   - Mover `src/audio_host.rs` → `src/common/audio_host.rs`
   - Mover `src/diagnostics.rs` + `src/diagnostics_test.rs` → `src/common/`
@@ -77,7 +77,7 @@
   - **Aceite:** Todos os 4 comandos acima passam com sucesso absoluto
 
 > **📋 CHECKPOINT DE REVISÃO — Épico 0.1 concluído**
-> Validar: estrutura de diretórios, compilação dual-feature, todos os testes.
+> Validar: Estrutura de diretórios, compilação dual-feature, todos os testes. "utils/*.sh" inteiro passando com sucesso.
 
 ---
 

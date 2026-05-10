@@ -17,16 +17,15 @@
 //! - **Reusabilidade**: Permite que o motor seja futuramente incorporado em outros
 //!   front-ends (GUIs) ou formatos de plugins (VST/CLAP).
 
-pub mod audio_host;
+pub mod common;
+pub use common::*;
+
 pub mod colors;
-pub mod diagnostics;
 pub mod dsp;
 pub mod loader;
 pub mod math;
 pub mod models;
-pub mod params;
 #[cfg(feature = "standalone")]
 pub mod pw_host;
 #[cfg(feature = "standalone")]
 pub mod rt_setup;
-pub mod spsc;
