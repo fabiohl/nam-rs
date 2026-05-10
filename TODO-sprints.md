@@ -178,7 +178,7 @@
   
   **Aceite:** `grep -n "Pendente\|pending\|nih-plug" docs/clap_integration.md` retorna zero resultados; documento não contém seções incompletas ou contradições com o backlog.
 
-- [ ] **Tarefa 0.2.4** — Atualizar `docs/dependencies.md` (dependências CLAP planejadas)
+- [x] **Tarefa 0.2.4** — Atualizar `docs/dependencies.md` (dependências CLAP planejadas)
   
   **Contexto:** O `dependencies.md` cobre apenas as dependências existentes no `Cargo.toml` atual. As dependências CLAP ainda não foram adicionadas ao `Cargo.toml` (isso é feito na Sprint 1), mas devem ser **pré-documentadas** aqui como "planejadas", seguindo o padrão da tabela existente, para que a Tarefa 1.1.1 tenha guia de referência técnica.
   

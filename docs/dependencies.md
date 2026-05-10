@@ -7,11 +7,30 @@ Esta documentação lista e detalha contextualmente as dependências de sistema 
 
 ## 1. Dependências do Sistema (Linux)
 
-Os seguintes pacotes de bibliotecas primárias devem estar instalados no sistema via `apt` ou pacote correspondente no seu ambiente para viabilizar as bindings C do *PipeWire* através de abstrações nativas.
+Os seguintes pacotes devem estar instalados no sistema para viabilizar a compilação e execução do NAM-rs em seus diferentes modos. O comando consolidado para instalação em sistemas baseados em Debian/Ubuntu é:
 
-* **`pipewire`** e **`libpipewire-0.3-dev`**: Headers e libraries do core de processamento e backend PipeWire. Necessários apenas para a feature `standalone` (padrão). Com `--no-default-features` ou `--features clap-plugin`, o PipeWire **não** é vinculado.
-* **`clang`** e **`libclang-dev`**: Utilitários compiladores para transcrever de forma automática os headers C/C++ para ffi nativa no *rust-bindgen* durante *build-time*.
-* **`pkg-config`**: Ferramenta elementar que expõe os apontamentos dos diretórios do `pipewire` às rotinas de ambiente lib nativo (apenas necessária para a feature `standalone`).
+```bash
+sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev \
+                 clang libclang-dev qpwgraph libgtk-3-dev \
+                 libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+                 libxkbcommon-dev libssl-dev git curl lld linux-tools-generic
+```
+
+### Detalhamento por Função
+
+* **Ferramentas Base e Build**:
+  * `build-essential` e `cmake`: Compiladores e utilitários de build fundamentais para o ecossistema C/C++ do qual algumas dependências Rust derivam.
+  * `pkg-config`: Essencial para que o `cargo` localize os caminhos de headers e bibliotecas compartilhadas (`.so`) no sistema.
+  * `clang` e `libclang-dev`: Requisito do *rust-bindgen* para transcrever os headers C do PipeWire para bindings Rust em tempo de compilação.
+  * `libssl-dev`, `git` e `curl`: Necessários para ferramentas de suporte, controle de versão e instalação de componentes do ecossistema Rust.
+  * `lld` e `linux-tools-generic`: Ferramentas avançadas para desenvolvedores. O `lld` (Linker) acelera significativamente o tempo de compilação, enquanto o `linux-tools` provê o `perf`, essencial para profiling de baixo nível e otimização do *Hot Path* DSP.
+
+* **Backend de Áudio (PipeWire)**:
+  * `pipewire` e `libpipewire-0.3-dev`: Headers do core de processamento. Necessários apenas para a feature `standalone`.
+  * `qpwgraph`: Utilitário recomendado para roteamento visual do grafo de áudio (opcional, mas altamente sugerido para usuários).
+
+* **Interface Gráfica e Janelamento (Sprint 4 — Planejado)**:
+  * `libgtk-3-dev`, `libxcb-*`, `libxkbcommon-dev`: Bibliotecas de sistema para suporte a janelas nativas, renderização via X11/Wayland e gerenciamento de teclado. Exigidas pelas crates `egui` e `baseview` para a interface do plugin CLAP.
 
 ## 2. Abstrações de Software (Crates - Cargo.toml)
 
@@ -37,3 +56,14 @@ Acessadas secundariamente via `cargo bench` e `cargo test`, não impactam no foo
 | --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`criterion`** | `^0.8`        | Avaliação da performance métrica estatística rigorosa. A flag `html_reports` encontra-se inativa para atenuar tempo de compilação semântica em esteiras iterativas onde avalia-se *FMA Latency per Vector* (inferiores a micro-segundos).                                           |
 | **`proptest`**  | `^1.11`       | Property-based testing para validação exaustiva dos limites algorítmicos das funções FastMath (`simd_tanh`, `simd_sigmoid`). Gera 10.000+ vetores aleatórios por execução para varrer buracos aritméticos causados pelo Newton-Raphson de recíproca quadrática (`_mm256_rsqrt_ps`). |
+
+## 4. Dependências Planejadas
+
+As seguintes dependências serão introduzidas a partir da Sprint 1 para viabilizar o suporte a plugins CLAP e a interface gráfica embarcada:
+
+| Crate              | Versão Planejada | Feature Flag  | Sprint   | Justificativa                                                                                                                                                   |
+| ------------------ | ---------------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clack-plugin`     | `^0.1`           | `clap-plugin` | Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
+| `clack-extensions` | `^0.1`           | `clap-plugin` | Sprint 1 | Extensões do spec CLAP (params, state, gui, thread-pool). Crate separado do `clack-plugin` para modularidade.                                                   |
+| `egui`             | `^0.34`          | `clap-plugin` | Sprint 4 | Framework GUI imediato, puro Rust. Renderização de GPU via `wgpu`. Integrado ao CLAP via `baseview`.                                                            |
+| `baseview`         | `git`            | `clap-plugin` | Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Não publicado no crates.io — usar dependência via Git.                                         |
