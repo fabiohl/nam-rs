@@ -8,8 +8,8 @@ echo "⚙️ Assegurando o qpwgraph rodando..."
 qpwgraph &
 vlc &
 
-echo "⚙️ Compilando o NAM-rs..."
-cargo build --release
+echo "⚙️ Compilando o NAM-rs (Standalone)..."
+cargo build --release --features standalone
 ls -lath target/release/nam-rs
 
 echo "🚀 Executando..."

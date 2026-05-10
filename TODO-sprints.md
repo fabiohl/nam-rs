@@ -64,7 +64,7 @@
   - Varrer `fuzz/`: ajustar imports se aplicável
   - **Aceite:** `cargo test` — todos os 138+ testes passam
 
-- [ ] **Tarefa 0.1.8** — Atualizar `utils/run-standalone.sh`
+- [x] **Tarefa 0.1.8** — Atualizar `utils/run-standalone.sh`
   - Ajustar quaisquer referências a paths ou módulos que tenham mudado
   - Garantir que o script continua funcional ponta-a-ponta
   - **Aceite:** `utils/run-standalone.sh` executa e processa áudio normalmente
