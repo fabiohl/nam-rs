@@ -186,6 +186,28 @@ pub unsafe fn gemv_overwrite_avx512(
     }
 }
 
+/// Versão em batch de gemv_overwrite via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn gemv_overwrite_batch_avx512(
+    in_frames: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+    for i in 0..num_frames {
+        let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
+        let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+        gemv_overwrite_avx512(in_slice, weights, bias, out_slice, do_bias);
+    }
+}
+
 /// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemv_avx512(
@@ -795,6 +817,59 @@ impl SimdMath for Avx512Math {
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         unsafe { apply_ramp_stereo_avx512(left, right, start, step) }
     }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            gemv_overwrite_batch_avx512(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        let in_len = in_frames.len() / num_frames;
+        let out_len = out_frames.len() / num_frames;
+        for i in 0..num_frames {
+            let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
+            let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            gemv_overwrite_bf16_fallback(in_slice, weights, bias, out_slice, do_bias);
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
+        scale: f32,
+    ) {
+        match head {
+            1 => Self::batch_wavenet_head_sum::<1>(head1, head2, output, scale),
+            16 => Self::batch_wavenet_head_sum::<16>(head1, head2, output, scale),
+            _ => {
+                let num_frames = output.len();
+                for i in 0..num_frames {
+                    let h1 = horizontal_sum_avx512(head1.as_ptr().add(i * head), head);
+                    output[i] = (h1 + head2[i]) * scale;
+                }
+            }
+        }
+    }
 }
 
 /// Implementação estática para AVX-512 com suporte a VNNI.
@@ -1065,6 +1140,43 @@ impl SimdMath for Avx512VnniMath {
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         Avx512Math::apply_ramp_stereo(left, right, start, step)
     }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        Avx512Math::gemv_overwrite_batch(in_frames, weights, bias, out_frames, num_frames, do_bias)
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        Avx512Math::gemv_overwrite_batch_bf16(
+            in_frames, weights, bias, out_frames, num_frames, do_bias,
+        )
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
+        scale: f32,
+    ) {
+        Avx512Math::batch_wavenet_head_sum_dyn(head1, head2, output, head, scale)
+    }
 }
 
 /// Implementação estática para AVX-512 com suporte a VNNI e BF16.
@@ -1329,6 +1441,43 @@ impl SimdMath for Avx512VnniBf16Math {
         scale: f32,
     ) {
         unsafe { batch_wavenet_head_sum_avx512::<HEAD>(head1, head2, output, scale) }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        Avx512Math::gemv_overwrite_batch(in_frames, weights, bias, out_frames, num_frames, do_bias)
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        Avx512Math::gemv_overwrite_batch_bf16(
+            in_frames, weights, bias, out_frames, num_frames, do_bias,
+        )
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
+        scale: f32,
+    ) {
+        Avx512Math::batch_wavenet_head_sum_dyn(head1, head2, output, head, scale)
     }
 }
 

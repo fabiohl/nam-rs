@@ -98,12 +98,15 @@ impl Conv1dDyn {
                             *m.get_unchecked(out_c + 3),
                         )
                     } else {
-                        (
-                            m.get(out_c).copied().unwrap_or(0.0),
-                            m.get(out_c + 1).copied().unwrap_or(0.0),
-                            m.get(out_c + 2).copied().unwrap_or(0.0),
-                            m.get(out_c + 3).copied().unwrap_or(0.0),
-                        )
+                        {
+                            let mut v = [0.0f32; 4];
+                            for (i, val) in v.iter_mut().enumerate() {
+                                if out_c + i < m.len() {
+                                    *val = *m.get_unchecked(out_c + i);
+                                }
+                            }
+                            (v[0], v[1], v[2], v[3])
+                        }
                     }
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
@@ -131,12 +134,15 @@ impl Conv1dDyn {
                             *m.get_unchecked(out_c + 3),
                         )
                     } else {
-                        (
-                            m.get(out_c).copied().unwrap_or(0.0),
-                            m.get(out_c + 1).copied().unwrap_or(0.0),
-                            m.get(out_c + 2).copied().unwrap_or(0.0),
-                            m.get(out_c + 3).copied().unwrap_or(0.0),
-                        )
+                        {
+                            let mut v = [0.0f32; 4];
+                            for (i, val) in v.iter_mut().enumerate() {
+                                if out_c + i < m.len() {
+                                    *val = *m.get_unchecked(out_c + i);
+                                }
+                            }
+                            (v[0], v[1], v[2], v[3])
+                        }
                     }
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
@@ -327,12 +333,15 @@ impl Conv1dDyn {
                             *m.get_unchecked(out_c + 3),
                         )
                     } else {
-                        (
-                            m.get(out_c).copied().unwrap_or(0.0),
-                            m.get(out_c + 1).copied().unwrap_or(0.0),
-                            m.get(out_c + 2).copied().unwrap_or(0.0),
-                            m.get(out_c + 3).copied().unwrap_or(0.0),
-                        )
+                        {
+                            let mut v = [0.0f32; 4];
+                            for (i, val) in v.iter_mut().enumerate() {
+                                if out_c + i < m.len() {
+                                    *val = *m.get_unchecked(out_c + i);
+                                }
+                            }
+                            (v[0], v[1], v[2], v[3])
+                        }
                     }
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
@@ -452,12 +461,15 @@ impl Conv1dDyn {
                             *m.get_unchecked(out_c + 3),
                         )
                     } else {
-                        (
-                            m.get(out_c).copied().unwrap_or(0.0),
-                            m.get(out_c + 1).copied().unwrap_or(0.0),
-                            m.get(out_c + 2).copied().unwrap_or(0.0),
-                            m.get(out_c + 3).copied().unwrap_or(0.0),
-                        )
+                        {
+                            let mut v = [0.0f32; 4];
+                            for (i, val) in v.iter_mut().enumerate() {
+                                if out_c + i < m.len() {
+                                    *val = *m.get_unchecked(out_c + i);
+                                }
+                            }
+                            (v[0], v[1], v[2], v[3])
+                        }
                     }
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
@@ -485,12 +497,15 @@ impl Conv1dDyn {
                             *m.get_unchecked(out_c + 3),
                         )
                     } else {
-                        (
-                            m.get(out_c).copied().unwrap_or(0.0),
-                            m.get(out_c + 1).copied().unwrap_or(0.0),
-                            m.get(out_c + 2).copied().unwrap_or(0.0),
-                            m.get(out_c + 3).copied().unwrap_or(0.0),
-                        )
+                        {
+                            let mut v = [0.0f32; 4];
+                            for (i, val) in v.iter_mut().enumerate() {
+                                if out_c + i < m.len() {
+                                    *val = *m.get_unchecked(out_c + i);
+                                }
+                            }
+                            (v[0], v[1], v[2], v[3])
+                        }
                     }
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
@@ -681,12 +696,15 @@ impl Conv1dDyn {
                             *m.get_unchecked(out_c + 3),
                         )
                     } else {
-                        (
-                            m.get(out_c).copied().unwrap_or(0.0),
-                            m.get(out_c + 1).copied().unwrap_or(0.0),
-                            m.get(out_c + 2).copied().unwrap_or(0.0),
-                            m.get(out_c + 3).copied().unwrap_or(0.0),
-                        )
+                        {
+                            let mut v = [0.0f32; 4];
+                            for (i, val) in v.iter_mut().enumerate() {
+                                if out_c + i < m.len() {
+                                    *val = *m.get_unchecked(out_c + i);
+                                }
+                            }
+                            (v[0], v[1], v[2], v[3])
+                        }
                     }
                 } else {
                     (0.0, 0.0, 0.0, 0.0)
@@ -826,13 +844,15 @@ impl DenseLayerDyn {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        for i in 0..num_frames {
-            unsafe {
-                let in_slice = input.get_unchecked(i * self.in_size..(i + 1) * self.in_size);
-                let out_slice =
-                    output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size);
-                M::gemv_overwrite(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
-            }
+        unsafe {
+            M::gemv_overwrite_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 
@@ -848,19 +868,15 @@ impl DenseLayerDyn {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        for i in 0..num_frames {
-            unsafe {
-                let in_slice = input.get_unchecked(i * self.in_size..(i + 1) * self.in_size);
-                let out_slice =
-                    output.get_unchecked_mut(i * self.out_size..(i + 1) * self.out_size);
-                M::gemv_overwrite_bf16(
-                    in_slice,
-                    &self.weights,
-                    &self.bias,
-                    out_slice,
-                    self.do_bias,
-                );
-            }
+        unsafe {
+            M::gemv_overwrite_batch_bf16(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 

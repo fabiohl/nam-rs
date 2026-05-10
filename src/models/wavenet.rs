@@ -717,17 +717,18 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         output: &mut [f32],
         num_frames: usize,
     ) {
-        for i in 0..num_frames {
-            let in_slice = unsafe { input.get_unchecked(i * IN..(i + 1) * IN) };
-            let out_slice = unsafe { output.get_unchecked_mut(i * OUT..(i + 1) * OUT) };
-
-            unsafe {
-                M::gemv_overwrite(in_slice, &self.weights, &self.bias, out_slice, self.do_bias);
-            }
+        unsafe {
+            M::gemv_overwrite_batch(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 
-    /// Processa a camada densa usando BF16.
     ///
     /// # Safety
     /// O chamador deve garantir que `input` e `output` tenham tamanhos
@@ -735,65 +736,15 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     /// SIMD solicitadas pelo despachante `M` estejam disponíveis.
     pub unsafe fn process_bf16<M: SimdMath>(&self, input: &[u16], output: &mut [f32]) {
         let num_frames = output.len() / OUT;
-        let mut out_c = 0;
-
-        while out_c + 4 <= OUT {
-            let w0 = unsafe { self.weights.get_unchecked(out_c * IN..(out_c + 1) * IN) };
-            let w1 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 1) * IN..(out_c + 2) * IN)
-            };
-            let w2 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 2) * IN..(out_c + 3) * IN)
-            };
-            let w3 = unsafe {
-                self.weights
-                    .get_unchecked((out_c + 3) * IN..(out_c + 4) * IN)
-            };
-
-            let b0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let b1 = if self.do_bias {
-                self.bias[out_c + 1]
-            } else {
-                0.0
-            };
-            let b2 = if self.do_bias {
-                self.bias[out_c + 2]
-            } else {
-                0.0
-            };
-            let b3 = if self.do_bias {
-                self.bias[out_c + 3]
-            } else {
-                0.0
-            };
-
-            for i in 0..num_frames {
-                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
-                let [r0, r1, r2, r3] = unsafe { M::dot_product_bf16_4x(w0, w1, w2, w3, in_frame) };
-
-                unsafe {
-                    *output.get_unchecked_mut(i * OUT + out_c) = r0 + b0;
-                    *output.get_unchecked_mut(i * OUT + out_c + 1) = r1 + b1;
-                    *output.get_unchecked_mut(i * OUT + out_c + 2) = r2 + b2;
-                    *output.get_unchecked_mut(i * OUT + out_c + 3) = r3 + b3;
-                }
-            }
-            out_c += 4;
-        }
-
-        while out_c < OUT {
-            let weight_slice = unsafe { self.weights.get_unchecked(out_c * IN..out_c * IN + IN) };
-            let bias = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            for i in 0..num_frames {
-                let in_frame = unsafe { input.get_unchecked(i * IN..i * IN + IN) };
-                let sum = unsafe { M::dot_product_bf16(in_frame, weight_slice) };
-                unsafe {
-                    *output.get_unchecked_mut(i * OUT + out_c) = sum + bias;
-                }
-            }
-            out_c += 1;
+        unsafe {
+            M::gemv_overwrite_batch_bf16(
+                input,
+                &self.weights,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 }

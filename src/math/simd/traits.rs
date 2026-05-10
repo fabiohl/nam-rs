@@ -144,6 +144,19 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
+    /// Kernel de GEMV com sobrescrita em lote.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    );
+
     /// Kernel de GEMV com sobrescrita (entrada BF16).
     ///
     /// # Safety
@@ -153,6 +166,19 @@ pub trait SimdMath {
         weights: &[u16],
         bias: &[f32],
         out_frame: &mut [f32],
+        do_bias: bool,
+    );
+
+    /// Kernel de GEMV com sobrescrita em lote (entrada BF16).
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos.
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
         do_bias: bool,
     );
 
@@ -306,10 +332,27 @@ pub trait SimdMath {
     ///
     /// # Safety
     /// Buffers devem ser válidos e ter tamanhos compatíveis com HEAD e num_frames.
+    /// Kernel especializado para soma Head do WaveNet.
+    /// Vetoriza o somatório horizontal das projeções head1 (batch), soma head2 e escala final.
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos e ter tamanhos compatíveis com HEAD e num_frames.
     unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
         head1: &[f32],
         head2: &[f32],
         output: &mut [f32],
+        scale: f32,
+    );
+
+    /// Kernel especializado para soma Head do WaveNet (versão dinâmica).
+    ///
+    /// # Safety
+    /// Buffers devem ser válidos e ter tamanhos compatíveis com head e num_frames.
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
         scale: f32,
     );
 }

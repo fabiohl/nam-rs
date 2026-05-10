@@ -232,13 +232,14 @@ impl WaveNetDynModel {
                     .process::<M>(array1_outputs, in_slice, num_frames);
             }
 
-            for i in 0..num_frames {
-                let mut final_sum = 0.0f32;
-                for j in 0..self.head {
-                    final_sum += self.array1.head_outputs[i * self.head + j];
-                }
-                final_sum += self.array2.head_outputs[i];
-                output[pos + i] = final_sum * self.head_scale;
+            unsafe {
+                M::batch_wavenet_head_sum_dyn(
+                    &self.array1.head_outputs[0..num_frames * self.head],
+                    &self.array2.head_outputs[0..num_frames],
+                    &mut output[pos..pos + num_frames],
+                    self.head,
+                    self.head_scale,
+                );
             }
             pos += num_frames;
         }

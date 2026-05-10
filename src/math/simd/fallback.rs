@@ -779,6 +779,61 @@ impl SimdMath for FallbackMath {
             output[i] = (sum + *head2.get_unchecked(i)) * scale;
         }
     }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        let in_len = in_frames.len() / num_frames;
+        let out_len = out_frames.len() / num_frames;
+        for i in 0..num_frames {
+            let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
+            let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            gemv_overwrite_fallback(in_slice, weights, bias, out_slice, do_bias);
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        let in_len = in_frames.len() / num_frames;
+        let out_len = out_frames.len() / num_frames;
+        for i in 0..num_frames {
+            let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
+            let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            gemv_overwrite_bf16_fallback(in_slice, weights, bias, out_slice, do_bias);
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
+        scale: f32,
+    ) {
+        let num_frames = output.len();
+        for i in 0..num_frames {
+            let mut sum = 0.0;
+            let start = i * head;
+            for j in 0..head {
+                sum += head1[start + j];
+            }
+            output[i] = (sum + head2[i]) * scale;
+        }
+    }
 }
 
 /// Fallback escalar para GEMV de 4 gates (LSTM).

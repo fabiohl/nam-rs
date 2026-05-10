@@ -1153,6 +1153,63 @@ impl SimdMath for Avx2Math {
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         unsafe { apply_ramp_stereo_avx2(left, right, start, step) }
     }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        let in_len = in_frames.len() / num_frames;
+        let out_len = out_frames.len() / num_frames;
+        for i in 0..num_frames {
+            let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
+            let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            gemv_overwrite_avx2(in_slice, weights, bias, out_slice, do_bias);
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        let in_len = in_frames.len() / num_frames;
+        let out_len = out_frames.len() / num_frames;
+        for i in 0..num_frames {
+            let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
+            let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            gemv_overwrite_bf16_fallback(in_slice, weights, bias, out_slice, do_bias);
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
+        scale: f32,
+    ) {
+        match head {
+            1 => Self::batch_wavenet_head_sum::<1>(head1, head2, output, scale),
+            16 => Self::batch_wavenet_head_sum::<16>(head1, head2, output, scale),
+            _ => {
+                let num_frames = output.len();
+                for i in 0..num_frames {
+                    let h1 = horizontal_sum_avx2(head1.as_ptr().add(i * head), head);
+                    output[i] = (h1 + head2[i]) * scale;
+                }
+            }
+        }
+    }
 }
 
 /// Implementação estática para AVX2 com suporte a VNNI.
@@ -1417,6 +1474,43 @@ impl SimdMath for Avx2VnniMath {
     #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         unsafe { apply_ramp_stereo_avx2(left, right, start, step) }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch(
+        in_frames: &[f32],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        Avx2Math::gemv_overwrite_batch(in_frames, weights, bias, out_frames, num_frames, do_bias)
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_bf16(
+        in_frames: &[u16],
+        weights: &[u16],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        Avx2Math::gemv_overwrite_batch_bf16(
+            in_frames, weights, bias, out_frames, num_frames, do_bias,
+        )
+    }
+
+    #[inline(always)]
+    unsafe fn batch_wavenet_head_sum_dyn(
+        head1: &[f32],
+        head2: &[f32],
+        output: &mut [f32],
+        head: usize,
+        scale: f32,
+    ) {
+        Avx2Math::batch_wavenet_head_sum_dyn(head1, head2, output, head, scale)
     }
 }
 
