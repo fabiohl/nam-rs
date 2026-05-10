@@ -13,7 +13,7 @@
 > **Objetivo:** Eliminar gargalos mensuráveis no inner loop do WaveNet (estático e dinâmico).
 > **Validação global:** `cargo test` + `cargo bench` (grupos `WaveNet_*`, `LSTM_*`) + Golden Vectors.
 
-### T1.1 — Eliminar `unwrap_or` do inner loop do Conv1D dinâmico
+### T1.1 — Eliminar `unwrap_or` do inner loop do Conv1D dinâmico [CONCLUIDO]
 
 - [ ] **Arquivos:** `src/models/wavenet_common.rs`
 - [ ] **Problema:** As funções `process_single_frame` (linhas 292-307), `process_single_frame_bf16` (linhas 622-636), e `process_dual_frame_bf16` (linhas 414-417, 443-446) usam `m.get(out_c).copied().unwrap_or(0.0)` em ~20 call-sites dentro do inner loop mais quente. Cada chamada gera: (1) bounds check `cmp+jae`, (2) branch `Option::unwrap_or`, (3) cópia `copied()`. O path F32 de `process_dual_frame` (linhas 90-114) **já usa `*m.get_unchecked(out_c)`** sem `unwrap_or` — há assimetria.

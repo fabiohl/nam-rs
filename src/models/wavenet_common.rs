@@ -89,53 +89,69 @@ impl Conv1dDyn {
 
             unsafe {
                 // Inicialização com bias/mixin para frame 0
-                if let Some(m) = mixin_f0 {
-                    if do_bias {
-                        r0_f0 = *self.bias.get_unchecked(out_c) + *m.get_unchecked(out_c);
-                        r1_f0 = *self.bias.get_unchecked(out_c + 1) + *m.get_unchecked(out_c + 1);
-                        r2_f0 = *self.bias.get_unchecked(out_c + 2) + *m.get_unchecked(out_c + 2);
-                        r3_f0 = *self.bias.get_unchecked(out_c + 3) + *m.get_unchecked(out_c + 3);
+                let (mv0_f0, mv1_f0, mv2_f0, mv3_f0) = if let Some(m) = mixin_f0 {
+                    if out_c + 3 < m.len() {
+                        (
+                            *m.get_unchecked(out_c),
+                            *m.get_unchecked(out_c + 1),
+                            *m.get_unchecked(out_c + 2),
+                            *m.get_unchecked(out_c + 3),
+                        )
                     } else {
-                        r0_f0 = *m.get_unchecked(out_c);
-                        r1_f0 = *m.get_unchecked(out_c + 1);
-                        r2_f0 = *m.get_unchecked(out_c + 2);
-                        r3_f0 = *m.get_unchecked(out_c + 3);
+                        (
+                            m.get(out_c).copied().unwrap_or(0.0),
+                            m.get(out_c + 1).copied().unwrap_or(0.0),
+                            m.get(out_c + 2).copied().unwrap_or(0.0),
+                            m.get(out_c + 3).copied().unwrap_or(0.0),
+                        )
                     }
-                } else if do_bias {
-                    r0_f0 = *self.bias.get_unchecked(out_c);
-                    r1_f0 = *self.bias.get_unchecked(out_c + 1);
-                    r2_f0 = *self.bias.get_unchecked(out_c + 2);
-                    r3_f0 = *self.bias.get_unchecked(out_c + 3);
                 } else {
-                    r0_f0 = 0.0;
-                    r1_f0 = 0.0;
-                    r2_f0 = 0.0;
-                    r3_f0 = 0.0;
+                    (0.0, 0.0, 0.0, 0.0)
+                };
+
+                if do_bias {
+                    r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
+                    r1_f0 = *self.bias.get_unchecked(out_c + 1) + mv1_f0;
+                    r2_f0 = *self.bias.get_unchecked(out_c + 2) + mv2_f0;
+                    r3_f0 = *self.bias.get_unchecked(out_c + 3) + mv3_f0;
+                } else {
+                    r0_f0 = mv0_f0;
+                    r1_f0 = mv1_f0;
+                    r2_f0 = mv2_f0;
+                    r3_f0 = mv3_f0;
                 }
 
                 // Inicialização com bias/mixin para frame 1
-                if let Some(m) = mixin_f1 {
-                    if do_bias {
-                        r0_f1 = *self.bias.get_unchecked(out_c) + *m.get_unchecked(out_c);
-                        r1_f1 = *self.bias.get_unchecked(out_c + 1) + *m.get_unchecked(out_c + 1);
-                        r2_f1 = *self.bias.get_unchecked(out_c + 2) + *m.get_unchecked(out_c + 2);
-                        r3_f1 = *self.bias.get_unchecked(out_c + 3) + *m.get_unchecked(out_c + 3);
+                let (mv0_f1, mv1_f1, mv2_f1, mv3_f1) = if let Some(m) = mixin_f1 {
+                    if out_c + 3 < m.len() {
+                        (
+                            *m.get_unchecked(out_c),
+                            *m.get_unchecked(out_c + 1),
+                            *m.get_unchecked(out_c + 2),
+                            *m.get_unchecked(out_c + 3),
+                        )
                     } else {
-                        r0_f1 = *m.get_unchecked(out_c);
-                        r1_f1 = *m.get_unchecked(out_c + 1);
-                        r2_f1 = *m.get_unchecked(out_c + 2);
-                        r3_f1 = *m.get_unchecked(out_c + 3);
+                        (
+                            m.get(out_c).copied().unwrap_or(0.0),
+                            m.get(out_c + 1).copied().unwrap_or(0.0),
+                            m.get(out_c + 2).copied().unwrap_or(0.0),
+                            m.get(out_c + 3).copied().unwrap_or(0.0),
+                        )
                     }
-                } else if do_bias {
-                    r0_f1 = *self.bias.get_unchecked(out_c);
-                    r1_f1 = *self.bias.get_unchecked(out_c + 1);
-                    r2_f1 = *self.bias.get_unchecked(out_c + 2);
-                    r3_f1 = *self.bias.get_unchecked(out_c + 3);
                 } else {
-                    r0_f1 = 0.0;
-                    r1_f1 = 0.0;
-                    r2_f1 = 0.0;
-                    r3_f1 = 0.0;
+                    (0.0, 0.0, 0.0, 0.0)
+                };
+
+                if do_bias {
+                    r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
+                    r1_f1 = *self.bias.get_unchecked(out_c + 1) + mv1_f1;
+                    r2_f1 = *self.bias.get_unchecked(out_c + 2) + mv2_f1;
+                    r3_f1 = *self.bias.get_unchecked(out_c + 3) + mv3_f1;
+                } else {
+                    r0_f1 = mv0_f1;
+                    r1_f1 = mv1_f1;
+                    r2_f1 = mv2_f1;
+                    r3_f1 = mv3_f1;
                 }
 
                 for k in 0..kernel {
@@ -181,11 +197,11 @@ impl Conv1dDyn {
             let mut r_f0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
             let mut r_f1 = if self.do_bias { self.bias[out_c] } else { 0.0 };
             unsafe {
-                if let Some(m) = mixin_f0 {
-                    r_f0 += m[out_c];
+                if let Some(m) = mixin_f0.filter(|m| out_c < m.len()) {
+                    r_f0 += *m.get_unchecked(out_c);
                 }
-                if let Some(m) = mixin_f1 {
-                    r_f1 += m[out_c];
+                if let Some(m) = mixin_f1.filter(|m| out_c < m.len()) {
+                    r_f1 += *m.get_unchecked(out_c);
                 }
 
                 for k in 0..self.kernel {
@@ -221,9 +237,21 @@ impl Conv1dDyn {
         for chunk in chunks.by_ref() {
             let (out_f0, out_f1) = chunk.split_at_mut(self.out_ch);
             let (m_f0, m_f1) = if let Some(m) = mixin {
+                let start0 = i * self.out_ch;
+                let end0 = (start0 + self.out_ch).min(m.len());
+                let start1 = (i + 1) * self.out_ch;
+                let end1 = (start1 + self.out_ch).min(m.len());
                 (
-                    Some(&m[i * self.out_ch..(i + 1) * self.out_ch]),
-                    Some(&m[(i + 1) * self.out_ch..(i + 2) * self.out_ch]),
+                    if start0 < m.len() {
+                        Some(&m[start0..end0])
+                    } else {
+                        None
+                    },
+                    if start1 < m.len() {
+                        Some(&m[start1..end1])
+                    } else {
+                        None
+                    },
                 )
             } else {
                 (None, None)
@@ -290,31 +318,36 @@ impl Conv1dDyn {
             let mut r3;
 
             unsafe {
-                if let Some(m) = mixin {
-                    if self.do_bias {
-                        r0 = *self.bias.get_unchecked(out_c) + m.get(out_c).copied().unwrap_or(0.0);
-                        r1 = *self.bias.get_unchecked(out_c + 1)
-                            + m.get(out_c + 1).copied().unwrap_or(0.0);
-                        r2 = *self.bias.get_unchecked(out_c + 2)
-                            + m.get(out_c + 2).copied().unwrap_or(0.0);
-                        r3 = *self.bias.get_unchecked(out_c + 3)
-                            + m.get(out_c + 3).copied().unwrap_or(0.0);
+                let (mv0, mv1, mv2, mv3) = if let Some(m) = mixin {
+                    if out_c + 3 < m.len() {
+                        (
+                            *m.get_unchecked(out_c),
+                            *m.get_unchecked(out_c + 1),
+                            *m.get_unchecked(out_c + 2),
+                            *m.get_unchecked(out_c + 3),
+                        )
                     } else {
-                        r0 = m.get(out_c).copied().unwrap_or(0.0);
-                        r1 = m.get(out_c + 1).copied().unwrap_or(0.0);
-                        r2 = m.get(out_c + 2).copied().unwrap_or(0.0);
-                        r3 = m.get(out_c + 3).copied().unwrap_or(0.0);
+                        (
+                            m.get(out_c).copied().unwrap_or(0.0),
+                            m.get(out_c + 1).copied().unwrap_or(0.0),
+                            m.get(out_c + 2).copied().unwrap_or(0.0),
+                            m.get(out_c + 3).copied().unwrap_or(0.0),
+                        )
                     }
-                } else if self.do_bias {
-                    r0 = *self.bias.get_unchecked(out_c);
-                    r1 = *self.bias.get_unchecked(out_c + 1);
-                    r2 = *self.bias.get_unchecked(out_c + 2);
-                    r3 = *self.bias.get_unchecked(out_c + 3);
                 } else {
-                    r0 = 0.0;
-                    r1 = 0.0;
-                    r2 = 0.0;
-                    r3 = 0.0;
+                    (0.0, 0.0, 0.0, 0.0)
+                };
+
+                if self.do_bias {
+                    r0 = *self.bias.get_unchecked(out_c) + mv0;
+                    r1 = *self.bias.get_unchecked(out_c + 1) + mv1;
+                    r2 = *self.bias.get_unchecked(out_c + 2) + mv2;
+                    r3 = *self.bias.get_unchecked(out_c + 3) + mv3;
+                } else {
+                    r0 = mv0;
+                    r1 = mv1;
+                    r2 = mv2;
+                    r3 = mv3;
                 }
 
                 for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
@@ -343,8 +376,8 @@ impl Conv1dDyn {
         while out_c < self.out_ch {
             let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
             unsafe {
-                if let Some(m) = mixin {
-                    r += m.get(out_c).copied().unwrap_or(0.0);
+                if let Some(m) = mixin.filter(|m| out_c < m.len()) {
+                    r += *m.get_unchecked(out_c);
                 }
                 for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
                     let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
@@ -410,61 +443,69 @@ impl Conv1dDyn {
 
             unsafe {
                 // Inicialização com bias/mixin para frame 0
-                if let Some(m) = mixin_f0 {
-                    let m_val0 = m.get(out_c).copied().unwrap_or(0.0);
-                    let m_val1 = m.get(out_c + 1).copied().unwrap_or(0.0);
-                    let m_val2 = m.get(out_c + 2).copied().unwrap_or(0.0);
-                    let m_val3 = m.get(out_c + 3).copied().unwrap_or(0.0);
-                    if do_bias {
-                        r0_f0 = *self.bias.get_unchecked(out_c) + m_val0;
-                        r1_f0 = *self.bias.get_unchecked(out_c + 1) + m_val1;
-                        r2_f0 = *self.bias.get_unchecked(out_c + 2) + m_val2;
-                        r3_f0 = *self.bias.get_unchecked(out_c + 3) + m_val3;
+                let (mv0_f0, mv1_f0, mv2_f0, mv3_f0) = if let Some(m) = mixin_f0 {
+                    if out_c + 3 < m.len() {
+                        (
+                            *m.get_unchecked(out_c),
+                            *m.get_unchecked(out_c + 1),
+                            *m.get_unchecked(out_c + 2),
+                            *m.get_unchecked(out_c + 3),
+                        )
                     } else {
-                        r0_f0 = m_val0;
-                        r1_f0 = m_val1;
-                        r2_f0 = m_val2;
-                        r3_f0 = m_val3;
+                        (
+                            m.get(out_c).copied().unwrap_or(0.0),
+                            m.get(out_c + 1).copied().unwrap_or(0.0),
+                            m.get(out_c + 2).copied().unwrap_or(0.0),
+                            m.get(out_c + 3).copied().unwrap_or(0.0),
+                        )
                     }
-                } else if do_bias {
-                    r0_f0 = *self.bias.get_unchecked(out_c);
-                    r1_f0 = *self.bias.get_unchecked(out_c + 1);
-                    r2_f0 = *self.bias.get_unchecked(out_c + 2);
-                    r3_f0 = *self.bias.get_unchecked(out_c + 3);
                 } else {
-                    r0_f0 = 0.0;
-                    r1_f0 = 0.0;
-                    r2_f0 = 0.0;
-                    r3_f0 = 0.0;
+                    (0.0, 0.0, 0.0, 0.0)
+                };
+
+                if do_bias {
+                    r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
+                    r1_f0 = *self.bias.get_unchecked(out_c + 1) + mv1_f0;
+                    r2_f0 = *self.bias.get_unchecked(out_c + 2) + mv2_f0;
+                    r3_f0 = *self.bias.get_unchecked(out_c + 3) + mv3_f0;
+                } else {
+                    r0_f0 = mv0_f0;
+                    r1_f0 = mv1_f0;
+                    r2_f0 = mv2_f0;
+                    r3_f0 = mv3_f0;
                 }
 
                 // Inicialização com bias/mixin para frame 1
-                if let Some(m) = mixin_f1 {
-                    let m_val0 = m.get(out_c).copied().unwrap_or(0.0);
-                    let m_val1 = m.get(out_c + 1).copied().unwrap_or(0.0);
-                    let m_val2 = m.get(out_c + 2).copied().unwrap_or(0.0);
-                    let m_val3 = m.get(out_c + 3).copied().unwrap_or(0.0);
-                    if do_bias {
-                        r0_f1 = *self.bias.get_unchecked(out_c) + m_val0;
-                        r1_f1 = *self.bias.get_unchecked(out_c + 1) + m_val1;
-                        r2_f1 = *self.bias.get_unchecked(out_c + 2) + m_val2;
-                        r3_f1 = *self.bias.get_unchecked(out_c + 3) + m_val3;
+                let (mv0_f1, mv1_f1, mv2_f1, mv3_f1) = if let Some(m) = mixin_f1 {
+                    if out_c + 3 < m.len() {
+                        (
+                            *m.get_unchecked(out_c),
+                            *m.get_unchecked(out_c + 1),
+                            *m.get_unchecked(out_c + 2),
+                            *m.get_unchecked(out_c + 3),
+                        )
                     } else {
-                        r0_f1 = m_val0;
-                        r1_f1 = m_val1;
-                        r2_f1 = m_val2;
-                        r3_f1 = m_val3;
+                        (
+                            m.get(out_c).copied().unwrap_or(0.0),
+                            m.get(out_c + 1).copied().unwrap_or(0.0),
+                            m.get(out_c + 2).copied().unwrap_or(0.0),
+                            m.get(out_c + 3).copied().unwrap_or(0.0),
+                        )
                     }
-                } else if do_bias {
-                    r0_f1 = *self.bias.get_unchecked(out_c);
-                    r1_f1 = *self.bias.get_unchecked(out_c + 1);
-                    r2_f1 = *self.bias.get_unchecked(out_c + 2);
-                    r3_f1 = *self.bias.get_unchecked(out_c + 3);
                 } else {
-                    r0_f1 = 0.0;
-                    r1_f1 = 0.0;
-                    r2_f1 = 0.0;
-                    r3_f1 = 0.0;
+                    (0.0, 0.0, 0.0, 0.0)
+                };
+
+                if do_bias {
+                    r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
+                    r1_f1 = *self.bias.get_unchecked(out_c + 1) + mv1_f1;
+                    r2_f1 = *self.bias.get_unchecked(out_c + 2) + mv2_f1;
+                    r3_f1 = *self.bias.get_unchecked(out_c + 3) + mv3_f1;
+                } else {
+                    r0_f1 = mv0_f1;
+                    r1_f1 = mv1_f1;
+                    r2_f1 = mv2_f1;
+                    r3_f1 = mv3_f1;
                 }
 
                 for k in 0..kernel {
@@ -550,9 +591,21 @@ impl Conv1dDyn {
         for chunk in chunks.by_ref() {
             let (out_f0, out_f1) = chunk.split_at_mut(self.out_ch);
             let (m_f0, m_f1) = if let Some(m) = mixin {
+                let start0 = i * self.out_ch;
+                let end0 = (start0 + self.out_ch).min(m.len());
+                let start1 = (i + 1) * self.out_ch;
+                let end1 = (start1 + self.out_ch).min(m.len());
                 (
-                    Some(&m[i * self.out_ch..(i + 1) * self.out_ch]),
-                    Some(&m[(i + 1) * self.out_ch..(i + 2) * self.out_ch]),
+                    if start0 < m.len() {
+                        Some(&m[start0..end0])
+                    } else {
+                        None
+                    },
+                    if start1 < m.len() {
+                        Some(&m[start1..end1])
+                    } else {
+                        None
+                    },
                 )
             } else {
                 (None, None)
@@ -619,31 +672,36 @@ impl Conv1dDyn {
             let mut r3;
 
             unsafe {
-                if let Some(m) = mixin {
-                    if self.do_bias {
-                        r0 = *self.bias.get_unchecked(out_c) + m.get(out_c).copied().unwrap_or(0.0);
-                        r1 = *self.bias.get_unchecked(out_c + 1)
-                            + m.get(out_c + 1).copied().unwrap_or(0.0);
-                        r2 = *self.bias.get_unchecked(out_c + 2)
-                            + m.get(out_c + 2).copied().unwrap_or(0.0);
-                        r3 = *self.bias.get_unchecked(out_c + 3)
-                            + m.get(out_c + 3).copied().unwrap_or(0.0);
+                let (mv0, mv1, mv2, mv3) = if let Some(m) = mixin {
+                    if out_c + 3 < m.len() {
+                        (
+                            *m.get_unchecked(out_c),
+                            *m.get_unchecked(out_c + 1),
+                            *m.get_unchecked(out_c + 2),
+                            *m.get_unchecked(out_c + 3),
+                        )
                     } else {
-                        r0 = m.get(out_c).copied().unwrap_or(0.0);
-                        r1 = m.get(out_c + 1).copied().unwrap_or(0.0);
-                        r2 = m.get(out_c + 2).copied().unwrap_or(0.0);
-                        r3 = m.get(out_c + 3).copied().unwrap_or(0.0);
+                        (
+                            m.get(out_c).copied().unwrap_or(0.0),
+                            m.get(out_c + 1).copied().unwrap_or(0.0),
+                            m.get(out_c + 2).copied().unwrap_or(0.0),
+                            m.get(out_c + 3).copied().unwrap_or(0.0),
+                        )
                     }
-                } else if self.do_bias {
-                    r0 = *self.bias.get_unchecked(out_c);
-                    r1 = *self.bias.get_unchecked(out_c + 1);
-                    r2 = *self.bias.get_unchecked(out_c + 2);
-                    r3 = *self.bias.get_unchecked(out_c + 3);
                 } else {
-                    r0 = 0.0;
-                    r1 = 0.0;
-                    r2 = 0.0;
-                    r3 = 0.0;
+                    (0.0, 0.0, 0.0, 0.0)
+                };
+
+                if self.do_bias {
+                    r0 = *self.bias.get_unchecked(out_c) + mv0;
+                    r1 = *self.bias.get_unchecked(out_c + 1) + mv1;
+                    r2 = *self.bias.get_unchecked(out_c + 2) + mv2;
+                    r3 = *self.bias.get_unchecked(out_c + 3) + mv3;
+                } else {
+                    r0 = mv0;
+                    r1 = mv1;
+                    r2 = mv2;
+                    r3 = mv3;
                 }
 
                 for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
@@ -672,8 +730,8 @@ impl Conv1dDyn {
         while out_c < self.out_ch {
             let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
             unsafe {
-                if let Some(m) = mixin {
-                    r += m.get(out_c).copied().unwrap_or(0.0);
+                if let Some(m) = mixin.filter(|m| out_c < m.len()) {
+                    r += *m.get_unchecked(out_c);
                 }
                 for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
                     let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
