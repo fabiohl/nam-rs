@@ -199,15 +199,15 @@
   
   **Aceite:** Tabela presente e formatada corretamente; ao executar `cargo search clack-plugin`, versão documentada é compatível com a disponível.
 
-- [ ] **Tarefa 0.2.5** — Validação final do Épico 0.2
+- [x] **Tarefa 0.2.5** — Validação final do Épico 0.2
   
   **Checklist obrigatório:**
   
-  - [ ] `grep -rn "src/params.rs\|src/spsc.rs\|src/diagnostics.rs\|src/audio_host.rs" docs/` → zero resultados (sem paths antigos)
-  - [ ] `grep -rn "Pendente\|pending\|nih-plug\|TODO\|FIXME" docs/` → zero resultados (sem incompletos)
-  - [ ] Cada documento tem cabeçalho SPDX correto
-  - [ ] `utils/lints.sh` — zero erros (nenhum arquivo .rs foi alterado, mas validar de qualquer forma)
-  - [ ] Revisar manualmente cross-referências entre `README.md`, `architecture.md`, `clap_integration.md` e `dependencies.md` — sem contradições
+  - [x] `grep -rn "src/params.rs\|src/spsc.rs\|src/diagnostics.rs\|src/audio_host.rs" docs/` → zero resultados (sem paths antigos)
+  - [x] `grep -rn "Pendente\|pending\|nih-plug\|TODO\|FIXME" docs/` → zero resultados (sem incompletos)
+  - [x] Cada documento tem cabeçalho SPDX correto
+  - [x] `utils/lints.sh` — zero erros (nenhum arquivo .rs foi alterado, mas validar de qualquer forma)
+  - [x] Revisar manualmente cross-referências entre `README.md`, `architecture.md`, `clap_integration.md` e `dependencies.md` — sem contradições
   
   **Aceite:** Todos os 5 itens do checklist marcados; documentação 100% sincronizada com o código e com o roadmap.
 
@@ -218,24 +218,58 @@
 
 ## Sprint 1 — Scaffolding CLAP e Esqueleto cdylib
 
-**Objetivo:** Plugin CLAP mínimo que é detectado e carregado pelo REAPER sem crash. Bypass puro funcional.
+**Objetivo:** Plugin CLAP mínimo que é detectado e carregado pelo REAPER sem crash. Bypass puro funcional (copia input → output sem processar).
+
+**Estado atual do código (pré-Sprint 1):**
+
+- `Cargo.toml`: sem `clack-plugin` / `clack-extensions`; feature `clap-plugin = []` vazia; sem `crate-type = ["cdylib"]`
+- `src/clap/mod.rs`: stub vazio (apenas docstring + `#![cfg(feature = "clap-plugin")]`)
+- `src/lib.rs`: já expõe `pub mod clap` sob `#[cfg(feature = "clap-plugin")]` — **não modificar**
+- `src/common/params.rs`: `NamPluginParams` já existe — usar para estado compartilhado futuramente
+
+**Referência da API:** `clack-plugin = "0.1"` — usar `clack_plugin::prelude::*`
 
 ---
 
 ### Épico 1.1 — Configuração de Build
 
-- [ ] **Tarefa 1.1.1** — Adicionar dependências CLAP via `cargo add`
-  
-  - `cargo add clack-plugin --optional --features ""`
-  - `cargo add clack-extensions --optional --features ""`
-  - Atualizar feature `clap-plugin` no Cargo.toml: `["dep:clack-plugin", "dep:clack-extensions"]`
-  - **Aceite:** `cargo check --no-default-features --features clap-plugin` compila
+- [ ] **Tarefa 1.1.1** — Adicionar dependências CLAP ao `Cargo.toml`
 
-- [ ] **Tarefa 1.1.2** — Configurar `[lib]` para cdylib
-  
-  - Adicionar ao Cargo.toml: `crate-type = ["rlib", "cdylib"]`
-  - `rlib` para testes, `cdylib` para gerar `.so`
-  - **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `libnam_rs.so`
+  **Contexto:** O `Cargo.toml` atual tem `clap-plugin = []` sem dependências. Precisamos adicionar `clack-plugin` e `clack-extensions` como opcionais e vinculá-los à feature.
+
+  **Alterações em `Cargo.toml`:**
+
+  1. Na seção `[dependencies]`, adicionar após `rustfft`:
+
+     ```toml
+     clack-plugin = { version = "0.1", optional = true }
+     clack-extensions = { version = "0.1", optional = true }
+     ```
+
+  2. Na seção `[features]`, alterar:
+
+     ```toml
+     # antes:
+     clap-plugin = []
+     # depois:
+     clap-plugin = ["dep:clack-plugin", "dep:clack-extensions"]
+     ```
+
+  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
+
+- [ ] **Tarefa 1.1.2** — Configurar `crate-type = ["rlib", "cdylib"]` no `Cargo.toml`
+
+  **Contexto:** Para gerar um `.so` carregável pelo REAPER, o crate precisa ser compilado como `cdylib`. O `rlib` deve ser mantido para que `cargo test` continue funcionando.
+
+  **Alteração em `Cargo.toml`:** Após a seção `[[bin]]`, adicionar:
+
+  ```toml
+  [lib]
+  name = "nam_rs"
+  crate-type = ["rlib", "cdylib"]
+  ```
+
+  **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `target/debug/libnam_rs.so` sem erros.
 
 > **📋 CHECKPOINT — Build CLAP funcional**
 
@@ -243,43 +277,213 @@
 
 ### Épico 1.2 — Implementação do Plugin Skeleton
 
-- [ ] **Tarefa 1.2.1** — Implementar `src/clap/descriptor.rs`
-  
-  - Plugin ID: `"br.eti.fabiolima.nam-rs"`
-  - Nome: `"NAM-rs Neural Amp Modeler"`
-  - Vendor: `"Fabio Lima"`
-  - URL: `"https://github.com/fabiohl/nam-rs"`
-  - Features: `[AUDIO_EFFECT, DISTORTION, GATE, SIMULATOR, STEREO]`
-  - **Aceite:** Compila sem erros
+- [ ] **Tarefa 1.2.1** — Criar `src/clap/descriptor.rs`
 
-- [ ] **Tarefa 1.2.2** — Implementar `src/clap/plugin.rs` (Skeleton)
-  
-  - Implementar `Plugin` trait do clack
-  - `type AudioProcessor = NamClapProcessor;`
-  - `type Shared = NamClapShared;` (estado compartilhado / params atômicos)
-  - `type MainThread = NamClapMainThread;` (carregamento de modelos, state)
-  - Implementar `DefaultPluginFactory` com `get_descriptor()`, `new_shared()`, `new_main_thread()`
-  - **Aceite:** Compila sem erros
+  **Contexto:** O descriptor é a identidade do plugin. O REAPER lê estas strings durante o scan.
 
-- [ ] **Tarefa 1.2.3** — Implementar `src/clap/processor.rs` (Bypass puro)
-  
-  - Implementar `PluginAudioProcessor`
-  - `activate()` → capturar sample rate e buffer size da `PluginAudioConfiguration`
-  - `process()` → copiar input → output (bypass), respeitar `ChannelPair` variants
-  - **Aceite:** Compila sem erros
+  **Criar o arquivo `src/clap/descriptor.rs`** com o seguinte conteúdo:
 
-- [ ] **Tarefa 1.2.4** — Exportar entry point CLAP no `src/lib.rs`
-  
-  - Adicionar sob `#[cfg(feature = "clap-plugin")]`: `clack_export_entry!(SinglePluginEntry<NamClapPlugin>);`
-  - Atualizar `src/clap/mod.rs` com re-exports necessários
-  - **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `.so` válido
+  ```rust
+  // SPDX-License-Identifier: MIT OR Apache-2.0
+  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+  //! Descriptor de identidade do plugin NAM-rs no formato CLAP.
+
+  use clack_plugin::prelude::*;
+
+  /// Retorna o descritor imutável do plugin.
+  /// Lido pelo host durante scan — deve ser determinístico e sem alocações.
+  pub fn nam_descriptor() -> PluginDescriptor {
+      PluginDescriptor::new("br.eti.fabiolima.nam-rs", "NAM-rs Neural Amp Modeler")
+          .with_vendor("Fabio Lima")
+          .with_url("https://github.com/fabiohl/nam-rs")
+          .with_description("Real-time Neural Amp Modeler plugin (CLAP)")
+          .with_features([
+              CLAP_PLUGIN_FEATURE_AUDIO_EFFECT,
+              CLAP_PLUGIN_FEATURE_DISTORTION,
+              CLAP_PLUGIN_FEATURE_GATE,
+              "simulator",
+              CLAP_PLUGIN_FEATURE_STEREO,
+          ])
+  }
+  ```
+
+  **Atenção:** Verificar nomes exatos das constantes em `clack_plugin::prelude` (podem ser strings literais se a versão 0.1 não exportar constantes). Alternativa segura:
+
+  ```rust
+  .with_features(["audio-effect", "distortion", "gate", "simulator", "stereo"])
+  ```
+
+  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
+
+- [ ] **Tarefa 1.2.2** — Criar structs `NamClapPlugin`, `NamClapShared`, `NamClapMainThread` em `src/clap/plugin.rs`
+
+  **Contexto:** A trait `Plugin` define os três componentes do ciclo de vida. Por ora, `Shared` e `MainThread` são structs unitárias — a lógica real vem na Sprint 2.
+
+  **Criar o arquivo `src/clap/plugin.rs`** com o seguinte conteúdo:
+
+  ```rust
+  // SPDX-License-Identifier: MIT OR Apache-2.0
+  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+  //! Definição do plugin NAM-rs e seus componentes de ciclo de vida CLAP.
+
+  use clack_plugin::prelude::*;
+  use crate::clap::descriptor::nam_descriptor;
+  use crate::clap::processor::NamClapProcessor;
+
+  /// Estado compartilhado entre a audio thread e a main thread (lock-free).
+  /// Sprint 1: vazio — será preenchido com AtomicF32 para parâmetros na Sprint 2.
+  pub struct NamClapShared;
+
+  /// Estado exclusivo da main thread (carregamento de modelos, state save/load).
+  /// Sprint 1: vazio — será preenchido na Sprint 2.
+  pub struct NamClapMainThread;
+
+  /// Plugin NAM-rs: ponto de entrada principal do ciclo de vida CLAP.
+  pub struct NamClapPlugin;
+
+  impl Plugin for NamClapPlugin {
+      type AudioProcessor<'a> = NamClapProcessor;
+      type Shared<'a> = NamClapShared;
+      type MainThread<'a> = NamClapMainThread;
+  }
+
+  impl DefaultPluginFactory for NamClapPlugin {
+      fn get_descriptor() -> PluginDescriptor {
+          nam_descriptor()
+      }
+
+      fn new_shared(_host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
+          Ok(NamClapShared)
+      }
+
+      fn new_main_thread<'a>(
+          _host: HostMainThreadHandle<'a>,
+          _shared: &'a Self::Shared<'a>,
+      ) -> Result<Self::MainThread<'a>, PluginError> {
+          Ok(NamClapMainThread)
+      }
+  }
+  ```
+
+  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
+
+- [ ] **Tarefa 1.2.3** — Criar `src/clap/processor.rs` (bypass puro)
+
+  **Contexto:** O `PluginAudioProcessor` é chamado pela audio thread do host. Por ora, implementa bypass puro: copia input para output. **Não há alocações aqui.**
+
+  **Criar o arquivo `src/clap/processor.rs`** com o seguinte conteúdo:
+
+  ```rust
+  // SPDX-License-Identifier: MIT OR Apache-2.0
+  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+  //! Processador de áudio CLAP — Sprint 1: bypass puro (input → output).
+
+  use clack_plugin::prelude::*;
+  use crate::clap::plugin::{NamClapShared, NamClapMainThread};
+
+  /// Processador de áudio RT-safe. Executa na audio thread do host.
+  /// Sprint 1: bypass — copia cada amostra de input para output sem processar.
+  pub struct NamClapProcessor;
+
+  impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread> for NamClapProcessor {
+      fn activate(
+          _host: HostAudioProcessorHandle<'a>,
+          _main_thread: &mut NamClapMainThread,
+          _shared: &'a NamClapShared,
+          _audio_config: PluginAudioConfiguration,
+      ) -> Result<Self, PluginError> {
+          Ok(Self)
+      }
+
+      fn process(
+          &mut self,
+          _process: Process,
+          mut audio: Audio,
+          _events: Events,
+      ) -> Result<ProcessStatus, PluginError> {
+          for mut port_pair in &mut audio {
+              let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
+                  continue;
+              };
+              for channel_pair in channel_pairs {
+                  match channel_pair {
+                      ChannelPair::InputOnly(_) => {}
+                      ChannelPair::OutputOnly(buf) => buf.fill(0.0),
+                      ChannelPair::InputOutput(input, output) => {
+                          output.copy_from_slice(input);
+                      }
+                      ChannelPair::InPlace(_) => {} // in-place: nada a fazer no bypass
+                  }
+              }
+          }
+          Ok(ProcessStatus::Continue)
+      }
+  }
+  ```
+
+  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
+
+- [ ] **Tarefa 1.2.4** — Atualizar `src/clap/mod.rs` e exportar entry point em `src/lib.rs`
+
+  **Parte A — Reescrever `src/clap/mod.rs`:**
+
+  ```rust
+  // SPDX-License-Identifier: MIT OR Apache-2.0
+  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+  //! Integração do NAM-rs como plugin no formato CLAP (CLever Audio Plug-in).
+  //!
+  //! Ativado via feature flag `clap-plugin`. Totalmente isolado do PipeWire.
+
+  pub mod descriptor;
+  pub mod plugin;
+  pub mod processor;
+
+  use clack_plugin::prelude::*;
+  use plugin::NamClapPlugin;
+
+  clack_export_entry!(SinglePluginEntry<NamClapPlugin>);
+  ```
+
+  **Parte B — `src/lib.rs` já está correto** (expõe `pub mod clap` sob feature). Não modificar.
+
+  **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `target/debug/libnam_rs.so` sem erros nem warnings.
 
 - [ ] **Tarefa 1.2.5** — Criar script `utils/build-clap.sh`
-  
-  - Build release: `cargo build --release --no-default-features --features clap-plugin --lib`
-  - Copiar `.so` para `~/.clap/nam-rs.clap`
-  - Incluir cabeçalho de copyright
-  - **Aceite:** Script executa e gera `.clap` no diretório correto
+
+  **Criar `utils/build-clap.sh`** com o seguinte conteúdo:
+
+  ```bash
+  #!/bin/bash
+  # SPDX-License-Identifier: MIT OR Apache-2.0
+  # Copyright (c) 2026 Fábio Henrique de Lima Silva.
+  #
+  # Build e instalação do plugin NAM-rs no formato CLAP.
+  # Gera libnam_rs.so e copia para ~/.clap/nam-rs.clap
+
+  set -euo pipefail
+
+  TARGET_DIR="target/release"
+  CLAP_DIR="$HOME/.clap"
+  PLUGIN_NAME="nam-rs.clap"
+
+  echo "🔨 Building NAM-rs CLAP plugin (release)..."
+  cargo build --release --no-default-features --features clap-plugin --lib
+
+  echo "📁 Instalando em $CLAP_DIR/$PLUGIN_NAME ..."
+  mkdir -p "$CLAP_DIR"
+  cp "$TARGET_DIR/libnam_rs.so" "$CLAP_DIR/$PLUGIN_NAME"
+
+  echo "✅ Plugin instalado: $CLAP_DIR/$PLUGIN_NAME"
+  echo "   Reabra o REAPER e faça um novo scan de plugins CLAP."
+  ```
+
+  Tornar executável: `chmod +x utils/build-clap.sh`
+
+  **Aceite:** `./utils/build-clap.sh` executa sem erros e `~/.clap/nam-rs.clap` existe.
 
 > **📋 CHECKPOINT — Plugin skeleton pronto para teste**
 
@@ -287,30 +491,44 @@
 
 ### Épico 1.3 — Validação e Estabilidade
 
+> OBS1: Ótimo momento para leitura humana geral do estado do código em `src/`.
+> OBS2: Hora de instalar e configurar o REAPER para os testes funcionais.
+
 - [ ] **Tarefa 1.3.1** — Validar detecção no REAPER
-  
-  - Executar `utils/build-clap.sh`
-  - Abrir REAPER → Preferences → Plugins → verificar que `NAM-rs Neural Amp Modeler` aparece
-  - Inserir o plugin numa faixa de áudio
-  - **Aceite:** REAPER detecta e instancia o plugin sem segfault
+
+  1. Executar `./utils/build-clap.sh`
+  2. Abrir REAPER → `Options` → `Preferences` → `Plug-ins` → `CLAP` → `Re-scan`
+  3. Verificar que `NAM-rs Neural Amp Modeler` (vendor: `Fabio Lima`) aparece na lista
+  4. Inserir numa faixa de áudio via `FX → Add`
+
+  **Aceite:** REAPER detecta e instancia o plugin sem segfault ou mensagem de erro no log de plugins.
 
 - [ ] **Tarefa 1.3.2** — Validar bypass no REAPER
-  
-  - Com plugin inserido, reproduzir áudio
-  - Verificar que áudio passa sem alteração (bypass puro)
-  - **Aceite:** Áudio limpo, sem artefatos, sem crashes
+
+  1. Com plugin inserido, reproduzir áudio na faixa
+  2. Comparar áudio com e sem plugin (usar Track FX bypass do REAPER)
+  3. O áudio deve ser idêntico (bypass puro)
+
+  **Aceite:** Áudio limpo, sem artefatos, sem dropouts, sem crashes. Latência reportada pelo REAPER: 0 amostras.
 
 - [ ] **Tarefa 1.3.3** — Validar que standalone não regrediu
-  
-  - `cargo build --release --features standalone`
-  - `utils/run-standalone.sh` funciona normalmente
-  - **Aceite:** Funcionalidade standalone idêntica à v1.4.3
+
+  ```bash
+  cargo build --release --features standalone
+  cargo test
+  utils/lints.sh
+  ```
+
+  **Aceite:** Build, testes (157+) e lints passam sem erros ou regressões.
 
 - [ ] **Tarefa 1.3.4** — Executar suíte de validação completa
-  
-  - `utils/lints.sh` — zero erros
-  - `cargo test` — todos os testes passam
-  - **Aceite:** Suíte completa sem falhas
+
+  ```bash
+  utils/lints.sh   # zero erros
+  cargo test       # todos os testes passam
+  ```
+
+  **Aceite:** Suíte completa sem falhas.
 
 > **📋 CHECKPOINT DE REVISÃO — Sprint 1 concluída**
 > Plugin CLAP bypass funcional no REAPER. Standalone intacto.

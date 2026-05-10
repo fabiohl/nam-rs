@@ -246,11 +246,19 @@ Este projeto utiliza um registro simplificado de decisões arquiteturais para ma
 
 - **Decisão:** Crate `clack-plugin` (baseado em `clack`) como framework principal para integração CLAP.
 - **Justificativa:** Oferece controle granular sobre o ciclo de vida do plugin, overhead zero de runtime e mapeamento direto ao spec CLAP sem forçar o uso de VST3 ou frameworks de GUI opinativos.
+- **Alternativa rejeitada:** `nih-plug` — descartado por impor VST3 como dependência, incluir GUI embutida opinativa e introduzir abstrações incompatíveis com as restrições de RT (zero-alloc, zero-lock) do NAM-rs.
 
 ### Interface Gráfica — `egui` + `baseview`
 
 - **Decisão:** A GUI será implementada usando `egui` (Immediate Mode GUI) renderizada sobre janelas nativas via `baseview`.
 - **Justificativa:** Garantia de uma interface 100% Rust, sem dependências de C++ (como Qt/JUCE), facilitando o build determinístico e a integração nativa com o spec CLAP via extensões de janela.
+
+### DAW Primária de Desenvolvimento — REAPER
+
+- **Decisão:** REAPER como DAW primária durante o desenvolvimento; Bitwig Studio e Studio One como validação premium ao final da implementação.
+- **Justificativa:** O REAPER oferece ferramentas de debug sem igual para desenvolvimento de plugins: scan rápido sem necessidade de restart, hot-reload de `.so`, análise de buffers variáveis (1–8192 amostras), acesso nativo a métricas de latência e monitoramento de threads RT. Além de ter preço muito acessível.
+- **Bitwig Studio:** Validação premium — implementação CLAP de referência (empresa co-autora do spec).
+- **Studio One:** Validação premium — adoção crescente do CLAP no mercado mainstream.
 
 ## 9. Referências
 
