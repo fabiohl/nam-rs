@@ -120,7 +120,7 @@
   
   **Aceite:** `grep -n "Pendente\|pending\|TODO\|FIXME" README.md` retorna zero resultados; documento bilíngue revisado.
 
-- [ ] **Tarefa 0.2.2** — Atualizar `docs/architecture.md` (estrutura tripartida e decisões ADR)
+- [x] **Tarefa 0.2.2** — Atualizar `docs/architecture.md` (estrutura tripartida e decisões ADR)
   
   **Contexto:** A Seção 4 já foi atualizada com a tabela tripartida durante o Épico 0.1. Faltam: diagrama visual de camadas, registro formal das decisões de framework, e seção de estratégia de feature flags.
   

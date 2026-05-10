@@ -612,7 +612,9 @@ impl SimdMath for Avx512Math {
         num_frames: usize,
         do_bias: bool,
     ) {
-        fused_add_gemm_batch_fallback(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        unsafe {
+            fused_add_gemm_batch_avx512(in_frames, weights, bias, out_frames, num_frames, do_bias)
+        }
     }
 
     #[inline(always)]
@@ -625,9 +627,11 @@ impl SimdMath for Avx512Math {
         num_frames: usize,
         do_bias: bool,
     ) {
-        fused_gemm_residual_batch_fallback(
-            in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
-        )
+        unsafe {
+            fused_gemm_residual_batch_avx512(
+                in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
+            )
+        }
     }
 
     #[inline(always)]

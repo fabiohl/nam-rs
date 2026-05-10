@@ -1,12 +1,11 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
 
-A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e inferência neural focada em simulação de equipamentos de áudio (Neural Amp Modeler). Operando como cliente PipeWire standalone no Linux, utiliza Rust idiomático com foco em segurança RT (Real-Time).
+A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e inferência neural focada em simulação de equipamentos de áudio (Neural Amp Modeler). Operando como cliente PipeWire standalone (Estável) ou como plugin CLAP (Staging) no Linux, utiliza Rust idiomático com foco em segurança RT (Real-Time).
 
-## 1. Topologia PipeWire: Dual-Stream (Capture + Playback)
+## 1. Topologia PipeWire (Modo Standalone): Dual-Stream (Capture + Playback)
 
 - **Virtual Sink (Audio/Sink):** O NAM-rs declara-se como saída de som padrão via `pw_stream`. Apps conectam-se automaticamente via WirePlumber.
 - **Playback Stream (Stream/Output):** Uma segunda stream lê o áudio processado e o entrega ao hardware real, contornando limitações de monitor ports de sinks virtuais.
@@ -20,8 +19,8 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Multiversioning via Macro `dispatch_simd!`:** Despacho dinâmico no carregamento do modelo que seleciona a melhor v-table de kernels SIMD (`Avx2Math`, `Avx512Math`, etc.). O uso de macros para monomorfização garante que o compilador emita intrinsics nativos sem overhead de v-table no hot-path de inferência.
 - **FastMath Activations & Gain LUT:** `simd_tanh` e `simd_sigmoid` usam polinômios Minimax de grau 7 com refinamento Newton-Raphson. Erro máximo < 2e-5, otimizado para o intervalo [-8, 8]. Inclui uma **Gain LUT (Look-Up Table)** interpolada para conversão ultra-rápida dB → Linear no RT, evitando chamadas caras a `powf`.
 - **Gated Activation Fusion (WaveNet A2):** Unificação de `tanh` e `sigmoid` em um único kernel SIMD nativo, reduzindo a pressão de registradores e evitando passagens múltiplas sobre o vetor de ativação.
-- **Dot Product ILP:** Implementação com 4 acumuladores independentes que saturam o throughput de portas FMA, quebrando cadeias de dependência.
-- **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para maximizar o hit-rate da Cache L1. A descompressão ocorre on-the-fly via `_mm256_cvtph_ps`.
+- **Dot Product ILP:** Implementação com múltiplos acumuladores independentes (`sum0..sum3` em AVX2, `acc0..acc7` em AVX-512) para saturar o throughput de portas FMA, quebrando cadeias de dependência.
+- **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para reduzir o tráfego de memória L1/L2. A descompressão ocorre on-the-fly via `_mm256_cvtph_ps` ou `_mm512_cvtph_ps`.
 - **Gate-Major Layout & Fused 4-Gate GEMV (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`. A inferência funde o cálculo das 4 portas em uma única passagem sobre o vetor de estado.
 - **Layer Overlap Pipelining (LSTM 2-Layer):** Paralelismo de grão fino onde a Camada 2 processa o frame `N-1` simultaneamente ao frame `N` da Camada 1, aumentando a vazão em modelos multicamada.
 - **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` (VNNI-BF16) para CPUs Sapphire Rapids e posteriores. Inclui o kernel **Fused 4-Gate GEMV BF16** para LSTM, eliminando o custo de despacho escalar e dobrando o throughput de dot-products em relação ao AVX2.
@@ -30,7 +29,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Fused Residual GEMV com Frame Tiling (WaveNet):** O cálculo do resíduo é fundido no GEMV da camada seguinte, utilizando **4-frame tiling (AVX2)** ou **8-frame tiling (AVX-512)** para maximizar o reuso de pesos nos registradores.
 - **Conv1D Tiling:** Processamento de múltiplos canais em blocos para maximizar o reúso de dados nos registradores SIMD e reduzir latência de cache em modelos com dilatação profunda.
 
-### Decisão Técnica: Precisão FastMath vs Performance (ADR-001)
+### Decisão Técnica: Precisão FastMath vs Performance
 
 > **Decisão:** As funções de ativação `tanh` e `sigmoid` usam aproximações polinomiais SIMD
 > (Minimax + Newton-Raphson duplo) em vez de chamadas à libm IEEE-754 compliant.
@@ -68,6 +67,16 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 >
 > **Referências:** `src/math/fastmath.rs` (docstring de `simd_tanh_avx2`),
 > `tests/fixtures/README.md`, `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)
+
+### Formato Binário NAMB (Native Audio Model Binary)
+
+O formato `.namb` é uma evolução otimizada do JSON original para uso em tempo-real.
+
+- **NAMB v1:** Encapsula o JSON de metadados e os pesos em `f32` (Little-Endian) em um único bloco binário com CRC32.
+- **NAMB v2 (Pre-Transposed):** Armazena os pesos diretamente no layout final do kernel (Gate-Major para LSTM ou Interleaved-4 para WaveNet).
+  - Elimina a necessidade de transposição de memória durante o carregamento.
+  - Reduz latência de swap de modelo de ~50ms para <1ms (cold-path de carregamento).
+  - Identificado por flag no header `NambHeader::layout_type`.
 
 ### Fluxo de Dados WaveNet (Pipeline de Inferência)
 
@@ -128,7 +137,52 @@ A partir da v1.5, o NAM-rs adota uma estrutura modular clara para suportar múlt
 | **CLAP** (`src/clap/`)             | `mod.rs` (Stub)                               | Ponto de entrada para integração como plugin (v1.6+). Totalmente isolado das dependências do PipeWire.                 |
 | **Core DSP** (`src/`)              | `dsp/`, `math/`, `models/`, `loader/`         | O "cérebro" do NAM-rs. Matemática SIMD, algoritmos de inferência neural e parsing de modelos.                          |
 
+### Diagrama de Camadas (Architecture Layers)
+
+```mermaid
+graph TD
+    subgraph Host_Specific ["Camadas Específicas de Host (Frontends)"]
+        Standalone["src/standalone/"]
+        CLAP["src/clap/"]
+    end
+
+    subgraph Host_Agnostic ["Camadas Agnósticas (Core)"]
+        Common["src/common/"]
+        DSP["src/dsp/"]
+        Math["src/math/"]
+        Models["src/models/"]
+        Loader["src/loader/"]
+    end
+
+    Standalone --> Common
+    Standalone --> DSP
+    CLAP --> Common
+    CLAP --> DSP
+
+    DSP --> Math
+    DSP --> Models
+    Loader --> Models
+
+    subgraph External_Deps ["Dependências Externas"]
+        PW["libpipewire-0.3"]
+        Clack["clack-plugin"]
+    end
+
+    Standalone -.-> PW
+    CLAP -.-> Clack
+```
+
 Essa separação garante que o build para CLAP não arraste dependências do PipeWire e facilita a portabilidade para outros sistemas operacionais no futuro.
+
+## 4.1 Estratégia de Compilação Condicional (Feature Flags)
+
+O NAM-rs utiliza *feature flags* para isolar backends e reduzir o footprint do binário final:
+
+| Perfil de Build         | Comando de Compilação                                            | Artefato Gerado           | Dependências Principais            |
+|:----------------------- |:---------------------------------------------------------------- |:------------------------- |:---------------------------------- |
+| **Standalone** (padrão) | `cargo build --features standalone`                              | Binário Executável        | `pipewire`, `rtrb`, `clap` (CLI)   |
+| **CLAP Plugin**         | `cargo build --no-default-features --features clap-plugin --lib` | Biblioteca `.so` (cdylib) | `clack-plugin`, `clack-extensions` |
+| **DSP Lib (Pure)**      | `cargo build --no-default-features --lib`                        | Biblioteca Rust (`.rlib`) | Apenas Core DSP (no-std ready)     |
 
 ## 5. DSP & Resampling Nativo
 
@@ -166,35 +220,43 @@ PipeWire Input (Nk Hz)
 - **Soak Test (`tests/soak_test.rs`):** Suíte de estabilidade numérica de longa duração — executa 10M+ frames de silêncio/ruído em WaveNet e LSTM, 50M+ amostras no resampler e 100M+ ciclos no VirtualRingBuffer. Todos marcados com `#[ignore]` para exclusão do CI. Disparados via `bash utils/tests-long.sh`.
 - **Long Run Benchmarks (`benches/inference_bench.rs`):** Grupo `Long_Run_*` ativado via feature `long_bench`, com blocos de 4096 amostras e `measurement_time(30s)` para medir throughput real em operação contínua, eliminando jitter de cache. Disparados via `bash utils/tests-long.sh`.
 
-## 7. Preparação para Arquitetura A2 (v1.4 Staging)
+## 7. Preparação para Arquitetura A2
 
-O NAM-rs v1.4 introduz o scaffolding necessário para a próxima geração de modelos (A2), mantendo paridade absoluta com os modelos A1 existentes.
+O NAM-rs v1.4 introduz o scaffolding necessário para a próxima geração de modelos (A2), mantendo paridade absoluta com os modelos A1 existentes, mas sem implementação real. Apenas deixamos as coisas prontas para quando "chegar a hora".
 
 - **Forward-Compatible Loader:** O dispatcher (`src/loader/dispatcher/wavenet.rs`) identifica modelos A2 via metadados de versão ou ativações não-Tanh, redirecionando-os para um `WavenetA2Placeholder`.
 - **Extensibilidade de Ativações:** Suporte a 11 variantes de funções de ativação (HardTanh, SiLU, LeakyReLU, etc.) via trait `ActivationFn`, prontas para futura implementação SIMD.
 - **Parametrização Flexível:** Inclusão de estruturas para FiLM, Gating dinâmico e Blending de ativações, permitindo que o parser aceite novos formatos de arquivo sem panics.
 
-## 8. Formato Binário NAMB (Native Audio Model Binary)
+Estamos acompanhando a evolução do trabalho de [Steven Atkinson](https://github.com/sdatkinson) e faremos um porte completo a partir do [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) quando estiver pronto.
 
-O formato `.namb` é uma evolução otimizada do JSON original para uso em tempo-real.
+## 8. Integração com DAWs (CLAP Integration)
 
-- **NAMB v1:** Encapsula o JSON de metadados e os pesos em `f32` (Little-Endian) em um único bloco binário com CRC32.
-- **NAMB v2 (Pre-Transposed):** Armazena os pesos diretamente no layout final do kernel (Gate-Major para LSTM ou Interleaved-4 para WaveNet).
-  - Elimina a necessidade de transposição de memória durante o carregamento.
-  - Reduz latência de swap de modelo de ~50ms para <1ms (cold-path de carregamento).
-  - Identificado por flag no header `NambHeader::layout_type`.
+A arquitetura do NAM-rs v1.5.0-alpha já suporta o desacoplamento necessário para execução como plugin CLAP (Clever Audio Plug-in), permitindo o uso em DAWs (Digital Audio Workstations).
+
+- **Trait `AudioHost`:** Define a interface agnóstica de comunicação entre o motor DSP e o host. Localizado em `src/common/audio_host.rs`.
+- **Feature Flags:** O build é controlado por flags (`standalone` vs `clap-plugin`), garantindo que dependências de sistema (como `pipewire`) sejam removidas no binário do plugin para máxima portabilidade.
+- **Parâmetros Agnósticos:** `NamPluginParams` (em `src/common/params.rs`) centraliza o estado do plugin (`input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`), facilitando o mapeamento para automação de DAW e persistência de estado (save/load).
+
+## 8.1 Decisões de Arquitetura
+
+Este projeto utiliza um registro simplificado de decisões arquiteturais para manter a rastreabilidade técnica:
+
+### Framework CLAP — `clack-plugin`
+
+- **Decisão:** Crate `clack-plugin` (baseado em `clack`) como framework principal para integração CLAP.
+- **Justificativa:** Oferece controle granular sobre o ciclo de vida do plugin, overhead zero de runtime e mapeamento direto ao spec CLAP sem forçar o uso de VST3 ou frameworks de GUI opinativos.
+
+### Interface Gráfica — `egui` + `baseview`
+
+- **Decisão:** A GUI será implementada usando `egui` (Immediate Mode GUI) renderizada sobre janelas nativas via `baseview`.
+- **Justificativa:** Garantia de uma interface 100% Rust, sem dependências de C++ (como Qt/JUCE), facilitando o build determinístico e a integração nativa com o spec CLAP via extensões de janela.
 
 ## 9. Referências
 
-Os seguintes repositórios GitHub são a principal base de referência para a implementação do NAM-rs:
+Os seguintes repositórios e especificações são as principais referências para o NAM-rs:
 
-- [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore)
-- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio)
-
-## 10. Suporte a Plugins (CLAP Integration)
-
-A arquitetura do NAM-rs v1.4.0 já suporta o desacoplamento necessário para execução como plugin CLAP (Clever Audio Plug-in), permitindo o uso em DAWs (Digital Audio Workstations).
-
-- **Trait `AudioHost`:** Define a interface agnóstica de comunicação entre o motor DSP e o host.
-- **Feature Flags:** O build é controlado por flags (`standalone` vs `clap-plugin`), garantindo que dependências de sistema (como `pipewire`) sejam removidas no binário do plugin para máxima portabilidade.
-- **Parâmetros Agnósticos:** `NamPluginParams` centraliza o estado do plugin (`input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`), facilitando o mapeamento para automação de DAW e persistência de estado (save/load).
+- [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) - Implementação de referência do NAM.
+- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) - Inspiração no suporte à arquitetura A1.
+- [CLAP (CLever Audio Plug-in)](https://cleveraudio.org/) - Especificação do formato de plugin CLAP.
+- [Clack Framework](https://github.com/prokopyl/clack) - Infraestrutura para implementação do plugin em Rust.
