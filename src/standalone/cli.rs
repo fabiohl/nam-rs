@@ -6,12 +6,13 @@
 //! Lida com a exibição de ajuda e a interpretação dos argumentos
 //! fornecidos pelo usuário via terminal.
 
+use crate::diagnostics::SystemSnapshot;
+use crate::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB, get_gain_lut};
+
+use crate::spsc::{ParamPayload, SHUTDOWN};
+use crate::standalone::colors::Colorize;
 use lexopt::prelude::*;
-use nam_rs::colors::Colorize;
-use nam_rs::diagnostics::SystemSnapshot;
-use nam_rs::loader::load_and_build_model;
-use nam_rs::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB, get_gain_lut};
-use nam_rs::spsc::{ParamPayload, SHUTDOWN};
+
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -238,8 +239,8 @@ pub fn cli_loop(
                 if let Some(path_str) = parts.get(1) {
                     let path = Path::new(path_str);
                     println!("{} Carregando: {} ...", "📂".cyan(), path_str);
-                    match load_and_build_model(path, &sys) {
-                        Ok(nam_rs::loader::LoadedModelPair {
+                    match crate::loader::load_and_build_model(path, &sys) {
+                        Ok(crate::loader::LoadedModelPair {
                             model_l,
                             model_r,
                             input_mult_adj,

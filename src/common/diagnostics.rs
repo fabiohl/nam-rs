@@ -14,7 +14,9 @@
 //! threads não-RT (CLI, loop principal do PipeWire). O callback `process()`
 //! continua usando flags atômicas (`RtStatusFlags`) para sinalização silenciosa.
 
-use crate::colors::Colorize;
+#[cfg(feature = "standalone")]
+use crate::standalone::colors::Colorize;
+
 use std::fmt;
 use std::time::SystemTime;
 
@@ -212,9 +214,18 @@ impl SystemSnapshot {
             return;
         }
         let mask = 0xFFFFFFFFFFFFFFFFu64 ^ (1u64 << core);
+
+        #[cfg(feature = "standalone")]
         log::info!(
             "{} Para latência mínima, isole o core {} das IRQs do sistema (como sudo): echo {:X} > /proc/irq/default_smp_affinity",
             "💡".yellow(),
+            core,
+            mask
+        );
+
+        #[cfg(not(feature = "standalone"))]
+        log::info!(
+            "💡 Para latência mínima, isole o core {} das IRQs do sistema (como sudo): echo {:X} > /proc/irq/default_smp_affinity",
             core,
             mask
         );

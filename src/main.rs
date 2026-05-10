@@ -14,11 +14,10 @@
 //! - **ZERO LOCKS** na thread de Áudio (módulo `pw_host`): O áudio não "espera" pela interface visual. Se não houver instrução nova, ele continua usando a anterior. Evita "engasgos" no som.
 //! - **ZERO ALOCAÇÕES** na thread de Áudio: A memória do canal de áudio (`process()`) é sempre preparada 100% de antemão. O áudio nunca "pede por mais memória RAM" de supetão.
 
-pub mod cli;
-
-use nam_rs::colors::Colorize;
 use nam_rs::diagnostics::SystemSnapshot;
+use nam_rs::standalone::{cli, colors::Colorize};
 use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};
+
 use std::sync::atomic::Ordering;
 
 /// Ponto de entrada do NAM-rs.

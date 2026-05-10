@@ -21,7 +21,7 @@
   - Criar `src/common/mod.rs` com re-exports públicos de todos os sub-módulos
   - **Aceite:** `cargo check --features standalone` passa sem erros
 
-- [ ] **Tarefa 0.1.2** — Criar `src/standalone/mod.rs` e mover módulos PipeWire
+- [x] **Tarefa 0.1.2** — Criar `src/standalone/mod.rs` e mover módulos PipeWire
   - Criar diretório `src/standalone/`
   - Mover `src/pw_host.rs` + `src/pw_host_test.rs` → `src/standalone/`
   - Mover `src/rt_setup.rs` + `src/rt_setup_test.rs` → `src/standalone/`

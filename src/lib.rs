@@ -20,12 +20,11 @@
 pub mod common;
 pub use common::*;
 
-pub mod colors;
+pub mod standalone;
+#[cfg(feature = "standalone")]
+pub use standalone::*;
+
 pub mod dsp;
 pub mod loader;
 pub mod math;
 pub mod models;
-#[cfg(feature = "standalone")]
-pub mod pw_host;
-#[cfg(feature = "standalone")]
-pub mod rt_setup;
