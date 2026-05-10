@@ -15,8 +15,8 @@
 //! - **ZERO ALOCAÇÕES** na thread de Áudio: A memória do canal de áudio (`process()`) é sempre preparada 100% de antemão. O áudio nunca "pede por mais memória RAM" de supetão.
 
 use nam_rs::diagnostics::SystemSnapshot;
-use nam_rs::standalone::{cli, colors::Colorize};
-use nam_rs::{loader, pw_host, spsc, spsc::ParamPayload};
+use nam_rs::standalone::{cli, colors::Colorize, pw_host, rt_setup};
+use nam_rs::{loader, spsc, spsc::ParamPayload};
 
 use std::sync::atomic::Ordering;
 
@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
     );
 
     pipewire::init();
-    nam_rs::rt_setup::calibrate_tsc();
+    rt_setup::calibrate_tsc();
 
     // Handler de SIGINT (Ctrl-C)
     extern "C" fn sigint_handler(_sig: libc::c_int) {
@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
     // Configurações process-wide (THP disable + mlockall) antes de iniciar o PipeWire.
     // Executadas aqui (fora do cold-path do primeiro frame DSP) para evitar
     // syscalls que causariam jitter no momento crítico da primeira entrega de áudio.
-    nam_rs::rt_setup::configure_process_wide();
+    rt_setup::configure_process_wide();
 
     // Executa o host PipeWire (bloqueante)
     pw_host::run_pipewire_host(

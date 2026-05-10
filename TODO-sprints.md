@@ -45,7 +45,7 @@
   - Atualizar docstring do `lib.rs` para refletir a nova estrutura tripartida
   - **Aceite:** `cargo check --features standalone` passa sem erros
 
-- [ ] **Tarefa 0.1.5** — Refatorar `src/main.rs` para entry-point mínimo
+- [x] **Tarefa 0.1.5** — Refatorar `src/main.rs` para entry-point mínimo
   - Atualizar imports: `use nam_rs::standalone::{cli, pw_host, rt_setup};`
   - Ajustar `use nam_rs::colors::Colorize` → `use nam_rs::standalone::colors::Colorize`
   - Garantir que `main.rs` permaneça enxuto (apenas orquestração e delegação)
