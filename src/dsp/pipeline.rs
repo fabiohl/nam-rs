@@ -95,7 +95,18 @@ pub struct DspBridge {
     /// Contador de geração consumida — atualizado pelo playback callback.
     pub consumed_gen: std::sync::atomic::AtomicU64,
     /// Contador de frames descartados (sobrescritos sem consumo).
+    /// Incrementado pelos callbacks RT, drenado via `drain_dropped_frames()` pelo loop principal.
     pub dropped_frames: std::sync::atomic::AtomicU32,
+}
+
+#[cfg(any(feature = "standalone", test))]
+impl DspBridge {
+    /// Drena o contador de frames descartados, retornando o valor acumulado e zerando-o.
+    ///
+    /// RT-Safe para o leitor: usa `swap` atômico sem locks.
+    pub fn drain_dropped_frames(&self) -> u32 {
+        self.dropped_frames.swap(0, Ordering::Relaxed)
+    }
 }
 
 #[cfg(any(feature = "standalone", test))]

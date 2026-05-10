@@ -785,8 +785,14 @@ pub fn run_pipewire_host(
 
         // 2. Monitoramento de Status e Limpeza de Memória (GC)
         // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio, timing).
-        (was_silent, was_fading) =
-            rt_setup::poll_rt_status(&rt_status, &sys, was_silent, was_fading, &tsc_anchor);
+        (was_silent, was_fading) = rt_setup::poll_rt_status(
+            &rt_status,
+            &sys,
+            was_silent,
+            was_fading,
+            &tsc_anchor,
+            bridge,
+        );
 
         // Executa a drenagem de modelos e resamplers obsoletos (Drop-Delegation).
         rt_setup::drain_gc_channels(&mut gc_consumer, &gc_overflow);

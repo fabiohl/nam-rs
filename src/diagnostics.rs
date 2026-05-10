@@ -181,6 +181,8 @@ pub struct SystemSnapshot {
     pub kernel: String,
     /// Features de CPU detectadas (acima do baseline x86-64-v3).
     pub features: Vec<String>,
+    /// Versão da biblioteca PipeWire em uso (apenas com feature `standalone`).
+    pub pipewire_version: Option<String>,
 }
 
 impl SystemSnapshot {
@@ -191,6 +193,7 @@ impl SystemSnapshot {
     pub fn capture() -> Self {
         let kernel = read_kernel_version();
         let features = detect_advanced_features();
+        let pipewire_version = Some(pw_library_version());
 
         Self {
             version: NAM_VERSION,
@@ -198,6 +201,7 @@ impl SystemSnapshot {
             os: std::env::consts::OS,
             kernel,
             features,
+            pipewire_version,
         }
     }
 
@@ -251,6 +255,26 @@ fn detect_advanced_features() -> Vec<String> {
         features.push("avx512bf16".to_string());
     }
     features
+}
+
+/// Retorna a versão da biblioteca PipeWire linkada ao binário.
+#[cfg(feature = "standalone")]
+fn pw_library_version() -> String {
+    unsafe extern "C" {
+        fn pw_get_library_version() -> *const std::ffi::c_char;
+    }
+    unsafe {
+        let ptr = pw_get_library_version();
+        if ptr.is_null() {
+            return "unknown".to_string();
+        }
+        std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
+    }
+}
+
+#[cfg(not(feature = "standalone"))]
+fn pw_library_version() -> String {
+    "N/A (feature standalone disabled)".to_string()
 }
 
 // =============================================================================
@@ -352,6 +376,7 @@ impl NamDiagnostic {
         block.push_str(&format!(
             "arch={}\n\
              os={} kernel={}\n\
+             pipewire={}\n\
              features={}\n\
              timestamp={}\n\
              {separator}\n\
@@ -359,6 +384,7 @@ impl NamDiagnostic {
             self.system.arch,
             self.system.os,
             self.system.kernel,
+            self.system.pipewire_version.as_deref().unwrap_or("N/A"),
             if self.system.features.is_empty() {
                 "none (baseline x86-64-v3 only)".to_string()
             } else {

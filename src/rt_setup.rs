@@ -127,6 +127,7 @@ pub fn poll_rt_status(
     was_silent: bool,
     was_fading: bool,
     _tsc_anchor: &Anchor,
+    bridge: &crate::dsp::pipeline::DspBridge,
 ) -> (bool, bool) {
     // ... (rest of the function remains same until line 249)
     // [Manual Copy of the rest for context]
@@ -192,7 +193,7 @@ pub fn poll_rt_status(
         );
     }
 
-    let drops = rt_status.dropped_frames.swap(0, Ordering::Relaxed);
+    let drops = bridge.drain_dropped_frames();
     if drops > 0 {
         log::warn!(
             "{} Drifting detectado: {} blocos de áudio descartados (capture > playback).",
@@ -314,6 +315,39 @@ pub fn compute_gain_multipliers(
     *out_out_mult = u_out_mult * m_out_mult;
 }
 
+/// Configura o processo para operação de tempo real (process-wide).
+///
+/// Deve ser chamada de `main()` **após** todas as alocações heap principais e
+/// **antes** de iniciar a thread DSP do PipeWire. Executa:
+///
+/// 1. **THP disable** — Desabilita Transparent Huge Pages via `prctl`, evitando
+///    latências de compactação em background pelo khugepaged.
+/// 2. **mlockall** — Bloqueia a memória atual e futura na RAM física, prevenindo
+///    page faults na thread DSP.
+///
+/// Estas operações eram originalmente executadas no cold-path do primeiro frame DSP,
+/// mas foram movidas para cá para reduzir o jitter no momento crítico da primeira
+/// entrega de áudio.
+pub fn configure_process_wide() {
+    unsafe {
+        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
+    }
+
+    let ret_mlock = unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) };
+
+    if ret_mlock != 0 {
+        let err = std::io::Error::last_os_error();
+        log::warn!(
+            "mlockall() falhou ({}). O áudio pode sofrer engasgos se o sistema usar swap.\n  Dica: Verifique o limite de 'memlock' no ulimits.",
+            err
+        );
+    } else {
+        log::info!(
+            "🔒 Proteção de Memória: Travada na RAM física para evitar engasgos (mlockall)."
+        );
+    }
+}
+
 /// Configura a thread DSP atual para operação em tempo real.
 ///
 /// Executada **uma única vez** no cold-path do primeiro frame do callback `process()`,
@@ -324,6 +358,9 @@ pub fn compute_gain_multipliers(
 /// 2. **Core Affinity** — Fixa a thread no núcleo físico ideal via
 ///    `pthread_setaffinity_np`, evitando migração de core e cache misses L1/L2.
 /// 3. **SCHED_FIFO** — Eleva a prioridade para agendamento de tempo real (prio 90).
+///
+/// As operações process-wide (THP disable, mlockall) foram movidas para
+/// `configure_process_wide()`, chamada de `main()` antes do PipeWire.
 ///
 /// Após configurar, publica o resultado via `rt_status` (flags atômicas):
 /// - `rt_is_fifo`: `true` se `SCHED_FIFO` foi confirmado por `pthread_getschedparam`.
@@ -339,27 +376,6 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
     // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
     unsafe {
         crate::math::simd::set_daz_ftz();
-    }
-
-    // Desabilita Transparent Huge Pages (THP) para este processo antes do mlockall,
-    // evitando latências de compactação em background pelo khugepaged.
-    unsafe {
-        libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
-    }
-
-    // Bloqueia a memória atual e futura na RAM física, prevenindo page faults.
-    let ret_mlock = unsafe { libc::mlockall(libc::MCL_CURRENT | libc::MCL_FUTURE) };
-
-    if ret_mlock != 0 {
-        let err = std::io::Error::last_os_error();
-        log::warn!(
-            "⚠️ mlockall() falhou ({}). O áudio pode sofrer engasgos se o sistema usar swap.\n  Dica: Verifique o limite de 'memlock' no ulimits.",
-            err
-        );
-    } else {
-        log::info!(
-            "🔒 Proteção de Memória: Travada na RAM física para evitar engasgos (mlockall)."
-        );
     }
 
     unsafe {

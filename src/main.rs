@@ -118,6 +118,11 @@ fn main() -> anyhow::Result<()> {
 
     let tsc_anchor = minstant::Anchor::new();
 
+    // Configurações process-wide (THP disable + mlockall) antes de iniciar o PipeWire.
+    // Executadas aqui (fora do cold-path do primeiro frame DSP) para evitar
+    // syscalls que causariam jitter no momento crítico da primeira entrega de áudio.
+    nam_rs::rt_setup::configure_process_wide();
+
     // Executa o host PipeWire (bloqueante)
     pw_host::run_pipewire_host(
         consumer,
