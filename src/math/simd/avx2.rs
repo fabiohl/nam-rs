@@ -1087,7 +1087,7 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        unsafe { horizontal_sum_avx2::<N>(ptr) }
+        unsafe { horizontal_sum_avx2(ptr, N) }
     }
 
     #[inline(always)]
@@ -1388,27 +1388,6 @@ impl SimdMath for Avx2VnniMath {
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         unsafe { Avx2Math::apply_ramp_stereo(left, right, start, step) }
     }
-}
-
-/// Soma horizontal de um buffer f32 de tamanho N (potência de 2).
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn horizontal_sum_avx2<const N: usize>(ptr: *const f32) -> f32 {
-    let mut i = 0;
-    let mut sum_v = _mm256_setzero_ps();
-    while i + 8 <= N {
-        unsafe {
-            sum_v = _mm256_add_ps(sum_v, _mm256_loadu_ps(ptr.add(i)));
-        }
-        i += 8;
-    }
-    let mut sum = super::utility::hsum_avx2(sum_v);
-    while i < N {
-        unsafe {
-            sum += *ptr.add(i);
-        }
-        i += 1;
-    }
-    sum
 }
 
 /// Acumula src em dest usando AVX2.
@@ -1772,6 +1751,28 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
     let energy_l = total_sum_l / (len as f32);
     let energy_r = total_sum_r / (len as f32);
     energy_l.max(energy_r)
+}
+
+/// Soma horizontal de um buffer f32 via AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn horizontal_sum_avx2(ptr: *const f32, len: usize) -> f32 {
+    let mut i = 0;
+    let mut sum_v = _mm256_setzero_ps();
+
+    while i + 8 <= len {
+        let v = _mm256_loadu_ps(ptr.add(i));
+        sum_v = _mm256_add_ps(sum_v, v);
+        i += 8;
+    }
+
+    let mut total = super::utility::hsum_avx2(sum_v);
+
+    while i < len {
+        total += *ptr.add(i);
+        i += 1;
+    }
+
+    total
 }
 
 #[cfg(test)]

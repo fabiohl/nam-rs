@@ -24,7 +24,7 @@
 - [ ] **Não alterar:** `process_dual_frame` F32 (já está correto).
 - [ ] **Teste:** `cargo test` sem regressão. `cargo bench` grupo `WaveNet_Dynamic` deve melhorar.
 
-### T1.2 — `horizontal_sum` SIMD nativo (substituir fallback escalar)
+### T1.2 — `horizontal_sum` SIMD nativo (substituir fallback escalar) [CONCLUIDO]
 
 - [ ] **Arquivos:** `src/math/simd/avx2.rs`, `src/math/simd/avx512.rs`, `src/math/simd/dispatch.rs`
 - [ ] **Problema:** Na vtable de dispatch (`dispatch.rs` linhas 87-88, 106-107, 124-125, 143-144, 161-162), **todos** os backends roteiam `horizontal_sum` para `horizontal_sum_fallback` (loop escalar em `fallback.rs`). No hot-path do WaveNet (`wavenet.rs` L1305), `M::horizontal_sum::<HEAD>` é chamado uma vez **por frame** — para HEAD=8 e num_frames=64, são 64 invocações escalares por bloco.

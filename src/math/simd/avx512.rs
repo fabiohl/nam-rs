@@ -730,7 +730,7 @@ impl SimdMath for Avx512Math {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        horizontal_sum_avx512::<N>(ptr)
+        unsafe { horizontal_sum_avx512(ptr, N) }
     }
 
     #[inline(always)]
@@ -991,7 +991,7 @@ impl SimdMath for Avx512VnniMath {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        Avx512Math::horizontal_sum::<N>(ptr)
+        horizontal_sum_avx512(ptr, N)
     }
 
     #[inline(always)]
@@ -1242,7 +1242,7 @@ impl SimdMath for Avx512VnniBf16Math {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        Avx512Math::horizontal_sum::<N>(ptr)
+        horizontal_sum_avx512(ptr, N)
     }
 
     #[inline(always)]
@@ -1287,22 +1287,6 @@ impl SimdMath for Avx512VnniBf16Math {
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
         Avx512Math::apply_ramp_stereo(left, right, start, step)
     }
-}
-/// Soma horizontal de um buffer f32 de tamanho N (potência de 2) para AVX-512.
-#[target_feature(enable = "avx512f")]
-pub unsafe fn horizontal_sum_avx512<const N: usize>(ptr: *const f32) -> f32 {
-    let mut i = 0;
-    let mut sum_v = _mm512_setzero_ps();
-    while i + 16 <= N {
-        sum_v = _mm512_add_ps(sum_v, _mm512_loadu_ps(ptr.add(i)));
-        i += 16;
-    }
-    let mut sum = super::utility::hsum_avx512(sum_v);
-    while i < N {
-        sum += *ptr.add(i);
-        i += 1;
-    }
-    sum
 }
 
 /// Dot product f32 com pesos u16 usando AVX-512.
@@ -1924,6 +1908,29 @@ pub unsafe fn compute_energy_stereo_avx512(l: &[f32], r: &[f32]) -> f32 {
     let energy_l = sum_l / (len as f32);
     let energy_r = sum_r / (len as f32);
     energy_l.max(energy_r)
+}
+
+/// Soma horizontal de um buffer f32 via AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn horizontal_sum_avx512(ptr: *const f32, len: usize) -> f32 {
+    let mut i = 0;
+    let mut sum_v = _mm512_setzero_ps();
+
+    while i + 16 <= len {
+        let v = _mm512_loadu_ps(ptr.add(i));
+        sum_v = _mm512_add_ps(sum_v, v);
+        i += 16;
+    }
+
+    let mut total = super::utility::hsum_avx512(sum_v);
+
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let v = _mm512_maskz_loadu_ps(mask, ptr.add(i));
+        total += super::utility::hsum_avx512(v);
+    }
+
+    total
 }
 
 #[cfg(test)]
