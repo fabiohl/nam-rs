@@ -563,7 +563,7 @@ dependencies = [
 
 [[package]]
 name = "nam-rs"
-version = "1.4.3"
+version = "1.5.0-alpha"
 dependencies = [
  "anyhow",
  "criterion",

@@ -4,6 +4,8 @@
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
+> ⚠️ **Standalone PipeWire:** STABLE (v1.4.3) | **CLAP Plugin:** IN DEVELOPMENT (alpha)
+
 O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de estúdio. Ele tenta manter paridade com a implementação padrão do NAM, mas com muitas melhorias e otimizações.
 
 Nesta versão 1.4 ele foca em rodar em modo standalone, mas já prepara o terreno para plugins. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
@@ -18,7 +20,7 @@ Caprichei na busca intensiva pelo estado da arte em matéria de otimização! Is
 
 **NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
 
-In version 1.x, the focus is on standalone mode. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. My intention was to test the technology quickly without spending time on more complex abstractions.
+In version 1.4, the focus is on standalone mode. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. My intention was to test the technology quickly without investing time on more complex abstractions.
 
 The inference engine is heavily based on Mike Oliphant's [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, but entirely rewritten in native and idiomatic Rust with numerous tailor-made optimizations. In many parts of the _Hot Path_, it practically achieves the theoretical microarchitecture throughput target.
 
@@ -28,11 +30,29 @@ I worked hard to achieve state-of-the-art optimization! This effort truly pays o
 
 _Note: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself._
 
+## 🛠️ Modos de Operação / Operation Modes
+
+O NAM-rs pode ser compilado em dois modos principais via _feature flags_:
+
+1. **Standalone (padrão):** Binário Linux nativo para PipeWire. Uso musical imediato com baixa latência e integração direta via `qpwgraph`.
+
+   ```bash
+   # Build padrão (standalone)
+   cargo build --release --features standalone
+   ```
+
+2. **CLAP Plugin (alpha):** Biblioteca `.so` para uso em DAWs (como REAPER, Bitwig e Studio One). Em desenvolvimento ativo (alpha).
+
+   ```bash
+   # Build para Plugin CLAP
+   cargo build --release --no-default-features --features clap-plugin --lib
+   ```
+
 ## ✨ Arquitetura
 
-O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
+O NAM-rs adota uma arquitetura opinativa e focada em quatro pilares:
 
-1. **PipeWire Standalone Nativo:** Integra diretamente com o servidor PipeWire como cliente nativo - sem abstrações VST/LV2/CLAP (no momento). O processo gerencia suas portas de áudio diretamente no _Graph Engine_ do PipeWire.
+1. **Linux Nativo e Arquitetura Moderna:** No modo standalnoe integra diretamente com o servidor PipeWire como cliente nativo, gerenciando suas portas de áudio diretamente no _Graph Engine_ do PipeWire. No modo plugin foi escolhido suportar apenas o formato CLAP, que é muito eficiente e moderno. A escolha de não usar outros padrões deve-se ao fato de serem tecnologias mais antigas (LV2) ou desnecessariamente complexa (VST).
 2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
 3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (_Core Affinity_), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
 4. **Rust puro:** A escolha do Rust não foi por "hype". Há motivos muito fortes que compelem a ele. Além de alta performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++, trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
@@ -41,7 +61,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em três pilares:
 
 ### Pré-requisitos
 
-* Kernel Linux e servidor de áudio Pipewire relativamente recentes devem ser suficientes. Eu testei usando Ubuntu 25.10.
+* Kernel Linux e servidor de áudio Pipewire relativamente recentes devem ser suficientes. Eu venho testando no Ubuntu 25.10 e 26.04.
 
 * Processador x86-64-v3 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). CPUs de 2019 para cá são muito recomendáveis para redes neurais NAM.
 
@@ -78,12 +98,12 @@ CPU_SCALING_GOVERNOR_ON_AC=performance
 CPU_SCALING_GOVERNOR_ON_BAT=powersave
 ```
 
-### Build e Execução
+### Build e Execução (Modo Standalone)
 
 ```bash
 git clone https://github.com/fabiohl/nam-rs.git
 cd nam-rs
-cargo build --release
+cargo build --release --features standalone
 ```
 
 Por ser um projeto em intensa evolução, não é aconselhável usar a branch "main" para trabalhos em ambiente de produção. Recomenda-se uma uma das versões release disponíveis em <https://github.com/fabiohl/nam-rs/tags>.
@@ -183,15 +203,11 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.4.1 (07/05/2026): Rodadas de limpezas e otimizações.
 * 1.4.2 (08/05/2026): Micro fixes.
 * 1.4.3 (10/05/2026): Micro fixes.
+* 1.5.0-alpha (em curso): Modo plugin CLAP
 
 ## 🛣️ Próximos Passos (Roadmap)
 
-O NAM-rs está em transição para a v1.4+, focada em expandir as fronteiras de compatibilidade e portabilidade:
-
-* **Arquitetura A2:** Implementação do kernel de inferência para modelos A2 (v0.6+), suportando FiLM, Gating dinâmico e 11 novas funções de ativação. Atualmente em fase de _staging_ (scaffolding e loader compatível prontos).
-* **Integração CLAP:** Transformação do motor DSP em um plugin nativo CLAP (Clever Audio Plug-in), permitindo o uso do NAM-rs dentro de qualquer DAW (Bitwig, REAPER, etc.) sem dependência de PipeWire.
-* **Interface Gráfica (GUI):** Planejamento de uma interface visual minimalista para carregamento de modelos e ajuste de parâmetros em tempo real.
-* **Otimizações A2 SIMD:** Portar as novas ativações e camadas FiLM para kernels AVX2/AVX-512 altamente otimizados.
+O NAM-rs está em transição para a v2, focada na integração CLAP e arquitetura modular. Vide TODO-sprints.md.
 
 ## 🤝 Contribuindo
 

@@ -98,7 +98,7 @@
 >
 > **Ordem de execução:** 0.2.1 → 0.2.2 → 0.2.3 → 0.2.4 → 0.2.5 (sequencial — cada tarefa depende das anteriores para consistência cross-referencial).
 
-- [ ] **Tarefa 0.2.1** — Atualizar `README.md` (estado do projeto e modos de operação)
+- [x] **Tarefa 0.2.1** — Atualizar `README.md` (estado do projeto e modos de operação)
   
   **Contexto:** O README é a "porta de entrada" pública. Precisa refletir com clareza o estado atual: standalone estável + CLAP em alpha.
   
