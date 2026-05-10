@@ -311,6 +311,33 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
     }
 }
 
+/// Drena agressivamente os canais de Garbage Collection para liberar memória.
+///
+/// Esta função deve ser chamada periodicamente pela thread principal (CLI/UI)
+/// ou pelo loop de eventos do host (PipeWire, CLAP). Ela executa o `drop()`
+/// dos objetos obsoletos (modelos, resamplers) fora da thread RT.
+pub fn drain_gc_channels(gc_consumer: &mut Consumer<GcItem>, gc_overflow: &GcOverflowBuffer) {
+    // 1. Drena o canal SPSC principal (Drop-Delegation)
+    while let Ok(item) = gc_consumer.pop() {
+        match item {
+            GcItem::Model(model) => drop(model),
+            GcItem::Resampler(rs) => drop(rs),
+            #[cfg(test)]
+            GcItem::Test(counter) => drop(counter),
+        }
+    }
+
+    // 2. Drena o buffer de overflow (overwrite ring buffer)
+    for item in gc_overflow.drain() {
+        match item {
+            GcItem::Model(model) => drop(model),
+            GcItem::Resampler(rs) => drop(rs),
+            #[cfg(test)]
+            GcItem::Test(counter) => drop(counter),
+        }
+    }
+}
+
 #[cfg(test)]
 #[path = "spsc_test.rs"]
 mod spsc_test;

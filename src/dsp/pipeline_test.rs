@@ -4,9 +4,10 @@
 #[cfg(test)]
 mod tests {
     use super::super::*;
+    use crate::common::spsc::RtStatusFlags;
     use crate::dsp::gate::{DynamicHysteresis, GateParams};
     use crate::dsp::resampler::NamResampler;
-    use crate::spsc::RtStatusFlags;
+
     use std::alloc::{GlobalAlloc, Layout, System};
     use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 
@@ -290,10 +291,10 @@ mod tests {
         assert_eq!(allocs, 0, "Alocação no hot-path!");
 
         assert!(
-            rt_status.check_flag(crate::spsc::RT_STATUS_IS_SILENT),
+            rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_SILENT),
             "Gate deveria fechar"
         );
-        assert!(!rt_status.check_flag(crate::spsc::RT_STATUS_IS_FADING));
+        assert!(!rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING));
 
         let read_idx = bridge.active_read_idx.load(Ordering::Acquire);
         // O buffer traseiro (1 - read_idx) foi escrito.
@@ -388,10 +389,10 @@ mod tests {
 
         assert_eq!(allocs, 0);
         assert!(
-            rt_status.check_flag(crate::spsc::RT_STATUS_IS_FADING),
+            rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING),
             "Deveria estar em FadeOut"
         );
-        assert!(!rt_status.check_flag(crate::spsc::RT_STATUS_IS_SILENT));
+        assert!(!rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_SILENT));
     }
 
     #[test]
@@ -467,7 +468,7 @@ mod tests {
 
         assert_eq!(allocs, 0);
         assert!(
-            rt_status.check_flag(crate::spsc::RT_STATUS_HAS_CLIPPED),
+            rt_status.check_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED),
             "Clipping deveria ser detectado"
         );
     }

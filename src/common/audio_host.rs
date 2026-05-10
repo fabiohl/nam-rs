@@ -6,7 +6,7 @@
 //! Este módulo define o contrato que diferentes backends de áudio devem seguir
 //! para hospedar o motor DSP do NAM-rs.
 
-use crate::diagnostics::NamDiagnostic;
+use crate::common::diagnostics::NamDiagnostic;
 
 /// Define a interface mínima que um host de áudio deve implementar.
 ///
@@ -40,7 +40,7 @@ pub trait AudioHost {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::diagnostics::{NamErrorCode, SystemSnapshot};
+    use crate::common::diagnostics::{NamErrorCode, SystemSnapshot};
 
     struct MockHost {
         rate: f32,

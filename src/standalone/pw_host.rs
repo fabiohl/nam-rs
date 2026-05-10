@@ -47,8 +47,8 @@
 //! Quando nenhum modelo está carregado, o motor emite silêncio (prevenindo ruídos inesperados).
 //! Quando o sample rate do PipeWire é o mesmo do modelo nam, o resampler opera em bypass sem overhead.
 
-use crate::colors::Colorize;
-use crate::diagnostics::{NamDiagnostic, NamErrorCode};
+use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
+use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, SHUTDOWN};
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 pub use crate::dsp::pipeline::PipewireHostConfig;
 use crate::dsp::pipeline::{
@@ -56,8 +56,9 @@ use crate::dsp::pipeline::{
     build_spa_format_pod, capture_dsp_pipeline, playback_dsp_cycle,
 };
 use crate::dsp::resampler::NamResampler;
-use crate::rt_setup;
-use crate::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags, SHUTDOWN};
+use crate::standalone::colors::Colorize;
+use crate::standalone::rt_setup;
+
 use pipewire as pw;
 use pw::properties::properties;
 use rtrb::Consumer;
@@ -337,7 +338,8 @@ pub fn run_pipewire_host(
                                     std::mem::forget(Box::from_raw(leaked_ptr));
                                 }
                             }
-                            rt_status_for_process.set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
+                            rt_status_for_process
+                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
                         }
                     }
                 }
@@ -387,7 +389,7 @@ pub fn run_pipewire_host(
                                             }
                                         }
                                         rt_status_for_process
-                                            .set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
+                                            .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
                                     }
                                 }
                             }
@@ -413,7 +415,7 @@ pub fn run_pipewire_host(
                                             }
                                         }
                                         rt_status_for_process
-                                            .set_flag(crate::spsc::RT_STATUS_GC_OVERFLOW);
+                                            .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
                                     }
                                 }
                             }
@@ -462,7 +464,8 @@ pub fn run_pipewire_host(
                     rt_status_for_process
                         .requested_nam_rate
                         .store(current_nam_rate, Ordering::Relaxed);
-                    rt_status_for_process.set_flag(crate::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+                    rt_status_for_process
+                        .set_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
                 }
 
                 if param_changed {
@@ -727,7 +730,7 @@ pub fn run_pipewire_host(
         // 1. Gestão Dinâmica de Resampling
         // O callback RT sinaliza via flag atômica se houve mudança na taxa de amostragem
         // do PipeWire ou do modelo carregado.
-        if rt_status.check_flag(crate::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD) {
+        if rt_status.check_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD) {
             let target_pw_rate = rt_status.requested_pw_rate.load(Ordering::Relaxed);
             let target_nam_rate = rt_status.requested_nam_rate.load(Ordering::Relaxed);
 
@@ -736,7 +739,8 @@ pub fn run_pipewire_host(
                 // Isso garante que o áudio não sofra dropouts durante a troca de formato.
                 match NamResampler::new(target_pw_rate, target_nam_rate, 2048) {
                     Ok(new_rs) => {
-                        rt_status.clear_flag(crate::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
+                        rt_status
+                            .clear_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
 
                         log::info!(
                             "{} Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
@@ -775,11 +779,11 @@ pub fn run_pipewire_host(
                             .param("detail", &e)
                             .emit();
 
-                        rt_status.set_flag(crate::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
+                        rt_status.set_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
                     }
                 }
                 // Limpamos a solicitação após o processamento.
-                rt_status.clear_flag(crate::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+                rt_status.clear_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
             }
         }
 
@@ -795,7 +799,7 @@ pub fn run_pipewire_host(
         );
 
         // Executa a drenagem de modelos e resamplers obsoletos (Drop-Delegation).
-        rt_setup::drain_gc_channels(&mut gc_consumer, &gc_overflow);
+        crate::common::spsc::drain_gc_channels(&mut gc_consumer, &gc_overflow);
 
         // Baixa frequência de polling para economizar energia, já que estas são tarefas de controle.
         std::thread::sleep(std::time::Duration::from_millis(100));

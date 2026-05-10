@@ -7,7 +7,8 @@
 //! Todo o processo de carga ocorre **fora** da thread RT para
 //! evitar qualquer alocação indesejada durante o processamento de áudio.
 
-use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
+use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
+
 use crate::models::{DynamicModel, NamModel};
 use std::path::Path;
 

@@ -7,9 +7,10 @@
 //! prioridades SCHED_FIFO, travamento de memória (mlockall), e telemetria
 //! de status RT do motor de áudio.
 
-use crate::colors::Colorize;
-use crate::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
-use crate::spsc::RtStatusFlags;
+use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
+use crate::common::spsc::RtStatusFlags;
+use crate::standalone::colors::Colorize;
+
 use minstant::Anchor;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -131,7 +132,7 @@ pub fn poll_rt_status(
 ) -> (bool, bool) {
     // ... (rest of the function remains same until line 249)
     // [Manual Copy of the rest for context]
-    if rt_status.check_and_clear_flag(crate::spsc::RT_STATUS_GC_OVERFLOW) {
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW) {
         NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
             .message("Overflow detectado no canal de Garbage Collection (GC).")
             .hint(
@@ -151,7 +152,7 @@ pub fn poll_rt_status(
         );
     }
 
-    if rt_status.check_and_clear_flag(crate::spsc::RT_STATUS_HAS_CLIPPED) {
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED) {
         log::warn!(
             "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
             "🔥".bright_red().bold()
@@ -160,7 +161,8 @@ pub fn poll_rt_status(
 
     let prio = rt_status.rt_priority.load(Ordering::Relaxed);
     if prio != -1 {
-        let is_fifo = rt_status.check_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
+        let is_fifo = rt_status.check_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
+
         rt_status.rt_priority.store(-1, Ordering::Relaxed);
 
         if is_fifo {
@@ -247,7 +249,8 @@ pub fn poll_rt_status(
     }
 
     // Detecção de transição de silêncio
-    let current_silent = rt_status.check_flag(crate::spsc::RT_STATUS_IS_SILENT);
+    let current_silent = rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+
     if current_silent != was_silent {
         if current_silent {
             log::info!(
@@ -263,42 +266,13 @@ pub fn poll_rt_status(
     }
 
     // Detecção de transição de fading
-    let current_fading = rt_status.check_flag(crate::spsc::RT_STATUS_IS_FADING);
+    let current_fading = rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING);
+
     if current_fading != was_fading && current_fading {
         log::info!("{} Transição de Sinal: Gate em Fade-In/Out.", "🌓".yellow());
     }
 
     (current_silent, current_fading)
-}
-
-/// Drena agressivamente os canais de Garbage Collection para liberar memória.
-///
-/// Esta função deve ser chamada periodicamente pela thread principal (CLI/UI)
-/// ou pelo loop de eventos do host (PipeWire, CLAP). Ela executa o `drop()`
-/// dos objetos obsoletos (modelos, resamplers) fora da thread RT.
-pub fn drain_gc_channels(
-    gc_consumer: &mut rtrb::Consumer<crate::spsc::GcItem>,
-    gc_overflow: &crate::spsc::GcOverflowBuffer,
-) {
-    // 1. Drena o canal SPSC principal (Drop-Delegation)
-    while let Ok(item) = gc_consumer.pop() {
-        match item {
-            crate::spsc::GcItem::Model(model) => drop(model),
-            crate::spsc::GcItem::Resampler(rs) => drop(rs),
-            #[cfg(test)]
-            crate::spsc::GcItem::Test(counter) => drop(counter),
-        }
-    }
-
-    // 2. Drena o buffer de overflow (overwrite ring buffer)
-    for item in gc_overflow.drain() {
-        match item {
-            crate::spsc::GcItem::Model(model) => drop(model),
-            crate::spsc::GcItem::Resampler(rs) => drop(rs),
-            #[cfg(test)]
-            crate::spsc::GcItem::Test(counter) => drop(counter),
-        }
-    }
 }
 
 /// Calcula os multiplicadores finais combinando ganho do usuário e ajustes do modelo.
@@ -441,10 +415,11 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
 
             // Publica resultado real via flags atômicas — zero I/O no caminho quente
             if confirmed_fifo {
-                rt_status.set_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
+                rt_status.set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
             } else {
-                rt_status.clear_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
+                rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
             }
+
             rt_status
                 .rt_priority
                 .store(actual_param.sched_priority, Ordering::Relaxed);

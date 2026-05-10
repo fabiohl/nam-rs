@@ -703,10 +703,11 @@ fn test_end_to_end_spsc_pipeline() {
     let boxed = build_model(&model_data).expect("Dispatcher falhou no pipeline E2E");
 
     // 2. Cria canal SPSC e envia o modelo como a CLI faria
-    let (mut producer, mut consumer) = rtrb::RingBuffer::<nam_rs::spsc::ParamPayload>::new(8);
+    let (mut producer, mut consumer) =
+        rtrb::RingBuffer::<nam_rs::common::spsc::ParamPayload>::new(8);
 
     producer
-        .push(nam_rs::spsc::ParamPayload::LoadModel {
+        .push(nam_rs::common::spsc::ParamPayload::LoadModel {
             model_l: Some(boxed),
             model_r: None,
             input_mult_adj: 1.0,
@@ -1317,7 +1318,8 @@ fn test_rapid_hot_swap_spsc() {
     }
 
     // Criar canal SPSC com capacidade para 4 (cabe todos os 3 modelos)
-    let (mut producer, mut consumer) = rtrb::RingBuffer::<nam_rs::spsc::ParamPayload>::new(4);
+    let (mut producer, mut consumer) =
+        rtrb::RingBuffer::<nam_rs::common::spsc::ParamPayload>::new(4);
 
     // 1. Push dos 3 modelos sequencialmente (simula thread CLI fazendo 3 trocas)
     for (filename, label) in &models_to_load {
@@ -1330,7 +1332,7 @@ fn test_rapid_hot_swap_spsc() {
             .unwrap_or_else(|e| panic!("Dispatcher falhou em {label}: {e}"));
 
         producer
-            .push(nam_rs::spsc::ParamPayload::LoadModel {
+            .push(nam_rs::common::spsc::ParamPayload::LoadModel {
                 model_l: Some(boxed),
                 model_r: None,
                 input_mult_adj: 1.0,
@@ -1351,7 +1353,7 @@ fn test_rapid_hot_swap_spsc() {
 
         // Substituir o modelo ativo — o anterior é dropped aqui
         let new_model = match received {
-            nam_rs::spsc::ParamPayload::LoadModel { model_l, .. } => model_l,
+            nam_rs::common::spsc::ParamPayload::LoadModel { model_l, .. } => model_l,
             _ => panic!("Payload #{idx} não é LoadModel"),
         };
 
@@ -1500,13 +1502,13 @@ fn test_zero_alloc_process_wavenet_dynamic() {
 /// Teste de Verificação de Zero-Allocation para a DSP Pipeline Completa
 #[test]
 fn test_zero_alloc_capture_pipeline() {
+    use nam_rs::common::spsc::RtStatusFlags;
     use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
     use nam_rs::dsp::pipeline::{
         BridgeBuffer, DspBridge, DspPipelineContext, MAX_BRIDGE_BUF, MAX_RESAMP_BUF,
         capture_dsp_pipeline,
     };
     use nam_rs::dsp::resampler::NamResampler;
-    use nam_rs::spsc::RtStatusFlags;
 
     let path = model_path("BossWN-standard.nam");
     if !path.exists() {

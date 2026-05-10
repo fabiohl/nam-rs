@@ -11,9 +11,9 @@
 //! de PipeWire-headless rodando.
 
 use minstant::Anchor;
-use nam_rs::diagnostics::SystemSnapshot;
-use nam_rs::pw_host::run_pipewire_host;
-use nam_rs::spsc::{self, RtStatusFlags};
+use nam_rs::common::diagnostics::SystemSnapshot;
+use nam_rs::common::spsc::{self, RtStatusFlags};
+use nam_rs::standalone::pw_host::run_pipewire_host;
 use rtrb::RingBuffer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -65,7 +65,7 @@ fn test_pipewire_headless_integration() {
             res_cons,
             res_prod,
             rt_clone,
-            nam_rs::pw_host::PipewireHostConfig {
+            nam_rs::standalone::pw_host::PipewireHostConfig {
                 buffer_size: 0, // 0 = Usar padrão do sistema (PipeWire quantum)
                 sys,
                 tsc_anchor: anchor,
@@ -76,8 +76,8 @@ fn test_pipewire_headless_integration() {
 
     // Simulação de interação do usuário: ajuste de ganhos de entrada/saída
     thread::sleep(Duration::from_millis(50));
-    let _ = param_prod.push(nam_rs::spsc::ParamPayload::InputGain(2.5));
-    let _ = param_prod.push(nam_rs::spsc::ParamPayload::OutputGain(-1.0));
+    let _ = param_prod.push(nam_rs::common::spsc::ParamPayload::InputGain(2.5));
+    let _ = param_prod.push(nam_rs::common::spsc::ParamPayload::OutputGain(-1.0));
 
     // Sinaliza o desligamento da pipeline.
     // O motor monitora esta flag a cada iteração do loop de áudio.

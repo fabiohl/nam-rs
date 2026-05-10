@@ -102,11 +102,11 @@ fn test_gc_stress_no_leak() {
         }
 
         // Drena periodicamente para não acumular infinitamente
-        crate::rt_setup::drain_gc_channels(&mut gc_cons, &overflow);
+        super::drain_gc_channels(&mut gc_cons, &overflow);
     }
 
     // Drenagem final
-    crate::rt_setup::drain_gc_channels(&mut gc_cons, &overflow);
+    super::drain_gc_channels(&mut gc_cons, &overflow);
 
     // O contador de drops deve ser exatamente 1000 se não houve vazamentos
     // Nota: Arc::strong_count == 1 significa que todas as cópias enviadas ao GC foram dropadas

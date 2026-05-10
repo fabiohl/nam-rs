@@ -6,10 +6,10 @@
 //! Lida com a exibição de ajuda e a interpretação dos argumentos
 //! fornecidos pelo usuário via terminal.
 
-use crate::diagnostics::SystemSnapshot;
+use crate::common::diagnostics::SystemSnapshot;
+use crate::common::spsc::{ParamPayload, SHUTDOWN};
 use crate::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB, get_gain_lut};
 
-use crate::spsc::{ParamPayload, SHUTDOWN};
 use crate::standalone::colors::Colorize;
 use lexopt::prelude::*;
 

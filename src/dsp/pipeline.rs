@@ -7,7 +7,9 @@
 //! Ele contém o "hot-path" que é executado a cada ciclo de áudio na thread de tempo real.
 
 #[cfg(feature = "standalone")]
-use crate::diagnostics::SystemSnapshot;
+use crate::common::diagnostics::SystemSnapshot;
+#[cfg(any(feature = "standalone", test))]
+use crate::common::spsc::RtStatusFlags;
 #[cfg(any(feature = "standalone", test))]
 use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 #[cfg(any(feature = "standalone", test))]
@@ -16,8 +18,7 @@ use crate::dsp::resampler::NamResampler;
 use crate::math::simd::{compute_energy_stereo, compute_max_diff_avx2, dispatch_simd};
 #[cfg(any(feature = "standalone", test))]
 use crate::models::{DynamicModel, NamModel};
-#[cfg(any(feature = "standalone", test))]
-use crate::spsc::RtStatusFlags;
+
 #[cfg(feature = "standalone")]
 use minstant::Anchor;
 #[cfg(feature = "standalone")]
@@ -158,8 +159,8 @@ pub struct DspPipelineContext<'a> {
 #[inline(never)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
-    rt_status.set_flag(crate::spsc::RT_STATUS_IS_SILENT);
-    rt_status.clear_flag(crate::spsc::RT_STATUS_IS_FADING);
+    rt_status.set_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+    rt_status.clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
 
     let bridge_ref = unsafe { &mut *bridge_ptr };
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
@@ -340,7 +341,7 @@ fn apply_output_stage(
     );
 
     if has_clipped {
-        rt_status.set_flag(crate::spsc::RT_STATUS_HAS_CLIPPED);
+        rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
     }
 }
 
@@ -410,12 +411,16 @@ pub fn capture_dsp_pipeline(
             return;
         }
         GateState::FadingIn | GateState::FadingOut => {
-            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);
-            ctx.rt_status.set_flag(crate::spsc::RT_STATUS_IS_FADING);
+            ctx.rt_status
+                .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+            ctx.rt_status
+                .set_flag(crate::common::spsc::RT_STATUS_IS_FADING);
         }
         GateState::Open => {
-            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_SILENT);
-            ctx.rt_status.clear_flag(crate::spsc::RT_STATUS_IS_FADING);
+            ctx.rt_status
+                .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+            ctx.rt_status
+                .clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
         }
     }
 

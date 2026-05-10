@@ -51,14 +51,14 @@
   - Garantir que `main.rs` permaneça enxuto (apenas orquestração e delegação)
   - **Aceite:** `cargo build --features standalone` produz binário funcional
 
-- [ ] **Tarefa 0.1.6** — Atualizar todos os imports internos do crate
+- [x] **Tarefa 0.1.6** — Atualizar todos os imports internos do crate
   - Varrer `src/standalone/*.rs`: ajustar `use crate::` para nova estrutura
   - Varrer `src/dsp/*.rs`: ajustar refs a `diagnostics`, `spsc`, etc.
   - Varrer `src/models/*.rs`: ajustar imports se necessário
   - Varrer `src/loader/*.rs`: ajustar imports se necessário
   - **Aceite:** `cargo check --features standalone` sem erros, sem warnings
 
-- [ ] **Tarefa 0.1.7** — Atualizar imports em testes e benchmarks
+- [x] **Tarefa 0.1.7** — Atualizar imports em testes e benchmarks
   - Varrer `tests/*.rs`: ajustar `use nam_rs::` para nova estrutura (ou validar que re-exports funcionam)
   - Varrer `benches/*.rs`: ajustar imports
   - Varrer `fuzz/`: ajustar imports se aplicável

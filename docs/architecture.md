@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -39,9 +40,9 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > - **tanh**: **< 2e-5** (sweep de 32.768 pontos, T7.2-2026-05-08); pior ponto em x≈-4.34 (1.234e-5).
 >   No range central `[-4, 4]` o erro cai para ~6e-8 (polinômio Minimax saturando o mantissa f32).
 > - **sigmoid**: **< 5e-6** (sweep de 32.768 pontos, T7.2-2026-05-08); erro uniforme por todo o range.
-> O áudio resultante **não é bit-a-bit idêntico** ao motor C++ NeuralAmpModelerCore.
-> A divergência é **perceptualmente inaudível** (erro uma ordem de magnitude abaixo
-> do piso de quantização 16-bit PCM).
+>   O áudio resultante **não é bit-a-bit idêntico** ao motor C++ NeuralAmpModelerCore.
+>   A divergência é **perceptualmente inaudível** (erro uma ordem de magnitude abaixo
+>   do piso de quantização 16-bit PCM).
 >
 > **Justificativa:** O trade-off sacrifica ~4–5 casas decimais de precisão para ganhar
 > ~10-20× de throughput (4-8 ciclos/ativação vs 20-60 ciclos/ativação no libm escalar).
@@ -116,22 +117,18 @@ graph TD
 - **Telemetria de Alta Precisão (RDTSC):** Substituição de `Instant::now()` (syscall vDSO) por leitura direta do TSC calibrado no callback RT. Garante precisão de ~1ns com overhead de ~1 ciclo de CPU, eliminando jitter induzido pelo kernel na medição de carga de DSP.
 - **Canais SPSC (rtrb):** Comunicação lock-free entre CLI (async) e DSP (RT). Payload alinhado (128B) para evitar False Sharing.
 
-## 4. Estrutura de Módulos
+## 4. Estrutura de Módulos (Organização Tripartida)
 
-| Módulo                 | Responsabilidade                                                                            |
-|:---------------------- |:------------------------------------------------------------------------------------------- |
-| `pw_host` / `rt_setup` | Orquestração PipeWire, afinidade, RT priority e isolamento.                                 |
-| `models/`              | Implementações de inferência: `wavenet.rs` (Static), `wavenet_dyn.rs` (Dynamic), `lstm.rs`. |
-| `models/activations`   | Enum `ActivationType` e implementações escalares de 11 funções de ativação.                 |
-| `models/gating`        | Configurações de Noise Gate e Blending para WaveNet A2.                                     |
-| `models/film`          | Suporte a camadas FiLM (Feature-wise Linear Modulation).                                    |
-| `math/simd/`           | Abstração SIMD: `avx2.rs`, `avx512.rs`, `fallback.rs`, `ops.rs` e `traits.rs`.              |
-| `math/fastmath`        | Implementações Minimax de `tanh`, `sigmoid` e exponenciais nativas.                         |
-| `dsp/resampler`        | Resampler Sinc Polifásico nativo (Minimum Phase).                                           |
-| `dsp/gate`             | FSM de Histerese Dinâmica e rampa linear SIMD.                                              |
-| `loader/`              | Parsing de modelos `.nam` (JSON) e `.namb` (binário).                                       |
-| `audio_host`           | Trait `AudioHost` para abstração de backend (PipeWire/CLAP).                                |
-| `params`               | Parâmetros de plugin agnósticos ao host (`NamPluginParams`).                                |
+A partir da v1.5, o NAM-rs adota uma estrutura modular clara para suportar múltiplos hosts (Standalone/PipeWire e Plugin/CLAP) sem poluição de dependências:
+
+| Camada                             | Sub-módulos                                   | Responsabilidade                                                                                                       |
+|:---------------------------------- |:--------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------- |
+| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host` | Infraestrutura compartilhada, comunicação inter-threads (SPSC) e abstrações agnósticas ao host.                        |
+| **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`        | Backend nativo Linux. Gerencia o servidor PipeWire, setup de hardware (FIFO/Affinity) e interface de linha de comando. |
+| **CLAP** (`src/clap/`)             | `mod.rs` (Stub)                               | Ponto de entrada para integração como plugin (v1.6+). Totalmente isolado das dependências do PipeWire.                 |
+| **Core DSP** (`src/`)              | `dsp/`, `math/`, `models/`, `loader/`         | O "cérebro" do NAM-rs. Matemática SIMD, algoritmos de inferência neural e parsing de modelos.                          |
+
+Essa separação garante que o build para CLAP não arraste dependências do PipeWire e facilita a portabilidade para outros sistemas operacionais no futuro.
 
 ## 5. DSP & Resampling Nativo
 
