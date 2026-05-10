@@ -142,7 +142,7 @@
   
   **Aceite:** `grep -n "src/params.rs\|src/spsc.rs\|src/diagnostics.rs\|src/audio_host.rs" docs/architecture.md` retorna zero resultados (todos os paths antigos eliminados).
 
-- [ ] **Tarefa 0.2.3** — Reescrever `docs/clap_integration.md` (decisão confirmada + extensões CLAP)
+- [x] **Tarefa 0.2.3** — Reescrever `docs/clap_integration.md` (decisão confirmada + extensões CLAP)
   
   **Contexto:** Este é o documento mais crítico a atualizar. A Seção 4 atual ("Decisão de Framework — Pendente") está **diretamente contraditória** com o roadmap consolidado e pode confundir qualquer colaborador. Deve ser reescrita, não apenas atualizada.
   
@@ -150,7 +150,7 @@
   
   - **Remover completamente a Seção 4 atual** ("Decisão de Framework (Pendente)") — incluindo toda a análise comparativa `nih-plug` vs `clack`
   - **Substituir por nova Seção 4 — Framework: `clack-plugin` (Decisão Confirmada)**:
-    - Registrar a decisão: `clack-plugin` escolhido em 2026-05-10
+    - Registrar a decisão: `clack-plugin`.
     - Motivo: controle granular sem overhead, zero dependências C++, mapeamento direto ao spec CLAP
     - `nih-plug` **descartado**: adiciona VST3, GUI embutida e abstração opinativa incompatíveis com RT do NAM-rs
     - Link para crate: `https://github.com/prokopyl/clack`
@@ -163,14 +163,14 @@
   - **Nova Seção 6 — Plugin Descriptor**:
     - Plugin ID: `"br.eti.fabiolima.nam-rs"` (RFC inversão de domínio)
     - Nome: `"NAM-rs Neural Amp Modeler"`
-    - Vendor: `"Fábio H. L. Silva"`
+    - Vendor: `"Fabio Lima"`
     - URL: `"https://github.com/fabiohl/nam-rs"`
-    - Features CLAP: `["audio-effect", "stereo"]`
+    - Features CLAP: `["audio-effect", "distortion", "gate", "simulator", "stereo"]`
   - **Atualizar Seção 5 atual → Seção 7 — DAWs Alvo de Validação**:
     - REAPER: **Primário** durante desenvolvimento (debug de performance, buffers variáveis)
-    - Bitwig Studio: Validação premium (após Sprint 4 — GUI funcional)
-    - Studio One: Validação premium (após Sprint 4 — GUI funcional)
-    - CLAP-info / CLAP-host: Ferramentas CLI de contrato (Sprint 1)
+    - Bitwig Studio: Validação premium.
+    - Studio One: Validação premium.
+    - CLAP-info / CLAP-host: Ferramentas CLI de contrato.
   - **Atualizar referências de paths** nas Seções 1 e 2:
     - `src/params.rs` → `src/common/params.rs`
     - `src/loader.rs` → `src/loader/` (é um módulo, não arquivo único)
@@ -247,9 +247,9 @@
   
   - Plugin ID: `"br.eti.fabiolima.nam-rs"`
   - Nome: `"NAM-rs Neural Amp Modeler"`
-  - Vendor: `"Fábio H. L. Silva"`
+  - Vendor: `"Fabio Lima"`
   - URL: `"https://github.com/fabiohl/nam-rs"`
-  - Features: `[AUDIO_EFFECT, STEREO]`
+  - Features: `[AUDIO_EFFECT, DISTORTION, GATE, SIMULATOR, STEREO]`
   - **Aceite:** Compila sem erros
 
 - [ ] **Tarefa 1.2.2** — Implementar `src/clap/plugin.rs` (Skeleton)
