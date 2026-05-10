@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-# 🎸 NAM-rs 1.4.2
+# 🎸 NAM-rs 1.4.3
 
 ![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
 
@@ -181,7 +181,8 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.3 (04/05/2026): Otimizações intensivas de SIMD e refatoração de telemetria.
 * 1.4 (05/05/2026): Staging para A2 (scaffolding) e CLAP. Toneladas de otimizações de performance.
 * 1.4.1 (07/05/2026): Rodadas de limpezas e otimizações.
-* 1.4.1 (07/05/2026): Micro fixes.
+* 1.4.2 (08/05/2026): Micro fixes.
+* 1.4.3 (10/05/2026): Micro fixes.
 
 ## 🛣️ Próximos Passos (Roadmap)
 

@@ -55,7 +55,7 @@ timestamp=2026-04-10T01:56:18Z
 
 ### 2. Intervenção Cirúrgica
 
-- Use `std::simd` com `const generics` (SoA) para correções em tensores.
+- Use intrinsics `core::arch::x86_64::*` com `const generics` (SoA) para correções em tensores.
 - Mantenha `#[repr(align(128))]` em toda estrutura compartilhada via buffer SPSC.
 - Após sanado, remova **toda** linha de log, `dbg!()` ou `eprintln!` inserida para depuração visual dentro do callback RT.
 

@@ -4,12 +4,9 @@ description: Diretrizes Rust para Áudio RT, Inferência Neural e Plugins.
 globs: **/*.rs, **/*.toml
 ---
 
-<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-
 # Diretrizes Técnicas (NAM-rs)
 
-* **Matemática & Perf:** Alvo x86-64-v3. Use `std::simd` e FastMath Minimax. Priorize algoritmos que favoreçam otimizações do compilador e evitem branch prediction failures.
+* **Matemática & Perf:** Alvo x86-64-v3. Use `core::arch::x86_64::*` (AVX2/AVX-512 intrinsics) e FastMath Minimax via polinômios Padé/Minimax. Priorize algoritmos que favoreçam otimizações do compilador e evitem branch prediction failures.
 * **Feature Flags & Portabilidade:**
   * `standalone` (default): Backend PipeWire nativo.
   * `clap-plugin`: Build agnóstico para integração CLAP (sem PipeWire).
