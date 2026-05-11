@@ -452,7 +452,7 @@
 
   **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `target/debug/libnam_rs.so` sem erros nem warnings.
 
-- [ ] **Tarefa 1.2.5** — Criar script `utils/build-clap.sh`
+- [x] **Tarefa 1.2.5** — Criar script `utils/build-clap.sh`
 
   **Criar `utils/build-clap.sh`** com o seguinte conteúdo:
 
