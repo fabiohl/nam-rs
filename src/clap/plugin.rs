@@ -8,13 +8,11 @@ use crate::clap::processor::NamClapProcessor;
 use clack_plugin::prelude::*;
 
 /// Estado compartilhado entre a audio thread e a main thread (lock-free).
-/// Sprint 1: vazio — será preenchido com AtomicF32 para parâmetros na Sprint 2.
 pub struct NamClapShared;
 
 impl<'a> PluginShared<'a> for NamClapShared {}
 
 /// Estado exclusivo da main thread (carregamento de modelos, state save/load).
-/// Sprint 1: vazio — será preenchido na Sprint 2.
 pub struct NamClapMainThread;
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread {}

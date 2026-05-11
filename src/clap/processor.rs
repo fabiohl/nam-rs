@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Processador de áudio CLAP — Sprint 1: bypass puro (input → output).
+//! Processador de áudio CLAP.
 
 use crate::clap::plugin::{NamClapMainThread, NamClapShared};
 use clack_plugin::prelude::*;
 
 /// Processador de áudio RT-safe. Executa na audio thread do host.
-/// Sprint 1: bypass — copia cada amostra de input para output sem processar.
+/// Bypass: copia cada amostra de input para output sem processar.
 pub struct NamClapProcessor;
 
 impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread> for NamClapProcessor {

@@ -3,43 +3,66 @@
 
 use super::*;
 
+/// Testa se o RingBuffer consegue passar dados entre duas "linhas de processamento" (threads)
+/// diferentes ao mesmo tempo sem perder informações ou travar.
 #[test]
 fn test_spsc_concurrency() {
+    // Cria um buffer com 64 espaços vazios.
+    // 'prod' (produtor) envia dados, 'cons' (consumidor) recebe.
     let (mut prod, mut cons) = RingBuffer::<i32>::new(64);
+
+    // Cria uma nova linha de processamento que vai "produzir" números de 0 a 999.
     let handle = std::thread::spawn(move || {
         let mut count = 0;
         while count < 1000 {
+            // Tenta colocar o número no buffer. Se estiver cheio, tenta de novo depois.
             if prod.push(count).is_ok() {
                 count += 1;
             }
-            std::thread::yield_now();
+            std::thread::yield_now(); // Dá uma pequena pausa para não sobrecarregar o processador.
         }
     });
 
+    // Esta parte (a linha principal) vai "consumir" os números enviados.
     let mut count = 0;
     while count < 1000 {
+        // Tenta tirar um número do buffer.
         if let Ok(val) = cons.pop() {
+            // Verifica se o número recebido é exatamente o que esperávamos.
             assert_eq!(val, count);
             count += 1;
         }
         std::thread::yield_now();
     }
+    // Espera a outra linha de processamento terminar antes de encerrar o teste.
     handle.join().unwrap();
 }
 
+/// Testa os limites do buffer: o que acontece quando ele está totalmente vazio ou totalmente cheio.
 #[test]
 fn test_spsc_full_empty() {
+    // Cria um buffer pequeno, com apenas 4 espaços.
     let (mut prod, mut cons) = RingBuffer::<i32>::new(4);
+
+    // Tenta tirar algo de um buffer vazio. Deve retornar um erro dizendo que não há nada.
     assert!(cons.pop().is_err());
 
+    // Preenche os 4 espaços disponíveis.
     assert!(prod.push(1).is_ok());
     assert!(prod.push(2).is_ok());
     assert!(prod.push(3).is_ok());
     assert!(prod.push(4).is_ok());
-    assert!(prod.push(5).is_err()); // Full at 4
 
+    // Tenta colocar o 5º item em um buffer de 4 espaços. Deve retornar um erro de "cheio".
+    assert!(prod.push(5).is_err());
+
+    // Retira o primeiro item (o número 1).
     assert_eq!(cons.pop(), Ok(1));
+
+    // Agora que abriu um espaço, o número 5 deve entrar com sucesso.
     assert!(prod.push(5).is_ok());
+
+    // Tenta colocar o 6º item. Como o buffer está cheio de novo (contém 2, 3, 4, 5), deve falhar.
     assert!(prod.push(6).is_err());
 }
 

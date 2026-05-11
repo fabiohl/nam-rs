@@ -30,34 +30,43 @@ pub trait AudioHost {
     /// retorna apenas quando o host é encerrado ou ocorre um erro fatal.
     /// Para hosts de plugin, a implementação pode variar conforme o framework.
     ///
-    /// # Erros
-    ///
     /// Retorna um [`NamDiagnostic`] se o host falhar ao inicializar ou
     /// se o loop for interrompido por um erro crítico.
     fn run(&mut self) -> Result<(), Box<NamDiagnostic>>;
 }
 
 #[cfg(test)]
+/// Módulo de testes para validar o comportamento da trait AudioHost.
 mod tests {
     use super::*;
     use crate::common::diagnostics::{NamErrorCode, SystemSnapshot};
 
+    /// Um "MockHost" é um simulador de sistema de áudio usado apenas para testes.
+    /// Ele nos permite testar como o NAM-rs reage a diferentes configurações
+    /// (como taxas de amostragem diferentes) sem precisar ligar o PipeWire ou um DAW.
     struct MockHost {
+        /// A taxa de amostragem simulada (ex: 44100.0 ou 48000.0 Hz).
         rate: f32,
+        /// O tamanho máximo do "pacote" de áudio que o sistema pode processar por vez.
         buffer_size: usize,
     }
 
     impl AudioHost for MockHost {
+        /// Retorna a taxa de amostragem configurada no simulador.
         fn sample_rate(&self) -> f32 {
             self.rate
         }
 
+        /// Retorna o tamanho do buffer configurado no simulador.
         fn max_buffer_size(&self) -> usize {
             self.buffer_size
         }
 
+        /// Simula o início do processamento de áudio.
+        /// Se a taxa de amostragem for inválida (zero ou negativa), ele gera um erro simulado.
         fn run(&mut self) -> Result<(), Box<NamDiagnostic>> {
             if self.rate <= 0.0 {
+                // Captura o estado do sistema para ajudar no diagnóstico do erro.
                 let sys = SystemSnapshot::capture();
                 return Err(Box::new(
                     NamDiagnostic::new(NamErrorCode::PipewireInitFailed, &sys)
@@ -68,6 +77,7 @@ mod tests {
         }
     }
 
+    /// Testa se o simulador reporta corretamente os valores que configuramos nele.
     #[test]
     fn test_mock_host_traits() {
         let mut host = MockHost {
@@ -80,6 +90,8 @@ mod tests {
         assert!(host.run().is_ok());
     }
 
+    /// Testa se o simulador detecta corretamente uma configuração de erro
+    /// (neste caso, uma taxa de amostragem de 0 Hz).
     #[test]
     fn test_mock_host_error() {
         let mut host = MockHost {
@@ -88,8 +100,10 @@ mod tests {
         };
 
         let res = host.run();
+        // Verificamos se o sistema realmente percebeu o erro.
         assert!(res.is_err());
         let diag = res.unwrap_err();
+        // Verificamos se a mensagem de erro é a que esperamos.
         assert_eq!(diag.to_string(), "[E2100] Sample rate inválido no MockHost");
     }
 }
