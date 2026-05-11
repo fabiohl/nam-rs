@@ -19,4 +19,5 @@ mkdir -p "$CLAP_DIR"
 cp "$TARGET_DIR/libnam_rs.so" "$CLAP_DIR/$PLUGIN_NAME"
 
 echo "✅ Plugin instalado: $CLAP_DIR/$PLUGIN_NAME"
-echo "   Reabra a DAW e faça um novo scan de plugins CLAP."
+ls -lath $CLAP_DIR/$PLUGIN_NAME
+echo "📝 Reabra a DAW e faça um novo scan de plugins CLAP."
