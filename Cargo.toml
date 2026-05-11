@@ -28,6 +28,8 @@ env_logger = { version = "0.11.10", default-features = false }
 half = "2.7.1"
 minstant = "0.1.7"
 rustfft = { version = "6.4.1", default-features = false }
+clack-plugin = { version = "0.1", optional = true }
+clack-extensions = { version = "0.1", optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }
@@ -40,7 +42,7 @@ harness = false
 [features]
 default = ["standalone"]
 standalone = ["dep:pipewire"]
-clap-plugin = []
+clap-plugin = ["dep:clack-plugin", "dep:clack-extensions"]
 long_bench = []
 
 [[bin]]

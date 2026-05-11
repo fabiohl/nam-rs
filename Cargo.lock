@@ -175,6 +175,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "clack-common"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cc803ecdd9db71036304f1e308bc23274e58bb9251c447c20ed2d0a30c69d6c"
+dependencies = [
+ "bitflags",
+ "clap-sys",
+]
+
+[[package]]
+name = "clack-extensions"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f7a09059637aa2043aeaab65e1d95bc91f340da1f05512c0c00e6e0283e5d9b"
+dependencies = [
+ "bitflags",
+ "clack-common",
+ "clap-sys",
+]
+
+[[package]]
+name = "clack-plugin"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab76aa9fd46c79fbd5770e86a14d0a9d97adb239ff9173b51e3f5101aeb32c73"
+dependencies = [
+ "clack-common",
+ "clap-sys",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -193,6 +224,12 @@ checksum = "1ddb117e43bbf7dacf0a4190fef4d345b9bad68dfc649cb349e7d17d28428e51"
 dependencies = [
  "clap_builder",
 ]
+
+[[package]]
+name = "clap-sys"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76abbdb2907f6fd97fb6bc0b7be96b77d328f2dd9669d1075cc03369ed22154"
 
 [[package]]
 name = "clap_builder"
@@ -566,6 +603,8 @@ name = "nam-rs"
 version = "1.5.0-alpha"
 dependencies = [
  "anyhow",
+ "clack-extensions",
+ "clack-plugin",
  "criterion",
  "env_logger",
  "half",

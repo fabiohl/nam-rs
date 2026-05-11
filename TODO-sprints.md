@@ -233,7 +233,7 @@
 
 ### Épico 1.1 — Configuração de Build
 
-- [ ] **Tarefa 1.1.1** — Adicionar dependências CLAP ao `Cargo.toml`
+- [x] **Tarefa 1.1.1** — Adicionar dependências CLAP ao `Cargo.toml`
 
   **Contexto:** O `Cargo.toml` atual tem `clap-plugin = []` sem dependências. Precisamos adicionar `clack-plugin` e `clack-extensions` como opcionais e vinculá-los à feature.
 
