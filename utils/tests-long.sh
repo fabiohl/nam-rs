@@ -6,15 +6,16 @@ set -euo pipefail
 
 echo "🔥 Iniciando testes de estresse de longa duração..."
 echo "⚠️ Esta operação é intensiva e pode durar vários minutos."
+date
 
 echo "🧪 1/2 Executando Soak Tests (Estabilidade Numérica)..."
-date ; cargo test
-date ; cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 2>&1 | tee soak-test.log
+time cargo test
+time cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 2>&1 | tee soak-test.log
 
 echo "📊 2/2 Executando Long Benchmarks (Performance)..."
-date ; cargo bench
-date ; cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | tee long-bench.log
+time cargo bench
+time cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | tee long-bench.log
 
 echo -e "\n✅ Auditoria concluída com sucesso!"
 echo "📄 Logs: soak-test.log, long-bench.log"
-echo "📈 Relatório visual: target/criterion/report/index.html"
+date
