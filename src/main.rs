@@ -28,14 +28,13 @@ fn main() -> anyhow::Result<()> {
     // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let (model_path, initial_in_gain, initial_out_gain, buffer_size, interactive) =
-        match cli::parse_args() {
-            Ok(args) => args,
-            Err(e) => {
-                eprintln!("\n{} {}", "❌ Erro nos argumentos:".red().bold(), e);
-                std::process::exit(1);
-            }
-        };
+    let (model_path, initial_in_gain, initial_out_gain, buffer_size) = match cli::parse_args() {
+        Ok(args) => args,
+        Err(e) => {
+            eprintln!("\n{} {}", "❌ Erro nos argumentos:".red().bold(), e);
+            std::process::exit(1);
+        }
+    };
 
     let sys = SystemSnapshot::capture();
     log::info!(
@@ -106,16 +105,6 @@ fn main() -> anyhow::Result<()> {
         let _ = producer.push(ParamPayload::OutputGain(
             nam_rs::math::fastmath::get_gain_lut().db_to_linear(initial_out_gain),
         ));
-    }
-
-    // Spawn da thread CLI interativa (apenas se solicitado)
-    if interactive {
-        let sys_clone = sys.clone();
-        std::thread::spawn(move || {
-            if let Err(e) = cli::cli_loop(producer, sys_clone) {
-                log::error!("Erro no loop CLI: {}", e);
-            }
-        });
     }
 
     let tsc_anchor = minstant::Anchor::new();

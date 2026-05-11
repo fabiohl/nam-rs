@@ -600,7 +600,7 @@ dependencies = [
 
 [[package]]
 name = "nam-rs"
-version = "1.5.0-alpha"
+version = "1.4.4"
 dependencies = [
  "anyhow",
  "clack-extensions",
