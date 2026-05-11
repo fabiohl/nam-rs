@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # TODO — Sprints de Integração CLAP (NAM-rs v1.5.0-alpha)
@@ -564,6 +563,12 @@
   - Verificar qualidade do áudio (sem artefatos, sem clipping inesperado)
   - **Aceite:** Áudio processado é perceptualmente idêntico ao standalone
 
+- [ ] **Tarefa 2.1.4** — Backend de Logging para Plugins
+  
+  - Configurar o crate `log` para direcionar mensagens para a extensão `clap_host_log` (se disponível) e para um arquivo rotativo em `~/.config/nam-rs/logs/`.
+  - Garantir que erros críticos de carregamento de modelo e falhas de RT sejam capturados.
+  - **Aceite:** Logs gerados pelo motor DSP aparecem no console da DAW (ex: Bitwig Log) e no arquivo local.
+
 > **📋 CHECKPOINT — DSP funcional no CLAP**
 
 ---
@@ -714,6 +719,13 @@
   - Automação do host → reflete na GUI
   - **Aceite:** Parâmetros sincronizados em ambas direções
 
+- [ ] **Tarefa 4.2.5** — Painel de Diagnóstico e "System Report"
+  
+  - Criar uma aba ou modal "Diagnostics" na GUI `egui`.
+  - Exibir o `SystemSnapshot` (versão, arquitetura SIMD ativa, latência real).
+  - Incluir botão "Copy Technical Report" para o usuário colar em issues de suporte.
+  - **Aceite:** Informações técnicas detalhadas acessíveis visualmente sem poluir a tela principal.
+
 - [ ] **Tarefa 4.2.4** — Validação final Sprint 4
   
   - GUI abre e fecha sem crash
@@ -818,14 +830,21 @@
   
   - Documentar modo plugin CLAP como funcionalidade alpha
   - Atualizar instruções de build (dual-target)
-  - Atualizar Changelog
+  - Changelog completo
   - **Aceite:** README reflete estado real do projeto
 
-- [ ] **Tarefa 6.2.3** — Release v2.0.0
+- [ ] **Tarefa 6.2.4** — Internacionalização Básica
+
+  - Suporte dinâmico a descobrir a língua nativa do ambiente do usuário
+  - Padrão: Inglês Internacional
+  - Alternativo: PT-BR
+  - Focos: `README.md`; Mmensagens na CLI Standalone e na GUI CLAP - inclusive mensagens de erro.
+  - Códigos-fontes, agentes de IA, testes, benches e docs/ não são foco agora.
+
+- [ ] **Tarefa 6.2.4** — Release v2.0.0
   
   - Tag git: `v2.0.0`
-  - Changelog completo
-  - Binários: standalone + plugin `.clap`
+  - Binários: standalone + plugin `.clap` disponíveis para download aos usuários.
   - **Aceite:** Release publicado no GitHub
 
 > **📋 CHECKPOINT DE REVISÃO — Sprint 6 concluída**
