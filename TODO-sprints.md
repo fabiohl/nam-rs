@@ -426,7 +426,7 @@
 
   **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
 
-- [ ] **Tarefa 1.2.4** — Atualizar `src/clap/mod.rs` e exportar entry point em `src/lib.rs`
+- [x] **Tarefa 1.2.4** — Atualizar `src/clap/mod.rs` e exportar entry point em `src/lib.rs`
 
   **Parte A — Reescrever `src/clap/mod.rs`:**
 
