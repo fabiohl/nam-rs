@@ -6,6 +6,8 @@ mod tests {
     use crate::math::simd::{Avx512Math, SimdMath};
     use core::arch::x86_64::*;
 
+    /// Garante que o salvamento de dados compactos (bfloat16) usando a largura total do
+    /// AVX-512 (512 bits) seja feito sem perdas ou corrupção.
     #[test]
     fn test_store_bf16_avx512() {
         if !is_x86_feature_detected!("avx512f") {
@@ -22,6 +24,8 @@ mod tests {
         }
     }
 
+    /// Valida o cálculo paralelo das 4 portas LSTM usando as instruções estendidas
+    /// e a largura de banda superior oferecida pelo AVX-512.
     #[test]
     fn test_gemv_4gate_avx512_parity() {
         if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
@@ -57,6 +61,8 @@ mod tests {
         }
     }
 
+    /// Testa a versão ultra-otimizada das portas LSTM com suporte nativo a BF16,
+    /// disponível apenas em processadores de altíssima performance.
     #[test]
     fn test_gemv_4gate_bf16_avx512_parity() {
         if !is_x86_feature_detected!("avx512bf16") {
@@ -92,6 +98,8 @@ mod tests {
         }
     }
 
+    /// Confere se o cálculo de energia sonora em estéreo é preciso mesmo ao lidar
+    /// com o processamento massivo de dados do AVX-512.
     #[test]
     fn test_compute_energy_stereo_avx512_parity() {
         if !is_x86_feature_detected!("avx512f") {
@@ -110,6 +118,8 @@ mod tests {
         }
     }
 
+    /// Valida a finalização da WaveNet em lote, aproveitando a capacidade de
+    /// processamento simultâneo do AVX-512 para máxima velocidade.
     #[test]
     fn test_batch_wavenet_head_sum_avx512_parity() {
         if !is_x86_feature_detected!("avx512f") {

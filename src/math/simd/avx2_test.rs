@@ -6,6 +6,8 @@ mod tests {
     use super::super::{Avx2Math, SimdMath};
     use core::arch::x86_64::*;
 
+    /// Verifica se a conversão de números de precisão total (f32) para o formato compacto (bfloat16)
+    /// mantém a paridade matemática rigorosa.
     #[test]
     fn test_f32_to_bf16_avx2_parity() {
         if !is_x86_feature_detected!("avx2") {
@@ -25,6 +27,8 @@ mod tests {
         assert_eq!(dest_simd, dest_ref);
     }
 
+    /// Garante que o salvamento dos dados compactos (bfloat16) na memória é feito
+    /// sem perdas ou corrupção de dados.
     #[test]
     fn test_store_bf16_avx2() {
         if !is_x86_feature_detected!("avx2") {
@@ -43,6 +47,8 @@ mod tests {
         }
     }
 
+    /// Valida se o controle de volume (ganho) e a detecção de distorção (clipping)
+    /// no áudio estéreo produzem o mesmo resultado da versão de referência.
     #[test]
     fn test_apply_gain_and_detect_clipping_stereo_avx2_parity() {
         if !is_x86_feature_detected!("avx2") {
@@ -74,6 +80,8 @@ mod tests {
         }
     }
 
+    /// Confere se o cálculo de energia (intensidade sonora) no áudio estéreo
+    /// está perfeitamente alinhado com o cálculo matemático padrão.
     #[test]
     fn test_compute_energy_stereo_avx2_parity() {
         if !is_x86_feature_detected!("avx2") {
@@ -96,6 +104,8 @@ mod tests {
         }
     }
 
+    /// Valida o cálculo final da camada "head" da arquitetura WaveNet processada em lote,
+    /// garantindo que a soma dos resultados seja precisa.
     #[test]
     fn test_batch_wavenet_head_sum_avx2_parity() {
         if !is_x86_feature_detected!("avx2") {

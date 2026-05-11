@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! [TA5] Utilitário para alocação de memória alinhada a 64 bytes.
+//! Utilitário para alocação de memória alinhada a 64 bytes.
 //!
 //! Garante que buffers dinâmicos (pesos, acumuladores) respeitem os limites
 //! de cache line e requisitos de AVX2/AVX-512, evitando penalidades de
@@ -22,7 +22,11 @@ impl<T> AlignedVec<T> {
     /// O alinhamento padrão garantido (64 bytes).
     pub const ALIGN: usize = 64;
 
-    /// Cria um novo AlignedVec preenchido com o valor padrão.
+    /// Cria um novo buffer alinhado e já o preenche com um valor inicial.
+    ///
+    /// Imagine uma estante onde cada prateleira tem exatamente o tamanho que o processador
+    /// gosta de ler (64 bytes). Esta função reserva o espaço e coloca um "valor padrão"
+    /// em cada lugar, deixando tudo pronto para o uso imediato.
     pub fn new(len: usize, default: T) -> Self
     where
         T: Copy,
@@ -37,7 +41,12 @@ impl<T> AlignedVec<T> {
         vec
     }
 
-    /// Cria um AlignedVec com a capacidade especificada, mas comprimento zero.
+    /// Reserva espaço na memória com o alinhamento necessário, mas sem preencher os dados ainda.
+    ///
+    /// É como reservar um estacionamento exclusivo: o espaço está lá, garantido e
+    /// organizado em blocos de 64 bytes, mas as "vagas" ainda estão vazias.
+    /// Esse alinhamento especial permite que o processador leia os dados na velocidade
+    /// máxima, sem precisar "ajustar" a posição da memória.
     pub fn with_capacity(capacity: usize) -> Self {
         if capacity == 0 {
             return Self {
@@ -71,6 +80,10 @@ impl<T> AlignedVec<T> {
     }
 }
 
+/// Permite acessar os dados do buffer como se fosse uma lista (slice) comum do Rust.
+///
+/// Isso facilita o uso, pois você pode usar funções que esperam uma lista normal
+/// sem precisar fazer conversões complicadas.
 impl<T> Deref for AlignedVec<T> {
     type Target = [T];
 
@@ -83,6 +96,9 @@ impl<T> Deref for AlignedVec<T> {
     }
 }
 
+/// Permite acessar e modificar os dados do buffer como uma lista comum.
+///
+/// Dá a liberdade de ler e escrever no conteúdo de forma simples e direta.
 impl<T> DerefMut for AlignedVec<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         if self.len == 0 {
@@ -93,6 +109,10 @@ impl<T> DerefMut for AlignedVec<T> {
     }
 }
 
+/// Garante que a memória seja devolvida ao sistema quando o objeto for destruído.
+///
+/// É o "faxineiro" que limpa o espaço reservado assim que você termina de usar
+/// o buffer, evitando desperdício de memória (os chamados "memory leaks").
 impl<T> Drop for AlignedVec<T> {
     fn drop(&mut self) {
         if self.len > 0 {
@@ -105,6 +125,10 @@ impl<T> Drop for AlignedVec<T> {
     }
 }
 
+/// Cria uma cópia idêntica do buffer e de todo o seu conteúdo.
+///
+/// Reserva um novo espaço na memória com o mesmo alinhamento e copia cada item
+/// um por um, garantindo que a nova "estante" seja uma réplica fiel da original.
 impl<T: Clone> Clone for AlignedVec<T> {
     fn clone(&self) -> Self {
         let mut new_vec = Self::with_capacity(self.len);
@@ -119,6 +143,11 @@ impl<T: Clone> Clone for AlignedVec<T> {
     }
 }
 
+/// Permite transformar um vetor comum (`Vec`) em um buffer alinhado.
+///
+/// É como transferir itens de uma sacola plástica comum para uma maleta com
+/// divisórias sob medida (alinhamento de 64 bytes), preparando os dados para
+/// processamento de alta velocidade.
 impl<T: Copy> From<Vec<T>> for AlignedVec<T> {
     fn from(v: Vec<T>) -> Self {
         let mut aligned = Self::new(v.len(), v[0]); // v[0] works if len > 0
@@ -132,7 +161,10 @@ impl<T: Copy> From<Vec<T>> for AlignedVec<T> {
 
 // Implementação segura para empty vec
 impl<T: Copy> AlignedVec<T> {
-    /// Converte um Vec comum em AlignedVec (alinhamento 64).
+    /// Uma versão otimizada da conversão de vetor comum para buffer alinhado.
+    ///
+    /// Utiliza uma cópia direta de memória para garantir que a transferência seja
+    /// o mais rápida possível, mantendo o alinhamento de 64 bytes.
     pub fn from_vec(v: Vec<T>) -> Self {
         if v.is_empty() {
             return Self::with_capacity(0);
@@ -146,5 +178,9 @@ impl<T: Copy> AlignedVec<T> {
     }
 }
 
+/// Indica ao Rust que é seguro enviar e compartilhar este buffer entre diferentes threads.
+///
+/// Isso é essencial para que o processamento de áudio possa ser distribuído entre
+/// vários núcleos do processador com total segurança.
 unsafe impl<T: Send> Send for AlignedVec<T> {}
 unsafe impl<T: Sync> Sync for AlignedVec<T> {}

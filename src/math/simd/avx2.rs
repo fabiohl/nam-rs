@@ -6,33 +6,47 @@
     clippy::too_many_arguments
 )]
 
-//! [T21] Backends SIMD AVX2.
+//! Backend de processamento ultra-rápido usando AVX2.
 //!
-//! Implementa kernels otimizados usando extensões AVX2, FMA e F16C.
+//! Este módulo contém a "mágica" que faz o NAM-rs rodar tão leve.
+//! Usamos instruções especiais do processador (SIMD) para fazer cálculos
+//! matemáticos massivos em paralelo, processando vários sons de uma vez só.
 
 use super::fallback::*;
 use super::traits::SimdMath;
 use core::arch::x86_64::*;
 
-/// Calcula o Dot Product (Produto Escalar) de duas fatias via AVX2 e FMA.
+/// Calcula o Produto Escalar (Dot Product) de forma ultra-rápida usando aceleração de hardware (AVX2).
+///
+/// Esta função é o "coração" de muitos modelos de rede neural. Em vez de multiplicar e somar
+/// um número por vez, ela processa blocos de dados simultaneamente (até 32 números de uma vez),
+/// aproveitando ao máximo o poder do processador moderno.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut i = 0;
 
     unsafe {
+        // Prepara 4 "acumuladores" (baldes de soma) para trabalhar em paralelo.
+        // Isso permite que o processador faça várias somas ao mesmo tempo sem esperar uma terminar.
         let mut sum0 = _mm256_setzero_ps();
         let mut sum1 = _mm256_setzero_ps();
         let mut sum2 = _mm256_setzero_ps();
         let mut sum3 = _mm256_setzero_ps();
 
+        // Loop Principal: Processa 32 números por vez (unrolling de 4x8).
         while i + 32 <= len {
+            // Prefetch: Avisa o processador para já buscar os próximos dados na memória
+            // antes mesmo de precisarmos deles, eliminando tempos de espera.
             _mm_prefetch::<_MM_HINT_T0>(a.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(b.as_ptr().add(i + 32) as *const i8);
 
+            // Carrega e converte dados:
+            // O vetor 'b' usa números comprimidos (f16/half), que são convertidos
+            // para o formato de alta precisão (f32) instantaneamente pelo hardware.
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb0 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
-            sum0 = _mm256_fmadd_ps(va0, vb0, sum0);
+            sum0 = _mm256_fmadd_ps(va0, vb0, sum0); // Multiplica e Soma em um único passo (FMA)
 
             let va1 = _mm256_loadu_ps(a.as_ptr().add(i + 8));
             let vb1 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i + 8) as *const __m128i));
@@ -49,6 +63,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
             i += 32;
         }
 
+        // Trata os grupos restantes de 16 itens.
         while i + 16 <= len {
             let va0 = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb0 = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
@@ -61,6 +76,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
             i += 16;
         }
 
+        // Trata os últimos grupos de 8 itens.
         while i + 8 <= len {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb = _mm256_cvtph_ps(_mm_loadu_si128(b.as_ptr().add(i) as *const __m128i));
@@ -68,12 +84,15 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
             i += 8;
         }
 
+        // Combina os resultados dos 4 acumuladores paralelos em um só.
         sum0 = _mm256_add_ps(sum0, sum1);
         sum2 = _mm256_add_ps(sum2, sum3);
         let sum = _mm256_add_ps(sum0, sum2);
 
+        // Soma Horizontal: Junta os 8 valores parciais do registrador SIMD em um único número final.
         let mut scalar_sum = super::utility::hsum_avx2(sum);
 
+        // Limpeza Final: Processa os pouquíssimos itens que sobraram (menos de 8).
         while i < len {
             scalar_sum += a[i] * half::f16::from_bits(b[i]).to_f32();
             i += 1;
@@ -83,7 +102,12 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
     }
 }
 
-/// Calcula 4 Dot Products simultâneos (ILP máximo) via AVX2.
+/// Calcula 4 Produtos Escalares simultaneamente com o máximo de paralelismo (ILP) via AVX2.
+///
+/// Esta função é otimizada para situações onde precisamos multiplicar um mesmo "estado"
+/// por 4 conjuntos diferentes de "pesos". Ao fazer os 4 cálculos de uma vez, mantemos
+/// o processador ocupado e aproveitamos que o "estado" já está carregado para economizar
+/// tempo de memória.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_avx2(
     w0: &[u16],
@@ -96,6 +120,9 @@ pub unsafe fn dot_product_4x_avx2(
     let mut i = 0;
 
     unsafe {
+        // Usa 2 acumuladores para cada um dos 4 resultados (total 8 baldes de soma).
+        // Isso maximiza o paralelismo, permitindo que o processador trabalhe em várias
+        // frentes sem interrupções.
         let mut sum0_0 = _mm256_setzero_ps();
         let mut sum0_1 = _mm256_setzero_ps();
         let mut sum1_0 = _mm256_setzero_ps();
@@ -105,16 +132,20 @@ pub unsafe fn dot_product_4x_avx2(
         let mut sum3_0 = _mm256_setzero_ps();
         let mut sum3_1 = _mm256_setzero_ps();
 
+        // Loop Principal: Processa 16 números por vez para as 4 listas simultaneamente.
         while i + 16 <= len {
+            // Antecipa a busca dos dados na memória (Prefetch).
             _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(w0.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(w1.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(w2.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(w3.as_ptr().add(i + 32) as *const i8);
 
+            // Carrega o "estado" apenas uma vez para todos os pesos (reuso eficiente).
             let vs_0 = _mm256_loadu_ps(state.as_ptr().add(i));
             let vs_1 = _mm256_loadu_ps(state.as_ptr().add(i + 8));
 
+            // Realiza o cálculo FMA (Multiplica e Soma) para os 4 vetores de pesos:
             let vw0_0 = _mm256_cvtph_ps(_mm_loadu_si128(w0.as_ptr().add(i) as *const __m128i));
             let vw0_1 = _mm256_cvtph_ps(_mm_loadu_si128(w0.as_ptr().add(i + 8) as *const __m128i));
             sum0_0 = _mm256_fmadd_ps(vw0_0, vs_0, sum0_0);
@@ -138,6 +169,7 @@ pub unsafe fn dot_product_4x_avx2(
             i += 16;
         }
 
+        // Trata os grupos restantes de 8 itens.
         while i + 8 <= len {
             let vs = _mm256_loadu_ps(state.as_ptr().add(i));
 
@@ -156,16 +188,19 @@ pub unsafe fn dot_product_4x_avx2(
             i += 8;
         }
 
+        // Consolida os acumuladores duplos de cada vetor.
         let sum0 = _mm256_add_ps(sum0_0, sum0_1);
         let sum1 = _mm256_add_ps(sum1_0, sum1_1);
         let sum2 = _mm256_add_ps(sum2_0, sum2_1);
         let sum3 = _mm256_add_ps(sum3_0, sum3_1);
 
+        // Converte os resultados SIMD para números escalares finais.
         let mut s0: f32 = super::utility::hsum_avx2(sum0);
         let mut s1: f32 = super::utility::hsum_avx2(sum1);
         let mut s2: f32 = super::utility::hsum_avx2(sum2);
         let mut s3: f32 = super::utility::hsum_avx2(sum3);
 
+        // Limpeza final para os poucos itens restantes.
         while i < len {
             s0 += half::f16::from_bits(w0[i]).to_f32() * state[i];
             s1 += half::f16::from_bits(w1[i]).to_f32() * state[i];
@@ -178,23 +213,34 @@ pub unsafe fn dot_product_4x_avx2(
     }
 }
 
-/// Calcula 4 Dot Products simultâneos para pesos interfolhados via AVX2.
+/// Calcula 4 Produtos Escalares simultaneamente usando o layout de "pesos interfolhados" via AVX2.
+///
+/// Neste formato, os pesos dos 4 cálculos estão organizados juntos na memória (em grupos de 4).
+/// Esta função usa truques de "embaralhamento" (broadcast e blend) para alinhar os dados do
+/// estado com esses pesos, permitindo um processamento extremamente veloz e eficiente em termos
+/// de acesso à memória (cache friendly).
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();
     let mut i = 0;
 
     unsafe {
+        // Inicializa os acumuladores para os 4 resultados parciais.
         let mut sum0 = _mm256_setzero_ps();
         let mut sum1 = _mm256_setzero_ps();
         let mut sum2 = _mm256_setzero_ps();
         let mut sum3 = _mm256_setzero_ps();
 
+        // Loop Principal: Processa 8 blocos de pesos interfolhados por vez.
         while i + 8 <= len {
+            // Antecipa os dados da memória (Prefetch).
             _mm_prefetch::<_MM_HINT_T0>(state.as_ptr().add(i + 16) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 8) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 16) as *const i8);
 
+            // Broadcast e Blend:
+            // Pega um valor do estado, duplica-o e o "mistura" (blend) para que ele
+            // se alinhe com os 4 pesos interfolhados carregados do vetor de pesos.
             let s0 = _mm256_broadcast_ss(&state[i]);
             let s1 = _mm256_broadcast_ss(&state[i + 1]);
             let s01 = _mm256_blend_ps(s0, s1, 0b11110000);
@@ -228,6 +274,7 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32
             i += 8;
         }
 
+        // Trata os grupos restantes de 2 itens.
         while i + 2 <= len {
             let s0 = _mm256_broadcast_ss(&state[i]);
             let s1 = _mm256_broadcast_ss(&state[i + 1]);
@@ -237,14 +284,17 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32
             i += 2;
         }
 
+        // Soma os resultados parciais dos acumuladores.
         let sum01 = _mm256_add_ps(sum0, sum1);
         let sum23 = _mm256_add_ps(sum2, sum3);
         let sum = _mm256_add_ps(sum01, sum23);
 
+        // Converte o registrador de 256 bits para 128 bits para finalizar.
         let lower = _mm256_castps256_ps128(sum);
         let upper = _mm256_extractf128_ps(sum, 1);
         let mut sum128 = _mm_add_ps(lower, upper);
 
+        // Limpeza Final: Processa os itens que sobraram um por um.
         while i < len {
             let s0 = _mm_load1_ps(state.as_ptr().add(i));
             let w0 = _mm_cvtph_ps(_mm_loadu_si64(
@@ -254,13 +304,19 @@ pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32
             i += 1;
         }
 
+        // Salva o resultado final no array de saída.
         let mut out = [0.0; 4];
         _mm_storeu_ps(out.as_mut_ptr(), sum128);
         out
     }
 }
 
-/// Calcula 4 Dot Products simultâneos para pesos interfolhados via AVX2 (Dual Frame).
+/// Calcula 4 Produtos Escalares para dois quadros de áudio simultâneos (Dual Frame) via AVX2.
+///
+/// Esta é uma das funções mais eficientes do sistema. Ela aproveita que os pesos já foram
+/// carregados na memória para aplicá-los em dois blocos de áudio diferentes (f0 e f1) ao
+/// mesmo tempo. Isso dobra a produtividade do processador, pois cada peso lido é "reutilizado"
+/// imediatamente para dois cálculos distintos.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
     weights: &[[u16; 4]],
@@ -271,6 +327,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
     let mut i = 0;
 
     unsafe {
+        // Inicializa 8 acumuladores: 4 para o primeiro quadro (f0) e 4 para o segundo (f1).
         let mut sum0_f0 = _mm256_setzero_ps();
         let mut sum1_f0 = _mm256_setzero_ps();
         let mut sum2_f0 = _mm256_setzero_ps();
@@ -281,7 +338,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
         let mut sum2_f1 = _mm256_setzero_ps();
         let mut sum3_f1 = _mm256_setzero_ps();
 
+        // Loop Principal: Processa 8 blocos de pesos interfolhados para ambos os quadros.
         while i + 8 <= len {
+            // Prepara os dados dos dois quadros usando broadcast e blend.
             let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
             let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
             let s01_f0 = _mm256_blend_ps(s0_f0, s1_f0, 0b11110000);
@@ -290,6 +349,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
             let s1_f1 = _mm256_broadcast_ss(&state_f1[i + 1]);
             let s01_f1 = _mm256_blend_ps(s0_f1, s1_f1, 0b11110000);
 
+            // Carrega o peso uma única vez e aplica nos dois quadros (f0 e f1).
             let w01 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
             sum0_f0 = _mm256_fmadd_ps(w01, s01_f0, sum0_f0);
             sum0_f1 = _mm256_fmadd_ps(w01, s01_f1, sum0_f1);
@@ -339,6 +399,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
             i += 8;
         }
 
+        // Trata os grupos restantes de 2 itens para ambos os quadros.
         while i + 2 <= len {
             let s0_f0 = _mm256_broadcast_ss(&state_f0[i]);
             let s1_f0 = _mm256_broadcast_ss(&state_f0[i + 1]);
@@ -354,6 +415,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
             i += 2;
         }
 
+        // Consolida as somas parciais de cada quadro separadamente.
         let sum01_f0 = _mm256_add_ps(sum0_f0, sum1_f0);
         let sum23_f0 = _mm256_add_ps(sum2_f0, sum3_f0);
         let sum_f0 = _mm256_add_ps(sum01_f0, sum23_f0);
@@ -362,6 +424,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
         let sum23_f1 = _mm256_add_ps(sum2_f1, sum3_f1);
         let sum_f1 = _mm256_add_ps(sum01_f1, sum23_f1);
 
+        // Finaliza o cálculo convertendo os registradores de 256 bits para 128 bits.
         let lower_f0 = _mm256_castps256_ps128(sum_f0);
         let upper_f0 = _mm256_extractf128_ps(sum_f0, 1);
         let mut sum128_f0 = _mm_add_ps(lower_f0, upper_f0);
@@ -370,6 +433,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
         let upper_f1 = _mm256_extractf128_ps(sum_f1, 1);
         let mut sum128_f1 = _mm_add_ps(lower_f1, upper_f1);
 
+        // Limpeza Final: Processa o que sobrou individualmente para os dois quadros.
         while i < len {
             let s0_f0 = _mm_load1_ps(state_f0.as_ptr().add(i));
             let s0_f1 = _mm_load1_ps(state_f1.as_ptr().add(i));
@@ -381,6 +445,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
             i += 1;
         }
 
+        // Armazena os 4 resultados finais para cada quadro.
         let mut out_f0 = [0.0; 4];
         let mut out_f1 = [0.0; 4];
         _mm_storeu_ps(out_f0.as_mut_ptr(), sum128_f0);
@@ -389,7 +454,10 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
     }
 }
 
-/// Calcula o Dot Product de um lote de 4 vetores (h0..h3) com o mesmo vetor de pesos via AVX2.
+/// Kernel especializado para multiplicar pesos por 4 canais de áudio diferentes ao mesmo tempo.
+/// Esta função é o "faz tudo" das redes neurais WaveNet e LSTM quando processamos
+/// áudio em lote (batch). Ela economiza energia e tempo ao não precisar ler
+/// os mesmos pesos da memória repetidamente.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_batch_4x_avx2(
     h0: &[f32],
@@ -402,28 +470,39 @@ pub unsafe fn dot_product_batch_4x_avx2(
     let mut i = 0;
 
     unsafe {
+        // Prepara os 4 baldes de soma para os 4 sons diferentes.
         let mut sum0 = _mm256_setzero_ps();
         let mut sum1 = _mm256_setzero_ps();
         let mut sum2 = _mm256_setzero_ps();
         let mut sum3 = _mm256_setzero_ps();
 
+        // Loop Principal: Processa 16 números de cada som por vez.
         while i + 16 <= len {
+            // Avisa o processador para já ir buscando os próximos dados.
             _mm_prefetch::<_MM_HINT_T0>(weights.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(h0.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(h1.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(h2.as_ptr().add(i + 32) as *const i8);
             _mm_prefetch::<_MM_HINT_T0>(h3.as_ptr().add(i + 32) as *const i8);
 
+            // Carrega o peso comprimido (f16) e expande para f32.
             let vw_0 = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
+
+            // Multiplica esse mesmo peso pelos 4 sons de entrada.
+            // É como se um único professor desse aula para 4 alunos ao mesmo tempo.
             let vh0_0 = _mm256_loadu_ps(h0.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(vw_0, vh0_0, sum0);
+
             let vh1_0 = _mm256_loadu_ps(h1.as_ptr().add(i));
             sum1 = _mm256_fmadd_ps(vw_0, vh1_0, sum1);
+
             let vh2_0 = _mm256_loadu_ps(h2.as_ptr().add(i));
             sum2 = _mm256_fmadd_ps(vw_0, vh2_0, sum2);
+
             let vh3_0 = _mm256_loadu_ps(h3.as_ptr().add(i));
             sum3 = _mm256_fmadd_ps(vw_0, vh3_0, sum3);
 
+            // Faz o mesmo para a segunda metade do bloco de 16.
             let vw_1 = _mm256_cvtph_ps(_mm_loadu_si128(
                 weights.as_ptr().add(i + 8) as *const __m128i
             ));
@@ -439,6 +518,7 @@ pub unsafe fn dot_product_batch_4x_avx2(
             i += 16;
         }
 
+        // Trata blocos de 8 itens.
         while i + 8 <= len {
             let vw = _mm256_cvtph_ps(_mm_loadu_si128(weights.as_ptr().add(i) as *const __m128i));
             let vh0 = _mm256_loadu_ps(h0.as_ptr().add(i));
@@ -453,11 +533,13 @@ pub unsafe fn dot_product_batch_4x_avx2(
             i += 8;
         }
 
+        // Soma os resultados parciais de cada um dos 4 acumuladores.
         let mut s0 = super::utility::hsum_avx2(sum0);
         let mut s1 = super::utility::hsum_avx2(sum1);
         let mut s2 = super::utility::hsum_avx2(sum2);
         let mut s3 = super::utility::hsum_avx2(sum3);
 
+        // Termina as amostras que sobraram (menos de 8).
         while i < len {
             let w = half::f16::from_bits(weights[i]).to_f32();
             s0 += w * h0[i];
@@ -471,7 +553,12 @@ pub unsafe fn dot_product_batch_4x_avx2(
     }
 }
 
-/// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX2.
+/// Realiza uma operação matemática combinada (fundida) de alta velocidade: Y = X_res + Bias + W * Z.
+///
+/// Esta função faz três coisas ao mesmo tempo: preserva o valor atual (residual), soma um
+/// ajuste (bias) e adiciona o resultado de uma multiplicação de pesos por entrada. Fazer tudo
+/// de uma vez evita que o processador precise ler e escrever na memória várias vezes, mantendo
+/// os dados "quentes" e prontos para o próximo cálculo.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemv_avx2(
     in_frame: &[f32],
@@ -485,23 +572,31 @@ pub unsafe fn fused_add_gemv_avx2(
 
     unsafe {
         let mut out_c = 0;
+        // Processa 8 saídas de uma vez usando AVX2.
         while out_c + 8 <= out_len {
+            // Carrega o valor atual (residual) que já estava no balde.
             let mut accum = _mm256_loadu_ps(out_frame.as_ptr().add(out_c));
+            // Se tiver um ajuste (bias), soma-o agora.
             if do_bias {
                 accum = _mm256_add_ps(accum, _mm256_loadu_ps(bias.as_ptr().add(out_c)));
             }
 
+            // Para cada entrada, multiplica pelo peso e soma no acumulador.
             for in_c in 0..in_len {
                 let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                // Converte o peso comprimido (f16) para f32 na hora.
                 let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
+                // A instrução 'fmadd' faz a multiplicação e a soma em um só golpe.
                 accum = _mm256_fmadd_ps(vs, vw, accum);
             }
 
+            // Salva o resultado final de volta no balde.
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
             out_c += 8;
         }
 
+        // Trata o que sobrou um por um.
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
@@ -514,7 +609,11 @@ pub unsafe fn fused_add_gemv_avx2(
     }
 }
 
-/// Realiza a projeção linear Y = Bias + W * Z (GEMV) substituindo o conteúdo de out_frame via AVX2.
+/// Realiza uma projeção linear (Y = Bias + W * Z), substituindo o conteúdo anterior.
+///
+/// Diferente da função anterior, esta limpa o "balde" de saída antes de começar, colocando
+/// apenas o novo resultado da multiplicação (mais o ajuste opcional). É usada para iniciar
+/// o cálculo de uma nova camada da rede neural do zero.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn gemv_overwrite_avx2(
     in_frame: &[f32],
@@ -528,7 +627,9 @@ pub unsafe fn gemv_overwrite_avx2(
 
     unsafe {
         let mut out_c = 0;
+        // Processa 8 saídas de uma vez.
         while out_c + 8 <= out_len {
+            // Começa o balde do zero (ou com o ajuste/bias).
             let mut accum = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(out_c))
             } else {
@@ -546,6 +647,7 @@ pub unsafe fn gemv_overwrite_avx2(
             out_c += 8;
         }
 
+        // Finaliza o resto.
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
@@ -559,7 +661,11 @@ pub unsafe fn gemv_overwrite_avx2(
     }
 }
 
-/// Versão em batch da operação fundida Y = X_res + Bias + W * Z via AVX2.
+/// Processa vários quadros de áudio em lote (batch) usando a técnica fundida: Y = X_res + Bias + W * Z.
+///
+/// Esta é a versão mais potente da operação fundida. Ela organiza o trabalho em grupos de 4
+/// quadros de áudio, permitindo que o processador reutilize os pesos da rede neural de forma
+/// extremamente eficiente para todos eles antes de precisar ler novos dados da memória.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemm_batch_avx2(
     in_frames: &[f32],
@@ -577,14 +683,19 @@ pub unsafe fn fused_add_gemm_batch_avx2(
 
     unsafe {
         let mut f = 0;
+        // Estratégia de Lote: Processa os dados em grupos de 4 quadros de áudio.
+        // Isso permite que cada peso da rede neural seja lido uma vez e reutilizado
+        // 4 vezes seguidas (uma para cada quadro), o que é extremamente eficiente.
         while f + 4 <= num_frames {
             let mut out_c = 0;
             while out_c + 8 <= out_len {
+                // Carrega os resultados parciais (baldes) de 4 quadros simultaneamente.
                 let mut acc0 = _mm256_loadu_ps(out_frames.as_ptr().add(f * out_len + out_c));
                 let mut acc1 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 1) * out_len + out_c));
                 let mut acc2 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 2) * out_len + out_c));
                 let mut acc3 = _mm256_loadu_ps(out_frames.as_ptr().add((f + 3) * out_len + out_c));
 
+                // Se houver Bias (ajuste), adiciona-o nos 4 quadros de uma só vez.
                 if do_bias {
                     let b = _mm256_loadu_ps(bias.as_ptr().add(out_c));
                     acc0 = _mm256_add_ps(acc0, b);
@@ -593,21 +704,26 @@ pub unsafe fn fused_add_gemm_batch_avx2(
                     acc3 = _mm256_add_ps(acc3, b);
                 }
 
+                // Loop de Cálculo: Multiplica a entrada pelos pesos.
                 for in_c in 0..in_len {
+                    // Lê o peso da memória apenas uma vez.
                     let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
                     let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
 
+                    // Espalha a entrada correspondente de cada um dos 4 quadros.
                     let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
                     let vs1 = _mm256_set1_ps(*in_frames.get_unchecked((f + 1) * in_len + in_c));
                     let vs2 = _mm256_set1_ps(*in_frames.get_unchecked((f + 2) * in_len + in_c));
                     let vs3 = _mm256_set1_ps(*in_frames.get_unchecked((f + 3) * in_len + in_c));
 
+                    // Multiplica e Soma (FMA) para os 4 quadros usando o mesmo peso lido.
                     acc0 = _mm256_fmadd_ps(vs0, vw, acc0);
                     acc1 = _mm256_fmadd_ps(vs1, vw, acc1);
                     acc2 = _mm256_fmadd_ps(vs2, vw, acc2);
                     acc3 = _mm256_fmadd_ps(vs3, vw, acc3);
                 }
 
+                // Salva os 4 novos resultados de volta na memória.
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
                 _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
@@ -615,6 +731,7 @@ pub unsafe fn fused_add_gemm_batch_avx2(
                 out_c += 8;
             }
 
+            // Trata as sobras de cada bloco de 4 quadros.
             while out_c < out_len {
                 for i in 0..4 {
                     let frame_idx = f + i;
@@ -634,6 +751,7 @@ pub unsafe fn fused_add_gemm_batch_avx2(
             f += 4;
         }
 
+        // Limpeza Final: Se sobrou algum quadro (menos de 4), processa um por um.
         while f < num_frames {
             fused_add_gemv_avx2(
                 in_frames.get_unchecked(f * in_len..(f + 1) * in_len),
@@ -647,7 +765,11 @@ pub unsafe fn fused_add_gemm_batch_avx2(
     }
 }
 
-/// Realiza a projeção linear fundida para as 4 portas do LSTM via AVX2.
+/// Realiza a projeção linear para as 4 "portas" de uma célula LSTM de forma simultânea via AVX2.
+///
+/// Em uma rede neural LSTM, cada passo exige o cálculo de 4 sub-resultados (portas). Esta
+/// função executa todos esses cálculos de uma só vez, garantindo que a atualização da
+/// "memória" da rede seja feita com o máximo de performance e o mínimo de latência.
 #[target_feature(enable = "avx2,fma,f16c")]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_avx2(
@@ -665,7 +787,9 @@ pub unsafe fn gemv_4gate_avx2(
 
     unsafe {
         let mut out_c = 0;
+        // Processa as 4 portas do LSTM em paralelo, 8 elementos por vez.
         while out_c + 8 <= out_len {
+            // Inicializa os acumuladores (baldes) com os valores de Bias de cada porta.
             let mut acc0 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(out_c))
             } else {
@@ -687,9 +811,13 @@ pub unsafe fn gemv_4gate_avx2(
                 _mm256_setzero_ps()
             };
 
+            // Loop de Cálculo Principal:
             for in_c in 0..in_len {
+                // Pega um único valor de entrada e o "espalha" para usar em todas as portas.
                 let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
 
+                // Multiplica a entrada pelos pesos de cada uma das 4 portas (acc0 a acc3).
+                // Cada porta cuida de um aspecto diferente da "memória" do LSTM.
                 let wp0 = w0.as_ptr().add(in_c * out_len + out_c);
                 let vw0 = _mm256_cvtph_ps(_mm_loadu_si128(wp0 as *const __m128i));
                 acc0 = _mm256_fmadd_ps(vs, vw0, acc0);
@@ -707,6 +835,7 @@ pub unsafe fn gemv_4gate_avx2(
                 acc3 = _mm256_fmadd_ps(vs, vw3, acc3);
             }
 
+            // Salva os resultados finais de cada porta nos seus devidos lugares na memória.
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_len + out_c), acc1);
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(2 * out_len + out_c), acc2);
@@ -714,6 +843,7 @@ pub unsafe fn gemv_4gate_avx2(
             out_c += 8;
         }
 
+        // Limpeza Final: Processa os itens que sobraram individualmente (menos de 8).
         while out_c < out_len {
             let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
             let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
@@ -749,7 +879,12 @@ pub unsafe fn gemv_4gate_avx2(
     }
 }
 
-/// [TF3] Kernel GEMM com residual fundido AVX2.
+/// Kernel GEMM com residual fundido via AVX2.
+///
+/// Esta função é o "motor principal" de muitas camadas de redes neurais modernas. Ela combina
+/// a multiplicação de matrizes por vetores com a adição de uma "conexão residual" (um atalho
+/// que ajuda a rede a manter informações importantes do passado). Ao fundir tudo isso em um
+/// único passo vetorial, economizamos ciclos de memória valiosos.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_gemm_residual_batch_avx2(
     in_frames: &[f32],
@@ -764,14 +899,17 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
     let out_len = out_frames.len() / num_frames;
 
     let mut f = 0;
+    // Estratégia de Lote: Processa 4 quadros de áudio simultaneamente para reuso de pesos.
     while f + 4 <= num_frames {
         let mut out_c = 0;
         while out_c + 8 <= out_len {
+            // Inicializa os acumuladores com os valores da "Conexão Residual" (atalho).
             let mut acc0 = _mm256_loadu_ps(residual.as_ptr().add(f * out_len + out_c));
             let mut acc1 = _mm256_loadu_ps(residual.as_ptr().add((f + 1) * out_len + out_c));
             let mut acc2 = _mm256_loadu_ps(residual.as_ptr().add((f + 2) * out_len + out_c));
             let mut acc3 = _mm256_loadu_ps(residual.as_ptr().add((f + 3) * out_len + out_c));
 
+            // Se houver Bias, soma-o aos baldes residuais.
             if do_bias {
                 let b = _mm256_loadu_ps(bias.as_ptr().add(out_c));
                 acc0 = _mm256_add_ps(acc0, b);
@@ -780,6 +918,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                 acc3 = _mm256_add_ps(acc3, b);
             }
 
+            // Loop de Pesos: Multiplica e soma o resultado da matriz sobre os baldes.
             for in_c in 0..in_len {
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
                 let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
@@ -806,6 +945,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
                 );
             }
 
+            // Salva os 4 novos resultados finais (Residual + Bias + Multiplicação).
             _mm256_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc0);
             _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 1) * out_len + out_c), acc1);
             _mm256_storeu_ps(out_frames.as_mut_ptr().add((f + 2) * out_len + out_c), acc2);
@@ -813,6 +953,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
             out_c += 8;
         }
 
+        // Limpeza final para o resto da largura da matriz em grupos de 4 quadros.
         while out_c < out_len {
             for i in 0..4 {
                 let frame_idx = f + i;
@@ -832,6 +973,7 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
         f += 4;
     }
 
+    // Fallback: Se sobrar algum quadro isolado (menos de 4), processa-o individualmente.
     while f < num_frames {
         let in_frame = &in_frames[f * in_len..(f + 1) * in_len];
         let out_frame = &mut out_frames[f * out_len..(f + 1) * out_len];
@@ -867,7 +1009,11 @@ pub unsafe fn fused_gemm_residual_batch_avx2(
     }
 }
 
-/// Implementação estática para microarquitetura x86-64-v3 (AVX2/FMA).
+/// Implementação concreta da trait SimdMath para processadores com suporte a AVX2 e FMA.
+///
+/// Aqui é onde "ligamos os fios": conectamos as operações matemáticas abstratas do sistema
+/// às funções ultra-rápidas que documentamos acima. Esta estrutura garante que o NAM-rs
+/// aproveite a força total do hardware moderno para processar áudio em tempo real.
 pub struct Avx2Math;
 
 impl SimdMath for Avx2Math {
@@ -875,11 +1021,13 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        // Usa a função otimizada para AVX2 que criamos acima.
         unsafe { dot_product_avx2(a, b) }
     }
 
     #[inline(always)]
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
+        // Como o AVX2 puro não tem aceleração nativa para BF16, usamos a versão comum.
         unsafe { dot_product_bf16_fallback(a, b) }
     }
 
@@ -1063,12 +1211,10 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
         unsafe {
+            // Converte e armazena dados BF16 usando truques de bits em AVX2.
             let v_i = _mm256_castps_si256(v);
             let v_shifted = _mm256_srli_epi32(v_i, 16);
             let packed = _mm256_packus_epi32(v_shifted, v_shifted);
-            // packed has chunk 0 = [A,B,C,D], chunk 1 = [A,B,C,D], chunk 2 = [E,F,G,H], chunk 3 = [E,F,G,H]
-            // We want chunk 0 at pos 0, chunk 2 at pos 1.
-            // Control byte: 0b00001000 = 8.
             let permuted = _mm256_permute4x64_epi64(packed, 8);
             let v_low = _mm256_castsi256_si128(permuted);
             _mm_storeu_si128(ptr as *mut __m128i, v_low);
@@ -1212,7 +1358,12 @@ impl SimdMath for Avx2Math {
     }
 }
 
-/// Implementação estática para AVX2 com suporte a VNNI.
+/// Implementação especializada para processadores que suportam AVX2 e instruções VNNI.
+///
+/// VNNI (Vector Neural Network Instructions) é uma tecnologia que acelera drasticamente
+/// o processamento de redes neurais. Esta estrutura funciona como uma ponte de alta
+/// performance para CPUs modernas, garantindo que o NAM-rs utilize o caminho mais
+/// curto e eficiente oferecido pelo hardware Intel de gerações recentes.
 pub struct Avx2VnniMath;
 
 impl SimdMath for Avx2VnniMath {
@@ -1220,6 +1371,7 @@ impl SimdMath for Avx2VnniMath {
 
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        // Reutiliza a lógica ultra-rápida do AVX2 base.
         unsafe { Avx2Math::dot_product(a, b) }
     }
 
@@ -1927,7 +2079,9 @@ pub unsafe fn batch_wavenet_head_sum_avx2<const HEAD: usize>(
     let num_frames = output.len();
     for i in 0..num_frames {
         let ptr = head1.as_ptr().add(i * HEAD);
+        // Soma os canais internos de cada quadro.
         let sum = horizontal_sum_avx2(ptr, HEAD);
+        // Adiciona a entrada residual e aplica o volume (scale).
         *output.get_unchecked_mut(i) = (sum + *head2.get_unchecked(i)) * scale;
     }
 }

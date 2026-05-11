@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! [T21] Sistema de despacho dinâmico para kernels SIMD.
+//! Sistema de despacho dinâmico para kernels SIMD.
 
 use super::avx2::Avx2Math;
 use super::avx512::Avx512Math;
