@@ -13,7 +13,7 @@
 //!   dos artefatos de pré-eco em transientes de guitarra.
 //! - **Redução de latência algorítmica**: de ~1.5 ms (fase linear) para ~0.1 ms.
 //! - **Convolução vetorizada**: inner product AVX2+FMA com coeficientes alinhados
-//!   a 32 bytes, saturando o throughput das portas FMA do processador.
+//!   a 64 bytes, saturando o throughput das portas FMA do processador.
 //!
 //! ## Arquitetura: Polyphase Oversampled com Interpolação
 //!

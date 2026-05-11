@@ -42,7 +42,7 @@ Se o usuário colou apenas a mensagem amigável (sem o bloco técnico), peça qu
 Exemplo de questões que podem vir a serem levantadas com os dados extraídos:
 
 - **E1xxx (Modelo)**: O arquivo existe? O formato (JSON/binário) está íntegro? O CRC confere? A topologia (WaveNet/LSTM) está tabelada? Os pesos são suficientes?
-- **E2xxx (Áudio)**: O PipeWire está rodando? O sample rate é suportado? O rubato conseguiu criar o resampler? Existe permissão SCHED_FIFO?
+- **E2xxx (Áudio)**: O PipeWire está rodando? O sample rate é suportado? O resampler conseguiu criar o resampler? Existe permissão SCHED_FIFO?
 - **E3xxx (SPSC)**: O canal está cheio porque o DSP está travado? O modelo anterior foi consumido?
 - **E4xxx (CLI)**: O usuário digitou um comando válido? O valor de ganho é um número válido?
 - **E5xxx (Sistema)**: A CPU tem AVX2+FMA? A memória é suficiente?

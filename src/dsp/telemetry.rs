@@ -106,6 +106,8 @@ mod tests {
 
     #[test]
     fn test_histogram_mapping() {
+        // Teste de Organização: Verifica se o sistema guarda os tempos de processamento
+        // nas "gavetas" (bins) corretas, separando o que é ultra-rápido do que é lento.
         let hist = LatencyHistogram::new();
 
         hist.record(10); // bin 0 (sub-32ns)
@@ -120,6 +122,8 @@ mod tests {
 
     #[test]
     fn test_percentiles() {
+        // Teste de Estatística: Verifica se o sistema consegue identificar corretamente
+        // a "mediana" (P50) e os "piores casos" (P95 e P99) em um lote de medições.
         let hist = LatencyHistogram::new();
 
         // 100 amostras

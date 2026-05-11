@@ -5,6 +5,8 @@ use super::*;
 
 #[test]
 fn test_bypass_48k() {
+    // Quando a taxa de entrada é igual à de saída (ex: 48kHz para 48kHz),
+    // o sistema entra em modo "Bypass" (atalho), apenas copiando o som sem processar.
     let mut rs = NamResampler::new(48_000, 48_000, 256).expect("new falhou");
     assert!(rs.is_bypass(), "48k deve ser bypass");
 
@@ -26,6 +28,8 @@ fn test_bypass_48k() {
 
 #[test]
 fn test_downsample_96k_to_48k() {
+    // Teste de Redução (Downsampling): Passando de alta resolução (96kHz) para o padrão (48kHz).
+    // Esperamos que o número de amostras na saída seja aproximadamente metade do número na entrada.
     let chunk = 512usize;
     let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
     assert!(!rs.is_bypass());
@@ -45,6 +49,8 @@ fn test_downsample_96k_to_48k() {
 
 #[test]
 fn test_upsample_44k_to_48k() {
+    // Teste de Aumento (Upsampling): Passando de qualidade de CD (44.1kHz) para o padrão de estúdio (48kHz).
+    // Aqui o número de amostras aumenta ligeiramente (proporção de aproximadamente 10% a mais).
     let chunk = 441usize;
     let mut rs = NamResampler::new(44_100, 48_000, chunk).expect("new falhou");
     assert!(!rs.is_bypass());
@@ -64,6 +70,8 @@ fn test_upsample_44k_to_48k() {
 
 #[test]
 fn test_output_upsample_48k_to_96k() {
+    // Teste de Aumento na Saída: Quando o som interno do modelo (48kHz)
+    // precisa ser enviado para uma placa de som configurada em 96kHz.
     let chunk = 256usize;
     let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
@@ -83,6 +91,9 @@ fn test_output_upsample_48k_to_96k() {
 
 #[test]
 fn test_roundtrip_96k() {
+    // Teste de "Ida e Volta" (Roundtrip): O teste mais rigoroso.
+    // Convertemos de 96kHz para 48kHz (ida) e depois voltamos para 96kHz (volta).
+    // Ao final desse "telefone sem fio", o som deve ser preservado e ter energia (não pode ficar mudo).
     let chunk = 1024usize;
     let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
@@ -142,6 +153,9 @@ fn test_roundtrip_96k() {
 
 #[test]
 fn test_impulse_response_input() {
+    // Teste de "Clique" (Impulso): Enviamos um único estalo digital (um valor 1.0)
+    // seguido de silêncio para ver como o filtro reage. É como bater em um sino
+    // e medir a vibração resultante: o som deve aparecer e sumir naturalmente.
     let chunk = 512usize;
     let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 
@@ -166,6 +180,8 @@ fn test_impulse_response_input() {
 
 #[test]
 fn test_impulse_response_output() {
+    // Mesma lógica do teste anterior (teste do clique/sino), mas aplicado à saída.
+    // Verificamos se o sinal de saída mantém energia e não causa distorções bizarras.
     let chunk = 256usize;
     let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
 

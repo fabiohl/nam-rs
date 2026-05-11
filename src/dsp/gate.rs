@@ -90,14 +90,15 @@ impl DynamicHysteresis {
         self.current_multiplier
     }
 
-    /// Atualiza o estado da FSM baseado em um valor de controle (energia ou diferença).
+    /// Decide se o portão de ruído deve abrir, fechar ou continuar como está,
+    /// baseando-se no volume do áudio atual.
     ///
     /// # Parâmetros
-    /// - `value`: Valor de controle (ex: RMS ou MaxDiff linear).
-    /// - `threshold_open`: Limiar linear para abrir.
-    /// - `threshold_close`: Limiar linear para fechar.
-    /// - `params`: Configurações de tempo (hold/fade).
-    /// - `n_samples`: Número de amostras no bloco atual.
+    /// - `value`: O volume atual detectado.
+    /// - `threshold_open`: O volume necessário para "abrir" o portão.
+    /// - `threshold_close`: O volume abaixo do qual o portão deve começar a "fechar".
+    /// - `params`: Configurações de tempo (quanto tempo esperar e quão lento fechar).
+    /// - `n_samples`: Quantas amostras de som estamos processando agora.
     pub fn update(
         &mut self,
         value: f32,
@@ -106,13 +107,17 @@ impl DynamicHysteresis {
         params: &GateParams,
         n_samples: usize,
     ) {
+        // Guarda o volume que tínhamos no início deste bloco para fazer a suavização depois.
         self.ramp_start_multiplier = self.current_multiplier;
 
         match self.state {
+            // ESTADO: ABERTO (O som está passando livremente)
             GateState::Open => {
                 if value < threshold_close {
+                    // O som ficou baixo. Começamos a contar o tempo de espera (hold).
                     self.hold_counter += n_samples;
                     if self.hold_counter >= params.hold_frames {
+                        // O tempo de espera acabou. Vamos começar a fechar o som suavemente.
                         self.state = GateState::FadingOut;
                         self.fade_counter = params.fade_frames;
                         self.ramp_samples = 0;
@@ -120,12 +125,16 @@ impl DynamicHysteresis {
                         self.ramp_samples = 0;
                     }
                 } else {
+                    // O som continua alto. Zeramos o contador de espera.
                     self.hold_counter = 0;
                     self.ramp_samples = 0;
                 }
             }
+            // ESTADO: FECHANDO SUAVEMENTE (O volume está diminuindo aos poucos)
             GateState::FadingOut => {
                 if value >= threshold_open {
+                    // O som voltou a ficar alto de repente!
+                    // Interrompemos o fechamento e começamos a abrir de novo.
                     self.state = GateState::FadingIn;
                     self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
 
@@ -135,6 +144,7 @@ impl DynamicHysteresis {
                             self.fade_counter as f32 / params.fade_frames as f32;
                         self.ramp_samples = n_samples;
                     } else {
+                        // O som abriu tão rápido que já completou o processo.
                         self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
                         self.state = GateState::Open;
                         self.current_multiplier = 1.0;
@@ -142,18 +152,22 @@ impl DynamicHysteresis {
                         self.hold_counter = 0;
                     }
                 } else if self.fade_counter > n_samples {
+                    // Continua fechando gradualmente.
                     self.fade_counter -= n_samples;
                     self.current_multiplier = self.fade_counter as f32 / params.fade_frames as f32;
                     self.ramp_samples = n_samples;
                 } else {
+                    // Terminou de fechar. Agora o som está em silêncio total.
                     self.ramp_samples = self.fade_counter;
                     self.state = GateState::Closed;
                     self.current_multiplier = 0.0;
                     self.fade_counter = 0;
                 }
             }
+            // ESTADO: FECHADO (Silêncio total, o ruído foi cortado)
             GateState::Closed => {
                 if value >= threshold_open {
+                    // O volume subiu! Vamos começar a abrir o som suavemente.
                     self.state = GateState::FadingIn;
                     self.fade_counter = 0;
                     self.hold_counter = 0;
@@ -164,17 +178,22 @@ impl DynamicHysteresis {
                             self.fade_counter as f32 / params.fade_frames as f32;
                         self.ramp_samples = n_samples;
                     } else {
+                        // Abriu totalmente em um único passo.
                         self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
                         self.state = GateState::Open;
                         self.current_multiplier = 1.0;
                         self.fade_counter = params.fade_frames;
                     }
                 } else {
+                    // Continua em silêncio.
                     self.ramp_samples = 0;
                 }
             }
+            // ESTADO: ABRINDO SUAVEMENTE (O volume está aumentando aos poucos)
             GateState::FadingIn => {
                 if value < threshold_close {
+                    // O som ficou baixo de novo enquanto ainda estávamos abrindo.
+                    // Voltamos a fechar imediatamente.
                     self.state = GateState::FadingOut;
                     self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
 
@@ -184,16 +203,19 @@ impl DynamicHysteresis {
                             self.fade_counter as f32 / params.fade_frames as f32;
                         self.ramp_samples = n_samples;
                     } else {
+                        // Já silenciou totalmente.
                         self.ramp_samples = self.fade_counter;
                         self.state = GateState::Closed;
                         self.current_multiplier = 0.0;
                         self.fade_counter = 0;
                     }
                 } else if self.fade_counter + n_samples < params.fade_frames {
+                    // Continua abrindo gradualmente.
                     self.fade_counter += n_samples;
                     self.current_multiplier = self.fade_counter as f32 / params.fade_frames as f32;
                     self.ramp_samples = n_samples;
                 } else {
+                    // Terminou de abrir. O som agora passa totalmente.
                     self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
                     self.state = GateState::Open;
                     self.current_multiplier = 1.0;
@@ -204,19 +226,20 @@ impl DynamicHysteresis {
         }
     }
 
-    /// Aplica o multiplicador de ganho atual ao buffer.
-    /// Se o estado for FadingIn ou FadingOut, aplica uma rampa linear estritamente
-    /// até o sample onde o fade encerra (Interpolação Sub-Bloco).
-    ///
-    /// # Safety
-    /// Esta função deve ser chamada apenas na thread RT.
+    /// Aplica o volume (ganho) atual ao som.
+    /// Se o portão estiver abrindo ou fechando, ele faz uma mudança suave (rampa).
+    /// Se estiver totalmente aberto ou fechado, ele aplica o volume constante.
     pub fn apply_gain_rt(&self, buffer: &mut [f32], n_samples: usize) {
         if self.ramp_samples == 0 {
+            // O volume está estável (não está no meio de um fade).
             if self.current_multiplier == 0.0 {
+                // Silêncio total.
                 buffer.fill(0.0);
             } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
+                // Aplica um volume constante (ex: 50%).
                 crate::dsp::gain::apply_gain_simd(buffer, self.current_multiplier);
             }
+            // Se o volume for 1.0 (100%), não precisamos fazer nada.
             return;
         }
 
@@ -224,15 +247,17 @@ impl DynamicHysteresis {
         let end_mult = self.current_multiplier;
 
         if self.ramp_samples >= n_samples {
-            // A rampa ocupa o bloco inteiro
+            // A mudança suave de volume vai durar o bloco inteiro.
             if (start_mult - end_mult).abs() < 1e-6 {
                 crate::dsp::gain::apply_gain_simd(buffer, end_mult);
             } else {
+                // Calcula o "degrau" de volume para cada amostra de som.
                 let step = (end_mult - start_mult) / (n_samples as f32);
                 crate::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
             }
         } else {
-            // Interpolação Sub-Bloco! A rampa termina antes do fim do bloco.
+            // Caso especial: a mudança de volume termina antes do fim do bloco.
+            // Dividimos o bloco em duas partes: a rampa e o volume constante final.
             let (ramp_part, const_part) = buffer.split_at_mut(self.ramp_samples);
 
             if (start_mult - end_mult).abs() < 1e-6 {
@@ -242,7 +267,7 @@ impl DynamicHysteresis {
                 crate::dsp::gain::apply_ramp_simd(ramp_part, start_mult, step);
             }
 
-            // Preenche o resto do buffer com a constante final
+            // Preenche o restante do bloco com o volume final estabilizado.
             if end_mult == 0.0 {
                 const_part.fill(0.0);
             } else if (end_mult - 1.0).abs() > 1e-6 {
@@ -251,11 +276,8 @@ impl DynamicHysteresis {
         }
     }
 
-    /// Aplica o multiplicador de ganho atual a um par de buffers estéreo.
-    /// Funde as passagens de memória para melhorar a localidade de cache.
-    ///
-    /// # Safety
-    /// Esta função deve ser chamada apenas na thread RT.
+    /// Faz o mesmo que a função acima, mas para som estéreo (canal esquerdo e direito).
+    /// O processamento é feito em conjunto para ser mais rápido.
     pub fn apply_gain_rt_stereo<M: SimdMath>(
         &self,
         left: &mut [f32],
@@ -263,10 +285,12 @@ impl DynamicHysteresis {
         n_samples: usize,
     ) {
         if self.ramp_samples == 0 {
+            // Volume estável para ambos os canais.
             if self.current_multiplier == 0.0 {
                 left.fill(0.0);
                 right.fill(0.0);
             } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
+                // Aplica o volume nos dois canais de forma eficiente.
                 unsafe { M::apply_gain_stereo(left, right, self.current_multiplier) };
             }
             return;
@@ -276,7 +300,7 @@ impl DynamicHysteresis {
         let end_mult = self.current_multiplier;
 
         if self.ramp_samples >= n_samples {
-            // A rampa ocupa o bloco inteiro
+            // Mudança suave nos dois canais durante todo o bloco.
             if (start_mult - end_mult).abs() < 1e-6 {
                 unsafe { M::apply_gain_stereo(left, right, end_mult) };
             } else {
@@ -284,7 +308,7 @@ impl DynamicHysteresis {
                 unsafe { M::apply_ramp_stereo(left, right, start_mult, step) };
             }
         } else {
-            // Interpolação Sub-Bloco! A rampa termina antes do fim do bloco.
+            // Mudança suave termina antes do fim do bloco para ambos os canais.
             let (ramp_l, const_l) = left.split_at_mut(self.ramp_samples);
             let (ramp_r, const_r) = right.split_at_mut(self.ramp_samples);
 
@@ -295,7 +319,7 @@ impl DynamicHysteresis {
                 unsafe { M::apply_ramp_stereo(ramp_l, ramp_r, start_mult, step) };
             }
 
-            // Preenche o resto do buffer com a constante final
+            // Finaliza o restante do bloco com o volume estável.
             if end_mult == 0.0 {
                 const_l.fill(0.0);
                 const_r.fill(0.0);

@@ -10,7 +10,7 @@
 use core::arch::x86_64::*;
 
 /// Aplica o multiplicador linear de ganho bruto sobre o buffer.
-/// Em targets `x86_64`, direciona a instrução intrínseca `AVX2 _mm256_mul_ps`.
+/// Direciona a instrução intrínseca `AVX2 _mm256_mul_ps`.
 /// Aborta rápido para matrizes sem alteração termodinâmica se `gain_linear` ~= 1.0.
 pub fn apply_gain_simd(buffer: &mut [f32], gain_linear: f32) {
     // Fast path: bypass paramétrico.

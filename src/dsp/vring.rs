@@ -1,12 +1,38 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! Módulo de Buffer Circular Virtual via Mapeamento de Memória Espelhada.
+//! # Buffer Circular Virtual (VRing) via Mapeamento de Memória Espelhada
 //!
-//! Este módulo fornece a estrutura `VirtualRingBuffer<T>`, que utiliza a técnica
-//! de mapear a mesma memória física duas vezes consecutivas no espaço de endereçamento
-//! virtual. Isso elimina a necessidade de operações de rewind (copy_within) em buffers
-//! circulares, permitindo acessos lineares contíguos mesmo através da fronteira do buffer.
+//! O `VirtualRingBuffer` é uma técnica avançada de gerenciamento de memória que resolve
+//! o problema clássico da "quebra de contiguidade" em buffers circulares.
+//!
+//! ## O Problema: A Fronteira do Buffer
+//! Em buffers circulares tradicionais, ao atingir o fim do espaço alocado, o ponteiro volta
+//! para o início. Se um algoritmo DSP (como uma Convolução ou FFT) precisar ler uma janela
+//! de 1024 amostras, mas o ponteiro estiver a apenas 500 amostras do fim, o programador
+//! teria que lidar com a leitura em duas partes ou realizar uma cópia cara (`copy_within`).
+//! Isso introduz lógica complexa (`if/else`) e prejudica a performance no "hot-path".
+//!
+//! ## A Solução: O "Truque" do Espelhamento
+//! Esta estrutura utiliza recursos da Unidade de Gerenciamento de Memória (MMU) do processador
+//! para mapear o **mesmo bloco de memória física** duas vezes consecutivas no espaço de
+//! endereçamento virtual:
+//!
+//! ```text
+//! Espaço Virtual: [ Bloco Físico (Página 0..N) ] [ Bloco Físico (Página 0..N) ]
+//!                 ^                             ^
+//!                 |                             |
+//!           Início do Buffer              Espelhamento do Início
+//! ```
+//!
+//! Graças a este mapeamento, qualquer acesso que "ultrapasse" o fim do primeiro bloco cairá
+//! automaticamente no início do segundo bloco — que é, fisicamente, o próprio início do buffer.
+//!
+//! ## Benefícios para Áudio Real-Time
+//! 1. **Acesso Linear**: Algoritmos podem ler janelas contíguas de qualquer tamanho (até o tamanho total do buffer) sem se preocupar com o "wrap".
+//! 2. **Zero-Copy**: Elimina a necessidade de copiar dados para buffers temporários para linearizá-los.
+//! 3. **Performance SIMD**: Permite que instruções vetoriais (AVX/SSE) processem dados através da fronteira do buffer sem interrupções de lógica.
+//! 4. **Sem Branches**: Remove operações de módulo (`%`) e condições `if`, otimizando a predição de desvios do processador.
 use libc::{
     _SC_PAGESIZE, MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_PRIVATE, MAP_SHARED, PROT_NONE,
     PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
@@ -215,6 +241,9 @@ mod tests {
 
     #[test]
     fn test_vring_mirroring() {
+        // Teste do Espelhamento: Verifica se o "truque" da memória virtual está funcionando.
+        // Qualquer valor escrito na primeira metade deve aparecer instantaneamente na
+        // segunda metade (o espelho), pois ambas as janelas apontam para o mesmo lugar físico.
         // Cria um buffer pequeno (será arredondado para 1 página)
         let mut vring = VirtualRingBuffer::<u32>::new(1);
         let size = vring.size();
@@ -229,8 +258,9 @@ mod tests {
         // Deve ser visível no final da segunda metade
         assert_eq!(vring[2 * size - 1], 0xDEADBEEF);
 
-        // 3. Acesso contíguo cruzando a fronteira (o "pulo do gato")
-        // Vamos escrever 16 valores cruzando o meio
+        // 3. Acesso contíguo cruzando a fronteira (o "Pulo do Gato")
+        // Vamos escrever uma sequência de valores que atravessa exatamente o meio do buffer.
+        // Em um buffer comum isso exigiria dois loops ou um 'if', mas aqui é linear.
         let middle = size;
         let start = middle - 8;
         for i in 0..16 {

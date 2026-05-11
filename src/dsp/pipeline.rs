@@ -199,6 +199,8 @@ fn apply_input_stage(
     let energy_ms =
         unsafe { compute_energy_stereo(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
+    // 1. ATUALIZA O PORTÃO DE SILÊNCIO (NOISE GATE)
+    // Decide se o som é forte o suficiente para passar ou se deve ser silenciado para economizar processamento.
     ctx.silence_hysteresis.update(
         energy_ms,
         ctx.threshold_open_sq,
@@ -207,10 +209,13 @@ fn apply_input_stage(
         n_samples,
     );
 
+    // Se o portão estiver totalmente fechado (silêncio absoluto), paramos por aqui para poupar bateria/CPU.
     if ctx.silence_hysteresis.state() == GateState::Closed {
         return GateState::Closed;
     }
 
+    // 2. DETECÇÃO DE SOM MONO (IGUAL NOS DOIS LADOS)
+    // Calcula a diferença entre o lado esquerdo e direito para ver se o som é o mesmo.
     let max_diff =
         unsafe { compute_max_diff_avx2(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
@@ -222,10 +227,16 @@ fn apply_input_stage(
         n_samples,
     );
 
+    // Se o som for igual nos dois lados (mono), avisamos o sistema para processar apenas um lado.
+    // Isso corta o trabalho pela metade sem perder qualidade!
     *ctx.process_mono = ctx.mono_hysteresis.state() == GateState::Closed
         || ctx.mono_hysteresis.state() == GateState::FadingOut;
 
+    // 3. AJUSTE DE VOLUME DE ENTRADA (GAIN)
+    // Aplica o ganho (volume) inicial definido pelo usuário.
     crate::dsp::gain::apply_gain_simd(&mut samples_l[..n_samples], ctx.input_gain_mult);
+
+    // Só ajustamos o lado direito se o som NÃO for mono (para economizar processamento).
     if !*ctx.process_mono {
         crate::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], ctx.input_gain_mult);
     }
@@ -245,6 +256,8 @@ fn run_inference(
     let is_resamp_bypass = ctx.resampler.is_bypass();
     let n = n_samples.min(MAX_RESAMP_BUF);
 
+    // CAMINHO A: Ajuste de Qualidade desligado (Resampler em Bypass).
+    // O som entra e sai na mesma frequência, sem precisar de tradução matemática.
     if is_resamp_bypass {
         let model_in_l = &samples_l[..n];
         let model_in_r = if *ctx.process_mono {
@@ -255,25 +268,31 @@ fn run_inference(
         let model_out_l = &mut ctx.resamp_out_l[..n];
         let model_out_r = &mut ctx.resamp_out_r[..n];
 
+        // Processa o som através do "Cérebro" (Modelo Neural) do lado esquerdo.
         if let Some(model_l) = ctx.active_model_l {
             model_l.process(model_in_l, model_out_l);
         } else {
-            // True-Bypass: se não há modelo carregado, o sinal passa limpo (dry pass-through)
+            // Caminho Limpo (True-Bypass): se não há modelo carregado, o sinal passa original.
             model_out_l.copy_from_slice(model_in_l);
         }
 
+        // No modo mono, apenas copiamos o resultado do lado esquerdo para o direito.
         if *ctx.process_mono {
-            // No modo mono, o canal direito é uma cópia do esquerdo processado
             model_out_r.copy_from_slice(model_out_l);
         } else if let Some(model_r) = ctx.active_model_r {
+            // Se for estéreo, processamos o lado direito de forma independente.
             model_r.process(model_in_r, model_out_r);
         } else {
-            // True-Bypass para o canal R em modo estéreo
+            // Caminho Limpo para o lado direito.
             model_out_r.copy_from_slice(model_in_r);
         }
 
         n
     } else {
+        // CAMINHO B: Ajuste de Qualidade ligado (Resampler Ativo).
+        // Necessário quando o modelo neural e a placa de som trabalham em frequências diferentes.
+
+        // 1. Traduz o som para a frequência que o "Cérebro" neural entende (geralmente 48kHz).
         let n_48k = ctx.resampler.process_input(
             &samples_l[..n],
             if *ctx.process_mono {
@@ -290,10 +309,10 @@ fn run_inference(
         let model_out_l = &mut ctx.model_out_l[..n_48k];
         let model_out_r = &mut ctx.model_out_r[..n_48k];
 
+        // 2. Aplica a simulação do amplificador (Modelo Neural).
         if let Some(model_l) = ctx.active_model_l {
             model_l.process(model_in_l, model_out_l);
         } else {
-            // True-Bypass: sinal resampleado passa limpo para o output temporário
             model_out_l.copy_from_slice(model_in_l);
         }
 
@@ -302,10 +321,10 @@ fn run_inference(
         } else if let Some(model_r) = ctx.active_model_r {
             model_r.process(model_in_r, model_out_r);
         } else {
-            // True-Bypass R
             model_out_r.copy_from_slice(model_in_r);
         }
 
+        // 3. Traduz o som de volta para a frequência original da sua placa de som.
         ctx.resampler.process_output(
             model_out_l,
             model_out_r,
@@ -326,12 +345,16 @@ fn apply_output_stage(
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
 ) {
+    // 1. AJUSTE DE VOLUME FINAL E PROTEÇÃO CONTRA DISTORÇÃO (CLIPPING)
+    // Aplica o volume de saída e verifica se o som não "estourou" o limite digital.
     let has_clipped = crate::math::simd::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
         &mut resamp_out_l[..n_pw],
         &mut resamp_out_r[..n_pw],
         output_gain_mult
     ));
 
+    // 2. SUAVIZAÇÃO DO PORTÃO DE SILÊNCIO (FADING)
+    // Aplica o fechamento ou abertura suave do som (fade) para evitar estalos ou cliques.
     dispatch_simd!(
         silence_hysteresis,
         apply_gain_rt_stereo,
@@ -340,6 +363,7 @@ fn apply_output_stage(
         n_pw
     );
 
+    // Se o som "estourou" o limite em qualquer momento, acendemos um aviso (flag) no sistema.
     if has_clipped {
         rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
     }
@@ -355,11 +379,13 @@ fn write_bridge(
     bridge_ptr: *mut DspBridge,
 ) {
     let bridge_ref = unsafe { &mut *bridge_ptr };
+    // Identifica qual "gaveta" da ponte (bridge) está vazia para podermos escrever o novo som.
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
     let back_buf = &mut bridge_ref.buffers[back_idx];
 
     let n_bridge = n_pw.min(MAX_BRIDGE_BUF);
     unsafe {
+        // Copia o som processado para a gaveta vazia de forma ultra-rápida.
         core::ptr::copy_nonoverlapping(
             resamp_out_l.as_ptr(),
             back_buf.buf_l.as_mut_ptr(),
@@ -372,12 +398,14 @@ fn write_bridge(
         );
     }
     back_buf.n_samples = n_bridge as u32;
+    // Avisa o sistema de som (PipeWire) que esta gaveta está pronta para ser "ouvida".
     bridge_ref
         .active_read_idx
         .store(back_idx, Ordering::Release);
 
-    // Detecção de Drop: se a geração atual ainda não foi consumida pelo playback,
-    // a escrita atual irá 'pular' o bloco anterior.
+    // DETECÇÃO DE ATRASO (DROP):
+    // Se o sistema ainda não tocou o som anterior e já estamos entregando um novo,
+    // significa que o computador atrasou. Contamos isso como um "pacote perdido".
     let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
     let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
     if current_gen > consumed_gen {
@@ -388,6 +416,7 @@ fn write_bridge(
             });
     }
 
+    // Atualiza o contador de entregas (Geração) para manter o sistema sincronizado.
     bridge_ref
         .generation
         .store(current_gen + 1, Ordering::Release);
@@ -403,20 +432,26 @@ pub fn capture_dsp_pipeline(
     n_samples: usize,
     mut ctx: DspPipelineContext<'_>,
 ) {
+    // ESTÁGIO 1: ENTRADA E LIMPEZA
+    // Prepara o som e verifica se há silêncio para economizar energia.
     let gate_state = apply_input_stage(samples_l, samples_r, n_samples, &mut ctx);
 
+    // GERENCIAMENTO DE ESTADO (SILÊNCIO vs SOM)
     match gate_state {
         GateState::Closed => {
+            // Se o portão está fechado (silêncio total), avisamos o sistema para economizar CPU.
             handle_silence_bypass(ctx.bridge_ptr, ctx.rt_status);
             return;
         }
         GateState::FadingIn | GateState::FadingOut => {
+            // Indica que o som está surgindo ou sumindo de forma suave.
             ctx.rt_status
                 .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
             ctx.rt_status
                 .set_flag(crate::common::spsc::RT_STATUS_IS_FADING);
         }
         GateState::Open => {
+            // O som está passando normalmente com volume total.
             ctx.rt_status
                 .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
             ctx.rt_status
@@ -424,8 +459,12 @@ pub fn capture_dsp_pipeline(
         }
     }
 
+    // ESTÁGIO 2: O "CÉREBRO" (SIMULAÇÃO DO AMP/PEDAL)
+    // Aqui acontece a mágica: a rede neural simula o timbre desejado.
     let n_pw = run_inference(samples_l, samples_r, n_samples, &mut ctx);
 
+    // ESTÁGIO 3: AJUSTE FINAL E PROTEÇÃO
+    // Controla o volume de saída e garante que o som não "estoure" (distorção).
     apply_output_stage(
         ctx.resamp_out_l,
         ctx.resamp_out_r,
@@ -435,6 +474,8 @@ pub fn capture_dsp_pipeline(
         ctx.rt_status,
     );
 
+    // ESTÁGIO 4: ENTREGA FINAL (A PONTE)
+    // Envia o resultado processado para os seus alto-falantes através da ponte (bridge).
     write_bridge(ctx.resamp_out_l, ctx.resamp_out_r, n_pw, ctx.bridge_ptr);
 }
 
@@ -447,15 +488,18 @@ pub(crate) fn playback_dsp_cycle(
     last_bridge_gen: &mut u64,
 ) {
     let bridge_ref = unsafe { &*bridge_ptr };
+    // Verifica se há som novo na "ponte" (bridge). Se não houver nada novo, apenas esperamos.
     let current_gen = bridge_ref.generation.load(Ordering::Acquire);
     if current_gen == *last_bridge_gen {
         return;
     }
     *last_bridge_gen = current_gen;
+    // Marca que este som já foi "consumido" e pode ser retirado da fila.
     bridge_ref
         .consumed_gen
         .store(current_gen, Ordering::Release);
 
+    // Pega o som que está na "gaveta" ativa para ser tocado.
     let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
     let front_buf = &bridge_ref.buffers[read_idx];
 
@@ -464,6 +508,7 @@ pub(crate) fn playback_dsp_cycle(
         return;
     }
 
+    // Pede ao sistema de som (PipeWire) um espaço vazio para colocar o áudio.
     let mut buf = match stream.dequeue_buffer() {
         Some(b) => b,
         None => return,
@@ -474,6 +519,7 @@ pub(crate) fn playback_dsp_cycle(
         return;
     }
 
+    // Separa os canais Esquerdo e Direito para a entrega final.
     let (datas_left, datas_right) = datas.split_at_mut(1);
     let data_l = &mut datas_left[0];
     let data_r = &mut datas_right[0];
@@ -485,6 +531,7 @@ pub(crate) fn playback_dsp_cycle(
         return;
     }
 
+    // Copia o som processado diretamente para as saídas da sua placa de som.
     if let Some(raw_l) = data_l.data() {
         let out_l =
             unsafe { std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out) };
@@ -496,6 +543,7 @@ pub(crate) fn playback_dsp_cycle(
         out_r.copy_from_slice(&front_buf.buf_r[..n_out]);
     }
 
+    // Informa ao hardware exatamente quanto de som foi entregue agora.
     {
         let chunk = data_l.chunk_mut();
         *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
@@ -521,12 +569,15 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
 ) -> anyhow::Result<&'a pw::spa::pod::Pod> {
     unsafe {
         let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
+        // Prepara um "construtor" para criar o contrato de formato de áudio.
         pw::spa::sys::spa_pod_builder_init(
             &mut builder,
             format_buf.as_mut_ptr().cast(),
             format_buf.len() as u32,
         );
 
+        // Constrói o documento binário (SPA Pod) que descreve o áudio (Ex: 48kHz, Estéreo).
+        // Esse documento é o que o PipeWire usa para entender como enviar som para nós.
         let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
             &mut builder,
             pw::spa::param::ParamType::EnumFormat.as_raw(),
@@ -534,11 +585,13 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
         );
 
         if pod_ptr.is_null() {
+            // Se falhar, o sistema não saberá como negociar o som com a sua placa.
             return Err(anyhow::anyhow!(
-                "Falha ao construir SPA Pod de formato de áudio"
+                "Falha ao construir o documento de negociação de áudio (SPA Pod)"
             ));
         }
 
+        // Retorna o contrato pronto para ser assinado e usado pelo sistema.
         Ok(&*(pod_ptr as *const pw::spa::pod::Pod))
     }
 }
