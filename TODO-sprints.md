@@ -277,7 +277,7 @@
 
 ### Épico 1.2 — Implementação do Plugin Skeleton
 
-- [ ] **Tarefa 1.2.1** — Criar `src/clap/descriptor.rs`
+- [x] **Tarefa 1.2.1** — Criar `src/clap/descriptor.rs`
 
   **Contexto:** O descriptor é a identidade do plugin. O REAPER lê estas strings durante o scan.
 
