@@ -7,7 +7,7 @@ set -euo pipefail
 echo "🎨 Formatando código..."
 cargo fmt --all
 
-echo "🚀 Cehck de features de compilação..."
+echo "🚀 Check de features de compilação..."
 cargo check --features standalone
 cargo check --no-default-features
 cargo check --no-default-features --features clap-plugin

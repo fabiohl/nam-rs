@@ -316,7 +316,7 @@
 
   **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
 
-- [ ] **Tarefa 1.2.2** — Criar structs `NamClapPlugin`, `NamClapShared`, `NamClapMainThread` em `src/clap/plugin.rs`
+- [x] **Tarefa 1.2.2** — Criar structs `NamClapPlugin`, `NamClapShared`, `NamClapMainThread` em `src/clap/plugin.rs`
 
   **Contexto:** A trait `Plugin` define os três componentes do ciclo de vida. Por ora, `Shared` e `MainThread` são structs unitárias — a lógica real vem na Sprint 2.
 

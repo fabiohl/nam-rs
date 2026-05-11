@@ -9,5 +9,7 @@
 #![cfg(feature = "clap-plugin")]
 
 pub mod descriptor;
+pub mod plugin;
+pub mod processor;
 
-// TODO: Implementar plugin, processor e main_thread conforme Sprint 1.
+// TODO: Implementar main_thread conforme Sprint 1.
