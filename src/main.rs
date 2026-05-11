@@ -3,7 +3,10 @@
 
 #![warn(missing_docs)]
 
-//! Ponto de entrada principal do NAM-rs.
+//! Ponto de entrada principal do binário CLI/Standalone do NAM-rs.
+//!
+//! **NOTA:** Este arquivo é utilizado apenas para o modo executável (terminal/PipeWire).
+//! O plugin CLAP ignora este arquivo e utiliza diretamente a biblioteca definida em `lib.rs`.
 //!
 //! Pense neste arquivo como a "recepção" do nosso estúdio virtual. Ele é responsável por:
 //! 1. Ler o que o usuário digita no terminal (qual amplificador carregar e os volumes de entrada/saída).
