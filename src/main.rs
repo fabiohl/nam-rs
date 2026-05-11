@@ -28,18 +28,12 @@ fn main() -> anyhow::Result<()> {
     // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let (model_path, initial_in_gain, initial_out_gain, buffer_size) = match cli::parse_args() {
-        Ok(args) => args,
-        Err(e) => {
-            eprintln!("\n{} {}", "❌ Erro nos argumentos:".red().bold(), e);
-            std::process::exit(1);
-        }
-    };
+    let (model_path, initial_in_gain, initial_out_gain, buffer_size) = cli::parse_args();
 
     let sys = SystemSnapshot::capture();
     log::info!(
         "🎸 {}",
-        format!("NAM-rs v{} — Neural Amp Modeler", sys.version)
+        format!("NAM-rs Standalone v{} — Neural Amp Modeler", sys.version)
             .bright_green()
             .bold()
     );
