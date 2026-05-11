@@ -39,7 +39,7 @@ pub fn print_help() {
 }
 
 /// Exibe uma mensagem de erro estilizada e encerra o processo com código 1.
-fn exit_with_error(msg: impl std::fmt::Display) -> ! {
+pub fn exit_with_error(msg: impl std::fmt::Display) -> ! {
     eprintln!("{} {}", "❌ Erro no argumento:".red().bold(), msg);
     eprintln!("{}", "👉 Use '-h' para ver a tela de ajuda".yellow());
     std::process::exit(1);

@@ -85,7 +85,7 @@ fn main() -> anyhow::Result<()> {
                     sample_rate,
                 });
             }
-            Err(e) => log::error!("Falha na carga inicial: {}", e),
+            Err(e) => cli::exit_with_error(format!("Falha na carga inicial do modelo: {}", e)),
         }
     }
 
