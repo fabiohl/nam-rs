@@ -82,30 +82,37 @@ pub fn encode_namb(
     Ok(buffer)
 }
 
+/// Reorganiza os "pesos" para que o processador consiga
+/// lê-los de forma mais eficiente durante a execução do áudio.
 fn transpose_weights(data: &NamModelData, layout: WeightsLayout) -> Result<Vec<f32>> {
     match layout {
+        // Para LSTM, usamos uma organização onde as "portas" lógicas ficam agrupadas.
         WeightsLayout::GateMajorLstm => transpose_lstm_gate_major(data),
+        // Para WaveNet, intercalamos os dados para facilitar cálculos em lote (SIMD).
         WeightsLayout::Interleaved4WaveNet => transpose_wavenet_interleaved4(data),
+        // Caso padrão: apenas copia os pesos originais sem alterações.
         _ => Ok(data.weights.clone()),
     }
 }
 
+/// Especializado em LSTM: reorganiza os dados para otimizar operações de matriz.
 fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
     if data.architecture != "LSTM" {
         anyhow::bail!("Layout GateMajorLstm requer arquitetura LSTM");
     }
 
+    // Tamanho da memória interna (hidden) e quantidade de camadas do modelo.
     let hidden_size = data.config.hidden_size.context("LSTM sem hidden_size")?;
     let num_layers = data.config.num_layers.unwrap_or(1);
 
-    let mut cursor = 0;
+    let mut cursor = 0; // "Marcador de página" para sabermos onde estamos nos dados originais.
     let mut out_weights = Vec::with_capacity(data.weights.len());
 
     let mut current_input_size = 1;
     for l in 0..num_layers {
         let ih = current_input_size + hidden_size;
         let h = hidden_size;
-        let layer_size = 4 * h * ih;
+        let layer_size = 4 * h * ih; // Cada camada LSTM possui 4 "portas" principais.
 
         if cursor + layer_size > data.weights.len() {
             anyhow::bail!("Pesos insuficientes para LSTM na camada {l}");
@@ -114,10 +121,14 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
         let raw = &data.weights[cursor..cursor + layer_size];
         let mut transposed = vec![0.0f32; layer_size];
 
+        // Loop triplo: reorganizamos as linhas e colunas dos dados (transposição).
+        // Isso permite que o programa faça cálculos matemáticos muito mais rápidos.
         for k in 0..4 {
+            // Percorre as 4 portas do LSTM
             for i in 0..h {
                 for j in 0..ih {
                     let val = raw[k * h * ih + i * ih + j];
+                    // Trocamos a ordem de leitura para o formato que o "motor" espera.
                     transposed[k * h * ih + j * h + i] = val;
                 }
             }
@@ -125,7 +136,7 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
         out_weights.extend(transposed);
         cursor += layer_size;
 
-        // Bias [4 * H]
+        // Processamento dos Bias (valores de ajuste/calibração de cada neurônio).
         let bias_size = 4 * h;
         if cursor + bias_size > data.weights.len() {
             anyhow::bail!("Bias insuficiente para LSTM na camada {l}");
@@ -136,7 +147,8 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
         current_input_size = hidden_size;
     }
 
-    // Remaining weights (head weights, head bias, initial states if any)
+    // Caso existam pesos extras no final do arquivo (como a camada de saída),
+    // nós os adicionamos sem alteração.
     if cursor < data.weights.len() {
         out_weights.extend_from_slice(&data.weights[cursor..]);
     }
@@ -144,6 +156,8 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
     Ok(out_weights)
 }
 
+/// Especializado em WaveNet: reorganiza os dados para que o processador possa
+/// processar 4 canais simultaneamente (técnica chamada SIMD Interleaved).
 fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
     if data.architecture != "WaveNet" {
         anyhow::bail!("Layout Interleaved4WaveNet requer arquitetura WaveNet");
@@ -153,6 +167,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
     let mut out_weights = Vec::with_capacity(data.weights.len());
 
     for (li, layer_cfg) in data.config.layers.iter().enumerate() {
+        // Extraímos as configurações de tamanho do "cérebro" para cada camada.
         let in_ch = layer_cfg.input_size.unwrap_or(1);
         let ch = layer_cfg.channels.unwrap_or(16);
         let cond_ch = layer_cfg.condition_size.unwrap_or(1);
@@ -165,7 +180,8 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         let gated = layer_cfg.gated.unwrap_or(false);
         let conv_out_ch = if gated { 2 * ch } else { ch };
 
-        // 1. Rechannel: [CH][IN_CH] -> [IN_CH][CH] (NO BIAS em NAM)
+        // 1. Rechannel: Ajusta a entrada para o número de canais internos.
+        // Transpõe [Canais de Saída][Canais de Entrada] -> [Entrada][Saída].
         let size = ch * in_ch;
         ensure_capacity(
             &data.weights,
@@ -181,9 +197,11 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         }
         cursor += size;
 
-        // 2. Conv Layers
+        // 2. Camadas de Convolução (os "filtros" que moldam o som).
         for (di, _) in dilations.iter().enumerate() {
-            // Conv1D: [CONV_OUT][CH][K] -> Interleaved [CONV_OUT/4][K][CH][4]
+            // Conv1D: Reorganizamos para o formato "Interleaved 4".
+            // Isso agrupa os dados em blocos de 4, permitindo que processadores modernos
+            // façam 4 cálculos no tempo de 1.
             let size = conv_out_ch * ch * k;
             ensure_capacity(
                 &data.weights,
@@ -203,7 +221,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
                     }
                 }
             }
-            // Tail channels if not multiple of 4
+            // Caso o número de canais não seja múltiplo de 4, processamos o resto normalmente.
             let tail_start = num_blocks * 4;
             for out_c in tail_start..conv_out_ch {
                 for ki in 0..k {
@@ -214,7 +232,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             }
             cursor += size;
 
-            // Conv1D Bias [CONV_OUT]
+            // Bias: Valores de ajuste fino para os filtros de convolução.
             ensure_capacity(
                 &data.weights,
                 cursor,
@@ -224,7 +242,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             out_weights.extend_from_slice(&data.weights[cursor..cursor + conv_out_ch]);
             cursor += conv_out_ch;
 
-            // Input Mixin: [CH][COND_CH] -> [COND_CH][CH]
+            // Input Mixin: Combina o sinal de áudio com controles externos (se houver).
             let size = ch * cond_ch;
             ensure_capacity(
                 &data.weights,
@@ -240,7 +258,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             }
             cursor += size;
 
-            // 1x1: [CH][CH] -> [CH][CH] (transposed)
+            // 1x1: Camada de ajuste interno que mistura os canais processados.
             let size = ch * ch;
             ensure_capacity(
                 &data.weights,
@@ -256,7 +274,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             }
             cursor += size;
 
-            // 1x1 Bias [CH]
+            // 1x1 Bias: Ajuste fino para a mistura de canais.
             ensure_capacity(
                 &data.weights,
                 cursor,
@@ -267,7 +285,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             cursor += ch;
         }
 
-        // 3. Head Rechannel: [HEAD_CH][CH] -> [CH][HEAD_CH]
+        // 3. Head Rechannel: Prepara o sinal final para sair da camada WaveNet.
         let size = head_ch * ch;
         ensure_capacity(
             &data.weights,
@@ -283,7 +301,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         }
         cursor += size;
 
-        // Head Rechannel Bias [HEAD_CH]
+        // Head Rechannel Bias: Ajuste final de saída.
         if layer_cfg.head_bias.unwrap_or(false) {
             ensure_capacity(
                 &data.weights,
@@ -296,7 +314,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         }
     }
 
-    // Remaining weights (e.g. head_scale for WaveNet)
+    // Caso existam pesos extras (como escala final), adicionamos ao final.
     if cursor < data.weights.len() {
         out_weights.extend_from_slice(&data.weights[cursor..]);
     }
@@ -304,6 +322,8 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
     Ok(out_weights)
 }
 
+/// Função de segurança: garante que não tentaremos ler dados além do que existe no arquivo.
+/// Se o modelo estiver corrompido ou incompleto, o programa avisa em vez de travar.
 fn ensure_capacity(weights: &[f32], cursor: usize, needed: usize, label: String) -> Result<()> {
     if cursor + needed > weights.len() {
         anyhow::bail!(

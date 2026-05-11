@@ -204,6 +204,8 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     Ok(model_data)
 }
 
+/// Cria um conjunto de dados "de reserva" (fallback).
+/// Útil para arquivos .namb antigos que não descrevem sua própria estrutura.
 fn make_fallback_model_data() -> NamModelData {
     NamModelData {
         version: None,
@@ -216,21 +218,26 @@ fn make_fallback_model_data() -> NamModelData {
     }
 }
 
+/// Define o "gabarito" padrão para o algoritmo WaveNet.
+/// É como definir o número de neurônios e conexões de um cérebro digital padrão.
 fn make_standard_wavenet_config() -> NamConfig {
+    // Dilatações: define o "alcance" da memória do algoritmo (essencial para capturar o timbre).
     let std_dilations = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
+    // Primeira camada do processamento.
     let l0 = NamLayerConfig {
         input_size: Some(1),
         condition_size: Some(1),
         head_size: Some(8),
-        channels: Some(16),
-        kernel_size: Some(3),
+        channels: Some(16),   // "Largura" do processamento interno.
+        kernel_size: Some(3), // Quantidade de amostras vizinhas analisadas de cada vez.
         dilations: Some(std_dilations.clone()),
         activation: Some("Tanh".to_string()),
         gated: Some(false),
         head_bias: Some(false),
     };
 
+    // Segunda camada (geralmente idêntica à primeira em modelos Standard).
     let l1 = NamLayerConfig {
         input_size: Some(1),
         condition_size: Some(1),
@@ -246,7 +253,7 @@ fn make_standard_wavenet_config() -> NamConfig {
     NamConfig {
         layers: vec![l0, l1],
         head: Some(None),
-        head_scale: Some(0.02),
+        head_scale: Some(0.02), // Ajuste final de volume para garantir consistência.
         num_layers: None,
         hidden_size: None,
     }
@@ -256,12 +263,15 @@ fn make_standard_wavenet_config() -> NamConfig {
 mod tests {
     use super::*;
 
+    /// Constrói um arquivo .namb v1 (formato binário) em memória para fins de teste.
+    /// É como "fabricar" um arquivo de mentira para ver se o programa consegue ler.
     fn build_valid_namb_v1(w_floats: &[f32]) -> Vec<u8> {
         let header_size = std::mem::size_of::<NambHeader>();
         let mut data = vec![0u8; header_size + w_floats.len() * 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
-        header.magic = 0x4E414D42;
+        // Preenchemos o "cabeçalho" (a etiqueta de identificação do arquivo).
+        header.magic = 0x4E414D42; // "NAMB" em código hexadecimal.
         header.version = 1;
         header.weights_offset = header_size as u32;
         header.sample_rate = 48000.0;
@@ -269,21 +279,25 @@ mod tests {
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
 
+        // Converte os números decimais (pesos) em bytes brutos.
         for (i, &f) in w_floats.iter().enumerate() {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
         }
 
+        // Gera um "lacre de segurança" (CRC32) para garantir que os dados não foram alterados.
         header.crc32 = crc32_ieee(&data[header_size..]);
         data
     }
 
     #[test]
     fn test_parse_namb_v1() -> Result<()> {
+        // Testamos se o carregador consegue ler corretamente um arquivo v1 básico.
         let w = [0.1f32, -0.5f32, 1.0f32];
         let data = build_valid_namb_v1(&w);
         let parsed = parse_namb(&data)?;
 
+        // Verificamos se os valores lidos são idênticos aos que gravamos.
         assert_eq!(parsed.weights, w);
         assert_eq!(parsed.weights_layout, WeightsLayout::Original);
         assert_eq!(parsed.sample_rate, Some(48000.0));
@@ -292,6 +306,7 @@ mod tests {
 
     #[test]
     fn test_parse_namb_v2_gate_major() -> Result<()> {
+        // Testamos se o carregador reconhece o novo formato v2 (com layout otimizado).
         let header_size = std::mem::size_of::<NambHeader>();
         let w = [0.0f32; 4];
         let mut data = vec![0u8; header_size + w.len() * 4];
@@ -299,10 +314,11 @@ mod tests {
 
         header.magic = 0x4E414D42;
         header.version = 2;
-        header.layout_type = 1; // GateMajorLstm
+        header.layout_type = 1; // 1 indica "GateMajorLstm" (layout otimizado para LSTM)
         header.weights_offset = header_size as u32;
 
         let parsed = parse_namb(&data)?;
+        // Garantimos que o programa entendeu que este arquivo precisa de uma reorganização especial.
         assert_eq!(parsed.weights_layout, WeightsLayout::GateMajorLstm);
         Ok(())
     }

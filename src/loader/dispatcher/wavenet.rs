@@ -410,6 +410,7 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
         do_bias,
     })
 }
+/// Lê e inicializa uma camada de convolução (o "filtro" de som principal do WaveNet).
 fn read_conv1d_weights_dyn(
     cursor: &mut WeightCursor<'_>,
     in_size: usize,
@@ -420,11 +421,16 @@ fn read_conv1d_weights_dyn(
 ) -> anyhow::Result<Conv1dDyn> {
     let total = out_size * in_size * k_size;
     let raw = cursor.read_slice(total)?;
+
+    // Identifica se o processador suporta o formato ultra-rápido BF16.
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
+    // Criamos um espaço na memória alinhado para alta performance.
     let mut weights = AlignedVec::new(total, 0u16);
 
+    // Se os pesos já estiverem reorganizados no arquivo, apenas os convertemos.
+    // Caso contrário, fazemos a reorganização (transposição) agora.
     if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
@@ -433,6 +439,7 @@ fn read_conv1d_weights_dyn(
         transpose_conv1d_interleaved_4wide(raw, &mut weights, in_size, out_size, k_size, is_bf16);
     }
 
+    // Lê os valores de Bias (ajuste fino) se existirem.
     let bias = if do_bias {
         AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
     } else {
@@ -447,6 +454,8 @@ fn read_conv1d_weights_dyn(
         in_ch: in_size,
         out_ch: out_size,
         kernel: k_size,
+        // Estratégia de "Antecipação" (Prefetch): para memórias distantes (dilatações longas),
+        // pedimos para o processador buscar os dados antes mesmo de precisarmos deles.
         prefetch_fn: if dilation >= 128 {
             crate::math::simd::prefetch_strategy_2stage
         } else {
@@ -455,6 +464,7 @@ fn read_conv1d_weights_dyn(
     })
 }
 
+/// Lê e inicializa uma camada densa (responsável por misturar os sinais processados).
 fn read_dense_layer_dyn(
     cursor: &mut WeightCursor<'_>,
     in_size: usize,
@@ -467,6 +477,7 @@ fn read_dense_layer_dyn(
     let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
         == crate::math::simd::InstructionSet::Avx512VnniBf16;
 
+    // Similar à camada de convolução, garantimos que os pesos estejam no layout ideal.
     if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
@@ -524,7 +535,7 @@ pub(crate) fn build_wavenet_array_dyn(
     // de saída para calcular as funções Tanh e Sigmoid simultaneamente.
     let conv_out_ch = if gated { 2 * ch } else { ch };
 
-    // [TA5.4] Validação: O buffer temporário de Mixin em wavenet_common.rs
+    // Validação: O buffer temporário de Mixin em wavenet_common.rs
     // possui tamanho fixo de 4096 elementos.
     if conv_out_ch * WAVENET_MAX_NUM_FRAMES > 4096 {
         bail!(
@@ -589,18 +600,22 @@ pub(crate) fn build_wavenet_array_dyn(
 // WaveNet — Auxiliares de Quantização e Transposição
 // =============================================================================
 
-/// Converte um peso f32 para o formato de armazenamento quantizado (BF16 ou F16).
+/// Converte um peso de alta precisão (f32) para um formato mais compacto (BF16 ou F16).
+/// Isso economiza memória e acelera drasticamente o processamento no computador.
 #[inline(always)]
 fn quantize_weight(raw: f32, is_bf16: bool) -> u16 {
     if is_bf16 {
+        // BF16 é o formato ideal para processadores modernos que suportam aceleração de IA.
         f32_to_bf16(raw)
     } else {
+        // F16 é um formato padrão de meia-precisão muito eficiente.
         half::f16::from_f32(raw).to_bits()
     }
 }
 
-/// Aplica a transposição de layout Interleaved 4-Wide para convoluções.
-/// [T19] Otimiza o carregamento de 4 pesos simultâneos via SIMD.
+/// Reorganiza os pesos das camadas de convolução no formato "Interleaved 4-Wide".
+/// Esta técnica agrupa os dados de 4 em 4, permitindo que o processador execute
+/// cálculos em "lote" (SIMD), processando 4 canais de áudio de uma só vez.
 fn transpose_conv1d_interleaved_4wide(
     raw: &[f32],
     weights: &mut [u16],
@@ -613,10 +628,12 @@ fn transpose_conv1d_interleaved_4wide(
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
+                // Preenchemos as 4 "faixas" (lanes) do processador simultaneamente.
                 for lane in 0..4 {
                     let out_c = b * 4 + lane;
                     let raw_idx = (out_c * in_ch + in_c) * kernel + k;
                     let val = quantize_weight(raw[raw_idx], is_bf16);
+                    // Calculamos o endereço exato onde os dados devem morar para leitura rápida.
                     let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
                     weights[target_idx] = val;
                 }
@@ -624,7 +641,7 @@ fn transpose_conv1d_interleaved_4wide(
         }
     }
 
-    // Canais de cauda (Remainder)
+    // Caso o número de canais não seja múltiplo de 4, cuidamos do "resto" aqui.
     let tail_start_ch = num_blocks * 4;
     for out_c in tail_start_ch..out_ch {
         for in_c in 0..in_ch {
@@ -638,7 +655,8 @@ fn transpose_conv1d_interleaved_4wide(
     }
 }
 
-/// Aplica a transposição de layout [OUT][IN] -> [IN][OUT] para camadas densas.
+/// Reorganiza os pesos das camadas densas, trocando linhas por colunas (transposição).
+/// Isso alinha os dados com a forma como o processador lê a memória, evitando lentidão.
 fn transpose_dense_layer(
     raw: &[f32],
     weights: &mut [u16],
@@ -650,6 +668,7 @@ fn transpose_dense_layer(
         for in_c in 0..in_size {
             let raw_val = raw[out_c * in_size + in_c];
             let val = quantize_weight(raw_val, is_bf16);
+            // Invertemos a ordem de armazenamento: [Entrada][Saída] em vez de [Saída][Entrada].
             weights[in_c * out_size + out_c] = val;
         }
     }
