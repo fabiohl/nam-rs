@@ -9,8 +9,8 @@ pub mod aligned;
 pub mod avx2;
 pub mod avx512;
 pub mod dispatch;
-pub mod fallback;
 pub mod ops;
+pub mod scalar_ref;
 pub mod traits;
 pub mod utility;
 
@@ -18,8 +18,8 @@ pub use aligned::AlignedVec;
 pub use avx2::*;
 pub use avx512::*;
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
-pub use fallback::*;
 pub use ops::*;
+pub use scalar_ref::*;
 pub use traits::SimdMath;
 
 /// Macro para despacho dinâmico SIMD baseado na configuração global.
@@ -45,7 +45,6 @@ macro_rules! dispatch_simd {
                 InstructionSet::Avx512 => $target.$m512($($arg),*),
                 InstructionSet::Avx2Vnni => $target.$m256vnni($($arg),*),
                 InstructionSet::Avx2 => $target.$m256($($arg),*),
-                InstructionSet::Fallback => $target.$m256($($arg),*), // Fallback usa a versão básica
             }
         }
     };
@@ -69,9 +68,6 @@ macro_rules! dispatch_simd {
                 }
                 InstructionSet::Avx2 => {
                     $target.$method::<$crate::math::simd::avx2::Avx2Math>($($arg),*)
-                }
-                InstructionSet::Fallback => {
-                    $target.$method::<$crate::math::simd::fallback::FallbackMath>($($arg),*)
                 }
             }
         }

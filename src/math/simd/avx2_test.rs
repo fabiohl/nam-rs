@@ -54,7 +54,7 @@ mod tests {
         if !is_x86_feature_detected!("avx2") {
             return;
         }
-        use crate::math::simd::fallback::FallbackMath;
+        use crate::math::simd::scalar_ref::ScalarRefMath;
 
         let mut left_simd = [0.1, 0.5, 0.9, 1.2, -0.1, -0.5, -0.9, -1.2];
         let mut right_simd = [0.0, 0.2, 0.4, 0.6, -0.0, -0.2, -0.4, -0.6];
@@ -68,7 +68,7 @@ mod tests {
                 &mut right_simd,
                 gain,
             );
-            let clipped_ref = FallbackMath::apply_gain_and_detect_clipping_stereo(
+            let clipped_ref = ScalarRefMath::apply_gain_and_detect_clipping_stereo(
                 &mut left_ref,
                 &mut right_ref,
                 gain,
@@ -87,7 +87,7 @@ mod tests {
         if !is_x86_feature_detected!("avx2") {
             return;
         }
-        use crate::math::simd::fallback::FallbackMath;
+        use crate::math::simd::scalar_ref::ScalarRefMath;
 
         let left = [
             0.1, 0.5, 0.9, 1.2, -0.1, -0.5, -0.9, -1.2, 0.5, 0.6, 0.7, 0.8,
@@ -98,7 +98,7 @@ mod tests {
 
         unsafe {
             let res_simd = Avx2Math::compute_energy_stereo(&left, &right);
-            let res_ref = FallbackMath::compute_energy_stereo(&left, &right);
+            let res_ref = ScalarRefMath::compute_energy_stereo(&left, &right);
 
             assert!((res_simd - res_ref).abs() < 1e-6);
         }
@@ -111,7 +111,7 @@ mod tests {
         if !is_x86_feature_detected!("avx2") {
             return;
         }
-        use crate::math::simd::fallback::FallbackMath;
+        use crate::math::simd::scalar_ref::ScalarRefMath;
 
         const HEAD_SIZE: usize = 16;
         const NUM_FRAMES: usize = 4;
@@ -123,7 +123,7 @@ mod tests {
 
         unsafe {
             Avx2Math::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_simd, scale);
-            FallbackMath::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_ref, scale);
+            ScalarRefMath::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_ref, scale);
         }
 
         for i in 0..NUM_FRAMES {

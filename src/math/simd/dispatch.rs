@@ -5,15 +5,16 @@
 
 use super::avx2::Avx2Math;
 use super::avx512::Avx512Math;
-use super::fallback::FallbackMath;
 use super::traits::SimdMath;
 use std::sync::LazyLock;
 
 /// Enumera os conjuntos de instruções suportados.
+///
+/// Nota: Não existe variante `Fallback` escalar neste enum. O projeto tem como alvo
+/// mandatório a microarquitetura x86-64-v3 (AVX2+FMA). Se AVX2 não for detectado,
+/// `detect_best_simd()` entra em pânico no boot (fail-fast).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstructionSet {
-    /// Kernel escalar de referência.
-    Fallback,
     /// AVX2 + FMA (x86-64-v3).
     Avx2,
     /// AVX2 + VNNI (Alder Lake+, Zen 4+).
@@ -171,18 +172,13 @@ fn detect_best_simd() -> SimdMathConfig {
         }
     }
 
-    SimdMathConfig {
-        instruction_set: InstructionSet::Fallback,
-        name: "Fallback (Scalar)",
-        is_avx512: false,
-        fused_add_gemv: FallbackMath::fused_add_gemv,
-        fused_add_gemm_batch: FallbackMath::fused_add_gemm_batch,
-        fused_gemm_residual_batch: FallbackMath::fused_gemm_residual_batch,
-        gemv_overwrite: FallbackMath::gemv_overwrite,
-        accumulate_head: FallbackMath::accumulate_head,
-        horizontal_sum: |ptr, len| unsafe { super::fallback::horizontal_sum_fallback(ptr, len) },
-        apply_gain_and_detect_clipping_stereo: FallbackMath::apply_gain_and_detect_clipping_stereo,
-        apply_gain: FallbackMath::apply_gain,
-        compute_energy_stereo: FallbackMath::compute_energy_stereo,
-    }
+    // Nenhum conjunto de instruções compatível foi detectado.
+    // O projeto exige x86-64-v3 (AVX2+FMA) como mínimo absoluto.
+    // Entrar em pânico aqui é intencional: é melhor falhar rápido no boot
+    // do que produzir áudio corrompido ou tráfego undefined-behavior no DSP.
+    panic!(
+        "[NAM-rs] CPU incompatível: AVX2 não detectado.\n\
+         Este binário requer x86-64-v3 (AVX2 + FMA).\n\
+         Execute em um processador lançado após ~2013 (Intel Haswell / AMD Ryzen)."
+    );
 }

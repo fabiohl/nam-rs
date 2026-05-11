@@ -32,7 +32,7 @@ mod tests {
             return;
         }
         use crate::math::simd::avx512::gemv_4gate_avx512;
-        use crate::math::simd::fallback::gemv_4gate_fallback;
+        use crate::math::simd::scalar_ref::gemv_4gate_fallback;
 
         let in_len = 32;
         let out_len = 16;
@@ -69,7 +69,7 @@ mod tests {
             return;
         }
         use crate::math::simd::avx512::gemv_4gate_bf16_avx512;
-        use crate::math::simd::fallback::gemv_4gate_bf16_fallback;
+        use crate::math::simd::scalar_ref::gemv_4gate_bf16_fallback;
 
         let in_len = 32;
         let out_len = 16;
@@ -105,14 +105,14 @@ mod tests {
         if !is_x86_feature_detected!("avx512f") {
             return;
         }
-        use crate::math::simd::fallback::FallbackMath;
+        use crate::math::simd::scalar_ref::ScalarRefMath;
 
         let left: Vec<f32> = (0..64).map(|i| i as f32 * 0.01).collect();
         let right: Vec<f32> = (0..64).map(|i| (64 - i) as f32 * 0.01).collect();
 
         unsafe {
             let res_simd = Avx512Math::compute_energy_stereo(&left, &right);
-            let res_ref = FallbackMath::compute_energy_stereo(&left, &right);
+            let res_ref = ScalarRefMath::compute_energy_stereo(&left, &right);
 
             assert!((res_simd - res_ref).abs() < 1e-6);
         }
@@ -125,7 +125,7 @@ mod tests {
         if !is_x86_feature_detected!("avx512f") {
             return;
         }
-        use crate::math::simd::fallback::FallbackMath;
+        use crate::math::simd::scalar_ref::ScalarRefMath;
 
         const HEAD_SIZE: usize = 16;
         const NUM_FRAMES: usize = 4;
@@ -137,7 +137,7 @@ mod tests {
 
         unsafe {
             Avx512Math::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_simd, scale);
-            FallbackMath::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_ref, scale);
+            ScalarRefMath::batch_wavenet_head_sum::<HEAD_SIZE>(&head1, &head2, &mut out_ref, scale);
         }
 
         for i in 0..NUM_FRAMES {

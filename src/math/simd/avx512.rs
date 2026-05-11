@@ -15,7 +15,7 @@
 //! O AVX-512 permite que o processador faça cálculos com 16 números de ponto flutuante (f32) ao mesmo tempo,
 //! como se tivesse 16 calculadoras trabalhando em paralelo em uma única "esteira".
 
-use super::fallback::*; // Funções de reserva caso o hardware não suporte algo específico.
+use super::scalar_ref::*; // Implementações escalares de referência usadas como oráculo de paridade.
 use super::traits::SimdMath; // A "receita" que todos os motores matemáticos devem seguir.
 use core::arch::x86_64::*; // Acesso direto às instruções de hardware do processador (intrinsics).
 

@@ -12,7 +12,7 @@
 //! Usamos instruções especiais do processador (SIMD) para fazer cálculos
 //! matemáticos massivos em paralelo, processando vários sons de uma vez só.
 
-use super::fallback::*;
+use super::scalar_ref::*; // Implementações escalares de referência usadas como oráculo de paridade.
 use super::traits::SimdMath;
 use core::arch::x86_64::*;
 
