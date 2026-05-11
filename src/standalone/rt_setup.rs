@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
+#![cfg(target_arch = "x86_64")]
 
 //! Utilitários para configuração e monitoramento de tempo real e hardware.
 //!
@@ -30,55 +31,66 @@ static BOOT_TIME: OnceLock<Instant> = OnceLock::new();
 #[inline(always)]
 pub fn rdtsc_nanos() -> u64 {
     let freq_x1000 = TSC_FREQ_GHZ_X1000.load(Ordering::Relaxed);
-    if freq_x1000 == 0 {
-        return BOOT_TIME.get_or_init(Instant::now).elapsed().as_nanos() as u64;
-    }
 
-    #[cfg(target_arch = "x86_64")]
-    {
+    // SAFETY: Divisão por zero no hot-path é fatal. Se a calibração falhou
+    // no boot, usamos o relógio do sistema como rede de segurança.
+    #[allow(clippy::manual_checked_ops)]
+    if freq_x1000 != 0 {
         let cycles = unsafe { core::arch::x86_64::_rdtsc() };
         (cycles * 1000) / freq_x1000
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    {
+    } else {
         BOOT_TIME.get_or_init(Instant::now).elapsed().as_nanos() as u64
     }
 }
 
-/// Calibra a frequência do TSC em relação ao clock do sistema.
+/// Calibra a frequência do TSC (Time Stamp Counter) em relação ao relógio do sistema.
 ///
-/// Executada no startup (cold-path). Mede a variação do RDTSC durante 50ms
-/// para determinar a taxa de ciclos por nanosegundo.
+/// Imagine que a CPU tem um "odômetro" interno que conta cada batida do seu coração (ciclo).
+/// Como a velocidade da CPU pode variar, precisamos descobrir quantos "batimentos"
+/// equivalem a 1 nanosegundo real para podermos medir o tempo com precisão cirúrgica.
+///
+/// Esta função é executada apenas uma vez no início do programa (cold-path).
 #[cold]
 pub fn calibrate_tsc() {
-    #[cfg(target_arch = "x86_64")]
-    {
-        use std::thread;
+    use std::thread;
 
-        // Aquecimento (Ignora o primeiro intervalo para estabilizar caches)
-        let _ = unsafe { core::arch::x86_64::_rdtsc() };
-        thread::sleep(Duration::from_millis(10));
+    // 1. AQUECIMENTO:
+    // Chamamos a instrução uma vez e esperamos um pouco. Isso garante que a CPU
+    // "acorde" de estados de baixo consumo e que os dados estejam prontos nos caches.
+    let _ = unsafe { core::arch::x86_64::_rdtsc() };
+    thread::sleep(Duration::from_millis(10));
 
-        let start_inst = Instant::now();
-        let start_tsc = unsafe { core::arch::x86_64::_rdtsc() };
+    // 2. MARCO ZERO (Início da Medição):
+    // Capturamos simultaneamente o tempo do relógio do sistema (lento mas confiável)
+    // e o valor do contador de ciclos da CPU (ultra-rápido).
+    let start_inst = Instant::now();
+    let start_tsc = unsafe { core::arch::x86_64::_rdtsc() };
 
-        thread::sleep(Duration::from_millis(50));
+    // 3. ESPERA CONTROLADA:
+    // Aguardamos 50 milissegundos. É um tempo curto para o humano, mas permite que
+    // a CPU realize milhões de ciclos, reduzindo erros de amostragem.
+    thread::sleep(Duration::from_millis(50));
 
-        let end_inst = Instant::now();
-        let end_tsc = unsafe { core::arch::x86_64::_rdtsc() };
+    // 4. MARCO FINAL:
+    // Capturamos novamente os dois valores para calcular quanto cada um avançou.
+    let end_inst = Instant::now();
+    let end_tsc = unsafe { core::arch::x86_64::_rdtsc() };
 
-        let elapsed_nanos = end_inst.duration_since(start_inst).as_nanos() as u64;
-        let elapsed_cycles = end_tsc.wrapping_sub(start_tsc);
+    let elapsed_nanos = end_inst.duration_since(start_inst).as_nanos() as u64;
+    let elapsed_cycles = end_tsc.wrapping_sub(start_tsc);
 
-        if let Some(freq_x1000) = (elapsed_cycles * 1000).checked_div(elapsed_nanos) {
-            TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::SeqCst);
+    // 5. CÁLCULO DA TAXA DE CONVERSÃO:
+    // Calculamos a relação: (Ciclos * 1000) / Nanosegundos.
+    // Usamos o multiplicador 1000 para guardar o resultado como um número inteiro
+    // mantendo 3 casas decimais de precisão sem precisar de ponto flutuante (floats).
+    if let Some(freq_x1000) = (elapsed_cycles * 1000).checked_div(elapsed_nanos) {
+        TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::SeqCst);
 
-            log::info!(
-                "{} Relógio de Alta Precisão (TSC) calibrado em {:.3} GHz",
-                "⏱️".bright_blue(),
-                freq_x1000 as f64 / 1000.0
-            );
-        }
+        log::info!(
+            "{} Relógio de Alta Precisão (TSC) calibrado em {:.3} GHz",
+            "⏱️".bright_blue(),
+            freq_x1000 as f64 / 1000.0
+        );
     }
 }
 
@@ -114,14 +126,13 @@ pub fn detect_hardware_sink() -> Option<String> {
     }
 }
 
-/// Lê flags atômicas de status RT e emite logs de monitoramento.
+/// Lê flags atômicas de status RT e emite logs de monitoramento para o usuário.
 ///
-/// Chamada a cada iteração do loop principal (~100ms). Consome flags
-/// one-shot (active_rate, has_clipped, rt_priority, dsp_overloads) e
-/// faz edge-detection no estado de silêncio.
+/// Esta função atua como o "painel de instrumentos" do NAM-rs. Ela é chamada periodicamente
+/// para traduzir os sinais técnicos vindos da thread de áudio (que é silenciosa e ultra-veloz)
+/// em mensagens compreensíveis, avisos de performance e telemetria de latência.
 ///
-/// Retorna o novo estado de silêncio (para edge-detection no caller).
-/// Retorna (current_silent, current_fading) para edge-detection no caller.
+/// Retorna uma tupla (current_silent, current_fading) para controle de estado no loop principal.
 pub fn poll_rt_status(
     rt_status: &RtStatusFlags,
     sys: &SystemSnapshot,
@@ -130,8 +141,10 @@ pub fn poll_rt_status(
     _tsc_anchor: &Anchor,
     bridge: &crate::dsp::pipeline::DspBridge,
 ) -> (bool, bool) {
-    // ... (rest of the function remains same until line 249)
-    // [Manual Copy of the rest for context]
+    // 1. GERENCIAMENTO DE MEMÓRIA (Garbage Collection):
+    // Se o canal de limpeza estiver cheio, significa que estamos trocando modelos neurais
+    // mais rápido do que o sistema consegue descartar os antigos. Priorizamos o áudio
+    // "vazando" memória temporariamente para evitar estalos (drops) no som.
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW) {
         NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
             .message("Overflow detectado no canal de Garbage Collection (GC).")
@@ -143,6 +156,9 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
+    // 2. MUDANÇA DE RITMO (Sample Rate):
+    // Avisa quando o servidor de áudio (PipeWire) altera a frequência de amostragem
+    // (ex: mudou de 44.100 para 48.000 batidas por segundo).
     let rate_notif = rt_status.active_rate_changed.swap(0, Ordering::Relaxed);
     if rate_notif != 0 {
         log::info!(
@@ -152,6 +168,9 @@ pub fn poll_rt_status(
         );
     }
 
+    // 3. DISTORÇÃO DIGITAL (Clipping):
+    // O equivalente ao "LED vermelho" em mesas de som. Indica que o volume do sinal
+    // ultrapassou o limite máximo do processamento digital.
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED) {
         log::warn!(
             "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
@@ -159,6 +178,9 @@ pub fn poll_rt_status(
         );
     }
 
+    // 4. PRIORIDADE DE TEMPO REAL (Real-Time Priority):
+    // Verifica se o Linux permitiu que o NAM-rs rode com "prioridade máxima".
+    // Isso impede que outros programas (como o navegador) causem interrupções no áudio.
     let prio = rt_status.rt_priority.load(Ordering::Relaxed);
     if prio != -1 {
         let is_fifo = rt_status.check_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
@@ -186,6 +208,9 @@ pub fn poll_rt_status(
         }
     }
 
+    // 5. SOBRECARGA DE PROCESSAMENTO (Overloads):
+    // Avisa se o processador (CPU) não está sendo rápido o suficiente para calcular
+    // a rede neural antes do próximo bloco de áudio ser necessário.
     let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
     if overloads > 0 {
         log::warn!(
@@ -195,6 +220,10 @@ pub fn poll_rt_status(
         );
     }
 
+    // 6. SINCRONIA DE PLACAS (Clock Drifting):
+    // Ocorre quando você usa dispositivos diferentes para entrada e saída (ex: Microfone USB
+    // e Fone P2). Se um for levemente mais rápido que o outro, o sistema precisa descartar
+    // alguns pequenos pedaços de áudio para manter a sincronia.
     let drops = bridge.drain_dropped_frames();
     if drops > 0 {
         log::warn!(
@@ -204,13 +233,19 @@ pub fn poll_rt_status(
         );
     }
 
+    // 7. TELEMETRIA DE PERFORMANCE (Latência):
+    // Mostra estatísticas de quanto tempo a CPU leva para processar cada bloco.
+    // - Mediana (P50): O tempo "comum" de processamento.
+    // - P99: O pior caso em 99% das vezes (indica estabilidade).
+    // - Máx: O maior pico de atraso já registrado.
     let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
     if nanos > 0 {
         let duration = Duration::from_nanos(nanos);
         static TELEMETRY_THROTTLE: AtomicU32 = AtomicU32::new(0);
         if TELEMETRY_THROTTLE
             .fetch_add(1, Ordering::Relaxed)
-            .is_multiple_of(100)
+            .wrapping_rem(100)
+            == 0
         {
             let p50 = rt_status.latency_hist.get_percentile(0.50) / 1000;
             let p99 = rt_status.latency_hist.get_percentile(0.99) / 1000;
@@ -228,6 +263,9 @@ pub fn poll_rt_status(
             rt_status.latency_hist.reset();
         }
 
+        // 8. VERIFICAÇÃO DE PRAZO (Deadline):
+        // Se o tempo de execução ultrapassar o "orçamento" dado pelo sistema de áudio,
+        // geramos um erro de diagnóstico explicando o que falhou.
         let rate_val = rt_status.active_rate.load(Ordering::Relaxed);
         let samples_val = rt_status.last_n_samples.load(Ordering::Relaxed);
 
@@ -439,7 +477,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             );
         } else {
             // Publica sentinela de falha de verificação
-            rt_status.clear_flag(crate::spsc::RT_STATUS_RT_IS_FIFO);
+            rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
             rt_status.rt_priority.store(0, Ordering::Relaxed);
 
             log::error!(
@@ -491,7 +529,7 @@ pub fn select_optimal_cpu() -> Option<usize> {
     }
     cpus.sort_unstable();
 
-    // Obtém a capacidade de processamento de cada núcleo (comum em sistemas ARM ou x86 modernos).
+    // Obtém a capacidade de processamento de cada núcleo.
     let capacities: Vec<(usize, u64)> = cpus
         .iter()
         .map(|&cpu| {
@@ -557,7 +595,7 @@ pub fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
 
     let mut totals = vec![0u64; num_cpus];
 
-    // [T9] Refatoração para Streaming: Evita alocação monolítica de string para /proc/interrupts.
+    // Refatoração para Streaming: Evita alocação monolítica de string para /proc/interrupts.
     // Essencial para sistemas com alto número de CPUs onde o arquivo pode ser grande.
     let file = match File::open("/proc/interrupts") {
         Ok(f) => f,

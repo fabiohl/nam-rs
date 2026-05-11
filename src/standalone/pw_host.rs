@@ -3,7 +3,7 @@
 
 //! Núcleo de processamento de áudio DSP usando `pipewire-rs`.
 //!
-//! Este é o "coração" do NAM-rs: o módulo que de fato processa o sinal de áudio em
+//! Este é o "coração" do modo Standalone do NAM-rs: o módulo que processa o áudio em
 //! tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
 //! do Linux), passa pelo "motor neural", e entrega o resultado final processado
 //! ao hardware via arquitetura dual-stream.
@@ -21,7 +21,7 @@
 //!    cliente de reprodução que lê do [`DspBridge`] e entrega ao hardware.
 //!
 //! O [`DspBridge`] é um buffer `#[repr(align(128))]` compartilhado entre as duas
-//! closures via ponteiro raw, com sincronização lock-free via `fence(Release/Acquire)`
+//! closures via ponteiro raw, com sincronização lock-free via `Ordering::Release/Acquire`
 //! e contador de geração atômico.
 //!
 //! ## Regras absolutas deste módulo (por que são tão rigorosas?)
@@ -37,14 +37,14 @@
 //! ## Fluxo de processamento (Capture callback)
 //!
 //! O callback `process()` segue esta sequência para cada bloco de áudio:
-//! 1. Aplica ganho de entrada (ajuste de volume pré-processamento): uma conveniência oferecida ao usuário
-//! 2. `NamResampler::process_input()` — converte o sample rate para a taxa compatível (geralmente 48 kHz)
-//! 3. Inferência neural WaveNet/LSTM — o motor neural que processa o sinal sonoro
-//! 4. `NamResampler::process_output()` — converte de volta para o sample rate original
-//! 5. Aplica ganho de saída (ajuste de volume pós-processamento): uma conveniência oferecida ao usuário
-//! 6. Escreve resultado no [`DspBridge`] com `fence(Release)` para o playback callback
+//! 1. **Noise Gate e Ganho de Entrada** — Avalia a energia do sinal e aplica o ganho inicial (pré-DSP).
+//! 2. `NamResampler::process_input()` — Converte o sample rate para a taxa compatível (geralmente 48 kHz).
+//! 3. **Inferência neural WaveNet/LSTM** — O motor neural que processa o sinal sonoro.
+//! 4. `NamResampler::process_output()` — Converte de volta para o sample rate original do host.
+//! 5. **Ganho de Saída e Clipping** — Aplica o volume final e detecta saturação digital.
+//! 6. **Escrita no [`DspBridge`]** — Publica o resultado com `Ordering::Release` para o playback callback.
 //!
-//! Quando nenhum modelo está carregado, o motor emite silêncio (prevenindo ruídos inesperados).
+//! Quando nenhum modelo está carregado, o motor opera em **True-Bypass** (o sinal de entrada passa limpo).
 //! Quando o sample rate do PipeWire é o mesmo do modelo nam, o resampler opera em bypass sem overhead.
 
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
@@ -129,7 +129,8 @@ pub fn run_pipewire_host(
         consumed_gen: std::sync::atomic::AtomicU64::new(0),
         dropped_frames: std::sync::atomic::AtomicU32::new(0),
     }));
-    // Ponteiro raw para compartilhamento seguro entre closures (ambos RT, mesmo context PW).
+    // Ponteiro mutável bruto para compartilhamento entre as closures de Capture e Playback.
+    // Ambas rodam no mesmo contexto RT do PipeWire, garantindo acesso exclusivo via atomics no Bridge.
     let bridge_ptr = bridge as *const DspBridge as *mut DspBridge;
 
     // Otimiza o gerenciamento de memória do bridge no Kernel:
@@ -244,7 +245,8 @@ pub fn run_pipewire_host(
         let gc_overflow_for_process = gc_overflow.clone();
         let mut frame_count: u32 = 0;
 
-        // Oculta warnings do compilador de lifetime ou clonagem de referências do pw-stream
+        // Captura o contexto por valor ('move') para a closure do listener.
+        // As variáveis locais (modelos, resamplers, buffers) tornam-se o estado persistente da stream RT.
         capture_listener = capture_stream
             .add_local_listener::<()>()
             .state_changed(move |_stream, _user_data, old, new| match new {
@@ -344,10 +346,16 @@ pub fn run_pipewire_host(
                     }
                 }
 
-                // Drena parâmetros guiados da thread CLI (Lock-Free) via SPSC Ring Buffer
+                // ---------------------------------------------------------
+                // RECEPÇÃO DE COMANDOS (O "Correio" entre Usuário e Áudio)
+                // ---------------------------------------------------------
+                // Aqui o motor de áudio verifica se o usuário enviou novos comandos pela CLI
+                // (ex: trocar de pedal, mudar o volume). Usamos um canal "SPSC" que permite
+                // receber essas ordens sem nunca parar ou atrasar o som.
                 let mut param_changed = false;
                 while let Ok(payload) = consumer.pop() {
                     match payload {
+                        // Comando: Trocar o "Cérebro" Neural (Modelo .nam)
                         ParamPayload::LoadModel {
                             model_l,
                             model_r,
@@ -357,21 +365,35 @@ pub fn run_pipewire_host(
                         } => {
                             let new_model_l = model_l;
                             let new_model_r = model_r;
+
+                            // Se recebemos modelos válidos, ajustamos os volumes internos
+                            // específicos desse modelo (cada captura NAM tem sua própria calibração).
                             if new_model_l.is_some() || new_model_r.is_some() {
                                 model_input_mult_adj = input_mult_adj;
                                 model_output_mult_adj = output_mult_adj;
                                 current_nam_rate = sample_rate;
                             } else {
+                                // Caso o modelo seja removido (bypass), resetamos os ganhos.
                                 model_input_mult_adj = 1.0;
                                 model_output_mult_adj = 1.0;
                                 current_nam_rate = 48_000;
                             }
 
+                            // --- DESCARTE SEGURO DO MODELO ANTIGO (Garbage Collection) ---
+                            // No mundo do áudio de alta performance, não podemos simplesmente
+                            // "apagar" um modelo velho aqui dentro, pois isso causaria um
+                            // "soluço" (drop) no som. Em vez disso, trocamos o modelo antigo
+                            // pelo novo instantaneamente e enviamos o antigo para uma
+                            // "lixeira" (gc_producer) que será esvaziada por outra thread
+                            // fora do caminho crítico do áudio.
+
+                            // Troca o modelo do canal Esquerdo
                             if let Some(old) = std::mem::replace(&mut active_model_l, new_model_l) {
                                 #[allow(clippy::collapsible_if)]
                                 if let Err(rtrb::PushError::Full(old_item)) =
                                     gc_producer.push(GcItem::Model(old))
                                 {
+                                    // Se a lixeira estiver cheia, usamos um "estacionamento" temporário
                                     let mut to_park = Some(old_item);
                                     for slot in parking_lot.iter_mut() {
                                         if slot.is_none() {
@@ -379,6 +401,8 @@ pub fn run_pipewire_host(
                                             break;
                                         }
                                     }
+                                    // Caso extremo: se até o estacionamento lotar, usamos um buffer de overflow
+                                    // para garantir que a memória não vaze nem cause travamentos.
                                     if let Some(still_here) = to_park {
                                         let ptr = Box::into_raw(Box::new(still_here));
                                         if let Some(leaked_ptr) =
@@ -393,6 +417,8 @@ pub fn run_pipewire_host(
                                     }
                                 }
                             }
+
+                            // Troca o modelo do canal Direito (mesma lógica do Esquerdo)
                             if let Some(old) = std::mem::replace(&mut active_model_r, new_model_r) {
                                 #[allow(clippy::collapsible_if)]
                                 if let Err(rtrb::PushError::Full(old_item)) =
@@ -421,17 +447,24 @@ pub fn run_pipewire_host(
                             }
                             param_changed = true;
                         }
+
+                        // Comando: Ajustar o Ganho de Entrada
                         ParamPayload::InputGain(mult) => {
                             user_input_gain_mult = mult;
                             param_changed = true;
                         }
+
+                        // Comando: Ajustar o Ganho de Saída
                         ParamPayload::OutputGain(mult) => {
                             user_output_gain_mult = mult;
                             param_changed = true;
                         }
+
+                        // Comando: Configurar o Noise Gate (Filtro de Ruído)
                         ParamPayload::GateConfig(params) => {
-                            // Pré-calcula thresholds lineares² (cold-path, evento raro).
-                            // Usa GainLUT interpolada (~4 ciclos) em vez de powf (~200+ ciclos).
+                            // O Gate impede que ruídos de fundo (chiado) passem quando o áudio não está tocando.
+                            // Aqui transformamos os decibéis (dB) do usuário em valores matemáticos lineares
+                            // para que o processador possa compará-los rapidamente em cada amostra de som.
                             let open_lin = lut.db_to_linear(params.threshold_open_db);
                             let close_lin = lut.db_to_linear(params.threshold_close_db);
                             threshold_open_sq = open_lin * open_lin;
@@ -441,22 +474,31 @@ pub fn run_pipewire_host(
                     }
                 }
 
-                // Verifica se o PW ou a topologia solicitou mudança na taxa de amostragem.
+                // ---------------------------------------------------------
+                // SINCRONIZAÇÃO DE RITMO (Taxa de Amostragem / Sample Rate)
+                // ---------------------------------------------------------
+                // O áudio digital tem um "ritmo" (ex: 48.000 amostras por segundo).
+                // Se o sistema (PipeWire) mudar esse ritmo, ou se carregarmos um efeito
+                // que trabalha em outro ritmo, precisamos de um "tradutor" (Resampler).
                 let detected_pw_rate = rate_for_process.swap(0, Ordering::Relaxed);
                 let current_pw_rate = resampler.pw_rate();
 
                 let mut pw_rate_to_request = current_pw_rate;
                 let mut requires_rebuild = false;
 
+                // Verifica se o ritmo do sistema mudou
                 if detected_pw_rate != 0 && detected_pw_rate != current_pw_rate {
                     pw_rate_to_request = detected_pw_rate;
                     requires_rebuild = true;
                 }
 
+                // Verifica se o ritmo do modelo neural é diferente do atual
                 if current_nam_rate != resampler.nam_rate() {
                     requires_rebuild = true;
                 }
 
+                // Se os ritmos não batem, pedimos para a thread principal construir
+                // um novo "tradutor" (Resampler). Não fazemos isso aqui para evitar atrasos.
                 if requires_rebuild && pw_rate_to_request != 0 {
                     rt_status_for_process
                         .requested_pw_rate
@@ -468,6 +510,9 @@ pub fn run_pipewire_host(
                         .set_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
                 }
 
+                // Se o usuário mexeu no volume ou trocou o modelo, recalculamos os
+                // multiplicadores de ganho. Isso deixa a conta matemática pronta para
+                // o processador usar no caminho do áudio, economizando tempo.
                 if param_changed {
                     rt_setup::compute_gain_multipliers(
                         user_input_gain_mult,
@@ -482,8 +527,7 @@ pub fn run_pipewire_host(
                 // =========================================================
                 // LÓGICA DSP - TEMPO REAL
                 // =========================================================
-                // Recupera o Buffer do PipeWire alocado internamente contendo os canais.
-                // Recupera o Buffer do PipeWire contendo as amostras de áudio.
+                // Adquire o próximo buffer disponível do servidor PipeWire.
                 let mut _buf = match stream.dequeue_buffer() {
                     Some(b) => b,
                     None => return,
@@ -535,7 +579,7 @@ pub fn run_pipewire_host(
                                     )
                                 };
 
-                                // Decimação de Telemetria (T4.3): Medimos o tempo apenas a cada 16 frames
+                                // Decimação de Telemetria: Medimos o tempo apenas a cada 16 frames
                                 // para reduzir o overhead de RDTSC no hot-path.
                                 let should_measure = (frame_count & 0xF) == 0;
                                 frame_count = frame_count.wrapping_add(1);
@@ -546,25 +590,32 @@ pub fn run_pipewire_host(
                                     0
                                 };
 
+                                // ---------------------------------------------------------
+                                // EXECUÇÃO DO PROCESSAMENTO (A Fábrica de Som)
+                                // ---------------------------------------------------------
+                                // Aqui é onde a mágica acontece. Chamamos a "fábrica" (pipeline)
+                                // passando o som bruto da guitarra e um "kit de ferramentas"
+                                // (DspPipelineContext) que contém os modelos neurais, volumes
+                                // e filtros que preparamos nos passos anteriores.
                                 capture_dsp_pipeline(
                                     samples_l,
                                     samples_r,
                                     n_samples,
                                     DspPipelineContext {
-                                        resampler: &mut resampler,
-                                        active_model_l: &mut active_model_l,
-                                        active_model_r: &mut active_model_r,
-                                        input_gain_mult,
-                                        output_gain_mult,
-                                        gate_params: &gate_params,
+                                        resampler: &mut resampler,           // O tradutor de ritmo
+                                        active_model_l: &mut active_model_l, // O cérebro esquerdo
+                                        active_model_r: &mut active_model_r, // O cérebro direito
+                                        input_gain_mult,                     // Volume de entrada
+                                        output_gain_mult,                    // Volume de saída
+                                        gate_params: &gate_params, // Ajustes do filtro de ruído
                                         silence_hysteresis: &mut silence_hysteresis,
                                         mono_hysteresis: &mut mono_hysteresis,
                                         threshold_open_sq,
                                         threshold_close_sq,
                                         process_mono: &mut process_mono,
                                         rt_status: &rt_status_for_process,
-                                        bridge_ptr,
-                                        resamp_mid_l: &mut resamp_mid_l,
+                                        bridge_ptr, // Ponte para a saída
+                                        resamp_mid_l: &mut resamp_mid_l, // Buffers de trabalho
                                         resamp_mid_r: &mut resamp_mid_r,
                                         resamp_out_l: &mut resamp_out_l,
                                         resamp_out_r: &mut resamp_out_r,
