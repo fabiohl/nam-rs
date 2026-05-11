@@ -369,7 +369,7 @@
 
   **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
 
-- [ ] **Tarefa 1.2.3** — Criar `src/clap/processor.rs` (bypass puro)
+- [x] **Tarefa 1.2.3** — Criar `src/clap/processor.rs` (bypass puro)
 
   **Contexto:** O `PluginAudioProcessor` é chamado pela audio thread do host. Por ora, implementa bypass puro: copia input para output. **Não há alocações aqui.**
 
