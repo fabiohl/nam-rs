@@ -50,6 +50,10 @@ name = "nam-rs"
 path = "src/main.rs"
 required-features = ["standalone"]
 
+[lib]
+name = "nam_rs"
+crate-type = ["rlib", "cdylib"]
+
 [profile.release]
 strip = true      # Remove symbols (smaller binary)
 lto = "fat"       # Link Time Optimization (slower build, better runtime)

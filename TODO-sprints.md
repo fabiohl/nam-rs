@@ -257,7 +257,7 @@
 
   **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
 
-- [ ] **Tarefa 1.1.2** — Configurar `crate-type = ["rlib", "cdylib"]` no `Cargo.toml`
+- [x] **Tarefa 1.1.2** — Configurar `crate-type = ["rlib", "cdylib"]` no `Cargo.toml`
 
   **Contexto:** Para gerar um `.so` carregável pelo REAPER, o crate precisa ser compilado como `cdylib`. O `rlib` deve ser mantido para que `cargo test` continue funcionando.
 
