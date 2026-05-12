@@ -3,7 +3,8 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Avx2Math, SimdMath};
+    use crate::math::common::avx2_impl::Avx2Math;
+    use crate::math::common::traits::SimdMath;
     use core::arch::x86_64::*;
 
     /// Verifica se a conversão de números de precisão total (f32) para o formato compacto (bfloat16)

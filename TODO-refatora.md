@@ -381,7 +381,7 @@ arquivos dedicados em `common/`, mantendo as funções-kernel no local original.
 
 ---
 
-#### Tarefa 2.1 — Criar `common/avx2_impl.rs`
+#### Tarefa 2.1 — Criar `common/avx2_impl.rs` [CONCLUÍDO]
 
 ##### 2.1.1 — Criar o arquivo `src/math/common/avx2_impl.rs`
 
@@ -683,7 +683,7 @@ Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definiç�
 // Consumidores por mecanismo:
 //   Mecanismo 1 (trait):  wavenet.rs, wavenet_dyn.rs, lstm_dyn.rs, gate.rs, resampler.rs
 //   Mecanismo 2 (v-table): pipeline.rs, rt_setup.rs, cli.rs, ops.rs (compute_energy_stereo)
-//   Ambos (híbrido):      lstm.rs (usa dispatch_simd! Modo 2 para gemv_4gate, 
+//   Ambos (híbrido):      lstm.rs (usa dispatch_simd! Modo 2 para gemv_4gate,
 //                          mas também chama simd_tanh/simd_sigmoid diretamente)
 //
 // Plano de unificação (futuro):
@@ -694,7 +694,7 @@ Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definiç�
 //   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
 //
 // Data do debt: 2026-05-12 (refatoração Épicos 1-5)
-// Prioridade: Média (não afeta performance em caminhos quentes, 
+// Prioridade: Média (não afeta performance em caminhos quentes,
 //             que já usam Mecanismo 1 com monomorphization)
 // ══════════════════════════════════════════════════════════════════════════════
 ```

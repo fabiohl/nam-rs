@@ -27,6 +27,45 @@ pub enum InstructionSet {
     Avx512VnniBf16,
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// DESIGN DEBT: Coexistência de dois mecanismos de dispatch
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// O projeto NAM-rs usa DOIS mecanismos independentes para despacho SIMD:
+//
+// 1. Trait genérica `SimdMath` (definida em `common/traits.rs`)
+//    - Despacho estático (monomorphization) via `dispatch_simd!` Modos 1 e 2
+//    - Usado por: WaveNet (`wavenet.rs`, `wavenet_dyn.rs`), LSTM (`lstm_dyn.rs`),
+//      DSP (`gate.rs`, `resampler.rs`)
+//    - Exemplo: `self.process::<Avx2Math>(args)` → monomorphized em tempo de compilação
+//    - Vantagem: zero overhead de v-table, inline agressivo
+//    - Desvantagem: gera código duplicado para cada ISA (Avx2, Avx512, Avx512Vnni...)
+//
+// 2. V-table `SimdMathConfig` (esta struct)
+//    - Despacho dinâmico via ponteiros de função
+//    - Usado por: operações DSP no pipeline (`dsp/pipeline.rs`, `dsp/gain.rs`),
+//      standalone host (`standalone/rt_setup.rs`), `dispatch_simd!` Modo 3
+//    - Exemplo: `(SIMD_MATH.apply_gain)(data, gain)` → chamada indireta via ponteiro
+//    - Vantagem: código único, sem duplicação
+//    - Desvantagem: impede inline, custo de indireção (~1-2 ciclos)
+//
+// Consumidores por mecanismo:
+//   Mecanismo 1 (trait):  wavenet.rs, wavenet_dyn.rs, lstm_dyn.rs, gate.rs, resampler.rs
+//   Mecanismo 2 (v-table): pipeline.rs, rt_setup.rs, cli.rs, ops.rs (compute_energy_stereo)
+//   Ambos (híbrido):      lstm.rs (usa dispatch_simd! Modo 2 para gemv_4gate,
+//                          mas também chama simd_tanh/simd_sigmoid diretamente)
+//
+// Plano de unificação (futuro):
+//   - Mover TODOS os consumidores para a trait `SimdMath` (Mecanismo 1)
+//   - Substituir v-table `SimdMathConfig` por um único despacho baseado na trait
+//   - Remover ponteiros de função da struct `SimdMathConfig`
+//   - Manter `InstructionSet` para consultas de capabilities (ex: `is_avx512`)
+//   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
+//
+// Data do debt: 2026-05-12 (refatoração Épicos 1-5)
+// Prioridade: Média (não afeta performance em caminhos quentes,
+//             que já usam Mecanismo 1 com monomorphization)
+// ══════════════════════════════════════════════════════════════════════════════
 /// Tabela de despacho dinâmico (v-table) para operações SIMD.
 #[derive(Clone, Copy)]
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
