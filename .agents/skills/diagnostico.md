@@ -1,1 +1,0 @@
-../workflows/diagnostico.md
