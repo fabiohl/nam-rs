@@ -653,7 +653,7 @@ pub use avx512_impl::{Avx512Math, Avx512VnniMath, Avx512VnniBf16Math};
 
 ---
 
-#### Tarefa 2.4 — Documentar Design Debt do Dual Dispatch
+#### Tarefa 2.4 — Documentar Design Debt do Dual Dispatch [CONCLUÍDO] [x]
 
 Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definição de `SimdMathConfig`:
 
@@ -694,7 +694,7 @@ Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definiç�
 //   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
 //
 // Data do debt: 2026-05-12 (refatoração Épicos 1-5)
-// Prioridade: Média (não afeta performance em caminh'os quentes,
+// Prioridade: Média (não afeta performance em caminhos quentes,
 //             que já usam Mecanismo 1 com monomorphization)
 // ══════════════════════════════════════════════════════════════════════════════
 ```
