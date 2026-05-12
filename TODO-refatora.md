@@ -331,7 +331,7 @@ Self::Tanh => crate::math::activations::tanh_slice(data),
 
 ## Plano de Execução — Épicos e Sprints
 
-### Épico 1: Baseline e Fundação
+### Épico 1: Baseline e Fundação [CONCLUÍDO]
 
 **Objetivo**: Capturar métricas de referência e criar `common/` sem alterar comportamento.
 
@@ -355,7 +355,7 @@ Extrair constantes compartilhadas de `fastmath.rs` para `src/math/constants.rs`:
 
 **Gate de saída**: `cargo check` + `cargo test` passam. Constantes usadas por ≥2 arquivos centralizadas.
 
-#### Tarefa 1.3 — `common/` Foundation [x]
+#### Tarefa 1.3 — `common/` Foundation [CONCLUÍDO]
 
 Mover módulos de infraestrutura de `simd/` para `common/`: [x]
 
@@ -371,29 +371,356 @@ Mover módulos de infraestrutura de `simd/` para `common/`: [x]
 
 ### Épico 2: Estrutura de Trait e Implementações
 
-**Objetivo**: Estabilizar structs de implementação em `common/` antes de mover kernels.
+**Objetivo**: Estabilizar structs de implementação em `common/` antes de mover kernels. Extrair
+os blocos `impl SimdMath` dos dois arquivos monolíticos (`simd/avx2.rs`, `simd/avx512.rs`) para
+arquivos dedicados em `common/`, mantendo as funções-kernel no local original. Simplificar
+`Avx2VnniMath` (pura delegação sem ganho real) para um type alias.
 
-#### Tarefa 2.1 — `avx2_impl.rs` e `avx512_impl.rs`
+> **Regra de Ouro**: Preservar integralmente todos os comentários e docstrings ao mover código.
+> Adaptar apenas referências de caminhos nas docstrings.
 
-Extrair structs e `impl SimdMath for ...` de `avx2.rs`/`avx512.rs` para `common/`. As implementações continuam chamando kernels no local antigo via caminhos absolutos.
+---
 
-**Simplificação AVX2-VNNI**: Substituir ~300 linhas de delegação por:
+#### Tarefa 2.1 — Criar `common/avx2_impl.rs`
+
+##### 2.1.1 — Criar o arquivo `src/math/common/avx2_impl.rs`
+
+**Conteúdo**: Mover SOMENTE os blocos de struct e impl de `simd/avx2.rs`:
+
+| De `simd/avx2.rs`                    | Linhas      | Conteúdo                                     |
+| ------------------------------------ | ----------- | -------------------------------------------- |
+| `pub struct Avx2Math;`               | L1017       | Struct unit                                  |
+| `impl SimdMath for Avx2Math { ... }` | L1019–L1359 | Bloco de implementação completo (28 métodos) |
+| `pub struct Avx2VnniMath;`           | L1367–L1667 | **SUBSTITUIR** pelo type alias (ver 2.1.2)   |
+
+**NÃO mover**: As funções standalone (kernel) que ficam ANTES (L1–L1016) e DEPOIS (L1669–L2091)
+dos blocos `impl SimdMath` em `simd/avx2.rs`. Essas permanecem no arquivo original para
+serem movidas nos Épicos 3 e 4.
+
+**Header do novo arquivo**:
 
 ```rust
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+//! Implementações AVX2 da trait `SimdMath`.
+//!
+//! Este módulo contém as structs `Avx2Math` e `Avx2VnniMath` (type alias)
+//! que implementam a trait `SimdMath` usando instruções AVX2/FMA.
+//! Os métodos delegam para funções-kernel em `math::simd::avx2`.
+
+use crate::math::common::traits::SimdMath;
+use crate::math::common::scalar_ref::*;
+use core::arch::x86_64::*;
+```
+
+##### 2.1.2 — Ajustar caminhos no bloco `impl SimdMath for Avx2Math`
+
+Cada método do impl chama funções-kernel que ainda vivem em `simd/avx2.rs`. Após a
+movimentação para `common/avx2_impl.rs`, esses paths precisam do prefixo do módulo:
+
+| Chamada original (em `simd/avx2.rs`)              | Chamada ajustada (em `common/avx2_impl.rs`)                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------- |
+| `dot_product_avx2(a, b)`                          | `super::super::simd::avx2::dot_product_avx2(a, b)`                          |
+| `dot_product_bf16_fallback(a, b)`                 | `dot_product_bf16_fallback(a, b)` (já importado de `scalar_ref`)            |
+| `dot_product_4x_interleaved_avx2(...)`            | `super::super::simd::avx2::dot_product_4x_interleaved_avx2(...)`            |
+| `dot_product_4x_interleaved_dual_frame_avx2(...)` | `super::super::simd::avx2::dot_product_4x_interleaved_dual_frame_avx2(...)` |
+| `dot_product_bf16_4x_fallback(...)`               | `dot_product_bf16_4x_fallback(...)` (já importado de `scalar_ref`)          |
+| `fused_add_gemv_avx2(...)`                        | `super::super::simd::avx2::fused_add_gemv_avx2(...)`                        |
+| `fused_add_gemm_batch_avx2(...)`                  | `super::super::simd::avx2::fused_add_gemm_batch_avx2(...)`                  |
+| `fused_gemm_residual_batch_avx2(...)`             | `super::super::simd::avx2::fused_gemm_residual_batch_avx2(...)`             |
+| `gemv_overwrite_avx2(...)`                        | `super::super::simd::avx2::gemv_overwrite_avx2(...)`                        |
+| `gemv_overwrite_bf16_fallback(...)`               | `gemv_overwrite_bf16_fallback(...)` (scalar_ref)                            |
+| `gemv_4gate_avx2(...)`                            | `super::super::simd::avx2::gemv_4gate_avx2(...)`                            |
+| `gemv_4gate_bf16_fallback(...)`                   | `gemv_4gate_bf16_fallback(...)` (scalar_ref)                                |
+| `accumulate_head_avx2(...)`                       | `super::super::simd::avx2::accumulate_head_avx2(...)`                       |
+| `tanh_and_accumulate_block_avx2(...)`             | `super::super::simd::avx2::tanh_and_accumulate_block_avx2(...)`             |
+| `gated_activation_and_accumulate_block_avx2(...)` | `super::super::simd::avx2::gated_activation_and_accumulate_block_avx2(...)` |
+| `f32_to_bf16_fallback(...)`                       | `f32_to_bf16_fallback(...)` (scalar_ref)                                    |
+| `crate::math::fastmath::tanh_slice_avx2(...)`     | Mantém (path absoluto)                                                      |
+| `crate::math::fastmath::sigmoid_slice_avx2(...)`  | Mantém (path absoluto)                                                      |
+| `horizontal_sum_avx2(...)`                        | `super::super::simd::avx2::horizontal_sum_avx2(...)`                        |
+| `fused_lstm_gates_dyn_avx2(...)`                  | `super::super::simd::avx2::fused_lstm_gates_dyn_avx2(...)`                  |
+| `compute_energy_stereo_avx2(...)`                 | `super::super::simd::avx2::compute_energy_stereo_avx2(...)`                 |
+| `convolve_stereo_avx2(...)`                       | `super::super::simd::avx2::convolve_stereo_avx2(...)`                       |
+| `apply_gain_and_detect_clipping_stereo_avx2(...)` | `super::super::simd::avx2::apply_gain_and_detect_clipping_stereo_avx2(...)` |
+| `apply_gain_stereo_avx2(...)`                     | `super::super::simd::avx2::apply_gain_stereo_avx2(...)`                     |
+| `apply_gain_avx2(...)`                            | `super::super::simd::avx2::apply_gain_avx2(...)`                            |
+| `batch_wavenet_head_sum_avx2(...)`                | `super::super::simd::avx2::batch_wavenet_head_sum_avx2(...)`                |
+| `apply_ramp_stereo_avx2(...)`                     | `super::super::simd::avx2::apply_ramp_stereo_avx2(...)`                     |
+
+> **NÃO usar `use super::super::simd::avx2::*` no topo** — o uso de paths absolutos
+> em cada chamada torna explícito de onde vêm os kernels, facilitando a migração futura
+> (Épicos 3 e 4) onde esses paths serão novamente atualizados.
+
+##### 2.1.3 — Substituir `Avx2VnniMath` por type alias
+
+O bloco `impl SimdMath for Avx2VnniMath` ocupa ~300 linhas (L1367–L1667) e é 100% delegação
+para `Avx2Math::method(...)`. A instrução AVX2-VNNI (`VPDPBUSD`) opera apenas sobre inteiros
+de 8 bits, sem benefício para operações float. Portanto:
+
+**Substituir**:
+
+```rust
+/// Implementação especializada para processadores que suportam AVX2 e instruções VNNI.
+///
+/// VNNI (Vector Neural Network Instructions) é uma tecnologia que acelera drasticamente
+/// o processamento de redes neurais. Esta estrutura funciona como uma ponte de alta
+/// performance para CPUs modernas, garantindo que o NAM-rs utilize o caminho mais
+/// curto e eficiente oferecido pelo hardware Intel de gerações recentes.
+pub struct Avx2VnniMath;
+
+impl SimdMath for Avx2VnniMath {
+    type V = __m256;
+    // ... ~300 linhas de delegação ...
+}
+```
+
+**Por**:
+
+```rust
+/// AVX2 + VNNI: a instrução `VPDPBUSD` opera sobre inteiros de 8 bits,
+/// sem benefício mensurável para kernels float do NAM-rs.
+/// Delegação total para `Avx2Math` — type alias elimina ~300 linhas mortas.
+///
+/// Mantido como alias (não removido) para preservar compatibilidade com
+/// `InstructionSet::Avx2Vnni` e o macro `dispatch_simd!`.
+/// Futuro: remover também do enum quando a v-table for unificada.
 pub type Avx2VnniMath = Avx2Math;
 ```
 
-**Gate de saída**: `cargo check` + `cargo test` passam. `avx2.rs`/`avx512.rs` sem blocos `impl SimdMath`.
+##### 2.1.4 — Atualizar `simd/avx2.rs` (remoção + re-export)
 
-#### Tarefa 2.2 — Documentar Design Debt do Dual Dispatch
+**Remover** de `simd/avx2.rs`:
 
-Adicionar documentação em `common/dispatch.rs` explicando:
+- L1017 (`pub struct Avx2Math;`)
+- L1019–L1359 (`impl SimdMath for Avx2Math { ... }`)
+- L1361–L1667 (`pub struct Avx2VnniMath;` + `impl SimdMath for Avx2VnniMath { ... }`)
 
-- Por que coexistem trait genérica e v-table `SimdMathConfig`
-- Quais consumidores usam qual mecanismo
-- Plano futuro de unificação
+**Adicionar** no topo de `simd/avx2.rs` (após os `#![allow]` e antes das funções kernel):
 
-**Gate de saída**: `cargo clippy` limpo; comentários de design debt presentes.
+```rust
+// Re-export das structs de implementação (movidas para common/)
+pub use crate::math::common::avx2_impl::{Avx2Math, Avx2VnniMath};
+```
+
+Isto garante que `crate::math::simd::avx2::Avx2Math` continua funcionando,
+mantendo compatibilidade com todos os `use` e caminhos existentes.
+
+##### 2.1.5 — Verificação
+
+```bash
+cargo check 2>&1    # Deve compilar sem erros
+cargo test           # Todos os 150 testes devem passar
+```
+
+---
+
+#### Tarefa 2.2 — Criar `common/avx512_impl.rs`
+
+##### 2.2.1 — Criar o arquivo `src/math/common/avx512_impl.rs`
+
+**Conteúdo**: Mover SOMENTE os blocos de struct e impl de `simd/avx512.rs`:
+
+| De `simd/avx512.rs`                            | Linhas      | Conteúdo                                                            |
+| ---------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| `pub struct Avx512Math;`                       | L609        | Struct unit                                                         |
+| `impl SimdMath for Avx512Math { ... }`         | L611–L963   | Bloco completo (28 métodos)                                         |
+| `pub struct Avx512VnniMath;`                   | L966        | Struct unit                                                         |
+| `impl SimdMath for Avx512VnniMath { ... }`     | L968–L1270  | Bloco completo (28 métodos) — **MANTÉM** (tem implementações reais) |
+| `pub struct Avx512VnniBf16Math;`               | L1273       | Struct unit                                                         |
+| `impl SimdMath for Avx512VnniBf16Math { ... }` | L1275–L1572 | Bloco completo (28 métodos) — **MANTÉM**                            |
+
+**NÃO mover**: Funções standalone (L1–L608 antes dos impls, L1574–L2265+ depois).
+
+**Header**:
+
+```rust
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+//! Implementações AVX-512 da trait `SimdMath`.
+//!
+//! Contém `Avx512Math`, `Avx512VnniMath` e `Avx512VnniBf16Math`.
+//! `Avx512VnniMath` tem implementações reais (BF16 dot product nativo via `_mm512_dpbf16_ps`).
+//! Os métodos delegam para funções-kernel em `math::simd::avx512`.
+
+use crate::math::common::traits::SimdMath;
+use crate::math::common::scalar_ref::*;
+use core::arch::x86_64::*;
+```
+
+##### 2.2.2 — Ajustar caminhos nas chamadas internas
+
+**Para `Avx512Math`**: Mesmo padrão da Tarefa 2.1.2 — prefixar chamadas com `super::super::simd::avx512::`.
+
+| Chamada original (em `simd/avx512.rs`)                     | Chamada ajustada (em `common/avx512_impl.rs`)                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `dot_product_avx512(...)`                                  | `super::super::simd::avx512::dot_product_avx512(...)`                           |
+| `fused_add_gemv_avx512_small(...)`                         | `super::super::simd::avx512::fused_add_gemv_avx512_small(...)`                  |
+| `fused_add_gemv_fallback(...)`                             | `fused_add_gemv_fallback(...)` (scalar_ref)                                     |
+| `fused_add_gemm_batch_avx512(...)`                         | `super::super::simd::avx512::fused_add_gemm_batch_avx512(...)`                  |
+| `fused_gemm_residual_batch_avx512(...)`                    | `super::super::simd::avx512::fused_gemm_residual_batch_avx512(...)`             |
+| `gemv_overwrite_avx512_small(...)`                         | `super::super::simd::avx512::gemv_overwrite_avx512_small(...)`                  |
+| `gemv_overwrite_fallback(...)`                             | `gemv_overwrite_fallback(...)` (scalar_ref)                                     |
+| `gemv_overwrite_batch_avx512(...)`                         | `super::super::simd::avx512::gemv_overwrite_batch_avx512(...)`                  |
+| `gemv_4gate_avx512(...)`                                   | `super::super::simd::avx512::gemv_4gate_avx512(...)`                            |
+| `gemv_4gate_bf16_avx512(...)`                              | `super::super::simd::avx512::gemv_4gate_bf16_avx512(...)`                       |
+| `gated_activation_and_accumulate_block_avx512(...)`        | `super::super::simd::avx512::gated_activation_and_accumulate_block_avx512(...)` |
+| `f32_to_bf16_avx512(...)`                                  | `super::super::simd::avx512::f32_to_bf16_avx512(...)`                           |
+| `crate::math::fastmath::tanh_slice_avx512(...)`            | Mantém (path absoluto)                                                          |
+| `crate::math::fastmath::sigmoid_slice_avx512(...)`         | Mantém (path absoluto)                                                          |
+| `horizontal_sum_avx512(...)`                               | `super::super::simd::avx512::horizontal_sum_avx512(...)`                        |
+| `fused_lstm_gates_dyn_avx512(...)`                         | `super::super::simd::avx512::fused_lstm_gates_dyn_avx512(...)`                  |
+| `compute_energy_stereo_avx512(...)`                        | `super::super::simd::avx512::compute_energy_stereo_avx512(...)`                 |
+| `convolve_stereo_avx512(...)`                              | `super::super::simd::avx512::convolve_stereo_avx512(...)`                       |
+| `apply_gain_and_detect_clipping_stereo_avx512(...)`        | `super::super::simd::avx512::apply_gain_and_detect_clipping_stereo_avx512(...)` |
+| `apply_gain_stereo_avx512(...)`                            | `super::super::simd::avx512::apply_gain_stereo_avx512(...)`                     |
+| `apply_gain_avx512(...)`                                   | `super::super::simd::avx512::apply_gain_avx512(...)`                            |
+| `batch_wavenet_head_sum_avx512(...)`                       | `super::super::simd::avx512::batch_wavenet_head_sum_avx512(...)`                |
+| `apply_ramp_stereo_avx512(...)`                            | `super::super::simd::avx512::apply_ramp_stereo_avx512(...)`                     |
+| `dot_product_bf16_avx512(...)`                             | `super::super::simd::avx512::dot_product_bf16_avx512(...)`                      |
+| `dot_product_4x_interleaved_avx512(...)`                   | `super::super::simd::avx512::dot_product_4x_interleaved_avx512(...)`            |
+| `dot_product_4x_interleaved_dual_frame_avx512(...)`        | `super::super::simd::avx512::dot_product_4x_interleaved_dual_frame_avx512(...)` |
+| `dot_product_bf16_4x_fallback(...)`                        | `dot_product_bf16_4x_fallback(...)` (scalar_ref)                                |
+| `dot_product_4x_interleaved_fallback(...)`                 | `dot_product_4x_interleaved_fallback(...)` (scalar_ref)                         |
+| `dot_product_4x_interleaved_bf16_fallback(...)`            | `dot_product_4x_interleaved_bf16_fallback(...)` (scalar_ref)                    |
+| `dot_product_4x_interleaved_dual_frame_bf16_fallback(...)` | `dot_product_4x_interleaved_dual_frame_bf16_fallback(...)` (scalar_ref)         |
+
+**Para `Avx512VnniMath`**: Métodos que delegam para `Avx512Math::method(...)` — prefixar com `self::Avx512Math::` (já que estão no mesmo arquivo). Métodos com implementações reais:
+
+- `dot_product_bf16_avx512(...)` → `super::super::simd::avx512::dot_product_bf16_avx512(...)`
+- `dot_product_bf16_4x` (L1014–L1028) → mantém a lógica inline (chama `gemv_4gate_bf16_avx512`)
+  → `super::super::simd::avx512::gemv_4gate_bf16_avx512(...)`
+- `apply_gain_avx512(...)` → `super::super::simd::avx512::apply_gain_avx512(...)`
+- `horizontal_sum_avx512(...)` → `super::super::simd::avx512::horizontal_sum_avx512(...)`
+- `batch_wavenet_head_sum_avx512(...)` → `super::super::simd::avx512::batch_wavenet_head_sum_avx512(...)`
+
+**Para `Avx512VnniBf16Math`**: Análogo ao `Avx512VnniMath`. Métodos com implementações reais:
+
+- `dot_product_bf16_avx512(...)` → `super::super::simd::avx512::dot_product_bf16_avx512(...)`
+- `dot_product_4x_interleaved_dual_frame_avx512(...)` → `super::super::simd::avx512::dot_product_4x_interleaved_dual_frame_avx512(...)`
+- `apply_gain_avx512(...)` → `super::super::simd::avx512::apply_gain_avx512(...)`
+- `horizontal_sum_avx512(...)` → `super::super::simd::avx512::horizontal_sum_avx512(...)`
+- `batch_wavenet_head_sum_avx512(...)` → `super::super::simd::avx512::batch_wavenet_head_sum_avx512(...)`
+
+Métodos que chamam `Avx512Math::method(...)` → prefixar com `self::Avx512Math::`.
+
+##### 2.2.3 — Atualizar `simd/avx512.rs` (remoção + re-export)
+
+**Remover** de `simd/avx512.rs`:
+
+- L609–L963: `pub struct Avx512Math;` + `impl SimdMath for Avx512Math { ... }`
+- L966–L1270: `pub struct Avx512VnniMath;` + `impl SimdMath for Avx512VnniMath { ... }`
+- L1272–L1572: Comentário `/// Implementação estática...` + struct + `impl SimdMath for Avx512VnniBf16Math { ... }`
+
+**Adicionar** no topo de `simd/avx512.rs` (após os `#![allow]`):
+
+```rust
+// Re-export das structs de implementação (movidas para common/)
+pub use crate::math::common::avx512_impl::{Avx512Math, Avx512VnniMath, Avx512VnniBf16Math};
+```
+
+##### 2.2.4 — Verificação
+
+```bash
+cargo check 2>&1    # Deve compilar sem erros
+cargo test           # Todos os 150 testes devem passar
+```
+
+---
+
+#### Tarefa 2.3 — Atualizar `common/mod.rs` com novos módulos
+
+Adicionar ao `src/math/common/mod.rs`:
+
+```rust
+pub mod avx2_impl;
+pub mod avx512_impl;
+```
+
+E atualizar o bloco de re-exports públicos para incluir:
+
+```rust
+pub use avx2_impl::{Avx2Math, Avx2VnniMath};
+pub use avx512_impl::{Avx512Math, Avx512VnniMath, Avx512VnniBf16Math};
+```
+
+**Verificação**: `cargo check` — deve compilar. As structs agora estão acessíveis por ambos os paths:
+
+- `crate::math::common::Avx2Math` (novo, canônico)
+- `crate::math::simd::avx2::Avx2Math` (legado, via re-export)
+
+---
+
+#### Tarefa 2.4 — Documentar Design Debt do Dual Dispatch
+
+Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definição de `SimdMathConfig`:
+
+```rust
+// ══════════════════════════════════════════════════════════════════════════════
+// DESIGN DEBT: Coexistência de dois mecanismos de dispatch
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// O projeto NAM-rs usa DOIS mecanismos independentes para despacho SIMD:
+//
+// 1. Trait genérica `SimdMath` (definida em `common/traits.rs`)
+//    - Despacho estático (monomorphization) via `dispatch_simd!` Modos 1 e 2
+//    - Usado por: WaveNet (`wavenet.rs`, `wavenet_dyn.rs`), LSTM (`lstm_dyn.rs`),
+//      DSP (`gate.rs`, `resampler.rs`)
+//    - Exemplo: `self.process::<Avx2Math>(args)` → monomorphized em tempo de compilação
+//    - Vantagem: zero overhead de v-table, inline agressivo
+//    - Desvantagem: gera código duplicado para cada ISA (Avx2, Avx512, Avx512Vnni...)
+//
+// 2. V-table `SimdMathConfig` (esta struct)
+//    - Despacho dinâmico via ponteiros de função
+//    - Usado por: operações DSP no pipeline (`dsp/pipeline.rs`, `dsp/gain.rs`),
+//      standalone host (`standalone/rt_setup.rs`), `dispatch_simd!` Modo 3
+//    - Exemplo: `(SIMD_MATH.apply_gain)(data, gain)` → chamada indireta via ponteiro
+//    - Vantagem: código único, sem duplicação
+//    - Desvantagem: impede inline, custo de indireção (~1-2 ciclos)
+//
+// Consumidores por mecanismo:
+//   Mecanismo 1 (trait):  wavenet.rs, wavenet_dyn.rs, lstm_dyn.rs, gate.rs, resampler.rs
+//   Mecanismo 2 (v-table): pipeline.rs, rt_setup.rs, cli.rs, ops.rs (compute_energy_stereo)
+//   Ambos (híbrido):      lstm.rs (usa dispatch_simd! Modo 2 para gemv_4gate, 
+//                          mas também chama simd_tanh/simd_sigmoid diretamente)
+//
+// Plano de unificação (futuro):
+//   - Mover TODOS os consumidores para a trait `SimdMath` (Mecanismo 1)
+//   - Substituir v-table `SimdMathConfig` por um único despacho baseado na trait
+//   - Remover ponteiros de função da struct `SimdMathConfig`
+//   - Manter `InstructionSet` para consultas de capabilities (ex: `is_avx512`)
+//   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
+//
+// Data do debt: 2026-05-12 (refatoração Épicos 1-5)
+// Prioridade: Média (não afeta performance em caminhos quentes, 
+//             que já usam Mecanismo 1 com monomorphization)
+// ══════════════════════════════════════════════════════════════════════════════
+```
+
+Inserir este texto **antes** da linha `pub struct SimdMathConfig {` (atualmente L32 de `dispatch.rs`).
+
+**Verificação**:
+
+```bash
+cargo check    # Compila sem warnings
+cargo clippy   # Sem warnings novos
+```
+
+---
+
+#### Gate de Saída do Épico 2
+
+- [ ] `cargo check` limpo — zero erros de compilação
+- [ ] `cargo test` — 150 passed, 0 failed
+- [ ] `cargo clippy` — sem warnings novos
+- [ ] `simd/avx2.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
+- [ ] `simd/avx512.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
+- [ ] `common/avx2_impl.rs` existe com `Avx2Math` + `Avx2VnniMath` (type alias)
+- [ ] `common/avx512_impl.rs` existe com `Avx512Math`, `Avx512VnniMath`, `Avx512VnniBf16Math`
+- [ ] `Avx2VnniMath` reduzido de ~300 linhas para 1 `type` alias + docstring
+- [ ] Design debt documentado em `common/dispatch.rs`
 
 ---
 
