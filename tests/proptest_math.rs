@@ -9,7 +9,8 @@
 //! 1. Ausência de falhas computacionais (NaN / Inf).
 //! 2. RMSE limite estrito contra `f32::tanh` original para a camada neural.
 
-use nam_rs::math::fastmath;
+use nam_rs::math::activations::sigmoid::simd_sigmoid_avx2;
+use nam_rs::math::activations::tanh::simd_tanh_avx2;
 use nam_rs::math::simd::{dot_product_avx2, dot_product_avx512};
 use proptest::prelude::*;
 
@@ -55,7 +56,7 @@ proptest! {
     fn prop_simd_tanh_avx2_rmse(input in avx2_input_array()) {
         // Carregamento não-alinhado seguro para buffers genéricos
         let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
-        let result_vector = unsafe { fastmath::simd_tanh(vector) };
+        let result_vector = unsafe { simd_tanh_avx2(vector) };
 
         let mut result = [0.0f32; 8];
         unsafe { _mm256_storeu_ps(result.as_mut_ptr(), result_vector) };
@@ -92,8 +93,8 @@ proptest! {
     fn prop_simd_sigmoid_avx2_rmse(input in avx2_input_array()) {
         // Carregamento de 8 floats (256-bit YMM register)
         let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
-        // Execução da sigmoid via kernels intrínsecos fastmath
-        let result_vector = unsafe { fastmath::simd_sigmoid(vector) };
+        // Execução da sigmoid via kernels intrínsecos activations
+        let result_vector = unsafe { simd_sigmoid_avx2(vector) };
 
         let mut result = [0.0f32; 8];
         unsafe { _mm256_storeu_ps(result.as_mut_ptr(), result_vector) };

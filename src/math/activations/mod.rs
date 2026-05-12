@@ -11,6 +11,9 @@ pub mod silu;
 pub mod softsign;
 pub mod tanh;
 
+#[cfg(test)]
+mod tests;
+
 pub use fused::*;
 pub use prelu::*;
 pub use relu::*;

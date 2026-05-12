@@ -113,7 +113,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
     let output_db_adj = DEFAULT_LOUDNESS_DB - loudness;
     let nam_rate = model_data.sample_rate.unwrap_or(DEFAULT_SAMPLE_RATE) as u32;
 
-    let lut = crate::math::fastmath::get_gain_lut();
+    let lut = crate::math::dsp::gain_lut::get_gain_lut();
     let input_mult_adj = lut.db_to_linear(input_db_adj);
     let output_mult_adj = lut.db_to_linear(output_db_adj);
 

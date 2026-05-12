@@ -92,12 +92,12 @@ fn main() -> anyhow::Result<()> {
     // Ganhos iniciais
     if initial_in_gain != 0.0 {
         let _ = producer.push(ParamPayload::InputGain(
-            nam_rs::math::fastmath::get_gain_lut().db_to_linear(initial_in_gain),
+            nam_rs::math::dsp::gain_lut::get_gain_lut().db_to_linear(initial_in_gain),
         ));
     }
     if initial_out_gain != 0.0 {
         let _ = producer.push(ParamPayload::OutputGain(
-            nam_rs::math::fastmath::get_gain_lut().db_to_linear(initial_out_gain),
+            nam_rs::math::dsp::gain_lut::get_gain_lut().db_to_linear(initial_out_gain),
         ));
     }
 

@@ -10,5 +10,4 @@ pub mod activations;
 pub mod common;
 pub mod constants;
 pub mod dsp;
-pub mod fastmath;
 pub mod simd;

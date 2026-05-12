@@ -730,7 +730,7 @@ cargo clippy   # Sem warnings novos
 
 > **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada função movida. Adaptar apenas referências de caminhos nas docstrings. Executar `cargo check` após cada arquivo extraído.
 
-#### Tarefa 3.1 — `activations/`
+#### Tarefa 3.1 — `activations/` [CONCLUÍDO] [x]
 
 Desmembrar `fastmath.rs` (1229L) em arquivos por ativação:
 
@@ -751,6 +751,8 @@ Desmembrar `fastmath.rs` (1229L) em arquivos por ativação:
 **Testes**: `fastmath_test.rs` (719L) → `activations/tests.rs`.
 
 **Gate de saída**: `fastmath.rs` deixa de existir. `cargo test` passa.
+
+> **NOTA**: `GainLUT` antecipado da Tarefa 3.5 para `dsp/gain_lut.rs` (pré-requisito para eliminar `fastmath.rs`). Consumidores de `get_gain_lut()` atualizados (pw_host.rs, main.rs, loader/mod.rs, dsp/gain_test.rs, tests/proptest_math.rs). Off-by-one corrigido em `db_to_linear()` com `.min(GAIN_LUT_SIZE - 1)`.
 
 #### Tarefa 3.2 — `gemm/`
 

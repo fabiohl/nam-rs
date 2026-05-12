@@ -6,4 +6,5 @@
 //! Contém implementações de algoritmos de áudio otimizados, incluindo
 //! cálculos de energia, correlações e filtros.
 
+pub mod gain_lut;
 pub mod stereo;

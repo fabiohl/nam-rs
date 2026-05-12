@@ -34,7 +34,7 @@ fn test_apply_gain_simd() {
 /// Garante que a conversão dB -> Linear e a aplicação estão corretas.
 #[test]
 fn test_combined_gain_staging() {
-    let lut = crate::math::fastmath::get_gain_lut();
+    let lut = crate::math::dsp::gain_lut::get_gain_lut();
     let user_input_db: f32 = 6.0;
     let model_input_adj_db: f32 = -3.0;
 
@@ -61,7 +61,7 @@ fn test_combined_gain_staging() {
 /// e positivo (+24dB ≈ 15.85) sem underflow/overflow em Float32.
 #[test]
 fn test_extreme_gain_values() {
-    let lut = crate::math::fastmath::get_gain_lut();
+    let lut = crate::math::dsp::gain_lut::get_gain_lut();
     // -60 dB → gain ≈ 0.001
     let gain_neg60 = lut.db_to_linear(-60.0);
     assert!(gain_neg60 > 0.0 && gain_neg60.is_finite());
@@ -130,7 +130,7 @@ fn test_gain_roundtrip_6db() {
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect();
 
-    let lut = crate::math::fastmath::get_gain_lut();
+    let lut = crate::math::dsp::gain_lut::get_gain_lut();
     let gain_up = lut.db_to_linear(6.0); // +6 dB
     let gain_down = lut.db_to_linear(-6.0); // -6 dB
 

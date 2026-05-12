@@ -226,7 +226,7 @@ pub fn run_pipewire_host(
 
         // Thresholds pré-calculados em valor linear² (MS) — cold-path only.
         // Evita `powf` no callback RT (T16). Atualizados ao receber GateConfig.
-        let lut = crate::math::fastmath::get_gain_lut();
+        let lut = crate::math::dsp::gain_lut::get_gain_lut();
         let open_lin = lut.db_to_linear(gate_params.threshold_open_db);
         let close_lin = lut.db_to_linear(gate_params.threshold_close_db);
         let mut threshold_open_sq: f32 = open_lin * open_lin;
