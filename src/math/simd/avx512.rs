@@ -15,8 +15,8 @@
 //! O AVX-512 permite que o processador faça cálculos com 16 números de ponto flutuante (f32) ao mesmo tempo,
 //! como se tivesse 16 calculadoras trabalhando em paralelo em uma única "esteira".
 
-use super::scalar_ref::*; // Implementações escalares de referência usadas como oráculo de paridade.
-use super::traits::SimdMath; // A "receita" que todos os motores matemáticos devem seguir.
+use crate::math::common::scalar_ref::*; // Implementações escalares de referência usadas como oráculo de paridade.
+use crate::math::common::traits::SimdMath; // A "receita" que todos os motores matemáticos devem seguir.
 use core::arch::x86_64::*; // Acesso direto às instruções de hardware do processador (intrinsics).
 
 /// Kernel GEMV AVX-512 especializado para Standard WaveNet (CH=16).
@@ -1586,7 +1586,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
         i += 16;
     }
     // Soma os resultados dentro do registrador e adiciona o resto.
-    let mut sum = super::utility::hsum_avx512(sum_v);
+    let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
     while i < len {
         sum += *a.get_unchecked(i) * half::f16::from_bits(*b.get_unchecked(i)).to_f32();
         i += 1;
@@ -1629,7 +1629,7 @@ pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
         );
         i += 32;
     }
-    let mut sum = super::utility::hsum_avx512(sum_v);
+    let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
     // Trata o que sobrar de forma manual.
     while i < len {
         let fa = half::f16::from_bits(*a.get_unchecked(i)).to_f32();
@@ -2190,8 +2190,8 @@ pub unsafe fn compute_energy_stereo_avx512(l: &[f32], r: &[f32]) -> f32 {
         i += 16;
     }
 
-    let mut sum_l = super::utility::hsum_avx512(sum_lv);
-    let mut sum_r = super::utility::hsum_avx512(sum_rv);
+    let mut sum_l = crate::math::common::utility::hsum_avx512(sum_lv);
+    let mut sum_r = crate::math::common::utility::hsum_avx512(sum_rv);
 
     while i < len {
         sum_l += l[i] * l[i];
@@ -2216,12 +2216,12 @@ pub unsafe fn horizontal_sum_avx512(ptr: *const f32, len: usize) -> f32 {
         i += 16;
     }
 
-    let mut total = super::utility::hsum_avx512(sum_v);
+    let mut total = crate::math::common::utility::hsum_avx512(sum_v);
 
     if i < len {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let v = _mm512_maskz_loadu_ps(mask, ptr.add(i));
-        total += super::utility::hsum_avx512(v);
+        total += crate::math::common::utility::hsum_avx512(v);
     }
 
     total

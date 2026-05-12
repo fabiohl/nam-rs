@@ -12,8 +12,8 @@
 //! Usamos instruções especiais do processador (SIMD) para fazer cálculos
 //! matemáticos massivos em paralelo, processando vários sons de uma vez só.
 
-use super::scalar_ref::*; // Implementações escalares de referência usadas como oráculo de paridade.
-use super::traits::SimdMath;
+use crate::math::common::scalar_ref::*; // Implementações escalares de referência usadas como oráculo de paridade.
+use crate::math::common::traits::SimdMath;
 use core::arch::x86_64::*;
 
 /// Calcula o Produto Escalar (Dot Product) de forma ultra-rápida usando aceleração de hardware (AVX2).
@@ -90,7 +90,7 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
         let sum = _mm256_add_ps(sum0, sum2);
 
         // Soma Horizontal: Junta os 8 valores parciais do registrador SIMD em um único número final.
-        let mut scalar_sum = super::utility::hsum_avx2(sum);
+        let mut scalar_sum = crate::math::common::utility::hsum_avx2(sum);
 
         // Limpeza Final: Processa os pouquíssimos itens que sobraram (menos de 8).
         while i < len {
@@ -195,10 +195,10 @@ pub unsafe fn dot_product_4x_avx2(
         let sum3 = _mm256_add_ps(sum3_0, sum3_1);
 
         // Converte os resultados SIMD para números escalares finais.
-        let mut s0: f32 = super::utility::hsum_avx2(sum0);
-        let mut s1: f32 = super::utility::hsum_avx2(sum1);
-        let mut s2: f32 = super::utility::hsum_avx2(sum2);
-        let mut s3: f32 = super::utility::hsum_avx2(sum3);
+        let mut s0: f32 = crate::math::common::utility::hsum_avx2(sum0);
+        let mut s1: f32 = crate::math::common::utility::hsum_avx2(sum1);
+        let mut s2: f32 = crate::math::common::utility::hsum_avx2(sum2);
+        let mut s3: f32 = crate::math::common::utility::hsum_avx2(sum3);
 
         // Limpeza final para os poucos itens restantes.
         while i < len {
@@ -534,10 +534,10 @@ pub unsafe fn dot_product_batch_4x_avx2(
         }
 
         // Soma os resultados parciais de cada um dos 4 acumuladores.
-        let mut s0 = super::utility::hsum_avx2(sum0);
-        let mut s1 = super::utility::hsum_avx2(sum1);
-        let mut s2 = super::utility::hsum_avx2(sum2);
-        let mut s3 = super::utility::hsum_avx2(sum3);
+        let mut s0 = crate::math::common::utility::hsum_avx2(sum0);
+        let mut s1 = crate::math::common::utility::hsum_avx2(sum1);
+        let mut s2 = crate::math::common::utility::hsum_avx2(sum2);
+        let mut s3 = crate::math::common::utility::hsum_avx2(sum3);
 
         // Termina as amostras que sobraram (menos de 8).
         while i < len {
@@ -2058,7 +2058,7 @@ pub unsafe fn horizontal_sum_avx2(ptr: *const f32, len: usize) -> f32 {
         i += 8;
     }
 
-    let mut total = super::utility::hsum_avx2(sum_v);
+    let mut total = crate::math::common::utility::hsum_avx2(sum_v);
 
     while i < len {
         total += *ptr.add(i);

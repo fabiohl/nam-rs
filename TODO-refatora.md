@@ -355,17 +355,17 @@ Extrair constantes compartilhadas de `fastmath.rs` para `src/math/constants.rs`:
 
 **Gate de saída**: `cargo check` + `cargo test` passam. Constantes usadas por ≥2 arquivos centralizadas.
 
-#### Tarefa 1.3 — `common/` Foundation
+#### Tarefa 1.3 — `common/` Foundation [x]
 
-Mover módulos de infraestrutura de `simd/` para `common/`:
+Mover módulos de infraestrutura de `simd/` para `common/`: [x]
 
-- `traits.rs`, `dispatch.rs`, `aligned.rs`, `utility.rs` (+ `hsum_avx512`), `scalar_ref.rs`
-- `ops.rs` (sem `compute_energy_*` e `compute_max_diff_*` — esses vão para `dsp/` depois)
-- Criar `common/mod.rs` com re-exports
+- `traits.rs`, `dispatch.rs`, `aligned.rs`, `utility.rs` (+ `hsum_avx512`), `scalar_ref.rs` [x]
+- `ops.rs` (sem `compute_energy_*` e `compute_max_diff_*` — esses vão para `dsp/` depois) [x]
+- Criar `common/mod.rs` with re-exports [x]
 
-**Regra crítica**: `src/math/mod.rs` mantém re-exports transitórios para preservar caminhos antigos (`crate::math::simd::*`). O macro `dispatch_simd!` é atualizado internamente para `$crate::math::common::`.
+**Regra crítica**: `src/math/mod.rs` mantém re-exports transitórios para preservar caminhos antigos (`crate::math::simd::*`). O macro `dispatch_simd!` é atualizado internamente para `$crate::math::common::`. [x]
 
-**Gate de saída**: `cargo check` + `cargo test` passam. Imports antigos ainda funcionam via re-exports.
+**Gate de saída**: `cargo check` + `cargo test` passam. Imports antigos ainda funcionam via re-exports. [x]
 
 ---
 

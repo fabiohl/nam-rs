@@ -6,6 +6,8 @@
 //! Contém funcionalidades estruturais para simulações como algoritmos vetoriais
 //! massivamente paralelos.
 
+pub mod common;
 pub mod constants;
+pub mod dsp;
 pub mod fastmath;
 pub mod simd;

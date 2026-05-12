@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-use super::*;
+use super::ops::set_daz_ftz;
+use super::traits::SimdMath;
+use crate::math::dsp::stereo::{compute_energy_avx2, compute_max_diff_avx2};
+use crate::math::simd::avx2::{Avx2Math, dot_product_avx2};
+use crate::math::simd::avx512::{Avx512Math, dot_product_avx512};
 
 #[test]
 fn test_dot_product_avx2_fma() {
@@ -32,8 +36,8 @@ fn test_dot_product_avx2_fma() {
 #[test]
 fn test_dot_product_avx512() {
     // Versão do teste de produto escalar para processadores ultra-modernos (AVX-512).
-    if crate::math::simd::SimdMathConfig::get().instruction_set
-        >= crate::math::simd::InstructionSet::Avx512
+    if crate::math::common::SimdMathConfig::get().instruction_set
+        >= crate::math::common::InstructionSet::Avx512
     {
         let vec_a = vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
