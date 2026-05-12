@@ -195,7 +195,7 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
             // Copiamos os dados originais para garantir que o kernel processe
             // sempre os mesmos valores, simulando a carga real de uma camada neural.
             buf.copy_from_slice(&base);
-            unsafe { nam_rs::math::fastmath::tanh_slice_avx2(&mut buf) };
+            unsafe { nam_rs::math::activations::tanh_slice_avx2(&mut buf) };
         });
     });
 }
@@ -210,7 +210,7 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
         let mut buf = base.clone();
         b.iter(|| {
             buf.copy_from_slice(&base);
-            unsafe { nam_rs::math::fastmath::sigmoid_slice_avx2(&mut buf) };
+            unsafe { nam_rs::math::activations::sigmoid_slice_avx2(&mut buf) };
         });
     });
 }
@@ -422,7 +422,7 @@ fn bench_tanh_avx512_256elem(c: &mut Criterion) {
             let mut buf = base.clone();
             b.iter(|| {
                 buf.copy_from_slice(&base);
-                unsafe { nam_rs::math::fastmath::tanh_slice_avx512(&mut buf) };
+                unsafe { nam_rs::math::activations::tanh_slice_avx512(&mut buf) };
             });
         });
     }
@@ -435,7 +435,7 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
             let mut buf = base.clone();
             b.iter(|| {
                 buf.copy_from_slice(&base);
-                unsafe { nam_rs::math::fastmath::sigmoid_slice_avx512(&mut buf) };
+                unsafe { nam_rs::math::activations::sigmoid_slice_avx512(&mut buf) };
             });
         });
     }

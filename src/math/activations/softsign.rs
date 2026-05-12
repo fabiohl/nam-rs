@@ -106,7 +106,7 @@ pub unsafe fn softsign_slice_avx2(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = *item / (1.0 + item.abs());
+        *item /= 1.0 + item.abs();
     }
 }
 
@@ -129,7 +129,7 @@ pub unsafe fn softsign_slice_avx512(slice: &mut [f32]) {
     }
 
     for item in slice.iter_mut().skip(i) {
-        *item = *item / (1.0 + item.abs());
+        *item /= 1.0 + item.abs();
     }
 }
 
