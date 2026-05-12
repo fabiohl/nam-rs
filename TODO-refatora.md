@@ -335,17 +335,17 @@ Self::Tanh => crate::math::activations::tanh_slice(data),
 
 **Objetivo**: Capturar métricas de referência e criar `common/` sem alterar comportamento.
 
-#### Sprint 1.1 — Baseline de Performance e Testes
+#### Tarefa 1.1 — Baseline de Performance e Testes [CONCLUÍDO]
 
 Capturar snapshot completo antes de qualquer alteração:
 
-- `cargo bench -- --save-baseline pre-refactor`
-- `cargo test --release`
-- Documentar contagem de linhas (código + comentários) por arquivo
+- [x] `cargo bench --bench inference_bench -- --save-baseline pre-refactor`
+- [x] `cargo test --release`
+- [x] Documentar contagem de linhas (código + comentários) por arquivo
 
-**Gate de saída**: Baseline salvo; zero falhas em testes.
+**Gate de saída**: Baseline salvo; zero falhas em testes. (Ver [Anexo: Baseline](#anexo-baseline-de-performance-tarefa-11))
 
-#### Sprint 1.2 — `constants.rs`
+#### Tarefa 1.2 — `constants.rs`
 
 Extrair constantes compartilhadas de `fastmath.rs` para `src/math/constants.rs`:
 
@@ -355,7 +355,7 @@ Extrair constantes compartilhadas de `fastmath.rs` para `src/math/constants.rs`:
 
 **Gate de saída**: `cargo check` + `cargo test` passam. Constantes usadas por ≥2 arquivos centralizadas.
 
-#### Sprint 1.3 — `common/` Foundation
+#### Tarefa 1.3 — `common/` Foundation
 
 Mover módulos de infraestrutura de `simd/` para `common/`:
 
@@ -373,7 +373,7 @@ Mover módulos de infraestrutura de `simd/` para `common/`:
 
 **Objetivo**: Estabilizar structs de implementação em `common/` antes de mover kernels.
 
-#### Sprint 2.1 — `avx2_impl.rs` e `avx512_impl.rs`
+#### Tarefa 2.1 — `avx2_impl.rs` e `avx512_impl.rs`
 
 Extrair structs e `impl SimdMath for ...` de `avx2.rs`/`avx512.rs` para `common/`. As implementações continuam chamando kernels no local antigo via caminhos absolutos.
 
@@ -385,7 +385,7 @@ pub type Avx2VnniMath = Avx2Math;
 
 **Gate de saída**: `cargo check` + `cargo test` passam. `avx2.rs`/`avx512.rs` sem blocos `impl SimdMath`.
 
-#### Sprint 2.2 — Documentar Design Debt do Dual Dispatch
+#### Tarefa 2.2 — Documentar Design Debt do Dual Dispatch
 
 Adicionar documentação em `common/dispatch.rs` explicando:
 
@@ -403,7 +403,7 @@ Adicionar documentação em `common/dispatch.rs` explicando:
 
 > **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada função movida. Adaptar apenas referências de caminhos nas docstrings. Executar `cargo check` após cada arquivo extraído.
 
-#### Sprint 3.1 — `activations/`
+#### Tarefa 3.1 — `activations/`
 
 Desmembrar `fastmath.rs` (1229L) em arquivos por ativação:
 
@@ -425,7 +425,7 @@ Desmembrar `fastmath.rs` (1229L) em arquivos por ativação:
 
 **Gate de saída**: `fastmath.rs` deixa de existir. `cargo test` passa.
 
-#### Sprint 3.2 — `gemm/`
+#### Tarefa 3.2 — `gemm/`
 
 Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
@@ -440,7 +440,7 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
 **Gate de saída**: `cargo bench` sem regressão.
 
-#### Sprint 3.3 — `lstm/`
+#### Tarefa 3.3 — `lstm/`
 
 | Destino    | Funções                                                |
 | ---------- | ------------------------------------------------------ |
@@ -448,7 +448,7 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
 **Gate de saída**: `cargo test` passa.
 
-#### Sprint 3.4 — `wavenet/`
+#### Tarefa 3.4 — `wavenet/`
 
 | Destino         | Funções                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------- |
@@ -457,7 +457,7 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
 **Gate de saída**: `cargo test` passa.
 
-#### Sprint 3.5 — `dsp/`
+#### Tarefa 3.5 — `dsp/`
 
 | Destino       | Funções                                                                                                    |
 | ------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -473,13 +473,13 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
 **Objetivo**: Eliminar código morto, atualizar consumidores, remover re-exports transitórios.
 
-#### Sprint 4.1 — Atualizar Consumidores
+#### Tarefa 4.1 — Atualizar Consumidores
 
 Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de impacto acima). Substituir dispatch manual em `models/activations.rs` por chamadas unificadas.
 
 **Gate de saída**: `cargo check` sem warnings de imports.
 
-#### Sprint 4.2 — Remoção de Código Morto
+#### Tarefa 4.2 — Remoção de Código Morto
 
 - Remover `src/math/simd/` (já vazio)
 - Remover `src/math/fastmath.rs` (já desmembrado)
@@ -494,7 +494,7 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 **Objetivo**: Garantir paridade total com baseline e atualizar docs.
 
-#### Sprint 5.1 — Validação de Paridade
+#### Tarefa 5.1 — Validação de Paridade
 
 - `cargo test` — todos os testes passam (incluindo sweeps de erro máximo)
 - `cargo bench` — comparar com baseline (threshold: <2% regressão)
@@ -503,7 +503,7 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 **Gate de saída**: Paridade total confirmada.
 
-#### Sprint 5.2 — Documentação Arquitetural
+#### Tarefa 5.2 — Documentação Arquitetural
 
 - Atualizar `docs/architecture.md` seção de matemática
 - Docstrings `//!` em cada `mod.rs` novo
@@ -521,7 +521,7 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 > **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada arquivo movido. Executar `cargo check` após cada movimentação. Utilizar re-exports transitórios em `models/mod.rs` quando necessário para evitar quebras intermediárias.
 
-#### Sprint 6.1 — Criar `models/lstm/`
+#### Tarefa 6.1 — Criar `models/lstm/`
 
 Mover a implementação LSTM para subpasta auto-contida:
 
@@ -539,7 +539,7 @@ Criar `lstm/mod.rs` com:
 
 **Gate de saída**: `cargo check` + `cargo test` passam. `models/mod.rs` reduzido em ~150 linhas.
 
-#### Sprint 6.2 — Criar `models/wavenet/`
+#### Tarefa 6.2 — Criar `models/wavenet/`
 
 Desmembrar o monolítico WaveNet em módulos coesos:
 
@@ -561,7 +561,7 @@ Criar `wavenet/mod.rs` com:
 
 **Gate de saída**: `cargo check` + `cargo test` + `cargo bench` (< 2% regressão) passam. `wavenet_common.rs` eliminado.
 
-#### Sprint 6.3 — Criar `models/a2/` + Limpar `mod.rs`
+#### Tarefa 6.3 — Criar `models/a2/` + Limpar `mod.rs`
 
 Isolar stubs e placeholders da arquitetura A2:
 
@@ -632,3 +632,81 @@ graph TD
 > **Sprint de maior risco**: 3.1 (activations/) — desmembra `fastmath.rs` que é o ponto de convergência entre `avx2.rs`, `avx512.rs` e `models/activations.rs`. Recomendação: execução atômica com `cargo check` após cada arquivo extraído.
 > **Sprint de maior impacto visual**: 6.2 (wavenet/) — desmembra 2.824L de WaveNet em 7 arquivos coesos.
 > **Invariante de qualidade**: Nenhum Sprint fecha sem `cargo check` + `cargo test` passando. Nenhum Sprint dos Épicos 3 e 6 fecha sem verificação explícita de preservação de comentários.
+
+---
+
+## Anexo: Baseline de Performance (Tarefa 1.1)
+
+> [!NOTE]
+> Este anexo contém o snapshot de performance e métricas de código capturados em 2026-05-12.
+
+### Baseline de Performance e Métricas (Pré-Refatoração)
+
+Este documento registra o estado do projeto NAM-rs antes do início do Épico 1 de refatoração, conforme exigido na **Tarefa 1.1**.
+
+#### 1. Métricas de Código (LoC)
+
+| Arquivo               | Total Linhas | Código    | Comentários |
+|:--------------------- |:------------:|:---------:|:-----------:|
+| **src/math/**         |              |           |             |
+| `mod.rs`              | 10           | 4         | 6           |
+| `fastmath.rs`         | 1228         | 936       | 292         |
+| `fastmath_test.rs`    | 719          | 622       | 97          |
+| **src/math/simd/**    |              |           |             |
+| `mod.rs`              | 93           | 73        | 20          |
+| `dispatch.rs`         | 184          | 151       | 33          |
+| `traits.rs`           | 358          | 184       | 174         |
+| `avx2.rs`             | 2091         | 1903      | 188         |
+| `avx512.rs`           | 2265         | 2111      | 154         |
+| `scalar_ref.rs`       | 583          | 472       | 111         |
+| `ops.rs`              | 254          | 183       | 71          |
+| `aligned.rs`          | 186          | 135       | 51          |
+| `utility.rs`          | 36           | 26        | 10          |
+| `simd_test.rs`        | 178          | 157       | 21          |
+| `avx2_test.rs`        | 49           | 43        | 6           |
+| `avx512_test.rs`      | 26           | 22        | 4           |
+| **src/models/**       |              |           |             |
+| `mod.rs`              | 321          | 222       | 99          |
+| `activations.rs`      | 373          | 327       | 46          |
+| `film.rs`             | 68           | 47        | 21          |
+| `gating.rs`           | 70           | 45        | 25          |
+| `lstm.rs`             | 636          | 549       | 87          |
+| `lstm_dyn.rs`         | 217          | 145       | 72          |
+| `lstm_test.rs`        | 264          | 235       | 29          |
+| `wavenet.rs`          | 1305         | 1006      | 299         |
+| `wavenet_common.rs`   | 1251         | 1020      | 231         |
+| `wavenet_dyn.rs`      | 268          | 213       | 55          |
+| `wavenet_params.rs`   | 246          | 165       | 81          |
+| `wavenet_test.rs`     | 617          | 439       | 178         |
+| `wavenet_dyn_test.rs` | 251          | 193       | 58          |
+| **TOTAL**             | **14147**    | **11648** | **2499**    |
+
+### 2. Status dos Testes
+
+Executado via `cargo test --release`:
+
+- **Resultado**: `ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+- **Data**: 2026-05-12
+
+### 3. Baseline de Performance (Criterion)
+
+Baseline capturado via `cargo bench --bench inference_bench -- --save-baseline pre-refactor`.
+
+> [!NOTE]
+> Os resultados detalhados do benchmark estão salvos no diretório `target/criterion/`. As métricas principais de latência de processamento por bloco foram capturadas para modelos WaveNet e LSTM em diversas configurações.
+
+#### Amostra de Resultados (WaveNet Standard CH16)
+
+- **64 samples**: ~107.83 µs
+- **32 samples**: ~54.82 µs
+- **128 samples**: ~216.40 µs
+- **256 samples**: ~432.96 µs
+
+#### Amostra de Resultados (LSTM 2x16)
+
+- **64 samples**: ~14.13 µs
+- **32 samples**: ~7.10 µs
+- **128 samples**: ~28.40 µs
+- **256 samples**: ~56.58 µs
+
+*Este baseline servirá como referência para garantir que a refatoração não introduza regressões de performance superior a 2%.*
