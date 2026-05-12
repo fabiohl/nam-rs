@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! [T21] Definição da interface abstrata para operações SIMD.
+//! [Definição da interface abstrata para operações SIMD.
 
 /// Trait de abstração para despacho estático de operações matemáticas SIMD.
 ///

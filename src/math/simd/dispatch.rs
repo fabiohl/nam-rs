@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 /// Nota: Não existe variante `Fallback` escalar neste enum. O projeto tem como alvo
 /// mandatório a microarquitetura x86-64-v3 (AVX2+FMA). Se AVX2 não for detectado,
 /// `detect_best_simd()` entra em pânico no boot (fail-fast).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
 pub enum InstructionSet {
     /// AVX2 + FMA (x86-64-v3).
     Avx2,

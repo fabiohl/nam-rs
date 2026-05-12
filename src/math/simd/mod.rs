@@ -87,3 +87,7 @@ macro_rules! dispatch_simd {
 
 // Re-export do macro para ser visível no caminho crate::math::simd::dispatch_simd
 pub use dispatch_simd;
+
+#[cfg(test)]
+#[path = "simd_test.rs"]
+mod simd_test;

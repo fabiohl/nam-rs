@@ -3,7 +3,7 @@
 
 #![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
 
-//! [TA5] Utilitários SIMD para reduções e operações horizontais.
+//! Utilitários SIMD para reduções e operações horizontais.
 
 use core::arch::x86_64::*;
 

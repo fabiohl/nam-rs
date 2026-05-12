@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-//! [T21] Operações matemáticas básicas e utilitários SIMD.
+//! Operações matemáticas básicas e utilitários SIMD.
 
 use core::arch::x86_64::*;
 
@@ -138,24 +138,31 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
     }
     let mut i = 0;
     unsafe {
+        // Inicializa dois acumuladores (baldes) com zero.
+        // Cada balde processa 8 números simultaneamente.
         let mut sum0 = _mm256_setzero_ps();
         let mut sum1 = _mm256_setzero_ps();
 
+        // Loop principal: processa blocos de 16 amostras (2x8) por vez.
         while i + 16 <= len {
+            // Carrega dois blocos de 8 números da memória.
             let v0 = _mm256_loadu_ps(data.as_ptr().add(i));
             let v1 = _mm256_loadu_ps(data.as_ptr().add(i + 8));
 
+            // Eleva ao quadrado e soma ao acumulador em uma única operação (FMA).
             sum0 = _mm256_fmadd_ps(v0, v0, sum0);
             sum1 = _mm256_fmadd_ps(v1, v1, sum1);
             i += 16;
         }
 
+        // Processa sobras em blocos de 8, se houver.
         while i + 8 <= len {
             let v = _mm256_loadu_ps(data.as_ptr().add(i));
             sum0 = _mm256_fmadd_ps(v, v, sum0);
             i += 8;
         }
 
+        // Redução: combina os acumuladores e "espreme" os 8 valores para 1 único número.
         let sum = _mm256_add_ps(sum0, sum1);
         let hi = _mm256_extractf128_ps(sum, 1);
         let lo = _mm256_castps256_ps128(sum);
@@ -169,10 +176,13 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
         let mut total_sum = 0.0f32;
         _mm_store_ss(&mut total_sum, r);
 
+        // Processa as últimas sobras individuais (menos de 8 amostras).
         while i < len {
             total_sum += data[i] * data[i];
             i += 1;
         }
+
+        // Retorna a média dos quadrados (energia).
         total_sum / (len as f32)
     }
 }
@@ -198,19 +208,26 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
     }
     let mut i = 0;
     unsafe {
+        // Inicializa o recorde de "maior diferença" com zero.
         let mut max_v = _mm256_setzero_ps();
+        // Máscara para calcular o valor absoluto (remover o sinal negativo).
         let sign_mask = _mm256_set1_ps(-0.0f32);
 
+        // Loop principal: processa 8 pares de amostras por vez.
         while i + 8 <= len {
             let va = _mm256_loadu_ps(a.as_ptr().add(i));
             let vb = _mm256_loadu_ps(b.as_ptr().add(i));
 
+            // Calcula a diferença (A - B).
             let diff = _mm256_sub_ps(va, vb);
+            // Transforma em valor absoluto (distância positiva).
             let abs_diff = _mm256_andnot_ps(sign_mask, diff);
+            // Atualiza o recorde com a maior diferença encontrada nestas 8 amostras.
             max_v = _mm256_max_ps(max_v, abs_diff);
             i += 8;
         }
 
+        // Redução: compara os 8 resultados parciais para encontrar o máximo global.
         let hi = _mm256_extractf128_ps(max_v, 1);
         let lo = _mm256_castps256_ps128(max_v);
         let m128 = _mm_max_ps(lo, hi);
@@ -223,6 +240,7 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
         let mut max_diff = 0.0f32;
         _mm_store_ss(&mut max_diff, m32);
 
+        // Processa as sobras finais (menos de 8 amostras) individualmente.
         while i < len {
             let d = (a[i] - b[i]).abs();
             if d > max_diff {

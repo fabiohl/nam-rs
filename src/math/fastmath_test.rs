@@ -30,6 +30,8 @@ use super::*;
 
 #[test]
 fn test_simd_fastmath_tanh_mse() {
+    // Testa a precisão da função Tanh (suavização de som).
+    // Compara o resultado "rápido" (SIMD) com o "perfeito" (padrão do Rust).
     let input: [f32; 8] = [-4.0, -2.5, -0.75, 0.0, 0.8, 1.2, 3.5, 6.0];
     let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
     let result_vector = unsafe { simd_tanh(vector) };
@@ -56,6 +58,8 @@ fn test_simd_fastmath_tanh_mse() {
 
 #[test]
 fn test_simd_fastmath_sigmoid_mse() {
+    // Testa a precisão da função Sigmóide (usada em "portões" de áudio).
+    // Garante que o erro em relação à função matemática real seja inaudível.
     let input: [f32; 8] = [-5.0, -1.0, -0.33, 0.0, 0.22, 1.1, 2.8, 4.0];
     let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
     let result_vector = unsafe { simd_sigmoid(vector) };
@@ -83,6 +87,7 @@ fn test_simd_fastmath_sigmoid_mse() {
 
 #[test]
 fn test_simd_fastmath_tanh_avx512_mse() {
+    // Versão do teste de precisão Tanh para processadores AVX-512.
     if matches!(
         crate::math::simd::SimdMathConfig::get().instruction_set,
         crate::math::simd::InstructionSet::Avx512 | crate::math::simd::InstructionSet::Avx512Vnni
@@ -115,6 +120,7 @@ fn test_simd_fastmath_tanh_avx512_mse() {
 
 #[test]
 fn test_simd_fastmath_sigmoid_avx512_mse() {
+    // Versão do teste de precisão Sigmóide para processadores AVX-512.
     if matches!(
         crate::math::simd::SimdMathConfig::get().instruction_set,
         crate::math::simd::InstructionSet::Avx512 | crate::math::simd::InstructionSet::Avx512Vnni
@@ -150,6 +156,8 @@ fn test_simd_fastmath_sigmoid_avx512_mse() {
 
 #[test]
 fn test_simd_fastmath_tanh_extremes() {
+    // Teste de "stress": garante que números gigantes ou infinitos não quebrem o processamento.
+    // O som deve apenas "saturar" (limitar) em vez de gerar erros ou ruídos digitais.
     // Valores que anteriormente causariam NaN devido a overflow em p(x)^2
     let input: [f32; 8] = [
         2000.0,
@@ -207,6 +215,7 @@ fn test_simd_fastmath_tanh_extremes() {
 
 #[test]
 fn test_simd_fastmath_relu() {
+    // Testa o filtro ReLU: silencia números negativos e mantém os positivos.
     let input: [f32; 8] = [-5.0, -1.0, -0.01, 0.0, 0.01, 1.0, 5.0, 10.0];
     let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
     let result_vector = unsafe { simd_relu_avx2(vector) };
@@ -222,6 +231,7 @@ fn test_simd_fastmath_relu() {
 
 #[test]
 fn test_simd_fastmath_prelu() {
+    // Testa o filtro PReLU: parecido com o ReLU, mas deixa um pouco de som negativo "vazar".
     let input: [f32; 8] = [-5.0, -1.0, -0.01, 0.0, 0.01, 1.0, 5.0, 10.0];
     let alpha_raw: [f32; 8] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8];
     let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
@@ -247,6 +257,7 @@ fn test_simd_fastmath_prelu() {
 
 #[test]
 fn test_simd_fastmath_softsign() {
+    // Testa a função Softsign: outra forma de suavizar o ganho do som.
     let input: [f32; 8] = [-5.0, -1.0, -0.5, 0.0, 0.5, 1.0, 5.0, 10.0];
     let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
     let result_vector = unsafe { simd_softsign_avx2(vector) };
@@ -269,6 +280,7 @@ fn test_simd_fastmath_softsign() {
 
 #[test]
 fn test_simd_fastmath_silu() {
+    // Testa a função SiLU: usada em modelos neurais complexos para moldar o timbre.
     let input: [f32; 8] = [-5.0, -1.0, -0.5, 0.0, 0.5, 1.0, 5.0, 10.0];
     let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
     let result_vector = unsafe { simd_silu_avx2(vector) };
@@ -293,6 +305,7 @@ fn test_simd_fastmath_silu() {
 
 #[test]
 fn test_fastmath_slices() {
+    // Testa o processamento de listas inteiras (fatias) de áudio de uma só vez.
     let data = [
         -5.0, -1.0, 0.0, 1.0, 5.0, -2.0, 2.0, 0.5, -0.5, 3.0, -3.0, 4.0, -4.0, 10.0, -10.0, 0.1,
     ];
@@ -330,6 +343,8 @@ fn test_prelu_slice_periodic() {
 }
 #[test]
 fn test_simd_tanh_sigmoid_dual_parity_avx2() {
+    // Teste de performance: verifica se calcular Tanh e Sigmoid juntos (fused)
+    // dá o mesmo resultado que calcular um de cada vez. Poupa CPU no tempo real.
     if !is_x86_feature_detected!("avx2") || !is_x86_feature_detected!("fma") {
         return;
     }
@@ -360,10 +375,14 @@ fn test_simd_tanh_sigmoid_dual_parity_avx2() {
 
 #[test]
 fn test_simd_tanh_sigmoid_dual_parity_avx512() {
+    // Teste de paridade para AVX-512: verifica se o cálculo combinado (fused)
+    // de Tanh e Sigmóide é idêntico aos cálculos individuais.
+    // O AVX-512 processa 16 amostras simultaneamente.
     if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
         return;
     }
     unsafe {
+        // Prepara vetores de teste com 16 valores cada.
         let xt = _mm512_set_ps(
             0.1, -0.5, 1.2, -2.3, 3.4, -4.5, 5.6, -6.7, 7.8, -8.9, 9.0, -10.1, 11.2, -12.3, 13.4,
             -14.5,
@@ -373,7 +392,10 @@ fn test_simd_tanh_sigmoid_dual_parity_avx512() {
             14.5,
         );
 
+        // Calcula usando a função otimizada (fused).
         let (t_fused, s_fused) = simd_tanh_sigmoid_dual_avx512(xt, xs);
+
+        // Calcula usando as funções individuais para referência.
         let t_ref = simd_tanh_avx512(xt);
         let s_ref = simd_sigmoid_avx512(xs);
 
@@ -382,11 +404,13 @@ fn test_simd_tanh_sigmoid_dual_parity_avx512() {
         let mut res_t_ref = [0.0f32; 16];
         let mut res_s_ref = [0.0f32; 16];
 
+        // Traz os resultados dos registradores do processador para a memória comum.
         _mm512_storeu_ps(res_t_fused.as_mut_ptr(), t_fused);
         _mm512_storeu_ps(res_s_fused.as_mut_ptr(), s_fused);
         _mm512_storeu_ps(res_t_ref.as_mut_ptr(), t_ref);
         _mm512_storeu_ps(res_s_ref.as_mut_ptr(), s_ref);
 
+        // Verifica se os resultados são idênticos entre os dois métodos.
         for i in 0..16 {
             assert!((res_t_fused[i] - res_t_ref[i]).abs() < 1e-6);
             assert!((res_s_fused[i] - res_s_ref[i]).abs() < 1e-6);
@@ -395,7 +419,7 @@ fn test_simd_tanh_sigmoid_dual_parity_avx512() {
 }
 
 // ---------------------------------------------------------------------------
-// T7.2 — Sweep de Erro Máximo Absoluto
+// Sweep de Erro Máximo Absoluto
 // ---------------------------------------------------------------------------
 // Estes quatro testes substituem a cobertura pontual (8 pontos fixos, 1e-4) por
 // uma varredura densa de SWEEP_N pontos uniformes em [-8, 8], assertando o erro
@@ -624,6 +648,8 @@ fn test_tanh_max_abs_error_sweep_avx512() {
 /// Condicional em runtime — skipa silenciosamente em hardware sem AVX-512.
 #[test]
 fn test_sigmoid_max_abs_error_sweep_avx512() {
+    // Varredura de Precisão (Sweep): testa milhares de pontos para garantir que a
+    // aproximação da Sigmóide AVX-512 seja estável em todo o range de áudio.
     if !is_x86_feature_detected!("avx512f") || !is_x86_feature_detected!("avx512vl") {
         return;
     }
@@ -632,6 +658,7 @@ fn test_sigmoid_max_abs_error_sweep_avx512() {
     let mut max_error: f32 = 0.0;
     let mut worst_x: f32 = 0.0;
 
+    // Função de referência usando alta precisão (64 bits).
     let ref_sigmoid = |x: f32| -> f32 {
         let x_f64 = x as f64;
         (1.0_f64 / (1.0 + f64::exp(-x_f64))) as f32
@@ -642,18 +669,22 @@ fn test_sigmoid_max_abs_error_sweep_avx512() {
 
         let full_blocks = SWEEP_N / 16;
         for b in 0..full_blocks {
+            // Preenche o buffer com os próximos 16 números da varredura.
             for (k, slot) in buf.iter_mut().enumerate() {
                 *slot = SWEEP_MIN + (b * 16 + k) as f32 * step;
             }
 
+            // Calcula os 16 resultados simultaneamente.
             let v = _mm512_loadu_ps(buf.as_ptr());
             let r = simd_sigmoid_avx512(v);
             _mm512_storeu_ps(buf.as_mut_ptr(), r);
 
+            // Compara cada resultado com a referência matemática lenta e precisa.
             for (k, &actual) in buf.iter().enumerate() {
                 let x = SWEEP_MIN + (b * 16 + k) as f32 * step;
                 let reference = ref_sigmoid(x);
                 let err = (actual - reference).abs();
+                // Monitora qual foi o maior erro encontrado em toda a varredura.
                 if err > max_error {
                     max_error = err;
                     worst_x = x;
@@ -661,7 +692,7 @@ fn test_sigmoid_max_abs_error_sweep_avx512() {
             }
         }
 
-        // Resíduo escalar.
+        // Processa as amostras restantes (resíduo) caso o total não seja múltiplo de 16.
         let remainder_start = full_blocks * 16;
         for i in remainder_start..SWEEP_N {
             let x = SWEEP_MIN + i as f32 * step;
@@ -677,6 +708,7 @@ fn test_sigmoid_max_abs_error_sweep_avx512() {
         }
     }
 
+    // Garante que o pior erro encontrado seja menor que o threshold de segurança.
     assert!(
         max_error < AVX512_MAX_ABS_ERROR,
         "test_sigmoid_max_abs_error_sweep_avx512 FALHOU: max_error={:.3e} >= {:.3e} (pior ponto x={})",

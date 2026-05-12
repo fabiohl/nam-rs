@@ -5,6 +5,8 @@ use super::*;
 
 #[test]
 fn test_dot_product_avx2_fma() {
+    // Testa a operação de 'Produto Escalar' (multiplicar e somar tudo).
+    // É o cálculo matemático mais frequente dentro das redes neurais.
     let vec_a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
     let vec_b = vec![2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0];
     let vec_b_u16: Vec<u16> = vec_b
@@ -29,6 +31,7 @@ fn test_dot_product_avx2_fma() {
 
 #[test]
 fn test_dot_product_avx512() {
+    // Versão do teste de produto escalar para processadores ultra-modernos (AVX-512).
     if crate::math::simd::SimdMathConfig::get().instruction_set
         >= crate::math::simd::InstructionSet::Avx512
     {
@@ -59,6 +62,8 @@ fn test_dot_product_avx512() {
 /// Verifica que `set_daz_ftz` seta corretamente os bits DAZ (6) e FTZ (15) no MXCSR.
 #[test]
 fn test_set_daz_ftz() {
+    // Verifica se o processador está configurado para ignorar números 'fantasmagoricamente'
+    // pequenos (denormais). Isso evita lentidão extrema no processamento de áudio.
     unsafe {
         // Ler MXCSR atual e limpar DAZ+FTZ para verificar que a função os seta
         let mut before: u32 = 0;
@@ -83,6 +88,7 @@ fn test_set_daz_ftz() {
 
 #[test]
 fn test_compute_energy_avx2() {
+    // Testa o cálculo de energia (volume médio) usando aceleração AVX2.
     let data = vec![1.0, 2.0, 3.0, 4.0];
     let energy = unsafe { compute_energy_avx2(&data) };
     // (1^2 + 2^2 + 3^2 + 4^2) / 4 = (1 + 4 + 9 + 16) / 4 = 30 / 4 = 7.5
@@ -95,6 +101,7 @@ fn test_compute_energy_avx2() {
 
 #[test]
 fn test_compute_max_diff_avx2() {
+    // Testa o cálculo da maior diferença entre dois sons usando AVX2.
     let a = vec![1.0, 2.0, 3.0, 4.0];
     let b = vec![1.1, 1.9, 3.5, 3.8];
     let max_diff = unsafe { compute_max_diff_avx2(&a, &b) };
@@ -109,6 +116,7 @@ fn test_compute_max_diff_avx2() {
 
 #[test]
 fn test_horizontal_sum() {
+    // Testa a soma de todos os números dentro de um 'pacote' SIMD (8 ou 16 números).
     fn test_n<const N: usize>(data_ptr: *const f32, expected: f32) {
         let res_avx2 = unsafe { Avx2Math::horizontal_sum::<N>(data_ptr) };
         assert!(
@@ -144,6 +152,7 @@ fn test_horizontal_sum() {
 
 #[test]
 fn test_accumulate_head() {
+    // Testa a soma acumulada de dois blocos de som (usada para combinar resultados de camadas).
     fn test_backend<M: SimdMath>() {
         let mut dest = vec![1.0; 32];
         let src = vec![2.0; 32];
@@ -161,7 +170,7 @@ fn test_accumulate_head() {
         }
     }
 
-    test_backend::<ScalarMath>();
+    // test_backend::<ScalarMath>(); // ScalarMath foi removido (Projeto foca em x86-64-v3+)
     test_backend::<Avx2Math>();
     if std::is_x86_feature_detected!("avx512f") {
         test_backend::<Avx512Math>();
