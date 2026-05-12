@@ -6,7 +6,7 @@
 //! Lida com a exibição de ajuda e a interpretação dos argumentos
 //! fornecidos pelo usuário via terminal.
 
-use crate::math::fastmath::{GAIN_MAX_DB, GAIN_MIN_DB};
+use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 
 use crate::standalone::colors::Colorize;
 use lexopt::prelude::*;

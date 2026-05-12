@@ -345,13 +345,13 @@ Capturar snapshot completo antes de qualquer alteração:
 
 **Gate de saída**: Baseline salvo; zero falhas em testes. (Ver [Anexo: Baseline](#anexo-baseline-de-performance-tarefa-11))
 
-#### Tarefa 1.2 — `constants.rs`
+#### Tarefa 1.2 — `constants.rs` [CONCLUÍDO]
 
 Extrair constantes compartilhadas de `fastmath.rs` para `src/math/constants.rs`:
 
-- Clamp limits (TANH/SIGMOID)
-- Coeficientes Minimax/Padé
-- Parâmetros de LUT (GAIN_LUT_SIZE, GAIN_MIN_DB, GAIN_MAX_DB)
+- [x] Clamp limits (TANH/SIGMOID)
+- [x] Coeficientes Minimax/Padé
+- [x] Parâmetros de LUT (GAIN_LUT_SIZE, GAIN_MIN_DB, GAIN_MAX_DB)
 
 **Gate de saída**: `cargo check` + `cargo test` passam. Constantes usadas por ≥2 arquivos centralizadas.
 

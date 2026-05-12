@@ -9,18 +9,7 @@
 use core::arch::x86_64::*;
 use std::sync::OnceLock;
 
-/// Tamanho da tabela LUT para ganho. 4096 pontos fornecem precisão sub-0.001 dB.
-pub const GAIN_LUT_SIZE: usize = 4096;
-/// Limite inferior em dB para a LUT (Piso de silêncio prático -96dB).
-pub const GAIN_MIN_DB: f32 = -96.0;
-/// Limite superior em dB para a LUT (+30dB é um boost extremo).
-pub const GAIN_MAX_DB: f32 = 30.0;
-const GAIN_DB_RANGE: f32 = GAIN_MAX_DB - GAIN_MIN_DB;
-const GAIN_DB_STEP: f32 = GAIN_DB_RANGE / (GAIN_LUT_SIZE as f32 - 1.0);
-const INV_GAIN_DB_STEP: f32 = 1.0 / GAIN_DB_STEP;
-/// Limite de segurança para evitar overflow no polinômio de tanh (evita NaN).
-const TANH_CLAMP_LIMIT: f32 = 15.0;
-const SIGMOID_CLAMP_LIMIT: f32 = 12.0;
+use crate::math::constants::*;
 
 /// Tabela de Look-Up para conversão ultra-rápida de dB para ganho linear.
 /// Projetada para ser instanciada via `OnceLock` e acessada em threads RT.
@@ -124,9 +113,9 @@ pub fn get_gain_lut() -> &'static GainLUT {
 pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     unsafe {
         // Coeficientes do polinômio Minimax de grau 7
-        let c0 = _mm256_set1_ps(0.166_814_34_f32);
-        let c1 = _mm256_set1_ps(0.008_153_17_f32);
-        let c2 = _mm256_set1_ps(0.000_246_32_f32);
+        let c0 = _mm256_set1_ps(TANH_C0);
+        let c1 = _mm256_set1_ps(TANH_C1);
+        let c2 = _mm256_set1_ps(TANH_C2);
         let one = _mm256_set1_ps(1.0);
         let min_limit = _mm256_set1_ps(-TANH_CLAMP_LIMIT);
         let max_limit = _mm256_set1_ps(TANH_CLAMP_LIMIT);
@@ -178,9 +167,9 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
 /// O chamador deve garantir suporte a AVX2 e FMA.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
-    let c0 = _mm256_set1_ps(0.166_814_34_f32);
-    let c1 = _mm256_set1_ps(0.008_153_17_f32);
-    let c2 = _mm256_set1_ps(0.000_246_32_f32);
+    let c0 = _mm256_set1_ps(TANH_C0);
+    let c1 = _mm256_set1_ps(TANH_C1);
+    let c2 = _mm256_set1_ps(TANH_C2);
     let one = _mm256_set1_ps(1.0);
     let min_limit = _mm256_set1_ps(-TANH_CLAMP_LIMIT);
     let max_limit = _mm256_set1_ps(TANH_CLAMP_LIMIT);
@@ -255,9 +244,9 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     );
 
     // --- Fast Exp AVX2 (Degree 6) ---
-    let log2e = _mm256_set1_ps(1.442_695_1_f32);
-    let ln2_hi = _mm256_set1_ps(-0.693_145_75_f32);
-    let ln2_lo = _mm256_set1_ps(-0.000_001_428_606_8_f32);
+    let log2e = _mm256_set1_ps(EXP_LOG2E);
+    let ln2_hi = _mm256_set1_ps(EXP_LN2_HI);
+    let ln2_lo = _mm256_set1_ps(EXP_LN2_LO);
 
     let k = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x, log2e, _mm256_set1_ps(0.0)));
     let k_f = _mm256_cvtepi32_ps(k);
@@ -266,11 +255,11 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     f = _mm256_fmadd_ps(k_f, ln2_lo, f);
 
     // Polinômio Minimax D6 para exp(f) em [-0.5 ln 2, 0.5 ln 2]
-    let c6 = _mm256_set1_ps(0.001_388_888_9_f32);
-    let c5 = _mm256_set1_ps(0.008_333_333_f32);
-    let c4 = _mm256_set1_ps(0.041_666_668_f32);
-    let c3 = _mm256_set1_ps(0.166_666_67_f32);
-    let c2 = _mm256_set1_ps(0.5);
+    let c6 = _mm256_set1_ps(EXP_C6);
+    let c5 = _mm256_set1_ps(EXP_C5);
+    let c4 = _mm256_set1_ps(EXP_C4);
+    let c3 = _mm256_set1_ps(EXP_C3);
+    let c2 = _mm256_set1_ps(EXP_C2);
 
     let mut poly = _mm256_fmadd_ps(f, c6, c5);
     poly = _mm256_fmadd_ps(poly, f, c4);
@@ -404,7 +393,7 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx2(xt: __m256, xs: __m256) -> (__m256, __
     );
 
     // --- Sigmoid Exp Step 1 ---
-    let log2e = _mm256_set1_ps(1.442_695_1_f32);
+    let log2e = _mm256_set1_ps(EXP_LOG2E);
     let ks = _mm256_cvtps_epi32(_mm256_fmadd_ps(xs_clamped, log2e, zero));
     let ks_f = _mm256_cvtepi32_ps(ks);
 
@@ -413,26 +402,26 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx2(xt: __m256, xs: __m256) -> (__m256, __
     let xt_sq_sq = _mm256_mul_ps(xt_sq, xt_sq);
 
     // --- Sigmoid Exp Step 2 ---
-    let ln2_hi = _mm256_set1_ps(-0.693_145_75_f32);
-    let ln2_lo = _mm256_set1_ps(-0.000_001_428_606_8_f32);
+    let ln2_hi = _mm256_set1_ps(EXP_LN2_HI);
+    let ln2_lo = _mm256_set1_ps(EXP_LN2_LO);
     let mut fs = _mm256_fmadd_ps(ks_f, ln2_hi, xs_clamped);
     fs = _mm256_fmadd_ps(ks_f, ln2_lo, fs);
 
     // --- Tanh Poly Step 2 ---
-    let tc0 = _mm256_set1_ps(0.166_814_34_f32);
-    let tc1 = _mm256_set1_ps(0.008_153_17_f32);
-    let tc2 = _mm256_set1_ps(0.000_246_32_f32);
+    let tc0 = _mm256_set1_ps(TANH_C0);
+    let tc1 = _mm256_set1_ps(TANH_C1);
+    let tc2 = _mm256_set1_ps(TANH_C2);
     let yt_3_5 = _mm256_fmadd_ps(tc1, xt_sq, tc0);
     let yt_3_5_7 = _mm256_fmadd_ps(tc2, xt_sq_sq, yt_3_5);
     let yt_full = _mm256_fmadd_ps(yt_3_5_7, xt_sq, one);
     let pt_x = _mm256_mul_ps(xt_clamped, yt_full);
 
     // --- Sigmoid Poly ---
-    let sc6 = _mm256_set1_ps(0.001_388_888_9_f32);
-    let sc5 = _mm256_set1_ps(0.008_333_333_f32);
-    let sc4 = _mm256_set1_ps(0.041_666_668_f32);
-    let sc3 = _mm256_set1_ps(0.166_666_67_f32);
-    let sc2 = _mm256_set1_ps(0.5);
+    let sc6 = _mm256_set1_ps(EXP_C6);
+    let sc5 = _mm256_set1_ps(EXP_C5);
+    let sc4 = _mm256_set1_ps(EXP_C4);
+    let sc3 = _mm256_set1_ps(EXP_C3);
+    let sc2 = _mm256_set1_ps(EXP_C2);
     let mut polys = _mm256_fmadd_ps(fs, sc6, sc5);
     polys = _mm256_fmadd_ps(polys, fs, sc4);
     polys = _mm256_fmadd_ps(polys, fs, sc3);
@@ -516,9 +505,9 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     let neg_x1 = _mm256_max_ps(clamp_min, _mm256_min_ps(clamp_limit, neg_x1));
     let neg_x2 = _mm256_max_ps(clamp_min, _mm256_min_ps(clamp_limit, neg_x2));
 
-    let log2e = _mm256_set1_ps(1.442_695_1_f32);
-    let ln2_hi = _mm256_set1_ps(-0.693_145_75_f32);
-    let ln2_lo = _mm256_set1_ps(-0.000_001_428_606_8_f32);
+    let log2e = _mm256_set1_ps(EXP_LOG2E);
+    let ln2_hi = _mm256_set1_ps(EXP_LN2_HI);
+    let ln2_lo = _mm256_set1_ps(EXP_LN2_LO);
 
     let k1 = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x1, log2e, zero));
     let k2 = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x2, log2e, zero));
@@ -530,11 +519,11 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     f1 = _mm256_fmadd_ps(k_f1, ln2_lo, f1);
     f2 = _mm256_fmadd_ps(k_f2, ln2_lo, f2);
 
-    let c6 = _mm256_set1_ps(0.001_388_888_9_f32);
-    let c5 = _mm256_set1_ps(0.008_333_333_f32);
-    let c4 = _mm256_set1_ps(0.041_666_668_f32);
-    let c3 = _mm256_set1_ps(0.166_666_67_f32);
-    let c2 = _mm256_set1_ps(0.5);
+    let c6 = _mm256_set1_ps(EXP_C6);
+    let c5 = _mm256_set1_ps(EXP_C5);
+    let c4 = _mm256_set1_ps(EXP_C4);
+    let c3 = _mm256_set1_ps(EXP_C3);
+    let c2 = _mm256_set1_ps(EXP_C2);
 
     let mut poly1 = _mm256_fmadd_ps(f1, c6, c5);
     let mut poly2 = _mm256_fmadd_ps(f2, c6, c5);
@@ -580,9 +569,9 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     // Coeficientes do polinômio Minimax de grau 7
-    let c0 = _mm512_set1_ps(0.166_814_34_f32);
-    let c1 = _mm512_set1_ps(0.008_153_17_f32);
-    let c2 = _mm512_set1_ps(0.000_246_32_f32);
+    let c0 = _mm512_set1_ps(TANH_C0);
+    let c1 = _mm512_set1_ps(TANH_C1);
+    let c2 = _mm512_set1_ps(TANH_C2);
     let one = _mm512_set1_ps(1.0);
     let min_limit = _mm512_set1_ps(-TANH_CLAMP_LIMIT);
     let max_limit = _mm512_set1_ps(TANH_CLAMP_LIMIT);
@@ -641,20 +630,20 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     );
 
     // --- Fast Exp AVX-512 ---
-    let log2e = _mm512_set1_ps(1.442_695_1_f32);
-    let ln2_hi = _mm512_set1_ps(-0.693_145_75_f32);
-    let ln2_lo = _mm512_set1_ps(-0.000_001_428_606_8_f32);
+    let log2e = _mm512_set1_ps(EXP_LOG2E);
+    let ln2_hi = _mm512_set1_ps(EXP_LN2_HI);
+    let ln2_lo = _mm512_set1_ps(EXP_LN2_LO);
 
     let k = _mm512_cvtps_epi32(_mm512_mul_ps(neg_x, log2e));
     let k_f = _mm512_cvtepi32_ps(k);
     let mut f = _mm512_fmadd_ps(k_f, ln2_hi, neg_x);
     f = _mm512_fmadd_ps(k_f, ln2_lo, f);
 
-    let c6 = _mm512_set1_ps(0.001_388_888_9_f32);
-    let c5 = _mm512_set1_ps(0.008_333_333_f32);
-    let c4 = _mm512_set1_ps(0.041_666_668_f32);
-    let c3 = _mm512_set1_ps(0.166_666_67_f32);
-    let c2 = _mm512_set1_ps(0.5);
+    let c6 = _mm512_set1_ps(EXP_C6);
+    let c5 = _mm512_set1_ps(EXP_C5);
+    let c4 = _mm512_set1_ps(EXP_C4);
+    let c3 = _mm512_set1_ps(EXP_C3);
+    let c2 = _mm512_set1_ps(EXP_C2);
 
     let mut poly = _mm512_fmadd_ps(f, c6, c5);
     poly = _mm512_fmadd_ps(poly, f, c4);
@@ -741,19 +730,19 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx512(xt: __m512, xs: __m512) -> (__m512, 
     );
 
     // --- Sigmoid Exp ---
-    let log2e = _mm512_set1_ps(1.442_695_1_f32);
+    let log2e = _mm512_set1_ps(EXP_LOG2E);
     let ks = _mm512_cvtps_epi32(_mm512_fmadd_ps(xs_clamped, log2e, zero));
     let ks_f = _mm512_cvtepi32_ps(ks);
-    let ln2_hi = _mm512_set1_ps(-0.693_145_75_f32);
-    let ln2_lo = _mm512_set1_ps(-0.000_001_428_606_8_f32);
+    let ln2_hi = _mm512_set1_ps(EXP_LN2_HI);
+    let ln2_lo = _mm512_set1_ps(EXP_LN2_LO);
     let mut fs = _mm512_fmadd_ps(ks_f, ln2_hi, xs_clamped);
     fs = _mm512_fmadd_ps(ks_f, ln2_lo, fs);
 
-    let sc6 = _mm512_set1_ps(0.001_388_888_9_f32);
-    let sc5 = _mm512_set1_ps(0.008_333_333_f32);
-    let sc4 = _mm512_set1_ps(0.041_666_668_f32);
-    let sc3 = _mm512_set1_ps(0.166_666_67_f32);
-    let sc2 = _mm512_set1_ps(0.5);
+    let sc6 = _mm512_set1_ps(EXP_C6);
+    let sc5 = _mm512_set1_ps(EXP_C5);
+    let sc4 = _mm512_set1_ps(EXP_C4);
+    let sc3 = _mm512_set1_ps(EXP_C3);
+    let sc2 = _mm512_set1_ps(EXP_C2);
     let mut polys = _mm512_fmadd_ps(fs, sc6, sc5);
     polys = _mm512_fmadd_ps(polys, fs, sc4);
     polys = _mm512_fmadd_ps(polys, fs, sc3);
@@ -769,9 +758,9 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx512(xt: __m512, xs: __m512) -> (__m512, 
     // --- Tanh Poly ---
     let xt_sq = _mm512_mul_ps(xt_clamped, xt_clamped);
     let xt_sq_sq = _mm512_mul_ps(xt_sq, xt_sq);
-    let tc0 = _mm512_set1_ps(0.166_814_34_f32);
-    let tc1 = _mm512_set1_ps(0.008_153_17_f32);
-    let tc2 = _mm512_set1_ps(0.000_246_32_f32);
+    let tc0 = _mm512_set1_ps(TANH_C0);
+    let tc1 = _mm512_set1_ps(TANH_C1);
+    let tc2 = _mm512_set1_ps(TANH_C2);
     let yt_3_5 = _mm512_fmadd_ps(tc1, xt_sq, tc0);
     let yt_3_5_7 = _mm512_fmadd_ps(tc2, xt_sq_sq, yt_3_5);
     let yt_full = _mm512_fmadd_ps(yt_3_5_7, xt_sq, one);
