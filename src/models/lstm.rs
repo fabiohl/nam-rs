@@ -283,9 +283,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm256_storeu_ps,
         _mm256_add_ps,
         _mm256_mul_ps,
-        crate::math::fastmath::simd_tanh,
-        crate::math::fastmath::simd_sigmoid,
-        crate::math::fastmath::fused_lstm_gates_avx2,
+        crate::math::activations::simd_tanh_avx2,
+        crate::math::activations::simd_sigmoid_avx2,
+        crate::math::activations::fused_lstm_gates_avx2,
         false
     );
 
@@ -300,9 +300,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm512_storeu_ps,
         _mm512_add_ps,
         _mm512_mul_ps,
-        crate::math::fastmath::simd_tanh_avx512,
-        crate::math::fastmath::simd_sigmoid_avx512,
-        crate::math::fastmath::fused_lstm_gates_avx512,
+        crate::math::activations::simd_tanh_avx512,
+        crate::math::activations::simd_sigmoid_avx512,
+        crate::math::activations::fused_lstm_gates_avx512,
         false
     );
 
@@ -317,9 +317,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm256_storeu_ps,
         _mm256_add_ps,
         _mm256_mul_ps,
-        crate::math::fastmath::simd_tanh,
-        crate::math::fastmath::simd_sigmoid,
-        crate::math::fastmath::fused_lstm_gates_avx2,
+        crate::math::activations::simd_tanh_avx2,
+        crate::math::activations::simd_sigmoid_avx2,
+        crate::math::activations::fused_lstm_gates_avx2,
         false
     );
 
@@ -334,9 +334,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm512_storeu_ps,
         _mm512_add_ps,
         _mm512_mul_ps,
-        crate::math::fastmath::simd_tanh_avx512,
-        crate::math::fastmath::simd_sigmoid_avx512,
-        crate::math::fastmath::fused_lstm_gates_avx512,
+        crate::math::activations::simd_tanh_avx512,
+        crate::math::activations::simd_sigmoid_avx512,
+        crate::math::activations::fused_lstm_gates_avx512,
         false
     );
 
@@ -352,9 +352,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         _mm512_storeu_ps,
         _mm512_add_ps,
         _mm512_mul_ps,
-        crate::math::fastmath::simd_tanh_avx512,
-        crate::math::fastmath::simd_sigmoid_avx512,
-        crate::math::fastmath::fused_lstm_gates_avx512,
+        crate::math::activations::simd_tanh_avx512,
+        crate::math::activations::simd_sigmoid_avx512,
+        crate::math::activations::fused_lstm_gates_avx512,
         true
     );
 

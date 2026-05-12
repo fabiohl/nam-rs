@@ -249,12 +249,12 @@ impl SimdMath for Avx512Math {
     // Ativações matemáticas rápidas (Tangente Hiperbólica e Sigmóide).
     #[inline(always)]
     unsafe fn tanh_slice(slice: &mut [f32]) {
-        crate::math::fastmath::tanh_slice_avx512(slice)
+        crate::math::activations::tanh_slice_avx512(slice)
     }
 
     #[inline(always)]
     unsafe fn sigmoid_slice(slice: &mut [f32]) {
-        crate::math::fastmath::sigmoid_slice_avx512(slice)
+        crate::math::activations::sigmoid_slice_avx512(slice)
     }
 
     // Soma horizontal: Soma todos os números dentro de um único registrador.
@@ -265,7 +265,7 @@ impl SimdMath for Avx512Math {
 
     #[inline(always)]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
-        crate::math::fastmath::tanh_slice_avx512(buf)
+        crate::math::activations::tanh_slice_avx512(buf)
     }
 
     #[inline(always)]

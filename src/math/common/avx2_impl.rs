@@ -248,12 +248,12 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn tanh_slice(slice: &mut [f32]) {
-        unsafe { crate::math::fastmath::tanh_slice_avx2(slice) }
+        unsafe { crate::math::activations::tanh_slice_avx2(slice) }
     }
 
     #[inline(always)]
     unsafe fn sigmoid_slice(slice: &mut [f32]) {
-        unsafe { crate::math::fastmath::sigmoid_slice_avx2(slice) }
+        unsafe { crate::math::activations::sigmoid_slice_avx2(slice) }
     }
 
     #[inline(always)]
@@ -263,7 +263,7 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
-        unsafe { crate::math::fastmath::tanh_slice_avx2(buf) }
+        unsafe { crate::math::activations::tanh_slice_avx2(buf) }
     }
 
     #[inline(always)]

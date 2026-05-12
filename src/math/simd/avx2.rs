@@ -1051,7 +1051,7 @@ pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut
     let mut i = 0;
     while i + 8 <= len {
         let vb = _mm256_loadu_ps(block.as_ptr().add(i));
-        let vt = crate::math::fastmath::simd_tanh_avx2(vb);
+        let vt = crate::math::activations::simd_tanh_avx2(vb);
         _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
 
         let vh = _mm256_loadu_ps(head_input.as_ptr().add(i));
@@ -1082,8 +1082,7 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
             let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
-            let tanh_z1 = crate::math::fastmath::simd_tanh_avx2(z1);
-            let sig_z2 = crate::math::fastmath::simd_sigmoid_avx2(z2);
+            let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx2(z1, z2);
             let activated = _mm256_mul_ps(tanh_z1, sig_z2);
 
             _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
@@ -1122,7 +1121,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
         let go = _mm256_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
         let cs = _mm256_loadu_ps(cell_state.as_ptr().add(j));
 
-        let (new_cs, hidden) = crate::math::fastmath::fused_lstm_gates_avx2(gf, gi, gg, go, cs);
+        let (new_cs, hidden) = crate::math::activations::fused_lstm_gates_avx2(gf, gi, gg, go, cs);
 
         _mm256_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
         _mm256_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);

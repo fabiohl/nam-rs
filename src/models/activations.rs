@@ -60,20 +60,10 @@ pub trait ActivationFn {
 
 impl ActivationFn for ActivationType {
     fn apply(&self, data: &mut [f32]) {
-        use crate::math::fastmath;
-        use crate::math::simd::{InstructionSet, SIMD_MATH};
-
         match self {
-            Self::Tanh => match SIMD_MATH.instruction_set {
-                InstructionSet::Avx512
-                | InstructionSet::Avx512Vnni
-                | InstructionSet::Avx512VnniBf16 => {
-                    unsafe { fastmath::tanh_slice_avx512(data) };
-                }
-                _ => {
-                    unsafe { fastmath::tanh_slice_avx2(data) };
-                }
-            },
+            Self::Tanh => {
+                crate::math::activations::tanh_slice(data);
+            }
             Self::HardTanh => {
                 for x in data.iter_mut() {
                     *x = x.clamp(-1.0, 1.0);
@@ -84,64 +74,25 @@ impl ActivationFn for ActivationType {
                     *x = fast_tanh(*x);
                 }
             }
-            Self::ReLU => match SIMD_MATH.instruction_set {
-                InstructionSet::Avx512
-                | InstructionSet::Avx512Vnni
-                | InstructionSet::Avx512VnniBf16 => {
-                    unsafe { fastmath::relu_slice_avx512(data) };
-                }
-                _ => {
-                    unsafe { fastmath::relu_slice_avx2(data) };
-                }
-            },
+            Self::ReLU => {
+                crate::math::activations::relu_slice(data);
+            }
             Self::LeakyReLU { negative_slope } => {
                 let slopes = [*negative_slope];
-                match SIMD_MATH.instruction_set {
-                    InstructionSet::Avx512
-                    | InstructionSet::Avx512Vnni
-                    | InstructionSet::Avx512VnniBf16 => {
-                        unsafe { fastmath::prelu_slice_avx512(data, &slopes) };
-                    }
-                    _ => {
-                        unsafe { fastmath::prelu_slice_avx2(data, &slopes) };
-                    }
-                }
+                crate::math::activations::prelu_slice(data, &slopes);
             }
             Self::PReLU { negative_slopes } => {
                 if negative_slopes.is_empty() {
                     return;
                 }
-                match SIMD_MATH.instruction_set {
-                    InstructionSet::Avx512
-                    | InstructionSet::Avx512Vnni
-                    | InstructionSet::Avx512VnniBf16 => {
-                        unsafe { fastmath::prelu_slice_avx512(data, negative_slopes) };
-                    }
-                    _ => {
-                        unsafe { fastmath::prelu_slice_avx2(data, negative_slopes) };
-                    }
-                }
+                crate::math::activations::prelu_slice(data, negative_slopes);
             }
-            Self::Sigmoid => match SIMD_MATH.instruction_set {
-                InstructionSet::Avx512
-                | InstructionSet::Avx512Vnni
-                | InstructionSet::Avx512VnniBf16 => {
-                    unsafe { fastmath::sigmoid_slice_avx512(data) };
-                }
-                _ => {
-                    unsafe { fastmath::sigmoid_slice_avx2(data) };
-                }
-            },
-            Self::SiLU => match SIMD_MATH.instruction_set {
-                InstructionSet::Avx512
-                | InstructionSet::Avx512Vnni
-                | InstructionSet::Avx512VnniBf16 => {
-                    unsafe { fastmath::silu_slice_avx512(data) };
-                }
-                _ => {
-                    unsafe { fastmath::silu_slice_avx2(data) };
-                }
-            },
+            Self::Sigmoid => {
+                crate::math::activations::sigmoid_slice(data);
+            }
+            Self::SiLU => {
+                crate::math::activations::silu_slice(data);
+            }
             Self::HardSwish => {
                 for x in data.iter_mut() {
                     let t = *x + 3.0;
@@ -163,16 +114,9 @@ impl ActivationFn for ActivationType {
                     }
                 }
             }
-            Self::Softsign => match SIMD_MATH.instruction_set {
-                InstructionSet::Avx512
-                | InstructionSet::Avx512Vnni
-                | InstructionSet::Avx512VnniBf16 => {
-                    unsafe { fastmath::softsign_slice_avx512(data) };
-                }
-                _ => {
-                    unsafe { fastmath::softsign_slice_avx2(data) };
-                }
-            },
+            Self::Softsign => {
+                crate::math::activations::softsign_slice(data);
+            }
         }
     }
 }

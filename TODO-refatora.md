@@ -381,9 +381,9 @@ arquivos dedicados em `common/`, mantendo as funções-kernel no local original.
 
 ---
 
-#### Tarefa 2.1 — Criar `common/avx2_impl.rs` [CONCLUÍDO]
+#### Tarefa 2.1 — Criar `common/avx2_impl.rs` [CONCLUÍDO] [x]
 
-##### 2.1.1 — Criar o arquivo `src/math/common/avx2_impl.rs`
+##### 2.1.1 — Criar o arquivo `src/math/common/avx2_impl.rs` [x]
 
 **Conteúdo**: Mover SOMENTE os blocos de struct e impl de `simd/avx2.rs`:
 
@@ -414,7 +414,7 @@ use crate::math::common::scalar_ref::*;
 use core::arch::x86_64::*;
 ```
 
-##### 2.1.2 — Ajustar caminhos no bloco `impl SimdMath for Avx2Math`
+##### 2.1.2 — Ajustar caminhos no bloco `impl SimdMath for Avx2Math` [x]
 
 Cada método do impl chama funções-kernel que ainda vivem em `simd/avx2.rs`. Após a
 movimentação para `common/avx2_impl.rs`, esses paths precisam do prefixo do módulo:
@@ -453,7 +453,7 @@ movimentação para `common/avx2_impl.rs`, esses paths precisam do prefixo do m�
 > em cada chamada torna explícito de onde vêm os kernels, facilitando a migração futura
 > (Épicos 3 e 4) onde esses paths serão novamente atualizados.
 
-##### 2.1.3 — Substituir `Avx2VnniMath` por type alias
+##### 2.1.3 — Substituir `Avx2VnniMath` por type alias [x]
 
 O bloco `impl SimdMath for Avx2VnniMath` ocupa ~300 linhas (L1367–L1667) e é 100% delegação
 para `Avx2Math::method(...)`. A instrução AVX2-VNNI (`VPDPBUSD`) opera apenas sobre inteiros
@@ -489,7 +489,7 @@ impl SimdMath for Avx2VnniMath {
 pub type Avx2VnniMath = Avx2Math;
 ```
 
-##### 2.1.4 — Atualizar `simd/avx2.rs` (remoção + re-export)
+##### 2.1.4 — Atualizar `simd/avx2.rs` (remoção + re-export) [x]
 
 **Remover** de `simd/avx2.rs`:
 
@@ -507,7 +507,7 @@ pub use crate::math::common::avx2_impl::{Avx2Math, Avx2VnniMath};
 Isto garante que `crate::math::simd::avx2::Avx2Math` continua funcionando,
 mantendo compatibilidade com todos os `use` e caminhos existentes.
 
-##### 2.1.5 — Verificação
+##### 2.1.5 — Verificação [x]
 
 ```bash
 cargo check 2>&1    # Deve compilar sem erros
@@ -516,9 +516,9 @@ cargo test           # Todos os 150 testes devem passar
 
 ---
 
-#### Tarefa 2.2 — Criar `common/avx512_impl.rs` [CONCLUÍDO]
+#### Tarefa 2.2 — Criar `common/avx512_impl.rs` [CONCLUÍDO] [x]
 
-##### 2.2.1 — Criar o arquivo `src/math/common/avx512_impl.rs`
+##### 2.2.1 — Criar o arquivo `src/math/common/avx512_impl.rs` [x]
 
 **Conteúdo**: Mover SOMENTE os blocos de struct e impl de `simd/avx512.rs`:
 
@@ -550,7 +550,7 @@ use crate::math::common::scalar_ref::*;
 use core::arch::x86_64::*;
 ```
 
-##### 2.2.2 — Ajustar caminhos nas chamadas internas
+##### 2.2.2 — Ajustar caminhos nas chamadas internas [x]
 
 **Para `Avx512Math`**: Mesmo padrão da Tarefa 2.1.2 — prefixar chamadas com `super::super::simd::avx512::`.
 
@@ -606,7 +606,7 @@ use core::arch::x86_64::*;
 
 Métodos que chamam `Avx512Math::method(...)` → prefixar com `self::Avx512Math::`.
 
-##### 2.2.3 — Atualizar `simd/avx512.rs` (remoção + re-export)
+##### 2.2.3 — Atualizar `simd/avx512.rs` (remoção + re-export) [x]
 
 **Remover** de `simd/avx512.rs`:
 
@@ -621,7 +621,7 @@ Métodos que chamam `Avx512Math::method(...)` → prefixar com `self::Avx512Math
 pub use crate::math::common::avx512_impl::{Avx512Math, Avx512VnniMath, Avx512VnniBf16Math};
 ```
 
-##### 2.2.4 — Verificação
+##### 2.2.4 — Verificação [x]
 
 ```bash
 cargo check 2>&1    # Deve compilar sem erros
@@ -630,7 +630,7 @@ cargo test           # Todos os 150 testes devem passar
 
 ---
 
-#### Tarefa 2.3 — Atualizar `common/mod.rs` com novos módulos
+#### Tarefa 2.3 — Atualizar `common/mod.rs` with novos módulos [CONCLUÍDO] [x]
 
 Adicionar ao `src/math/common/mod.rs`:
 
@@ -694,7 +694,7 @@ Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definiç�
 //   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
 //
 // Data do debt: 2026-05-12 (refatoração Épicos 1-5)
-// Prioridade: Média (não afeta performance em caminhos quentes,
+// Prioridade: Média (não afeta performance em caminh'os quentes,
 //             que já usam Mecanismo 1 com monomorphization)
 // ══════════════════════════════════════════════════════════════════════════════
 ```
@@ -712,15 +712,15 @@ cargo clippy   # Sem warnings novos
 
 #### Gate de Saída do Épico 2
 
-- [ ] `cargo check` limpo — zero erros de compilação
-- [ ] `cargo test` — 150 passed, 0 failed
-- [ ] `cargo clippy` — sem warnings novos
-- [ ] `simd/avx2.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
-- [ ] `simd/avx512.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
-- [ ] `common/avx2_impl.rs` existe com `Avx2Math` + `Avx2VnniMath` (type alias)
-- [ ] `common/avx512_impl.rs` existe com `Avx512Math`, `Avx512VnniMath`, `Avx512VnniBf16Math`
-- [ ] `Avx2VnniMath` reduzido de ~300 linhas para 1 `type` alias + docstring
-- [ ] Design debt documentado em `common/dispatch.rs`
+- [x] `cargo check` limpo — zero erros de compilação
+- [x] `cargo test` — 150 passed, 0 failed
+- [x] `cargo clippy` — sem warnings novos
+- [x] `simd/avx2.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
+- [x] `simd/avx512.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
+- [x] `common/avx2_impl.rs` existe com `Avx2Math` + `Avx2VnniMath` (type alias)
+- [x] `common/avx512_impl.rs` existe com `Avx512Math`, `Avx512VnniMath`, `Avx512VnniBf16Math`
+- [x] `Avx2VnniMath` reduzido de ~300 linhas para 1 `type` alias + docstring
+- [x] Design debt documentado em `common/dispatch.rs`
 
 ---
 
