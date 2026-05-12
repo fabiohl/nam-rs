@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::math::simd::{Avx512Math, SimdMath};
+    use crate::math::common::{Avx512Math, SimdMath};
     use core::arch::x86_64::*;
 
     /// Garante que o salvamento de dados compactos (bfloat16) usando a largura total do

@@ -5,6 +5,7 @@
 
 pub mod aligned;
 pub mod avx2_impl;
+pub mod avx512_impl;
 pub mod dispatch;
 pub mod ops;
 pub mod scalar_ref;
@@ -16,6 +17,7 @@ pub mod utility;
 
 pub use aligned::AlignedVec;
 pub use avx2_impl::{Avx2Math, Avx2VnniMath};
+pub use avx512_impl::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
 pub use scalar_ref::*;
 pub use traits::SimdMath;

@@ -516,7 +516,7 @@ cargo test           # Todos os 150 testes devem passar
 
 ---
 
-#### Tarefa 2.2 — Criar `common/avx512_impl.rs`
+#### Tarefa 2.2 — Criar `common/avx512_impl.rs` [CONCLUÍDO]
 
 ##### 2.2.1 — Criar o arquivo `src/math/common/avx512_impl.rs`
 

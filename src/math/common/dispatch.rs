@@ -4,8 +4,7 @@
 //! Sistema de despacho dinâmico para kernels SIMD.
 
 use super::traits::SimdMath;
-use crate::math::simd::avx2::Avx2Math;
-use crate::math::simd::avx512::Avx512Math;
+use crate::math::common::{Avx2Math, Avx2VnniMath, Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
 use std::sync::LazyLock;
 
 /// Enumera os conjuntos de instruções suportados.
@@ -116,7 +115,6 @@ fn detect_best_simd() -> SimdMathConfig {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx512bf16") && is_x86_feature_detected!("avx512vnni") {
-            use crate::math::simd::avx512::Avx512VnniBf16Math;
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512VnniBf16,
                 name: "AVX-512 (VNNI+BF16)",
@@ -136,7 +134,6 @@ fn detect_best_simd() -> SimdMathConfig {
             };
         }
         if is_x86_feature_detected!("avx512vnni") {
-            use crate::math::simd::avx512::Avx512VnniMath;
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512Vnni,
                 name: "AVX-512 (VNNI)",
@@ -175,7 +172,6 @@ fn detect_best_simd() -> SimdMathConfig {
             };
         }
         if is_x86_feature_detected!("avxvnni") {
-            use crate::math::simd::avx2::Avx2VnniMath;
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx2Vnni,
                 name: "AVX2 (VNNI)",
