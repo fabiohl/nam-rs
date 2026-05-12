@@ -5,6 +5,9 @@
 //!
 //! Este módulo contém as estruturas que descrevem a topologia de um modelo WaveNet A2,
 //! permitindo a construção e validação das camadas de inferência.
+//!
+//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
+//! aguardando estabilização da implementação de referência.
 
 use crate::models::activations::ActivationType;
 use crate::models::film::FiLMConfig;

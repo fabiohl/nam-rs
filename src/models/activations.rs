@@ -6,6 +6,9 @@
 //! Este módulo fornece implementações de várias funções de ativação não-lineares
 //! utilizadas nos modelos Neural Amp Modeler, garantindo paridade com a
 //! implementação C++ original.
+//!
+//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
+//! aguardando estabilização da implementação de referência.
 
 /// Tipos de ativação suportados pelo NAM A2.
 #[derive(Debug, Clone, PartialEq)]

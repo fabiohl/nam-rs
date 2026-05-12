@@ -5,6 +5,9 @@
 //!
 //! Este módulo define os modos de operação e estruturas de configuração para
 //! as camadas do WaveNet A2 que utilizam mecanismos de gating ou blending.
+//!
+//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
+//! aguardando estabilização da implementação de referência.
 
 use crate::models::activations::ActivationType;
 

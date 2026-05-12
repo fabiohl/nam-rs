@@ -28,21 +28,33 @@ pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     pub prefetch_fn: PrefetchFn,
 }
 
-/// Trait auxiliar para unificar o processamento f32 e bf16 no WaveNet.
+/// Ponte de Dados (ConvInput):
+/// Esta trait é uma ponte que permite ao NAM-rs usar exatamente o mesmo código
+/// para dois tipos de números: decimais comuns (f32) e números compactos (u16/BF16).
+/// Isso evita duplicar lógica complexa e facilita a manutenção.
 trait ConvInput: Copy + Default {
+    /// Versão 4x: Calcula 4 canais ao mesmo tempo.
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
         weights: &[[u16; 4]],
         state: &[Self],
     ) -> [f32; 4];
+
+    /// Versão Dual Frame: Calcula 4 canais de DOIS frames simultaneamente.
     unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
         weights: &[[u16; 4]],
         state_f0: &[Self],
         state_f1: &[Self],
     ) -> ([f32; 4], [f32; 4]);
+
+    /// Produto Escalar simples: Multiplicação básica de vetores.
     unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32;
+
+    /// Ajuste de Ponteiro: Garante que o endereço de memória esteja no formato correto.
     fn cast_ptr(ptr: *const Self) -> *const f32;
 }
 
+// 1. Modo de Precisão Total (f32):
+// Usado em computadores que priorizam a fidelidade absoluta do som.
 impl ConvInput for f32 {
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
@@ -69,6 +81,10 @@ impl ConvInput for f32 {
     }
 }
 
+// 2. Modo 'Turbo' (u16/BF16):
+// Usado para ganhar velocidade. O formato BF16 corta o tamanho dos dados pela metade,
+// permitindo que o processador calcule muito mais rápido com uma perda de qualidade
+// que é imperceptível ao ouvido humano.
 impl ConvInput for u16 {
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
@@ -184,7 +200,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
 
         // [PASSO 2: Iteração do Kernel (Receptive Field)]
-        // [TE1] Inversão de Loop: Channel-First Tiling.
+        // Inversão de Loop: Channel-First Tiling.
         // Processamos todos os taps (K) para um bloco de canais de saída antes de mover para o próximo.
         // Isso mantém os acumuladores nos registros SIMD, reduzindo tráfego de cache L1.
 
@@ -349,6 +365,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     ///
     /// # Safety
     /// `layer_buffer` e `mixin` devem possuir os tamanhos adequados.
+    /// Processamento Dual Frame com Mixin:
+    /// Esta função calcula dois momentos do áudio de uma vez só, já integrando
+    /// as configurações externas (mixin) para economizar tempo de processamento.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_with_mixin<M: SimdMath>(
@@ -374,6 +393,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
+    /// Organizador Interno:
+    /// Prepara os dados para o 'Motor Universal' (Generic), decidindo como
+    /// as informações serão enviadas para o cálculo.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     unsafe fn process_dual_frame_internal<M: SimdMath>(
@@ -399,6 +421,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
+    /// Motor Universal (Generic Engine):
+    /// Esta é a inteligência central que faz a matemática pesada. Graças ao uso
+    /// de tipos genéricos (T: ConvInput), este mesmo código funciona tanto no
+    /// modo de precisão total quanto no modo ultra-rápido (BF16).
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     unsafe fn process_dual_frame_generic<M: SimdMath, T: ConvInput>(
@@ -411,6 +437,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
+        // --- 1. Preparação (Bias e Mixin) ---
+        // Começamos cada cálculo preenchendo os frames com o valor base (bias)
+        // e somando o mixin da camada anterior, se existirem.
         if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
             if self.do_bias {
                 out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
@@ -431,6 +460,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_frame_f1.fill(0.0);
         }
 
+        // --- 2. Busca no Passado (Dilatação) ---
+        // Localizamos no buffer onde estão os sons antigos ('taps') que
+        // influenciarão o som atual, respeitando a dilatação da camada.
         let mut in_taps_f0 = [[T::default(); IN]; K];
         let mut in_taps_f1 = [[T::default(); IN]; K];
         for k in 0..K {
@@ -444,6 +476,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 in_taps_f1[k].copy_from_slice(
                     layer_buffer.get_unchecked(in_slice_start_f1..in_slice_start_f1 + IN),
                 );
+                // Software Prefetch: Avisamos o processador para já ir buscando os próximos dados.
                 (self.prefetch_fn)(
                     T::cast_ptr(layer_buffer.as_ptr().add(in_slice_start_f0)),
                     self.dilation * IN,
@@ -457,6 +490,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let num_blocks = OUT / 4;
         let mut out_c = 0;
 
+        // --- 3. Loop de Cálculo Central (Blocks de 4) ---
+        // Processamos a rede neural em blocos de 4 canais de saída.
+        // Esta é a parte que consome mais CPU.
         for b in 0..num_blocks {
             let mut r0_f0;
             let mut r1_f0;
@@ -468,6 +504,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let mut r3_f1;
 
             unsafe {
+                // Carregamos o que já calculamos até agora (bias + mixin).
                 r0_f0 = *out_frame_f0.get_unchecked(out_c);
                 r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
                 r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
@@ -489,9 +526,14 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 let in_slice_f0 = &in_taps_f0[k];
                 let in_slice_f1 = &in_taps_f1[k];
 
+                // A Mágica do Dual Frame:
+                // Multiplicamos o mesmo peso por DOIS frames de áudio ao mesmo tempo.
+                // Note que funciona tanto para F32 quanto para BF16 graças à trait T.
                 let (t_f0, t_f1) = unsafe {
                     T::dot_product_4x_interleaved_dual_frame::<M>(w_slice, in_slice_f0, in_slice_f1)
                 };
+
+                // Somamos a influência deste tap nos acumuladores.
                 r0_f0 += t_f0[0];
                 r1_f0 += t_f0[1];
                 r2_f0 += t_f0[2];
@@ -503,6 +545,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
 
             unsafe {
+                // Devolvemos o resultado final para o buffer de saída.
                 *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
                 *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
                 *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
@@ -516,6 +559,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_c += 4;
         }
 
+        // --- 4. Canais Restantes (Tail) ---
+        // Se o número de canais não for múltiplo de 4, processamos as sobras aqui.
         while out_c < OUT {
             let mut r_f0 = unsafe { *out_frame_f0.get_unchecked(out_c) };
             let mut r_f1 = unsafe { *out_frame_f1.get_unchecked(out_c) };
@@ -539,7 +584,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Esta abordagem maximiza a utilização dos pesos (VNNI) carregados nos registradores (Temporal Tiling).
     ///
     /// # Safety
-    /// `layer_buffer` e `mixin` devem possuir os tamanhos adequados.
+    /// O chamador deve garantir que `layer_buffer` e `mixin` possuam os tamanhos adequados.
+    /// Modo Dual Frame BF16 (Turbo):
+    /// O caminho mais rápido para processar dois frames simultaneamente
+    /// usando a eficiência de memória do formato de 16 bits (BF16).
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_bf16_with_mixin<M: SimdMath>(
@@ -565,6 +613,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
+    /// Organizador Interno BF16:
+    /// Encaminha os dados de 16 bits para o Motor Universal de cálculo.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     unsafe fn process_dual_frame_bf16_internal<M: SimdMath>(
@@ -591,19 +641,23 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     }
 }
 
-/// Camada Densa 1x1 baseada num Matmul vetorizado linear.
+/// Camada Densa 1x1 (O Mixador de Canais):
+/// Pense nesta camada como uma 'mesa de som digital'. Ela mistura os diversos
+/// canais de áudio vindos da etapa anterior para criar a combinação final de timbres.
 #[derive(Clone)]
 pub struct DenseLayer<const IN: usize, const OUT: usize> {
-    /// Matriz de pesos lineares (OUT * IN).
+    /// Matriz de pesos: Define 'quanto' de cada canal entra na mistura.
     pub weights: AlignedVec<u16>,
-    /// Condição temporal para o deslocador de tensor bias.
+    /// Bias: Um ajuste de 'volume' básico para cada canal de saída.
     pub bias: AlignedVec<f32>,
-    /// Determina se o array de bias deve ser somado.
+    /// Flag que indica se o bias deve ser aplicado.
     pub do_bias: bool,
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
-    /// Executa a projeção fundida (W*in + bias) somando ao buffer de saída (Residual Fusion).
+    /// Processamento Fundido (Fused):
+    /// Multiplica, aplica o bias e soma ao resultado, tudo em um único passo matemático.
+    /// É a forma mais eficiente de processar um único frame de áudio.
     ///
     /// # Safety
     /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `IN` e `OUT`.
@@ -614,7 +668,7 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Alias para `process_fused` (mantido por compatibilidade).
+    /// Alias para `process_fused`.
     ///
     /// # Safety
     /// Depende da validade dos buffers e da trait `SimdMath`.
@@ -627,7 +681,9 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         unsafe { self.process_fused::<M>(in_frame, out_frame) }
     }
 
-    /// Processa um único frame substituindo o buffer existente.
+    /// Processamento 'Limpo' (Overwrite):
+    /// Similar ao fundido, mas substitui o que estiver no buffer de saída
+    /// em vez de somar ao valor existente.
     ///
     /// # Safety
     /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `IN` e `OUT`.
@@ -642,8 +698,9 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Executa a projeção fundida (W*in + bias) somando ao buffer de saída em lote (Residual Fusion).
-    /// [TA3] Otimização: Chama o kernel Batch GEMM.
+    /// Processamento de Bloco Fundido:
+    /// Versão otimizada para processar várias amostras (batches) de uma só vez,
+    /// ganhando muita velocidade em processadores modernos.
     ///
     /// # Safety
     /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
@@ -666,7 +723,7 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Alias para `process_fused_block` (mantido por compatibilidade).
+    /// Alias para `process_fused_block`.
     ///
     /// # Safety
     /// Depende da validade dos buffers e da trait `SimdMath`.
@@ -680,8 +737,9 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         unsafe { self.process_fused_block::<M>(input, output, num_frames) }
     }
 
-    /// Executa a projeção 1x1 fundida com a soma do residual: Y = X_res + Bias + W * Z.
-    /// [TF3] Otimização: Elimina a necessidade de cópia prévia do residual para o output.
+    /// Soma do Residual (O 'Atalho' Final):
+    /// Esta função faz algo incrível: ela mistura os canais E soma o som original
+    /// (residual) ao resultado, tudo sem precisar copiar dados extras na memória.
     ///
     /// # Safety
     /// O chamador deve garantir tamanhos compatíveis e validade dos buffers.
@@ -803,14 +861,14 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
                     .process_block::<M>(condition, mixin_out_slice, num_frames);
             }
 
-            // [T20] "Ahead-of-Time Conditioning": Otimização de Fusão Temporal
-            // Buffer temporário na stack para armazenar os resultados intermediários (Conv1D + Mixin)
+            // "Ahead-of-Time Conditioning": Otimização de Fusão Temporal Buffer
+            // temporário na stack para armazenar os resultados intermediários (Conv1D + Mixin)
             // antes da ativação. CH=16 * MAX_FRAMES=64 = 1024 elementos (4KB).
             let mut conv_plus_mixin = [0.0f32; 1024];
             let conv_slice = &mut conv_plus_mixin[..num_frames * CH];
 
             // [FASE 1: Linear - Conv1D + Mixin]
-            // [T1.1] Dual-Frame Tiling: Processamos 2 frames por iteração para amortizar
+            // Dual-Frame Tiling: Processamos 2 frames por iteração para amortizar
             // o carregamento de pesos da Conv1D nos registradores.
             let mut i = 0;
             let mut chunks = conv_slice.chunks_exact_mut(2 * CH);
@@ -1016,7 +1074,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                     }
                 }
 
-                // [T2.2] Software Prefetch do próximo estado na cascata.
+                // Software Prefetch do próximo estado na cascata.
                 // Trazemos a linha de cache do estado i+1 (e i+2 se possível) para o L1
                 // enquanto o processador resolve o pipeline aritmético da camada atual.
                 if i + 1 < num_layers {

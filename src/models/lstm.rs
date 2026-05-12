@@ -47,12 +47,23 @@ macro_rules! define_lstm_process {
         #[$target_meta]
         pub unsafe fn $fn_name(&mut self, input: &[f32]) {
             unsafe {
+                // 1. Alimentamos a 'memória' do modelo com o novo fragmento de áudio.
                 self.state[..I].copy_from_slice(&input[..I]);
+
+                // 2. Se o hardware suportar BF16 (Brain Floating Point), convertemos os dados.
+                // Isso mantém a escala do áudio mas usa metade do espaço, acelerando o cálculo.
                 if $is_bf16 {
                     use $crate::math::simd::SimdMath;
                     <$simd_math>::f32_to_bf16(&self.state[..I], &mut self.state_bf16[..I]);
                 }
+
+                // 3. 'Prefetch': Avisamos o processador para buscar os pesos na memória RAM
+                // um pouco antes de precisarmos deles, evitando que o cálculo pare para esperar os dados.
                 _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
+
+                // 4. Multiplicação de Matriz-Vetor (GEMV):
+                // Aqui multiplicamos a entrada e o estado anterior pelos pesos (o 'cérebro' treinado).
+                // O resultado ativa as 4 'portas' do LSTM: Esquecimento, Entrada, Candidata e Saída.
                 if $is_bf16 {
                     $gemv_4gate_bf16(
                         &self.state_bf16,
@@ -76,20 +87,31 @@ macro_rules! define_lstm_process {
                         true,
                     );
                 }
-                let f_offset = H;
-                let g_offset = 2 * H;
-                let o_offset = 3 * H;
-                let h_offset = I;
+
+                // 5. Mapeamos onde cada uma das 4 portas começa no nosso buffer de cálculo.
+                let f_offset = H; // Porta de Esquecimento (Forget)
+                let g_offset = 2 * H; // Porta de Atualização (Cell Candidate)
+                let o_offset = 3 * H; // Porta de Saída (Output)
+                let h_offset = I; // Onde guardamos o resultado final para o próximo passo
+
                 let mut i = 0;
+                // 6. Loop Principal (SIMD): Processamos vários neurônios em paralelo (8 ou 16 por vez).
                 while i + $step <= H {
+                    // Carregamos os valores pré-calculados das 4 portas e da memória atual (cell state).
                     let g_f = $load(self.gates.as_ptr().add(i + f_offset));
                     let g_i = $load(self.gates.as_ptr().add(i));
                     let g_g = $load(self.gates.as_ptr().add(i + g_offset));
                     let g_o = $load(self.gates.as_ptr().add(i + o_offset));
                     let c_s = $load(self.cell_state.as_ptr().add(i));
+
+                    // 'Fused Gates': A mágica do LSTM acontece aqui.
+                    // Decidimos o que esquecer da memória antiga e o que aprender da nova entrada.
                     let (new_c_s, h_s) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
+
+                    // Salvamos a nova memória (longo prazo) e a nova saída (curto prazo).
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
+
                     if $is_bf16 {
                         use $crate::math::simd::SimdMath;
                         <$simd_math>::store_bf16(
@@ -99,6 +121,9 @@ macro_rules! define_lstm_process {
                     }
                     i += $step;
                 }
+
+                // 7. Tratamento de 'Cauda': Se o número de neurônios não for um múltiplo exato do
+                // processamento paralelo, cuidamos dos últimos elementos individualmente.
                 if i < H {
                     let tail_len = H - i;
                     let mut temp_gf = [0.0; $step];
@@ -106,6 +131,7 @@ macro_rules! define_lstm_process {
                     let mut temp_gg = [0.0; $step];
                     let mut temp_go = [0.0; $step];
                     let mut temp_cs = [0.0; $step];
+
                     for j in 0..tail_len {
                         temp_gf[j] = self.gates[i + j + f_offset];
                         temp_gi[j] = self.gates[i + j];
@@ -113,16 +139,20 @@ macro_rules! define_lstm_process {
                         temp_go[j] = self.gates[i + j + o_offset];
                         temp_cs[j] = self.cell_state[i + j];
                     }
+
                     let g_f = $load(temp_gf.as_ptr());
                     let g_i = $load(temp_gi.as_ptr());
                     let g_g = $load(temp_gg.as_ptr());
                     let g_o = $load(temp_go.as_ptr());
                     let c_s = $load(temp_cs.as_ptr());
+
                     let (new_c_s, h_val) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
+
                     let mut out_cs = [0.0; $step];
                     let mut out_h = [0.0; $step];
                     $store(out_cs.as_mut_ptr(), new_c_s);
                     $store(out_h.as_mut_ptr(), h_val);
+
                     for j in 0..tail_len {
                         self.cell_state[i + j] = out_cs[j];
                         self.state[i + j + h_offset] = out_h[j];
@@ -150,26 +180,35 @@ macro_rules! define_lstm2_process_pipelined {
             unsafe {
                 let len = input.len();
                 if len >= 1 {
-                    // Prólogo: processa o primeiro frame apenas na camada 1
+                    // --- Técnica de Pipelining (Linha de Montagem) ---
+                    // Para máxima velocidade, processamos as duas camadas do LSTM em paralelo.
+                    // Enquanto a Camada 2 termina o som anterior, a Camada 1 já inicia o próximo.
+
+                    // 1. Prólogo: Processamos o primeiríssimo frame apenas na Camada 1.
                     self.layer1.$layer_proc(&[input[0]]);
                     let mut prev_h1 = [0.0; H];
                     prev_h1.copy_from_slice(self.layer1.get_hidden_state());
 
-                    // Loop principal: overlap entre camada 1 (frame i) e camada 2 (frame i-1)
+                    // 2. Loop Principal: Onde o 'trabalho em equipe' acontece.
+                    // Camada 1 e Camada 2 operam de forma independente sobre frames diferentes (i e i-1).
                     for i in 1..len {
                         let current_input = [input[i]];
-                        // Estas duas chamadas são agora independentes (processam frames diferentes)!
+
+                        // Estas duas chamadas rodam agora sem depender uma da outra neste ciclo!
                         self.layer1.$layer_proc(&current_input);
                         self.layer2.$layer_proc(&prev_h1);
 
+                        // 3. Projeção de Saída: Convertemos a 'votação' dos neurônios da Camada 2
+                        // em um valor real de áudio usando um produto escalar (Dot Product).
                         let h2 = self.layer2.$get_h2();
                         let dot = $dot_prod(h2, &self.head_weights);
                         output[i - 1] = dot + self.head_bias;
 
+                        // Guardamos o resultado da Camada 1 para a Camada 2 usar na próxima volta.
                         prev_h1.copy_from_slice(self.layer1.get_hidden_state());
                     }
 
-                    // Epílogo: processa o último frame na camada 2
+                    // 4. Epílogo: Processamos o último frame que sobrou na Camada 2.
                     self.layer2.$layer_proc(&prev_h1);
                     let h2 = self.layer2.$get_h2();
                     let dot = $dot_prod(h2, &self.head_weights);
@@ -192,8 +231,12 @@ macro_rules! define_lstm1_process {
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
+                // Processamento Simples: Para modelos de 1 camada,
+                // apenas passamos o áudio pela camada e projetamos o resultado final.
                 for (i, &val) in input.iter().enumerate() {
                     self.layer.$layer_proc(&[val]);
+
+                    // Transformamos a saída da rede neural no sinal de áudio final.
                     let h = self.layer.$get_h();
                     let dot = $dot_prod(h, &self.head_weights);
                     output[i] = dot + self.head_bias;
@@ -226,6 +269,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         &self.state_bf16[I..]
     }
 
+    // --- Especializações por Hardware (SIMD) ---
+    // Criamos versões diferentes da mesma lógica para tirar o máximo proveito de cada CPU.
+
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
@@ -242,6 +288,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::fastmath::fused_lstm_gates_avx2,
         false
     );
+
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
@@ -258,6 +305,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::fastmath::fused_lstm_gates_avx512,
         false
     );
+
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
@@ -274,12 +322,13 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::fastmath::fused_lstm_gates_avx2,
         false
     );
+
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
         crate::math::simd::Avx512VnniMath,
         crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_fallback, // VNNI é para int8, não bf16
+        crate::math::simd::gemv_4gate_bf16_fallback,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -290,6 +339,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         crate::math::fastmath::fused_lstm_gates_avx512,
         false
     );
+
+    // O ápice da otimização: Uso de BF16 nativo para velocidade extrema.
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
@@ -308,11 +359,16 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     );
 
     /// Processamento escalar (fallback) para testes e benchmarks.
+    ///
+    /// Esta é a versão 'manual' e lenta, usada apenas como referência para garantir
+    /// que as versões ultra-rápidas acima não tenham erros matemáticos.
     #[inline(always)]
     pub fn process_sample_scalar(&mut self, input: &[f32]) {
         let ih = I + H;
         let h = H;
         self.state[..I].copy_from_slice(&input[..I]);
+
+        // Multiplicação manual dos pesos pelas entradas (4 portas).
         for k in 0..4 {
             let target_gate_offset = k * h;
             for i in 0..h {
@@ -324,23 +380,32 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
                 self.gates[target_gate_offset + i] = sum + self.bias[target_gate_offset + i];
             }
         }
+
+        // Ativação manual das portas do LSTM.
         for j in 0..h {
             let gf = self.gates[j + h];
             let gi = self.gates[j];
             let gg = self.gates[j + 2 * h];
             let go = self.gates[j + 3 * h];
             let cs = self.cell_state[j];
+
+            // Funções de ativação (Sigmoid e Tanh) que moldam o sinal.
             let f = 0.5 * (1.0 + (gf * 0.5).tanh());
             let i = 0.5 * (1.0 + (gi * 0.5).tanh());
             let g = gg.tanh();
             let o = 0.5 * (1.0 + (go * 0.5).tanh());
+
             let new_cs = f * cs + i * g;
             let h_val = o * new_cs.tanh();
+
             self.cell_state[j] = new_cs;
             self.state[I + j] = h_val;
         }
     }
+
     /// Reseta os estados internos para zero.
+    ///
+    /// Importante para 'limpar a memória' do modelo entre diferentes execuções.
     pub fn reset_states(&mut self) {
         self.state.fill(0.0);
         self.cell_state.fill(0.0);

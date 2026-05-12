@@ -5,6 +5,9 @@
 //!
 //! O FiLM permite que o modelo adapte seu comportamento com base em sinais
 //! de condicionamento externos, aplicando escala e deslocamento (shift) por canal.
+//!
+//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
+//! aguardando estabilização da implementação de referência.
 
 /// Configuração para uma camada ou operação FiLM.
 ///

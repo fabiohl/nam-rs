@@ -6,6 +6,9 @@
 //! Contém as estruturas fundamentais (Conv1D, Dense, Layer) que operam com
 //! dimensões definidas em runtime, servindo como base para o modelo dinâmico
 //! e futuros estágios da arquitetura A2.
+//!
+//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
+//! aguardando estabilização da implementação de referência.
 
 use crate::dsp::vring::VirtualRingBuffer;
 use crate::math::simd::{AlignedVec, SimdMath};
@@ -43,6 +46,7 @@ impl Conv1dDyn {
     /// # Safety
     /// `out_f0` e `out_f1` devem ter tamanho compatível com `self.out_ch`.
     /// `mixin_f0` e `mixin_f1` devem ter tamanho pelo menos `self.out_ch` se fornecidos.
+    /// Processa dois frames de áudio simultaneamente (Dual Frame) para máxima eficiência.
     pub unsafe fn process_dual_frame<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
@@ -53,21 +57,32 @@ impl Conv1dDyn {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
+        // --- Processamento em Par (Dual Frame) ---
+        // Para economizar energia da CPU, calculamos dois momentos do áudio (f0 e f1) ao mesmo tempo.
+        // Isso aproveita melhor os dados que já estão 'quentes' no cache do processador.
         let num_blocks = self.out_ch / 4;
 
-        // Tap Pointers para f0 e f1
+        // 'Tap Pointers': São como mãos que buscam amostras de áudio no passado.
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];
         let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); 8];
         let k_limit = self.kernel.min(8);
 
+        // 1. Localização no Tempo (Dilatação):
+        // O WaveNet usa 'Dilatação' para olhar para trás no tempo.
+        // Em vez de olhar apenas para o vizinho imediato, ele pula amostras para
+        // conseguir 'ouvir' padrões de longa duração (como o ritmo de uma guitarra).
         for k in 0..k_limit {
+            // Calculamos a distância exata no passado baseada na dilatação e no tamanho do kernel.
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_start_f0 = ((idx_f0 as isize) + offset) as usize * self.in_ch;
             let in_start_f1 = ((idx_f1 as isize) + offset) as usize * self.in_ch;
+
             unsafe {
+                // Guardamos o endereço de onde buscar esses sons antigos.
                 tap_ptrs_f0[k] = layer_buffer.as_ptr().add(in_start_f0);
                 tap_ptrs_f1[k] = layer_buffer.as_ptr().add(in_start_f1);
 
+                // Avisamos a CPU para buscar esses dados na RAM antecipadamente (Prefetch).
                 (self.prefetch_fn)(
                     tap_ptrs_f0[k],
                     self.dilation * self.in_ch,
@@ -82,13 +97,18 @@ impl Conv1dDyn {
         let kernel = self.kernel;
         let do_bias = self.do_bias;
 
+        // 2. Loop de Cálculo por Blocos:
+        // Processamos a rede neural em blocos de 4 para otimizar a matemática do processador.
         for b in 0..num_blocks {
             let out_c = b * 4;
+            // Variáveis temporárias (registradores) para guardar os resultados parciais dos dois frames.
             let (mut r0_f0, mut r1_f0, mut r2_f0, mut r3_f0);
             let (mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1);
 
             unsafe {
-                // Inicialização com bias/mixin para frame 0
+                // 3. Inicialização de cada Bloco (Bias e Mixin):
+                // Começamos o cálculo de cada 'neurônio' somando o valor base (bias) e
+                // o resultado da camada anterior (mixin), se existirem.
                 let (mv0_f0, mv1_f0, mv2_f0, mv3_f0) = if let Some(m) = mixin_f0 {
                     if out_c + 3 < m.len() {
                         (
@@ -124,7 +144,7 @@ impl Conv1dDyn {
                     r3_f0 = mv3_f0;
                 }
 
-                // Inicialização com bias/mixin para frame 1
+                // Repetimos o processo para o segundo frame (f1) do par.
                 let (mv0_f1, mv1_f1, mv2_f1, mv3_f1) = if let Some(m) = mixin_f1 {
                     if out_c + 3 < m.len() {
                         (
@@ -160,10 +180,13 @@ impl Conv1dDyn {
                     r3_f1 = mv3_f1;
                 }
 
+                // 4. Loop de Convolução (O Coração do WaveNet):
+                // Aqui cruzamos os dados do passado (kernel) com os pesos aprendidos.
                 for k in 0..kernel {
                     let tap_f0 = *tap_ptrs_f0.get_unchecked(k);
                     let tap_f1 = *tap_ptrs_f1.get_unchecked(k);
 
+                    // Localizamos onde estão os 'pesos' (conhecimento) para este neurônio específico.
                     let w_start = (b * kernel + k) * in_ch * 4;
                     let w_slice: &[[u16; 4]] = {
                         let ptr = self.weights.as_ptr().add(w_start) as *const [u16; 4];
@@ -173,8 +196,12 @@ impl Conv1dDyn {
                     let in_f0 = core::slice::from_raw_parts(tap_f0, in_ch);
                     let in_f1 = core::slice::from_raw_parts(tap_f1, in_ch);
 
+                    // 'Dot Product Intercalado': Otimização de elite.
+                    // Multiplicamos o MESMO peso por dois fragmentos de áudio diferentes ao mesmo tempo.
                     let (t_f0, t_f1) =
                         M::dot_product_4x_interleaved_dual_frame(w_slice, in_f0, in_f1);
+
+                    // Acumulamos os resultados para ambos os frames.
                     r0_f0 += t_f0[0];
                     r1_f0 += t_f0[1];
                     r2_f0 += t_f0[2];
@@ -185,6 +212,8 @@ impl Conv1dDyn {
                     r3_f1 += t_f1[3];
                 }
 
+                // 5. Armazenamento Final:
+                // Guardamos o som processado nos buffers de saída para a próxima camada da rede.
                 *out_f0.get_unchecked_mut(out_c) = r0_f0;
                 *out_f0.get_unchecked_mut(out_c + 1) = r1_f0;
                 *out_f0.get_unchecked_mut(out_c + 2) = r2_f0;
@@ -229,6 +258,7 @@ impl Conv1dDyn {
     #[inline(always)]
     /// # Safety
     /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
+    /// Processa um bloco inteiro de amostras de áudio.
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
@@ -237,11 +267,22 @@ impl Conv1dDyn {
         num_frames: usize,
         mixin: Option<&[f32]>,
     ) {
+        // --- Processamento de Bloco (Batch Processing) ---
+        // Para ganhar eficiência, não processamos uma amostra de cada vez.
+        // Agrupamos o áudio em 'blocos' para que o processador possa trabalhar
+        // em fluxo contínuo, sem interrupções.
         debug_assert_eq!(num_frames * self.out_ch, block.len());
         let mut i = 0;
+
+        // 1. Divisão em Pares:
+        // Tentamos sempre processar as amostras de duas em duas (chunks de 2).
+        // Isso permite usar a função 'Dual Frame' que vimos antes, economizando muita CPU.
         let mut chunks = block.chunks_exact_mut(2 * self.out_ch);
         for chunk in chunks.by_ref() {
+            // Dividimos o pedaço de memória em dois: um para o frame atual e outro para o próximo.
             let (out_f0, out_f1) = chunk.split_at_mut(self.out_ch);
+
+            // Preparamos os dados das camadas anteriores (mixin) para ambos os frames.
             let (m_f0, m_f1) = if let Some(m) = mixin {
                 let start0 = i * self.out_ch;
                 let end0 = (start0 + self.out_ch).min(m.len());
@@ -264,6 +305,7 @@ impl Conv1dDyn {
             };
 
             unsafe {
+                // Chamamos a função ultra-otimizada que processa o par.
                 self.process_dual_frame::<M>(
                     layer_buffer,
                     out_f0,
@@ -277,6 +319,9 @@ impl Conv1dDyn {
             i += 2;
         }
 
+        // 2. Tratamento de Sobras (Remainder):
+        // Se o tamanho do bloco for ímpar, sobrará uma última amostra sozinha.
+        // Processamos ela individualmente aqui.
         let rem = chunks.into_remainder();
         if !rem.is_empty() {
             let m = mixin.map(|m| &m[i * self.out_ch..(i + 1) * self.out_ch]);
@@ -298,9 +343,15 @@ impl Conv1dDyn {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
+        // --- Modo de Frame Único ---
+        // Esta função é o 'estepe'. Ela entra em ação quando não podemos
+        // processar em pares (como na última amostra de um bloco com tamanho ímpar).
         let num_blocks = self.out_ch / 4;
         let mut tap_ptrs = [core::ptr::null::<f32>(); 8];
         let k_limit = self.kernel.min(8);
+
+        // 1. Localização no Passado:
+        // Assim como no modo Dual Frame, buscamos onde estão as amostras antigas (dilatadas).
         for (k, tap_ptr) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_slice_start = ((frame_idx as isize) + offset) as usize * self.in_ch;
@@ -316,6 +367,9 @@ impl Conv1dDyn {
             }
         }
 
+        // 2. Loop de Cálculo Principal:
+        // Mesmo no modo simples, ainda tentamos processar 4 canais de uma vez
+        // para não perder velocidade.
         for b in 0..num_blocks {
             let out_c = b * 4;
             let mut r0;
@@ -324,6 +378,7 @@ impl Conv1dDyn {
             let mut r3;
 
             unsafe {
+                // Inicialização com o valor base e mixin da camada anterior.
                 let (mv0, mv1, mv2, mv3) = if let Some(m) = mixin {
                     if out_c + 3 < m.len() {
                         (
@@ -359,6 +414,7 @@ impl Conv1dDyn {
                     r3 = mv3;
                 }
 
+                // Aplicamos os pesos sobre o frame de áudio.
                 for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
                     let w_start = (b * self.kernel + k) * self.in_ch * 4;
                     let w_slice: &[[u16; 4]] = {
@@ -367,6 +423,8 @@ impl Conv1dDyn {
                     };
 
                     let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
+
+                    // Produto Escalar Intercalado para 4 canais simultâneos.
                     let [t0, t1, t2, t3] = M::dot_product_4x_interleaved(w_slice, in_slice);
                     r0 += t0;
                     r1 += t1;
@@ -374,6 +432,7 @@ impl Conv1dDyn {
                     r3 += t3;
                 }
 
+                // Guardamos os resultados parciais.
                 *out_frame.get_unchecked_mut(out_c) = r0;
                 *out_frame.get_unchecked_mut(out_c + 1) = r1;
                 *out_frame.get_unchecked_mut(out_c + 2) = r2;
@@ -381,6 +440,9 @@ impl Conv1dDyn {
             }
         }
 
+        // 3. Canais Restantes (Tail):
+        // Se o número de canais de saída não for um múltiplo exato de 4,
+        // processamos as sobras finais uma por uma aqui.
         let mut out_c = num_blocks * 4;
         while out_c < self.out_ch {
             let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -416,6 +478,10 @@ impl Conv1dDyn {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
+        // --- Versão BF16 (Brain Floating Point) ---
+        // Esta é a versão 'turbinada' do processamento. Usamos números de 16 bits (BF16)
+        // em vez de 32 bits. Isso corta o uso de memória pela metade e permite que a CPU
+        // processe o dobro de dados no mesmo tempo em hardwares compatíveis.
         let num_blocks = self.out_ch / 4;
 
         // Tap Pointers para f0 e f1 em BF16
@@ -451,7 +517,7 @@ impl Conv1dDyn {
             let (mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1);
 
             unsafe {
-                // Inicialização com bias/mixin para frame 0
+                // Inicialização com bias/mixin (Idêntico à versão padrão).
                 let (mv0_f0, mv1_f0, mv2_f0, mv3_f0) = if let Some(m) = mixin_f0 {
                     if out_c + 3 < m.len() {
                         (
@@ -487,7 +553,6 @@ impl Conv1dDyn {
                     r3_f0 = mv3_f0;
                 }
 
-                // Inicialização com bias/mixin para frame 1
                 let (mv0_f1, mv1_f1, mv2_f1, mv3_f1) = if let Some(m) = mixin_f1 {
                     if out_c + 3 < m.len() {
                         (
@@ -536,6 +601,8 @@ impl Conv1dDyn {
                     let in_f0 = core::slice::from_raw_parts(tap_f0, in_ch);
                     let in_f1 = core::slice::from_raw_parts(tap_f1, in_ch);
 
+                    // Produto Escalar Intercalado BF16:
+                    // Matemática de alta performance usando o formato compacto.
                     let (t_f0, t_f1) =
                         M::dot_product_4x_interleaved_dual_frame_bf16(w_slice, in_f0, in_f1);
                     r0_f0 += t_f0[0];
@@ -560,7 +627,7 @@ impl Conv1dDyn {
             }
         }
 
-        // Remainder canais
+        // Remainder canais (Sobra) em BF16.
         let mut out_c = num_blocks * 4;
         while out_c < self.out_ch {
             let mut r_f0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -600,8 +667,16 @@ impl Conv1dDyn {
         num_frames: usize,
         mixin: Option<&[f32]>,
     ) {
+        // --- Processamento de Bloco BF16 (O Ápice da Performance) ---
+        // Este é o 'Caminho de Ouro' para modelos pesados de WaveNet.
+        // Ele combina o processamento em blocos (batches) com o formato de memória
+        // compacto BF16, permitindo que a CPU processe o áudio com o mínimo de esforço.
         debug_assert_eq!(num_frames * self.out_ch, block.len());
         let mut i = 0;
+
+        // 1. Divisão em Pares (Chunking):
+        // Continuamos usando a estratégia de processar de dois em dois para
+        // ativar as funções 'Dual Frame' otimizadas para BF16.
         let mut chunks = block.chunks_exact_mut(2 * self.out_ch);
         for chunk in chunks.by_ref() {
             let (out_f0, out_f1) = chunk.split_at_mut(self.out_ch);
@@ -627,6 +702,7 @@ impl Conv1dDyn {
             };
 
             unsafe {
+                // Chamada da versão 'turbinada' BF16.
                 self.process_dual_frame_bf16::<M>(
                     layer_buffer,
                     out_f0,
@@ -640,6 +716,8 @@ impl Conv1dDyn {
             i += 2;
         }
 
+        // 2. Tratamento de Sobras (Remainder):
+        // Caso o bloco tenha tamanho ímpar, cuidamos da última amostra usando BF16.
         let rem = chunks.into_remainder();
         if !rem.is_empty() {
             let m = mixin.map(|m| &m[i * self.out_ch..(i + 1) * self.out_ch]);
@@ -661,9 +739,16 @@ impl Conv1dDyn {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
+        // --- Modo BF16 de Frame Único ---
+        // Este é o 'plano B' do caminho de alta performance. Ele entra em ação
+        // para processar amostras que sobraram de blocos ímpares, usando
+        // a economia de memória do formato BF16.
         let num_blocks = self.out_ch / 4;
         let mut tap_ptrs = [core::ptr::null::<u16>(); 8];
         let k_limit = self.kernel.min(8);
+
+        // 1. Localização com Dilatação (BF16):
+        // Buscamos o passado no buffer de 16 bits.
         for (k, tap_ptr) in tap_ptrs.iter_mut().enumerate().take(k_limit) {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_slice_start = ((frame_idx as isize) + offset) as usize * self.in_ch;
@@ -679,6 +764,9 @@ impl Conv1dDyn {
             }
         }
 
+        // 2. Loop de Cálculo 4x (BF16):
+        // Mantemos a eficiência processando 4 canais de uma vez,
+        // mas agora focados em uma única amostra de tempo.
         for b in 0..num_blocks {
             let out_c = b * 4;
             let mut r0;
@@ -730,6 +818,8 @@ impl Conv1dDyn {
                     };
 
                     let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
+
+                    // Produto Escalar Intercalado BF16 para 4 canais.
                     let [t0, t1, t2, t3] = M::dot_product_4x_interleaved_bf16(w_slice, in_slice);
                     r0 += t0;
                     r1 += t1;
@@ -744,6 +834,8 @@ impl Conv1dDyn {
             }
         }
 
+        // 3. Sobra de Canais (Tail) em BF16:
+        // Finalizamos os últimos canais de saída que não completam um bloco de 4.
         let mut out_c = num_blocks * 4;
         while out_c < self.out_ch {
             let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
@@ -997,6 +1089,9 @@ impl WaveNetLayerDyn {
     /// Executa o processamento interno de uma camada WaveNet com Tiling Dual-Frame.
     /// # Safety
     /// `ctx.block` deve ser grande o suficiente para conter `num_frames * out_ch` amostras.
+    /// Orquestrador Interno da Camada WaveNet.
+    /// Esta função é o 'maestro' que coordena todos os passos matemáticos
+    /// necessários para processar uma única camada da rede neural.
     pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
         let WavenetProcessContext {
             condition,
@@ -1013,7 +1108,10 @@ impl WaveNetLayerDyn {
         let ch = self.ch;
         let out_ch = self.conv1d.out_ch;
 
-        // Buffer temporário na stack para o Mixin (16KB) com alinhamento de 64 bytes.
+        // --- Buffer Temporário na Stack ---
+        // Usamos um buffer alinhado diretamente na memória de execução (pilha).
+        // Isso evita alocações lentas e garante que o processamento seja
+        // determinístico e ultra-rápido para áudio em tempo real.
         #[repr(align(64))]
         struct AlignedMixinBuffer([f32; 4096]);
         let mut mixin_out = AlignedMixinBuffer([0.0f32; 4096]);
@@ -1027,15 +1125,18 @@ impl WaveNetLayerDyn {
         let mixin_out_slice = &mut mixin_out.0[..mixin_len];
 
         unsafe {
+            // Decidimos entre o caminho BF16 (mais rápido) ou F32 (padrão)
             if M::IS_BF16 {
-                // 1. Mixin (Batch)
+                // 1. Mixin (Preparação):
+                // Processamos as condições externas (como gain/tone) em lote.
                 self.input_mixin.process_block_bf16::<M>(
                     condition_bf16,
                     mixin_out_slice,
                     num_frames,
                 );
 
-                // 2. Conv1D (Tiled Loop)
+                // 2. Conv1D (O Núcleo):
+                // Aplicamos a convolução dilatada que 'ouve' o passado.
                 let mut i = 0;
                 let active_block = &mut block[..num_frames * out_ch];
                 let mut chunks = active_block.chunks_exact_mut(2 * out_ch);
@@ -1068,11 +1169,12 @@ impl WaveNetLayerDyn {
                     );
                 }
             } else {
-                // 1. Mixin (Batch)
+                // Caminho padrão F32 (Idêntico ao acima, mas com precisão total).
+                // 1. Mixin
                 self.input_mixin
                     .process_block::<M>(condition, mixin_out_slice, num_frames);
 
-                // 2. Conv1D (Tiled Loop)
+                // 2. Conv1D
                 let mut i = 0;
                 let active_block = &mut block[..num_frames * out_ch];
                 let mut chunks = active_block.chunks_exact_mut(2 * out_ch);
@@ -1106,24 +1208,29 @@ impl WaveNetLayerDyn {
                 }
             }
 
-            // 3. Activation (Batch)
+            // 3. Ativação (Não-Linearidade):
+            // Aplicamos funções como Tanh ou Gated para dar o 'caráter' do som.
             if self.gated {
+                // Gated Activation: Funciona como uma porta que abre e fecha seletivamente.
                 M::gated_activation_and_accumulate_block(
                     head_input,
                     &mut block[..num_frames * 2 * ch],
                     ch,
                 );
-                // [T1.2] Otimização: Compactação para processamento Residual em lote.
-                // Re-alinhamos os outputs ativados [f0_act, f0_sig, f1_act, f1_sig]
-                // para [f0_act, f1_act, ...] permitindo GEMM de 1x1 em lote.
+
+                // [T1.2] Otimização: Re-alinhamos os dados para que o próximo passo (GEMM)
+                // seja processado em um único bloco contínuo de memória.
                 for i in 1..num_frames {
                     block.copy_within(i * 2 * ch..i * 2 * ch + ch, i * ch);
                 }
             } else {
+                // Tanh: Ativação clássica que 'achata' o sinal para manter a estabilidade.
                 M::tanh_and_accumulate_block(head_input, &mut block[..num_frames * ch]);
             }
 
-            // 4. Residual + 1x1 (Batch)
+            // 4. Residual + 1x1 (A Mistura Final):
+            // Somamos o som original (residual) ao que acabamos de processar.
+            // Isso permite que a rede aprenda transformações complexas sem perder a base.
             let lb_offset = buffer_start * ch;
             let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * ch);
 
@@ -1134,7 +1241,8 @@ impl WaveNetLayerDyn {
                 num_frames,
             );
 
-            // 5. BF16 Conversion
+            // 5. Conversão BF16 Final:
+            // Se estivermos usando o modo rápido, limpamos os dados para a próxima camada.
             if let (true, Some(bf16_out)) = (M::IS_BF16, output_bf16.as_mut()) {
                 M::f32_to_bf16(output, bf16_out);
             }
