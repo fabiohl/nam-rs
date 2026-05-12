@@ -10,4 +10,5 @@ pub mod activations;
 pub mod common;
 pub mod constants;
 pub mod dsp;
+pub mod gemm;
 pub mod simd;

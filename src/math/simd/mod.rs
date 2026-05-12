@@ -15,6 +15,9 @@ pub use crate::math::common::scalar_ref;
 pub use crate::math::common::traits;
 pub use crate::math::common::utility;
 
+// Re-exports de kernels GEMM (Tarefa 3.2)
+pub use crate::math::gemm::*;
+
 pub use aligned::AlignedVec;
 pub use avx2::*;
 pub use avx512::*;

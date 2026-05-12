@@ -754,7 +754,7 @@ Desmembrar `fastmath.rs` (1229L) em arquivos por ativação:
 
 > **NOTA**: `GainLUT` antecipado da Tarefa 3.5 para `dsp/gain_lut.rs` (pré-requisito para eliminar `fastmath.rs`). Consumidores de `get_gain_lut()` atualizados (pw_host.rs, main.rs, loader/mod.rs, dsp/gain_test.rs, tests/proptest_math.rs). Off-by-one corrigido em `db_to_linear()` com `.min(GAIN_LUT_SIZE - 1)`.
 
-#### Tarefa 3.2 — `gemm/`
+#### Tarefa 3.2 — `gemm/` [CONCLUÍDO] [x]
 
 Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
@@ -768,6 +768,11 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 | `gemv_4gate.rs` | `gemv_4gate_avx2/avx512`, `gemv_4gate_bf16_*`           |
 
 **Gate de saída**: `cargo bench` sem regressão.
+
+> ✅ **CONCLUÍDA** — 10 funções AVX2 + 13 funções AVX-512 extraídas para 7 arquivos em `math/gemm/`.
+> Re-exports em `avx2.rs`/`avx512.rs` mantêm compatibilidade de paths explícitos.
+> `gemv_bf16.rs` criado como placeholder (função `gemv_overwrite_bf16` ainda não implementada nativamente).
+> `cargo check` (standalone + clap), `cargo test` (149 passed), `cargo bench` e `utils/lints.sh` passam.
 
 #### Tarefa 3.3 — `lstm/`
 
