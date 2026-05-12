@@ -16,6 +16,8 @@ Está totalmente otimizado para extrair o máximo de performarce e baixa latênc
 
 Caprichei na busca intensiva pelo estado da arte em matéria de otimização! Isto totalmente se pagou se você considerar que as cadeias de áudio no computador costumam ser stereo. Então, na verdade, são DOIS canais de áudio sendo processados simultâneamente em baixíssima latência e usando muito pouca CPU.
 
+> NOTA: Não se engane pelo número da versão. Ele significa que o código está bem completo, otimizado e funcional. Ou seja, ele recebeu muito carinho e esforço. Mas até o momento, o único usuário sou apenas eu. Então todo o teste e uso prático é bem-vindo!
+
 ## **🇺🇲 English Version (International)**
 
 **NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
@@ -28,7 +30,8 @@ It is fully optimized for maximum performance and ultra-low latency. This is ach
 
 I worked hard to achieve state-of-the-art optimization! This effort truly pays off when you consider that computer audio signals are usually stereo. As a result, two audio channels are processed simultaneously with extremely low latency and very low CPU usage.
 
-_Note: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself._
+> NOTE1: Don't be fooled by the version number. It means the code is very complete, optimized and functional. In other words, it received a lot of love and effort. But so far, the only user is me. So all testing and practical use is welcome!
+> NOTE2: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself.
 
 ## 🛠️ Modos de Operação / Operation Modes
 
