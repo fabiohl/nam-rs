@@ -1,4 +1,4 @@
-# Plano: Reorganização de `src/math/`
+# Plano: Reorganização de `src/math/` e `src/models/`
 
 ## Diagnóstico da Situação Atual
 
@@ -27,6 +27,49 @@ src/math/
 ```
 
 **Total**: ~7.661 linhas de código matemático + 374 linhas em `models/activations.rs`.
+
+### Estrutura atual de `src/models/`
+
+```text
+src/models/
+├── mod.rs               # 322 linhas — NamModel trait + DynamicModel enum + NamModel impls
+│                         #   + LstmLike trait + lstm_prewarm_common + WavenetA2Placeholder
+│                         #   + type aliases (Lstm1x8..Lstm2x16)
+├── activations.rs        # 373 linhas — ActivationType enum + ActivationFn trait + dispatch manual
+├── film.rs               # 69 linhas  — FiLMConfig + FiLMLayer trait (A2 placeholder)
+├── gating.rs             # 71 linhas  — GatingMode enum + GatingActivationConfig (A2 placeholder)
+├── lstm.rs               # 637 linhas — LstmLayer + LstmModel1 + LstmModel2
+│                         #   + 4 macros (define_lstm_process, define_lstm1/2_process,
+│                         #     define_lstm2_pipelined) + 5 especializações SIMD × 3 modelos
+├── lstm_dyn.rs           # 218 linhas — LstmDynLayer + LstmDynModel (fallback dinâmico)
+├── lstm_test.rs          # 264 linhas
+├── wavenet.rs            # 1305 linhas — Conv1d + DenseLayer + WaveNetModel (const generics)
+│                         #   + ConvInput trait + 2 impls (f32/u16) + single/dual/bf16
+├── wavenet_common.rs     # 1251 linhas — Conv1dDyn + DenseLayerDyn + WaveNetLayerDyn
+│                         #   + WaveNetLayerState + WavenetProcessContext + WaveNetLayerArrayDyn
+├── wavenet_dyn.rs        # 268 linhas — WaveNetLayerArrayDyn process + WaveNetDynModel
+├── wavenet_params.rs     # 246 linhas — LayerParamsA2, LayerArrayParamsA2, HeadParams
+├── wavenet_test.rs       # 617 linhas
+└── wavenet_dyn_test.rs   # 251 linhas
+```
+
+**Total models**: 5.892 linhas (4.760 código + 1.132 testes).
+
+### Problemas identificados em `src/models/`
+
+1. **`mod.rs` é um catch-all sobrecarregado (322L)**: Mistura 5 responsabilidades — NamModel trait, DynamicModel enum (14 variantes com match manual), 6 blocos de `impl NamModel`, helpers LSTM (`LstmLike`, `lstm_prewarm_common`), e `WavenetA2Placeholder`.
+
+2. **WaveNet fragmentado com nomes confusos (2.824L)**: `wavenet_common.rs` (1.251L) **não é "common"** — contém a implementação dinâmica inteira (`Conv1dDyn`, `DenseLayerDyn`, `WaveNetLayerDyn`). O nome induz ao erro.
+
+3. **~800L de duplicação conceitual** entre `Conv1d<IN,OUT,K>` (estático, const generics) e `Conv1dDyn` (dinâmico, campos runtime). Mesma lógica de convolução causal dilatada, prefetch, bias/mixin, variantes bf16.
+
+4. **60+ referências hardcoded a `math/`**: Especialmente na macro `define_lstm_process!` que recebe 13 parâmetros de paths absolutos (`crate::math::simd::gemv_4gate_avx2`, `crate::math::fastmath::simd_tanh`, etc.).
+
+5. **`activations.rs` será redundante**: Sprint 3.1 do plano math criará dispatch unificado em `math::activations::tanh_slice()`, tornando o dispatch manual em `models/activations.rs` desnecessário.
+
+6. **Stubs A2 dispersos sem namespace**: `film.rs` (69L), `gating.rs` (71L) e `wavenet_params.rs` (246L) são todos placeholders para A2, mas estão soltos na raiz de `models/`.
+
+7. **`WavenetA2Placeholder` em `mod.rs`**: Código A2-específico misturado com infraestrutura geral.
 
 ### Problemas identificados
 
@@ -63,17 +106,20 @@ src/math/
 
 ## Decisões de Design Consolidadas
 
-| Decisão                            | Resolução                                                                    |
-| ---------------------------------- | ---------------------------------------------------------------------------- |
-| Trait `SimdMath`                   | Manter monolítica (33 métodos). Decomposição em sub-traits é trabalho futuro |
-| `scalar_ref.rs`                    | Fica em `common/` — oráculo centralizado                                     |
-| `Avx2VnniMath`                     | **Eliminar** — substituir por `type Avx2VnniMath = Avx2Math`                 |
-| `Avx512VnniMath`                   | **Mantém** — tem `dot_product_bf16_avx512` nativo (real)                     |
-| Dual dispatch                      | Documentar como design debt; unificar a longo prazo                          |
-| `simd_tanh`/`simd_sigmoid` aliases | Internalizar em `activations/`                                               |
-| `gemv_4gate`                       | Vai para `gemm/`, não `lstm/` (evita dep. circular `common → lstm`)          |
-| `compute_energy_*`, `max_diff_*`   | Saem de `ops.rs` → vão para `dsp/stereo.rs`                                  |
-| `InstructionSet::Avx2Vnni`         | Manter no enum por ora (remoção seria breaking change separada)              |
+| Decisão                            | Resolução                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| Trait `SimdMath`                   | Manter monolítica (33 métodos). Decomposição em sub-traits é trabalho futuro          |
+| `scalar_ref.rs`                    | Fica em `common/` — oráculo centralizado                                              |
+| `Avx2VnniMath`                     | **Eliminar** — substituir por `type Avx2VnniMath = Avx2Math`                          |
+| `Avx512VnniMath`                   | **Mantém** — tem `dot_product_bf16_avx512` nativo (real)                              |
+| Dual dispatch                      | Documentar como design debt; unificar a longo prazo                                   |
+| `simd_tanh`/`simd_sigmoid` aliases | Internalizar em `activations/`                                                        |
+| `gemv_4gate`                       | Vai para `gemm/`, não `lstm/` (evita dep. circular `common → lstm`)                   |
+| `compute_energy_*`, `max_diff_*`   | Saem de `ops.rs` → vão para `dsp/stereo.rs`                                           |
+| `InstructionSet::Avx2Vnni`         | Manter no enum por ora (remoção seria breaking change separada)                       |
+| `models/` reorganização            | Subpastas `lstm/`, `wavenet/`, `a2/` — **Épico 6, após Épico 5**                      |
+| `wavenet_common.rs` renomeação     | Conteúdo genuinamente comum → `wavenet/common.rs`; dinâmico → `wavenet/conv1d_dyn.rs` |
+| `activations.rs` localização       | Enum `ActivationType` → `models/a2/activations.rs`; dispatch → `math::activations::*` |
 
 ---
 
@@ -151,6 +197,46 @@ src/math/
     └── tests.rs
 ```
 
+### Estrutura-Alvo de `src/models/` (Pós-Épico 6)
+
+```text
+src/models/
+├── mod.rs                       # NamModel trait + DynamicModel enum + re-exports
+│                                #   (~100 linhas — sem impls de modelo)
+│
+├── lstm/                        # ═══ LSTM ═══
+│   ├── mod.rs                   # Re-exports: LstmLayer, LstmModel1, LstmModel2, LstmDynModel
+│   │                            #   + type aliases (Lstm1x8..Lstm2x16)
+│   │                            #   + NamModel impls para LSTM (1L, 2L, Dyn)
+│   │                            #   + LstmLike trait + lstm_prewarm_common
+│   ├── layer.rs                 # LstmLayer struct + macros define_lstm_process
+│   │                            #   (637L → ~450L após mover impls NamModel)
+│   ├── model_dyn.rs             # LstmDynLayer + LstmDynModel (218L)
+│   └── tests.rs                 # Consolidação de lstm_test.rs (264L)
+│
+├── wavenet/                     # ═══ WAVENET ═══
+│   ├── mod.rs                   # Re-exports + NamModel impls para WaveNet + WaveNetDyn
+│   ├── conv1d.rs                # Conv1d<IN,OUT,K> + ConvInput trait + impls f32/u16
+│   │                            #   (~580L, extraído de wavenet.rs)
+│   ├── dense.rs                 # DenseLayer<IN,OUT> (~200L, extraído de wavenet.rs)
+│   ├── model.rs                 # WaveNetModel<CH,K,HEAD> + WaveNetLayerArray
+│   │                            #   (~520L, extraído de wavenet.rs)
+│   ├── conv1d_dyn.rs            # Conv1dDyn + process_dual/single/bf16
+│   │                            #   (~700L, extraído de wavenet_common.rs)
+│   ├── common.rs                # WaveNetLayerState + WavenetProcessContext + constantes
+│   │                            #   (~200L, o que é REALMENTE common)
+│   ├── model_dyn.rs             # WaveNetLayerArrayDyn + WaveNetDynModel
+│   │                            #   (~400L, fusão de wavenet_common.rs + wavenet_dyn.rs)
+│   └── tests.rs                 # Consolidação: wavenet_test.rs + wavenet_dyn_test.rs (868L)
+│
+└── a2/                          # ═══ ARQUITETURA A2 (STAGING) ═══
+    ├── mod.rs                   # Re-exports + WavenetA2Placeholder
+    ├── activations.rs           # ActivationType enum + ActivationFn trait + dispatch
+    ├── film.rs                  # FiLMConfig + FiLMLayer (69L)
+    ├── gating.rs                # GatingMode + configs (71L)
+    └── params.rs                # LayerParamsA2, LayerArrayParamsA2, HeadParams (246L)
+```
+
 ### Alinhamento com a Trait `SimdMath`
 
 Os `impl SimdMath` delegam para as funções nos módulos corretos:
@@ -200,19 +286,28 @@ Self::Tanh => crate::math::activations::tanh_slice(data),
 
 ### Impacto nos Arquivos Consumidores
 
-| Arquivo                        | Mudança principal                                          |
-| ------------------------------ | ---------------------------------------------------------- |
-| `models/lstm.rs`               | `crate::math::activations::*`, `crate::math::gemm::*`      |
-| `models/wavenet.rs`            | `crate::math::common::*`, `gemm::*`, `wavenet::*`          |
-| `models/activations.rs`        | Substituir dispatch manual por `activations::tanh_slice()` |
-| `dsp/pipeline.rs`              | `crate::math::dsp::stereo::*`                              |
-| `dsp/gate.rs`                  | `crate::math::common::SimdMath`                            |
-| `dsp/resampler.rs`             | `crate::math::common::{AlignedVec, dispatch_simd}`         |
-| `standalone/rt_setup.rs`       | `crate::math::common::set_daz_ftz`                         |
-| `standalone/pw_host.rs`        | `crate::math::dsp::get_gain_lut`                           |
-| `standalone/cli.rs`            | `crate::math::constants::*`                                |
-| `loader/dispatcher/lstm.rs`    | `crate::math::common::f32_to_bf16`                         |
-| `loader/dispatcher/wavenet.rs` | `crate::math::common::{AlignedVec, f32_to_bf16}`           |
+| Arquivo                  | Mudança principal                                          |
+| ------------------------ | ---------------------------------------------------------- |
+| `models/lstm.rs`         | `crate::math::activations::*`, `crate::math::gemm::*`      |
+| `models/wavenet.rs`      | `crate::math::common::*`, `gemm::*`, `wavenet::*`          |
+| `models/activations.rs`  | Substituir dispatch manual por `activations::tanh_slice()` |
+| `dsp/pipeline.rs`        | `crate::math::dsp::stereo::*`                              |
+| `dsp/gate.rs`            | `crate::math::common::SimdMath`                            |
+| `dsp/resampler.rs`       | `crate::math::common::{AlignedVec, dispatch_simd}`         |
+| `standalone/rt_setup.rs` | `crate::math::common::set_daz_ftz`                         |
+
+#### Impacto Cruzado `math/` → `models/` (Épico 6)
+
+| Ação em math (Épicos 1-5)                               | Impacto em models (Épico 6)                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Sprint 1.3: Re-exports transitórios em `math/mod.rs`    | Habilita início do Épico 6 — paths antigos continuam funcionando          |
+| Sprint 3.1: `activations/mod.rs` com dispatch unificado | `models/a2/activations.rs` pode substituir dispatch manual                |
+| Sprint 4.1: Consumidores atualizados para novos paths   | Macro `define_lstm_process!` atualizada — Sprint 6.1 apenas move arquivos |
+| Sprint 4.2: Remoção de re-exports transitórios          | **Pré-requisito**: Sprint 6.1 e 6.2 devem ter sido concluídos antes       |
+| `standalone/pw_host.rs`                                 | `crate::math::dsp::get_gain_lut`                                          |
+| `standalone/cli.rs`                                     | `crate::math::constants::*`                                               |
+| `loader/dispatcher/lstm.rs`                             | `crate::math::common::f32_to_bf16`                                        |
+| `loader/dispatcher/wavenet.rs`                          | `crate::math::common::{AlignedVec, f32_to_bf16}`                          |
 
 ---
 
@@ -227,6 +322,10 @@ Self::Tanh => crate::math::activations::tanh_slice(data),
 | `#![allow(unsafe_op_in_unsafe_fn)]` é file-level em `fastmath.rs`    | Média      | Ao desmembrar, aplicar `#[allow(...)]` seletivamente                  |
 | `Avx2VnniMath` eliminado mas `InstructionSet::Avx2Vnni` mantido      | Baixa      | Enum preservado; dispatch aponta para `Avx2Math`                      |
 | A2 ainda é placeholder                                               | Info       | Deixar espaço para `src/math/a2/` quando necessário                   |
+| Macro `define_lstm_process!` (13 params hardcoded)                   | Alta       | Atualizar paths no Sprint 4.1 (math) **antes** de mover em 6.1        |
+| `wavenet.rs` monolítico (1305L)                                      | Média      | Desmembrar atomicamente em `conv1d.rs` + `dense.rs` + `model.rs`      |
+| `ActivationType` usado por `gating.rs` e `wavenet_params.rs`         | Média      | Mover todos os consumidores para `a2/` simultaneamente                |
+| `wavenet_common.rs` exporta tipos usados por `wavenet_dyn.rs`        | Média      | `common.rs` mantém apenas tipos compartilhados genuínos               |
 
 ---
 
@@ -414,16 +513,122 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 ---
 
+### Épico 6: Reorganização de `src/models/`
+
+**Objetivo**: Reorganizar `src/models/` em subpastas por domínio de modelo (`lstm/`, `wavenet/`, `a2/`), extraindo lógica dispersa da raiz e isolando os stubs A2.
+
+**Pré-requisito obrigatório**: Re-exports estáveis em `math/mod.rs` (Sprint 1.3) devem estar no lugar. Idealmente, Épicos 1-5 concluídos, pois os paths de math já estarão finalizados — evitando retrabalho de imports durante a reorganização de models.
+
+> **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada arquivo movido. Executar `cargo check` após cada movimentação. Utilizar re-exports transitórios em `models/mod.rs` quando necessário para evitar quebras intermediárias.
+
+#### Sprint 6.1 — Criar `models/lstm/`
+
+Mover a implementação LSTM para subpasta auto-contida:
+
+| Origem                | Destino             | Ação                                                                                                           |
+| --------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `lstm.rs` (637L)      | `lstm/layer.rs`     | Mover struct `LstmLayer` + macros + especializações SIMD                                                       |
+| `lstm_dyn.rs` (218L)  | `lstm/model_dyn.rs` | Mover `LstmDynLayer` + `LstmDynModel` integralmente                                                            |
+| `lstm_test.rs` (264L) | `lstm/tests.rs`     | Mover e ajustar imports                                                                                        |
+| `mod.rs` (parcial)    | `lstm/mod.rs`       | Extrair: type aliases (Lstm1x8..Lstm2x16), impls `NamModel` para LSTM, `LstmLike` trait, `lstm_prewarm_common` |
+
+Criar `lstm/mod.rs` com:
+
+- Re-exports públicos de todas as structs/traits
+- Docstring `//!` explicando o módulo LSTM
+
+**Gate de saída**: `cargo check` + `cargo test` passam. `models/mod.rs` reduzido em ~150 linhas.
+
+#### Sprint 6.2 — Criar `models/wavenet/`
+
+Desmembrar o monolítico WaveNet em módulos coesos:
+
+| Origem                                | Destino                         | Ação                                                                                                          |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `wavenet.rs` L1-112                   | `wavenet/conv1d.rs` (~580L)     | Extrair `Conv1d<IN,OUT,K>` + trait `ConvInput` + impls f32/u16                                                |
+| `wavenet.rs` L644-800+                | `wavenet/dense.rs` (~200L)      | Extrair `DenseLayer<IN,OUT>`                                                                                  |
+| `wavenet.rs` (restante)               | `wavenet/model.rs` (~520L)      | Manter `WaveNetModel<CH,K,HEAD>` + `WaveNetLayerArray`                                                        |
+| `wavenet_common.rs` L1-463            | `wavenet/conv1d_dyn.rs` (~700L) | Extrair `Conv1dDyn` + todos os métodos process                                                                |
+| `wavenet_common.rs` (types/constants) | `wavenet/common.rs` (~200L)     | Extrair `WaveNetLayerState`, `WavenetProcessContext`, `WAVENET_MAX_NUM_FRAMES`, `LAYER_ARRAY_BUFFER_PADDING`  |
+| `wavenet_common.rs` (restante)        | `wavenet/model_dyn.rs` (~400L)  | Fundir com `wavenet_dyn.rs`: `WaveNetLayerArrayDyn` + `WaveNetDynModel` + `DenseLayerDyn` + `WaveNetLayerDyn` |
+| `wavenet_test.rs` (617L)              | `wavenet/tests.rs`              | Consolidar com `wavenet_dyn_test.rs` (251L)                                                                   |
+
+Criar `wavenet/mod.rs` com:
+
+- Re-exports públicos
+- Impls `NamModel` para `WaveNetModel` e `WaveNetDynModel`
+- Docstring `//!` explicando o módulo WaveNet
+
+**Gate de saída**: `cargo check` + `cargo test` + `cargo bench` (< 2% regressão) passam. `wavenet_common.rs` eliminado.
+
+#### Sprint 6.3 — Criar `models/a2/` + Limpar `mod.rs`
+
+Isolar stubs e placeholders da arquitetura A2:
+
+| Origem                     | Destino             | Ação                                                          |
+| -------------------------- | ------------------- | ------------------------------------------------------------- |
+| `activations.rs` (373L)    | `a2/activations.rs` | Mover `ActivationType` enum + `ActivationFn` trait + dispatch |
+| `film.rs` (69L)            | `a2/film.rs`        | Mover `FiLMConfig` + `FiLMLayer`                              |
+| `gating.rs` (71L)          | `a2/gating.rs`      | Mover `GatingMode` + configs                                  |
+| `wavenet_params.rs` (246L) | `a2/params.rs`      | Mover `LayerParamsA2`, `LayerArrayParamsA2`, `HeadParams`     |
+| `mod.rs` (parcial)         | `a2/mod.rs`         | Extrair `WavenetA2Placeholder`                                |
+
+Limpar `models/mod.rs` resultante:
+
+- Deve conter apenas `NamModel` trait + `DynamicModel` enum + `pub mod lstm`, `pub mod wavenet`, `pub mod a2`
+- Meta: ≤ 100 linhas
+
+**Gate de saída**: `cargo check` + `cargo clippy` limpos. `models/mod.rs` ≤ 100L. Zero arquivos soltos na raiz de `models/` (exceto `mod.rs`).
+
+---
+
+### Dependência entre Épicos `math/` e `models/`
+
+```mermaid
+graph TD
+    E1["Épico 1: Baseline + Fundação<br/>(math/)"]
+    E2["Épico 2: Traits + Impls<br/>(math/)"]
+    E3["Épico 3: Migração Kernels<br/>(math/)"]
+    E4["Épico 4: Limpeza Imports<br/>(math/)"]
+    E5["Épico 5: Validação + Docs<br/>(math/)"]
+    E6["Épico 6: Reorganização<br/>(models/)"]
+
+    E1 --> E2
+    E2 --> E3
+    E3 --> E4
+    E4 --> E5
+    E1 -.->|"re-exports estáveis<br/>habilitam início"| E6
+    E4 -->|"paths finalizados<br/>pré-requisito ideal"| E6
+    E5 -.->|"validação cruzada"| E6
+```
+
+> **Nota de sequenciamento**: O Épico 6 pode tecnicamente começar após o Sprint 1.3 (re-exports transitórios), mas **recomenda-se aguardar o Épico 4** para evitar retrabalho de imports. A exceção é o Sprint 6.3 (A2 stubs), que não tem dependência de paths de math e pode ser executado a qualquer momento.
+
+---
+
+### O que NÃO muda no Épico 6
+
+- A trait `NamModel` permanece intacta (mesma interface pública)
+- O enum `DynamicModel` permanece com as mesmas 14 variantes
+- O macro `dispatch_simd!` continua sendo usado para despacho em modelos
+- Nenhuma alteração de algoritmo, layout de memória ou performance
+- Todos os comentários e docstrings migram integralmente (Regra de Ouro)
+- Zero mudanças na API pública para o host DSP
+
+---
+
 ## Resumo
 
-| Épico                      | Sprints | Risco | Complexidade                       |
-| -------------------------- | ------- | ----- | ---------------------------------- |
-| **1. Baseline e Fundação** | 3       | Baixo | Moderada (macro paths)             |
-| **2. Traits e Impls**      | 2       | Médio | Moderada (Avx2VnniMath)            |
-| **3. Migração de Kernels** | 5       | Alto  | Alta (7.661L, preservação de docs) |
-| **4. Limpeza de Imports**  | 2       | Médio | Moderada (48+ callsites)           |
-| **5. Validação e Docs**    | 2       | Baixo | Baixa                              |
-| **Total**                  | **14**  |       | ~7.661 linhas reorganizadas        |
+| Épico                       | Sprints | Risco | Complexidade                       |
+| --------------------------- | ------- | ----- | ---------------------------------- |
+| **1. Baseline e Fundação**  | 3       | Baixo | Moderada (macro paths)             |
+| **2. Traits e Impls**       | 2       | Médio | Moderada (Avx2VnniMath)            |
+| **3. Migração de Kernels**  | 5       | Alto  | Alta (7.661L, preservação de docs) |
+| **4. Limpeza de Imports**   | 2       | Médio | Moderada (48+ callsites)           |
+| **5. Validação e Docs**     | 2       | Baixo | Baixa                              |
+| **6. Reorganização Models** | 3       | Médio | Moderada (5.892L, subpastas)       |
+| **Total**                   | **17**  |       | ~13.553 linhas reorganizadas       |
 
 > **Sprint de maior risco**: 3.1 (activations/) — desmembra `fastmath.rs` que é o ponto de convergência entre `avx2.rs`, `avx512.rs` e `models/activations.rs`. Recomendação: execução atômica com `cargo check` após cada arquivo extraído.
-> **Invariante de qualidade**: Nenhum Sprint fecha sem `cargo check` + `cargo test` passando. Nenhum Sprint do Épico 3 fecha sem verificação explícita de preservação de comentários.
+> **Sprint de maior impacto visual**: 6.2 (wavenet/) — desmembra 2.824L de WaveNet em 7 arquivos coesos.
+> **Invariante de qualidade**: Nenhum Sprint fecha sem `cargo check` + `cargo test` passando. Nenhum Sprint dos Épicos 3 e 6 fecha sem verificação explícita de preservação de comentários.
