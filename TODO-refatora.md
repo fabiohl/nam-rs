@@ -774,13 +774,17 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 > `gemv_bf16.rs` criado como placeholder (função `gemv_overwrite_bf16` ainda não implementada nativamente).
 > `cargo check` (standalone + clap), `cargo test` (149 passed), `cargo bench` e `utils/lints.sh` passam.
 
-#### Tarefa 3.3 — `lstm/`
+#### Tarefa 3.3 — `lstm/` [CONCLUÍDO] [x]
 
 | Destino    | Funções                                                |
 | ---------- | ------------------------------------------------------ |
 | `gates.rs` | `fused_lstm_gates_avx2/avx512`, `fused_lstm_gates_dyn` |
 
 **Gate de saída**: `cargo test` passa.
+
+> ✅ **CONCLUÍDA** — 4 funções LSTM (2 kernels + 2 dyn wrappers) extraídas para `math/lstm/gates.rs`.
+> Re-exports em `avx2.rs`/`avx512.rs` mantêm compatibilidade de paths explícitos.
+> `cargo check` (standalone + clap), `cargo test` (149 passed), e `utils/lints.sh` passam.
 
 #### Tarefa 3.4 — `wavenet/`
 

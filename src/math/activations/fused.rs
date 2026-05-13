@@ -51,55 +51,6 @@ pub unsafe fn simd_tanh_sigmoid_dual_avx512(x1: __m512, x2: __m512) -> (__m512, 
     (t1, s2)
 }
 
-/// Kernel fundido para portas LSTM (AVX2).
-/// Computa:
-///   new_cs = sig(gf) * cs + sig(gi) * tanh(gg)
-///   hidden = sig(go) * tanh(new_cs)
-///
-/// # Safety
-/// Requer suporte a AVX2 e FMA.
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn fused_lstm_gates_avx2(
-    gf: __m256,
-    gi: __m256,
-    gg: __m256,
-    go: __m256,
-    cs: __m256,
-) -> (__m256, __m256) {
-    // Intercala sigmoides
-    let (sig_f, sig_i) = unsafe { simd_sigmoid_dual_avx2(gf, gi) };
-    let sig_o = unsafe { simd_sigmoid_avx2(go) };
-    let tanh_g = unsafe { simd_tanh_avx2(gg) };
-
-    let new_cs = _mm256_add_ps(_mm256_mul_ps(sig_f, cs), _mm256_mul_ps(sig_i, tanh_g));
-    let hidden = _mm256_mul_ps(sig_o, unsafe { simd_tanh_avx2(new_cs) });
-
-    (new_cs, hidden)
-}
-
-/// Kernel fundido para portas LSTM (AVX-512).
-///
-/// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
-#[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn fused_lstm_gates_avx512(
-    gf: __m512,
-    gi: __m512,
-    gg: __m512,
-    go: __m512,
-    cs: __m512,
-) -> (__m512, __m512) {
-    let sig_f = unsafe { simd_sigmoid_avx512(gf) };
-    let sig_i = unsafe { simd_sigmoid_avx512(gi) };
-    let sig_o = unsafe { simd_sigmoid_avx512(go) };
-    let tanh_g = unsafe { simd_tanh_avx512(gg) };
-
-    let new_cs = _mm512_add_ps(_mm512_mul_ps(sig_f, cs), _mm512_mul_ps(sig_i, tanh_g));
-    let hidden = _mm512_mul_ps(sig_o, unsafe { simd_tanh_avx512(new_cs) });
-
-    (new_cs, hidden)
-}
-
 /// Aplica Sigmoid seguido de ReLU (AVX-512).
 ///
 /// # Safety

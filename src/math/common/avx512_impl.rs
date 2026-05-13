@@ -276,7 +276,7 @@ impl SimdMath for Avx512Math {
         hidden_size: usize,
     ) {
         unsafe {
-            super::super::simd::avx512::fused_lstm_gates_dyn_avx512(
+            super::super::lstm::fused_lstm_gates_dyn_avx512(
                 gates,
                 cell_state,
                 hidden_state,

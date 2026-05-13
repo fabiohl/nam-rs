@@ -31,6 +31,9 @@ pub use crate::math::gemm::gemv::{
 };
 pub use crate::math::gemm::gemv_4gate::{gemv_4gate_avx512, gemv_4gate_bf16_avx512};
 
+// Re-exports de kernels LSTM (Tarefa 3.3 — mantém compatibilidade de paths explícitos)
+pub use crate::math::lstm::fused_lstm_gates_dyn_avx512;
+
 /// Converte um vetor de números f32 (normais) para bf16 (compactos) via AVX-512.
 /// O formato bf16 ocupa metade do espaço, mas mantém o alcance dos números f32,
 /// sendo ideal para modelos de inteligência artificial rápidos.
@@ -98,48 +101,6 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
             head_input[head_offset + c] += activated;
             c += 1;
         }
-    }
-}
-
-/// Kernel fundido para atualizar a memória (estado) de uma rede LSTM.
-/// Esta função decide o que a rede deve "esquecer" do passado e o que "aprender" do presente,
-/// atualizando os valores de uma só vez para 16 células de memória.
-#[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn fused_lstm_gates_dyn_avx512(
-    gates: &mut [f32],
-    cell_state: &mut [f32],
-    hidden_state: &mut [f32],
-    hidden_size: usize,
-) {
-    let mut j = 0;
-    while j + 16 <= hidden_size {
-        // Carrega as 4 decisões (esquecer, aprender, etc.) para 16 células.
-        let gi = _mm512_loadu_ps(gates.as_ptr().add(j));
-        let gf = _mm512_loadu_ps(gates.as_ptr().add(j + hidden_size));
-        let gg = _mm512_loadu_ps(gates.as_ptr().add(j + 2 * hidden_size));
-        let go = _mm512_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
-        let cs = _mm512_loadu_ps(cell_state.as_ptr().add(j));
-
-        // Faz o cálculo da memória de forma fundida (fused).
-        let (new_cs, hidden) =
-            crate::math::activations::fused_lstm_gates_avx512(gf, gi, gg, go, cs);
-
-        _mm512_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
-        _mm512_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);
-
-        j += 16;
-    }
-    // Trata o resto.
-    while j < hidden_size {
-        let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
-        let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());
-        let tanh_g = gates[j + 2 * hidden_size].tanh();
-        let sig_o = 1.0 / (1.0 + (-gates[j + 3 * hidden_size]).exp());
-
-        let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
-        cell_state[j] = new_cs;
-        hidden_state[j] = sig_o * new_cs.tanh();
-        j += 1;
     }
 }
 

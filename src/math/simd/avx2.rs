@@ -26,6 +26,9 @@ pub use crate::math::gemm::gemm_batch::{
 pub use crate::math::gemm::gemv::{fused_add_gemv_avx2, gemv_overwrite_avx2};
 pub use crate::math::gemm::gemv_4gate::gemv_4gate_avx2;
 
+// Re-exports de kernels LSTM (Tarefa 3.3 — mantém compatibilidade de paths explícitos)
+pub use crate::math::lstm::fused_lstm_gates_dyn_avx2;
+
 // Re-export das structs de implementação (movidas para common/)
 pub use crate::math::common::avx2_impl::{Avx2Math, Avx2VnniMath};
 
@@ -121,42 +124,6 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
             head_input[head_offset + c] += activated;
             c += 1;
         }
-    }
-}
-
-/// Kernel fundido para processamento de portas LSTM dinâmicas via AVX2.
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn fused_lstm_gates_dyn_avx2(
-    gates: &mut [f32],
-    cell_state: &mut [f32],
-    hidden_state: &mut [f32],
-    hidden_size: usize,
-) {
-    let mut j = 0;
-    while j + 8 <= hidden_size {
-        let gi = _mm256_loadu_ps(gates.as_ptr().add(j));
-        let gf = _mm256_loadu_ps(gates.as_ptr().add(j + hidden_size));
-        let gg = _mm256_loadu_ps(gates.as_ptr().add(j + 2 * hidden_size));
-        let go = _mm256_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
-        let cs = _mm256_loadu_ps(cell_state.as_ptr().add(j));
-
-        let (new_cs, hidden) = crate::math::activations::fused_lstm_gates_avx2(gf, gi, gg, go, cs);
-
-        _mm256_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
-        _mm256_storeu_ps(hidden_state.as_mut_ptr().add(j), hidden);
-
-        j += 8;
-    }
-    while j < hidden_size {
-        let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
-        let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());
-        let tanh_g = gates[j + 2 * hidden_size].tanh();
-        let sig_o = 1.0 / (1.0 + (-gates[j + 3 * hidden_size]).exp());
-
-        let new_cs = sig_f * cell_state[j] + sig_i * tanh_g;
-        cell_state[j] = new_cs;
-        hidden_state[j] = sig_o * new_cs.tanh();
-        j += 1;
     }
 }
 
