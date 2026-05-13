@@ -28,8 +28,12 @@ fn main() -> anyhow::Result<()> {
     // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    // 1. LER CONFIGURAÇÕES: O sistema começa lendo o que você digitou no terminal.
+    // Ele descobre qual arquivo de "amplificador" (.nam) você quer usar e os volumes iniciais.
     let (model_path, initial_in_gain, initial_out_gain, buffer_size) = cli::parse_args();
 
+    // 2. CONHECER O COMPUTADOR: Captura uma "foto" das capacidades do seu processador.
+    // Isso ajuda o NAM-rs a escolher a forma mais rápida de processar a matemática do áudio.
     let sys = SystemSnapshot::capture();
     log::info!(
         "🎸 {}",
@@ -38,10 +42,13 @@ fn main() -> anyhow::Result<()> {
             .bold()
     );
 
+    // 3. PREPARAR O ÁUDIO: Inicializa o PipeWire (o sistema de som do Linux)
+    // e calibra os "relógios" internos para garantir que o som saia sem atrasos (latência).
     pipewire::init();
     rt_setup::calibrate_tsc();
 
-    // Handler de SIGINT (Ctrl-C)
+    // 4. BOTÃO DE EMERGÊNCIA: Configura o "Ctrl+C".
+    // Se você quiser fechar o programa, ele garante que o áudio pare de forma suave, sem estalos.
     extern "C" fn sigint_handler(_sig: libc::c_int) {
         if spsc::SHUTDOWN.load(Ordering::SeqCst) {
             unsafe { libc::_exit(1) };
@@ -55,7 +62,9 @@ fn main() -> anyhow::Result<()> {
         libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
     }
 
-    // Setup de canais SPSC
+    // 5. CANAIS DE COMUNICAÇÃO: Cria "tubos" de comunicação ultra-rápidos.
+    // Imagine que a Interface (você) e o Motor de Som (o áudio) moram em salas separadas.
+    // Esses canais permitem enviar comandos (ex: "aumenta o volume") sem nunca fazer o som "engasgar".
     let channels = spsc::setup_spsc(64);
     let mut producer = channels.param_producer;
     let consumer = channels.param_consumer;
@@ -66,7 +75,8 @@ fn main() -> anyhow::Result<()> {
     let resampler_consumer = channels.resampler_consumer;
     let rt_status = channels.rt_status;
 
-    // Carga inicial do modelo
+    // 6. CARREGAR O SOM: Se você disse "use o amplificador X",
+    // aqui é onde o computador abre aquele arquivo e prepara as contas matemáticas (Redes Neurais).
     if let Some(path) = model_path {
         log::info!("{} Carregando modelo inicial...", "📂".cyan());
         match loader::load_and_build_model(&path, &sys) {
