@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -216,17 +215,27 @@ PipeWire Input (Nk Hz)
 
 A filosofia de testes do NAM-rs prioriza **qualidade sobre quantidade**: mantemos apenas as camadas que fornecem sinal de alta confiança, sem redundâncias circulares.
 
+### Organização dos Testes
+
+O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a API pública sejam validadas de forma eficiente:
+
+1. **Testes Unitários:** Focados na lógica interna de cada módulo. Arquivos pequenos (< 300 linhas) mantêm testes `inline` via `mod tests`. Arquivos maiores (ex: `resampler.rs`, `lstm/mod.rs`) utilizam o sufixo `_test.rs` no mesmo diretório para manter a legibilidade.
+2. **Testes de Integração:** Localizados em `tests/`, exercitam o pipeline completo, o carregamento de modelos e a estabilidade em tempo real.
+3. **Benchmarks:** Localizados em `benches/`, utilizam `criterion` para monitorar regressões de performance em kernels críticos.
+
 ### Camadas Ativas
 
 | Camada                        | Local                                                    | Força como Ground Truth         | O que captura                                                                                           |
 |:----------------------------- |:-------------------------------------------------------- |:------------------------------- |:------------------------------------------------------------------------------------------------------- |
-| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end                                                   |
-| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD em espaço amplo de entradas (10.000 iterações)                                     |
-| **Testes de bits**            | `src/math/simd/avx2_test.rs`, `avx512_test.rs`           | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16 sem oráculo externo                                                 |
-| **Integração E2E**            | `tests/` (demais)                                        | —                               | Parsing, SPSC pipeline, paridade estático-dinâmico, compatibilidade A1/A2                               |
-| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                               | Garante que o hot-path não aloca heap via `CountingAllocator`                                           |
-| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                               | ~45.000 inputs adversários contra parsers JSON/.namb                                                    |
-| **Soak Test**                 | `tests/soak_test.rs`                                     | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
+| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência original.                |
+| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
+| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
+| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato     | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
+| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout      | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
+| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                               | Inicialização do host em modo headless, processamento de buffers e teardown seguro.                     |
+| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                               | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
+| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                               | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
+| **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
 
 ### Decisão de Arquitetura: Remoção dos Parity Tests com Inputs Fixos
 
@@ -236,11 +245,12 @@ Os testes que comparavam kernels AVX2/AVX-512 contra `ScalarRefMath` com entrada
 2. **Redundância:** Os PropTests já cobrem o mesmo espaço (SIMD vs. escalar) com 10.000 entradas aleatórias e referências independentes (`f64`, `f32::tanh()` nativa), eliminando a dependência circular.
 3. **Diagnóstico preservado:** Se um Golden Vector falhar, os PropTests narrowam o kernel quebrado sem necessidade dos parity tests fixos.
 
-> **Referência:** `src/math/simd/scalar_ref.rs` mantém as funções livres (`_fallback`) usadas em produção por `avx2.rs` e `avx512.rs` como delegates escalares. A struct `ScalarRefMath` foi removida após a eliminação dos testes que a consumiam.
+> **Referência:** `src/math/common/scalar_ref.rs` mantém as funções livres (`_fallback`) usadas em produção por `avx2_impl.rs` e `avx512_impl.rs` como delegates escalares. A struct `ScalarRefMath` foi removida após a eliminação dos testes que a consumiam.
 
-### Long Run Benchmarks
+### Benchmarks e Performance
 
-`benches/inference_bench.rs` — grupo `Long_Run_*` ativado via feature `long_bench`, com blocos de 4096 amostras e `measurement_time(30s)` para medir throughput real em operação contínua. Via `bash utils/tests-long.sh`.
+- **Criterion Benches:** `benches/inference_bench.rs` mede a latência de inferência por modelo e arquitetura SIMD.
+- **Long Run Benchmarks:** Grupo `Long_Run_*` em `benches/inference_bench.rs` ativado via feature `long_bench`, com blocos de 4096 amostras e `measurement_time(30s)` para medir throughput real em operação contínua. Ativado via `bash utils/tests-long.sh`.
 
 ## 7. Preparação para Arquitetura A2
 

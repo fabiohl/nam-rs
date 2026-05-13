@@ -72,7 +72,7 @@ O NAM-rs adota uma arquitetura opinativa e focada em quatro pilares:
 
 * Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
 
-* Utilitários do Cargo (necessários para QA): `cargo install cargo-edit cargo-fuzz`
+* Utilitários do Cargo (necessários para QA): `cargo install cargo-edit`
 
 * Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
 
