@@ -98,7 +98,11 @@ pub fn run_pipewire_host(
         sys,
     } = config;
 
-    // 1. Cria a thread assíncrona gerenciada nativamente pelo PipeWire
+    // =========================================================
+    // 1. INICIALIZAÇÃO DO LOOP PIPEWIRE
+    // =========================================================
+    // Cria a thread assíncrona (ThreadLoop) nativa do PipeWire e conecta ao contexto/core.
+    // O ThreadLoop é o "motor" que despachará os eventos de áudio.
     let thread_loop = unsafe { pw::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
     let context = pw::context::ContextBox::new(thread_loop.loop_(), None)?;
     let core = context.connect(None)?;
@@ -109,8 +113,12 @@ pub fn run_pipewire_host(
     let playback_listener;
     let mut thread_configured = false;
 
-    // 2. Aloca o buffer compartilhado entre capture e playback via leak intencional.
-    // O DspBridge vive até o shutdown do processo — nunca é dropado em runtime.
+    // =========================================================
+    // 2. ALOCAÇÃO DO DSP BRIDGE (Comunicação Lock-Free)
+    // =========================================================
+    // Aloca o buffer compartilhado entre as streams de capture e playback via leak intencional.
+    // O DspBridge vive até o término do processo — evitando completamente a necessidade
+    // de locks (mutexes) entre as threads no caminho crítico (hot-path).
     let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
         buffers: [
             BridgeBuffer {
@@ -144,11 +152,16 @@ pub fn run_pipewire_host(
         );
     }
 
-    // 3. Seleciona o núcleo ideal para a thread RT (capacidade + menor carga IRQ).
-    // Computado antes do lock para que o valor seja acessível após o escopo.
+    // =========================================================
+    // 3. OTIMIZAÇÃO DE NÚCLEO (CPU Affinity)
+    // =========================================================
+    // Seleciona o núcleo físico ideal para a thread RT (maior capacidade + menor carga IRQ).
+    // Computado na thread main, antes do lock, pois a leitura do /sys/ é uma I/O lenta.
     let target_cpu = rt_setup::select_optimal_cpu().unwrap_or(0);
 
-    // 4. Escopo de configuração protegida (RAII)
+    // =========================================================
+    // 4. ESCOPO DE CONFIGURAÇÃO PROTEGIDA (RAII)
+    // =========================================================
     // Tudo dentro deste bloco `{ ... }` executa com o loop do PipeWire "congelado".
     //
     // O `thread_loop.lock()` adquire o mutex global do PipeWire. Isso previne que a
@@ -261,8 +274,12 @@ pub fn run_pipewire_host(
         let gc_overflow_for_process = gc_overflow.clone();
         let mut frame_count: u32 = 0;
 
-        // 5. Captura o contexto por valor ('move') para a closure do listener.
-        // As variáveis locais (modelos, resamplers, buffers) tornam-se o estado persistente da stream RT.
+        // =========================================================
+        // 5. REGISTRO DOS CALLBACKS (Listeners) E ESTADO RT
+        // =========================================================
+        // Captura o contexto por valor ('move') para a closure do listener.
+        // As variáveis locais criadas até aqui (modelos, resamplers, buffers)
+        // tornam-se o estado persistente da stream RT, evitando alocações futuras.
         capture_listener = capture_stream
             .add_local_listener::<()>()
             .state_changed(move |_stream, _user_data, old, new| match new {
@@ -303,10 +320,11 @@ pub fn run_pipewire_host(
             })
             .process(move |stream: &pw::stream::Stream, _info| {
                 // =========================================================
-                // 5.1. CALLBACK RT — ZERO ALOCAÇÕES, ZERO I/O
+                // 5.1. CALLBACK RT (Capture) — ZERO ALOCAÇÕES, ZERO I/O
                 // =========================================================
-                // Toda alocação (NamResampler::new, Vec, Box) e toda operação
-                // de I/O (println!, eprintln!, write!) são PROIBIDAS neste escopo.
+                // Toda alocação (NamResampler::new, Vec, Box) e operação de I/O
+                // são PROIBIDAS aqui. Comunicação com a main thread ocorre apenas
+                // via flags atômicas e canais SPSC.
                 // Status comunicado via flags atômicas em `rt_status_for_process`.
 
                 // Executa no kernel da thread RT (Data Thread do Pipewire)
@@ -323,7 +341,8 @@ pub fn run_pipewire_host(
                     }
                 }
 
-                // 5.1.1. Drena resamplers pré-construídos pela thread principal (zero-alloc swap).
+                // 5.1.1. Drenagem de Resamplers (Zero-Alloc Swap)
+                // Puxa novos resamplers construídos na thread principal (se houver).
                 while let Ok(new_rs) = resampler_consumer.pop() {
                     // Reporta rate ativo via flag atômica (sem println!)
                     rt_status_for_process
@@ -362,9 +381,11 @@ pub fn run_pipewire_host(
                     }
                 }
 
-                // ---------------------------------------------------------
-                // 5.1.2. RECEPÇÃO DE COMANDOS (O "Correio" entre Usuário e Áudio)
-                // ---------------------------------------------------------
+                // =========================================================
+                // 5.1.2. RECEPÇÃO DE COMANDOS (Canal SPSC)
+                // =========================================================
+                // Verifica o canal lock-free se o usuário alterou modelos ou ganhos via CLI.
+                // Trocas são instantâneas; o modelo antigo é enviado ao GC na thread principal.
                 // Aqui o motor de áudio verifica se o usuário enviou novos comandos pela CLI
                 // (ex: trocar de pedal, mudar o volume). Usamos um canal "SPSC" que permite
                 // receber essas ordens sem nunca parar ou atrasar o som.
@@ -490,9 +511,12 @@ pub fn run_pipewire_host(
                     }
                 }
 
-                // ---------------------------------------------------------
-                // 5.1.3. SINCRONIZAÇÃO DE RITMO (Taxa de Amostragem / Sample Rate)
-                // ---------------------------------------------------------
+                // =========================================================
+                // 5.1.3. SINCRONIZAÇÃO DE RATE (Clock Tracking)
+                // =========================================================
+                // Detecta mudanças na taxa de amostragem solicitada pelo modelo ou
+                // imposta pelo servidor PipeWire. Se divergirem, sinaliza via atomic
+                // flag para a thread principal construir um novo resampler.
                 // O áudio digital tem um "ritmo" (ex: 48.000 amostras por segundo).
                 // Se o sistema (PipeWire) mudar esse ritmo, ou se carregarmos um efeito
                 // que trabalha em outro ritmo, precisamos de um "tradutor" (Resampler).
@@ -541,16 +565,17 @@ pub fn run_pipewire_host(
                 }
 
                 // =========================================================
-                // 5.1.4. LÓGICA DSP - TEMPO REAL
+                // 5.1.4. LÓGICA DSP DE TEMPO REAL
                 // =========================================================
-                // Adquire o próximo buffer disponível do servidor PipeWire.
+                // Adquire o próximo buffer vazio/pronto do servidor PipeWire.
                 let mut _buf = match stream.dequeue_buffer() {
                     Some(b) => b,
                     None => return,
                 };
 
-                // 5.1.4.1. Extração dos buffers de áudio do PipeWire
-                // O PipeWire fornece buffers planares (F32P). Cada canal tem seu próprio array de dados.
+                // 5.1.4.1. Extração dos Buffers Brutos (Mmap)
+                // O PipeWire fornece buffers mapeados em kernel. Acessamos fatias seguras
+                // desses buffers via ponteiros brutos (Float 32 Planar).
                 let datas = _buf.datas_mut();
                 if datas.len() >= 2 {
                     // Dividimos o slice de metadados em Esquerdo e Direito para obter referências mutáveis únicas.
@@ -606,9 +631,11 @@ pub fn run_pipewire_host(
                                     0
                                 };
 
-                                // ---------------------------------------------------------
-                                // 5.1.4.2. EXECUÇÃO DO PROCESSAMENTO (A Fábrica de Som)
-                                // ---------------------------------------------------------
+                                // =========================================================
+                                // 5.1.4.2. EXECUÇÃO DO PROCESSAMENTO (DSP Pipeline)
+                                // =========================================================
+                                // Executa todo o processamento em cascata: Gate -> Resample_In
+                                // -> Inferência Neural (WaveNet/LSTM) -> Resample_Out -> Saída.
                                 // Aqui é onde a mágica acontece. Chamamos a "fábrica" (pipeline)
                                 // passando o som bruto da guitarra e um "kit de ferramentas"
                                 // (DspPipelineContext) que contém os modelos neurais, volumes
@@ -675,7 +702,10 @@ pub fn run_pipewire_host(
             })
             .register()?;
 
-        // 6. Constrói o SPA Pod F32P stereo para negociação de formato com PipeWire.
+        // =========================================================
+        // 6. NEGOCIAÇÃO DE FORMATO (Capture Stream)
+        // =========================================================
+        // Constrói o "SPA Pod" contendo a negociação do formato Float 32-bit Planar (F32P).
         let mut audio_info = pw::spa::param::audio::AudioInfoRaw::new();
         audio_info.set_format(pw::spa::param::audio::AudioFormat::F32P);
         audio_info.set_channels(2);
@@ -683,8 +713,8 @@ pub fn run_pipewire_host(
         let mut format_buf = [0u8; 1024];
         let format_pod = unsafe { build_spa_format_pod(&audio_info, &mut format_buf)? };
 
-        // 6.1. Ativa a capture stream com formato de áudio declarado.
-        // Direction::Input — recebe áudio dos apps (Virtual Sink).
+        // 6.1. Ativação (Connect) da Stream de Captura
+        // Direction::Input orienta a porta lógica do PipeWire a receber áudio de outros apps.
         capture_stream.connect(
             pw::spa::utils::Direction::Input,
             None,
@@ -700,25 +730,39 @@ pub fn run_pipewire_host(
             "🎼".bright_blue()
         );
 
-        // 7. PLAYBACK STREAM: envia áudio processado para o hardware
-        // Ponteiro raw para o bridge, compartilhado com o playback callback.
+        // =========================================================
+        // 7. PLAYBACK STREAM: Entrega final do áudio ao Hardware
+        // =========================================================
+        // A stream de captura (acima) processa o áudio em tempo real, porém, por ser um "Sink" virtual,
+        // o PipeWire apenas lê seu estado de entrada e ignora modificações in-place para reprodução.
+        // A Playback Stream atua como a perna final do pipeline, lendo do `bridge`
+        // e efetivamente tocando o som nos alto-falantes/placa de som do sistema.
+
+        // 7.1. Configuração do Ponteiro Compartilhado
+        // O bridge_ptr_playback é enviado para o callback da playback stream, de forma que ele
+        // saiba de onde puxar as amostras de áudio que foram preenchidas pela stream de captura.
         let bridge_ptr_playback = bridge_ptr;
 
+        // 7.2. Detecção Automática de Placa de Som
+        // Verifica as interfaces de saída física ativas (ALSA/USB). Isso evita que o
+        // WirePlumber envie o som processado de volta para um nó virtual, criando feedback.
         let hardware_target = rt_setup::detect_hardware_sink();
 
+        // 7.3. Propriedades do Nó de Reprodução (Playback) no PipeWire
         let mut playback_props = properties! {
             *pw::keys::MEDIA_TYPE => "Audio",
             *pw::keys::MEDIA_CATEGORY => "Playback",
-            *pw::keys::MEDIA_ROLE => "Music",
+            *pw::keys::MEDIA_ROLE => "Music", // Classifica no SO que é fluxo musical prioritário
             *pw::keys::MEDIA_CLASS => "Stream/Output/Audio",
             *pw::keys::NODE_NAME => "NAM-rs-playback",
             *pw::keys::NODE_DESCRIPTION => "NAM-rs Processed Output",
             "audio.position" => "FL,FR",
-            "node.group" => "nam-rs-dsp", // Clock sync com capture stream
-            "node.link-group" => "nam-rs-link-group", // Evita feedback loop (WirePlumber não linka nós do mesmo link-group)
+            "node.group" => "nam-rs-dsp", // Sincroniza o relógio (clock) com a capture stream
+            "node.link-group" => "nam-rs-link-group", // Evita feedback loop (WirePlumber não conecta nós do mesmo grupo)
         };
 
         if let Some(target) = hardware_target {
+            // Força o envio direto para o nó de hardware detectado
             playback_props.insert("node.target", target.as_str());
             log::info!(
                 "{} Saída roteada automaticamente para o hardware padrão: {}",
@@ -728,22 +772,28 @@ pub fn run_pipewire_host(
         }
 
         if buffer_size > 0 {
+            // Repassa a latência (tamanho de bloco) solicitada para a playback stream
             playback_props.insert("node.latency", latency_str.as_str());
         }
 
+        // 7.4. Inicialização da Stream de Playback
         playback_stream = pw::stream::StreamBox::new(&core, "NAM-rs-Output", playback_props)?;
 
-        // Contador de geração local para detectar novos dados do bridge.
+        // 7.5. Configuração do Callback de Leitura (RT)
+        // Controla a 'geração' (generation) dos dados para não ler o mesmo buffer duas vezes
         let mut last_bridge_gen: u64 = 0;
 
         playback_listener = playback_stream
             .add_local_listener::<()>()
             .process(move |stream: &pw::stream::Stream, _info| {
+                // O loop RT que lê as amostras prontas no Bridge e transfere para o PipeWire.
                 playback_dsp_cycle(stream, bridge_ptr_playback, &mut last_bridge_gen);
             })
             .register()?;
 
-        // Constrói SPA Pod F32P stereo para a playback stream (mesmo formato da capture).
+        // 7.6. Negociação de Formato (F32P)
+        // O formato precisa ser estritamente igual ao da captura (Float 32bits Planar) para que
+        // a transferência não exija cópias ou conversões extras no buffer bridge (Zero I/O, Zero Alloc).
         let mut playback_audio_info = pw::spa::param::audio::AudioInfoRaw::new();
         playback_audio_info.set_format(pw::spa::param::audio::AudioFormat::F32P);
         playback_audio_info.set_channels(2);
@@ -752,7 +802,8 @@ pub fn run_pipewire_host(
         let playback_format_pod =
             unsafe { build_spa_format_pod(&playback_audio_info, &mut playback_format_buf)? };
 
-        // Ativa a playback stream — Direction::Output envia para o hardware.
+        // 7.7. Conexão Final da Stream (Direction::Output)
+        // Direction::Output sinaliza que nós estamos enviando dados para o servidor de áudio
         playback_stream.connect(
             pw::spa::utils::Direction::Output,
             None,
@@ -781,14 +832,17 @@ pub fn run_pipewire_host(
     // todos os diagnósticos de hardening RT na saída do console.
     sys.emit_irq_advisory(target_cpu);
 
-    // 8. Inicia a execução da ThreadLoop em background, com PipeWire assumindo a Thread de RT
+    // =========================================================
+    // 8. INÍCIO DA THREAD RT (Background)
+    // =========================================================
+    // O PipeWire assume oficialmente o controle da thread de áudio a partir daqui.
     thread_loop.start();
 
     // =========================================================
-    // 9. LOOP DE CONTROLE (NON-RT)
+    // 9. LOOP DE CONTROLE PRINCIPAL (Thread Main, Non-RT)
     // =========================================================
-    // Este loop executa na thread principal da aplicação. Sua função é gerenciar
-    // tarefas pesadas (alocações, I/O) que são proibidas dentro dos callbacks RT.
+    // Enquanto o DSP roda em background, a thread principal (esta) acorda periodicamente
+    // para tratar operações lentas, gerenciamento de memória e reconstrução de objetos.
     let mut was_silent = false;
     let mut was_fading = false;
     while !SHUTDOWN.load(Ordering::Relaxed) {
@@ -852,8 +906,8 @@ pub fn run_pipewire_host(
             }
         }
 
-        // 9.2. Monitoramento de Status e Limpeza de Memória (GC)
-        // Consultamos as flags atômicas do callback RT para atualizar a UI/Logs (clipping, silêncio, timing).
+        // 9.2. Telemetria e Coleta de Lixo (GC)
+        // Faz "polling" do status RT e envia modelos velhos de volta ao sistema para desalocação segura.
         (was_silent, was_fading) = rt_setup::poll_rt_status(
             &rt_status,
             &sys,
@@ -870,8 +924,10 @@ pub fn run_pipewire_host(
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    // 10. Graceful Shutdown
-    // Paramos o loop do PipeWire antes de encerrar a função para garantir que
+    // =========================================================
+    // 10. GRACEFUL SHUTDOWN
+    // =========================================================
+    // Para o loop e encerra streams antes que o processo principal caia, liberando recursos no kernel.
     // os recursos sejam liberados corretamente.
     thread_loop.stop();
 
