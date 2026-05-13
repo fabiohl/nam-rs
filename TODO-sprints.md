@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
-# TODO — Sprints de Integração CLAP (NAM-rs v1.5.0-alpha)
+# TODO — Sprints de Integração CLAP
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### Épico 1.1 — Validação e Estabilidade no Bitwig Studio
 
-- [ ] **Tarefa 1.1.1** — Validação do Lifecycle e Escaneamento no Bitwig 6.0.6
+- [ ] **Tarefa 1.1.1** — Validação do Lifecycle e Escaneamento no Bitwig 6.0.6 (Ubuntu Linux 25.10+)
 
   - **Contexto:** Bitwig realiza escaneamento de plugins em background e gerencia falhas via sua aba *Plug-in Errors*.
   - **Ações Técnicas:**
