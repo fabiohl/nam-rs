@@ -650,6 +650,9 @@ pub fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
 /// Impede que o processador entre em C-States de economia de energia,
 /// garantindo latência de despertar de 0ms para processamento de áudio RT.
 ///
+/// **Aviso:** Esta proteção é **sistêmica (global)** e afeta todos os cores da CPU,
+/// não apenas a thread que executa esta função.
+///
 /// Utiliza a interface PM QoS do kernel Linux para solicitar latência zero.
 ///
 /// RETORNO: O arquivo `File`. Ele DEVE ser mantido vivo no escopo principal.

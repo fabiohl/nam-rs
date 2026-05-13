@@ -121,7 +121,7 @@ graph TD
 - **Zero-Allocation:** Proibição estrita de alocações heap, `Vec`, `Box` ou panics na thread DSP.
 - **Isolamento de Jitter:**
   - `mlockall` para evitar page faults.
-  - PM QoS Lock (`/dev/cpu_dma_latency`) para desabilitar C-States profundos.
+  - PM QoS Lock (`/dev/cpu_dma_latency`) para desabilitar C-States profundos **em todos os cores do sistema (global)**, garantindo latência de despertar zero.
   - Desabilitação de THP (Transparent Huge Pages) via `prctl` para evitar spikes de compactação do kernel.
 - **Telemetria de Alta Precisão (RDTSC):** Substituição de `Instant::now()` (syscall vDSO) por leitura direta do TSC calibrado no callback RT. Garante precisão de ~1ns com overhead de ~1 ciclo de CPU, eliminando jitter induzido pelo kernel na medição de carga de DSP.
 - **Canais SPSC (rtrb):** Comunicação lock-free entre CLI (async) e DSP (RT). Payload alinhado (128B) para evitar False Sharing.
