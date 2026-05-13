@@ -24,6 +24,7 @@ use core::arch::x86_64::*;
 ///
 /// # Safety
 /// Requer suporte a AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_lstm_gates_avx2(
     gf: __m256,
@@ -47,6 +48,7 @@ pub unsafe fn fused_lstm_gates_avx2(
 ///
 /// # Safety
 /// Requer suporte a AVX-512F e AVX-512VL.
+#[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_lstm_gates_avx512(
     gf: __m512,
@@ -67,6 +69,7 @@ pub unsafe fn fused_lstm_gates_avx512(
 }
 
 /// Kernel fundido para processamento de portas LSTM dinâmicas via AVX2.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_lstm_gates_dyn_avx2(
     gates: &mut [f32],
@@ -105,6 +108,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
 /// Kernel fundido para atualizar a memória (estado) de uma rede LSTM.
 /// Esta função decide o que a rede deve "esquecer" do passado e o que "aprender" do presente,
 /// atualizando os valores de uma só vez para 16 células de memória.
+#[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_lstm_gates_dyn_avx512(
     gates: &mut [f32],

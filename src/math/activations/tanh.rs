@@ -10,6 +10,7 @@ use core::arch::x86_64::*;
 ///
 /// # Safety
 /// O chamador deve garantir suporte a AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     // Coeficientes do polinômio Minimax de grau 7
@@ -62,6 +63,7 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
 ///
 /// # Safety
 /// O chamador deve garantir suporte a AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     let c0 = _mm256_set1_ps(TANH_C0);
@@ -123,6 +125,7 @@ pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX-512 (F e VL).
+#[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     // Coeficientes do polinômio Minimax de grau 7
@@ -171,6 +174,7 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
 ///
 /// # Safety
 /// Requer suporte a AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
@@ -205,6 +209,7 @@ pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
 ///
 /// # Safety
 /// Requer suporte a AVX-512F e AVX-512VL.
+#[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
     let mut i = 0;
@@ -225,7 +230,7 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
 }
 
 /// Versão escalar de `tanh`.
-#[inline(always)]
+#[inline]
 pub fn tanh(x: f32) -> f32 {
     x.tanh()
 }

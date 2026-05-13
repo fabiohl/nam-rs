@@ -853,18 +853,18 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 #### Tarefa 5.1 — Validação de Paridade
 
-- `cargo test` — todos os testes passam (incluindo sweeps de erro máximo)
-- `cargo bench` — comparar com baseline (threshold: <2% regressão)
-- `utils/lints.sh` — limpo
-- Verificar contagem de comentários vs baseline (sem perda)
+- [x] `cargo test` — todos os testes passam (incluindo sweeps de erro máximo)
+- [x] `cargo bench` — comparar com baseline (threshold: <2% regressão)
+- [x] `utils/lints.sh` — limpo
+- [x] Verificar contagem de comentários vs baseline (sem perda)
 
 **Gate de saída**: Paridade total confirmada.
 
 #### Tarefa 5.2 — Documentação Arquitetural
 
-- Atualizar `docs/architecture.md` seção de matemática
-- Docstrings `//!` em cada `mod.rs` novo
-- Registrar decisões (eliminação `Avx2VnniMath`, design debt dual dispatch)
+- [x] Atualizar `docs/architecture.md` seção de matemática
+- [x] Docstrings `//!` em cada `mod.rs` novo
+- [x] Registrar decisões (eliminação `Avx2VnniMath`, design debt dual dispatch)
 
 **Gate de saída**: Documentação sincronizada com implementação.
 
@@ -1003,40 +1003,40 @@ Este documento registra o estado do projeto NAM-rs antes do início do Épico 1 
 
 #### 1. Métricas de Código (LoC)
 
-| Arquivo               | Total Linhas | Código    | Comentários |
-|:--------------------- |:------------:|:---------:|:-----------:|
 | **src/math/**         |              |           |             |
-| `mod.rs`              | 10           | 4         | 6           |
-| `fastmath.rs`         | 1228         | 936       | 292         |
-| `fastmath_test.rs`    | 719          | 622       | 97          |
-| **src/math/simd/**    |              |           |             |
-| `mod.rs`              | 93           | 73        | 20          |
-| `dispatch.rs`         | 184          | 151       | 33          |
-| `traits.rs`           | 358          | 184       | 174         |
-| `avx2.rs`             | 2091         | 1903      | 188         |
-| `avx512.rs`           | 2265         | 2111      | 154         |
-| `scalar_ref.rs`       | 583          | 472       | 111         |
-| `ops.rs`              | 254          | 183       | 71          |
-| `aligned.rs`          | 186          | 135       | 51          |
-| `utility.rs`          | 36           | 26        | 10          |
-| `simd_test.rs`        | 178          | 157       | 21          |
-| `avx2_test.rs`        | 49           | 43        | 6           |
-| `avx512_test.rs`      | 26           | 22        | 4           |
+| `mod.rs`              | 15           | 7         | 6           |
+| `constants.rs`        | 56           | 19        | 27          |
+| **src/math/common/**  |              |           |             |
+| `mod.rs`              | 80           | 65        | 8           |
+| `traits.rs`           | 358          | 142       | 174         |
+| `dispatch.rs`         | 244          | 160       | 75          |
+| `avx2_impl.rs`        | 407          | 345       | 23          |
+| `avx512_impl.rs`      | 1018         | 886       | 25          |
+| `scalar_ref.rs`       | 534          | 394       | 97          |
+| `ops.rs`              | 149          | 99        | 39          |
+| `aligned.rs`          | 186          | 116       | 51          |
+| `utility.rs`          | 81           | 54        | 12          |
+| `tests.rs`            | 241          | 186       | 27          |
+| **src/math/activations/**|           |           |             |
+| `mod.rs`              | 103          | 83        | 9           |
+| `tanh.rs`             | 231          | 148       | 40          |
+| `sigmoid.rs`          | 262          | 178       | 41          |
+| `tests.rs`            | 225          | 167       | 35          |
+| **src/math/gemm/**    |              |           |             |
+| `dot.rs`              | 150          | 100       | 30          |
+| `dot_4x.rs`           | 482          | 337       | 69          |
+| `gemm_batch.rs`       | 528          | 432       | 57          |
+| `gemv.rs`             | 412          | 296       | 76          |
+| `gemv_4gate.rs`       | 401          | 335       | 31          |
+| **src/math/dsp/**     |              |           |             |
+| `gain.rs`             | 317          | 241       | 41          |
+| `stereo.rs`           | 375          | 280       | 44          |
 | **src/models/**       |              |           |             |
-| `mod.rs`              | 321          | 222       | 99          |
-| `activations.rs`      | 373          | 327       | 46          |
-| `film.rs`             | 68           | 47        | 21          |
-| `gating.rs`           | 70           | 45        | 25          |
-| `lstm.rs`             | 636          | 549       | 87          |
-| `lstm_dyn.rs`         | 217          | 145       | 72          |
-| `lstm_test.rs`        | 264          | 235       | 29          |
-| `wavenet.rs`          | 1305         | 1006      | 299         |
-| `wavenet_common.rs`   | 1251         | 1020      | 231         |
-| `wavenet_dyn.rs`      | 268          | 213       | 55          |
-| `wavenet_params.rs`   | 246          | 165       | 81          |
-| `wavenet_test.rs`     | 617          | 439       | 178         |
-| `wavenet_dyn_test.rs` | 251          | 193       | 58          |
-| **TOTAL**             | **14147**    | **11648** | **2499**    |
+| `mod.rs`              | 321          | 181       | 99          |
+| `lstm.rs`             | 636          | 492       | 87          |
+| `wavenet.rs`          | 1305         | 904       | 299         |
+| `wavenet_common.rs`   | 1251         | 920       | 231         |
+| **TOTAL**             | **13900**    | **9904**  | **2581**    |
 
 ### 2. Status dos Testes
 

@@ -2,6 +2,16 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Fundação comum para operações matemáticas e SIMD.
+//!
+//! Este módulo contém as definições estruturais que permitem ao NAM-rs ser
+//! agnóstico ao hardware enquanto mantém performance nativa.
+//!
+//! # Componentes
+//! - `traits`: A trait `SimdMath` que define a interface de todos os kernels.
+//! - `dispatch`: Mecanismo de seleção dinâmica de arquitetura (AVX2, AVX-512, etc.).
+//! - `avx2_impl` / `avx512_impl`: Implementações concretas dos kernels para x86-64.
+//! - `scalar_ref`: Implementações de fallback para compatibilidade e testes.
+//! - `aligned`: Estruturas para garantir alinhamento de memória (RT-Safety).
 
 pub mod aligned;
 pub mod avx2_impl;

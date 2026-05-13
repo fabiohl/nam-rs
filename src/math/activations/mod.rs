@@ -2,6 +2,15 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
 //! Módulo central de ativações com despacho (dispatch) automático de SIMD.
+//!
+//! Fornece implementações ultra-rápidas de `tanh` e `sigmoid` baseadas em
+//! polinômios de Minimax de grau 7, otimizadas para o throughput de instruções
+//! FMA em processadores x86-64.
+//!
+//! # Características
+//! - **FastMath**: Aproximações que priorizam velocidade, mantendo erro < 2e-5.
+//! - **Dispatch**: Seleção automática de kernels (AVX2, AVX-512 ou Escalar) via CPUID.
+//! - **Zero-Alloc**: Operações estritamente seguras para uso em threads de tempo-real.
 
 pub mod fused;
 pub mod prelu;

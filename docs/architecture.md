@@ -136,7 +136,8 @@ A partir da v1.5, o NAM-rs adota uma estrutura modular clara para suportar múlt
 | **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host` | Infraestrutura compartilhada, comunicação inter-threads (SPSC) e abstrações agnósticas ao host.                        |
 | **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`        | Backend nativo Linux. Gerencia o servidor PipeWire, setup de hardware (FIFO/Affinity) e interface de linha de comando. |
 | **CLAP** (`src/clap/`)             | `mod.rs` (Stub)                               | Ponto de entrada para integração como plugin (v1.6+). Totalmente isolado das dependências do PipeWire.                 |
-| **Core DSP** (`src/`)              | `dsp/`, `math/`, `models/`, `loader/`         | O "cérebro" do NAM-rs. Matemática SIMD, algoritmos de inferência neural e parsing de modelos.                          |
+| **Math** (`src/math/`)             | `common/`, `activations/`, `gemm/`, `dsp/`... | Infraestrutura matemática modularizada por domínio, isolando kernels SIMD de baixo nível da lógica de despacho.        |
+| **Core DSP** (`src/`)              | `dsp/`, `models/`, `loader/`                  | O "cérebro" do NAM-rs. Algoritmos de inferência neural e parsing de modelos.                                           |
 
 ### Diagrama de Camadas (Architecture Layers)
 
@@ -280,6 +281,13 @@ Este projeto utiliza um registro simplificado de decisões arquiteturais para ma
 - **Justificativa:** O REAPER oferece ferramentas de debug sem igual para desenvolvimento de plugins: scan rápido sem necessidade de restart, hot-reload de `.so`, análise de buffers variáveis (1–8192 amostras), acesso nativo a métricas de latência e monitoramento de threads RT. Além de ter preço muito acessível.
 - **Bitwig Studio:** Validação premium — implementação CLAP de referência (empresa co-autora do spec).
 - **Studio One:** Validação premium — adoção crescente do CLAP no mercado mainstream.
+
+### Matemática & SIMD — Reorganização Modular
+
+- **Decisão:** Fragmentação da infraestrutura matemática monolítica em módulos por domínio (`activations/`, `gemm/`, `dsp/`, `lstm/`, `wavenet/`).
+- **Justificativa:** Reduz o "noise" cognitivo em arquivos de 2000+ linhas, permite testes unitários isolados por kernel e facilita a auditoria de inlining pelo compilador.
+- **Eliminação de Redundância (VNNI):** A struct `Avx2VnniMath` foi eliminada e substituída por um *type alias* para `Avx2Math` em `common/avx2_impl.rs`. A instrução `VPDPBUSD` (VNNI-Int8) não oferece ganhos para os kernels de ponto flutuante do NAM-rs.
+- **Design Debt (Dual Dispatch):** O sistema utiliza uma estrutura de "Dual Dispatch" onde o `loader` despacha para o `model`, que por sua vez utiliza a trait `SimdMath`. Identificamos que a abstração de despacho em `math/common/dispatch.rs` é um ponto de dívida técnica que será unificado no Épico 8 (V-Table Unification).
 
 ## 9. Referências
 

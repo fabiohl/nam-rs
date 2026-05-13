@@ -13,6 +13,7 @@ use core::arch::x86_64::*;
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     let one = _mm256_set1_ps(1.0);
@@ -75,6 +76,7 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     let one = _mm256_set1_ps(1.0);
@@ -149,6 +151,7 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
 ///
 /// # Safety
 /// O chamador deve garantir que a CPU suporte instruções AVX-512 (F e VL).
+#[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     let one = _mm512_set1_ps(1.0);
@@ -202,6 +205,7 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
 ///
 /// # Safety
 /// Requer suporte a AVX2 e FMA.
+#[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
@@ -236,6 +240,7 @@ pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
 ///
 /// # Safety
 /// Requer suporte a AVX-512F e AVX-512VL.
+#[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
     let mut i = 0;
