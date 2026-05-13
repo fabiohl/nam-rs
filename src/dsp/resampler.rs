@@ -225,6 +225,7 @@ impl NamResampler {
     /// - `pw_rate`: taxa do PipeWire (e.g., 44100, 48000, 96000).
     /// - `nam_rate`: taxa do modelo NAM (e.g., 48000).
     /// - `_chunk_size`: mantido por compatibilidade de API (não usado internamente).
+    #[cold]
     pub fn new(pw_rate: u32, nam_rate: u32, _chunk_size: usize) -> Result<Self> {
         if pw_rate == 0 || nam_rate == 0 {
             bail!("NamResampler: as taxas de amostragem não podem ser nulas");

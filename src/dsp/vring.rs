@@ -58,6 +58,7 @@ impl<T> VirtualRingBuffer<T> {
     ///
     /// O tamanho `requested_size` (em elementos) será arredondado para cima para
     /// o próximo múltiplo do tamanho da página do sistema.
+    #[cold]
     pub fn new(requested_size: usize) -> Self {
         let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<T>();

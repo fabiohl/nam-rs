@@ -34,6 +34,7 @@ pub(crate) struct WeightCursor<'a> {
 
 impl<'a> WeightCursor<'a> {
     /// Cria um novo cursor sobre a fatia de pesos com layout especificado.
+    #[cold]
     pub fn new(data: &'a [f32], layout: crate::loader::nam_json::WeightsLayout) -> Self {
         Self {
             data,

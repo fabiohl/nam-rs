@@ -66,6 +66,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
 
     /// O prewarm na LSTM é vital. Como é um modelo recorrente, o estado interno (memória)
     /// precisa de um tempo processando silêncio para "estabilizar" antes do áudio real.
+    #[cold]
     fn prewarm(&mut self, num_samples: usize) {
         lstm_prewarm_common(self, num_samples);
     }
@@ -84,6 +85,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     }
 
     /// Prewarm para o modelo empilhado. Ambas as camadas são estabilizadas sequencialmente.
+    #[cold]
     fn prewarm(&mut self, num_samples: usize) {
         lstm_prewarm_common(self, num_samples);
     }
@@ -100,6 +102,7 @@ impl NamModel for LstmDynModel {
     }
 
     /// O prewarm dinâmico já encapsula internamente a lógica de loop de silêncio.
+    #[cold]
     fn prewarm(&mut self, num_samples: usize) {
         self.prewarm(num_samples);
     }

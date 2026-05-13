@@ -69,6 +69,7 @@ impl Default for DynamicHysteresis {
 
 impl DynamicHysteresis {
     /// Cria uma nova instância no estado inicial Aberto.
+    #[cold]
     pub fn new() -> Self {
         Self {
             state: GateState::Open,

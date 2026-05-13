@@ -23,6 +23,7 @@ impl Default for LatencyHistogram {
 
 impl LatencyHistogram {
     /// Cria um novo histograma zerado.
+    #[cold]
     pub fn new() -> Self {
         Self {
             bins: [const { AtomicU32::new(0) }; 32],

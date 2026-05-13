@@ -77,6 +77,7 @@ impl NamModel for DynamicModel {
         }
     }
 
+    #[cold]
     fn prewarm(&mut self, num_samples: usize) {
         match self {
             Self::WavenetStandard(m) => m.prewarm(),

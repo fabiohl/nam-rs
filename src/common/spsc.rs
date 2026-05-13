@@ -100,6 +100,7 @@ pub struct RtStatusFlags {
 
 impl RtStatusFlags {
     /// Cria uma nova instância com valores iniciais zerados/sentinela.
+    #[cold]
     pub fn new() -> Self {
         Self {
             active_rate: AtomicU32::new(0),
@@ -205,6 +206,7 @@ impl GcOverflowBuffer {
     ///
     /// # Panics
     /// Panica se `capacity` for 0.
+    #[cold]
     pub fn new(capacity: usize) -> Self {
         assert!(
             capacity > 0,

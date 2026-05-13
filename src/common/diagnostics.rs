@@ -312,6 +312,7 @@ pub struct NamDiagnostic {
 
 impl NamDiagnostic {
     /// Cria um novo diagnóstico com o código de erro e snapshot do sistema.
+    #[cold]
     pub fn new(code: NamErrorCode, system: &SystemSnapshot) -> Self {
         Self {
             code,

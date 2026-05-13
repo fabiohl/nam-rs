@@ -455,6 +455,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// leitura atômica Relaxed de um `LazyLock` inicializado no startup, sem chamar
     /// `is_x86_feature_detected!` a cada invocação (cold-path, mas consistente com
     /// o padrão de dispatch do restante do codebase).
+    #[cold]
     pub fn prewarm(&mut self) {
         unsafe {
             crate::math::common::dispatch_simd!(self, prewarm_internal);
@@ -466,6 +467,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// # Safety
     /// Exige processador suportado (AVX-512).
     #[target_feature(enable = "avx512f,avx512vl")]
+    #[cold]
     pub unsafe fn prewarm_avx512(&mut self) {
         unsafe { self.prewarm_internal::<crate::math::common::Avx512Math>() };
     }
@@ -474,6 +476,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     ///
     /// # Safety
     /// Exige processador x86-64-v3 (AVX2).
+    #[cold]
     pub unsafe fn prewarm_avx2(&mut self) {
         unsafe { self.prewarm_internal::<crate::math::common::Avx2Math>() };
     }
@@ -481,6 +484,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     #[inline(always)]
     /// # Safety
     /// Call this via `dispatch_simd!` macro only.
+    #[cold]
     unsafe fn prewarm_internal<M: SimdMath>(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
