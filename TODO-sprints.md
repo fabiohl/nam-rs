@@ -925,7 +925,7 @@ Criar `wavenet/mod.rs` com:
 - `wavenet_common.rs` e `wavenet_dyn.rs` eliminados. `wavenet/` criado com 7 arquivos.
 - 3 callers externos atualizados: `loader/dispatcher/wavenet.rs`, `tests/nam_infer_test.rs`, `tests/regression_goldens.rs`, `tests/soak_test.rs`
 
-#### Tarefa 6.3 — Criar `models/a2/` + Limpar `mod.rs`
+#### Tarefa 6.3 — Criar `models/a2/` + Limpar `mod.rs` [CONCLUÍDO]
 
 Isolar stubs e placeholders da arquitetura A2:
 
@@ -943,6 +943,14 @@ Limpar `models/mod.rs` resultante:
 - Meta: ≤ 100 linhas
 
 **Gate de saída**: `cargo check` + `cargo clippy` limpos. `models/mod.rs` ≤ 100L. Zero arquivos soltos na raiz de `models/` (exceto `mod.rs`).
+
+**Resultado (2026-05-13)**:
+
+- `cargo check` limpo, `cargo clippy` limpo
+- `models/mod.rs`: 98 linhas (meta ≤100). Contém apenas `pub mod a2/lstm/wavenet` + `NamModel` trait + `DynamicModel` enum + `impl NamModel for DynamicModel`
+- `models/a2/` criado com 5 arquivos (`mod.rs`, `activations.rs`, `film.rs`, `gating.rs`, `params.rs`) — isola os stubs A2 (`ActivationType`, `FiLMConfig`, `GatingMode`, `WavenetA2Placeholder`)
+- Zero arquivos `.rs` soltos na raiz de `models/` (somente `mod.rs`)
+- Re-exports `pub use lstm::{Lstm1x8, ...}` removidos; tipos LSTM passaram a usar paths qualificados `lstm::Lstm1x*` no enum `DynamicModel`
 
 ---
 

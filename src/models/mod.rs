@@ -11,12 +11,6 @@ pub mod lstm;
 pub mod wavenet;
 
 // =============================================================================
-// Type Aliases — Perfis LSTM NAM Comuns (re-exportados de lstm/)
-// =============================================================================
-
-pub use lstm::{Lstm1x8, Lstm1x12, Lstm1x16, Lstm1x24, Lstm2x8, Lstm2x12, Lstm2x16};
-
-// =============================================================================
 // Trait NamModel — Contrato Público
 // =============================================================================
 
@@ -45,19 +39,19 @@ pub enum DynamicModel {
     /// WaveNet A2 (Placeholder para arquitetura nova).
     WavenetA2(Box<a2::WavenetA2Placeholder>),
     /// LSTM 1 Camada × 8 unidades ocultas.
-    Lstm1x8(Box<Lstm1x8>),
+    Lstm1x8(Box<lstm::Lstm1x8>),
     /// LSTM 1 Camada × 12 unidades ocultas.
-    Lstm1x12(Box<Lstm1x12>),
+    Lstm1x12(Box<lstm::Lstm1x12>),
     /// LSTM 1 Camada × 16 unidades ocultas.
-    Lstm1x16(Box<Lstm1x16>),
+    Lstm1x16(Box<lstm::Lstm1x16>),
     /// LSTM 1 Camada × 24 unidades ocultas.
-    Lstm1x24(Box<Lstm1x24>),
+    Lstm1x24(Box<lstm::Lstm1x24>),
     /// LSTM 2 Camadas × 8 unidades ocultas.
-    Lstm2x8(Box<Lstm2x8>),
+    Lstm2x8(Box<lstm::Lstm2x8>),
     /// LSTM 2 Camadas × 12 unidades ocultas.
-    Lstm2x12(Box<Lstm2x12>),
+    Lstm2x12(Box<lstm::Lstm2x12>),
     /// LSTM 2 Camadas × 16 unidades ocultas.
-    Lstm2x16(Box<Lstm2x16>),
+    Lstm2x16(Box<lstm::Lstm2x16>),
     /// LSTM Dinâmico (usado como fallback).
     LstmDyn(Box<lstm::LstmDynModel>),
 }
