@@ -115,3 +115,18 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
 pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_energy_stereo(l, r))
 }
+
+/// Convolução estéreo (usada no resampler) via despacho SIMD.
+/// Realiza o produto escalar entre um banco de coeficientes e dois buffers de entrada (L/R).
+///
+/// # Safety
+/// `coeffs`, `input_l` e `input_r` devem ser ponteiros válidos para pelo menos `taps` elementos.
+/// `coeffs` deve estar alinhado conforme o registrador SIMD.
+pub unsafe fn convolve_stereo(
+    coeffs: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    crate::math::common::dispatch_simd!(convolve_stereo(coeffs, input_l, input_r, taps))
+}

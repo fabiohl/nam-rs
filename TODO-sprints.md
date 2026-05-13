@@ -1,851 +1,1059 @@
-<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
+# Plano: Reorganização de `src/math/` e `src/models/`
 
-# TODO — Sprints de Integração CLAP (NAM-rs v1.5.0-alpha)
+## Diagnóstico da Situação Atual
 
----
+### Estrutura atual
 
-## Sprint 0 — Fundação Estrutural e Documentação
+```text
+src/math/
+├── mod.rs               # 10 linhas: pub mod fastmath; pub mod simd;
+├── fastmath.rs           # 1228 linhas — MONÓLITO
+│                         #   GainLUT + tanh + sigmoid + relu + softsign + silu + prelu
+│                         #   (cada uma em AVX2 + AVX-512, + dual + slice + fused)
+├── fastmath_test.rs      # 719 linhas de testes de sweep
+└── simd/
+    ├── mod.rs            # dispatch_simd! macro, re-exports
+    ├── dispatch.rs       # SimdMathConfig, detect_best_simd, v-table
+    ├── traits.rs         # SimdMath trait (33 métodos)
+    ├── avx2.rs           # ~2092 linhas: Avx2Math impl + funções standalone
+    ├── avx512.rs         # ~2266 linhas: Avx512Math, Avx512VnniMath, Avx512VnniBf16Math
+    ├── scalar_ref.rs     # 583 linhas: implementações escalares de referência
+    ├── ops.rs            # Prefetch, DAZ/FTZ, f32_to_bf16, compute_energy, max_diff
+    ├── aligned.rs        # AlignedVec<T>
+    ├── utility.rs        # hsum_avx2, hsum_avx512
+    ├── simd_test.rs      # 178 linhas
+    ├── avx2_test.rs      # 49 linhas
+    └── avx512_test.rs    # 26 linhas
+```
 
-**Objetivo:** Reorganizar o repositório em três camadas (`common/`, `standalone/`, `clap/`), atualizar documentação com decisões confirmadas, garantir regressão zero.
+**Total**: ~7.661 linhas de código matemático + 374 linhas em `models/activations.rs`.
 
----
+### Estrutura atual de `src/models/`
 
-### Épico 0.1 — Reorganização de Diretórios
+```text
+src/models/
+├── mod.rs               # 322 linhas — NamModel trait + DynamicModel enum + NamModel impls
+│                         #   + LstmLike trait + lstm_prewarm_common + WavenetA2Placeholder
+│                         #   + type aliases (Lstm1x8..Lstm2x16)
+├── activations.rs        # 373 linhas — ActivationType enum + ActivationFn trait + dispatch manual
+├── film.rs               # 69 linhas  — FiLMConfig + FiLMLayer trait (A2 placeholder)
+├── gating.rs             # 71 linhas  — GatingMode enum + GatingActivationConfig (A2 placeholder)
+├── lstm.rs               # 637 linhas — LstmLayer + LstmModel1 + LstmModel2
+│                         #   + 4 macros (define_lstm_process, define_lstm1/2_process,
+│                         #     define_lstm2_pipelined) + 5 especializações SIMD × 3 modelos
+├── lstm_dyn.rs           # 218 linhas — LstmDynLayer + LstmDynModel (fallback dinâmico)
+├── lstm_test.rs          # 264 linhas
+├── wavenet.rs            # 1305 linhas — Conv1d + DenseLayer + WaveNetModel (const generics)
+│                         #   + ConvInput trait + 2 impls (f32/u16) + single/dual/bf16
+├── wavenet_common.rs     # 1251 linhas — Conv1dDyn + DenseLayerDyn + WaveNetLayerDyn
+│                         #   + WaveNetLayerState + WavenetProcessContext + WaveNetLayerArrayDyn
+├── wavenet_dyn.rs        # 268 linhas — WaveNetLayerArrayDyn process + WaveNetDynModel
+├── wavenet_params.rs     # 246 linhas — LayerParamsA2, LayerArrayParamsA2, HeadParams
+├── wavenet_test.rs       # 617 linhas
+└── wavenet_dyn_test.rs   # 251 linhas
+```
 
-- [x] **Tarefa 0.1.1** — Criar `src/common/mod.rs` e mover módulos compartilhados
-  
-  - Criar diretório `src/common/`
-  - Mover `src/audio_host.rs` → `src/common/audio_host.rs`
-  - Mover `src/diagnostics.rs` + `src/diagnostics_test.rs` → `src/common/`
-  - Mover `src/params.rs` → `src/common/params.rs`
-  - Mover `src/spsc.rs` + `src/spsc_test.rs` → `src/common/`
-  - Criar `src/common/mod.rs` com re-exports públicos de todos os sub-módulos
-  - **Aceite:** `cargo check --features standalone` passa sem erros
+**Total models**: 5.892 linhas (4.760 código + 1.132 testes).
 
-- [x] **Tarefa 0.1.2** — Criar `src/standalone/mod.rs` e mover módulos PipeWire
-  
-  - Criar diretório `src/standalone/`
-  - Mover `src/pw_host.rs` + `src/pw_host_test.rs` → `src/standalone/`
-  - Mover `src/rt_setup.rs` + `src/rt_setup_test.rs` → `src/standalone/`
-  - Mover `src/cli.rs` → `src/standalone/cli.rs`
-  - Mover `src/colors.rs` → `src/standalone/colors.rs` (usado apenas no terminal)
-  - Criar `src/standalone/mod.rs` com `#[cfg(feature = "standalone")]` e re-exports
-  - **Aceite:** `cargo check --features standalone` passa sem erros
+### Problemas identificados em `src/models/`
 
-- [x] **Tarefa 0.1.3** — Criar `src/clap/mod.rs` (stub)
-  
-  - Criar diretório `src/clap/`
-  - Criar `src/clap/mod.rs` com stub protegido por `#[cfg(feature = "clap-plugin")]`
-  - Conteúdo mínimo: docstring do módulo + placeholder
-  - **Aceite:** `cargo check --no-default-features --features clap-plugin` passa
+1. **`mod.rs` é um catch-all sobrecarregado (322L)**: Mistura 5 responsabilidades — NamModel trait, DynamicModel enum (14 variantes com match manual), 6 blocos de `impl NamModel`, helpers LSTM (`LstmLike`, `lstm_prewarm_common`), e `WavenetA2Placeholder`.
 
-- [x] **Tarefa 0.1.4** — Refatorar `src/lib.rs` como hub mínimo de re-exports
-  
-  - Expor `pub mod common;` (sempre)
-  - Expor `pub mod standalone;` sob `#[cfg(feature = "standalone")]`
-  - Expor `pub mod clap;` sob `#[cfg(feature = "clap-plugin")]`
-  - Manter `pub mod dsp;`, `pub mod models;`, `pub mod math;`, `pub mod loader;` (sempre)
-  - Adicionar `pub use common::*;` para re-exports de conveniência (manter compatibilidade)
-  - Atualizar docstring do `lib.rs` para refletir a nova estrutura tripartida
-  - **Aceite:** `cargo check --features standalone` passa sem erros
+2. **WaveNet fragmentado com nomes confusos (2.824L)**: `wavenet_common.rs` (1.251L) **não é "common"** — contém a implementação dinâmica inteira (`Conv1dDyn`, `DenseLayerDyn`, `WaveNetLayerDyn`). O nome induz ao erro.
 
-- [x] **Tarefa 0.1.5** — Refatorar `src/main.rs` para entry-point mínimo
-  
-  - Atualizar imports: `use nam_rs::standalone::{cli, pw_host, rt_setup};`
-  - Ajustar `use nam_rs::colors::Colorize` → `use nam_rs::standalone::colors::Colorize`
-  - Garantir que `main.rs` permaneça enxuto (apenas orquestração e delegação)
-  - **Aceite:** `cargo build --features standalone` produz binário funcional
+3. **~800L de duplicação conceitual** entre `Conv1d<IN,OUT,K>` (estático, const generics) e `Conv1dDyn` (dinâmico, campos runtime). Mesma lógica de convolução causal dilatada, prefetch, bias/mixin, variantes bf16.
 
-- [x] **Tarefa 0.1.6** — Atualizar todos os imports internos do crate
-  
-  - Varrer `src/standalone/*.rs`: ajustar `use crate::` para nova estrutura
-  - Varrer `src/dsp/*.rs`: ajustar refs a `diagnostics`, `spsc`, etc.
-  - Varrer `src/models/*.rs`: ajustar imports se necessário
-  - Varrer `src/loader/*.rs`: ajustar imports se necessário
-  - **Aceite:** `cargo check --features standalone` sem erros, sem warnings
+4. **60+ referências hardcoded a `math/`**: Especialmente na macro `define_lstm_process!` que recebe 13 parâmetros de paths absolutos (`crate::math::simd::gemv_4gate_avx2`, `crate::math::fastmath::simd_tanh`, etc.).
 
-- [x] **Tarefa 0.1.7** — Atualizar imports em testes e benchmarks
-  
-  - Varrer `tests/*.rs`: ajustar `use nam_rs::` para nova estrutura (ou validar que re-exports funcionam)
-  - Varrer `benches/*.rs`: ajustar imports
-  - Varrer `fuzz/`: ajustar imports se aplicável
-  - **Aceite:** `cargo test` — todos os 138+ testes passam
+5. **`activations.rs` será redundante**: Sprint 3.1 do plano math criará dispatch unificado em `math::activations::tanh_slice()`, tornando o dispatch manual em `models/activations.rs` desnecessário.
 
-- [x] **Tarefa 0.1.8** — Atualizar `utils/run-standalone.sh`
-  
-  - Ajustar quaisquer referências a paths ou módulos que tenham mudado
-  - Garantir que o script continua funcional ponta-a-ponta
-  - **Aceite:** `utils/run-standalone.sh` executa e processa áudio normalmente
+6. **Stubs A2 dispersos sem namespace**: `film.rs` (69L), `gating.rs` (71L) e `wavenet_params.rs` (246L) são todos placeholders para A2, mas estão soltos na raiz de `models/`.
 
-- [x] **Tarefa 0.1.9** — Validação final do Épico 0.1
-  
-  - Executar `utils/lints.sh` — zero erros, zero warnings
-  - Executar `cargo test` — todos os testes passam
-  - Executar `cargo build --release --features standalone` — binário funcional
-  - Executar `cargo build --no-default-features --features clap-plugin --lib` — compila sem PipeWire
-  - **Aceite:** Todos os 4 comandos acima passam com sucesso absoluto
+7. **`WavenetA2Placeholder` em `mod.rs`**: Código A2-específico misturado com infraestrutura geral.
 
-> **📋 CHECKPOINT DE REVISÃO — Épico 0.1 concluído**
-> Validar: Estrutura de diretórios, compilação dual-feature, todos os testes. "utils/*.sh" inteiro passando com sucesso.
+### Problemas identificados
 
----
+1. **`fastmath.rs` é um monólito de 1228 linhas** misturando GainLUT, 6 funções de ativação (AVX2+AVX-512), operações fundidas e processamento de slices.
 
-### Épico 0.2 — Atualização de Documentação
+2. **Separação `simd/` perdeu o sentido**: Com x86-64-v3 mandatório, **tudo é SIMD**. A subpasta é apenas aninhamento sem significado.
 
-> **Contexto:** O Épico 0.1 produziu mudanças arquiteturais significativas (estrutura tripartida `common/`+`standalone/`+`clap/`) e consolidou decisões técnicas chave (`clack-plugin`, `egui`+`baseview`). A documentação atual está **parcialmente desatualizada** em vários pontos críticos — alguns documentos referenciam módulos em paths antigos, e `clap_integration.md` ainda contém seção de decisão "Pendente" que contradiz o roadmap consolidado.
->
-> **Ordem de execução:** 0.2.1 → 0.2.2 → 0.2.3 → 0.2.4 → 0.2.5 (sequencial — cada tarefa depende das anteriores para consistência cross-referencial).
+3. **Duplicação de dispatch**: `models/activations.rs` reimplementa dispatch manual (`match SIMD_MATH.instruction_set`) que duplica o `dispatch_simd!`.
 
-- [x] **Tarefa 0.2.1** — Atualizar `README.md` (estado do projeto e modos de operação)
-  
-  **Contexto:** O README é a "porta de entrada" pública. Precisa refletir com clareza o estado atual: standalone estável + CLAP em alpha.
-  
-  **Alterações mandatórias:**
-  
-  - **Seção de Status** (topo, logo após o header): Adicionar badge/aviso bilíngue (PT-BR/EN):
-    - PT-BR: `⚠️ Standalone PipeWire: ESTÁVEL (v1.4.3) | Plugin CLAP: EM DESENVOLVIMENTO (alpha)`
-    - EN: `⚠️ Standalone PipeWire: STABLE (v1.4.3) | CLAP Plugin: IN DEVELOPMENT (alpha)`
-  - **Nova Seção "Modos de Operação" / "Operation Modes"**: Explicar as duas features:
-    - `standalone` (padrão): binário Linux com PipeWire, uso musical imediato
-    - `clap-plugin`: biblioteca `.so` para DAWs, em desenvolvimento ativo
-    - Incluir os dois comandos de build exatos com suas diferenças
-  - **Seção Roadmap**: Substituir qualquer referência vaga a "futuro plugin" pelo roadmap concreto das Sprints 1-4 (scaffolding → áudio bypass → parâmetros CLAP → GUI egui)
-  - **Seção Changelog / CHANGELOG.md**: Adicionar entrada `v1.5.0-alpha` com:
-    - Reorganização tripartida de módulos (common/standalone/clap)
-    - Decisão confirmada: `clack-plugin` como framework CLAP
-    - 157 testes passando com zero regressões
-  - **Verificar e corrigir paths de módulos** em exemplos de código dentro do README (se houver referências antigas como `nam_rs::spsc::`, atualizar para `nam_rs::common::spsc::`)
-  
-  **Aceite:** `grep -n "Pendente\|pending\|TODO\|FIXME" README.md` retorna zero resultados; documento bilíngue revisado.
+4. **Referências cruzadas confusas**: `avx2.rs`/`avx512.rs` chamam funções em `fastmath.rs` e vice-versa.
 
-- [x] **Tarefa 0.2.2** — Atualizar `docs/architecture.md` (estrutura tripartida e decisões ADR)
-  
-  **Contexto:** A Seção 4 já foi atualizada com a tabela tripartida durante o Épico 0.1. Faltam: diagrama visual de camadas, registro formal das decisões de framework, e seção de estratégia de feature flags.
-  
-  **Alterações mandatórias:**
-  
-  - **Seção 4 — Adicionar Diagrama Mermaid de Camadas** (logo após a tabela existente): Diagrama `graph TD` mostrando:
-    - `src/clap/` e `src/standalone/` dependem de `src/common/`
-    - `src/common/`, `src/dsp/`, `src/math/`, `src/models/`, `src/loader/` são agnósticos ao host
-    - Seta indicando que `pipewire` é dependência **exclusiva** do caminho `standalone`
-    - Seta indicando que `clack-plugin` é dependência **exclusiva** do caminho `clap`
-  - **Nova Seção 4.1 — Estratégia de Compilação Condicional (Feature Flags)**:
-    - Tabela com 3 builds: `standalone` (padrão), `clap-plugin`, e `no-default-features` (lib pura DSP)
-    - Para cada build: comando exato, saída esperada (binário vs `.so`), dependências incluídas/excluídas
-  - **Nova Seção 11 — Decisões de Arquitetura (ADR)**:
-    - **ADR-002:** Framework CLAP: `clack-plugin` confirmado, `nih-plug` rejeitado. Justificativa: controle granular, overhead zero, sem VST3, sem GUI embutida forçada.
-    - **ADR-003:** GUI: `egui` + `baseview` confirmado para Sprint 4. Justificativa: puro Rust, sem dependências C++, integração nativa com CLAP via `baseview`.
-    - **ADR-004:** DAW primária de desenvolvimento: REAPER. Justificativa: ferramenta de debug sem igual (plugin scan rápido, hot-reload, análise de buffers variáveis). Bitwig e Studio One: validação premium pós-Sprint 4.
-  - **Verificar Seção 10** ("Suporte a Plugins"): A referência `src/params.rs` está desatualizada — o arquivo foi movido para `src/common/params.rs`. Corrigir todas as referências de módulos para os novos paths.
-  
-  **Aceite:** `grep -n "src/params.rs\|src/spsc.rs\|src/diagnostics.rs\|src/audio_host.rs" docs/architecture.md` retorna zero resultados (todos os paths antigos eliminados).
+5. **`Avx2VnniMath` é 100% delegação**: Confirmado — todos os 33 métodos delegam para `Avx2Math::method(...)`. AVX2-VNNI não traz benefício para operações FP. Deve ser eliminado.
 
-- [x] **Tarefa 0.2.3** — Reescrever `docs/clap_integration.md` (decisão confirmada + extensões CLAP)
-  
-  **Contexto:** Este é o documento mais crítico a atualizar. A Seção 4 atual ("Decisão de Framework — Pendente") está **diretamente contraditória** com o roadmap consolidado e pode confundir qualquer colaborador. Deve ser reescrita, não apenas atualizada.
-  
-  **Alterações mandatórias:**
-  
-  - **Remover completamente a Seção 4 atual** ("Decisão de Framework (Pendente)") — incluindo toda a análise comparativa `nih-plug` vs `clack`
-  - **Substituir por nova Seção 4 — Framework: `clack-plugin` (Decisão Confirmada)**:
-    - Registrar a decisão: `clack-plugin`.
-    - Motivo: controle granular sem overhead, zero dependências C++, mapeamento direto ao spec CLAP
-    - `nih-plug` **descartado**: adiciona VST3, GUI embutida e abstração opinativa incompatíveis com RT do NAM-rs
-    - Link para crate: `https://github.com/prokopyl/clack`
-  - **Nova Seção 5 — Extensões CLAP Planejadas** (via `clack-extensions`):
-    - `clap-ext-params`: Automação de parâmetros (`input_gain_db`, `output_gain_db`, `gate_threshold_db`, `bypass`)
-    - `clap-ext-state`: Save/load de estado de projeto (serializa `model_path` + params)
-    - `clap-ext-gui`: GUI nativa via `egui` + `baseview` (Sprint 4, diferida)
-    - `clap-ext-thread-pool`: Pool de threads para pré-aquecimento de modelos sem bloquear a audio thread (Sprint 3)
-    - Para cada extensão: Sprint alvo + flag de feature necessária
-  - **Nova Seção 6 — Plugin Descriptor**:
-    - Plugin ID: `"br.eti.fabiolima.nam-rs"` (RFC inversão de domínio)
-    - Nome: `"NAM-rs Neural Amp Modeler"`
-    - Vendor: `"Fabio Lima"`
-    - URL: `"https://github.com/fabiohl/nam-rs"`
-    - Features CLAP: `["audio-effect", "distortion", "gate", "simulator", "stereo"]`
-  - **Atualizar Seção 5 atual → Seção 7 — DAWs Alvo de Validação**:
-    - REAPER: **Primário** durante desenvolvimento (debug de performance, buffers variáveis)
-    - Bitwig Studio: Validação premium.
-    - Studio One: Validação premium.
-    - CLAP-info / CLAP-host: Ferramentas CLI de contrato.
-  - **Atualizar referências de paths** nas Seções 1 e 2:
-    - `src/params.rs` → `src/common/params.rs`
-    - `src/loader.rs` → `src/loader/` (é um módulo, não arquivo único)
-    - `src/dsp/pipeline.rs` — verificar se ainda correto
-  
-  **Aceite:** `grep -n "Pendente\|pending\|nih-plug" docs/clap_integration.md` retorna zero resultados; documento não contém seções incompletas ou contradições com o backlog.
+6. **Dual dispatch**: Coexistem trait genérica (`SimdMath`) e v-table (`SimdMathConfig`) — dois mecanismos para o mesmo propósito.
 
-- [x] **Tarefa 0.2.4** — Atualizar `docs/dependencies.md` (dependências CLAP planejadas)
-  
-  **Contexto:** O `dependencies.md` cobre apenas as dependências existentes no `Cargo.toml` atual. As dependências CLAP ainda não foram adicionadas ao `Cargo.toml` (isso é feito na Sprint 1), mas devem ser **pré-documentadas** aqui como "planejadas", seguindo o padrão da tabela existente, para que a Tarefa 1.1.1 tenha guia de referência técnica.
-  
-  **Alterações mandatórias:**
-  
-  - **Adicionar nova Seção 4 — Dependências Planejadas (Sprint 1+)**:
+7. **`ops.rs` é heterogêneo**: Mistura utilitários de CPU (DAZ/FTZ, prefetch) com operações DSP (energia, max_diff).
 
-    - Tabela com o mesmo formato da Seção 2, com coluna adicional "Sprint Alvo":
+8. **Aliases desnecessários**: `simd_tanh()` e `simd_sigmoid()` em `fastmath.rs` L1214-1224 são apenas wrappers para as versões AVX2.
 
-    | Crate              | Versão Planejada           | Feature Flag  | Sprint   | Justificativa                                                                                                                                                   |
-    | ------------------ | -------------------------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `clack-plugin`     | `^0.3` (verificar última)  | `clap-plugin` | Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
-    | `clack-extensions` | `^0.3` (verificar última)  | `clap-plugin` | Sprint 1 | Extensões do spec CLAP (params, state, gui, thread-pool). Crate separado do `clack-plugin` para modularidade.                                                   |
-    | `egui`             | `^0.31` (verificar última) | `clap-plugin` | Sprint 4 | Framework GUI imediato, puro Rust. Renderização de GPU via `wgpu`. Integrado ao CLAP via `baseview`.                                                            |
-    | `baseview`         | `git (mão)`                | `clap-plugin` | Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Não publicado no crates.io — usar Git dep.                                                     |
-  
-  - **Atualizar Seção 1** (Dependências do Sistema): Adicionar nota que `clack-plugin` e `clack-extensions` **não requerem** dependências de sistema adicionais (puro Rust via `clap-sys` interno).
-  
-  **Aceite:** Tabela presente e formatada corretamente; ao executar `cargo search clack-plugin`, versão documentada é compatível com a disponível.
+### O que cada modelo de inferência usa
 
-- [x] **Tarefa 0.2.5** — Validação final do Épico 0.2
-  
-  **Checklist obrigatório:**
-  
-  - [x] `grep -rn "src/params.rs\|src/spsc.rs\|src/diagnostics.rs\|src/audio_host.rs" docs/` → zero resultados (sem paths antigos)
-  - [x] `grep -rn "Pendente\|pending\|nih-plug\|TODO\|FIXME" docs/` → zero resultados (sem incompletos)
-  - [x] Cada documento tem cabeçalho SPDX correto
-  - [x] `utils/lints.sh` — zero erros (nenhum arquivo .rs foi alterado, mas validar de qualquer forma)
-  - [x] Revisar manualmente cross-referências entre `README.md`, `architecture.md`, `clap_integration.md` e `dependencies.md` — sem contradições
-  
-  **Aceite:** Todos os 5 itens do checklist marcados; documentação 100% sincronizada com o código e com o roadmap.
-
-> **📋 CHECKPOINT DE REVISÃO — Sprint 0 concluída**
-> Revisão completa: estrutura de diretórios, documentação, compilação dual-feature.
+| Categoria            | LSTM                                          | WaveNet                                                      | DSP/Resampler                               |
+| -------------------- | --------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------- |
+| **Dot Products**     | dot_product, 4x_interleaved, bf16, dual_frame | 4x_interleaved, dual_frame                                   | -                                           |
+| **GEMV/GEMM**        | gemv_overwrite, gemv_4gate, fused_add_gemv    | gemv_overwrite, fused_add_gemv, gemm_batch, gemm_residual    | -                                           |
+| **Ativações**        | tanh, sigmoid                                 | tanh, sigmoid, relu, softsign, silu, prelu                   | -                                           |
+| **Fused LSTM Gates** | fused_lstm_gates                              | -                                                            | -                                           |
+| **WaveNet Head**     | -                                             | head_sum, accumulate_head, tanh_accumulate, gated_accumulate | -                                           |
+| **Conv/Stereo**      | -                                             | convolve_stereo                                              | convolve_stereo                             |
+| **Gain/Energy**      | -                                             | apply_gain, compute_energy_stereo                            | apply_gain, compute_energy_stereo, max_diff |
+| **Common**           | AlignedVec, hsum, f32_to_bf16, DAZ/FTZ        | AlignedVec, hsum, f32_to_bf16                                | AlignedVec, DAZ/FTZ                         |
 
 ---
 
-## Sprint 1 — Scaffolding CLAP e Esqueleto cdylib
+## Decisões de Design Consolidadas
 
-**Objetivo:** Plugin CLAP mínimo que é detectado e carregado pelo REAPER sem crash. Bypass puro funcional (copia input → output sem processar).
-
-**Estado atual do código (pré-Sprint 1):**
-
-- `Cargo.toml`: sem `clack-plugin` / `clack-extensions`; feature `clap-plugin = []` vazia; sem `crate-type = ["cdylib"]`
-- `src/clap/mod.rs`: stub vazio (apenas docstring + `#![cfg(feature = "clap-plugin")]`)
-- `src/lib.rs`: já expõe `pub mod clap` sob `#[cfg(feature = "clap-plugin")]` — **não modificar**
-- `src/common/params.rs`: `NamPluginParams` já existe — usar para estado compartilhado futuramente
-
-**Referência da API:** `clack-plugin = "0.1"` — usar `clack_plugin::prelude::*`
-
----
-
-### Épico 1.1 — Configuração de Build
-
-- [x] **Tarefa 1.1.1** — Adicionar dependências CLAP ao `Cargo.toml`
-
-  **Contexto:** O `Cargo.toml` atual tem `clap-plugin = []` sem dependências. Precisamos adicionar `clack-plugin` e `clack-extensions` como opcionais e vinculá-los à feature.
-
-  **Alterações em `Cargo.toml`:**
-
-  1. Na seção `[dependencies]`, adicionar após `rustfft`:
-
-     ```toml
-     clack-plugin = { version = "0.1", optional = true }
-     clack-extensions = { version = "0.1", optional = true }
-     ```
-
-  2. Na seção `[features]`, alterar:
-
-     ```toml
-     # antes:
-     clap-plugin = []
-     # depois:
-     clap-plugin = ["dep:clack-plugin", "dep:clack-extensions"]
-     ```
-
-  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
-
-- [x] **Tarefa 1.1.2** — Configurar `crate-type = ["rlib", "cdylib"]` no `Cargo.toml`
-
-  **Contexto:** Para gerar um `.so` carregável pelo REAPER, o crate precisa ser compilado como `cdylib`. O `rlib` deve ser mantido para que `cargo test` continue funcionando.
-
-  **Alteração em `Cargo.toml`:** Após a seção `[[bin]]`, adicionar:
-
-  ```toml
-  [lib]
-  name = "nam_rs"
-  crate-type = ["rlib", "cdylib"]
-  ```
-
-  **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `target/debug/libnam_rs.so` sem erros.
-
-> **📋 CHECKPOINT — Build CLAP funcional**
+| Decisão                            | Resolução                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------- |
+| Trait `SimdMath`                   | Manter monolítica (33 métodos). Decomposição em sub-traits é trabalho futuro          |
+| `scalar_ref.rs`                    | Fica em `common/` — oráculo centralizado                                              |
+| `Avx2VnniMath`                     | **Eliminar** — substituir por `type Avx2VnniMath = Avx2Math`                          |
+| `Avx512VnniMath`                   | **Mantém** — tem `dot_product_bf16_avx512` nativo (real)                              |
+| Dual dispatch                      | Documentar como design debt; unificar a longo prazo                                   |
+| `simd_tanh`/`simd_sigmoid` aliases | Internalizar em `activations/`                                                        |
+| `gemv_4gate`                       | Vai para `gemm/`, não `lstm/` (evita dep. circular `common → lstm`)                   |
+| `compute_energy_*`, `max_diff_*`   | Saem de `ops.rs` → vão para `dsp/stereo.rs`                                           |
+| `InstructionSet::Avx2Vnni`         | Manter no enum por ora (remoção seria breaking change separada)                       |
+| `models/` reorganização            | Subpastas `lstm/`, `wavenet/`, `a2/` — **Épico 6, após Épico 5**                      |
+| `wavenet_common.rs` renomeação     | Conteúdo genuinamente comum → `wavenet/common.rs`; dinâmico → `wavenet/conv1d_dyn.rs` |
+| `activations.rs` localização       | Enum `ActivationType` → `models/a2/activations.rs`; dispatch → `math::activations::*` |
 
 ---
 
-### Épico 1.2 — Implementação do Plugin Skeleton
+## Regra de Ouro: Preservação de Comentários
 
-- [x] **Tarefa 1.2.1** — Criar `src/clap/descriptor.rs`
+> **Todo código movido DEVE levar consigo seus comentários, docstrings e anotações `///`.**
+> A base de código possui documentação didática extensa e cuidadosamente elaborada.
+> Qualquer perda de comentário durante a migração é considerada um **defeito**.
 
-  **Contexto:** O descriptor é a identidade do plugin. O REAPER lê estas strings durante o scan.
+### Diretrizes
 
-  **Criar o arquivo `src/clap/descriptor.rs`** com o seguinte conteúdo:
-
-  ```rust
-  // SPDX-License-Identifier: MIT OR Apache-2.0
-  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-
-  //! Descriptor de identidade do plugin NAM-rs no formato CLAP.
-
-  use clack_plugin::prelude::*;
-
-  /// Retorna o descritor imutável do plugin.
-  /// Lido pelo host durante scan — deve ser determinístico e sem alocações.
-  pub fn nam_descriptor() -> PluginDescriptor {
-      PluginDescriptor::new("br.eti.fabiolima.nam-rs", "NAM-rs Neural Amp Modeler")
-          .with_vendor("Fabio Lima")
-          .with_url("https://github.com/fabiohl/nam-rs")
-          .with_description("Real-time Neural Amp Modeler plugin (CLAP)")
-          .with_features([
-              CLAP_PLUGIN_FEATURE_AUDIO_EFFECT,
-              CLAP_PLUGIN_FEATURE_DISTORTION,
-              CLAP_PLUGIN_FEATURE_GATE,
-              "simulator",
-              CLAP_PLUGIN_FEATURE_STEREO,
-          ])
-  }
-  ```
-
-  **Atenção:** Verificar nomes exatos das constantes em `clack_plugin::prelude` (podem ser strings literais se a versão 0.1 não exportar constantes). Alternativa segura:
-
-  ```rust
-  .with_features(["audio-effect", "distortion", "gate", "simulator", "stereo"])
-  ```
-
-  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
-
-- [x] **Tarefa 1.2.2** — Criar structs `NamClapPlugin`, `NamClapShared`, `NamClapMainThread` em `src/clap/plugin.rs`
-
-  **Contexto:** A trait `Plugin` define os três componentes do ciclo de vida. Por ora, `Shared` e `MainThread` são structs unitárias — a lógica real vem na Sprint 2.
-
-  **Criar o arquivo `src/clap/plugin.rs`** com o seguinte conteúdo:
-
-  ```rust
-  // SPDX-License-Identifier: MIT OR Apache-2.0
-  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-
-  //! Definição do plugin NAM-rs e seus componentes de ciclo de vida CLAP.
-
-  use clack_plugin::prelude::*;
-  use crate::clap::descriptor::nam_descriptor;
-  use crate::clap::processor::NamClapProcessor;
-
-  /// Estado compartilhado entre a audio thread e a main thread (lock-free).
-  /// Sprint 1: vazio — será preenchido com AtomicF32 para parâmetros na Sprint 2.
-  pub struct NamClapShared;
-
-  /// Estado exclusivo da main thread (carregamento de modelos, state save/load).
-  /// Sprint 1: vazio — será preenchido na Sprint 2.
-  pub struct NamClapMainThread;
-
-  /// Plugin NAM-rs: ponto de entrada principal do ciclo de vida CLAP.
-  pub struct NamClapPlugin;
-
-  impl Plugin for NamClapPlugin {
-      type AudioProcessor<'a> = NamClapProcessor;
-      type Shared<'a> = NamClapShared;
-      type MainThread<'a> = NamClapMainThread;
-  }
-
-  impl DefaultPluginFactory for NamClapPlugin {
-      fn get_descriptor() -> PluginDescriptor {
-          nam_descriptor()
-      }
-
-      fn new_shared(_host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
-          Ok(NamClapShared)
-      }
-
-      fn new_main_thread<'a>(
-          _host: HostMainThreadHandle<'a>,
-          _shared: &'a Self::Shared<'a>,
-      ) -> Result<Self::MainThread<'a>, PluginError> {
-          Ok(NamClapMainThread)
-      }
-  }
-  ```
-
-  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
-
-- [x] **Tarefa 1.2.3** — Criar `src/clap/processor.rs` (bypass puro)
-
-  **Contexto:** O `PluginAudioProcessor` é chamado pela audio thread do host. Por ora, implementa bypass puro: copia input para output. **Não há alocações aqui.**
-
-  **Criar o arquivo `src/clap/processor.rs`** com o seguinte conteúdo:
-
-  ```rust
-  // SPDX-License-Identifier: MIT OR Apache-2.0
-  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-
-  //! Processador de áudio CLAP — Sprint 1: bypass puro (input → output).
-
-  use clack_plugin::prelude::*;
-  use crate::clap::plugin::{NamClapShared, NamClapMainThread};
-
-  /// Processador de áudio RT-safe. Executa na audio thread do host.
-  /// Sprint 1: bypass — copia cada amostra de input para output sem processar.
-  pub struct NamClapProcessor;
-
-  impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread> for NamClapProcessor {
-      fn activate(
-          _host: HostAudioProcessorHandle<'a>,
-          _main_thread: &mut NamClapMainThread,
-          _shared: &'a NamClapShared,
-          _audio_config: PluginAudioConfiguration,
-      ) -> Result<Self, PluginError> {
-          Ok(Self)
-      }
-
-      fn process(
-          &mut self,
-          _process: Process,
-          mut audio: Audio,
-          _events: Events,
-      ) -> Result<ProcessStatus, PluginError> {
-          for mut port_pair in &mut audio {
-              let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
-                  continue;
-              };
-              for channel_pair in channel_pairs {
-                  match channel_pair {
-                      ChannelPair::InputOnly(_) => {}
-                      ChannelPair::OutputOnly(buf) => buf.fill(0.0),
-                      ChannelPair::InputOutput(input, output) => {
-                          output.copy_from_slice(input);
-                      }
-                      ChannelPair::InPlace(_) => {} // in-place: nada a fazer no bypass
-                  }
-              }
-          }
-          Ok(ProcessStatus::Continue)
-      }
-  }
-  ```
-
-  **Aceite:** `cargo check --no-default-features --features clap-plugin` compila sem erros.
-
-- [x] **Tarefa 1.2.4** — Atualizar `src/clap/mod.rs` e exportar entry point em `src/lib.rs`
-
-  **Parte A — Reescrever `src/clap/mod.rs`:**
-
-  ```rust
-  // SPDX-License-Identifier: MIT OR Apache-2.0
-  // Copyright (c) 2026 Fábio Henrique de Lima Silva.
-
-  //! Integração do NAM-rs como plugin no formato CLAP (CLever Audio Plug-in).
-  //!
-  //! Ativado via feature flag `clap-plugin`. Totalmente isolado do PipeWire.
-
-  pub mod descriptor;
-  pub mod plugin;
-  pub mod processor;
-
-  use clack_plugin::prelude::*;
-  use plugin::NamClapPlugin;
-
-  clack_export_entry!(SinglePluginEntry<NamClapPlugin>);
-  ```
-
-  **Parte B — `src/lib.rs` já está correto** (expõe `pub mod clap` sob feature). Não modificar.
-
-  **Aceite:** `cargo build --no-default-features --features clap-plugin --lib` gera `target/debug/libnam_rs.so` sem erros nem warnings.
-
-- [x] **Tarefa 1.2.5** — Criar script `utils/build-clap.sh`
-
-  **Criar `utils/build-clap.sh`** com o seguinte conteúdo:
-
-  ```bash
-  #!/bin/bash
-  # SPDX-License-Identifier: MIT OR Apache-2.0
-  # Copyright (c) 2026 Fábio Henrique de Lima Silva.
-  #
-  # Build e instalação do plugin NAM-rs no formato CLAP.
-  # Gera libnam_rs.so e copia para ~/.clap/nam-rs.clap
-
-  set -euo pipefail
-
-  TARGET_DIR="target/release"
-  CLAP_DIR="$HOME/.clap"
-  PLUGIN_NAME="nam-rs.clap"
-
-  echo "🔨 Building NAM-rs CLAP plugin (release)..."
-  cargo build --release --no-default-features --features clap-plugin --lib
-
-  echo "📁 Instalando em $CLAP_DIR/$PLUGIN_NAME ..."
-  mkdir -p "$CLAP_DIR"
-  cp "$TARGET_DIR/libnam_rs.so" "$CLAP_DIR/$PLUGIN_NAME"
-
-  echo "✅ Plugin instalado: $CLAP_DIR/$PLUGIN_NAME"
-  echo "   Reabra o REAPER e faça um novo scan de plugins CLAP."
-  ```
-
-  Tornar executável: `chmod +x utils/build-clap.sh`
-
-  **Aceite:** `./utils/build-clap.sh` executa sem erros e `~/.clap/nam-rs.clap` existe.
-
-> **📋 CHECKPOINT — Plugin skeleton pronto para teste**
+1. **Mover, não reescrever**: Copiar bloco inteiro (docstring + corpo + testes) sem editar conteúdo técnico
+2. **Adaptar caminhos nas docstrings**: Referências a `fastmath.rs` → novo caminho
+3. **Docstrings de módulo**: Cada `mod.rs` novo deve ter `//!` explicando propósito e consumidores
+4. **Verificação diff**: Ao final de cada Sprint, confirmar que o total de comentários não diminuiu
 
 ---
 
-### Épico 1.3 — Validação e Estabilidade
+## Estrutura-Alvo Final
 
-> OBS1: Ótimo momento para leitura humana geral do estado do código em `src/`.
-> OBS2: Hora de instalar e configurar o REAPER para os testes funcionais.
+```text
+src/math/
+├── mod.rs                          # Re-exports estáveis (macro, traits, types)
+├── constants.rs                    # Coeficientes Minimax, clamp limits, LUT params
+│
+├── common/                         # ═══ FUNDAÇÃO ═══
+│   ├── mod.rs
+│   ├── traits.rs                   # SimdMath trait (33 métodos)
+│   ├── dispatch.rs                 # InstructionSet, SimdMathConfig, SIMD_MATH, dispatch_simd!
+│   ├── avx2_impl.rs               # Avx2Math + (type Avx2VnniMath = Avx2Math)
+│   ├── avx512_impl.rs             # Avx512Math, Avx512VnniMath, Avx512VnniBf16Math
+│   ├── aligned.rs                  # AlignedVec<T>
+│   ├── utility.rs                  # hsum_avx2, hsum_avx512, horizontal_sum_avx512
+│   ├── scalar_ref.rs               # Oráculo escalar centralizado
+│   ├── ops.rs                      # f32_to_bf16, set_daz_ftz, PrefetchFn, prefetch_*
+│   └── tests.rs                    # (SEM compute_energy/max_diff — vão para dsp/)
+│
+├── activations/                    # ═══ ATIVAÇÕES NÃO-LINEARES ═══
+│   ├── mod.rs                      # Re-exports + dispatch unificado (tanh_slice, etc.)
+│   ├── tanh.rs                     # AVX2 + AVX-512 lado a lado
+│   ├── sigmoid.rs
+│   ├── relu.rs
+│   ├── prelu.rs
+│   ├── softsign.rs
+│   ├── silu.rs
+│   ├── fused.rs                    # tanh_sigmoid_dual (ILP interleaved)
+│   └── tests.rs
+│
+├── gemm/                           # ═══ ÁLGEBRA LINEAR ═══
+│   ├── mod.rs
+│   ├── dot.rs
+│   ├── dot_4x.rs
+│   ├── gemv.rs
+│   ├── gemm_batch.rs
+│   ├── gemv_bf16.rs
+│   ├── gemv_4gate.rs              # 4-gate LSTM projection (aqui, não em lstm/)
+│   └── tests.rs
+│
+├── lstm/                           # ═══ LSTM-EXCLUSIVO ═══
+│   ├── mod.rs
+│   ├── gates.rs                    # fused_lstm_gates (ativações fundidas)
+│   └── tests.rs
+│
+├── wavenet/                        # ═══ WAVENET-EXCLUSIVO ═══
+│   ├── mod.rs
+│   ├── head.rs
+│   ├── accumulate.rs
+│   └── tests.rs
+│
+└── dsp/                            # ═══ OPERAÇÕES DSP ═══
+    ├── mod.rs
+    ├── gain_lut.rs
+    ├── gain.rs
+    ├── stereo.rs                   # + compute_energy_*, compute_max_diff_*
+    └── tests.rs
+```
 
-- [ ] **Tarefa 1.3.1** — Validar detecção no REAPER
+### Estrutura-Alvo de `src/models/` (Pós-Épico 6)
 
-  1. Executar `./utils/build-clap.sh`
-  2. Abrir REAPER → `Options` → `Preferences` → `Plug-ins` → `CLAP` → `Re-scan`
-  3. Verificar que `NAM-rs Neural Amp Modeler` (vendor: `Fabio Lima`) aparece na lista
-  4. Inserir numa faixa de áudio via `FX → Add`
+```text
+src/models/
+├── mod.rs                       # NamModel trait + DynamicModel enum + re-exports
+│                                #   (~100 linhas — sem impls de modelo)
+│
+├── lstm/                        # ═══ LSTM ═══
+│   ├── mod.rs                   # Re-exports: LstmLayer, LstmModel1, LstmModel2, LstmDynModel
+│   │                            #   + type aliases (Lstm1x8..Lstm2x16)
+│   │                            #   + NamModel impls para LSTM (1L, 2L, Dyn)
+│   │                            #   + LstmLike trait + lstm_prewarm_common
+│   ├── layer.rs                 # LstmLayer struct + macros define_lstm_process
+│   │                            #   (637L → ~450L após mover impls NamModel)
+│   ├── model_dyn.rs             # LstmDynLayer + LstmDynModel (218L)
+│   └── tests.rs                 # Consolidação de lstm_test.rs (264L)
+│
+├── wavenet/                     # ═══ WAVENET ═══
+│   ├── mod.rs                   # Re-exports + NamModel impls para WaveNet + WaveNetDyn
+│   ├── conv1d.rs                # Conv1d<IN,OUT,K> + ConvInput trait + impls f32/u16
+│   │                            #   (~580L, extraído de wavenet.rs)
+│   ├── dense.rs                 # DenseLayer<IN,OUT> (~200L, extraído de wavenet.rs)
+│   ├── model.rs                 # WaveNetModel<CH,K,HEAD> + WaveNetLayerArray
+│   │                            #   (~520L, extraído de wavenet.rs)
+│   ├── conv1d_dyn.rs            # Conv1dDyn + process_dual/single/bf16
+│   │                            #   (~700L, extraído de wavenet_common.rs)
+│   ├── common.rs                # WaveNetLayerState + WavenetProcessContext + constantes
+│   │                            #   (~200L, o que é REALMENTE common)
+│   ├── model_dyn.rs             # WaveNetLayerArrayDyn + WaveNetDynModel
+│   │                            #   (~400L, fusão de wavenet_common.rs + wavenet_dyn.rs)
+│   └── tests.rs                 # Consolidação: wavenet_test.rs + wavenet_dyn_test.rs (868L)
+│
+└── a2/                          # ═══ ARQUITETURA A2 (STAGING) ═══
+    ├── mod.rs                   # Re-exports + WavenetA2Placeholder
+    ├── activations.rs           # ActivationType enum + ActivationFn trait + dispatch
+    ├── film.rs                  # FiLMConfig + FiLMLayer (69L)
+    ├── gating.rs                # GatingMode + configs (71L)
+    └── params.rs                # LayerParamsA2, LayerArrayParamsA2, HeadParams (246L)
+```
 
-  **Aceite:** REAPER detecta e instancia o plugin sem segfault ou mensagem de erro no log de plugins.
+### Alinhamento com a Trait `SimdMath`
 
-- [ ] **Tarefa 1.3.2** — Validar bypass no REAPER
+Os `impl SimdMath` delegam para as funções nos módulos corretos:
 
-  1. Com plugin inserido, reproduzir áudio na faixa
-  2. Comparar áudio com e sem plugin (usar Track FX bypass do REAPER)
-  3. O áudio deve ser idêntico (bypass puro)
+```rust
+// src/math/common/avx2_impl.rs
+impl SimdMath for Avx2Math {
+    fn tanh_slice(slice: &mut [f32]) {
+        unsafe { crate::math::activations::tanh::tanh_slice_avx2(slice) }
+    }
+    fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        unsafe { crate::math::gemm::dot::dot_product_avx2(a, b) }
+    }
+    // ...
+}
 
-  **Aceite:** Áudio limpo, sem artefatos, sem dropouts, sem crashes. Latência reportada pelo REAPER: 0 amostras.
+/// AVX2-VNNI não traz benefício para operações FP (apenas inteiras).
+pub type Avx2VnniMath = Avx2Math;
+```
 
-- [ ] **Tarefa 1.3.3** — Validar que standalone não regrediu
+### Dispatch Unificado de Ativações
 
-  ```bash
-  cargo build --release --features standalone
-  cargo test
-  utils/lints.sh
-  ```
+`activations/mod.rs` expõe funções com dispatch interno, eliminando a duplicação em `models/activations.rs`:
 
-  **Aceite:** Build, testes (157+) e lints passam sem erros ou regressões.
+```rust
+// src/math/activations/mod.rs
+pub fn tanh_slice(data: &mut [f32]) {
+    match SIMD_MATH.instruction_set {
+        Avx512 | Avx512Vnni | Avx512VnniBf16 => unsafe { tanh::tanh_slice_avx512(data) },
+        _ => unsafe { tanh::tanh_slice_avx2(data) },
+    }
+}
+```
 
-- [ ] **Tarefa 1.3.4** — Executar suíte de validação completa
+```rust
+// src/models/activations.rs — DEPOIS (simplificado)
+Self::Tanh => crate::math::activations::tanh_slice(data),
+```
 
-  ```bash
-  utils/lints.sh   # zero erros
-  cargo test       # todos os testes passam
-  ```
+### O que NÃO muda
 
-  **Aceite:** Suíte completa sem falhas.
+- A trait `SimdMath` permanece com 33 métodos (mesma interface)
+- O macro `dispatch_simd!` permanece funcional
+- `detect_best_simd()` permanece idêntico
+- `AlignedVec<T>` permanece intacto
+- Algoritmos e constantes polinomiais são preservados bit-identical
 
-> **📋 CHECKPOINT DE REVISÃO — Sprint 1 concluída**
-> Plugin CLAP bypass funcional no REAPER. Standalone intacto.
+### Impacto nos Arquivos Consumidores
 
----
+| Arquivo                  | Mudança principal                                          |
+| ------------------------ | ---------------------------------------------------------- |
+| `models/lstm.rs`         | `crate::math::activations::*`, `crate::math::gemm::*`      |
+| `models/wavenet.rs`      | `crate::math::common::*`, `gemm::*`, `wavenet::*`          |
+| `models/activations.rs`  | Substituir dispatch manual por `activations::tanh_slice()` |
+| `dsp/pipeline.rs`        | `crate::math::dsp::stereo::*`                              |
+| `dsp/gate.rs`            | `crate::math::common::SimdMath`                            |
+| `dsp/resampler.rs`       | `crate::math::common::{AlignedVec, dispatch_simd}`         |
+| `standalone/rt_setup.rs` | `crate::math::common::set_daz_ftz`                         |
 
-## Sprint 2 — Roteamento DSP e Params CLAP
+#### Impacto Cruzado `math/` → `models/` (Épico 6)
 
-**Objetivo:** Plugin processa áudio real (inferência neural) e expõe parâmetros automáveis na DAW.
-
----
-
-### Épico 2.1 — Integração do Pipeline DSP
-
-- [ ] **Tarefa 2.1.1** — Adaptar buffers CLAP → Pipeline DSP
-  
-  - No `process()`, converter `ChannelPair` para slices `&[f32]` / `&mut [f32]`
-  - Invocar `DspPipeline::process()` com buffers convertidos
-  - Respeitar restrições RT: zero-alloc, zero-lock, zero-I/O
-  - **Aceite:** Compilação sem erros
-
-- [ ] **Tarefa 2.1.2** — Carregar modelo no `activate()`
-  
-  - No `activate()` (cold-path): carregar modelo default ou do state salvo
-  - Instanciar `NamModel` + `NamResampler` (se sample rate ≠ 48kHz)
-  - Pré-alocar todos os buffers internos
-  - **Aceite:** Plugin carrega modelo .nam e processa áudio no REAPER
-
-- [ ] **Tarefa 2.1.3** — Validar inferência neural no REAPER
-  
-  - Inserir plugin, carregar modelo real (.nam)
-  - Processar guitarra em tempo real
-  - Verificar qualidade do áudio (sem artefatos, sem clipping inesperado)
-  - **Aceite:** Áudio processado é perceptualmente idêntico ao standalone
-
-- [ ] **Tarefa 2.1.4** — Backend de Logging para Plugins
-  
-  - Configurar o crate `log` para direcionar mensagens para a extensão `clap_host_log` (se disponível) e para um arquivo rotativo em `~/.config/nam-rs/logs/`.
-  - Garantir que erros críticos de carregamento de modelo e falhas de RT sejam capturados.
-  - **Aceite:** Logs gerados pelo motor DSP aparecem no console da DAW (ex: Bitwig Log) e no arquivo local.
-
-> **📋 CHECKPOINT — DSP funcional no CLAP**
-
----
-
-### Épico 2.2 — Parâmetros CLAP
-
-- [ ] **Tarefa 2.2.1** — Implementar `src/clap/params_clap.rs`
-  
-  - Definir parâmetros CLAP via `clack-extensions`:
-    - `input_gain_db` (ID=0, range: -24..+24 dB, default: 0.0)
-    - `output_gain_db` (ID=1, range: -24..+24 dB, default: 0.0)
-    - `gate_threshold_db` (ID=2, range: -96..-20 dB, default: -70.0)
-    - `bypass` (ID=3, stepped 0/1, default: 0)
-  - Mapear ↔ `NamPluginParams`
-  - **Aceite:** Parâmetros aparecem na interface do REAPER
-
-- [ ] **Tarefa 2.2.2** — Sincronização de params via eventos CLAP (sample-accurate)
-  
-  - No `process()`, iterar `Events::input()` para `CLAP_EVENT_PARAM_VALUE`
-  - Aplicar mudanças via atomics (análogo ao SPSC existente)
-  - **Aceite:** Automação de parâmetros funcional no REAPER
-
-- [ ] **Tarefa 2.2.3** — Implementar State (Save/Load)
-  
-  - Usar `clack-extensions` State para serializar/desserializar
-  - Persistir: caminho do modelo + valores de parâmetros
-  - Formato: JSON compacto via `serde_json`
-  - **Aceite:** Salvar/reabrir projeto no REAPER preserva estado completo
-
-- [ ] **Tarefa 2.2.4** — Validação final Sprint 2
-  
-  - Automação funcional de todos os 4 parâmetros
-  - Save/load de estado persistente
-  - `utils/lints.sh` + `cargo test` — zero falhas
-  - **Aceite:** Suíte completa sem regressões
-
-> **📋 CHECKPOINT DE REVISÃO — Sprint 2 concluída**
-> Plugin com DSP real + parâmetros automáveis + state.
-
----
-
-## Sprint 3 — Audio Ports, Latência e Estabilidade
-
-**Objetivo:** Plugin robusto com declaração correta de portas, latência reportada, e estabilidade de longa duração.
-
----
-
-### Épico 3.1 — Extensions de Portas e Latência
-
-- [ ] **Tarefa 3.1.1** — Implementar Audio Ports Extension
-  
-  - Declarar: 1 porta stereo de entrada + 1 porta stereo de saída
-  - Suporte in-place processing
-  - **Aceite:** REAPER exibe portas corretamente
-
-- [ ] **Tarefa 3.1.2** — Implementar `clap.latency` Extension
-  
-  - Latência = samples do resampler (se ativo) + pipeline DSP
-  - Notificar host quando latência mudar (ex: troca de modelo com sample rate diferente)
-  - **Aceite:** REAPER compensa latência automaticamente
-
-> **📋 CHECKPOINT — Portas e latência corretos**
-
----
-
-### Épico 3.2 — Estabilidade e Testes CLAP
-
-- [ ] **Tarefa 3.2.1** — Teste de zero-allocation no process callback CLAP
-  
-  - Adaptar `CountingAllocator` para contexto CLAP
-  - Garantir zero heap-allocs no hot-path
-  - **Aceite:** Teste passa com zero alocações
-
-- [ ] **Tarefa 3.2.2** — Teste de hot-swap de modelo durante processamento
-  
-  - Trocar modelo enquanto plugin está processando áudio
-  - Verificar transição suave sem crashes
-  - **Aceite:** Troca funcional sem artefatos audíveis
-
-- [ ] **Tarefa 3.2.3** — Teste com block sizes variáveis (1–4096 samples)
-  
-  - Processar com diferentes buffer sizes configurados no REAPER
-  - **Aceite:** Funcional em todos os tamanhos de bloco testados
-
-- [ ] **Tarefa 3.2.4** — Testes de integração automatizados (`tests/clap_integration_test.rs`)
-  
-  - Usar `clack-host` (dev-dependency) para carregar plugin programaticamente
-  - Validar: processamento, params, state — tudo sem DAW real
-  - **Aceite:** Testes passam no CI local
-
-- [ ] **Tarefa 3.2.5** — Validação final Sprint 3
-  
-  - `utils/lints.sh` + `cargo test` — zero falhas
-  - Soak test manual no REAPER (1h+ de processamento contínuo)
-  - **Aceite:** Estabilidade comprovada
-
-> **📋 CHECKPOINT DE REVISÃO — Sprint 3 concluída**
-> Plugin robusto, estável, com portas e latência corretos.
+| Ação em math (Épicos 1-5)                               | Impacto em models (Épico 6)                                               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Sprint 1.3: Re-exports transitórios em `math/mod.rs`    | Habilita início do Épico 6 — paths antigos continuam funcionando          |
+| Sprint 3.1: `activations/mod.rs` com dispatch unificado | `models/a2/activations.rs` pode substituir dispatch manual                |
+| Sprint 4.1: Consumidores atualizados para novos paths   | Macro `define_lstm_process!` atualizada — Sprint 6.1 apenas move arquivos |
+| Sprint 4.2: Remoção de re-exports transitórios          | **Pré-requisito**: Sprint 6.1 e 6.2 devem ter sido concluídos antes       |
+| `standalone/pw_host.rs`                                 | `crate::math::dsp::get_gain_lut`                                          |
+| `standalone/cli.rs`                                     | `crate::math::constants::*`                                               |
+| `loader/dispatcher/lstm.rs`                             | `crate::math::common::f32_to_bf16`                                        |
+| `loader/dispatcher/wavenet.rs`                          | `crate::math::common::{AlignedVec, f32_to_bf16}`                          |
 
 ---
 
-## Sprint 4 — Interface Gráfica (egui + baseview)
+## Riscos e Mitigações
 
-**Objetivo:** GUI funcional embarcada na janela do REAPER, desacoplada do hot-path DSP.
-
----
-
-### Épico 4.1 — Infraestrutura GUI
-
-- [ ] **Tarefa 4.1.1** — Adicionar dependências GUI via `cargo add`
-  
-  - `cargo add egui --optional`
-  - `cargo add baseview --git https://github.com/RustAudio/baseview --optional`
-  - Avaliar `egui-baseview` ou integração manual
-  - Atualizar feature `clap-plugin` para incluir deps GUI
-  - **Aceite:** `cargo check --no-default-features --features clap-plugin` compila
-
-- [ ] **Tarefa 4.1.2** — Implementar `src/clap/gui.rs` — Extension CLAP GUI
-  
-  - Implementar `clap.gui` extension via clack-extensions
-  - Criar janela via `baseview` com handle do host (`set_parent` / `raw-window-handle`)
-  - Renderizar loop egui na janela embarcada
-  - Comunicação GUI ↔ DSP via SPSC existente (`Ordering::Relaxed`)
-  - **Aceite:** Janela abre no REAPER com conteúdo egui visível
-
-> **📋 CHECKPOINT — Janela GUI embarcada funcional**
+| Risco                                                                | Severidade | Mitigação                                                             |
+| -------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------- |
+| Macro `dispatch_simd!` com caminhos hardcoded `$crate::math::simd::` | Alta       | Re-exports em `math/mod.rs` raiz como ponte transitória               |
+| Quebra de imports em 48+ callsites                                   | Alta       | Migração gradual com re-exports; atualizar consumidores só no Épico 4 |
+| Regressão de performance                                             | Alta       | Baseline capturado no Sprint 1.1; `cargo bench` a cada Sprint         |
+| Perda de comentários/docstrings                                      | Alta       | Regra de Ouro; verificação diff a cada Sprint                         |
+| `#![allow(unsafe_op_in_unsafe_fn)]` é file-level em `fastmath.rs`    | Média      | Ao desmembrar, aplicar `#[allow(...)]` seletivamente                  |
+| `Avx2VnniMath` eliminado mas `InstructionSet::Avx2Vnni` mantido      | Baixa      | Enum preservado; dispatch aponta para `Avx2Math`                      |
+| A2 ainda é placeholder                                               | Info       | Deixar espaço para `src/math/a2/` quando necessário                   |
+| Macro `define_lstm_process!` (13 params hardcoded)                   | Alta       | Atualizar paths no Sprint 4.1 (math) **antes** de mover em 6.1        |
+| `wavenet.rs` monolítico (1305L)                                      | Média      | Desmembrar atomicamente em `conv1d.rs` + `dense.rs` + `model.rs`      |
+| `ActivationType` usado por `gating.rs` e `wavenet_params.rs`         | Média      | Mover todos os consumidores para `a2/` simultaneamente                |
+| `wavenet_common.rs` exporta tipos usados por `wavenet_dyn.rs`        | Média      | `common.rs` mantém apenas tipos compartilhados genuínos               |
 
 ---
 
-### Épico 4.2 — Design e Interação
+## Plano de Execução — Épicos e Sprints
 
-- [ ] **Tarefa 4.2.1** — Implementar painel de controle
-  
-  - Seletor de modelo (.nam/.namb) com botão de browse
-  - Knobs rotativos: Input Gain, Output Gain, Gate Threshold
-  - Toggle: Bypass
-  - **Aceite:** Controles funcionais e sincronizados com params CLAP
+### Épico 1: Baseline e Fundação [CONCLUÍDO]
 
-- [ ] **Tarefa 4.2.2** — Implementar visualizadores
-  
-  - Indicador de nível (VU meter) — leitura via SPSC atômico
-  - Telemetria DSP (latência mediana/P99) — leitura via SPSC
-  - **Aceite:** Visualizadores atualizam em tempo real
+**Objetivo**: Capturar métricas de referência e criar `common/` sem alterar comportamento.
 
-- [ ] **Tarefa 4.2.3** — Sincronização bidirecional GUI ↔ Host
-  
-  - Mudanças na GUI → notificam host (param change)
-  - Automação do host → reflete na GUI
-  - **Aceite:** Parâmetros sincronizados em ambas direções
+#### Tarefa 1.1 — Baseline de Performance e Testes [CONCLUÍDO]
 
-- [ ] **Tarefa 4.2.5** — Painel de Diagnóstico e "System Report"
-  
-  - Criar uma aba ou modal "Diagnostics" na GUI `egui`.
-  - Exibir o `SystemSnapshot` (versão, arquitetura SIMD ativa, latência real).
-  - Incluir botão "Copy Technical Report" para o usuário colar em issues de suporte.
-  - **Aceite:** Informações técnicas detalhadas acessíveis visualmente sem poluir a tela principal.
+Capturar snapshot completo antes de qualquer alteração:
 
-- [ ] **Tarefa 4.2.4** — Validação final Sprint 4
-  
-  - GUI abre e fecha sem crash
-  - Redimensionamento funcional (se aplicável)
-  - Zero impacto no hot-path DSP (verificar com telemetria)
-  - `utils/lints.sh` + `cargo test` — zero falhas
-  - **Aceite:** GUI completa e estável
+- [x] `cargo bench --bench inference_bench -- --save-baseline pre-refactor`
+- [x] `cargo test --release`
+- [x] Documentar contagem de linhas (código + comentários) por arquivo
 
-> **📋 CHECKPOINT DE REVISÃO — Sprint 4 concluída**
-> GUI egui funcional e integrada no REAPER.
+**Gate de saída**: Baseline salvo; zero falhas em testes. (Ver [Anexo: Baseline](#anexo-baseline-de-performance-tarefa-11))
 
----
+#### Tarefa 1.2 — `constants.rs` [CONCLUÍDO]
 
-## Sprint 5 — Thread Pool e Otimização Multi-Instância
+Extrair constantes compartilhadas de `fastmath.rs` para `src/math/constants.rs`:
 
-**Objetivo:** Suporte eficiente a múltiplas instâncias simultâneas via `clap.thread-pool`.
+- [x] Clamp limits (TANH/SIGMOID)
+- [x] Coeficientes Minimax/Padé
+- [x] Parâmetros de LUT (GAIN_LUT_SIZE, GAIN_MIN_DB, GAIN_MAX_DB)
+
+**Gate de saída**: `cargo check` + `cargo test` passam. Constantes usadas por ≥2 arquivos centralizadas.
+
+#### Tarefa 1.3 — `common/` Foundation [CONCLUÍDO]
+
+Mover módulos de infraestrutura de `simd/` para `common/`: [x]
+
+- `traits.rs`, `dispatch.rs`, `aligned.rs`, `utility.rs` (+ `hsum_avx512`), `scalar_ref.rs` [x]
+- `ops.rs` (sem `compute_energy_*` e `compute_max_diff_*` — esses vão para `dsp/` depois) [x]
+- Criar `common/mod.rs` with re-exports [x]
+
+**Regra crítica**: `src/math/mod.rs` mantém re-exports transitórios para preservar caminhos antigos (`crate::math::simd::*`). O macro `dispatch_simd!` é atualizado internamente para `$crate::math::common::`. [x]
+
+**Gate de saída**: `cargo check` + `cargo test` passam. Imports antigos ainda funcionam via re-exports. [x]
 
 ---
 
-### Épico 5.1 — Extension Thread Pool
+### Épico 2: Estrutura de Trait e Implementações
 
-- [ ] **Tarefa 5.1.1** — Implementar `clap.thread-pool` Extension
-  
-  - Detectar suporte do host via `HostSharedHandle`
-  - Delegar cálculos pesados (GEMV WaveNet, Conv1D) ao thread pool do host
-  - Implementar fallback: single-thread se host não suporta a extension
-  - **Aceite:** Plugin utiliza thread pool quando disponível
+**Objetivo**: Estabilizar structs de implementação em `common/` antes de mover kernels. Extrair
+os blocos `impl SimdMath` dos dois arquivos monolíticos (`simd/avx2.rs`, `simd/avx512.rs`) para
+arquivos dedicados em `common/`, mantendo as funções-kernel no local original. Simplificar
+`Avx2VnniMath` (pura delegação sem ganho real) para um type alias.
 
-- [ ] **Tarefa 5.1.2** — Stress Test multi-instância no REAPER
-  
-  - Teste com 8 instâncias simultâneas — verificar estabilidade
-  - Teste com 16 instâncias — medir CPU total
-  - Teste com 30 instâncias — stress extremo, verificar ausência de glitches
-  - Comparar CPU vs modo standalone equivalente
-  - **Aceite:** 16 instâncias estáveis sem glitches audíveis
-
-- [ ] **Tarefa 5.1.3** — Otimização de memória por instância
-  
-  - Avaliar compartilhamento de pesos entre instâncias (mesmo modelo carregado)
-  - Reduzir footprint por instância quando possível
-  - **Aceite:** Footprint de memória documentado e otimizado
-
-- [ ] **Tarefa 5.1.4** — Validação final Sprint 5
-  
-  - `utils/lints.sh` + `cargo test` — zero falhas
-  - Stress test aprovado
-  - **Aceite:** Multi-instância estável e eficiente
-
-> **📋 CHECKPOINT DE REVISÃO — Sprint 5 concluída**
-> Thread pool funcional, multi-instância estável.
+> **Regra de Ouro**: Preservar integralmente todos os comentários e docstrings ao mover código.
+> Adaptar apenas referências de caminhos nas docstrings.
 
 ---
 
-## Sprint 6 — Polish, Validação Final e Release Alpha
+#### Tarefa 2.1 — Criar `common/avx2_impl.rs` [CONCLUÍDO] [x]
 
-**Objetivo:** Preparar para release pública v2.0.0.
+##### 2.1.1 — Criar o arquivo `src/math/common/avx2_impl.rs` [x]
+
+**Conteúdo**: Mover SOMENTE os blocos de struct e impl de `simd/avx2.rs`:
+
+| De `simd/avx2.rs`                    | Linhas      | Conteúdo                                     |
+| ------------------------------------ | ----------- | -------------------------------------------- |
+| `pub struct Avx2Math;`               | L1017       | Struct unit                                  |
+| `impl SimdMath for Avx2Math { ... }` | L1019–L1359 | Bloco de implementação completo (28 métodos) |
+| `pub struct Avx2VnniMath;`           | L1367–L1667 | **SUBSTITUIR** pelo type alias (ver 2.1.2)   |
+
+**NÃO mover**: As funções standalone (kernel) que ficam ANTES (L1–L1016) e DEPOIS (L1669–L2091)
+dos blocos `impl SimdMath` em `simd/avx2.rs`. Essas permanecem no arquivo original para
+serem movidas nos Épicos 3 e 4.
+
+**Header do novo arquivo**:
+
+```rust
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+//! Implementações AVX2 da trait `SimdMath`.
+//!
+//! Este módulo contém as structs `Avx2Math` e `Avx2VnniMath` (type alias)
+//! que implementam a trait `SimdMath` usando instruções AVX2/FMA.
+//! Os métodos delegam para funções-kernel em `math::simd::avx2`.
+
+use crate::math::common::traits::SimdMath;
+use crate::math::common::scalar_ref::*;
+use core::arch::x86_64::*;
+```
+
+##### 2.1.2 — Ajustar caminhos no bloco `impl SimdMath for Avx2Math` [x]
+
+Cada método do impl chama funções-kernel que ainda vivem em `simd/avx2.rs`. Após a
+movimentação para `common/avx2_impl.rs`, esses paths precisam do prefixo do módulo:
+
+| Chamada original (em `simd/avx2.rs`)              | Chamada ajustada (em `common/avx2_impl.rs`)                                 |
+| ------------------------------------------------- | --------------------------------------------------------------------------- |
+| `dot_product_avx2(a, b)`                          | `super::super::simd::avx2::dot_product_avx2(a, b)`                          |
+| `dot_product_bf16_fallback(a, b)`                 | `dot_product_bf16_fallback(a, b)` (já importado de `scalar_ref`)            |
+| `dot_product_4x_interleaved_avx2(...)`            | `super::super::simd::avx2::dot_product_4x_interleaved_avx2(...)`            |
+| `dot_product_4x_interleaved_dual_frame_avx2(...)` | `super::super::simd::avx2::dot_product_4x_interleaved_dual_frame_avx2(...)` |
+| `dot_product_bf16_4x_fallback(...)`               | `dot_product_bf16_4x_fallback(...)` (já importado de `scalar_ref`)          |
+| `fused_add_gemv_avx2(...)`                        | `super::super::simd::avx2::fused_add_gemv_avx2(...)`                        |
+| `fused_add_gemm_batch_avx2(...)`                  | `super::super::simd::avx2::fused_add_gemm_batch_avx2(...)`                  |
+| `fused_gemm_residual_batch_avx2(...)`             | `super::super::simd::avx2::fused_gemm_residual_batch_avx2(...)`             |
+| `gemv_overwrite_avx2(...)`                        | `super::super::simd::avx2::gemv_overwrite_avx2(...)`                        |
+| `gemv_overwrite_bf16_fallback(...)`               | `gemv_overwrite_bf16_fallback(...)` (scalar_ref)                            |
+| `gemv_4gate_avx2(...)`                            | `super::super::simd::avx2::gemv_4gate_avx2(...)`                            |
+| `gemv_4gate_bf16_fallback(...)`                   | `gemv_4gate_bf16_fallback(...)` (scalar_ref)                                |
+| `accumulate_head_avx2(...)`                       | `super::super::simd::avx2::accumulate_head_avx2(...)`                       |
+| `tanh_and_accumulate_block_avx2(...)`             | `super::super::simd::avx2::tanh_and_accumulate_block_avx2(...)`             |
+| `gated_activation_and_accumulate_block_avx2(...)` | `super::super::simd::avx2::gated_activation_and_accumulate_block_avx2(...)` |
+| `f32_to_bf16_fallback(...)`                       | `f32_to_bf16_fallback(...)` (scalar_ref)                                    |
+| `crate::math::fastmath::tanh_slice_avx2(...)`     | Mantém (path absoluto)                                                      |
+| `crate::math::fastmath::sigmoid_slice_avx2(...)`  | Mantém (path absoluto)                                                      |
+| `horizontal_sum_avx2(...)`                        | `super::super::simd::avx2::horizontal_sum_avx2(...)`                        |
+| `fused_lstm_gates_dyn_avx2(...)`                  | `super::super::simd::avx2::fused_lstm_gates_dyn_avx2(...)`                  |
+| `compute_energy_stereo_avx2(...)`                 | `super::super::simd::avx2::compute_energy_stereo_avx2(...)`                 |
+| `convolve_stereo_avx2(...)`                       | `super::super::simd::avx2::convolve_stereo_avx2(...)`                       |
+| `apply_gain_and_detect_clipping_stereo_avx2(...)` | `super::super::simd::avx2::apply_gain_and_detect_clipping_stereo_avx2(...)` |
+| `apply_gain_stereo_avx2(...)`                     | `super::super::simd::avx2::apply_gain_stereo_avx2(...)`                     |
+| `apply_gain_avx2(...)`                            | `super::super::simd::avx2::apply_gain_avx2(...)`                            |
+| `batch_wavenet_head_sum_avx2(...)`                | `super::super::simd::avx2::batch_wavenet_head_sum_avx2(...)`                |
+| `apply_ramp_stereo_avx2(...)`                     | `super::super::simd::avx2::apply_ramp_stereo_avx2(...)`                     |
+
+> **NÃO usar `use super::super::simd::avx2::*` no topo** — o uso de paths absolutos
+> em cada chamada torna explícito de onde vêm os kernels, facilitando a migração futura
+> (Épicos 3 e 4) onde esses paths serão novamente atualizados.
+
+##### 2.1.3 — Substituir `Avx2VnniMath` por type alias [x]
+
+O bloco `impl SimdMath for Avx2VnniMath` ocupa ~300 linhas (L1367–L1667) e é 100% delegação
+para `Avx2Math::method(...)`. A instrução AVX2-VNNI (`VPDPBUSD`) opera apenas sobre inteiros
+de 8 bits, sem benefício para operações float. Portanto:
+
+**Substituir**:
+
+```rust
+/// Implementação especializada para processadores que suportam AVX2 e instruções VNNI.
+///
+/// VNNI (Vector Neural Network Instructions) é uma tecnologia que acelera drasticamente
+/// o processamento de redes neurais. Esta estrutura funciona como uma ponte de alta
+/// performance para CPUs modernas, garantindo que o NAM-rs utilize o caminho mais
+/// curto e eficiente oferecido pelo hardware Intel de gerações recentes.
+pub struct Avx2VnniMath;
+
+impl SimdMath for Avx2VnniMath {
+    type V = __m256;
+    // ... ~300 linhas de delegação ...
+}
+```
+
+**Por**:
+
+```rust
+/// AVX2 + VNNI: a instrução `VPDPBUSD` opera sobre inteiros de 8 bits,
+/// sem benefício mensurável para kernels float do NAM-rs.
+/// Delegação total para `Avx2Math` — type alias elimina ~300 linhas mortas.
+///
+/// Mantido como alias (não removido) para preservar compatibilidade com
+/// `InstructionSet::Avx2Vnni` e o macro `dispatch_simd!`.
+/// Futuro: remover também do enum quando a v-table for unificada.
+pub type Avx2VnniMath = Avx2Math;
+```
+
+##### 2.1.4 — Atualizar `simd/avx2.rs` (remoção + re-export) [x]
+
+**Remover** de `simd/avx2.rs`:
+
+- L1017 (`pub struct Avx2Math;`)
+- L1019–L1359 (`impl SimdMath for Avx2Math { ... }`)
+- L1361–L1667 (`pub struct Avx2VnniMath;` + `impl SimdMath for Avx2VnniMath { ... }`)
+
+**Adicionar** no topo de `simd/avx2.rs` (após os `#![allow]` e antes das funções kernel):
+
+```rust
+// Re-export das structs de implementação (movidas para common/)
+pub use crate::math::common::avx2_impl::{Avx2Math, Avx2VnniMath};
+```
+
+Isto garante que `crate::math::simd::avx2::Avx2Math` continua funcionando,
+mantendo compatibilidade com todos os `use` e caminhos existentes.
+
+##### 2.1.5 — Verificação [x]
+
+```bash
+cargo check 2>&1    # Deve compilar sem erros
+cargo test           # Todos os 150 testes devem passar
+```
 
 ---
 
-### Épico 6.1 — Validação em DAWs
+#### Tarefa 2.2 — Criar `common/avx512_impl.rs` [CONCLUÍDO] [x]
 
-- [ ] **Tarefa 6.1.1** — Validação final no REAPER
-  
-  - Teste completo end-to-end: load, process, automate, save/load, GUI, multi-instância
-  - Regressão: comparar qualidade de áudio com standalone
-  - **Aceite:** 100% funcional sem ressalvas
+##### 2.2.1 — Criar o arquivo `src/math/common/avx512_impl.rs` [x]
 
-- [ ] **Tarefa 6.1.2** — Validação com `clap-info` / `clap-validator`
-  
-  - Executar ferramentas CLI de validação de contrato CLAP
-  - Corrigir quaisquer non-conformances
-  - **Aceite:** Zero erros no validator
+**Conteúdo**: Mover SOMENTE os blocos de struct e impl de `simd/avx512.rs`:
 
-- [ ] **Tarefa 6.1.3** — Validação no Bitwig Studio (Linux)
-  
-  - Instalar e configurar Bitwig Studio
-  - Testar: detecção, instanciação, processamento, params, state, GUI
-  - Foco: conformidade CLAP (Bitwig é referência de implementação CLAP)
-  - **Aceite:** Plugin funcional no Bitwig
+| De `simd/avx512.rs`                            | Linhas      | Conteúdo                                                            |
+| ---------------------------------------------- | ----------- | ------------------------------------------------------------------- |
+| `pub struct Avx512Math;`                       | L609        | Struct unit                                                         |
+| `impl SimdMath for Avx512Math { ... }`         | L611–L963   | Bloco completo (28 métodos)                                         |
+| `pub struct Avx512VnniMath;`                   | L966        | Struct unit                                                         |
+| `impl SimdMath for Avx512VnniMath { ... }`     | L968–L1270  | Bloco completo (28 métodos) — **MANTÉM** (tem implementações reais) |
+| `pub struct Avx512VnniBf16Math;`               | L1273       | Struct unit                                                         |
+| `impl SimdMath for Avx512VnniBf16Math { ... }` | L1275–L1572 | Bloco completo (28 métodos) — **MANTÉM**                            |
 
-- [ ] **Tarefa 6.1.4** — Validação no Presonus Studio One (Linux)
-  
-  - Instalar e configurar Studio One
-  - Testar: detecção, instanciação, processamento, params, state, GUI
-  - Foco: compatibilidade com DAW líder de mercado
-  - **Aceite:** Plugin funcional no Studio One
+**NÃO mover**: Funções standalone (L1–L608 antes dos impls, L1574–L2265+ depois).
 
-> **📋 CHECKPOINT — Validação cross-DAW aprovada**
+**Header**:
+
+```rust
+// SPDX-License-Identifier: MIT OR Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+
+//! Implementações AVX-512 da trait `SimdMath`.
+//!
+//! Contém `Avx512Math`, `Avx512VnniMath` e `Avx512VnniBf16Math`.
+//! `Avx512VnniMath` tem implementações reais (BF16 dot product nativo via `_mm512_dpbf16_ps`).
+//! Os métodos delegam para funções-kernel em `math::simd::avx512`.
+
+use crate::math::common::traits::SimdMath;
+use crate::math::common::scalar_ref::*;
+use core::arch::x86_64::*;
+```
+
+##### 2.2.2 — Ajustar caminhos nas chamadas internas [x]
+
+**Para `Avx512Math`**: Mesmo padrão da Tarefa 2.1.2 — prefixar chamadas com `super::super::simd::avx512::`.
+
+| Chamada original (em `simd/avx512.rs`)                     | Chamada ajustada (em `common/avx512_impl.rs`)                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `dot_product_avx512(...)`                                  | `super::super::simd::avx512::dot_product_avx512(...)`                           |
+| `fused_add_gemv_avx512_small(...)`                         | `super::super::simd::avx512::fused_add_gemv_avx512_small(...)`                  |
+| `fused_add_gemv_fallback(...)`                             | `fused_add_gemv_fallback(...)` (scalar_ref)                                     |
+| `fused_add_gemm_batch_avx512(...)`                         | `super::super::simd::avx512::fused_add_gemm_batch_avx512(...)`                  |
+| `fused_gemm_residual_batch_avx512(...)`                    | `super::super::simd::avx512::fused_gemm_residual_batch_avx512(...)`             |
+| `gemv_overwrite_avx512_small(...)`                         | `super::super::simd::avx512::gemv_overwrite_avx512_small(...)`                  |
+| `gemv_overwrite_fallback(...)`                             | `gemv_overwrite_fallback(...)` (scalar_ref)                                     |
+| `gemv_overwrite_batch_avx512(...)`                         | `super::super::simd::avx512::gemv_overwrite_batch_avx512(...)`                  |
+| `gemv_4gate_avx512(...)`                                   | `super::super::simd::avx512::gemv_4gate_avx512(...)`                            |
+| `gemv_4gate_bf16_avx512(...)`                              | `super::super::simd::avx512::gemv_4gate_bf16_avx512(...)`                       |
+| `gated_activation_and_accumulate_block_avx512(...)`        | `super::super::simd::avx512::gated_activation_and_accumulate_block_avx512(...)` |
+| `f32_to_bf16_avx512(...)`                                  | `super::super::simd::avx512::f32_to_bf16_avx512(...)`                           |
+| `crate::math::fastmath::tanh_slice_avx512(...)`            | Mantém (path absoluto)                                                          |
+| `crate::math::fastmath::sigmoid_slice_avx512(...)`         | Mantém (path absoluto)                                                          |
+| `horizontal_sum_avx512(...)`                               | `super::super::simd::avx512::horizontal_sum_avx512(...)`                        |
+| `fused_lstm_gates_dyn_avx512(...)`                         | `super::super::simd::avx512::fused_lstm_gates_dyn_avx512(...)`                  |
+| `compute_energy_stereo_avx512(...)`                        | `super::super::simd::avx512::compute_energy_stereo_avx512(...)`                 |
+| `convolve_stereo_avx512(...)`                              | `super::super::simd::avx512::convolve_stereo_avx512(...)`                       |
+| `apply_gain_and_detect_clipping_stereo_avx512(...)`        | `super::super::simd::avx512::apply_gain_and_detect_clipping_stereo_avx512(...)` |
+| `apply_gain_stereo_avx512(...)`                            | `super::super::simd::avx512::apply_gain_stereo_avx512(...)`                     |
+| `apply_gain_avx512(...)`                                   | `super::super::simd::avx512::apply_gain_avx512(...)`                            |
+| `batch_wavenet_head_sum_avx512(...)`                       | `super::super::simd::avx512::batch_wavenet_head_sum_avx512(...)`                |
+| `apply_ramp_stereo_avx512(...)`                            | `super::super::simd::avx512::apply_ramp_stereo_avx512(...)`                     |
+| `dot_product_bf16_avx512(...)`                             | `super::super::simd::avx512::dot_product_bf16_avx512(...)`                      |
+| `dot_product_4x_interleaved_avx512(...)`                   | `super::super::simd::avx512::dot_product_4x_interleaved_avx512(...)`            |
+| `dot_product_4x_interleaved_dual_frame_avx512(...)`        | `super::super::simd::avx512::dot_product_4x_interleaved_dual_frame_avx512(...)` |
+| `dot_product_bf16_4x_fallback(...)`                        | `dot_product_bf16_4x_fallback(...)` (scalar_ref)                                |
+| `dot_product_4x_interleaved_fallback(...)`                 | `dot_product_4x_interleaved_fallback(...)` (scalar_ref)                         |
+| `dot_product_4x_interleaved_bf16_fallback(...)`            | `dot_product_4x_interleaved_bf16_fallback(...)` (scalar_ref)                    |
+| `dot_product_4x_interleaved_dual_frame_bf16_fallback(...)` | `dot_product_4x_interleaved_dual_frame_bf16_fallback(...)` (scalar_ref)         |
+
+**Para `Avx512VnniMath`**: Métodos que delegam para `Avx512Math::method(...)` — prefixar com `self::Avx512Math::` (já que estão no mesmo arquivo). Métodos com implementações reais:
+
+- `dot_product_bf16_avx512(...)` → `super::super::simd::avx512::dot_product_bf16_avx512(...)`
+- `dot_product_bf16_4x` (L1014–L1028) → mantém a lógica inline (chama `gemv_4gate_bf16_avx512`)
+  → `super::super::simd::avx512::gemv_4gate_bf16_avx512(...)`
+- `apply_gain_avx512(...)` → `super::super::simd::avx512::apply_gain_avx512(...)`
+- `horizontal_sum_avx512(...)` → `super::super::simd::avx512::horizontal_sum_avx512(...)`
+- `batch_wavenet_head_sum_avx512(...)` → `super::super::simd::avx512::batch_wavenet_head_sum_avx512(...)`
+
+**Para `Avx512VnniBf16Math`**: Análogo ao `Avx512VnniMath`. Métodos com implementações reais:
+
+- `dot_product_bf16_avx512(...)` → `super::super::simd::avx512::dot_product_bf16_avx512(...)`
+- `dot_product_4x_interleaved_dual_frame_avx512(...)` → `super::super::simd::avx512::dot_product_4x_interleaved_dual_frame_avx512(...)`
+- `apply_gain_avx512(...)` → `super::super::simd::avx512::apply_gain_avx512(...)`
+- `horizontal_sum_avx512(...)` → `super::super::simd::avx512::horizontal_sum_avx512(...)`
+- `batch_wavenet_head_sum_avx512(...)` → `super::super::simd::avx512::batch_wavenet_head_sum_avx512(...)`
+
+Métodos que chamam `Avx512Math::method(...)` → prefixar com `self::Avx512Math::`.
+
+##### 2.2.3 — Atualizar `simd/avx512.rs` (remoção + re-export) [x]
+
+**Remover** de `simd/avx512.rs`:
+
+- L609–L963: `pub struct Avx512Math;` + `impl SimdMath for Avx512Math { ... }`
+- L966–L1270: `pub struct Avx512VnniMath;` + `impl SimdMath for Avx512VnniMath { ... }`
+- L1272–L1572: Comentário `/// Implementação estática...` + struct + `impl SimdMath for Avx512VnniBf16Math { ... }`
+
+**Adicionar** no topo de `simd/avx512.rs` (após os `#![allow]`):
+
+```rust
+// Re-export das structs de implementação (movidas para common/)
+pub use crate::math::common::avx512_impl::{Avx512Math, Avx512VnniMath, Avx512VnniBf16Math};
+```
+
+##### 2.2.4 — Verificação [x]
+
+```bash
+cargo check 2>&1    # Deve compilar sem erros
+cargo test           # Todos os 150 testes devem passar
+```
 
 ---
 
-### Épico 6.2 — Documentação e Release
+#### Tarefa 2.3 — Atualizar `common/mod.rs` with novos módulos [CONCLUÍDO] [x]
 
-- [ ] **Tarefa 6.2.1** — Documentação final do plugin
-  
-  - Guia de instalação do plugin CLAP (usuário final)
-  - Guia de build para contribuidores
-  - Screenshots da GUI no REAPER
-  - **Aceite:** Documentação completa e acessível
+Adicionar ao `src/math/common/mod.rs`:
 
-- [ ] **Tarefa 6.2.2** — Atualizar `README.md` para v2.0.0
-  
-  - Documentar modo plugin CLAP como funcionalidade alpha
-  - Atualizar instruções de build (dual-target)
-  - Changelog completo
-  - **Aceite:** README reflete estado real do projeto
+```rust
+pub mod avx2_impl;
+pub mod avx512_impl;
+```
 
-- [ ] **Tarefa 6.2.4** — Internacionalização Básica
+E atualizar o bloco de re-exports públicos para incluir:
 
-  - Suporte dinâmico a descobrir a língua nativa do ambiente do usuário
-  - Padrão: Inglês Internacional
-  - Alternativo: PT-BR
-  - Focos: `README.md`; Mmensagens na CLI Standalone e na GUI CLAP - inclusive mensagens de erro.
-  - Códigos-fontes, agentes de IA, testes, benches e docs/ não são foco agora.
+```rust
+pub use avx2_impl::{Avx2Math, Avx2VnniMath};
+pub use avx512_impl::{Avx512Math, Avx512VnniMath, Avx512VnniBf16Math};
+```
 
-- [ ] **Tarefa 6.2.4** — Release v2.0.0
-  
-  - Tag git: `v2.0.0`
-  - Binários: standalone + plugin `.clap` disponíveis para download aos usuários.
-  - **Aceite:** Release publicado no GitHub
+**Verificação**: `cargo check` — deve compilar. As structs agora estão acessíveis por ambos os paths:
 
-> **📋 CHECKPOINT DE REVISÃO — Sprint 6 concluída**
-> Release v2.0.0 publicado. Projeto pronto para feedback da comunidade.
+- `crate::math::common::Avx2Math` (novo, canônico)
+- `crate::math::simd::avx2::Avx2Math` (legado, via re-export)
+
+---
+
+#### Tarefa 2.4 — Documentar Design Debt do Dual Dispatch [CONCLUÍDO] [x]
+
+Adicionar documentação ao `src/math/common/dispatch.rs` **antes** da definição de `SimdMathConfig`:
+
+```rust
+// ══════════════════════════════════════════════════════════════════════════════
+// DESIGN DEBT: Coexistência de dois mecanismos de dispatch
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// O projeto NAM-rs usa DOIS mecanismos independentes para despacho SIMD:
+//
+// 1. Trait genérica `SimdMath` (definida em `common/traits.rs`)
+//    - Despacho estático (monomorphization) via `dispatch_simd!` Modos 1 e 2
+//    - Usado por: WaveNet (`wavenet.rs`, `wavenet_dyn.rs`), LSTM (`lstm_dyn.rs`),
+//      DSP (`gate.rs`, `resampler.rs`)
+//    - Exemplo: `self.process::<Avx2Math>(args)` → monomorphized em tempo de compilação
+//    - Vantagem: zero overhead de v-table, inline agressivo
+//    - Desvantagem: gera código duplicado para cada ISA (Avx2, Avx512, Avx512Vnni...)
+//
+// 2. V-table `SimdMathConfig` (esta struct)
+//    - Despacho dinâmico via ponteiros de função
+//    - Usado por: operações DSP no pipeline (`dsp/pipeline.rs`, `dsp/gain.rs`),
+//      standalone host (`standalone/rt_setup.rs`), `dispatch_simd!` Modo 3
+//    - Exemplo: `(SIMD_MATH.apply_gain)(data, gain)` → chamada indireta via ponteiro
+//    - Vantagem: código único, sem duplicação
+//    - Desvantagem: impede inline, custo de indireção (~1-2 ciclos)
+//
+// Consumidores por mecanismo:
+//   Mecanismo 1 (trait):  wavenet.rs, wavenet_dyn.rs, lstm_dyn.rs, gate.rs, resampler.rs
+//   Mecanismo 2 (v-table): pipeline.rs, rt_setup.rs, cli.rs, ops.rs (compute_energy_stereo)
+//   Ambos (híbrido):      lstm.rs (usa dispatch_simd! Modo 2 para gemv_4gate,
+//                          mas também chama simd_tanh/simd_sigmoid diretamente)
+//
+// Plano de unificação (futuro):
+//   - Mover TODOS os consumidores para a trait `SimdMath` (Mecanismo 1)
+//   - Substituir v-table `SimdMathConfig` por um único despacho baseado na trait
+//   - Remover ponteiros de função da struct `SimdMathConfig`
+//   - Manter `InstructionSet` para consultas de capabilities (ex: `is_avx512`)
+//   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
+//
+// Data do debt: 2026-05-12 (refatoração Épicos 1-5)
+// Prioridade: Média (não afeta performance em caminhos quentes,
+//             que já usam Mecanismo 1 com monomorphization)
+// ══════════════════════════════════════════════════════════════════════════════
+```
+
+Inserir este texto **antes** da linha `pub struct SimdMathConfig {` (atualmente L32 de `dispatch.rs`).
+
+**Verificação**:
+
+```bash
+cargo check    # Compila sem warnings
+cargo clippy   # Sem warnings novos
+```
+
+---
+
+#### Gate de Saída do Épico 2
+
+- [x] `cargo check` limpo — zero erros de compilação
+- [x] `cargo test` — 150 passed, 0 failed
+- [x] `cargo clippy` — sem warnings novos
+- [x] `simd/avx2.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
+- [x] `simd/avx512.rs` contém apenas funções-kernel + re-export (sem blocos `impl SimdMath`)
+- [x] `common/avx2_impl.rs` existe com `Avx2Math` + `Avx2VnniMath` (type alias)
+- [x] `common/avx512_impl.rs` existe com `Avx512Math`, `Avx512VnniMath`, `Avx512VnniBf16Math`
+- [x] `Avx2VnniMath` reduzido de ~300 linhas para 1 `type` alias + docstring
+- [x] Design debt documentado em `common/dispatch.rs`
+
+---
+
+### Épico 3: Migração de Kernels por Domínio
+
+**Objetivo**: Mover funções standalone para subpastas de domínio, uma categoria por Sprint.
+
+> **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada função movida. Adaptar apenas referências de caminhos nas docstrings. Executar `cargo check` após cada arquivo extraído.
+
+#### Tarefa 3.1 — `activations/` [CONCLUÍDO] [x]
+
+Desmembrar `fastmath.rs` (1229L) em arquivos por ativação:
+
+| Destino       | Funções de `fastmath.rs`                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `tanh.rs`     | `simd_tanh_avx2`, `simd_tanh_dual_avx2`, `simd_tanh_avx512`, `tanh_slice_*`, `tanh()` escalar |
+| `sigmoid.rs`  | `simd_sigmoid_*`, `sigmoid_slice_*`, `sigmoid()` escalar                                      |
+| `relu.rs`     | `simd_relu_*`, `relu_slice_*`                                                                 |
+| `prelu.rs`    | `simd_prelu_*`, `prelu_slice_*`                                                               |
+| `softsign.rs` | `simd_softsign_*`, `softsign_slice_*`                                                         |
+| `silu.rs`     | `simd_silu_*`, `silu_slice_*`                                                                 |
+| `fused.rs`    | `simd_tanh_sigmoid_dual_*`, `simd_sigmoid_dual_*`                                             |
+
+**Internalização**: Aliases `simd_tanh()` e `simd_sigmoid()` absorvidos — chamadores usam path direto.
+
+**Dispatch unificado**: `activations/mod.rs` expõe `tanh_slice(data)` com dispatch interno, eliminando duplicação manual em `models/activations.rs`.
+
+**Testes**: `fastmath_test.rs` (719L) → `activations/tests.rs`.
+
+**Gate de saída**: `fastmath.rs` deixa de existir. `cargo test` passa.
+
+> **NOTA**: `GainLUT` antecipado da Tarefa 3.5 para `dsp/gain_lut.rs` (pré-requisito para eliminar `fastmath.rs`). Consumidores de `get_gain_lut()` atualizados (pw_host.rs, main.rs, loader/mod.rs, dsp/gain_test.rs, tests/proptest_math.rs). Off-by-one corrigido em `db_to_linear()` com `.min(GAIN_LUT_SIZE - 1)`.
+
+#### Tarefa 3.2 — `gemm/` [CONCLUÍDO] [x]
+
+Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
+
+| Destino         | Funções                                                 |
+| --------------- | ------------------------------------------------------- |
+| `dot.rs`        | `dot_product_avx2/avx512`                               |
+| `dot_4x.rs`     | `dot_product_4x_*`, `dual_frame_*`, `batch_4x_*`        |
+| `gemv.rs`       | `gemv_overwrite_*`, `fused_add_gemv_*` (incl. `_small`) |
+| `gemm_batch.rs` | `fused_add_gemm_batch_*`, `fused_gemm_residual_batch_*` |
+| `gemv_bf16.rs`  | `gemv_overwrite_bf16_*`                                 |
+| `gemv_4gate.rs` | `gemv_4gate_avx2/avx512`, `gemv_4gate_bf16_*`           |
+
+**Gate de saída**: `cargo bench` sem regressão.
+
+> ✅ **CONCLUÍDA** — 10 funções AVX2 + 13 funções AVX-512 extraídas para 7 arquivos em `math/gemm/`.
+> Re-exports em `avx2.rs`/`avx512.rs` mantêm compatibilidade de paths explícitos.
+> `gemv_bf16.rs` criado como placeholder (função `gemv_overwrite_bf16` ainda não implementada nativamente).
+> `cargo check` (standalone + clap), `cargo test` (149 passed), `cargo bench` e `utils/lints.sh` passam.
+
+#### Tarefa 3.3 — `lstm/` [CONCLUÍDO] [x]
+
+| Destino    | Funções                                                |
+| ---------- | ------------------------------------------------------ |
+| `gates.rs` | `fused_lstm_gates_avx2/avx512`, `fused_lstm_gates_dyn` |
+
+**Gate de saída**: `cargo test` passa.
+
+> ✅ **CONCLUÍDA** — 4 funções LSTM (2 kernels + 2 dyn wrappers) extraídas para `math/lstm/gates.rs`.
+> Re-exports em `avx2.rs`/`avx512.rs` mantêm compatibilidade de paths explícitos.
+> `cargo check` (standalone + clap), `cargo test` (149 passed), e `utils/lints.sh` passam.
+
+#### Tarefa 3.4 — `wavenet/` [CONCLUÍDO] [x]
+
+| Destino         | Funções                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `head.rs`       | `batch_wavenet_head_sum_avx2/avx512` (const generic + dyn)                                    |
+| `accumulate.rs` | `accumulate_head_*`, `tanh_and_accumulate_block_*`, `gated_activation_and_accumulate_block_*` |
+
+**Gate de saída**: `cargo test` passa.
+
+> ✅ **CONCLUÍDA** — 7 funções wavenet (4 kernels AVX2 + 2 kernels AVX-512 + 3 fallbacks) extraídas para `math/wavenet/`.
+> `head.rs` inclui as versões `_dyn` (dispatch dinâmico AVX2 e AVX-512) anteriormente inline nos trait impls.
+> Re-exports em `avx2.rs`/`avx512.rs`/`scalar_ref.rs` mantêm compatibilidade de paths explícitos.
+> `cargo check` (standalone + clap), `cargo test` (149 passed), e `utils/lints.sh` passam.
+
+#### Tarefa 3.5 — `dsp/`
+
+| Destino       | Funções                                                                                                    |
+| ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `gain_lut.rs` | `GainLUT`, `GAIN_LUT`, `get_gain_lut()`                                                                    |
+| `gain.rs`     | `apply_gain_*`, `apply_gain_and_detect_clipping_stereo_*`, `apply_ramp_stereo_*`                           |
+| `stereo.rs`   | `compute_energy_avx2` (de `ops.rs`), `compute_energy_stereo`, `compute_max_diff_avx2`, `convolve_stereo_*` |
+
+**Gate de saída**: `cargo test` + `cargo bench` passam.
+
+> ✅ **CONCLUÍDA** — `gain.rs` criado com 4 funções de despacho (`apply_gain`, `apply_gain_stereo`, `apply_gain_and_detect_clipping_stereo`, `apply_ramp_stereo`).
+> `stereo.rs` atualizado com despacho `convolve_stereo`. V-table `SimdMathConfig` ampliada com 3 novos campos (`apply_gain_stereo`, `apply_ramp_stereo`, `convolve_stereo`) em todos os 5 branches ISA.
+> Re-exports em `simd/mod.rs` (via `ops_dsp`) mantêm compatibilidade de paths. `cargo check`, `cargo test` (204 passed), `cargo bench` e `utils/lints.sh` passam.
+
+---
+
+### Épico 4: Limpeza e Unificação de Imports
+
+**Objetivo**: Eliminar código morto, atualizar consumidores, remover re-exports transitórios.
+
+#### Tarefa 4.1 — Atualizar Consumidores
+
+Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de impacto acima). Substituir dispatch manual em `models/activations.rs` por chamadas unificadas.
+
+**Gate de saída**: `cargo check` sem warnings de imports.
+
+#### Tarefa 4.2 — Remoção de Código Morto
+
+- Remover `src/math/simd/` (já vazio)
+- Remover `src/math/fastmath.rs` (já desmembrado)
+- Remover re-exports transitórios de `math/mod.rs`
+- Confirmar eliminação do `impl SimdMath for Avx2VnniMath` (~300L)
+
+**Gate de saída**: `cargo check` + `cargo clippy` limpos. Zero dead code.
+
+---
+
+### Épico 5: Validação Final e Documentação
+
+**Objetivo**: Garantir paridade total com baseline e atualizar docs.
+
+#### Tarefa 5.1 — Validação de Paridade
+
+- `cargo test` — todos os testes passam (incluindo sweeps de erro máximo)
+- `cargo bench` — comparar com baseline (threshold: <2% regressão)
+- `utils/lints.sh` — limpo
+- Verificar contagem de comentários vs baseline (sem perda)
+
+**Gate de saída**: Paridade total confirmada.
+
+#### Tarefa 5.2 — Documentação Arquitetural
+
+- Atualizar `docs/architecture.md` seção de matemática
+- Docstrings `//!` em cada `mod.rs` novo
+- Registrar decisões (eliminação `Avx2VnniMath`, design debt dual dispatch)
+
+**Gate de saída**: Documentação sincronizada com implementação.
+
+---
+
+### Épico 6: Reorganização de `src/models/`
+
+**Objetivo**: Reorganizar `src/models/` em subpastas por domínio de modelo (`lstm/`, `wavenet/`, `a2/`), extraindo lógica dispersa da raiz e isolando os stubs A2.
+
+**Pré-requisito obrigatório**: Re-exports estáveis em `math/mod.rs` (Sprint 1.3) devem estar no lugar. Idealmente, Épicos 1-5 concluídos, pois os paths de math já estarão finalizados — evitando retrabalho de imports durante a reorganização de models.
+
+> **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada arquivo movido. Executar `cargo check` após cada movimentação. Utilizar re-exports transitórios em `models/mod.rs` quando necessário para evitar quebras intermediárias.
+
+#### Tarefa 6.1 — Criar `models/lstm/`
+
+Mover a implementação LSTM para subpasta auto-contida:
+
+| Origem                | Destino             | Ação                                                                                                           |
+| --------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `lstm.rs` (637L)      | `lstm/layer.rs`     | Mover struct `LstmLayer` + macros + especializações SIMD                                                       |
+| `lstm_dyn.rs` (218L)  | `lstm/model_dyn.rs` | Mover `LstmDynLayer` + `LstmDynModel` integralmente                                                            |
+| `lstm_test.rs` (264L) | `lstm/tests.rs`     | Mover e ajustar imports                                                                                        |
+| `mod.rs` (parcial)    | `lstm/mod.rs`       | Extrair: type aliases (Lstm1x8..Lstm2x16), impls `NamModel` para LSTM, `LstmLike` trait, `lstm_prewarm_common` |
+
+Criar `lstm/mod.rs` com:
+
+- Re-exports públicos de todas as structs/traits
+- Docstring `//!` explicando o módulo LSTM
+
+**Gate de saída**: `cargo check` + `cargo test` passam. `models/mod.rs` reduzido em ~150 linhas.
+
+#### Tarefa 6.2 — Criar `models/wavenet/`
+
+Desmembrar o monolítico WaveNet em módulos coesos:
+
+| Origem                                | Destino                         | Ação                                                                                                          |
+| ------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `wavenet.rs` L1-112                   | `wavenet/conv1d.rs` (~580L)     | Extrair `Conv1d<IN,OUT,K>` + trait `ConvInput` + impls f32/u16                                                |
+| `wavenet.rs` L644-800+                | `wavenet/dense.rs` (~200L)      | Extrair `DenseLayer<IN,OUT>`                                                                                  |
+| `wavenet.rs` (restante)               | `wavenet/model.rs` (~520L)      | Manter `WaveNetModel<CH,K,HEAD>` + `WaveNetLayerArray`                                                        |
+| `wavenet_common.rs` L1-463            | `wavenet/conv1d_dyn.rs` (~700L) | Extrair `Conv1dDyn` + todos os métodos process                                                                |
+| `wavenet_common.rs` (types/constants) | `wavenet/common.rs` (~200L)     | Extrair `WaveNetLayerState`, `WavenetProcessContext`, `WAVENET_MAX_NUM_FRAMES`, `LAYER_ARRAY_BUFFER_PADDING`  |
+| `wavenet_common.rs` (restante)        | `wavenet/model_dyn.rs` (~400L)  | Fundir com `wavenet_dyn.rs`: `WaveNetLayerArrayDyn` + `WaveNetDynModel` + `DenseLayerDyn` + `WaveNetLayerDyn` |
+| `wavenet_test.rs` (617L)              | `wavenet/tests.rs`              | Consolidar com `wavenet_dyn_test.rs` (251L)                                                                   |
+
+Criar `wavenet/mod.rs` com:
+
+- Re-exports públicos
+- Impls `NamModel` para `WaveNetModel` e `WaveNetDynModel`
+- Docstring `//!` explicando o módulo WaveNet
+
+**Gate de saída**: `cargo check` + `cargo test` + `cargo bench` (< 2% regressão) passam. `wavenet_common.rs` eliminado.
+
+#### Tarefa 6.3 — Criar `models/a2/` + Limpar `mod.rs`
+
+Isolar stubs e placeholders da arquitetura A2:
+
+| Origem                     | Destino             | Ação                                                          |
+| -------------------------- | ------------------- | ------------------------------------------------------------- |
+| `activations.rs` (373L)    | `a2/activations.rs` | Mover `ActivationType` enum + `ActivationFn` trait + dispatch |
+| `film.rs` (69L)            | `a2/film.rs`        | Mover `FiLMConfig` + `FiLMLayer`                              |
+| `gating.rs` (71L)          | `a2/gating.rs`      | Mover `GatingMode` + configs                                  |
+| `wavenet_params.rs` (246L) | `a2/params.rs`      | Mover `LayerParamsA2`, `LayerArrayParamsA2`, `HeadParams`     |
+| `mod.rs` (parcial)         | `a2/mod.rs`         | Extrair `WavenetA2Placeholder`                                |
+
+Limpar `models/mod.rs` resultante:
+
+- Deve conter apenas `NamModel` trait + `DynamicModel` enum + `pub mod lstm`, `pub mod wavenet`, `pub mod a2`
+- Meta: ≤ 100 linhas
+
+**Gate de saída**: `cargo check` + `cargo clippy` limpos. `models/mod.rs` ≤ 100L. Zero arquivos soltos na raiz de `models/` (exceto `mod.rs`).
+
+---
+
+### Dependência entre Épicos `math/` e `models/`
+
+```mermaid
+graph TD
+    E1["Épico 1: Baseline + Fundação<br/>(math/)"]
+    E2["Épico 2: Traits + Impls<br/>(math/)"]
+    E3["Épico 3: Migração Kernels<br/>(math/)"]
+    E4["Épico 4: Limpeza Imports<br/>(math/)"]
+    E5["Épico 5: Validação + Docs<br/>(math/)"]
+    E6["Épico 6: Reorganização<br/>(models/)"]
+
+    E1 --> E2
+    E2 --> E3
+    E3 --> E4
+    E4 --> E5
+    E1 -.->|"re-exports estáveis<br/>habilitam início"| E6
+    E4 -->|"paths finalizados<br/>pré-requisito ideal"| E6
+    E5 -.->|"validação cruzada"| E6
+```
+
+> **Nota de sequenciamento**: O Épico 6 pode tecnicamente começar após o Sprint 1.3 (re-exports transitórios), mas **recomenda-se aguardar o Épico 4** para evitar retrabalho de imports. A exceção é o Sprint 6.3 (A2 stubs), que não tem dependência de paths de math e pode ser executado a qualquer momento.
+
+---
+
+### O que NÃO muda no Épico 6
+
+- A trait `NamModel` permanece intacta (mesma interface pública)
+- O enum `DynamicModel` permanece com as mesmas 14 variantes
+- O macro `dispatch_simd!` continua sendo usado para despacho em modelos
+- Nenhuma alteração de algoritmo, layout de memória ou performance
+- Todos os comentários e docstrings migram integralmente (Regra de Ouro)
+- Zero mudanças na API pública para o host DSP
+
+---
+
+## Resumo
+
+| Épico                       | Sprints | Risco | Complexidade                       |
+| --------------------------- | ------- | ----- | ---------------------------------- |
+| **1. Baseline e Fundação**  | 3       | Baixo | Moderada (macro paths)             |
+| **2. Traits e Impls**       | 2       | Médio | Moderada (Avx2VnniMath)            |
+| **3. Migração de Kernels**  | 5       | Alto  | Alta (7.661L, preservação de docs) |
+| **4. Limpeza de Imports**   | 2       | Médio | Moderada (48+ callsites)           |
+| **5. Validação e Docs**     | 2       | Baixo | Baixa                              |
+| **6. Reorganização Models** | 3       | Médio | Moderada (5.892L, subpastas)       |
+| **Total**                   | **17**  |       | ~13.553 linhas reorganizadas       |
+
+> **Sprint de maior risco**: 3.1 (activations/) — desmembra `fastmath.rs` que é o ponto de convergência entre `avx2.rs`, `avx512.rs` e `models/activations.rs`. Recomendação: execução atômica com `cargo check` após cada arquivo extraído.
+> **Sprint de maior impacto visual**: 6.2 (wavenet/) — desmembra 2.824L de WaveNet em 7 arquivos coesos.
+> **Invariante de qualidade**: Nenhum Sprint fecha sem `cargo check` + `cargo test` passando. Nenhum Sprint dos Épicos 3 e 6 fecha sem verificação explícita de preservação de comentários.
+
+---
+
+## Anexo: Baseline de Performance (Tarefa 1.1)
+
+> [!NOTE]
+> Este anexo contém o snapshot de performance e métricas de código capturados em 2026-05-12.
+
+### Baseline de Performance e Métricas (Pré-Refatoração)
+
+Este documento registra o estado do projeto NAM-rs antes do início do Épico 1 de refatoração, conforme exigido na **Tarefa 1.1**.
+
+#### 1. Métricas de Código (LoC)
+
+| Arquivo               | Total Linhas | Código    | Comentários |
+|:--------------------- |:------------:|:---------:|:-----------:|
+| **src/math/**         |              |           |             |
+| `mod.rs`              | 10           | 4         | 6           |
+| `fastmath.rs`         | 1228         | 936       | 292         |
+| `fastmath_test.rs`    | 719          | 622       | 97          |
+| **src/math/simd/**    |              |           |             |
+| `mod.rs`              | 93           | 73        | 20          |
+| `dispatch.rs`         | 184          | 151       | 33          |
+| `traits.rs`           | 358          | 184       | 174         |
+| `avx2.rs`             | 2091         | 1903      | 188         |
+| `avx512.rs`           | 2265         | 2111      | 154         |
+| `scalar_ref.rs`       | 583          | 472       | 111         |
+| `ops.rs`              | 254          | 183       | 71          |
+| `aligned.rs`          | 186          | 135       | 51          |
+| `utility.rs`          | 36           | 26        | 10          |
+| `simd_test.rs`        | 178          | 157       | 21          |
+| `avx2_test.rs`        | 49           | 43        | 6           |
+| `avx512_test.rs`      | 26           | 22        | 4           |
+| **src/models/**       |              |           |             |
+| `mod.rs`              | 321          | 222       | 99          |
+| `activations.rs`      | 373          | 327       | 46          |
+| `film.rs`             | 68           | 47        | 21          |
+| `gating.rs`           | 70           | 45        | 25          |
+| `lstm.rs`             | 636          | 549       | 87          |
+| `lstm_dyn.rs`         | 217          | 145       | 72          |
+| `lstm_test.rs`        | 264          | 235       | 29          |
+| `wavenet.rs`          | 1305         | 1006      | 299         |
+| `wavenet_common.rs`   | 1251         | 1020      | 231         |
+| `wavenet_dyn.rs`      | 268          | 213       | 55          |
+| `wavenet_params.rs`   | 246          | 165       | 81          |
+| `wavenet_test.rs`     | 617          | 439       | 178         |
+| `wavenet_dyn_test.rs` | 251          | 193       | 58          |
+| **TOTAL**             | **14147**    | **11648** | **2499**    |
+
+### 2. Status dos Testes
+
+Executado via `cargo test --release`:
+
+- **Resultado**: `ok. 150 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+- **Data**: 2026-05-12
+
+### 3. Baseline de Performance (Criterion)
+
+Baseline capturado via `cargo bench --bench inference_bench -- --save-baseline pre-refactor`.
+
+> [!NOTE]
+> Os resultados detalhados do benchmark estão salvos no diretório `target/criterion/`. As métricas principais de latência de processamento por bloco foram capturadas para modelos WaveNet e LSTM em diversas configurações.
+
+#### Amostra de Resultados (WaveNet Standard CH16)
+
+- **64 samples**: ~107.83 µs
+- **32 samples**: ~54.82 µs
+- **128 samples**: ~216.40 µs
+- **256 samples**: ~432.96 µs
+
+#### Amostra de Resultados (LSTM 2x16)
+
+- **64 samples**: ~14.13 µs
+- **32 samples**: ~7.10 µs
+- **128 samples**: ~28.40 µs
+- **256 samples**: ~56.58 µs
+
+*Este baseline servirá como referência para garantir que a refatoração não introduza regressões de performance superior a 2%.*

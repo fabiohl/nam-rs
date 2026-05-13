@@ -32,9 +32,10 @@ pub use traits::SimdMath;
 // Re-export do macro dispatch_simd de common
 pub use crate::math::common::dispatch_simd;
 
-// DSP Re-exports (movidos para dsp/stereo)
+// DSP Re-exports (Tarefa 3.5 — movidos para dsp/)
 /// Ponte de compatibilidade para operações DSP movidas para math::dsp.
 pub mod ops_dsp {
+    pub use crate::math::dsp::gain::*;
     pub use crate::math::dsp::stereo::*;
 }
 pub use ops_dsp::*;
