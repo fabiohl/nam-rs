@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::models::lstm::*;
+    use crate::models::lstm::layer::*;
 
     // Verifica se os buffers internos (gates e state) são alocados com o tamanho
     // correto baseado nos parâmetros de Const Generics.

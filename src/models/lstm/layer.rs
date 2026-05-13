@@ -630,7 +630,3 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
         Self::new()
     }
 }
-
-#[cfg(test)]
-#[path = "lstm_test.rs"]
-mod lstm_test;

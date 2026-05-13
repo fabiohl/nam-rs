@@ -16,31 +16,16 @@ pub mod activations;
 pub mod film;
 pub mod gating;
 pub mod lstm;
-pub mod lstm_dyn;
 pub mod wavenet;
 pub mod wavenet_common;
 pub mod wavenet_dyn;
 pub mod wavenet_params;
 
 // =============================================================================
-// Type Aliases — Perfis LSTM NAM Comuns
+// Type Aliases — Perfis LSTM NAM Comuns (re-exportados de lstm/)
 // =============================================================================
 
-/// LSTM 1 camada × 8 unidades ocultas (Nano/Feather).
-pub type Lstm1x8 = lstm::LstmModel1<8, 9, 32>;
-/// LSTM 1 camada × 12 unidades ocultas (Lite).
-pub type Lstm1x12 = lstm::LstmModel1<12, 13, 48>;
-/// LSTM 1 camada × 16 unidades ocultas (Standard).
-pub type Lstm1x16 = lstm::LstmModel1<16, 17, 64>;
-/// LSTM 1 camada × 24 unidades ocultas (Heavy Standard).
-pub type Lstm1x24 = lstm::LstmModel1<24, 25, 96>;
-
-/// LSTM 2 camadas × 8 unidades ocultas.
-pub type Lstm2x8 = lstm::LstmModel2<8, 9, 16, 32>;
-/// LSTM 2 camadas × 12 unidades ocultas.
-pub type Lstm2x12 = lstm::LstmModel2<12, 13, 24, 48>;
-/// LSTM 2 camadas × 16 unidades ocultas.
-pub type Lstm2x16 = lstm::LstmModel2<16, 17, 32, 64>;
+pub use lstm::{Lstm1x8, Lstm1x12, Lstm1x16, Lstm1x24, Lstm2x8, Lstm2x12, Lstm2x16};
 
 // =============================================================================
 // Trait NamModel — Contrato Público
@@ -92,7 +77,7 @@ pub enum DynamicModel {
     /// LSTM 2 Camadas × 16 unidades ocultas.
     Lstm2x16(Box<Lstm2x16>),
     /// LSTM Dinâmico (usado como fallback).
-    LstmDyn(Box<lstm_dyn::LstmDynModel>),
+    LstmDyn(Box<lstm::LstmDynModel>),
 }
 
 impl NamModel for DynamicModel {
@@ -169,106 +154,6 @@ impl NamModel for wavenet_dyn::WaveNetDynModel {
     /// como a LSTM, apenas um buffer de delay (campo receptivo).
     fn prewarm(&mut self, _num_samples: usize) {
         self.prewarm();
-    }
-}
-
-// =============================================================================
-// NamModel para LSTM — 1 Camada
-// =============================================================================
-
-impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
-    for lstm::LstmModel1<H, H1_IH, H_H4>
-{
-    /// Executa o processamento de áudio da LSTM.
-    /// Note que `self.process` chama o método inerente da struct, que já possui
-    /// a lógica de despacho SIMD (AVX2/512) otimizada.
-    fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        // Safety: A verificação de compatibilidade de hardware é feita no início da aplicação.
-        self.process(input, output);
-    }
-
-    /// O prewarm na LSTM é vital. Como é um modelo recorrente, o estado interno (memória)
-    /// precisa de um tempo processando silêncio para "estabilizar" antes do áudio real.
-    fn prewarm(&mut self, num_samples: usize) {
-        lstm_prewarm_common(self, num_samples);
-    }
-}
-
-// =============================================================================
-// NamModel para LSTM — 2 Camadas
-// =============================================================================
-
-impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> NamModel
-    for lstm::LstmModel2<H, H1_IH, H2_IH, H_H4>
-{
-    /// Processamento idêntico ao modelo de 1 camada, mas operando sobre a cadeia de 2 camadas.
-    fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        self.process(input, output);
-    }
-
-    /// Prewarm para o modelo empilhado. Ambas as camadas são estabilizadas sequencialmente.
-    fn prewarm(&mut self, num_samples: usize) {
-        lstm_prewarm_common(self, num_samples);
-    }
-}
-
-// =============================================================================
-// NamModel para LSTM Dinâmico
-// =============================================================================
-
-impl NamModel for lstm_dyn::LstmDynModel {
-    /// Implementação para modelos onde o tamanho do hidden state é definido em tempo de execução.
-    fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        self.process(input, output);
-    }
-
-    /// O prewarm dinâmico já encapsula internamente a lógica de loop de silêncio.
-    fn prewarm(&mut self, num_samples: usize) {
-        self.prewarm(num_samples);
-    }
-}
-
-// =============================================================================
-// Helpers Internos — Redução de Boilerplate
-// =============================================================================
-
-/// Trait interno para unificar modelos que possuem estado LSTM resetável.
-trait LstmLike: NamModel {
-    fn reset_states(&mut self);
-}
-
-impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmLike
-    for lstm::LstmModel1<H, H1_IH, H_H4>
-{
-    fn reset_states(&mut self) {
-        self.reset_states();
-    }
-}
-
-impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> LstmLike
-    for lstm::LstmModel2<H, H1_IH, H2_IH, H_H4>
-{
-    fn reset_states(&mut self) {
-        self.reset_states();
-    }
-}
-
-/// Implementação genérica de aquecimento (prewarm) para modelos baseados em LSTM.
-/// Injeta silêncio para estabilizar os estados internos antes do uso real.
-fn lstm_prewarm_common(model: &mut impl LstmLike, num_samples: usize) {
-    // 1. Limpa qualquer resíduo de processamentos anteriores.
-    model.reset_states();
-
-    // 2. Processa amostras de valor zero.
-    const CHUNK: usize = 512;
-    let zero_in = [0.0f32; CHUNK];
-    let mut zero_out = [0.0f32; CHUNK];
-    let mut rem = num_samples;
-
-    while rem > 0 {
-        let n = rem.min(CHUNK);
-        model.process(&zero_in[..n], &mut zero_out[..n]);
-        rem -= n;
     }
 }
 

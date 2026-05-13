@@ -5,8 +5,7 @@ use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
 use crate::math::common::f32_to_bf16;
 use crate::models::DynamicModel;
-use crate::models::lstm::{LstmLayer, LstmModel1, LstmModel2};
-use crate::models::lstm_dyn::{LstmDynLayer, LstmDynModel};
+use crate::models::lstm::{LstmDynLayer, LstmDynModel, LstmLayer, LstmModel1, LstmModel2};
 use anyhow::Context;
 use log::info;
 
