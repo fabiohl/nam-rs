@@ -15,7 +15,7 @@ use nam_rs::dsp::vring::*;
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::lstm::*;
 use nam_rs::models::wavenet::*;
-use nam_rs::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
+use nam_rs::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use std::time::Instant;
 
 /// PRNG Determinístico simples (Linear Congruential Generator - LCG).

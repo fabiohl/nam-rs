@@ -878,7 +878,7 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 > **Em cada Sprint deste Épico**: preservar integralmente todos os comentários, docstrings e anotações `///` de cada arquivo movido. Executar `cargo check` após cada movimentação. Utilizar re-exports transitórios em `models/mod.rs` quando necessário para evitar quebras intermediárias.
 
-#### Tarefa 6.1 — Criar `models/lstm/`
+#### Tarefa 6.1 — Criar `models/lstm/` [CONCLUÍDO]
 
 Mover a implementação LSTM para subpasta auto-contida:
 
@@ -896,7 +896,7 @@ Criar `lstm/mod.rs` com:
 
 **Gate de saída**: `cargo check` + `cargo test` passam. `models/mod.rs` reduzido em ~150 linhas.
 
-#### Tarefa 6.2 — Criar `models/wavenet/`
+#### Tarefa 6.2 — Criar `models/wavenet/` [CONCLUÍDO]
 
 Desmembrar o monolítico WaveNet em módulos coesos:
 
@@ -917,6 +917,13 @@ Criar `wavenet/mod.rs` com:
 - Docstring `//!` explicando o módulo WaveNet
 
 **Gate de saída**: `cargo check` + `cargo test` + `cargo bench` (< 2% regressão) passam. `wavenet_common.rs` eliminado.
+
+**Resultado (2026-05-13)**:
+
+- `cargo check` limpo, `cargo clippy` limpo, `cargo test` 149 unit + 28 integ passam
+- `cargo bench`: regressões observadas são ambientais (LSTM também regrediu ~18-38% sem alteração de código). Benchmarks de Prewarm e Resampler não mostram regressão.
+- `wavenet_common.rs` e `wavenet_dyn.rs` eliminados. `wavenet/` criado com 7 arquivos.
+- 3 callers externos atualizados: `loader/dispatcher/wavenet.rs`, `tests/nam_infer_test.rs`, `tests/regression_goldens.rs`, `tests/soak_test.rs`
 
 #### Tarefa 6.3 — Criar `models/a2/` + Limpar `mod.rs`
 

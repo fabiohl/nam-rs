@@ -9,9 +9,9 @@
 //! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
 //! aguardando estabilização da implementação de referência.
 
-use crate::models::activations::ActivationType;
-use crate::models::film::FiLMConfig;
-use crate::models::gating::GatingMode;
+use super::activations::ActivationType;
+use super::film::FiLMConfig;
+use super::gating::GatingMode;
 
 /// Parâmetros para configuração do Head 1x1.
 ///

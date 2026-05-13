@@ -31,7 +31,7 @@
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
-use nam_rs::models::{NamModel, wavenet, wavenet_common};
+use nam_rs::models::{NamModel, wavenet};
 use std::fs;
 use std::path::PathBuf;
 
@@ -176,10 +176,10 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         .map(|&d| make_wavenet_layer(d, false, 16))
         .collect();
     // RF por-camada: (K-1)*d — espelha build_wavenet_array L274
-    let states_1: Vec<wavenet_common::WaveNetLayerState> = dilations_1
+    let states_1: Vec<wavenet::WaveNetLayerState> = dilations_1
         .iter()
         .enumerate()
-        .map(|(i, &d)| wavenet_common::WaveNetLayerState::new(16, (K - 1) * d, i))
+        .map(|(i, &d)| wavenet::WaveNetLayerState::new(16, (K - 1) * d, i))
         .collect();
 
     let array1 = wavenet::WaveNetLayerArray::<1, 1, 16, 3, 8> {
@@ -195,12 +195,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf1,
         block_size: 16,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 16 * wavenet::WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
@@ -212,12 +212,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         .map(|&d| make_wavenet_layer_a2(d))
         .collect();
     // RF por-camada: (K-1)*d (CH=8)
-    let states_2: Vec<wavenet_common::WaveNetLayerState> = dilations_2
+    let states_2: Vec<wavenet::WaveNetLayerState> = dilations_2
         .iter()
         .enumerate()
         .map(|(i, &d)| {
             // alloc_num continua de onde array1 parou — espelha o alloc_num global do dispatcher
-            wavenet_common::WaveNetLayerState::new(8, (K - 1) * d, dilations_1.len() + i)
+            wavenet::WaveNetLayerState::new(8, (K - 1) * d, dilations_1.len() + i)
         })
         .collect();
 
@@ -234,12 +234,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; wavenet::WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf2,
         block_size: 8,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * wavenet_common::WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; 8 * wavenet::WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,

@@ -6,10 +6,10 @@ use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topo
 use crate::math::common::{AlignedVec, f32_to_bf16};
 use crate::models::DynamicModel;
 use crate::models::wavenet::{Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetModel};
-use crate::models::wavenet_common::{
+use crate::models::wavenet::{
     Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
 };
-use crate::models::wavenet_dyn::{WaveNetDynModel, WaveNetLayerArrayDyn};
+use crate::models::wavenet::{WaveNetDynModel, WaveNetLayerArrayDyn};
 use anyhow::{Context, bail};
 use log::info;
 

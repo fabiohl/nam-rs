@@ -9,7 +9,7 @@
 //! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
 //! aguardando estabilização da implementação de referência.
 
-use crate::models::activations::ActivationType;
+use super::activations::ActivationType;
 
 /// Modos de gating para as camadas do WaveNet.
 ///
