@@ -1,6 +1,6 @@
 ---
 name: tarefa
-description: Tarefa Técnica conforme /TODO-sprints.md
+description: Skill Tarefa Técnica conforme /TODO-sprints.md
 ---
 
 # Skill: Automatizador de Tarefa Técnica conforme /TODO-sprints.md (caso não exista, crie-o)

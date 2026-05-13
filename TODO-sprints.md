@@ -724,7 +724,7 @@ cargo clippy   # Sem warnings novos
 
 ---
 
-### Épico 3: Migração de Kernels por Domínio
+### Épico 3: Migração de Kernels por Domínio [CONCLUÍDO]
 
 **Objetivo**: Mover funções standalone para subpastas de domínio, uma categoria por Sprint.
 
@@ -816,7 +816,7 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
 ---
 
-### Épico 4: Limpeza e Unificação de Imports
+### Épico 4: Limpeza e Unificação de Imports [CONCLUÍDO]
 
 **Objetivo**: Eliminar código morto, atualizar consumidores, remover re-exports transitórios.
 
@@ -847,7 +847,7 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 
 ---
 
-### Épico 5: Validação Final e Documentação
+### Épico 5: Validação Final e Documentação [CONCLUÍDO]
 
 **Objetivo**: Garantir paridade total com baseline e atualizar docs.
 

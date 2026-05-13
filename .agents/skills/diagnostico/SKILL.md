@@ -1,6 +1,6 @@
 ---
 name: diagnostico
-description: Diagnóstico a partir de mensagem de erro do NAM-rs. Cole o bloco de suporte e a IA faz a triagem completa.
+description: Skill de diagnóstico a partir de mensagem de erro do NAM-rs. Cole o bloco de suporte e a IA faz a triagem completa.
 ---
 
 # Skill: Diagnóstico de Erro NAM-rs
