@@ -13,23 +13,26 @@ Os seguintes pacotes devem estar instalados no sistema para viabilizar a compila
 sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev \
                  clang libclang-dev qpwgraph libgtk-3-dev \
                  libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-                 libxkbcommon-dev libssl-dev git curl lld linux-tools-generic
+                 libxkbcommon-dev libssl-dev git curl linux-tools-generic
 ```
 
 ### Detalhamento por Função
 
 * **Ferramentas Base e Build**:
+
   * `build-essential` e `cmake`: Compiladores e utilitários de build fundamentais para o ecossistema C/C++ do qual algumas dependências Rust derivam.
   * `pkg-config`: Essencial para que o `cargo` localize os caminhos de headers e bibliotecas compartilhadas (`.so`) no sistema.
   * `clang` e `libclang-dev`: Requisito do *rust-bindgen* para transcrever os headers C do PipeWire para bindings Rust em tempo de compilação.
   * `libssl-dev`, `git` e `curl`: Necessários para ferramentas de suporte, controle de versão e instalação de componentes do ecossistema Rust.
-  * `lld` e `linux-tools-generic`: Ferramentas avançadas para desenvolvedores. O `lld` (Linker) acelera significativamente o tempo de compilação, enquanto o `linux-tools` provê o `perf`, essencial para profiling de baixo nível e otimização do *Hot Path* DSP.
+  * `linux-tools-generic`: Provê o `perf`, essencial para profiling de baixo nível e otimização do *Hot Path* DSP.
 
-* **Backend de Áudio (PipeWire)**:
+* **Backend de Áudio e Testes (PipeWire)**:
+
   * `pipewire` e `libpipewire-0.3-dev`: Headers do core de processamento. Necessários apenas para a feature `standalone`.
   * `qpwgraph`: Utilitário recomendado para roteamento visual do grafo de áudio (opcional, mas altamente sugerido para usuários).
 
 * **Interface Gráfica e Janelamento (Sprint 4 — Planejado)**:
+
   * `libgtk-3-dev`, `libxcb-*`, `libxkbcommon-dev`: Bibliotecas de sistema para suporte a janelas nativas, renderização via X11/Wayland e gerenciamento de teclado. Exigidas pelas crates `egui` e `baseview` para a interface do plugin CLAP.
 
 ## 2. Abstrações de Software (Crates - Cargo.toml)
@@ -57,7 +60,18 @@ Acessadas secundariamente via `cargo bench` e `cargo test`, não impactam no foo
 | **`criterion`** | `^0.8`        | Avaliação da performance métrica estatística rigorosa. A flag `html_reports` encontra-se inativa para atenuar tempo de compilação semântica em esteiras iterativas onde avalia-se *FMA Latency per Vector* (inferiores a micro-segundos).                                           |
 | **`proptest`**  | `^1.11`       | Property-based testing para validação exaustiva dos limites algorítmicos das funções FastMath (`simd_tanh`, `simd_sigmoid`). Gera 10.000+ vetores aleatórios por execução para varrer buracos aritméticos causados pelo Newton-Raphson de recíproca quadrática (`_mm256_rsqrt_ps`). |
 
-## 4. Dependências Planejadas
+## 4. Utilitários Adicionais do Cargo (QA & Dev)
+
+Estes componentes devem ser instalados via `cargo install` para habilitar rotinas avançadas de manutenção e garantia de qualidade:
+
+| Utilitário       | Função no Projeto                                                                                                                                                                   |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`cargo-edit`** | Gerenciamento de dependências. Utilizado no script `utils/mod-update.sh` para o comando `cargo upgrade`, garantindo que as bibliotecas permaneçam seguras e atualizadas.            |
+| **`cargo-fuzz`** | Fuzz testing (libFuzzer). Utilizado para testar a robustez dos parsers JSON e NAMB contra entradas malformadas ou adversárias. Localizado no diretório `/fuzz`.                     |
+| **`clippy`**     | Linter estático para Rust. Utilizado no script `utils/lints.sh` para garantir a adesão às melhores práticas e evitar antipadrões que possam comprometer a performance ou segurança. |
+| **`rustfmt`**    | Formatador de código. Garante consistência visual em todo o repositório, essencial para revisão de código e manutenção por múltiplos colaboradores.                                 |
+
+## 5. Dependências Planejadas
 
 As seguintes dependências serão introduzidas a partir da Sprint 1 para viabilizar o suporte a plugins CLAP e a interface gráfica embarcada:
 

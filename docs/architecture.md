@@ -275,12 +275,12 @@ Este projeto utiliza um registro simplificado de decisões arquiteturais para ma
 - **Decisão:** A GUI será implementada usando `egui` (Immediate Mode GUI) renderizada sobre janelas nativas via `baseview`.
 - **Justificativa:** Garantia de uma interface 100% Rust, sem dependências de C++ (como Qt/JUCE), facilitando o build determinístico e a integração nativa com o spec CLAP via extensões de janela.
 
-### DAW Primária de Desenvolvimento — REAPER
+### DAW Primária de Desenvolvimento — Bitwig Studio
 
-- **Decisão:** REAPER como DAW primária durante o desenvolvimento; Bitwig Studio e Studio One como validação premium ao final da implementação.
-- **Justificativa:** O REAPER oferece ferramentas de debug sem igual para desenvolvimento de plugins: scan rápido sem necessidade de restart, hot-reload de `.so`, análise de buffers variáveis (1–8192 amostras), acesso nativo a métricas de latência e monitoramento de threads RT. Além de ter preço muito acessível.
-- **Bitwig Studio:** Validação premium — implementação CLAP de referência (empresa co-autora do spec).
-- **Studio One:** Validação premium — adoção crescente do CLAP no mercado mainstream.
+- **Decisão:** Bitwig Studio 6.0.6 (Ubuntu Linux 25.10+) como plataforma primária de desenvolvimento e validação técnica.
+- **Justificativa:** O Bitwig Studio oferece a implementação de referência do padrão CLAP (sendo co-autor do spec). Seu sistema de *Sandboxing* (isolamento de processos) e o suporte nativo a modulações sample-accurate são ideais para testar a robustez e o determinismo temporal do motor DSP do NAM-rs.
+- **REAPER:** Validação secundária e suporte à comunidade de baixo custo. Excelente para depuração de buffers irregulares.
+- **Studio One:** Validação de compatibilidade em hosts comerciais de grande escala.
 
 ### Matemática & SIMD — Reorganização Modular
 

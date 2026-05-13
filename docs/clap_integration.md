@@ -72,7 +72,7 @@ O descritor de metadados do plugin seguirá o seguinte padrão:
 
 ## 7. DAWs Alvo de Validação
 
-- **REAPER**: Plataforma primária de desenvolvimento devido ao seu preço acessídel, flexibilidade com buffers variáveis e ferramentas de debug de plugin.
-- **Bitwig Studio**: Referência de implementação do padrão CLAP para validação de conformidade.
-- **Studio One**: Validação de compatibilidade em hosts comerciais de grande escala.
-- **CLAP-info / CLAP-host**: Ferramentas de linha de comando para validação técnica do contrato do plugin.
+- **Bitwig Studio**: Plataforma de referência absoluta para conformidade CLAP (co-autora do padrão). Essencial para validar o comportamento de sandboxing e automação sample-accurate.
+- **REAPER**: Validação de compatibilidade com hosts de baixo custo e testes de buffers irregulares.
+- **Studio One**: Garantia de funcionamento em ambientes de produção de larga escala.
+- **CLAP-info / CLAP-host**: Ferramentas de linha de comando para validação técnica rigorosa do spec.

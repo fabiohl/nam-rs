@@ -70,9 +70,9 @@ O NAM-rs adota uma arquitetura opinativa e focada em quatro pilares:
 
 * Toolchain Rust recente (`rustup`/`cargo`). Eu usei a versão 1.94 durante a maior parte do desenvolvimento.
 
-* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl lld linux-tools-generic`
+* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
 
-* Utilitários do Cargo (necessários para QA): `cargo install cargo-mutants cargo-edit`
+* Utilitários do Cargo (necessários para QA): `cargo install cargo-edit cargo-fuzz`
 
 * Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
 
@@ -113,7 +113,6 @@ Por ser um projeto em intensa evolução, não é aconselhável usar a branch "m
 
 **Obs:** O .cargo/config.toml permite configurar uma compilação ainda mais otimizada para a sua CPU atual ("march=native").
 
-Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire.
 Para iniciar o processamento:
 
 ```bash
@@ -122,6 +121,8 @@ target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-
 # Em máquinas fracas ou setups de desktop, aumente o buffer para aliviar a CPU:
 target/release/nam-rs --model HeavyModel.nam --buffer-size 512
 ```
+
+Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire. Após a inicialização, o nodo aparece na matriz PipeWire. O NAM-rs deve estar disponível como um dispositivo de saída no seu player de áudio.
 
 ### Telemetria e Monitoramento
 
@@ -133,9 +134,6 @@ A cada 10 segundos, o NAM-rs exibe um relatório de performance no terminal para
 * **P99 (Estabilidade)**: O indicador mais crítico. Mostra que 99% dos blocos foram processados abaixo deste tempo. Se o P99 se aproximar do tempo do seu buffer (ex: 5333µs para buffer 256 - o padrão do nam-rs), o risco de estalos aumenta.
 * **Máx**: O pior caso registrado no intervalo, útil para detectar picos causados por interferências do sistema operacional.
 * **Blocos**: O volume total de dados processados que compõem a estatística do intervalo.
-
-Após a inicialização, o nodo aparece na matriz PipeWire. O NAM-rs deve estar disponível como um dispositivo de saída no seu player de áudio.
-Se necessário, use `qpwgraph` ou `pw-link` para fazer os devidos roteamentos.
 
 ## 📚 Documentação
 
@@ -157,31 +155,29 @@ Oferece dois níveis de operação de parsing:
 
 ## 🧪 Testes e Validação
 
-O NAM-rs mantém uma suíte de aproximandamente **138 verificações** automatizadas distribuídas em cinco camadas:
+O NAM-rs mantém uma suíte de aproximandamente **138 verificações** automatizadas. Para facilitar o fluxo de desenvolvimento e QA, utilize os scripts na pasta `utils/`:
 
 ```bash
-# Testes unitários + integração + proptest + fuzz + E2E PipeWire
-cargo test
-
-# Apenas testes unitários inline
-cargo test --lib
-
-# Apenas testes de integração (incluindo zero-alloc, block sizes, golden vectors Feather/Nano, modelos comunitários)
-cargo test --test nam_infer_test
-
-# Fuzz testing dos parsers (9 testes × 5000 cases = ~45.000 inputs)
-cargo test --test proptest_parsers
-
-# Benchmarks de latência (17 funções benchmark, 23 medições criterion)
-cargo bench --bench inference_bench
-
-# Lint rigoroso de código fonte (formatação + clippy + feature matrix)
+# 1. Lint e Qualidade (Formatação + Clippy + Feature Matrix)
 utils/lints.sh
 
-# Bateria de Estabilidade e Performance (Long Run)
+# 2. Bateria Padrão (Unitários + Integração + Benchmarks rápidos)
+utils/tests-cargo.sh
+
+# 3. Auditoria de Longa Duração (Soak Tests + Benchmarks de Estresse)
 utils/tests-long.sh
 
+# 4. Fuzzing dos Parsers (Opcional - Requer cargo-fuzz e Rust Nightly)
+# Ex: rustup toolchain install nightly && cargo +nightly fuzz run ...
+cargo fuzz run fuzz_namb
+cargo fuzz run fuzz_nam_json
 ```
+
+Para execuções manuais ou cirúrgicas, você ainda pode usar o Cargo diretamente:
+
+* **Testes unitários inline**: `cargo test --lib`
+* **Testes de integração específicos**: `cargo test --test nam_infer_test`
+* **Fuzzing via proptest**: `cargo test --test proptest_parsers`
 
 ### Teste de Estabilidade (Soak Test)
 
