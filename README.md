@@ -167,10 +167,6 @@ utils/tests-cargo.sh
 # 3. Auditoria de Longa Duração (Soak Tests + Benchmarks de Estresse)
 utils/tests-long.sh
 
-# 4. Fuzzing dos Parsers (Opcional - Requer cargo-fuzz e Rust Nightly)
-# Ex: rustup toolchain install nightly && cargo +nightly fuzz run ...
-cargo fuzz run fuzz_namb
-cargo fuzz run fuzz_nam_json
 ```
 
 Para execuções manuais ou cirúrgicas, você ainda pode usar o Cargo diretamente:
