@@ -164,11 +164,13 @@
 - [ ] **Tarefa 6.1.2** — Auditoria Estrita via `clap-validator`
   - **Ações Técnicas:** Executar suite `clap-validator` do spec oficial provando 0 avisos estruturais.
 
-### Épico 6.2 — Publicação v2.0.0 Alpha
+### Épico 6.2 — Publicação v2.0.0
 
+- [ ] **Tarefa 6.2.0** — Leitura crítica e revisão do código adicionado na implementação do CLAP.
+  - **Ações Técnicas:** Identificar pelo git os arquivos (ou seções do arquivo) efetivamente mexidos. Assegurar organização, limpeza e comentários lógicos do inívio ao fim.
 - [ ] **Tarefa 6.2.1** — Correção e Publicação de Documentos
   - **Ações Técnicas:** Modificar `docs/architecture.md` detalhando decisões sobre sandboxing no Linux e a estratégia multi-thread. Inserir imagens rodando no Bitwig.
-- [ ] **Tarefa 6.2.2** — Suporte a Idiomas na GUI
+- [ ] **Tarefa 6.2.2** — Suporte a Idiomas na GUI e CLI
   - **Ações Técnicas:** Ajustar labels da GUI (PT-BR, EN-US). O Bitwig no Ubuntu já pode oferecer hints de locale pelo ENV.
 - [ ] **Tarefa 6.2.3** — Release
   - **Ações Técnicas:** Tag no git e pacote pronto: libnam_rs.so compactado.
