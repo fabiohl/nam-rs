@@ -158,6 +158,15 @@ pub fn run_pipewire_host(
     // O Rust garante que a variável `_lock` chame a função `Drop` ao atingir a chave `}` final,
     // liberando o PipeWire de forma infalível — mesmo que ocorram erros precoces via `?`.
     // Isso evita deadlocks antes do posterior `thread_loop.start()`.
+    //
+    // POR QUE AQUI? (Posicionamento do Escopo)
+    // - Não antes: Alocações na Heap (Box::leak), syscalls (madvise) e leitura de arquivos
+    //   (/sys/ para descobrir a CPU ideal) são lentos. Se fizéssemos isso com o lock ativo,
+    //   congelaríamos todo o servidor de áudio do sistema (PipeWire) por tempo desnecessário,
+    //   podendo causar estalos (xruns) em outros apps.
+    // - Não depois: A partir daqui, criaremos as Streams e os Listeners. Assim que uma stream
+    //   é conectada ao Core, o PipeWire já pode tentar enviar eventos. Precisamos do lock
+    //   para garantir que os callbacks e o estado interno estejam 100% prontos antes de soltar a trava.
     {
         let _lock = thread_loop.lock();
 
@@ -691,9 +700,7 @@ pub fn run_pipewire_host(
             "🎼".bright_blue()
         );
 
-        // =========================================================
         // 7. PLAYBACK STREAM: envia áudio processado para o hardware
-        // =========================================================
         // Ponteiro raw para o bridge, compartilhado com o playback callback.
         let bridge_ptr_playback = bridge_ptr;
 
