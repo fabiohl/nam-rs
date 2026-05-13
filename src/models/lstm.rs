@@ -53,7 +53,7 @@ macro_rules! define_lstm_process {
                 // 2. Se o hardware suportar BF16 (Brain Floating Point), convertemos os dados.
                 // Isso mantém a escala do áudio mas usa metade do espaço, acelerando o cálculo.
                 if $is_bf16 {
-                    use $crate::math::simd::SimdMath;
+                    use $crate::math::common::SimdMath;
                     <$simd_math>::f32_to_bf16(&self.state[..I], &mut self.state_bf16[..I]);
                 }
 
@@ -113,7 +113,7 @@ macro_rules! define_lstm_process {
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
 
                     if $is_bf16 {
-                        use $crate::math::simd::SimdMath;
+                        use $crate::math::common::SimdMath;
                         <$simd_math>::store_bf16(
                             self.state_bf16.as_mut_ptr().add(h_offset + i),
                             h_s,
@@ -275,9 +275,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
-        crate::math::simd::Avx2Math,
-        crate::math::simd::gemv_4gate_avx2,
-        crate::math::simd::gemv_4gate_bf16_fallback,
+        crate::math::common::Avx2Math,
+        crate::math::gemm::gemv_4gate_avx2,
+        crate::math::common::gemv_4gate_bf16_fallback,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -292,9 +292,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
-        crate::math::simd::Avx512Math,
-        crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_fallback, // Sem BF16 nativo aqui
+        crate::math::common::Avx512Math,
+        crate::math::gemm::gemv_4gate_avx512,
+        crate::math::common::gemv_4gate_bf16_fallback, // Sem BF16 nativo aqui
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -309,9 +309,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
-        crate::math::simd::Avx2Math,
-        crate::math::simd::gemv_4gate_avx2,
-        crate::math::simd::gemv_4gate_bf16_fallback,
+        crate::math::common::Avx2Math,
+        crate::math::gemm::gemv_4gate_avx2,
+        crate::math::common::gemv_4gate_bf16_fallback,
         8,
         _mm256_loadu_ps,
         _mm256_storeu_ps,
@@ -326,9 +326,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
-        crate::math::simd::Avx512VnniMath,
-        crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_fallback,
+        crate::math::common::Avx512VnniMath,
+        crate::math::gemm::gemv_4gate_avx512,
+        crate::math::common::gemv_4gate_bf16_fallback,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -344,9 +344,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
-        crate::math::simd::Avx512VnniBf16Math,
-        crate::math::simd::gemv_4gate_avx512,
-        crate::math::simd::gemv_4gate_bf16_avx512,
+        crate::math::common::Avx512VnniBf16Math,
+        crate::math::gemm::gemv_4gate_avx512,
+        crate::math::gemm::gemv_4gate_bf16_avx512,
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -444,7 +444,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         process_avx2,
         inline(always),
         process_sample_avx2,
-        crate::math::simd::dot_product_avx2,
+        crate::math::gemm::dot_product_avx2,
         get_hidden_state
     );
 
@@ -452,7 +452,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         process_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         process_sample_avx512,
-        crate::math::simd::dot_product_avx512,
+        crate::math::gemm::dot_product_avx512,
         get_hidden_state
     );
 
@@ -460,7 +460,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         process_avx2vnni,
         target_feature(enable = "avxvnni"),
         process_sample_avx2vnni,
-        crate::math::simd::dot_product_avx2,
+        crate::math::gemm::dot_product_avx2,
         get_hidden_state
     );
 
@@ -468,7 +468,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         process_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
         process_sample_avx512vnni,
-        crate::math::simd::dot_product_avx512,
+        crate::math::gemm::dot_product_avx512,
         get_hidden_state
     );
 
@@ -476,13 +476,13 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         process_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
         process_sample_avx512_vnni_bf16,
-        crate::math::simd::dot_product_bf16_avx512,
+        crate::math::gemm::dot_product_bf16_avx512,
         get_hidden_state_bf16
     );
     /// Processa um bloco de áudio através do modelo (SIMD dispatch).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            crate::math::simd::dispatch_simd!(
+            crate::math::common::dispatch_simd!(
                 self,
                 process_avx512_vnni_bf16,
                 process_avx512vnni,
@@ -549,7 +549,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         process_avx2,
         inline(always),
         process_sample_avx2,
-        crate::math::simd::dot_product_avx2,
+        crate::math::gemm::dot_product_avx2,
         get_hidden_state
     );
 
@@ -557,7 +557,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         process_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         process_sample_avx512,
-        crate::math::simd::dot_product_avx512,
+        crate::math::gemm::dot_product_avx512,
         get_hidden_state
     );
 
@@ -565,7 +565,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         process_avx2vnni,
         target_feature(enable = "avxvnni"),
         process_sample_avx2vnni,
-        crate::math::simd::dot_product_avx2,
+        crate::math::gemm::dot_product_avx2,
         get_hidden_state
     );
 
@@ -573,7 +573,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         process_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
         process_sample_avx512vnni,
-        crate::math::simd::dot_product_avx512,
+        crate::math::gemm::dot_product_avx512,
         get_hidden_state
     );
 
@@ -581,13 +581,13 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         process_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
         process_sample_avx512_vnni_bf16,
-        crate::math::simd::dot_product_bf16_avx512,
+        crate::math::gemm::dot_product_bf16_avx512,
         get_hidden_state_bf16
     );
     /// Processa um bloco de áudio através do modelo (SIMD dispatch).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            crate::math::simd::dispatch_simd!(
+            crate::math::common::dispatch_simd!(
                 self,
                 process_avx512_vnni_bf16,
                 process_avx512vnni,

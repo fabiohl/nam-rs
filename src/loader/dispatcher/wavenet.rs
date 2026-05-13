@@ -3,7 +3,7 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topology};
-use crate::math::simd::{AlignedVec, f32_to_bf16};
+use crate::math::common::{AlignedVec, f32_to_bf16};
 use crate::models::DynamicModel;
 use crate::models::wavenet::{Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetModel};
 use crate::models::wavenet_common::{
@@ -345,8 +345,8 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
 ) -> anyhow::Result<Conv1d<IN, OUT, K>> {
     let total = OUT * IN * K;
     let raw = cursor.read_slice(total)?;
-    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
-        == crate::math::simd::InstructionSet::Avx512VnniBf16;
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     let mut weights = AlignedVec::new(total, 0u16);
 
@@ -370,9 +370,9 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
         do_bias,
         dilation,
         prefetch_fn: if dilation >= 128 {
-            crate::math::simd::prefetch_strategy_2stage
+            crate::math::common::prefetch_strategy_2stage
         } else {
-            crate::math::simd::prefetch_strategy_simple
+            crate::math::common::prefetch_strategy_simple
         },
     })
 }
@@ -387,8 +387,8 @@ fn read_dense_layer<const IN: usize, const OUT: usize>(
     let total = OUT * IN;
     let raw = cursor.read_slice(total)?;
     let mut weights = AlignedVec::new(total, 0u16);
-    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
-        == crate::math::simd::InstructionSet::Avx512VnniBf16;
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     if cursor.is_interleaved4() {
         for i in 0..total {
@@ -423,8 +423,8 @@ fn read_conv1d_weights_dyn(
     let raw = cursor.read_slice(total)?;
 
     // Identifica se o processador suporta o formato ultra-rápido BF16.
-    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
-        == crate::math::simd::InstructionSet::Avx512VnniBf16;
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     // Criamos um espaço na memória alinhado para alta performance.
     let mut weights = AlignedVec::new(total, 0u16);
@@ -457,9 +457,9 @@ fn read_conv1d_weights_dyn(
         // Estratégia de "Antecipação" (Prefetch): para memórias distantes (dilatações longas),
         // pedimos para o processador buscar os dados antes mesmo de precisarmos deles.
         prefetch_fn: if dilation >= 128 {
-            crate::math::simd::prefetch_strategy_2stage
+            crate::math::common::prefetch_strategy_2stage
         } else {
-            crate::math::simd::prefetch_strategy_simple
+            crate::math::common::prefetch_strategy_simple
         },
     })
 }
@@ -474,8 +474,8 @@ fn read_dense_layer_dyn(
     let total = out_size * in_size;
     let raw = cursor.read_slice(total)?;
     let mut weights = AlignedVec::new(total, 0u16);
-    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
-        == crate::math::simd::InstructionSet::Avx512VnniBf16;
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     // Similar à camada de convolução, garantimos que os pesos estejam no layout ideal.
     if cursor.is_interleaved4() {

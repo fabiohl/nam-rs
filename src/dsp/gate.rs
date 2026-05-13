@@ -8,7 +8,7 @@
 //! O objetivo é evitar "chattering" (oscilação rápida de estado) e artefatos
 //! audíveis (clicks/zipper noise) ao alternar entre modos de processamento.
 
-use crate::math::simd::SimdMath;
+use crate::math::common::SimdMath;
 
 /// Parâmetros de configuração para a lógica de Gate e Histerese.
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -19,8 +19,10 @@ pub use aligned::AlignedVec;
 pub use avx2_impl::{Avx2Math, Avx2VnniMath};
 pub use avx512_impl::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
+pub use ops::*;
 pub use scalar_ref::*;
 pub use traits::SimdMath;
+pub use utility::*;
 
 /// Macro para despacho dinâmico SIMD baseado na configuração global.
 #[macro_export]
@@ -45,19 +47,19 @@ macro_rules! dispatch_simd {
             use $crate::math::common::{SIMD_MATH, InstructionSet};
             match SIMD_MATH.instruction_set {
                 InstructionSet::Avx512VnniBf16 => {
-                    $target.$method::<$crate::math::simd::avx512::Avx512VnniBf16Math>($($arg),*)
+                    $target.$method::<$crate::math::common::Avx512VnniBf16Math>($($arg),*)
                 }
                 InstructionSet::Avx512Vnni => {
-                    $target.$method::<$crate::math::simd::avx512::Avx512VnniMath>($($arg),*)
+                    $target.$method::<$crate::math::common::Avx512VnniMath>($($arg),*)
                 }
                 InstructionSet::Avx512 => {
-                    $target.$method::<$crate::math::simd::avx512::Avx512Math>($($arg),*)
+                    $target.$method::<$crate::math::common::Avx512Math>($($arg),*)
                 }
                 InstructionSet::Avx2Vnni => {
-                    $target.$method::<$crate::math::simd::avx2::Avx2VnniMath>($($arg),*)
+                    $target.$method::<$crate::math::common::Avx2VnniMath>($($arg),*)
                 }
                 InstructionSet::Avx2 => {
-                    $target.$method::<$crate::math::simd::avx2::Avx2Math>($($arg),*)
+                    $target.$method::<$crate::math::common::Avx2Math>($($arg),*)
                 }
             }
         }

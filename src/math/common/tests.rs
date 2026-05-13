@@ -3,9 +3,9 @@
 
 use super::ops::set_daz_ftz;
 use super::traits::SimdMath;
+use crate::math::common::{Avx2Math, Avx512Math};
 use crate::math::dsp::stereo::{compute_energy_avx2, compute_max_diff_avx2};
-use crate::math::simd::avx2::{Avx2Math, dot_product_avx2};
-use crate::math::simd::avx512::{Avx512Math, dot_product_avx512};
+use crate::math::gemm::dot::{dot_product_avx2, dot_product_avx512};
 
 #[test]
 fn test_dot_product_avx2_fma() {

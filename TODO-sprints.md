@@ -800,7 +800,7 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 > Re-exports em `avx2.rs`/`avx512.rs`/`scalar_ref.rs` mantêm compatibilidade de paths explícitos.
 > `cargo check` (standalone + clap), `cargo test` (149 passed), e `utils/lints.sh` passam.
 
-#### Tarefa 3.5 — `dsp/`
+#### Tarefa 3.5 — `dsp/` [CONCLUÍDO] [x]
 
 | Destino       | Funções                                                                                                    |
 | ------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -820,11 +820,17 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 
 **Objetivo**: Eliminar código morto, atualizar consumidores, remover re-exports transitórios.
 
-#### Tarefa 4.1 — Atualizar Consumidores
+#### Tarefa 4.1 — Atualizar Consumidores [CONCLUÍDO] [x]
 
 Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de impacto acima). Substituir dispatch manual em `models/activations.rs` por chamadas unificadas.
 
 **Gate de saída**: `cargo check` sem warnings de imports.
+
+> ✅ **CONCLUÍDA** — 16 arquivos consumidores atualizados para usar os paths canônicos (`common::*`, `dsp::*`, `gemm::*`).
+> `models/activations.rs` já usava dispatch unificado — sem alterações necessárias.
+> `common/mod.rs` ampliado com `pub use ops::*` e `pub use utility::*` para paridade com re-exports de `simd/mod.rs`.
+> `dispatch_simd!` macro (Modo 1) atualizada para usar `$crate::math::common::*` em vez de `$crate::math::simd::*`.
+> `cargo check` (standalone + clap), `cargo test` (149 passed), `cargo clippy` e `utils/lints.sh` passam.
 
 #### Tarefa 4.2 — Remoção de Código Morto
 

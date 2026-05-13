@@ -14,7 +14,7 @@
 //! 3. **Partição Polifásica** — decompõe o protótipo em `num_phases` sub-filtros,
 //!    cada um com taps alinhados a 64 bytes para convolução AVX2/AVX-512.
 
-use crate::math::simd::AlignedVec;
+use crate::math::common::AlignedVec;
 use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Número de fases do banco polifásico sobreabundante.

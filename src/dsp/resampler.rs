@@ -31,7 +31,7 @@
 use anyhow::{Result, bail};
 
 use super::sinc_kernel::{NUM_PHASES, PolyphaseBank, TAPS_PER_PHASE, generate_polyphase_bank};
-use crate::math::simd::{AlignedVec, SimdMath, dispatch_simd};
+use crate::math::common::{AlignedVec, SimdMath, dispatch_simd};
 
 /// Tamanho do delay line (double-buffer) para garantir acesso contíguo.
 /// Mantém 2 cópias do histórico para evitar lógica de wrap no hot-path SIMD.

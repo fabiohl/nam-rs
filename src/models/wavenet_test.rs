@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::math::simd::AlignedVec;
+    use crate::math::common::AlignedVec;
     use crate::models::wavenet::*;
     use crate::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 
@@ -40,9 +40,9 @@ mod tests {
                     do_bias: false,
                     dilation,
                     prefetch_fn: if dilation >= 128 {
-                        crate::math::simd::prefetch_strategy_2stage
+                        crate::math::common::prefetch_strategy_2stage
                     } else {
-                        crate::math::simd::prefetch_strategy_simple
+                        crate::math::common::prefetch_strategy_simple
                     },
                 },
                 // O input_mixin injeta o condicionamento (ex: metadados do timbre) no sinal.
@@ -78,9 +78,9 @@ mod tests {
                     do_bias: false,
                     dilation,
                     prefetch_fn: if dilation >= 128 {
-                        crate::math::simd::prefetch_strategy_2stage
+                        crate::math::common::prefetch_strategy_2stage
                     } else {
-                        crate::math::simd::prefetch_strategy_simple
+                        crate::math::common::prefetch_strategy_simple
                     },
                 },
                 input_mixin: DenseLayer {
@@ -315,7 +315,7 @@ mod tests {
             bias: AlignedVec::from_vec(vec![0.0; 4]),
             do_bias: false,
             dilation: 1,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         // Simulamos um buffer de camada (input) com valores sequenciais.
@@ -325,7 +325,7 @@ mod tests {
         // Invocamos manualmente a rotina SIMD otimizada para AVX2.
         // O uso do bloco 'unsafe' é necessário pois acessamos primitivas intrínsecas de hardware.
         unsafe {
-            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 0, 1);
+            conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1);
         }
 
         // Como o kernel é identidade, a saída deve ser uma cópia bit-perfect da entrada.
@@ -351,7 +351,7 @@ mod tests {
             bias: AlignedVec::from_vec(vec![0.5; 4]),
             do_bias: true, // Habilita a adição do vetor de bias.
             dilation: 1,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
@@ -359,7 +359,7 @@ mod tests {
 
         // O motor SIMD executa Fused Multiply-Add (FMA): (input * 1.0) + 0.5.
         unsafe {
-            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 0, 1);
+            conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1);
         }
 
         // Verificamos se cada elemento foi transladado corretamente pelo valor do bias.
@@ -387,7 +387,7 @@ mod tests {
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
             dilation: 2,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         // Criamos um histórico de 6 frames (12 floats).
@@ -412,7 +412,7 @@ mod tests {
         // Tap 1: frame 4 - (2 * 1) = frame 2 -> [3.0, 4.0]
         // Tap 2: frame 4 - (2 * 0) = frame 4 -> [5.0, 6.0]
         unsafe {
-            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 4, 1);
+            conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 4, 1);
         }
 
         // Soma total esperada: 1+2 + 3+4 + 5+6 = 21.0.
@@ -438,7 +438,7 @@ mod tests {
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
             dilation: 1,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         // Buffer preenchido com zeros.
@@ -447,7 +447,7 @@ mod tests {
 
         // Primeira passagem: Sem bias, saída deve ser 0.0 absoluto.
         unsafe {
-            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 2, 1);
+            conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1);
         }
 
         assert_eq!(block, vec![0.0, 0.0]);
@@ -457,7 +457,7 @@ mod tests {
         conv.bias = AlignedVec::from_vec(vec![7.5, 8.5]);
 
         unsafe {
-            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 2, 1);
+            conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1);
         }
 
         assert_eq!(block, vec![7.5, 8.5]);
@@ -488,7 +488,7 @@ mod tests {
             bias: AlignedVec::from_vec(vec![1.0, -1.0]),
             do_bias: true,
             dilation: 1,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         // Layer buffer com 2 frames: F0=(2.0, 3.0), F1=(4.0, 5.0).
@@ -501,7 +501,7 @@ mod tests {
         // out1 = bias[1] + dot(F0, w[out1,k0]) + dot(F1, w[out1,k1])
         //      = -1.0 + (2*-0.5 + 3*-1.0) + (4*-1.5 + 5*-2.0) = -1.0 - 4.0 - 16.0 = -21.0
         unsafe {
-            conv.process_block::<crate::math::simd::Avx2Math>(&layer_buffer, &mut block, 1, 1);
+            conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 1, 1);
         }
 
         assert_eq!(block[0], 21.0);
@@ -530,7 +530,7 @@ mod tests {
 
         // Camadas densas 1x1 são fundamentais para misturar canais sem olhar para o tempo.
         unsafe {
-            dense.process_block::<crate::math::simd::Avx2Math>(&input, &mut output, 1);
+            dense.process_block::<crate::math::common::Avx2Math>(&input, &mut output, 1);
         }
 
         assert_eq!(output, vec![1.5, 2.5, 3.5, 4.5]);
@@ -557,7 +557,7 @@ mod tests {
 
         // O resultado deve ser transladado pelo bias em todos os 4 canais.
         unsafe {
-            dense.process_block::<crate::math::simd::Avx2Math>(&input, &mut output, 1);
+            dense.process_block::<crate::math::common::Avx2Math>(&input, &mut output, 1);
         }
 
         assert_eq!(output, vec![2.0, 3.0, 4.0, 5.0]);
@@ -600,7 +600,7 @@ mod tests {
 
         // Validamos se o laço SIMD trata corretamente o fim da linha da matriz (stride).
         unsafe {
-            dense.process_block::<crate::math::simd::Avx2Math>(&input, &mut output, 1);
+            dense.process_block::<crate::math::common::Avx2Math>(&input, &mut output, 1);
         }
 
         // Trace do cálculo manual:

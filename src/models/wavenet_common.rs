@@ -11,7 +11,7 @@
 //! aguardando estabilização da implementação de referência.
 
 use crate::dsp::vring::VirtualRingBuffer;
-use crate::math::simd::{AlignedVec, SimdMath};
+use crate::math::common::{AlignedVec, SimdMath};
 
 /// Máximo de frames a processar em um pulso do callback.
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
@@ -36,7 +36,7 @@ pub struct Conv1dDyn {
     /// Tamanho físico do kernel.
     pub kernel: usize,
     /// Estratégia de prefetch pré-calculada.
-    pub prefetch_fn: crate::math::simd::PrefetchFn,
+    pub prefetch_fn: crate::math::common::PrefetchFn,
 }
 
 impl Conv1dDyn {

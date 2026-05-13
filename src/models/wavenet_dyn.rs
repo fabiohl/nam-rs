@@ -8,7 +8,7 @@
 //! (durante construtor) permitindo zero-allocation e RT-safety no caminho DSP, trocando
 //! unroll do compilador (estático) por iterações dinâmicas de matriz em SIMD.
 
-use crate::math::simd::AlignedVec;
+use crate::math::common::AlignedVec;
 use crate::models::wavenet_common::{
     DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
     WavenetProcessContext,
@@ -55,7 +55,7 @@ impl WaveNetLayerArrayDyn {
     ///
     /// # Safety
     /// Depende da integridade das matrizes carregadas e dos estados de buffer circular.
-    pub unsafe fn process<M: crate::math::simd::SimdMath>(
+    pub unsafe fn process<M: crate::math::common::SimdMath>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
@@ -67,7 +67,7 @@ impl WaveNetLayerArrayDyn {
     }
 
     /// AQUECIMENTO DE ESTADO (Pre-warm).
-    pub fn prewarm<M: crate::math::simd::SimdMath>(
+    pub fn prewarm<M: crate::math::common::SimdMath>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
@@ -80,7 +80,7 @@ impl WaveNetLayerArrayDyn {
     /// Implementação genérica que unifica o processamento normal e o pre-warm.
     /// [TA5.5] Redução de duplicidade lógica em ~70%.
     #[inline(always)]
-    unsafe fn process_internal_generic<M: crate::math::simd::SimdMath>(
+    unsafe fn process_internal_generic<M: crate::math::common::SimdMath>(
         &mut self,
         layer_inputs: &[f32],
         condition: &[f32],
@@ -206,7 +206,7 @@ impl WaveNetDynModel {
     /// Processa o bloco de áudio na matriz causal.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            crate::math::simd::dispatch_simd!(self, process_internal, input, output);
+            crate::math::common::dispatch_simd!(self, process_internal, input, output);
         }
     }
 
@@ -214,7 +214,7 @@ impl WaveNetDynModel {
     ///
     /// # Safety
     /// Deve ser invocado apenas via macro `dispatch_simd!`.
-    unsafe fn process_internal<M: crate::math::simd::SimdMath>(
+    unsafe fn process_internal<M: crate::math::common::SimdMath>(
         &mut self,
         input: &[f32],
         output: &mut [f32],
@@ -248,13 +248,13 @@ impl WaveNetDynModel {
     /// Realiza o `Prewarm` inicial para estabilizar os buffers.
     pub fn prewarm(&mut self) {
         unsafe {
-            crate::math::simd::dispatch_simd!(self, prewarm_internal);
+            crate::math::common::dispatch_simd!(self, prewarm_internal);
         }
     }
 
     /// # Safety
     /// Deve ser invocado apenas via macro `dispatch_simd!`.
-    unsafe fn prewarm_internal<M: crate::math::simd::SimdMath>(&mut self) {
+    unsafe fn prewarm_internal<M: crate::math::common::SimdMath>(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];
         self.array1.prewarm::<M>(&layer_inputs_1, &condition);

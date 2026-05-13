@@ -3,7 +3,7 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
-use crate::math::simd::f32_to_bf16;
+use crate::math::common::f32_to_bf16;
 use crate::models::DynamicModel;
 use crate::models::lstm::{LstmLayer, LstmModel1, LstmModel2};
 use crate::models::lstm_dyn::{LstmDynLayer, LstmDynModel};
@@ -157,8 +157,8 @@ pub fn build_lstm_dynamic(
     let mut current_input_size = 1; // O primeiro sinal que entra tem tamanho 1 (um único valor de áudio)
 
     // Processamos cada "camada" (layer) do modelo. Pense nelas como estágios de uma linha de montagem.
-    let is_bf16 = crate::math::simd::SimdMathConfig::get().instruction_set
-        == crate::math::simd::InstructionSet::Avx512VnniBf16;
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     for _ in 0..num_layers {
         // Lemos todos os pesos (a "inteligência" treinada) desta camada de uma vez só.

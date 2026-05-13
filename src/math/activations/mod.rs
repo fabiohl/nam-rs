@@ -22,7 +22,7 @@ pub use silu::*;
 pub use softsign::*;
 pub use tanh::*;
 
-use crate::math::simd::{InstructionSet, SIMD_MATH};
+use crate::math::common::{InstructionSet, SIMD_MATH};
 
 /// Aplica a ativação Tanh a um slice de f32 com despacho automático para a melhor implementação SIMD.
 #[inline(always)]

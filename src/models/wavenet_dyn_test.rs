@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::math::simd::{AlignedVec, SimdMathConfig};
+    use crate::math::common::{AlignedVec, SimdMathConfig};
     use crate::models::wavenet_common::{Conv1dDyn, WaveNetLayerState, WavenetProcessContext};
     use crate::models::wavenet_dyn::*;
 
@@ -24,7 +24,7 @@ mod tests {
             in_ch,
             out_ch,
             kernel: 1,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         }
     }
 
@@ -88,7 +88,7 @@ mod tests {
 
         // Executamos o processamento interno (unsafe pois lida com ponteiros/SIMD em produção).
         unsafe {
-            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetProcessContext {
+            layer.process_block_internal::<crate::math::common::Avx2Math>(WavenetProcessContext {
                 condition: &condition,
                 condition_bf16: &[0u16],
                 head_input: &mut head_input,
@@ -159,7 +159,7 @@ mod tests {
         let _math = SimdMathConfig::current();
 
         unsafe {
-            layer.process_block_internal::<crate::math::simd::Avx2Math>(WavenetProcessContext {
+            layer.process_block_internal::<crate::math::common::Avx2Math>(WavenetProcessContext {
                 condition: &condition,
                 condition_bf16: &[0u16],
                 head_input: &mut head_input,
@@ -207,7 +207,7 @@ mod tests {
             in_ch: ch,
             out_ch: 2 * ch,
             kernel: 1,
-            prefetch_fn: crate::math::simd::prefetch_strategy_simple,
+            prefetch_fn: crate::math::common::prefetch_strategy_simple,
         };
 
         let layer = WaveNetLayerDyn {

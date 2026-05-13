@@ -15,7 +15,9 @@ use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 #[cfg(any(feature = "standalone", test))]
 use crate::dsp::resampler::NamResampler;
 #[cfg(any(feature = "standalone", test))]
-use crate::math::simd::{compute_energy_stereo, compute_max_diff_avx2, dispatch_simd};
+use crate::math::common::dispatch_simd;
+#[cfg(any(feature = "standalone", test))]
+use crate::math::dsp::stereo::{compute_energy_stereo, compute_max_diff_avx2};
 #[cfg(any(feature = "standalone", test))]
 use crate::models::{DynamicModel, NamModel};
 
@@ -347,7 +349,7 @@ fn apply_output_stage(
 ) {
     // 1. AJUSTE DE VOLUME FINAL E PROTEÇÃO CONTRA DISTORÇÃO (CLIPPING)
     // Aplica o volume de saída e verifica se o som não "estourou" o limite digital.
-    let has_clipped = crate::math::simd::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
+    let has_clipped = crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
         &mut resamp_out_l[..n_pw],
         &mut resamp_out_r[..n_pw],
         output_gain_mult

@@ -201,10 +201,10 @@ fn test_fused_sigmoid_relu_slice_dispatch_smoke() {
     let mut data: Vec<f32> = (-32..32).map(|i| i as f32 * 0.25).collect();
     let original = data.clone();
     unsafe {
-        match crate::math::simd::SIMD_MATH.instruction_set {
-            crate::math::simd::InstructionSet::Avx512
-            | crate::math::simd::InstructionSet::Avx512Vnni
-            | crate::math::simd::InstructionSet::Avx512VnniBf16 => {
+        match crate::math::common::SIMD_MATH.instruction_set {
+            crate::math::common::InstructionSet::Avx512
+            | crate::math::common::InstructionSet::Avx512Vnni
+            | crate::math::common::InstructionSet::Avx512VnniBf16 => {
                 fused::fused_sigmoid_relu_slice_avx512(&mut data);
             }
             _ => {

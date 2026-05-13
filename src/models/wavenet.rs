@@ -10,7 +10,7 @@
 //! Módulo de Inferência WaveNet (Arquitetura Causal Dilatada).
 
 use super::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext};
-use crate::math::simd::{AlignedVec, PrefetchFn, SimdMath};
+use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 
 /// Convolução Causal Dilatada (WaveNet Conv1D).
@@ -1195,7 +1195,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// a macro `dispatch_simd!` avalia o hardware uma única vez e "teletransporta" a execução
     /// para uma versão clonada (monomorfizada) desta função estritamente otimizada para o seu processador.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        unsafe { crate::math::simd::dispatch_simd!(self, process_internal, input, output) };
+        unsafe { crate::math::common::dispatch_simd!(self, process_internal, input, output) };
     }
 
     #[inline(always)]
@@ -1260,7 +1260,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// o padrão de dispatch do restante do codebase).
     pub fn prewarm(&mut self) {
         unsafe {
-            crate::math::simd::dispatch_simd!(self, prewarm_internal);
+            crate::math::common::dispatch_simd!(self, prewarm_internal);
         }
     }
 
@@ -1270,7 +1270,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// Exige processador suportado (AVX-512).
     #[target_feature(enable = "avx512f,avx512vl")]
     pub unsafe fn prewarm_avx512(&mut self) {
-        unsafe { self.prewarm_internal::<crate::math::simd::Avx512Math>() };
+        unsafe { self.prewarm_internal::<crate::math::common::Avx512Math>() };
     }
 
     /// Prewarm estritamente otimizado para arquitetura AVX2.
@@ -1278,7 +1278,7 @@ impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEA
     /// # Safety
     /// Exige processador x86-64-v3 (AVX2).
     pub unsafe fn prewarm_avx2(&mut self) {
-        unsafe { self.prewarm_internal::<crate::math::simd::Avx2Math>() };
+        unsafe { self.prewarm_internal::<crate::math::common::Avx2Math>() };
     }
 
     #[inline(always)]

@@ -387,7 +387,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
     // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
     // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
     unsafe {
-        crate::math::simd::set_daz_ftz();
+        crate::math::common::set_daz_ftz();
     }
 
     unsafe {

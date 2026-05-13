@@ -37,7 +37,7 @@ impl LstmDynLayer {
     ///
     /// # Safety
     /// Depende nativamente das matrizes preenchidas via alocador estrito no C++ Fallback parser (Loader CLI).
-    pub unsafe fn process_sample<M: crate::math::simd::SimdMath>(&mut self, input: &[f32]) {
+    pub unsafe fn process_sample<M: crate::math::common::SimdMath>(&mut self, input: &[f32]) {
         // ih = Input + Hidden: O tamanho total do vetor que entra no cálculo (X_t + H_t-1)
         let ih = self.input_size + self.hidden_size;
         // h = Hidden: A dimensão do estado interno e da saída desta camada
@@ -143,13 +143,13 @@ impl LstmDynModel {
     /// parametrizada com o tipo de matemática SIMD otimizado (`M: SimdMath`).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
-            crate::math::simd::dispatch_simd!(self, process_internal, input, output);
+            crate::math::common::dispatch_simd!(self, process_internal, input, output);
         }
     }
 
     /// Função restrita para processamento neural onde o compilador substitui genéricos `M`
     /// pelas instruções intrínsecas adequadas (como FMA AVX2) da SIMDMath selecionada.
-    unsafe fn process_internal<M: crate::math::simd::SimdMath>(
+    unsafe fn process_internal<M: crate::math::common::SimdMath>(
         &mut self,
         input: &[f32],
         output: &mut [f32],
@@ -187,13 +187,13 @@ impl LstmDynModel {
     /// que o processamento real.
     pub fn prewarm(&mut self, num_samples: usize) {
         unsafe {
-            crate::math::simd::dispatch_simd!(self, prewarm_internal, num_samples);
+            crate::math::common::dispatch_simd!(self, prewarm_internal, num_samples);
         }
     }
 
     /// # Safety
     /// Call this via `dispatch_simd!` macro only.
-    unsafe fn prewarm_internal<M: crate::math::simd::SimdMath>(&mut self, num_samples: usize) {
+    unsafe fn prewarm_internal<M: crate::math::common::SimdMath>(&mut self, num_samples: usize) {
         self.reset_states();
 
         const CHUNK: usize = 512;
