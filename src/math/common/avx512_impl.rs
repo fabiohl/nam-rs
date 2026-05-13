@@ -8,9 +8,10 @@
 
 //! Implementações AVX-512 da trait `SimdMath`.
 //!
-//! Este módulo contém as structs `Avx512Math`, `Avx512VnniMath` e `Avx512VnniBf16Math`
-//! que implementam a trait `SimdMath` usando instruções AVX-512.
-//! Os métodos delegam para funções-kernel em `math::simd::avx512`.
+//! Contém `Avx512Math`, `Avx512VnniMath` e `Avx512VnniBf16Math`.
+//! `Avx512VnniMath` tem implementações reais (BF16 dot product nativo via `_mm512_dpbf16_ps`).
+//! Os métodos delegam para funções-kernel em `math::gemm`, `math::wavenet`,
+//! `math::lstm`, `math::dsp`, `math::common::ops` e `math::common::utility`.
 
 use crate::math::common::scalar_ref::*;
 use crate::math::common::traits::SimdMath;
@@ -26,7 +27,7 @@ impl SimdMath for Avx512Math {
     // Dot Product: Multiplica dois conjuntos de números e soma tudo num resultado só.
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
-        super::super::simd::avx512::dot_product_avx512(a, b)
+        super::super::gemm::dot::dot_product_avx512(a, b)
     }
 
     #[inline(always)]
@@ -37,7 +38,7 @@ impl SimdMath for Avx512Math {
     // Versões intercaladas para processar 4 cálculos independentes ao mesmo tempo.
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
-        super::super::simd::avx512::dot_product_4x_interleaved_avx512(weights, state)
+        super::super::gemm::dot_4x::dot_product_4x_interleaved_avx512(weights, state)
     }
 
     #[inline(always)]
@@ -52,7 +53,7 @@ impl SimdMath for Avx512Math {
         state_f0: &[f32],
         state_f1: &[f32],
     ) -> ([f32; 4], [f32; 4]) {
-        super::super::simd::avx512::dot_product_4x_interleaved_dual_frame_avx512(
+        super::super::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx512(
             weights, state_f0, state_f1,
         )
     }
@@ -87,7 +88,7 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         if out_frame.len() == 16 {
-            super::super::simd::avx512::fused_add_gemv_avx512_small(
+            super::super::gemm::gemv::fused_add_gemv_avx512_small(
                 in_frame, weights, bias, out_frame, do_bias,
             )
         } else {
@@ -105,7 +106,7 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx512::fused_add_gemm_batch_avx512(
+            super::super::gemm::gemm_batch::fused_add_gemm_batch_avx512(
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
         }
@@ -122,7 +123,7 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx512::fused_gemm_residual_batch_avx512(
+            super::super::gemm::gemm_batch::fused_gemm_residual_batch_avx512(
                 in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
             )
         }
@@ -137,7 +138,7 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         if out_frame.len() == 16 {
-            super::super::simd::avx512::gemv_overwrite_avx512_small(
+            super::super::gemm::gemv::gemv_overwrite_avx512_small(
                 in_frame, weights, bias, out_frame, do_bias,
             )
         } else {
@@ -169,7 +170,7 @@ impl SimdMath for Avx512Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
-            super::super::simd::avx512::gemv_4gate_avx512(
+            super::super::gemm::gemv_4gate::gemv_4gate_avx512(
                 in_frame,
                 &weights[0..stride],
                 &weights[stride..2 * stride],
@@ -194,7 +195,7 @@ impl SimdMath for Avx512Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
-            super::super::simd::avx512::gemv_4gate_bf16_avx512(
+            super::super::gemm::gemv_4gate::gemv_4gate_bf16_avx512(
                 in_frame,
                 &weights[0..stride],
                 &weights[stride..2 * stride],
@@ -233,7 +234,7 @@ impl SimdMath for Avx512Math {
 
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
-        unsafe { super::super::simd::avx512::f32_to_bf16_avx512(src, dest) }
+        unsafe { super::ops::f32_to_bf16_avx512(src, dest) }
     }
 
     #[inline(always)]
@@ -260,7 +261,7 @@ impl SimdMath for Avx512Math {
     // Soma horizontal: Soma todos os números dentro de um único registrador.
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        unsafe { super::super::simd::avx512::horizontal_sum_avx512(ptr, N) }
+        unsafe { super::utility::horizontal_sum_avx512(ptr, N) }
     }
 
     #[inline(always)]
@@ -288,7 +289,7 @@ impl SimdMath for Avx512Math {
     // Funções de áudio Stereo (Esquerda e Direita).
     #[inline(always)]
     unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
-        unsafe { super::super::simd::avx512::compute_energy_stereo_avx512(l, r) }
+        unsafe { super::super::dsp::stereo::compute_energy_stereo_avx512(l, r) }
     }
 
     // Convolve Stereo: Aplica filtros de áudio (como um equalizador ou reverb).
@@ -299,9 +300,7 @@ impl SimdMath for Avx512Math {
         input_r: *const f32,
         taps: usize,
     ) -> (f32, f32) {
-        unsafe {
-            super::super::simd::avx512::convolve_stereo_avx512(coeffs, input_l, input_r, taps)
-        }
+        unsafe { super::super::dsp::stereo::convolve_stereo_avx512(coeffs, input_l, input_r, taps) }
     }
 
     // Controle de ganho (volume) e detecção de "clipping" (quando o som distorce por ficar alto demais).
@@ -312,20 +311,18 @@ impl SimdMath for Avx512Math {
         gain: f32,
     ) -> bool {
         unsafe {
-            super::super::simd::avx512::apply_gain_and_detect_clipping_stereo_avx512(
-                left, right, gain,
-            )
+            super::super::dsp::gain::apply_gain_and_detect_clipping_stereo_avx512(left, right, gain)
         }
     }
 
     #[inline(always)]
     unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
-        unsafe { super::super::simd::avx512::apply_gain_stereo_avx512(left, right, gain) }
+        unsafe { super::super::dsp::gain::apply_gain_stereo_avx512(left, right, gain) }
     }
 
     #[inline(always)]
     unsafe fn apply_gain(data: &mut [f32], gain: f32) {
-        unsafe { super::super::simd::avx512::apply_gain_avx512(data, gain) }
+        unsafe { super::super::dsp::gain::apply_gain_avx512(data, gain) }
     }
 
     // Head Sum: Uma operação final usada no modelo WaveNet para gerar o som.
@@ -346,7 +343,7 @@ impl SimdMath for Avx512Math {
     // Ramp: Aumenta ou diminui o volume gradualmente para evitar estalos (cliques) no áudio.
     #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
-        unsafe { super::super::simd::avx512::apply_ramp_stereo_avx512(left, right, start, step) }
+        unsafe { super::super::dsp::gain::apply_ramp_stereo_avx512(left, right, start, step) }
     }
 
     #[inline(always)]
@@ -359,7 +356,7 @@ impl SimdMath for Avx512Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx512::gemv_overwrite_batch_avx512(
+            super::super::gemm::gemv::gemv_overwrite_batch_avx512(
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
         }
@@ -417,7 +414,7 @@ impl SimdMath for Avx512VnniMath {
 
     #[inline(always)]
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
-        unsafe { super::super::simd::avx512::dot_product_bf16_avx512(a, b) }
+        unsafe { super::super::gemm::dot::dot_product_bf16_avx512(a, b) }
     }
 
     #[inline(always)]
@@ -459,7 +456,7 @@ impl SimdMath for Avx512VnniMath {
         let mut out = [0.0; 4];
         let bias = [0.0; 4]; // Dummy bias
         unsafe {
-            super::super::simd::avx512::gemv_4gate_bf16_avx512(
+            super::super::gemm::gemv_4gate::gemv_4gate_bf16_avx512(
                 in_frame, w0, w1, w2, w3, &bias, &mut out, false,
             );
         }
@@ -609,7 +606,7 @@ impl SimdMath for Avx512VnniMath {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        super::super::simd::avx512::horizontal_sum_avx512(ptr, N)
+        super::utility::horizontal_sum_avx512(ptr, N)
     }
 
     #[inline(always)]
@@ -652,7 +649,7 @@ impl SimdMath for Avx512VnniMath {
 
     #[inline(always)]
     unsafe fn apply_gain(data: &mut [f32], gain: f32) {
-        super::super::simd::avx512::apply_gain_avx512(data, gain)
+        super::super::dsp::gain::apply_gain_avx512(data, gain)
     }
 
     #[inline(always)]
@@ -663,7 +660,7 @@ impl SimdMath for Avx512VnniMath {
         scale: f32,
     ) {
         unsafe {
-            super::super::simd::avx512::batch_wavenet_head_sum_avx512::<HEAD>(
+            super::super::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
                 head1, head2, output, scale,
             )
         }
@@ -731,7 +728,7 @@ impl SimdMath for Avx512VnniBf16Math {
 
     #[inline(always)]
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
-        unsafe { super::super::simd::avx512::dot_product_bf16_avx512(a, b) }
+        unsafe { super::super::gemm::dot::dot_product_bf16_avx512(a, b) }
     }
 
     #[inline(always)]
@@ -750,7 +747,7 @@ impl SimdMath for Avx512VnniBf16Math {
         state_f0: &[f32],
         state_f1: &[f32],
     ) -> ([f32; 4], [f32; 4]) {
-        super::super::simd::avx512::dot_product_4x_interleaved_dual_frame_avx512(
+        super::super::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx512(
             weights, state_f0, state_f1,
         )
     }
@@ -918,7 +915,7 @@ impl SimdMath for Avx512VnniBf16Math {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        super::super::simd::avx512::horizontal_sum_avx512(ptr, N)
+        super::utility::horizontal_sum_avx512(ptr, N)
     }
 
     #[inline(always)]
@@ -961,7 +958,7 @@ impl SimdMath for Avx512VnniBf16Math {
 
     #[inline(always)]
     unsafe fn apply_gain(data: &mut [f32], gain: f32) {
-        super::super::simd::avx512::apply_gain_avx512(data, gain)
+        super::super::dsp::gain::apply_gain_avx512(data, gain)
     }
 
     #[inline(always)]
@@ -976,7 +973,7 @@ impl SimdMath for Avx512VnniBf16Math {
         scale: f32,
     ) {
         unsafe {
-            super::super::simd::avx512::batch_wavenet_head_sum_avx512::<HEAD>(
+            super::super::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
                 head1, head2, output, scale,
             )
         }

@@ -12,5 +12,4 @@ pub mod constants;
 pub mod dsp;
 pub mod gemm;
 pub mod lstm;
-pub mod simd;
 pub mod wavenet;

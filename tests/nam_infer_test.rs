@@ -30,7 +30,7 @@
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
-use nam_rs::math::simd::AlignedVec;
+use nam_rs::math::common::AlignedVec;
 use nam_rs::models::{NamModel, wavenet, wavenet_common};
 use std::fs;
 use std::path::PathBuf;
@@ -105,9 +105,9 @@ fn make_wavenet_layer(
             do_bias: false,
             dilation,
             prefetch_fn: if dilation >= 128 {
-                nam_rs::math::simd::prefetch_strategy_2stage
+                nam_rs::math::common::prefetch_strategy_2stage
             } else {
-                nam_rs::math::simd::prefetch_strategy_simple
+                nam_rs::math::common::prefetch_strategy_simple
             },
         },
         input_mixin: wavenet::DenseLayer {
@@ -132,9 +132,9 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
             do_bias: false,
             dilation,
             prefetch_fn: if dilation >= 128 {
-                nam_rs::math::simd::prefetch_strategy_2stage
+                nam_rs::math::common::prefetch_strategy_2stage
             } else {
-                nam_rs::math::simd::prefetch_strategy_simple
+                nam_rs::math::common::prefetch_strategy_simple
             },
         },
         input_mixin: wavenet::DenseLayer {
@@ -1129,7 +1129,7 @@ fn test_denormal_stability_silence() {
     const MAX_BLOCK_TIME_US: u128 = 500;
 
     unsafe {
-        nam_rs::math::simd::set_daz_ftz();
+        nam_rs::math::common::set_daz_ftz();
     }
 
     // --- WaveNet Standard ---

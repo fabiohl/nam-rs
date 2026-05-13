@@ -10,7 +10,8 @@
 //!
 //! Este módulo contém as structs `Avx2Math` e `Avx2VnniMath` (type alias)
 //! que implementam a trait `SimdMath` usando instruções AVX2/FMA.
-//! Os métodos delegam para funções-kernel em `math::simd::avx2`.
+//! Os métodos delegam para funções-kernel em `math::gemm`, `math::wavenet`,
+//! `math::lstm`, `math::dsp` e `math::common::utility`.
 
 use crate::math::common::scalar_ref::*;
 use crate::math::common::traits::SimdMath;
@@ -29,7 +30,7 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         // Usa a função otimizada para AVX2 que criamos acima.
-        unsafe { super::super::simd::avx2::dot_product_avx2(a, b) }
+        unsafe { super::super::gemm::dot::dot_product_avx2(a, b) }
     }
 
     #[inline(always)]
@@ -40,7 +41,7 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
-        unsafe { super::super::simd::avx2::dot_product_4x_interleaved_avx2(weights, state) }
+        unsafe { super::super::gemm::dot_4x::dot_product_4x_interleaved_avx2(weights, state) }
     }
 
     #[inline(always)]
@@ -55,7 +56,7 @@ impl SimdMath for Avx2Math {
         state_f1: &[f32],
     ) -> ([f32; 4], [f32; 4]) {
         unsafe {
-            super::super::simd::avx2::dot_product_4x_interleaved_dual_frame_avx2(
+            super::super::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx2(
                 weights, state_f0, state_f1,
             )
         }
@@ -90,7 +91,7 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx2::fused_add_gemv_avx2(
+            super::super::gemm::gemv::fused_add_gemv_avx2(
                 in_frame, weights, bias, out_frame, do_bias,
             )
         }
@@ -106,7 +107,7 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx2::fused_add_gemm_batch_avx2(
+            super::super::gemm::gemm_batch::fused_add_gemm_batch_avx2(
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
         }
@@ -123,7 +124,7 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx2::fused_gemm_residual_batch_avx2(
+            super::super::gemm::gemm_batch::fused_gemm_residual_batch_avx2(
                 in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
             )
         }
@@ -138,7 +139,7 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
-            super::super::simd::avx2::gemv_overwrite_avx2(
+            super::super::gemm::gemv::gemv_overwrite_avx2(
                 in_frame, weights, bias, out_frame, do_bias,
             )
         }
@@ -167,7 +168,7 @@ impl SimdMath for Avx2Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
-            super::super::simd::avx2::gemv_4gate_avx2(
+            super::super::gemm::gemv_4gate::gemv_4gate_avx2(
                 in_frame,
                 &weights[0..stride],
                 &weights[stride..2 * stride],
@@ -260,7 +261,7 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
-        unsafe { super::super::simd::avx2::horizontal_sum_avx2(ptr, N) }
+        unsafe { super::utility::horizontal_sum_avx2(ptr, N) }
     }
 
     #[inline(always)]
@@ -287,7 +288,7 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
-        unsafe { super::super::simd::avx2::compute_energy_stereo_avx2(l, r) }
+        unsafe { super::super::dsp::stereo::compute_energy_stereo_avx2(l, r) }
     }
 
     #[inline(always)]
@@ -297,7 +298,7 @@ impl SimdMath for Avx2Math {
         input_r: *const f32,
         taps: usize,
     ) -> (f32, f32) {
-        unsafe { super::super::simd::avx2::convolve_stereo_avx2(coeffs, input_l, input_r, taps) }
+        unsafe { super::super::dsp::stereo::convolve_stereo_avx2(coeffs, input_l, input_r, taps) }
     }
 
     #[inline(always)]
@@ -307,18 +308,18 @@ impl SimdMath for Avx2Math {
         gain: f32,
     ) -> bool {
         unsafe {
-            super::super::simd::avx2::apply_gain_and_detect_clipping_stereo_avx2(left, right, gain)
+            super::super::dsp::gain::apply_gain_and_detect_clipping_stereo_avx2(left, right, gain)
         }
     }
 
     #[inline(always)]
     unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
-        unsafe { super::super::simd::avx2::apply_gain_stereo_avx2(left, right, gain) }
+        unsafe { super::super::dsp::gain::apply_gain_stereo_avx2(left, right, gain) }
     }
 
     #[inline(always)]
     unsafe fn apply_gain(data: &mut [f32], gain: f32) {
-        unsafe { super::super::simd::avx2::apply_gain_avx2(data, gain) }
+        unsafe { super::super::dsp::gain::apply_gain_avx2(data, gain) }
     }
 
     #[inline(always)]
@@ -337,7 +338,7 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
-        unsafe { super::super::simd::avx2::apply_ramp_stereo_avx2(left, right, start, step) }
+        unsafe { super::super::dsp::gain::apply_ramp_stereo_avx2(left, right, start, step) }
     }
 
     #[inline(always)]
@@ -355,7 +356,7 @@ impl SimdMath for Avx2Math {
             let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
             let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
             unsafe {
-                super::super::simd::avx2::gemv_overwrite_avx2(
+                super::super::gemm::gemv::gemv_overwrite_avx2(
                     in_slice, weights, bias, out_slice, do_bias,
                 )
             };

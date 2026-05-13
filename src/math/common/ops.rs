@@ -11,6 +11,36 @@ pub fn f32_to_bf16(f: f32) -> u16 {
     (f.to_bits() >> 16) as u16
 }
 
+/// Converte um vetor de números f32 (normais) para bf16 (compactos) via AVX-512.
+/// O formato bf16 ocupa metade do espaço, mas mantém o alcance dos números f32,
+/// sendo ideal para modelos de inteligência artificial rápidos.
+///
+/// # Safety
+/// `src` e `dest` devem ser slices válidos. `dest` deve ter pelo menos `src.len()` elementos.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
+    let n = core::cmp::min(src.len(), dest.len());
+    let mut i = 0;
+    // Processa 16 conversões de uma vez.
+    while i + 16 <= n {
+        unsafe {
+            let v = _mm512_loadu_ps(src.as_ptr().add(i)); // Carrega 16 números f32.
+            let v_i = _mm512_castps_si512(v); // Trata como inteiros para manipular os bits.
+            let v_shifted = _mm512_srli_epi32(v_i, 16); // Descarta a parte menos importante (precisão extra).
+            let packed = _mm512_cvtepi32_epi16(v_shifted); // Compacta para 16 bits cada.
+            _mm256_storeu_si256(dest.as_mut_ptr().add(i) as *mut __m256i, packed); // Salva 16 números bf16.
+        }
+        i += 16;
+    }
+    // Converte o resto manualmente.
+    while i < n {
+        unsafe {
+            *dest.get_unchecked_mut(i) = (*src.get_unchecked(i)).to_bits() as u16;
+        }
+        i += 1;
+    }
+}
+
 /// Prefetch adaptativo baseado na dilatação (Causal Conv1D).
 ///
 /// # Safety

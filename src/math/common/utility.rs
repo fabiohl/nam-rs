@@ -34,3 +34,48 @@ pub unsafe fn hsum_avx2(v: __m256) -> f32 {
 pub unsafe fn hsum_avx512(v: __m512) -> f32 {
     _mm512_reduce_add_ps(v)
 }
+
+/// Soma horizontal de um buffer f32 via AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn horizontal_sum_avx2(ptr: *const f32, len: usize) -> f32 {
+    let mut i = 0;
+    let mut sum_v = _mm256_setzero_ps();
+
+    while i + 8 <= len {
+        let v = _mm256_loadu_ps(ptr.add(i));
+        sum_v = _mm256_add_ps(sum_v, v);
+        i += 8;
+    }
+
+    let mut total = hsum_avx2(sum_v);
+
+    while i < len {
+        total += *ptr.add(i);
+        i += 1;
+    }
+
+    total
+}
+
+/// Soma horizontal de um buffer f32 via AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn horizontal_sum_avx512(ptr: *const f32, len: usize) -> f32 {
+    let mut i = 0;
+    let mut sum_v = _mm512_setzero_ps();
+
+    while i + 16 <= len {
+        let v = _mm512_loadu_ps(ptr.add(i));
+        sum_v = _mm512_add_ps(sum_v, v);
+        i += 16;
+    }
+
+    let mut total = hsum_avx512(sum_v);
+
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let v = _mm512_maskz_loadu_ps(mask, ptr.add(i));
+        total += hsum_avx512(v);
+    }
+
+    total
+}

@@ -832,14 +832,18 @@ Atualizar todos os `use crate::math::` nos arquivos consumidores (ver tabela de 
 > `dispatch_simd!` macro (Modo 1) atualizada para usar `$crate::math::common::*` em vez de `$crate::math::simd::*`.
 > `cargo check` (standalone + clap), `cargo test` (149 passed), `cargo clippy` e `utils/lints.sh` passam.
 
-#### Tarefa 4.2 — Remoção de Código Morto
+#### Tarefa 4.2 — Remoção de Código Morto [CONCLUÍDO] [x]
 
-- Remover `src/math/simd/` (já vazio)
-- Remover `src/math/fastmath.rs` (já desmembrado)
-- Remover re-exports transitórios de `math/mod.rs`
-- Confirmar eliminação do `impl SimdMath for Avx2VnniMath` (~300L)
+- [x] Remover `src/math/simd/` — kernels DSP (`apply_gain_*`, `convolve_stereo_*`, `compute_energy_stereo_*`, `apply_ramp_*`) movidos para `dsp/gain.rs` e `dsp/stereo.rs`; `horizontal_sum_*` movidos para `common/utility.rs`; `f32_to_bf16_avx512` movido para `common/ops.rs`
+- [x] Remover `src/math/fastmath.rs` (já desmembrado no Épico 3)
+- [x] Remover re-exports transitórios de `math/mod.rs` — `pub mod simd;` removido; `math/mod.rs` agora contém apenas 7 `pub mod` canônicos
+- [x] Confirmar eliminação do `impl SimdMath for Avx2VnniMath` (~300L) — type alias `pub type Avx2VnniMath = Avx2Math;` em `common/avx2_impl.rs`
+- [x] Atualizar 44+ referências nos trait impls (`common/avx2_impl.rs`, `common/avx512_impl.rs`) para paths canônicos (`gemm::*`, `dsp::*`, `common::*`, `wavenet::*`)
+- [x] Atualizar `common/dispatch.rs` (10 refs) e `wavenet/head.rs` (4 refs) para `common::utility::horizontal_sum_*`
+- [x] Testes movidos de `simd/avx2_test.rs` e `simd/avx512_test.rs` para `common/tests.rs`
+- [x] Atualizar 16 referências em testes (`nam_infer_test.rs`, `soak_test.rs`, `regression_goldens.rs`, `proptest_math.rs`) e benchmarks (`inference_bench.rs`)
 
-**Gate de saída**: `cargo check` + `cargo clippy` limpos. Zero dead code.
+**Gate de saída**: `cargo check` + `cargo clippy` limpos. Zero dead code. `cargo test` 149+ passed.
 
 ---
 

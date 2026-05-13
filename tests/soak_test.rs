@@ -12,7 +12,7 @@
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::resampler::*;
 use nam_rs::dsp::vring::*;
-use nam_rs::math::simd::AlignedVec;
+use nam_rs::math::common::AlignedVec;
 use nam_rs::models::lstm::*;
 use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
@@ -66,9 +66,9 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 // A estratégia de prefetch muda para dilatações grandes para testar
                 // o cache-miss handling do motor.
                 prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::simd::prefetch_strategy_2stage
+                    nam_rs::math::common::prefetch_strategy_2stage
                 } else {
-                    nam_rs::math::simd::prefetch_strategy_simple
+                    nam_rs::math::common::prefetch_strategy_simple
                 },
             },
             input_mixin: DenseLayer {
@@ -126,7 +126,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 bias: AlignedVec::from_vec(vec![0.001; 8]),
                 do_bias: true,
                 dilation,
-                prefetch_fn: nam_rs::math::simd::prefetch_strategy_simple,
+                prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
             },
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),

@@ -131,7 +131,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 gemv_overwrite: Avx512VnniBf16Math::gemv_overwrite,
                 accumulate_head: Avx512VnniBf16Math::accumulate_head,
                 horizontal_sum: |ptr, len| unsafe {
-                    crate::math::simd::avx512::horizontal_sum_avx512(ptr, len)
+                    crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx512VnniBf16Math::apply_gain_and_detect_clipping_stereo,
@@ -153,7 +153,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 gemv_overwrite: Avx512VnniMath::gemv_overwrite,
                 accumulate_head: Avx512VnniMath::accumulate_head,
                 horizontal_sum: |ptr, len| unsafe {
-                    crate::math::simd::avx512::horizontal_sum_avx512(ptr, len)
+                    crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx512VnniMath::apply_gain_and_detect_clipping_stereo,
@@ -175,7 +175,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 gemv_overwrite: Avx512Math::gemv_overwrite,
                 accumulate_head: Avx512Math::accumulate_head,
                 horizontal_sum: |ptr, len| unsafe {
-                    crate::math::simd::avx512::horizontal_sum_avx512(ptr, len)
+                    crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx512Math::apply_gain_and_detect_clipping_stereo,
@@ -197,7 +197,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 gemv_overwrite: Avx2VnniMath::gemv_overwrite,
                 accumulate_head: Avx2VnniMath::accumulate_head,
                 horizontal_sum: |ptr, len| unsafe {
-                    crate::math::simd::avx2::horizontal_sum_avx2(ptr, len)
+                    crate::math::common::utility::horizontal_sum_avx2(ptr, len)
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx2VnniMath::apply_gain_and_detect_clipping_stereo,
@@ -219,7 +219,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 gemv_overwrite: Avx2Math::gemv_overwrite,
                 accumulate_head: Avx2Math::accumulate_head,
                 horizontal_sum: |ptr, len| unsafe {
-                    crate::math::simd::avx2::horizontal_sum_avx2(ptr, len)
+                    crate::math::common::utility::horizontal_sum_avx2(ptr, len)
                 },
                 apply_gain_and_detect_clipping_stereo:
                     Avx2Math::apply_gain_and_detect_clipping_stereo,

@@ -11,7 +11,7 @@
 
 use nam_rs::math::activations::sigmoid::simd_sigmoid_avx2;
 use nam_rs::math::activations::tanh::simd_tanh_avx2;
-use nam_rs::math::simd::{dot_product_avx2, dot_product_avx512};
+use nam_rs::math::gemm::dot::{dot_product_avx2, dot_product_avx512};
 use proptest::prelude::*;
 
 use core::arch::x86_64::{_mm256_loadu_ps, _mm256_storeu_ps};

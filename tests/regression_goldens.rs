@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva.
 
-use nam_rs::math::simd::AlignedVec;
+use nam_rs::math::common::AlignedVec;
 use nam_rs::models::lstm::{LstmModel1, LstmModel2};
 use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet_common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
@@ -58,9 +58,9 @@ fn build_wavenet_layer_array<
                 do_bias: true,
                 dilation,
                 prefetch_fn: if dilation >= 128 {
-                    nam_rs::math::simd::prefetch_strategy_2stage
+                    nam_rs::math::common::prefetch_strategy_2stage
                 } else {
-                    nam_rs::math::simd::prefetch_strategy_simple
+                    nam_rs::math::common::prefetch_strategy_simple
                 },
             },
             input_mixin: DenseLayer {

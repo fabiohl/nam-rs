@@ -9,7 +9,7 @@
 //! Kernels de soma Head (Batch) do WaveNet — AVX2, AVX-512 e dispatch dinâmico.
 //!
 //! Extraídos de `simd/avx2.rs` e `simd/avx512.rs` durante a Tarefa 3.4.
-//! Depende de `simd::avx2::horizontal_sum_avx2` e `simd::avx512::horizontal_sum_avx512`
+//! Depende de `common::utility::horizontal_sum_avx2` e `common::utility::horizontal_sum_avx512`
 //! para as operações de soma horizontal.
 
 /// Soma em lote (batch) das projeções Head do WaveNet usando AVX2.
@@ -24,7 +24,7 @@ pub unsafe fn batch_wavenet_head_sum_avx2<const HEAD: usize>(
     for i in 0..num_frames {
         let ptr = head1.as_ptr().add(i * HEAD);
         // Soma os canais internos de cada quadro.
-        let sum = crate::math::simd::avx2::horizontal_sum_avx2(ptr, HEAD);
+        let sum = crate::math::common::utility::horizontal_sum_avx2(ptr, HEAD);
         // Adiciona a entrada residual e aplica o volume (scale).
         *output.get_unchecked_mut(i) = (sum + *head2.get_unchecked(i)) * scale;
     }
@@ -46,7 +46,7 @@ pub unsafe fn batch_wavenet_head_sum_dyn_avx2(
         _ => {
             let num_frames = output.len();
             for i in 0..num_frames {
-                let h1 = crate::math::simd::avx2::horizontal_sum_avx2(
+                let h1 = crate::math::common::utility::horizontal_sum_avx2(
                     head1.as_ptr().add(i * head),
                     head,
                 );
@@ -67,7 +67,7 @@ pub unsafe fn batch_wavenet_head_sum_avx512<const HEAD: usize>(
     let num_frames = output.len();
     for i in 0..num_frames {
         let h1 =
-            crate::math::simd::avx512::horizontal_sum_avx512(head1.as_ptr().add(i * HEAD), HEAD);
+            crate::math::common::utility::horizontal_sum_avx512(head1.as_ptr().add(i * HEAD), HEAD);
         *output.get_unchecked_mut(i) = (h1 + *head2.get_unchecked(i)) * scale;
     }
 }
@@ -88,7 +88,7 @@ pub unsafe fn batch_wavenet_head_sum_dyn_avx512(
         _ => {
             let num_frames = output.len();
             for i in 0..num_frames {
-                let h1 = crate::math::simd::avx512::horizontal_sum_avx512(
+                let h1 = crate::math::common::utility::horizontal_sum_avx512(
                     head1.as_ptr().add(i * head),
                     head,
                 );

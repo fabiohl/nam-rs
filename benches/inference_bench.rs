@@ -320,7 +320,7 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
         b.iter(|| unsafe {
             // O uso de black_box evita que o compilador otimize o loop inteiro,
             // garantindo que o cálculo matemático seja realmente executado.
-            nam_rs::math::simd::dot_product_avx2(
+            nam_rs::math::gemm::dot::dot_product_avx2(
                 std::hint::black_box(&vec_a),
                 std::hint::black_box(&vec_b),
             )
@@ -337,7 +337,7 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
         .collect();
     c.bench_function("DotProduct_AVX2_64elem", |b| {
         b.iter(|| unsafe {
-            nam_rs::math::simd::dot_product_avx2(
+            nam_rs::math::gemm::dot::dot_product_avx2(
                 std::hint::black_box(&vec_a),
                 std::hint::black_box(&vec_b),
             )
