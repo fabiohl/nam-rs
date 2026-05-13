@@ -786,7 +786,7 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 > Re-exports em `avx2.rs`/`avx512.rs` mantêm compatibilidade de paths explícitos.
 > `cargo check` (standalone + clap), `cargo test` (149 passed), e `utils/lints.sh` passam.
 
-#### Tarefa 3.4 — `wavenet/`
+#### Tarefa 3.4 — `wavenet/` [CONCLUÍDO] [x]
 
 | Destino         | Funções                                                                                       |
 | --------------- | --------------------------------------------------------------------------------------------- |
@@ -794,6 +794,11 @@ Extrair kernels de álgebra linear de `avx2.rs`/`avx512.rs`:
 | `accumulate.rs` | `accumulate_head_*`, `tanh_and_accumulate_block_*`, `gated_activation_and_accumulate_block_*` |
 
 **Gate de saída**: `cargo test` passa.
+
+> ✅ **CONCLUÍDA** — 7 funções wavenet (4 kernels AVX2 + 2 kernels AVX-512 + 3 fallbacks) extraídas para `math/wavenet/`.
+> `head.rs` inclui as versões `_dyn` (dispatch dinâmico AVX2 e AVX-512) anteriormente inline nos trait impls.
+> Re-exports em `avx2.rs`/`avx512.rs`/`scalar_ref.rs` mantêm compatibilidade de paths explícitos.
+> `cargo check` (standalone + clap), `cargo test` (149 passed), e `utils/lints.sh` passam.
 
 #### Tarefa 3.5 — `dsp/`
 

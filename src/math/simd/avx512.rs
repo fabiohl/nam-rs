@@ -11,9 +11,10 @@
 
 //! Backends SIMD AVX-512.
 //!
-//! Kernels não-GEMM: wavenet (gated activation), LSTM gates, convolução estéreo,
-//! ganho, detecção de clipping, rampa, energia estéreo, head sum, f32→bf16.
+//! Kernels não-GEMM: convolução estéreo, ganho, detecção de clipping, rampa, energia estéreo, f32→bf16.
 //! Kernels de álgebra linear (dot, gemv, gemm, gemv_4gate) foram movidos para `math::gemm/`.
+//! Kernels wavenet (gated activation, head sum) foram movidos para `math::wavenet/`.
+//! Kernels LSTM foram movidos para `math::lstm/`.
 
 use core::arch::x86_64::*; // Acesso direto às instruções de hardware do processador (intrinsics).
 
@@ -33,6 +34,12 @@ pub use crate::math::gemm::gemv_4gate::{gemv_4gate_avx512, gemv_4gate_bf16_avx51
 
 // Re-exports de kernels LSTM (Tarefa 3.3 — mantém compatibilidade de paths explícitos)
 pub use crate::math::lstm::fused_lstm_gates_dyn_avx512;
+
+// Re-exports de kernels Wavenet (Tarefa 3.4 — mantém compatibilidade de paths explícitos)
+pub use crate::math::wavenet::accumulate::gated_activation_and_accumulate_block_avx512;
+pub use crate::math::wavenet::head::{
+    batch_wavenet_head_sum_avx512, batch_wavenet_head_sum_dyn_avx512,
+};
 
 /// Converte um vetor de números f32 (normais) para bf16 (compactos) via AVX-512.
 /// O formato bf16 ocupa metade do espaço, mas mantém o alcance dos números f32,
@@ -59,50 +66,6 @@ pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
 
 // Re-export das structs de implementação (movidas para common/)
 pub use crate::math::common::avx512_impl::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
-
-/// Aplica a ativação das "portas" (tanh * sigmoid) em blocos de áudio.
-/// Imagine que cada som passa por dois filtros: um que molda o timbre (tanh)
-/// e outro que controla a intensidade (sigmoid). O resultado é somado ao "head_input".
-#[target_feature(enable = "avx512f,avx512vl")]
-pub unsafe fn gated_activation_and_accumulate_block_avx512(
-    head_input: &mut [f32],
-    block: &mut [f32],
-    ch: usize,
-) {
-    let num_frames = head_input.len() / ch;
-    for f in 0..num_frames {
-        let block_offset = f * 2 * ch;
-        let head_offset = f * ch;
-        let mut c = 0;
-        // Processa 16 canais de uma vez.
-        while c + 16 <= ch {
-            let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
-            let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
-
-            // Aplica as funções matemáticas complexas de forma ultra rápida.
-            let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx512(z1, z2);
-            let activated = _mm512_mul_ps(tanh_z1, sig_z2);
-
-            _mm512_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
-
-            let vh = _mm512_loadu_ps(head_input.as_ptr().add(head_offset + c));
-            _mm512_storeu_ps(
-                head_input.as_mut_ptr().add(head_offset + c),
-                _mm512_add_ps(vh, activated),
-            );
-            c += 16;
-        }
-        // Sobrou algum canal? Faz um por um.
-        while c < ch {
-            let z1 = block[block_offset + c];
-            let z2 = block[block_offset + ch + c];
-            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
-            block[block_offset + c] = activated;
-            head_input[head_offset + c] += activated;
-            c += 1;
-        }
-    }
-}
 
 /// Convolução Stereo: Aplica um filtro (coeficientes) em dois canais de áudio ao mesmo tempo.
 /// É como passar o som por um equalizador ou simular uma sala (reverb).
@@ -344,21 +307,6 @@ pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
         _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_mul_ps(v, vg));
-    }
-}
-
-/// Kernel especializado para soma Head do WaveNet usando AVX-512.
-#[target_feature(enable = "avx512f")]
-pub unsafe fn batch_wavenet_head_sum_avx512<const HEAD: usize>(
-    head1: &[f32],
-    head2: &[f32],
-    output: &mut [f32],
-    scale: f32,
-) {
-    let num_frames = output.len();
-    for i in 0..num_frames {
-        let h1 = horizontal_sum_avx512(head1.as_ptr().add(i * HEAD), HEAD);
-        *output.get_unchecked_mut(i) = (h1 + *head2.get_unchecked(i)) * scale;
     }
 }
 

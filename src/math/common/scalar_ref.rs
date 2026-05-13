@@ -22,6 +22,12 @@
 //! As implementações aqui são traduções escalares fiéis desse código de referência,
 //! usadas exclusivamente para validação interna.
 
+// Re-exports de fallbacks Wavenet (Tarefa 3.4 — mantém compatibilidade de paths)
+pub use crate::math::wavenet::accumulate::{
+    accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
+    tanh_and_accumulate_block_fallback,
+};
+
 /// Faz o "Produto Escalar" entre dois conjuntos de números.
 /// Imagine multiplicar cada item de uma lista pelo item correspondente de outra lista
 /// e, no final, somar tudo o que deu.
@@ -373,61 +379,6 @@ pub unsafe fn gemv_overwrite_bf16_fallback(
         }
         unsafe {
             *out_frame.get_unchecked_mut(out_c) = sum;
-        }
-    }
-}
-
-/// Acumulação da "Cabeça" (Head) da rede.
-/// Nas arquiteturas tipo WaveNet, as várias camadas (blocos) da rede contribuem
-/// para um resultado comum chamado "head". Esta função apenas soma essas contribuições.
-pub unsafe fn accumulate_head_fallback(dest: &mut [f32], src: &[f32]) {
-    let len = core::cmp::min(dest.len(), src.len());
-    for i in 0..len {
-        unsafe {
-            // Soma o conteúdo de 'src' (origem) no 'dest' (destino).
-            *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
-        }
-    }
-}
-
-/// Aplica a ativação 'Tanh' e já acumula na saída principal.
-/// Tanh (Tangente Hiperbólica) é uma função que "esmaga" qualquer número para
-/// ficar entre -1.0 e 1.0. É muito comum em modelagem de amplificadores de guitarra.
-pub unsafe fn tanh_and_accumulate_block_fallback(head_input: &mut [f32], block: &mut [f32]) {
-    let len = head_input.len();
-    for i in 0..len {
-        let v = block[i];
-        let activated = v.tanh(); // Aplica o "esmagamento".
-        block[i] = activated; // Guarda o valor esmagado no bloco.
-        head_input[i] += activated; // Soma o mesmo valor no acumulador da "cabeça".
-    }
-}
-
-/// Ativação Gated (Com "Portão") + Acumulação.
-/// Esta técnica usa dois sinais (z1 e z2):
-/// 1. z1 passa por um Tanh (contém a "informação").
-/// 2. z2 passa por um Sigmoid (serve como um "volume" ou "portão" para o z1).
-///
-/// No final, multiplicamos os dois. É como se z2 decidisse quanto de z1 vai passar.
-pub unsafe fn gated_activation_and_accumulate_block_fallback(
-    head_input: &mut [f32],
-    block: &mut [f32],
-    ch: usize, // Número de canais.
-) {
-    let num_frames = head_input.len() / ch;
-    for f in 0..num_frames {
-        let block_offset = f * 2 * ch;
-        let head_offset = f * ch;
-        for c in 0..ch {
-            // O bloco contém z1 e z2 um do lado do outro.
-            let z1 = block[block_offset + c];
-            let z2 = block[block_offset + ch + c];
-
-            // Ativação complexa: tanh(z1) * sigmoid(z2).
-            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
-
-            block[block_offset + c] = activated;
-            head_input[head_offset + c] += activated;
         }
     }
 }

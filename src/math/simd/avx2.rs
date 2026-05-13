@@ -8,9 +8,10 @@
 
 //! Backend de processamento ultra-rápido usando AVX2.
 //!
-//! Kernels não-GEMM: wavenet (head/accumulate/gated), LSTM gates, convolução estéreo,
-//! ganho e detecção de clipping.
+//! Kernels não-GEMM: convolução estéreo, ganho e detecção de clipping.
 //! Kernels de álgebra linear (dot, gemv, gemm) foram movidos para `math::gemm/`.
+//! Kernels wavenet (head/accumulate/gated) foram movidos para `math::wavenet/`.
+//! Kernels LSTM foram movidos para `math::lstm/`.
 
 use core::arch::x86_64::*;
 
@@ -29,25 +30,17 @@ pub use crate::math::gemm::gemv_4gate::gemv_4gate_avx2;
 // Re-exports de kernels LSTM (Tarefa 3.3 — mantém compatibilidade de paths explícitos)
 pub use crate::math::lstm::fused_lstm_gates_dyn_avx2;
 
+// Re-exports de kernels Wavenet (Tarefa 3.4 — mantém compatibilidade de paths explícitos)
+pub use crate::math::wavenet::accumulate::{
+    accumulate_head_avx2, gated_activation_and_accumulate_block_avx2,
+    tanh_and_accumulate_block_avx2,
+};
+pub use crate::math::wavenet::head::{
+    batch_wavenet_head_sum_avx2, batch_wavenet_head_sum_dyn_avx2,
+};
+
 // Re-export das structs de implementação (movidas para common/)
 pub use crate::math::common::avx2_impl::{Avx2Math, Avx2VnniMath};
-
-/// Acumula src em dest usando AVX2.
-#[target_feature(enable = "avx2")]
-pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
-    let len = dest.len();
-    let mut i = 0;
-    while i + 8 <= len {
-        let vs = _mm256_loadu_ps(src.as_ptr().add(i));
-        let vd = _mm256_loadu_ps(dest.as_ptr().add(i));
-        _mm256_storeu_ps(dest.as_mut_ptr().add(i), _mm256_add_ps(vd, vs));
-        i += 8;
-    }
-    while i < len {
-        dest[i] += src[i];
-        i += 1;
-    }
-}
 
 /// Aplica ganho constante em um buffer mono usando AVX2.
 #[target_feature(enable = "avx2")]
@@ -63,67 +56,6 @@ pub unsafe fn apply_gain_avx2(data: &mut [f32], gain: f32) {
     while i < len {
         data[i] *= gain;
         i += 1;
-    }
-}
-
-/// Aplica tanh in-place em block e acumula em head_input usando AVX2.
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
-    let len = block.len();
-    let mut i = 0;
-    while i + 8 <= len {
-        let vb = _mm256_loadu_ps(block.as_ptr().add(i));
-        let vt = crate::math::activations::simd_tanh_avx2(vb);
-        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
-
-        let vh = _mm256_loadu_ps(head_input.as_ptr().add(i));
-        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), _mm256_add_ps(vh, vt));
-        i += 8;
-    }
-    while i < len {
-        let val = block[i].tanh();
-        block[i] = val;
-        head_input[i] += val;
-        i += 1;
-    }
-}
-
-/// Aplica gated activation (tanh * sigmoid) in-place em block e acumula em head_input usando AVX2.
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn gated_activation_and_accumulate_block_avx2(
-    head_input: &mut [f32],
-    block: &mut [f32],
-    ch: usize,
-) {
-    let num_frames = head_input.len() / ch;
-    for f in 0..num_frames {
-        let block_offset = f * 2 * ch;
-        let head_offset = f * ch;
-        let mut c = 0;
-        while c + 8 <= ch {
-            let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
-            let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
-
-            let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx2(z1, z2);
-            let activated = _mm256_mul_ps(tanh_z1, sig_z2);
-
-            _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
-
-            let vh = _mm256_loadu_ps(head_input.as_ptr().add(head_offset + c));
-            _mm256_storeu_ps(
-                head_input.as_mut_ptr().add(head_offset + c),
-                _mm256_add_ps(vh, activated),
-            );
-            c += 8;
-        }
-        while c < ch {
-            let z1 = block[block_offset + c];
-            let z2 = block[block_offset + ch + c];
-            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
-            block[block_offset + c] = activated;
-            head_input[head_offset + c] += activated;
-            c += 1;
-        }
     }
 }
 
@@ -395,24 +327,6 @@ pub unsafe fn horizontal_sum_avx2(ptr: *const f32, len: usize) -> f32 {
     }
 
     total
-}
-
-/// Soma em lote (batch) das projeções Head do WaveNet usando AVX2.
-#[target_feature(enable = "avx2")]
-pub unsafe fn batch_wavenet_head_sum_avx2<const HEAD: usize>(
-    head1: &[f32],
-    head2: &[f32],
-    output: &mut [f32],
-    scale: f32,
-) {
-    let num_frames = output.len();
-    for i in 0..num_frames {
-        let ptr = head1.as_ptr().add(i * HEAD);
-        // Soma os canais internos de cada quadro.
-        let sum = horizontal_sum_avx2(ptr, HEAD);
-        // Adiciona a entrada residual e aplica o volume (scale).
-        *output.get_unchecked_mut(i) = (sum + *head2.get_unchecked(i)) * scale;
-    }
 }
 
 #[cfg(test)]

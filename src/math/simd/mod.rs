@@ -18,6 +18,9 @@ pub use crate::math::common::utility;
 // Re-exports de kernels GEMM (Tarefa 3.2)
 pub use crate::math::gemm::*;
 
+// Re-exports de kernels Wavenet (Tarefa 3.4)
+pub use crate::math::wavenet::*;
+
 pub use aligned::AlignedVec;
 pub use avx2::*;
 pub use avx512::*;

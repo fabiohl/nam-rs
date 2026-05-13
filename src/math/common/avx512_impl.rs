@@ -225,7 +225,7 @@ impl SimdMath for Avx512Math {
         ch: usize,
     ) {
         unsafe {
-            super::super::simd::avx512::gated_activation_and_accumulate_block_avx512(
+            super::super::wavenet::accumulate::gated_activation_and_accumulate_block_avx512(
                 head_input, block, ch,
             )
         }
@@ -337,7 +337,7 @@ impl SimdMath for Avx512Math {
         scale: f32,
     ) {
         unsafe {
-            super::super::simd::avx512::batch_wavenet_head_sum_avx512::<HEAD>(
+            super::super::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
                 head1, head2, output, scale,
             )
         }
@@ -391,19 +391,10 @@ impl SimdMath for Avx512Math {
         head: usize,
         scale: f32,
     ) {
-        match head {
-            1 => Self::batch_wavenet_head_sum::<1>(head1, head2, output, scale),
-            16 => Self::batch_wavenet_head_sum::<16>(head1, head2, output, scale),
-            _ => {
-                let num_frames = output.len();
-                for i in 0..num_frames {
-                    let h1 = super::super::simd::avx512::horizontal_sum_avx512(
-                        head1.as_ptr().add(i * head),
-                        head,
-                    );
-                    output[i] = (h1 + head2[i]) * scale;
-                }
-            }
+        unsafe {
+            super::super::wavenet::head::batch_wavenet_head_sum_dyn_avx512(
+                head1, head2, output, head, scale,
+            )
         }
     }
 }

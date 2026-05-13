@@ -207,12 +207,14 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
-        unsafe { super::super::simd::avx2::accumulate_head_avx2(dest, src) }
+        unsafe { super::super::wavenet::accumulate::accumulate_head_avx2(dest, src) }
     }
 
     #[inline(always)]
     unsafe fn tanh_and_accumulate_block(head_input: &mut [f32], block: &mut [f32]) {
-        unsafe { super::super::simd::avx2::tanh_and_accumulate_block_avx2(head_input, block) }
+        unsafe {
+            super::super::wavenet::accumulate::tanh_and_accumulate_block_avx2(head_input, block)
+        }
     }
 
     #[inline(always)]
@@ -222,7 +224,7 @@ impl SimdMath for Avx2Math {
         ch: usize,
     ) {
         unsafe {
-            super::super::simd::avx2::gated_activation_and_accumulate_block_avx2(
+            super::super::wavenet::accumulate::gated_activation_and_accumulate_block_avx2(
                 head_input, block, ch,
             )
         }
@@ -327,7 +329,7 @@ impl SimdMath for Avx2Math {
         scale: f32,
     ) {
         unsafe {
-            super::super::simd::avx2::batch_wavenet_head_sum_avx2::<HEAD>(
+            super::super::wavenet::head::batch_wavenet_head_sum_avx2::<HEAD>(
                 head1, head2, output, scale,
             )
         }
@@ -386,21 +388,10 @@ impl SimdMath for Avx2Math {
         head: usize,
         scale: f32,
     ) {
-        match head {
-            1 => Self::batch_wavenet_head_sum::<1>(head1, head2, output, scale),
-            16 => Self::batch_wavenet_head_sum::<16>(head1, head2, output, scale),
-            _ => {
-                let num_frames = output.len();
-                for i in 0..num_frames {
-                    let h1 = unsafe {
-                        super::super::simd::avx2::horizontal_sum_avx2(
-                            head1.as_ptr().add(i * head),
-                            head,
-                        )
-                    };
-                    output[i] = (h1 + head2[i]) * scale;
-                }
-            }
+        unsafe {
+            super::super::wavenet::head::batch_wavenet_head_sum_dyn_avx2(
+                head1, head2, output, head, scale,
+            )
         }
     }
 }
