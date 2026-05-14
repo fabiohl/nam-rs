@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-# 🎸 NAM-rs 1.4.4
+# 🎸 NAM-rs 1.4.5
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
@@ -199,6 +199,7 @@ Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** 
 * 1.4.2 (08/05/2026): Micro fixes.
 * 1.4.3 (10/05/2026): Micro fixes.
 * 1.4.4 (11/05/2026): Remoção de modo interativo falho.
+* 1.4.5 (11/05/2026): Otimizações e licenciamento
 
 ## 🛣️ Próximos Passos (Roadmap)
 
