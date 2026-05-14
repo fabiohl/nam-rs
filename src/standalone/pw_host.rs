@@ -282,6 +282,7 @@ pub fn run_pipewire_host(
         // tornam-se o estado persistente da stream RT, evitando alocações futuras.
         capture_listener = capture_stream
             .add_local_listener::<()>()
+            // Callback: Acionado quando o estado geral da stream muda (ex: conectando, pausado, erro).
             .state_changed(move |_stream, _user_data, old, new| match new {
                 pw::stream::StreamState::Error(err) => {
                     log::error!("{} Falha grave na stream de áudio PW: {}", "💥".red(), err);
@@ -294,27 +295,33 @@ pub fn run_pipewire_host(
                 }
                 _ => {}
             })
+            // Callback: Acionado quando os parâmetros de formato do áudio são alterados.
             .param_changed(move |_stream, _user_data, id, param| {
                 let Some(param) = param else { return };
+                // Apenas processa mudanças relacionadas ao tipo de Formato de Áudio.
                 if id != pw::spa::param::ParamType::Format.as_raw() {
                     return;
                 }
 
+                // Tenta extrair as características do formato (tipo de mídia e subtipo).
                 let (media_type, media_subtype) =
                     match pw::spa::param::format_utils::parse_format(param) {
                         Ok(v) => v,
                         Err(_) => return,
                     };
 
+                // Nós só nos importamos com áudio bruto (Raw Audio). Ignora MIDI ou vídeos.
                 if media_type != pw::spa::param::format::MediaType::Audio
                     || media_subtype != pw::spa::param::format::MediaSubtype::Raw
                 {
                     return;
                 }
 
+                // Efetua o parse final da estrutura de formato de áudio fornecida pelo PipeWire.
                 let mut format = pw::spa::param::audio::AudioInfoRaw::default();
                 if format.parse(param).is_ok() {
                     let rate = format.rate();
+                    // Salva a nova taxa de amostragem na flag atômica (comunicação thread-safe para a thread principal).
                     rate_for_param.store(rate, std::sync::atomic::Ordering::Relaxed);
                 }
             })
@@ -327,232 +334,63 @@ pub fn run_pipewire_host(
                 // via flags atômicas e canais SPSC.
                 // Status comunicado via flags atômicas em `rt_status_for_process`.
 
-                // Executa no kernel da thread RT (Data Thread do Pipewire)
+                // Configuração da Thread em si (executada no primeiro ciclo RT).
                 if !thread_configured {
+                    // Configura Scheduler (FIFO), Afinidade de CPU e PM QoS para garantir RT estrito.
                     rt_setup::configure_realtime_thread(target_cpu, rt_status_for_process.clone());
                     thread_configured = true;
                 }
 
+                // Tentativa de esvaziar o 'Parking Lot' de Garbage Collection.
+                // Itens aqui foram estacionados temporariamente porque a fila principal do GC estava cheia no passado.
                 for slot in parking_lot.iter_mut() {
                     let Some(old) = slot.take() else { continue };
+                    // Tenta empurrar para o coletor da thread principal.
                     if let Err(rtrb::PushError::Full(old_back)) = gc_producer.push(old) {
+                        // Se falhou novamente, devolvemos a variável para o estacionamento e paramos a iteração.
                         *slot = Some(old_back);
-                        break; // Canal ainda cheio
+                        break; // Fila cheia, nem adianta tentar os próximos
                     }
                 }
 
                 // 5.1.1. Drenagem de Resamplers (Zero-Alloc Swap)
-                // Puxa novos resamplers construídos na thread principal (se houver).
-                while let Ok(new_rs) = resampler_consumer.pop() {
-                    // Reporta rate ativo via flag atômica (sem println!)
-                    rt_status_for_process
-                        .active_rate
-                        .store(new_rs.pw_rate(), Ordering::Relaxed);
-                    rt_status_for_process
-                        .active_rate_changed
-                        .store(new_rs.pw_rate(), Ordering::Relaxed);
+                drain_resamplers(
+                    &mut resampler_consumer,
+                    &mut resampler,
+                    &mut gc_producer,
+                    &mut parking_lot,
+                    &gc_overflow_for_process,
+                    &rt_status_for_process,
+                );
 
-                    let old_rs = std::mem::replace(&mut resampler, new_rs);
-                    if let Err(rtrb::PushError::Full(old_rs)) =
-                        gc_producer.push(GcItem::Resampler(old_rs))
-                    {
-                        // Se falhar o push, tenta o parking lot
-                        let mut to_park = Some(old_rs);
-                        for slot in parking_lot.iter_mut() {
-                            if slot.is_none() {
-                                *slot = to_park.take();
-                                break;
-                            }
-                        }
-                        if let Some(still_here) = to_park {
-                            // Pathológico: Usa o overwrite buffer compartilhado para evitar leak.
-                            // Convertemos para Box<GcItem> e passamos o ponteiro raw.
-                            let ptr = Box::into_raw(Box::new(still_here));
-                            if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
-                                // Se o overflow também encheu, o swap retornou o ponteiro antigo.
-                                // Como último recurso, vazamos para não dar drop no RT.
-                                unsafe {
-                                    std::mem::forget(Box::from_raw(leaked_ptr));
-                                }
-                            }
-                            rt_status_for_process
-                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-                        }
-                    }
-                }
-
-                // =========================================================
                 // 5.1.2. RECEPÇÃO DE COMANDOS (Canal SPSC)
-                // =========================================================
-                // Verifica o canal lock-free se o usuário alterou modelos ou ganhos via CLI.
-                // Trocas são instantâneas; o modelo antigo é enviado ao GC na thread principal.
-                // Aqui o motor de áudio verifica se o usuário enviou novos comandos pela CLI
-                // (ex: trocar de pedal, mudar o volume). Usamos um canal "SPSC" que permite
-                // receber essas ordens sem nunca parar ou atrasar o som.
-                let mut param_changed = false;
-                while let Ok(payload) = consumer.pop() {
-                    match payload {
-                        // Comando: Trocar o "Cérebro" Neural (Modelo .nam)
-                        ParamPayload::LoadModel {
-                            model_l,
-                            model_r,
-                            input_mult_adj,
-                            output_mult_adj,
-                            sample_rate,
-                        } => {
-                            let new_model_l = model_l;
-                            let new_model_r = model_r;
+                let param_changed = receive_commands(
+                    &mut consumer,
+                    &mut model_input_mult_adj,
+                    &mut model_output_mult_adj,
+                    &mut current_nam_rate,
+                    &mut active_model_l,
+                    &mut active_model_r,
+                    &mut gc_producer,
+                    &mut parking_lot,
+                    &gc_overflow_for_process,
+                    &rt_status_for_process,
+                    &mut user_input_gain_mult,
+                    &mut user_output_gain_mult,
+                    &mut gate_params,
+                    &mut threshold_open_sq,
+                    &mut threshold_close_sq,
+                    lut,
+                );
 
-                            // Se recebemos modelos válidos, ajustamos os volumes internos
-                            // específicos desse modelo (cada captura NAM tem sua própria calibração).
-                            if new_model_l.is_some() || new_model_r.is_some() {
-                                model_input_mult_adj = input_mult_adj;
-                                model_output_mult_adj = output_mult_adj;
-                                current_nam_rate = sample_rate;
-                            } else {
-                                // Caso o modelo seja removido (bypass), resetamos os ganhos.
-                                model_input_mult_adj = 1.0;
-                                model_output_mult_adj = 1.0;
-                                current_nam_rate = 48_000;
-                            }
-
-                            // --- DESCARTE SEGURO DO MODELO ANTIGO (Garbage Collection) ---
-                            // No mundo do áudio de alta performance, não podemos simplesmente
-                            // "apagar" um modelo velho aqui dentro, pois isso causaria um
-                            // "soluço" (drop) no som. Em vez disso, trocamos o modelo antigo
-                            // pelo novo instantaneamente e enviamos o antigo para uma
-                            // "lixeira" (gc_producer) que será esvaziada por outra thread
-                            // fora do caminho crítico do áudio.
-
-                            // Troca o modelo do canal Esquerdo
-                            if let Some(old) = std::mem::replace(&mut active_model_l, new_model_l) {
-                                #[allow(clippy::collapsible_if)]
-                                if let Err(rtrb::PushError::Full(old_item)) =
-                                    gc_producer.push(GcItem::Model(old))
-                                {
-                                    // Se a lixeira estiver cheia, usamos um "estacionamento" temporário
-                                    let mut to_park = Some(old_item);
-                                    for slot in parking_lot.iter_mut() {
-                                        if slot.is_none() {
-                                            *slot = to_park.take();
-                                            break;
-                                        }
-                                    }
-                                    // Caso extremo: se até o estacionamento lotar, usamos um buffer de overflow
-                                    // para garantir que a memória não vaze nem cause travamentos.
-                                    if let Some(still_here) = to_park {
-                                        let ptr = Box::into_raw(Box::new(still_here));
-                                        if let Some(leaked_ptr) =
-                                            gc_overflow_for_process.push_raw(ptr)
-                                        {
-                                            unsafe {
-                                                std::mem::forget(Box::from_raw(leaked_ptr));
-                                            }
-                                        }
-                                        rt_status_for_process
-                                            .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-                                    }
-                                }
-                            }
-
-                            // Troca o modelo do canal Direito (mesma lógica do Esquerdo)
-                            if let Some(old) = std::mem::replace(&mut active_model_r, new_model_r) {
-                                #[allow(clippy::collapsible_if)]
-                                if let Err(rtrb::PushError::Full(old_item)) =
-                                    gc_producer.push(GcItem::Model(old))
-                                {
-                                    let mut to_park = Some(old_item);
-                                    for slot in parking_lot.iter_mut() {
-                                        if slot.is_none() {
-                                            *slot = to_park.take();
-                                            break;
-                                        }
-                                    }
-                                    if let Some(still_here) = to_park {
-                                        let ptr = Box::into_raw(Box::new(still_here));
-                                        if let Some(leaked_ptr) =
-                                            gc_overflow_for_process.push_raw(ptr)
-                                        {
-                                            unsafe {
-                                                std::mem::forget(Box::from_raw(leaked_ptr));
-                                            }
-                                        }
-                                        rt_status_for_process
-                                            .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-                                    }
-                                }
-                            }
-                            param_changed = true;
-                        }
-
-                        // Comando: Ajustar o Ganho de Entrada
-                        ParamPayload::InputGain(mult) => {
-                            user_input_gain_mult = mult;
-                            param_changed = true;
-                        }
-
-                        // Comando: Ajustar o Ganho de Saída
-                        ParamPayload::OutputGain(mult) => {
-                            user_output_gain_mult = mult;
-                            param_changed = true;
-                        }
-
-                        // Comando: Configurar o Noise Gate (Filtro de Ruído)
-                        ParamPayload::GateConfig(params) => {
-                            // O Gate impede que ruídos de fundo (chiado) passem quando o áudio não está tocando.
-                            // Aqui transformamos os decibéis (dB) do usuário em valores matemáticos lineares
-                            // para que o processador possa compará-los rapidamente em cada amostra de som.
-                            let open_lin = lut.db_to_linear(params.threshold_open_db);
-                            let close_lin = lut.db_to_linear(params.threshold_close_db);
-                            threshold_open_sq = open_lin * open_lin;
-                            threshold_close_sq = close_lin * close_lin;
-                            gate_params = params;
-                        }
-                    }
-                }
-
-                // =========================================================
                 // 5.1.3. SINCRONIZAÇÃO DE RATE (Clock Tracking)
-                // =========================================================
-                // Detecta mudanças na taxa de amostragem solicitada pelo modelo ou
-                // imposta pelo servidor PipeWire. Se divergirem, sinaliza via atomic
-                // flag para a thread principal construir um novo resampler.
-                // O áudio digital tem um "ritmo" (ex: 48.000 amostras por segundo).
-                // Se o sistema (PipeWire) mudar esse ritmo, ou se carregarmos um efeito
-                // que trabalha em outro ritmo, precisamos de um "tradutor" (Resampler).
-                let detected_pw_rate = rate_for_process.swap(0, Ordering::Relaxed);
-                let current_pw_rate = resampler.pw_rate();
+                let current_pw_rate = sync_rate(
+                    &rate_for_process,
+                    &resampler,
+                    current_nam_rate,
+                    &rt_status_for_process,
+                );
 
-                let mut pw_rate_to_request = current_pw_rate;
-                let mut requires_rebuild = false;
-
-                // Verifica se o ritmo do sistema mudou
-                if detected_pw_rate != 0 && detected_pw_rate != current_pw_rate {
-                    pw_rate_to_request = detected_pw_rate;
-                    requires_rebuild = true;
-                }
-
-                // Verifica se o ritmo do modelo neural é diferente do atual
-                if current_nam_rate != resampler.nam_rate() {
-                    requires_rebuild = true;
-                }
-
-                // Se os ritmos não batem, pedimos para a thread principal construir
-                // um novo "tradutor" (Resampler). Não fazemos isso aqui para evitar atrasos.
-                if requires_rebuild && pw_rate_to_request != 0 {
-                    rt_status_for_process
-                        .requested_pw_rate
-                        .store(pw_rate_to_request, Ordering::Relaxed);
-                    rt_status_for_process
-                        .requested_nam_rate
-                        .store(current_nam_rate, Ordering::Relaxed);
-                    rt_status_for_process
-                        .set_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
-                }
-
-                // Se o usuário mexeu no volume ou trocou o modelo, recalculamos os
-                // multiplicadores de ganho. Isso deixa a conta matemática pronta para
-                // o processador usar no caminho do áudio, economizando tempo.
                 if param_changed {
                     rt_setup::compute_gain_multipliers(
                         user_input_gain_mult,
@@ -564,140 +402,34 @@ pub fn run_pipewire_host(
                     );
                 }
 
-                // =========================================================
                 // 5.1.4. LÓGICA DSP DE TEMPO REAL
-                // =========================================================
-                // Adquire o próximo buffer vazio/pronto do servidor PipeWire.
-                let mut _buf = match stream.dequeue_buffer() {
-                    Some(b) => b,
-                    None => return,
-                };
-
-                // 5.1.4.1. Extração dos Buffers Brutos (Mmap)
-                // O PipeWire fornece buffers mapeados em kernel. Acessamos fatias seguras
-                // desses buffers via ponteiros brutos (Float 32 Planar).
-                let datas = _buf.datas_mut();
-                if datas.len() >= 2 {
-                    // Dividimos o slice de metadados em Esquerdo e Direito para obter referências mutáveis únicas.
-                    let (left_datas, right_datas) = datas.split_at_mut(1);
-                    if let (Some(d_l), Some(d_r)) =
-                        (left_datas.first_mut(), right_datas.first_mut())
-                    {
-                        // Cada canal possui um 'chunk' que descreve a porção válida do buffer (offset e size).
-                        let chunk_l = d_l.chunk();
-                        let chunk_r = d_r.chunk();
-                        let offset_l = chunk_l.offset() as usize;
-                        let size_l = chunk_l.size() as usize;
-                        let offset_r = chunk_r.offset() as usize;
-                        let size_r = chunk_r.size() as usize;
-
-                        // d.data() retorna o buffer bruto de bytes mapeado pelo kernel.
-                        if let (Some(raw_l), Some(raw_r)) = (d_l.data(), d_r.data()) {
-                            // Calculamos o número de amostras (f32) disponíveis, respeitando os limites
-                            // físicos do buffer e a saturação para evitar overflows em cálculos de índice.
-                            let n_bytes_l = size_l.min(raw_l.len().saturating_sub(offset_l));
-                            let n_bytes_r = size_r.min(raw_r.len().saturating_sub(offset_r));
-                            let n_samples_l = n_bytes_l / std::mem::size_of::<f32>();
-                            let n_samples_r = n_bytes_r / std::mem::size_of::<f32>();
-
-                            // Sincronizamos o tamanho do processamento pelo menor buffer disponível.
-                            let n_samples = n_samples_l.min(n_samples_r);
-
-                            if n_samples > 0 {
-                                // SAFETY: O PipeWire garante que os buffers mmap permanecem válidos durante
-                                // a execução do callback RT. Castamos para f32 pois negociamos F32P (float planar).
-                                // Criamos slices diretamente sobre a memória do PipeWire para evitar cópias extras (zero-copy).
-                                let samples_l = unsafe {
-                                    std::slice::from_raw_parts_mut(
-                                        raw_l.as_mut_ptr().add(offset_l).cast::<f32>(),
-                                        n_samples,
-                                    )
-                                };
-                                let samples_r = unsafe {
-                                    std::slice::from_raw_parts_mut(
-                                        raw_r.as_mut_ptr().add(offset_r).cast::<f32>(),
-                                        n_samples,
-                                    )
-                                };
-
-                                // Decimação de Telemetria: Medimos o tempo apenas a cada 16 frames
-                                // para reduzir o overhead de RDTSC no hot-path.
-                                let should_measure = (frame_count & 0xF) == 0;
-                                frame_count = frame_count.wrapping_add(1);
-
-                                let start_nanos = if should_measure {
-                                    rt_setup::rdtsc_nanos()
-                                } else {
-                                    0
-                                };
-
-                                // =========================================================
-                                // 5.1.4.2. EXECUÇÃO DO PROCESSAMENTO (DSP Pipeline)
-                                // =========================================================
-                                // Executa todo o processamento em cascata: Gate -> Resample_In
-                                // -> Inferência Neural (WaveNet/LSTM) -> Resample_Out -> Saída.
-                                // Aqui é onde a mágica acontece. Chamamos a "fábrica" (pipeline)
-                                // passando o som bruto da guitarra e um "kit de ferramentas"
-                                // (DspPipelineContext) que contém os modelos neurais, volumes
-                                // e filtros que preparamos nos passos anteriores.
-                                capture_dsp_pipeline(
-                                    samples_l,
-                                    samples_r,
-                                    n_samples,
-                                    DspPipelineContext {
-                                        resampler: &mut resampler,           // O tradutor de ritmo
-                                        active_model_l: &mut active_model_l, // O cérebro esquerdo
-                                        active_model_r: &mut active_model_r, // O cérebro direito
-                                        input_gain_mult,                     // Volume de entrada
-                                        output_gain_mult,                    // Volume de saída
-                                        gate_params: &gate_params, // Ajustes do filtro de ruído
-                                        silence_hysteresis: &mut silence_hysteresis,
-                                        mono_hysteresis: &mut mono_hysteresis,
-                                        threshold_open_sq,
-                                        threshold_close_sq,
-                                        process_mono: &mut process_mono,
-                                        rt_status: &rt_status_for_process,
-                                        bridge_ptr, // Ponte para a saída
-                                        resamp_mid_l: &mut resamp_mid_l, // Buffers de trabalho
-                                        resamp_mid_r: &mut resamp_mid_r,
-                                        resamp_out_l: &mut resamp_out_l,
-                                        resamp_out_r: &mut resamp_out_r,
-                                        model_out_l: &mut model_out_l,
-                                        model_out_r: &mut model_out_r,
-                                    },
-                                );
-
-                                if should_measure {
-                                    // Monitoramento de carga de DSP (DSP Load Monitoring via RDTSC)
-                                    // `start_nanos` é capturado no início da pipeline DSP (acima).
-                                    // Reportamos o tempo bruto em nanos para a thread de controle.
-                                    let elapsed_nanos =
-                                        rt_setup::rdtsc_nanos().wrapping_sub(start_nanos);
-                                    rt_status_for_process
-                                        .dsp_cycle_time
-                                        .store(elapsed_nanos, Ordering::Relaxed);
-                                    rt_status_for_process.latency_hist.record(elapsed_nanos);
-
-                                    // Calcula o budget máximo tolerável (85% do tempo real do buffer)
-                                    // Ainda usamos uma aproximação escalar aqui para detecção rápida de overload,
-                                    // mas a telemetria precisa via Anchor ocorre no poll_rt_status.
-                                    let elapsed_secs = elapsed_nanos as f64 / 1_000_000_000.0;
-                                    let budget_secs =
-                                        (n_samples as f64 / current_pw_rate as f64) * 0.85;
-                                    if elapsed_secs > budget_secs {
-                                        rt_status_for_process
-                                            .dsp_overloads
-                                            .fetch_add(1, Ordering::Relaxed);
-                                    }
-                                }
-
-                                rt_status_for_process
-                                    .last_n_samples
-                                    .store(n_samples as u32, Ordering::Relaxed);
-                            }
-                        }
-                    }
-                }
+                process_dsp_buffer(
+                    stream,
+                    DspPipelineContext {
+                        resampler: &mut resampler,
+                        active_model_l: &mut active_model_l,
+                        active_model_r: &mut active_model_r,
+                        input_gain_mult,
+                        output_gain_mult,
+                        gate_params: &gate_params,
+                        silence_hysteresis: &mut silence_hysteresis,
+                        mono_hysteresis: &mut mono_hysteresis,
+                        threshold_open_sq,
+                        threshold_close_sq,
+                        process_mono: &mut process_mono,
+                        rt_status: &rt_status_for_process,
+                        bridge_ptr,
+                        resamp_mid_l: &mut resamp_mid_l,
+                        resamp_mid_r: &mut resamp_mid_r,
+                        resamp_out_l: &mut resamp_out_l,
+                        resamp_out_r: &mut resamp_out_r,
+                        model_out_l: &mut model_out_l,
+                        model_out_r: &mut model_out_r,
+                    },
+                    current_pw_rate,
+                    &mut frame_count,
+                    &rt_status_for_process,
+                );
                 // Buffer devolvido automaticamente ao PipeWire no `Drop`.
             })
             .register()?;
@@ -937,3 +669,326 @@ pub fn run_pipewire_host(
 #[cfg(test)]
 #[path = "pw_host_test.rs"]
 mod pw_host_test;
+
+// =========================================================
+// FUNÇÕES AUXILIARES DE PROCESSAMENTO RT
+// =========================================================
+
+/// 5.1.1. Drenagem de Resamplers (Zero-Alloc Swap)
+/// Substitui os resamplers sem usar alocação de memória no caminho crítico.
+#[inline(always)]
+fn drain_resamplers(
+    resampler_consumer: &mut rtrb::Consumer<NamResampler>,
+    resampler: &mut NamResampler,
+    gc_producer: &mut rtrb::Producer<GcItem>,
+    parking_lot: &mut [Option<GcItem>; 16],
+    gc_overflow_for_process: &crate::common::spsc::GcOverflowBuffer,
+    rt_status_for_process: &RtStatusFlags,
+) {
+    // Puxa da fila o resampler atualizado criado na thread de controle (que pode usar a heap).
+    while let Ok(new_rs) = resampler_consumer.pop() {
+        // Atualiza atômicos de diagnóstico para o painel de status sem interrupção.
+        rt_status_for_process
+            .active_rate
+            .store(new_rs.pw_rate(), std::sync::atomic::Ordering::Relaxed);
+        rt_status_for_process
+            .active_rate_changed
+            .store(new_rs.pw_rate(), std::sync::atomic::Ordering::Relaxed);
+
+        // Swap ultra-rápido: Troca a variável velha pela nova (Move Semantics). O som não soluça!
+        let old_rs = std::mem::replace(resampler, new_rs);
+
+        // Agora tenta devolver o objeto antigo (old_rs) para a thread principal destruí-lo.
+        if let Err(rtrb::PushError::Full(old_rs)) = gc_producer.push(GcItem::Resampler(old_rs)) {
+            // Plano B: Se o canal principal do GC lotou, deixamos temporariamente no Parking Lot.
+            let mut to_park = Some(old_rs);
+            for slot in parking_lot.iter_mut() {
+                if slot.is_none() {
+                    *slot = to_park.take();
+                    break;
+                }
+            }
+            // Plano C: Cenário catastrófico. O Parking Lot também lotou.
+            if let Some(still_here) = to_park {
+                // "Box::into_raw" impede o Drop na thread RT (o que causaria estalos).
+                let ptr = Box::into_raw(Box::new(still_here));
+                // O ponteiro bruto é salvo em um buffer compartilhado com a thread de controle.
+                if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
+                    // Se até o buffer C lotar, esquecemos a variável vazando memória de propósito.
+                    // Vazamento > Travamento RT.
+                    unsafe {
+                        std::mem::forget(Box::from_raw(leaked_ptr));
+                    }
+                }
+                // Avisa ao usuário via status RT que ocorreu um overflow crítico de GC.
+                rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+            }
+        }
+    }
+}
+
+/// 5.1.2. RECEPÇÃO DE COMANDOS (Canal SPSC)
+/// Esta função processa comandos da interface de linha de comando ou sistema de controle (volume, modelo, noise gate).
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+fn receive_commands(
+    consumer: &mut rtrb::Consumer<ParamPayload>,
+    model_input_mult_adj: &mut f32,
+    model_output_mult_adj: &mut f32,
+    current_nam_rate: &mut u32,
+    active_model_l: &mut Option<Box<crate::models::DynamicModel>>,
+    active_model_r: &mut Option<Box<crate::models::DynamicModel>>,
+    gc_producer: &mut rtrb::Producer<GcItem>,
+    parking_lot: &mut [Option<GcItem>; 16],
+    gc_overflow_for_process: &crate::common::spsc::GcOverflowBuffer,
+    rt_status_for_process: &RtStatusFlags,
+    user_input_gain_mult: &mut f32,
+    user_output_gain_mult: &mut f32,
+    gate_params: &mut GateParams,
+    threshold_open_sq: &mut f32,
+    threshold_close_sq: &mut f32,
+    lut: &crate::math::dsp::gain_lut::GainLUT,
+) -> bool {
+    let mut param_changed = false;
+
+    // Processa toda a fila de parâmetros até ela esvaziar. Zero travamentos lock-free.
+    while let Ok(payload) = consumer.pop() {
+        match payload {
+            ParamPayload::LoadModel {
+                model_l,
+                model_r,
+                input_mult_adj,
+                output_mult_adj,
+                sample_rate,
+            } => {
+                let new_model_l = model_l;
+                let new_model_r = model_r;
+
+                // Caso haja um modelo novo, absorve os ganhos específicos e taxa alvo.
+                if new_model_l.is_some() || new_model_r.is_some() {
+                    *model_input_mult_adj = input_mult_adj;
+                    *model_output_mult_adj = output_mult_adj;
+                    *current_nam_rate = sample_rate;
+                } else {
+                    // Bypass total. Restaura fatores para 1.0 e taxa default de 48k.
+                    *model_input_mult_adj = 1.0;
+                    *model_output_mult_adj = 1.0;
+                    *current_nam_rate = 48_000;
+                }
+
+                // Troca no Canal L. Novamente, plano de evacuação para a Lixeira (GC) idêntico ao do Resampler.
+                if let Some(old) = std::mem::replace(active_model_l, new_model_l) {
+                    #[allow(clippy::collapsible_if)]
+                    if let Err(rtrb::PushError::Full(old_item)) =
+                        gc_producer.push(GcItem::Model(old))
+                    {
+                        let mut to_park = Some(old_item);
+                        for slot in parking_lot.iter_mut() {
+                            if slot.is_none() {
+                                *slot = to_park.take();
+                                break;
+                            }
+                        }
+                        if let Some(still_here) = to_park {
+                            let ptr = Box::into_raw(Box::new(still_here));
+                            if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
+                                unsafe {
+                                    std::mem::forget(Box::from_raw(leaked_ptr));
+                                }
+                            }
+                            rt_status_for_process
+                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+                        }
+                    }
+                }
+
+                // Troca no Canal R.
+                if let Some(old) = std::mem::replace(active_model_r, new_model_r) {
+                    #[allow(clippy::collapsible_if)]
+                    if let Err(rtrb::PushError::Full(old_item)) =
+                        gc_producer.push(GcItem::Model(old))
+                    {
+                        let mut to_park = Some(old_item);
+                        for slot in parking_lot.iter_mut() {
+                            if slot.is_none() {
+                                *slot = to_park.take();
+                                break;
+                            }
+                        }
+                        if let Some(still_here) = to_park {
+                            let ptr = Box::into_raw(Box::new(still_here));
+                            if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
+                                unsafe {
+                                    std::mem::forget(Box::from_raw(leaked_ptr));
+                                }
+                            }
+                            rt_status_for_process
+                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+                        }
+                    }
+                }
+                param_changed = true;
+            }
+            ParamPayload::InputGain(mult) => {
+                // Altera o volume da entrada de áudio do usuário.
+                *user_input_gain_mult = mult;
+                param_changed = true;
+            }
+            ParamPayload::OutputGain(mult) => {
+                // Altera o volume final.
+                *user_output_gain_mult = mult;
+                param_changed = true;
+            }
+            ParamPayload::GateConfig(params) => {
+                // Converte dB em escalas Lineares via tabela de busca LUT instantânea.
+                let open_lin = lut.db_to_linear(params.threshold_open_db);
+                let close_lin = lut.db_to_linear(params.threshold_close_db);
+                // Já trabalha valores quadrados em cold-path para que no callback T16 (per-sample)
+                // nós possamos comparar a energia do sinal ao invés de sua raiz (evitando raiz quadrada no DSP).
+                *threshold_open_sq = open_lin * open_lin;
+                *threshold_close_sq = close_lin * close_lin;
+                *gate_params = params;
+            }
+        }
+    }
+    // Retorna flag informando se os coeficientes de Volume geral precisarão ser recalculados.
+    param_changed
+}
+
+/// 5.1.3. SINCRONIZAÇÃO DE RATE (Clock Tracking)
+/// Avalia se houve discrepância de frequência e envia pedido para a Thread Main.
+#[inline(always)]
+fn sync_rate(
+    rate_for_process: &std::sync::atomic::AtomicU32,
+    resampler: &NamResampler,
+    current_nam_rate: u32,
+    rt_status_for_process: &RtStatusFlags,
+) -> u32 {
+    // Coleta a taxa de amostragem detectada pelo sistema PipeWire (callback de parâmetro format).
+    let detected_pw_rate = rate_for_process.swap(0, std::sync::atomic::Ordering::Relaxed);
+    // Coleta a taxa de amostragem com a qual o Resampler foi programado inicialmente.
+    let current_pw_rate = resampler.pw_rate();
+
+    let mut pw_rate_to_request = current_pw_rate;
+    let mut requires_rebuild = false;
+
+    // Se a placa de som mudou a amostragem, precisaremos de um novo tradutor.
+    if detected_pw_rate != 0 && detected_pw_rate != current_pw_rate {
+        pw_rate_to_request = detected_pw_rate;
+        requires_rebuild = true;
+    }
+
+    // Se o modelo neural exige um "ritmo" diferente do que está configurado.
+    if current_nam_rate != resampler.nam_rate() {
+        requires_rebuild = true;
+    }
+
+    // Pede gentilmente (via flag lock-free) para a Main Thread instanciar um novo Resampler e enviar.
+    if requires_rebuild && pw_rate_to_request != 0 {
+        rt_status_for_process
+            .requested_pw_rate
+            .store(pw_rate_to_request, std::sync::atomic::Ordering::Relaxed);
+        rt_status_for_process
+            .requested_nam_rate
+            .store(current_nam_rate, std::sync::atomic::Ordering::Relaxed);
+        rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+    }
+
+    // Retorna o rate atual com a qual o DSP deve lidar nesse mesmo exato quadro de áudio.
+    current_pw_rate
+}
+
+/// 5.1.4. LÓGICA DSP DE TEMPO REAL
+/// Adquire o Buffer bruto do sistema e delega à Fãbrica de Áudio (pipeline) o trabalho pesado.
+#[inline(always)]
+fn process_dsp_buffer(
+    stream: &pw::stream::Stream,
+    context: DspPipelineContext,
+    current_pw_rate: u32,
+    frame_count: &mut u32,
+    rt_status_for_process: &RtStatusFlags,
+) {
+    // 1. Tira o próximo bloco da fila do PipeWire. Se falhar, retorna cedo (early exit).
+    let mut _buf = match stream.dequeue_buffer() {
+        Some(b) => b,
+        None => return,
+    };
+
+    let datas = _buf.datas_mut();
+    // 2. Garante que existem ao menos 2 canais (Esquerdo e Direito).
+    if datas.len() >= 2 {
+        let (left_datas, right_datas) = datas.split_at_mut(1);
+        if let (Some(d_l), Some(d_r)) = (left_datas.first_mut(), right_datas.first_mut()) {
+            // 3. Os "chunks" representam os limites da memória que o Kernel liberou para usarmos.
+            let chunk_l = d_l.chunk();
+            let chunk_r = d_r.chunk();
+            let offset_l = chunk_l.offset() as usize;
+            let size_l = chunk_l.size() as usize;
+            let offset_r = chunk_r.offset() as usize;
+            let size_r = chunk_r.size() as usize;
+
+            if let (Some(raw_l), Some(raw_r)) = (d_l.data(), d_r.data()) {
+                // 4. Prevenção absoluta de overflow (Crash de Kernel). Conta exata de amostras F32.
+                let n_bytes_l = size_l.min(raw_l.len().saturating_sub(offset_l));
+                let n_bytes_r = size_r.min(raw_r.len().saturating_sub(offset_r));
+                let n_samples_l = n_bytes_l / std::mem::size_of::<f32>();
+                let n_samples_r = n_bytes_r / std::mem::size_of::<f32>();
+
+                // Nivelamento pelo menor bloco, para não tocar num ponteiro além do canal vizinho.
+                let n_samples = n_samples_l.min(n_samples_r);
+
+                if n_samples > 0 {
+                    // 5. Zero-Copy magic! Mapeia memória do kernel direto num array tipado Rust F32.
+                    let samples_l = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            raw_l.as_mut_ptr().add(offset_l).cast::<f32>(),
+                            n_samples,
+                        )
+                    };
+                    let samples_r = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            raw_r.as_mut_ptr().add(offset_r).cast::<f32>(),
+                            n_samples,
+                        )
+                    };
+
+                    // 6. Decimação de Telemetria: Economiza ciclos só medindo tempo em 1 de cada 16 quadros.
+                    let should_measure = (*frame_count & 0xF) == 0;
+                    *frame_count = frame_count.wrapping_add(1);
+
+                    let start_nanos = if should_measure {
+                        rt_setup::rdtsc_nanos() // CPU cycles (timestamp via hardware)
+                    } else {
+                        0
+                    };
+
+                    // 7. O CORAÇÃO DO SISTEMA! Manda tudo para o motor SIMD neural de áudio.
+                    capture_dsp_pipeline(samples_l, samples_r, n_samples, context);
+
+                    // 8. Finalizando diagnóstico. Subtrai tempo de CPU final pelo inicial.
+                    if should_measure {
+                        let elapsed_nanos = rt_setup::rdtsc_nanos().wrapping_sub(start_nanos);
+                        rt_status_for_process
+                            .dsp_cycle_time
+                            .store(elapsed_nanos, std::sync::atomic::Ordering::Relaxed);
+                        rt_status_for_process.latency_hist.record(elapsed_nanos);
+
+                        // 9. Se o processamento custou 85% do tempo disponível, contamos +1 sobrecarga.
+                        let elapsed_secs = elapsed_nanos as f64 / 1_000_000_000.0;
+                        let budget_secs = (n_samples as f64 / current_pw_rate as f64) * 0.85;
+                        if elapsed_secs > budget_secs {
+                            rt_status_for_process
+                                .dsp_overloads
+                                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+
+                    // Por último, grava quantos frames tocamos e fecha a cortina do áudio RT.
+                    rt_status_for_process
+                        .last_n_samples
+                        .store(n_samples as u32, std::sync::atomic::Ordering::Relaxed);
+                }
+            }
+        }
+    }
+}
