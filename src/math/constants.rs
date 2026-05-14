@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
-// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Constantes matemáticas, coeficientes de polinômios Minimax e parâmetros de LUT.
 //! Centralizadas para garantir consistência entre implementações escalares, AVX2 e AVX-512.

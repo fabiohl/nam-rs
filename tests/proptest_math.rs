@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
-// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Testes baseados em propriedades (Property-Based Testing) para as intrínsecas
 //! matemáticas críticas (AVX2 / AVX-512).

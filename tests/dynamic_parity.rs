@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: MIT OR Apache-2.0
-// Copyright (c) 2026 Fábio Henrique de Lima Silva.
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use nam_rs::loader::dispatcher::{build_model, build_wavenet_dynamic};
 use nam_rs::loader::nam_json::{NamConfig, NamModelData};

@@ -1,10 +1,10 @@
-# SPDX-License-Identifier: MIT OR Apache-2.0
-# Copyright (c) 2026 Fábio Henrique de Lima Silva.
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 [package]
 name = "nam-rs"
 version = "1.4.4"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 repository = "https://github.com/fabiohl/nam-rs"
 description = "Neural Amp Modeler (NAM) client in Rust"
 authors = ["Fábio Henrique de Lima Silva <fabio.henrique.lima.silva@gmail.com>"]

@@ -1,8 +1,8 @@
-<!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 # 🎸 NAM-rs 1.4.4
 
-![License](https://img.shields.io/badge/License-MIT_OR_Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg)
+![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
 > ⚠️ **Standalone PipeWire:** STABLE (v1.4.4) | **CLAP Plugin:** IN DEVELOPMENT (alpha)
 
@@ -222,7 +222,7 @@ Impossível mapear todos os que contribuíram para o avanço desta tecnologia. M
 
 ## ⚖️ Licença e Transparência (Vibe Coding)
 
-**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi e gerado iterado com o auxílio de Inteligência Artificial (_Vibe Coding_). Mais especificamente, usando a IDE Google Antigravity.
+**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi gerado e iterado com o auxílio de Inteligência Artificial (_Vibe Coding_). Mais especificamente, usando a IDE Google Antigravity.
 
-Este projeto é duplamente licenciado sob **MIT** ou **Apache License, Version 2.0**, à sua escolha. Veja os arquivos `LICENSE-MIT` e `LICENSE-APACHE` para mais detalhes.
+Este projeto é licenciado sob **Apache License, Version 2.0**. Veja o arquivo `LICENSE` para mais detalhes.
 O uso da licença Apache 2.0 visa justamente oferecer maior segurança jurídica aos contribuidores e usuários em relação a patentes, dado este modelo moderno de desenvolvimento de software. A estrutura está aberta para a comunidade refatorar, auditar e expandir livremente.
