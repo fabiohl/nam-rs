@@ -4,6 +4,82 @@
 
 ---
 
+## Sprint 0 — Preparação Crítica: Correções RT-Safety e Fundação CLAP
+
+**Objetivo:** Corrigir vulnerabilidades de segurança RT identificadas pela auditoria (SIGSEGV em blocos < 8 samples), compartilhar o pipeline DSP entre features `standalone` e `clap-plugin` sem duplicação de código, e estabelecer cobertura de testes para edge cases que o modo CLAP vai exercitar.
+
+**Pré-requisito:** Nenhum. Este sprint é executável imediatamente sobre a base de código v1.4.5.
+
+**Origem:** Análise consolidada Pesquisador-Inovador × Revisor-Auditor (2026-05-14).
+
+---
+
+### Épico 0.1 — Correção Crítica de RT-Safety: Fallback Escalar para Blocos < 8 Samples
+
+> **Severidade: CRÍTICA.** Sem esta correção, o modo CLAP não pode ser considerado production-ready. O Bitwig pode enviar blocos de 1, 3 ou 7 samples durante automação sample-accurate.
+
+- [ ] **Tarefa 0.1.1** — Fallback Escalar em `compute_energy_stereo` e `compute_max_diff_avx2`
+
+  - **Contexto:** As funções SIMD em `src/math/dsp/stereo` operam em vetores de 8 floats (1 `__m256`). Para `n < 8`, ocorre leitura out-of-bounds que causa SIGSEGV. No modo Standalone com PipeWire, os blocos são tipicamente ≥ 64 samples, mascarando o bug. No CLAP, o host pode subdividir blocos arbitrariamente.
+  - **Ações Técnicas:**
+    1. Em `compute_energy_stereo`, adicionar branch `if n < 8` com implementação escalar (loop simples sobre `n` amostras).
+    2. Em `compute_max_diff_avx2`, adicionar branch `if n < 8` com implementação escalar.
+    3. O branch é altamente previsível (blocos < 8 são raros) — impacto zero no caminho principal.
+    4. Adicionar `#[cold]` no caminho escalar para ajudar o compilador a priorizar o hot-path SIMD.
+  - **Aceite:** `cargo test` passa com blocos de 0, 1, 3, 5, 7, 8 e 9 samples. Zero SIGSEGV. Benchmark confirma zero regressão para blocos ≥ 8.
+
+- [ ] **Tarefa 0.1.2** — Validação do Gate FSM com `n_samples = 1`
+
+  - **Contexto:** Na `DynamicHysteresis::update()` (`src/dsp/gate.rs`), para `n_samples = 1`, o cálculo de rampa `step = (end - start) / 1.0` resulta em salto abrupto. Embora um salto de 1 sample (~20.8µs @ 48kHz) seja imperceptível, a corretude formal deve ser documentada.
+  - **Ações Técnicas:**
+    1. Adicionar testes unitários em `gate_test.rs` exercitando `update()` e `apply_gain_rt_stereo()` com `n_samples = 1` em todas as transições de estado (Open→FadingOut, FadingOut→Closed, Closed→FadingIn, FadingIn→Open).
+    2. Verificar que os contadores `hold_counter` e `fade_counter` não sofrem overflow ou underflow.
+    3. Documentar no código-fonte que o comportamento de salto abrupto para `n_samples = 1` é **aceito por design** (imperceptível a 48kHz).
+  - **Aceite:** Todos os testes de edge case passam. Comentário `///` no código documenta a decisão.
+
+---
+
+### Épico 0.2 — Compartilhamento do Pipeline DSP: Feature Gates e Higiene
+
+> **Desbloqueio.** Este épico é precondição para toda a Sprint 2 CLAP (pipeline DSP vivo).
+
+- [ ] **Tarefa 0.2.1** — Refatorar Feature Gates em `src/dsp/pipeline.rs`
+
+  - **Contexto:** O hot-path completo (`apply_input_stage`, `run_inference`, `apply_output_stage`, `DspPipelineContext`, constantes `MAX_*`) está gateado em `#[cfg(any(feature = "standalone", test))]`, excluindo o build CLAP. A solução deve gerar compartilhamento seguro de código sem duplicações.
+  - **Ações Técnicas:**
+    1. Alterar os atributos `#[cfg(...)]` das funções core (`apply_input_stage`, `run_inference`, `apply_output_stage`) e das structs/constantes compartilhadas (`DspPipelineContext`, `MAX_BRIDGE_BUF`, `MAX_RESAMP_BUF`, `BridgeBuffer`) para `#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]`.
+    2. Tornar `bridge_ptr` em `DspPipelineContext` condicional via `#[cfg(feature = "standalone")]`, com uma variante de construção que não exige o campo no CLAP.
+    3. A função `write_bridge()` permanece exclusiva do Standalone (`#[cfg(feature = "standalone")]`).
+    4. `AppState`, `PipewireHostConfig`, `playback_dsp_cycle`, `build_spa_format_pod` permanecem exclusivos do Standalone — **não alterar** estes gates.
+    5. `capture_dsp_pipeline()` permanece Standalone-only (orquestra os 4 estágios + bridge). O CLAP invocará os estágios individuais diretamente no `process()`.
+    6. Executar `cargo check --features standalone` E `cargo check --no-default-features --features clap-plugin --lib` — ambos devem compilar sem erros.
+  - **Aceite:** Ambos os builds compilam com zero erros e zero warnings. Os 3 estágios do pipeline estão acessíveis sob `feature = "clap-plugin"`.
+
+- [ ] **Tarefa 0.2.2** — Eliminação de `#[allow(clippy::not_unsafe_ptr_arg_deref)]` em `pipeline.rs`
+
+  - **Contexto:** As funções `capture_dsp_pipeline` e `handle_silence_bypass` usam `*mut DspBridge` com `#[allow]` para silenciar o lint. Ao refatorar o `bridge_ptr` (Tarefa 0.2.1), aproveitar para encapsular o acesso unsafe.
+  - **Ações Técnicas:**
+    1. Encapsular `*mut DspBridge` em um newtype `BridgeRef` (ou similar) que garante non-null via `debug_assert!` no construtor.
+    2. Remover os `#[allow(clippy::not_unsafe_ptr_arg_deref)]` das funções refatoradas.
+    3. Manter a assinatura `unsafe` apenas no construtor do `BridgeRef`.
+  - **Aceite:** Zero `#[allow(clippy::not_unsafe_ptr_arg_deref)]` em `pipeline.rs`. `lints.sh` limpo.
+
+---
+
+### Épico 0.3 — Cobertura de Testes para Blocos Irregulares
+
+- [ ] **Tarefa 0.3.1** — Suite de Testes com Block Sizes Não-Convencionais
+
+  - **Contexto:** Os testes atuais em `pipeline_test.rs` (26 kB) exercitam apenas block sizes padrão (256, 512). No CLAP, o Bitwig subdivide blocos para automação sample-accurate (1, 7, 17, 33, 53...).
+  - **Ações Técnicas:**
+    1. Adicionar testes parametrizados em `pipeline_test.rs` (ou novo arquivo `pipeline_block_test.rs` se exceder 300 linhas) exercitando o pipeline completo com a sequência de block sizes: `[1, 3, 7, 8, 9, 17, 33, 53, 64, 128, 256, 512]`.
+    2. Para cada block size: processar com modelo LSTM e WaveNet (usando fixtures do `tests/nam_files/`). Verificar: zero panics, zero SIGSEGV, output não é NaN/Inf.
+    3. Adicionar cenário com `CountingAllocator` para `n_samples = 1` e `n_samples = max_frames_count` confirmando zero alocações no hot-path.
+    4. Integrar com `proptest` para gerar block sizes aleatórios no range `[1, 8192]` com 500 iterações.
+  - **Aceite:** `cargo test --features standalone` passa. Todos os block sizes exercitados sem crash. `CountingAllocator::alloc_count() == 0` para todos os cenários.
+
+---
+
 ## Sprint 1 — Fundação do Plugin: Build, Conformidade e Bypass Estável
 
 **Objetivo:** Garantir que o esqueleto CLAP compile deterministicamente, passe 100% na suite do `clap-validator` sem levantar UI, e seja detectado/carregado pelo Bitwig Studio 6 com bypass puro RT-safe (zero alocações, zero locks, zero crashes).
@@ -388,6 +464,7 @@
 - [ ] **Tarefa 3.2.1** — Mapeamento de Vulnerabilidades com Block Sizes Não-Potência de 2
 
   - **Contexto:** O Bitwig subdivide blocos para automação sample-accurate e para rendering offline. É comum receber sequências como `[17, 495, 17, 495, ...]` (automação em grid odd) ou `[1, 1, 1, ...]` (modulação por sample). O `NamResampler` e o gate SIMD assumem certos tamanhos mínimos.
+  - **Nota (Sprint 0):** O Épico 0.1 já corrige a vulnerabilidade de leitura out-of-bounds para `n < 8` nos kernels SIMD e valida o Gate FSM com `n_samples = 1`. Esta tarefa complementa com auditoria de `assert!` implícitos e edge cases adicionais do resampler.
   - **Ações Técnicas:**
     1. Auditar `apply_input_stage` e `run_inference` para localizar qualquer `assert!(n >= 8)` ou alinhamento SIMD implícito que explode com `n < 8`.
     2. Verificar que `NamResampler::process_input/output` retorna `0` (sem pânico) para `n_in = 0`.
@@ -430,6 +507,23 @@
     4. Verificar ADC: REAPER mostra PDC (Plugin Delay Compensation) correto para o valor de `latency_samples()`.
     5. Testar troca de modelo durante playback via `load_model()` — sem XRUNs.
   - **Aceite:** NAM-rs funciona no REAPER com zero crashes e PDC correto. Log do REAPER sem mensagens de erro.
+
+---
+
+### Épico 3.4 — Consolidação `RtStatusFlags` para Multi-Host
+
+> **Origem:** Auditoria Revisor-Auditor (2026-05-14, item B3). Preparar a infraestrutura de flags atômicas para operação dual-backend (Standalone + CLAP).
+
+- [ ] **Tarefa 3.4.1** — Separar Campos PipeWire-Specific de `RtStatusFlags`
+
+  - **Contexto:** `RtStatusFlags` em `src/common/spsc.rs` contém campos como `requested_pw_rate`, `active_rate_changed` e `resampler_consumer` que são específicos do backend PipeWire. No modo CLAP, o host controla o sample rate via `activate()` — esses campos são irrelevantes e poluem o namespace.
+  - **Ações Técnicas:**
+    1. Identificar campos em `RtStatusFlags` que são exclusivos do Standalone: `requested_pw_rate`, `active_rate_changed`, `requested_nam_rate`.
+    2. Gatear estes campos com `#[cfg(feature = "standalone")]` para que não existam no build CLAP.
+    3. Os campos universais permanecem: `status_bits`, `dsp_cycle_time`, `dsp_overloads`, `last_n_samples`, `latency_hist`, `rt_priority`, `active_rate`.
+    4. Ajustar `RtStatusFlags::new()` e todos os consumidores em `pw_host.rs` e `cli.rs` para compilar com os gates condicionais.
+    5. Verificar que `cargo check` compila sem erros para ambas as features.
+  - **Aceite:** Build `clap-plugin` e `standalone` ambos compilam limpos. `RtStatusFlags` no CLAP contém apenas campos universais.
 
 ---
 
@@ -652,6 +746,7 @@
     3. Enviar `Arc<DynamicModel>` (clone do Arc — não do modelo) via SPSC para a audio thread. O `NamClapProcessor` detém um `Arc<DynamicModel>` ao invés de `Box<DynamicModel>`.
     4. O GC ainda é necessário: ao trocar de modelo, a audio thread envia o `Arc` antigo via `gc_tx` para drop na main thread.
     5. Validar com 8 instâncias no Bitwig: `htop` mostra uso de RAM estável (não multiplicado por 8).
+  - **Abordagem PoC:** Implementar como **prova de conceito** para validar se o compartilhamento de pesos via `Arc` é viável sem impacto RT. A inferência LSTM/WaveNet é stateful (`h`, `c`, ring buffer) — os pesos são readonly mas o estado é per-instance. A separação pesos/estado pode exigir refatoração nos models. A decisão de permanência será baseada nos resultados de benchmark e na complexidade real da refatoração.
   - **Aceite:** 8 instâncias com mesmo modelo: RAM = 1× modelo + overhead mínimo por instância. `valgrind --tool=massif` confirma.
 
 - [ ] **Tarefa 5.2.2** — Telemetria ao Vivo na UI: Histograma de Latência DSP
@@ -678,6 +773,61 @@
     3. Medir via `LatencyHistogram`: comparar P95 antes e depois da paralelização.
     4. **Critério de abandono:** Se P95 aumentar (overhead de sincronização > ganho de paralelismo), abandonar e documentar o resultado no `docs/architecture.md`.
   - **Aceite (se viável):** P95 reduz ≥ 15% para modelos LSTM de 2+ camadas em buffers de 256+ samples. Caso contrário: decisão documentada de não-implementação com justificativa de benchmark.
+
+---
+
+### Épico 5.3 — Unificação do Sistema de Dispatch SIMD (Eliminar Dual Dispatch)
+
+> **Origem:** Pesquisador-Inovador (2026-05-14, item A1). Dívida técnica documentada em `src/math/common/dispatch.rs` desde 2026-05-12.
+
+- [ ] **Tarefa 5.3.1** — Migrar Consumidores da V-Table `SimdMathConfig` para a Trait `SimdMath`
+
+  - **Contexto:** O codebase usa dois mecanismos de dispatch SIMD independentes: (1) trait `SimdMath` com monomorphization estática via `dispatch_simd!` e (2) v-table `SimdMathConfig` com 13 ponteiros de função. O Mecanismo 2 impede inline e adiciona ~1-2 ciclos de indireção por chamada. O principal benefício é **higiene arquitetural** — unificar em uma única API.
+  - **Ações Técnicas:**
+    1. Refatorar `pipeline.rs`: substituir chamadas via `SIMD_MATH.apply_gain(...)` por `dispatch_simd!(apply_gain, ...)` (Mecanismo 1).
+    2. Refatorar `gain.rs`: migrar `apply_gain_simd` e `apply_ramp_simd` para usar `dispatch_simd!`.
+    3. Refatorar `rt_setup.rs` e `cli.rs`: migrar referências a `SimdMathConfig::current()`.
+    4. Após migração completa: remover a struct `SimdMathConfig` e os ponteiros de função, mantendo apenas `InstructionSet` para consultas de capabilities (`is_avx512`).
+    5. Executar `cargo bench` para confirmar zero regressão de performance.
+  - **Aceite:** Zero referências a `SimdMathConfig` no codebase. Apenas `dispatch_simd!` e trait `SimdMath` em uso. Benchmarks dentro de ±2% do baseline.
+
+---
+
+### Épico 5.4 — LSTM Layer Overlap Pipelining (2-Layer Interleaving Real)
+
+> **Origem:** Pesquisador-Inovador (2026-05-14, item A3). A arquitetura documenta o conceito em `docs/architecture.md` §2, mas a implementação atual em `LstmModel2` processa as camadas sequencialmente.
+
+- [ ] **Tarefa 5.4.1** — Implementar Pipelining Real para `LstmModel2`
+
+  - **Contexto:** O verdadeiro pipelining faz a Camada 2 processar o frame N-1 enquanto a Camada 1 processa o frame N, ocultando a latência da Camada 2 dentro do tempo de processamento da Camada 1. Isso é ILP puro (single-thread, zero overhead de sincronização).
+  - **Decisão aprovada:** A latência adicional de 1 frame (~20.8µs @ 48kHz) é aceita. Os golden vectors existentes **não serão alterados** — a validação usará golden vectors dedicados ao modo pipelined.
+  - **Ações Técnicas:**
+    1. Em `src/models/lstm/layer.rs`, adicionar campo `pipeline_buf: [f32; H]` ao `LstmModel2` para armazenar a saída da Camada 1 do frame anterior.
+    2. Reestruturar o loop `process()` do `LstmModel2`:
+       - Frame 0 (priming): processar apenas Camada 1, armazenar saída em `pipeline_buf`.
+       - Frames 1..N: Camada 1 processa frame N → `pipeline_buf`; Camada 2 processa `pipeline_buf` do frame N-1 → output.
+       - Frame final: Camada 2 processa o último `pipeline_buf` → output.
+    3. Atualizar `reset_states()` para zerar `pipeline_buf`.
+    4. Criar golden vectors dedicados para modelos `Lstm2x*` com pipelining ativo.
+    5. `cargo bench` para medir redução de P95 em modelos 2×16.
+  - **Aceite:** P95 reduz ≥ 20% para `Lstm2x16` em buffers de 256 samples. Golden vectors pipelined passam. Modelos 1-layer inalterados.
+
+---
+
+### Épico 5.5 — Prefetch Hints no WaveNet Conv1D (Software Prefetching)
+
+> **Origem:** Pesquisador-Inovador (2026-05-14, item A4). Aprovado com validação obrigatória por benchmarks.
+
+- [ ] **Tarefa 5.5.1** — Investigar e Implementar `_mm_prefetch` na Conv1D Dilatada
+
+  - **Contexto:** O WaveNet itera sobre camadas com dilatação crescente (1, 2, 4, 8...). Dilatações profundas (≥ 64) acessam posições distantes no ring buffer, potencialmente fora da L1. Um prefetch NTA na iteração N para os dados da iteração N+1 pode esconder ~3-4 ciclos de latência L2.
+  - **Critério de abandono:** Se o benchmark não mostrar melhoria ≥ 3%, reverter e documentar.
+  - **Ações Técnicas:**
+    1. Em `src/models/wavenet/conv1d.rs`, adicionar `_mm_prefetch(..., _MM_HINT_NTA)` no início de cada iteração de camada, prefetchando os taps da próxima camada.
+    2. Executar `cargo bench` com modelos Standard (16ch) e Lite (12ch) comparando com/sem prefetch.
+    3. Se melhoria < 3%: reverter, documentar resultado no código e no `docs/architecture.md`.
+    4. Se melhoria ≥ 3%: manter, adicionar comentário explicativo no código.
+  - **Aceite (se viável):** Melhoria ≥ 3% no P95 para modelos WaveNet Standard. Caso contrário: decisão documentada de não-implementação com dados de benchmark.
 
 ---
 
