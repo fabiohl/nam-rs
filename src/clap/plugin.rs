@@ -7,15 +7,16 @@ use crate::clap::descriptor::nam_descriptor;
 use crate::clap::processor::NamClapProcessor;
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::common::params::NamPluginParams;
-use crate::common::spsc::RtStatusFlags;
+use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags, drain_gc_channels};
 use crate::loader::{LoadedModelPair, load_and_build_model};
-use crate::models::DynamicModel;
+#[cfg(not(test))]
 use clack_extensions::log::{HostLog, LogSeverity};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer, RingBuffer};
+#[cfg(not(test))]
 use std::ffi::CString;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Payload de comunicação Main -> RT para o plugin CLAP.
 pub enum ClapParamPayload {
@@ -38,18 +39,20 @@ pub struct NamClapShared {
     /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
     pub param_rx: Mutex<Option<Consumer<ClapParamPayload>>>,
     /// Canal GC: Audio Thread -> Main Thread (Modelos obsoletos para descarte).
-    pub gc_tx: Mutex<Option<Producer<Box<DynamicModel>>>>,
+    pub gc_tx: Mutex<Option<Producer<GcItem>>>,
     /// Canal GC: Audio Thread -> Main Thread (Consumidor).
-    pub gc_rx: Mutex<Option<Consumer<Box<DynamicModel>>>>,
+    pub gc_rx: Mutex<Option<Consumer<GcItem>>>,
+    /// Buffer de fallback para overflow de GC (overwrite).
+    pub gc_overflow: Arc<GcOverflowBuffer>,
     /// Flags atômicas de status (telemetria RT->Main).
-    pub rt_status: std::sync::Arc<RtStatusFlags>,
+    pub rt_status: Arc<RtStatusFlags>,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
 
 /// Estado exclusivo da main thread (carregamento de modelos, state save/load).
 pub struct NamClapMainThread<'a> {
-    _shared: &'a NamClapShared,
+    shared: &'a NamClapShared,
     /// Parâmetros atuais conhecidos pela main thread (espelho dos params da audio thread).
     pub params: NamPluginParams,
     /// Handle do host para notificações (request_restart, latency_changed, etc.).
@@ -59,7 +62,7 @@ pub struct NamClapMainThread<'a> {
     /// Produtor para enviar atualizações para a audio thread.
     pub param_tx: Producer<ClapParamPayload>,
     /// Consumidor para coletar lixo (modelos obsoletos) da audio thread.
-    pub gc_rx: Consumer<Box<DynamicModel>>,
+    pub gc_rx: Consumer<GcItem>,
 }
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
@@ -67,9 +70,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     /// Aqui podemos aproveitar para drenar o canal de GC.
     fn on_main_thread(&mut self) {
         // Tarefa 2.1.2: Drenar modelos obsoletos para liberar memória fora do RT.
-        while let Ok(model) = self.gc_rx.pop() {
-            drop(model);
-        }
+        drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
     }
 }
 
@@ -132,14 +133,15 @@ impl DefaultPluginFactory for NamClapPlugin {
 
     fn new_shared(_host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
         let (param_tx, param_rx) = RingBuffer::new(8);
-        let (gc_tx, gc_rx) = RingBuffer::new(8);
+        let (gc_tx, gc_rx) = RingBuffer::new(32); // Capacidade ampliada para o plugin
 
         Ok(NamClapShared {
             param_tx: Mutex::new(Some(param_tx)),
             param_rx: Mutex::new(Some(param_rx)),
             gc_tx: Mutex::new(Some(gc_tx)),
             gc_rx: Mutex::new(Some(gc_rx)),
-            rt_status: std::sync::Arc::new(RtStatusFlags::new()),
+            gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
+            rt_status: Arc::new(RtStatusFlags::new()),
         })
     }
 
@@ -164,8 +166,9 @@ impl DefaultPluginFactory for NamClapPlugin {
             .take()
             .expect("Consumidor gc_rx já foi extraído");
 
+        #[cfg_attr(test, allow(unused_mut))]
         let mut main_thread = NamClapMainThread {
-            _shared: shared,
+            shared,
             params: NamPluginParams::default(),
             host,
             sys: SystemSnapshot::capture(),
@@ -175,6 +178,7 @@ impl DefaultPluginFactory for NamClapPlugin {
 
         // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.2.1).
         // Busca automática de modelo para facilitar testes iniciais sem GUI.
+        #[cfg(not(test))]
         if let Ok(home) = std::env::var("HOME") {
             let clap_dir = std::path::Path::new(&home).join(".clap");
             if let Ok(entries) = std::fs::read_dir(&clap_dir) {

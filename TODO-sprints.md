@@ -326,7 +326,7 @@
   - **NOTA do Product Owner:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma forma de carregar automaticamente algum modelo padrão que esteja na mesma pasta que o binários do plugin.
   - **NOTA do Product Owner:** Explique-me detalhadamente como obter estas informações de latência do Bitwig.
 
-- [ ] **Tarefa 2.1.2** — GC de Modelos: Descarte Seguro Fora da Audio Thread
+- [x] **Tarefa 2.1.2** — GC de Modelos: Descarte Seguro Fora da Audio Thread
 
   - **Contexto:** Quando a main thread envia um novo `Box<DynamicModel>` via SPSC, a audio thread substitui o modelo ativo e precisa descartar o antigo **sem chamar `drop()` na RT** (que pode alocar/liberar memória).
   - **Ações Técnicas:**

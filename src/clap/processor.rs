@@ -5,7 +5,7 @@
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
 use crate::common::params::NamPluginParams;
-use crate::common::spsc::RtStatusFlags;
+use crate::common::spsc::{GcItem, GcOverflowBuffer, RT_STATUS_GC_OVERFLOW, RtStatusFlags};
 use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
@@ -14,6 +14,7 @@ use crate::dsp::resampler::NamResampler;
 use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
+use std::sync::Arc;
 
 /// Processador de áudio RT-safe. Executa na audio thread do host.
 ///
@@ -54,13 +55,30 @@ pub struct NamClapProcessor<'a> {
     process_mono: bool,
 
     /// Flags de status para telemetria RT.
-    rt_status: std::sync::Arc<RtStatusFlags>,
+    rt_status: Arc<RtStatusFlags>,
     /// Referência ao estado compartilhado (para devolver os canais no deactivate).
     shared: &'a NamClapShared,
     /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
     param_rx: Consumer<ClapParamPayload>,
     /// Canal GC: Audio Thread -> Main Thread (Produtor).
-    gc_tx: Producer<Box<DynamicModel>>,
+    gc_tx: Producer<GcItem>,
+    /// Buffer de fallback para overflow de GC (overwrite).
+    gc_overflow: Arc<GcOverflowBuffer>,
+}
+
+impl<'a> NamClapProcessor<'a> {
+    /// Tenta enviar um item para descarte seguro (GC).
+    /// Se o canal principal estiver cheio, usa o buffer de overflow.
+    fn push_to_gc(&mut self, model: Box<DynamicModel>) {
+        if let Err(rtrb::PushError::Full(item)) = self.gc_tx.push(GcItem::Model(model)) {
+            self.rt_status.set_flag(RT_STATUS_GC_OVERFLOW);
+            let ptr = Box::into_raw(Box::new(item));
+            // SAFETY: O buffer de overflow assume a propriedade do ponteiro raw.
+            if let Some(leaked_ptr) = self.gc_overflow.push_raw(ptr) {
+                unsafe { drop(Box::from_raw(leaked_ptr)) };
+            }
+        }
+    }
 }
 
 impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor<'a> {
@@ -97,7 +115,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let buf_out_r = vec![0.0f32; buf_capacity].into_boxed_slice();
 
         // 3. Inicialização de componentes DSP
-        let resampler = NamResampler::new(48000, audio_config.sample_rate as u32, buf_capacity)
+        let resampler = NamResampler::new(audio_config.sample_rate as u32, 48000, buf_capacity)
             .expect("Falha ao criar NamResampler");
 
         let gate = DynamicHysteresis::new();
@@ -121,10 +139,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             silence_hyst,
             mono_hyst,
             process_mono: false,
-            rt_status: std::sync::Arc::clone(&shared.rt_status),
+            rt_status: Arc::clone(&shared.rt_status),
             shared,
             param_rx,
             gc_tx,
+            gc_overflow: Arc::clone(&shared.gc_overflow),
         })
     }
 
@@ -150,10 +169,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 }
                 ClapParamPayload::LoadModel(model_pair) => {
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
-                        let _ = self.gc_tx.push(old_l);
+                        self.push_to_gc(old_l);
                     }
                     if let Some(old_r) = std::mem::replace(&mut self.model_r, model_pair.model_r) {
-                        let _ = self.gc_tx.push(old_r);
+                        self.push_to_gc(old_r);
                     }
                 }
             }
