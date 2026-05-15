@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -130,13 +131,13 @@ graph TD
 
 A partir da v1.5, o NAM-rs adota uma estrutura modular clara para suportar múltiplos hosts (Standalone/PipeWire e Plugin/CLAP) sem poluição de dependências:
 
-| Camada                             | Sub-módulos                                   | Responsabilidade                                                                                                       |
-|:---------------------------------- |:--------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------- |
-| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host` | Infraestrutura compartilhada, comunicação inter-threads (SPSC) e abstrações agnósticas ao host.                        |
-| **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`        | Backend nativo Linux. Gerencia o servidor PipeWire, setup de hardware (FIFO/Affinity) e interface de linha de comando. |
-| **CLAP** (`src/clap/`)             | `mod.rs` (Stub)                               | Ponto de entrada para integração como plugin (v1.6+). Totalmente isolado das dependências do PipeWire.                 |
-| **Math** (`src/math/`)             | `common/`, `activations/`, `gemm/`, `dsp/`... | Infraestrutura matemática modularizada por domínio, isolando kernels SIMD de baixo nível da lógica de despacho.        |
-| **Core DSP** (`src/`)              | `dsp/`, `models/`, `loader/`                  | O "cérebro" do NAM-rs. Algoritmos de inferência neural e parsing de modelos.                                           |
+| Camada                             | Sub-módulos                                            | Responsabilidade                                                                                                       |
+|:---------------------------------- |:------------------------------------------------------ |:---------------------------------------------------------------------------------------------------------------------- |
+| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host`          | Infraestrutura compartilhada, comunicação inter-threads (SPSC) e abstrações agnósticas ao host.                        |
+| **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`                 | Backend nativo Linux. Gerencia o servidor PipeWire, setup de hardware (FIFO/Affinity) e interface de linha de comando. |
+| **CLAP** (`src/clap/`)             | `plugin`, `processor`, `param_smoother`, `extensions/` | Plugin CLAP completo com pipeline DSP, parâmetros, persistência e smoothing anti-zipper.                               |
+| **Math** (`src/math/`)             | `common/`, `activations/`, `gemm/`, `dsp/`...          | Infraestrutura matemática modularizada por domínio, isolando kernels SIMD de baixo nível da lógica de despacho.        |
+| **Core DSP** (`src/`)              | `dsp/`, `models/`, `loader/`                           | O "cérebro" do NAM-rs. Algoritmos de inferência neural e parsing de modelos.                                           |
 
 ### Diagrama de Camadas (Architecture Layers)
 
@@ -270,7 +271,7 @@ A arquitetura do NAM-rs v1.5.0-alpha já suporta o desacoplamento necessário pa
 - **Feature Flags:** O build é controlado por flags (`standalone` vs `clap-plugin`), garantindo que dependências de sistema (como `pipewire`) sejam removidas no binário do plugin para máxima portabilidade.
 - **Parâmetros Agnósticos:** `NamPluginParams` (em `src/common/params.rs`) centraliza o estado do plugin (`input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`), facilitando o mapeamento para automação de DAW e persistência de estado (save/load).
 
-## 8.1 Decisões de Arquitetura
+## 8.2 Decisões de Arquitetura
 
 Este projeto utiliza um registro simplificado de decisões arquiteturais para manter a rastreabilidade técnica:
 
@@ -292,6 +293,74 @@ Este projeto utiliza um registro simplificado de decisões arquiteturais para ma
 - **REAPER:** Validação secundária e suporte à comunidade de baixo custo. Excelente para depuração de buffers irregulares.
   - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
 - **Studio One:** Validação de compatibilidade em hosts comerciais de grande escala.
+
+## 8.1 Arquitetura CLAP: Threads e Ciclo de Vida
+
+O modo CLAP é arquiteturalmente distinto do Standalone: o host controla o ciclo de vida e fornece buffers diretamente no `process()`, eliminando a necessidade do `DspBridge`.
+
+### Modelo de Threads
+
+```mermaid
+graph LR
+    subgraph Main_Thread ["Main Thread (Host)"]
+        MT_Plugin["NamClapPlugin"]
+        MT_Main["NamClapMainThread"]
+        MT_State["State Save/Load"]
+        MT_Params["Params Flush"]
+        MT_GC["GC Drain"]
+        MT_Log["HostLog (RT Events)"]
+    end
+
+    subgraph Audio_Thread ["Audio Thread (Host)"]
+        AT_Proc["NamClapProcessor"]
+        AT_Pipeline["DSP Pipeline"]
+        AT_Smoother["ParamSmoother (IIR 1-pole)"]
+        AT_GC_Push["GC Push (obsolete models)"]
+    end
+
+    subgraph Shared ["NamClapShared (align 128B)"]
+        SPSC_Params["SPSC: ClapParamPayload"]
+        SPSC_GC["SPSC: GcItem"]
+        GC_Overflow["GcOverflowBuffer"]
+        RT_Flags["RtStatusFlags (AtomicU64)"]
+    end
+
+    MT_Main -- "push(Params|LoadModel)" --> SPSC_Params
+    SPSC_Params -- "pop()" --> AT_Proc
+    AT_GC_Push -- "push(old_model)" --> SPSC_GC
+    SPSC_GC -- "pop() + drop()" --> MT_GC
+    AT_Proc -- "set_flag()" --> RT_Flags
+    RT_Flags -- "check_and_clear()" --> MT_Log
+```
+
+### Decisão: Sem `DspBridge` no CLAP
+
+O `DspBridge` (double-buffer lock-free) existe no modo Standalone para sincronizar duas streams PipeWire independentes (capture e playback). No modo CLAP, o host chama um único `process()` — input e output já são buffers do mesmo ciclo. Portanto, o CLAP **não usa `DspBridge`**. O `DspPipelineContext` é construído on-stack no `process()` com buffers pré-alocados e executado diretamente.
+
+### Estratégia de GC (Garbage Collection)
+
+A troca de modelos na audio thread é RT-safe:
+
+1. A main thread carrega o modelo (cold-path com alocações) e envia via SPSC `param_tx`.
+2. A audio thread substitui o modelo ativo e envia o antigo via `gc_tx` para drop fora do RT.
+3. O `on_main_thread()` drena `gc_rx` e executa `drop()` dos modelos obsoletos.
+4. Se o canal GC estiver cheio, usa `GcOverflowBuffer` (overwrite ring buffer com `AtomicPtr`).
+
+### Extensões CLAP Implementadas
+
+| Extensão                  | Arquivo                     | Responsabilidade                                                                          |
+|:------------------------- |:--------------------------- |:----------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports` | `extensions/audio_ports.rs` | 1 porta stereo I/O com `in_place_pair`                                                    |
+| `clap_plugin_params`      | `extensions/params.rs`      | 4 parâmetros (Input Gain, Output Gain, Gate Threshold, Bypass) com `flush()` bidirecional |
+| `clap_plugin_state`       | `extensions/state.rs`       | Persistência JSON de parâmetros e path do modelo                                          |
+
+### Ownership Transfer via `Mutex<Option<>>`
+
+O `NamClapShared` utiliza `Mutex<Option<Producer/Consumer>>` para os canais SPSC. Isso resolve o requisito `Sync` da trait `PluginShared` do clack: os canais são "extraídos" pelas respectivas threads durante `activate()` e `new_main_thread()`, e devolvidos no `deactivate()` para permitir re-ativações.
+
+### Smoothing Anti-Zipper (`ParamSmoother`)
+
+Filtro IIR de 1-pólo (20Hz cutoff @ sample_rate) para suavização de ganhos. Evita artefatos de descontinuidade (`zipper noise`) quando parâmetros são modulados sample-a-sample pelo host. Instanciado no `activate()` e aplicado por sample no `process()`.
 
 ### Matemática & SIMD — Reorganização Modular
 

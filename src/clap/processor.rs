@@ -21,7 +21,6 @@ use std::sync::Arc;
 ///
 /// Detém os buffers pré-alocados e o estado mutable da inferência.
 /// É criado no `activate()` e destruído no `deactivate()`.
-#[allow(dead_code)]
 pub struct NamClapProcessor<'a> {
     /// Modelo ativo para o canal esquerdo (None = bypass).
     model_l: Option<Box<DynamicModel>>,
@@ -46,8 +45,6 @@ pub struct NamClapProcessor<'a> {
     buf_out_l: Box<[f32]>,
     buf_out_r: Box<[f32]>,
 
-    /// Gate FSM com histerese temporal (Noise Gate principal).
-    gate: DynamicHysteresis,
     /// Histerese para detecção de silêncio absoluto.
     silence_hyst: DynamicHysteresis,
     /// Histerese para detecção de sinal mono estável.
@@ -123,7 +120,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let resampler = NamResampler::new(audio_config.sample_rate as u32, 48000, buf_capacity)
             .expect("Falha ao criar NamResampler");
 
-        let gate = DynamicHysteresis::new();
         let silence_hyst = DynamicHysteresis::new();
         let mono_hyst = DynamicHysteresis::new();
 
@@ -145,7 +141,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             buf_model_r,
             buf_out_l,
             buf_out_r,
-            gate,
             silence_hyst,
             mono_hyst,
             process_mono: false,
@@ -175,14 +170,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
         // 1. Processamento de Eventos (Main Thread SPSC)
+        let lut = crate::math::dsp::gain_lut::get_gain_lut();
+
         while let Ok(payload) = self.param_rx.pop() {
             match payload {
                 ClapParamPayload::Params(new_params) => {
                     self.params = new_params;
+                    // Usa GainLut ao invés de powf() para consistência RT (~2-3 ciclos vs ~20-60).
                     self.smoother_in
-                        .set_target(10.0f32.powf(self.params.input_gain_db / 20.0));
+                        .set_target(lut.db_to_linear(self.params.input_gain_db));
                     self.smoother_out
-                        .set_target(10.0f32.powf(self.params.output_gain_db / 20.0));
+                        .set_target(lut.db_to_linear(self.params.output_gain_db));
                 }
                 ClapParamPayload::LoadModel(model_pair) => {
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
@@ -207,15 +205,15 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 continue;
             };
             let val = param_event.value() as f32;
-            let val_lin = 10.0f32.powf(val / 20.0);
             match clap_id.get() {
                 PARAM_INPUT_GAIN => {
                     self.params.input_gain_db = val;
-                    self.smoother_in.set_target(val_lin);
+                    // Usa GainLut ao invés de powf() — RT-safe, ~2-3 ciclos.
+                    self.smoother_in.set_target(lut.db_to_linear(val));
                 }
                 PARAM_OUTPUT_GAIN => {
                     self.params.output_gain_db = val;
-                    self.smoother_out.set_target(val_lin);
+                    self.smoother_out.set_target(lut.db_to_linear(val));
                 }
                 _ => {}
             }
@@ -224,6 +222,27 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         for mut port_pair in &mut audio {
             let n_samples = port_pair.frames_count() as usize;
             if n_samples == 0 {
+                continue;
+            }
+
+            // Bypass explícito: copia input → output sem processamento.
+            // Implementado aqui (não apenas delegado ao host) para conformidade
+            // com o flag IS_BYPASS declarado no parâmetro PARAM_BYPASS.
+            if self.params.bypass {
+                let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
+                    continue;
+                };
+                for pair in channel_pairs {
+                    match pair {
+                        ChannelPair::InputOutput(i, o) => {
+                            o[..n_samples].copy_from_slice(&i[..n_samples]);
+                        }
+                        ChannelPair::InPlace(_) => {
+                            // In-place: input e output são o mesmo buffer — noop.
+                        }
+                        ChannelPair::InputOnly(_) | ChannelPair::OutputOnly(_) => {}
+                    }
+                }
                 continue;
             }
 
@@ -282,7 +301,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 self.buf_host_r[..n_samples].fill(0.0);
             }
 
-            let lut = crate::math::dsp::gain_lut::get_gain_lut();
+            // A LUT já foi obtida acima do loop de ports (linha ~178).
             let gate_params = GateParams {
                 threshold_open_db: self.params.gate_threshold_db,
                 threshold_close_db: self.params.gate_threshold_db - 6.0,

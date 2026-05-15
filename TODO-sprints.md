@@ -1,5 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
+
 # TODO — Sprints de Integração CLAP
 
 ---
@@ -219,6 +221,7 @@
 **Pré-requisito:** Sprint 1 concluída (0 FAILs no `clap-validator`, plugin visível no Bitwig).
 
 **Decisão arquitetural crítica — por que não usar `DspBridge` no CLAP:**
+
 > O `DspBridge` (double-buffer lock-free) existe no modo Standalone para **sincronizar duas streams PipeWire independentes** (capture e playback). No modo CLAP o host chama um único `process()` — input e output já são buffers do mesmo ciclo. Portanto, o CLAP **não usa `DspBridge`**. O `DspPipelineContext` é construído no `activate()` com buffers próprios pré-alocados e executado diretamente no `process()`.
 
 ---
@@ -230,7 +233,9 @@
 - [x] **Tarefa 2.0.1** — Definir `NamClapShared`: Canal de Parâmetros Main→RT
 
   - **Contexto:** `NamClapShared` é o único objeto acessível tanto pela `main thread` quanto pela `audio thread` do clack. É o ponto ideal para o canal SPSC de parâmetros (análogo ao `ParamPayload` do Standalone).
+
   - **Ações Técnicas:**
+
     1. Em `src/clap/plugin.rs`, adicionar campos a `NamClapShared`:
 
        ```rust
@@ -246,13 +251,17 @@
        ```
 
     2. Inicializar os canais em `new_shared()` usando `rtrb::RingBuffer::new(8)`.
+
     3. Derivar `#[repr(align(128))]` para evitar false sharing entre threads.
+
   - **Aceite:** `cargo check --features clap-plugin` compila sem erros. A struct deixa de ser unit.
 
 - [x] **Tarefa 2.0.2** — Definir `NamClapMainThread`: Estado da UI/Main
 
   - **Contexto:** `NamClapMainThread` é o estado exclusivo da main thread — seguro para alocações, I/O de arquivo e logging.
+
   - **Ações Técnicas:**
+
     1. Adicionar campos:
 
        ```rust
@@ -266,15 +275,19 @@
        ```
 
     2. Implementar método `load_model(&mut self, path: &Path) -> Result<(), NamDiagnostic>` que:
+
        - Carrega e desserializa o modelo via `NamLoader` (cold-path — main thread, pode alocar).
        - Envia o `Box<DynamicModel>` para a audio thread via `shared.param_tx` (envolto em um novo enum `ClapParamPayload`).
        - Não bloqueia: se o canal SPSC estiver cheio, retorna `Err` com `NamDiagnostic`.
+
   - **Aceite:** Método `load_model` compila. Nenhuma alocação ocorre na audio thread durante a troca.
 
 - [x] **Tarefa 2.0.3** — Definir `NamClapProcessor`: Estado Exclusivo da Audio Thread
 
   - **Contexto:** `NamClapProcessor` detém os buffers pré-alocados e o estado mutable da inferência. É criado no `activate()` e destruído no `deactivate()`.
+
   - **Ações Técnicas:**
+
     1. Adicionar campos:
 
        ```rust
@@ -301,7 +314,9 @@
        ```
 
     2. Em `activate()`, instanciar `NamClapProcessor` com os campos acima usando `audio_config.max_frames_count` para dimensionar os `Vec<f32>` (alocação permitida aqui — cold-path).
+
     3. **Invariante crítico:** Após `activate()`, `process()` jamais aloca heap. Validar com `CountingAllocator` (Tarefa 1.0.3).
+
   - **Aceite:** `activate()` retorna `Ok(NamClapProcessor { ... })`. Todos os buffers alocados. Zero allocações em `process()`.
 
 ---
@@ -354,7 +369,9 @@
 - [x] **Tarefa 2.2.1** — Mapeamento de 4 Parâmetros via `clap_plugin_params`
 
   - **Contexto:** `NamPluginParams` em `src/common/params.rs` já define os 4 controles. Precisamos mapeá-los para IDs CLAP numéricos e implementar a trait `PluginParams` de `clack-extensions`.
+
   - **Ações Técnicas:**
+
     1. Criar `src/clap/extensions/params.rs` com as constantes de ID:
 
        ```rust
@@ -365,21 +382,30 @@
        ```
 
     2. Implementar `PluginParams::count()` → `4`.
+
     3. Implementar `PluginParams::get_info(index)` → `ParamInfo` com:
+
        - `input_gain`: range `[-24.0, +24.0]` dB, default `0.0`, flags `AUTOMATABLE`.
        - `output_gain`: range `[-24.0, +24.0]` dB, default `0.0`, flags `AUTOMATABLE`.
        - `gate_threshold`: range `[-90.0, -40.0]` dB, default `-70.0`, flags `AUTOMATABLE`.
        - `bypass`: range `[0.0, 1.0]`, default `0.0`, flags `AUTOMATABLE | IS_STEPPED`.
+
     4. Implementar `PluginParams::get_value(id)` → lê de `self.params` (main thread lê snapshot atômico).
+
     5. Implementar `PluginParams::value_to_text` e `text_to_value` para exibição em dB (ex: `"-3.5 dB"`).
+
     6. Registrar a extensão em `impl Plugin for NamClapPlugin`.
+
   - **Aceite:** Os 4 knobs aparecem no Device Panel do Bitwig com labels corretos, ranges e valores padrão. Automação funciona (drag de knob cria lane de automação).
+
   - **NOTA do Product Owner:** Entendo que os parâmetros `gate_threshold` e `bypass` são apenas internos do NAM. O que é ajustável pelo usuário é apenas `input_gain`, `output_gain` e `nam_file` (este último onde o usuário indica o arquivo de modelo que desjea usar). O `nam_file` pode carregar por default o primeiro arquivo .nam encontrado na pasta do binário do plugin. Ao menos temporariamente enquanto a GUI não chega (inserir lembrete na Tarefa Técnica futura adequada).
 
 - [x] **Tarefa 2.2.2** — Smoothing Sample-Accurate de Ganhos (Anti-Zipper)
 
   - **Contexto:** Bitwig pode enviar `CLAP_EVENT_PARAM_VALUE` a cada sample para modulação por LFO. Aplicar o ganho abruptamente causa zipper noise audível (~6dB/sample de descontinuidade). Precisamos de um 1-pole IIR smoother RT-safe.
+
   - **Ações Técnicas:**
+
     1. Criar `src/clap/param_smoother.rs` com struct:
 
        ```rust
@@ -393,18 +419,26 @@
        ```
 
     2. `ParamSmoother::tick() -> f32`: avança um sample, retorna valor suavizado.
+
     3. Em `NamClapProcessor`, adicionar `smoother_in: ParamSmoother, smoother_out: ParamSmoother`.
+
     4. No início do `process()`, antes do loop de frames:
+
        - Iterar `events.input` e processar eventos `CLAP_EVENT_PARAM_VALUE` e `CLAP_EVENT_PARAM_MOD`.
        - Atualizar `smoother_in.target` e `smoother_out.target`.
+
     5. Dentro do loop de inferência (se `n_frames` for pequeno), aplicar `smoother.tick()` por sample para modulação sample-accurate. Para blocos grandes (> 64 samples), processar em sub-blocos de 8 samples com interpolação linear (trade-off precisão × CPU).
+
   - **Aceite:** LFO do Bitwig em 10Hz modulando Input Gain → espectro FFT da saída mostra sidebands corretos sem artefatos de descontinuidade. `CountingAllocator` = 0 durante processamento.
 
 - [x] **Tarefa 2.2.3** — Persistência de Sessão via `clap_plugin_state`
 
   - **Contexto:** Ao salvar um projeto no Bitwig, o host chama `state.save(stream)`. Ao reabrir, chama `state.load(stream)`. Sem isso, o Bitwig loga o erro `Error saving initial state of plug-in for undo history: Plug-in does not support saving its state` no carregamento. O plugin deve restaurar o modelo e os parâmetros exatamente como estavam.
+
   - **Ações Técnicas:**
+
     1. Criar `src/clap/extensions/state.rs` implementando `PluginState`.
+
     2. Formato de serialização: JSON minificado via `serde_json` (já é dependência):
 
        ```json
@@ -412,10 +446,28 @@
        ```
 
     3. Em `save(stream)`: serializar `NamPluginParams` atual (snapshot da main thread) e escrever via `stream.write()` do clack.
+
     4. Em `load(stream)`: ler bytes via `stream.read()`, deserializar, atualizar `self.params`, e chamar `self.load_model(path)` se `model_path` for `Some`.
+
     5. Em `load()`: se o arquivo `.nam` não existir no path salvo, logar via `clap_host_log` com severity `WARNING` (não falhar — o projeto deve abrir mesmo sem o modelo).
+
     6. Notificar o host via `host.params_rescan(CLAP_PARAM_RESCAN_VALUES)` após load.
+
   - **Aceite:** Salvar projeto no Bitwig → fechar → reabrir → plugin carrega com mesmos ganhos e modelo. Log no Bitwig confirma carregamento. Arquivo inexistente: warning no log, plugin abre em true-bypass limpo.
+
+> **🔎 AUDITORIA PÓS-SPRINT 2 (2026-05-15)**
+> Revisão profunda das Sprints 0-2 para validação da fundação CLAP:
+>
+> - ✅ Todas as 18 tarefas técnicas concluídas e verificadas contra o código implementado.
+> - ✅ `lints.sh` 100% limpo, `cargo check` zero warnings para ambas features.
+> - ✅ Zero-alloc no hot-path confirmado via `CountingAllocator` + `clack-host`.
+> - ✅ Bitwig 6.0.6: scan, bypass, parâmetros e persistência funcionais.
+> - **Achado S2-A1 (corrigido):** `powf()` no `process()` substituído por `GainLut::db_to_linear()` (~20x mais rápido).
+> - **Achado S2-A4 (corrigido):** Bypass explícito adicionado ao `process()` para conformidade IS_BYPASS.
+> - **Achado S1-A1 (corrigido):** `#[allow(dead_code)]` removido; campo `gate` genuinamente morto removido.
+> - **Achado S2-A3 (corrigido):** `docs/architecture.md` atualizado com §8.1 (Arquitetura CLAP completa).
+> - **Achado S2-A2:** Campos PW-specific em `RtStatusFlags` — confirmado acesso apenas em `pw_host.rs`. Endereçado na T3.4.1.
+> - **Achado S2-A5:** `Box::leak` em `state.rs` — endereçado como sub-item na T6.1.1.
 
 ---
 
@@ -432,6 +484,7 @@
 - [ ] **Tarefa 3.1.1** — Cálculo de Latência Real do `NamResampler`
 
   - **Contexto:** O `NamResampler` usa um filtro FIR Sinc Polifásico de Fase Mínima com `TAPS_PER_PHASE` coeficientes por fase e `NUM_PHASES = 256` fases. A latência algorítmica **não é zero** quando o resampling está ativo — ela é determinística e computável a partir de `TAPS_PER_PHASE`.
+
   - **Fórmula de latência (quando resampling ativo):**
 
     ```rust
@@ -447,12 +500,14 @@
     ```
 
   - **Ações Técnicas:**
+
     1. Adicionar método `pub fn latency_samples(&self, host_rate: u32) -> u32` em `NamResampler`:
        - Retorna `0` quando `is_bypass()`.
        - Retorna a fórmula acima usando `TAPS_PER_PHASE` e `pw_rate` / `nam_rate`.
     2. Criar teste unitário em `resampler_test.rs` que valida:
        - `latency_samples(48000)` == 0 quando `pw_rate == 48000 && nam_rate == 48000`.
        - `latency_samples(44100)` retorna valor > 0 e consistente com a fórmula para `44100 → 48000`.
+
   - **Aceite:** Método compilado e testado. Valor correto para as taxas mais comuns (44100, 48000, 96000).
 
 - [ ] **Tarefa 3.1.2** — Implementação da Extensão `clap_host_latency`
@@ -474,13 +529,15 @@
 - [ ] **Tarefa 3.2.1** — Mapeamento de Vulnerabilidades com Block Sizes Não-Potência de 2
 
   - **Contexto:** O Bitwig subdivide blocos para automação sample-accurate e para rendering offline. É comum receber sequências como `[17, 495, 17, 495, ...]` (automação em grid odd) ou `[1, 1, 1, ...]` (modulação por sample). O `NamResampler` e o gate SIMD assumem certos tamanhos mínimos.
-  - **Nota (Sprint 0):** O Épico 0.1 já corrige a vulnerabilidade de leitura out-of-bounds para `n < 8` nos kernels SIMD e valida o Gate FSM com `n_samples = 1`. Esta tarefa complementa com auditoria de `assert!` implícitos e edge cases adicionais do resampler.
-  - **Ações Técnicas:**
-    1. Auditar `apply_input_stage` e `run_inference` para localizar qualquer `assert!(n >= 8)` ou alinhamento SIMD implícito que explode com `n < 8`.
+  - **Nota (Sprint 0 — completado):** O Épico 0.1 já corrigiu os fallbacks escalares para `n < 8` nos kernels SIMD e validou o Gate FSM com `n_samples = 1`.
+  - **Nota (Auditoria S0-S2):** Os itens 3 e 4 das ações abaixo já foram cobertos pela Sprint 0 (`gate_test.rs` e fallbacks `#[cold]`). O foco residual desta tarefa é exclusivamente nos **edge cases do pipeline CLAP completo com modelo carregado e resampler ativo** (caminhos não cobertos pela Sprint 0, que testava componentes isolados).
+  - **Ações Técnicas Residuais:**
+    1. Auditar `apply_input_stage` e `run_inference` para localizar qualquer `assert!(n >= 8)` ou alinhamento SIMD implícito que explode com `n < 8` — **com modelo carregado no NamClapProcessor**.
     2. Verificar que `NamResampler::process_input/output` retorna `0` (sem pânico) para `n_in = 0`.
-    3. Verificar que o gate (`DynamicHysteresis::update`) lida corretamente com `n_samples = 1`.
-    4. Verificar que `compute_energy_stereo` e `compute_max_diff_avx2` funcionam com `n < 8` (tamanho mínimo para AVX2 = 8 floats = um `__m256`): adicionar fallback escalar para `n < 8`.
-  - **Aceite:** `cargo test --features clap-plugin` passa. Nenhum SIGSEGV ao processar blocos de 1, 3, 7, 17 e 33 samples.
+    3. ~~Verificar que o gate (`DynamicHysteresis::update`) lida corretamente com `n_samples = 1`.~~ *(Coberto pela Sprint 0)*
+    4. ~~Verificar que `compute_energy_stereo` e `compute_max_diff_avx2` funcionam com `n < 8`.~~ *(Coberto pela Sprint 0)*
+    5. Criar teste de integração headless CLAP com blocos `[1, 3, 7, 17, 33]` samples **com modelo `.nam` de teste carregado** via SPSC, validando que `process()` retorna `ProcessStatus::Continue` sem panic.
+  - **Aceite:** `cargo test --features clap-plugin` passa. Nenhum SIGSEGV ao processar blocos de 1, 3, 7, 17 e 33 samples com modelo ativo.
 
 - [ ] **Tarefa 3.2.2** — Suite de Stress Headless com `clack-host` (CI-Ready)
 
@@ -522,6 +579,7 @@
     3. Os campos universais permanecem: `status_bits`, `dsp_cycle_time`, `dsp_overloads`, `last_n_samples`, `latency_hist`, `rt_priority`, `active_rate`.
     4. Ajustar `RtStatusFlags::new()` e todos os consumidores em `pw_host.rs` e `cli.rs` para compilar com os gates condicionais.
     5. Verificar que `cargo check` compila sem erros para ambas as features.
+  - **Nota (Auditoria S0-S2):** Confirmado via `grep` que os 3 campos PW-specific (`requested_pw_rate`, `active_rate_changed`, `requested_nam_rate`) são acessados exclusivamente em `src/standalone/pw_host.rs`. Nenhum código em `src/clap/` referencia esses campos. A refatoração é straightforward.
   - **Aceite:** Build `clap-plugin` e `standalone` ambos compilam limpos. `RtStatusFlags` no CLAP contém apenas campos universais.
 
 ---
@@ -533,7 +591,7 @@
 **Pré-requisito:** Sprint 2 concluída (parâmetros CLAP funcionais — a UI só é possível depois que os IDs de parâmetro estão definidos).
 
 **Decisões arquiteturais:**
->
+
 > - **`baseview`**: biblioteca Rust para embeder janelas nativas em hosts (X11/Wayland no Linux). Fornece `RawWindowHandle` compatível com CLAP sem depender de GTK/Qt.
 > - **`egui`**: Immediate Mode GUI — sem estado de widget persistente, sem GC, sem alocações no render loop. Ideal para plugins de áudio.
 > - **`rfd`** (Rusty File Dialog): file picker nativo assíncrono que delega ao `zenity`/`xdg-open` no Linux — nunca bloqueia a UI thread.
@@ -546,7 +604,9 @@
 - [ ] **Tarefa 4.0.1** — Adicionar Dependências sob Feature `clap-plugin-gui`
 
   - **Contexto:** A GUI é opcional — um build "headless" (sem GUI) deve ser possível para hosts que não suportam janelas embutidas ou para uso em servidores. Criar uma sub-feature `clap-plugin-gui` que ativa apenas quando o host solicitar.
+
   - **Ações Técnicas:**
+
     1. Em `Cargo.toml`, adicionar feature `clap-plugin-gui` que depende de `clap-plugin`:
 
        ```toml
@@ -560,9 +620,13 @@
        ```
 
     2. Gatear todo código de UI em `#[cfg(feature = "clap-plugin-gui")]`.
+
     3. Verificar que `cargo check --no-default-features --features clap-plugin` (sem GUI) compila sem erros — o plugin deve funcionar headless.
+
     4. Verificar que `cargo check --no-default-features --features clap-plugin-gui` também compila.
+
     5. Executar `./utils/lints.sh` para ambas as features.
+
   - **Aceite:** Dois builds limpos: com e sem GUI. Zero warnings.
 
 ---
@@ -586,7 +650,9 @@
 - [ ] **Tarefa 4.1.2** — Embed da Janela `baseview` e Inicialização do `egui`
 
   - **Contexto:** O `create_window()` do CLAP fornece um `RawWindowHandle` do host (o "parent" onde a janela do plugin deve ser embutida). `baseview::Window::open_parented()` aceita este handle e cria a janela filha.
+
   - **Ações Técnicas:**
+
     1. Em `src/clap/gui/window.rs`, criar struct `NamPluginWindow`:
 
        ```rust
@@ -601,16 +667,22 @@
        ```
 
     2. Implementar `baseview::WindowHandler` para `NamPluginWindow`:
+
        - `on_frame()`: chamar `ctx.run(input, ui_fn)` e submeter o frame renderizado via `wgpu` ou `glow` (escolher `egui_glow` por menor dependência).
        - `on_event()`: encaminhar eventos de mouse/teclado ao `egui`.
+
     3. Em `PluginGui::create_window()`: chamar `baseview::Window::open_parented(parent_handle, NamPluginWindow::new(...))`.
+
     4. Em `PluginGui::destroy()`: dropar o `WindowHandle` para fechar a janela.
+
   - **Aceite:** Janela abre com fundo preto (antes dos controles). Fecha sem hang. Zero panics ao abrir/fechar 10× consecutivamente.
 
 - [ ] **Tarefa 4.1.3** — Thread Safety: UI Thread vs Audio Thread vs Main Thread
 
   - **Contexto:** O CLAP especifica 3 threads: `audio thread` (process), `main thread` (plugin lifecycle) e `UI thread` (janela). `baseview` no Linux cria sua própria thread para o event loop da janela. A UI **nunca** pode chamar métodos da audio thread diretamente.
+
   - **Ações Técnicas:**
+
     1. Definir em `NamClapShared` campos atômicos de telemetria para a UI (leitura lock-free):
 
        ```rust
@@ -625,8 +697,11 @@
        ```
 
     2. Na audio thread (`process()`): atualizar `ui_peak_l/r` com `Ordering::Relaxed` (UI pode ver valores levemente atrasados — aceitável para medidores visuais).
+
     3. Na UI thread (`on_frame()`): ler `ui_peak_l/r` com `Ordering::Relaxed`. Nunca escrever nos campos de `NamClapProcessor`.
+
     4. Documentar claramente com comentários quais campos são escritos por qual thread.
+
   - **Aceite:** `cargo test` passa sem `ThreadSanitizer` errors (`RUSTFLAGS="-Zsanitizer=thread" cargo +nightly test`).
 
 ---
@@ -732,8 +807,11 @@
 - [ ] **Tarefa 5.2.1** — Compartilhamento de Pesos (Flyweight Pattern com `Arc`)
 
   - **Contexto:** Se o usuário inserir 8 instâncias do NAM-rs com o mesmo modelo (comum em backing tracks em paralelo), cada instância carrega seus próprios pesos — N × (tamanho do modelo) de RAM. Com `Arc<DynamicModel>` imutável, **apenas uma cópia** dos pesos existe na RAM para todas as instâncias.
+
   - **Problema RT-safety:** `Arc::drop()` chama o `Drop` do modelo (que desaloca), o que pode acontecer na audio thread quando a última instância é destruída. Solução: o GC SPSC existente.
+
   - **Ações Técnicas:**
+
     1. Criar um `ModelCache` global thread-safe em `src/clap/model_cache.rs`:
 
        ```rust
@@ -743,10 +821,17 @@
        ```
 
     2. Em `NamClapMainThread::load_model()`: antes de carregar, checar o cache. Se existir um `Arc` forte, reutilizá-lo. Se `Weak::upgrade()` falhar (todas as instâncias foram destruídas), recarregar.
+
     3. Enviar `Arc<DynamicModel>` (clone do Arc — não do modelo) via SPSC para a audio thread. O `NamClapProcessor` detém um `Arc<DynamicModel>` ao invés de `Box<DynamicModel>`.
+
     4. O GC ainda é necessário: ao trocar de modelo, a audio thread envia o `Arc` antigo via `gc_tx` para drop na main thread.
+
     5. Validar com 8 instâncias no Bitwig: `htop` mostra uso de RAM estável (não multiplicado por 8).
+
   - **Abordagem PoC:** Implementar como **prova de conceito** para validar se o compartilhamento de pesos via `Arc` é viável sem impacto RT. A inferência LSTM/WaveNet é stateful (`h`, `c`, ring buffer) — os pesos são readonly mas o estado é per-instance. A separação pesos/estado pode exigir refatoração nos models. A decisão de permanência será baseada nos resultados de benchmark e na complexidade real da refatoração.
+
+  - **Nota (Auditoria S0-S2):** A migração de `Box<DynamicModel>` para `Arc<DynamicModel>` impacta diretamente `GcItem` (enum em `src/common/spsc.rs`, variante `Model(Box<DynamicModel>)`) e o método `NamClapProcessor::push_to_gc()`. Ambos precisarão ser adaptados para aceitar `Arc` ao invés de `Box`. O `GcOverflowBuffer` com `AtomicPtr` também deverá ser revisado.
+
   - **Aceite:** 8 instâncias com mesmo modelo: RAM = 1× modelo + overhead mínimo por instância. `valgrind --tool=massif` confirma.
 
 - [ ] **Tarefa 5.2.2** — Telemetria ao Vivo na UI: Histograma de Latência DSP
@@ -884,14 +969,12 @@
 
 - [ ] **Tarefa 6.3.1** — Atualizar `docs/architecture.md`
 
-  - **Ações Técnicas:**
-    1. Adicionar seção §8.2 — "Arquitetura CLAP: Threads e Ciclo de Vida" documentando:
-       - Diagrama das 3 threads (audio, main, UI) e quais structs pertencem a cada uma.
-       - Decisão de não usar `DspBridge` no CLAP (e o motivo).
-       - Estratégia de GC (`gc_tx/rx`) para drop de modelos fora da RT.
-       - Feature flags: `clap-plugin` (headless) vs `clap-plugin-gui` (com UI).
+  - **Nota (Auditoria S0-S2):** A §8.1 (Arquitetura CLAP: Threads e Ciclo de Vida) e a tabela §4 (módulos CLAP) foram atualizadas antecipadamente durante a auditoria pós-Sprint 2. O foco residual desta tarefa é:
+  - **Ações Técnicas Residuais:**
+    1. ~~Adicionar seção §8.2 — "Arquitetura CLAP: Threads e Ciclo de Vida".~~ *(Feito na auditoria S0-S2 como §8.1)*
     2. Adicionar screenshot da UI rodando no Bitwig (captura de tela do desenvolvimento).
     3. Verificar consistência com `docs/architecture.md` §4.1 (Feature Flags table) — atualizar a tabela com os novos profiles de build.
+    4. Revisar §8.1 e adicionar detalhes sobre GUI (threads, extensão `clap_plugin_gui`), se implementada nas Sprints 4-5.
   - **Aceite:** `docs/architecture.md` compilável via `mdbook` sem warnings. PR de documentação aprovado.
 
 - [ ] **Tarefa 6.3.2** — Checklist Pré-Release e Tag Git
