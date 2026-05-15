@@ -400,7 +400,7 @@
     5. Dentro do loop de inferência (se `n_frames` for pequeno), aplicar `smoother.tick()` por sample para modulação sample-accurate. Para blocos grandes (> 64 samples), processar em sub-blocos de 8 samples com interpolação linear (trade-off precisão × CPU).
   - **Aceite:** LFO do Bitwig em 10Hz modulando Input Gain → espectro FFT da saída mostra sidebands corretos sem artefatos de descontinuidade. `CountingAllocator` = 0 durante processamento.
 
-- [ ] **Tarefa 2.2.3** — Persistência de Sessão via `clap_plugin_state`
+- [x] **Tarefa 2.2.3** — Persistência de Sessão via `clap_plugin_state`
 
   - **Contexto:** Ao salvar um projeto no Bitwig, o host chama `state.save(stream)`. Ao reabrir, chama `state.load(stream)`. Sem isso, o Bitwig loga o erro `Error saving initial state of plug-in for undo history: Plug-in does not support saving its state` no carregamento. O plugin deve restaurar o modelo e os parâmetros exatamente como estavam.
   - **Ações Técnicas:**

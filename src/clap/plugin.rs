@@ -50,7 +50,7 @@ impl<'a> PluginShared<'a> for NamClapShared {}
 
 /// Estado exclusivo da main thread (carregamento de modelos, state save/load).
 pub struct NamClapMainThread<'a> {
-    shared: &'a NamClapShared,
+    pub(crate) shared: &'a NamClapShared,
     /// Parâmetros atuais conhecidos pela main thread (espelho dos params da audio thread).
     pub params: NamPluginParams,
     /// Handle do host para notificações (request_restart, latency_changed, etc.).
@@ -139,12 +139,20 @@ impl<'a> NamClapMainThread<'a> {
         // 3. Atualiza o path nos parâmetros locais (espelhados)
         self.params.model_path = Some(path.to_path_buf());
 
-        // Notifica o host sobre o carregamento bem-sucedido (Cold Path)
+        // 4. Notifica o host sobre o carregamento bem-sucedido (Cold Path)
         if let Some(log) = self.host.get_extension::<HostLog>() {
             let msg = format!("NAM-rs: model loaded ({:?})", path);
             if let Ok(c_msg) = CString::new(msg) {
                 log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
             }
+        }
+
+        // 5. Notifica o host que o estado mudou (dirty)
+        if let Some(mut state_ext) = self
+            .host
+            .get_extension::<clack_extensions::state::HostState>()
+        {
+            state_ext.mark_dirty(&self.host);
         }
 
         Ok(())
@@ -165,6 +173,7 @@ impl Plugin for NamClapPlugin {
     ) {
         builder.register::<clack_extensions::audio_ports::PluginAudioPorts>();
         builder.register::<clack_extensions::params::PluginParams>();
+        builder.register::<clack_extensions::state::PluginState>();
     }
 }
 

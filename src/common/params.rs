@@ -7,13 +7,14 @@
 //! permitindo que diferentes hosts (CLI/PipeWire ou CLAP) gerenciem e
 //! sincronizem os parâmetros de forma consistente.
 
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Parâmetros globais de processamento do plugin/aplicativo.
 ///
 /// Esta estrutura encapsula todos os controles disponíveis para o usuário,
 /// desde ganhos básicos até o caminho do modelo neural carregado.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamPluginParams {
     /// Ganho de entrada em decibéis (dB). Padrão: 0.0.
     pub input_gain_db: f32,

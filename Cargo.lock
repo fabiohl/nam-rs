@@ -636,6 +636,7 @@ name = "nam-rs"
 version = "1.4.5"
 dependencies = [
  "anyhow",
+ "clack-common",
  "clack-extensions",
  "clack-host",
  "clack-plugin",
