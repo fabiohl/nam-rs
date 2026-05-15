@@ -25,10 +25,8 @@ use crate::models::{DynamicModel, NamModel};
 use minstant::Anchor;
 #[cfg(feature = "standalone")]
 use pipewire as pw;
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(any(feature = "standalone", test))]
 use std::sync::atomic::Ordering;
-
-/// Estrutura de posse explícita para evitar o leak de memória
 /// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
 #[cfg(feature = "standalone")]
 pub(crate) struct AppState<S1, L1, S2, L2> {
@@ -102,7 +100,7 @@ pub struct DspBridge {
     pub dropped_frames: std::sync::atomic::AtomicU32,
 }
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(any(feature = "standalone", test))]
 impl DspBridge {
     /// Drena o contador de frames descartados, retornando o valor acumulado e zerando-o.
     ///
@@ -112,12 +110,10 @@ impl DspBridge {
     }
 }
 
-/// Wrapper para acesso ao DspBridge que encapsula a segurança de ponteiros brutos.
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[derive(Clone, Copy)]
-pub struct BridgeRef(
-    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))] *mut DspBridge,
-);
+/// Referência segura para o DspBridge (compartilhado entre threads via ponteiro).
+pub struct BridgeRef(*mut DspBridge);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl BridgeRef {
@@ -128,6 +124,18 @@ impl BridgeRef {
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
         debug_assert!(!ptr.is_null());
         Self(ptr)
+    }
+
+    /// Cria um BridgeRef nulo (para quando a ponte não é necessária).
+    #[inline(always)]
+    pub fn null() -> Self {
+        Self(std::ptr::null_mut())
+    }
+
+    /// Verifica se o BridgeRef é nulo.
+    #[inline(always)]
+    pub fn is_null(self) -> bool {
+        self.0.is_null()
     }
 
     /// Dereferencia o ponteiro para acesso mutável.
@@ -152,37 +160,42 @@ pub struct DspPipelineContext<'a> {
     pub output_gain_mult: f32,
     /// Parâmetros do Noise Gate.
     pub gate_params: &'a GateParams,
-    /// Histerese de silêncio global.
+    /// Histerese para detecção de silêncio.
     pub silence_hysteresis: &'a mut DynamicHysteresis,
     /// Histerese para detecção de sinal mono.
     pub mono_hysteresis: &'a mut DynamicHysteresis,
-    /// Threshold de abertura do gate (quadrático).
+    /// Limiar de abertura (ao quadrado).
     pub threshold_open_sq: f32,
-    /// Threshold de fechamento do gate (quadrático).
+    /// Limiar de fechamento (ao quadrado).
     pub threshold_close_sq: f32,
-    /// Flag indicando se o processamento deve ser mono.
+    /// Flag indicando processamento em mono.
     pub process_mono: &'a mut bool,
-    /// Flags de status em tempo real.
+    /// Flags de status RT.
     pub rt_status: &'a RtStatusFlags,
-    /// Ponteiro para a ponte de memória compartilhada.
-    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    /// Referência para a ponte de monitoração de áudio (opcional).
     pub bridge_ptr: BridgeRef,
-    /// Buffer intermediário L (pós-resampler input).
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// Conjunto de buffers de trabalho para o pipeline DSP.
+/// Buffers de trabalho intermediários para o pipeline DSP.
+pub struct DspBuffers<'a> {
+    /// Buffer intermediário pós-resampler L.
     pub resamp_mid_l: &'a mut [f32],
-    /// Buffer intermediário R (pós-resampler input).
+    /// Buffer intermediário pós-resampler R.
     pub resamp_mid_r: &'a mut [f32],
-    /// Buffer de saída L (pré-resampler output).
+    /// Buffer de saída do resampler L.
     pub resamp_out_l: &'a mut [f32],
-    /// Buffer de saída R (pré-resampler output).
+    /// Buffer de saída do resampler R.
     pub resamp_out_r: &'a mut [f32],
-    /// Buffer intermediário para saída do modelo L (pós-modelo, pré-resampler output).
+    /// Buffer de saída do modelo L.
     pub model_out_l: &'a mut [f32],
-    /// Buffer intermediário para saída do modelo R (pós-modelo, pré-resampler output).
+    /// Buffer de saída do modelo R.
     pub model_out_r: &'a mut [f32],
 }
 
 /// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(any(feature = "standalone", test))]
 #[cold]
 #[inline(never)]
 pub fn handle_silence_bypass(bridge: BridgeRef, rt_status: &RtStatusFlags) {
@@ -215,8 +228,6 @@ pub fn handle_silence_bypass(bridge: BridgeRef, rt_status: &RtStatusFlags) {
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 1: Gate, Ganhos de Entrada e Detecção de Mono.
 #[inline(always)]
-// TODO: Remover #[allow(dead_code)] quando o wrapper CLAP invocar este estágio.
-#[allow(dead_code)]
 pub(crate) fn apply_input_stage(
     samples_l: &mut [f32],
     samples_r: &mut [f32],
@@ -275,19 +286,23 @@ pub(crate) fn apply_input_stage(
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 2: Inferência Neural e Resampling.
 #[inline(always)]
-// TODO: Remover #[allow(dead_code)] quando o wrapper CLAP invocar este estágio.
-#[allow(dead_code)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run_inference(
-    samples_l: &[f32],
-    samples_r: &[f32],
+    samples_l: &mut [f32],
+    samples_r: &mut [f32],
     n_samples: usize,
     ctx: &mut DspPipelineContext<'_>,
+    resamp_mid_l: &mut [f32],
+    resamp_mid_r: &mut [f32],
+    resamp_out_l: &mut [f32],
+    resamp_out_r: &mut [f32],
+    model_out_l: &mut [f32],
+    model_out_r: &mut [f32],
 ) -> usize {
     let is_resamp_bypass = ctx.resampler.is_bypass();
     let n = n_samples.min(MAX_RESAMP_BUF);
 
     // CAMINHO A: Ajuste de Qualidade desligado (Resampler em Bypass).
-    // O som entra e sai na mesma frequência, sem precisar de tradução matemática.
     if is_resamp_bypass {
         let model_in_l = &samples_l[..n];
         let model_in_r = if *ctx.process_mono {
@@ -295,32 +310,30 @@ pub(crate) fn run_inference(
         } else {
             &samples_r[..n]
         };
-        let model_out_l = &mut ctx.resamp_out_l[..n];
-        let model_out_r = &mut ctx.resamp_out_r[..n];
+        let m_out_l = &mut resamp_out_l[..n];
+        let m_out_r = &mut resamp_out_r[..n];
 
         // Processa o som através do "Cérebro" (Modelo Neural) do lado esquerdo.
         if let Some(model_l) = ctx.active_model_l {
-            model_l.process(model_in_l, model_out_l);
+            model_l.process(model_in_l, m_out_l);
         } else {
-            // Caminho Limpo (True-Bypass): se não há modelo carregado, o sinal passa original.
-            model_out_l.copy_from_slice(model_in_l);
+            m_out_l.copy_from_slice(model_in_l);
         }
 
         // No modo mono, apenas copiamos o resultado do lado esquerdo para o direito.
         if *ctx.process_mono {
-            model_out_r.copy_from_slice(model_out_l);
+            m_out_r.copy_from_slice(m_out_l);
         } else if let Some(model_r) = ctx.active_model_r {
             // Se for estéreo, processamos o lado direito de forma independente.
-            model_r.process(model_in_r, model_out_r);
+            model_r.process(model_in_r, m_out_r);
         } else {
             // Caminho Limpo para o lado direito.
-            model_out_r.copy_from_slice(model_in_r);
+            m_out_r.copy_from_slice(model_in_r);
         }
 
         n
     } else {
         // CAMINHO B: Ajuste de Qualidade ligado (Resampler Ativo).
-        // Necessário quando o modelo neural e a placa de som trabalham em frequências diferentes.
 
         // 1. Traduz o som para a frequência que o "Cérebro" neural entende (geralmente 48kHz).
         let n_48k = ctx.resampler.process_input(
@@ -330,36 +343,37 @@ pub(crate) fn run_inference(
             } else {
                 &samples_r[..n]
             },
-            &mut ctx.resamp_mid_l[..MAX_RESAMP_BUF],
-            &mut ctx.resamp_mid_r[..MAX_RESAMP_BUF],
+            &mut resamp_mid_l[..MAX_RESAMP_BUF],
+            &mut resamp_mid_r[..MAX_RESAMP_BUF],
         );
 
-        let model_in_l = &ctx.resamp_mid_l[..n_48k];
-        let model_in_r = &ctx.resamp_mid_r[..n_48k];
-        let model_out_l = &mut ctx.model_out_l[..n_48k];
-        let model_out_r = &mut ctx.model_out_r[..n_48k];
+        let model_in_l = &resamp_mid_l[..n_48k];
+        let model_in_r = &resamp_mid_r[..n_48k];
+        let m_out_l = &mut model_out_l[..n_48k];
+        let m_out_r = &mut model_out_r[..n_48k];
 
-        // 2. Aplica a simulação do amplificador (Modelo Neural).
+        // 2. Aplica a simulação do amplificador (Modelo Neural) lado esquerdo.
         if let Some(model_l) = ctx.active_model_l {
-            model_l.process(model_in_l, model_out_l);
+            model_l.process(model_in_l, m_out_l);
         } else {
-            model_out_l.copy_from_slice(model_in_l);
+            m_out_l.copy_from_slice(model_in_l);
         }
 
+        // Processa o lado direito (Stereo ou cópia do Mono).
         if *ctx.process_mono {
-            model_out_r.copy_from_slice(model_out_l);
+            m_out_r.copy_from_slice(m_out_l);
         } else if let Some(model_r) = ctx.active_model_r {
-            model_r.process(model_in_r, model_out_r);
+            model_r.process(model_in_r, m_out_r);
         } else {
-            model_out_r.copy_from_slice(model_in_r);
+            m_out_r.copy_from_slice(model_in_r);
         }
 
         // 3. Traduz o som de volta para a frequência original da sua placa de som.
         ctx.resampler.process_output(
-            model_out_l,
-            model_out_r,
-            &mut ctx.resamp_out_l[..MAX_RESAMP_BUF],
-            &mut ctx.resamp_out_r[..MAX_RESAMP_BUF],
+            m_out_l,
+            m_out_r,
+            &mut resamp_out_l[..MAX_RESAMP_BUF],
+            &mut resamp_out_r[..MAX_RESAMP_BUF],
         )
     }
 }
@@ -367,8 +381,6 @@ pub(crate) fn run_inference(
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 3: Ganho de Saída, Fading e Detecção de Clipping.
 #[inline(always)]
-// TODO: Remover #[allow(dead_code)] quando o wrapper CLAP invocar este estágio.
-#[allow(dead_code)]
 pub(crate) fn apply_output_stage(
     resamp_out_l: &mut [f32],
     resamp_out_r: &mut [f32],
@@ -401,7 +413,7 @@ pub(crate) fn apply_output_stage(
     }
 }
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(any(feature = "standalone", test))]
 /// Estágio 4: Escrita no DspBridge.
 #[inline(always)]
 pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bridge: BridgeRef) {
@@ -449,7 +461,7 @@ pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bri
         .store(current_gen + 1, Ordering::Release);
 }
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(any(feature = "standalone", test))]
 /// Pipeline DSP Completo (Agregador).
 #[inline(always)]
 pub fn capture_dsp_pipeline(
@@ -457,7 +469,11 @@ pub fn capture_dsp_pipeline(
     samples_r: &mut [f32],
     n_samples: usize,
     mut ctx: DspPipelineContext<'_>,
+    bufs: DspBuffers<'_>,
 ) {
+    if ctx.bridge_ptr.is_null() {
+        return;
+    }
     // ESTÁGIO 1: ENTRADA E LIMPEZA
     // Prepara o som e verifica se há silêncio para economizar energia.
     let gate_state = apply_input_stage(samples_l, samples_r, n_samples, &mut ctx);
@@ -487,13 +503,24 @@ pub fn capture_dsp_pipeline(
 
     // ESTÁGIO 2: O "CÉREBRO" (SIMULAÇÃO DO AMP/PEDAL)
     // Aqui acontece a mágica: a rede neural simula o timbre desejado.
-    let n_pw = run_inference(samples_l, samples_r, n_samples, &mut ctx);
+    let n_pw = run_inference(
+        samples_l,
+        samples_r,
+        n_samples,
+        &mut ctx,
+        bufs.resamp_mid_l,
+        bufs.resamp_mid_r,
+        bufs.resamp_out_l,
+        bufs.resamp_out_r,
+        bufs.model_out_l,
+        bufs.model_out_r,
+    );
 
     // ESTÁGIO 3: AJUSTE FINAL E PROTEÇÃO
     // Controla o volume de saída e garante que o som não "estoure" (distorção).
     apply_output_stage(
-        ctx.resamp_out_l,
-        ctx.resamp_out_r,
+        bufs.resamp_out_l,
+        bufs.resamp_out_r,
         n_pw,
         ctx.output_gain_mult,
         ctx.silence_hysteresis,
@@ -502,7 +529,7 @@ pub fn capture_dsp_pipeline(
 
     // ESTÁGIO 4: ENTREGA FINAL (A PONTE)
     // Envia o resultado processado para os seus alto-falantes através da ponte (bridge).
-    write_bridge(ctx.resamp_out_l, ctx.resamp_out_r, n_pw, ctx.bridge_ptr);
+    write_bridge(bufs.resamp_out_l, bufs.resamp_out_r, n_pw, ctx.bridge_ptr);
 }
 
 /// Pipeline DSP de Reprodução (Bridge → Hardware).

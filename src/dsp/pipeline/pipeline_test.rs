@@ -81,6 +81,9 @@ mod tests {
             process_mono: &mut process_mono,
             rt_status: &rt_status,
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -92,7 +95,7 @@ mod tests {
         // LIGA O VIGIA DE MEMÓRIA.
         let _guard = TrackingGuard::new();
         // EXECUTA O PROCESSAMENTO DE SOM REAL.
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
         // Verifica se o vigia pegou algum pedido de memória proibido.
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
@@ -274,6 +277,9 @@ mod tests {
             process_mono: &mut process_mono,
             rt_status: &rt_status,
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -285,7 +291,7 @@ mod tests {
         // Vigia de alocação de memória.
         let _guard = TrackingGuard::new();
         // Executamos a orquestra de áudio (Pipeline).
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -379,6 +385,9 @@ mod tests {
             process_mono: &mut process_mono,
             rt_status: &rt_status,
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -388,7 +397,7 @@ mod tests {
         };
 
         let _guard = TrackingGuard::new();
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -432,6 +441,7 @@ mod tests {
             dropped_frames: std::sync::atomic::AtomicU32::new(0),
         });
 
+        // Buffers de trabalho temporários para os cálculos de DSP.
         let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_mid_r = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_out_l = vec![0.0; MAX_RESAMP_BUF];
@@ -461,6 +471,9 @@ mod tests {
             process_mono: &mut process_mono,
             rt_status: &rt_status,
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -470,7 +483,7 @@ mod tests {
         };
 
         let _guard = TrackingGuard::new();
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -539,6 +552,9 @@ mod tests {
             process_mono: &mut process_mono,
             rt_status: &rt_status,
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -546,7 +562,7 @@ mod tests {
             model_out_l: &mut model_out_l,
             model_out_r: &mut model_out_r,
         };
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
 
         // 2ª passada: O sistema tenta processar mais som, mas vê que a ponte ainda está ocupada
         // com o som da passada anterior que ninguém leu.
@@ -567,6 +583,9 @@ mod tests {
             process_mono: &mut process_mono2,
             rt_status: &rt_status,
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs2 = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -577,7 +596,7 @@ mod tests {
 
         let _guard = TrackingGuard::new();
         // Aqui o sistema deve ser obrigado a descartar este novo pacote de som.
-        capture_dsp_pipeline(&mut samples_l2, &mut samples_r2, n, ctx2);
+        capture_dsp_pipeline(&mut samples_l2, &mut samples_r2, n, ctx2, bufs2);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 

@@ -5,7 +5,11 @@
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
 use crate::common::params::NamPluginParams;
-use crate::dsp::gate::DynamicHysteresis;
+use crate::common::spsc::RtStatusFlags;
+use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
+use crate::dsp::pipeline::{
+    DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
+};
 use crate::dsp::resampler::NamResampler;
 use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
@@ -18,43 +22,39 @@ use rtrb::{Consumer, Producer};
 #[allow(dead_code)]
 pub struct NamClapProcessor<'a> {
     /// Modelo ativo para o canal esquerdo (None = bypass).
-    #[allow(dead_code)]
     model_l: Option<Box<DynamicModel>>,
     /// Modelo ativo para o canal direito (None = bypass).
-    #[allow(dead_code)]
     model_r: Option<Box<DynamicModel>>,
     /// Resampler sinc polifásico (bypass quando sample_rate == 48000).
-    #[allow(dead_code)]
     resampler: NamResampler,
     /// Parâmetros atuais na audio thread (snapshottados do SPSC a cada process()).
-    #[allow(dead_code)]
     params: NamPluginParams,
 
     /// Buffers intermediários pré-alocados no activate() — ZERO alloc no process().
-    /// pós-resampler input (f32 @ 48kHz)
-    #[allow(dead_code)]
-    buf_mid_l: Vec<f32>,
-    #[allow(dead_code)]
-    buf_mid_r: Vec<f32>,
-    /// pós-modelo, pré-resampler output (f32 @ 48kHz)
-    #[allow(dead_code)]
-    buf_out_l: Vec<f32>,
-    #[allow(dead_code)]
-    buf_out_r: Vec<f32>,
+    /// 1. Cópia do input do host (sample_rate variável)
+    buf_host_l: Box<[f32]>,
+    buf_host_r: Box<[f32]>,
+    /// 2. Pós-resampler input / Pré-modelo (f32 @ 48kHz)
+    buf_mid_l: Box<[f32]>,
+    buf_mid_r: Box<[f32]>,
+    /// 3. Pós-modelo / Pré-resampler output (f32 @ 48kHz)
+    buf_model_l: Box<[f32]>,
+    buf_model_r: Box<[f32]>,
+    /// 4. Pós-resampler output / Final (sample_rate variável)
+    buf_out_l: Box<[f32]>,
+    buf_out_r: Box<[f32]>,
 
     /// Gate FSM com histerese temporal (Noise Gate principal).
-    #[allow(dead_code)]
     gate: DynamicHysteresis,
     /// Histerese para detecção de silêncio absoluto.
-    #[allow(dead_code)]
     silence_hyst: DynamicHysteresis,
     /// Histerese para detecção de sinal mono estável.
-    #[allow(dead_code)]
     mono_hyst: DynamicHysteresis,
     /// Flag indicando se estamos processando em mono (para otimização).
-    #[allow(dead_code)]
     process_mono: bool,
 
+    /// Flags de status para telemetria RT.
+    rt_status: std::sync::Arc<RtStatusFlags>,
     /// Referência ao estado compartilhado (para devolver os canais no deactivate).
     shared: &'a NamClapShared,
     /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
@@ -71,8 +71,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
         // 1. Extração dos canais SPSC do Shared (ownership transfer)
-        // O uso de expect() é seguro aqui pois estas instâncias DEVEM estar presentes
-        // e são inicializadas no new_shared().
         let param_rx = shared
             .param_rx
             .lock()
@@ -87,21 +85,21 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .take()
             .expect("Produtor gc_tx já foi extraído");
 
-        // 2. Pré-alocação de buffers intermediários
-        // Dimensionados para max_frames_count * 2 para dar margem ao resampler se necessário.
-        let buf_capacity = (audio_config.max_frames_count as usize) * 2;
-        let buf_mid_l = vec![0.0f32; buf_capacity];
-        let buf_mid_r = vec![0.0f32; buf_capacity];
-        let buf_out_l = vec![0.0f32; buf_capacity];
-        let buf_out_r = vec![0.0f32; buf_capacity];
+        // 2. Pré-alocação de buffers intermediários (Disjoint Stages)
+        let buf_capacity = (audio_config.max_frames_count as usize).max(1024) * 2;
+        let buf_host_l = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_host_r = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_mid_l = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_mid_r = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_model_l = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_model_r = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_out_l = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_out_r = vec![0.0f32; buf_capacity].into_boxed_slice();
 
         // 3. Inicialização de componentes DSP
-
-        // NamResampler: fonte sempre 48k (padrão NAM), alvo SR do host.
         let resampler = NamResampler::new(48000, audio_config.sample_rate as u32, buf_capacity)
             .expect("Falha ao criar NamResampler");
 
-        // Histerese com valores padrão
         let gate = DynamicHysteresis::new();
         let silence_hyst = DynamicHysteresis::new();
         let mono_hyst = DynamicHysteresis::new();
@@ -111,14 +109,19 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             model_r: None,
             resampler,
             params: NamPluginParams::default(),
+            buf_host_l,
+            buf_host_r,
             buf_mid_l,
             buf_mid_r,
+            buf_model_l,
+            buf_model_r,
             buf_out_l,
             buf_out_r,
             gate,
             silence_hyst,
             mono_hyst,
             process_mono: false,
+            rt_status: std::sync::Arc::clone(&shared.rt_status),
             shared,
             param_rx,
             gc_tx,
@@ -126,7 +129,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     }
 
     fn deactivate(self, _main_thread: &mut NamClapMainThread<'a>) {
-        // Devolve os canais para o estado compartilhado para permitir re-ativação futura.
         if let Ok(mut guard) = self.shared.param_rx.lock() {
             *guard = Some(self.param_rx);
         }
@@ -141,23 +143,157 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         mut audio: Audio,
         _events: Events,
     ) -> Result<ProcessStatus, PluginError> {
-        // Implementação temporária de bypass para manter funcionalidade básica
-        // enquanto o pipeline DSP completo não é portado para a Tarefa 2.1.
-        for mut port_pair in &mut audio {
-            let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
-                continue;
-            };
-            for channel_pair in channel_pairs {
-                match channel_pair {
-                    ChannelPair::InputOnly(_) => {}
-                    ChannelPair::OutputOnly(buf) => buf.fill(0.0),
-                    ChannelPair::InputOutput(input, output) => {
-                        output.copy_from_slice(input);
+        while let Ok(payload) = self.param_rx.pop() {
+            match payload {
+                ClapParamPayload::Params(new_params) => {
+                    self.params = new_params;
+                }
+                ClapParamPayload::LoadModel(model_pair) => {
+                    if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
+                        let _ = self.gc_tx.push(old_l);
                     }
-                    ChannelPair::InPlace(_) => {}
+                    if let Some(old_r) = std::mem::replace(&mut self.model_r, model_pair.model_r) {
+                        let _ = self.gc_tx.push(old_r);
+                    }
                 }
             }
         }
+
+        for mut port_pair in &mut audio {
+            let n_samples = port_pair.frames_count() as usize;
+            if n_samples == 0 {
+                continue;
+            }
+
+            let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
+                continue;
+            };
+
+            let mut channel_iter = channel_pairs.into_iter();
+            let pair_l = channel_iter.next();
+            let pair_r = channel_iter.next();
+
+            let mut out_l: Option<&mut [f32]> = None;
+            let mut out_r: Option<&mut [f32]> = None;
+
+            if let Some(pair) = pair_l {
+                match pair {
+                    ChannelPair::InputOutput(i, o) => {
+                        self.buf_host_l[..n_samples].copy_from_slice(&i[..n_samples]);
+                        out_l = Some(o);
+                    }
+                    ChannelPair::InPlace(io) => {
+                        self.buf_host_l[..n_samples].copy_from_slice(&io[..n_samples]);
+                        out_l = Some(io);
+                    }
+                    ChannelPair::InputOnly(i) => {
+                        self.buf_host_l[..n_samples].copy_from_slice(&i[..n_samples]);
+                    }
+                    ChannelPair::OutputOnly(o) => {
+                        self.buf_host_l[..n_samples].fill(0.0);
+                        out_l = Some(o);
+                    }
+                }
+            } else {
+                self.buf_host_l[..n_samples].fill(0.0);
+            }
+
+            if let Some(pair) = pair_r {
+                match pair {
+                    ChannelPair::InputOutput(i, o) => {
+                        self.buf_host_r[..n_samples].copy_from_slice(&i[..n_samples]);
+                        out_r = Some(o);
+                    }
+                    ChannelPair::InPlace(io) => {
+                        self.buf_host_r[..n_samples].copy_from_slice(&io[..n_samples]);
+                        out_r = Some(io);
+                    }
+                    ChannelPair::InputOnly(i) => {
+                        self.buf_host_r[..n_samples].copy_from_slice(&i[..n_samples]);
+                    }
+                    ChannelPair::OutputOnly(o) => {
+                        self.buf_host_r[..n_samples].fill(0.0);
+                        out_r = Some(o);
+                    }
+                }
+            } else {
+                self.buf_host_r[..n_samples].fill(0.0);
+            }
+
+            let lut = crate::math::dsp::gain_lut::get_gain_lut();
+            let gate_params = GateParams {
+                threshold_open_db: self.params.gate_threshold_db,
+                threshold_close_db: self.params.gate_threshold_db - 6.0,
+                ..Default::default()
+            };
+
+            let mut ctx = DspPipelineContext {
+                resampler: &mut self.resampler,
+                active_model_l: &mut self.model_l,
+                active_model_r: &mut self.model_r,
+                input_gain_mult: lut.db_to_linear(self.params.input_gain_db),
+                output_gain_mult: lut.db_to_linear(self.params.output_gain_db),
+                gate_params: &gate_params,
+                silence_hysteresis: &mut self.silence_hyst,
+                mono_hysteresis: &mut self.mono_hyst,
+                threshold_open_sq: lut.db_to_linear(self.params.gate_threshold_db).powi(2),
+                threshold_close_sq: lut
+                    .db_to_linear(self.params.gate_threshold_db - 6.0)
+                    .powi(2),
+                process_mono: &mut self.process_mono,
+                rt_status: &self.rt_status,
+                bridge_ptr: crate::dsp::pipeline::BridgeRef::null(),
+            };
+
+            let gate_state = apply_input_stage(
+                &mut self.buf_host_l[..n_samples],
+                &mut self.buf_host_r[..n_samples],
+                n_samples,
+                &mut ctx,
+            );
+
+            if gate_state == GateState::Closed {
+                if let Some(out) = out_l {
+                    out.fill(0.0);
+                }
+                if let Some(out) = out_r {
+                    out.fill(0.0);
+                }
+                continue;
+            }
+
+            let n_out = run_inference(
+                &mut self.buf_host_l[..n_samples],
+                &mut self.buf_host_r[..n_samples],
+                n_samples,
+                &mut ctx,
+                &mut self.buf_mid_l,
+                &mut self.buf_mid_r,
+                &mut self.buf_out_l,
+                &mut self.buf_out_r,
+                &mut self.buf_model_l,
+                &mut self.buf_model_r,
+            );
+
+            apply_output_stage(
+                &mut self.buf_out_l[..n_out],
+                &mut self.buf_out_r[..n_out],
+                n_out,
+                ctx.output_gain_mult,
+                ctx.silence_hysteresis,
+                ctx.rt_status,
+            );
+
+            if let Some(o_l) = out_l {
+                let n = n_out.min(o_l.len());
+                o_l[..n].copy_from_slice(&self.buf_out_l[..n]);
+            }
+            if let Some(o_r) = out_r {
+                let n = n_out.min(o_r.len());
+                o_r[..n].copy_from_slice(&self.buf_out_r[..n]);
+            }
+        }
+
         Ok(ProcessStatus::Continue)
     }
 }
@@ -168,6 +304,7 @@ mod tests {
     use crate::clap::NamClapPlugin;
     use crate::dsp::pipeline::test_util::infra::{ALLOC_COUNT, TrackingGuard};
     use clack_host::prelude::*;
+    #[cfg(any(feature = "standalone", test))]
     use std::sync::atomic::Ordering;
 
     #[allow(dead_code)]
@@ -188,7 +325,6 @@ mod tests {
 
     #[test]
     fn test_zero_alloc_process_bypass() {
-        // 1. Setup do Plugin via clack-host
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
@@ -211,7 +347,6 @@ mod tests {
         )
         .expect("Falha ao instanciar plugin");
 
-        // 2. Configuração e Ativação
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
             min_frames_count: 512,
@@ -221,7 +356,6 @@ mod tests {
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
-        // 3. Preparação de Buffers (Simulação de Host)
         let mut input_l = [0.1f32; 512];
         let mut input_r = [0.2f32; 512];
         let mut output_l = [0.0f32; 512];
@@ -249,7 +383,6 @@ mod tests {
         let mut output_events_buffer = EventBuffer::new();
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-        // 4. Execução e Validação de Alocações
         let _guard = TrackingGuard::new();
         let before = ALLOC_COUNT.load(Ordering::Relaxed);
 
@@ -276,17 +409,20 @@ mod tests {
             "Alocações detectadas no hot-path do CLAP via clack-host!"
         );
 
-        // 5. Verificação de Paridade (Bypass)
         for i in 0..512 {
-            assert_eq!(
-                output_l[i], input_l[i],
-                "Falha no bypass Canal L amostra {}",
-                i
+            assert!(
+                (output_l[i] - input_l[i]).abs() < 1e-4,
+                "Falha no bypass Canal L amostra {}: {} vs {}",
+                i,
+                output_l[i],
+                input_l[i]
             );
-            assert_eq!(
-                output_r[i], input_r[i],
-                "Falha no bypass Canal R amostra {}",
-                i
+            assert!(
+                (output_r[i] - input_r[i]).abs() < 1e-4,
+                "Falha no bypass Canal R amostra {}: {} vs {}",
+                i,
+                output_r[i],
+                input_r[i]
             );
         }
     }

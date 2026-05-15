@@ -308,7 +308,7 @@
 
 ### Épico 2.1 — Integração Real do `DspPipeline` no `process()`
 
-- [ ] **Tarefa 2.1.1** — Extração de Buffers `ChannelPair` e Dispatch para Inferência
+- [x] **Tarefa 2.1.1** — Extração de Buffers `ChannelPair` e Dispatch para Inferência
 
   - **Contexto:** O `process()` atual faz bypass simples. Aqui substituímos por inferência real, reutilizando as funções `apply_input_stage`, `run_inference` e `apply_output_stage` de `src/dsp/pipeline.rs`.
   - **Problema de feature flag:** Estas funções estão gateadas em `#[cfg(any(feature = "standalone", test))]`. Precisam ser refatoradas para `#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]`.
@@ -323,8 +323,8 @@
        - Copiar `self.buf_out_l/r` de volta para os buffers de saída do host.
     3. Verificar que o `DspPipelineContext` não requer `bridge_ptr` (campo exclusivo do Standalone): criar uma versão sem o campo `bridge_ptr` ou usar `std::ptr::null_mut()` com `#[cfg]` condicional.
   - **Aceite:** Inserir o plugin no Bitwig com um modelo `.nam` carregado → áudio processado com timbre do amplificador neural. Medição de latência no Bitwig ≤ 3ms para buffer de 256 samples @ 48kHz.
-  - **NOTAS do PO:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma forma de carregar automaticamente algum modelo padrão que esteja na pasta ~/.clap/.
-  - **NOTAS do PO:** Explique-me detalhadamente como obter estas informações de latência do Bitwig.
+  - **NOTA do Product Owner:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma forma de carregar automaticamente algum modelo padrão que esteja na mesma pasta que o binários do plugin.
+  - **NOTA do Product Owner:** Explique-me detalhadamente como obter estas informações de latência do Bitwig.
 
 - [ ] **Tarefa 2.1.2** — GC de Modelos: Descarte Seguro Fora da Audio Thread
 
@@ -334,7 +334,7 @@
     2. Na main thread (loop de eventos do host ou `on_main_thread()`), drenar `shared.gc_rx` e fazer `drop()` dos modelos obsoletos.
     3. Documentar com `// SAFETY: drop() ocorre fora da audio thread — RT-safe.`
   - **Aceite:** Trocar de modelo no Bitwig 10x consecutivamente sem XRUNs. `valgrind --tool=massif` mostra crescimento zero de heap durante as trocas.
-  - **NOTAS do PO:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma maneira de automatizar esta troca.
+  - **NOTA do Product Owner:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma maneira de realizar esta troca para finalidade destes testes de aceite.
 
 - [ ] **Tarefa 2.1.3** — Logging RT-Safe via `clap_host_log`
 
@@ -345,7 +345,7 @@
     3. Na main thread (`on_main_thread()` ou timer), ler as flags e chamar `HostHandle::log(severity, message)` via `clack-extensions` `HostLog`.
     4. Em cold-paths fora da RT (como `load_model`), usar `log::error!` diretamente.
   - **Aceite:** Mensagem `"NAM-rs: model loaded"` aparece no *Script Console* do Bitwig após carregar um modelo. Nenhum `println!` ou `log::` na audio thread.
-  - **NOTAS do PO:** Explique-me detalhadamente como obter estas no Bitwig.
+  - **NOTA do Product Owner:** Explique-me detalhadamente como obter estas no Bitwig.
 
 ---
 
@@ -374,6 +374,7 @@
     5. Implementar `PluginParams::value_to_text` e `text_to_value` para exibição em dB (ex: `"-3.5 dB"`).
     6. Registrar a extensão em `impl Plugin for NamClapPlugin`.
   - **Aceite:** Os 4 knobs aparecem no Device Panel do Bitwig com labels corretos, ranges e valores padrão. Automação funciona (drag de knob cria lane de automação).
+  - **NOTA do Product Owner:** Entendo que os parâmetros `gate_threshold` e `bypass` são apenas internos do NAM. O que é ajustável pelo usuário é apenas `input_gain`, `output_gain` e `nam_file` (este último onde o usuário indica o arquivo de modelo que desjea usar). O `nam_file` pode carregar por default o primeiro arquivo .nam encontrado na pasta do binário do plugin. Ao menos temporariamente enquanto a GUI não chega (inserir lembrete na Tarefa Técnica futura adequada).
 
 - [ ] **Tarefa 2.2.2** — Smoothing Sample-Accurate de Ganhos (Anti-Zipper)
 
@@ -644,6 +645,7 @@
        - **Linha 5 — Medidores VU:** Barras de progresso customizadas lendo `ui_peak_l/r` a cada frame. Cor: verde < −12dBFS, amarelo < −3dBFS, vermelho ≥ −3dBFS. Pico hold de 2s.
     2. Todo slider bidirecional: arrastar atualiza o valor via SPSC de parâmetros (Main→RT) E notifica o host via `host.begin_gesture(id)` / `host.end_gesture(id)` para automação.
   - **Aceite:** UI renderiza a 60fps com CPU < 2% em idle (sem áudio). Todos os controles respondem ao arrastar. Medidores atualizam com o áudio em playback.
+  - **NOTA do Product Owner:** Já pode remover o "// TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.2.1)." no `src/clap/plugin.rs`.
 
 - [ ] **Tarefa 4.2.2** — Sincronia de Gestos de Automação (`CLAP_EVENT_PARAM_GESTURE_BEGIN/END`)
 
@@ -878,7 +880,7 @@
     3. Executar `./utils/lints.sh` para ambas as features (standalone e clap-plugin-gui).
   - **Aceite:** Todos os testes do Standalone passam. Benchmarks dentro de ±2% do baseline.
 
-### Épico 6.3 — Documentação e Publicação
+### Épico 6.3 — Documentação
 
 - [ ] **Tarefa 6.3.1** — Atualizar `docs/architecture.md`
 
@@ -894,14 +896,7 @@
 
 - [ ] **Tarefa 6.3.2** — Checklist Pré-Release e Tag Git
 
-  - **Ações Técnicas:**
-    1. Incrementar versão em `Cargo.toml`: `version = "2.0.0-alpha.1"`.
-    2. Verificar que `CHANGELOG.md` (ou equivalente) existe e lista as mudanças da v2.0.0.
-    3. `git tag -a v2.0.0-alpha.1 -m "NAM-rs CLAP plugin alpha release"`.
-    4. `./utils/build-clap.sh` → gerar `libnam_rs.so` final.
-    5. Compactar: `tar -czf nam-rs-v2.0.0-alpha.1-x86_64-linux.tar.gz -C ~/.clap nam-rs.clap`.
-    6. Verificar que o arquivo tem < 10MB (strip + LTO ativos no `[profile.release]`).
-  - **Aceite:** Tag criada. Arquivo `.tar.gz` < 10MB. `nm -D nam-rs.clap | grep clap_entry` retorna exatamente 1 linha.
+  - **Ações Técnicas:** Rodada de leitura e revisão completa da pasta `src/clap/`.
 
 > **📋 FINALIZAÇÃO — Sprint 6 concluída**
 > O NAM-rs v2.0.0-alpha.1 estará certificado: 100% no `clap-validator`, 60min de endurance sem falhas, modo Standalone sem regressões, e documentação sincronizada. Pronto para uso em produção no Bitwig Studio 6.0.6 (Ubuntu Linux 25.10+).

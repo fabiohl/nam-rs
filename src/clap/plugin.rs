@@ -7,10 +7,13 @@ use crate::clap::descriptor::nam_descriptor;
 use crate::clap::processor::NamClapProcessor;
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::common::params::NamPluginParams;
+use crate::common::spsc::RtStatusFlags;
 use crate::loader::{LoadedModelPair, load_and_build_model};
 use crate::models::DynamicModel;
+use clack_extensions::log::{HostLog, LogSeverity};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer, RingBuffer};
+use std::ffi::CString;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -38,6 +41,8 @@ pub struct NamClapShared {
     pub gc_tx: Mutex<Option<Producer<Box<DynamicModel>>>>,
     /// Canal GC: Audio Thread -> Main Thread (Consumidor).
     pub gc_rx: Mutex<Option<Consumer<Box<DynamicModel>>>>,
+    /// Flags atômicas de status (telemetria RT->Main).
+    pub rt_status: std::sync::Arc<RtStatusFlags>,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
@@ -134,6 +139,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             param_rx: Mutex::new(Some(param_rx)),
             gc_tx: Mutex::new(Some(gc_tx)),
             gc_rx: Mutex::new(Some(gc_rx)),
+            rt_status: std::sync::Arc::new(RtStatusFlags::new()),
         })
     }
 
@@ -158,13 +164,42 @@ impl DefaultPluginFactory for NamClapPlugin {
             .take()
             .expect("Consumidor gc_rx já foi extraído");
 
-        Ok(NamClapMainThread {
+        let mut main_thread = NamClapMainThread {
             _shared: shared,
             params: NamPluginParams::default(),
             host,
             sys: SystemSnapshot::capture(),
             param_tx,
             gc_rx,
-        })
+        };
+
+        // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.2.1).
+        // Busca automática de modelo para facilitar testes iniciais sem GUI.
+        if let Ok(home) = std::env::var("HOME") {
+            let clap_dir = std::path::Path::new(&home).join(".clap");
+            if let Ok(entries) = std::fs::read_dir(&clap_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                    if ext == "nam" || ext == "namb" {
+                        #[allow(clippy::collapsible_if)]
+                        if let Ok(()) = main_thread.load_model(&path) {
+                            if let Some(log) = main_thread.host.get_extension::<HostLog>() {
+                                let msg = format!(
+                                    "NAM-rs: Carregado automaticamente o modelo {:?}",
+                                    path
+                                );
+                                if let Ok(c_msg) = CString::new(msg) {
+                                    log.log(&main_thread.host.shared(), LogSeverity::Info, &c_msg);
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        Ok(main_thread)
     }
 }

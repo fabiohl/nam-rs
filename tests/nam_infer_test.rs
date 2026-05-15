@@ -1578,6 +1578,9 @@ fn test_zero_alloc_capture_pipeline() {
         process_mono: &mut process_mono,
         rt_status: &rt_status,
         bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+    };
+
+    let bufs = nam_rs::dsp::pipeline::DspBuffers {
         resamp_mid_l: &mut resamp_mid_l,
         resamp_mid_r: &mut resamp_mid_r,
         resamp_out_l: &mut resamp_out_l,
@@ -1588,7 +1591,7 @@ fn test_zero_alloc_capture_pipeline() {
 
     {
         let _guard = TrackingGuard::new();
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
     }
 
     let count = ALLOC_COUNT.load(Ordering::Relaxed);

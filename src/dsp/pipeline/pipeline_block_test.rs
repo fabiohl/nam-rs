@@ -116,6 +116,9 @@ mod block_tests {
             rt_status: &rt_status,
             // BridgeRef é um ponteiro seguro para a ponte de áudio.
             bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        };
+
+        let bufs = DspBuffers {
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -124,43 +127,26 @@ mod block_tests {
             model_out_r: &mut model_out_r,
         };
 
-        // --- INÍCIO DO HOT-PATH (Caminho Crítico de Tempo Real) ---
-        // Aqui ativamos o TrackingGuard para vigiar se alguma função vai tentar alocar memória no heap.
         let _guard = TrackingGuard::new();
 
         // Executamos o pipeline principal que orquestra todo o DSP do NAM-rs.
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
 
         // Verificamos quantas alocações ocorreram durante o processamento.
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         // Removemos a vigia.
         drop(_guard);
 
-        // GARANTIA CRÍTICA: Em áudio de alta performance, alocar memória durante o processamento
-        // causa "engasgos" (jitter/glitches). Esse teste assegura que somos 100% livres de alocação.
-        assert_eq!(
-            allocs, 0,
-            "Alocação detectada no hot-path para block_size={}",
-            n
-        );
+        assert_eq!(allocs, 0);
 
-        // Verificamos se os dados chegaram corretamente na "ponte" de saída.
         let read_idx = bridge.active_read_idx.load(Ordering::Acquire);
         let out_buf = &bridge.buffers[read_idx];
         assert_eq!(out_buf.n_samples as usize, n);
 
         // Verificação de sanidade matemática: o áudio não pode "explodir" (virar NaN ou Infinito).
         for i in 0..n {
-            assert!(
-                out_buf.buf_l[i].is_finite(),
-                "NaN/Inf detectado no canal L no índice {}",
-                i
-            );
-            assert!(
-                out_buf.buf_r[i].is_finite(),
-                "NaN/Inf detectado no canal R no índice {}",
-                i
-            );
+            assert!(out_buf.buf_l[i].is_finite());
+            assert!(out_buf.buf_r[i].is_finite());
         }
     }
 

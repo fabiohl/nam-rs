@@ -52,7 +52,7 @@ use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags,
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 pub use crate::dsp::pipeline::PipewireHostConfig;
 use crate::dsp::pipeline::{
-    AppState, BridgeBuffer, BridgeRef, DspBridge, DspPipelineContext, MAX_BRIDGE_BUF,
+    AppState, BridgeBuffer, BridgeRef, DspBridge, DspBuffers, DspPipelineContext, MAX_BRIDGE_BUF,
     MAX_RESAMP_BUF, build_spa_format_pod, capture_dsp_pipeline, playback_dsp_cycle,
 };
 use crate::dsp::resampler::NamResampler;
@@ -419,6 +419,8 @@ pub fn run_pipewire_host(
                         process_mono: &mut process_mono,
                         rt_status: &rt_status_for_process,
                         bridge_ptr,
+                    },
+                    DspBuffers {
                         resamp_mid_l: &mut resamp_mid_l,
                         resamp_mid_r: &mut resamp_mid_r,
                         resamp_out_l: &mut resamp_out_l,
@@ -904,6 +906,7 @@ fn sync_rate(
 fn process_dsp_buffer(
     stream: &pw::stream::Stream,
     context: DspPipelineContext,
+    buffers: DspBuffers,
     current_pw_rate: u32,
     frame_count: &mut u32,
     rt_status_for_process: &RtStatusFlags,
@@ -963,7 +966,7 @@ fn process_dsp_buffer(
                     };
 
                     // 7. O CORAÇÃO DO SISTEMA! Manda tudo para o motor SIMD neural de áudio.
-                    capture_dsp_pipeline(samples_l, samples_r, n_samples, context);
+                    capture_dsp_pipeline(samples_l, samples_r, n_samples, context, buffers);
 
                     // 8. Finalizando diagnóstico. Subtrai tempo de CPU final pelo inicial.
                     if should_measure {
