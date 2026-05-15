@@ -6,6 +6,7 @@
 //! Ativado via feature flag `clap-plugin`. Totalmente isolado do PipeWire.
 
 pub mod descriptor;
+pub mod extensions;
 pub mod plugin;
 pub mod processor;
 

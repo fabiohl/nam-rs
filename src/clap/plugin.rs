@@ -20,10 +20,19 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread {}
 /// Plugin NAM-rs: ponto de entrada principal do ciclo de vida CLAP.
 pub struct NamClapPlugin;
 
+use clack_extensions::audio_ports::PluginAudioPorts;
+
 impl Plugin for NamClapPlugin {
     type AudioProcessor<'a> = NamClapProcessor;
     type Shared<'a> = NamClapShared;
     type MainThread<'a> = NamClapMainThread;
+
+    fn declare_extensions(
+        builder: &mut PluginExtensions<Self>,
+        _shared: Option<&Self::Shared<'_>>,
+    ) {
+        builder.register::<PluginAudioPorts>();
+    }
 }
 
 impl DefaultPluginFactory for NamClapPlugin {

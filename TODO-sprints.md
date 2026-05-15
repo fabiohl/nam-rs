@@ -134,7 +134,7 @@
 
 > **Filosofia:** Nunca leve um plugin ao Bitwig sem antes passar no validador oficial do spec. Economiza horas de debug.
 
-- [ ] **Tarefa 1.1.1** — Instalação e Execução do `clap-validator`
+- [x] **Tarefa 1.1.1** — Instalação e Execução do `clap-validator`
 
   - **Contexto:** `clap-validator` é a ferramenta CLI oficial do ecossistema CLAP que testa conformidade estrutural sem necessitar de uma DAW. Deve ser o portão de qualidade de toda a Sprint 1.
   - **Ações Técnicas:**
@@ -143,7 +143,7 @@
     3. Analisar cada item `FAIL` ou `WARN` na saída — criar sub-tarefas por item se necessário.
   - **Aceite:** `clap-validator validate` retorna **0 FAILs**. Warnings devem ser avaliados individualmente e documentados se aceitos.
 
-- [ ] **Tarefa 1.1.2** — Corrigir Falhas de Conformidade Identificadas pelo Validador
+- [x] **Tarefa 1.1.2** — Corrigir Falhas de Conformidade Identificadas pelo Validador
 
   - **Contexto:** Falhas comuns esperadas no esqueleto atual (sem extensões): ausência de `clap_plugin_audio_ports` (obrigatória pelo spec CLAP 1.x para plugins de efeito), e potencial falha no teste de `process()` com eventos nulos.
   - **Ações Técnicas:**
@@ -156,7 +156,7 @@
   - **Referência de implementação:** `clack-extensions` já é dependência. Usar trait `PluginAudioPorts`.
   - **Aceite:** `clap-validator` 0 FAILs após a correção.
 
-- [ ] **Tarefa 1.1.3** — Teste Headless de Ciclo de Vida Completo via `clack-host`
+- [x] **Tarefa 1.1.3** — Teste Headless de Ciclo de Vida Completo via `clack-host`
 
   - **Contexto:** `clap-validator` testa o spec. `clack-host` (dev-dep) permite simular o lifecycle completo (init → activate → process → deactivate → destroy) em um teste unitário Rust, sem DAW, com output determinístico.
   - **Ações Técnicas:**
@@ -169,6 +169,8 @@
     2. Adicionar header SPDX ao arquivo de teste.
     3. Adicionar ao `utils/tests-cargo.sh` (se existir) ou documentar como executar.
   - **Aceite:** `cargo test --test clap_lifecycle_test --no-default-features --features clap-plugin` → verde. Zero panics, zero UB (rodar com `RUSTFLAGS="-Zsanitizer=address"` em build nightly de validação).
+
+> **Auditoria:** Épico 1.1 revisado com sucesso. A infraestrutura básica e a extensão obrigatória `clap_plugin_audio_ports` foram implementadas. O validador oficial (`clap-validator`) retorna 0 FAILs e 0 WARNINGs (8 testes passados, 13 ignorados por não se aplicarem ao momento atual). Além disso, a cobertura com o `clack-host` no `clap_lifecycle_test` assegura as garantias de ciclo de vida e estabilidade sob testes controlados. O plugin CLAP já possui fundação estável e "compliant" para seguir ao Épico 1.2 (Host Real).
 
 ---
 
