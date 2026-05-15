@@ -29,7 +29,7 @@ half = "2.7.1"
 minstant = "0.1.7"
 rustfft = { version = "6.4.1", default-features = false }
 clack-plugin = { version = "0.1", optional = true }
-clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "log"] }
+clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "log", "params"] }
 
 [dev-dependencies]
 clack-host = { version = "0.1", features = ["clack-plugin"] }

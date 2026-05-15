@@ -154,8 +154,6 @@ impl<'a> NamClapMainThread<'a> {
 /// Plugin NAM-rs: ponto de entrada principal do ciclo de vida CLAP.
 pub struct NamClapPlugin;
 
-use clack_extensions::audio_ports::PluginAudioPorts;
-
 impl Plugin for NamClapPlugin {
     type AudioProcessor<'a> = NamClapProcessor<'a>;
     type Shared<'a> = NamClapShared;
@@ -165,7 +163,8 @@ impl Plugin for NamClapPlugin {
         builder: &mut PluginExtensions<Self>,
         _shared: Option<&Self::Shared<'_>>,
     ) {
-        builder.register::<PluginAudioPorts>();
+        builder.register::<clack_extensions::audio_ports::PluginAudioPorts>();
+        builder.register::<clack_extensions::params::PluginParams>();
     }
 }
 

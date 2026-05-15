@@ -29,7 +29,7 @@ pub struct NamClapProcessor<'a> {
     /// Resampler sinc polifásico (bypass quando sample_rate == 48000).
     resampler: NamResampler,
     /// Parâmetros atuais na audio thread (snapshottados do SPSC a cada process()).
-    params: NamPluginParams,
+    pub(crate) params: NamPluginParams,
 
     /// Buffers intermediários pré-alocados no activate() — ZERO alloc no process().
     /// 1. Cópia do input do host (sample_rate variável)
