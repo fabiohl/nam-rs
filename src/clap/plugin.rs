@@ -9,11 +9,9 @@ use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags, drain_gc_channels};
 use crate::loader::{LoadedModelPair, load_and_build_model};
-#[cfg(not(test))]
 use clack_extensions::log::{HostLog, LogSeverity};
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer, RingBuffer};
-#[cfg(not(test))]
 use std::ffi::CString;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -69,8 +67,45 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     /// Chamado periodicamente ou em resposta a eventos do host.
     /// Aqui podemos aproveitar para drenar o canal de GC.
     fn on_main_thread(&mut self) {
-        // Tarefa 2.1.2: Drenar modelos obsoletos para liberar memória fora do RT.
+        // Drenar modelos obsoletos para liberar memória fora do RT.
         drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
+
+        // Logging RT-Safe via flags atômicas (consome eventos transientes)
+        if let Some(log) = self.host.get_extension::<HostLog>() {
+            let shared = self.host.shared();
+
+            if self
+                .shared
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED)
+            {
+                let msg = CString::new("NAM-rs: Saturação (clipping) detectada na saída!")
+                    .expect("Falha ao criar CString");
+                log.log(&shared, LogSeverity::Warning, &msg);
+            }
+
+            if self
+                .shared
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW)
+            {
+                let msg =
+                    CString::new("NAM-rs: Overflow no canal de GC! Possível leak de memória.")
+                        .expect("Falha ao criar CString");
+                log.log(&shared, LogSeverity::Error, &msg);
+            }
+
+            if self
+                .shared
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED)
+            {
+                let msg =
+                    CString::new("NAM-rs: Falha crítica! Nenhum modelo ativo para processamento.")
+                        .expect("Falha ao criar CString");
+                log.log(&shared, LogSeverity::Error, &msg);
+            }
+        }
     }
 }
 
@@ -103,6 +138,14 @@ impl<'a> NamClapMainThread<'a> {
 
         // 3. Atualiza o path nos parâmetros locais (espelhados)
         self.params.model_path = Some(path.to_path_buf());
+
+        // Notifica o host sobre o carregamento bem-sucedido (Cold Path)
+        if let Some(log) = self.host.get_extension::<HostLog>() {
+            let msg = format!("NAM-rs: model loaded ({:?})", path);
+            if let Ok(c_msg) = CString::new(msg) {
+                log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
+            }
+        }
 
         Ok(())
     }

@@ -271,6 +271,28 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 &mut ctx,
             );
 
+            // Reporta estado do gate via flags atômicas (RT-Safe logging)
+            match gate_state {
+                GateState::Closed => {
+                    self.rt_status
+                        .set_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+                    self.rt_status
+                        .clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
+                }
+                GateState::FadingIn | GateState::FadingOut => {
+                    self.rt_status
+                        .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+                    self.rt_status
+                        .set_flag(crate::common::spsc::RT_STATUS_IS_FADING);
+                }
+                GateState::Open => {
+                    self.rt_status
+                        .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
+                    self.rt_status
+                        .clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
+                }
+            }
+
             if gate_state == GateState::Closed {
                 if let Some(out) = out_l {
                     out.fill(0.0);
@@ -279,6 +301,15 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     out.fill(0.0);
                 }
                 continue;
+            }
+
+            // Reporta falha de modelo se bypass estiver desligado mas nenhum modelo carregado
+            if ctx.active_model_l.is_none() && !self.params.bypass {
+                self.rt_status
+                    .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
+            } else {
+                self.rt_status
+                    .clear_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
             }
 
             let n_out = run_inference(

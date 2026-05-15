@@ -336,7 +336,7 @@
   - **Aceite:** Trocar de modelo no Bitwig 10x consecutivamente sem XRUNs. `valgrind --tool=massif` mostra crescimento zero de heap durante as trocas.
   - **NOTA do Product Owner:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma maneira de realizar esta troca para finalidade destes testes de aceite.
 
-- [ ] **Tarefa 2.1.3** — Logging RT-Safe via `clap_host_log`
+- [x] **Tarefa 2.1.3** — Logging RT-Safe via `clap_host_log`
 
   - **Contexto:** Na audio thread não podemos chamar `println!` ou `log::info!` (I/O). A extensão `clap_host_log` permite que o host exiba mensagens de log no seu console sem envolver I/O direto da audio thread.
   - **Ações Técnicas:**
