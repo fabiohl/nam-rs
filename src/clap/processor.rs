@@ -16,7 +16,7 @@ use rtrb::{Consumer, Producer};
 /// Detém os buffers pré-alocados e o estado mutable da inferência.
 /// É criado no `activate()` e destruído no `deactivate()`.
 #[allow(dead_code)]
-pub struct NamClapProcessor {
+pub struct NamClapProcessor<'a> {
     /// Modelo ativo para o canal esquerdo (None = bypass).
     #[allow(dead_code)]
     model_l: Option<Box<DynamicModel>>,
@@ -55,15 +55,15 @@ pub struct NamClapProcessor {
     #[allow(dead_code)]
     process_mono: bool,
 
+    /// Referência ao estado compartilhado (para devolver os canais no deactivate).
+    shared: &'a NamClapShared,
     /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
-    #[allow(dead_code)]
     param_rx: Consumer<ClapParamPayload>,
     /// Canal GC: Audio Thread -> Main Thread (Produtor).
-    #[allow(dead_code)]
     gc_tx: Producer<Box<DynamicModel>>,
 }
 
-impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor {
+impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor<'a> {
     fn activate(
         _host: HostAudioProcessorHandle<'a>,
         _main_thread: &mut NamClapMainThread<'a>,
@@ -119,9 +119,20 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             silence_hyst,
             mono_hyst,
             process_mono: false,
+            shared,
             param_rx,
             gc_tx,
         })
+    }
+
+    fn deactivate(self, _main_thread: &mut NamClapMainThread<'a>) {
+        // Devolve os canais para o estado compartilhado para permitir re-ativação futura.
+        if let Ok(mut guard) = self.shared.param_rx.lock() {
+            *guard = Some(self.param_rx);
+        }
+        if let Ok(mut guard) = self.shared.gc_tx.lock() {
+            *guard = Some(self.gc_tx);
+        }
     }
 
     fn process(

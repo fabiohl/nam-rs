@@ -108,7 +108,7 @@ pub struct NamClapPlugin;
 use clack_extensions::audio_ports::PluginAudioPorts;
 
 impl Plugin for NamClapPlugin {
-    type AudioProcessor<'a> = NamClapProcessor;
+    type AudioProcessor<'a> = NamClapProcessor<'a>;
     type Shared<'a> = NamClapShared;
     type MainThread<'a> = NamClapMainThread<'a>;
 

@@ -225,7 +225,7 @@
 
 ### Épico 2.0 — Scaffolding de Estado: `NamClapShared`, `MainThread` e `Processor`
 
-> **Pré-requisito interno.** As structs unit vazias atuais impedem qualquer integração. Este épico define a estrutura de dados completa antes de qualquer lógica.
+> **Audit (2026-05-15):** Épico 2.0 revisado. Identificado e corrigido risco de pânico em re-ativações múltiplas (canais SPSC agora são devolvidos ao `Shared` no `deactivate()`). Invariante de zero-alocação validado formalmente.
 
 - [x] **Tarefa 2.0.1** — Definir `NamClapShared`: Canal de Parâmetros Main→RT
 
