@@ -351,7 +351,7 @@
 
 ### Épico 2.2 — Parâmetros CLAP e Sessão Persistente
 
-- [ ] **Tarefa 2.2.1** — Mapeamento de 4 Parâmetros via `clap_plugin_params`
+- [x] **Tarefa 2.2.1** — Mapeamento de 4 Parâmetros via `clap_plugin_params`
 
   - **Contexto:** `NamPluginParams` em `src/common/params.rs` já define os 4 controles. Precisamos mapeá-los para IDs CLAP numéricos e implementar a trait `PluginParams` de `clack-extensions`.
   - **Ações Técnicas:**
@@ -376,7 +376,7 @@
   - **Aceite:** Os 4 knobs aparecem no Device Panel do Bitwig com labels corretos, ranges e valores padrão. Automação funciona (drag de knob cria lane de automação).
   - **NOTA do Product Owner:** Entendo que os parâmetros `gate_threshold` e `bypass` são apenas internos do NAM. O que é ajustável pelo usuário é apenas `input_gain`, `output_gain` e `nam_file` (este último onde o usuário indica o arquivo de modelo que desjea usar). O `nam_file` pode carregar por default o primeiro arquivo .nam encontrado na pasta do binário do plugin. Ao menos temporariamente enquanto a GUI não chega (inserir lembrete na Tarefa Técnica futura adequada).
 
-- [ ] **Tarefa 2.2.2** — Smoothing Sample-Accurate de Ganhos (Anti-Zipper)
+- [x] **Tarefa 2.2.2** — Smoothing Sample-Accurate de Ganhos (Anti-Zipper)
 
   - **Contexto:** Bitwig pode enviar `CLAP_EVENT_PARAM_VALUE` a cada sample para modulação por LFO. Aplicar o ganho abruptamente causa zipper noise audível (~6dB/sample de descontinuidade). Precisamos de um 1-pole IIR smoother RT-safe.
   - **Ações Técnicas:**

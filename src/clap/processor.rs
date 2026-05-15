@@ -3,6 +3,7 @@
 
 //! Processador de áudio CLAP.
 
+use crate::clap::param_smoother::ParamSmoother;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RT_STATUS_GC_OVERFLOW, RtStatusFlags};
@@ -58,6 +59,10 @@ pub struct NamClapProcessor<'a> {
     rt_status: Arc<RtStatusFlags>,
     /// Referência ao estado compartilhado (para devolver os canais no deactivate).
     shared: &'a NamClapShared,
+    /// Smoothers para ganhos de entrada e saída.
+    smoother_in: ParamSmoother,
+    /// Smoothers para ganhos de entrada e saída.
+    smoother_out: ParamSmoother,
     /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
     param_rx: Consumer<ClapParamPayload>,
     /// Canal GC: Audio Thread -> Main Thread (Produtor).
@@ -122,6 +127,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let silence_hyst = DynamicHysteresis::new();
         let mono_hyst = DynamicHysteresis::new();
 
+        // 4. Inicialização de Smoothers (Sample-Accurate)
+        // Começamos em 1.0 (ganho unitário) para evitar silêncio no primeiro bloco.
+        let smoother_in = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
+        let smoother_out = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
+
         Ok(Self {
             model_l: None,
             model_r: None,
@@ -141,6 +151,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             process_mono: false,
             rt_status: Arc::clone(&shared.rt_status),
             shared,
+            smoother_in,
+            smoother_out,
             param_rx,
             gc_tx,
             gc_overflow: Arc::clone(&shared.gc_overflow),
@@ -160,12 +172,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         &mut self,
         _process: Process,
         mut audio: Audio,
-        _events: Events,
+        events: Events,
     ) -> Result<ProcessStatus, PluginError> {
+        // 1. Processamento de Eventos (Main Thread SPSC)
         while let Ok(payload) = self.param_rx.pop() {
             match payload {
                 ClapParamPayload::Params(new_params) => {
                     self.params = new_params;
+                    self.smoother_in
+                        .set_target(10.0f32.powf(self.params.input_gain_db / 20.0));
+                    self.smoother_out
+                        .set_target(10.0f32.powf(self.params.output_gain_db / 20.0));
                 }
                 ClapParamPayload::LoadModel(model_pair) => {
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
@@ -175,6 +192,32 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                         self.push_to_gc(old_r);
                     }
                 }
+            }
+        }
+
+        // 2. Processamento de Eventos (Host Events Queue - Sample Accurate)
+        use crate::clap::extensions::params::{PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN};
+        use clack_plugin::events::event_types::ParamValueEvent;
+
+        for event in events.input {
+            let Some(param_event) = event.as_event::<ParamValueEvent>() else {
+                continue;
+            };
+            let Some(clap_id) = param_event.param_id() else {
+                continue;
+            };
+            let val = param_event.value() as f32;
+            let val_lin = 10.0f32.powf(val / 20.0);
+            match clap_id.get() {
+                PARAM_INPUT_GAIN => {
+                    self.params.input_gain_db = val;
+                    self.smoother_in.set_target(val_lin);
+                }
+                PARAM_OUTPUT_GAIN => {
+                    self.params.output_gain_db = val;
+                    self.smoother_out.set_target(val_lin);
+                }
+                _ => {}
             }
         }
 
@@ -250,8 +293,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
                 active_model_r: &mut self.model_r,
-                input_gain_mult: lut.db_to_linear(self.params.input_gain_db),
-                output_gain_mult: lut.db_to_linear(self.params.output_gain_db),
+                input_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
+                output_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
                 gate_params: &gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
                 mono_hysteresis: &mut self.mono_hyst,
@@ -263,6 +306,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 rt_status: &self.rt_status,
                 bridge_ptr: crate::dsp::pipeline::BridgeRef::null(),
             };
+
+            // 3. Aplicação do Ganho de Entrada (Sample-Accurate Smoothing)
+            for i in 0..n_samples {
+                let g = self.smoother_in.tick();
+                self.buf_host_l[i] *= g;
+                self.buf_host_r[i] *= g;
+            }
 
             let gate_state = apply_input_stage(
                 &mut self.buf_host_l[..n_samples],
@@ -329,10 +379,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 &mut self.buf_out_l[..n_out],
                 &mut self.buf_out_r[..n_out],
                 n_out,
-                ctx.output_gain_mult,
+                1.0, // Aplicado manualmente via smoother abaixo
                 ctx.silence_hysteresis,
                 ctx.rt_status,
             );
+
+            // 5. Aplicação do Ganho de Saída (Sample-Accurate Smoothing)
+            for i in 0..n_out {
+                let g = self.smoother_out.tick();
+                self.buf_out_l[i] *= g;
+                self.buf_out_r[i] *= g;
+            }
 
             if let Some(o_l) = out_l {
                 let n = n_out.min(o_l.len());

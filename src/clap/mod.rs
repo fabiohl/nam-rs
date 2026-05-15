@@ -7,6 +7,7 @@
 
 pub mod descriptor;
 pub mod extensions;
+pub mod param_smoother;
 pub mod plugin;
 pub mod processor;
 
