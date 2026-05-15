@@ -3,21 +3,125 @@
 
 //! Processador de áudio CLAP.
 
-use crate::clap::plugin::{NamClapMainThread, NamClapShared};
+use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
+use crate::common::params::NamPluginParams;
+use crate::dsp::gate::DynamicHysteresis;
+use crate::dsp::resampler::NamResampler;
+use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
+use rtrb::{Consumer, Producer};
 
 /// Processador de áudio RT-safe. Executa na audio thread do host.
-/// Bypass: copia cada amostra de input para output sem processar.
-pub struct NamClapProcessor;
+///
+/// Detém os buffers pré-alocados e o estado mutable da inferência.
+/// É criado no `activate()` e destruído no `deactivate()`.
+#[allow(dead_code)]
+pub struct NamClapProcessor {
+    /// Modelo ativo para o canal esquerdo (None = bypass).
+    #[allow(dead_code)]
+    model_l: Option<Box<DynamicModel>>,
+    /// Modelo ativo para o canal direito (None = bypass).
+    #[allow(dead_code)]
+    model_r: Option<Box<DynamicModel>>,
+    /// Resampler sinc polifásico (bypass quando sample_rate == 48000).
+    #[allow(dead_code)]
+    resampler: NamResampler,
+    /// Parâmetros atuais na audio thread (snapshottados do SPSC a cada process()).
+    #[allow(dead_code)]
+    params: NamPluginParams,
+
+    /// Buffers intermediários pré-alocados no activate() — ZERO alloc no process().
+    /// pós-resampler input (f32 @ 48kHz)
+    #[allow(dead_code)]
+    buf_mid_l: Vec<f32>,
+    #[allow(dead_code)]
+    buf_mid_r: Vec<f32>,
+    /// pós-modelo, pré-resampler output (f32 @ 48kHz)
+    #[allow(dead_code)]
+    buf_out_l: Vec<f32>,
+    #[allow(dead_code)]
+    buf_out_r: Vec<f32>,
+
+    /// Gate FSM com histerese temporal (Noise Gate principal).
+    #[allow(dead_code)]
+    gate: DynamicHysteresis,
+    /// Histerese para detecção de silêncio absoluto.
+    #[allow(dead_code)]
+    silence_hyst: DynamicHysteresis,
+    /// Histerese para detecção de sinal mono estável.
+    #[allow(dead_code)]
+    mono_hyst: DynamicHysteresis,
+    /// Flag indicando se estamos processando em mono (para otimização).
+    #[allow(dead_code)]
+    process_mono: bool,
+
+    /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
+    #[allow(dead_code)]
+    param_rx: Consumer<ClapParamPayload>,
+    /// Canal GC: Audio Thread -> Main Thread (Produtor).
+    #[allow(dead_code)]
+    gc_tx: Producer<Box<DynamicModel>>,
+}
 
 impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor {
     fn activate(
         _host: HostAudioProcessorHandle<'a>,
         _main_thread: &mut NamClapMainThread<'a>,
-        _shared: &'a NamClapShared,
-        _audio_config: PluginAudioConfiguration,
+        shared: &'a NamClapShared,
+        audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
-        Ok(Self)
+        // 1. Extração dos canais SPSC do Shared (ownership transfer)
+        // O uso de expect() é seguro aqui pois estas instâncias DEVEM estar presentes
+        // e são inicializadas no new_shared().
+        let param_rx = shared
+            .param_rx
+            .lock()
+            .expect("Falha ao travar o Mutex do param_rx")
+            .take()
+            .expect("Consumidor param_rx já foi extraído");
+
+        let gc_tx = shared
+            .gc_tx
+            .lock()
+            .expect("Falha ao travar o Mutex do gc_tx")
+            .take()
+            .expect("Produtor gc_tx já foi extraído");
+
+        // 2. Pré-alocação de buffers intermediários
+        // Dimensionados para max_frames_count * 2 para dar margem ao resampler se necessário.
+        let buf_capacity = (audio_config.max_frames_count as usize) * 2;
+        let buf_mid_l = vec![0.0f32; buf_capacity];
+        let buf_mid_r = vec![0.0f32; buf_capacity];
+        let buf_out_l = vec![0.0f32; buf_capacity];
+        let buf_out_r = vec![0.0f32; buf_capacity];
+
+        // 3. Inicialização de componentes DSP
+
+        // NamResampler: fonte sempre 48k (padrão NAM), alvo SR do host.
+        let resampler = NamResampler::new(48000, audio_config.sample_rate as u32, buf_capacity)
+            .expect("Falha ao criar NamResampler");
+
+        // Histerese com valores padrão
+        let gate = DynamicHysteresis::new();
+        let silence_hyst = DynamicHysteresis::new();
+        let mono_hyst = DynamicHysteresis::new();
+
+        Ok(Self {
+            model_l: None,
+            model_r: None,
+            resampler,
+            params: NamPluginParams::default(),
+            buf_mid_l,
+            buf_mid_r,
+            buf_out_l,
+            buf_out_r,
+            gate,
+            silence_hyst,
+            mono_hyst,
+            process_mono: false,
+            param_rx,
+            gc_tx,
+        })
     }
 
     fn process(
@@ -26,6 +130,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         mut audio: Audio,
         _events: Events,
     ) -> Result<ProcessStatus, PluginError> {
+        // Implementação temporária de bypass para manter funcionalidade básica
+        // enquanto o pipeline DSP completo não é portado para a Tarefa 2.1.
         for mut port_pair in &mut audio {
             let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
                 continue;
@@ -37,11 +143,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     ChannelPair::InputOutput(input, output) => {
                         output.copy_from_slice(input);
                     }
-                    ChannelPair::InPlace(_) => {
-                        // Comportamento correto para bypass in-place:
-                        // O buffer de entrada é fisicamente o mesmo buffer de saída.
-                        // Como estamos em bypass, não fazemos nada (noop).
-                    }
+                    ChannelPair::InPlace(_) => {}
                 }
             }
         }
@@ -76,7 +178,6 @@ mod tests {
     #[test]
     fn test_zero_alloc_process_bypass() {
         // 1. Setup do Plugin via clack-host
-        // No clack-host 0.1.0, PluginEntry::load_from_clack é o caminho para plugins built-in
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
@@ -90,7 +191,6 @@ mod tests {
         )
         .expect("Falha ao criar HostInfo");
 
-        // No clack-host 0.1, PluginInstance::new é o construtor
         let mut plugin_instance = PluginInstance::<TestHost>::new(
             |_| TestHostShared,
             |_| (),
@@ -107,7 +207,6 @@ mod tests {
             max_frames_count: 512,
         };
 
-        // activate retorna o processador parado
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 

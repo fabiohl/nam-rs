@@ -271,7 +271,7 @@
        - Não bloqueia: se o canal SPSC estiver cheio, retorna `Err` com `NamDiagnostic`.
   - **Aceite:** Método `load_model` compila. Nenhuma alocação ocorre na audio thread durante a troca.
 
-- [ ] **Tarefa 2.0.3** — Definir `NamClapProcessor`: Estado Exclusivo da Audio Thread
+- [x] **Tarefa 2.0.3** — Definir `NamClapProcessor`: Estado Exclusivo da Audio Thread
 
   - **Contexto:** `NamClapProcessor` detém os buffers pré-alocados e o estado mutable da inferência. É criado no `activate()` e destruído no `deactivate()`.
   - **Ações Técnicas:**
