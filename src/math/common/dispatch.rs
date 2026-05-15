@@ -100,6 +100,10 @@ pub struct SimdMathConfig {
     pub convolve_stereo: unsafe fn(*const f32, *const f32, *const f32, usize) -> (f32, f32),
     /// Calcula o máximo da energia entre dois canais.
     pub compute_energy_stereo: unsafe fn(&[f32], &[f32]) -> f32,
+    /// Calcula a energia de um bloco.
+    pub compute_energy: unsafe fn(&[f32]) -> f32,
+    /// Calcula a diferença absoluta máxima entre dois blocos.
+    pub compute_max_diff: unsafe fn(&[f32], &[f32]) -> f32,
 }
 
 impl SimdMathConfig {
@@ -140,6 +144,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp_stereo: Avx512VnniBf16Math::apply_ramp_stereo,
                 convolve_stereo: Avx512VnniBf16Math::convolve_stereo,
                 compute_energy_stereo: Avx512VnniBf16Math::compute_energy_stereo,
+                compute_energy: Avx512VnniBf16Math::compute_energy,
+                compute_max_diff: Avx512VnniBf16Math::compute_max_diff,
             };
         }
         if is_x86_feature_detected!("avx512vnni") {
@@ -162,6 +168,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp_stereo: Avx512VnniMath::apply_ramp_stereo,
                 convolve_stereo: Avx512VnniMath::convolve_stereo,
                 compute_energy_stereo: Avx512VnniMath::compute_energy_stereo,
+                compute_energy: Avx512VnniMath::compute_energy,
+                compute_max_diff: Avx512VnniMath::compute_max_diff,
             };
         }
         if is_x86_feature_detected!("avx512f") {
@@ -184,6 +192,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp_stereo: Avx512Math::apply_ramp_stereo,
                 convolve_stereo: Avx512Math::convolve_stereo,
                 compute_energy_stereo: Avx512Math::compute_energy_stereo,
+                compute_energy: Avx512Math::compute_energy,
+                compute_max_diff: Avx512Math::compute_max_diff,
             };
         }
         if is_x86_feature_detected!("avxvnni") {
@@ -206,6 +216,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp_stereo: Avx2VnniMath::apply_ramp_stereo,
                 convolve_stereo: Avx2VnniMath::convolve_stereo,
                 compute_energy_stereo: Avx2VnniMath::compute_energy_stereo,
+                compute_energy: Avx2VnniMath::compute_energy,
+                compute_max_diff: Avx2VnniMath::compute_max_diff,
             };
         }
         if is_x86_feature_detected!("avx2") {
@@ -228,6 +240,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp_stereo: Avx2Math::apply_ramp_stereo,
                 convolve_stereo: Avx2Math::convolve_stereo,
                 compute_energy_stereo: Avx2Math::compute_energy_stereo,
+                compute_energy: Avx2Math::compute_energy,
+                compute_max_diff: Avx2Math::compute_max_diff,
             };
         }
     }

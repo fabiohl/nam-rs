@@ -532,3 +532,51 @@ pub unsafe fn apply_gain_fallback(data: &mut [f32], gain: f32) {
         *x *= gain;
     }
 }
+
+/// Calcula a energia (Mean Square) de um bloco via escalar.
+pub unsafe fn compute_energy_fallback(data: &[f32]) -> f32 {
+    let len = data.len();
+    if len == 0 {
+        return 0.0;
+    }
+    let mut sum = 0.0f32;
+    for &x in data {
+        sum += x * x;
+    }
+    sum / (len as f32)
+}
+
+/// Calcula o máximo da energia entre dois canais via escalar.
+pub unsafe fn compute_energy_stereo_fallback(l: &[f32], r: &[f32]) -> f32 {
+    let len = core::cmp::min(l.len(), r.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut sum_l = 0.0f32;
+    let mut sum_r = 0.0f32;
+    for i in 0..len {
+        let xl = *l.get_unchecked(i);
+        let xr = *r.get_unchecked(i);
+        sum_l += xl * xl;
+        sum_r += xr * xr;
+    }
+    let energy_l = sum_l / (len as f32);
+    let energy_r = sum_r / (len as f32);
+    energy_l.max(energy_r)
+}
+
+/// Calcula a diferença absoluta máxima entre dois blocos via escalar.
+pub unsafe fn compute_max_diff_fallback(a: &[f32], b: &[f32]) -> f32 {
+    let len = core::cmp::min(a.len(), b.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut max_diff = 0.0f32;
+    for i in 0..len {
+        let d = (*a.get_unchecked(i) - *b.get_unchecked(i)).abs();
+        if d > max_diff {
+            max_diff = d;
+        }
+    }
+    max_diff
+}

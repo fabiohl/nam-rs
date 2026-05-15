@@ -8,24 +8,24 @@
 
 #[cfg(feature = "standalone")]
 use crate::common::diagnostics::SystemSnapshot;
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::common::spsc::RtStatusFlags;
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::resampler::NamResampler;
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::math::common::dispatch_simd;
-#[cfg(any(feature = "standalone", test))]
-use crate::math::dsp::stereo::{compute_energy_stereo, compute_max_diff_avx2};
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::math::dsp::stereo::{compute_energy_stereo, compute_max_diff};
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::models::{DynamicModel, NamModel};
 
 #[cfg(feature = "standalone")]
 use minstant::Anchor;
 #[cfg(feature = "standalone")]
 use pipewire as pw;
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use std::sync::atomic::Ordering;
 
 /// Estrutura de posse explícita para evitar o leak de memória
@@ -53,20 +53,20 @@ pub struct PipewireHostConfig {
     pub sys: SystemSnapshot,
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
 /// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
 pub const MAX_BRIDGE_BUF: usize = 8192;
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Tamanho máximo do buffer para resampling.
 ///
 /// **Contrato de Segurança RT**: Este valor determina o tamanho dos buffers pré-alocados
 /// no `DspPipelineContext`. Aumentar este valor impacta o tamanho do objeto da closure
 /// de processamento (que deve caber na stack da thread RT ou ser movido para o heap).
 /// Atualmente fixado em 4096 amostras (16 KiB por canal).
-pub const MAX_RESAMP_BUF: usize = 4096;
+pub const MAX_RESAMP_BUF: usize = 8192;
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Buffer individual de áudio para o DspBridge (double-buffer).
 #[repr(align(128))]
 pub struct BridgeBuffer {
@@ -78,7 +78,7 @@ pub struct BridgeBuffer {
     pub n_samples: u32,
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Buffer compartilhado entre o callback de captura (DSP) e o callback de playback.
 ///
 /// O capture callback escreve o resultado processado aqui com `fence(Release)`;
@@ -102,7 +102,7 @@ pub struct DspBridge {
     pub dropped_frames: std::sync::atomic::AtomicU32,
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl DspBridge {
     /// Drena o contador de frames descartados, retornando o valor acumulado e zerando-o.
     ///
@@ -112,7 +112,30 @@ impl DspBridge {
     }
 }
 
+/// Wrapper para acesso ao DspBridge que encapsula a segurança de ponteiros brutos.
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[derive(Clone, Copy)]
+pub struct BridgeRef(#[cfg(any(feature = "standalone", test))] *mut DspBridge);
+
 #[cfg(any(feature = "standalone", test))]
+impl BridgeRef {
+    /// Cria um novo BridgeRef.
+    /// # Safety
+    /// O ponteiro deve ser válido e não nulo.
+    #[inline(always)]
+    pub unsafe fn new(ptr: *mut DspBridge) -> Self {
+        debug_assert!(!ptr.is_null());
+        Self(ptr)
+    }
+
+    /// Dereferencia o ponteiro para acesso mutável.
+    #[inline(always)]
+    pub fn as_mut(self) -> &'static mut DspBridge {
+        unsafe { &mut *self.0 }
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Contexto de dados para a pipeline DSP hot-path.
 pub struct DspPipelineContext<'a> {
     /// Resampler ativo para conversão de sample rate.
@@ -140,7 +163,8 @@ pub struct DspPipelineContext<'a> {
     /// Flags de status em tempo real.
     pub rt_status: &'a RtStatusFlags,
     /// Ponteiro para a ponte de memória compartilhada.
-    pub bridge_ptr: *mut DspBridge,
+    #[cfg(feature = "standalone")]
+    pub bridge_ptr: BridgeRef,
     /// Buffer intermediário L (pós-resampler input).
     pub resamp_mid_l: &'a mut [f32],
     /// Buffer intermediário R (pós-resampler input).
@@ -159,12 +183,11 @@ pub struct DspPipelineContext<'a> {
 #[cfg(any(feature = "standalone", test))]
 #[cold]
 #[inline(never)]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFlags) {
+pub fn handle_silence_bypass(bridge: BridgeRef, rt_status: &RtStatusFlags) {
     rt_status.set_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
     rt_status.clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
 
-    let bridge_ref = unsafe { &mut *bridge_ptr };
+    let bridge_ref = bridge.as_mut();
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
     bridge_ref.buffers[back_idx].n_samples = 0;
     bridge_ref
@@ -187,10 +210,12 @@ pub fn handle_silence_bypass(bridge_ptr: *mut DspBridge, rt_status: &RtStatusFla
         .store(current_gen + 1, Ordering::Release);
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 1: Gate, Ganhos de Entrada e Detecção de Mono.
 #[inline(always)]
-fn apply_input_stage(
+// TODO: Remover #[allow(dead_code)] quando o wrapper CLAP invocar este estágio.
+#[allow(dead_code)]
+pub(crate) fn apply_input_stage(
     samples_l: &mut [f32],
     samples_r: &mut [f32],
     n_samples: usize,
@@ -218,8 +243,7 @@ fn apply_input_stage(
 
     // 2. DETECÇÃO DE SOM MONO (IGUAL NOS DOIS LADOS)
     // Calcula a diferença entre o lado esquerdo e direito para ver se o som é o mesmo.
-    let max_diff =
-        unsafe { compute_max_diff_avx2(&samples_l[..n_samples], &samples_r[..n_samples]) };
+    let max_diff = unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
     ctx.mono_hysteresis.update(
         max_diff,
@@ -246,10 +270,12 @@ fn apply_input_stage(
     ctx.silence_hysteresis.state()
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 2: Inferência Neural e Resampling.
 #[inline(always)]
-fn run_inference(
+// TODO: Remover #[allow(dead_code)] quando o wrapper CLAP invocar este estágio.
+#[allow(dead_code)]
+pub(crate) fn run_inference(
     samples_l: &[f32],
     samples_r: &[f32],
     n_samples: usize,
@@ -336,10 +362,12 @@ fn run_inference(
     }
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 3: Ganho de Saída, Fading e Detecção de Clipping.
 #[inline(always)]
-fn apply_output_stage(
+// TODO: Remover #[allow(dead_code)] quando o wrapper CLAP invocar este estágio.
+#[allow(dead_code)]
+pub(crate) fn apply_output_stage(
     resamp_out_l: &mut [f32],
     resamp_out_r: &mut [f32],
     n_pw: usize,
@@ -374,13 +402,8 @@ fn apply_output_stage(
 #[cfg(any(feature = "standalone", test))]
 /// Estágio 4: Escrita no DspBridge.
 #[inline(always)]
-fn write_bridge(
-    resamp_out_l: &[f32],
-    resamp_out_r: &[f32],
-    n_pw: usize,
-    bridge_ptr: *mut DspBridge,
-) {
-    let bridge_ref = unsafe { &mut *bridge_ptr };
+pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bridge: BridgeRef) {
+    let bridge_ref = bridge.as_mut();
     // Identifica qual "gaveta" da ponte (bridge) está vazia para podermos escrever o novo som.
     let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
     let back_buf = &mut bridge_ref.buffers[back_idx];
@@ -427,7 +450,6 @@ fn write_bridge(
 #[cfg(any(feature = "standalone", test))]
 /// Pipeline DSP Completo (Agregador).
 #[inline(always)]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn capture_dsp_pipeline(
     samples_l: &mut [f32],
     samples_r: &mut [f32],
@@ -486,10 +508,10 @@ pub fn capture_dsp_pipeline(
 #[inline(always)]
 pub(crate) fn playback_dsp_cycle(
     stream: &pw::stream::Stream,
-    bridge_ptr: *mut DspBridge,
+    bridge: BridgeRef,
     last_bridge_gen: &mut u64,
 ) {
-    let bridge_ref = unsafe { &*bridge_ptr };
+    let bridge_ref = bridge.as_mut();
     // Verifica se há som novo na "ponte" (bridge). Se não houver nada novo, apenas esperamos.
     let current_gen = bridge_ref.generation.load(Ordering::Acquire);
     if current_gen == *last_bridge_gen {
@@ -599,5 +621,14 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
 }
 
 #[cfg(test)]
-#[path = "pipeline_test.rs"]
+pub(crate) mod test_util;
+
+#[cfg(test)]
+#[global_allocator]
+static GLOBAL: test_util::infra::CountingAllocator = test_util::infra::CountingAllocator;
+
+#[cfg(test)]
 mod pipeline_test;
+
+#[cfg(test)]
+mod pipeline_block_test;

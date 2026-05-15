@@ -25,17 +25,20 @@ impl SimdMath for Avx512Math {
     type V = __m512; // O tipo de dado "vetor" usado aqui tem 512 bits (16 números f32).
 
     // Dot Product: Multiplica dois conjuntos de números e soma tudo num resultado só.
+    // É usado para calcular a "influência" de um conjunto de pesos sobre um sinal de áudio.
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
         super::super::gemm::dot::dot_product_avx512(a, b)
     }
 
+    // Dot Product BF16: Versão ultra-rápida usando números de precisão reduzida (Brain Float 16).
     #[inline(always)]
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
         dot_product_bf16_fallback(a, b)
     }
 
-    // Versões intercaladas para processar 4 cálculos independentes ao mesmo tempo.
+    // Versões intercaladas (4x): Processam 4 cálculos independentes ao mesmo tempo.
+    // Isso é como ter 4 calculadoras trabalhando em paralelo dentro do mesmo chip.
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
         super::super::gemm::dot_4x::dot_product_4x_interleaved_avx512(weights, state)
@@ -78,7 +81,8 @@ impl SimdMath for Avx512Math {
         dot_product_bf16_4x_fallback(w0, w1, w2, w3, in_frame)
     }
 
-    // Funções de matriz-vetor (GEMV) que vimos anteriormente.
+    // Operações GEMV (Matrix-Vector): Multiplica uma matriz de pesos por um vetor de som.
+    // É a "fábrica" principal das redes neurais, calculando como o som deve mudar.
     #[inline(always)]
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
@@ -87,15 +91,18 @@ impl SimdMath for Avx512Math {
         out_frame: &mut [f32],
         do_bias: bool,
     ) {
+        // Se o tamanho for 16, usamos um motor especializado ultra-otimizado para AVX-512.
         if out_frame.len() == 16 {
             super::super::gemm::gemv::fused_add_gemv_avx512_small(
                 in_frame, weights, bias, out_frame, do_bias,
             )
         } else {
+            // Caso contrário, usamos a versão genérica (lenta, mas segura).
             fused_add_gemv_fallback(in_frame, weights, bias, out_frame, do_bias)
         }
     }
 
+    // Versão Batch: Processa vários "quadros" de som de uma vez só, economizando energia do CPU.
     #[inline(always)]
     unsafe fn fused_add_gemm_batch(
         in_frames: &[f32],
@@ -157,7 +164,8 @@ impl SimdMath for Avx512Math {
         gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias)
     }
 
-    // LSTM Gates: Uma parte fundamental de modelos de memória (LSTM).
+    // LSTM Gates: Uma parte fundamental de modelos que "lembram" do som anterior.
+    // Processa as 4 "portas" da LSTM (Input, Forget, Cell, Output) de forma paralela.
     #[inline(always)]
     unsafe fn gemv_overwrite_4gate(
         in_frame: &[f32],
@@ -170,6 +178,7 @@ impl SimdMath for Avx512Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
+            // Reparte os pesos para cada porta e calcula tudo em um "tiro" só.
             super::super::gemm::gemv_4gate::gemv_4gate_avx512(
                 in_frame,
                 &weights[0..stride],
@@ -248,6 +257,7 @@ impl SimdMath for Avx512Math {
     }
 
     // Ativações matemáticas rápidas (Tangente Hiperbólica e Sigmóide).
+    // Elas moldam a "personalidade" do som, imitando como válvulas distorcem o sinal.
     #[inline(always)]
     unsafe fn tanh_slice(slice: &mut [f32]) {
         crate::math::activations::tanh_slice_avx512(slice)
@@ -292,7 +302,18 @@ impl SimdMath for Avx512Math {
         unsafe { super::super::dsp::stereo::compute_energy_stereo_avx512(l, r) }
     }
 
-    // Convolve Stereo: Aplica filtros de áudio (como um equalizador ou reverb).
+    #[inline(always)]
+    unsafe fn compute_energy(data: &[f32]) -> f32 {
+        unsafe { super::super::dsp::stereo::compute_energy_avx512(data) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { super::super::dsp::stereo::compute_max_diff_avx512(a, b) }
+    }
+
+    // Convolve Stereo: Aplica filtros de áudio complexos (como equalizadores).
+    // Convolve o som com "taps" (pequenos atrasos) para esculpir o timbre final.
     #[inline(always)]
     unsafe fn convolve_stereo(
         coeffs: *const f32,
@@ -380,6 +401,7 @@ impl SimdMath for Avx512Math {
         }
     }
 
+    // Head Sum: A etapa final do modelo WaveNet para gerar o som processado.
     #[inline(always)]
     unsafe fn batch_wavenet_head_sum_dyn(
         head1: &[f32],
@@ -396,7 +418,9 @@ impl SimdMath for Avx512Math {
     }
 }
 
-/// Implementação estática para AVX-512 com suporte a VNNI.
+/// Implementação estática para AVX-512 com suporte a VNNI (Instruções Neurais de Vetor).
+/// É ainda mais rápido para calcular redes neurais em processadores Intel modernos (ex: Cascade Lake e mais novos),
+/// pois possui instruções especializadas para "moer" números de redes neurais com mais eficiência.
 pub struct Avx512VnniMath;
 
 impl SimdMath for Avx512VnniMath {
@@ -405,6 +429,16 @@ impl SimdMath for Avx512VnniMath {
     #[inline(always)]
     unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
         unsafe { Avx512Math::compute_energy_stereo(l, r) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_energy(data: &[f32]) -> f32 {
+        unsafe { Avx512Math::compute_energy(data) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { Avx512Math::compute_max_diff(a, b) }
     }
 
     #[inline(always)]
@@ -709,16 +743,28 @@ impl SimdMath for Avx512VnniMath {
     }
 }
 
-/// Implementação estática para AVX-512 com suporte a VNNI e BF16.
+/// Implementação estática para AVX-512 com suporte a VNNI e BF16 (Brain Float 16).
+/// Esta é a "Ferrari" do processamento de áudio, disponível em CPUs Intel muito recentes (ex: Sapphire Rapids).
+/// O formato BF16 permite que o chip processe o dobro de números com quase a mesma precisão do f32 original.
 pub struct Avx512VnniBf16Math;
 
 impl SimdMath for Avx512VnniBf16Math {
     type V = __m512;
-    const IS_BF16: bool = true;
+    const IS_BF16: bool = true; // Indica que este motor prefere trabalhar com o formato BF16.
 
     #[inline(always)]
     unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
         unsafe { Avx512Math::compute_energy_stereo(l, r) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_energy(data: &[f32]) -> f32 {
+        unsafe { Avx512Math::compute_energy(data) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { Avx512Math::compute_max_diff(a, b) }
     }
 
     #[inline(always)]

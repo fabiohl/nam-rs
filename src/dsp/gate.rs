@@ -253,6 +253,9 @@ impl DynamicHysteresis {
                 crate::dsp::gain::apply_gain_simd(buffer, end_mult);
             } else {
                 // Calcula o "degrau" de volume para cada amostra de som.
+                // NOTA: Se n_samples = 1, step = (end - start) / 1.0.
+                // O valor resultante será aplicado à única amostra, o que é o comportamento
+                // esperado para mudanças instantâneas (sample-accurate) no CLAP.
                 let step = (end_mult - start_mult) / (n_samples as f32);
                 crate::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
             }
@@ -305,6 +308,8 @@ impl DynamicHysteresis {
             if (start_mult - end_mult).abs() < 1e-6 {
                 unsafe { M::apply_gain_stereo(left, right, end_mult) };
             } else {
+                // NOTA: Com n_samples = 1, o "ramp" de 1 sample
+                // resulta em um salto direto para o valor alvo, o que é aceito por design.
                 let step = (end_mult - start_mult) / (n_samples as f32);
                 unsafe { M::apply_ramp_stereo(left, right, start_mult, step) };
             }

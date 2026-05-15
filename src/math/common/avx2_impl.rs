@@ -27,15 +27,16 @@ pub struct Avx2Math;
 impl SimdMath for Avx2Math {
     type V = __m256;
 
+    // Dot Product: Multiplica pesos por sinal e soma o resultado (o "DNA" das redes neurais).
+    // No AVX2, usamos registradores de 256 bits que processam 8 números de uma vez.
     #[inline(always)]
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
-        // Usa a função otimizada para AVX2 que criamos acima.
         unsafe { super::super::gemm::dot::dot_product_avx2(a, b) }
     }
 
     #[inline(always)]
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
-        // Como o AVX2 puro não tem aceleração nativa para BF16, usamos a versão comum.
+        // Como o AVX2 puro não tem aceleração nativa para BF16 ( Brain Float), usamos a versão comum de reserva.
         unsafe { dot_product_bf16_fallback(a, b) }
     }
 
@@ -82,6 +83,7 @@ impl SimdMath for Avx2Math {
         unsafe { dot_product_bf16_4x_fallback(w0, w1, w2, w3, in_frame) }
     }
 
+    // Operações GEMV: Multiplicação de matriz por vetor, usada em quase todas as camadas do modelo.
     #[inline(always)]
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
@@ -156,6 +158,7 @@ impl SimdMath for Avx2Math {
         unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
+    // Portas LSTM (4-gate): Calcula simultaneamente os 4 controles de memória da rede LSTM.
     #[inline(always)]
     unsafe fn gemv_overwrite_4gate(
         in_frame: &[f32],
@@ -168,6 +171,7 @@ impl SimdMath for Avx2Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
+            // Reparte a matriz de pesos e calcula as 4 portas de uma só vez para ganhar velocidade.
             super::super::gemm::gemv_4gate::gemv_4gate_avx2(
                 in_frame,
                 &weights[0..stride],
@@ -239,7 +243,8 @@ impl SimdMath for Avx2Math {
     #[inline(always)]
     unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
         unsafe {
-            // Converte e armazena dados BF16 usando truques de bits em AVX2.
+            // Converte f32 para BF16 em tempo real usando truques de bits:
+            // Pegamos apenas a parte mais importante do número para economizar metade do espaço.
             let v_i = _mm256_castps_si256(v);
             let v_shifted = _mm256_srli_epi32(v_i, 16);
             let packed = _mm256_packus_epi32(v_shifted, v_shifted);
@@ -291,6 +296,17 @@ impl SimdMath for Avx2Math {
         unsafe { super::super::dsp::stereo::compute_energy_stereo_avx2(l, r) }
     }
 
+    #[inline(always)]
+    unsafe fn compute_energy(data: &[f32]) -> f32 {
+        unsafe { super::super::dsp::stereo::compute_energy_avx2(data) }
+    }
+
+    #[inline(always)]
+    unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
+        unsafe { super::super::dsp::stereo::compute_max_diff_avx2(a, b) }
+    }
+
+    // Convolve Stereo: Aplica filtragem (equalização) nos dois canais ao mesmo tempo.
     #[inline(always)]
     unsafe fn convolve_stereo(
         coeffs: *const f32,
@@ -381,6 +397,7 @@ impl SimdMath for Avx2Math {
         }
     }
 
+    // Etapa final do processamento WaveNet: soma as saídas para gerar o áudio final.
     #[inline(always)]
     unsafe fn batch_wavenet_head_sum_dyn(
         head1: &[f32],

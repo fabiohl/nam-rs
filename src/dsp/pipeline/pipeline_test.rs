@@ -3,68 +3,13 @@
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_util::infra::{ALLOC_COUNT, TrackingGuard};
     use super::super::*;
     use crate::common::spsc::RtStatusFlags;
     use crate::dsp::gate::{DynamicHysteresis, GateParams};
     use crate::dsp::resampler::NamResampler;
 
-    use std::alloc::{GlobalAlloc, Layout, System};
-    use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
-
-    // =============================================================================
-    // Counting Allocator para Verificação Zero-Allocation
-    //
-    // No processamento de áudio em tempo real, não podemos "pedir memória" (alocar no Heap)
-    // para o sistema operacional, pois isso pode causar travamentos ou estalos no som.
-    // Este "vigia" (CountingAllocator) serve para garantir que o NAM-rs não faça isso.
-    // =============================================================================
-
-    /// Contador global de quantas vezes a memória foi pedida.
-    static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-    /// Guarda qual "linha de processamento" (thread) estamos vigiando no momento.
-    static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
-
-    /// O "Vigia de Memória": intercepta todos os pedidos de memória do programa.
-    struct CountingAllocator;
-
-    unsafe impl GlobalAlloc for CountingAllocator {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            // Descobre quem está pedindo memória agora.
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            // Se for a linha de processamento que estamos vigiando, aumenta o contador.
-            if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
-                ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
-            }
-            // Realiza o pedido de memória normalmente através do sistema.
-            unsafe { System.alloc(layout) }
-        }
-        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-            // Devolve a memória ao sistema.
-            unsafe { System.dealloc(ptr, layout) }
-        }
-    }
-
-    /// Define o CountingAllocator como o gerenciador de memória oficial para estes testes.
-    #[global_allocator]
-    static GLOBAL: CountingAllocator = CountingAllocator;
-
-    /// O "Interruptor": liga o vigia quando criado e o desliga quando destruído.
-    struct TrackingGuard;
-    impl TrackingGuard {
-        /// Começa a vigiar a linha de processamento atual.
-        fn new() -> Self {
-            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            TRACKING_THREAD.store(tid, Ordering::Relaxed);
-            ALLOC_COUNT.store(0, Ordering::Relaxed);
-            Self
-        }
-    }
-    impl Drop for TrackingGuard {
-        /// Para de vigiar quando o teste termina ou sai do escopo.
-        fn drop(&mut self) {
-            TRACKING_THREAD.store(0, Ordering::Relaxed);
-        }
-    }
+    use std::sync::atomic::Ordering;
 
     /// Função de ajuda que simula um laboratório para testar o motor de áudio (pipeline).
     /// Ela configura tudo o que é necessário para ver se o som entra e sai corretamente.
@@ -135,7 +80,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: &mut *bridge as *mut DspBridge,
+            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -263,10 +208,11 @@ mod tests {
     /// Se não há som e o portão está fechado, o sistema não deve perder tempo processando nada.
     #[test]
     fn test_hotpath_gate_closed_and_silence() {
-        let n = 64;
-        let input_l = vec![0.0; n];
-        let input_r = vec![0.0; n];
+        let n = 64; // Tamanho do bloco de amostras (64 "pedacinhos" de som).
+        let input_l = vec![0.0; n]; // Entrada silenciosa no canal esquerdo.
+        let input_r = vec![0.0; n]; // Entrada silenciosa no canal direito.
 
+        // Preparamos as ferramentas de áudio (reamostrador e ponte de dados).
         let mut resampler = NamResampler::new(48000, 48000, n).unwrap();
         let rt_status = RtStatusFlags::default();
         let mut bridge = Box::new(DspBridge {
@@ -288,6 +234,7 @@ mod tests {
             dropped_frames: std::sync::atomic::AtomicU32::new(0),
         });
 
+        // Buffers de trabalho temporários para os cálculos de DSP.
         let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_mid_r = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_out_l = vec![0.0; MAX_RESAMP_BUF];
@@ -295,6 +242,7 @@ mod tests {
         let mut model_out_l = [0.0; MAX_RESAMP_BUF];
         let mut model_out_r = [0.0; MAX_RESAMP_BUF];
 
+        // Configuração do portão de ruído (Gate).
         let gate_params = GateParams {
             hold_frames: 0,
             fade_frames: 0,
@@ -302,6 +250,7 @@ mod tests {
         };
         let mut silence_hysteresis = DynamicHysteresis::new();
         // Força o fechamento do portão manualmente para o teste.
+        // Simulamos que o som está muito baixo (0.0) para que o portão se feche.
         silence_hysteresis.update(0.0, 0.1, 0.01, &gate_params, 1000);
         silence_hysteresis.update(0.0, 0.1, 0.01, &gate_params, 1000);
         let mut mono_hysteresis = DynamicHysteresis::new();
@@ -310,6 +259,7 @@ mod tests {
         let mut samples_l = input_l.clone();
         let mut samples_r = input_r.clone();
 
+        // Agrupamos tudo no "Contexto" para o processamento.
         let ctx = DspPipelineContext {
             resampler: &mut resampler,
             active_model_l: &mut None,
@@ -323,7 +273,7 @@ mod tests {
             threshold_close_sq: 0.01,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: &mut *bridge as *mut DspBridge,
+            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -332,21 +282,25 @@ mod tests {
             model_out_r: &mut model_out_r,
         };
 
+        // Vigia de alocação de memória.
         let _guard = TrackingGuard::new();
+        // Executamos a orquestra de áudio (Pipeline).
         capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
+        // Verificação: Alocar memória no meio do áudio é proibido (causa estalos).
         assert_eq!(allocs, 0, "Alocação no caminho crítico!");
 
+        // Verificação: O sistema deve marcar que o estado atual é de silêncio.
         assert!(
             rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_SILENT),
             "O portão deveria estar fechado (silêncio)"
         );
         assert!(!rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING));
 
+        // Verificação final: Como o portão está fechado, não deve ter sido enviada nenhuma amostra para a ponte.
         let read_idx = bridge.active_read_idx.load(Ordering::Acquire);
-        // O buffer traseiro (1 - read_idx) foi escrito.
         let out_buf = &bridge.buffers[1 - read_idx];
         assert_eq!(
             out_buf.n_samples, 0,
@@ -355,15 +309,15 @@ mod tests {
     }
 
     /// TESTE: Transição Suave (FadeOut).
-    /// Verifica se o sistema detecta corretamente quando o volume está diminuindo aos poucos.
+    /// Verifica se o sistema detecta corretamente quando o volume está diminuindo aos poucos (esmaecendo).
     #[test]
     fn test_hotpath_gate_fading() {
         let n = 64;
         let mut input_l = vec![0.0; n];
         let mut input_r = vec![0.0; n];
-        // Sinal muito fraco para forçar o fechamento suave (fade out).
+        // Simulamos um sinal muito fraco, que deve ativar o fechamento suave do som.
         for i in 0..n {
-            input_l[i] = 0.05; // menor que open sqrt(0.1) ~ 0.31, maior que close sqrt(0.0001) = 0.01
+            input_l[i] = 0.05; // Este valor está entre os limites de "abrir" e "fechar".
             input_r[i] = 0.05;
         }
 
@@ -395,13 +349,14 @@ mod tests {
         let mut model_out_l = [0.0; MAX_RESAMP_BUF];
         let mut model_out_r = [0.0; MAX_RESAMP_BUF];
 
+        // Configuramos o FadeOut para durar 100 quadros de som.
         let gate_params = GateParams {
             hold_frames: 0,
             fade_frames: 100,
             ..Default::default()
         };
         let mut silence_hysteresis = DynamicHysteresis::new();
-        // Abre o portão e depois solta um silêncio para iniciar o FadeOut.
+        // Primeiro abrimos o som (1.0) e depois injetamos silêncio para iniciar o FadeOut.
         silence_hysteresis.update(1.0, 0.1, 0.0001, &gate_params, 100);
 
         let mut mono_hysteresis = DynamicHysteresis::new();
@@ -423,7 +378,7 @@ mod tests {
             threshold_close_sq: 0.01,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: &mut *bridge as *mut DspBridge,
+            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -437,6 +392,7 @@ mod tests {
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
+        // Verificações: Sem alocação e deve indicar o estado de "FADING".
         assert_eq!(allocs, 0);
         assert!(
             rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING),
@@ -446,13 +402,13 @@ mod tests {
     }
 
     /// TESTE: Detecção de Distorção (Clipping).
-    /// Verifica se o sistema avisa quando o volume ultrapassa o limite digital, o que causa ruído ruim.
+    /// Verifica se o sistema avisa quando o volume ultrapassa o limite digital (1.0), o que causa ruído indesejado.
     #[test]
     fn test_hotpath_clipping_detection() {
         let n = 64;
         let mut input_l = vec![0.0; n];
         let input_r = vec![0.0; n];
-        // Força um volume impossível (1.5) para causar distorção.
+        // Forçamos um volume impossível (1.5) em uma amostra específica para causar distorção.
         input_l[10] = 1.5;
 
         let mut resampler = NamResampler::new(48000, 48000, n).unwrap();
@@ -496,7 +452,7 @@ mod tests {
             active_model_l: &mut None,
             active_model_r: &mut None,
             input_gain_mult: 1.0,
-            output_gain_mult: 1.0, // Não altera o clipping inserido
+            output_gain_mult: 1.0,
             gate_params: &gate_params,
             silence_hysteresis: &mut silence_hysteresis,
             mono_hysteresis: &mut mono_hysteresis,
@@ -504,7 +460,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: &mut *bridge as *mut DspBridge,
+            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -518,6 +474,7 @@ mod tests {
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
+        // Verificação: Deve detectar a flag de Clipping (RT_STATUS_HAS_CLIPPED).
         assert_eq!(allocs, 0);
         assert!(
             rt_status.check_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED),
@@ -526,7 +483,8 @@ mod tests {
     }
 
     /// TESTE: Detecção de Perda de Som (Dropped Frames).
-    /// Verifica se o sistema percebe quando o computador está muito lento e começa a perder pacotes de áudio.
+    /// Verifica se o sistema percebe quando o computador está muito lento e começa a perder pacotes de áudio
+    /// porque quem deveria processar o som não está dando conta de ler a tempo.
     #[test]
     fn test_hotpath_dropped_frames() {
         let n = 64;
@@ -547,7 +505,7 @@ mod tests {
             ],
             active_read_idx: std::sync::atomic::AtomicUsize::new(0),
             generation: std::sync::atomic::AtomicU64::new(0),
-            // Simula que quem deveria "ouvir" o som não leu nada ainda.
+            // Simula que quem deveria "ouvir" o som (consumidor) não leu nada ainda.
             consumed_gen: std::sync::atomic::AtomicU64::new(0),
             dropped_frames: std::sync::atomic::AtomicU32::new(0),
         });
@@ -562,7 +520,7 @@ mod tests {
         let mut silence_hysteresis = DynamicHysteresis::new();
         let mut mono_hysteresis = DynamicHysteresis::new();
 
-        // 1ª passada: Processamos o som, mas ninguém "pega" o resultado.
+        // 1ª passada: O pipeline processa o som e guarda na "ponte".
         let mut process_mono = false;
         let mut samples_l = vec![1.0; n];
         let mut samples_r = vec![1.0; n];
@@ -580,7 +538,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: &mut *bridge as *mut DspBridge,
+            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -590,7 +548,8 @@ mod tests {
         };
         capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx);
 
-        // 2ª passada: O sistema tenta processar mais som, mas vê que a "gaveta" ainda está cheia.
+        // 2ª passada: O sistema tenta processar mais som, mas vê que a ponte ainda está ocupada
+        // com o som da passada anterior que ninguém leu.
         let mut process_mono2 = false;
         let mut samples_l2 = vec![1.0; n];
         let mut samples_r2 = vec![1.0; n];
@@ -607,7 +566,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono2,
             rt_status: &rt_status,
-            bridge_ptr: &mut *bridge as *mut DspBridge,
+            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
             resamp_mid_l: &mut resamp_mid_l,
             resamp_mid_r: &mut resamp_mid_r,
             resamp_out_l: &mut resamp_out_l,
@@ -617,13 +576,14 @@ mod tests {
         };
 
         let _guard = TrackingGuard::new();
+        // Aqui o sistema deve ser obrigado a descartar este novo pacote de som.
         capture_dsp_pipeline(&mut samples_l2, &mut samples_r2, n, ctx2);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
         assert_eq!(allocs, 0);
 
-        // O sistema deve notar que um "pedaço" de som foi perdido (dropado).
+        // O sistema deve ter incrementado o contador de pacotes perdidos (dropped).
         let dropped = bridge.dropped_frames.load(Ordering::Relaxed);
         assert_eq!(
             dropped, 1,

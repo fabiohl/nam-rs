@@ -23,6 +23,13 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
+
+    // Fallback escalar (cold-path) para blocos pequenos (comum no Bitwig/CLAP).
+    // Evita o overhead das reduções horizontais SIMD para arrays muito curtos.
+    if len < 8 {
+        return compute_energy_scalar_cold(data);
+    }
+
     let mut i = 0;
     unsafe {
         let mut sum0 = _mm256_setzero_ps();
@@ -76,6 +83,11 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
+
+    if len < 8 {
+        return compute_max_diff_scalar_cold(a, b);
+    }
+
     let mut i = 0;
     unsafe {
         let mut max_v = _mm256_setzero_ps();
@@ -120,6 +132,14 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
 /// Utiliza despacho dinâmico via v-table global.
 pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_energy_stereo(l, r))
+}
+
+/// Calcula a diferença absoluta máxima entre dois blocos via despacho SIMD.
+///
+/// # Safety
+/// Utiliza despacho dinâmico via v-table global.
+pub unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
+    crate::math::common::dispatch_simd!(compute_max_diff(a, b))
 }
 
 /// Convolução estéreo (usada no resampler) via despacho SIMD.
@@ -223,6 +243,11 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
     if len == 0 {
         return 0.0;
     }
+
+    if len < 8 {
+        return compute_energy_stereo_scalar_cold(l, r);
+    }
+
     let mut i = 0;
     let mut sum_l0 = _mm256_setzero_ps();
     let mut sum_l1 = _mm256_setzero_ps();
@@ -371,5 +396,105 @@ pub unsafe fn compute_energy_stereo_avx512(l: &[f32], r: &[f32]) -> f32 {
 
     let energy_l = sum_l / (len as f32);
     let energy_r = sum_r / (len as f32);
+    energy_l.max(energy_r)
+}
+
+/// Calcula a energia (Mean Square) de um bloco via AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn compute_energy_avx512(data: &[f32]) -> f32 {
+    let len = data.len();
+    if len == 0 {
+        return 0.0;
+    }
+    let mut i = 0;
+    let mut sum_v = _mm512_setzero_ps();
+
+    while i + 16 <= len {
+        let v = _mm512_loadu_ps(data.as_ptr().add(i));
+        sum_v = _mm512_fmadd_ps(v, v, sum_v);
+        i += 16;
+    }
+
+    let mut total_sum = crate::math::common::utility::hsum_avx512(sum_v);
+
+    while i < len {
+        total_sum += data[i] * data[i];
+        i += 1;
+    }
+
+    total_sum / (len as f32)
+}
+
+/// Calcula a diferença absoluta máxima entre dois blocos via AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn compute_max_diff_avx512(a: &[f32], b: &[f32]) -> f32 {
+    let len = core::cmp::min(a.len(), b.len());
+    if len == 0 {
+        return 0.0;
+    }
+    let mut i = 0;
+    let mut max_v = _mm512_setzero_ps();
+    let sign_mask = _mm512_set1_ps(-0.0f32);
+
+    while i + 16 <= len {
+        let va = _mm512_loadu_ps(a.as_ptr().add(i));
+        let vb = _mm512_loadu_ps(b.as_ptr().add(i));
+        let diff = _mm512_sub_ps(va, vb);
+        let abs_diff = _mm512_andnot_ps(sign_mask, diff);
+        max_v = _mm512_max_ps(max_v, abs_diff);
+        i += 16;
+    }
+
+    let mut max_diff = _mm512_reduce_max_ps(max_v);
+
+    while i < len {
+        let d = (a[i] - b[i]).abs();
+        if d > max_diff {
+            max_diff = d;
+        }
+        i += 1;
+    }
+
+    max_diff
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Fallbacks Escalares (Cold-Path)
+// ═══════════════════════════════════════════════════════════════
+
+#[cold]
+#[inline(never)]
+fn compute_energy_scalar_cold(data: &[f32]) -> f32 {
+    let mut total_sum = 0.0;
+    for &x in data {
+        total_sum += x * x;
+    }
+    total_sum / (data.len() as f32)
+}
+
+#[cold]
+#[inline(never)]
+fn compute_max_diff_scalar_cold(a: &[f32], b: &[f32]) -> f32 {
+    let mut max_diff = 0.0f32;
+    for i in 0..a.len() {
+        let d = (a[i] - b[i]).abs();
+        if d > max_diff {
+            max_diff = d;
+        }
+    }
+    max_diff
+}
+
+#[cold]
+#[inline(never)]
+fn compute_energy_stereo_scalar_cold(l: &[f32], r: &[f32]) -> f32 {
+    let mut total_sum_l = 0.0;
+    let mut total_sum_r = 0.0;
+    for i in 0..l.len() {
+        total_sum_l += l[i] * l[i];
+        total_sum_r += r[i] * r[i];
+    }
+    let energy_l = total_sum_l / (l.len() as f32);
+    let energy_r = total_sum_r / (l.len() as f32);
     energy_l.max(energy_r)
 }

@@ -239,6 +239,20 @@ pub trait SimdMath {
     /// Buffers devem ser válidos.
     unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32;
 
+    /// Calcula a energia (Mean Square) de um bloco.
+    /// $E = \frac{1}{N} \sum x_i^2$
+    ///
+    /// # Safety
+    /// O buffer deve ser válido.
+    unsafe fn compute_energy(data: &[f32]) -> f32;
+
+    /// Calcula a diferença absoluta máxima entre dois blocos.
+    /// $\max(|a_i - b_i|)$
+    ///
+    /// # Safety
+    /// Os buffers devem ser válidos e ter o mesmo tamanho.
+    unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32;
+
     /// Aplica Tanh em um slice.
     ///
     /// # Safety

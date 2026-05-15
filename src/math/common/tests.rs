@@ -239,3 +239,47 @@ fn test_store_bf16_avx512() {
         assert_eq!(dest[i], (vals[i].to_bits() >> 16) as u16);
     }
 }
+
+#[test]
+fn test_compute_energy_parity() {
+    let data: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
+    let expected = unsafe { crate::math::common::compute_energy_fallback(&data) };
+
+    let res_avx2 = unsafe { Avx2Math::compute_energy(&data) };
+    assert!((res_avx2 - expected).abs() < 1e-6);
+
+    if is_x86_feature_detected!("avx512f") {
+        let res_avx512 = unsafe { Avx512Math::compute_energy(&data) };
+        assert!((res_avx512 - expected).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn test_compute_energy_stereo_parity() {
+    let l: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
+    let r: Vec<f32> = (0..100).map(|i| (100 - i) as f32 * 0.01).collect();
+    let expected = unsafe { crate::math::common::compute_energy_stereo_fallback(&l, &r) };
+
+    let res_avx2 = unsafe { Avx2Math::compute_energy_stereo(&l, &r) };
+    assert!((res_avx2 - expected).abs() < 1e-6);
+
+    if is_x86_feature_detected!("avx512f") {
+        let res_avx512 = unsafe { Avx512Math::compute_energy_stereo(&l, &r) };
+        assert!((res_avx512 - expected).abs() < 1e-6);
+    }
+}
+
+#[test]
+fn test_compute_max_diff_parity() {
+    let a: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
+    let b: Vec<f32> = (0..100).map(|i| (i as f32 * 1.1) * 0.01).collect();
+    let expected = unsafe { crate::math::common::compute_max_diff_fallback(&a, &b) };
+
+    let res_avx2 = unsafe { Avx2Math::compute_max_diff(&a, &b) };
+    assert!((res_avx2 - expected).abs() < 1e-6);
+
+    if is_x86_feature_detected!("avx512f") {
+        let res_avx512 = unsafe { Avx512Math::compute_max_diff(&a, &b) };
+        assert!((res_avx512 - expected).abs() < 1e-6);
+    }
+}

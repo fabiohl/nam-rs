@@ -248,4 +248,62 @@ mod tests {
             "Restante do buffer não preservado em volume máximo"
         );
     }
+
+    /// Testa o processamento com blocos de apenas 1 amostra (n_samples = 1).
+    /// Isso é crítico para hosts CLAP que podem subdividir blocos arbitrariamente.
+    #[test]
+    fn test_unit_block_processing() {
+        let mut dh = DynamicHysteresis::new();
+        let params = GateParams {
+            hold_frames: 2,
+            fade_frames: 2,
+            ..Default::default()
+        };
+        let th_open = 1.0;
+        let th_close = 0.5;
+
+        // 1. Transição Open -> Hold -> FadingOut
+        assert_eq!(dh.state(), GateState::Open);
+        dh.update(0.0, th_open, th_close, &params, 1);
+        assert_eq!(dh.state(), GateState::Open, "Hold 1/2");
+        dh.update(0.0, th_open, th_close, &params, 1);
+        assert_eq!(
+            dh.state(),
+            GateState::FadingOut,
+            "Entrou em fade-out após hold=2"
+        );
+
+        // 2. Transição FadingOut -> Closed
+        dh.update(0.0, th_open, th_close, &params, 1);
+        assert_eq!(dh.state(), GateState::FadingOut, "FadeOut 1/2");
+        assert_eq!(dh.multiplier(), 0.5);
+        dh.update(0.0, th_open, th_close, &params, 1);
+        assert_eq!(dh.state(), GateState::Closed, "Silêncio total atingido");
+        assert_eq!(dh.multiplier(), 0.0);
+
+        // 3. Transição Closed -> FadingIn -> Open
+        dh.update(2.0, th_open, th_close, &params, 1);
+        assert_eq!(dh.state(), GateState::FadingIn, "Início do FadeIn");
+        assert_eq!(dh.multiplier(), 0.5);
+        dh.update(2.0, th_open, th_close, &params, 1);
+        assert_eq!(dh.state(), GateState::Open, "Totalmente aberto novamente");
+        assert_eq!(dh.multiplier(), 1.0);
+
+        // 4. Teste de Rampa com n=1 (Deve funcionar sem pânico ou divisões por zero)
+        let mut buffer = [1.0f32; 1];
+        dh.update(0.0, th_open, th_close, &params, 2); // Força FadingOut
+        dh.update(0.0, th_open, th_close, &params, 1); // FadeOut 1/2
+        dh.apply_gain_rt(&mut buffer, 1);
+        assert!(
+            (buffer[0] - 1.0).abs() < 1e-6,
+            "O multiplicador inicial da rampa é 1.0"
+        );
+
+        dh.update(0.0, th_open, th_close, &params, 1); // FadeOut 2/2 -> Closed
+        dh.apply_gain_rt(&mut buffer, 1);
+        assert!(
+            (buffer[0] - 0.5).abs() < 1e-6,
+            "O multiplicador inicial para este bloco era 0.5"
+        );
+    }
 }

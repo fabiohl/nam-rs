@@ -18,7 +18,7 @@
 
 > **Severidade: CRÍTICA.** Sem esta correção, o modo CLAP não pode ser considerado production-ready. O Bitwig pode enviar blocos de 1, 3 ou 7 samples durante automação sample-accurate.
 
-- [ ] **Tarefa 0.1.1** — Fallback Escalar em `compute_energy_stereo` e `compute_max_diff_avx2`
+- [x] **Tarefa 0.1.1** — Fallback Escalar em `compute_energy_stereo` e `compute_max_diff_avx2`
 
   - **Contexto:** As funções SIMD em `src/math/dsp/stereo` operam em vetores de 8 floats (1 `__m256`). Para `n < 8`, ocorre leitura out-of-bounds que causa SIGSEGV. No modo Standalone com PipeWire, os blocos são tipicamente ≥ 64 samples, mascarando o bug. No CLAP, o host pode subdividir blocos arbitrariamente.
   - **Ações Técnicas:**
@@ -28,7 +28,7 @@
     4. Adicionar `#[cold]` no caminho escalar para ajudar o compilador a priorizar o hot-path SIMD.
   - **Aceite:** `cargo test` passa com blocos de 0, 1, 3, 5, 7, 8 e 9 samples. Zero SIGSEGV. Benchmark confirma zero regressão para blocos ≥ 8.
 
-- [ ] **Tarefa 0.1.2** — Validação do Gate FSM com `n_samples = 1`
+- [x] **Tarefa 0.1.2** — Validação do Gate FSM com `n_samples = 1`
 
   - **Contexto:** Na `DynamicHysteresis::update()` (`src/dsp/gate.rs`), para `n_samples = 1`, o cálculo de rampa `step = (end - start) / 1.0` resulta em salto abrupto. Embora um salto de 1 sample (~20.8µs @ 48kHz) seja imperceptível, a corretude formal deve ser documentada.
   - **Ações Técnicas:**
@@ -43,7 +43,7 @@
 
 > **Desbloqueio.** Este épico é precondição para toda a Sprint 2 CLAP (pipeline DSP vivo).
 
-- [ ] **Tarefa 0.2.1** — Refatorar Feature Gates em `src/dsp/pipeline.rs`
+- [x] **Tarefa 0.2.1** — Refatorar Feature Gates em `src/dsp/pipeline.rs`
 
   - **Contexto:** O hot-path completo (`apply_input_stage`, `run_inference`, `apply_output_stage`, `DspPipelineContext`, constantes `MAX_*`) está gateado em `#[cfg(any(feature = "standalone", test))]`, excluindo o build CLAP. A solução deve gerar compartilhamento seguro de código sem duplicações.
   - **Ações Técnicas:**
@@ -55,7 +55,7 @@
     6. Executar `cargo check --features standalone` E `cargo check --no-default-features --features clap-plugin --lib` — ambos devem compilar sem erros.
   - **Aceite:** Ambos os builds compilam com zero erros e zero warnings. Os 3 estágios do pipeline estão acessíveis sob `feature = "clap-plugin"`.
 
-- [ ] **Tarefa 0.2.2** — Eliminação de `#[allow(clippy::not_unsafe_ptr_arg_deref)]` em `pipeline.rs`
+- [x] **Tarefa 0.2.2** — Eliminação de `#[allow(clippy::not_unsafe_ptr_arg_deref)]` em `pipeline.rs`
 
   - **Contexto:** As funções `capture_dsp_pipeline` e `handle_silence_bypass` usam `*mut DspBridge` com `#[allow]` para silenciar o lint. Ao refatorar o `bridge_ptr` (Tarefa 0.2.1), aproveitar para encapsular o acesso unsafe.
   - **Ações Técnicas:**
@@ -68,7 +68,7 @@
 
 ### Épico 0.3 — Cobertura de Testes para Blocos Irregulares
 
-- [ ] **Tarefa 0.3.1** — Suite de Testes com Block Sizes Não-Convencionais
+- [x] **Tarefa 0.3.1** — Suite de Testes com Block Sizes Não-Convencionais
 
   - **Contexto:** Os testes atuais em `pipeline_test.rs` (26 kB) exercitam apenas block sizes padrão (256, 512). No CLAP, o Bitwig subdivide blocos para automação sample-accurate (1, 7, 17, 33, 53...).
   - **Ações Técnicas:**
@@ -77,6 +77,8 @@
     3. Adicionar cenário com `CountingAllocator` para `n_samples = 1` e `n_samples = max_frames_count` confirmando zero alocações no hot-path.
     4. Integrar com `proptest` para gerar block sizes aleatórios no range `[1, 8192]` com 500 iterações.
   - **Aceite:** `cargo test --features standalone` passa. Todos os block sizes exercitados sem crash. `CountingAllocator::alloc_count() == 0` para todos os cenários.
+
+> **Auditoria:** Sprint 0 revisada com sucesso. Os fallbacks escalares `#[cold]` foram garantidos nas raízes SIMD (`compute_energy_stereo_avx2`, etc.) evitando overhead de redução horizontal em blocos ínfimos. A base de código está com `lints.sh` 100% limpo, sem warnings `dead_code` ou `unsafe_ptr_arg_deref`, e pronta para sustentar a implementação do host CLAP (Sprint 1) sem surpresas de estabilidade.
 
 ---
 

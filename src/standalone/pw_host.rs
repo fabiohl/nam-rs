@@ -52,8 +52,8 @@ use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags,
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 pub use crate::dsp::pipeline::PipewireHostConfig;
 use crate::dsp::pipeline::{
-    AppState, BridgeBuffer, DspBridge, DspPipelineContext, MAX_BRIDGE_BUF, MAX_RESAMP_BUF,
-    build_spa_format_pod, capture_dsp_pipeline, playback_dsp_cycle,
+    AppState, BridgeBuffer, BridgeRef, DspBridge, DspPipelineContext, MAX_BRIDGE_BUF,
+    MAX_RESAMP_BUF, build_spa_format_pod, capture_dsp_pipeline, playback_dsp_cycle,
 };
 use crate::dsp::resampler::NamResampler;
 use crate::standalone::colors::Colorize;
@@ -137,16 +137,16 @@ pub fn run_pipewire_host(
         consumed_gen: std::sync::atomic::AtomicU64::new(0),
         dropped_frames: std::sync::atomic::AtomicU32::new(0),
     }));
-    // Ponteiro mutável bruto para compartilhamento entre as closures de Capture e Playback.
+    // Ponteiro mutável bruto encapsulado em BridgeRef para segurança RT.
     // Ambas rodam no mesmo contexto RT do PipeWire, garantindo acesso exclusivo via atomics no Bridge.
-    let bridge_ptr = bridge as *const DspBridge as *mut DspBridge;
+    let bridge_ptr = unsafe { BridgeRef::new(bridge as *const DspBridge as *mut DspBridge) };
 
     // Otimiza o gerenciamento de memória do bridge no Kernel:
     // - MADV_DONTFORK: Evita overhead de Copy-on-Write (COW) se o processo sofrer fork.
     // - MADV_DONTDUMP: Exclui os grandes buffers de áudio de core dumps, reduzindo latência de escrita em falhas.
     unsafe {
         libc::madvise(
-            bridge_ptr as *mut libc::c_void,
+            bridge as *const DspBridge as *mut libc::c_void,
             std::mem::size_of::<DspBridge>(),
             libc::MADV_DONTFORK | libc::MADV_DONTDUMP,
         );
