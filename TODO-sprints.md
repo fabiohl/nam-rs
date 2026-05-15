@@ -249,7 +249,7 @@
     3. Derivar `#[repr(align(128))]` para evitar false sharing entre threads.
   - **Aceite:** `cargo check --features clap-plugin` compila sem erros. A struct deixa de ser unit.
 
-- [ ] **Tarefa 2.0.2** — Definir `NamClapMainThread`: Estado da UI/Main
+- [x] **Tarefa 2.0.2** — Definir `NamClapMainThread`: Estado da UI/Main
 
   - **Contexto:** `NamClapMainThread` é o estado exclusivo da main thread — seguro para alocações, I/O de arquivo e logging.
   - **Ações Técnicas:**

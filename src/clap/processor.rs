@@ -10,10 +10,10 @@ use clack_plugin::prelude::*;
 /// Bypass: copia cada amostra de input para output sem processar.
 pub struct NamClapProcessor;
 
-impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread> for NamClapProcessor {
+impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor {
     fn activate(
         _host: HostAudioProcessorHandle<'a>,
-        _main_thread: &mut NamClapMainThread,
+        _main_thread: &mut NamClapMainThread<'a>,
         _shared: &'a NamClapShared,
         _audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {

@@ -9,7 +9,7 @@ use clack_extensions::audio_ports::{
 };
 use clack_plugin::prelude::ClapId;
 
-impl PluginAudioPortsImpl for NamClapMainThread {
+impl PluginAudioPortsImpl for NamClapMainThread<'_> {
     fn count(&mut self, _is_input: bool) -> u32 {
         1
     }
