@@ -227,7 +227,7 @@
 
 > **Pré-requisito interno.** As structs unit vazias atuais impedem qualquer integração. Este épico define a estrutura de dados completa antes de qualquer lógica.
 
-- [ ] **Tarefa 2.0.1** — Definir `NamClapShared`: Canal de Parâmetros Main→RT
+- [x] **Tarefa 2.0.1** — Definir `NamClapShared`: Canal de Parâmetros Main→RT
 
   - **Contexto:** `NamClapShared` é o único objeto acessível tanto pela `main thread` quanto pela `audio thread` do clack. É o ponto ideal para o canal SPSC de parâmetros (análogo ao `ParamPayload` do Standalone).
   - **Ações Técnicas:**
