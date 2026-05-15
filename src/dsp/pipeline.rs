@@ -115,9 +115,11 @@ impl DspBridge {
 /// Wrapper para acesso ao DspBridge que encapsula a segurança de ponteiros brutos.
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[derive(Clone, Copy)]
-pub struct BridgeRef(#[cfg(any(feature = "standalone", test))] *mut DspBridge);
+pub struct BridgeRef(
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))] *mut DspBridge,
+);
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl BridgeRef {
     /// Cria um novo BridgeRef.
     /// # Safety
@@ -163,7 +165,7 @@ pub struct DspPipelineContext<'a> {
     /// Flags de status em tempo real.
     pub rt_status: &'a RtStatusFlags,
     /// Ponteiro para a ponte de memória compartilhada.
-    #[cfg(feature = "standalone")]
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     pub bridge_ptr: BridgeRef,
     /// Buffer intermediário L (pós-resampler input).
     pub resamp_mid_l: &'a mut [f32],
@@ -180,7 +182,7 @@ pub struct DspPipelineContext<'a> {
 }
 
 /// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[cold]
 #[inline(never)]
 pub fn handle_silence_bypass(bridge: BridgeRef, rt_status: &RtStatusFlags) {
@@ -399,7 +401,7 @@ pub(crate) fn apply_output_stage(
     }
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 4: Escrita no DspBridge.
 #[inline(always)]
 pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bridge: BridgeRef) {
@@ -447,7 +449,7 @@ pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bri
         .store(current_gen + 1, Ordering::Release);
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Pipeline DSP Completo (Agregador).
 #[inline(always)]
 pub fn capture_dsp_pipeline(

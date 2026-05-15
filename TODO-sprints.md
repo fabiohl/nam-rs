@@ -99,7 +99,7 @@
 
 > **Pré-requisito de toda a Sprint.** Nenhuma tarefa subsequente deve ser executada até que este épico passe com zero warnings.
 
-- [ ] **Tarefa 1.0.1** — Verificação de Compilação Limpa da Feature `clap-plugin`
+- [x] **Tarefa 1.0.1** — Verificação de Compilação Limpa da Feature `clap-plugin`
 
   - **Contexto:** O build da `.so` usa `--no-default-features --features clap-plugin`. Qualquer warning de compilação é sinal de dívida técnica que irá escalar.
   - **Ações Técnicas:**
@@ -109,7 +109,7 @@
     4. Executar `./utils/lints.sh` e confirmar saída limpa para ambas as features.
   - **Aceite:** `cargo check` em ambas as features → 0 errors, 0 warnings. `lints.sh` retorna 0.
 
-- [ ] **Tarefa 1.0.2** — Auditoria do `utils/build-clap.sh` e Ciclo de Deploy
+- [x] **Tarefa 1.0.2** — Auditoria do `utils/build-clap.sh` e Ciclo de Deploy
 
   - **Contexto:** O script já existe e faz o build release + cópia para `~/.clap/nam-rs.clap`. Porém, ausência de validação pós-cópia pode ocultar instalações silenciosamente corrompidas.
   - **Ações Técnicas:**
@@ -119,7 +119,7 @@
     4. Adicionar ao script um modo de build debug (`--debug`) para acelerar iterações de desenvolvimento.
   - **Aceite:** Script executa, instala e auto-valida sem intervenção manual. Saída clara indica sucesso ou falha específica.
 
-- [ ] **Tarefa 1.0.3** — Garantia de Zero-Alocação no Bypass (`CountingAllocator`)
+- [x] **Tarefa 1.0.3** — Garantia de Zero-Alocação no Bypass (`CountingAllocator`)
 
   - **Contexto:** O `process()` atual faz `copy_from_slice` sobre slices do host — teoricamente zero-alloc. Mas `clack-plugin` pode ocultar alocações internas na deserialização de events. Precisamos de prova formal.
   - **Ações Técnicas:**
