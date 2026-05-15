@@ -290,6 +290,7 @@ Este projeto utiliza um registro simplificado de decisões arquiteturais para ma
 - **Decisão:** Bitwig Studio 6.0.6 (Ubuntu Linux 25.10+) como plataforma primária de desenvolvimento e validação técnica.
 - **Justificativa:** O Bitwig Studio oferece a implementação de referência do padrão CLAP (sendo co-autor do spec). Seu sistema de *Sandboxing* (isolamento de processos) e o suporte nativo a modulações sample-accurate são ideais para testar a robustez e o determinismo temporal do motor DSP do NAM-rs.
 - **REAPER:** Validação secundária e suporte à comunidade de baixo custo. Excelente para depuração de buffers irregulares.
+  - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
 - **Studio One:** Validação de compatibilidade em hosts comerciais de grande escala.
 
 ### Matemática & SIMD — Reorganização Modular

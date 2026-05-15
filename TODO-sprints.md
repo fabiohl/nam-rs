@@ -188,7 +188,7 @@
     5. Inserir o plugin em uma Device Chain em uma trilha de instrumentos com sinal de áudio.
   - **Aceite:** Plugin listado corretamente. Inserível sem erros. Aba *Plug-in Errors* vazia.
 
-- [ ] **Tarefa 1.2.2** — Bypass Puro Estéreo com Áudio Real
+- [x] **Tarefa 1.2.2** — Bypass Puro Estéreo com Áudio Real
 
   - Vide chat "Validating NAM-rs Bitwig Integration" para operacional detalhado.
   - **Contexto:** Com bypass, cada amostra de input deve chegar ao output inalterada. Qualquer diferença indica bug no mapeamento `ChannelPair`.
@@ -200,7 +200,7 @@
     4. Verificar que `ChannelPair::InputOnly` não propaga lixo (atual: noop — correto, host não lê saída nesse caso).
   - **Aceite:** Sine 440Hz de entrada = sine 440Hz de saída. Latência reportada = 0 ms. Oscilloscope mostra sobreposição perfeita.
 
-- [ ] **Tarefa 1.2.3** — Stress de Sandboxing e Modos de Hosting
+- [x] **Tarefa 1.2.3** — Stress de Sandboxing e Modos de Hosting
 
   - **Contexto:** Bitwig oferece 3 modos de hosting: *Together* (mesmo processo), *Individually* (processo separado por plugin), e *Individually (strict)*. Cada modo usa IPC diferente e expõe falhas distintas de lifetime/segfaults.
   - **Ações Técnicas:**
@@ -323,6 +323,8 @@
        - Copiar `self.buf_out_l/r` de volta para os buffers de saída do host.
     3. Verificar que o `DspPipelineContext` não requer `bridge_ptr` (campo exclusivo do Standalone): criar uma versão sem o campo `bridge_ptr` ou usar `std::ptr::null_mut()` com `#[cfg]` condicional.
   - **Aceite:** Inserir o plugin no Bitwig com um modelo `.nam` carregado → áudio processado com timbre do amplificador neural. Medição de latência no Bitwig ≤ 3ms para buffer de 256 samples @ 48kHz.
+  - **NOTAS do PO:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma forma de carregar automaticamente algum modelo padrão que esteja na pasta ~/.clap/.
+  - **NOTAS do PO:** Explique-me detalhadamente como obter estas informações de latência do Bitwig.
 
 - [ ] **Tarefa 2.1.2** — GC de Modelos: Descarte Seguro Fora da Audio Thread
 
@@ -332,6 +334,7 @@
     2. Na main thread (loop de eventos do host ou `on_main_thread()`), drenar `shared.gc_rx` e fazer `drop()` dos modelos obsoletos.
     3. Documentar com `// SAFETY: drop() ocorre fora da audio thread — RT-safe.`
   - **Aceite:** Trocar de modelo no Bitwig 10x consecutivamente sem XRUNs. `valgrind --tool=massif` mostra crescimento zero de heap durante as trocas.
+  - **NOTAS do PO:** Como ainda não temos GUI, será necessário implementar (temporariamente, remover isto quando da implementação da GUI) alguma maneira de automatizar esta troca.
 
 - [ ] **Tarefa 2.1.3** — Logging RT-Safe via `clap_host_log`
 
@@ -342,6 +345,7 @@
     3. Na main thread (`on_main_thread()` ou timer), ler as flags e chamar `HostHandle::log(severity, message)` via `clack-extensions` `HostLog`.
     4. Em cold-paths fora da RT (como `load_model`), usar `log::error!` diretamente.
   - **Aceite:** Mensagem `"NAM-rs: model loaded"` aparece no *Script Console* do Bitwig após carregar um modelo. Nenhum `println!` ou `log::` na audio thread.
+  - **NOTAS do PO:** Explique-me detalhadamente como obter estas no Bitwig.
 
 ---
 
@@ -500,18 +504,7 @@
 
 ---
 
-### Épico 3.3 — Validação em Host Secundário (REAPER)
-
-- [ ] **Tarefa 3.3.1** — Scan e Bypass no REAPER (Linux)
-
-  - **Contexto:** REAPER é o segundo host de validação (conforme `docs/architecture.md` §8.1). Ele tem comportamento diferente do Bitwig: envia blocos de tamanho fixo mas pode chamar `process()` em threads diferentes em cada ciclo. Expõe bugs de thread-safety que o Bitwig não detecta.
-  - **Ações Técnicas:**
-    1. Instalar REAPER para Linux e adicionar `~/.clap/` ao path de plugins CLAP nas preferências.
-    2. Fazer scan e instanciar NAM-rs em uma trilha FX.
-    3. Verificar bypass e processamento com um modelo `.nam` carregado.
-    4. Verificar ADC: REAPER mostra PDC (Plugin Delay Compensation) correto para o valor de `latency_samples()`.
-    5. Testar troca de modelo durante playback via `load_model()` — sem XRUNs.
-  - **Aceite:** NAM-rs funciona no REAPER com zero crashes e PDC correto. Log do REAPER sem mensagens de erro.
+### Épico 3.3 — Validação em Host Secundário (REAPER) [CANCELADO]
 
 ---
 
