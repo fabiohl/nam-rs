@@ -37,7 +37,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread> for NamClapP
                     ChannelPair::InputOutput(input, output) => {
                         output.copy_from_slice(input);
                     }
-                    ChannelPair::InPlace(_) => {} // in-place: nada a fazer no bypass
+                    ChannelPair::InPlace(_) => {
+                        // Comportamento correto para bypass in-place:
+                        // O buffer de entrada é fisicamente o mesmo buffer de saída.
+                        // Como estamos em bypass, não fazemos nada (noop).
+                    }
                 }
             }
         }

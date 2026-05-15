@@ -176,7 +176,7 @@
 
 ### Épico 1.2 — Validação no Bitwig Studio 6 (Host Real)
 
-- [ ] **Tarefa 1.2.1** — Scan, Categorização e Instanciação no Bitwig 6.0.6
+- [x] **Tarefa 1.2.1** — Scan, Categorização e Instanciação no Bitwig 6.0.6
 
   - **Contexto:** Bitwig escaneia plugins em processo separado (sandbox) e reporta erros na aba *Plug-in Errors*. O plugin deve sobreviver ao scan sem falhas de inicialização.
   - **Pré-requisito:** Épicos 1.0 e 1.1 concluídos com zero FAILs.
@@ -190,6 +190,7 @@
 
 - [ ] **Tarefa 1.2.2** — Bypass Puro Estéreo com Áudio Real
 
+  - Vide chat "Validating NAM-rs Bitwig Integration" para operacional detalhado.
   - **Contexto:** Com bypass, cada amostra de input deve chegar ao output inalterada. Qualquer diferença indica bug no mapeamento `ChannelPair`.
   - **Ações Técnicas:**
     1. No Bitwig, conectar uma fonte de áudio com sinal DC ou tone conhecido (ex: gerador de sine 440Hz via "Test Tone" device).
@@ -396,7 +397,7 @@
 
 - [ ] **Tarefa 2.2.3** — Persistência de Sessão via `clap_plugin_state`
 
-  - **Contexto:** Ao salvar um projeto no Bitwig, o host chama `state.save(stream)`. Ao reabrir, chama `state.load(stream)`. O plugin deve restaurar o modelo e os parâmetros exatamente como estavam.
+  - **Contexto:** Ao salvar um projeto no Bitwig, o host chama `state.save(stream)`. Ao reabrir, chama `state.load(stream)`. Sem isso, o Bitwig loga o erro `Error saving initial state of plug-in for undo history: Plug-in does not support saving its state` no carregamento. O plugin deve restaurar o modelo e os parâmetros exatamente como estavam.
   - **Ações Técnicas:**
     1. Criar `src/clap/extensions/state.rs` implementando `PluginState`.
     2. Formato de serialização: JSON minificado via `serde_json` (já é dependência):
