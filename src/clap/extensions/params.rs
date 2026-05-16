@@ -86,10 +86,33 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
 
     fn get_value(&mut self, id: ClapId) -> Option<f64> {
         match id.get() {
-            PARAM_INPUT_GAIN => Some(self.params.input_gain_db as f64),
-            PARAM_OUTPUT_GAIN => Some(self.params.output_gain_db as f64),
-            PARAM_GATE_THRESH => Some(self.params.gate_threshold_db as f64),
-            PARAM_BYPASS => Some(if self.params.bypass { 1.0 } else { 0.0 }),
+            PARAM_INPUT_GAIN => Some(f32::from_bits(
+                self.shared
+                    .param_input_gain
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ) as f64),
+            PARAM_OUTPUT_GAIN => Some(f32::from_bits(
+                self.shared
+                    .param_output_gain
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ) as f64),
+            PARAM_GATE_THRESH => Some(f32::from_bits(
+                self.shared
+                    .param_gate_thresh
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ) as f64),
+            PARAM_BYPASS => Some(
+                if self
+                    .shared
+                    .param_bypass
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                    != 0
+                {
+                    1.0
+                } else {
+                    0.0
+                },
+            ),
             _ => None,
         }
     }
@@ -145,14 +168,35 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             let val = param_event.value() as f32;
 
             match id {
-                PARAM_INPUT_GAIN => self.params.input_gain_db = val,
-                PARAM_OUTPUT_GAIN => self.params.output_gain_db = val,
-                PARAM_GATE_THRESH => self.params.gate_threshold_db = val,
-                PARAM_BYPASS => self.params.bypass = val > 0.5,
+                PARAM_INPUT_GAIN => {
+                    self.params.input_gain_db = val;
+                    self.shared
+                        .param_input_gain
+                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_OUTPUT_GAIN => {
+                    self.params.output_gain_db = val;
+                    self.shared
+                        .param_output_gain
+                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_GATE_THRESH => {
+                    self.params.gate_threshold_db = val;
+                    self.shared
+                        .param_gate_thresh
+                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_BYPASS => {
+                    self.params.bypass = val > 0.5;
+                    self.shared.param_bypass.store(
+                        if val > 0.5 { 1 } else { 0 },
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
                 _ => continue,
             }
 
-            // Sincroniza com a thread RT
+            // Sincroniza com a thread RT (apenas se for chamado na main thread offline, mas não faz mal)
             let _ = self
                 .param_tx
                 .push(ClapParamPayload::Params(self.params.clone()));
@@ -173,10 +217,31 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             let val = param_event.value() as f32;
 
             match id {
-                PARAM_INPUT_GAIN => self.params.input_gain_db = val,
-                PARAM_OUTPUT_GAIN => self.params.output_gain_db = val,
-                PARAM_GATE_THRESH => self.params.gate_threshold_db = val,
-                PARAM_BYPASS => self.params.bypass = val > 0.5,
+                PARAM_INPUT_GAIN => {
+                    self.params.input_gain_db = val;
+                    self.shared
+                        .param_input_gain
+                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_OUTPUT_GAIN => {
+                    self.params.output_gain_db = val;
+                    self.shared
+                        .param_output_gain
+                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_GATE_THRESH => {
+                    self.params.gate_threshold_db = val;
+                    self.shared
+                        .param_gate_thresh
+                        .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_BYPASS => {
+                    self.params.bypass = val > 0.5;
+                    self.shared.param_bypass.store(
+                        if val > 0.5 { 1 } else { 0 },
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
                 _ => continue,
             }
         }

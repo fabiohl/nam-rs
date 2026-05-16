@@ -14,9 +14,30 @@ use std::ffi::CString;
 use std::io::{Read, Write};
 
 impl<'a> PluginStateImpl for NamClapMainThread<'a> {
-    /// Salva o estado atual do plugin no stream fornecido pelo host.
     fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError> {
-        // Serializa os parâmetros atuais (incluindo o caminho do modelo) em JSON
+        // 1. Sincroniza os parâmetros atuais com os valores atômicos mais recentes da audio thread
+        self.params.input_gain_db = f32::from_bits(
+            self.shared
+                .param_input_gain
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.output_gain_db = f32::from_bits(
+            self.shared
+                .param_output_gain
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.gate_threshold_db = f32::from_bits(
+            self.shared
+                .param_gate_thresh
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        self.params.bypass = self
+            .shared
+            .param_bypass
+            .load(std::sync::atomic::Ordering::Relaxed)
+            != 0;
+
+        // 2. Serializa os parâmetros atuais (incluindo o caminho do modelo) em JSON
         let serialized = serde_json::to_vec(&self.params).map_err(|e| {
             PluginError::Message(Box::leak(
                 format!("Falha ao serializar estado: {}", e).into_boxed_str(),
@@ -50,8 +71,24 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 ))
             })?;
 
-        // 1. Atualiza os parâmetros na Main Thread
+        // 1. Atualiza os parâmetros na Main Thread e nos atomics
         self.params = new_params;
+        self.shared.param_input_gain.store(
+            self.params.input_gain_db.to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        self.shared.param_output_gain.store(
+            self.params.output_gain_db.to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        self.shared.param_gate_thresh.store(
+            self.params.gate_threshold_db.to_bits(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        self.shared.param_bypass.store(
+            if self.params.bypass { 1 } else { 0 },
+            std::sync::atomic::Ordering::Relaxed,
+        );
 
         // 2. Tenta carregar o modelo se houver um caminho salvo
         if let Some(path) = self.params.model_path.clone() {

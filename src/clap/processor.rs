@@ -56,7 +56,7 @@ pub struct NamClapProcessor<'a> {
     /// Flags de status para telemetria RT.
     rt_status: Arc<RtStatusFlags>,
     /// Referência ao estado compartilhado (para devolver os canais no deactivate).
-    shared: &'a NamClapShared,
+    pub(crate) shared: &'a NamClapShared,
     /// Smoothers para ganhos de entrada e saída.
     smoother_in: ParamSmoother,
     /// Smoothers para ganhos de entrada e saída.
@@ -107,7 +107,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .expect("Produtor gc_tx já foi extraído");
 
         // 2. Pré-alocação de buffers intermediários (Disjoint Stages)
-        let buf_capacity = (audio_config.max_frames_count as usize).max(1024) * 2;
+        let buf_capacity = (audio_config.max_frames_count as usize)
+            .max(crate::dsp::pipeline::MAX_RESAMP_BUF)
+            .max(1024)
+            * 2;
         let buf_host_l = vec![0.0f32; buf_capacity].into_boxed_slice();
         let buf_host_r = vec![0.0f32; buf_capacity].into_boxed_slice();
         let buf_mid_l = vec![0.0f32; buf_capacity].into_boxed_slice();
@@ -201,7 +204,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         }
 
         // 2. Processamento de Eventos (Host Events Queue - Sample Accurate)
-        use crate::clap::extensions::params::{PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN};
+        use crate::clap::extensions::params::{
+            PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+        };
         use clack_plugin::events::event_types::ParamValueEvent;
 
         for event in events.input {
@@ -215,12 +220,29 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             match clap_id.get() {
                 PARAM_INPUT_GAIN => {
                     self.params.input_gain_db = val;
-                    // Usa GainLut ao invés de powf() — RT-safe, ~2-3 ciclos.
+                    self.shared
+                        .param_input_gain
+                        .store(val.to_bits(), Ordering::Relaxed);
                     self.smoother_in.set_target(lut.db_to_linear(val));
                 }
                 PARAM_OUTPUT_GAIN => {
                     self.params.output_gain_db = val;
+                    self.shared
+                        .param_output_gain
+                        .store(val.to_bits(), Ordering::Relaxed);
                     self.smoother_out.set_target(lut.db_to_linear(val));
+                }
+                PARAM_GATE_THRESH => {
+                    self.params.gate_threshold_db = val;
+                    self.shared
+                        .param_gate_thresh
+                        .store(val.to_bits(), Ordering::Relaxed);
+                }
+                PARAM_BYPASS => {
+                    self.params.bypass = val > 0.5;
+                    self.shared
+                        .param_bypass
+                        .store(if val > 0.5 { 1 } else { 0 }, Ordering::Relaxed);
                 }
                 _ => {}
             }

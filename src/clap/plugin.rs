@@ -47,6 +47,14 @@ pub struct NamClapShared {
     pub rt_status: Arc<RtStatusFlags>,
     /// Latência atual reportada ao host (em samples).
     pub current_latency: AtomicU32,
+    /// Último valor do parâmetro Input Gain (f32 como bits).
+    pub param_input_gain: AtomicU32,
+    /// Último valor do parâmetro Output Gain (f32 como bits).
+    pub param_output_gain: AtomicU32,
+    /// Último valor do parâmetro Gate Threshold (f32 como bits).
+    pub param_gate_thresh: AtomicU32,
+    /// Último valor do parâmetro Bypass (0 = false, 1 = true).
+    pub param_bypass: AtomicU32,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
@@ -212,6 +220,10 @@ impl DefaultPluginFactory for NamClapPlugin {
             gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
             rt_status: Arc::new(RtStatusFlags::new()),
             current_latency: AtomicU32::new(0),
+            param_input_gain: AtomicU32::new(0.0f32.to_bits()),
+            param_output_gain: AtomicU32::new(0.0f32.to_bits()),
+            param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
+            param_bypass: AtomicU32::new(0),
         })
     }
 
