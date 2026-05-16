@@ -16,6 +16,7 @@ use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 /// Processador de áudio RT-safe. Executa na audio thread do host.
 ///
@@ -127,6 +128,12 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // Começamos em 1.0 (ganho unitário) para evitar silêncio no primeiro bloco.
         let smoother_in = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
         let smoother_out = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
+
+        // 5. Reporta a latência inicial ao estado compartilhado
+        shared.current_latency.store(
+            resampler.latency_samples(audio_config.sample_rate as u32),
+            Ordering::Relaxed,
+        );
 
         Ok(Self {
             model_l: None,

@@ -509,7 +509,7 @@
 
   - **Aceite:** Método compilado e testado. Valor correto para as taxas mais comuns (44100, 48000, 96000).
 
-- [ ] **Tarefa 3.1.2** — Implementação da Extensão `clap_host_latency`
+- [x] **Tarefa 3.1.2** — Implementação da Extensão `clap_host_latency`
 
   - **Contexto:** O host precisa saber a latência introduzida pelo plugin para sincronizar trilhas em paralelo (ADC — Automatic Delay Compensation). Sem isso, uma trilha com NAM-rs ficará adiantada em relação às outras quando o resampling estiver ativo.
   - **Ações Técnicas:**

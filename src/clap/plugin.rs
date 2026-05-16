@@ -14,6 +14,7 @@ use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::ffi::CString;
 use std::path::Path;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Payload de comunicação Main -> RT para o plugin CLAP.
@@ -44,6 +45,8 @@ pub struct NamClapShared {
     pub gc_overflow: Arc<GcOverflowBuffer>,
     /// Flags atômicas de status (telemetria RT->Main).
     pub rt_status: Arc<RtStatusFlags>,
+    /// Latência atual reportada ao host (em samples).
+    pub current_latency: AtomicU32,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
@@ -61,6 +64,8 @@ pub struct NamClapMainThread<'a> {
     pub param_tx: Producer<ClapParamPayload>,
     /// Consumidor para coletar lixo (modelos obsoletos) da audio thread.
     pub gc_rx: Consumer<GcItem>,
+    /// Cache da última latência reportada ao host para evitar notificações redundantes.
+    pub last_reported_latency: u32,
 }
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
@@ -104,6 +109,18 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                     CString::new("NAM-rs: Falha crítica! Nenhum modelo ativo para processamento.")
                         .expect("Falha ao criar CString");
                 log.log(&shared, LogSeverity::Error, &msg);
+            }
+        }
+
+        // 2. Monitoramento de Latência: Notifica o host se o valor mudou
+        let current_latency = self.shared.current_latency.load(Ordering::Relaxed);
+        if current_latency != self.last_reported_latency {
+            self.last_reported_latency = current_latency;
+            if let Some(latency_ext) = self
+                .host
+                .get_extension::<clack_extensions::latency::HostLatency>()
+            {
+                latency_ext.changed(&mut self.host);
             }
         }
     }
@@ -174,6 +191,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<clack_extensions::audio_ports::PluginAudioPorts>();
         builder.register::<clack_extensions::params::PluginParams>();
         builder.register::<clack_extensions::state::PluginState>();
+        builder.register::<crate::clap::extensions::latency::NamPluginLatency>();
     }
 }
 
@@ -193,6 +211,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             gc_rx: Mutex::new(Some(gc_rx)),
             gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
             rt_status: Arc::new(RtStatusFlags::new()),
+            current_latency: AtomicU32::new(0),
         })
     }
 
@@ -225,6 +244,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             sys: SystemSnapshot::capture(),
             param_tx,
             gc_rx,
+            last_reported_latency: 0,
         };
 
         // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.2.1).

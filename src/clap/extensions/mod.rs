@@ -4,5 +4,6 @@
 //! Extensões CLAP implementadas pelo NAM-rs.
 
 pub mod audio_ports;
+pub mod latency;
 pub mod params;
 pub mod state;
