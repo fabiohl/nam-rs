@@ -269,6 +269,37 @@ impl NamResampler {
         self.nam_rate
     }
 
+    /// Calcula a latência total (input + output) em samples da taxa do host.
+    ///
+    /// A latência é determinística e baseada no filtro FIR de fase mínima.
+    /// Para filtros de fase mínima, a latência é aproximadamente metade da ordem
+    /// do filtro protótipo.
+    ///
+    /// # Parâmetros
+    /// - `host_rate`: taxa de amostragem do host (e.g., 44100, 48000, 96000).
+    ///
+    /// # Retorno
+    /// Latência total em amostras na taxa `host_rate`.
+    pub fn latency_samples(&self, host_rate: u32) -> u32 {
+        if self.is_bypass() || host_rate == 0 {
+            return 0;
+        }
+
+        // TAPS_PER_PHASE (32) é a ordem de cada sub-filtro.
+        // A latência média do grupo é ~ (TAPS_PER_PHASE / 2).
+        let taps_half = TAPS_PER_PHASE as f64 / 2.0;
+
+        // Latência do filtro de entrada (host -> nam):
+        // medido em samples da taxa do host.
+        let latency_in = taps_half * (self.pw_rate as f64 / self.nam_rate as f64);
+
+        // Latência do filtro de saída (nam -> host):
+        // medido em samples da taxa do host.
+        let latency_out = taps_half;
+
+        (latency_in + latency_out).round() as u32
+    }
+
     /// **Resampling de entrada** (input path): `pw_rate → nam_rate`.
     ///
     /// RT-safe: zero alocações. Em bypass, copia diretamente.

@@ -279,3 +279,27 @@ fn test_resampler_micro_soak() {
         }
     }
 }
+
+#[test]
+fn test_latency_calculation() {
+    // 1. Bypass: latência deve ser 0
+    let rs_48 = NamResampler::new(48_000, 48_000, 256).unwrap();
+    assert_eq!(rs_48.latency_samples(48_000), 0);
+
+    // 2. 44.1k -> 48k (Upsampling)
+    // latency_in  = 16 * (44100 / 48000) = 14.7
+    // latency_out = 16
+    // total = 30.7 -> round -> 31 samples
+    let rs_44 = NamResampler::new(44_100, 48_000, 256).unwrap();
+    assert_eq!(rs_44.latency_samples(44_100), 31);
+
+    // 3. 96k -> 48k (Downsampling)
+    // latency_in  = 16 * (96000 / 48000) = 32
+    // latency_out = 16
+    // total = 48 samples
+    let rs_96 = NamResampler::new(96_000, 48_000, 256).unwrap();
+    assert_eq!(rs_96.latency_samples(96_000), 48);
+
+    // 4. Zero rate: deve retornar 0 (guardrail)
+    assert_eq!(rs_44.latency_samples(0), 0);
+}

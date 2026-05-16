@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # TODO — Sprints de Integração CLAP
@@ -481,7 +480,7 @@
 
 ### Épico 3.1 — Latência Exata e ADC (`clap_host_latency`)
 
-- [ ] **Tarefa 3.1.1** — Cálculo de Latência Real do `NamResampler`
+- [x] **Tarefa 3.1.1** — Cálculo de Latência Real do `NamResampler`
 
   - **Contexto:** O `NamResampler` usa um filtro FIR Sinc Polifásico de Fase Mínima com `TAPS_PER_PHASE` coeficientes por fase e `NUM_PHASES = 256` fases. A latência algorítmica **não é zero** quando o resampling está ativo — ela é determinística e computável a partir de `TAPS_PER_PHASE`.
 
@@ -979,7 +978,10 @@
 
 - [ ] **Tarefa 6.3.2** — Checklist Pré-Release e Tag Git
 
-  - **Ações Técnicas:** Rodada de leitura e revisão completa da pasta `src/clap/`.
+  - **Ações Técnicas:**
+    1. Rodada de leitura e revisão completa da pasta `src/clap/`.
+    2. Git Tag e Github Release.
+    3. Publicação no Flathub.
 
 > **📋 FINALIZAÇÃO — Sprint 6 concluída**
 > O NAM-rs v2.0.0-alpha.1 estará certificado: 100% no `clap-validator`, 60min de endurance sem falhas, modo Standalone sem regressões, e documentação sincronizada. Pronto para uso em produção no Bitwig Studio 6.0.6 (Ubuntu Linux 25.10+).
