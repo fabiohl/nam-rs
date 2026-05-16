@@ -151,7 +151,7 @@ mod tests {
         .expect("Falha ao instanciar plugin");
 
         let audio_config = PluginAudioConfiguration {
-            sample_rate: 44100.0,
+            sample_rate: 48000.0,
             min_frames_count: 1,
             max_frames_count: 512,
         };
@@ -239,7 +239,7 @@ mod tests {
             .expect("Extensão de Estado não encontrada");
 
         let audio_config = PluginAudioConfiguration {
-            sample_rate: 44100.0,
+            sample_rate: 48000.0,
             min_frames_count: 512,
             max_frames_count: 512,
         };
@@ -350,7 +350,7 @@ mod tests {
         .expect("Falha ao instanciar plugin");
 
         let audio_config = PluginAudioConfiguration {
-            sample_rate: 44100.0,
+            sample_rate: 48000.0,
             min_frames_count: 512,
             max_frames_count: 512,
         };
@@ -366,6 +366,41 @@ mod tests {
 
         let mut input_ports = AudioPorts::with_capacity(2, 1);
         let mut output_ports = AudioPorts::with_capacity(2, 1);
+
+        // Pre-warm the resampler with the DC signal to avoid step response ringing
+        {
+            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_channels.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            let mut out_l_pre = vec![0.0f32; n];
+            let mut out_r_pre = vec![0.0f32; n];
+            let output_channels = [out_l_pre.as_mut_slice(), out_r_pre.as_mut_slice()];
+            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+            }]);
+
+            let input_events = InputEvents::empty();
+            let mut output_events_buffer = EventBuffer::new();
+            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Falha no pre-warm");
+        }
+
         let mut output_events_buffer = EventBuffer::new();
 
         use crate::clap::extensions::params::PARAM_INPUT_GAIN;
