@@ -18,7 +18,9 @@
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{
+    AtomicBool, AtomicI32, AtomicPtr, AtomicU8, AtomicU32, AtomicU64, Ordering,
+};
 
 /// Flag global para shutdown coordenado e gracioso entre todas as threads.
 /// Definida como `true` pelo handler de CTRL+C.
@@ -178,79 +180,118 @@ pub enum ParamPayload {
     GateConfig(crate::dsp::gate::GateParams),
 }
 
-/// Item a ser coletado pelo Garbage Collector fora da thread de tempo real.
-///
-/// Encapsula tanto modelos neurais quanto resamplers obsoletos em uma única
-/// estrutura para simplificar a gestão de memória (Drop-Delegation).
 #[allow(clippy::large_enum_variant)]
+/// Representa um item que deve ser descartado com segurança fora da thread de áudio.
+/// O descarte (drop) desses itens pode envolver liberações de memória pesadas.
 pub enum GcItem {
     /// Um modelo dinâmico (LSTM ou WaveNet).
     Model(Box<crate::models::DynamicModel>),
-    /// Um resampler.
-    Resampler(crate::dsp::resampler::NamResampler),
+    /// Um resampler (Boxed para garantir RT-safety no descarte).
+    Resampler(Box<crate::dsp::resampler::NamResampler>),
     /// Variante de teste para validação de integridade e stress.
     #[cfg(test)]
     Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
 }
 
-/// Um buffer circular de sobrescrita (overwrite ring buffer) para ponteiros de GC.
-///
-/// Atua como "parking lot" compartilhado entre RT e Main. Se o canal SPSC principal
-/// estiver cheio, o RT estaciona o ponteiro aqui. Se este buffer também encher,
-/// ele sobrescreve o mais antigo (causando leak, mas apenas em cenários extremos).
-/// Projetado para suportar apenas `Box<GcItem>` via ponteiro raw para garantir RT-safety.
+impl GcItem {
+    /// Retorna o ID do tipo para o overflow buffer.
+    fn type_id(&self) -> u8 {
+        match self {
+            GcItem::Model(_) => 1,
+            GcItem::Resampler(_) => 2,
+            #[cfg(test)]
+            GcItem::Test(_) => 255,
+        }
+    }
+
+    /// Reconstrói um GcItem a partir de um ponteiro bruto e um ID de tipo.
+    ///
+    /// # Safety
+    /// O ponteiro deve ter sido gerado via `Box::into_raw` de um objeto do tipo correspondente.
+    unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Self {
+        match type_id {
+            1 => GcItem::Model(unsafe { Box::from_raw(ptr as *mut crate::models::DynamicModel) }),
+            2 => GcItem::Resampler(unsafe {
+                Box::from_raw(ptr as *mut crate::dsp::resampler::NamResampler)
+            }),
+            #[cfg(test)]
+            255 => GcItem::Test(unsafe {
+                Box::from_raw(ptr as *mut std::sync::Arc<std::sync::atomic::AtomicU32>)
+            }),
+            _ => panic!("GcItem: tipo desconhecido {}", type_id),
+        }
+    }
+}
+
+/// Buffer circular de "estacionamento final" para itens de GC.
+/// Utilizado quando o canal SPSC principal e o parking lot da thread estão cheios.
+/// Garante que nenhum objeto seja descartado na thread de áudio em troca de um leak controlado
+/// ou sobrescrita em cenários de estresse extremo.
 pub struct GcOverflowBuffer {
-    slots: Box<[AtomicPtr<GcItem>]>,
+    slots: Box<[AtomicPtr<std::ffi::c_void>]>,
+    types: Box<[AtomicU8]>,
     write_idx: AtomicU64,
 }
 
 impl GcOverflowBuffer {
-    /// Cria um novo buffer de sobrescrita vazio com a capacidade especificada.
-    ///
-    /// # Panics
-    /// Panica se `capacity` for 0.
     #[cold]
+    /// Cria um novo buffer de overflow com a capacidade especificada.
     pub fn new(capacity: usize) -> Self {
         assert!(
             capacity > 0,
             "GcOverflowBuffer: capacity deve ser maior que 0 para evitar panic por divisão por zero."
         );
         let mut slots = Vec::with_capacity(capacity);
+        let mut types = Vec::with_capacity(capacity);
         for _ in 0..capacity {
             slots.push(AtomicPtr::new(std::ptr::null_mut()));
+            types.push(AtomicU8::new(0));
         }
         Self {
             slots: slots.into_boxed_slice(),
+            types: types.into_boxed_slice(),
             write_idx: AtomicU64::new(0),
         }
     }
 
-    /// Tenta estacionar um item no buffer.
+    /// Tenta estacionar um item no buffer de overflow sem alocações RT.
     ///
-    /// # Safety
-    /// O item deve ser convertido para `Box<GcItem>` antes de ser passado via ponteiro.
-    /// RT-Safe: usa `swap` atômico sem locks.
-    pub fn push_raw(&self, ptr: *mut GcItem) -> Option<*mut GcItem> {
+    /// Se o buffer estiver cheio, o item mais antigo é sobrescrevido (leak).
+    pub fn push(&self, item: GcItem) -> bool {
+        let type_id = item.type_id();
+        let ptr = match item {
+            GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            #[cfg(test)]
+            GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+        };
+
         let len = self.slots.len() as u64;
         let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
+
+        // Swap do tipo primeiro, depois do ponteiro.
+        let old_type = self.types[idx].swap(type_id, Ordering::Release);
         let old_ptr = self.slots[idx].swap(ptr, Ordering::Acquire);
-        if old_ptr.is_null() {
-            None
+
+        if !old_ptr.is_null() && old_type != 0 {
+            // SOBRESCRITA: Vazamento intencional para evitar Drop no RT.
+            // O usuário será avisado via flag de status.
+            true // Houve sobrescrita
         } else {
-            Some(old_ptr)
+            false
         }
     }
 
-    /// Drena todos os itens presentes no buffer.
-    /// Chamado pela thread de controle (Non-RT).
+    /// Drena todos os itens acumulados no buffer de overflow.
+    /// Deve ser chamado periodicamente pela thread principal (Cold Path).
     pub fn drain(&self) -> Vec<GcItem> {
         let mut items = Vec::with_capacity(self.slots.len());
-        for slot in &self.slots {
-            let ptr = slot.swap(std::ptr::null_mut(), Ordering::Release);
-            if !ptr.is_null() {
+        for i in 0..self.slots.len() {
+            let ptr = self.slots[i].swap(std::ptr::null_mut(), Ordering::Release);
+            let type_id = self.types[i].swap(0, Ordering::Acquire);
+            if !ptr.is_null() && type_id != 0 {
                 unsafe {
-                    let item = *Box::from_raw(ptr);
-                    items.push(item);
+                    items.push(GcItem::from_raw_parts(ptr, type_id));
                 }
             }
         }
@@ -324,22 +365,12 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
 pub fn drain_gc_channels(gc_consumer: &mut Consumer<GcItem>, gc_overflow: &GcOverflowBuffer) {
     // 1. Drena o canal SPSC principal (Drop-Delegation)
     while let Ok(item) = gc_consumer.pop() {
-        match item {
-            GcItem::Model(model) => drop(model),
-            GcItem::Resampler(rs) => drop(rs),
-            #[cfg(test)]
-            GcItem::Test(counter) => drop(counter),
-        }
+        drop(item);
     }
 
     // 2. Drena o buffer de overflow (overwrite ring buffer)
     for item in gc_overflow.drain() {
-        match item {
-            GcItem::Model(model) => drop(model),
-            GcItem::Resampler(rs) => drop(rs),
-            #[cfg(test)]
-            GcItem::Test(counter) => drop(counter),
-        }
+        drop(item);
     }
 }
 

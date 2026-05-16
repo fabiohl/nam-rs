@@ -45,7 +45,7 @@ harness = false
 [features]
 default = ["standalone"]
 standalone = ["dep:pipewire"]
-clap-plugin = ["dep:clack-plugin", "dep:clack-extensions"]
+clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "clack-extensions/clack-host"]
 long_bench = []
 
 [[bin]]

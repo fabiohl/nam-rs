@@ -6,7 +6,7 @@
 use crate::clap::param_smoother::ParamSmoother;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
 use crate::common::params::NamPluginParams;
-use crate::common::spsc::{GcItem, GcOverflowBuffer, RT_STATUS_GC_OVERFLOW, RtStatusFlags};
+use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
 use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
@@ -28,7 +28,8 @@ pub struct NamClapProcessor<'a> {
     /// Modelo ativo para o canal direito (None = bypass).
     model_r: Option<Box<DynamicModel>>,
     /// Resampler sinc polifásico (bypass quando sample_rate == 48000).
-    resampler: NamResampler,
+    /// Mantido em Box para descarte RT-safe sem alocação.
+    resampler: Box<NamResampler>,
     /// Parâmetros atuais na audio thread (snapshottados do SPSC a cada process()).
     pub(crate) params: NamPluginParams,
 
@@ -61,6 +62,8 @@ pub struct NamClapProcessor<'a> {
     smoother_in: ParamSmoother,
     /// Smoothers para ganhos de entrada e saída.
     smoother_out: ParamSmoother,
+    /// Parking lot para descarte de modelos/resamplers se o canal GC estiver cheio.
+    parking_lot: [Option<GcItem>; 16],
     /// Canal SPSC: Main Thread -> Audio Thread (Consumidor).
     param_rx: Consumer<ClapParamPayload>,
     /// Canal GC: Audio Thread -> Main Thread (Produtor).
@@ -71,15 +74,36 @@ pub struct NamClapProcessor<'a> {
 
 impl<'a> NamClapProcessor<'a> {
     /// Tenta enviar um item para descarte seguro (GC).
-    /// Se o canal principal estiver cheio, usa o buffer de overflow.
+    /// Se o canal principal estiver cheio, usa o parking lot e então o overflow buffer.
     fn push_to_gc(&mut self, model: Box<DynamicModel>) {
-        if let Err(rtrb::PushError::Full(item)) = self.gc_tx.push(GcItem::Model(model)) {
-            self.rt_status.set_flag(RT_STATUS_GC_OVERFLOW);
-            let ptr = Box::into_raw(Box::new(item));
-            // SAFETY: O buffer de overflow assume a propriedade do ponteiro raw.
-            if let Some(leaked_ptr) = self.gc_overflow.push_raw(ptr) {
-                unsafe { drop(Box::from_raw(leaked_ptr)) };
+        let mut item = Some(GcItem::Model(model));
+
+        // 1. Tenta o canal principal (SPSC)
+        if let Some(i) = item.take() {
+            if let Err(rtrb::PushError::Full(returned)) = self.gc_tx.push(i) {
+                item = Some(returned);
+            } else {
+                return; // Sucesso!
             }
+        }
+
+        // 2. Se falhou, tenta o Parking Lot (Array stack-based)
+        if let Some(i) = item.take() {
+            let mut i_opt = Some(i);
+            for slot in self.parking_lot.iter_mut() {
+                if slot.is_none() {
+                    *slot = i_opt.take();
+                    return; // Estacionado com sucesso!
+                }
+            }
+            item = i_opt;
+        }
+
+        // 3. Se até o Parking Lot falhou, usa o Overflow Buffer (sobrescrita/leak controlado)
+        if let Some(i) = item.take() {
+            self.rt_status
+                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+            self.gc_overflow.push(i);
         }
     }
 }
@@ -121,8 +145,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let buf_out_r = vec![0.0f32; buf_capacity].into_boxed_slice();
 
         // 3. Inicialização de componentes DSP
-        let resampler = NamResampler::new(audio_config.sample_rate as u32, 48000, buf_capacity)
-            .expect("Falha ao criar NamResampler");
+        let resampler = Box::new(
+            NamResampler::new(audio_config.sample_rate as u32, 48000, buf_capacity)
+                .expect("Falha ao criar NamResampler"),
+        );
 
         let silence_hyst = DynamicHysteresis::new();
         let mono_hyst = DynamicHysteresis::new();
@@ -161,6 +187,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             param_rx,
             gc_tx,
             gc_overflow: Arc::clone(&shared.gc_overflow),
+            parking_lot: Default::default(),
         })
     }
 
@@ -328,6 +355,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 }
             } else {
                 self.buf_host_r[..n_samples].fill(0.0);
+            }
+
+            // 2. Aplicação do Ganho de Entrada (Sample-Accurate Smoothing)
+            for i in 0..n_samples {
+                let g = self.smoother_in.tick();
+                self.buf_host_l[i] *= g;
+                self.buf_host_r[i] *= g;
             }
 
             // A LUT já foi obtida acima do loop de ports (linha ~178).

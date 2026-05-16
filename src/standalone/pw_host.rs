@@ -214,7 +214,7 @@ pub fn run_pipewire_host(
         // 4.3. NamResampler bidirecional: converte o rate do PipeWire para o rate suportado pelo NAM carregado (geralmente 48khz).
         // Inicializado com 48k (bypass) — rate real será atualizado via canal SPSC de resamplers
         // quando a thread principal construir e enviar um novo resampler.
-        let mut resampler = NamResampler::new(48_000, 48_000, 2048).unwrap_or_else(|e| {
+        let resampler = NamResampler::new(48_000, 48_000, 2048).unwrap_or_else(|e| {
             NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
                 .message("Falha ao criar NamResampler inicial (usando bypass 48k).")
                 .hint("O engine contínua em modo bypass. O resampler será recriado ao receber o rate real do PipeWire.")
@@ -224,6 +224,7 @@ pub fn run_pipewire_host(
             // Fallback: bypass 48k nunca falha (rate == NAM_RATE)
             NamResampler::new(48_000, 48_000, 2048).expect("bypass não pode falhar")
         });
+        let mut resampler = Box::new(resampler);
 
         // Trackeia a taxa de amostragem alvo do loop RT
         let mut current_nam_rate: u32 = 48_000;
@@ -681,7 +682,7 @@ mod pw_host_test;
 #[inline(always)]
 fn drain_resamplers(
     resampler_consumer: &mut rtrb::Consumer<NamResampler>,
-    resampler: &mut NamResampler,
+    resampler: &mut Box<NamResampler>,
     gc_producer: &mut rtrb::Producer<GcItem>,
     parking_lot: &mut [Option<GcItem>; 16],
     gc_overflow_for_process: &crate::common::spsc::GcOverflowBuffer,
@@ -689,6 +690,7 @@ fn drain_resamplers(
 ) {
     // Puxa da fila o resampler atualizado criado na thread de controle (que pode usar a heap).
     while let Ok(new_rs) = resampler_consumer.pop() {
+        let new_rs = Box::new(new_rs);
         // Atualiza atômicos de diagnóstico para o painel de status sem interrupção.
         rt_status_for_process
             .active_rate
@@ -697,34 +699,43 @@ fn drain_resamplers(
             .active_rate_changed
             .store(new_rs.pw_rate(), std::sync::atomic::Ordering::Relaxed);
 
-        // Swap ultra-rápido: Troca a variável velha pela nova (Move Semantics). O som não soluça!
+        // Swap ultra-rápido: Troca a variável velha pela nova.
         let old_rs = std::mem::replace(resampler, new_rs);
 
-        // Agora tenta devolver o objeto antigo (old_rs) para a thread principal destruí-lo.
-        if let Err(rtrb::PushError::Full(old_rs)) = gc_producer.push(GcItem::Resampler(old_rs)) {
-            // Plano B: Se o canal principal do GC lotou, deixamos temporariamente no Parking Lot.
-            let mut to_park = Some(old_rs);
+        // Envia para GC
+        let mut item = Some(GcItem::Resampler(old_rs));
+
+        // 1. Canal principal
+        if let Some(i) = item.take() {
+            if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(i) {
+                item = Some(returned);
+            } else {
+                continue;
+            }
+        }
+
+        // 2. Parking lot
+        if let Some(i) = item.take() {
+            let mut parked = false;
+            let mut i_opt = Some(i);
             for slot in parking_lot.iter_mut() {
                 if slot.is_none() {
-                    *slot = to_park.take();
+                    *slot = i_opt.take();
+                    parked = true;
                     break;
                 }
             }
-            // Plano C: Cenário catastrófico. O Parking Lot também lotou.
-            if let Some(still_here) = to_park {
-                // "Box::into_raw" impede o Drop na thread RT (o que causaria estalos).
-                let ptr = Box::into_raw(Box::new(still_here));
-                // O ponteiro bruto é salvo em um buffer compartilhado com a thread de controle.
-                if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
-                    // Se até o buffer C lotar, esquecemos a variável vazando memória de propósito.
-                    // Vazamento > Travamento RT.
-                    unsafe {
-                        std::mem::forget(Box::from_raw(leaked_ptr));
-                    }
-                }
-                // Avisa ao usuário via status RT que ocorreu um overflow crítico de GC.
-                rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+            if !parked {
+                item = i_opt;
+            } else {
+                continue;
             }
+        }
+
+        // 3. Overflow
+        if let Some(i) = item.take() {
+            rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+            gc_overflow_for_process.push(i);
         }
     }
 }
@@ -778,55 +789,47 @@ fn receive_commands(
                     *current_nam_rate = 48_000;
                 }
 
-                // Troca no Canal L. Novamente, plano de evacuação para a Lixeira (GC) idêntico ao do Resampler.
+                // Troca nos canais L e R.
+                let mut old_models = Vec::with_capacity(2);
                 if let Some(old) = std::mem::replace(active_model_l, new_model_l) {
-                    #[allow(clippy::collapsible_if)]
-                    if let Err(rtrb::PushError::Full(old_item)) =
-                        gc_producer.push(GcItem::Model(old))
-                    {
-                        let mut to_park = Some(old_item);
-                        for slot in parking_lot.iter_mut() {
-                            if slot.is_none() {
-                                *slot = to_park.take();
-                                break;
-                            }
-                        }
-                        if let Some(still_here) = to_park {
-                            let ptr = Box::into_raw(Box::new(still_here));
-                            if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
-                                unsafe {
-                                    std::mem::forget(Box::from_raw(leaked_ptr));
-                                }
-                            }
-                            rt_status_for_process
-                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-                        }
-                    }
+                    old_models.push(old);
+                }
+                if let Some(old) = std::mem::replace(active_model_r, new_model_r) {
+                    old_models.push(old);
                 }
 
-                // Troca no Canal R.
-                if let Some(old) = std::mem::replace(active_model_r, new_model_r) {
-                    #[allow(clippy::collapsible_if)]
-                    if let Err(rtrb::PushError::Full(old_item)) =
-                        gc_producer.push(GcItem::Model(old))
-                    {
-                        let mut to_park = Some(old_item);
+                for m in old_models {
+                    let mut item = Some(GcItem::Model(m));
+
+                    // 1. Canal principal
+                    if let Some(v) = item.take() {
+                        if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(v) {
+                            item = Some(returned);
+                        } else {
+                            continue;
+                        }
+                    }
+
+                    // 2. Parking Lot
+                    if let Some(v) = item.take() {
+                        let mut parked = false;
+                        let mut v_opt = Some(v);
                         for slot in parking_lot.iter_mut() {
                             if slot.is_none() {
-                                *slot = to_park.take();
+                                *slot = v_opt.take();
+                                parked = true;
                                 break;
                             }
                         }
-                        if let Some(still_here) = to_park {
-                            let ptr = Box::into_raw(Box::new(still_here));
-                            if let Some(leaked_ptr) = gc_overflow_for_process.push_raw(ptr) {
-                                unsafe {
-                                    std::mem::forget(Box::from_raw(leaked_ptr));
-                                }
-                            }
-                            rt_status_for_process
-                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+                        if !parked {
+                            item = v_opt;
                         }
+                    }
+
+                    // 3. Overflow
+                    if let Some(v) = item.take() {
+                        rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+                        gc_overflow_for_process.push(v);
                     }
                 }
                 param_changed = true;

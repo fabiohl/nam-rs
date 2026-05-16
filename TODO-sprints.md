@@ -525,7 +525,7 @@
 
 ### Épico 3.2 — Estabilidade com Blocos Irregulares
 
-- [ ] **Tarefa 3.2.1** — Mapeamento de Vulnerabilidades com Block Sizes Não-Potência de 2
+- [x] **Tarefa 3.2.1** — Mapeamento de Vulnerabilidades com Block Sizes Não-Potência de 2
 
   - **Contexto:** O Bitwig subdivide blocos para automação sample-accurate e para rendering offline. É comum receber sequências como `[17, 495, 17, 495, ...]` (automação em grid odd) ou `[1, 1, 1, ...]` (modulação por sample). O `NamResampler` e o gate SIMD assumem certos tamanhos mínimos.
   - **Nota (Sprint 0 — completado):** O Épico 0.1 já corrigiu os fallbacks escalares para `n < 8` nos kernels SIMD e validou o Gate FSM com `n_samples = 1`.
@@ -538,7 +538,7 @@
     5. Criar teste de integração headless CLAP com blocos `[1, 3, 7, 17, 33]` samples **com modelo `.nam` de teste carregado** via SPSC, validando que `process()` retorna `ProcessStatus::Continue` sem panic.
   - **Aceite:** `cargo test --features clap-plugin` passa. Nenhum SIGSEGV ao processar blocos de 1, 3, 7, 17 e 33 samples com modelo ativo.
 
-- [ ] **Tarefa 3.2.2** — Suite de Stress Headless com `clack-host` (CI-Ready)
+- [x] **Tarefa 3.2.2** — Suite de Stress Headless com `clack-host` (CI-Ready)
 
   - **Contexto:** Complementa a Tarefa 1.1.3. Desta vez focado em stress com blocos irregulares, trocas de modelo em mid-stream e modulação intensa — tudo sem DAW.
   - **Ações Técnicas:**
