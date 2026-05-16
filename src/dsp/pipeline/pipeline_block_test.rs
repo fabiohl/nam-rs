@@ -34,6 +34,15 @@ mod block_tests {
 
     /// Executor principal do teste de pipeline com block size variável.
     fn run_block_size_test(model_name: Option<&str>, block_size: usize) {
+        run_block_size_test_with_iterations(model_name, block_size, 1);
+    }
+
+    /// Executor principal do teste de pipeline com block size variável e múltiplas iterações.
+    fn run_block_size_test_with_iterations(
+        model_name: Option<&str>,
+        block_size: usize,
+        iterations: usize,
+    ) {
         // Se o tamanho do bloco for 0, não faz sentido testar.
         if block_size == 0 {
             return;
@@ -81,7 +90,6 @@ mod block_tests {
         });
 
         // Alocamos buffers intermediários necessários para as etapas de processamento.
-        // Vec::with_capacity ou vec![...] no início de um teste é aceitável, pois não estamos no "hot-path" ainda.
         let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_mid_r = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_out_l = vec![0.0; MAX_RESAMP_BUF];
@@ -100,44 +108,46 @@ mod block_tests {
         let mut samples_l = vec![0.1; n];
         let mut samples_r = vec![0.1; n];
 
-        // O Contexto (ctx) agrupa todas as ferramentas que o pipeline precisa para trabalhar.
-        let ctx = DspPipelineContext {
-            resampler: &mut resampler,
-            active_model_l: &mut model,
-            active_model_r: &mut None,
-            input_gain_mult: 1.0,
-            output_gain_mult: 1.0,
-            gate_params: &gate_params,
-            silence_hysteresis: &mut silence_hysteresis,
-            mono_hysteresis: &mut mono_hysteresis,
-            threshold_open_sq: 0.0,
-            threshold_close_sq: 0.0,
-            process_mono: &mut process_mono,
-            rt_status: &rt_status,
-            // BridgeRef é um ponteiro seguro para a ponte de áudio.
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
-        };
-
-        let bufs = DspBuffers {
-            resamp_mid_l: &mut resamp_mid_l,
-            resamp_mid_r: &mut resamp_mid_r,
-            resamp_out_l: &mut resamp_out_l,
-            resamp_out_r: &mut resamp_out_r,
-            model_out_l: &mut model_out_l,
-            model_out_r: &mut model_out_r,
-        };
-
         let _guard = TrackingGuard::new();
 
-        // Executamos o pipeline principal que orquestra todo o DSP do NAM-rs.
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        for _ in 0..iterations {
+            // O Contexto (ctx) agrupa todas as ferramentas que o pipeline precisa para trabalhar.
+            let ctx = DspPipelineContext {
+                resampler: &mut resampler,
+                active_model_l: &mut model,
+                active_model_r: &mut None,
+                input_gain_mult: 1.0,
+                output_gain_mult: 1.0,
+                gate_params: &gate_params,
+                silence_hysteresis: &mut silence_hysteresis,
+                mono_hysteresis: &mut mono_hysteresis,
+                threshold_open_sq: 0.0,
+                threshold_close_sq: 0.0,
+                process_mono: &mut process_mono,
+                rt_status: &rt_status,
+                // BridgeRef é um ponteiro seguro para a ponte de áudio.
+                bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            };
+
+            let bufs = DspBuffers {
+                resamp_mid_l: &mut resamp_mid_l,
+                resamp_mid_r: &mut resamp_mid_r,
+                resamp_out_l: &mut resamp_out_l,
+                resamp_out_r: &mut resamp_out_r,
+                model_out_l: &mut model_out_l,
+                model_out_r: &mut model_out_r,
+            };
+
+            // Executamos o pipeline principal que orquestra todo o DSP do NAM-rs.
+            capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        }
 
         // Verificamos quantas alocações ocorreram durante o processamento.
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         // Removemos a vigia.
         drop(_guard);
 
-        assert_eq!(allocs, 0);
+        assert_eq!(allocs, 0, "Alocação detectada em {} iterações", iterations);
 
         let read_idx = bridge.active_read_idx.load(Ordering::Acquire);
         let out_buf = &bridge.buffers[read_idx];
@@ -176,6 +186,16 @@ mod block_tests {
         run_block_size_test(Some("BossWN-nano.nam"), 1);
         // n_samples = MAX_BRIDGE_BUF (máximo suportado pelo nosso buffer interno)
         run_block_size_test(Some("BossWN-nano.nam"), MAX_BRIDGE_BUF);
+    }
+
+    /// TESTE: Estresse de Zero-Alocação para casos de borda (Tarefa 3.2.3).
+    /// Valida que blocos de 1 sample e blocos de tamanho máximo não alocam no hot-path sob estresse.
+    #[test]
+    fn test_zero_alloc_stress_edge_cases() {
+        // 1. Cenário: n_frames = 1 (1000 invocações consecutivas)
+        run_block_size_test_with_iterations(Some("BossWN-nano.nam"), 1, 1000);
+        // 2. Cenário: n_frames = MAX_BRIDGE_BUF (100 invocações)
+        run_block_size_test_with_iterations(Some("BossWN-nano.nam"), MAX_BRIDGE_BUF, 100);
     }
 
     // Property-Based Testing (Proptest):

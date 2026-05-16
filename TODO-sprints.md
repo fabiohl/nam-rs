@@ -549,7 +549,7 @@
     2. Adicionar ao `Makefile` ou `utils/tests-cargo.sh` target `test-clap-stress`.
   - **Aceite:** Suite executa em < 30s em CI. Zero FAILs, zero panics, zero allocs no `process()`.
 
-- [ ] **Tarefa 3.2.3** — Guard de Zero-Alocação no `process()` com Blocos Irregulares
+- [x] **Tarefa 3.2.3** — Guard de Zero-Alocação no `process()` com Blocos Irregulares
 
   - **Contexto:** A Tarefa 1.0.3 validou zero-alloc para bloco padrão de 512. Esta tarefa valida os edge cases: bloco de 1 sample (pior caso) e bloco de `max_frames_count` (caso máximo).
   - **Ações Técnicas:**
