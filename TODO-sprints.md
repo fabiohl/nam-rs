@@ -569,7 +569,7 @@
 
 > **Origem:** Auditoria Revisor-Auditor (2026-05-14, item B3). Preparar a infraestrutura de flags atômicas para operação dual-backend (Standalone + CLAP).
 
-- [ ] **Tarefa 3.4.1** — Separar Campos PipeWire-Specific de `RtStatusFlags`
+- [x] **Tarefa 3.4.1** — Separar Campos PipeWire-Specific de `RtStatusFlags`
 
   - **Contexto:** `RtStatusFlags` em `src/common/spsc.rs` contém campos como `requested_pw_rate`, `active_rate_changed` e `resampler_consumer` que são específicos do backend PipeWire. No modo CLAP, o host controla o sample rate via `activate()` — esses campos são irrelevantes e poluem o namespace.
   - **Ações Técnicas:**

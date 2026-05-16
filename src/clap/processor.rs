@@ -389,13 +389,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 bridge_ptr: crate::dsp::pipeline::BridgeRef::null(),
             };
 
-            // 3. Aplicação do Ganho de Entrada (Sample-Accurate Smoothing)
-            for i in 0..n_samples {
-                let g = self.smoother_in.tick();
-                self.buf_host_l[i] *= g;
-                self.buf_host_r[i] *= g;
-            }
-
             let gate_state = apply_input_stage(
                 &mut self.buf_host_l[..n_samples],
                 &mut self.buf_host_r[..n_samples],
