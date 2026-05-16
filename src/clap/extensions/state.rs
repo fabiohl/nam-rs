@@ -38,6 +38,10 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             != 0;
 
         // 2. Serializa os parâmetros atuais (incluindo o caminho do modelo) em JSON
+        // Decisão técnica: Box::leak converte String em &'static str
+        // para satisfazer PluginError::Message. É um memory leak intencional — aceitável
+        // pois erros de serialização são raros em operação normal. Plano de remediação
+        // registrado na Sprint 6 (T6.1.1) para uso de pool estático ou API owned.
         let serialized = serde_json::to_vec(&self.params).map_err(|e| {
             PluginError::Message(Box::leak(
                 format!("Falha ao serializar estado: {}", e).into_boxed_str(),

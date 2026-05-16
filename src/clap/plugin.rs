@@ -259,8 +259,11 @@ impl DefaultPluginFactory for NamClapPlugin {
             last_reported_latency: 0,
         };
 
-        // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.2.1).
+        // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.3.1).
         // Busca automática de modelo para facilitar testes iniciais sem GUI.
+        // Decisão técnica: O modelo carregado é indeterminístico
+        // (depende da ordem de `readdir` do filesystem). Isso é aceito por design
+        // pois este bloco inteiro é temporário e será removido na Sprint 4.
         #[cfg(not(test))]
         if let Ok(home) = std::env::var("HOME") {
             let clap_dir = std::path::Path::new(&home).join(".clap");

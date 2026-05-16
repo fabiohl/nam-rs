@@ -581,13 +581,29 @@
   - **Nota (Auditoria S0-S2):** Confirmado via `grep` que os 3 campos PW-specific (`requested_pw_rate`, `active_rate_changed`, `requested_nam_rate`) são acessados exclusivamente em `src/standalone/pw_host.rs`. Nenhum código em `src/clap/` referencia esses campos. A refatoração é straightforward.
   - **Aceite:** Build `clap-plugin` e `standalone` ambos compilam limpos. `RtStatusFlags` no CLAP contém apenas campos universais.
 
+> **🔎 AUDITORIA PÓS-SPRINT 3 (2026-05-16)**
+> Revisão profunda das Sprints 0-3 (Painel Revisor-Auditor × Planejador-Arquiteto):
+>
+> - ✅ Todas as 4 Sprints aprovadas — nenhum achado bloqueante.
+> - ✅ Latência `NamResampler` implementada e reportada via `clap_host_latency`.
+> - ✅ Blocos irregulares `[1,7,17,33,53,128,256,512,1,1]` testados com modelo ativo.
+> - ✅ Zero-alloc validado para `n_frames=1` (1000x) e `n_frames=max` (100x).
+> - ✅ `RtStatusFlags` desacopladas — campos PW-specific com `#[cfg(feature = "standalone")]`.
+> - **Achado S2-D1 (registrado):** `Box::leak` em `state.rs` — debt técnico aceito, remediação na T7.1.1.
+> - **Achado S2-D2 (aceito):** Auto-load indeterminístico — temporário, removido na Sprint 4.
+> - **Achado S2-D3 (aceito):** `powi(2)` otimizado pelo compilador como `x * x` — overhead zero.
+> - **Achado S3-D1 (registrado):** Falta modelo LSTM no `test_model_switching_stress` — T7.1.1.
+> - **Achado S1-F1 (aceito):** `clap_lifecycle_test` será integrado ao `build-clap.sh`.
+> - Decisões técnicas documentadas nos locais do código via comentários.
+> - Fundação sólida e pronta para a construção da GUI (Sprint 4).
+
 ---
 
 ## Sprint 4 — Interface Gráfica Responsiva (egui + baseview)
 
 **Objetivo:** Painel customizado nativo embutido no host, isolado da audio thread, renderizando a 60fps com zero-interferência no DSP. Controles bidirecionais de ganho, file picker de modelo, medidores de nível e feedback visual de automação.
 
-**Pré-requisito:** Sprint 2 concluída (parâmetros CLAP funcionais — a UI só é possível depois que os IDs de parâmetro estão definidos).
+**Pré-requisito:** Sprint 3 concluída (latência reportada, compliance validado, stress tests verdes).
 
 **Decisões arquiteturais:**
 
@@ -595,12 +611,68 @@
 > - **`egui`**: Immediate Mode GUI — sem estado de widget persistente, sem GC, sem alocações no render loop. Ideal para plugins de áudio.
 > - **`rfd`** (Rusty File Dialog): file picker nativo assíncrono que delega ao `zenity`/`xdg-open` no Linux — nunca bloqueia a UI thread.
 > - **Canal SPSC UI↔RT**: a UI nunca acessa diretamente os campos de `NamClapProcessor`. Tudo via `AtomicF32` / `AtomicU64` em `NamClapShared` para leitura de telemetria, e via SPSC de parâmetros para envio de comandos.
+> - **Wayland como cidadão de primeira classe:** O spec CLAP define `CLAP_WINDOW_API_WAYLAND` oficialmente, porém com a nota: *"embed is currently not supported, use floating windows"*. O NAM-rs prioriza Wayland nativo com floating window como experiência principal, e X11 embedded como fallback para hosts legacy via XWayland.
+> - **Renderizador:** `egui_glow` (OpenGL 3.3) para máxima compatibilidade com hosts sandboxed. Revisável para `egui_wgpu` se necessário no futuro.
 
 ---
 
-### Épico 4.0 — Dependências e Feature Flag de GUI
+### Épico 4.0 — Pesquisa Preparatória e Prototipagem
 
-- [ ] **Tarefa 4.0.1** — Adicionar Dependências sob Feature `clap-plugin-gui`
+> **Natureza:** Pesquisa técnica, validação de viabilidade e definição de identidade visual antes de mergulhar na implementação.
+
+- [ ] **Tarefa 4.0.1** — Pesquisa de Compatibilidade `egui` + `baseview` no Ecossistema CLAP
+
+  - **Contexto:** Antes de implementar, validar a viabilidade técnica real do stack no ambiente-alvo (Ubuntu 25.10, Bitwig 6.0.6, Wayland/X11).
+
+  - **Achados preliminares (Auditoria 2026-05-16):**
+
+    1. **Wayland vs X11:** O spec CLAP (`gui.h` L64-66) declara `CLAP_WINDOW_API_WAYLAND` como API oficial, mas com a nota *"embed is currently not supported, use floating windows"*. O Wayland não suporta embedding cross-client por design de segurança. O `baseview` tem suporte a Wayland listado como issue aberta.
+    2. **`egui-baseview`:** O crate no crates.io está **abandonado** (~2021). Incompatível com `egui 0.31+`. O `nih-plug` mantém um fork interno mas traz dependências indesejadas (VST3).
+    3. **Recomendação:** Usar `baseview` diretamente com integração manual do `egui` (via `egui_glow`), ou avaliar `eframe` (framework oficial do egui) com adaptação para embedding via `raw-window-handle`.
+
+  - **Ações Técnicas:**
+
+    1. Verificar se o `clack-extensions` oferece traits para `PluginGui` que abstraem a criação de janelas.
+    2. Compilar PoC mínimo: `baseview` + `egui_glow` rendering texto estático. Testar como floating window.
+    3. No Bitwig: verificar se `is_api_supported("wayland", true)` (floating) é chamado pelo host.
+    4. Documentar achados em relatório técnico.
+    5. Se `baseview` for inviável para Wayland nativo: avaliar `winit` + `egui_glow` como alternativa.
+
+  - **Aceite:** Relatório técnico com decisão fundamentada. PoC funcional demonstrando janela `egui` abrindo e fechando no Bitwig.
+
+- [ ] **Tarefa 4.0.2** — Prototipagem de Layout e UX do Plugin
+
+  - **Contexto:** Definir o layout visual, hierarquia de controles e estética premium antes de codificar.
+
+  - **Ações Técnicas:**
+
+    1. Pesquisar 5–10 plugins de referência visual (Neural DSP Archetype, ML Sound Lab, TONEX, GuitarML, STL Tones AmpHub).
+    2. Definir paleta de cores (dark mode obrigatório), tipografia (Inter ou Outfit), proporções.
+    3. Gerar 2-3 mockups de layout para a UI (600×280px).
+    4. Validar com o PO: hierarquia de controles, VU meters, estilo dos knobs/sliders.
+    5. Documentar a "Design Language" do NAM-rs para guiar a implementação.
+
+  - **Aceite:** 2-3 mockups aprovados pelo PO. Design Language documentado.
+
+- [ ] **Tarefa 4.0.3** — Avaliação de Impacto nos Feature Flags e Build System
+
+  - **Contexto:** A GUI introduz feature flag `clap-plugin-gui`. Garantir 3 perfis limpos: `standalone`, `clap-plugin` (headless), `clap-plugin-gui` (com janela).
+
+  - **Ações Técnicas:**
+
+    1. Revisar `Cargo.toml` e mapear dependências opcionais necessárias.
+    2. Verificar que `egui`, `baseview` e `rfd` podem ser `optional = true` sem conflito.
+    3. Planejar estrutura: `src/clap/gui/` com `mod.rs`, `window.rs`, `ui.rs`.
+    4. Verificar impacto no `lints.sh` e `build-clap.sh` — precisam de variantes?
+    5. Integrar `clap_lifecycle_test` como passo final do `build-clap.sh` (achado S1-F1).
+
+  - **Aceite:** Plano documentado. Zero ambiguidade sobre como compilar cada perfil.
+
+---
+
+### Épico 4.1 — Dependências e Feature Flag de GUI
+
+- [ ] **Tarefa 4.1.1** — Adicionar Dependências sob Feature `clap-plugin-gui`
 
   - **Contexto:** A GUI é opcional — um build "headless" (sem GUI) deve ser possível para hosts que não suportam janelas embutidas ou para uso em servidores. Criar uma sub-feature `clap-plugin-gui` que ativa apenas quando o host solicitar.
 
@@ -630,9 +702,9 @@
 
 ---
 
-### Épico 4.1 — Ciclo de Vida da Janela CLAP (`clap_plugin_gui`)
+### Épico 4.2 — Ciclo de Vida da Janela CLAP (`clap_plugin_gui`)
 
-- [ ] **Tarefa 4.1.1** — Implementação de `PluginGui` para Linux (X11 + Wayland)
+- [ ] **Tarefa 4.2.1** — Implementação de `PluginGui` para Linux (X11 + Wayland)
 
   - **Contexto:** No Ubuntu 25.10 com Wayland como compositor padrão, o Bitwig pode fornecer tanto handles X11 (via XWayland) quanto handles Wayland nativos. O `baseview` suporta ambos via `raw-window-handle`. O plugin deve declarar suporte para ambos e usar o que o host fornecer.
   - **Ações Técnicas:**
@@ -646,7 +718,7 @@
     3. Reexecutar `clap-validator` — 0 FAILs.
   - **Aceite:** Ao clicar no ícone da janela do plugin no Bitwig, a janela abre. `clap-validator` 0 FAILs.
 
-- [ ] **Tarefa 4.1.2** — Embed da Janela `baseview` e Inicialização do `egui`
+- [ ] **Tarefa 4.2.2** — Embed da Janela `baseview` e Inicialização do `egui`
 
   - **Contexto:** O `create_window()` do CLAP fornece um `RawWindowHandle` do host (o "parent" onde a janela do plugin deve ser embutida). `baseview::Window::open_parented()` aceita este handle e cria a janela filha.
 
@@ -676,7 +748,7 @@
 
   - **Aceite:** Janela abre com fundo preto (antes dos controles). Fecha sem hang. Zero panics ao abrir/fechar 10× consecutivamente.
 
-- [ ] **Tarefa 4.1.3** — Thread Safety: UI Thread vs Audio Thread vs Main Thread
+- [ ] **Tarefa 4.2.3** — Thread Safety: UI Thread vs Audio Thread vs Main Thread
 
   - **Contexto:** O CLAP especifica 3 threads: `audio thread` (process), `main thread` (plugin lifecycle) e `UI thread` (janela). `baseview` no Linux cria sua própria thread para o event loop da janela. A UI **nunca** pode chamar métodos da audio thread diretamente.
 
@@ -705,9 +777,9 @@
 
 ---
 
-### Épico 4.2 — Controles, Automação e Telemetria
+### Épico 4.3 — Controles, Automação e Telemetria
 
-- [ ] **Tarefa 4.2.1** — Layout e Controles Principais
+- [ ] **Tarefa 4.3.1** — Layout e Controles Principais
 
   - **Contexto:** A UI deve ser funcional e esteticamente coerente com o ecossistema de plugins profissionais. Estilo escuro, compacto (600×280px), tipografia clara.
   - **Ações Técnicas:**
@@ -719,9 +791,9 @@
        - **Linha 5 — Medidores VU:** Barras de progresso customizadas lendo `ui_peak_l/r` a cada frame. Cor: verde < −12dBFS, amarelo < −3dBFS, vermelho ≥ −3dBFS. Pico hold de 2s.
     2. Todo slider bidirecional: arrastar atualiza o valor via SPSC de parâmetros (Main→RT) E notifica o host via `host.begin_gesture(id)` / `host.end_gesture(id)` para automação.
   - **Aceite:** UI renderiza a 60fps com CPU < 2% em idle (sem áudio). Todos os controles respondem ao arrastar. Medidores atualizam com o áudio em playback.
-  - **NOTA do Product Owner:** Já pode remover o "// TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.2.1)." no `src/clap/plugin.rs`.
+  - **NOTA do Product Owner:** Já pode remover o "// TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.3.1)." no `src/clap/plugin.rs`.
 
-- [ ] **Tarefa 4.2.2** — Sincronia de Gestos de Automação (`CLAP_EVENT_PARAM_GESTURE_BEGIN/END`)
+- [ ] **Tarefa 4.3.2** — Sincronia de Gestos de Automação (`CLAP_EVENT_PARAM_GESTURE_BEGIN/END`)
 
   - **Contexto:** Sem os eventos de gesto, o Bitwig não registra a trilha de automação ao arrastar um slider na UI do plugin. O host precisa saber exatamente quando o usuário começa e termina o gesto.
   - **Ações Técnicas:**
@@ -731,7 +803,7 @@
     4. Testar: criar uma automação no Bitwig arrastando o `input_gain` slider → a trilha de automação deve aparecer automaticamente.
   - **Aceite:** Arrastar qualquer slider no plugin → trilha de automação aparece no Bitwig. Valor da automação corresponde exatamente ao valor do slider.
 
-- [ ] **Tarefa 4.2.3** — File Picker Assíncrono e Loading Feedback
+- [ ] **Tarefa 4.3.3** — File Picker Assíncrono e Loading Feedback
 
   - **Contexto:** `rfd::FileDialog::pick_file()` é bloqueante se chamado na UI thread. No Linux, deve ser chamado em thread separada via `std::thread::spawn` ou `rfd::AsyncFileDialog` com um executor async minimalista.
   - **Ações Técnicas:**

@@ -380,6 +380,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 gate_params: &gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
                 mono_hysteresis: &mut self.mono_hyst,
+                // Decisão técnica: powi(2) é otimizado pelo compilador como
+                // uma simples multiplicação (x * x) — overhead zero. Mantido por clareza semântica
+                // ("quadrado do threshold") ao invés de manual `let x = ...; x * x`.
                 threshold_open_sq: lut.db_to_linear(self.params.gate_threshold_db).powi(2),
                 threshold_close_sq: lut
                     .db_to_linear(self.params.gate_threshold_db - 6.0)
