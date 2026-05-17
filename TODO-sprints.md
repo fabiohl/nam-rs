@@ -1036,6 +1036,13 @@
     3. Executar `./utils/lints.sh` para ambas as features (standalone e clap-plugin-gui).
   - **Aceite:** Todos os testes do Standalone passam. Benchmarks dentro de ±2% do baseline.
 
+- [ ] **Tarefa 6.2.3** — Toneladas de testes A/B
+
+  - **Ações Técnicas:**
+    1. Baixar do <https://www.tone3000.com/> toneladas de arquivos .nam dos mais variados tipos.
+    2. Comparar lado a lado o som gerado pelo NAM-rs e por alguma outra implementação de referência (sdatkinson, guitarix, etc).
+  - **Aceite:** Na maioria, áudio idêntico. Onde diferir, analisar e corrigir.
+
 ### Épico 6.3 — Documentação
 
 - [ ] **Tarefa 6.3.1** — Atualizar `docs/architecture.md`

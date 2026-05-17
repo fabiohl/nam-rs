@@ -12,7 +12,6 @@ repomix-*.xml
 *.old
 *.swp
 *.tar
-*.wav
 *.log
 
 # Espelho dos projetos de referência no GitHub
