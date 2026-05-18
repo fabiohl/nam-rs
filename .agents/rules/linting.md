@@ -1,17 +1,20 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 ---
 trigger: glob
 description: Diretrizes mandatórias de garantia de qualidade (Linting) para o encerramento das submissões da IA.
-globs: **/*
+globs: **/*.rs, **/*.toml
 ---
+
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 
 # Qualidade e Linting ao Fim das Atividades
 
-1. **Regra de Conclusão**: Ao término de *qualquer atividade* executada por você (a IA) que crie ou altere arquivos Rust (pode ignorar se não foi editado nenhum arquivo .rs), você jamais deve considerar a tarefa encerrada ou reportar término definitivo ao usuário sem antes realizar a validação final.
+1. **Regra de Conclusão**: Ao término de *qualquer atividade* executada por você (a IA) que crie ou altere arquivos Rust, você jamais deve considerar a tarefa encerrada ou reportar término definitivo ao usuário sem antes realizar a validação final.
 2. **Documentação Atualizada:** Verifique se houve alguma alteração arquitetural relevante. Acione a skill `documentador` se for o caso.
 3. **Compilação sem Erros**: É salutar, em momentos oportunos no decorrer da ativade, a execução de `cargo check` e de `cargo build` para descobir problemas logo cedo.
-4. **Validação Obrigatória**: Como antepenúltima fase obrigatória, sempre execute os scripts de lint `utils/lints.sh`.
+4. **Validação Obrigatória**: Como antepenúltima fase obrigatória:
    * SE - E SOMENTE SE - algum arquivo rust .rs tiver sido alterado, rode as verificações `cargo test` para assegurar nenhuma quebra de funcionalidade.
    * SE - E SOMENTE SE - algum arquivo rust .rs tiver sido alterado com OBJETIVO DE GANHO DE PERFORMANCE, rode `cargo bench` para averiguar se houve ganho - ou ao menos não houve perda.
 5. **Correção Exaustiva**: Analise o resultado de cada fase e só passe para a seguinte quando aquela passar sem quaisquer quebras, erros, warnings ou "mensagens suspeitas" de qualquer tipo.

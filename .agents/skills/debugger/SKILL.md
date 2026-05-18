@@ -9,13 +9,11 @@ description: Acionado quando algo não funciona como esperado. Atua como um pain
 
 Use esta skill sob a manifestação de um erro ativo, crash, comportamento não-linear de DSP, áudio truncado com modulação/ringing, xruns do PipeWire ou redes neurais produzindo degradação nos cálculos de áudio em tempo real.
 
-Também é acionada automaticamente pela workflow `/diagnostico` quando o usuário cola um bloco de suporte gerado pelo NAM-rs.
+Também é acionada automaticamente pela workflow `diagnostico` quando o usuário cola um bloco de suporte gerado pelo NAM-rs.
 
 ## Contexto de Referência
 
-Vide `.agents/rules/rust.md` para diretrizes técnicas mandatórias (RT-Safety, SIMD, SPSC).
-
-O NAM-rs opera com canais SPSC `rtrb` para parâmetros, modelos e resamplers, além de sinalização via `RtStatusFlags` (`AtomicU32`/`AtomicBool` em `Arc`). **ZERO alocação heap, ZERO I/O e ZERO locks** no caminho RT são condições inegociáveis.
+* Guie-se pelas rules em `.agents/rules/`.
 
 ## Sistema de Diagnósticos Estruturados (`src/diagnostics.rs`)
 
@@ -49,17 +47,17 @@ timestamp=2026-04-10T01:56:18Z
 
 ### 1. Diagnóstico por Evidências
 
-- **Xruns / clicks**: Verifique se o closure `.process()` ou funções invocadas respeitam o budget de tempo (sem `Vec`, `Box`, `println!` ou travas).
-- **Degradação numérica**: Valide se os multiplicadores de ganho e o resampling respeitam os metadados do modelo e as taxas de amostragem do host.
-- **Deadlock / contenção**: Inspecione o uso de `rtrb` e garanta que não há primitivas bloqueantes tocando o caminho RT.
+* **Xruns / clicks**: Verifique se o closure `.process()` ou funções invocadas respeitam o budget de tempo (sem `Vec`, `Box`, `println!` ou travas).
+* **Degradação numérica**: Valide se os multiplicadores de ganho e o resampling respeitam os metadados do modelo e as taxas de amostragem do host.
+* **Deadlock / contenção**: Inspecione o uso de `rtrb` e garanta que não há primitivas bloqueantes tocando o caminho RT.
 
 ### 2. Intervenção Cirúrgica
 
-- Use intrinsics `core::arch::x86_64::*` com `const generics` (SoA) para correções em tensores.
-- Mantenha `#[repr(align(128))]` em toda estrutura compartilhada via buffer SPSC.
-- Após sanado, remova **toda** linha de log, `dbg!()` ou `eprintln!` inserida para depuração visual dentro do callback RT.
+* Use intrinsics `core::arch::x86_64::*` com `const generics` (SoA) para correções em tensores.
+* Mantenha `#[repr(align(128))]` em toda estrutura compartilhada via buffer SPSC.
+* Após sanado, remova **toda** linha de log, `dbg!()` ou `eprintln!` inserida para depuração visual dentro do callback RT.
 
 ### 3. Emissão de Diagnósticos
 
-- Se o fix introduzir novos pontos de falha fora da thread RT, use o sistema `NamDiagnostic`.
-- Mensagens informativas (logging, não-erros) continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`.
+* Se o fix introduzir novos pontos de falha fora da thread RT, use o sistema `NamDiagnostic`.
+* Mensagens informativas (logging, não-erros) continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`.
