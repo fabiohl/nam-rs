@@ -7,10 +7,12 @@
 
 set -euo pipefail
 
+CLAP_DIR="$HOME/.clap"
+PLUGIN_NAME="nam-rs.clap"
 BUILD_MODE="release"
 CARGO_FLAGS="--release"
 TARGET_DIR="target/release"
-FEATURES="clap-plugin"
+FEATURES="clap-plugin-gui"
 
 # Processar argumentos
 for arg in "$@"; do
@@ -18,13 +20,10 @@ for arg in "$@"; do
         BUILD_MODE="debug"
         CARGO_FLAGS=""
         TARGET_DIR="target/debug"
-    elif [ "$arg" == "--gui" ]; then
-        FEATURES="clap-plugin-gui"
+    elif [ "$arg" == "--headless" ] || [ "$arg" == "--no-gui" ]; then
+        FEATURES="clap-plugin"
     fi
 done
-
-CLAP_DIR="$HOME/.clap"
-PLUGIN_NAME="nam-rs.clap"
 
 echo "🔨 Building NAM-rs CLAP plugin ($BUILD_MODE) with features: $FEATURES..."
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \

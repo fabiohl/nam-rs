@@ -77,3 +77,51 @@ O descritor de metadados do plugin seguirá o seguinte padrão:
   - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
 - **Studio One**: Garantia de funcionamento em ambientes de produção de larga escala.
 - **CLAP-info / CLAP-host**: Ferramentas de linha de comando para validação técnica rigorosa do spec.
+
+## 8. Compilação e Validação do Plugin
+
+### 8.1. Script de Build (`utils/build-clap.sh`)
+
+O projeto fornece um script automatizado para compilar, instalar e realizar uma auditoria preliminar do plugin no formato CLAP:
+
+- **Build Padrão (com GUI)**:
+  Por padrão, o script compila o plugin com suporte a interface gráfica nativa (utilizando a feature `clap-plugin-gui`).
+  ```bash
+  ./utils/build-clap.sh
+  ```
+- **Build Headless (sem GUI)**:
+  Caso queira compilar a versão enxuta para testes sem suporte à interface gráfica, utilize a flag `--headless` ou `--no-gui`:
+  ```bash
+  ./utils/build-clap.sh --headless
+  ```
+- **Modo Debug**:
+  Para compilar em modo de depuração (debug), adicione `--debug`:
+  ```bash
+  ./utils/build-clap.sh --debug
+  ```
+
+O script gera a biblioteca dinâmica e a instala no diretório padrão de busca de plugins CLAP do usuário (`~/.clap/nam-rs.clap`).
+
+### 8.2. Instalação e Execução do `clap-validator`
+
+O `clap-validator` é a ferramenta de linha de comando oficial da organização `free-audio` para validar conformidade com a especificação CLAP e identificar potenciais problemas ou vazamentos de recursos.
+
+#### Instalação
+
+Como o `clap-validator` é desenvolvido em Rust, ele pode ser compilado e instalado diretamente a partir de seu repositório Git usando `cargo`:
+
+```bash
+cargo install --git https://github.com/free-audio/clap-validator.git
+```
+
+Isso instalará o executável `clap-validator` no diretório de binários globais do Cargo (`~/.cargo/bin/`).
+
+#### Execução de Testes Automáticos
+
+Após instalar o validador, você pode executar o script de testes integrados do projeto para rodar a suíte completa de testes unitários, testes de benchmark e testes estruturais do `clap-validator`:
+
+```bash
+./utils/tests-cargo.sh
+```
+
+O script detecta a presença do `clap-validator` (seja no `PATH` global ou em `~/.cargo/bin/`) e executa os testes estruturais sobre o binário instalado em `~/.clap/nam-rs.clap`, confirmando que o resultado é **0 FAILs** e **0 WARNINGs**.

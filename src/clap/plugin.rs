@@ -200,6 +200,9 @@ impl Plugin for NamClapPlugin {
         builder.register::<clack_extensions::params::PluginParams>();
         builder.register::<clack_extensions::state::PluginState>();
         builder.register::<crate::clap::extensions::latency::NamPluginLatency>();
+
+        #[cfg(feature = "clap-plugin-gui")]
+        builder.register::<crate::clap::extensions::gui::NamPluginGui>();
     }
 }
 

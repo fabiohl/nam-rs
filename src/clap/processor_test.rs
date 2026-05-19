@@ -478,4 +478,78 @@ mod tests {
             );
         }
     }
+
+
+    #[cfg(feature = "clap-plugin-gui")]
+    #[test]
+    fn test_gui_extension_x11() {
+        use clack_extensions::gui::{PluginGui, GuiConfiguration, GuiApiType, GuiSize};
+
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Falha ao carregar PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Falha ao instanciar plugin");
+
+        let gui_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginGui>()
+            .expect("PluginGui extension not found");
+
+        let mut handle = plugin_instance.plugin_handle();
+
+        // 1. Test is_api_supported
+        assert!(gui_ext.is_api_supported(
+            &mut handle,
+            GuiConfiguration {
+                api_type: GuiApiType::X11,
+                is_floating: false,
+            }
+        ));
+        assert!(!gui_ext.is_api_supported(
+            &mut handle,
+            GuiConfiguration {
+                api_type: GuiApiType::WAYLAND,
+                is_floating: false,
+            }
+        ));
+        assert!(!gui_ext.is_api_supported(
+            &mut handle,
+            GuiConfiguration {
+                api_type: GuiApiType::X11,
+                is_floating: true,
+            }
+        ));
+
+        // 2. Test get_preferred_api
+        let pref = gui_ext.get_preferred_api(&mut handle).expect("Preferred API not found");
+        assert_eq!(pref.api_type, GuiApiType::X11);
+        assert!(!pref.is_floating);
+
+        // 3. Test get_size
+        let size = gui_ext.get_size(&mut handle).expect("Failed to get size");
+        assert_eq!(size.width, 600);
+        assert_eq!(size.height, 280);
+
+        // 4. Test can_resize
+        assert!(!gui_ext.can_resize(&mut handle));
+
+        // 5. Test set_size
+        assert!(gui_ext.set_size(&mut handle, GuiSize { width: 600, height: 280 }).is_ok());
+        // Note: clack-extensions 0.1.0's FFI wrapper for set_size contains a bug where it calls
+        // .is_some() on the Option<Result<(), PluginError>>, returning true (Ok) to the host even
+        // when the plugin returns an Err. Thus we cannot assert gui_ext.set_size returns Err
+        // from the host-side wrapper here.
+    }
 }
+

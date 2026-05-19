@@ -5,3 +5,5 @@
 set -xeuo pipefail
 cargo test
 cargo bench
+utils/build-clap.sh
+clap-validator validate ~/.clap/nam-rs.clap

@@ -718,7 +718,7 @@
 
 ### Épico 4.2 — Ciclo de Vida da Janela CLAP (`clap_plugin_gui`)
 
-- [ ] **Tarefa 4.2.1** — Implementação de `PluginGui` para Linux (X11 via XWayland)
+- [x] **Tarefa 4.2.1** — Implementação de `PluginGui` para Linux (X11 via XWayland)
 
   - **Contexto:** No Ubuntu 25.10 com Wayland como compositor padrão, o Bitwig fornece handles X11 via XWayland quando o plugin declara suporte exclusivo a X11. Conforme decisão do Lab (H1 aprovada), o plugin declara suporte **APENAS** a `CLAP_WINDOW_API_X11`, forçando a DAW a usar o path XWayland estável.
   - **Ações Técnicas:**
