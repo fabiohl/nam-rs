@@ -352,6 +352,61 @@ A troca de modelos na audio thread é RT-safe:
 | `clap_plugin_audio_ports` | `extensions/audio_ports.rs` | 1 porta stereo I/O com `in_place_pair`                                                    |
 | `clap_plugin_params`      | `extensions/params.rs`      | 4 parâmetros (Input Gain, Output Gain, Gate Threshold, Bypass) com `flush()` bidirecional |
 | `clap_plugin_state`       | `extensions/state.rs`       | Persistência JSON de parâmetros e path do modelo                                          |
+| `clap_plugin_gui`         | `extensions/gui.rs`         | Janela embutida X11 via XWayland (600×280px, tamanho fixo)                                |
+
+### Interface Gráfica: Estratégia de Windowing e Stack
+
+A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente isolada da `audio thread`. A arquitetura é desenhada em camadas para permitir evolução futura do backend de janela sem reescrever a lógica de UI.
+
+#### Estratégia de Windowing em Camadas
+
+```text
+┌────────────────────────────────────────────────┐
+│                  NAM-rs GUI                    │
+│              (egui + egui_glow)                │
+│         Lógica de UI 100% agnóstica            │
+├────────────────────────────────────────────────┤
+│            Window Abstraction Layer            │
+│    trait NamWindow { create, show, events... } │
+├──────────┬──────────────┬──────────────────────┤
+│ Backend  │   Backend    │      Backend         │
+│   X11    │  Wayland     │  Wayland Embedded    │
+│(baseview)│ (floating)   │ (nested compositor)  │
+│  v1.0 ✅ │  v1.1 🔬     │     v2.0 🔮          │
+└──────────┴──────────────┴──────────────────────┘
+```
+
+- **v1.0 (Atual):** Backend X11 via `baseview`. O plugin declara suporte exclusivo a `CLAP_WINDOW_API_X11`, forçando a DAW a usar o path XWayland estável em sessões Wayland. Comprovado em produção por centenas de plugins no ecossistema.
+- **v1.1 (Futuro — Experimento):** Backend Wayland floating via protocolo `xdg-foreign`. Janela nativa Wayland com decorações do compositor, posicionada como transiente da janela da DAW. Requer backend Wayland no baseview (~1500-2500 LOC). O egui não muda.
+- **v2.0 (Futuro — Bloqueado):** Backend Wayland embedded via nested compositor (modelo `IWaylandHost` do VST3 SDK 3.8.0). Embedding real via `wl_subsurface`. Depende do CLAP padronizar uma extensão equivalente e das DAWs (Bitwig) implementarem nested compositor para CLAP.
+
+> **Referência:** A evolução da estratégia Wayland e o acompanhamento do suporte das DAWs são rastreados no documento vivo `docs/lab-gui-wayland.md`.
+
+#### Stack Tecnológico
+
+| Componente    | Crate/Tecnologia | Papel                                                                                          |
+|:------------- |:---------------- |:---------------------------------------------------------------------------------------------- |
+| GUI Framework | `egui`           | Immediate Mode GUI — sem estado persistente, sem GC, sem alocações no render loop              |
+| Renderizador  | `egui_glow`      | Bridge egui → OpenGL 3.3 via `glow`. Integração manual (sem `egui-baseview`, abandonado ~2021) |
+| Windowing     | `baseview`       | Janela nativa embutida X11 via `RawWindowHandle`. Event loop dedicado                          |
+| File Picker   | `rfd`            | File dialog nativo assíncrono (zenity/xdg-portal). Nunca bloqueia a UI thread                  |
+
+#### Feature Flag `clap-plugin-gui`
+
+A GUI é compilada condicionalmente sob a feature `clap-plugin-gui`, permitindo builds headless:
+
+- `cargo build --features clap-plugin` — Plugin CLAP sem janela (para servidores, testes, CI).
+- `cargo build --features clap-plugin-gui` — Plugin CLAP com GUI completa.
+
+Todo código de GUI vive em `src/clap/gui/` e é gateado por `#[cfg(feature = "clap-plugin-gui")]`.
+
+#### Isolamento de Threads (UI ↔ Audio)
+
+A UI thread **nunca** acessa diretamente os campos de `NamClapProcessor`. A comunicação é estritamente via:
+
+- **Leitura de telemetria (Audio → UI):** Campos atômicos em `NamClapShared` (`AtomicU32` para peaks L/R, `AtomicBool` para clipping), lidos com `Ordering::Relaxed` — valores levemente atrasados são aceitáveis para medidores visuais.
+- **Envio de comandos (UI → Audio):** Canal SPSC de parâmetros (`ClapParamPayload`) via `param_tx`, drenado pela audio thread no início de cada `process()`.
+- **Metadados (Main → UI):** `Mutex<String>` para nome do modelo carregado — acessado apenas pela UI thread em intervalos de 500ms.
 
 ### Ownership Transfer via `Mutex<Option<>>`
 
