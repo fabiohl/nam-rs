@@ -424,7 +424,33 @@ impl WaylandEmbeddedWindow {
 
 ---
 
-## 5. Log de Evolução
+## 5. Iniciativas Futuras e Débito Técnico de Dependências
+
+### 5.1 Restrições Atuais de Versão (Pining)
+
+Atualmente, para garantir a estabilidade da GUI via X11/XWayland usando `baseview` e manter o modo standalone via `pipewire` operando de forma previsível, o projeto mantém versões específicas fixadas no `Cargo.toml`. O upgrade automático dessas dependências trará quebras imediatas de API:
+
+- **Stack Gráfica (`egui 0.31`, `egui_glow 0.31`, `glow 0.16`, `keyboard-types 0.6`):**
+  - O commit fixado do fork `baseview` (`RustAudio/baseview`) depende estritamente do `keyboard-types 0.6`.
+  - O `egui_glow 0.31` depende estritamente do `glow 0.16`.
+  - A API de controle de estados de janelas e eventos de entrada manual em `src/clap/gui/window.rs` foi consolidada com base no `egui 0.31`. Uma atualização direta para o `egui 0.34` exigirá reescrever a camada de adaptação de eventos de janela e inputs.
+- **Stack de Áudio (`pipewire 0.9.2`):**
+  - A migração para o `pipewire 0.10.0` requer ajustes nas assinaturas e na lógica de loop de eventos presentes no backend standalone `src/standalone/pw_host.rs`.
+
+### 5.2 Roteiro para Atualização Futura
+
+Esta iniciativa futura de modernização e quitação de débito técnico deverá ser executada após o congelamento estável da versão `v2.0.0-alpha.1` (sprints de homologação em XWayland e X11), dividida nos seguintes passos:
+
+1. **Atualização da Camada de GUI:**
+   - Adaptar `src/clap/gui/window.rs` e o mapeador de eventos do `baseview` para a API de `egui` v0.34+.
+   - Bump de `glow` para v0.17+ e `egui_glow` correspondente.
+   - Contribuir ou ajustar no fork do `baseview` a dependência de `keyboard-types` caso necessário para compatibilidade com versões mais novas.
+2. **Atualização do Backend Standalone:**
+   - Adaptar o loop de callbacks e despachantes do `pw_host.rs` às novas estruturas do `pipewire 0.10.0`.
+
+---
+
+## 6. Log de Evolução
 
 > Registro cronológico de mudanças no ecossistema e resultados de experimentos.
 
@@ -435,4 +461,5 @@ impl WaylandEmbeddedWindow {
 | 2025-10-20 | VST3 SDK 3.8.0 lançado com `IWaylandHost` (MIT)             | Precedente para nested compositor     |
 | 2025-10-20 | Studio One 7.2 com Wayland nativo (VST3 only)               | Primeiro host com embedding real      |
 | 2026-05-19 | NAM-rs: pesquisa Lab concluída. H1 (X11) aprovada para v1.0 | Decisão registrada em architecture.md |
+| 2026-05-19 | Mapeamento de iniciativa futura para upgrade de dependências| Planejado upgrade de egui, glow e pw  |
 | —          | *(Próximos eventos serão registrados aqui)*                 | —                                     |

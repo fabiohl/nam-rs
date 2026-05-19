@@ -10,16 +10,16 @@ set -euo pipefail
 CLAP_DIR="$HOME/.clap"
 PLUGIN_NAME="nam-rs.clap"
 BUILD_MODE="release"
-CARGO_FLAGS="--release"
-TARGET_DIR="target/release"
+CARGO_FLAGS="--release --target-dir target/clap"
+TARGET_DIR="target/clap/release"
 FEATURES="clap-plugin-gui"
 
 # Processar argumentos
 for arg in "$@"; do
     if [ "$arg" == "--debug" ]; then
         BUILD_MODE="debug"
-        CARGO_FLAGS=""
-        TARGET_DIR="target/debug"
+        CARGO_FLAGS="--target-dir target/clap"
+        TARGET_DIR="target/clap/debug"
     elif [ "$arg" == "--headless" ] || [ "$arg" == "--no-gui" ]; then
         FEATURES="clap-plugin"
     fi
@@ -62,7 +62,7 @@ fi
 
 # 4. Execução do teste de integração do ciclo de vida do CLAP
 echo "🧪 Executando teste de ciclo de vida do CLAP..."
-cargo test --test clap_lifecycle_test --features "$FEATURES"
+cargo test --test clap_lifecycle_test --features "$FEATURES" --target-dir target/clap
 
 echo "✅ Plugin instalado, validado e testado com sucesso: $CLAP_DIR/$PLUGIN_NAME"
 ls -lath "$CLAP_DIR/$PLUGIN_NAME"
