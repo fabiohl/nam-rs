@@ -11,6 +11,7 @@ echo "🚀 Check de features de compilação..."
 cargo check --features standalone
 cargo check --no-default-features
 cargo check --no-default-features --features clap-plugin
+cargo check --no-default-features --features clap-plugin-gui
 
 echo "🔍 Executando Clippy (all features)..."
 cargo clippy --all-targets --all-features -- -D warnings

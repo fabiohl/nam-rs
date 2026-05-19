@@ -10,6 +10,7 @@ set -euo pipefail
 BUILD_MODE="release"
 CARGO_FLAGS="--release"
 TARGET_DIR="target/release"
+FEATURES="clap-plugin"
 
 # Processar argumentos
 for arg in "$@"; do
@@ -17,15 +18,17 @@ for arg in "$@"; do
         BUILD_MODE="debug"
         CARGO_FLAGS=""
         TARGET_DIR="target/debug"
+    elif [ "$arg" == "--gui" ]; then
+        FEATURES="clap-plugin-gui"
     fi
 done
 
 CLAP_DIR="$HOME/.clap"
 PLUGIN_NAME="nam-rs.clap"
 
-echo "🔨 Building NAM-rs CLAP plugin ($BUILD_MODE)..."
+echo "🔨 Building NAM-rs CLAP plugin ($BUILD_MODE) with features: $FEATURES..."
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-    cargo build $CARGO_FLAGS --no-default-features --features clap-plugin --lib
+    cargo build $CARGO_FLAGS --no-default-features --features "$FEATURES" --lib
 
 echo "📁 Instalando em $CLAP_DIR/$PLUGIN_NAME ..."
 mkdir -p "$CLAP_DIR"
@@ -58,6 +61,10 @@ else
     exit 1
 fi
 
-echo "✅ Plugin instalado e validado: $CLAP_DIR/$PLUGIN_NAME"
+# 4. Execução do teste de integração do ciclo de vida do CLAP
+echo "🧪 Executando teste de ciclo de vida do CLAP..."
+cargo test --test clap_lifecycle_test --features "$FEATURES"
+
+echo "✅ Plugin instalado, validado e testado com sucesso: $CLAP_DIR/$PLUGIN_NAME"
 ls -lath "$CLAP_DIR/$PLUGIN_NAME"
 echo "📝 Reabra a DAW e faça um novo scan de plugins CLAP."

@@ -670,7 +670,7 @@
 
 ### Épico 4.1 — Dependências e Feature Flag de GUI
 
-- [ ] **Tarefa 4.1.0** — Avaliação de Impacto nos Feature Flags e Build System
+- [x] **Tarefa 4.1.0** — Avaliação de Impacto nos Feature Flags e Build System
 
   - **Contexto:** A GUI introduz feature flag `clap-plugin-gui`. Garantir 3 perfis limpos: `standalone`, `clap-plugin` (headless), `clap-plugin-gui` (com janela).
 
@@ -684,7 +684,7 @@
 
   - **Aceite:** Plano documentado. Zero ambiguidade sobre como compilar cada perfil.
 
-- [ ] **Tarefa 4.1.1** — Adicionar Dependências sob Feature `clap-plugin-gui`
+- [x] **Tarefa 4.1.1** — Adicionar Dependências sob Feature `clap-plugin-gui`
 
   - **Contexto:** A GUI é opcional — um build "headless" (sem GUI) deve ser possível para hosts que não suportam janelas embutidas ou para uso em servidores. Criar uma sub-feature `clap-plugin-gui` que ativa apenas quando o host solicitar.
 
