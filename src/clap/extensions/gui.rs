@@ -4,7 +4,9 @@
 //! Implementação da extensão `clap_plugin_gui` para o NAM-rs.
 
 use crate::clap::plugin::NamClapMainThread;
-use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window};
+use clack_extensions::gui::{
+    GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window,
+};
 use clack_plugin::plugin::PluginError;
 
 impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
@@ -57,7 +59,9 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         if size.width == 600 && size.height == 280 {
             Ok(())
         } else {
-            Err(PluginError::Message("Resizing da GUI não é suportado nesta versão"))
+            Err(PluginError::Message(
+                "Resizing da GUI não é suportado nesta versão",
+            ))
         }
     }
 
@@ -78,11 +82,11 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
                 gl_config: Some(baseview::gl::GlConfig::default()),
             };
 
-            let window_handle = baseview::Window::open_parented(
-                &_window,
-                options,
-                move |win| NamPluginWindow::new(win),
-            );
+            let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
+
+            let window_handle = baseview::Window::open_parented(&_window, options, move |win| {
+                NamPluginWindow::new(win, shared_ptr)
+            });
 
             self.window_handle = Some(window_handle);
         }
@@ -91,7 +95,9 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Configura a janela para flutuar acima da janela especificada (não suportado).
     fn set_transient(&mut self, _window: Window) -> Result<(), PluginError> {
-        Err(PluginError::Message("Modo flutuante (floating) não é suportado"))
+        Err(PluginError::Message(
+            "Modo flutuante (floating) não é suportado",
+        ))
     }
 
     /// Torna a janela da GUI visível.

@@ -4,6 +4,6 @@
 
 set -xeuo pipefail
 cargo test              # Costuma demorar 1,5 minuto
-cargo bench             # Costuma demorar 7+ minutos
 utils/build-clap.sh     # Costuma demorar 0,5 minuto
 clap-validator validate ~/.clap/nam-rs.clap # Costuma demorar poucos segundos
+cargo bench             # Costuma demorar 7+ minutosx

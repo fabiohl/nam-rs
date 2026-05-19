@@ -762,7 +762,7 @@
 
   - **Aceite:** Janela abre com fundo preto (antes dos controles). Fecha sem hang. Zero panics ao abrir/fechar 10× consecutivamente.
 
-- [ ] **Tarefa 4.2.3** — Thread Safety: UI Thread vs Audio Thread vs Main Thread
+- [x] **Tarefa 4.2.3** — Thread Safety: UI Thread vs Audio Thread vs Main Thread
 
   - **Contexto:** O CLAP especifica 3 threads: `audio thread` (process), `main thread` (plugin lifecycle) e `UI thread` (janela). `baseview` no Linux cria sua própria thread para o event loop da janela. A UI **nunca** pode chamar métodos da audio thread diretamente.
 

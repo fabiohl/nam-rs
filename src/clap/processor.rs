@@ -288,16 +288,73 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
                     continue;
                 };
-                for pair in channel_pairs {
+                let mut peak_l = 0.0f32;
+                let mut peak_r = 0.0f32;
+                let mut channel_iter = channel_pairs.into_iter();
+
+                if let Some(pair) = channel_iter.next() {
                     match pair {
                         ChannelPair::InputOutput(i, o) => {
-                            o[..n_samples].copy_from_slice(&i[..n_samples]);
+                            let n = n_samples.min(o.len());
+                            o[..n].copy_from_slice(&i[..n]);
+                            for &sample in &o[..n] {
+                                let abs_val = sample.abs();
+                                if abs_val > peak_l {
+                                    peak_l = abs_val;
+                                }
+                            }
                         }
-                        ChannelPair::InPlace(_) => {
-                            // In-place: input e output são o mesmo buffer — noop.
+                        ChannelPair::InPlace(io) => {
+                            let n = n_samples.min(io.len());
+                            for &sample in &io[..n] {
+                                let abs_val = sample.abs();
+                                if abs_val > peak_l {
+                                    peak_l = abs_val;
+                                }
+                            }
                         }
                         ChannelPair::InputOnly(_) | ChannelPair::OutputOnly(_) => {}
                     }
+                }
+                if let Some(pair) = channel_iter.next() {
+                    match pair {
+                        ChannelPair::InputOutput(i, o) => {
+                            let n = n_samples.min(o.len());
+                            o[..n].copy_from_slice(&i[..n]);
+                            for &sample in &o[..n] {
+                                let abs_val = sample.abs();
+                                if abs_val > peak_r {
+                                    peak_r = abs_val;
+                                }
+                            }
+                        }
+                        ChannelPair::InPlace(io) => {
+                            let n = n_samples.min(io.len());
+                            for &sample in &io[..n] {
+                                let abs_val = sample.abs();
+                                if abs_val > peak_r {
+                                    peak_r = abs_val;
+                                }
+                            }
+                        }
+                        ChannelPair::InputOnly(_) | ChannelPair::OutputOnly(_) => {}
+                    }
+                }
+
+                let current_peak_l = f32::from_bits(self.shared.ui_peak_l.load(Ordering::Relaxed));
+                if peak_l > current_peak_l {
+                    self.shared
+                        .ui_peak_l
+                        .store(peak_l.to_bits(), Ordering::Relaxed);
+                }
+                let current_peak_r = f32::from_bits(self.shared.ui_peak_r.load(Ordering::Relaxed));
+                if peak_r > current_peak_r {
+                    self.shared
+                        .ui_peak_r
+                        .store(peak_r.to_bits(), Ordering::Relaxed);
+                }
+                if peak_l > 1.0 || peak_r > 1.0 {
+                    self.shared.ui_clipped.store(true, Ordering::Relaxed);
                 }
                 continue;
             }
@@ -358,10 +415,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             }
 
             // 2. Aplicação do Ganho de Entrada (Sample-Accurate Smoothing)
+            let mut input_has_clipped = false;
             for i in 0..n_samples {
                 let g = self.smoother_in.tick();
                 self.buf_host_l[i] *= g;
                 self.buf_host_r[i] *= g;
+                if self.buf_host_l[i].abs() > 1.0 || self.buf_host_r[i].abs() > 1.0 {
+                    input_has_clipped = true;
+                }
+            }
+            if input_has_clipped {
+                self.shared.ui_clipped.store(true, Ordering::Relaxed);
             }
 
             // A LUT já foi obtida acima do loop de ports (linha ~178).
@@ -469,13 +533,43 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 self.buf_out_r[i] *= g;
             }
 
+            let mut peak_l = 0.0f32;
             if let Some(o_l) = out_l {
                 let n = n_out.min(o_l.len());
                 o_l[..n].copy_from_slice(&self.buf_out_l[..n]);
+                for &sample in &self.buf_out_l[..n] {
+                    let abs_val = sample.abs();
+                    if abs_val > peak_l {
+                        peak_l = abs_val;
+                    }
+                }
             }
+            let mut peak_r = 0.0f32;
             if let Some(o_r) = out_r {
                 let n = n_out.min(o_r.len());
                 o_r[..n].copy_from_slice(&self.buf_out_r[..n]);
+                for &sample in &self.buf_out_r[..n] {
+                    let abs_val = sample.abs();
+                    if abs_val > peak_r {
+                        peak_r = abs_val;
+                    }
+                }
+            }
+
+            let current_peak_l = f32::from_bits(self.shared.ui_peak_l.load(Ordering::Relaxed));
+            if peak_l > current_peak_l {
+                self.shared
+                    .ui_peak_l
+                    .store(peak_l.to_bits(), Ordering::Relaxed);
+            }
+            let current_peak_r = f32::from_bits(self.shared.ui_peak_r.load(Ordering::Relaxed));
+            if peak_r > current_peak_r {
+                self.shared
+                    .ui_peak_r
+                    .store(peak_r.to_bits(), Ordering::Relaxed);
+            }
+            if peak_l > 1.0 || peak_r > 1.0 {
+                self.shared.ui_clipped.store(true, Ordering::Relaxed);
             }
         }
 

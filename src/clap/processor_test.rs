@@ -479,11 +479,10 @@ mod tests {
         }
     }
 
-
     #[cfg(feature = "clap-plugin-gui")]
     #[test]
     fn test_gui_extension_x11() {
-        use clack_extensions::gui::{PluginGui, GuiConfiguration, GuiApiType, GuiSize};
+        use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGui};
 
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
@@ -532,7 +531,9 @@ mod tests {
         ));
 
         // 2. Test get_preferred_api
-        let pref = gui_ext.get_preferred_api(&mut handle).expect("Preferred API not found");
+        let pref = gui_ext
+            .get_preferred_api(&mut handle)
+            .expect("Preferred API not found");
         assert_eq!(pref.api_type, GuiApiType::X11);
         assert!(!pref.is_floating);
 
@@ -545,11 +546,145 @@ mod tests {
         assert!(!gui_ext.can_resize(&mut handle));
 
         // 5. Test set_size
-        assert!(gui_ext.set_size(&mut handle, GuiSize { width: 600, height: 280 }).is_ok());
+        assert!(
+            gui_ext
+                .set_size(
+                    &mut handle,
+                    GuiSize {
+                        width: 600,
+                        height: 280
+                    }
+                )
+                .is_ok()
+        );
         // Note: clack-extensions 0.1.0's FFI wrapper for set_size contains a bug where it calls
         // .is_some() on the Option<Result<(), PluginError>>, returning true (Ok) to the host even
         // when the plugin returns an Err. Thus we cannot assert gui_ext.set_size returns Err
         // from the host-side wrapper here.
     }
-}
 
+    #[test]
+    fn test_ui_telemetry() {
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Falha ao carregar PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Falha ao instanciar plugin");
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 512,
+            max_frames_count: 512,
+        };
+
+        // 1. Check basename update on load_model
+        let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        model_dir.push("tests/fixtures/models/BossWN-nano.nam");
+
+        let state_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginState>()
+            .expect("PluginState extension not found");
+
+        let params = NamPluginParams {
+            model_path: Some(model_dir),
+            input_gain_db: 0.0,
+            output_gain_db: 0.0,
+            gate_threshold_db: -70.0,
+            bypass: false,
+        };
+        let state_bytes = serde_json::to_vec(&params).unwrap();
+        let mut handle = plugin_instance.plugin_handle();
+        state_ext
+            .load(&mut handle, &mut state_bytes.as_slice())
+            .expect("Falha ao carregar estado");
+
+        // Obtain shared instance
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Falha ao obter wrapper do plugin")
+        };
+        let shared = unsafe { &*shared_ptr };
+
+        // Check model name basename was updated
+        {
+            let name_guard = shared.ui_model_name.lock().unwrap();
+            assert_eq!(*name_guard, "BossWN-nano.nam");
+        }
+
+        // 2. Activate and process to check peak and clipping telemetry
+        let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
+        let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        // Let's reset the peaks
+        shared.ui_peak_l.store(0.0f32.to_bits(), Ordering::Relaxed);
+        shared.ui_peak_r.store(0.0f32.to_bits(), Ordering::Relaxed);
+        shared.ui_clipped.store(false, Ordering::Relaxed);
+
+        let n = 512;
+        // Signal with peaks at 0.5 (left) and 1.5 (right - clipping)
+        let mut in_l = vec![0.5f32; n];
+        let mut in_r = vec![1.5f32; n];
+        let mut out_l = vec![0.0f32; n];
+        let mut out_r = vec![0.0f32; n];
+
+        let mut input_ports = AudioPorts::with_capacity(2, 1);
+        let mut output_ports = AudioPorts::with_capacity(2, 1);
+        let mut output_events_buffer = EventBuffer::new();
+
+        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_input_only(
+                input_channels.iter_mut().map(InputChannel::constant),
+            ),
+        }]);
+
+        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
+        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+        }]);
+
+        let input_events = InputEvents::empty();
+        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+        started_processor
+            .process(
+                &input_audio,
+                &mut output_audio,
+                &input_events,
+                &mut output_events,
+                None,
+                None,
+            )
+            .unwrap();
+
+        // Verify peaks are greater than 0.0
+        let peak_l = f32::from_bits(shared.ui_peak_l.load(Ordering::Relaxed));
+        let peak_r = f32::from_bits(shared.ui_peak_r.load(Ordering::Relaxed));
+        assert!(peak_l > 0.0, "peak_l was: {}", peak_l);
+        assert!(peak_r > 0.0, "peak_r was: {}", peak_r);
+
+        // Verify that clipping occurred because input right was 1.5
+        let clipped = shared.ui_clipped.load(Ordering::Relaxed);
+        assert!(
+            clipped,
+            "ui_clipped should be true since input right was 1.5"
+        );
+    }
+}

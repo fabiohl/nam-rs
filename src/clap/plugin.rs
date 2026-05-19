@@ -25,6 +25,13 @@ pub enum ClapParamPayload {
     LoadModel(Box<LoadedModelPair>),
 }
 
+/// Wrapper seguro para ponteiro de NamClapShared repassado à thread de GUI.
+#[derive(Clone, Copy)]
+pub struct NamClapSharedRef(pub *const NamClapShared);
+
+unsafe impl Send for NamClapSharedRef {}
+unsafe impl Sync for NamClapSharedRef {}
+
 /// Estado compartilhado entre a audio thread e a main thread (lock-free).
 ///
 /// Adota alinhamento a 128 bytes para mitigar False Sharing.
@@ -55,6 +62,14 @@ pub struct NamClapShared {
     pub param_gate_thresh: AtomicU32,
     /// Último valor do parâmetro Bypass (0 = false, 1 = true).
     pub param_bypass: AtomicU32,
+    /// Nível True Peak L setado pela audio thread (bits de f32 via f32::to_bits()). Lido pela UI thread.
+    pub ui_peak_l: AtomicU32,
+    /// Nível True Peak R setado pela audio thread (bits de f32 via f32::to_bits()). Lido pela UI thread.
+    pub ui_peak_r: AtomicU32,
+    /// Flag indicando se ocorreu clipping desde o último frame da UI. Lido/resetado pela UI thread.
+    pub ui_clipped: std::sync::atomic::AtomicBool,
+    /// Nome do modelo carregado (path basename). Escrito pela main thread, lido pela UI thread.
+    pub ui_model_name: Mutex<String>,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
@@ -167,6 +182,16 @@ impl<'a> NamClapMainThread<'a> {
         // 3. Atualiza o path nos parâmetros locais (espelhados)
         self.params.model_path = Some(path.to_path_buf());
 
+        // Atualiza o nome do modelo carregado para exibição na UI (basename)
+        let basename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        if let Ok(mut name_guard) = self.shared.ui_model_name.lock() {
+            *name_guard = basename;
+        }
+
         // 4. Notifica o host sobre o carregamento bem-sucedido (Cold Path)
         if let Some(log) = self.host.get_extension::<HostLog>() {
             let msg = format!("NAM-rs: model loaded ({:?})", path);
@@ -230,6 +255,10 @@ impl DefaultPluginFactory for NamClapPlugin {
             param_output_gain: AtomicU32::new(0.0f32.to_bits()),
             param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
             param_bypass: AtomicU32::new(0),
+            ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
+            ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
+            ui_clipped: std::sync::atomic::AtomicBool::new(false),
+            ui_model_name: Mutex::new(String::new()),
         })
     }
 
