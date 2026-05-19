@@ -30,12 +30,13 @@ minstant = "0.1.7"
 rustfft = { version = "6.4.1", default-features = false }
 clack-common = "0.1"
 clack-plugin = { version = "0.1", optional = true }
-clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state"] }
+clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05"] }
 egui      = { version = "0.31",  optional = true }
 egui_glow = { version = "0.31",  optional = true }
 glow      = { version = "0.16",  optional = true }
 baseview  = { git = "https://github.com/RustAudio/baseview", optional = true }
 rfd       = { version = "0.15",  optional = true }
+keyboard-types = { version = "0.6", default-features = false, optional = true }
 
 [dev-dependencies]
 clack-host = { version = "0.1", features = ["clack-plugin"] }
@@ -51,7 +52,7 @@ harness = false
 default = ["standalone"]
 standalone = ["dep:pipewire"]
 clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "clack-extensions/clack-host"]
-clap-plugin-gui = ["clap-plugin", "dep:egui", "dep:egui_glow", "dep:baseview", "dep:rfd", "dep:glow"]
+clap-plugin-gui = ["clap-plugin", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types"]
 long_bench = []
 
 [[bin]]

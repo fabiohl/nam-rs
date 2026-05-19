@@ -732,7 +732,7 @@
     3. Reexecutar `clap-validator` — 0 FAILs.
   - **Aceite:** Ao clicar no ícone da janela do plugin no Bitwig (Wayland com XWayland), a janela abre embedded. `clap-validator` 0 FAILs.
 
-- [ ] **Tarefa 4.2.2** — Embed da Janela `baseview` e Inicialização do `egui`
+- [x] **Tarefa 4.2.2** — Embed da Janela `baseview` e Inicialização do `egui`
 
   - **Contexto:** O `create_window()` do CLAP fornece um `RawWindowHandle` do host (o "parent" onde a janela do plugin deve ser embutida). `baseview::Window::open_parented()` aceita este handle e cria a janela filha.
 

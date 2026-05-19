@@ -11,6 +11,10 @@ pub mod param_smoother;
 pub mod plugin;
 pub mod processor;
 
+/// Módulo contendo a implementação da interface gráfica (GUI).
+#[cfg(feature = "clap-plugin-gui")]
+pub mod gui;
+
 use clack_plugin::prelude::*;
 use plugin::NamClapPlugin;
 

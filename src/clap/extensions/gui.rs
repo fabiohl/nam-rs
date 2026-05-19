@@ -32,7 +32,12 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
     }
 
     /// Libera os recursos alocados para a interface gráfica.
-    fn destroy(&mut self) {}
+    fn destroy(&mut self) {
+        #[cfg(feature = "clap-plugin-gui")]
+        if let Some(mut window_handle) = self.window_handle.take() {
+            window_handle.close();
+        }
+    }
 
     /// Define o fator de escala absoluto para a GUI.
     fn set_scale(&mut self, _scale: f64) -> Result<(), PluginError> {
@@ -58,6 +63,29 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Define a janela pai (host) onde a GUI deve ser embutida.
     fn set_parent(&mut self, _window: Window) -> Result<(), PluginError> {
+        #[cfg(feature = "clap-plugin-gui")]
+        {
+            use crate::clap::gui::window::NamPluginWindow;
+
+            if let Some(mut old_handle) = self.window_handle.take() {
+                old_handle.close();
+            }
+
+            let options = baseview::WindowOpenOptions {
+                title: "NAM-rs".to_string(),
+                size: baseview::Size::new(600.0, 280.0),
+                scale: baseview::WindowScalePolicy::SystemScaleFactor,
+                gl_config: Some(baseview::gl::GlConfig::default()),
+            };
+
+            let window_handle = baseview::Window::open_parented(
+                &_window,
+                options,
+                move |win| NamPluginWindow::new(win),
+            );
+
+            self.window_handle = Some(window_handle);
+        }
         Ok(())
     }
 

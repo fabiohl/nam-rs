@@ -5,7 +5,7 @@
 set -euo pipefail
 
 echo "🔥 Iniciando testes de estresse de longa duração..."
-echo "⚠️ Esta operação é intensiva e pode durar vários minutos."
+echo "⚠️ Esta operação é intensiva e pode durar vários minutos (15 ou mais)."
 date
 
 echo "🧪 1/2 Executando Soak Tests (Estabilidade Numérica)..."

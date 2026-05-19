@@ -74,6 +74,9 @@ pub struct NamClapMainThread<'a> {
     pub gc_rx: Consumer<GcItem>,
     /// Cache da última latência reportada ao host para evitar notificações redundantes.
     pub last_reported_latency: u32,
+    /// Handle da janela baseview para controle de ciclo de vida da GUI.
+    #[cfg(feature = "clap-plugin-gui")]
+    pub window_handle: Option<baseview::WindowHandle>,
 }
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
@@ -260,6 +263,8 @@ impl DefaultPluginFactory for NamClapPlugin {
             param_tx,
             gc_rx,
             last_reported_latency: 0,
+            #[cfg(feature = "clap-plugin-gui")]
+            window_handle: None,
         };
 
         // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.3.1).
