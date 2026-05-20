@@ -169,8 +169,14 @@ fn handle_knob(
     let final_val = if reset_clicked { default_value } else { new_val };
 
     if final_val != current_val {
+        if reset_clicked {
+            begin_flag.store(true, Ordering::Relaxed);
+        }
         atomic_val.store(final_val.to_bits(), Ordering::Relaxed);
         changed_flag.store(true, Ordering::Relaxed);
+        if reset_clicked {
+            end_flag.store(true, Ordering::Relaxed);
+        }
         if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
             params_ext.request_flush(host);
         }
