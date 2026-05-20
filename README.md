@@ -44,7 +44,7 @@ O NAM-rs pode ser compilado em dois modos principais via _feature flags_:
    cargo build --release --features standalone
    ```
 
-2. **CLAP Plugin (alpha):** Biblioteca `.so` para uso em DAWs (como REAPER, Bitwig e Studio One). Em desenvolvimento ativo (alpha).
+2. **CLAP Plugin (alpha):** Biblioteca `.so` para uso em DAWs (como REAPER, Bitwig Studio e Fender Studio Pro etc.). Em desenvolvimento ativo (alpha).
 
    ```bash
    # Build para Plugin CLAP

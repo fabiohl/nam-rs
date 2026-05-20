@@ -17,7 +17,7 @@ Monitorar a evolução destes indicadores é essencial para saber **quando** inv
 
 | DAW               | Versão | CLAP GUI         | Wayland Nativo                | Nested Compositor  | Notas                                  |
 | ----------------- | ------ | ---------------- | ----------------------------- | ------------------ | -------------------------------------- |
-| **Bitwig Studio** | 6.0.6  | X11 via XWayland | ❌ Não                        | ❌ Não             | Co-autor do CLAP. Acompanhar releases. |
+| **Bitwig Studio** | 6.0+   | X11 via XWayland | ❌ Não                        | ❌ Não             | Co-autor do CLAP. Acompanhar releases. |
 | **Studio One**    | 7.2+   | X11 via XWayland | ✅ VST3 only (`IWaylandHost`) | ✅ VST3 only       | Contribuiu `IWaylandHost` ao VST3 SDK. |
 | **REAPER**        | 7.x    | X11 via XWayland | ❌ Não                        | ❌ Não             | Linux é plataforma secundária.         |
 | **Ardour**        | 8.x    | N/A (LV2)        | ❌ Não                        | ❌ Não             | Foco em LV2, não CLAP.                 |
@@ -447,19 +447,3 @@ Esta iniciativa futura de modernização e quitação de débito técnico dever�
    - Contribuir ou ajustar no fork do `baseview` a dependência de `keyboard-types` caso necessário para compatibilidade com versões mais novas.
 2. **Atualização do Backend Standalone:**
    - Adaptar o loop de callbacks e despachantes do `pw_host.rs` às novas estruturas do `pipewire 0.10.0`.
-
----
-
-## 6. Log de Evolução
-
-> Registro cronológico de mudanças no ecossistema e resultados de experimentos.
-
-| Data       | Evento                                                      | Impacto                               |
-| ---------- | ----------------------------------------------------------- | ------------------------------------- |
-| 2022-11-xx | baseview Issue 135 aberta                                   | Wayland no baseview: sem previsão     |
-| 2025-10-05 | CLAP Issue 474 aberta (dekrain)                             | Discussão oficial sobre GUI Wayland   |
-| 2025-10-20 | VST3 SDK 3.8.0 lançado com `IWaylandHost` (MIT)             | Precedente para nested compositor     |
-| 2025-10-20 | Studio One 7.2 com Wayland nativo (VST3 only)               | Primeiro host com embedding real      |
-| 2026-05-19 | NAM-rs: pesquisa Lab concluída. H1 (X11) aprovada para v1.0 | Decisão registrada em architecture.md |
-| 2026-05-19 | Mapeamento de iniciativa futura para upgrade de dependências| Planejado upgrade de egui, glow e pw  |
-| —          | *(Próximos eventos serão registrados aqui)*                 | —                                     |

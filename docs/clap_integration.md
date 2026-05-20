@@ -75,7 +75,7 @@ O descritor de metadados do plugin seguirá o seguinte padrão:
 - **Bitwig Studio**: Plataforma de referência absoluta para conformidade CLAP (co-autora do padrão). Essencial para validar o comportamento de sandboxing e automação sample-accurate.
 - **REAPER**: Validação de compatibilidade com hosts de baixo custo e testes de buffers irregulares.
   - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
-- **Studio One**: Garantia de funcionamento em ambientes de produção de larga escala.
+- **Fender Studio Pro**: Garantia de funcionamento em ambientes de produção de larga escala.
 - **CLAP-info / CLAP-host**: Ferramentas de linha de comando para validação técnica rigorosa do spec.
 
 ## 8. Compilação e Validação do Plugin
@@ -86,16 +86,21 @@ O projeto fornece um script automatizado para compilar, instalar e realizar uma 
 
 - **Build Padrão (com GUI)**:
   Por padrão, o script compila o plugin com suporte a interface gráfica nativa (utilizando a feature `clap-plugin-gui`).
+
   ```bash
   ./utils/build-clap.sh
   ```
+
 - **Build Headless (sem GUI)**:
   Caso queira compilar a versão enxuta para testes sem suporte à interface gráfica, utilize a flag `--headless` ou `--no-gui`:
+
   ```bash
   ./utils/build-clap.sh --headless
   ```
+
 - **Modo Debug**:
   Para compilar em modo de depuração (debug), adicione `--debug`:
+
   ```bash
   ./utils/build-clap.sh --debug
   ```

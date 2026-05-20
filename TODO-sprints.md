@@ -601,7 +601,7 @@
 
 ## Sprint 4 — Interface Gráfica Responsiva (egui + baseview)
 
-**Objetivo:** Painel customizado nativo embutido no host via X11/XWayland, isolado da audio thread, renderizando a 60fps com zero-interferência no DSP. Controles bidirecionais de ganho, file picker de modelo, medidores de nível e feedback visual de automação. Validação no Bitwig Studio e Studio One.
+**Objetivo:** Painel customizado nativo embutido no host via X11/XWayland, isolado da audio thread, renderizando a 60fps com zero-interferência no DSP. Controles bidirecionais de ganho, file picker de modelo, medidores de nível e feedback visual de automação. Validação no Bitwig Studio e Fender Studio Pro.
 
 **Pré-requisito:** Sprint 3 concluída (latência reportada, compliance validado, stress tests verdes).
 
@@ -637,7 +637,7 @@
     3. **4 hipóteses avaliadas em profundidade:**
        - **H1 (XWayland Fallback):** ✅ Aprovada para v1. Esforço zero, estabilidade comprovada. Todo o ecossistema usa isto.
        - **H2 (xdg-foreign floating):** Viável como experimento futuro. Requer backend Wayland no baseview (~1500-2500 LOC), **NÃO** reescrever o egui. Resultado: janela flutuante com decorações de sistema.
-       - **H3 (IWaylandHost nested compositor):** Solução definitiva do futuro. Esforço no plugin ~500-800 LOC, **MAS** depende de Bitwig/CLAP implementarem a extensão. Studio One 7.2+ já faz isto para VST3 (SDK 3.8.0, MIT).
+       - **H3 (IWaylandHost nested compositor):** Solução definitiva do futuro. Esforço no plugin ~500-800 LOC, **MAS** depende de Bitwig/CLAP implementarem a extensão. Studio One 7+ já faz isto para VST3 (SDK 3.8.0, MIT).
        - **H4 (Substituir baseview por winit):** Rejeitada. Winit não suporta paradigma de janela filha parasitária.
     4. **Decisão:** X11 via XWayland como estratégia v1. `is_api_supported()` retorna `true` APENAS para `CLAP_WINDOW_API_X11`. Toda lógica de UI (egui) é agnóstica ao backend de janela — trocar backend no futuro não requer reescrever widgets.
     5. **Documentação completa:** `docs/lab-gui-wayland.md` com análise detalhada, referências e log de experimentos.
@@ -843,7 +843,7 @@
 > - ✅ Ausência de códigos não tratados (`unwrap`, `todo!`) atestada por validação estática e testes de compilação.
 > - A infraestrutura está madura e pronta para a bateria de testes manuais intensivos de UX/UI nas DAWs alvo.
 
-### Épico 4.4 — Validação Humana e Cross-Host (Bitwig + Studio One)
+### Épico 4.4 — Validação Humana e Cross-Host (Bitwig + Fender Studio Pro)
 
 > **Atenção (QA/Testador Humano):** As tarefas a seguir não envolvem codificação imediata (exceto ajustes de bugs estéticos/funcionais decorrentes do teste). Elas devem ser executadas manualmente nas DAWs instaladas para aferir a robustez, estabilidade e aderência visual do plugin no mundo real.
 
@@ -857,7 +857,7 @@
   - **Ação Técnica (Engenharia):** Se houver divergências substanciais, o time técnico deve ajustar o código do `egui` em `src/clap/gui/ui.rs` para calibrar o visual, gerando um build novo e encaminhando para re-avaliação.
   - **Aceite:** A janela em execução deve prover uma "sensação visual" extremamente próxima ao mockup original, atestando caráter premium.
 
-- [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX no Bitwig Studio 6
+- [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX no Bitwig Studio
 
   - **Contexto:** A base do desenvolvimento foi no Bitwig. É preciso validar a experiência do usuário ponta-a-ponta nesta DAW.
   - **Ações do Testador:**
@@ -867,14 +867,14 @@
     4. Testar Automações: O clique/arrasto nos knobs deve gravar trilhas de automação de forma suave no grid do Bitwig (gestures begin/end bem comportados).
   - **Aceite:** Tudo suave, fluido, responsivo a 60fps. Nenhum XRUN (engasgo no áudio) durante o manuseio da interface.
 
-- [ ] **Tarefa 4.4.3** — Certificação de Portabilidade (Studio One 7+ no Linux)
+- [ ] **Tarefa 4.4.3** — Certificação de Portabilidade (Fender Studio Pro no Linux)
 
-  - **Contexto:** O ecossistema CLAP no Studio One sob Linux é recente. Validações devem assegurar que o XWayland embedded do Studio One comporta-se como o do Bitwig.
+  - **Contexto:** O ecossistema CLAP no Fender Studio Pro sob Linux é recente. Validações devem assegurar que o XWayland embedded do Fender Studio Pro comporta-se como o do Bitwig.
   - **Ações do Testador:**
-    1. Inserir o plugin: O Studio One deve concluir o scan com sucesso e exibir o plugin na categoria correta.
+    1. Inserir o plugin: O Fender Studio Pro deve concluir o scan com sucesso e exibir o plugin na categoria correta.
     2. Renderização da UI: A janela precisa ser instanciada com estabilidade, sem redimensionamento indesejado ou comportamentos bizarros de mouse (offset de clique).
     3. Persistência de Sessão: Criar um projeto, alterar parâmetros/modelo, salvar e fechar. Ao reabrir, certifique-se de que o estado é idêntico.
-  - **Aceite:** Plugin funcional no Studio One com GUI completa validando o stack tecnológico em DAWs além do Bitwig.
+  - **Aceite:** Plugin funcional no Fender Studio Pro com GUI completa validando o stack tecnológico em DAWs além do Bitwig.
 
 - [ ] **Tarefa 4.4.4** — Bateria de Stress Test (Smoke Test Cross-Host)
 
@@ -882,7 +882,7 @@
   - **Ações do Testador:**
     1. Alternar o Bypass alucinadamente e abrir/fechar a GUI mais de 20 vezes consecutivamente.
     2. Tentar carregar modelos 10x rapidamente enquanto a GUI processa áudio.
-    3. Modulação Estressante: Aplicar no Bitwig (ou Studio One) uma modulação via LFO pesada nos knobs e deixar operando por > 5 minutos.
+    3. Modulação Estressante: Aplicar no Bitwig (ou Fender Studio Pro) uma modulação via LFO pesada nos knobs e deixar operando por > 5 minutos.
   - **Aceite:** O plugin não pode causar panics na DAW. Zero vazamento de RAM visível monitorando via `htop`.
 
 - [ ] **Tarefa 4.4.5** — Validar viabilidade prática do Modo Headless
@@ -1072,70 +1072,133 @@
 
 ### Épico 6.1 — Auditoria Final de Código
 
-- [ ] **Tarefa 6.1.1** — Revisão Crítica de Todo Código CLAP Adicionado
+- [ ] **Tarefa 6.1.1** — Revisão Crítica de Todo Código CLAP Adicionado (Dev Humano)
 
-  - **Contexto:** Ao longo de 5 sprints, múltiplos arquivos em `src/clap/` foram criados. É necessária uma leitura crítica top-down para garantir coesão, nomenclatura consistente e ausência de dead code.
-  - **Ações Técnicas:**
-    1. `git diff main..HEAD -- src/clap/` para listar todos os arquivos modificados.
-    2. Para cada arquivo: verificar header SPDX, ausência de `todo!()` / `unimplemented!()` / `unwrap()` no hot-path, comentários `///` em funções públicas.
-    3. Verificar que `src/clap/extensions/` tem um `mod.rs` que exporta todas as extensões (incluindo `gui.rs`).
-    4. Verificar que `src/clap/gui/` tem estrutura `window.rs` + `ui.rs` + `mod.rs`.
-    5. Executar `cargo doc --no-deps --features clap-plugin-gui 2>&1 | grep "warning"` — zero warnings de doc.
-  - **Aceite:** Zero `todo!()`, zero `unwrap()` em código de produção, zero doc warnings.
+  - **Contexto:**
+    Ao longo de 5 sprints de desenvolvimento rápido, múltiplos módulos foram criados em `src/clap/` (processamento de áudio, suavização de parâmetros, extensões CLAP e interface egui). É imperativo realizar uma auditoria rigorosa baseada nas Diretrizes Técnicas e de Performance para garantir coesão arquitetural, nomenclatura aderente à convenção do Rust, ausência de vazamento de memória e que todas as operações no hot-path obedeçam às garantias de RT-Safety (ex: zero blocos de lock, zero heap drops indiretos e tratamento seguro de concorrência).
+
+  - **Ações Humanas:**
+    1. Skill `revisor-auditor` focado na pasta `src/clap/`. Demais pastas apenas nas suas realações com `src/clap/`.
+    2. Ler o código em `src/clap/` e assegurar completa cobertura de docsys e comentários inline no código fonte.
 
 - [ ] **Tarefa 6.1.2** — Auditoria Completa com `clap-validator`
 
-  - **Contexto:** `clap-validator` foi executado em cada sprint. Esta é a auditoria final com **todas** as extensões implementadas ativas simultaneamente.
+  - **Contexto:**
+    O `clap-validator` da CLAP-SDK é a ferramenta oficial de conformidade para atestar que o plugin obedece de forma irrestrita às especificações e ciclos de vida do padrão CLAP (inclusão de portas, transição de estados atômicos, ativação/desativação dinâmica e carregamento de parâmetros). Esta é a auditoria final que executará toda a suíte de testes de estresse estático contra o binário unificado com todas as extensões ativas.
+
   - **Ações Técnicas:**
-    1. Build release: `./utils/build-clap.sh`.
-    2. `clap-validator validate ~/.clap/nam-rs.clap --output json > /tmp/final-validation.json`.
-    3. Analisar: `jq '.results[] | select(.status != "pass")' /tmp/final-validation.json`.
-  - **Aceite:** `jq` retorna saída vazia (zero não-passes). `clap-validator` score: 100%.
+    1. Compilar o plugin em perfil de release otimizado executando `./utils/build-clap.sh`.
+    2. Instalar o `clap-validator` mais recente compatível com o spec CLAP v1.2+.
+    3. Rodar a validação do binário exportado em formato detalhado e gravar a saída estructurada:
+
+       ```bash
+       clap-validator validate ~/.clap/nam-rs.clap --output json > /tmp/final-validation.json
+       ```
+
+    4. Validar o arquivo JSON de saída usando `jq` para inspecionar falhas ou avisos em extensões de parâmetros, latência, estado persistente e interface gráfica.
+    5. Caso algum teste dinâmico falhe (como pânicos de ciclo de vida induzidos por ativações consecutivas no validador), depurar usando `gdb` ou a skill `debugger` e corrigir o código de inicialização do plugin.
+
+  - **Aceite:**
+    - `clap-validator` reporta conformidade total com score de 100% de passes (zero FAILs na suíte oficial de validação).
+    - Execução do validador em modo de estresse não gera erros de concorrência ou crashes no arquivo de dump.
+
+- [ ] **Tarefa 6.1.3** — Modo Bilingue
+
+  - **Contexto:**
+    Detecta automaticamente o idioma do sistema operacional do usuário e traduz dinamicamente a interface gráfica (CLAP GUI) e as mensagens exibidas no terminal (CLI Standalone). O suporte abrange o Inglês Internacional (idioma padrão) e o Português Brasileiro. Como o NAM-rs é projetado sob restrições estritas de tempo real (RT-Safety), o sistema de tradução deve operar sem alocações dinâmicas de memória (zero heap allocations no lookup de strings) para garantir que threads de alta prioridade de áudio ou loops de renderização da UI a 60fps não sofram interrupções induzidas pelo alocador de heap.
+
+  - **Ações Técnicas:**
+    1. Criar o módulo de internacionalização em `src/common/l10n.rs` contendo:
+       - O enum `Lang` com variantes `En` (default) e `PtBr`.
+       - Uma função RT-safe de detecção do idioma do sistema `detect_system_language() -> Lang` que lê as variáveis de ambiente `LANG`, `LC_ALL` e `LC_MESSAGES` no Linux, retornando `PtBr` se contiverem "pt", caso contrário, retornando `En` como fallback.
+       - Um enum central `MsgId` representando todas as chaves de string estáticas traduzíveis do projeto.
+       - Um método/função associada `MsgId::tr(&self, lang: Lang) -> &'static str` que mapeia de forma direta e sem alocações cada chave para a sua respectiva tradução estática.
+    2. Modificar o módulo CLI em `src/standalone/cli.rs`:
+       - Executar a detecção do idioma ao inicializar o CLI (como no `print_help()` e no tratamento de erros do `parse_args()`).
+       - Traduzir a tela de ajuda de uso, as opções da CLI e todas as mensagens de erro críticas.
+    3. Modificar o desenho da interface gráfica em `src/clap/gui/ui.rs`:
+       - Inicializar o idioma detectado uma única vez na criação do estado compartilhado ou na inicialização da janela.
+       - Substituir todos os literais de string na interface egui (ex: `"📂 Load Model"`, `"No model loaded"`, `"INPUT"`, `"GATE"`, `"OUTPUT"`, `"BYPASS"`, status de latência, badges de ISA e telemetria expandida) por lookups através de `MsgId::tr()`.
+    4. Adicionar testes unitários dedicados em `src/common/l10n_test.rs` (ou inline no próprio arquivo `l10n.rs` se possuir menos de 300 linhas, em conformidade com as Convenções de Testes):
+       - Validar a corretude da detecção de idioma via variáveis de ambiente injetadas em ambiente de teste controlado.
+       - Garantir que todas as chaves de tradução mapeadas em `MsgId` possuam correspondentes válidos nos dicionários de ambos os idiomas.
+       - Certificar a ausência de alocações no heap durante a invocação da função de tradução.
+    5. Assegurar a presença do cabeçalho de Copyright/Licença SPDX no topo de todos os novos arquivos de código criados.
+
+  - **Aceite:**
+    - Executar `LANG=pt_BR.UTF-8 cargo run --features standalone -- -h` exibe o manual da CLI inteiramente traduzido em Português do Brasil.
+    - Executar `LANG=en_US.UTF-8 cargo run --features standalone -- -h` exibe o manual da CLI em Inglês.
+    - Ao instanciar a CLAP GUI em hosts configurados com localidade em português, a janela exibe controles ("ENTRADA", "SAÍDA", "PORTÃO" ou equivalentes), status e botões em português.
+    - `cargo test` passa com sucesso em todas as suítes e `./utils/lints.sh` é executado com zero warnings/erros.
 
 ### Épico 6.2 — Sessão de Estresse Final em DAWs
 
 - [ ] **Tarefa 6.2.1** — Endurance de 1 Hora com Carga Máxima
 
+  - **Contexto:**
+    Antes do lançamento Alpha, é crucial assegurar que o plugin não apresenta vazamentos de recursos (memória, file descriptors) ou degradação de performance ao longo de sessões prolongadas sob alta carga no Bitwig Studio e no Fender Studio Pro.
   - **Ações Técnicas:**
-    1. Projeto Bitwig com: 4 instâncias do NAM-rs (modelos diferentes), 2 LFOs modulando parâmetros, 1 trilha de referência em paralelo (para validar ADC), rendering offline ativado.
-    2. Projeto Studio One com: 2 instâncias do NAM-rs, automação desenhada em 2 parâmetros, playback contínuo.
-    3. Deixar rodando por 60 minutos em cada host com monitoramento: `htop` (CPU e RAM), `dmesg` (erros de kernel), log da DAW (crashes).
-    4. Ao final: verificar que RAM não cresceu (sem leak), CPU estável, zero XRUNs no log de ambos os hosts.
-  - **Aceite:** 60 minutos sem crash em ambos os hosts, sem leak, sem XRUN. RAM final ≤ RAM inicial + 5MB.
+    1. Montar um projeto de teste de endurance no Bitwig Studio contendo 4 instâncias concorrentes do NAM-rs utilizando modelos de redes neurais distintos (WaveNet e LSTM) e com 2 moduladores LFO associados a cada parâmetro.
+    2. Adicionar uma trilha de sinal idêntica em paralelo com fase invertida e compensação automática de atraso (ADC) ativa para confirmar que o alinhamento de fase é mantido perfeitamente no tempo.
+    3. Iniciar um script de monitoramento em segundo plano que extrai informações de `/proc/$(pgrep -f "bitwig-studio" | head -n 1)/status` e monitora uso de memória residente (RSS), virtual (VSZ) e o contador de XRUNs do PipeWire/JACK.
+    4. Repetir o ensaio de estresse com 2 instâncias do plugin no Fender Studio Pro rodando sob XWayland por 60 minutos ininterruptos.
+    5. Inspecionar o log de kernel (`dmesg -T`) e o arquivo de logs do Host à procura de violações de thread access ou pânicos silenciosos.
+  - **Aceite:**
+    - Zero crashes ou travamentos nos hosts ao longo dos 60 minutos de reprodução contínua.
+    - O consumo de memória RSS do processo do plugin/host deve estabilizar (variação menor que 5MB após os primeiros 5 minutos de aquecimento, confirmando ausência de vazamentos no loop da GUI e nos buffers circulares).
+    - Latência de áudio estável com zero XRUNs acumulados decorrentes do NAM-rs.
 
 - [ ] **Tarefa 6.2.2** — Regressão do Modo Standalone
 
-  - **Contexto:** As mudanças em `src/dsp/pipeline.rs` (alterações de feature flags na Sprint 2) podem ter introduzido regressões no modo Standalone. Confirmar paridade total.
+  - **Contexto:**
+    A introdução de novos feature flags (`clap-plugin` e `clap-plugin-gui`) e a refatoração do pipeline DSP principal podem ter afetado o modo standalone (PipeWire/JACK nativo). É vital atestar que o NAM-rs rodando em modo CLI standalone preserva suas propriedades de baixa latência e compatibilidade.
   - **Ações Técnicas:**
-    1. `cargo test --features standalone` → 100% verde.
-    2. `cargo bench --features standalone` → nenhuma regressão de performance vs baseline pré-Sprint-1.
-    3. Executar `./utils/lints.sh` para ambas as features (standalone e clap-plugin-gui).
-  - **Aceite:** Todos os testes do Standalone passam. Benchmarks dentro de ±2% do baseline.
+    1. Executar a suíte de testes de integração com a flag de standalone ativa (`cargo test --features standalone`).
+    2. Rodar benchmarks de performance DSP no hot-path (`cargo bench --features standalone`) e confrontar os resultados P50 e P95 contra o baseline histórico pré-Sprint-1.
+    3. Testar a inicialização do executável standalone conectando-o dinamicamente ao PipeWire sob taxas de amostragem comuns (44.1kHz e 48kHz), verificando se o escalonamento em tempo real (RT) e as prioridades do kernel são atribuídos corretamente.
+    4. Garantir que as diretrizes de linting de qualidade e higiene de código se aplicam igualmente (`./utils/lints.sh`).
+  - **Aceite:**
+    - Executável standalone compila e todos os testes unitários/integração integrados passam com status de sucesso.
+    - Desempenho do benchmark DSP de inferência e resampling standalone mantido com variação máxima tolerada de ±2% em comparação ao baseline pré-sprint.
 
-- [ ] **Tarefa 6.2.3** — Toneladas de testes A/B
+- [ ] **Tarefa 6.2.3** — Testes A/B de Fidelidade e Integridade de Inferência
 
+  - **Contexto:**
+    Para garantir a acurácia matemática e fidelidade do processamento DSP e das aproximações matemáticas de funções de ativação do NAM-rs (Wavenet/LSTM) em relação à implementação original de referência em Python/C++ (sdatkinson), devemos realizar testes de verificação de sinal.
   - **Ações Técnicas:**
-    1. Baixar do <https://www.tone3000.com/> toneladas de arquivos .nam dos mais variados tipos.
-    2. Comparar lado a lado o som gerado pelo NAM-rs e por alguma outra implementação de referência (sdatkinson, guitarix, etc).
-  - **Aceite:** Na maioria, áudio idêntico. Onde diferir, analisar e corrigir.
+    1. Coletar um conjunto representativo de arquivos de modelo (.nam e .namb) do repositório público (como Tone3000) cobrindo diferentes arquiteturas e tamanhos (WaveNet Standard, LSTM 1 camada, LSTM 2 camadas).
+    2. Instale o NAM-rs e a implementação oficial de referência sobre faixatracks com áudio real e também sobre sinais de entrada de varredura (sine sweep e ruído branco), garantindo que os dois estejam perfeitamente idênticos.
+    3. Computar a diferença RMS ponto a ponto entre os sinais gerados (sinal de erro) e validar que a diferença de magnitude não ultrapassa o limite de ruído de quantização exigido (-80 dBFS).
+    4. Corrigir discrepâncias de amostragem, coeficientes de filtro FIR de resampling ou tratamento de ganhos caso o desvio seja maior que o tolerável.
+  - **Aceite:**
+    - Erro RMS de discrepância tonal de inferência em relação à implementação de referência é estritamente inferior a -80 dB em todos os modelos testados.
+    - Zero problemas de pânico ou silenciamento nos blocos processados.
 
-### Épico 6.3 — Documentação
+### Épico 6.3 — Documentação e Alpha Release
 
 - [ ] **Tarefa 6.3.1** — Atualizar `docs/architecture.md`
 
-  - **Nota (Atualização 2026-05-19):** A seção §8.1 já contém: Arquitetura CLAP (Threads e Ciclo de Vida), tabela de Extensões CLAP, Interface Gráfica (estratégia Wayland em camadas, stack tecnológico, feature flag, isolamento de threads). O foco residual desta tarefa é:
-  - **Ações Técnicas Residuais:**
-    1. Adicionar screenshot da UI rodando no Bitwig e no Studio One (captura de tela do desenvolvimento).
-    2. Verificar consistência com `docs/architecture.md` §4.1 (Feature Flags table) — atualizar a tabela com os novos profiles de build (`clap-plugin-gui`).
-    3. Revisão final de toda a §8.1 para garantir que reflete o código implementado.
-  - **Aceite:** `docs/architecture.md` atualizado e revisado. Screenshots de ambas as DAWs incluídos.
+  - **Contexto:**
+    Toda a arquitetura e detalhes técnicos consolidados nas Sprints 4 e 5 (GUI em egui/baseview, modo bilingue, compartilhamento de pesos base via Arc e histograma de latência DSP) devem ser documentados de maneira detalhada para manter o repositório organizado e alinhado com o estado real do código.
+  - **Ações Técnicas:**
+    1. Atualizar a seção §8.1 de `docs/architecture.md` detalhando as threads (Main, Audio, UI), a comunicação lock-free SPSC implementada e as restrições de RT-Safety.
+    2. Adicionar diagramas de arquitetura (formato Mermaid) que expliquem o fluxo de eventos e dados de telemetria.
+    3. Documentar a matriz de suporte de Feature Flags atualizada com os perfis `standalone`, `clap-plugin` e `clap-plugin-gui` e as diretrizes para empacotamento.
+    4. Adicionar capturas de tela/mockups de homologação da UI em execução nas DAWs (Bitwig e Fender Studio Pro).
+  - **Aceite:**
+    - Documento de arquitetura sincronizado com o estado final da branch principal.
+    - Diagramas em Mermaid renderizados perfeitamente e sem erros sintáticos.
 
 - [ ] **Tarefa 6.3.2** — Checklist Pré-Release e Tag Git
 
   - **Ações Técnicas:**
-    1. Rodada de leitura e revisão completa da pasta `src/clap/`.
-    2. Git Tag e Github Release.
-    3. Publicação no Flathub.
+    1. Realizar uma varredura final no repositório com o script `./utils/lints.sh` e auditoria manual para apagar logs temporários, arquivos `.tmp`, dumps e artefatos que não estejam listados no `.gitignore`.
+    2. Incrementar a versão no arquivo `Cargo.toml` para `2.0.0` e atualizar o histórico de alterações (`CHANGELOG.md` ou similar).
+    3. Criar a Tag git correspondente à versão Alpha e submetê-la ao repositório remoto.
+    4. Preparar o manifesto de compilação da release e estruturar os metadados para distribuição preliminar (ex: empacotamento em tarball, pacotes para Flathub ou instaladores apropriados).
+  - **Aceite:**
+    - Tag de release criada e publicada.
+    - Binários finais gerados no CI sem warnings e prontos para teste público da comunidade.
 
 > **📋 FINALIZAÇÃO — Sprint 6 concluída**
-> O NAM-rs v2.0.0-alpha.1 estará certificado: 100% no `clap-validator`, 60min de endurance sem falhas em Bitwig E Studio One, modo Standalone sem regressões, e documentação sincronizada. Pronto para uso em produção no Bitwig Studio 6.0.6 e Studio One 7.2+ (Ubuntu Linux 25.10+).
+> O NAM-rs v2.0.0 estará certificado: 100% no `clap-validator`, 60min de endurance sem falhas em Bitwig E Fender Studio Pro, modo Standalone sem regressões, e documentação sincronizada. Pronto para uso em produção no Bitwig Studio e Fender Studio Pro.
