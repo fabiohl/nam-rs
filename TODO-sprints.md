@@ -883,7 +883,6 @@
   > - ✅ `egui::Frame::none()` deprecado substituído por `Frame::new()`.
   > - ✅ Zero warnings, zero erros. Build release 7.3MB deployado em `~/.clap/nam-rs.clap`.
 
-
 - [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX
 
   - **Contexto:** É preciso validar a experiência do usuário ponta-a-ponta na DAW.

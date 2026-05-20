@@ -580,7 +580,8 @@ pub fn draw_ui(
                 let model_name = if shared.ui_loading.load(Ordering::Relaxed) {
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
                     let elapsed = ui.input(|i| i.time);
-                    let frames = ["⏳ Loading", "⏳ Loading.", "⏳ Loading..", "⏳ Loading..."];
+                    // ASCII puro — sem emoji para evitar quadradinhos de fallback de glifo
+                    let frames = ["Loading", "Loading.", "Loading..", "Loading..."];
                     let idx = (elapsed * 4.0) as usize % frames.len();
                     frames[idx].to_string()
                 } else {
@@ -588,27 +589,32 @@ pub fn draw_ui(
                     if name_guard.is_empty() {
                         "No model loaded".to_string()
                     } else {
-                        // Truncar com ellipsis se necessário (E6)
-                        let s = name_guard.as_str();
-                        if s.len() > 30 { format!("{}...", &s[..27]) } else { s.to_string() }
+                        name_guard.clone()
                     }
                 };
 
-                // Caixa estilizada do nome do modelo (M2)
+                // Caixa estilizada do nome do modelo (M2).
+                // Label::truncate() delega ao egui o corte visual automático —
+                // sem precisar adivinhar o número de chars, funciona para qualquer fonte/escala.
                 egui::Frame::new()
                     .fill(COL_BG)
                     .stroke(egui::Stroke::new(1.0, COL_BORDER))
                     .corner_radius(egui::CornerRadius::same(3))
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
-                        ui.set_min_width(128.0);
-                        ui.label(
-                            egui::RichText::new(&model_name)
-                                .font(egui::FontId::proportional(9.5))
-                                .color(COL_MUTED)
-                                .italics(),
+                        ui.set_min_width(120.0);
+                        ui.set_max_width(120.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&model_name)
+                                    .font(egui::FontId::proportional(9.5))
+                                    .color(COL_MUTED)
+                                    .italics(),
+                            )
+                            .truncate()
                         );
                     });
+
             });
         });
 
