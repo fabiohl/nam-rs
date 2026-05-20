@@ -883,27 +883,63 @@
   > - ✅ `egui::Frame::none()` deprecado substituído por `Frame::new()`.
   > - ✅ Zero warnings, zero erros. Build release 7.3MB deployado em `~/.clap/nam-rs.clap`.
 
-- [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX
+- [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX (Bitwig Studio & Fender Studio Pro)
 
-  - **Contexto:** É preciso validar a experiência do usuário ponta-a-ponta na DAW.
+  - **Contexto:** É preciso validar a experiência do usuário ponta-a-ponta nas DAWs de referência (Bitwig Studio e Fender Studio Pro), certificando que o comportamento visual, a latência de interface e o áudio funcionam de forma impecável e harmoniosa.
   - **Ações do Testador:**
-    1. Testar File Picker: O dialog (`rfd`) não pode travar a interface da DAW nem a thread de áudio. O feedback "Loading..." tem que aparecer transitoriamente.
-    2. Testar Controles: Mover todos os knobs e atestar que a resposta do áudio e as labels numéricas (dB) mudam instantaneamente.
-    3. Testar Medidores (VU): Inserir áudio com forte dinâmica. Os VUs L/R reagem bem? O "peak hold" dura exatos 2 segundos conforme projetado? A cor clipando no topo acende corretamente?
-    4. Testar Automações: O clique/arrasto nos knobs deve gravar trilhas de automação de forma suave no grid (gestures begin/end bem comportados).
-    5. Persistência de Sessão: Criar um projeto, alterar parâmetros/modelo, salvar e fechar. Ao reabrir, certifique-se de que o estado é idêntico.
-  - **Aceite:** Tudo suave, fluido, responsivo a 60fps. Nenhum XRUN (engasgo no áudio) durante o manuseio da interface.
+    1. **File Picker & Thread Safety (Ambos os Hosts):**
+       - Instanciar o plugin e clicar em `[📂 Load Model]`.
+       - O File Picker (`rfd`) deve abrir de forma assíncrona. Validar que o event loop do Host (DAW) não congela enquanto o picker está aberto.
+       - Durante a escolha do arquivo, o sinal de áudio passando pelo plugin deve continuar fluindo normalmente (no-interrupt).
+       - Ao selecionar o modelo, o status bar deve exibir `"⏳ Loading..."` temporariamente (com o spinner piscando) e atualizar para o nome abreviado (com reticências se longo) assim que for carregado na áudio thread.
+    2. **Controles, Fine-Tune & Resposta em Tempo Real:**
+       - Arrastar os knobs `INPUT`, `OUTPUT` e `GATE` com o mouse. A resposta do áudio e os tooltips em dB devem mudar de forma fluida.
+       - Manter a tecla `Ctrl` pressionada durante o arraste para validar a funcionalidade de fine-tune (sensibilidade dividida por 10). O ajuste deve ser extremamente preciso.
+       - Clicar duas vezes em qualquer knob e certificar-se de que ele retorna ao seu valor padrão (ex: `0.0 dB` para ganhos, `-70.0 dB` para o gate).
+    3. **Medição VU, Peak Hold & LEDs de Clipping:**
+       - Alimentar o canal com sinal dinâmico (DI de guitarra com picos de volume ou gerador de transientes).
+       - Verificar a resposta dos medidores VU a 60fps, observando a cor do gradiente tricolor (verde, amarelo, vermelho).
+       - O indicador de "peak hold" deve reter o valor de pico por exatos 2.0 segundos, realizando após esse tempo um decaimento analógico suave (fade exponencial ×0.95 por frame).
+       - Elevar o ganho de entrada para provocar clipping digital (> 0 dBFS). Validar que os LEDs de clipping vermelhos no topo do VU acendem.
+       - Clicar sobre os LEDs vermelhos de clipping acesos e confirmar se eles resetam imediatamente.
+    4. **Automações e Gravação de Gestos:**
+       - **No Bitwig Studio:** Configurar o canal em modo de escrita de automação (*Write* ou *Latch*). Arrastar os knobs da GUI do plugin. A DAW deve registrar os nós de automação perfeitamente no grid de arranjo. Certificar-se de que o host envia `CLAP_EVENT_PARAM_GESTURE_BEGIN` ao clicar/iniciar e `CLAP_EVENT_PARAM_GESTURE_END` ao soltar o mouse.
+       - **No Fender Studio Pro:** Repetir a gravação de trilhas de automação movimentando os knobs diretamente na GUI do plugin e no painel do host, validando a sincronia bidirecional.
+    5. **Remote Controls e Integração de Hardware:**
+       - **No Bitwig Studio:** Conectar um controlador MIDI/Hardware (ou usar o Device Panel). Validar que a Página 0 ("Main" com INPUT, OUTPUT, BYPASS) e Página 1 ("Gate" com GATE) aparecem mapeadas corretamente.
+       - Mover o knob na GUI do plugin e validar que o correspondente no Device Panel da DAW se move simultaneamente. Mover no Device Panel e validar a mudança na GUI do plugin.
+    6. **Accent Color Dinâmico (Bitwig Studio):**
+       - Mudar a cor da trilha no Bitwig Studio. A cor do arco dos knobs e dos medidores de VU na GUI do plugin deve mudar instantaneamente (< 100ms) para corresponder à cor da trilha.
+    7. **Persistência de Sessão e Estado (Ambos os Hosts):**
+       - Salvar um projeto no Bitwig Studio e no Fender Studio Pro contendo o plugin configurado com um modelo específico (ex: `jcm800.nam`) e ganhos alterados.
+       - Fechar a DAW e reabrir o projeto. O plugin deve inicializar com exatamente os mesmos parâmetros e o mesmo modelo previamente carregados.
+  - **Aceite:** Renderização visual a 60fps sem oscilações, flicker ou offsets de mouse em ambas as DAWs. Zero XRUNs ou interrupções na thread de áudio durante qualquer alteração de parâmetros ou manipulação de janela.
 
-- [ ] **Tarefa 4.4.4** — Bateria de Stress Test (Smoke Test Cross-Host)
+- [ ] **Tarefa 4.4.3** — Bateria de Stress Test (Smoke Test Cross-Host)
 
-  - **Contexto:** A janela do plugin deve sobreviver a um músico de dedos rápidos e DAWs processando operações intensas.
+  - **Contexto:** Garantir que o plugin sobreviva a operações estressantes, uso frenético de interface e modulações agressivas sem derrubar a DAW (panic/crash) ou vazar recursos de sistema (memória RAM ou File Descriptors).
   - **Ações do Testador:**
-    1. Alternar o Bypass alucinadamente e abrir/fechar a GUI mais de 20 vezes consecutivamente.
-    2. Tentar carregar modelos 10x rapidamente enquanto a GUI processa áudio.
-    3. Modulação Estressante: Aplicar uma modulação via LFO pesada nos knobs e deixar operando por > 5 minutos.
-  - **Aceite:** O plugin não pode causar panics na DAW. Zero vazamento de RAM visível monitorando via `htop`.
+    1. **Spamming de Bypass e Interface (Bitwig Studio & Fender Studio Pro):**
+       - Alternar o bypass do plugin alucinadamente via GUI (cliques muito rápidos) e via botão nativo de bypass do host (20+ vezes consecutivamente).
+       - Abrir e fechar a GUI do plugin consecutivamente 20+ vezes em menos de 30 segundos com áudio em execução.
+       - No Bitwig Studio, alternar os modos de hosting (*Together*, *Individually* e *Individually strict*) e refazer o teste. O sandbox de plugins da DAW não pode crashar.
+    2. **Carga Rápida Concorrente de Modelos:**
+       - Abrir o File Picker e carregar modelos diferentes de forma rápida e consecutiva (10x em menos de 1 minuto) enquanto a DAW processa sinal de áudio real.
+       - Monitorar o consumo de RAM (RSS) do processo sandbox ou da DAW no `htop`. A memória deve permanecer estável, provando que o coletor de lixo lock-free (`GcItem` e `GcOverflowBuffer`) na main thread está liberando corretamente os buffers e pesos de modelos anteriores do heap.
+    3. **Modulação por LFO e Sinais de Alta Frequência (The Grid no Bitwig):**
+       - **No Bitwig Studio:** Adicionar um LFO rápido (ex: 20Hz a 100Hz) modulando o `input_gain_db` ou conectar uma cadeia complexa de modulação no *The Grid* direcionada a parâmetros do NAM-rs.
+       - Deixar rodando por no mínimo 5 minutos sob playback contínuo.
+       - Ouvir com atenção a saída para certificar-se de que o `ParamSmoother` eliminou completamente qualquer zipper noise ou artefato de clique, mesmo sob modulação sample-accurate rápida.
+       - **No Fender Studio Pro:** Utilizar envelopes de modulação ou LFOs de canal para estressar os parâmetros em playback por 5 minutos.
+    4. **Comportamento do Auto-Sleep (Tail & Sleep):**
+       - Parar o playback/gerar silêncio no canal. No Bitwig Studio, verificar se o host coloca o plugin para dormir (CPU cai para zero, telemetria indica interrupção do processamento).
+       - Iniciar o playback novamente e validar que o plugin acorda instantaneamente, sem estalos ou perda de transientes (fade-in rampa do Gate FSM funcionando perfeitamente).
+    5. **Auditoria de Recursos:**
+       - Deixar o plugin em execução em sessões de áudio por 15 minutos em ambos os hosts.
+       - Executar `lsof -p <PID>` do processo do plugin/host para garantir que o número de File Descriptors abertos permanece estável e sem vazamento de ponteiros de arquivos do File Picker ou alocações do egui.
+  - **Aceite:** Zero crashes, zero panics na DAW ou no processo sandbox. Uso de memória RSS estabilizado (sem crescimento cumulativo após as trocas de modelos). Zero XRUNs adicionais acusados pelo host de áudio.
 
-- [ ] **Tarefa 4.4.5** — Validar viabilidade prática do Modo Headless
+- [ ] **Tarefa 4.4.4** — Validar viabilidade prática do Modo Headless
 
   - **Contexto:** Ante o esforço de manter um build headless, precisamos debater a real necessidade do usuário.
   - **Ações do Testador:** Refletir: A ausência da interface egui afeta cenários profissionais essenciais onde o Bitwig rodaria o DSP bruto?
