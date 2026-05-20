@@ -6,12 +6,18 @@ use clack_plugin::host::HostSharedHandle;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+/// Estado persistente da interface gráfica entre frames.
 #[derive(Clone, Debug)]
 pub struct UiState {
+    /// Último valor de pico do canal esquerdo retido.
     pub peak_l_hold: f32,
+    /// Último valor de pico do canal direito retido.
     pub peak_r_hold: f32,
+    /// Instante em que o valor de pico esquerdo foi retido.
     pub peak_l_hold_time: Instant,
+    /// Instante em que o valor de pico direito foi retido.
     pub peak_r_hold_time: Instant,
+    /// Indica se o painel expandido de telemetria deve ser exibido.
     pub show_telemetry: bool,
 }
 
@@ -49,7 +55,7 @@ fn get_simd_badge() -> &'static str {
 
 fn knob_widget(
     ui: &mut egui::Ui,
-    id: egui::Id,
+    _id: egui::Id,
     value: f32,
     range: std::ops::RangeInclusive<f32>,
     color: egui::Color32,
@@ -69,7 +75,7 @@ fn knob_widget(
 
     // Scroll handling
     if response.hovered() {
-        let scroll_y = ui.input(|i| i.scroll_delta.y);
+        let scroll_y = ui.input(|i| i.raw_scroll_delta.y);
         if scroll_y != 0.0 {
             let range_len = range.end() - range.start();
             let value_delta = scroll_y * (range_len / 1000.0);
@@ -170,7 +176,7 @@ fn handle_knob(
         }
     }
 
-    if response.drag_released() {
+    if response.drag_stopped() {
         end_flag.store(true, Ordering::Relaxed);
         if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
             params_ext.request_flush(host);
@@ -181,7 +187,7 @@ fn handle_knob(
         ui.label(
             egui::RichText::new(label)
                 .font(egui::FontId::proportional(11.0))
-                .bold()
+                .strong()
                 .color(egui::Color32::from_rgb(139, 149, 165)),
         );
         ui.label(
@@ -216,7 +222,7 @@ fn draw_vertical_meter(
     painter.rect_filled(rect, 1.5, egui::Color32::from_rgb(26, 29, 35));
 
     let peak_db = if peak_val > 1e-5 { 20.0 * peak_val.log10() } else { -60.0 };
-    let hold_db = if *hold_val > 1e-5 { 20.0 * *hold_val.log10() } else { -60.0 };
+    let hold_db = if *hold_val > 1e-5 { 20.0 * (*hold_val).log10() } else { -60.0 };
 
     let min_db = -60.0f32;
     let max_db = 6.0f32;
@@ -287,7 +293,7 @@ fn draw_vertical_meter(
 
 fn handle_bypass(
     ui: &mut egui::Ui,
-    id: egui::Id,
+    _id: egui::Id,
     atomic_val: &std::sync::atomic::AtomicU32,
     changed_flag: &std::sync::atomic::AtomicBool,
     begin_flag: &std::sync::atomic::AtomicBool,
@@ -334,7 +340,7 @@ fn handle_bypass(
         ui.label(
             egui::RichText::new("BYPASS")
                 .font(egui::FontId::proportional(11.0))
-                .bold()
+                .strong()
                 .color(egui::Color32::from_rgb(139, 149, 165)),
         );
         let status_text = if current_bypass { "BYPASSED" } else { "ACTIVE" };
@@ -346,6 +352,7 @@ fn handle_bypass(
     });
 }
 
+/// Desenha os componentes e o layout de 5 zonas da interface gráfica do NAM-rs.
 pub fn draw_ui(
     ui: &mut egui::Ui,
     shared: &NamClapShared,
@@ -363,7 +370,7 @@ pub fn draw_ui(
                 ui.label(
                     egui::RichText::new("NAM-rs⚡")
                         .font(egui::FontId::proportional(22.0))
-                        .bold()
+                        .strong()
                         .color(egui::Color32::from_rgb(0, 212, 170)),
                 );
                 ui.label(
@@ -383,11 +390,10 @@ pub fn draw_ui(
                 ui.horizontal(|ui| {
                     let text = egui::RichText::new(simd)
                         .font(egui::FontId::monospace(9.0))
-                        .bold()
+                        .strong()
                         .color(badge_color);
                     ui.add(
                         egui::Label::new(text)
-                            .wrap(false)
                     );
                 });
 
@@ -396,28 +402,45 @@ pub fn draw_ui(
                 let load_btn = ui.add(
                     egui::Button::new(
                         egui::RichText::new("📂 Load Model")
-                            .font(egui::FontId::proportional(12.0))
-                            .bold()
-                            .color(egui::Color32::from_rgb(229, 233, 240))
+                             .font(egui::FontId::proportional(12.0))
+                             .strong()
+                             .color(egui::Color32::from_rgb(229, 233, 240))
                     )
                     .fill(egui::Color32::from_rgb(35, 40, 48))
                     .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(46, 52, 64)))
                 );
 
-                if load_btn.clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("NAM Model", &["nam", "namb"])
-                        .pick_file()
-                    {
-                        if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
-                            *pending_guard = Some(path);
-                            host.request_callback();
+                if load_btn.clicked() && !shared.ui_loading.load(Ordering::Relaxed) {
+                    shared.ui_loading.store(true, Ordering::Relaxed);
+                    let shared_addr = shared as *const NamClapShared as usize;
+                    let host_static: clack_plugin::host::HostSharedHandle<'static> = unsafe {
+                        std::mem::transmute(*host)
+                    };
+                    std::thread::spawn(move || {
+                        let path_opt = rfd::FileDialog::new()
+                            .add_filter("NAM Model", &["nam", "namb"])
+                            .pick_file();
+
+                        let shared = unsafe { &*(shared_addr as *const NamClapShared) };
+                        if let Some(path) = path_opt {
+                            if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+                                *pending_guard = Some(path);
+                                host_static.request_callback();
+                            }
+                        } else {
+                            shared.ui_loading.store(false, Ordering::Relaxed);
                         }
-                    }
+                    });
                 }
 
                 ui.add_space(6.0);
-                let model_name = {
+                let model_name = if shared.ui_loading.load(Ordering::Relaxed) {
+                    ui.ctx().request_repaint_after(Duration::from_millis(100));
+                    let elapsed = ui.input(|i| i.time);
+                    let frames = ["⏳ Loading", "⏳ Loading.", "⏳ Loading..", "⏳ Loading..."];
+                    let idx = (elapsed * 4.0) as usize % frames.len();
+                    frames[idx].to_string()
+                } else {
                     let name_guard = shared.ui_model_name.lock().unwrap();
                     if name_guard.is_empty() {
                         "No model loaded".to_string()

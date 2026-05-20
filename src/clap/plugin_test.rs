@@ -30,6 +30,7 @@ fn test_gui_gestures_and_parameter_flow() {
         ui_clipped: std::sync::atomic::AtomicBool::new(false),
         ui_model_name: Mutex::new(String::new()),
         ui_pending_model: Mutex::new(None),
+        ui_loading: std::sync::atomic::AtomicBool::new(false),
         sample_rate: AtomicU32::new(44100),
         gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
         gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),

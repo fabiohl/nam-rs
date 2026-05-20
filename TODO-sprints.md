@@ -819,7 +819,7 @@
     4. Testar: criar uma automação no Bitwig arrastando o knob INPUT → a trilha de automação deve aparecer automaticamente.
   - **Aceite:** Arrastar qualquer knob no plugin → trilha de automação aparece no Bitwig. Valor da automação corresponde exatamente ao valor do knob.
 
-- [ ] **Tarefa 4.3.3** — File Picker Assíncrono e Loading Feedback
+- [X] **Tarefa 4.3.3** — File Picker Assíncrono e Loading Feedback
 
   - **Contexto:** `rfd::FileDialog::pick_file()` é bloqueante se chamado na UI thread. No Linux, deve ser chamado em thread separada via `std::thread::spawn` ou `rfd::AsyncFileDialog` com um executor async minimalista.
   - **Ações Técnicas:**

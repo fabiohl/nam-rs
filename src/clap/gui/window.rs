@@ -14,20 +14,36 @@ use crate::clap::plugin::NamClapSharedRef;
 /// Gerencia a inicialização e o ciclo de vida do contexto `egui` e do pintor `egui_glow`
 /// para desenho acelerado via OpenGL (glow).
 pub struct NamPluginWindow {
+    /// Contexto do Egui.
     egui_ctx: egui::Context,
+    /// Pintor Glow para renderização via OpenGL.
     painter: egui_glow::Painter,
+    /// Entrada bruta acumulada para o Egui.
     raw_input: egui::RawInput,
+    /// Instante de início para cálculos de tempo corrido.
     start_time: Instant,
+    /// Largura física da janela.
     width: u32,
+    /// Altura física da janela.
     height: u32,
+    /// Fator de escala da tela.
     scale: f32,
+    /// Referência ao estado compartilhado do plugin.
     shared: NamClapSharedRef,
+    /// Handle compartilhado estático do host CLAP.
+    host: clack_plugin::host::HostSharedHandle<'static>,
+    /// Estado persistente local da interface gráfica.
+    state: crate::clap::gui::ui::UiState,
 }
 
 impl NamPluginWindow {
     /// Inicializa a janela principal do plugin com baseview, criando o contexto gráfico
     /// e configurando o visual escuro customizado.
-    pub fn new(window: &mut Window, shared: NamClapSharedRef) -> Self {
+    pub fn new(
+        window: &mut Window,
+        shared: NamClapSharedRef,
+        host: clack_plugin::host::HostSharedHandle<'static>,
+    ) -> Self {
         let gl_ctx = window.gl_context().expect("OpenGL context not available");
         unsafe {
             gl_ctx.make_current();
@@ -80,6 +96,8 @@ impl NamPluginWindow {
             height,
             scale,
             shared,
+            host,
+            state: crate::clap::gui::ui::UiState::default(),
         }
     }
 }
@@ -92,165 +110,19 @@ impl WindowHandler for NamPluginWindow {
         }
 
         let shared = unsafe { &*self.shared.0 };
-        let peak_l = f32::from_bits(shared.ui_peak_l.load(std::sync::atomic::Ordering::Relaxed));
-        let peak_r = f32::from_bits(shared.ui_peak_r.load(std::sync::atomic::Ordering::Relaxed));
-        let clipped = shared.ui_clipped.load(std::sync::atomic::Ordering::Relaxed);
-        let model_name = {
-            let name_guard = shared.ui_model_name.lock().unwrap();
-            if name_guard.is_empty() {
-                "Nenhum modelo carregado".to_string()
-            } else {
-                name_guard.clone()
-            }
-        };
-
         let mut raw_input = self.raw_input.take();
         raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
         if let Some(info) = raw_input.viewports.get_mut(&egui::ViewportId::ROOT) {
             info.native_pixels_per_point = Some(self.scale);
         }
 
+        let host_ref: &clack_plugin::host::HostSharedHandle = unsafe {
+            std::mem::transmute(&self.host)
+        };
+
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(8.0);
-
-                    // Header row with logo and title
-                    ui.horizontal(|ui| {
-                        ui.add_space(10.0);
-                        ui.heading(
-                            egui::RichText::new("NAM-rs")
-                                .strong()
-                                .color(egui::Color32::from_rgb(150, 110, 250)),
-                        );
-                        ui.label(
-                            egui::RichText::new("v1.4.5")
-                                .small()
-                                .color(egui::Color32::from_rgb(100, 100, 120)),
-                        );
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add_space(10.0);
-                            if clipped {
-                                ui.label(
-                                    egui::RichText::new("● CLIPPED")
-                                        .strong()
-                                        .color(egui::Color32::from_rgb(255, 60, 60)),
-                                );
-                            } else {
-                                ui.label(
-                                    egui::RichText::new("● OK")
-                                        .strong()
-                                        .color(egui::Color32::from_rgb(60, 220, 100)),
-                                );
-                            }
-                        });
-                    });
-
-                    ui.add_space(8.0);
-
-                    // Model Status Panel
-                    ui.group(|ui| {
-                        ui.set_width(ui.available_width() - 20.0);
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Modelo Ativo:").strong());
-                            ui.label(
-                                egui::RichText::new(&model_name)
-                                    .code()
-                                    .color(egui::Color32::from_rgb(180, 200, 255)),
-                            );
-                        });
-                    });
-
-                    ui.add_space(12.0);
-
-                    // Meters
-                    ui.horizontal(|ui| {
-                        ui.add_space(10.0);
-                        ui.vertical(|ui| {
-                            ui.set_width(ui.available_width() - 10.0);
-
-                            // Left Channel Meter
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new("L")
-                                        .strong()
-                                        .color(egui::Color32::from_rgb(140, 140, 160)),
-                                );
-                                let progress_l = peak_l.min(1.5) / 1.5;
-                                let color = if peak_l > 1.0 {
-                                    egui::Color32::from_rgb(230, 80, 80)
-                                } else {
-                                    egui::Color32::from_rgb(120, 90, 230)
-                                };
-                                ui.add(
-                                    egui::ProgressBar::new(progress_l)
-                                        .show_percentage()
-                                        .text(format!("{:.1} dB", 20.0 * peak_l.max(1e-5).log10()))
-                                        .fill(color),
-                                );
-                            });
-
-                            // Right Channel Meter
-                            ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new("R")
-                                        .strong()
-                                        .color(egui::Color32::from_rgb(140, 140, 160)),
-                                );
-                                let progress_r = peak_r.min(1.5) / 1.5;
-                                let color = if peak_r > 1.0 {
-                                    egui::Color32::from_rgb(230, 80, 80)
-                                } else {
-                                    egui::Color32::from_rgb(120, 90, 230)
-                                };
-                                ui.add(
-                                    egui::ProgressBar::new(progress_r)
-                                        .show_percentage()
-                                        .text(format!("{:.1} dB", 20.0 * peak_r.max(1e-5).log10()))
-                                        .fill(color),
-                                );
-                            });
-                        });
-                    });
-
-                    ui.add_space(15.0);
-
-                    // A placeholder for our future DSP control knobs
-                    ui.horizontal(|ui| {
-                        ui.columns(4, |cols| {
-                            cols[0].vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Input Gain").strong());
-                                ui.add(
-                                    egui::Slider::new(&mut 0.0, -20.0..=20.0)
-                                        .show_value(true)
-                                        .suffix(" dB"),
-                                );
-                            });
-                            cols[1].vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Gate Threshold").strong());
-                                ui.add(
-                                    egui::Slider::new(&mut -60.0, -100.0..=0.0)
-                                        .show_value(true)
-                                        .suffix(" dB"),
-                                );
-                            });
-                            cols[2].vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Output Gain").strong());
-                                ui.add(
-                                    egui::Slider::new(&mut 0.0, -20.0..=20.0)
-                                        .show_value(true)
-                                        .suffix(" dB"),
-                                );
-                            });
-                            cols[3].vertical_centered(|ui| {
-                                ui.label(egui::RichText::new("Bypass").strong());
-                                ui.add_space(4.0);
-                                ui.checkbox(&mut false, "");
-                            });
-                        });
-                    });
-                });
+                crate::clap::gui::ui::draw_ui(ui, shared, host_ref, &mut self.state);
             });
         });
 

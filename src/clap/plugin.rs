@@ -72,6 +72,8 @@ pub struct NamClapShared {
     pub ui_model_name: Mutex<String>,
     /// Caminho do modelo pendente para ser carregado pela Main Thread. Escrito pela UI thread.
     pub ui_pending_model: Mutex<Option<std::path::PathBuf>>,
+    /// Indica se a GUI está no meio de um carregamento assíncrono de modelo.
+    pub ui_loading: std::sync::atomic::AtomicBool,
     /// Sample rate detectado do host.
     pub sample_rate: AtomicU32,
     
@@ -207,7 +209,9 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             None
         };
         if let Some(path) = pending_model {
-            if let Err(e) = self.load_model(&path) {
+            let res = self.load_model(&path);
+            self.shared.ui_loading.store(false, Ordering::Relaxed);
+            if let Err(e) = res {
                 if let Some(log) = self.host.get_extension::<HostLog>() {
                     let shared = self.host.shared();
                     let msg = CString::new(format!("NAM-rs: Falha ao carregar modelo da GUI: {:?}", e))
@@ -376,6 +380,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_clipped: std::sync::atomic::AtomicBool::new(false),
             ui_model_name: Mutex::new(String::new()),
             ui_pending_model: Mutex::new(None),
+            ui_loading: std::sync::atomic::AtomicBool::new(false),
             sample_rate: AtomicU32::new(0),
             gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
             gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),

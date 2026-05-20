@@ -83,9 +83,13 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             };
 
             let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
+            let host_shared = self.host.shared();
+            let host_static: clack_plugin::host::HostSharedHandle<'static> = unsafe {
+                std::mem::transmute(host_shared)
+            };
 
             let window_handle = baseview::Window::open_parented(&_window, options, move |win| {
-                NamPluginWindow::new(win, shared_ptr)
+                NamPluginWindow::new(win, shared_ptr, host_static)
             });
 
             self.window_handle = Some(window_handle);
