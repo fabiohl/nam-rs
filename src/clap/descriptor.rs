@@ -8,7 +8,7 @@ use clack_plugin::prelude::*;
 /// Retorna o descritor imutável do plugin.
 /// Lido pelo host durante scan — deve ser determinístico e sem alocações.
 pub fn nam_descriptor() -> PluginDescriptor {
-    PluginDescriptor::new("br.eti.fabiolima.nam-rs", "NAM-rs Neural Amp Modeler")
+    PluginDescriptor::new("br.eti.fabiolima.nam-rs", "NAM-rs")
         .with_vendor("Fabio Lima")
         .with_url("https://github.com/fabiohl/nam-rs")
         .with_description("Real-time Neural Amp Modeler plugin (CLAP)")
