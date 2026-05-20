@@ -5,6 +5,7 @@
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::clap::processor::NamClapProcessor;
+use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 use clack_extensions::params::{
     ParamDisplayWriter, ParamInfo, ParamInfoFlags, ParamInfoWriter, PluginAudioProcessorParams,
     PluginMainThreadParams,
@@ -37,8 +38,8 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     cookie: clack_plugin::utils::Cookie::empty(),
                     name: b"Input Gain",
                     module: b"",
-                    min_value: -24.0,
-                    max_value: 24.0,
+                    min_value: GAIN_MIN_DB as f64,
+                    max_value: GAIN_MAX_DB as f64,
                     default_value: 0.0,
                 });
             }
@@ -49,8 +50,8 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     cookie: clack_plugin::utils::Cookie::empty(),
                     name: b"Output Gain",
                     module: b"",
-                    min_value: -24.0,
-                    max_value: 24.0,
+                    min_value: GAIN_MIN_DB as f64,
+                    max_value: GAIN_MAX_DB as f64,
                     default_value: 0.0,
                 });
             }

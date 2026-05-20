@@ -793,7 +793,7 @@
 
 ### Épico 4.3 — Controles, Automação e Telemetria
 
-- [ ] **Tarefa 4.3.1** — Layout e Controles Principais (Mockup: `mockup_ui.jpg`)
+- [x] **Tarefa 4.3.1** — Layout e Controles Principais (Mockup: `mockup_ui.jpg`)
 
   - **Contexto:** A UI deve ser funcional e esteticamente coerente com o ecossistema de plugins profissionais. Layout baseado no Mockup aprovado (`mockup_ui.jpg`). Dark mode, compacto (600×280px), tipografia Inter.
   - **Referência visual:** `mockup_ui.jpg` aprovado pelo PO. Paleta de cores e layout detalhados na T4.0.2.
@@ -858,6 +858,8 @@
        - Modular Input Gain via LFO (Bitwig) ou automação desenhada (Studio One) por 5 minutos.
     2. Verificar: zero crashes, zero XRUNs, CPU estável, GUI responsiva.
   - **Aceite:** Zero crashes em ambos os hosts. GUI abre/fecha sem hang.
+
+- [ ] **Tarefa 4.4.3** — Validar na prática o modo headless.
 
 ---
 

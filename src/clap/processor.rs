@@ -163,6 +163,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             resampler.latency_samples(audio_config.sample_rate as u32),
             Ordering::Relaxed,
         );
+        shared.sample_rate.store(audio_config.sample_rate as u32, Ordering::Relaxed);
 
         Ok(Self {
             model_l: None,

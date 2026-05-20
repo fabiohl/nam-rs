@@ -70,9 +70,108 @@ pub struct NamClapShared {
     pub ui_clipped: std::sync::atomic::AtomicBool,
     /// Nome do modelo carregado (path basename). Escrito pela main thread, lido pela UI thread.
     pub ui_model_name: Mutex<String>,
+    /// Caminho do modelo pendente para ser carregado pela Main Thread. Escrito pela UI thread.
+    pub ui_pending_model: Mutex<Option<std::path::PathBuf>>,
+    /// Sample rate detectado do host.
+    pub sample_rate: AtomicU32,
+    
+    // Flags de controle de modificação por parâmetro (GUI -> Host/Processor)
+    /// Indica que o ganho de entrada foi alterado pela GUI.
+    pub gui_input_gain_changed: std::sync::atomic::AtomicBool,
+    /// Indica o início de um gesto de alteração do ganho de entrada.
+    pub gesture_begin_input_gain: std::sync::atomic::AtomicBool,
+    /// Indica o término de um gesto de alteração do ganho de entrada.
+    pub gesture_end_input_gain: std::sync::atomic::AtomicBool,
+    
+    /// Indica que o ganho de saída foi alterado pela GUI.
+    pub gui_output_gain_changed: std::sync::atomic::AtomicBool,
+    /// Indica o início de um gesto de alteração do ganho de saída.
+    pub gesture_begin_output_gain: std::sync::atomic::AtomicBool,
+    /// Indica o término de um gesto de alteração do ganho de saída.
+    pub gesture_end_output_gain: std::sync::atomic::AtomicBool,
+    
+    /// Indica que o threshold do noise gate foi alterado pela GUI.
+    pub gui_gate_thresh_changed: std::sync::atomic::AtomicBool,
+    /// Indica o início de um gesto de alteração do noise gate threshold.
+    pub gesture_begin_gate_thresh: std::sync::atomic::AtomicBool,
+    /// Indica o término de um gesto de alteração do noise gate threshold.
+    pub gesture_end_gate_thresh: std::sync::atomic::AtomicBool,
+    
+    /// Indica que o bypass foi alterado pela GUI.
+    pub gui_bypass_changed: std::sync::atomic::AtomicBool,
+    /// Indica o início de um gesto de alteração do bypass.
+    pub gesture_begin_bypass: std::sync::atomic::AtomicBool,
+    /// Indica o término de um gesto de alteração do bypass.
+    pub gesture_end_bypass: std::sync::atomic::AtomicBool,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
+
+impl NamClapShared {
+    /// Descarrega os gestos e atualizações de parâmetros iniciados pela GUI
+    /// na fila de eventos de saída do host.
+    pub fn write_gui_events(&self, output: &mut OutputEvents) {
+        use clack_plugin::events::event_types::{ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent};
+        use crate::clap::extensions::params::{
+            PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN, PARAM_GATE_THRESH, PARAM_BYPASS,
+        };
+
+        let mut handle_param = |param_id: u32,
+                                changed_flag: &std::sync::atomic::AtomicBool,
+                                begin_flag: &std::sync::atomic::AtomicBool,
+                                end_flag: &std::sync::atomic::AtomicBool,
+                                value_atomic: &std::sync::atomic::AtomicU32| {
+            if begin_flag.swap(false, Ordering::Relaxed) {
+                let ev = ParamGestureBeginEvent::new(0, ClapId::new(param_id));
+                let _ = output.try_push(&ev);
+            }
+            if changed_flag.swap(false, Ordering::Relaxed) {
+                let val = f32::from_bits(value_atomic.load(Ordering::Relaxed)) as f64;
+                let ev = ParamValueEvent::new(
+                    0,
+                    ClapId::new(param_id),
+                    clack_plugin::events::Pckn::new(0u8, 0u8, 0u8, 0u8),
+                    val,
+                    clack_plugin::utils::Cookie::empty(),
+                );
+                let _ = output.try_push(&ev);
+            }
+            if end_flag.swap(false, Ordering::Relaxed) {
+                let ev = ParamGestureEndEvent::new(0, ClapId::new(param_id));
+                let _ = output.try_push(&ev);
+            }
+        };
+
+        handle_param(
+            PARAM_INPUT_GAIN,
+            &self.gui_input_gain_changed,
+            &self.gesture_begin_input_gain,
+            &self.gesture_end_input_gain,
+            &self.param_input_gain,
+        );
+        handle_param(
+            PARAM_OUTPUT_GAIN,
+            &self.gui_output_gain_changed,
+            &self.gesture_begin_output_gain,
+            &self.gesture_end_output_gain,
+            &self.param_output_gain,
+        );
+        handle_param(
+            PARAM_GATE_THRESH,
+            &self.gui_gate_thresh_changed,
+            &self.gesture_begin_gate_thresh,
+            &self.gesture_end_gate_thresh,
+            &self.param_gate_thresh,
+        );
+        handle_param(
+            PARAM_BYPASS,
+            &self.gui_bypass_changed,
+            &self.gesture_begin_bypass,
+            &self.gesture_end_bypass,
+            &self.param_bypass,
+        );
+    }
+}
 
 /// Estado exclusivo da main thread (carregamento de modelos, state save/load).
 pub struct NamClapMainThread<'a> {
@@ -100,6 +199,23 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     fn on_main_thread(&mut self) {
         // Drenar modelos obsoletos para liberar memória fora do RT.
         drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
+
+        // Verifica se há um modelo pendente enviado pela UI
+        let pending_model = if let Ok(mut pending_guard) = self.shared.ui_pending_model.lock() {
+            pending_guard.take()
+        } else {
+            None
+        };
+        if let Some(path) = pending_model {
+            if let Err(e) = self.load_model(&path) {
+                if let Some(log) = self.host.get_extension::<HostLog>() {
+                    let shared = self.host.shared();
+                    let msg = CString::new(format!("NAM-rs: Falha ao carregar modelo da GUI: {:?}", e))
+                        .expect("Falha ao criar CString");
+                    log.log(&shared, LogSeverity::Error, &msg);
+                }
+            }
+        }
 
         // Logging RT-Safe via flags atômicas (consome eventos transientes)
         if let Some(log) = self.host.get_extension::<HostLog>() {
@@ -259,6 +375,20 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
             ui_clipped: std::sync::atomic::AtomicBool::new(false),
             ui_model_name: Mutex::new(String::new()),
+            ui_pending_model: Mutex::new(None),
+            sample_rate: AtomicU32::new(0),
+            gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
+            gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
+            gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
+            gui_output_gain_changed: std::sync::atomic::AtomicBool::new(false),
+            gesture_begin_output_gain: std::sync::atomic::AtomicBool::new(false),
+            gesture_end_output_gain: std::sync::atomic::AtomicBool::new(false),
+            gui_gate_thresh_changed: std::sync::atomic::AtomicBool::new(false),
+            gesture_begin_gate_thresh: std::sync::atomic::AtomicBool::new(false),
+            gesture_end_gate_thresh: std::sync::atomic::AtomicBool::new(false),
+            gui_bypass_changed: std::sync::atomic::AtomicBool::new(false),
+            gesture_begin_bypass: std::sync::atomic::AtomicBool::new(false),
+            gesture_end_bypass: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -284,7 +414,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             .expect("Consumidor gc_rx já foi extraído");
 
         #[cfg_attr(test, allow(unused_mut))]
-        let mut main_thread = NamClapMainThread {
+        let main_thread = NamClapMainThread {
             shared,
             params: NamPluginParams::default(),
             host,
@@ -295,37 +425,6 @@ impl DefaultPluginFactory for NamClapPlugin {
             #[cfg(feature = "clap-plugin-gui")]
             window_handle: None,
         };
-
-        // TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.3.1).
-        // Busca automática de modelo para facilitar testes iniciais sem GUI.
-        // Decisão técnica: O modelo carregado é indeterminístico
-        // (depende da ordem de `readdir` do filesystem). Isso é aceito por design
-        // pois este bloco inteiro é temporário e será removido na Sprint 4.
-        #[cfg(not(test))]
-        if let Ok(home) = std::env::var("HOME") {
-            let clap_dir = std::path::Path::new(&home).join(".clap");
-            if let Ok(entries) = std::fs::read_dir(&clap_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
-                    if ext == "nam" || ext == "namb" {
-                        #[allow(clippy::collapsible_if)]
-                        if let Ok(()) = main_thread.load_model(&path) {
-                            if let Some(log) = main_thread.host.get_extension::<HostLog>() {
-                                let msg = format!(
-                                    "NAM-rs: Carregado automaticamente o modelo {:?}",
-                                    path
-                                );
-                                if let Ok(c_msg) = CString::new(msg) {
-                                    log.log(&main_thread.host.shared(), LogSeverity::Info, &c_msg);
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        }
 
         Ok(main_thread)
     }
