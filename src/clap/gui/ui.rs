@@ -590,7 +590,7 @@ pub fn draw_ui(
                     } else {
                         // Truncar com ellipsis se necessário (E6)
                         let s = name_guard.as_str();
-                        if s.len() > 20 { format!("{}…", &s[..18]) } else { s.to_string() }
+                        if s.len() > 30 { format!("{}...", &s[..27]) } else { s.to_string() }
                     }
                 };
 
@@ -795,10 +795,10 @@ pub fn draw_ui(
             let model_in_bar = {
                 let name_guard = shared.ui_model_name.lock().unwrap_or_else(|e| e.into_inner());
                 if name_guard.is_empty() {
-                    "—".to_string()
+                    "-".to_string()
                 } else {
                     let s = name_guard.as_str();
-                    if s.len() > 22 { format!("{}…", &s[..20]) } else { s.to_string() }
+                    if s.len() > 35 { format!("{}...", &s[..32]) } else { s.to_string() }
                 }
             };
 
@@ -809,7 +809,7 @@ pub fn draw_ui(
             );
 
             // Separador de pipe
-            ui.label(egui::RichText::new("│").font(egui::FontId::proportional(10.0)).color(COL_BORDER));
+            ui.label(egui::RichText::new("|").font(egui::FontId::proportional(10.0)).color(COL_BORDER));
 
             ui.label(
                 egui::RichText::new(sr_text)
@@ -817,7 +817,7 @@ pub fn draw_ui(
                     .color(COL_MUTED),
             );
 
-            ui.label(egui::RichText::new("│").font(egui::FontId::proportional(10.0)).color(COL_BORDER));
+            ui.label(egui::RichText::new("|").font(egui::FontId::proportional(10.0)).color(COL_BORDER));
 
             ui.label(
                 egui::RichText::new(format!("{} samples", lat))
@@ -829,8 +829,9 @@ pub fn draw_ui(
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let telem_btn = ui.add(
                     egui::Button::new(
-                        egui::RichText::new("📊")
-                            .font(egui::FontId::proportional(11.0))
+                        egui::RichText::new("RT")
+                            .font(egui::FontId::monospace(9.0))
+                            .strong()
                             .color(if state.show_telemetry { COL_ACCENT } else { COL_MUTED })
                     )
                     .fill(COL_PANEL)
