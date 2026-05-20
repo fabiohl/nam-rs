@@ -429,3 +429,7 @@ impl DefaultPluginFactory for NamClapPlugin {
         Ok(main_thread)
     }
 }
+
+#[cfg(test)]
+#[path = "plugin_test.rs"]
+mod plugin_test;

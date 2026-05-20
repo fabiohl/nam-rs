@@ -809,7 +809,7 @@
   - **Aceite:** UI renderiza a 60fps com CPU < 2% em idle (sem áudio). Todos os controles respondem ao arrastar. Medidores atualizam com o áudio em playback. Visual coerente com o `mockup_ui.jpg`.
   - **NOTA do Product Owner:** Já pode remover o "// TODO: REMOVER quando a GUI estiver funcional (Tarefa 4.3.1)." no `src/clap/plugin.rs`.
 
-- [ ] **Tarefa 4.3.2** — Sincronia de Gestos de Automação (`CLAP_EVENT_PARAM_GESTURE_BEGIN/END`)
+- [x] **Tarefa 4.3.2** — Sincronia de Gestos de Automação (`CLAP_EVENT_PARAM_GESTURE_BEGIN/END`)
 
   - **Contexto:** Sem os eventos de gesto, o Bitwig não registra a trilha de automação ao arrastar um knob na UI do plugin. O host precisa saber exatamente quando o usuário começa e termina o gesto.
   - **Ações Técnicas:**

@@ -157,7 +157,10 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
         }
     }
 
-    fn flush(&mut self, input: &InputEvents, _output: &mut OutputEvents) {
+    fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
+        // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
+        self.shared.write_gui_events(output);
+
         for event in input {
             let Some(param_event) = event.as_event::<ParamValueEvent>() else {
                 continue;
@@ -206,7 +209,10 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
 }
 
 impl PluginAudioProcessorParams for NamClapProcessor<'_> {
-    fn flush(&mut self, input: &InputEvents, _output: &mut OutputEvents) {
+    fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
+        // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
+        self.shared.write_gui_events(output);
+
         for event in input {
             let Some(param_event) = event.as_event::<ParamValueEvent>() else {
                 continue;

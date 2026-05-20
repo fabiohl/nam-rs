@@ -207,6 +207,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         mut audio: Audio,
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
+        // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
+        self.shared.write_gui_events(events.output);
+
         // 1. Processamento de Eventos (Main Thread SPSC)
         let lut = crate::math::dsp::gain_lut::get_gain_lut();
 
