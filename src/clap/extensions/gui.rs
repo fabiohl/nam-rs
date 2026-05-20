@@ -76,7 +76,9 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             }
 
             let options = baseview::WindowOpenOptions {
-                title: "NAM-rs".to_string(),
+                // Título vazio: o host (Bitwig) já exibe o nome do plugin no frame da janela.
+                // Usar um título aqui causaria duplicação: "NAM-rs / NAM-rs Neural Amp Modeler".
+                title: String::new(),
                 size: baseview::Size::new(600.0, 260.0),
                 scale: baseview::WindowScalePolicy::SystemScaleFactor,
                 gl_config: Some(baseview::gl::GlConfig::default()),

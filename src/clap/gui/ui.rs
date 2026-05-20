@@ -477,13 +477,13 @@ pub fn draw_ui(
     host: &HostSharedHandle,
     state: &mut UiState,
 ) {
-    ui.spacing_mut().item_spacing = egui::vec2(6.0, 4.0);
+    ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
     // Layout principal: horizontal com Zonas 1–4
     ui.horizontal(|ui| {
 
-        // ── Zona 1: Identidade (esquerda) ────────────────────────────────────
-        ui.allocate_ui(egui::vec2(148.0, 210.0), |ui| {
+        // ── Zona 1: Identidade (esquerda) ─────────────────────
+        ui.allocate_ui(egui::vec2(135.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(8.0);
 
@@ -615,13 +615,13 @@ pub fn draw_ui(
         // Separador estilizado (m5)
         styled_vsep(ui);
 
-        // ── Zona 2: Controles (centro) ────────────────────────────────────────
-        ui.allocate_ui(egui::vec2(262.0, 210.0), |ui| {
+        // ── Zona 2: Controles (centro) ─────────────────────
+        ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     // INPUT — knob grande, C2: 70×70
-                    ui.allocate_ui(egui::vec2(86.0, 185.0), |ui| {
+                    ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
                         handle_knob(
                             ui,
                             ui.make_persistent_id("input_gain_knob"),
@@ -639,7 +639,7 @@ pub fn draw_ui(
                     });
                     ui.add_space(2.0);
                     // OUTPUT — knob grande, C2: 70×70
-                    ui.allocate_ui(egui::vec2(86.0, 185.0), |ui| {
+                    ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
                         handle_knob(
                             ui,
                             ui.make_persistent_id("output_gain_knob"),
@@ -657,7 +657,7 @@ pub fn draw_ui(
                     });
                     ui.add_space(2.0);
                     // GATE — knob menor, âmbar
-                    ui.allocate_ui(egui::vec2(74.0, 185.0), |ui| {
+                    ui.allocate_ui(egui::vec2(70.0, 185.0), |ui| {
                         handle_knob(
                             ui,
                             ui.make_persistent_id("gate_thresh_knob"),
@@ -680,15 +680,15 @@ pub fn draw_ui(
         // Separador estilizado (m5)
         styled_vsep(ui);
 
-        // ── Zona 3: Medidores VU (direita) ───────────────────────────────────
-        ui.allocate_ui(egui::vec2(88.0, 210.0), |ui| {
+        // ── Zona 3: Medidores VU (direita) ──────────────────
+        ui.allocate_ui(egui::vec2(80.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     let peak_l = f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
                     let peak_r = f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
 
-                    ui.allocate_ui(egui::vec2(40.0, 190.0), |ui| {
+                    ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
                         draw_vertical_meter(
                             ui,
                             peak_l,
@@ -699,7 +699,7 @@ pub fn draw_ui(
                         );
                     });
                     ui.add_space(4.0);
-                    ui.allocate_ui(egui::vec2(40.0, 190.0), |ui| {
+                    ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
                         draw_vertical_meter(
                             ui,
                             peak_r,
@@ -716,8 +716,8 @@ pub fn draw_ui(
         // Separador estilizado (m5)
         styled_vsep(ui);
 
-        // ── Zona 4: Bypass (extrema direita) ─────────────────────────────────
-        ui.allocate_ui(egui::vec2(72.0, 210.0), |ui| {
+        // ── Zona 4: Bypass (extrema direita) ─────────────────
+        ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(18.0);
                 handle_bypass(
