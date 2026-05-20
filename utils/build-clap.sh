@@ -26,14 +26,15 @@ for arg in "$@"; do
 done
 
 echo "🔨 Building NAM-rs CLAP plugin ($BUILD_MODE) with features: $FEATURES..."
-cargo clean $CARGO_FLAGS
-rm -f "$CLAP_DIR/$PLUGIN_NAME"
+#cargo clean $CARGO_FLAGS
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
     cargo build $CARGO_FLAGS --no-default-features --features "$FEATURES" --lib
 
 echo "📁 Instalando em $CLAP_DIR/$PLUGIN_NAME ..."
 mkdir -p "$CLAP_DIR"
+rm -f "$CLAP_DIR/$PLUGIN_NAME"
 cp "$TARGET_DIR/libnam_rs.so" "$CLAP_DIR/$PLUGIN_NAME"
+ls -lath "$CLAP_DIR/$PLUGIN_NAME"
 
 echo "🔍 Auditando validade do binário..."
 
@@ -66,6 +67,4 @@ fi
 echo "🧪 Executando teste de ciclo de vida do CLAP..."
 cargo test --test clap_lifecycle_test --features "$FEATURES" --target-dir target/clap
 
-echo "✅ Plugin instalado, validado e testado com sucesso: $CLAP_DIR/$PLUGIN_NAME"
-ls -lath "$CLAP_DIR/$PLUGIN_NAME"
 echo "📝 Reabra a DAW e faça um novo scan de plugins CLAP."

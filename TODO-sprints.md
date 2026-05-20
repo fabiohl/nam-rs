@@ -843,7 +843,7 @@
 > - ✅ Ausência de códigos não tratados (`unwrap`, `todo!`) atestada por validação estática e testes de compilação.
 > - A infraestrutura está madura e pronta para a bateria de testes manuais intensivos de UX/UI nas DAWs alvo.
 
-### Épico 4.4 — Validação Humana e Cross-Host (Bitwig + Fender Studio Pro)
+### Épico 4.4 — Validação Humana e Cross-Host (Bitwig & Fender Studio Pro)
 
 > **Atenção (QA/Testador Humano):** As tarefas a seguir não envolvem codificação imediata (exceto ajustes de bugs estéticos/funcionais decorrentes do teste). Elas devem ser executadas manualmente nas DAWs instaladas para aferir a robustez, estabilidade e aderência visual do plugin no mundo real.
 
@@ -851,30 +851,24 @@
 
   - **Contexto:** A UI foi concebida a partir do `mockup_ui.jpg`. Na transição do design para a tela (via `egui`), proporções, tamanhos de fonte, espaçamentos e nuances do Dark Mode podem divergir.
   - **Ações do Testador:**
-    1. Abrir o NAM-rs no Bitwig e colocar lado-a-lado com a imagem `mockup_ui.jpg`.
-    2. Comparar criticamente as 5 zonas de interface: margens, cores exatas dos LEDs/knobs (`#00D4AA`, `#F5A623`), tipografia Inter, e o layout e alinhamento dos medidores VU.
-    3. Anotar todas as discrepâncias estéticas e de usabilidade encontradas.
-  - **Ação Técnica (Engenharia):** Se houver divergências substanciais, o time técnico deve ajustar o código do `egui` em `src/clap/gui/ui.rs` para calibrar o visual, gerando um build novo e encaminhando para re-avaliação.
+    1. A DAW deve concluir o scan com sucesso e exibir o plugin na categoria correta.
+    2. Inserir o plugin: Abrir o NAM-rs e colocar lado-a-lado com a imagem `mockup_ui.jpg`.
+    3. Renderização da UI: A janela precisa ser instanciada com estabilidade, sem redimensionamento indesejado ou comportamentos bizarros de mouse (offset de clique).
+    4. Comparar criticamente as 5 zonas de interface: margens, cores exatas dos LEDs/knobs (`#00D4AA`, `#F5A623`), tipografia Inter, e o layout e alinhamento dos medidores VU.
+    5. Anotar todas as discrepâncias estéticas e de usabilidade encontradas.
+  - **Ação Técnica (Engenharia):** Se houver divergências substanciais, ajustar o código do `egui` em `src/clap/gui/ui.rs` para calibrar o visual.
   - **Aceite:** A janela em execução deve prover uma "sensação visual" extremamente próxima ao mockup original, atestando caráter premium.
 
-- [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX no Bitwig Studio
+- [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX
 
-  - **Contexto:** A base do desenvolvimento foi no Bitwig. É preciso validar a experiência do usuário ponta-a-ponta nesta DAW.
+  - **Contexto:** É preciso validar a experiência do usuário ponta-a-ponta na DAW.
   - **Ações do Testador:**
     1. Testar File Picker: O dialog (`rfd`) não pode travar a interface da DAW nem a thread de áudio. O feedback "Loading..." tem que aparecer transitoriamente.
     2. Testar Controles: Mover todos os knobs e atestar que a resposta do áudio e as labels numéricas (dB) mudam instantaneamente.
     3. Testar Medidores (VU): Inserir áudio com forte dinâmica. Os VUs L/R reagem bem? O "peak hold" dura exatos 2 segundos conforme projetado? A cor clipando no topo acende corretamente?
-    4. Testar Automações: O clique/arrasto nos knobs deve gravar trilhas de automação de forma suave no grid do Bitwig (gestures begin/end bem comportados).
+    4. Testar Automações: O clique/arrasto nos knobs deve gravar trilhas de automação de forma suave no grid (gestures begin/end bem comportados).
+    5. Persistência de Sessão: Criar um projeto, alterar parâmetros/modelo, salvar e fechar. Ao reabrir, certifique-se de que o estado é idêntico.
   - **Aceite:** Tudo suave, fluido, responsivo a 60fps. Nenhum XRUN (engasgo no áudio) durante o manuseio da interface.
-
-- [ ] **Tarefa 4.4.3** — Certificação de Portabilidade (Fender Studio Pro no Linux)
-
-  - **Contexto:** O ecossistema CLAP no Fender Studio Pro sob Linux é recente. Validações devem assegurar que o XWayland embedded do Fender Studio Pro comporta-se como o do Bitwig.
-  - **Ações do Testador:**
-    1. Inserir o plugin: O Fender Studio Pro deve concluir o scan com sucesso e exibir o plugin na categoria correta.
-    2. Renderização da UI: A janela precisa ser instanciada com estabilidade, sem redimensionamento indesejado ou comportamentos bizarros de mouse (offset de clique).
-    3. Persistência de Sessão: Criar um projeto, alterar parâmetros/modelo, salvar e fechar. Ao reabrir, certifique-se de que o estado é idêntico.
-  - **Aceite:** Plugin funcional no Fender Studio Pro com GUI completa validando o stack tecnológico em DAWs além do Bitwig.
 
 - [ ] **Tarefa 4.4.4** — Bateria de Stress Test (Smoke Test Cross-Host)
 
@@ -882,7 +876,7 @@
   - **Ações do Testador:**
     1. Alternar o Bypass alucinadamente e abrir/fechar a GUI mais de 20 vezes consecutivamente.
     2. Tentar carregar modelos 10x rapidamente enquanto a GUI processa áudio.
-    3. Modulação Estressante: Aplicar no Bitwig (ou Fender Studio Pro) uma modulação via LFO pesada nos knobs e deixar operando por > 5 minutos.
+    3. Modulação Estressante: Aplicar uma modulação via LFO pesada nos knobs e deixar operando por > 5 minutos.
   - **Aceite:** O plugin não pode causar panics na DAW. Zero vazamento de RAM visível monitorando via `htop`.
 
 - [ ] **Tarefa 4.4.5** — Validar viabilidade prática do Modo Headless
@@ -896,6 +890,7 @@
 ## Sprint 5 — Integrações Premium e Otimizações Multi-Instância
 
 **Objetivo:** Elevar o NAM-rs de "plugin funcional" para "first-class citizen" no Bitwig Studio: mapeamento automático para controladores hardware, economia de CPU em silêncio, suporte à modulação delta (`PARAM_MOD`), compartilhamento de pesos entre instâncias e telemetria ao vivo na UI.
+> Nota: Fazer o mesmo no Fender Studio depois!
 
 **Pré-requisito:** Sprint 4 concluída (GUI funcional com parâmetros bidirecionais).
 
@@ -1138,11 +1133,10 @@
   - **Contexto:**
     Antes do lançamento Alpha, é crucial assegurar que o plugin não apresenta vazamentos de recursos (memória, file descriptors) ou degradação de performance ao longo de sessões prolongadas sob alta carga no Bitwig Studio e no Fender Studio Pro.
   - **Ações Técnicas:**
-    1. Montar um projeto de teste de endurance no Bitwig Studio contendo 4 instâncias concorrentes do NAM-rs utilizando modelos de redes neurais distintos (WaveNet e LSTM) e com 2 moduladores LFO associados a cada parâmetro.
+    1. Montar um projeto de teste de endurance na DAW contendo 4 instâncias concorrentes do NAM-rs utilizando modelos de redes neurais distintos (WaveNet e LSTM) e com 2 moduladores LFO associados a cada parâmetro.
     2. Adicionar uma trilha de sinal idêntica em paralelo com fase invertida e compensação automática de atraso (ADC) ativa para confirmar que o alinhamento de fase é mantido perfeitamente no tempo.
     3. Iniciar um script de monitoramento em segundo plano que extrai informações de `/proc/$(pgrep -f "bitwig-studio" | head -n 1)/status` e monitora uso de memória residente (RSS), virtual (VSZ) e o contador de XRUNs do PipeWire/JACK.
-    4. Repetir o ensaio de estresse com 2 instâncias do plugin no Fender Studio Pro rodando sob XWayland por 60 minutos ininterruptos.
-    5. Inspecionar o log de kernel (`dmesg -T`) e o arquivo de logs do Host à procura de violações de thread access ou pânicos silenciosos.
+    4. Inspecionar o log de kernel (`dmesg -T`) e o arquivo de logs do Host à procura de violações de thread access ou pânicos silenciosos.
   - **Aceite:**
     - Zero crashes ou travamentos nos hosts ao longo dos 60 minutos de reprodução contínua.
     - O consumo de memória RSS do processo do plugin/host deve estabilizar (variação menor que 5MB após os primeiros 5 minutos de aquecimento, confirmando ausência de vazamentos no loop da GUI e nos buffers circulares).
