@@ -34,6 +34,8 @@ pub struct NamPluginWindow {
     host: clack_plugin::host::HostSharedHandle<'static>,
     /// Estado persistente local da interface gráfica.
     state: crate::clap::gui::ui::UiState,
+    /// Última posição conhecida do mouse.
+    last_mouse_pos: egui::Pos2,
 }
 
 impl NamPluginWindow {
@@ -72,7 +74,7 @@ impl NamPluginWindow {
         egui_ctx.set_visuals(visuals);
 
         let width = 600;
-        let height = 280;
+        let height = 210;
         let scale = 1.0f32;
 
         let mut raw_input = egui::RawInput {
@@ -98,6 +100,7 @@ impl NamPluginWindow {
             shared,
             host,
             state: crate::clap::gui::ui::UiState::default(),
+            last_mouse_pos: egui::Pos2::ZERO,
         }
     }
 }
@@ -112,6 +115,14 @@ impl WindowHandler for NamPluginWindow {
         let shared = unsafe { &*self.shared.0 };
         let mut raw_input = self.raw_input.take();
         raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
+        
+        let logical_width = self.width as f32 / self.scale;
+        let logical_height = self.height as f32 / self.scale;
+        raw_input.screen_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(logical_width, logical_height),
+        ));
+
         if let Some(info) = raw_input.viewports.get_mut(&egui::ViewportId::ROOT) {
             info.native_pixels_per_point = Some(self.scale);
         }
@@ -169,28 +180,15 @@ impl WindowHandler for NamPluginWindow {
                         modifiers: _,
                     } => {
                         let egui_pos = egui::pos2(position.x as f32, position.y as f32);
+                        self.last_mouse_pos = egui_pos;
                         self.raw_input
                             .events
                             .push(egui::Event::PointerMoved(egui_pos));
                     }
                     MouseEvent::ButtonPressed { button, modifiers } => {
                         if let Some(egui_button) = map_mouse_button(button) {
-                            let last_pos = self
-                                .raw_input
-                                .events
-                                .iter()
-                                .rev()
-                                .find_map(|e| {
-                                    if let egui::Event::PointerMoved(pos) = e {
-                                        Some(*pos)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .unwrap_or(egui::Pos2::ZERO);
-
                             self.raw_input.events.push(egui::Event::PointerButton {
-                                pos: last_pos,
+                                pos: self.last_mouse_pos,
                                 button: egui_button,
                                 pressed: true,
                                 modifiers: map_modifiers(modifiers),
@@ -199,22 +197,8 @@ impl WindowHandler for NamPluginWindow {
                     }
                     MouseEvent::ButtonReleased { button, modifiers } => {
                         if let Some(egui_button) = map_mouse_button(button) {
-                            let last_pos = self
-                                .raw_input
-                                .events
-                                .iter()
-                                .rev()
-                                .find_map(|e| {
-                                    if let egui::Event::PointerMoved(pos) = e {
-                                        Some(*pos)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .unwrap_or(egui::Pos2::ZERO);
-
                             self.raw_input.events.push(egui::Event::PointerButton {
-                                pos: last_pos,
+                                pos: self.last_mouse_pos,
                                 button: egui_button,
                                 pressed: false,
                                 modifiers: map_modifiers(modifiers),
