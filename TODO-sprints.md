@@ -847,7 +847,7 @@
 
 > **Atenção (QA/Testador Humano):** As tarefas a seguir não envolvem codificação imediata (exceto ajustes de bugs estéticos/funcionais decorrentes do teste). Elas devem ser executadas manualmente nas DAWs instaladas para aferir a robustez, estabilidade e aderência visual do plugin no mundo real.
 
-- [ ] **Tarefa 4.4.1** — Certificação Visual e Ajuste de Pixel-Perfect vs Mockup
+- [x] **Tarefa 4.4.1** — Certificação Visual e Ajuste de Pixel-Perfect vs Mockup
 
   - **Contexto:** A UI foi concebida a partir do `mockup_ui.jpg`. Na transição do design para a tela (via `egui`), proporções, tamanhos de fonte, espaçamentos e nuances do Dark Mode podem divergir.
   - **Ações do Testador:**
@@ -858,6 +858,31 @@
     5. Anotar todas as discrepâncias estéticas e de usabilidade encontradas.
   - **Ação Técnica (Engenharia):** Se houver divergências substanciais, ajustar o código do `egui` em `src/clap/gui/ui.rs` para calibrar o visual.
   - **Aceite:** A janela em execução deve prover uma "sensação visual" extremamente próxima ao mockup original, atestando caráter premium.
+
+  > **🔎 AUDITORIA + CORREÇÕES (2026-05-20)**
+  > Auditoria pixel-perfect concluída (Painel Revisor-Auditor). Todas as divergências corrigidas:
+  >
+  > - ✅ **C1:** Altura da janela corrigida: `210px → 260px` (gui.rs, window.rs, gui extension).
+  > - ✅ **C2:** Knobs INPUT/OUTPUT ampliados: `58×58 → 70×70px` — proporção próxima ao mockup.
+  > - ✅ **M1:** Label "MODEL" adicionado acima do botão de seleção de arquivo.
+  > - ✅ **M2:** Nome do modelo exibido em frame estilizado com borda e fundo `#1A1D23`.
+  > - ✅ **M3:** Subtítulo "Neural Amp Modeler" adicionado abaixo do logo.
+  > - ✅ **M5:** Nome do modelo adicionado à esquerda da status bar.
+  > - ✅ **m1:** Cor de fundo corrigida para `#1A1D23` (paleta aprovada T4.0.2).
+  > - ✅ **m2:** Arco dos knobs: `24 → 48 segmentos` (curva muito mais suave).
+  > - ✅ **m3:** Largura dos VU meters: `12px → 16px`.
+  > - ✅ **m4:** Labels "L" e "R" exibidas acima **e** abaixo dos medidores.
+  > - ✅ **m5:** Separadores verticais estilizados (linha 0.5px `#2E3440` ao invés do Separator padrão egui).
+  > - ✅ **E1:** Glow suave no arco do knob durante drag (halo semi-transparente).
+  > - ✅ **E2:** Decaimento suave do peak hold (`×0.95/frame` após 2s, fade analógico).
+  > - ✅ **E3:** Tooltip com valor exato em dB no hover de qualquer knob.
+  > - ✅ **E4:** LED de clipping persistente acima de cada VU meter (limpa ao clicar).
+  > - ✅ **E5:** Ctrl+Drag nos knobs ativa fine-tune com sensibilidade ÷10.
+  > - ✅ **E6:** Truncamento com ellipsis (…) no nome do arquivo em ambas as zonas.
+  > - ✅ **A1+A2 (Safety):** `unsafe transmute` documentado com comentário `SAFETY:` justificando o invariante de liveness garantido pelo contrato CLAP. Melhoria definitiva (`Arc<NamClapShared>`) endereçada como T7.1.2 (ver Sprint 7).
+  > - ✅ `egui::Frame::none()` deprecado substituído por `Frame::new()`.
+  > - ✅ Zero warnings, zero erros. Build release 7.3MB deployado em `~/.clap/nam-rs.clap`.
+
 
 - [ ] **Tarefa 4.4.2** — Certificação Funcional e de UX
 

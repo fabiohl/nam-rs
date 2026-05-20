@@ -46,17 +46,17 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         Ok(())
     }
 
-    /// Retorna o tamanho fixo da GUI (600x210 pixels).
+    /// Retorna o tamanho fixo da GUI (600x260 pixels).
     fn get_size(&mut self) -> Option<GuiSize> {
         Some(GuiSize {
             width: 600,
-            height: 210,
+            height: 260,
         })
     }
 
-    /// Define o tamanho da GUI. Aceita apenas o tamanho fixo 600x210.
+    /// Define o tamanho da GUI. Aceita apenas o tamanho fixo 600x260.
     fn set_size(&mut self, size: GuiSize) -> Result<(), PluginError> {
-        if size.width == 600 && size.height == 210 {
+        if size.width == 600 && size.height == 260 {
             Ok(())
         } else {
             Err(PluginError::Message(
@@ -77,7 +77,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
             let options = baseview::WindowOpenOptions {
                 title: "NAM-rs".to_string(),
-                size: baseview::Size::new(600.0, 210.0),
+                size: baseview::Size::new(600.0, 260.0),
                 scale: baseview::WindowScalePolicy::SystemScaleFactor,
                 gl_config: Some(baseview::gl::GlConfig::default()),
             };

@@ -74,7 +74,7 @@ impl NamPluginWindow {
         egui_ctx.set_visuals(visuals);
 
         let width = 600;
-        let height = 210;
+        let height = 260;
         let scale = 1.0f32;
 
         let mut raw_input = egui::RawInput {
@@ -142,7 +142,8 @@ impl WindowHandler for NamPluginWindow {
             .tessellate(full_output.shapes, full_output.pixels_per_point);
 
         let screen_size = [self.width, self.height];
-        self.painter.clear(screen_size, [0.07, 0.07, 0.09, 1.0]);
+        // Cor de fundo: #1A1D23 (paleta dark mode aprovada — T4.0.2)
+        self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
         self.painter.paint_and_update_textures(
             screen_size,
             full_output.pixels_per_point,
