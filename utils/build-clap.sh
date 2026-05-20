@@ -26,6 +26,8 @@ for arg in "$@"; do
 done
 
 echo "🔨 Building NAM-rs CLAP plugin ($BUILD_MODE) with features: $FEATURES..."
+cargo clean $CARGO_FLAGS
+rm -f "$CLAP_DIR/$PLUGIN_NAME"
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
     cargo build $CARGO_FLAGS --no-default-features --features "$FEATURES" --lib
 

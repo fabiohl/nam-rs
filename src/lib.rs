@@ -42,3 +42,29 @@ pub mod loader;
 pub mod math;
 /// Definições de tensores e topologias de redes neurais.
 pub mod models;
+
+// Retrocompatibilidade com versões mais antigas do GLIBC (ex: para Flatpak/Bitwig).
+// Redireciona símbolos matemáticos para a versão estável do GLIBC_2.2.5.
+// Como dependências externas usam esses símbolos, declaramos wrappers globais
+// que interceptam as chamadas e saltam (jmp) via PLT para as versões compatíveis.
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+core::arch::global_asm!(
+    ".global log10f",
+    ".type log10f, @function",
+    "log10f:",
+    "    jmp log10f_compat@PLT",
+    ".symver log10f_compat, log10f@GLIBC_2.2.5",
+
+    ".global atan2f",
+    ".type atan2f, @function",
+    "atan2f:",
+    "    jmp atan2f_compat@PLT",
+    ".symver atan2f_compat, atan2f@GLIBC_2.2.5",
+
+    ".global acosf",
+    ".type acosf, @function",
+    "acosf:",
+    "    jmp acosf_compat@PLT",
+    ".symver acosf_compat, acosf@GLIBC_2.2.5"
+);
+
