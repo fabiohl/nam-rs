@@ -19,6 +19,19 @@ const COL_VU_YELLOW: egui::Color32 = egui::Color32::from_rgb(245, 206, 98); // #
 const COL_VU_RED: egui::Color32 = egui::Color32::from_rgb(247, 78, 78); // #F74E4E
 const COL_BYPASS_OFF: egui::Color32 = egui::Color32::from_rgb(74, 79, 90); // #4A4F5A
 
+fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
+    let packed = shared.track_accent_color.load(Ordering::Relaxed);
+    let alpha = (packed >> 24) as u8;
+    if alpha == 0 {
+        COL_ACCENT
+    } else {
+        let red = ((packed >> 16) & 0xFF) as u8;
+        let green = ((packed >> 8) & 0xFF) as u8;
+        let blue = (packed & 0xFF) as u8;
+        egui::Color32::from_rgba_unmultiplied(red, green, blue, alpha)
+    }
+}
+
 /// Estado persistente da interface gráfica entre frames.
 #[derive(Clone, Debug)]
 pub struct UiState {
@@ -473,11 +486,11 @@ fn draw_vertical_meter(
 /// Desenha o toggle de bypass com LED e labels "BYPASS" / "ACTIVE".
 fn handle_bypass(
     ui: &mut egui::Ui,
-    _id: egui::Id,
     atomic_val: &std::sync::atomic::AtomicU32,
     changed_flag: &std::sync::atomic::AtomicBool,
     begin_flag: &std::sync::atomic::AtomicBool,
     end_flag: &std::sync::atomic::AtomicBool,
+    accent_color: egui::Color32,
     host: &HostSharedHandle,
 ) {
     let current_bypass = atomic_val.load(Ordering::Relaxed) != 0;
@@ -521,7 +534,7 @@ fn handle_bypass(
     let led_color = if current_bypass {
         COL_BYPASS_OFF
     } else {
-        COL_ACCENT
+        accent_color
     };
 
     // LED retangular vertical no centro
@@ -530,7 +543,12 @@ fn handle_bypass(
 
     // Halo de glow quando ativo
     if !current_bypass {
-        let glow = egui::Color32::from_rgba_unmultiplied(0, 212, 170, 40);
+        let glow = egui::Color32::from_rgba_unmultiplied(
+            accent_color.r(),
+            accent_color.g(),
+            accent_color.b(),
+            40,
+        );
         painter.rect_filled(led_rect.expand(3.0), 4.0, glow);
     }
 
@@ -571,6 +589,7 @@ pub fn draw_ui(
     host: &HostSharedHandle,
     state: &mut UiState,
 ) {
+    let accent_color = resolve_accent(shared);
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
     // Layout principal: horizontal com Zonas 1–4
@@ -585,7 +604,7 @@ pub fn draw_ui(
                     egui::RichText::new("NAM-rs⚡")
                         .font(egui::FontId::proportional(24.0))
                         .strong()
-                        .color(COL_ACCENT),
+                        .color(accent_color),
                 );
 
                 // M3: Subtítulo "Neural Amp Modeler"
@@ -605,7 +624,7 @@ pub fn draw_ui(
                     ui.add_space(4.0);
                     let simd = get_simd_badge();
                     let badge_color = if simd.contains("AVX") {
-                        COL_ACCENT
+                        accent_color
                     } else {
                         COL_MUTED
                     };
@@ -737,7 +756,7 @@ pub fn draw_ui(
                             &shared.gui_input_gain_changed,
                             &shared.gesture_begin_input_gain,
                             &shared.gesture_end_input_gain,
-                            COL_ACCENT,
+                            accent_color,
                             host,
                             egui::vec2(70.0, 70.0),
                         );
@@ -756,7 +775,7 @@ pub fn draw_ui(
                             &shared.gui_output_gain_changed,
                             &shared.gesture_begin_output_gain,
                             &shared.gesture_end_output_gain,
-                            COL_ACCENT,
+                            accent_color,
                             host,
                             egui::vec2(70.0, 70.0),
                         );
@@ -830,11 +849,11 @@ pub fn draw_ui(
                 ui.add_space(18.0);
                 handle_bypass(
                     ui,
-                    ui.make_persistent_id("bypass_btn"),
                     &shared.param_bypass,
                     &shared.gui_bypass_changed,
                     &shared.gesture_begin_bypass,
                     &shared.gesture_end_bypass,
+                    accent_color,
                     host,
                 );
             });
@@ -956,7 +975,7 @@ pub fn draw_ui(
                             .font(egui::FontId::monospace(9.0))
                             .strong()
                             .color(if state.show_telemetry {
-                                COL_ACCENT
+                                accent_color
                             } else {
                                 COL_MUTED
                             }),
@@ -982,3 +1001,7 @@ pub fn draw_ui(
     // Repaint a 30ms para manter VU meters e sincronização de parâmetros do host
     ui.ctx().request_repaint_after(Duration::from_millis(30));
 }
+
+#[cfg(test)]
+#[path = "ui_test.rs"]
+mod ui_test;

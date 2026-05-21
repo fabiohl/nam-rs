@@ -7,6 +7,7 @@ pub mod audio_ports;
 pub mod latency;
 pub mod params;
 pub mod state;
+pub mod track_info;
 
 #[cfg(feature = "clap-plugin-gui")]
 pub mod gui;

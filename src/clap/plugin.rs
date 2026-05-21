@@ -76,6 +76,8 @@ pub struct NamClapShared {
     pub ui_loading: std::sync::atomic::AtomicBool,
     /// Sample rate detectado do host.
     pub sample_rate: AtomicU32,
+    /// Cor de accent dinâmica baseada na cor da track do DAW (ARGB compactado).
+    pub track_accent_color: AtomicU32,
 
     // Flags de controle de modificação por parâmetro (GUI -> Host/Processor)
     /// Indica que o ganho de entrada foi alterado pela GUI.
@@ -349,6 +351,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<clack_extensions::params::PluginParams>();
         builder.register::<clack_extensions::state::PluginState>();
         builder.register::<crate::clap::extensions::latency::NamPluginLatency>();
+        builder.register::<crate::clap::extensions::track_info::NamPluginTrackInfo>();
 
         #[cfg(feature = "clap-plugin-gui")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();
@@ -383,6 +386,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_pending_model: Mutex::new(None),
             ui_loading: std::sync::atomic::AtomicBool::new(false),
             sample_rate: AtomicU32::new(0),
+            track_accent_color: AtomicU32::new(0),
             gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
             gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
             gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
@@ -399,9 +403,26 @@ impl DefaultPluginFactory for NamClapPlugin {
     }
 
     fn new_main_thread<'a>(
-        host: HostMainThreadHandle<'a>,
+        mut host: HostMainThreadHandle<'a>,
         shared: &'a Self::Shared<'a>,
     ) -> Result<Self::MainThread<'a>, PluginError> {
+        // Consulta inicial da cor da track do host
+        if let Some(track_info_ext) =
+            host.get_extension::<clack_extensions::track_info::HostTrackInfo>()
+        {
+            let mut buffer = clack_extensions::track_info::TrackInfoBuffer::new();
+            if let Some(color) = track_info_ext
+                .get(&mut host, &mut buffer)
+                .and_then(|info| info.color())
+            {
+                let packed = ((color.alpha as u32) << 24)
+                    | ((color.red as u32) << 16)
+                    | ((color.green as u32) << 8)
+                    | (color.blue as u32);
+                shared.track_accent_color.store(packed, Ordering::Relaxed);
+            }
+        }
+
         // Extrai os canais exclusivos da Main Thread do estado compartilhado
         // O uso de expect() é seguro aqui pois estas instâncias DEVEM estar presentes
         // e são inicializadas no new_shared().
