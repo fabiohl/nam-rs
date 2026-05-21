@@ -46,6 +46,12 @@ impl TrackingGuard {
     }
 }
 
+impl Default for TrackingGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Drop for TrackingGuard {
     fn drop(&mut self) {
         TRACKING_THREAD.store(0, Ordering::Relaxed);

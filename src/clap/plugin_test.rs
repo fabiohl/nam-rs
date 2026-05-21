@@ -2,10 +2,12 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
-use clack_host::prelude::EventBuffer;
-use clack_plugin::events::event_types::{ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent};
-use clack_plugin::prelude::InputEvents;
 use crate::clap::extensions::params::PARAM_INPUT_GAIN;
+use clack_host::prelude::EventBuffer;
+use clack_plugin::events::event_types::{
+    ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
+};
+use clack_plugin::prelude::InputEvents;
 use std::sync::atomic::Ordering;
 
 #[test]
@@ -47,9 +49,13 @@ fn test_gui_gestures_and_parameter_flow() {
     };
 
     // Simula início de gesto, mudança de valor e término de gesto do ganho de entrada
-    shared.gesture_begin_input_gain.store(true, Ordering::Relaxed);
+    shared
+        .gesture_begin_input_gain
+        .store(true, Ordering::Relaxed);
     shared.gui_input_gain_changed.store(true, Ordering::Relaxed);
-    shared.param_input_gain.store(1.5f32.to_bits(), Ordering::Relaxed);
+    shared
+        .param_input_gain
+        .store(1.5f32.to_bits(), Ordering::Relaxed);
     shared.gesture_end_input_gain.store(true, Ordering::Relaxed);
 
     let mut output_events_buffer = EventBuffer::new();
@@ -64,19 +70,19 @@ fn test_gui_gestures_and_parameter_flow() {
     let mut end_received = false;
 
     for event in &input_view {
-        if let Some(begin) = event.as_event::<ParamGestureBeginEvent>() {
-            if begin.param_id().unwrap().get() == PARAM_INPUT_GAIN {
-                begin_received = true;
-            }
+        if let Some(begin) = event.as_event::<ParamGestureBeginEvent>()
+            && begin.param_id().unwrap().get() == PARAM_INPUT_GAIN
+        {
+            begin_received = true;
         } else if let Some(val_ev) = event.as_event::<ParamValueEvent>() {
             if val_ev.param_id().unwrap().get() == PARAM_INPUT_GAIN {
                 assert_eq!(val_ev.value(), 1.5);
                 value_received = true;
             }
-        } else if let Some(end) = event.as_event::<ParamGestureEndEvent>() {
-            if end.param_id().unwrap().get() == PARAM_INPUT_GAIN {
-                end_received = true;
-            }
+        } else if let Some(end) = event.as_event::<ParamGestureEndEvent>()
+            && end.param_id().unwrap().get() == PARAM_INPUT_GAIN
+        {
+            end_received = true;
         }
     }
 

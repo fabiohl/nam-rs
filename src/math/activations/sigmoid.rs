@@ -144,17 +144,17 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     // den = 1 + exp(-x)
     let den1 = _mm256_add_ps(one, e1);
     let den2 = _mm256_add_ps(one, e2);
-    
+
     // Obtém uma aproximação grosseira e rápida do recíproco 1/den (precisão de ~12 bits)
     let mut res1 = _mm256_rcp_ps(den1);
     let mut res2 = _mm256_rcp_ps(den2);
 
     let two = _mm256_set1_ps(2.0);
-    
+
     // 1ª iteração de Newton-Raphson: eleva a precisão para aproximadamente 23 bits
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
-    
+
     // 2ª iteração de Newton-Raphson: satura a precisão do formato float32 de 24 bits
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));

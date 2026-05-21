@@ -7,17 +7,17 @@ use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 // ── Paleta de cores aprovada (T4.0.2) ─────────────────────────────────────────
-const COL_BG: egui::Color32 = egui::Color32::from_rgb(26, 29, 35);       // #1A1D23
-const COL_PANEL: egui::Color32 = egui::Color32::from_rgb(35, 40, 48);    // #232830
-const COL_BORDER: egui::Color32 = egui::Color32::from_rgb(46, 52, 64);   // #2E3440
-const COL_TEXT: egui::Color32 = egui::Color32::from_rgb(229, 233, 240);  // #E5E9F0
+const COL_BG: egui::Color32 = egui::Color32::from_rgb(26, 29, 35); // #1A1D23
+const COL_PANEL: egui::Color32 = egui::Color32::from_rgb(35, 40, 48); // #232830
+const COL_BORDER: egui::Color32 = egui::Color32::from_rgb(46, 52, 64); // #2E3440
+const COL_TEXT: egui::Color32 = egui::Color32::from_rgb(229, 233, 240); // #E5E9F0
 const COL_MUTED: egui::Color32 = egui::Color32::from_rgb(139, 149, 165); // #8B95A5
-const COL_ACCENT: egui::Color32 = egui::Color32::from_rgb(0, 212, 170);  // #00D4AA
-const COL_AMBER: egui::Color32 = egui::Color32::from_rgb(245, 166, 35);  // #F5A623
-const COL_VU_GREEN: egui::Color32 = egui::Color32::from_rgb(67, 233, 123);  // #43E97B
+const COL_ACCENT: egui::Color32 = egui::Color32::from_rgb(0, 212, 170); // #00D4AA
+const COL_AMBER: egui::Color32 = egui::Color32::from_rgb(245, 166, 35); // #F5A623
+const COL_VU_GREEN: egui::Color32 = egui::Color32::from_rgb(67, 233, 123); // #43E97B
 const COL_VU_YELLOW: egui::Color32 = egui::Color32::from_rgb(245, 206, 98); // #F5CE62
-const COL_VU_RED: egui::Color32 = egui::Color32::from_rgb(247, 78, 78);     // #F74E4E
-const COL_BYPASS_OFF: egui::Color32 = egui::Color32::from_rgb(74, 79, 90);  // #4A4F5A
+const COL_VU_RED: egui::Color32 = egui::Color32::from_rgb(247, 78, 78); // #F74E4E
+const COL_BYPASS_OFF: egui::Color32 = egui::Color32::from_rgb(74, 79, 90); // #4A4F5A
 
 /// Estado persistente da interface gráfica entre frames.
 #[derive(Clone, Debug)]
@@ -70,13 +70,29 @@ impl Default for UiState {
 
 fn get_simd_badge() -> &'static str {
     #[cfg(target_feature = "avx512f")]
-    { "AVX-512" }
+    {
+        "AVX-512"
+    }
     #[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
-    { "AVX2" }
-    #[cfg(all(not(target_feature = "avx512f"), not(target_feature = "avx2"), target_feature = "sse4.1"))]
-    { "SSE4.1" }
-    #[cfg(all(not(target_feature = "avx512f"), not(target_feature = "avx2"), not(target_feature = "sse4.1")))]
-    { "GENERIC" }
+    {
+        "AVX2"
+    }
+    #[cfg(all(
+        not(target_feature = "avx512f"),
+        not(target_feature = "avx2"),
+        target_feature = "sse4.1"
+    ))]
+    {
+        "SSE4.1"
+    }
+    #[cfg(all(
+        not(target_feature = "avx512f"),
+        not(target_feature = "avx2"),
+        not(target_feature = "sse4.1")
+    ))]
+    {
+        "GENERIC"
+    }
 }
 
 /// Renderiza um knob customizado com:
@@ -103,7 +119,11 @@ fn knob_widget(
     if response.dragged() {
         let delta_y = response.drag_delta().y;
         let ctrl_held = ui.input(|i| i.modifiers.ctrl);
-        let sensitivity = if ctrl_held { range_len / 2000.0 } else { range_len / 200.0 };
+        let sensitivity = if ctrl_held {
+            range_len / 2000.0
+        } else {
+            range_len / 200.0
+        };
         current_value = (current_value - delta_y * sensitivity).clamp(*range.start(), *range.end());
     }
 
@@ -112,8 +132,13 @@ fn knob_widget(
         let scroll_y = ui.input(|i| i.raw_scroll_delta.y);
         if scroll_y != 0.0 {
             let ctrl_held = ui.input(|i| i.modifiers.ctrl);
-            let sensitivity = if ctrl_held { range_len / 10000.0 } else { range_len / 1000.0 };
-            current_value = (current_value + scroll_y * sensitivity).clamp(*range.start(), *range.end());
+            let sensitivity = if ctrl_held {
+                range_len / 10000.0
+            } else {
+                range_len / 1000.0
+            };
+            current_value =
+                (current_value + scroll_y * sensitivity).clamp(*range.start(), *range.end());
         }
     }
 
@@ -143,11 +168,18 @@ fn knob_widget(
         }
     }
     if points.len() > 1 {
-        painter.add(egui::Shape::line(points.clone(), egui::Stroke::new(3.5, color)));
+        painter.add(egui::Shape::line(
+            points.clone(),
+            egui::Stroke::new(3.5, color),
+        ));
         // Glow durante drag (E1): halo externo semi-transparente
         if response.dragged() {
-            let glow_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 60);
-            painter.add(egui::Shape::line(points, egui::Stroke::new(7.0, glow_color)));
+            let glow_color =
+                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 60);
+            painter.add(egui::Shape::line(
+                points,
+                egui::Stroke::new(7.0, glow_color),
+            ));
         }
     }
 
@@ -160,8 +192,16 @@ fn knob_widget(
     let pointer_angle = angle - std::f32::consts::FRAC_PI_2;
     let pointer_len_start = body_radius * 0.4;
     let pointer_len_end = body_radius * 0.92;
-    let p_start = center + egui::vec2(pointer_angle.cos() * pointer_len_start, pointer_angle.sin() * pointer_len_start);
-    let p_end = center + egui::vec2(pointer_angle.cos() * pointer_len_end, pointer_angle.sin() * pointer_len_end);
+    let p_start = center
+        + egui::vec2(
+            pointer_angle.cos() * pointer_len_start,
+            pointer_angle.sin() * pointer_len_start,
+        );
+    let p_end = center
+        + egui::vec2(
+            pointer_angle.cos() * pointer_len_end,
+            pointer_angle.sin() * pointer_len_end,
+        );
     painter.line(
         vec![p_start, p_end],
         egui::Stroke::new(rect.width() * 0.05, COL_TEXT),
@@ -171,6 +211,7 @@ fn knob_widget(
 }
 
 /// Gerencia um knob com label, valor em dB, gestos de automação e double-click para reset.
+#[allow(clippy::too_many_arguments)]
 fn handle_knob(
     ui: &mut egui::Ui,
     id: egui::Id,
@@ -188,16 +229,19 @@ fn handle_knob(
     ui.vertical(|ui| {
         let current_val = f32::from_bits(atomic_val.load(Ordering::Relaxed));
 
-        let (response, new_val) = ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                let available_width = ui.available_width();
-                let space = (available_width - knob_size.x) / 2.0;
-                if space > 0.0 {
-                    ui.add_space(space);
-                }
-                knob_widget(ui, id, current_val, range, knob_size, color)
-            }).inner
-        }).inner;
+        let (response, new_val) = ui
+            .vertical(|ui| {
+                ui.horizontal(|ui| {
+                    let available_width = ui.available_width();
+                    let space = (available_width - knob_size.x) / 2.0;
+                    if space > 0.0 {
+                        ui.add_space(space);
+                    }
+                    knob_widget(ui, id, current_val, range, knob_size, color)
+                })
+                .inner
+            })
+            .inner;
 
         if response.drag_started() {
             begin_flag.store(true, Ordering::Relaxed);
@@ -207,7 +251,11 @@ fn handle_knob(
         }
 
         let reset_clicked = response.double_clicked();
-        let final_val = if reset_clicked { default_value } else { new_val };
+        let final_val = if reset_clicked {
+            default_value
+        } else {
+            new_val
+        };
 
         if final_val != current_val {
             if reset_clicked {
@@ -274,20 +322,32 @@ fn draw_vertical_meter(
 
         // LED de clipping (E4) — pisca em vermelho; clique para limpar
         let desired_led = egui::vec2(meter_w, 6.0);
-        let led_rect = ui.horizontal(|ui| {
-            let avail = ui.available_width();
-            let space = (avail - meter_w) / 2.0;
-            if space > 0.0 { ui.add_space(space); }
-            let (r, _) = ui.allocate_exact_size(desired_led, egui::Sense::click());
-            r
-        }).inner;
+        let led_rect = ui
+            .horizontal(|ui| {
+                let avail = ui.available_width();
+                let space = (avail - meter_w) / 2.0;
+                if space > 0.0 {
+                    ui.add_space(space);
+                }
+                let (r, _) = ui.allocate_exact_size(desired_led, egui::Sense::click());
+                r
+            })
+            .inner;
         {
             let painter = ui.painter();
-            let clip_color = if *clipped { COL_VU_RED } else { egui::Color32::from_rgb(50, 30, 30) };
+            let clip_color = if *clipped {
+                COL_VU_RED
+            } else {
+                egui::Color32::from_rgb(50, 30, 30)
+            };
             painter.rect_filled(led_rect, 1.0, clip_color);
         }
         // Limpa o LED de clipping ao clicar no medidor (será verificado via response abaixo)
-        let led_response = ui.interact(led_rect, ui.id().with((label, "clip_led")), egui::Sense::click());
+        let led_response = ui.interact(
+            led_rect,
+            ui.id().with((label, "clip_led")),
+            egui::Sense::click(),
+        );
         if led_response.clicked() {
             *clipped = false;
         }
@@ -296,16 +356,24 @@ fn draw_vertical_meter(
 
         // Barra do medidor
         let desired_size = egui::vec2(meter_w, meter_h);
-        let meter_rect = ui.horizontal(|ui| {
-            let avail = ui.available_width();
-            let space = (avail - meter_w) / 2.0;
-            if space > 0.0 { ui.add_space(space); }
-            let (r, _) = ui.allocate_exact_size(desired_size, egui::Sense::click());
-            r
-        }).inner;
+        let meter_rect = ui
+            .horizontal(|ui| {
+                let avail = ui.available_width();
+                let space = (avail - meter_w) / 2.0;
+                if space > 0.0 {
+                    ui.add_space(space);
+                }
+                let (r, _) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+                r
+            })
+            .inner;
 
         // Clique no meter também limpa o clipping
-        let meter_response = ui.interact(meter_rect, ui.id().with((label, "meter_bar")), egui::Sense::click());
+        let meter_response = ui.interact(
+            meter_rect,
+            ui.id().with((label, "meter_bar")),
+            egui::Sense::click(),
+        );
         if meter_response.clicked() {
             *clipped = false;
         }
@@ -328,8 +396,16 @@ fn draw_vertical_meter(
         let painter = ui.painter();
         painter.rect_filled(meter_rect, 1.5, COL_BG);
 
-        let peak_db = if peak_val > 1e-5 { 20.0 * peak_val.log10() } else { -60.0 };
-        let hold_db = if *hold_val > 1e-5 { 20.0 * (*hold_val).log10() } else { -60.0 };
+        let peak_db = if peak_val > 1e-5 {
+            20.0 * peak_val.log10()
+        } else {
+            -60.0
+        };
+        let hold_db = if *hold_val > 1e-5 {
+            20.0 * (*hold_val).log10()
+        } else {
+            -60.0
+        };
 
         let min_db = -60.0f32;
         let max_db = 6.0f32;
@@ -366,9 +442,13 @@ fn draw_vertical_meter(
         // Linha de Peak Hold
         if hold_frac > 0.0 {
             let y_hold = meter_rect.bottom() - hold_frac * meter_h;
-            let hold_color = if hold_db >= -3.0 { COL_VU_RED }
-                else if hold_db >= -12.0 { COL_VU_YELLOW }
-                else { COL_VU_GREEN };
+            let hold_color = if hold_db >= -3.0 {
+                COL_VU_RED
+            } else if hold_db >= -12.0 {
+                COL_VU_YELLOW
+            } else {
+                COL_VU_GREEN
+            };
             painter.line(
                 vec![
                     egui::pos2(meter_rect.left() - 2.0, y_hold),
@@ -403,13 +483,17 @@ fn handle_bypass(
     let current_bypass = atomic_val.load(Ordering::Relaxed) != 0;
     let button_size = egui::vec2(32.0, 56.0);
 
-    let response = ui.horizontal(|ui| {
-        let available_width = ui.available_width();
-        let space = (available_width - button_size.x) / 2.0;
-        if space > 0.0 { ui.add_space(space); }
-        let (_, resp) = ui.allocate_exact_size(button_size, egui::Sense::click());
-        resp
-    }).inner;
+    let response = ui
+        .horizontal(|ui| {
+            let available_width = ui.available_width();
+            let space = (available_width - button_size.x) / 2.0;
+            if space > 0.0 {
+                ui.add_space(space);
+            }
+            let (_, resp) = ui.allocate_exact_size(button_size, egui::Sense::click());
+            resp
+        })
+        .inner;
 
     if response.clicked() {
         let new_bypass = !current_bypass;
@@ -427,9 +511,18 @@ fn handle_bypass(
 
     // Corpo do rocker switch
     painter.rect_filled(rect, 5.0, COL_PANEL);
-    painter.rect_stroke(rect, 5.0, egui::Stroke::new(1.5, COL_BORDER), egui::StrokeKind::Inside);
+    painter.rect_stroke(
+        rect,
+        5.0,
+        egui::Stroke::new(1.5, COL_BORDER),
+        egui::StrokeKind::Inside,
+    );
 
-    let led_color = if current_bypass { COL_BYPASS_OFF } else { COL_ACCENT };
+    let led_color = if current_bypass {
+        COL_BYPASS_OFF
+    } else {
+        COL_ACCENT
+    };
 
     // LED retangular vertical no centro
     let led_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(14.0, 8.0));
@@ -462,7 +555,8 @@ fn handle_bypass(
 fn styled_vsep(ui: &mut egui::Ui) {
     let space = 6.0;
     ui.add_space(space);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, ui.available_height()), egui::Sense::hover());
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(1.0, ui.available_height()), egui::Sense::hover());
     ui.painter().line(
         vec![rect.center_top(), rect.center_bottom()],
         egui::Stroke::new(0.5, COL_BORDER),
@@ -481,7 +575,6 @@ pub fn draw_ui(
 
     // Layout principal: horizontal com Zonas 1–4
     ui.horizontal(|ui| {
-
         // ── Zona 1: Identidade (esquerda) ─────────────────────
         ui.allocate_ui(egui::vec2(135.0, 210.0), |ui| {
             ui.vertical(|ui| {
@@ -511,7 +604,11 @@ pub fn draw_ui(
                     );
                     ui.add_space(4.0);
                     let simd = get_simd_badge();
-                    let badge_color = if simd.contains("AVX") { COL_ACCENT } else { COL_MUTED };
+                    let badge_color = if simd.contains("AVX") {
+                        COL_ACCENT
+                    } else {
+                        COL_MUTED
+                    };
                     ui.label(
                         egui::RichText::new(simd)
                             .font(egui::FontId::monospace(8.0))
@@ -535,12 +632,12 @@ pub fn draw_ui(
                 let load_btn = ui.add(
                     egui::Button::new(
                         egui::RichText::new("📂 Load Model")
-                             .font(egui::FontId::proportional(11.5))
-                             .strong()
-                             .color(COL_TEXT)
+                            .font(egui::FontId::proportional(11.5))
+                            .strong()
+                            .color(COL_TEXT),
                     )
                     .fill(COL_PANEL)
-                    .stroke(egui::Stroke::new(1.0, COL_BORDER))
+                    .stroke(egui::Stroke::new(1.0, COL_BORDER)),
                 );
 
                 // A1+A2 FIX: usar NamClapSharedRef (já Send+Sync) como endereço usize é a única
@@ -552,9 +649,8 @@ pub fn draw_ui(
                 if load_btn.clicked() && !shared.ui_loading.load(Ordering::Relaxed) {
                     shared.ui_loading.store(true, Ordering::Relaxed);
                     let shared_addr = shared as *const NamClapShared as usize;
-                    let host_static: clack_plugin::host::HostSharedHandle<'static> = unsafe {
-                        std::mem::transmute(*host)
-                    };
+                    let host_static: clack_plugin::host::HostSharedHandle<'static> =
+                        unsafe { std::mem::transmute(*host) };
                     std::thread::spawn(move || {
                         let path_opt = rfd::FileDialog::new()
                             .add_filter("NAM Model", &["nam", "namb"])
@@ -585,7 +681,10 @@ pub fn draw_ui(
                     let idx = (elapsed * 4.0) as usize % frames.len();
                     frames[idx].to_string()
                 } else {
-                    let name_guard = shared.ui_model_name.lock().unwrap_or_else(|e| e.into_inner());
+                    let name_guard = shared
+                        .ui_model_name
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
                     if name_guard.is_empty() {
                         "No model loaded".to_string()
                     } else {
@@ -611,10 +710,9 @@ pub fn draw_ui(
                                     .color(COL_MUTED)
                                     .italics(),
                             )
-                            .truncate()
+                            .truncate(),
                         );
                     });
-
             });
         });
 
@@ -632,7 +730,8 @@ pub fn draw_ui(
                             ui,
                             ui.make_persistent_id("input_gain_knob"),
                             "INPUT",
-                            crate::math::constants::GAIN_MIN_DB..=crate::math::constants::GAIN_MAX_DB,
+                            crate::math::constants::GAIN_MIN_DB
+                                ..=crate::math::constants::GAIN_MAX_DB,
                             0.0,
                             &shared.param_input_gain,
                             &shared.gui_input_gain_changed,
@@ -650,7 +749,8 @@ pub fn draw_ui(
                             ui,
                             ui.make_persistent_id("output_gain_knob"),
                             "OUTPUT",
-                            crate::math::constants::GAIN_MIN_DB..=crate::math::constants::GAIN_MAX_DB,
+                            crate::math::constants::GAIN_MIN_DB
+                                ..=crate::math::constants::GAIN_MAX_DB,
                             0.0,
                             &shared.param_output_gain,
                             &shared.gui_output_gain_changed,
@@ -691,8 +791,10 @@ pub fn draw_ui(
             ui.vertical(|ui| {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    let peak_l = f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
-                    let peak_r = f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
+                    let peak_l =
+                        f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
+                    let peak_r =
+                        f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
 
                     ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
                         draw_vertical_meter(
@@ -799,12 +901,19 @@ pub fn draw_ui(
 
             // M5: Nome do modelo à esquerda na status bar
             let model_in_bar = {
-                let name_guard = shared.ui_model_name.lock().unwrap_or_else(|e| e.into_inner());
+                let name_guard = shared
+                    .ui_model_name
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
                 if name_guard.is_empty() {
                     "-".to_string()
                 } else {
                     let s = name_guard.as_str();
-                    if s.len() > 35 { format!("{}...", &s[..32]) } else { s.to_string() }
+                    if s.len() > 35 {
+                        format!("{}...", &s[..32])
+                    } else {
+                        s.to_string()
+                    }
                 }
             };
 
@@ -815,7 +924,11 @@ pub fn draw_ui(
             );
 
             // Separador de pipe
-            ui.label(egui::RichText::new("|").font(egui::FontId::proportional(10.0)).color(COL_BORDER));
+            ui.label(
+                egui::RichText::new("|")
+                    .font(egui::FontId::proportional(10.0))
+                    .color(COL_BORDER),
+            );
 
             ui.label(
                 egui::RichText::new(sr_text)
@@ -823,7 +936,11 @@ pub fn draw_ui(
                     .color(COL_MUTED),
             );
 
-            ui.label(egui::RichText::new("|").font(egui::FontId::proportional(10.0)).color(COL_BORDER));
+            ui.label(
+                egui::RichText::new("|")
+                    .font(egui::FontId::proportional(10.0))
+                    .color(COL_BORDER),
+            );
 
             ui.label(
                 egui::RichText::new(format!("{} samples", lat))
@@ -838,9 +955,13 @@ pub fn draw_ui(
                         egui::RichText::new("RT")
                             .font(egui::FontId::monospace(9.0))
                             .strong()
-                            .color(if state.show_telemetry { COL_ACCENT } else { COL_MUTED })
+                            .color(if state.show_telemetry {
+                                COL_ACCENT
+                            } else {
+                                COL_MUTED
+                            }),
                     )
-                    .fill(COL_PANEL)
+                    .fill(COL_PANEL),
                 );
                 if telem_btn.clicked() {
                     state.show_telemetry = !state.show_telemetry;

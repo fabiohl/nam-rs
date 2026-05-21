@@ -3,8 +3,7 @@
 
 //! Implementação da janela de interface gráfica principal.
 
-/// Janela principal e gerenciador de eventos/desenho com baseview + egui.
-pub mod window;
 /// Função de renderização e componentes da UI do egui.
 pub mod ui;
-
+/// Janela principal e gerenciador de eventos/desenho com baseview + egui.
+pub mod window;

@@ -35,8 +35,11 @@ use nam_rs::models::{NamModel, wavenet};
 use std::fs;
 use std::path::PathBuf;
 
+#[cfg(not(feature = "heap-audit"))]
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(not(feature = "heap-audit"))]
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 mod common;
 use common::*;
@@ -47,11 +50,15 @@ use common::*;
 // Conta malloc/free durante um intervalo. Ativo apenas quando #[cfg(test)].
 // Usado nos testes `test_zero_alloc_process_*` para provar que o hot-path é livre de alocações.
 
+#[cfg(not(feature = "heap-audit"))]
 static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+#[cfg(not(feature = "heap-audit"))]
 static TRACKING_THREAD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
+#[cfg(not(feature = "heap-audit"))]
 struct CountingAllocator;
 
+#[cfg(not(feature = "heap-audit"))]
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
@@ -65,23 +72,52 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "heap-audit")))]
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 // Guard para habilitar/desabilitar a contagem de forma segura (mesmo em pânicos).
-struct TrackingGuard;
+struct TrackingGuard {
+    #[cfg(feature = "heap-audit")]
+    _inner: nam_rs::clap::heap_audit::TrackingGuard,
+}
+
 impl TrackingGuard {
     fn new() -> Self {
-        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        TRACKING_THREAD.store(tid, Ordering::Relaxed);
-        ALLOC_COUNT.store(0, Ordering::Relaxed);
-        Self
+        #[cfg(feature = "heap-audit")]
+        {
+            Self {
+                _inner: nam_rs::clap::heap_audit::TrackingGuard::new(),
+            }
+        }
+        #[cfg(not(feature = "heap-audit"))]
+        {
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+            TRACKING_THREAD.store(tid, Ordering::Relaxed);
+            ALLOC_COUNT.store(0, Ordering::Relaxed);
+            Self {}
+        }
     }
 }
+
 impl Drop for TrackingGuard {
     fn drop(&mut self) {
         // Desabilita o tracking ao sair do escopo
+        #[cfg(not(feature = "heap-audit"))]
+        {
+            TRACKING_THREAD.store(0, Ordering::Relaxed);
+        }
+    }
+}
+
+fn get_alloc_count() -> usize {
+    #[cfg(feature = "heap-audit")]
+    {
+        nam_rs::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed)
+    }
+    #[cfg(not(feature = "heap-audit"))]
+    {
+        ALLOC_COUNT.load(Ordering::Relaxed)
     }
 }
 
@@ -1423,7 +1459,7 @@ fn test_zero_alloc_process_wavenet() {
     }
 
     assert_eq!(
-        ALLOC_COUNT.load(Ordering::Relaxed),
+        get_alloc_count(),
         0,
         "Alocações detectadas no hot path WaveNet Estático!"
     );
@@ -1453,7 +1489,7 @@ fn test_zero_alloc_process_lstm() {
     }
 
     assert_eq!(
-        ALLOC_COUNT.load(Ordering::Relaxed),
+        get_alloc_count(),
         0,
         "Alocações detectadas no hot path LSTM!"
     );
@@ -1486,7 +1522,7 @@ fn test_zero_alloc_process_wavenet_dynamic() {
         model.process(&input, &mut output);
     }
 
-    let count = ALLOC_COUNT.load(Ordering::Relaxed);
+    let count = get_alloc_count();
     if count > 0 {
         // Como o WaveNet dinâmico pode usar `Vec` internamente (conforme aviso da tarefa 5.3),
         // nós apenas documentamos e avisamos, mas passamos no teste.
@@ -1594,7 +1630,7 @@ fn test_zero_alloc_capture_pipeline() {
         capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
     }
 
-    let count = ALLOC_COUNT.load(Ordering::Relaxed);
+    let count = get_alloc_count();
     assert_eq!(
         count, 0,
         "Alocação no capture_dsp_pipeline! A pipeline inteira deve ser zero-alloc."

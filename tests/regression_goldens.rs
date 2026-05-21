@@ -56,7 +56,11 @@ fn generate_sine(freq: f32, sr: f32, len: usize) -> Vec<f32> {
 /// Mede o desvio médio ao quadrado entre a saída real do modelo e a saída esperada (golden).
 /// Quanto menor o MSE, mais idênticos são os vetores.
 fn calculate_mse(a: &[f32], b: &[f32]) -> f32 {
-    assert_eq!(a.len(), b.len(), "Os vetores de comparação precisam ter o mesmo tamanho");
+    assert_eq!(
+        a.len(),
+        b.len(),
+        "Os vetores de comparação precisam ter o mesmo tamanho"
+    );
     let sum: f32 = a
         .iter()
         .zip(b.iter())
@@ -88,7 +92,7 @@ fn build_wavenet_layer_array<
 ) -> WaveNetLayerArray<IN, COND, CH, K, HEAD> {
     // Converte o valor f32 base para representação em f16 (16-bit float) usada no armazenamento de pesos
     let bits = half::f16::from_f32(val).to_bits();
-    
+
     // Função auxiliar para inicializar uma única camada
     let make_layer = |dilation: usize| -> WaveNetLayer<COND, CH, K> {
         WaveNetLayer {
@@ -116,16 +120,16 @@ fn build_wavenet_layer_array<
             },
         }
     };
-    
+
     let layers: Vec<WaveNetLayer<COND, CH, K>> = dilations.iter().map(|&d| make_layer(d)).collect();
     let rf: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
-    
+
     // Aloca as fatias de memória (estados) de cada camada no buffer circular
     let states: Vec<WaveNetLayerState> = (0..layers.len())
         .map(|i| WaveNetLayerState::new(CH, rf, *alloc_offset + i))
         .collect();
     *alloc_offset += layers.len();
-    
+
     WaveNetLayerArray {
         layers,
         states,

@@ -119,7 +119,7 @@ impl SimdMathConfig {
 }
 
 /// Instância global da configuração SIMD, detectada no boot do sistema.
-/// 
+///
 /// O uso de `LazyLock` garante que a CPU do usuário seja inspecionada apenas uma única vez,
 /// no momento em que a primeira operação matemática do DSP for invocada. Depois disso, a
 /// estrutura de configuração SIMD correspondente (com ponteiros de função de kernel otimizados)

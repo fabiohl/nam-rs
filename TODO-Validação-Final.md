@@ -7,7 +7,7 @@
 
 ## Épico 1 — Auditoria Final de Código (Dev Humano)
 
-* [ ] **Tarefa 1.1** — Auditoria Completa com `clap-validator`
+* [x] **Tarefa 1.1** — Auditoria Completa com `clap-validator`
 
   * **Contexto:**
     O `clap-validator` da CLAP-SDK é a ferramenta oficial de conformidade para atestar que o plugin obedece de forma irrestrita às especificações e ciclos de vida do padrão CLAP (inclusão de portas, transição de estados atômicos, ativação/desativação dinâmica e carregamento de parâmetros). Esta é a auditoria final que executará toda a suíte de testes de estresse estático contra o binário unificado com todas as extensões ativas.

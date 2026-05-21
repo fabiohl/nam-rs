@@ -168,7 +168,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             resampler.latency_samples(audio_config.sample_rate as u32),
             Ordering::Relaxed,
         );
-        shared.sample_rate.store(audio_config.sample_rate as u32, Ordering::Relaxed);
+        shared
+            .sample_rate
+            .store(audio_config.sample_rate as u32, Ordering::Relaxed);
 
         Ok(Self {
             model_l: None,
@@ -229,9 +231,12 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 let mut policy = 0i32;
                 let mut param: libc::sched_param = std::mem::zeroed();
                 if libc::pthread_getschedparam(thread_id, &mut policy, &mut param) == 0 {
-                    self.rt_status.rt_priority.store(param.sched_priority, Ordering::Relaxed);
+                    self.rt_status
+                        .rt_priority
+                        .store(param.sched_priority, Ordering::Relaxed);
                     if policy == libc::SCHED_FIFO || policy == libc::SCHED_RR {
-                        self.rt_status.set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
+                        self.rt_status
+                            .set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
                     }
                 }
             }
@@ -315,7 +320,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             if n_samples == 0 {
                 continue;
             }
-            self.rt_status.last_n_samples.store(n_samples as u32, Ordering::Relaxed);
+            self.rt_status
+                .last_n_samples
+                .store(n_samples as u32, Ordering::Relaxed);
 
             // Bypass explícito: copia input → output sem processamento.
             // Implementado aqui (não apenas delegado ao host) para conformidade
@@ -610,7 +617,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         }
 
         let elapsed_nanos = start_time.elapsed().as_nanos() as u64;
-        self.rt_status.dsp_cycle_time.store(elapsed_nanos, Ordering::Relaxed);
+        self.rt_status
+            .dsp_cycle_time
+            .store(elapsed_nanos, Ordering::Relaxed);
         self.rt_status.latency_hist.record(elapsed_nanos);
 
         // Se o processamento excedeu 85% do tempo limite (budget) do bloco, incrementa dsp_overloads
@@ -632,10 +641,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     "[NAM-rs Heap Audit] ERROR: {} heap allocation(s) detected in audio thread during process()!",
                     allocs
                 );
-                panic!(
-                    "Heap allocation detected in RT thread! Count: {}",
-                    allocs
-                );
+                panic!("Heap allocation detected in RT thread! Count: {}", allocs);
             }
         }
 

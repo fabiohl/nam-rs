@@ -76,7 +76,7 @@ pub struct NamClapShared {
     pub ui_loading: std::sync::atomic::AtomicBool,
     /// Sample rate detectado do host.
     pub sample_rate: AtomicU32,
-    
+
     // Flags de controle de modificação por parâmetro (GUI -> Host/Processor)
     /// Indica que o ganho de entrada foi alterado pela GUI.
     pub gui_input_gain_changed: std::sync::atomic::AtomicBool,
@@ -84,21 +84,21 @@ pub struct NamClapShared {
     pub gesture_begin_input_gain: std::sync::atomic::AtomicBool,
     /// Indica o término de um gesto de alteração do ganho de entrada.
     pub gesture_end_input_gain: std::sync::atomic::AtomicBool,
-    
+
     /// Indica que o ganho de saída foi alterado pela GUI.
     pub gui_output_gain_changed: std::sync::atomic::AtomicBool,
     /// Indica o início de um gesto de alteração do ganho de saída.
     pub gesture_begin_output_gain: std::sync::atomic::AtomicBool,
     /// Indica o término de um gesto de alteração do ganho de saída.
     pub gesture_end_output_gain: std::sync::atomic::AtomicBool,
-    
+
     /// Indica que o threshold do noise gate foi alterado pela GUI.
     pub gui_gate_thresh_changed: std::sync::atomic::AtomicBool,
     /// Indica o início de um gesto de alteração do noise gate threshold.
     pub gesture_begin_gate_thresh: std::sync::atomic::AtomicBool,
     /// Indica o término de um gesto de alteração do noise gate threshold.
     pub gesture_end_gate_thresh: std::sync::atomic::AtomicBool,
-    
+
     /// Indica que o bypass foi alterado pela GUI.
     pub gui_bypass_changed: std::sync::atomic::AtomicBool,
     /// Indica o início de um gesto de alteração do bypass.
@@ -113,36 +113,39 @@ impl NamClapShared {
     /// Descarrega os gestos e atualizações de parâmetros iniciados pela GUI
     /// na fila de eventos de saída do host.
     pub fn write_gui_events(&self, output: &mut OutputEvents) {
-        use clack_plugin::events::event_types::{ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent};
         use crate::clap::extensions::params::{
-            PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN, PARAM_GATE_THRESH, PARAM_BYPASS,
+            PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+        };
+        use clack_plugin::events::event_types::{
+            ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
         };
 
-        let mut handle_param = |param_id: u32,
-                                changed_flag: &std::sync::atomic::AtomicBool,
-                                begin_flag: &std::sync::atomic::AtomicBool,
-                                end_flag: &std::sync::atomic::AtomicBool,
-                                value_atomic: &std::sync::atomic::AtomicU32| {
-            if begin_flag.swap(false, Ordering::Relaxed) {
-                let ev = ParamGestureBeginEvent::new(0, ClapId::new(param_id));
-                let _ = output.try_push(&ev);
-            }
-            if changed_flag.swap(false, Ordering::Relaxed) {
-                let val = f32::from_bits(value_atomic.load(Ordering::Relaxed)) as f64;
-                let ev = ParamValueEvent::new(
-                    0,
-                    ClapId::new(param_id),
-                    clack_plugin::events::Pckn::new(0u8, 0u8, 0u8, 0u8),
-                    val,
-                    clack_plugin::utils::Cookie::empty(),
-                );
-                let _ = output.try_push(&ev);
-            }
-            if end_flag.swap(false, Ordering::Relaxed) {
-                let ev = ParamGestureEndEvent::new(0, ClapId::new(param_id));
-                let _ = output.try_push(&ev);
-            }
-        };
+        let mut handle_param =
+            |param_id: u32,
+             changed_flag: &std::sync::atomic::AtomicBool,
+             begin_flag: &std::sync::atomic::AtomicBool,
+             end_flag: &std::sync::atomic::AtomicBool,
+             value_atomic: &std::sync::atomic::AtomicU32| {
+                if begin_flag.swap(false, Ordering::Relaxed) {
+                    let ev = ParamGestureBeginEvent::new(0, ClapId::new(param_id));
+                    let _ = output.try_push(ev);
+                }
+                if changed_flag.swap(false, Ordering::Relaxed) {
+                    let val = f32::from_bits(value_atomic.load(Ordering::Relaxed)) as f64;
+                    let ev = ParamValueEvent::new(
+                        0,
+                        ClapId::new(param_id),
+                        clack_plugin::events::Pckn::new(0u8, 0u8, 0u8, 0u8),
+                        val,
+                        clack_plugin::utils::Cookie::empty(),
+                    );
+                    let _ = output.try_push(ev);
+                }
+                if end_flag.swap(false, Ordering::Relaxed) {
+                    let ev = ParamGestureEndEvent::new(0, ClapId::new(param_id));
+                    let _ = output.try_push(ev);
+                }
+            };
 
         handle_param(
             PARAM_INPUT_GAIN,
@@ -211,13 +214,11 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         if let Some(path) = pending_model {
             let res = self.load_model(&path);
             self.shared.ui_loading.store(false, Ordering::Relaxed);
-            if let Err(e) = res {
-                if let Some(log) = self.host.get_extension::<HostLog>() {
-                    let shared = self.host.shared();
-                    let msg = CString::new(format!("NAM-rs: Falha ao carregar modelo da GUI: {:?}", e))
-                        .expect("Falha ao criar CString");
-                    log.log(&shared, LogSeverity::Error, &msg);
-                }
+            if let (Err(e), Some(log)) = (res, self.host.get_extension::<HostLog>()) {
+                let shared = self.host.shared();
+                let msg = CString::new(format!("NAM-rs: Falha ao carregar modelo da GUI: {:?}", e))
+                    .expect("Falha ao criar CString");
+                log.log(&shared, LogSeverity::Error, &msg);
             }
         }
 

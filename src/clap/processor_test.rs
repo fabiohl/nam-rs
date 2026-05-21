@@ -540,7 +540,7 @@ mod tests {
         // 3. Test get_size
         let size = gui_ext.get_size(&mut handle).expect("Failed to get size");
         assert_eq!(size.width, 600);
-        assert_eq!(size.height, 210);
+        assert_eq!(size.height, 260);
 
         // 4. Test can_resize
         assert!(!gui_ext.can_resize(&mut handle));
@@ -552,7 +552,7 @@ mod tests {
                     &mut handle,
                     GuiSize {
                         width: 600,
-                        height: 210
+                        height: 260
                     }
                 )
                 .is_ok()

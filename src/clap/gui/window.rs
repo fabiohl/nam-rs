@@ -115,7 +115,7 @@ impl WindowHandler for NamPluginWindow {
         let shared = unsafe { &*self.shared.0 };
         let mut raw_input = self.raw_input.take();
         raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
-        
+
         let logical_width = self.width as f32 / self.scale;
         let logical_height = self.height as f32 / self.scale;
         raw_input.screen_rect = Some(egui::Rect::from_min_size(
@@ -127,9 +127,8 @@ impl WindowHandler for NamPluginWindow {
             info.native_pixels_per_point = Some(self.scale);
         }
 
-        let host_ref: &clack_plugin::host::HostSharedHandle = unsafe {
-            std::mem::transmute(&self.host)
-        };
+        let host_ref: &clack_plugin::host::HostSharedHandle =
+            unsafe { std::mem::transmute(&self.host) };
 
         let full_output = self.egui_ctx.run(raw_input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
