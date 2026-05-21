@@ -26,7 +26,8 @@ RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends 
 
 # Instalação rápida de ferramentas Cargo necessárias para testes e scripts de utilitários
 USER vscode
-RUN cargo install -y cargo-edit && \
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+RUN cargo binstall -y cargo-mutants cargo-edit cargo-nextest && \
     cargo install --git https://github.com/free-audio/clap-validator.git
 USER root
 
