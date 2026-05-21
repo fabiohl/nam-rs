@@ -81,6 +81,10 @@ pub struct UiState {
     pub telem_cycle_ns: u64,
     /// Buffer de tempo máximo em nanosegundos.
     pub telem_budget_ns: u64,
+    /// Expiração do banner visual de erro de carregamento (None se não estiver ativo).
+    pub error_expiration: Option<Instant>,
+    /// Mensagem curta/resumida do erro.
+    pub error_msg: String,
 }
 
 impl std::fmt::Debug for UiState {
@@ -176,6 +180,8 @@ impl Default for UiState {
             telem_load_pct: 0.0,
             telem_cycle_ns: 0,
             telem_budget_ns: 0,
+            error_expiration: None,
+            error_msg: String::new(),
         }
     }
 }
@@ -868,6 +874,15 @@ pub fn draw_ui(
     host: &HostSharedHandle,
     state: &mut UiState,
 ) {
+    if shared.ui_load_error.swap(false, Ordering::Relaxed) {
+        state.error_expiration = Some(Instant::now() + Duration::from_secs(3));
+        if let Ok(msg_guard) = shared.ui_load_error_msg.lock() {
+            state.error_msg = msg_guard.clone();
+        } else {
+            state.error_msg = "Load failed".to_string();
+        }
+    }
+
     let accent_color = resolve_accent(shared);
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
@@ -1012,8 +1027,22 @@ pub fn draw_ui(
 
                 ui.add_space(6.0);
 
+                let is_error_active = if let Some(expiration) = state.error_expiration {
+                    if Instant::now() < expiration {
+                        ui.ctx().request_repaint();
+                        true
+                    } else {
+                        state.error_expiration = None;
+                        false
+                    }
+                } else {
+                    false
+                };
+
                 // M2: Nome do modelo em frame estilizado com borda (visual de "input field")
-                let model_name = if shared.ui_loading.load(Ordering::Relaxed) {
+                let model_name = if is_error_active {
+                    "⚠ Load failed".to_string()
+                } else if shared.ui_loading.load(Ordering::Relaxed) {
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
                     let elapsed = ui.input(|i| i.time);
                     // ASCII puro — sem emoji para evitar quadradinhos de fallback de glifo
@@ -1032,12 +1061,25 @@ pub fn draw_ui(
                     }
                 };
 
+                let text_color = if is_error_active {
+                    COL_VU_RED
+                } else {
+                    COL_MUTED
+                };
+
                 // Caixa estilizada do nome do modelo (M2).
                 // Label::truncate() delega ao egui o corte visual automático —
                 // sem precisar adivinhar o número de chars, funciona para qualquer fonte/escala.
-                egui::Frame::new()
+                let frame_res = egui::Frame::new()
                     .fill(COL_BG)
-                    .stroke(egui::Stroke::new(1.0, COL_BORDER))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        if is_error_active {
+                            COL_VU_RED
+                        } else {
+                            COL_BORDER
+                        },
+                    ))
                     .corner_radius(egui::CornerRadius::same(3))
                     .inner_margin(egui::Margin::symmetric(6, 4))
                     .show(ui, |ui| {
@@ -1047,12 +1089,16 @@ pub fn draw_ui(
                             egui::Label::new(
                                 egui::RichText::new(&model_name)
                                     .font(egui::FontId::proportional(9.5))
-                                    .color(COL_MUTED)
+                                    .color(text_color)
                                     .italics(),
                             )
                             .truncate(),
                         );
                     });
+
+                if is_error_active {
+                    frame_res.response.on_hover_text(&state.error_msg);
+                }
             });
         });
 

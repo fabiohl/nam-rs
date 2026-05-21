@@ -74,6 +74,10 @@ pub struct NamClapShared {
     pub ui_pending_model: Mutex<Option<std::path::PathBuf>>,
     /// Indica se a GUI está no meio de um carregamento assíncrono de modelo.
     pub ui_loading: std::sync::atomic::AtomicBool,
+    /// Flag sinalizando que ocorreu um erro ao carregar o modelo.
+    pub ui_load_error: std::sync::atomic::AtomicBool,
+    /// Mensagem detalhada de erro para a GUI.
+    pub ui_load_error_msg: Mutex<String>,
     /// Sample rate detectado do host.
     pub sample_rate: AtomicU32,
     /// Cor de accent dinâmica baseada na cor da track do DAW (ARGB compactado).
@@ -227,11 +231,37 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         if let Some(path) = pending_model {
             let res = self.load_model(&path);
             self.shared.ui_loading.store(false, Ordering::Relaxed);
-            if let (Err(e), Some(log)) = (res, self.host.get_extension::<HostLog>()) {
-                let shared = self.host.shared();
-                let msg = CString::new(format!("NAM-rs: Failed to load model from GUI: {:?}", e))
-                    .expect("Failed to create CString");
-                log.log(&shared, LogSeverity::Error, &msg);
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    let err_msg = match e.error_code() {
+                        NamErrorCode::FileNotFound => "File not found",
+                        NamErrorCode::FileReadError => "File read error",
+                        NamErrorCode::UnknownExtension => "Unknown extension",
+                        NamErrorCode::NamJsonParseError => "Invalid JSON format",
+                        NamErrorCode::NambCrc32Mismatch => "CRC32 checksum mismatch",
+                        NamErrorCode::NambInvalidMagic => "Invalid signature",
+                        NamErrorCode::NambUnsupportedVersion => "Unsupported version",
+                        NamErrorCode::NambTruncated => "Corrupted/truncated file",
+                        NamErrorCode::UnsupportedArchitecture => "Unsupported architecture",
+                        NamErrorCode::TopologyDetectionFailed => "Topology detection failed",
+                        NamErrorCode::WeightCountMismatch => "Weight count mismatch",
+                        NamErrorCode::ModelBuildFailed => "Model build failed",
+                        _ => "Internal error",
+                    };
+                    if let Ok(mut msg_guard) = self.shared.ui_load_error_msg.lock() {
+                        *msg_guard = err_msg.to_string();
+                    }
+                    self.shared.ui_load_error.store(true, Ordering::Relaxed);
+
+                    if let Some(log) = self.host.get_extension::<HostLog>() {
+                        let shared = self.host.shared();
+                        let msg =
+                            CString::new(format!("NAM-rs: Failed to load model from GUI: {:?}", e))
+                                .expect("Failed to create CString");
+                        log.log(&shared, LogSeverity::Error, &msg);
+                    }
+                }
             }
         }
 
@@ -396,6 +426,8 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_model_name: Mutex::new(String::new()),
             ui_pending_model: Mutex::new(None),
             ui_loading: std::sync::atomic::AtomicBool::new(false),
+            ui_load_error: std::sync::atomic::AtomicBool::new(false),
+            ui_load_error_msg: Mutex::new(String::new()),
             sample_rate: AtomicU32::new(0),
             track_accent_color: AtomicU32::new(0),
             param_indication: [

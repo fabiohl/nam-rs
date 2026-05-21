@@ -435,6 +435,11 @@ impl NamDiagnostic {
             self.support_block()
         );
     }
+
+    /// Retorna o código de erro associado ao diagnóstico.
+    pub fn error_code(&self) -> NamErrorCode {
+        self.code
+    }
 }
 
 impl fmt::Display for NamDiagnostic {

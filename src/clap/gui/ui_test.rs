@@ -30,6 +30,8 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
         ui_model_name: Mutex::new(String::new()),
         ui_pending_model: Mutex::new(None),
         ui_loading: std::sync::atomic::AtomicBool::new(false),
+        ui_load_error: std::sync::atomic::AtomicBool::new(false),
+        ui_load_error_msg: Mutex::new(String::new()),
         alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         sample_rate: AtomicU32::new(44100),
         track_accent_color: AtomicU32::new(track_color),
@@ -95,4 +97,47 @@ fn test_track_color_conversion_and_fallback() {
         resolve_accent(&shared_bitwig),
         egui::Color32::from_rgb(0x5E, 0x81, 0xAC)
     );
+}
+
+#[test]
+fn test_ui_load_error_visual_feedback() {
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+
+    let shared = make_test_shared(0);
+    shared.ui_load_error.store(true, Ordering::Relaxed);
+    *shared.ui_load_error_msg.lock().unwrap() = "Invalid JSON format".to_string();
+
+    let mut state = UiState::default();
+    assert!(state.error_expiration.is_none());
+    assert!(state.error_msg.is_empty());
+
+    let ctx = egui::Context::default();
+    let dummy = 42i32;
+    let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            draw_ui(ui, &shared, &host, &mut state);
+        });
+    });
+
+    // 1. After draw_ui, state.error_expiration should be set.
+    assert!(state.error_expiration.is_some());
+    assert_eq!(state.error_msg, "Invalid JSON format");
+
+    // 2. The flag ui_load_error should have been swapped to false.
+    assert!(!shared.ui_load_error.load(Ordering::Relaxed));
+
+    // 3. If we set error_expiration to the past, the next draw_ui should reset/clear it.
+    state.error_expiration = Some(Instant::now() - Duration::from_secs(1));
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            draw_ui(ui, &shared, &host, &mut state);
+        });
+    });
+
+    assert!(state.error_expiration.is_none());
+
+    assert!(state.error_expiration.is_none());
 }
