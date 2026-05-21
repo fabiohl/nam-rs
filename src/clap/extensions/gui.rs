@@ -35,6 +35,9 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Libera os recursos alocados para a interface gráfica.
     fn destroy(&mut self) {
+        self.shared
+            .alive_fence
+            .store(false, std::sync::atomic::Ordering::Relaxed);
         #[cfg(feature = "clap-plugin-gui")]
         if let Some(mut window_handle) = self.window_handle.take() {
             window_handle.close();

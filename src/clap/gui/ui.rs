@@ -934,21 +934,63 @@ pub fn draw_ui(
                     let shared_addr = shared as *const NamClapShared as usize;
                     let host_static: clack_plugin::host::HostSharedHandle<'static> =
                         unsafe { std::mem::transmute(*host) };
+                    let alive_fence = Arc::clone(&shared.alive_fence);
                     std::thread::spawn(move || {
-                        let path_opt = rfd::FileDialog::new()
-                            .add_filter("NAM Model", &["nam", "namb"])
-                            .pick_file();
-                        // SAFETY: shared_addr aponta para NamClapShared que vive enquanto o
-                        // plugin estiver instanciado. O flag ui_loading evita que o host feche
-                        // a janela enquanto o picker está aberto.
-                        let shared = unsafe { &*(shared_addr as *const NamClapShared) };
-                        if let Some(path) = path_opt {
-                            if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
-                                *pending_guard = Some(path);
-                                host_static.request_callback();
+                        // "Picker Manager Thread"
+                        let (tx, rx) = std::sync::mpsc::channel();
+
+                        // Spawna a "Dialog Runner Thread"
+                        std::thread::spawn(move || {
+                            let path_opt = rfd::FileDialog::new()
+                                .add_filter("NAM Model", &["nam", "namb"])
+                                .pick_file();
+                            let _ = tx.send(path_opt);
+                        });
+
+                        // Aguarda com timeout de 120s
+                        match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+                            Ok(path_opt) => {
+                                // Verifica se o plugin ainda está vivo (alive_fence)
+                                if alive_fence.load(Ordering::Relaxed) {
+                                    // SAFETY: shared_addr aponta para NamClapShared que vive enquanto o
+                                    // plugin estiver instanciado. O flag ui_loading evita que o host feche
+                                    // a janela enquanto o picker está aberto.
+                                    let shared = unsafe { &*(shared_addr as *const NamClapShared) };
+                                    if let Some(path) = path_opt {
+                                        if let Ok(mut pending_guard) =
+                                            shared.ui_pending_model.lock()
+                                        {
+                                            *pending_guard = Some(path);
+                                            host_static.request_callback();
+                                        }
+                                    } else {
+                                        shared.ui_loading.store(false, Ordering::Relaxed);
+                                    }
+                                }
                             }
-                        } else {
-                            shared.ui_loading.store(false, Ordering::Relaxed);
+                            Err(_) => {
+                                // Timeout de 120s estourado
+                                // Se a cerca principal ainda indica que o plugin está vivo:
+                                if alive_fence.load(Ordering::Relaxed) {
+                                    let shared = unsafe { &*(shared_addr as *const NamClapShared) };
+                                    shared.ui_loading.store(false, Ordering::Relaxed);
+
+                                    // Logar o timeout usando o host_static se possível
+                                    if let (Some(log), Ok(c_msg)) = (
+                                        host_static
+                                            .get_extension::<clack_extensions::log::HostLog>(),
+                                        std::ffi::CString::new(
+                                            "NAM-rs: File dialog portal timed out after 120s",
+                                        ),
+                                    ) {
+                                        log.log(
+                                            &host_static,
+                                            clack_extensions::log::LogSeverity::Warning,
+                                            &c_msg,
+                                        );
+                                    }
+                                }
+                            }
                         }
                     });
                 }

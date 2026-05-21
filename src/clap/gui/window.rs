@@ -214,6 +214,16 @@ impl NamPluginWindow {
         shared: NamClapSharedRef,
         host: clack_plugin::host::HostSharedHandle<'static>,
     ) -> Self {
+        if let (true, Some(log), Ok(c_msg)) = (
+            std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland"),
+            host.get_extension::<clack_extensions::log::HostLog>(),
+            std::ffi::CString::new(
+                "NAM-rs: Wayland session detected, using XDG portal for file dialogs",
+            ),
+        ) {
+            log.log(&host, clack_extensions::log::LogSeverity::Info, &c_msg);
+        }
+
         let gl_ctx = window.gl_context().expect("OpenGL context not available");
         unsafe {
             gl_ctx.make_current();

@@ -81,6 +81,8 @@ pub struct NamClapShared {
     /// Indicação de parâmetros (mapeamento, automação e override) para os 4 parâmetros.
     /// Bit 0: Mapeado, Bit 1: Automatizando, Bit 2: Override.
     pub param_indication: [std::sync::atomic::AtomicU8; 4],
+    /// Fence de vida útil: true enquanto o plugin existe. Verificado pela thread do File Picker.
+    pub alive_fence: Arc<std::sync::atomic::AtomicBool>,
 
     // Flags de controle de modificação por parâmetro (GUI -> Host/Processor)
     /// Indica que o ganho de entrada foi alterado pela GUI.
@@ -113,6 +115,12 @@ pub struct NamClapShared {
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
+
+impl Drop for NamClapShared {
+    fn drop(&mut self) {
+        self.alive_fence.store(false, Ordering::Relaxed);
+    }
+}
 
 impl NamClapShared {
     /// Descarrega os gestos e atualizações de parâmetros iniciados pela GUI
@@ -398,6 +406,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 std::sync::atomic::AtomicU8::new(0),
                 std::sync::atomic::AtomicU8::new(0),
             ],
+            alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
             gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
             gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),

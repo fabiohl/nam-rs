@@ -205,7 +205,7 @@
 
 ---
 
-* [ ] **Tarefa B.3** — File Picker: Robustez Wayland, Alive Fence e Timeout
+* [x] **Tarefa B.3** — File Picker: Robustez Wayland, Alive Fence e Timeout
 
   * **Contexto:**
     O File Picker atual usa `rfd::FileDialog::new()` síncrono em uma thread spawnada (`src/clap/gui/ui.rs:L558-L574`). Existem 3 riscos documentados: (1) Falha silenciosa em sessões Wayland puras por falta de `xdg-desktop-portal`; (2) Deadlock de re-entrancy GTK se o host também usar GTK; (3) `std::mem::transmute` do `HostSharedHandle` (`ui.rs:L555-L556`) fica dangling se o host destruir o plugin enquanto o picker está aberto.

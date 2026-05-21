@@ -30,6 +30,7 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
         ui_model_name: Mutex::new(String::new()),
         ui_pending_model: Mutex::new(None),
         ui_loading: std::sync::atomic::AtomicBool::new(false),
+        alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         sample_rate: AtomicU32::new(44100),
         track_accent_color: AtomicU32::new(track_color),
         param_indication: [
