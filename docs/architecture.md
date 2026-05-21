@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -225,17 +226,17 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 
 ### Camadas Ativas
 
-| Camada                        | Local                                                    | Força como Ground Truth         | O que captura                                                                                           |
-|:----------------------------- |:-------------------------------------------------------- |:------------------------------- |:------------------------------------------------------------------------------------------------------- |
-| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência original.                |
-| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
-| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
-| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato     | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
-| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout      | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
-| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                               | Inicialização do host em modo headless, processamento de buffers e teardown seguro.                     |
-| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                               | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
-| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                               | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
-| **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
+| Camada                        | Local                                                    | Força como Ground Truth        | O que captura                                                                                           |
+|:----------------------------- |:-------------------------------------------------------- |:------------------------------ |:------------------------------------------------------------------------------------------------------- |
+| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++  | Erros na composição de kernels, regressões end-to-end e paridade vs referência original.                |
+| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa| Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
+| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta     | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
+| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato    | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
+| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout     | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
+| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                              | Inicialização do host em modo headless, processamento de buffers e teardown seguro.                     |
+| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                              | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
+| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                              | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
+| **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                              | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
 
 ### Decisão de Arquitetura: Remoção dos Parity Tests com Inputs Fixos
 
@@ -347,12 +348,16 @@ A troca de modelos na audio thread é RT-safe:
 
 ### Extensões CLAP Implementadas
 
-| Extensão                  | Arquivo                     | Responsabilidade                                                                          |
-|:------------------------- |:--------------------------- |:----------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports` | `extensions/audio_ports.rs` | 1 porta stereo I/O com `in_place_pair`                                                    |
-| `clap_plugin_params`      | `extensions/params.rs`      | 4 parâmetros (Input Gain, Output Gain, Gate Threshold, Bypass) com `flush()` bidirecional |
-| `clap_plugin_state`       | `extensions/state.rs`       | Persistência JSON de parâmetros e path do modelo                                          |
-| `clap_plugin_gui`         | `extensions/gui.rs`         | Janela embutida X11 via XWayland (600×280px, tamanho fixo)                                |
+| Extensão                       | Arquivo                                                                                  | Responsabilidade                                                                          |
+|:------------------------------ |:---------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | 1 porta stereo I/O com `in_place_pair`                                                    |
+| `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | 4 parâmetros (Input Gain, Output Gain, Gate Threshold, Bypass) com `flush()` bidirecional |
+| `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistência JSON de parâmetros e path do modelo                                          |
+| `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Reporte de latência induzida pelo processamento/resampling ao host                        |
+| `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Adaptação da cor de destaque da GUI à cor da trilha do host (Accent Color dinâmico)       |
+| `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Páginas pré-configuradas para Device Panel e controladores de hardware                    |
+| `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Feedback visual de mapeamento, automação e override de parâmetros                         |
+| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Janela embutida X11 via XWayland (600×280px, tamanho fixo)                                |
 
 ### Interface Gráfica: Estratégia de Windowing e Stack
 

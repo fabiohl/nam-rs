@@ -71,13 +71,14 @@ Estes componentes devem ser instalados via `cargo install` para habilitar rotina
 | **`clippy`**     | Linter estático para Rust. Utilizado no script `utils/lints.sh` para garantir a adesão às melhores práticas e evitar antipadrões que possam comprometer a performance ou segurança. |
 | **`rustfmt`**    | Formatador de código. Garante consistência visual em todo o repositório, essencial para revisão de código e manutenção por múltiplos colaboradores.                                 |
 
-## 5. Dependências Planejadas
+## 5. Dependências para Plugin e GUI (CLAP)
 
-As seguintes dependências serão introduzidas a partir da Sprint 1 para viabilizar o suporte a plugins CLAP e a interface gráfica embarcada:
+As seguintes dependências estão implementadas para viabilizar o suporte a plugins CLAP e a interface gráfica embarcada:
 
-| Crate              | Versão Planejada | Feature Flag  | Sprint   | Justificativa                                                                                                                                                   |
-| ------------------ | ---------------- | ------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clack-plugin`     | `^0.1`           | `clap-plugin` | Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
-| `clack-extensions` | `^0.1`           | `clap-plugin` | Sprint 1 | Extensões do spec CLAP (params, state, gui, thread-pool). Crate separado do `clack-plugin` para modularidade.                                                   |
-| `egui`             | `^0.34`          | `clap-plugin` | Sprint 4 | Framework GUI imediato, puro Rust. Renderização de GPU via `wgpu`. Integrado ao CLAP via `baseview`.                                                            |
-| `baseview`         | `git`            | `clap-plugin` | Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Não publicado no crates.io — usar dependência via Git.                                         |
+| Crate | Versão | Feature Flag | Status | Justificativa |
+| :--- | :--- | :--- | :--- | :--- |
+| `clack-plugin` | `0.1` | `clap-plugin` | Introduzida na Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
+| `clack-extensions` | `0.1` | `clap-plugin` | Introduzida na Sprint 1 | Extensões do spec CLAP (params, state, gui, latency, track-info, remote-controls, param-indication). Crate separado do `clack-plugin` para modularidade. |
+| `egui` | `0.31` | `clap-plugin-gui` | Introduzida na Sprint 4 | Framework GUI de modo imediato, puro Rust. Renderização de GPU via OpenGL (`egui_glow` e `glow`). |
+| `baseview` | `git` | `clap-plugin-gui` | Introduzida na Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Não publicado no crates.io — usar dependência via Git. |
+| `rfd` | `0.15` | `clap-plugin-gui` | Introduzida na Sprint 4 | File Dialog nativo e assíncrono para carregamento de modelos (.nam/.namb) via GUI. |

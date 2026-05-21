@@ -123,7 +123,7 @@
     * Durante playback de automação, o arco do knob pulsa suavemente.
     * O `clap-validator` não reporta warnings sobre `param-indication`.
 
-* [ ] **Tarefa A.4** —  Atualização da Tabela de Extensões em `docs/architecture.md`
+* [x] **Tarefa A.4** —  Atualização da Tabela de Extensões em `docs/architecture.md`
 
 | Extensão                       | Arquivo                          | Responsabilidade                                                                    |
 |:------------------------------ |:-------------------------------- |:----------------------------------------------------------------------------------- |

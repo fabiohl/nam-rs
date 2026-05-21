@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Estratégia de Integração CLAP (Clever Audio Plug-in)
@@ -11,17 +12,17 @@ A integração CLAP deve respeitar estritamente a segregação de threads já ex
 
 - **Main Thread (Host)**:
   - Responsável pela inicialização do plugin, escaneamento de parâmetros e gerenciamento de estado.
-  - No NAM-rs, esta thread substituirá o loop principal do `src/main.rs`.
-  - Gerencia o carregamento de arquivos `.nam`/`.namb` via `src/loader/`.
+  - No NAM-rs, esta thread substituirá o loop principal em [src/main.rs](file:///home/fabio/nam-rs/src/main.rs).
+  - Gerencia o carregamento de arquivos `.nam`/`.namb` via [src/loader/](file:///home/fabio/nam-rs/src/loader/).
 - **Audio Thread (Real-time)**:
   - Chamada pelo host via callback `process()`.
   - **Requisito Crítico**: Deve manter a política de **ZERO alocações** e **ZERO locks**.
-  - Utilizará `src/dsp/pipeline.rs` para o processamento, adaptando os buffers do CLAP para o formato interno.
-  - Diferente do PipeWire (que é dual-stream), o CLAP fornece buffers de entrada e saída em um único contexto, permitindo simplificar o `DspBridge`.
+  - Utilizará [src/dsp/pipeline.rs](file:///home/fabio/nam-rs/src/dsp/pipeline.rs) para o processamento, adaptando os buffers do CLAP para o formato interno.
+  - Diferente do PipeWire (que é dual-stream), o CLAP fornece buffers de entrada e saída em um único contexto, eliminando a necessidade do `DspBridge`.
 
 ## 2. Mapeamento de Parâmetros
 
-Os parâmetros expostos ao host serão mapeados a partir da estrutura `NamPluginParams` (veja `src/common/params.rs`):
+Os parâmetros expostos ao host serão mapeados a partir da estrutura `NamPluginParams` (veja [src/common/params.rs](file:///home/fabio/nam-rs/src/common/params.rs)):
 
 | Parâmetro CLAP     | ID                  | Unidade | Descrição                                        |
 |:------------------ |:------------------- |:------- |:------------------------------------------------ |
@@ -47,18 +48,20 @@ A feature `clap-plugin` omitirá os módulos `pw_host.rs` e `rt_setup.rs`, mante
 - **Frameworks de alto nível**: Descartados por adicionarem suporte forçado a VST3, uma camada de GUI embutida que conflita com nossa escolha de `egui` puro, e abstrações que poderiam mascarar o determinismo temporal exigido pelo motor DSP do NAM-rs.
 - **Link**: [https://github.com/prokopyl/clack](https://github.com/prokopyl/clack)
 
-## 5. Extensões CLAP Planejadas
+## 5. Extensões CLAP Implementadas
 
-A integração utilizará o crate `clack-extensions` para implementar as seguintes funcionalidades do protocolo CLAP:
+A integração utiliza o crate `clack-extensions` para implementar as seguintes extensões do protocolo CLAP:
 
-| Extensão               | Finalidade                                                               |
-|:---------------------- |:------------------------------------------------------------------------ |
-| `clap-ext-params`      | Automação de parâmetros (`input_gain`, `output_gain`, `gate`, `bypass`). |
-| `clap-ext-state`       | Persistência de estado (save/load do projeto na DAW).                    |
-| `clap-ext-thread-pool` | Paralelização da inferência via pool de threads do host.                 |
-| `clap-ext-latency`     | Reporte de latência induzida pelo processamento/resampling.              |
-| `clap-ext-audio-ports` | Declaração explícita de entradas/saídas estéreo e suporte in-place.      |
-| `clap-ext-gui`         | Interface gráfica nativa via `egui` + `baseview`.                        |
+| Extensão                       | Arquivo                                                                                  | Finalidade                                                                                                             |
+|:------------------------------ |:---------------------------------------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | Declaração explícita de portas de entrada/saída estéreo e suporte a processamento in-place                             |
+| `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | Mapeamento e automação de parâmetros (`input_gain`, `output_gain`, `gate`, `bypass`) com suporte a gesture e `flush()` |
+| `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistência do estado do plugin (parâmetros e caminho do modelo) no projeto da DAW                                    |
+| `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Reporte dinâmico de latência induzida pelo processamento e resampling ao host                                          |
+| `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Suporte à cor da track do host para adaptar dinamicamente o accent color da GUI                                        |
+| `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Páginas de controle pré-configuradas ("Main" e "Gate") para integração com controladores de hardware e Device Panel    |
+| `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Feedback visual na GUI para indicar parâmetros mapeados, automatizados ou sob override temporário                      |
+| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Interface gráfica nativa construída com `egui` e embutida via `baseview`                                               |
 
 ## 6. Plugin Descriptor
 
@@ -86,21 +89,21 @@ O projeto fornece um script automatizado para compilar, instalar e realizar uma 
 
 - **Build Padrão (com GUI)**:
   Por padrão, o script compila o plugin com suporte a interface gráfica nativa (utilizando a feature `clap-plugin-gui`).
-
+  
   ```bash
   ./utils/build-clap.sh
   ```
 
 - **Build Headless (sem GUI)**:
   Caso queira compilar a versão enxuta para testes sem suporte à interface gráfica, utilize a flag `--headless` ou `--no-gui`:
-
+  
   ```bash
   ./utils/build-clap.sh --headless
   ```
 
 - **Modo Debug**:
   Para compilar em modo de depuração (debug), adicione `--debug`:
-
+  
   ```bash
   ./utils/build-clap.sh --debug
   ```

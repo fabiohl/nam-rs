@@ -157,7 +157,7 @@ Oferece dois níveis de operação de parsing:
 
 ## 🧪 Testes e Validação
 
-O NAM-rs mantém uma suíte de aproximandamente **138 verificações** automatizadas. Para facilitar o fluxo de desenvolvimento e QA, utilize os scripts na pasta `utils/`:
+O NAM-rs mantém uma suíte de aproximandamente **220 verificações** automatizadas. Para facilitar o fluxo de desenvolvimento e QA, utilize os scripts na pasta `utils/`:
 
 ```bash
 # 1. Lint e Qualidade (Formatação + Clippy + Feature Matrix)
