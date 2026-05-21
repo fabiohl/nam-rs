@@ -78,6 +78,9 @@ pub struct NamClapShared {
     pub sample_rate: AtomicU32,
     /// Cor de accent dinâmica baseada na cor da track do DAW (ARGB compactado).
     pub track_accent_color: AtomicU32,
+    /// Indicação de parâmetros (mapeamento, automação e override) para os 4 parâmetros.
+    /// Bit 0: Mapeado, Bit 1: Automatizando, Bit 2: Override.
+    pub param_indication: [std::sync::atomic::AtomicU8; 4],
 
     // Flags de controle de modificação por parâmetro (GUI -> Host/Processor)
     /// Indica que o ganho de entrada foi alterado pela GUI.
@@ -353,6 +356,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<crate::clap::extensions::latency::NamPluginLatency>();
         builder.register::<crate::clap::extensions::track_info::NamPluginTrackInfo>();
         builder.register::<crate::clap::extensions::remote_controls::NamPluginRemoteControls>();
+        builder.register::<crate::clap::extensions::param_indication::NamPluginParamIndication>();
 
         #[cfg(feature = "clap-plugin-gui")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();
@@ -388,6 +392,12 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_loading: std::sync::atomic::AtomicBool::new(false),
             sample_rate: AtomicU32::new(0),
             track_accent_color: AtomicU32::new(0),
+            param_indication: [
+                std::sync::atomic::AtomicU8::new(0),
+                std::sync::atomic::AtomicU8::new(0),
+                std::sync::atomic::AtomicU8::new(0),
+                std::sync::atomic::AtomicU8::new(0),
+            ],
             gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
             gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
             gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),

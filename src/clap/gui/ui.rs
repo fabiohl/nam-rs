@@ -113,6 +113,7 @@ fn get_simd_badge() -> &'static str {
 /// - Glow no arco durante drag (E1)
 /// - Tooltip com valor exato no hover (E3)
 /// - Ctrl+Drag para fine-tune ÷10 (E5)
+/// - Halo de mapeamento, pulsação de automação e cor de override (A.3)
 ///
 /// Retorna `(response, new_value)`.
 fn knob_widget(
@@ -122,6 +123,7 @@ fn knob_widget(
     range: std::ops::RangeInclusive<f32>,
     size: egui::Vec2,
     color: egui::Color32,
+    indication: u8,
 ) -> (egui::Response, f32) {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::drag());
 
@@ -166,8 +168,40 @@ fn knob_widget(
     let angle_end = 135.0f32.to_radians();
     let angle = angle_start + frac * (angle_end - angle_start);
 
+    // Halo de mapeamento (A.3): 6 pontos azuis (#5e81ac) espaçados uniformemente
+    if indication & 1 != 0 {
+        let dot_color = egui::Color32::from_rgb(94, 129, 172); // #5e81ac
+        let halo_radius = radius + 5.0;
+        for i in 0..6 {
+            let a = (i as f32) * (std::f32::consts::TAU / 6.0);
+            let pos = center + egui::vec2(a.cos() * halo_radius, a.sin() * halo_radius);
+            painter.circle_filled(pos, 1.5, dot_color);
+        }
+    }
+
     // Track externo escuro
     painter.circle_stroke(center, radius, egui::Stroke::new(3.0, COL_BG));
+
+    // Determina a cor base do arco de valor ativo (A.3: override vira COL_AMBER)
+    let mut active_arc_color = if indication & 4 != 0 {
+        COL_AMBER
+    } else {
+        color
+    };
+
+    // Pulsação de automação (A.3: modulating alpha de 0.3 a 1.0)
+    if indication & 2 != 0 {
+        let time = ui.input(|i| i.time) as f32;
+        let pulse = (time * std::f32::consts::PI).sin().abs();
+        let alpha = 0.3 + 0.7 * pulse;
+        active_arc_color = egui::Color32::from_rgba_unmultiplied(
+            active_arc_color.r(),
+            active_arc_color.g(),
+            active_arc_color.b(),
+            (active_arc_color.a() as f32 * alpha) as u8,
+        );
+        ui.ctx().request_repaint();
+    }
 
     // Arco de valor ativo (48 segmentos para suavidade — m2)
     let num_segments = 48;
@@ -183,12 +217,16 @@ fn knob_widget(
     if points.len() > 1 {
         painter.add(egui::Shape::line(
             points.clone(),
-            egui::Stroke::new(3.5, color),
+            egui::Stroke::new(3.5, active_arc_color),
         ));
         // Glow durante drag (E1): halo externo semi-transparente
         if response.dragged() {
-            let glow_color =
-                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 60);
+            let glow_color = egui::Color32::from_rgba_unmultiplied(
+                active_arc_color.r(),
+                active_arc_color.g(),
+                active_arc_color.b(),
+                60,
+            );
             painter.add(egui::Shape::line(
                 points,
                 egui::Stroke::new(7.0, glow_color),
@@ -238,6 +276,7 @@ fn handle_knob(
     color: egui::Color32,
     host: &HostSharedHandle,
     knob_size: egui::Vec2,
+    indication: u8,
 ) {
     ui.vertical(|ui| {
         let current_val = f32::from_bits(atomic_val.load(Ordering::Relaxed));
@@ -250,7 +289,7 @@ fn handle_knob(
                     if space > 0.0 {
                         ui.add_space(space);
                     }
-                    knob_widget(ui, id, current_val, range, knob_size, color)
+                    knob_widget(ui, id, current_val, range, knob_size, color, indication)
                 })
                 .inner
             })
@@ -742,6 +781,13 @@ pub fn draw_ui(
         ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(12.0);
+                let ind_input = shared.param_indication[crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
+                    .load(Ordering::Relaxed);
+                let ind_output = shared.param_indication[crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
+                    .load(Ordering::Relaxed);
+                let ind_gate = shared.param_indication[crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
+                    .load(Ordering::Relaxed);
+
                 ui.horizontal(|ui| {
                     // INPUT — knob grande, C2: 70×70
                     ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
@@ -759,6 +805,7 @@ pub fn draw_ui(
                             accent_color,
                             host,
                             egui::vec2(70.0, 70.0),
+                            ind_input,
                         );
                     });
                     ui.add_space(2.0);
@@ -778,6 +825,7 @@ pub fn draw_ui(
                             accent_color,
                             host,
                             egui::vec2(70.0, 70.0),
+                            ind_output,
                         );
                     });
                     ui.add_space(2.0);
@@ -796,6 +844,7 @@ pub fn draw_ui(
                             COL_AMBER,
                             host,
                             egui::vec2(42.0, 42.0),
+                            ind_gate,
                         );
                     });
                 });

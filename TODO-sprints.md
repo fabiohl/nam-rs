@@ -84,7 +84,7 @@
 
 ---
 
-* [ ] **Tarefa A.3** — Parameter Indication Extension (Feedback de Automação/Mapping)
+* [x] **Tarefa A.3** — Parameter Indication Extension (Feedback de Automação/Mapping)
 
   * **Contexto:**
     A extensão `CLAP_EXT_PARAM_INDICATION` (`clap.param-indication/4`) permite que o host informe ao plugin quando um parâmetro está mapeado a um controlador físico, reproduzindo automação, ou sendo overridado pelo usuário. É complementar à Tarefa A.2 (Remote Controls) — juntas, permitem a sincronia bidirecional GUI ↔ Hardware prevista no item 5 do Épico 1.

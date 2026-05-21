@@ -35,6 +35,12 @@ fn test_gui_gestures_and_parameter_flow() {
         ui_loading: std::sync::atomic::AtomicBool::new(false),
         sample_rate: AtomicU32::new(44100),
         track_accent_color: AtomicU32::new(0),
+        param_indication: [
+            std::sync::atomic::AtomicU8::new(0),
+            std::sync::atomic::AtomicU8::new(0),
+            std::sync::atomic::AtomicU8::new(0),
+            std::sync::atomic::AtomicU8::new(0),
+        ],
         gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
         gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
         gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
