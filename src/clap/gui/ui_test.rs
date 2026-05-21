@@ -138,6 +138,44 @@ fn test_ui_load_error_visual_feedback() {
     });
 
     assert!(state.error_expiration.is_none());
+}
 
-    assert!(state.error_expiration.is_none());
+#[test]
+fn test_knob_tooltip_suffixes() {
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let value = 0.0;
+            let range = -10.0..=10.0;
+            let size = egui::vec2(50.0, 50.0);
+            let color = egui::Color32::RED;
+            let indication = 0;
+
+            // Render with " dB" suffix
+            let (_response_db, new_val_db) = knob_widget(
+                ui,
+                ui.make_persistent_id("test_knob_db"),
+                value,
+                range.clone(),
+                size,
+                color,
+                indication,
+                " dB",
+            );
+            assert_eq!(new_val_db, value);
+
+            // Render with " dB (Threshold)" suffix
+            let (_response_threshold, new_val_threshold) = knob_widget(
+                ui,
+                ui.make_persistent_id("test_knob_threshold"),
+                value,
+                range,
+                size,
+                color,
+                indication,
+                " dB (Threshold)",
+            );
+            assert_eq!(new_val_threshold, value);
+        });
+    });
 }

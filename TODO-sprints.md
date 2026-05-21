@@ -352,7 +352,7 @@
 
 ---
 
-* [ ] **Tarefa D.3** — Tooltip Contextualizado para Gate
+* [x] **Tarefa D.3** — Tooltip Contextualizado para Gate
 
   * **Contexto:**
     O tooltip de hover mostra `"{:.2} dB"` genérico para todos os knobs. Para o GATE (threshold), um contexto adicional melhora a compreensibilidade.

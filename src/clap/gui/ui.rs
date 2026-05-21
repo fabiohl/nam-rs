@@ -221,6 +221,7 @@ fn get_simd_badge() -> &'static str {
 /// - Halo de mapeamento, pulsação de automação e cor de override (A.3)
 ///
 /// Retorna `(response, new_value)`.
+#[allow(clippy::too_many_arguments)]
 fn knob_widget(
     ui: &mut egui::Ui,
     _id: egui::Id,
@@ -229,6 +230,7 @@ fn knob_widget(
     size: egui::Vec2,
     color: egui::Color32,
     indication: u8,
+    tooltip_suffix: &str,
 ) -> (egui::Response, f32) {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::drag());
 
@@ -263,7 +265,7 @@ fn knob_widget(
     }
 
     // Tooltip com valor exato (E3)
-    let response = response.on_hover_text(format!("{:.2} dB", current_value));
+    let response = response.on_hover_text(format!("{:.2}{}", current_value, tooltip_suffix));
 
     let painter = ui.painter();
     let center = rect.center();
@@ -382,6 +384,7 @@ fn handle_knob(
     host: &HostSharedHandle,
     knob_size: egui::Vec2,
     indication: u8,
+    tooltip_suffix: &str,
 ) {
     ui.vertical(|ui| {
         let current_val = f32::from_bits(atomic_val.load(Ordering::Relaxed));
@@ -394,7 +397,16 @@ fn handle_knob(
                     if space > 0.0 {
                         ui.add_space(space);
                     }
-                    knob_widget(ui, id, current_val, range, knob_size, color, indication)
+                    knob_widget(
+                        ui,
+                        id,
+                        current_val,
+                        range,
+                        knob_size,
+                        color,
+                        indication,
+                        tooltip_suffix,
+                    )
                 })
                 .inner
             })
@@ -1137,6 +1149,7 @@ pub fn draw_ui(
                             host,
                             egui::vec2(70.0, 70.0),
                             ind_input,
+                            " dB",
                         );
                     });
                     ui.add_space(2.0);
@@ -1157,6 +1170,7 @@ pub fn draw_ui(
                             host,
                             egui::vec2(70.0, 70.0),
                             ind_output,
+                            " dB",
                         );
                     });
                     ui.add_space(2.0);
@@ -1176,6 +1190,7 @@ pub fn draw_ui(
                             host,
                             egui::vec2(42.0, 42.0),
                             ind_gate,
+                            " dB (Threshold)",
                         );
                     });
                 });
