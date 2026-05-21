@@ -30,7 +30,7 @@ minstant = "0.1.7"
 rustfft = { version = "6.4.1", default-features = false }
 clack-common = "0.1"
 clack-plugin = { version = "0.1", optional = true }
-clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "track-info"] }
+clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "track-info", "remote-controls"] }
 egui      = { version = "0.31",  optional = true }
 egui_glow = { version = "0.31",  optional = true }
 glow      = { version = "0.16",  optional = true }

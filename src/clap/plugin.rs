@@ -352,6 +352,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<clack_extensions::state::PluginState>();
         builder.register::<crate::clap::extensions::latency::NamPluginLatency>();
         builder.register::<crate::clap::extensions::track_info::NamPluginTrackInfo>();
+        builder.register::<crate::clap::extensions::remote_controls::NamPluginRemoteControls>();
 
         #[cfg(feature = "clap-plugin-gui")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();

@@ -8,6 +8,7 @@ pub mod latency;
 pub mod params;
 pub mod state;
 pub mod track_info;
+pub mod remote_controls;
 
 #[cfg(feature = "clap-plugin-gui")]
 pub mod gui;

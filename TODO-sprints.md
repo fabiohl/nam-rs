@@ -7,7 +7,7 @@
 
 ## Épico A — Extensões CLAP Ausentes
 
-* [ ] **Tarefa A.1** — Accent Color Dinâmico via `CLAP_EXT_TRACK_INFO`
+* [x] **Tarefa A.1** — Accent Color Dinâmico via `CLAP_EXT_TRACK_INFO`
 
   * **Contexto:**
     O `TODO-Testes-Funcionais.md` exige que a GUI do plugin adapte sua cor de destaque (arcos de knobs, VU meters, LED de bypass) à cor da trilha definida pelo host. Atualmente, `COL_ACCENT` é uma constante `#00D4AA` hardcoded em `src/clap/gui/ui.rs:L15`. Nenhuma referência a `track_info` existe no codebase. A extensão `CLAP_EXT_TRACK_INFO` (`clap/ext/track-info.h`) é parte estável do spec CLAP 1.2 e é implementada pelo Bitwig Studio, que expõe a cor da trilha via `clap_track_info.color` quando o flag `CLAP_TRACK_INFO_HAS_TRACK_COLOR` está setado.
@@ -60,7 +60,7 @@
 
 ---
 
-* [ ] **Tarefa A.2** — Remote Controls Extension (Páginas de Hardware)
+* [x] **Tarefa A.2** — Remote Controls Extension (Páginas de Hardware)
 
   * **Contexto:**
     O `TODO-Testes-Funcionais.md` exige que o Bitwig Device Panel exiba 2 páginas pré-configuradas: "Main" (INPUT, OUTPUT, BYPASS) e "Gate" (GATE). Sem a extensão `CLAP_EXT_REMOTE_CONTROLS` (`clap.remote-controls/2`), o Bitwig mostra uma lista flat não-organizada dos 4 parâmetros. Cada página suporta até 8 slots mapeáveis a `param_id`s.
