@@ -48,7 +48,10 @@ prop_compose! {
 
 proptest! {
     // Configuração para rodar 10.000 iterações (80.000 floats varridos).
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(10_000)
+    })]
 
     /// Valida a precisão da aproximação de Tangente Hiperbólica via AVX2.
     /// Utiliza aproximações Minimax/Padé que priorizam throughput em vez de precisão de 64-bit.

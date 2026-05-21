@@ -202,7 +202,10 @@ mod block_tests {
     // Em vez de escolhermos os números, deixamos o computador gerar 500 tamanhos
     // aleatórios entre 1 e 8192 para tentar quebrar o nosso código.
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(500))]
+        #![proptest_config(ProptestConfig {
+            failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::SourceParallel("tests/proptest-regressions"))),
+            .. ProptestConfig::with_cases(500)
+        })]
         #[test]
         fn test_random_block_sizes_proptest(size in 1..8192usize) {
             run_block_size_test(Some("BossWN-nano.nam"), size);

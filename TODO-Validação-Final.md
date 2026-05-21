@@ -7,28 +7,7 @@
 
 ## Épico 1 — Auditoria Final de Código (Dev Humano)
 
-* [x] **Tarefa 1.1** — Auditoria Completa com `clap-validator`
-
-  * **Contexto:**
-    O `clap-validator` da CLAP-SDK é a ferramenta oficial de conformidade para atestar que o plugin obedece de forma irrestrita às especificações e ciclos de vida do padrão CLAP (inclusão de portas, transição de estados atômicos, ativação/desativação dinâmica e carregamento de parâmetros). Esta é a auditoria final que executará toda a suíte de testes de estresse estático contra o binário unificado com todas as extensões ativas.
-  * **Ações Técnicas:**
-    1. Instalar o `clap-validator` mais recente compatível com o spec CLAP v1.2+.
-    2. Rodar a validação cruzada do plugin em formato JSON para ambas as compilações (**Debug** com assertions de panic ativados e **Release** otimizado).
-    3. Integrar uma verificação ativa de alocação de heap (`CountingAllocator`) acionada durante os testes dinâmicos de processamento de áudio do validador.
-    4. Tornar o processo de validação tolerância-zero, forçando a quebra do script caso o arquivo de saída contenha qualquer `warning` ou `failure`:
-
-       ```bash
-       # Executar validação rigorosa com fallback de erro explícito para warnings/failures
-       clap-validator validate ~/.clap/nam-rs.clap --json > /tmp/final-validation.json
-       jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' /tmp/final-validation.json
-       ```
-
-    5. Caso algum teste dinâmico falhe ou gere warning, depurar usando `gdb` ou a skill `debugger` e corrigir os estados dinâmicos no ciclo de vida do `clack-plugin`.
-  * **Aceite:**
-    * `clap-validator` reporta conformidade total (zero FAILs e zero WARNINGs na suíte oficial de validação).
-    * Execução do validador em modo de estresse não gera erros de concorrência, crashes ou vazamento de memória no arquivo de dump.
-
-* [ ] **Tarefa 1.2** — Regressão do Modo Standalone
+* [ ] **Tarefa 1.1** — Regressão do Modo Standalone
   * **Contexto:**
     A introdução de feature flags e a refatoração do pipeline DSP principal podem ter afetado o modo standalone (PipeWire/JACK nativo). É vital atestar que o NAM-rs rodando em modo CLI standalone preserva suas propriedades de baixa latência e compatibilidade.
   * **Ações Técnicas:**
@@ -39,21 +18,13 @@
     * Executável standalone compila e todos os testes unitários/integração integrados passam com status de sucesso.
     * Desempenho do benchmark DSP de inferência e resampling standalone mantido com variação máxima tolerada de ±2% em comparação ao baseline pré-sprint.
 
-* [ ] **Tarefa 1.3** — Revisão Crítica de Todo Código CLAP Adicionado
+* [ ] **Tarefa 1.2** — Revisão Crítica de Todo Código CLAP Adicionado
   * **Contexto:**
     Ao longo das sprints rápidas, múltiplos módulos foram criados em `src/clap/`. É imperativo realizar uma auditoria rigorosa baseada nas Diretrizes Técnicas e de Performance para garantir coesão arquitetural, nomenclatura aderente à convenção do Rust, ausência de vazamento de memória e que todas as operações no hot-path obedeçam às garantias de RT-Safety (ex: zero blocos de lock, zero heap drops indiretos e tratamento seguro de concorrência).
   * **Ações Humanas:**
     1. Skill `revisor-auditor` focado exclusivamente na pasta `src/clap/`. Demais pastas apenas nas' suas realações com `src/clap/`.
     2. Revisão completa do `README.md` e do `docs/*.md` para refletir o estado real do código.
     3. Leitura humana o código em `src/clap/` e assegurar completa cobertura de docsys e comentários inline no código fonte.
-
-* [ ] **Tarefa 1.4** — Revisão Crítica da necessidade de continuidade de certos artefatos.
-  * **Contexto:**
-    Ao longo das sprints rápidas, múltiplos artefatos foram sendo criados por um propósito útil na época - mas que hoje pode simplesmente ser apenas lixo.
-  * **Ações Humanas:**
-    1. `proptest-regressions/`.
-    2. `third_party/`.
-    3. Suítes de testes e benches: O que não traz valor real ainda? O que está faltando?
 
 ---
 

@@ -9,7 +9,10 @@ use std::fs;
 // Fuzz 1: Envia bytes totalmente arbitrários para o parser JSON.
 // Garante que o parser lida com dados que não são UTF-8 válido sem entrar em pânico.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(5_000)
+    })]
     #[test]
     fn prop_fuzz_nam_json_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
         let json_str = String::from_utf8_lossy(&bytes);
@@ -55,7 +58,10 @@ fn near_valid_json_strategy() -> impl Strategy<Value = String> {
 
 // Fuzz 2: Near valid but randomized values
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(5_000)
+    })]
     #[test]
     fn prop_fuzz_nam_json_near_valid(json_str in near_valid_json_strategy()) {
         let _ = parse_nam_json(&json_str);
@@ -65,7 +71,10 @@ proptest! {
 // Fuzz 3: Truncamento de JSONs válidos.
 // Simula um download incompleto ou arquivo corrompido em disco.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(5_000)
+    })]
     #[test]
     fn prop_fuzz_nam_json_truncated(cut_idx in 0usize..400_000) {
         // Usa uma fixture real como base para o truncamento
@@ -132,7 +141,10 @@ fn weight_overflow_strategy() -> impl Strategy<Value = String> {
 
 // Fuzz 4: Weight overflow / weird f32s
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(5_000)
+    })]
     #[test]
     fn prop_fuzz_nam_json_weight_overflow(json_str in weight_overflow_strategy()) {
         if let Ok(parsed) = parse_nam_json(&json_str) {
@@ -145,7 +157,10 @@ proptest! {
 // Fuzz 5: Bytes arbitrários no parser binário (NAMB).
 // O parser NAMB deve ser extremamente resiliente a arquivos binários malformados.
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(5_000)
+    })]
     #[test]
     fn prop_fuzz_namb_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..8192)) {
         let _ = parse_namb(&bytes);
@@ -188,7 +203,10 @@ prop_compose! {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(5_000))]
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(5_000)
+    })]
 
     // Testa rejeição de arquivos com 'Magic Bytes' inválidos.
     #[test]
