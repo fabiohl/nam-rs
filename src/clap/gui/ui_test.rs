@@ -159,6 +159,7 @@ fn test_knob_tooltip_suffixes() {
                 range.clone(),
                 size,
                 color,
+                color,
                 indication,
                 " dB",
             );
@@ -172,10 +173,264 @@ fn test_knob_tooltip_suffixes() {
                 range,
                 size,
                 color,
+                color,
                 indication,
                 " dB (Threshold)",
             );
             assert_eq!(new_val_threshold, value);
         });
     });
+}
+
+fn relative_luminance(color: egui::Color32) -> f32 {
+    let r = color.r() as f32 / 255.0;
+    let g = color.g() as f32 / 255.0;
+    let b = color.b() as f32 / 255.0;
+
+    let r_lin = if r <= 0.03928 {
+        r / 12.92
+    } else {
+        ((r + 0.055) / 1.055).powf(2.4)
+    };
+    let g_lin = if g <= 0.03928 {
+        g / 12.92
+    } else {
+        ((g + 0.055) / 1.055).powf(2.4)
+    };
+    let b_lin = if b <= 0.03928 {
+        b / 12.92
+    } else {
+        ((b + 0.055) / 1.055).powf(2.4)
+    };
+
+    0.2126 * r_lin + 0.7152 * g_lin + 0.0722 * b_lin
+}
+
+fn contrast_ratio(c1: egui::Color32, c2: egui::Color32) -> f32 {
+    let l1 = relative_luminance(c1);
+    let l2 = relative_luminance(c2);
+    if l1 > l2 {
+        (l1 + 0.05) / (l2 + 0.05)
+    } else {
+        (l2 + 0.05) / (l1 + 0.05)
+    }
+}
+
+#[test]
+fn test_contrast_ratios() {
+    let ratio_muted_panel = contrast_ratio(COL_MUTED, COL_PANEL);
+    let ratio_vured_bg = contrast_ratio(COL_VU_RED, COL_BG);
+    let ratio_muted_bg = contrast_ratio(COL_MUTED, COL_BG);
+
+    // Muted on Panel should be >= 4.5 (typically ~4.88)
+    assert!(
+        ratio_muted_panel >= 4.5,
+        "Muted on Panel: {}",
+        ratio_muted_panel
+    );
+    // VU Red on BG should be >= 4.5 (typically ~4.99)
+    assert!(ratio_vured_bg >= 4.5, "VU Red on BG: {}", ratio_vured_bg);
+    // Muted on BG (Bypassed status text) should be >= 4.5 (typically ~5.63)
+    assert!(ratio_muted_bg >= 4.5, "Muted on BG: {}", ratio_muted_bg);
+}
+
+#[test]
+fn test_knob_keyboard_navigation() {
+    let ctx = egui::Context::default();
+    let id = egui::Id::new("test_knob");
+    let mut state = 0.0f32;
+    let range = -10.0..=10.0;
+    let size = egui::vec2(50.0, 50.0);
+    let color = egui::Color32::RED;
+    let accent_color = egui::Color32::GREEN;
+
+    // Frame 1: Render and request focus
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let (_, val) = knob_widget(
+                ui,
+                id,
+                state,
+                range.clone(),
+                size,
+                color,
+                accent_color,
+                0,
+                " dB",
+            );
+            state = val;
+            ui.memory_mut(|mem| mem.request_focus(id));
+        });
+    });
+
+    // Frame 2: ArrowUp should increment value by 1.0
+    let mut input_up = egui::RawInput::default();
+    input_up.events.push(egui::Event::Key {
+        key: egui::Key::ArrowUp,
+        physical_key: None,
+        pressed: true,
+        modifiers: egui::Modifiers::default(),
+        repeat: false,
+    });
+    let _ = ctx.run(input_up, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let (_, val) = knob_widget(
+                ui,
+                id,
+                state,
+                range.clone(),
+                size,
+                color,
+                accent_color,
+                0,
+                " dB",
+            );
+            state = val;
+        });
+    });
+    assert_eq!(state, 1.0);
+
+    // Frame 3: Ctrl + ArrowDown should decrement value by 0.1
+    let mut input_down_ctrl = egui::RawInput::default();
+    input_down_ctrl.modifiers.ctrl = true;
+    input_down_ctrl.events.push(egui::Event::Key {
+        key: egui::Key::ArrowDown,
+        physical_key: None,
+        pressed: true,
+        modifiers: egui::Modifiers {
+            ctrl: true,
+            ..Default::default()
+        },
+        repeat: false,
+    });
+    let _ = ctx.run(input_down_ctrl, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let (_, val) = knob_widget(
+                ui,
+                id,
+                state,
+                range.clone(),
+                size,
+                color,
+                accent_color,
+                0,
+                " dB",
+            );
+            state = val;
+        });
+    });
+    assert!((state - 0.9).abs() < 1e-5, "Expected 0.9, got {}", state);
+}
+
+#[test]
+fn test_bypass_keyboard_trigger() {
+    use std::sync::atomic::Ordering;
+
+    let ctx = egui::Context::default();
+    let id = egui::Id::new("test_bypass");
+    let atomic_val = std::sync::atomic::AtomicU32::new(0); // initial: bypass off
+    let changed = std::sync::atomic::AtomicBool::new(false);
+    let begin = std::sync::atomic::AtomicBool::new(false);
+    let end = std::sync::atomic::AtomicBool::new(false);
+    let dummy = 42i32;
+    let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+
+    // Frame 1: Render and request focus
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            handle_bypass(
+                ui,
+                id,
+                &atomic_val,
+                &changed,
+                &begin,
+                &end,
+                egui::Color32::GREEN,
+                &host,
+                0,
+            );
+            ui.memory_mut(|mem| mem.request_focus(id));
+        });
+    });
+
+    // Frame 2: Space key event to toggle bypass
+    let mut input_space = egui::RawInput::default();
+    input_space.events.push(egui::Event::Key {
+        key: egui::Key::Space,
+        physical_key: None,
+        pressed: true,
+        modifiers: egui::Modifiers::default(),
+        repeat: false,
+    });
+    let _ = ctx.run(input_space, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            handle_bypass(
+                ui,
+                id,
+                &atomic_val,
+                &changed,
+                &begin,
+                &end,
+                egui::Color32::GREEN,
+                &host,
+                0,
+            );
+        });
+    });
+    assert_eq!(atomic_val.load(Ordering::Relaxed), 1); // Should be Bypassed (1)
+    assert!(changed.load(Ordering::Relaxed));
+    assert!(begin.load(Ordering::Relaxed));
+    assert!(end.load(Ordering::Relaxed));
+}
+
+#[test]
+fn test_tab_order_navigation() {
+    let ctx = egui::Context::default();
+    let shared = make_test_shared(0);
+    let mut state = UiState::default();
+    let dummy = 42i32;
+    let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+
+    // Frame 1: Initial render, no focus
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            draw_ui(ui, &shared, &host, &mut state);
+        });
+    });
+    assert!(ctx.memory(|mem| mem.focused()).is_none());
+
+    // Frame 2: Send Tab key -> should focus INPUT knob (controls[0])
+    let mut tab_input = egui::RawInput::default();
+    tab_input.events.push(egui::Event::Key {
+        key: egui::Key::Tab,
+        physical_key: None,
+        pressed: true,
+        modifiers: egui::Modifiers::default(),
+        repeat: false,
+    });
+    let _ = ctx.run(tab_input, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            draw_ui(ui, &shared, &host, &mut state);
+        });
+    });
+    let focused_1 = ctx.memory(|mem| mem.focused());
+    assert!(focused_1.is_some());
+
+    // Frame 3: Send Tab again -> should focus next widget (controls[1])
+    let mut tab_input2 = egui::RawInput::default();
+    tab_input2.events.push(egui::Event::Key {
+        key: egui::Key::Tab,
+        physical_key: None,
+        pressed: true,
+        modifiers: egui::Modifiers::default(),
+        repeat: false,
+    });
+    let _ = ctx.run(tab_input2, |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            draw_ui(ui, &shared, &host, &mut state);
+        });
+    });
+    let focused_2 = ctx.memory(|mem| mem.focused());
+    assert!(focused_2.is_some());
+    assert_ne!(focused_1, focused_2);
 }

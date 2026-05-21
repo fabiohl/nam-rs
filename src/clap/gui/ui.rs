@@ -224,15 +224,18 @@ fn get_simd_badge() -> &'static str {
 #[allow(clippy::too_many_arguments)]
 fn knob_widget(
     ui: &mut egui::Ui,
-    _id: egui::Id,
+    id: egui::Id,
     value: f32,
     range: std::ops::RangeInclusive<f32>,
     size: egui::Vec2,
     color: egui::Color32,
+    accent_color: egui::Color32,
     indication: u8,
     tooltip_suffix: &str,
 ) -> (egui::Response, f32) {
-    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::drag());
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::drag());
+    let response = ui.interact(rect, id, egui::Sense::drag());
+    ui.memory_mut(|mem| mem.interested_in_focus(id, ui.layer_id()));
 
     let mut current_value = value;
     let range_len = range.end() - range.start();
@@ -261,6 +264,23 @@ fn knob_widget(
             };
             current_value =
                 (current_value + scroll_y * sensitivity).clamp(*range.start(), *range.end());
+        }
+    }
+
+    // Keyboard arrow handling
+    if response.has_focus() {
+        let mut step = 0.0;
+        ui.input(|i| {
+            let ctrl_held = i.modifiers.ctrl;
+            let step_size = if ctrl_held { 0.1 } else { 1.0 };
+            if i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::ArrowRight) {
+                step = step_size;
+            } else if i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::ArrowLeft) {
+                step = -step_size;
+            }
+        });
+        if step != 0.0 {
+            current_value = (current_value + step).clamp(*range.start(), *range.end());
         }
     }
 
@@ -346,6 +366,14 @@ fn knob_widget(
     painter.circle_filled(center, body_radius, egui::Color32::from_rgb(46, 52, 64));
     painter.circle_stroke(center, body_radius, egui::Stroke::new(1.0, COL_BORDER));
 
+    if response.has_focus() {
+        painter.circle_stroke(
+            center,
+            body_radius + 1.0,
+            egui::Stroke::new(2.0, accent_color),
+        );
+    }
+
     // Ponteiro de posição
     let pointer_angle = angle - std::f32::consts::FRAC_PI_2;
     let pointer_len_start = body_radius * 0.4;
@@ -381,6 +409,7 @@ fn handle_knob(
     begin_flag: &std::sync::atomic::AtomicBool,
     end_flag: &std::sync::atomic::AtomicBool,
     color: egui::Color32,
+    accent_color: egui::Color32,
     host: &HostSharedHandle,
     knob_size: egui::Vec2,
     indication: u8,
@@ -404,6 +433,7 @@ fn handle_knob(
                         range,
                         knob_size,
                         color,
+                        accent_color,
                         indication,
                         tooltip_suffix,
                     )
@@ -427,12 +457,13 @@ fn handle_knob(
         };
 
         if final_val != current_val {
-            if reset_clicked {
+            let is_discrete = !response.dragged();
+            if is_discrete {
                 begin_flag.store(true, Ordering::Relaxed);
             }
             atomic_val.store(final_val.to_bits(), Ordering::Relaxed);
             changed_flag.store(true, Ordering::Relaxed);
-            if reset_clicked {
+            if is_discrete {
                 end_flag.store(true, Ordering::Relaxed);
             }
             if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
@@ -753,6 +784,7 @@ fn draw_vertical_meter(
 #[allow(clippy::too_many_arguments)]
 fn handle_bypass(
     ui: &mut egui::Ui,
+    id: egui::Id,
     atomic_val: &std::sync::atomic::AtomicU32,
     changed_flag: &std::sync::atomic::AtomicBool,
     begin_flag: &std::sync::atomic::AtomicBool,
@@ -771,12 +803,23 @@ fn handle_bypass(
             if space > 0.0 {
                 ui.add_space(space);
             }
-            let (_, resp) = ui.allocate_exact_size(button_size, egui::Sense::click());
-            resp
+            let (rect, _) = ui.allocate_exact_size(button_size, egui::Sense::click());
+            ui.interact(rect, id, egui::Sense::click())
         })
         .inner;
 
-    if response.clicked() {
+    ui.memory_mut(|mem| mem.interested_in_focus(id, ui.layer_id()));
+
+    let mut toggle_bypass = response.clicked();
+    if response.has_focus() {
+        ui.input(|i| {
+            if i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::Enter) {
+                toggle_bypass = true;
+            }
+        });
+    }
+
+    if toggle_bypass {
         let new_bypass = !current_bypass;
         begin_flag.store(true, Ordering::Relaxed);
         atomic_val.store(if new_bypass { 1 } else { 0 }, Ordering::Relaxed);
@@ -798,6 +841,15 @@ fn handle_bypass(
         egui::Stroke::new(1.5, COL_BORDER),
         egui::StrokeKind::Inside,
     );
+
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect,
+            5.0,
+            egui::Stroke::new(2.0, accent_color),
+            egui::StrokeKind::Outside,
+        );
+    }
 
     let mut led_color = if current_bypass {
         COL_BYPASS_OFF
@@ -858,10 +910,11 @@ fn handle_bypass(
                 .color(COL_MUTED),
         );
         let status_text = if current_bypass { "BYPASSED" } else { "ACTIVE" };
+        let text_color = if current_bypass { COL_MUTED } else { led_color };
         ui.label(
             egui::RichText::new(status_text)
                 .font(egui::FontId::monospace(9.0))
-                .color(led_color),
+                .color(text_color),
         );
     });
 }
@@ -896,6 +949,7 @@ pub fn draw_ui(
     }
 
     let accent_color = resolve_accent(shared);
+    let mut load_btn_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
     // Layout principal: horizontal com Zonas 1–4
@@ -964,6 +1018,27 @@ pub fn draw_ui(
                     .fill(COL_PANEL)
                     .stroke(egui::Stroke::new(1.0, COL_BORDER)),
                 );
+                let btn_id = load_btn.id;
+                load_btn_id = Some(btn_id);
+                ui.memory_mut(|mem| mem.interested_in_focus(btn_id, ui.layer_id()));
+
+                if load_btn.has_focus() {
+                    ui.painter().rect_stroke(
+                        load_btn.rect,
+                        2.0,
+                        egui::Stroke::new(2.0, accent_color),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+
+                let mut load_clicked = load_btn.clicked();
+                if load_btn.has_focus() {
+                    ui.input(|i| {
+                        if i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::Enter) {
+                            load_clicked = true;
+                        }
+                    });
+                }
 
                 // A1+A2 FIX: usar NamClapSharedRef (já Send+Sync) como endereço usize é a única
                 // forma viável dado que NamClapShared tem lifetime gerenciado pelo framework CLAP.
@@ -971,7 +1046,7 @@ pub fn draw_ui(
                 // o host não destrói o plugin enquanto houver um modal picker ativo (contrato CLAP).
                 // O `transmute` do host é necessário pois `HostSharedHandle` é `!Send`; o host
                 // handle permanece válido enquanto o plugin existir (garante o runtime CLAP).
-                if load_btn.clicked() && !shared.ui_loading.load(Ordering::Relaxed) {
+                if load_clicked && !shared.ui_loading.load(Ordering::Relaxed) {
                     shared.ui_loading.store(true, Ordering::Relaxed);
                     let shared_addr = shared as *const NamClapShared as usize;
                     let host_static: clack_plugin::host::HostSharedHandle<'static> =
@@ -1146,6 +1221,7 @@ pub fn draw_ui(
                             &shared.gesture_begin_input_gain,
                             &shared.gesture_end_input_gain,
                             accent_color,
+                            accent_color,
                             host,
                             egui::vec2(70.0, 70.0),
                             ind_input,
@@ -1167,6 +1243,7 @@ pub fn draw_ui(
                             &shared.gesture_begin_output_gain,
                             &shared.gesture_end_output_gain,
                             accent_color,
+                            accent_color,
                             host,
                             egui::vec2(70.0, 70.0),
                             ind_output,
@@ -1187,6 +1264,7 @@ pub fn draw_ui(
                             &shared.gesture_begin_gate_thresh,
                             &shared.gesture_end_gate_thresh,
                             COL_AMBER,
+                            accent_color,
                             host,
                             egui::vec2(42.0, 42.0),
                             ind_gate,
@@ -1253,8 +1331,10 @@ pub fn draw_ui(
                 let ind_bypass = shared.param_indication
                     [crate::clap::extensions::params::PARAM_BYPASS as usize]
                     .load(Ordering::Relaxed);
+                let bypass_id = ui.make_persistent_id("bypass_switch");
                 handle_bypass(
                     ui,
+                    bypass_id,
                     &shared.param_bypass,
                     &shared.gui_bypass_changed,
                     &shared.gesture_begin_bypass,
@@ -1479,6 +1559,70 @@ pub fn draw_ui(
                     );
                 });
             });
+    }
+
+    // Programmatic Tab Order focus management
+    let load_btn_id = load_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_model_button"));
+    let controls = [
+        ui.make_persistent_id("input_gain_knob"),
+        ui.make_persistent_id("output_gain_knob"),
+        ui.make_persistent_id("gate_thresh_knob"),
+        ui.make_persistent_id("bypass_switch"),
+        load_btn_id,
+    ];
+
+    let mut tab_pressed = false;
+    let mut shift_pressed = false;
+    ui.input_mut(|i| {
+        i.events.retain(|e| {
+            if let egui::Event::Key {
+                key: egui::Key::Tab,
+                pressed: true,
+                modifiers,
+                ..
+            } = e
+            {
+                tab_pressed = true;
+                shift_pressed = modifiers.shift;
+                false // consume the event
+            } else {
+                true
+            }
+        });
+    });
+
+    if tab_pressed {
+        let focused = ui.memory(|mem| mem.focused());
+        let next_focus = if let Some(curr) = focused {
+            if let Some(idx) = controls.iter().position(|&id| id == curr) {
+                if shift_pressed {
+                    if idx == 0 {
+                        controls[4]
+                    } else {
+                        controls[idx - 1]
+                    }
+                } else {
+                    if idx == 4 {
+                        controls[0]
+                    } else {
+                        controls[idx + 1]
+                    }
+                }
+            } else {
+                if shift_pressed {
+                    controls[4]
+                } else {
+                    controls[0]
+                }
+            }
+        } else {
+            if shift_pressed {
+                controls[4]
+            } else {
+                controls[0]
+            }
+        };
+        ui.memory_mut(|mem| mem.request_focus(next_focus));
     }
 
     // Repaint a 30ms para manter VU meters e sincronização de parâmetros do host

@@ -364,7 +364,7 @@
 
 ---
 
-* [ ] **Tarefa D.4** — Acessibilidade: Contraste e Navegação por Teclado
+* [x] **Tarefa D.4** — Acessibilidade: Contraste e Navegação por Teclado
 
   * **Contexto:**
     Boas práticas de UX de plugins profissionais (referência: WCAG 2.1 AA, FabFilter Pro-Q, Surge XT). O NAM-rs atualmente não oferece navegação por teclado (Tab entre controles, Arrow keys para ajuste) — funcionalidade esperada para acessibilidade e workflows power-user.
