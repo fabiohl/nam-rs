@@ -523,6 +523,8 @@ fn draw_vertical_meter(
 }
 
 /// Desenha o toggle de bypass com LED e labels "BYPASS" / "ACTIVE".
+/// `indication` encoda os bits de `param_indication`: bit 0=IS_MAPPED, bit 1=IS_AUTOMATING, bit 2=IS_OVERRIDING.
+#[allow(clippy::too_many_arguments)]
 fn handle_bypass(
     ui: &mut egui::Ui,
     atomic_val: &std::sync::atomic::AtomicU32,
@@ -531,6 +533,7 @@ fn handle_bypass(
     end_flag: &std::sync::atomic::AtomicBool,
     accent_color: egui::Color32,
     host: &HostSharedHandle,
+    indication: u8,
 ) {
     let current_bypass = atomic_val.load(Ordering::Relaxed) != 0;
     let button_size = egui::vec2(32.0, 56.0);
@@ -570,11 +573,26 @@ fn handle_bypass(
         egui::StrokeKind::Inside,
     );
 
-    let led_color = if current_bypass {
+    let mut led_color = if current_bypass {
         COL_BYPASS_OFF
     } else {
         accent_color
     };
+
+    // Pulsação de automação (A.3): modula o alpha do LED quando IS_AUTOMATING
+    let is_automating = indication & 2 != 0;
+    if is_automating {
+        let time = ui.input(|i| i.time) as f32;
+        let pulse = (time * std::f32::consts::PI).sin().abs();
+        let alpha = 0.3 + 0.7 * pulse;
+        led_color = egui::Color32::from_rgba_unmultiplied(
+            led_color.r(),
+            led_color.g(),
+            led_color.b(),
+            (255.0 * alpha) as u8,
+        );
+        ui.ctx().request_repaint();
+    }
 
     // LED retangular vertical no centro
     let led_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(14.0, 8.0));
@@ -589,6 +607,20 @@ fn handle_bypass(
             40,
         );
         painter.rect_filled(led_rect.expand(3.0), 4.0, glow);
+    }
+
+    // Halo de mapeamento (A.3): 4 dots azuis (#5e81ac) nos cantos do botão quando IS_MAPPED
+    if indication & 1 != 0 {
+        let dot_color = egui::Color32::from_rgb(94, 129, 172); // #5e81ac
+        let corners = [
+            rect.left_top() + egui::vec2(4.0, 4.0),
+            rect.right_top() + egui::vec2(-4.0, 4.0),
+            rect.left_bottom() + egui::vec2(4.0, -4.0),
+            rect.right_bottom() + egui::vec2(-4.0, -4.0),
+        ];
+        for pos in &corners {
+            painter.circle_filled(*pos, 1.5, dot_color);
+        }
     }
 
     ui.add_space(8.0);
@@ -899,6 +931,9 @@ pub fn draw_ui(
         ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(18.0);
+                let ind_bypass = shared.param_indication
+                    [crate::clap::extensions::params::PARAM_BYPASS as usize]
+                    .load(Ordering::Relaxed);
                 handle_bypass(
                     ui,
                     &shared.param_bypass,
@@ -907,6 +942,7 @@ pub fn draw_ui(
                     &shared.gesture_end_bypass,
                     accent_color,
                     host,
+                    ind_bypass,
                 );
             });
         });

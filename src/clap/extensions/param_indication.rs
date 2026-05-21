@@ -106,4 +106,52 @@ mod tests {
         );
         assert_eq!(val.load(Ordering::Relaxed) & INDICATION_AUTOMATING, 0);
     }
+
+    /// Verifica que quando ambos AUTOMATING e OVERRIDING estão setados,
+    /// o estado `None` ou `Present` limpa ambos corretamente.
+    #[test]
+    fn test_param_indication_none_clears_both_bits() {
+        let val = AtomicU8::new(0);
+
+        // Setar ambos bits simultaneamente
+        val.fetch_or(
+            INDICATION_AUTOMATING | INDICATION_OVERRIDING,
+            Ordering::Relaxed,
+        );
+        assert_eq!(
+            val.load(Ordering::Relaxed) & (INDICATION_AUTOMATING | INDICATION_OVERRIDING),
+            INDICATION_AUTOMATING | INDICATION_OVERRIDING,
+            "ambos bits devem estar setados antes do teste"
+        );
+
+        // Simular o efeito de ParamIndicationAutomation::None (limpa ambos)
+        val.fetch_and(
+            !(INDICATION_AUTOMATING | INDICATION_OVERRIDING),
+            Ordering::Relaxed,
+        );
+
+        // Ambos devem estar zerados
+        assert_eq!(
+            val.load(Ordering::Relaxed) & INDICATION_AUTOMATING,
+            0,
+            "AUTOMATING deve ser zerado"
+        );
+        assert_eq!(
+            val.load(Ordering::Relaxed) & INDICATION_OVERRIDING,
+            0,
+            "OVERRIDING deve ser zerado"
+        );
+
+        // MAPPED não deve ser afetado
+        val.fetch_or(INDICATION_MAPPED, Ordering::Relaxed);
+        val.fetch_and(
+            !(INDICATION_AUTOMATING | INDICATION_OVERRIDING),
+            Ordering::Relaxed,
+        );
+        assert_eq!(
+            val.load(Ordering::Relaxed) & INDICATION_MAPPED,
+            INDICATION_MAPPED,
+            "MAPPED não deve ser afetado pela limpeza de automação"
+        );
+    }
 }

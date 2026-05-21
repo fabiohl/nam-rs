@@ -210,6 +210,8 @@
   * **Contexto:**
     O File Picker atual usa `rfd::FileDialog::new()` síncrono em uma thread spawnada (`src/clap/gui/ui.rs:L558-L574`). Existem 3 riscos documentados: (1) Falha silenciosa em sessões Wayland puras por falta de `xdg-desktop-portal`; (2) Deadlock de re-entrancy GTK se o host também usar GTK; (3) `std::mem::transmute` do `HostSharedHandle` (`ui.rs:L555-L556`) fica dangling se o host destruir o plugin enquanto o picker está aberto.
 
+  > **⚠ Nota de Auditoria (Épico A, 2026-05-21):** O risco (3) foi confirmado durante a revisão do Épico A. O ponteiro cru `shared_addr` em `ui.rs:L709` e o `transmute` do host em `ui.rs:L711` permanecem ativos sem proteção de alive fence. Esta tarefa é de alta prioridade de segurança.
+
   * **Ações Técnicas:**
 
     1. **Alive Fence:** Adicionar ao `NamClapShared` um `Arc<AtomicBool>`:

@@ -426,10 +426,12 @@ impl DefaultPluginFactory for NamClapPlugin {
                 .get(&mut host, &mut buffer)
                 .and_then(|info| info.color())
             {
-                let packed = ((color.alpha as u32) << 24)
-                    | ((color.red as u32) << 16)
-                    | ((color.green as u32) << 8)
-                    | (color.blue as u32);
+                let packed = crate::clap::extensions::track_info::pack_argb(
+                    color.alpha,
+                    color.red,
+                    color.green,
+                    color.blue,
+                );
                 shared.track_accent_color.store(packed, Ordering::Relaxed);
             }
         }
