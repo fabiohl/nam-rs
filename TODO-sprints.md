@@ -337,7 +337,7 @@
 
 ---
 
-* [ ] **Tarefa D.2** — Feedback Visual de Erro no Carregamento de Modelo
+* [x] **Tarefa D.2** — Feedback Visual de Erro no Carregamento de Modelo
 
   * **Contexto:**
     Se o `load_model()` falhar (arquivo corrompido, formato inválido, path inexistente), o plugin atualmente reseta silenciosamente o flag `ui_loading` sem feedback visual. O músico vê apenas a caixa voltar para `"No model loaded"` sem entender o que aconteceu. Isso viola o Teste 7.4 e o Teste 1.6 do `TODO-Testes-Funcionais.md`.
@@ -380,7 +380,11 @@
 
 ---
 
-* [ ] **Tarefa D.5** — Remoção Completa do Modo Headless
+## Épico E — Enxugamento
+
+---
+
+* [ ] **Tarefa E.1** — Remoção Completa do Modo Headless
 
   * **Contexto:**
     O modo headless não é útil, ao menos agora, para o público do NAM-rs. Focaremos no modo CLI e no modo Plugin.
