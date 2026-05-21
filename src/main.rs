@@ -78,7 +78,7 @@ fn main() -> anyhow::Result<()> {
     // 6. CARREGAR O SOM: Se você disse "use o amplificador X",
     // aqui é onde o computador abre aquele arquivo e prepara as contas matemáticas (Redes Neurais).
     if let Some(path) = model_path {
-        log::info!("{} Carregando modelo inicial...", "📂".cyan());
+        log::info!("{} Loading model...", "📂".cyan());
         match loader::load_and_build_model(&path, &sys) {
             Ok(nam_rs::loader::LoadedModelPair {
                 model_l,
@@ -95,7 +95,7 @@ fn main() -> anyhow::Result<()> {
                     sample_rate,
                 });
             }
-            Err(e) => cli::exit_with_error(format!("Falha na carga inicial do modelo: {}", e)),
+            Err(e) => cli::exit_with_error(format!("Model load failed: {}", e)),
         }
     }
 

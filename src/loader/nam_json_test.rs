@@ -44,7 +44,7 @@ fn test_parse_feather_wavenet() {
     // - "metadata": Informações extras (quem criou, qual amp foi usado, etc).
 
     // Tentamos transformar o texto acima em uma estrutura que o programa entende
-    let parsed = parse_nam_json(json_str).expect("Falha ao efetuar parse do NAM JSON simulado");
+    let parsed = parse_nam_json(json_str).expect("Failed to parse simulated NAM JSON");
 
     // Verificamos se o programa "leu" corretamente as informações fundamentais
     assert_eq!(parsed.architecture, "WaveNet");
@@ -82,7 +82,7 @@ fn test_parse_lstm() {
         "weights": [0.1, 0.2]
     }"#;
 
-    let parsed = parse_nam_json(json_str).expect("Falha ao efetuar parse de LSTM NAM JSON");
+    let parsed = parse_nam_json(json_str).expect("Failed to parse LSTM NAM JSON");
     assert_eq!(parsed.architecture, "LSTM");
 
     // Verifica se a estrutura do LSTM (camadas e tamanho) foi interpretada corretamente

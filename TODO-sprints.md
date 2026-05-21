@@ -324,7 +324,7 @@
 
 ---
 
-* [ ] **Tarefa D.1** — Mensagens de UI/Log em Inglês Internacional
+* [x] **Tarefa D.1** — Mensagens de UI/Log em Inglês Internacional
 
   * **Contexto:**
     Mensagens residuais em português na UI ou nos logs devem ser migradas para inglês para consistência internacional. Comentários de código permanecem em português conforme convenção do projeto.

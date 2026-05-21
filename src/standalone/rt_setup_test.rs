@@ -9,7 +9,7 @@ fn test_get_allowed_cpus_not_empty() {
     // Em um sistema Linux normal, pelo menos a CPU atual deve estar permitida.
     assert!(
         !allowed.is_empty(),
-        "A lista de CPUs permitidas não deve estar vazia."
+        "The list of allowed CPUs must not be empty."
     );
 }
 
@@ -17,16 +17,13 @@ fn test_get_allowed_cpus_not_empty() {
 fn test_select_optimal_cpu_returns_something() {
     // select_optimal_cpu deve retornar um núcleo válido no ambiente de teste.
     let cpu = select_optimal_cpu();
-    assert!(
-        cpu.is_some(),
-        "Deveria ser possível selecionar um núcleo ideal."
-    );
+    assert!(cpu.is_some(), "Should be able to select an optimal core.");
 
     if let Some(cpu_idx) = cpu {
         let allowed = get_allowed_cpus();
         assert!(
             allowed.contains(&cpu_idx),
-            "O núcleo selecionado deve estar na lista de permitidos."
+            "The selected core must be in the list of allowed CPUs."
         );
     }
 }
@@ -44,7 +41,7 @@ fn test_rdtsc_nanos_monotonic() {
     let t1 = rdtsc_nanos();
     std::thread::sleep(std::time::Duration::from_millis(1));
     let t2 = rdtsc_nanos();
-    assert!(t2 > t1, "Tempo não avançou: {} -> {}", t1, t2);
+    assert!(t2 > t1, "Time did not advance: {} -> {}", t1, t2);
 }
 
 #[test]
@@ -55,5 +52,5 @@ fn test_rdtsc_nanos_significant() {
     // desde que o binário de teste começou.
     std::thread::sleep(std::time::Duration::from_millis(5));
     let t = rdtsc_nanos();
-    assert!(t > 1_000_000, "Tempo reportado muito baixo: {} ns", t);
+    assert!(t > 1_000_000, "Reported time is too low: {} ns", t);
 }

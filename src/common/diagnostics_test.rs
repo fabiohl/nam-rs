@@ -50,7 +50,7 @@ fn test_all_codes_have_unique_numeric() {
     assert_eq!(
         codes.len(),
         sorted.len(),
-        "Códigos numéricos duplicados detectados"
+        "Duplicate numeric codes detected"
     );
 }
 
@@ -69,8 +69,8 @@ fn test_system_snapshot_capture() {
 fn test_diagnostic_support_block_contains_code() {
     let snap = SystemSnapshot::capture();
     let diag = NamDiagnostic::new(NamErrorCode::NambCrc32Mismatch, &snap)
-        .message("Arquivo corrompido")
-        .hint("Baixe novamente")
+        .message("Corrupted file")
+        .hint("Download it again")
         .param("expected", "0xDEADBEEF")
         .param("computed", "0x12345678");
 
@@ -89,7 +89,7 @@ fn test_diagnostic_support_block_contains_code() {
         "Bloco deve conter parâmetros"
     );
     assert!(
-        block.contains("Copie o bloco acima"),
+        block.contains("Copy the block above"),
         "Bloco deve conter instrução de cópia"
     );
 }
@@ -98,9 +98,8 @@ fn test_diagnostic_support_block_contains_code() {
 #[test]
 fn test_diagnostic_display() {
     let snap = SystemSnapshot::capture();
-    let diag =
-        NamDiagnostic::new(NamErrorCode::FileNotFound, &snap).message("Modelo não encontrado");
-    assert_eq!(format!("{}", diag), "[E1100] Modelo não encontrado");
+    let diag = NamDiagnostic::new(NamErrorCode::FileNotFound, &snap).message("Model not found");
+    assert_eq!(format!("{}", diag), "[E1100] Model not found");
 }
 
 /// Valida o algoritmo manual de conversão de dias desde o epoch para data (Ano, Mês, Dia),

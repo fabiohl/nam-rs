@@ -217,7 +217,7 @@ impl SystemSnapshot {
 
         #[cfg(feature = "standalone")]
         log::info!(
-            "{} Para latência mínima, isole o core {} das IRQs do sistema (como sudo): echo {:X} > /proc/irq/default_smp_affinity",
+            "{} For minimum latency, isolate core {} from system IRQs (as sudo): echo {:X} > /proc/irq/default_smp_affinity",
             "💡".yellow(),
             core,
             mask
@@ -225,7 +225,7 @@ impl SystemSnapshot {
 
         #[cfg(not(feature = "standalone"))]
         log::info!(
-            "💡 Para latência mínima, isole o core {} das IRQs do sistema (como sudo): echo {:X} > /proc/irq/default_smp_affinity",
+            "💡 For minimum latency, isolate core {} from system IRQs (as sudo): echo {:X} > /proc/irq/default_smp_affinity",
             core,
             mask
         );
@@ -392,7 +392,7 @@ impl NamDiagnostic {
              features={}\n\
              timestamp={}\n\
              {separator}\n\
-             Copie o bloco acima ao abrir um ticket de suporte.",
+             Copy the block above when opening a support ticket.",
             self.system.arch,
             self.system.os,
             self.system.kernel,

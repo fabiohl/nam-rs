@@ -24,24 +24,22 @@ pub fn print_help() {
         .bright_green()
         .bold()
     );
-    println!("\n{}", "Uso:".yellow().bold());
-    println!("  nam-rs [OPÇÕES]");
-    println!("\n{}", "Opções:".yellow().bold());
+    println!("\n{}", "Usage:".yellow().bold());
+    println!("  nam-rs [OPTIONS]");
+    println!("\n{}", "Options:".yellow().bold());
+    println!("  -m, --model <FILE>      Path to the model (.nam or .namb). Supports ~, ../, etc.");
+    println!("  -i, --input-gain <DB>   Input gain in dB (e.g. -3.5, 12, 0) [default: 0]");
+    println!("  -o, --output-gain <DB>  Output gain in dB (e.g. 5.0, -10) [default: 0]");
     println!(
-        "  -m, --model <ARQUIVO>   Caminho para o modelo (.nam ou .namb). Suporta ~, ../, etc."
+        "  -b, --buffer-size <SAMPLES> Fixed block size (e.g. 64, 256, 512). Use 0 for auto [default: 256]"
     );
-    println!("  -i, --input-gain <DB>   Ganho de entrada em dB (ex: -3.5, 12, 0) [padrão: 0]");
-    println!("  -o, --output-gain <DB>  Ganho de saída em dB (ex: 5.0, -10) [padrão: 0]");
-    println!(
-        "  -b, --buffer-size <SAMPLES> Tamanho fixo do bloco (ex: 64, 256, 512). Use 0 para automático [padrão: 256]"
-    );
-    println!("  -h, --help              Mostra esta ajuda e sai");
+    println!("  -h, --help              Show this help message and exit");
 }
 
 /// Exibe uma mensagem de erro estilizada e encerra o processo com código 1.
 pub fn exit_with_error(msg: impl std::fmt::Display) -> ! {
-    eprintln!("{} {}", "❌ Erro no argumento:".red().bold(), msg);
-    eprintln!("{}", "👉 Use '-h' para ver a tela de ajuda".yellow());
+    eprintln!("{} {}", "❌ Argument error:".red().bold(), msg);
+    eprintln!("{}", "👉 Use '-h' to show the help screen".yellow());
     std::process::exit(1);
 }
 
@@ -72,7 +70,7 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
                 let p_str = val
                     .into_string()
-                    .unwrap_or_else(|_| exit_with_error("Caminho do modelo inválido (UTF-8)."));
+                    .unwrap_or_else(|_| exit_with_error("Invalid model path (UTF-8)."));
 
                 // Implementação simplificada de tilde expansion
                 let expanded = if p_str.starts_with("~/") {
@@ -90,17 +88,17 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
                 let val_str = val
                     .into_string()
-                    .unwrap_or_else(|_| exit_with_error("Valor de ganho de entrada inválido."));
+                    .unwrap_or_else(|_| exit_with_error("Invalid input gain value."));
                 input_gain = val_str.parse::<f32>().unwrap_or_else(|_| {
                     exit_with_error(format!(
-                        "Ganho de entrada inválido: '{}'. Deve ser um número.",
+                        "Invalid input gain: '{}'. Must be a number.",
                         val_str
                     ))
                 });
 
                 if !(GAIN_MIN_DB..=GAIN_MAX_DB).contains(&input_gain) {
                     exit_with_error(format!(
-                        "Ganho de entrada ({:.1} dB) fora do intervalo [{:.1}, {:.1}].",
+                        "Input gain ({:.1} dB) out of range [{:.1}, {:.1}].",
                         input_gain, GAIN_MIN_DB, GAIN_MAX_DB
                     ));
                 }
@@ -109,17 +107,17 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
                 let val_str = val
                     .into_string()
-                    .unwrap_or_else(|_| exit_with_error("Valor de ganho de saída inválido."));
+                    .unwrap_or_else(|_| exit_with_error("Invalid output gain value."));
                 output_gain = val_str.parse::<f32>().unwrap_or_else(|_| {
                     exit_with_error(format!(
-                        "Ganho de saída inválido: '{}'. Deve ser um número.",
+                        "Invalid output gain: '{}'. Must be a number.",
                         val_str
                     ))
                 });
 
                 if !(GAIN_MIN_DB..=GAIN_MAX_DB).contains(&output_gain) {
                     exit_with_error(format!(
-                        "Ganho de saída ({:.1} dB) fora do intervalo [{:.1}, {:.1}].",
+                        "Output gain ({:.1} dB) out of range [{:.1}, {:.1}].",
                         output_gain, GAIN_MIN_DB, GAIN_MAX_DB
                     ));
                 }
@@ -128,10 +126,10 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
                 let val_str = val
                     .into_string()
-                    .unwrap_or_else(|_| exit_with_error("Valor de tamanho do buffer inválido."));
+                    .unwrap_or_else(|_| exit_with_error("Invalid buffer size value."));
                 buffer_size = val_str.parse::<u32>().unwrap_or_else(|_| {
                     exit_with_error(format!(
-                        "Tamanho do buffer inválido: '{}'. Deve ser um inteiro.",
+                        "Invalid buffer size: '{}'. Must be an integer.",
                         val_str
                     ))
                 });

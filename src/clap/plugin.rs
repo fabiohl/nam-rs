@@ -229,8 +229,8 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             self.shared.ui_loading.store(false, Ordering::Relaxed);
             if let (Err(e), Some(log)) = (res, self.host.get_extension::<HostLog>()) {
                 let shared = self.host.shared();
-                let msg = CString::new(format!("NAM-rs: Falha ao carregar modelo da GUI: {:?}", e))
-                    .expect("Falha ao criar CString");
+                let msg = CString::new(format!("NAM-rs: Failed to load model from GUI: {:?}", e))
+                    .expect("Failed to create CString");
                 log.log(&shared, LogSeverity::Error, &msg);
             }
         }
@@ -244,8 +244,8 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED)
             {
-                let msg = CString::new("NAM-rs: Saturação (clipping) detectada na saída!")
-                    .expect("Falha ao criar CString");
+                let msg = CString::new("NAM-rs: Output clipping detected!")
+                    .expect("Failed to create CString");
                 log.log(&shared, LogSeverity::Warning, &msg);
             }
 
@@ -254,9 +254,8 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW)
             {
-                let msg =
-                    CString::new("NAM-rs: Overflow no canal de GC! Possível leak de memória.")
-                        .expect("Falha ao criar CString");
+                let msg = CString::new("NAM-rs: GC channel overflow! Possible memory leak.")
+                    .expect("Failed to create CString");
                 log.log(&shared, LogSeverity::Error, &msg);
             }
 
@@ -265,9 +264,8 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED)
             {
-                let msg =
-                    CString::new("NAM-rs: Falha crítica! Nenhum modelo ativo para processamento.")
-                        .expect("Falha ao criar CString");
+                let msg = CString::new("NAM-rs: Critical failure! No active model for processing.")
+                    .expect("Failed to create CString");
                 log.log(&shared, LogSeverity::Error, &msg);
             }
         }
@@ -297,7 +295,7 @@ impl<'a> NamClapMainThread<'a> {
         let model_pair = load_and_build_model(path, &self.sys).map_err(|e| {
             Box::new(
                 NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
-                    .message(format!("Falha ao carregar o modelo: {:?}", path))
+                    .message(format!("Failed to load model: {:?}", path))
                     .param("error", e.to_string()),
             )
         })?;
@@ -308,8 +306,8 @@ impl<'a> NamClapMainThread<'a> {
             .map_err(|_| {
                 Box::new(
                     NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)
-                        .message("O canal de comunicação com a thread de áudio está cheio.")
-                        .hint("Tente carregar o modelo novamente em alguns instantes."),
+                        .message("The communication channel with the audio thread is full.")
+                        .hint("Please try loading the model again in a few moments."),
                 )
             })?;
 
@@ -451,16 +449,16 @@ impl DefaultPluginFactory for NamClapPlugin {
         let param_tx = shared
             .param_tx
             .lock()
-            .expect("Falha ao travar o Mutex do param_tx")
+            .expect("Failed to lock param_tx Mutex")
             .take()
-            .expect("Produtor param_tx já foi extraído");
+            .expect("param_tx producer already taken");
 
         let gc_rx = shared
             .gc_rx
             .lock()
-            .expect("Falha ao travar o Mutex do gc_rx")
+            .expect("Failed to lock gc_rx Mutex")
             .take()
-            .expect("Consumidor gc_rx já foi extraído");
+            .expect("gc_rx consumer already taken");
 
         #[cfg_attr(test, allow(unused_mut))]
         let main_thread = NamClapMainThread {

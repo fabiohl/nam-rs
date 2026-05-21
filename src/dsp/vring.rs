@@ -66,7 +66,7 @@ impl<T> VirtualRingBuffer<T> {
         // Garantir que o tamanho do elemento não seja zero (ex: ZST)
         assert!(
             element_size > 0,
-            "VirtualRingBuffer não suporta Zero Sized Types"
+            "VirtualRingBuffer does not support Zero Sized Types"
         );
 
         let requested_bytes = requested_size * element_size;
@@ -80,7 +80,7 @@ impl<T> VirtualRingBuffer<T> {
         let fd = unsafe { libc::memfd_create(c"vring".as_ptr(), libc::MFD_CLOEXEC) };
         if fd == -1 {
             panic!(
-                "Falha ao criar memfd para VirtualRingBuffer: {}",
+                "Failed to create memfd for VirtualRingBuffer: {}",
                 std::io::Error::last_os_error()
             );
         }
@@ -89,7 +89,7 @@ impl<T> VirtualRingBuffer<T> {
         if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
-            panic!("Falha ao truncar memfd para VirtualRingBuffer: {}", err);
+            panic!("Failed to truncate memfd for VirtualRingBuffer: {}", err);
         }
 
         // 3. Reservar espaço virtual contíguo (2x tamanho)
@@ -108,7 +108,7 @@ impl<T> VirtualRingBuffer<T> {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
             panic!(
-                "Falha ao reservar memória virtual para VirtualRingBuffer: {}",
+                "Failed to reserve virtual memory for VirtualRingBuffer: {}",
                 err
             );
         }
@@ -130,10 +130,7 @@ impl<T> VirtualRingBuffer<T> {
                 munmap(base_ptr, total_size);
                 libc::close(fd);
             }
-            panic!(
-                "Falha ao mapear primeira metade do VirtualRingBuffer: {}",
-                err
-            );
+            panic!("Failed to map first half of VirtualRingBuffer: {}", err);
         }
 
         // 5. Mapear a segunda metade (espelho)
@@ -153,10 +150,7 @@ impl<T> VirtualRingBuffer<T> {
                 munmap(base_ptr, total_size);
                 libc::close(fd);
             }
-            panic!(
-                "Falha ao mapear segunda metade do VirtualRingBuffer: {}",
-                err
-            );
+            panic!("Failed to map second half of VirtualRingBuffer: {}", err);
         }
 
         // O FD não é mais necessário após o mmap (ele mantém uma referência ao arquivo)
@@ -298,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "VirtualRingBuffer não suporta Zero Sized Types")]
+    #[should_panic(expected = "VirtualRingBuffer does not support Zero Sized Types")]
     fn test_vring_zst_panic() {
         let _ = VirtualRingBuffer::<()>::new(1024);
     }

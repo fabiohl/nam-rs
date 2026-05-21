@@ -640,7 +640,7 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
         if pod_ptr.is_null() {
             // Se falhar, o sistema não saberá como negociar o som com a sua placa.
             return Err(anyhow::anyhow!(
-                "Falha ao construir o documento de negociação de áudio (SPA Pod)"
+                "Failed to build the audio negotiation document (SPA Pod)"
             ));
         }
 

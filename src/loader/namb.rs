@@ -65,11 +65,14 @@ impl NambHeader {
             // Alguns arquivos antigos podem vir como "BMAN" (0x424D414E) em big-endian ou vice-versa.
             // Mas o padrão NAMB oficial é 0x4E414D42.
             if magic != 0x424D414E {
-                bail!("Número mágico inválido: esperado 'NAMB' (0x4E414D42)");
+                bail!("Invalid magic number: expected 'NAMB' (0x4E414D42)");
             }
         }
         if version != 1 && version != 2 {
-            bail!("Versão .namb não suportada: {}. Suportamos 1 e 2.", version);
+            bail!(
+                "Unsupported .namb version: {}. We support 1 and 2.",
+                version
+            );
         }
         Ok(())
     }
@@ -92,7 +95,7 @@ impl NambHeader {
 pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     let header_size = std::mem::size_of::<NambHeader>();
     if data.len() < header_size {
-        bail!("O arquivo fornecido é muito pequeno para conter o cabeçalho .namb");
+        bail!("The provided file is too small to contain the .namb header");
     }
 
     // 1. Lê o cabeçalho (Header)
@@ -103,14 +106,11 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // Se weights_offset > header_size, há um JSON entre eles.
     let weights_offset = header.weights_offset as usize;
     if weights_offset > data.len() {
-        bail!(
-            "Offset de pesos fora dos limites do arquivo: {}",
-            weights_offset
-        );
+        bail!("Weights offset out of file bounds: {}", weights_offset);
     }
     if weights_offset < header_size {
         bail!(
-            "Offset de pesos inválido (menor que o cabeçalho): {}",
+            "Invalid weights offset (smaller than header): {}",
             weights_offset
         );
     }
@@ -139,7 +139,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         let crc_calculated = crc32_ieee(&data[weights_offset..]);
         if crc_calculated != crc32_header {
             bail!(
-                "Falha na verificação de integridade CRC32: esperado 0x{:08X}, calculado 0x{:08X}",
+                "CRC32 integrity check failed: expected 0x{:08X}, calculated 0x{:08X}",
                 crc32_header,
                 crc_calculated
             );
@@ -197,7 +197,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
 
     info!(
-        "[Loader] .namb v{} carregado ({} pesos, layout={:?})",
+        "[Loader] .namb v{} loaded ({} weights, layout={:?})",
         version_header, float_count, model_data.weights_layout
     );
 

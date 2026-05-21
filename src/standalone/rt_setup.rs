@@ -147,11 +147,11 @@ pub fn poll_rt_status(
     // "vazando" memória temporariamente para evitar estalos (drops) no som.
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW) {
         NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
-            .message("Overflow detectado no canal de Garbage Collection (GC).")
+            .message("Garbage Collection (GC) channel overflow detected.")
             .hint(
-                "A thread de áudio teve que 'vazar' memória para evitar drop no hot-path. \
-                   Isso pode ocorrer durante trocas ultra-rápidas de modelo. \
-                   O NAM-rs drenará o buffer agressivamente agora.",
+                "The audio thread had to leak memory to avoid dropouts in the hot-path. \
+                   This can occur during rapid model swaps. \
+                   NAM-rs will drain the buffer aggressively now.",
             )
             .emit_warning();
     }
@@ -162,7 +162,7 @@ pub fn poll_rt_status(
     let rate_notif = rt_status.active_rate_changed.swap(0, Ordering::Relaxed);
     if rate_notif != 0 {
         log::info!(
-            "{} Callback RT ativou resampler com rate = {} Hz",
+            "{} RT callback activated resampler with rate = {} Hz",
             "✅".green(),
             rate_notif
         );
@@ -173,7 +173,7 @@ pub fn poll_rt_status(
     // ultrapassou o limite máximo do processamento digital.
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED) {
         log::warn!(
-            "{} Saturação detectada (Clipping)! Considere reduzir o ganho de entrada e/ou saída.",
+            "{} Clipping detected! Consider reducing the input and/or output gain.",
             "🔥".bright_red().bold()
         );
     }
@@ -189,20 +189,20 @@ pub fn poll_rt_status(
 
         if is_fifo {
             log::info!(
-                "{} Thread DSP confirmada: SCHED_FIFO ativo, prioridade RT = {}",
+                "{} DSP thread confirmed: SCHED_FIFO active, RT priority = {}",
                 "✅".green(),
                 prio
             );
         } else {
             NamDiagnostic::new(NamErrorCode::SchedFifoDenied, sys)
                 .message(format!(
-                    "Thread DSP NÃO está em SCHED_FIFO (prioridade = {}). \
-                     O áudio pode sofrer jitter e xruns.",
+                    "DSP thread is NOT in SCHED_FIFO (priority = {}). \
+                     Audio may experience jitter and xruns.",
                     prio
                 ))
                 .hint(
-                    "Verifique se o seu usuário possui permissão RT (ulimit -r) \
-                     ou se o sistema tem rtkit/PipeWire configurados corretamente.",
+                    "Check if your user has RT permission (ulimit -r) \
+                     or if the system has rtkit/PipeWire configured correctly.",
                 )
                 .emit_warning();
         }
@@ -214,7 +214,7 @@ pub fn poll_rt_status(
     let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
     if overloads > 0 {
         log::warn!(
-            "{} Sobrecarga de CPU ({} buffers). Considere usar um modelo mais leve ou processador mais poderoso.",
+            "{} CPU overload ({} buffers). Consider using a lighter model or a faster processor.",
             "🚨".red(),
             overloads
         );
@@ -227,7 +227,7 @@ pub fn poll_rt_status(
     let drops = bridge.drain_dropped_frames();
     if drops > 0 {
         log::warn!(
-            "{} Drifting detectado: {} blocos de áudio descartados (capture > playback).",
+            "{} Drifting detected: {} audio blocks discarded (capture > playback).",
             "⚠️".yellow(),
             drops
         );
@@ -253,7 +253,7 @@ pub fn poll_rt_status(
             let total_calls = rt_status.latency_hist.total_count();
 
             log::info!(
-                "{} Telemetria DSP (10s): {}µs (Mediana) | {}µs (P99) | {}µs (Máx) [{} blocos]",
+                "{} DSP Telemetry (10s): {}µs (Median) | {}µs (P99) | {}µs (Max) [{} blocks]",
                 "📊".bright_blue(),
                 p50,
                 p99,
@@ -275,8 +275,8 @@ pub fn poll_rt_status(
 
             if elapsed_us > budget_us {
                 NamDiagnostic::new(NamErrorCode::DeadlineExceeded, sys)
-                    .message("Deadline do PipeWire estourado (Possível Xrun detectado)")
-                    .hint("Verifique a topologia do modelo ou diminua a carga do sistema.")
+                    .message("PipeWire deadline exceeded (Possible Xrun detected)")
+                    .hint("Verify model topology or reduce system load.")
                     .param("exec_time_us", elapsed_us as u64)
                     .param("budget_us", budget_us as u64)
                     .param("n_samples", samples_val)
@@ -292,12 +292,12 @@ pub fn poll_rt_status(
     if current_silent != was_silent {
         if current_silent {
             log::info!(
-                "{} Modo Silencioso: Entrada abaixo do limiar (Gate Fechado).",
+                "{} Silent Mode: Input below threshold (Gate Closed).",
                 "🔇".blue()
             );
         } else {
             log::info!(
-                "{} Sinal de Áudio Detectado: Processamento DSP retomado.",
+                "{} Audio Signal Detected: DSP processing resumed.",
                 "🔊".green()
             );
         }
@@ -307,7 +307,7 @@ pub fn poll_rt_status(
     let current_fading = rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING);
 
     if current_fading != was_fading && current_fading {
-        log::info!("{} Transição de Sinal: Gate em Fade-In/Out.", "🌓".yellow());
+        log::info!("{} Signal Transition: Gate in Fade-In/Out.", "🌓".yellow());
     }
 
     (current_silent, current_fading)
@@ -350,13 +350,11 @@ pub fn configure_process_wide() {
     if ret_mlock != 0 {
         let err = std::io::Error::last_os_error();
         log::warn!(
-            "mlockall() falhou ({}). O áudio pode sofrer engasgos se o sistema usar swap.\n  Dica: Verifique o limite de 'memlock' no ulimits.",
+            "mlockall() failed ({}). Audio may experience dropouts if the system swaps.\n  Hint: Verify the 'memlock' limit in ulimits.",
             err
         );
     } else {
-        log::info!(
-            "🔒 Proteção de Memória: Travada na RAM física para evitar engasgos (mlockall)."
-        );
+        log::info!("🔒 Memory Protection: Locked in physical RAM to prevent dropouts (mlockall).");
     }
 }
 
@@ -409,7 +407,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
 
         if ret_aff != 0 {
             log::error!(
-                "\n  ⚡ Falha ao definir afinidade de CPU para núcleo {} (errno={}).\n  💡 O NAM-rs continuará funcionando, mas pode sofrer jitter por Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
+                "\n  ⚡ Failed to set CPU affinity to core {} (errno={}).\n  💡 NAM-rs will continue running, but may suffer jitter due to Core Migration.\n  [E2301 | CPU_AFFINITY_FAILED] cpu={} errno={}\n",
                 target_cpu,
                 ret_aff,
                 target_cpu,
@@ -438,7 +436,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                 let ret_sched = libc::pthread_setschedparam(thread_id, libc::SCHED_FIFO, &param);
                 if ret_sched != 0 {
                     log::error!(
-                        "⚠️ pthread_setschedparam(SCHED_FIFO, 90) falhou (errno={}).\n  [E2302 | RT_SCHED_FAILED] Verifique ulimit -r e permissões rtkit.\n",
+                        "⚠️ pthread_setschedparam(SCHED_FIFO, 90) failed (errno={}).\n  [E2302 | RT_SCHED_FAILED] Check ulimit -r and rtkit permissions.\n",
                         ret_sched
                     );
                 } else {
@@ -469,7 +467,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                 ""
             };
             log::info!(
-                "{} Otimização de Thread: Núcleo {} dedicado com prioridade Real-Time (FIFO{}, Prio={})",
+                "{} Thread Optimization: Dedicated core {} with Real-Time priority (FIFO{}, Prio={})",
                 "🔍".blue(),
                 actual_cpu.to_string().cyan(),
                 reset_info,
@@ -481,7 +479,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             rt_status.rt_priority.store(0, Ordering::Relaxed);
 
             log::error!(
-                "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam falhou (ret={}).\n",
+                "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam failed (ret={}).\n",
                 ret_getsched
             );
         }
@@ -501,9 +499,7 @@ pub fn select_optimal_cpu() -> Option<usize> {
     // 1. Obtém os núcleos que o sistema operacional permitiu para este processo.
     let allowed_cpus = get_allowed_cpus();
     if allowed_cpus.is_empty() {
-        log::warn!(
-            "Não foi possível detectar CPUs permitidas via sched_getaffinity. Usando fallback total."
-        );
+        log::warn!("Could not detect allowed CPUs via sched_getaffinity. Using total fallback.");
     }
 
     // Varre /sys para encontrar todos os núcleos lógicos disponíveis.
@@ -666,19 +662,17 @@ pub fn lock_cpu_c_states() -> Option<std::fs::File> {
             // Valor 0 indica tolerância zero a latência de transição de energia.
             let zero: i32 = 0;
             if std::io::Write::write_all(&mut file, &zero.to_ne_bytes()).is_ok() {
-                log::info!(
-                    "⚡ PM QoS Lock: C-States profundos da CPU desativados (Zero DMA Latency)."
-                );
+                log::info!("⚡ PM QoS Lock: Deep CPU C-States disabled (Zero DMA Latency).");
                 return Some(file);
             }
-            log::warn!("PM QoS: Falha ao escrever em /dev/cpu_dma_latency.");
+            log::warn!("PM QoS: Failed to write to /dev/cpu_dma_latency.");
             None
         }
         Err(e) => {
             // Frequentemente falha se não houver permissão de escrita ou se o arquivo não existir.
             log::warn!(
-                "PM QoS: Acesso negado a /dev/cpu_dma_latency ({}). \
-                 Considere criar uma regra de udev para o grupo 'audio'.",
+                "PM QoS: Access denied to /dev/cpu_dma_latency ({}). \
+                 Consider creating a udev rule for the 'audio' group.",
                 e
             );
             None

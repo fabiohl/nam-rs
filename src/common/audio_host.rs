@@ -70,7 +70,7 @@ mod tests {
                 let sys = SystemSnapshot::capture();
                 return Err(Box::new(
                     NamDiagnostic::new(NamErrorCode::PipewireInitFailed, &sys)
-                        .message("Sample rate inválido no MockHost"),
+                        .message("Invalid sample rate in MockHost"),
                 ));
             }
             Ok(())
@@ -104,6 +104,6 @@ mod tests {
         assert!(res.is_err());
         let diag = res.unwrap_err();
         // Verificamos se a mensagem de erro é a que esperamos.
-        assert_eq!(diag.to_string(), "[E2100] Sample rate inválido no MockHost");
+        assert_eq!(diag.to_string(), "[E2100] Invalid sample rate in MockHost");
     }
 }

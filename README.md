@@ -1,109 +1,97 @@
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+-->
 # 🎸 NAM-rs 1.4.5
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
 > ⚠️ **Standalone PipeWire:** STABLE (v1.4.4) | **CLAP Plugin:** IN DEVELOPMENT (alpha)
 
-O **NAM-rs** é um cliente [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) em tempo real para simulação de, por exemplo, amplificadores, pedais de guitarra e equipamentos de estúdio. Ele tenta manter paridade com a implementação padrão do NAM, mas com muitas melhorias e otimizações.
-
-Nesta versão 1.4 ele foca em rodar em modo standalone, mas já prepara o terreno para plugins. Ou seja, ele é um executável que captura qualquer cadeia de sinal de áudio do seu computador e manda processado para a sua saida de áudio desejada. Minha intenção com isto foi testar a tecnologia de forma rápida, sem perder tempo com abstrações mais complexas.
-
-O motor de inferência é muito baseado na biblioteca C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) de Mike Oliphant, porém re-escrito inteiramente em Rust nativo e idiomático e com muitas otimizações feitas sob medida. Em muitos locais do _Hot Path_ praticamente alcançando a meta teórica de throughput da microarquitetura.
-
-Está totalmente otimizado para extrair o máximo de performarce e baixa latência possível - possibilitado por uma base de código limpo e organizado, pelo uso intensivo de instruções SIMD modernas (AVX2/FMA/x86-64-v3) e pelos recursos modernos do Pipewire/Linux.
-
-Caprichei na busca intensiva pelo estado da arte em matéria de otimização! Isto totalmente se pagou se você considerar que as cadeias de áudio no computador costumam ser stereo. Então, na verdade, são DOIS canais de áudio sendo processados simultâneamente em baixíssima latência e usando muito pouca CPU.
-
-> NOTA: Não se engane pelo número da versão. Ele significa que o código está bem completo, otimizado e funcional. Ou seja, ele recebeu muito carinho e esforço. Mas até o momento, o único usuário sou apenas eu. Então todo o teste e uso prático é bem-vindo!
-
-## **🇺🇲 English Version (International)**
-
 **NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
 
-In version 1.4, the focus is on standalone mode. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. My intention was to test the technology quickly without investing time on more complex abstractions.
+In version 1.4, the focus is on standalone mode, but the groundwork is laid for plugins. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. This allowed for quick testing of the technology without immediately investing time on more complex abstractions.
 
-The inference engine is heavily based on Mike Oliphant's [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) C++ library, but entirely rewritten in native and idiomatic Rust with numerous tailor-made optimizations. In many parts of the _Hot Path_, it practically achieves the theoretical microarchitecture throughput target.
+The inference engine is heavily based on Mike Oliphant's C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) library, but entirely rewritten in native and idiomatic Rust with numerous tailor-made optimizations. In many parts of the *Hot Path*, it practically achieves the theoretical microarchitecture throughput target.
 
 It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features.
 
-I worked hard to achieve state-of-the-art optimization! This effort truly pays off when you consider that computer audio signals are usually stereo. As a result, two audio channels are processed simultaneously with extremely low latency and very low CPU usage.
+This search for state-of-the-art optimization truly pays off when you consider that computer audio signals are usually stereo. As a result, two audio channels are processed simultaneously with extremely low latency and very low CPU usage.
 
-> NOTE1: Don't be fooled by the version number. It means the code is very complete, optimized and functional. In other words, it received a lot of love and effort. But so far, the only user is me. So all testing and practical use is welcome!
-> NOTE2: A full translation of NAM-rs is planned. For now, our primary focus remains on the development of the project itself.
+> NOTE: Don't be fooled by the version number. It means the code is very complete, optimized, and functional. It has received a lot of love and effort. But so far, the only user is the maintainer. All testing and practical use is highly welcome!
 
-## 🛠️ Modos de Operação / Operation Modes
+---
 
-O NAM-rs pode ser compilado em dois modos principais via _feature flags_:
+## 🛠️ Operation Modes
 
-1. **Standalone (padrão):** Binário Linux nativo para PipeWire. Uso musical imediato com baixa latência e integração direta via `qpwgraph`.
+NAM-rs can be compiled in two main modes via *feature flags*:
+
+1. **Standalone (default):** Native Linux binary for PipeWire. Immediate musical use with low latency and direct integration via `qpwgraph`.
 
    ```bash
-   # Build padrão (standalone)
+   # Default build (standalone)
    cargo build --release --features standalone
    ```
 
-2. **CLAP Plugin (alpha):** Biblioteca `.so` para uso em DAWs (como REAPER, Bitwig Studio e Fender Studio Pro etc.). Em desenvolvimento ativo (alpha).
+2. **CLAP Plugin (alpha):** `.so` library for use in DAWs (such as REAPER, Bitwig Studio, Fender Studio Pro, etc.). Active development (alpha).
 
    ```bash
-   # Build para Plugin CLAP
+   # CLAP Plugin build
    cargo build --release --no-default-features --features clap-plugin --lib
    ```
 
-## ✨ Arquitetura
+---
 
-O NAM-rs adota uma arquitetura opinativa e focada em quatro pilares:
+## ✨ Architecture
 
-1. **Linux Nativo e Arquitetura Moderna:** No modo standalnoe integra diretamente com o servidor PipeWire como cliente nativo, gerenciando suas portas de áudio diretamente no _Graph Engine_ do PipeWire. No modo plugin foi escolhido suportar apenas o formato CLAP, que é muito eficiente e moderno. A escolha de não usar outros padrões deve-se ao fato de serem tecnologias mais antigas (LV2) ou desnecessariamente complexa (VST).
-2. **Inferência SIMD ultra-rápidas:** A linha de base é x86-64-v3 (AVX2 + FMA obrigatórios). Funções de ativação (tanh, sigmoid) usam aproximações FastMath (Padé + rsqrt Newton-Raphson) em registradores de 256 bits. Multiversioning AVX-512 implementado via `Avx512Math` para hardware ZMM (Intel Xeon, AMD Zen 4+), processando 16 floats por instrução. WaveNet opera em **Batch GEMM** (bloco de até 64 frames por invocação).
-3. **Determinismo de Tempo Real:** A thread DSP é promovida a `SCHED_FIFO` com afinidade de CPU rígida (_Core Affinity_), impedindo migrações e falhas de cache. Comunicação CLI ↔ DSP via ring buffer SPSC alinhado a 128 bytes. **Zero alocações** na heap durante processamento de áudio.
-4. **Rust puro:** A escolha do Rust não foi por "hype". Há motivos muito fortes que compelem a ele. Além de alta performance, por ser uma linguagem compilada similar arquiteturalmente aos tradicionais C/C++, trata-se de uma linguagem com sintaxe moderna, muito expressiva e rica em recursos. Sintaxe que oferece garantias de segurança e de performance já em tempo de compilação. Por exemplo, versões estáticas (wavenet.rs) onde o tamanho do kernel e os canais são conhecidos em tempo de compilação permitem otimizações agressivas de loop unrolling pelo LLVM.
+NAM-rs adopts an opinionated architecture focused on four pillars:
 
-## 🚀 Guia Rápido
+1. **Native Linux & Modern Architecture:** Standalone mode integrates directly with the PipeWire server as a native client, managing its audio ports directly in PipeWire's *Graph Engine*. Plugin mode supports only the CLAP format, which is highly efficient and modern. We chose not to support legacy (LV2) or overly complex (VST) formats.
+2. **Ultra-Fast SIMD Inference:** The baseline target is `x86-64-v3` (AVX2 + FMA are mandatory). Activation functions (tanh, sigmoid) use FastMath approximations (Padé + Newton-Raphson rsqrt) in 256-bit registers. AVX-512 multiversioning is implemented via `Avx512Math` for ZMM hardware (Intel Xeon, AMD Zen 4+), processing 16 floats per instruction. WaveNet operates in **Batch GEMM** (blocks of up to 64 frames per invocation).
+3. **Real-Time Determinism:** The DSP thread is promoted to `SCHED_FIFO` with strict CPU affinity (*Core Affinity*), preventing core migrations and cache misses. CLI ↔ DSP communication uses a 128-byte aligned SPSC ring buffer. **Zero heap allocations** are made during audio processing.
+4. **Pure Rust:** The choice of Rust is not just about "hype". Besides high performance, being a compiled language structurally similar to C/C++, it offers a modern, expressive syntax with compile-time safety and performance guarantees. For example, static versions ([wavenet.rs](file:///home/fabio/nam-rs/src/dsp/wavenet.rs)) where kernel size and channels are known at compile time allow aggressive loop unrolling by LLVM.
 
-### Pré-requisitos
+---
 
-* Kernel Linux e servidor de áudio Pipewire relativamente recentes devem ser suficientes. Eu venho testando no Ubuntu 25.10 e 26.04.
+## 🚀 Quick Start
 
-* Processador x86-64-v3 com suporte AVX2 e FMA (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). CPUs de 2019 para cá são muito recomendáveis para redes neurais NAM.
+### Prerequisites
 
-* Toolchain Rust recente (`rustup`/`cargo`). Eu usei a versão 1.94 durante a maior parte do desenvolvimento.
-
-* Pacotes de desenvolvimento: `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
-
-* Utilitários do Cargo (necessários para QA):
+* A relatively recent Linux Kernel and PipeWire audio server. Development and testing are performed on Ubuntu 25.10 and 26.04.
+* An `x86-64-v3` processor with AVX2 and FMA support (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). CPUs from 2019 onwards are highly recommended for NAM neural networks.
+* A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 was used during most of the development.
+* Development packages:
+  `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
+* Cargo utilities (required for QA):
   * `cargo install cargo-edit`
-  * `cargo install --git <https://github.com/free-audio/clap-validator.git>`
-
-* Para que o motor execute inabalável sob modelos NAM realistas (especialamente "Lite" e "Standard"), é fundamental conceder a autorização de políticas SCHED mais avançadas ao binário. Adicione seu usuário ao grupo de áudio do sistema e edite limits:
-
+  * `cargo install --git https://github.com/free-audio/clap-validator.git`
+* To ensure the engine runs flawlessly under realistic NAM models (especially "Lite" and "Standard"), it is crucial to grant advanced SCHED policies to the binary. Add your user to the system's `audio` group and edit your limits:
   1. `sudo usermod -aG audio $USER`
-  2. Crie ou edite o arquivo de limites (ex: `sudo nano /etc/security/limits.d/audio.conf`):
+  2. Create or edit the limits file (e.g., `sudo nano /etc/security/limits.d/audio.conf`):
 
-```text
-@audio   -  rtprio     95
-@audio   -  memlock    unlimited
-```
+     ```text
+     @audio   -  rtprio     95
+     @audio   -  memlock    unlimited
+     ```
 
-* Crie uma regra no _udev_ para permitir que o grupo `audio` bloqueie a latência de despertar da CPU (C-states),
+* Create a *udev* rule to allow the `audio` group to lock CPU wake latency (C-states):
   1. `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`
-  2. Reinicie a máquina ou execute `sudo udevadm control --reload-rules && sudo udevadm trigger` para aplicar as regras
+  2. Reload rules or reboot: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 
-```text
-KERNEL=="cpu_dma_latency", GROUP="audio", MODE="0664"
-```
+     ```text
+     KERNEL=="cpu_dma_latency", GROUP="audio", MODE="0664"
+     ```
 
-* Também é muito recomendável configurar o governador de performence da sua CPU (`intel_pstate` ou `amd_pstate`) para o modo **Performance**.
-  * Desktop modernos (como GNOME no Ubuntu/Fedora ou KDE Plasma), o sistema já gerencia isso nativamente via power-profiles-daemon.
-  * Caso você prefira o `tlp`, pode editar o /etc/tlp.conf
+* Setting your CPU scaling governor (`intel_pstate` or `amd_pstate`) to **Performance** is also highly recommended:
+  * Modern desktops (such as GNOME on Ubuntu/Fedora or KDE Plasma) manage this natively via `power-profiles-daemon`.
+  * If you prefer `tlp`, you can edit `/etc/tlp.conf`:
 
-```text
-CPU_SCALING_GOVERNOR_ON_AC=performance
-CPU_SCALING_GOVERNOR_ON_BAT=powersave
-```
+    ```text
+    CPU_SCALING_GOVERNOR_ON_AC=performance
+    CPU_SCALING_GOVERNOR_ON_BAT=powersave
+    ```
 
-### Build e Execução (Modo Standalone)
+### Build & Run (Standalone Mode)
 
 ```bash
 git clone https://github.com/fabiohl/nam-rs.git
@@ -111,121 +99,129 @@ cd nam-rs
 cargo build --release --features standalone
 ```
 
-Por ser um projeto em intensa evolução, não é aconselhável usar a branch "main" para trabalhos em ambiente de produção. Recomenda-se uma uma das versões release disponíveis em <https://github.com/fabiohl/nam-rs/tags>.
+*Note: `.cargo/config.toml` allows configuring a build optimized specifically for your current CPU ("march=native").*
 
-**Obs:** O .cargo/config.toml permite configurar uma compilação ainda mais otimizada para a sua CPU atual ("march=native").
-
-Para iniciar o processamento:
+To start audio processing:
 
 ```bash
 target/release/nam-rs --model tests/nam_files/NEVE1073-Standard.nam
 target/release/nam-rs --model tests/fixtures/models/BossWN-standard.nam --input-gain -3.0 --output-gain 0.0
-# Em máquinas fracas ou setups de desktop, aumente o buffer para aliviar a CPU:
+# On lower-end machines, increase the buffer size to reduce CPU load:
 target/release/nam-rs --model HeavyModel.nam --buffer-size 512
 ```
 
-Você pode usar o `qpwgraph &` como um editor visual de conexões pipewire. Após a inicialização, o nodo aparece na matriz PipeWire. O NAM-rs deve estar disponível como um dispositivo de saída no seu player de áudio.
+You can use `qpwgraph &` as a visual PipeWire connection editor. Once started, the node appears in the PipeWire patchbay.
 
-### Telemetria e Monitoramento
+### Telemetry & Monitoring
 
-A cada 10 segundos, o NAM-rs exibe um relatório de performance no terminal para garantir a saúde do processamento:
+Every 10 seconds, NAM-rs prints a performance report in the terminal to monitor processing health:
 
-`📊 Telemetria DSP (10s): 262µs (Mediana) | 524µs (P99) | 1048µs (Máx) [938 blocos]`
+`📊 DSP Telemetry (10s): 262µs (Median) | 524µs (P99) | 1048µs (Max) [938 blocks]`
 
-* **Mediana**: Indica o custo típico de processamento por bloco. Valores próximos de 0µs indicam que o `Silence Bypass` está poupando CPU.
-* **P99 (Estabilidade)**: O indicador mais crítico. Mostra que 99% dos blocos foram processados abaixo deste tempo. Se o P99 se aproximar do tempo do seu buffer (ex: 5333µs para buffer 256 - o padrão do nam-rs), o risco de estalos aumenta.
-* **Máx**: O pior caso registrado no intervalo, útil para detectar picos causados por interferências do sistema operacional.
-* **Blocos**: O volume total de dados processados que compõem a estatística do intervalo.
+* **Median**: Typical processing cost per block. Values close to 0µs indicate that the *Silence Bypass* is active, saving CPU.
+* **P99 (Stability)**: The most critical indicator. Shows that 99% of the blocks were processed below this time. If the P99 approaches your buffer time budget (e.g., 5333µs for a 256-sample buffer at 48kHz), the risk of audio dropouts (XRUNs) increases.
+* **Max**: The worst-case latency recorded in the interval, useful for detecting spikes caused by OS interrupts.
+* **Blocks**: The total count of processed blocks in the telemetry interval.
 
-## 📚 Documentação
+---
 
-* [docs/architecture.md](docs/architecture.md) — Topologia, módulos e decisões de design
-* [docs/dependencies.md](docs/dependencies.md) — Dependências sistêmicas e crates Rust
-* [docs/benchmarks.md](docs/benchmarks.md) — Como interpretar as métricas de performance do Criterion
-* [docs/clap_integration.md](docs/clap_integration.md) — Estratégia de integração CLAP (Clever Audio Plug-in)
+## 📚 Documentation
 
-## 🧠 Modelos Suportados
+* [docs/architecture.md](docs/architecture.md) — Topology, modules, and design decisions
+* [docs/dependencies.md](docs/dependencies.md) — System dependencies and Rust crates
+* [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics
+* [docs/clap_integration.md](docs/clap_integration.md) — CLAP (Clever Audio Plug-in) integration strategy
 
-O NAM-rs suporta nativamente arquivos Neural Amp Modeler (.nam ou .namb). Arquivos de Impulse Response (.wav) não são suportados (ao menos não no momento).
-No momento é suportado nativamente a "Arquitetura A1" do NAM. O suporte à "Arquitetura A2" está em fase de **staging** (scaffolding e loader prontos na v1.4).
-Oferece dois níveis de operação de parsing:
+---
 
-* **Modo Estático (Altíssima Performance):** Construções de _Const Generics_ dimensionadas em tempo de compilação.
-  * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4) e Nano (4×2)
-  * **LSTM:** 1 e 2 Camadas (8 a 24 de Hidden Size: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
-* **Modo Dinâmico (Flexibilidade Absoluta):** Fallback ativado automaticamente ao carregar arranjos `.nam` com geometrias extrassensoriais não catalogadas (`num_layers` e `channels` arbitrários), operando sem _loop unrolling_.
+## 🧠 Supported Models
 
-## 🧪 Testes e Validação
+NAM-rs natively supports Neural Amp Modeler (.nam or .namb) files. Impulse Response (.wav) files are not supported.
+Currently, the "A1 Architecture" of NAM is fully supported. "A2 Architecture" support is in **staging** (scaffolding and loader are ready).
 
-O NAM-rs mantém uma suíte de aproximandamente **220 verificações** automatizadas. Para facilitar o fluxo de desenvolvimento e QA, utilize os scripts na pasta `utils/`:
+Two levels of parsing operations are provided:
+
+* **Static Mode (Ultra Performance):** *Const Generics* structures sized at compile time.
+  * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4), and Nano (4×2)
+  * **LSTM:** 1 and 2 Layers (Hidden Size 8 to 24: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
+* **Dynamic Mode (Absolute Flexibility):** Fallback activated automatically when loading `.nam` arrangements with uncatalogued geometries (arbitrary `num_layers` and `channels`), operating without *loop unrolling*.
+
+---
+
+## 🧪 Tests & Validation
+
+NAM-rs maintains a suite of approximately **220 automated checks**. To simplify development and QA flows, use the scripts located under `utils/`:
 
 ```bash
-# 1. Lint e Qualidade (Formatação + Clippy + Feature Matrix)
+# 1. Lint & Quality (Formatting + Clippy + Feature Matrix)
 utils/lints.sh
 
-# 2. Bateria Padrão (Unitários + Integração + Benchmarks rápidos)
+# 2. Standard Suite (Unit + Integration + Fast Benchmarks)
 utils/tests-cargo.sh
 
-# 3. Auditoria de Longa Duração (Soak Tests + Benchmarks de Estresse)
+# 3. Soak & Stress Tests (Long-duration verification)
 utils/tests-long.sh
-
 ```
 
-Para execuções manuais ou cirúrgicas, você ainda pode usar o Cargo diretamente:
+For manual or specific execution, you can run cargo directly:
 
-* **Testes unitários inline**: `cargo test --lib`
-* **Testes de integração específicos**: `cargo test --test nam_infer_test`
-* **Fuzzing via proptest**: `cargo test --test proptest_parsers`
+* **Inline Unit Tests:** `cargo test --lib`
+* **Specific Integration Tests:** `cargo test --test nam_infer_test`
+* **Fuzz Testing via proptest:** `cargo test --test proptest_parsers`
 
-### Teste de Estabilidade (Soak Test)
+### Stability Testing (Soak Test)
 
-Para garantir que o motor permaneça estável durante horas de uso contínuo, o NAM-rs inclui uma suíte de **Soak Test** que processa milhões de frames (ex: 10M+ de silêncio/ruído, 100M+ ciclos de buffer circular). Estes testes são projetados para detectar:
+To ensure the engine remains stable during hours of continuous usage, NAM-rs includes a **Soak Test** suite processing millions of frames (e.g., 10M+ of silence/noise, 100M+ ring buffer cycles). These tests are designed to detect:
 
-* **Drift Numérico**: Acúmulo de erro de arredondamento em filtros e resamplers.
-* **Estabilidade de FSM**: Integridade de contadores de Gate e transições de fade.
-* **Resiliência de Memória**: Estresse de fronteiras em `VirtualRingBuffer`.
+* **Numerical Drift:** Rounding error accumulations in filters and resamplers.
+* **FSM Stability:** Integrity of Gate counters and fade transitions.
+* **Memory Resilience:** Ring buffer boundary stress in `VirtualRingBuffer`.
 
-Para executar a bateria completa (pode levar vários minutos/horas):
-`bash utils/tests-long.sh`
+Run the full battery: `bash utils/tests-long.sh`
 
-Categorias de teste incluem: parsing JSON e NAMB, **fuzz testing via proptest** (bytes adversários, JSON malformado, NAMB corrompido), **verificação zero-allocation** no hot path (counting allocator), estabilidade numérica de longa duração, auto-consistência (determinismo), golden vectors C++ ↔ Rust, pipeline E2E SPSC, paridade estático/dinâmico, estabilidade sob silêncio (denormals/DAZ/FTZ), rejeição de JSON malformado, gain staging roundtrip, hot-swap rápido de modelos, **block sizes variáveis** (1–512 amostras), **modelos comunitários** (5 modelos .nam) e **rejeição de formatos não-suportados** (Keras Legacy, ativações não-Tanh).
+Categories of validation include JSON/NAMB parsing, **fuzz testing via proptest** (adversarial bytes, malformed JSON, corrupted NAMB), **zero-allocation verification** in the hot-path (counting allocator), long-duration numerical stability, auto-consistency (determinism), C++ ↔ Rust golden vectors, E2E SPSC pipelines, static/dynamic parity, silent mode stability (denormals/DAZ/FTZ), gain staging roundtrip, fast model hot-swap, **variable block sizes** (1–512 samples), **community models** (5 .nam files), and **unsupported format rejection** (Keras Legacy, non-Tanh activations).
+
+---
 
 ## ⏲️ Changelog
 
-* 1.0 (28/04/2026): Release inicial. Suporte completo à "Arquitetura A1" do Neural Amp Modeler.
-* 1.1 (30/04/2026): Otimizações de performance sortidas.
-* 1.2 (02/05/2026): Algoritimo de resampling próprio.
-* 1.3 (04/05/2026): Otimizações intensivas de SIMD e refatoração de telemetria.
-* 1.4 (05/05/2026): Staging para A2 (scaffolding) e CLAP. Toneladas de otimizações de performance.
-* 1.4.1 (07/05/2026): Rodadas de limpezas e otimizações.
-* 1.4.2 (08/05/2026): Micro fixes.
-* 1.4.3 (10/05/2026): Micro fixes.
-* 1.4.4 (11/05/2026): Remoção de modo interativo falho.
-* 1.4.5 (11/05/2026): Otimizações e licenciamento
+* 1.0 (2026-04-28): Initial release. Full support for Neural Amp Modeler "A1 Architecture".
+* 1.1 (2026-04-30): Miscellaneous performance optimizations.
+* 1.2 (2026-05-02): Integrated custom resampling algorithm.
+* 1.3 (2026-05-04): Intensive SIMD optimizations and telemetry refactoring.
+* 1.4 (2026-05-05): Staging for A2 and CLAP. Tons of performance optimizations.
+* 1.4.1 (2026-05-07): Cleanups and optimization passes.
+* 1.4.2 (2026-05-08): Micro fixes.
+* 1.4.3 (2026-05-10): Micro fixes.
+* 1.4.4 (2026-05-11): Removed faulty interactive CLI mode.
+* 1.4.5 (2026-05-11): Optimizations and licensing update.
 
-## 🛣️ Próximos Passos (Roadmap)
+---
 
-O NAM-rs está em transição para a v2, focada na integração CLAP e arquitetura modular. Vide TODO-sprints.md.
+## 🤝 Contributing
 
-## 🤝 Contribuindo
+Contributions are welcome! The project is in active development.
 
-Contribuições são bem-vindas! O projeto está em fase ativa de desenvolvimento.
+* Tests + tests + tests + tests...
+* Although AVX-512 is supported, testing on a capable CPU is highly appreciated.
+* Before submitting PRs, run the test suites mentioned above. Use the agentic workflows in `.agents/`.
 
-* Testes + testes + testes + testes....
-* Apesar do suporte a AVX-512, eu não tenho uma CPU capacitada pra testar. Se alguém tiver alguma por ai, seria muito útil..
-* Antes de submeter PRs execute a bateria completa de testes citada acima. Use e abuse das skills de IA agênticas em .agents/.
+---
 
-## 🙏 Créditos e Agradecimentos
+## 🙏 Credits & Acknowledgments
 
-Este projeto herda lógica, inspiração e ciência de trabalhos notáveis na comunidade de áudio e inteligência artificial que pavimentaram este caminho.
-Impossível mapear todos os que contribuíram para o avanço desta tecnologia. Mas no escopo dos nosso projeto, impossível não mencionar:
+This project builds upon the logic, science, and inspiration of notable works in the audio and AI communities:
 
-* **Steven Atkinson** — Pelo desenvolvimento pioneiro do [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler), sua pesquisa original sobre modelagem de amplificadores com deep learning e por compartilhar o ecossistema abertamente.
-* **Mike Oliphant** — Pela excepcional biblioteca [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio), que serviu de base direta e fonte de pesquisa para a transposição das lógicas de inferência para este motor estrutural.
+* **Steven Atkinson** — For pioneering the [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler), his research on amplifier modeling with deep learning, and sharing the ecosystem.
+* **Mike Oliphant** — For the exceptional [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio) library, which served as a direct reference for porting inference logic to this engine.
 
-## ⚖️ Licença e Transparência (Vibe Coding)
+---
 
-**Nota de Transparência sobre Inteligência Artificial:** A arquitetura, as decisões rigorosas de engenharia, a documentação, a atenciosa regência dos agentes e a curadoria deste projeto são de autoria intelectual do mantenedor. Contudo, o código-fonte em si foi gerado e iterado com o auxílio de Inteligência Artificial (_Vibe Coding_). Mais especificamente, usando a IDE Google Antigravity.
+## ⚖️ License & Transparency (Vibe Coding)
 
-Este projeto é licenciado sob **Apache License, Version 2.0**. Veja o arquivo `LICENSE` para mais detalhes.
-O uso da licença Apache 2.0 visa justamente oferecer maior segurança jurídica aos contribuidores e usuários em relação a patentes, dado este modelo moderno de desenvolvimento de software. A estrutura está aberta para a comunidade refatorar, auditar e expandir livremente.
+**AI Transparency Note:** The architecture, rigorous engineering decisions, documentation, agent orchestrations, and curation of this project are the intellectual work of the maintainer. However, the source code itself was generated and iterated with the assistance of Artificial Intelligence (*Vibe Coding*), specifically using the Google Antigravity IDE.
+
+This project is licensed under the **Apache License, Version 2.0**. See the `LICENSE` file for details.
+
+> [!NOTE]
+> **Developer Documentation & Code Comments:** Please note that developer comments (`//`, `///`, `//!`) in the source code and reference documentation under the `docs/` folder will remain in Portuguese for now.

@@ -216,8 +216,8 @@ pub fn run_pipewire_host(
         // quando a thread principal construir e enviar um novo resampler.
         let resampler = NamResampler::new(48_000, 48_000, 2048).unwrap_or_else(|e| {
             NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
-                .message("Falha ao criar NamResampler inicial (usando bypass 48k).")
-                .hint("O engine contínua em modo bypass. O resampler será recriado ao receber o rate real do PipeWire.")
+                .message("Failed to create initial NamResampler (using 48k bypass).")
+                .hint("The engine remains in bypass mode. The resampler will be recreated upon receiving the actual rate from PipeWire.")
                 .param("initial_rate", 48_000_u32)
                 .param("detail", &e)
                 .emit_warning();
@@ -286,13 +286,13 @@ pub fn run_pipewire_host(
             // Callback: Acionado quando o estado geral da stream muda (ex: conectando, pausado, erro).
             .state_changed(move |_stream, _user_data, old, new| match new {
                 pw::stream::StreamState::Error(err) => {
-                    log::error!("{} Falha grave na stream de áudio PW: {}", "💥".red(), err);
+                    log::error!("{} Critical PW audio stream failure: {}", "💥".red(), err);
                 }
                 pw::stream::StreamState::Paused if old == pw::stream::StreamState::Streaming => {
-                    log::info!("{} Áudio desconectado ou troca de nó.", "⏸️".yellow());
+                    log::info!("{} Audio disconnected or node switch.", "⏸️".yellow());
                 }
                 pw::stream::StreamState::Streaming if old == pw::stream::StreamState::Paused => {
-                    log::info!("{} Áudio capturado (conexão estabelecida)", "▶️".green());
+                    log::info!("{} Audio captured (connection established)", "▶️".green());
                 }
                 _ => {}
             })
@@ -461,7 +461,7 @@ pub fn run_pipewire_host(
         )?;
 
         log::info!(
-            "{} Capture stream conectado ao PipeWire (Audio/Sink, F32P Planar Stereo).",
+            "{} Capture stream connected to PipeWire (Audio/Sink, F32P Planar Stereo).",
             "🎼".bright_blue()
         );
 
@@ -500,7 +500,7 @@ pub fn run_pipewire_host(
             // Força o envio direto para o nó de hardware detectado
             playback_props.insert("node.target", target.as_str());
             log::info!(
-                "{} Saída roteada automaticamente para o hardware padrão: {}",
+                "{} Output automatically routed to default hardware: {}",
                 "🔌".green(),
                 target
             );
@@ -549,7 +549,7 @@ pub fn run_pipewire_host(
         )?;
 
         log::info!(
-            "{} Playback stream conectado ao PipeWire (Stream/Output/Audio, F32P Planar Stereo).",
+            "{} Playback stream connected to PipeWire (Stream/Output/Audio, F32P Planar Stereo).",
             "🔊".bright_blue()
         );
     }
@@ -607,10 +607,10 @@ pub fn run_pipewire_host(
                         // Enviamos o novo objeto para a thread RT via canal SPSC (Lock-Free).
                         if resampler_producer.push(new_rs).is_err() {
                             NamDiagnostic::new(NamErrorCode::ResamplerChannelFull, &sys)
-                                .message("Canal de resampler cheio. Rebuild descartado.")
+                                .message("Resampler channel full. Rebuild discarded.")
                                 .hint(
-                                    "O motor de áudio está sobrecarregado. \
-                                     Se o problema persistir, reinicie o NAM-rs.",
+                                    "The audio engine is overloaded. \
+                                     If the problem persists, restart NAM-rs.",
                                 )
                                 .param("target_pw_rate", target_pw_rate)
                                 .param("target_nam_rate", target_nam_rate)
@@ -621,12 +621,12 @@ pub fn run_pipewire_host(
                         // Se o rebuild falhar, emitimos um diagnóstico e mantemos o resampler anterior.
                         NamDiagnostic::new(NamErrorCode::ResamplerBuildFailed, &sys)
                             .message(format!(
-                                "Falha ao reconstruir o resampler para PW={} Hz e NAM={} Hz.",
+                                "Failed to rebuild resampler for PW={} Hz and NAM={} Hz.",
                                 target_pw_rate, target_nam_rate
                             ))
                             .hint(
-                                "O áudio continuará com o resampler anterior. \
-                                 Se a taxa de amostragem estiver errada, reinicie o NAM-rs.",
+                                "Audio will continue with the previous resampler. \
+                                 If the sample rate is incorrect, restart NAM-rs.",
                             )
                             .param("target_pw_rate", target_pw_rate)
                             .param("target_nam_rate", target_nam_rate)

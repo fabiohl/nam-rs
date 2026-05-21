@@ -60,8 +60,8 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
     let model_data = if ext_lower == "namb" {
         let bytes = std::fs::read(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
-                .hint("Verifique as permissões de acesso ao arquivo.")
+                .message(format!("Failed to read the file \"{}\".", path_str))
+                .hint("Please verify file access permissions.")
                 .param("file", &path_str)
                 .param("io_error", &e)
                 .emit();
@@ -77,15 +77,15 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                 NamErrorCode::ModelBuildFailed
             };
             NamDiagnostic::new(code, sys)
-                .message(format!("Arquivo \".namb\" inválido: {}", path_str))
+                .message(format!("Invalid \".namb\" file: {}", path_str))
                 .param("detail", &msg)
                 .emit();
         })?
     } else if ext_lower == "nam" {
         let json = std::fs::read_to_string(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Não conseguimos ler o arquivo \"{}\".", path_str))
-                .hint("Verifique as permissões de acesso ao arquivo.")
+                .message(format!("Failed to read the file \"{}\".", path_str))
+                .hint("Please verify file access permissions.")
                 .param("file", &path_str)
                 .param("io_error", &e)
                 .emit();
@@ -93,15 +93,12 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         })?;
         nam_json::parse_nam_json(&json).inspect_err(|e| {
             NamDiagnostic::new(NamErrorCode::NamJsonParseError, sys)
-                .message(format!("Erro ao parsear JSON do modelo: {}", path_str))
+                .message(format!("Error parsing model JSON: {}", path_str))
                 .param("detail", e)
                 .emit();
         })?
     } else {
-        return Err(anyhow::anyhow!(
-            "Extensão de arquivo não suportada: {}",
-            ext
-        ));
+        return Err(anyhow::anyhow!("Unsupported file extension: {}", ext));
     };
 
     // 2. Extração de Metadados e Calibração
@@ -121,7 +118,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
     let mut model_l = dispatcher::build_model(&model_data)
         .inspect_err(|e| {
             NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
-                .message(format!("Falha ao construir modelo (L): {}", path_str))
+                .message(format!("Failed to build model (L): {}", path_str))
                 .param("detail", e.to_string())
                 .emit();
         })
@@ -133,7 +130,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
     let mut model_r = dispatcher::build_model(&model_data)
         .inspect_err(|e| {
             NamDiagnostic::new(NamErrorCode::ModelBuildFailed, sys)
-                .message(format!("Falha ao construir modelo (R): {}", path_str))
+                .message(format!("Failed to build model (R): {}", path_str))
                 .param("detail", e.to_string())
                 .emit();
         })
