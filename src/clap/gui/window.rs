@@ -2,8 +2,10 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use baseview::{
-    Event, EventStatus, MouseButton, MouseEvent, ScrollDelta, Window, WindowEvent, WindowHandler,
+    DropData, DropEffect, Event, EventStatus, MouseButton, MouseEvent, ScrollDelta, Window,
+    WindowEvent, WindowHandler,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -176,6 +178,20 @@ fn compile_shader_program(
 }
 
 use crate::clap::plugin::NamClapSharedRef;
+
+fn get_valid_model_file(data: &DropData) -> Option<PathBuf> {
+    if let DropData::Files(files) = data {
+        for file in files {
+            if let Some(ext) = file.extension().and_then(|e| e.to_str()) {
+                let ext_lower = ext.to_lowercase();
+                if ext_lower == "nam" || ext_lower == "namb" {
+                    return Some(file.clone());
+                }
+            }
+        }
+    }
+    None
+}
 
 /// Representação da janela principal do plugin NAM-rs.
 ///
@@ -422,6 +438,35 @@ impl WindowHandler for NamPluginWindow {
                     MouseEvent::CursorLeft => {
                         self.raw_input.events.push(egui::Event::PointerGone);
                     }
+                    MouseEvent::DragEntered { data, .. } | MouseEvent::DragMoved { data, .. } => {
+                        if get_valid_model_file(&data).is_some() {
+                            self.state.drag_active = true;
+                            return EventStatus::AcceptDrop(DropEffect::Copy);
+                        } else {
+                            self.state.drag_active = false;
+                            return EventStatus::Ignored;
+                        }
+                    }
+                    MouseEvent::DragLeft => {
+                        self.state.drag_active = false;
+                        return EventStatus::Captured;
+                    }
+                    MouseEvent::DragDropped { data, .. } => {
+                        self.state.drag_active = false;
+                        if let Some(path) = get_valid_model_file(&data) {
+                            let shared = unsafe { &*self.shared.0 };
+                            if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+                                *pending_guard = Some(path);
+                                shared
+                                    .ui_loading
+                                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                                self.host.request_callback();
+                            }
+                            return EventStatus::AcceptDrop(DropEffect::Copy);
+                        } else {
+                            return EventStatus::Ignored;
+                        }
+                    }
                     _ => {}
                 }
                 EventStatus::Captured
@@ -556,3 +601,7 @@ fn map_keyboard_event(key_event: &keyboard_types::KeyboardEvent) -> Option<egui:
         modifiers,
     })
 }
+
+#[cfg(test)]
+#[path = "window_test.rs"]
+mod window_test;

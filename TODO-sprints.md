@@ -249,7 +249,7 @@
 
 ## Épico C — Inovações de UX
 
-* [ ] **Tarefa C.1** — Drag & Drop de Arquivos de Modelo
+* [x] **Tarefa C.1** — Drag & Drop de Arquivos de Modelo
 
   * **Contexto:**
     O carregamento de modelos atualmente é exclusivo via File Picker (`📂 Load Model`). Drag & Drop de arquivos `.nam`/`.namb` diretamente sobre a janela do plugin é uma expectativa de UX em 2026 — sua ausência é percebida como regressão pelos músicos acostumados a organizar modelos em file managers.
@@ -275,7 +275,7 @@
 
 ---
 
-* [ ] **Tarefa C.2** — DSP Load Meter na Status Bar (Sempre Visível)
+* [x] **Tarefa C.2** — DSP Load Meter na Status Bar (Sempre Visível)
 
   * **Contexto:**
     O painel de telemetria RT mostra cycles/overloads, mas está escondido atrás de um toggle "RT" e exibe valores brutos em nanosegundos que são difíceis de interpretar. O músico precisa ver IMEDIATAMENTE se o modelo está consumindo recursos demais — informação que todo plugin profissional deveria expor na interface principal.
@@ -309,6 +309,14 @@
     * O indicador "DSP: XX.X%" é visível permanentemente na status bar, sem precisar abrir o painel de telemetria.
     * A cor muda conforme a carga (verde/amarelo/vermelho).
     * O tooltip exibe o detalhamento em microsegundos e budget.
+
+---
+
+> **📝 Auditoria de Sprint (Épico C - 2026-05-21):** O Épico C passou por auditoria completa. As métricas de UX e estabilidade RT foram validadas.
+>
+> * A implementação do Drag & Drop (C.1) foi validada, provendo o fallback overlay e operando de forma correta e síncrona aos estados da janela (`ui_pending_model`).
+> * O indicador de Carga DSP (C.2) está perfeitamente implementado na Status bar, atualizando amortizadamente (1s) e indicando percentuais RT-Safe com precisão.
+> * **Status:** Épico concluído com sucesso e sem regressões na bateria de testes (`cargo check && cargo test` pass). Aprovado para avançar ao Épico D.
 
 ---
 

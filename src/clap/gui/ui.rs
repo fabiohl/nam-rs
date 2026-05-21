@@ -73,6 +73,14 @@ pub struct UiState {
     pub vu_l_callback: Option<Arc<egui_glow::CallbackFn>>,
     /// Callback de desenho OpenGL do medidor direito.
     pub vu_r_callback: Option<Arc<egui_glow::CallbackFn>>,
+    /// Indica se um arquivo de modelo válido está sendo arrastado sobre a janela.
+    pub drag_active: bool,
+    /// Carga da CPU/DSP amortecida em porcentagem.
+    pub telem_load_pct: f64,
+    /// Tempo de ciclo amortecido em nanosegundos.
+    pub telem_cycle_ns: u64,
+    /// Buffer de tempo máximo em nanosegundos.
+    pub telem_budget_ns: u64,
 }
 
 impl std::fmt::Debug for UiState {
@@ -102,6 +110,9 @@ impl std::fmt::Debug for UiState {
                 "vu_r_callback",
                 &self.vu_r_callback.as_ref().map(|_| "<callback>"),
             )
+            .field("telem_load_pct", &self.telem_load_pct)
+            .field("telem_cycle_ns", &self.telem_cycle_ns)
+            .field("telem_budget_ns", &self.telem_budget_ns)
             .finish()
     }
 }
@@ -161,6 +172,10 @@ impl Default for UiState {
             vu_r_state: None,
             vu_l_callback: None,
             vu_r_callback: None,
+            drag_active: false,
+            telem_load_pct: 0.0,
+            telem_cycle_ns: 0,
+            telem_budget_ns: 0,
         }
     }
 }
@@ -1195,19 +1210,34 @@ pub fn draw_ui(
     ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
         ui.add_space(4.0);
 
-        // Painel de telemetria expandido (colapsado por default)
-        if state.show_telemetry {
-            let now = Instant::now();
-            if now.duration_since(state.last_telem_update) >= Duration::from_secs(1)
-                || (state.telem_cycles == 0 && state.telem_last_n == 0)
-            {
-                state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
-                state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
-                state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
-                state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
-                state.last_telem_update = now;
+        // Atualização da telemetria de forma incondicional (uma vez por segundo)
+        let now = Instant::now();
+        if now.duration_since(state.last_telem_update) >= Duration::from_secs(1)
+            || (state.telem_cycles == 0 && state.telem_last_n == 0)
+        {
+            state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
+            state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
+            state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
+            state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
+
+            let sr = shared.sample_rate.load(Ordering::Relaxed);
+            if sr > 0 && state.telem_last_n > 0 {
+                let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
+                state.telem_budget_ns = budget_ns;
+                state.telem_cycle_ns = state.telem_cycles;
+                state.telem_load_pct =
+                    ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
+            } else {
+                state.telem_budget_ns = 0;
+                state.telem_cycle_ns = 0;
+                state.telem_load_pct = 0.0;
             }
 
+            state.last_telem_update = now;
+        }
+
+        // Painel de telemetria expandido (colapsado por default)
+        if state.show_telemetry {
             ui.horizontal(|ui| {
                 let cycles = state.telem_cycles;
                 let last_n = state.telem_last_n;
@@ -1298,6 +1328,42 @@ pub fn draw_ui(
                     .color(COL_MUTED),
             );
 
+            // Separador de pipe
+            ui.label(
+                egui::RichText::new("|")
+                    .font(egui::FontId::proportional(10.0))
+                    .color(COL_BORDER),
+            );
+
+            // Indicador de carga DSP
+            let dsp_color = if state.telem_load_pct < 50.0 {
+                COL_VU_GREEN
+            } else if state.telem_load_pct <= 80.0 {
+                COL_AMBER
+            } else {
+                COL_VU_RED
+            };
+
+            let dsp_label = ui.label(
+                egui::RichText::new(format!("DSP: {:.1}%", state.telem_load_pct))
+                    .font(egui::FontId::monospace(10.0))
+                    .color(dsp_color),
+            );
+
+            dsp_label.on_hover_text(format!(
+                "DSP Load: {:.1}% ({:.1}μs / {:.1}μs budget)",
+                state.telem_load_pct,
+                state.telem_cycle_ns as f64 / 1000.0,
+                state.telem_budget_ns as f64 / 1000.0
+            ));
+
+            // Separador de pipe
+            ui.label(
+                egui::RichText::new("|")
+                    .font(egui::FontId::proportional(10.0))
+                    .color(COL_BORDER),
+            );
+
             // Botão de telemetria alinhado à direita
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let telem_btn = ui.add(
@@ -1328,6 +1394,31 @@ pub fn draw_ui(
             egui::Stroke::new(0.5, COL_BORDER),
         );
     });
+
+    if state.drag_active {
+        egui::Area::new(egui::Id::new("drop_overlay"))
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .order(egui::Order::Foreground)
+            .interactable(false)
+            .show(ui.ctx(), |ui| {
+                let screen_rect = ui.ctx().screen_rect();
+                let painter = ui.painter();
+                painter.rect_filled(
+                    screen_rect,
+                    0.0,
+                    egui::Color32::from_rgba_unmultiplied(26, 29, 35, 217),
+                );
+                ui.vertical_centered(|ui| {
+                    ui.add_space(screen_rect.height() / 2.0 - 20.0);
+                    ui.label(
+                        egui::RichText::new("Drop NAM Model Here ⬇️")
+                            .font(egui::FontId::proportional(20.0))
+                            .strong()
+                            .color(accent_color),
+                    );
+                });
+            });
+    }
 
     // Repaint a 30ms para manter VU meters e sincronização de parâmetros do host
     ui.ctx().request_repaint_after(Duration::from_millis(30));
