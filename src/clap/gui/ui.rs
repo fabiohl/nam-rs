@@ -3,6 +3,8 @@
 
 use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
+use glow::HasContext;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -33,7 +35,7 @@ fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
 }
 
 /// Estado persistente da interface gráfica entre frames.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UiState {
     /// Último valor de pico do canal esquerdo retido.
     pub peak_l_hold: f32,
@@ -59,6 +61,82 @@ pub struct UiState {
     pub telem_prio: i32,
     /// Cópia amortecida do número de overloads.
     pub telem_overloads: u32,
+    /// Program do shader OpenGL compilado para desenhar o VU meter.
+    pub vu_program: Option<glow::Program>,
+    /// VAO vazio para draw calls sem buffers.
+    pub vu_vao: Option<glow::VertexArray>,
+    /// Estado compartilhado do medidor esquerdo.
+    pub vu_l_state: Option<Arc<VuMeterSharedState>>,
+    /// Estado compartilhado do medidor direito.
+    pub vu_r_state: Option<Arc<VuMeterSharedState>>,
+    /// Callback de desenho OpenGL do medidor esquerdo.
+    pub vu_l_callback: Option<Arc<egui_glow::CallbackFn>>,
+    /// Callback de desenho OpenGL do medidor direito.
+    pub vu_r_callback: Option<Arc<egui_glow::CallbackFn>>,
+}
+
+impl std::fmt::Debug for UiState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UiState")
+            .field("peak_l_hold", &self.peak_l_hold)
+            .field("peak_r_hold", &self.peak_r_hold)
+            .field("peak_l_hold_time", &self.peak_l_hold_time)
+            .field("peak_r_hold_time", &self.peak_r_hold_time)
+            .field("clip_l", &self.clip_l)
+            .field("clip_r", &self.clip_r)
+            .field("show_telemetry", &self.show_telemetry)
+            .field("last_telem_update", &self.last_telem_update)
+            .field("telem_cycles", &self.telem_cycles)
+            .field("telem_last_n", &self.telem_last_n)
+            .field("telem_prio", &self.telem_prio)
+            .field("telem_overloads", &self.telem_overloads)
+            .field("vu_program", &self.vu_program)
+            .field("vu_vao", &self.vu_vao)
+            .field("vu_l_state", &self.vu_l_state)
+            .field("vu_r_state", &self.vu_r_state)
+            .field(
+                "vu_l_callback",
+                &self.vu_l_callback.as_ref().map(|_| "<callback>"),
+            )
+            .field(
+                "vu_r_callback",
+                &self.vu_r_callback.as_ref().map(|_| "<callback>"),
+            )
+            .finish()
+    }
+}
+
+/// Estado compartilhado do VU meter para renderização em callback do egui sem alocações no heap por frame.
+#[derive(Debug)]
+pub struct VuMeterSharedState {
+    /// Fração atual do nível de pico do medidor (0.0 a 1.0, codificado como bits u32).
+    pub peak_frac: std::sync::atomic::AtomicU32,
+    /// Fração atual do nível do indicador peak hold (0.0 a 1.0, codificado como bits u32).
+    pub hold_frac: std::sync::atomic::AtomicU32,
+    /// Tipo de cor a aplicar no indicador peak hold (representando verde, amarelo ou vermelho).
+    pub hold_color_type: std::sync::atomic::AtomicI32,
+    /// Coordenada mínima X do retângulo de desenho lógica do medidor (codificada como bits u32).
+    pub rect_min_x: std::sync::atomic::AtomicU32,
+    /// Coordenada mínima Y do retângulo de desenho lógica do medidor (codificada como bits u32).
+    pub rect_min_y: std::sync::atomic::AtomicU32,
+    /// Coordenada máxima X do retângulo de desenho lógica do medidor (codificada como bits u32).
+    pub rect_max_x: std::sync::atomic::AtomicU32,
+    /// Coordenada máxima Y do retângulo de desenho lógica do medidor (codificada como bits u32).
+    pub rect_max_y: std::sync::atomic::AtomicU32,
+}
+
+impl Default for VuMeterSharedState {
+    fn default() -> Self {
+        Self {
+            peak_frac: std::sync::atomic::AtomicU32::new(0.0f32.to_bits()),
+            hold_frac: std::sync::atomic::AtomicU32::new(0.0f32.to_bits()),
+            hold_color_type: std::sync::atomic::AtomicI32::new(0),
+            rect_min_x: std::sync::atomic::AtomicU32::new(0.0f32.to_bits()),
+            rect_min_y: std::sync::atomic::AtomicU32::new(0.0f32.to_bits()),
+            rect_max_x: std::sync::atomic::AtomicU32::new(0.0f32.to_bits()),
+            rect_max_y: std::sync::atomic::AtomicU32::new(0.0f32.to_bits()),
+        }
+    }
 }
 
 impl Default for UiState {
@@ -77,6 +155,12 @@ impl Default for UiState {
             telem_last_n: 0,
             telem_prio: 0,
             telem_overloads: 0,
+            vu_program: None,
+            vu_vao: None,
+            vu_l_state: None,
+            vu_r_state: None,
+            vu_l_callback: None,
+            vu_r_callback: None,
         }
     }
 }
@@ -349,6 +433,7 @@ fn handle_knob(
 
 /// Desenha um medidor VU vertical com gradiente tricolor, peak hold com fade analógico (E2),
 /// LED de clipping persistente acima (E4) e labels L/R acima e abaixo (m4).
+#[allow(clippy::too_many_arguments)]
 fn draw_vertical_meter(
     ui: &mut egui::Ui,
     peak_val: f32,
@@ -356,6 +441,10 @@ fn draw_vertical_meter(
     hold_time: &mut Instant,
     clipped: &mut bool,
     label: &str,
+    vu_program: Option<glow::Program>,
+    vu_vao: Option<glow::VertexArray>,
+    vu_shared_state: &mut Option<Arc<VuMeterSharedState>>,
+    vu_callback: &mut Option<Arc<egui_glow::CallbackFn>>,
 ) {
     // Parâmetros visuais — m3: largura aumentada para 16px
     let meter_h = 130.0f32;
@@ -445,9 +534,6 @@ fn draw_vertical_meter(
             *clipped = true;
         }
 
-        let painter = ui.painter();
-        painter.rect_filled(meter_rect, 1.5, COL_BG);
-
         let peak_db = if peak_val > 1e-5 {
             20.0 * peak_val.log10()
         } else {
@@ -468,46 +554,153 @@ fn draw_vertical_meter(
         let green_frac = db_to_frac(-12.0);
         let yellow_frac = db_to_frac(-3.0);
 
-        let draw_segment = |from_frac: f32, to_frac: f32, color: egui::Color32| {
-            if to_frac > from_frac {
-                let y_bottom = meter_rect.bottom() - from_frac * meter_h;
-                let y_top = meter_rect.bottom() - to_frac * meter_h;
-                let seg = egui::Rect::from_min_max(
-                    egui::pos2(meter_rect.left(), y_top),
-                    egui::pos2(meter_rect.right(), y_bottom),
-                );
-                painter.rect_filled(seg, 0.0, color);
-            }
+        let hold_color_type = if hold_db >= -3.0 {
+            2
+        } else if hold_db >= -12.0 {
+            1
+        } else {
+            0
         };
 
-        // Verde
-        draw_segment(0.0, peak_frac.min(green_frac), COL_VU_GREEN);
-        // Amarelo
-        if peak_frac > green_frac {
-            draw_segment(green_frac, peak_frac.min(yellow_frac), COL_VU_YELLOW);
-        }
-        // Vermelho
-        if peak_frac > yellow_frac {
-            draw_segment(yellow_frac, peak_frac, COL_VU_RED);
-        }
+        if let (Some(program), Some(vao)) = (vu_program, vu_vao) {
+            let shared_state =
+                vu_shared_state.get_or_insert_with(|| Arc::new(VuMeterSharedState::default()));
+            let callback = vu_callback.get_or_insert_with(|| {
+                let shared_state_capture = Arc::clone(shared_state);
+                Arc::new(egui_glow::CallbackFn::new(move |info, painter| {
+                    let gl = painter.gl();
+                    let peak_frac =
+                        f32::from_bits(shared_state_capture.peak_frac.load(Ordering::Relaxed));
+                    let hold_frac =
+                        f32::from_bits(shared_state_capture.hold_frac.load(Ordering::Relaxed));
+                    let hold_color_type =
+                        shared_state_capture.hold_color_type.load(Ordering::Relaxed);
+                    let rect_min_x =
+                        f32::from_bits(shared_state_capture.rect_min_x.load(Ordering::Relaxed));
+                    let rect_min_y =
+                        f32::from_bits(shared_state_capture.rect_min_y.load(Ordering::Relaxed));
+                    let rect_max_x =
+                        f32::from_bits(shared_state_capture.rect_max_x.load(Ordering::Relaxed));
+                    let rect_max_y =
+                        f32::from_bits(shared_state_capture.rect_max_y.load(Ordering::Relaxed));
 
-        // Linha de Peak Hold
-        if hold_frac > 0.0 {
-            let y_hold = meter_rect.bottom() - hold_frac * meter_h;
-            let hold_color = if hold_db >= -3.0 {
-                COL_VU_RED
-            } else if hold_db >= -12.0 {
-                COL_VU_YELLOW
-            } else {
-                COL_VU_GREEN
+                    let ppp = info.pixels_per_point;
+                    let p_left = rect_min_x * ppp;
+                    let p_top = rect_min_y * ppp;
+                    let p_right = rect_max_x * ppp;
+                    let p_bottom = rect_max_y * ppp;
+
+                    let vp_left = info.viewport.min.x;
+                    let vp_top = info.viewport.min.y;
+                    let vp_right = info.viewport.max.x;
+                    let vp_bottom = info.viewport.max.y;
+
+                    unsafe {
+                        gl.enable(glow::BLEND);
+                        gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);
+
+                        gl.use_program(Some(program));
+                        gl.bind_vertex_array(Some(vao));
+
+                        if let Some(loc) = gl.get_uniform_location(program, "u_viewport") {
+                            gl.uniform_4_f32(Some(&loc), vp_left, vp_top, vp_right, vp_bottom);
+                        }
+                        if let Some(loc) = gl.get_uniform_location(program, "u_meter_rect") {
+                            gl.uniform_4_f32(Some(&loc), p_left, p_top, p_right, p_bottom);
+                        }
+                        if let Some(loc) = gl.get_uniform_location(program, "u_peak_frac") {
+                            gl.uniform_1_f32(Some(&loc), peak_frac);
+                        }
+                        if let Some(loc) = gl.get_uniform_location(program, "u_hold_frac") {
+                            gl.uniform_1_f32(Some(&loc), hold_frac);
+                        }
+                        if let Some(loc) = gl.get_uniform_location(program, "u_hold_color_type") {
+                            gl.uniform_1_i32(Some(&loc), hold_color_type);
+                        }
+
+                        gl.draw_arrays(glow::TRIANGLES, 0, 6);
+
+                        gl.bind_vertex_array(None);
+                        gl.use_program(None);
+                        gl.disable(glow::BLEND);
+                    }
+                }))
+            });
+
+            // Atualiza o estado compartilhado sem novas alocações no heap
+            shared_state
+                .peak_frac
+                .store(peak_frac.to_bits(), Ordering::Relaxed);
+            shared_state
+                .hold_frac
+                .store(hold_frac.to_bits(), Ordering::Relaxed);
+            shared_state
+                .hold_color_type
+                .store(hold_color_type, Ordering::Relaxed);
+            shared_state
+                .rect_min_x
+                .store(meter_rect.min.x.to_bits(), Ordering::Relaxed);
+            shared_state
+                .rect_min_y
+                .store(meter_rect.min.y.to_bits(), Ordering::Relaxed);
+            shared_state
+                .rect_max_x
+                .store(meter_rect.max.x.to_bits(), Ordering::Relaxed);
+            shared_state
+                .rect_max_y
+                .store(meter_rect.max.y.to_bits(), Ordering::Relaxed);
+
+            let callback_fn = Arc::clone(callback);
+            let callback = egui::PaintCallback {
+                rect: meter_rect,
+                callback: callback_fn,
             };
-            painter.line(
-                vec![
-                    egui::pos2(meter_rect.left() - 2.0, y_hold),
-                    egui::pos2(meter_rect.right() + 2.0, y_hold),
-                ],
-                egui::Stroke::new(1.5, hold_color),
-            );
+            ui.painter().add(egui::Shape::Callback(callback));
+        } else {
+            let painter = ui.painter();
+            painter.rect_filled(meter_rect, 1.5, COL_BG);
+
+            let draw_segment = |from_frac: f32, to_frac: f32, color: egui::Color32| {
+                if to_frac > from_frac {
+                    let y_bottom = meter_rect.bottom() - from_frac * meter_h;
+                    let y_top = meter_rect.bottom() - to_frac * meter_h;
+                    let seg = egui::Rect::from_min_max(
+                        egui::pos2(meter_rect.left(), y_top),
+                        egui::pos2(meter_rect.right(), y_bottom),
+                    );
+                    painter.rect_filled(seg, 0.0, color);
+                }
+            };
+
+            // Verde
+            draw_segment(0.0, peak_frac.min(green_frac), COL_VU_GREEN);
+            // Amarelo
+            if peak_frac > green_frac {
+                draw_segment(green_frac, peak_frac.min(yellow_frac), COL_VU_YELLOW);
+            }
+            // Vermelho
+            if peak_frac > yellow_frac {
+                draw_segment(yellow_frac, peak_frac, COL_VU_RED);
+            }
+
+            // Linha de Peak Hold
+            if hold_frac > 0.0 {
+                let y_hold = meter_rect.bottom() - hold_frac * meter_h;
+                let hold_color = if hold_db >= -3.0 {
+                    COL_VU_RED
+                } else if hold_db >= -12.0 {
+                    COL_VU_YELLOW
+                } else {
+                    COL_VU_GREEN
+                };
+                painter.line(
+                    vec![
+                        egui::pos2(meter_rect.left() - 2.0, y_hold),
+                        egui::pos2(meter_rect.right() + 2.0, y_hold),
+                    ],
+                    egui::Stroke::new(1.5, hold_color),
+                );
+            }
         }
 
         // Label ABAIXO do medidor (m4)
@@ -907,6 +1100,10 @@ pub fn draw_ui(
                             &mut state.peak_l_hold_time,
                             &mut state.clip_l,
                             "L",
+                            state.vu_program,
+                            state.vu_vao,
+                            &mut state.vu_l_state,
+                            &mut state.vu_l_callback,
                         );
                     });
                     ui.add_space(4.0);
@@ -918,6 +1115,10 @@ pub fn draw_ui(
                             &mut state.peak_r_hold_time,
                             &mut state.clip_r,
                             "R",
+                            state.vu_program,
+                            state.vu_vao,
+                            &mut state.vu_r_state,
+                            &mut state.vu_r_callback,
                         );
                     });
                 });

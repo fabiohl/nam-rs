@@ -135,7 +135,7 @@
 
 ## Épico B — Robustez RT e Performance
 
-* [ ] **Tarefa B.1** — VU Meters via GPU Shader (`PaintCallback` + GLSL)
+* [x] **Tarefa B.1** — VU Meters via GPU Shader (`PaintCallback` + GLSL)
 
   * **Contexto:**
     O repaint a 30ms (`ui.rs:L862`) força a reconstrução completa de toda a cena `egui` (tessellation de ~200+ primitivas Shape) a cada frame, mesmo quando apenas os 2 medidores VU precisam ser atualizados. Em cenários com múltiplas instâncias do plugin (4+ no Épico 3), a carga acumulada da GUI thread torna-se significativa.
