@@ -1,20 +1,44 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 {
     "name": "NAM-rs Agent Sandbox",
     "build": {
         "dockerfile": "Dockerfile"
     },
+    "initializeCommand": "mkdir -p ~/.gnupg && touch ~/.gitconfig || true",
     "customizations": {
         "vscode": {
             "settings": {
                 "rust-analyzer.checkOnSave.command": "clippy",
+                "rust-analyzer.checkOnSave": true,
+                "rust-analyzer.check.allTargets": true,
+                "rust-analyzer.cargo.allFeatures": true,
+                "rust-analyzer.procMacro.enable": true,
+                "rust-analyzer.hover.actions.references.enable": true,
+                "rust-analyzer.lens.references.adt.enable": true,
+                "rust-analyzer.lens.references.enumVariant.enable": true,
+                "rust-analyzer.lens.references.method.enable": true,
+                "rust-analyzer.lens.references.trait.enable": true,
+                "rust-analyzer.inlayHints.typeHints.enable": true,
+                "rust-analyzer.inlayHints.parameterHints.enable": true,
+                "rust-analyzer.inlayHints.chainingHints.enable": true,
                 "git.enableCommitSigning": true,
-                "git.autofetch": true
+                "git.autofetch": true,
+                "files.autoSave": "onFocusChange",
+                "files.trimTrailingWhitespace": true,
+                "files.insertFinalNewline": true,
+                "files.trimFinalNewlines": true,
+                "editor.formatOnSave": true,
+                "editor.formatOnPaste": true,
+                "[rust]": {
+                    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+                    "editor.formatOnSave": true
+                }
             },
             "extensions": [
                 "rust-lang.rust-analyzer",
                 "vadimcn.vscode-lldb",
                 "davidanson.vscode-markdownlint",
-                "RooVeterinaryInc.roo-cline",
                 "tamasfe.even-better-toml"
             ]
         }
@@ -28,6 +52,8 @@
         "--group-add=audio"
     ],
     "mounts": [
+        "source=nam-rs-cargo-registry,target=/home/vscode/.cargo/registry,type=volume",
+        "source=nam-rs-cargo-git,target=/home/vscode/.cargo/git,type=volume",
         "source=${localEnv:XDG_RUNTIME_DIR:/run/user/1000}/pipewire-0,target=/tmp/pipewire-0,type=bind,consistency=cached",
         "source=${localEnv:XDG_RUNTIME_DIR:/run/user/1000}/pulse/native,target=/tmp/pulse/native,type=bind,consistency=cached",
         "source=/etc/machine-id,target=/etc/machine-id,type=bind,readonly",
