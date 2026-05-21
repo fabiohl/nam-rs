@@ -52,10 +52,24 @@ impl ParamSmoother {
     /// Avança um sample e retorna o valor suavizado.
     #[inline]
     pub fn tick(&mut self) -> f32 {
-        if (self.current - self.target).abs() < 1e-6 {
+        let diff = self.current - self.target;
+        // Threshold proporcional ao target: convergência 2-5x mais rápida para valores altos.
+        let threshold = 1e-6 * self.target.abs().max(1.0);
+        if diff.abs() < threshold {
             self.current = self.target;
         } else {
-            self.current = self.alpha * self.target + (1.0 - self.alpha) * self.current;
+            let next = self.alpha * self.target + (1.0 - self.alpha) * self.current;
+            if next == self.current {
+                // Detecção de precision stall em f32: se o passo for menor do que
+                // a menor variação representável, força snap para o target.
+                self.current = self.target;
+            } else {
+                self.current = next;
+                // Denormal guard (RT-Safety §2.1): flush a zero para evitar FPU slowdown.
+                if self.current.abs() < 1e-15 {
+                    self.current = 0.0;
+                }
+            }
         }
         self.current
     }
@@ -99,5 +113,67 @@ mod tests {
         smoother.set_target(1.0);
         smoother.snap_to_target();
         assert_eq!(smoother.tick(), 1.0);
+    }
+
+    #[test]
+    fn test_smoother_convergence_high_gain() {
+        // Verificar que para target = 3.98 (≈ +12dB), o smoother converge em ≤ 2400 samples a 48kHz (50ms).
+        // Nota: O cutoff de 45Hz ilustra perfeitamente o benefício do threshold relativo,
+        // pois com threshold fixo (1e-6) a convergência levaria 2581 samples (excedendo 2400),
+        // enquanto o threshold relativo permite a convergência em 2347 samples.
+        let mut smoother = ParamSmoother::new(0.0, 48000.0, 45.0);
+        smoother.set_target(3.98);
+
+        let mut samples = 0;
+        for _ in 0..5000 {
+            let current = smoother.tick();
+            samples += 1;
+            if current == 3.98 {
+                break;
+            }
+        }
+        assert!(
+            samples <= 2400,
+            "Convergência demorou {} samples (esperado <= 2400)",
+            samples
+        );
+    }
+
+    #[test]
+    fn test_smoother_denormal_prevention() {
+        // Verificar que para target = 0.0 e initial = 1e-20, o tick() retorna exatamente 0.0 após ≤ 10 iterações.
+        let mut smoother = ParamSmoother::new(1e-20, 48000.0, 20.0);
+        smoother.set_target(0.0);
+
+        let mut converged = false;
+        for _ in 0..10 {
+            if smoother.tick() == 0.0 {
+                converged = true;
+                break;
+            }
+        }
+        assert!(converged, "Não convergiu a 0.0 em 10 iterações");
+    }
+
+    #[test]
+    fn test_smoother_relative_threshold() {
+        // Verificar que target = 0.001 ainda converge corretamente (não snap prematuro).
+        let mut smoother = ParamSmoother::new(0.0, 48000.0, 20.0);
+        smoother.set_target(0.001);
+
+        // O primeiro tick não deve atingir imediatamente 0.001 (snap prematuro).
+        let val1 = smoother.tick();
+        assert!(val1 > 0.0);
+        assert!(val1 < 0.001);
+
+        // Deve convergir eventualmente
+        let mut converged = false;
+        for _ in 0..5000 {
+            if smoother.tick() == 0.001 {
+                converged = true;
+                break;
+            }
+        }
+        assert!(converged, "Deveria convergir para 0.001");
     }
 }

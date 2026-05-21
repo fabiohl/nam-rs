@@ -161,7 +161,7 @@
 
 ---
 
-* [ ] **Tarefa B.2** — ParamSmoother: Convergência Relativa e Denormal Guard
+* [x] **Tarefa B.2** — ParamSmoother: Convergência Relativa e Denormal Guard
 
   * **Contexto:**
     O `ParamSmoother` em `src/clap/param_smoother.rs` usa um threshold de snap fixo `1e-6` (L55). Para ganhos altos (+12dB = ~3.98 linear), a convergência desperdiça centenas de samples extras. Adicionalmente, quando `target ≈ 0` e `alpha` é pequeno, o campo `current` pode entrar em território subnormal (< 1e-38), causando slowdown catastrófico na FPU x86 — violação direta da Diretriz Técnica §2.1 (Prevenção de Subnormais).
