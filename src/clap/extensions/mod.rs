@@ -5,11 +5,11 @@
 
 pub mod audio_ports;
 pub mod latency;
+pub mod param_indication;
 pub mod params;
+pub mod remote_controls;
 pub mod state;
 pub mod track_info;
-pub mod remote_controls;
-pub mod param_indication;
 
 #[cfg(feature = "clap-plugin-gui")]
 pub mod gui;

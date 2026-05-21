@@ -90,7 +90,10 @@ mod tests {
             assert_eq!(page.page_name, b"Main");
             assert_eq!(page.page_id.get(), 0);
             assert_eq!(page.param_ids[0].map(|id| id.get()), Some(PARAM_INPUT_GAIN));
-            assert_eq!(page.param_ids[1].map(|id| id.get()), Some(PARAM_OUTPUT_GAIN));
+            assert_eq!(
+                page.param_ids[1].map(|id| id.get()),
+                Some(PARAM_OUTPUT_GAIN)
+            );
             assert_eq!(page.param_ids[2].map(|id| id.get()), Some(PARAM_BYPASS));
             for i in 3..8 {
                 assert!(page.param_ids[i].is_none());
@@ -108,7 +111,10 @@ mod tests {
             assert_eq!(page.section_name, b"NAM-rs");
             assert_eq!(page.page_name, b"Gate");
             assert_eq!(page.page_id.get(), 1);
-            assert_eq!(page.param_ids[0].map(|id| id.get()), Some(PARAM_GATE_THRESH));
+            assert_eq!(
+                page.param_ids[0].map(|id| id.get()),
+                Some(PARAM_GATE_THRESH)
+            );
             for i in 1..8 {
                 assert!(page.param_ids[i].is_none());
             }

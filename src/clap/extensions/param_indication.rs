@@ -6,7 +6,7 @@
 use crate::clap::plugin::NamClapMainThread;
 use clack_common::utils::{ClapId, Color};
 use clack_extensions::param_indication::{
-    PluginParamIndication, PluginParamIndicationImpl, ParamIndicationAutomation,
+    ParamIndicationAutomation, PluginParamIndication, PluginParamIndicationImpl,
 };
 use std::ffi::CStr;
 use std::sync::atomic::Ordering;
@@ -49,7 +49,10 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
             let atomic_val = &self.shared.param_indication[idx];
             match automation_state {
                 ParamIndicationAutomation::None | ParamIndicationAutomation::Present => {
-                    atomic_val.fetch_and(!(INDICATION_AUTOMATING | INDICATION_OVERRIDING), Ordering::Relaxed);
+                    atomic_val.fetch_and(
+                        !(INDICATION_AUTOMATING | INDICATION_OVERRIDING),
+                        Ordering::Relaxed,
+                    );
                 }
                 ParamIndicationAutomation::Playing | ParamIndicationAutomation::Recording => {
                     atomic_val.fetch_or(INDICATION_AUTOMATING, Ordering::Relaxed);
@@ -78,20 +81,29 @@ mod tests {
 
         // Test mappings
         val.fetch_or(INDICATION_MAPPED, Ordering::Relaxed);
-        assert_eq!(val.load(Ordering::Relaxed) & INDICATION_MAPPED, INDICATION_MAPPED);
+        assert_eq!(
+            val.load(Ordering::Relaxed) & INDICATION_MAPPED,
+            INDICATION_MAPPED
+        );
 
         val.fetch_and(!INDICATION_MAPPED, Ordering::Relaxed);
         assert_eq!(val.load(Ordering::Relaxed) & INDICATION_MAPPED, 0);
 
         // Test automation
         val.fetch_or(INDICATION_AUTOMATING, Ordering::Relaxed);
-        assert_eq!(val.load(Ordering::Relaxed) & INDICATION_AUTOMATING, INDICATION_AUTOMATING);
+        assert_eq!(
+            val.load(Ordering::Relaxed) & INDICATION_AUTOMATING,
+            INDICATION_AUTOMATING
+        );
         assert_eq!(val.load(Ordering::Relaxed) & INDICATION_OVERRIDING, 0);
 
         // Overriding overrides automating
         val.fetch_or(INDICATION_OVERRIDING, Ordering::Relaxed);
         val.fetch_and(!INDICATION_AUTOMATING, Ordering::Relaxed);
-        assert_eq!(val.load(Ordering::Relaxed) & INDICATION_OVERRIDING, INDICATION_OVERRIDING);
+        assert_eq!(
+            val.load(Ordering::Relaxed) & INDICATION_OVERRIDING,
+            INDICATION_OVERRIDING
+        );
         assert_eq!(val.load(Ordering::Relaxed) & INDICATION_AUTOMATING, 0);
     }
 }

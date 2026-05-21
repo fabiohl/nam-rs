@@ -781,11 +781,14 @@ pub fn draw_ui(
         ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(12.0);
-                let ind_input = shared.param_indication[crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
+                let ind_input = shared.param_indication
+                    [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
                     .load(Ordering::Relaxed);
-                let ind_output = shared.param_indication[crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
+                let ind_output = shared.param_indication
+                    [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
                     .load(Ordering::Relaxed);
-                let ind_gate = shared.param_indication[crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
+                let ind_gate = shared.param_indication
+                    [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
                     .load(Ordering::Relaxed);
 
                 ui.horizontal(|ui| {
