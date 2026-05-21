@@ -1,6 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+//! # Testes de Regressão por Vetor de Referência (Golden Vectors)
+//!
+//! Este arquivo contém a suíte de testes de regressão do NAM-rs. O objetivo desses testes é
+//! garantir a estabilidade e a corretude matemática das nossas implementações das redes neurais
+//! (WaveNet e LSTM) comparando suas saídas contra vetores de referência previamente salvos
+//! (arquivos `.bin` gerados a partir de saídas validadas).
+//!
+//! Se qualquer alteração nos modelos ou nos kernels matemáticos otimizados (como AVX2, AVX-512)
+//! alterar a saída numérica de áudio além de um limite mínimo tolerado (MSE < 1e-6), o teste falhará.
+//! Isso previne regressões de precisão durante otimizações de performance.
+
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::lstm::{LstmModel1, LstmModel2};
 use nam_rs::models::wavenet::*;
@@ -8,6 +19,11 @@ use nam_rs::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use std::fs::{File, create_dir_all};
 use std::io::{Read, Write};
 
+/// Carrega um vetor de referência binário ("golden vector") a partir do diretório `tests/golden/`.
+///
+/// O arquivo de referência armazena amostras de áudio no formato de ponto flutuante de 32 bits (f32)
+/// gravadas em formato Little-Endian. É o som original gerado pelo modelo de referência
+/// para validação matemática.
 fn load_golden(name: &str) -> Vec<f32> {
     let path = format!("tests/golden/{}.bin", name);
     let mut file = File::open(path).expect("Falha ao abrir arquivo golden");
@@ -15,20 +31,32 @@ fn load_golden(name: &str) -> Vec<f32> {
     file.read_to_end(&mut bytes)
         .expect("Falha ao ler dados golden");
 
+    // Transforma o array de bytes em f32 lendo-o de 4 em 4 bytes (tamanho de f32)
     bytes
         .chunks_exact(4)
         .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
         .collect()
 }
 
+/// Gera um vetor de áudio contendo uma onda senoidal pura de teste.
+///
+/// É utilizada como um sinal de entrada previsível para excitar a rede neural e medir a saída.
+///
+/// * `freq`: Frequência da senoide em Hertz (ex: 440.0 para afinação Lá).
+/// * `sr`: Taxa de amostragem em Hertz (ex: 48000.0).
+/// * `len`: Quantidade de amostras de áudio a serem geradas.
 fn generate_sine(freq: f32, sr: f32, len: usize) -> Vec<f32> {
     (0..len)
         .map(|i| (2.0 * std::f32::consts::PI * freq * i as f32 / sr).sin())
         .collect()
 }
 
+/// Calcula o Erro Quadrático Médio (Mean Squared Error - MSE) entre dois vetores de áudio.
+///
+/// Mede o desvio médio ao quadrado entre a saída real do modelo e a saída esperada (golden).
+/// Quanto menor o MSE, mais idênticos são os vetores.
 fn calculate_mse(a: &[f32], b: &[f32]) -> f32 {
-    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), b.len(), "Os vetores de comparação precisam ter o mesmo tamanho");
     let sum: f32 = a
         .iter()
         .zip(b.iter())
@@ -37,6 +65,15 @@ fn calculate_mse(a: &[f32], b: &[f32]) -> f32 {
     sum / a.len() as f32
 }
 
+/// Auxiliar para construir um conjunto de camadas WaveNet preenchido com pesos constantes para teste.
+///
+/// Isso inicializa a topologia interna de convolução 1D, mixer e conexões residuais de cada
+/// camada usando um valor constante de peso, permitindo testar a inferência com pesos controlados.
+///
+/// * `dilations`: Vetor com os fatores de dilatação de cada camada do stack.
+/// * `has_head_bias`: Se o head de rechannel final deve ter bias ativado.
+/// * `val`: Valor flutuante constante usado para preencher todos os pesos (convertido para f16/bf16).
+/// * `alloc_offset`: Posição inicial para o fatiamento de buffers circulares de estado na thread RT.
 fn build_wavenet_layer_array<
     const IN: usize,
     const COND: usize,
@@ -49,7 +86,10 @@ fn build_wavenet_layer_array<
     val: f32,
     alloc_offset: &mut usize,
 ) -> WaveNetLayerArray<IN, COND, CH, K, HEAD> {
+    // Converte o valor f32 base para representação em f16 (16-bit float) usada no armazenamento de pesos
     let bits = half::f16::from_f32(val).to_bits();
+    
+    // Função auxiliar para inicializar uma única camada
     let make_layer = |dilation: usize| -> WaveNetLayer<COND, CH, K> {
         WaveNetLayer {
             conv1d: Conv1d {
@@ -57,6 +97,7 @@ fn build_wavenet_layer_array<
                 bias: AlignedVec::from_vec(vec![val; CH]),
                 do_bias: true,
                 dilation,
+                // Define a estratégia de prefetch no cache da CPU baseado na dilatação
                 prefetch_fn: if dilation >= 128 {
                     nam_rs::math::common::prefetch_strategy_2stage
                 } else {
@@ -75,12 +116,16 @@ fn build_wavenet_layer_array<
             },
         }
     };
+    
     let layers: Vec<WaveNetLayer<COND, CH, K>> = dilations.iter().map(|&d| make_layer(d)).collect();
     let rf: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
+    
+    // Aloca as fatias de memória (estados) de cada camada no buffer circular
     let states: Vec<WaveNetLayerState> = (0..layers.len())
         .map(|i| WaveNetLayerState::new(CH, rf, *alloc_offset + i))
         .collect();
     *alloc_offset += layers.len();
+    
     WaveNetLayerArray {
         layers,
         states,
@@ -106,6 +151,10 @@ fn build_wavenet_layer_array<
     }
 }
 
+/// Auxiliar para instanciar um modelo WaveNet de duas arrays de camadas completo para testes.
+///
+/// Une duas arrays de camadas (Array 1 e Array 2) configuradas com dilatações e parâmetros específicos,
+/// simulando a topologia padrão de inferência de rede profunda do Neural Amp Modeler.
 fn build_wavenet_custom<const CH: usize, const K: usize, const HEAD: usize>(
     dils0: &[usize],
     dils1: &[usize],
@@ -123,6 +172,9 @@ fn build_wavenet_custom<const CH: usize, const K: usize, const HEAD: usize>(
     }
 }
 
+/// Preenche os pesos e bias de um modelo LSTM de camada única (`LstmModel1`) com valores constantes.
+///
+/// Facilita os testes numéricos deterministicos para o modelo LSTM de 1 camada.
 fn fill_lstm1_weights<const H: usize, const IH: usize, const H4: usize>(
     model: &mut LstmModel1<H, IH, H4>,
     val: f32,
@@ -138,6 +190,9 @@ fn fill_lstm1_weights<const H: usize, const IH: usize, const H4: usize>(
     model.head_bias = val;
 }
 
+/// Preenche os pesos e bias de um modelo LSTM de dupla camada (`LstmModel2`) com valores constantes.
+///
+/// Facilita os testes numéricos deterministicos para o modelo LSTM de 2 camadas.
 fn fill_lstm2_weights<const H: usize, const H1_IH: usize, const H2_IH: usize, const H4: usize>(
     model: &mut LstmModel2<H, H1_IH, H2_IH, H4>,
     val: f32,
@@ -161,6 +216,8 @@ fn fill_lstm2_weights<const H: usize, const H1_IH: usize, const H2_IH: usize, co
 
 #[test]
 fn test_golden_wavenet_standard() {
+    // Testa a topologia WaveNet Standard (16 canais, kernel 3, head 8)
+    // Garantindo que a inferência do áudio reproduz o resultado binário salvo sem drifts
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("wavenet_standard");
@@ -169,11 +226,12 @@ fn test_golden_wavenet_standard() {
     model.prewarm();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "WaveNet Standard MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "WaveNet Standard MSE regressão falhou: {}", mse);
 }
 
 #[test]
 fn test_golden_wavenet_lite() {
+    // Testa a topologia WaveNet Lite (12 canais, kernel 3, head 6)
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("wavenet_lite");
@@ -183,11 +241,12 @@ fn test_golden_wavenet_lite() {
     model.prewarm();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "WaveNet Lite MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "WaveNet Lite MSE regressão falhou: {}", mse);
 }
 
 #[test]
 fn test_golden_wavenet_feather() {
+    // Testa a topologia WaveNet Feather (8 canais, kernel 3, head 4)
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("wavenet_feather");
@@ -197,11 +256,12 @@ fn test_golden_wavenet_feather() {
     model.prewarm();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "WaveNet Feather MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "WaveNet Feather MSE regressão falhou: {}", mse);
 }
 
 #[test]
 fn test_golden_wavenet_nano() {
+    // Testa a topologia WaveNet Nano (4 canais, kernel 3, head 2)
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("wavenet_nano");
@@ -211,11 +271,12 @@ fn test_golden_wavenet_nano() {
     model.prewarm();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "WaveNet Nano MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "WaveNet Nano MSE regressão falhou: {}", mse);
 }
 
 #[test]
 fn test_golden_lstm_1x8() {
+    // Testa a topologia LSTM 1x8 (1 camada, 8 neurônios de estado oculto)
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("lstm_1x8");
@@ -224,11 +285,12 @@ fn test_golden_lstm_1x8() {
     model.reset_states();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "LSTM 1x8 MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "LSTM 1x8 MSE regressão falhou: {}", mse);
 }
 
 #[test]
 fn test_golden_lstm_1x16() {
+    // Testa a topologia LSTM 1x16 (1 camada, 16 neurônios de estado oculto)
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("lstm_1x16");
@@ -237,11 +299,12 @@ fn test_golden_lstm_1x16() {
     model.reset_states();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "LSTM 1x16 MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "LSTM 1x16 MSE regressão falhou: {}", mse);
 }
 
 #[test]
 fn test_golden_lstm_2x16() {
+    // Testa a topologia LSTM 2x16 (2 camadas com 16 neurônios cada)
     let input = generate_sine(440.0, 48000.0, 1024);
     let mut output = vec![0.0f32; 1024];
     let expected = load_golden("lstm_2x16");
@@ -250,7 +313,7 @@ fn test_golden_lstm_2x16() {
     model.reset_states();
     model.process(&input, &mut output);
     let mse = calculate_mse(&output, &expected);
-    assert!(mse < 1e-6, "LSTM 2x16 MSE regressão: {}", mse);
+    assert!(mse < 1e-6, "LSTM 2x16 MSE regressão falhou: {}", mse);
 }
 
 // =============================================================================

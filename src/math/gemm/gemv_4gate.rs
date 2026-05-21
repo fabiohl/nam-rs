@@ -88,8 +88,12 @@ pub unsafe fn gemv_4gate_avx2(
             out_c += 8;
         }
 
-        // Limpeza Final: Processa os itens que sobraram individualmente (menos de 8).
+        // Processamento de Cauda (Tail Loop):
+        // Executado quando a dimensão de saída (out_len) não é múltiplo perfeito do tamanho do vetor AVX2
+        // (8 floats). Sem este loop de limpeza escalar de fallback, tentar ler dados vetoriais causaria
+        // acessos de memória fora dos limites do array (Out-Of-Bounds / Segfault).
         while out_c < out_len {
+            // Inicializa a soma de cada uma das 4 portas com o bias correspondente (se ativo).
             let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
             let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
             let mut sum2 = if do_bias {
@@ -103,8 +107,11 @@ pub unsafe fn gemv_4gate_avx2(
                 0.0
             };
 
+            // Executa o produto escalar clássico (fused multiply-accumulate) de forma escalar
             for in_c in 0..in_len {
                 let s = *in_frame.get_unchecked(in_c);
+                // Converte os pesos representados em f16 (compactados como u16 de 16 bits) para f32
+                // em tempo de execução usando a biblioteca `half` antes de multiplicar.
                 sum0 +=
                     s * half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32();
                 sum1 +=
@@ -115,6 +122,7 @@ pub unsafe fn gemv_4gate_avx2(
                     s * half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32();
             }
 
+            // Grava os resultados de cada porta de forma contígua no tensor de saída.
             *out_frame.get_unchecked_mut(out_c) = sum0;
             *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
             *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;
@@ -198,7 +206,8 @@ pub unsafe fn gemv_4gate_avx512(
         out_c += 16;
     }
 
-    // Resto lento.
+    // Processamento de Cauda (Tail Loop) para AVX-512:
+    // Processa de forma puramente escalar os elementos restantes se a largura out_len não for divisível por 16.
     while out_c < out_len {
         let mut s0 = if do_bias { bias[out_c] } else { 0.0 };
         let mut s1 = if do_bias { bias[out_c + out_len] } else { 0.0 };
@@ -214,6 +223,7 @@ pub unsafe fn gemv_4gate_avx512(
         };
         for in_c in 0..in_len {
             let si = *in_frame.get_unchecked(in_c);
+            // Os pesos estão no formato f16 compactado e são descompactados sob demanda para f32.
             s0 += si * half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32();
             s1 += si * half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32();
             s2 += si * half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32();
@@ -372,6 +382,8 @@ pub unsafe fn gemv_4gate_bf16_avx512(
         out_c += 16;
     }
 
+    // Processamento de Cauda (Tail Loop) para AVX-512 BF16:
+    // Processa os canais restantes de modo escalar, lidando com a representação BF16 na memória.
     while out_c < out_len {
         let mut s0 = if do_bias { bias[out_c] } else { 0.0 };
         let mut s1 = if do_bias { bias[out_c + out_len] } else { 0.0 };
@@ -386,6 +398,9 @@ pub unsafe fn gemv_4gate_bf16_avx512(
             0.0
         };
         for in_c in 0..in_len {
+            // Como a entrada e os pesos estão no formato BF16 (16 bits), para processar de forma
+            // escalar, deslocamos os bits 16 posições para a esquerda (<< 16) para convertê-los
+            // de volta para a representação normal f32 (IEEE 754) antes de realizar a multiplicação.
             let si = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
             s0 += si * f32::from_bits((*w0.get_unchecked(in_c * out_len + out_c) as u32) << 16);
             s1 += si * f32::from_bits((*w1.get_unchecked(in_c * out_len + out_c) as u32) << 16);

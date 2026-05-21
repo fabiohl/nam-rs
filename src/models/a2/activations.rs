@@ -61,38 +61,56 @@ pub trait ActivationFn {
 impl ActivationFn for ActivationType {
     fn apply(&self, data: &mut [f32]) {
         match self {
+            // Tanh (Tangente Hiperbólica): Curva suave em formato de 'S' que comprime
+            // qualquer valor de entrada para o intervalo [-1.0, 1.0].
             Self::Tanh => {
                 crate::math::activations::tanh_slice(data);
             }
+            // HardTanh (Tangente Hiperbólica Rígida): Saturação brusca (ceifamento/clipping rígido).
+            // Limita os valores estritamente a no mínimo -1.0 e no máximo 1.0.
             Self::HardTanh => {
                 for x in data.iter_mut() {
                     *x = x.clamp(-1.0, 1.0);
                 }
             }
+            // FastTanh: Uma aproximação matemática rápida da função Tanh nativa do processador.
+            // Utiliza um polinômio racional para evitar calcular exponenciais lentas.
             Self::FastTanh => {
                 for x in data.iter_mut() {
                     *x = fast_tanh(*x);
                 }
             }
+            // ReLU (Rectified Linear Unit): Zera todos os valores negativos, deixando
+            // os valores positivos passarem sem qualquer alteração.
             Self::ReLU => {
                 crate::math::activations::relu_slice(data);
             }
+            // LeakyReLU: Semelhante à ReLU, mas em vez de zerar totalmente os valores negativos,
+            // aplica um multiplicador pequeno (inclinação negativa fixa) mantendo uma fração do sinal.
             Self::LeakyReLU { negative_slope } => {
                 let slopes = [*negative_slope];
                 crate::math::activations::prelu_slice(data, &slopes);
             }
+            // PReLU (Parametric ReLU): Permite inclinações negativas ajustáveis e aprendidas pelo modelo.
+            // Os fatores multiplicadores podem variar por canal ou elemento.
             Self::PReLU { negative_slopes } => {
                 if negative_slopes.is_empty() {
                     return;
                 }
                 crate::math::activations::prelu_slice(data, negative_slopes);
             }
+            // Sigmoid: Função logística que mapeia a entrada suavemente entre 0.0 e 1.0,
+            // muito usada para calcular fatores de portão (gates) de ligar/desligar sinal.
             Self::Sigmoid => {
                 crate::math::activations::sigmoid_slice(data);
             }
+            // SiLU (Sigmoid Linear Unit): Multiplica o valor de entrada pela sua própria ativação
+            // sigmoide. Também conhecida por Swish.
             Self::SiLU => {
                 crate::math::activations::silu_slice(data);
             }
+            // HardSwish: Uma aproximação linear da função Swish/SiLU desenvolvida para ser
+            // computada de forma eficiente sem calcular funções exponenciais complexas.
             Self::HardSwish => {
                 for x in data.iter_mut() {
                     let t = *x + 3.0;
@@ -100,6 +118,8 @@ impl ActivationFn for ActivationType {
                     *x *= clamped * (1.0 / 6.0);
                 }
             }
+            // LeakyHardTanh: Uma versão híbrida que atua como HardTanh, mas nas zonas de
+            // saturação (fora de min_val/max_val) o sinal continua crescendo com ganho atenuado.
             Self::LeakyHardTanh {
                 min_val,
                 max_val,
@@ -114,6 +134,8 @@ impl ActivationFn for ActivationType {
                     }
                 }
             }
+            // Softsign: Curva suave simétrica parecida com a Tanh, dada pela fórmula x / (1 + |x|),
+            // sendo mais suave nas bordas e mais barata de calcular no processador.
             Self::Softsign => {
                 crate::math::activations::softsign_slice(data);
             }

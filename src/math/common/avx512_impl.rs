@@ -423,6 +423,10 @@ impl SimdMath for Avx512Math {
 /// pois possui instruções especializadas para "moer" números de redes neurais com mais eficiência.
 pub struct Avx512VnniMath;
 
+// A maior parte das funções básicas de áudio e álgebra linear geral é delegada diretamente
+// para a struct Avx512Math, visto que ambas operam sobre registradores __m512 (512 bits)
+// de forma idêntica. A struct Avx512VnniMath sobrescreve apenas as funções que tiram proveito
+// direto das instruções VNNI para aceleração de redes neurais.
 impl SimdMath for Avx512VnniMath {
     type V = __m512;
 
@@ -748,6 +752,10 @@ impl SimdMath for Avx512VnniMath {
 /// O formato BF16 permite que o chip processe o dobro de números com quase a mesma precisão do f32 original.
 pub struct Avx512VnniBf16Math;
 
+// Semelhante ao Avx512VnniMath, delegamos as funções padrão de DSP para o Avx512Math.
+// Sobrescrevemos os métodos que utilizam especificamente o formato BF16 (Bfloat16 de 16 bits)
+// e instruções de produto escalar VNNI, o que duplica o throughput de processamento
+// nos núcleos da CPU compatíveis.
 impl SimdMath for Avx512VnniBf16Math {
     type V = __m512;
     const IS_BF16: bool = true; // Indica que este motor prefere trabalhar com o formato BF16.

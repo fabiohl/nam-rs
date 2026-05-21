@@ -84,6 +84,8 @@ impl SimdMath for Avx2Math {
     }
 
     // Operações GEMV: Multiplicação de matriz por vetor, usada em quase todas as camadas do modelo.
+    // O prefixo "fused" indica que a adição do vetor de Bias é combinada (fundida) com a multiplicação
+    // para economizar acessos de memória e instruções do processador.
     #[inline(always)]
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
@@ -93,12 +95,15 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
+            // Delega o cálculo para o kernel otimizado de multiplicação matriz-vetor AVX2.
             super::super::gemm::gemv::fused_add_gemv_avx2(
                 in_frame, weights, bias, out_frame, do_bias,
             )
         }
     }
 
+    /// Executa multiplicação de matriz por um lote (batch) de vetores via AVX2.
+    /// Útil quando processamos múltiplos quadros de áudio concorrentemente para reduzir overheads.
     #[inline(always)]
     unsafe fn fused_add_gemm_batch(
         in_frames: &[f32],
@@ -109,12 +114,15 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
+            // Delega o cálculo do batch de multiplicação matriz-matriz (GEMM) para o kernel AVX2.
             super::super::gemm::gemm_batch::fused_add_gemm_batch_avx2(
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
         }
     }
 
+    /// Executa multiplicação de matriz por vetor adicionando também a conexão residual (skip connection)
+    /// da camada anterior. Muito utilizado na arquitetura de blocos residuais WaveNet.
     #[inline(always)]
     unsafe fn fused_gemm_residual_batch(
         in_frames: &[f32],
@@ -126,12 +134,15 @@ impl SimdMath for Avx2Math {
         do_bias: bool,
     ) {
         unsafe {
+            // Delega a multiplicação com soma residual e bias integrada para o kernel AVX2.
             super::super::gemm::gemm_batch::fused_gemm_residual_batch_avx2(
                 in_frames, weights, bias, residual, out_frames, num_frames, do_bias,
             )
         }
     }
 
+    /// Versão que sobrescreve o buffer de saída diretamente com o resultado da multiplicação matriz-vetor,
+    /// sem acumular com valores preexistentes no buffer.
     #[inline(always)]
     unsafe fn gemv_overwrite(
         in_frame: &[f32],
@@ -147,6 +158,8 @@ impl SimdMath for Avx2Math {
         }
     }
 
+    /// Versão que sobrescreve o buffer de saída aceitando dados de entrada representados em BF16 (16 bits)
+    /// e pesos em BF16, realizando a acumulação em f32 para preservar fidelidade.
     #[inline(always)]
     unsafe fn gemv_overwrite_bf16(
         in_frame: &[u16],
@@ -155,10 +168,14 @@ impl SimdMath for Avx2Math {
         out_frame: &mut [f32],
         do_bias: bool,
     ) {
+        // Como a arquitetura AVX2 clássica não possui suporte nativo a instruções de dot-product BF16,
+        // recorremos a uma função de fallback (conversão em tempo de execução para f32).
         unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
     // Portas LSTM (4-gate): Calcula simultaneamente os 4 controles de memória da rede LSTM.
+    // O cálculo das portas (Input, Forget, Cell Candidate e Output) compartilha os mesmos estados
+    // de entrada. Projetar em paralelo reduz drasticamente os saltos de cache.
     #[inline(always)]
     unsafe fn gemv_overwrite_4gate(
         in_frame: &[f32],
@@ -171,7 +188,11 @@ impl SimdMath for Avx2Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
-            // Reparte a matriz de pesos e calcula as 4 portas de uma só vez para ganhar velocidade.
+            // Dividimos a matriz de pesos única contínua em 4 blocos (strides) correspondentes a cada porta:
+            // - weights[0..stride]: Pesos da porta de Entrada (Input Gate).
+            // - weights[stride..2*stride]: Pesos da porta de Esquecimento (Forget Gate).
+            // - weights[2*stride..3*stride]: Pesos da porta Candidata (Cell Candidate).
+            // - weights[3*stride..4*stride]: Pesos da porta de Saída (Output Gate).
             super::super::gemm::gemv_4gate::gemv_4gate_avx2(
                 in_frame,
                 &weights[0..stride],
@@ -185,6 +206,8 @@ impl SimdMath for Avx2Math {
         }
     }
 
+    /// Equivalente ao `gemv_overwrite_4gate` porém processando dados de entrada representados
+    /// no formato de precisão reduzida BF16.
     #[inline(always)]
     unsafe fn gemv_overwrite_bf16_4gate(
         in_frame: &[u16],
@@ -197,6 +220,7 @@ impl SimdMath for Avx2Math {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
         unsafe {
+            // Como AVX2 não possui VNNI/BF16 nativo com acumulação direta na CPU, usamos o fallback.
             gemv_4gate_bf16_fallback(
                 in_frame,
                 &weights[0..stride],
@@ -240,16 +264,31 @@ impl SimdMath for Avx2Math {
         unsafe { f32_to_bf16_fallback(src, dest) }
     }
 
+    /// Converte um registrador contendo 8 floats de 32 bits (Self::V) para o formato compactado
+    /// BF16 (16 bits) e armazena os resultados na memória.
+    ///
+    /// ## Detalhes da Mágica de Bits (Bitwise SIMD):
+    /// Para converter f32 em BF16 sem gastar muitos ciclos de CPU em conversões matemáticas lentas,
+    /// a técnica aproveita a semelhança estrutural entre float de precisão simples IEEE 754 e BF16:
+    /// Ambos compartilham a mesma faixa dinâmica (8 bits de expoente), porém o BF16 descarta os
+    /// 16 bits menos significativos da mantissa (truncamento/arredondamento).
     #[inline(always)]
     unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
         unsafe {
-            // Converte f32 para BF16 em tempo real usando truques de bits:
-            // Pegamos apenas a parte mais importante do número para economizar metade do espaço.
+            // 1. Reinterpreta o registrador f32 (__m256) como inteiros de 32 bits (__m256i). Custo: 0 ciclos.
             let v_i = _mm256_castps_si256(v);
+            // 2. Desloca os inteiros 16 bits para a direita (Shift Right). A metade superior (mantissa BF16)
+            // se move para a metade inferior de cada elemento de 32 bits.
             let v_shifted = _mm256_srli_epi32(v_i, 16);
+            // 3. Empacota com saturação não-sinalizada (Packus) elementos de 32 bits em elementos de 16 bits.
+            // Isso consolida os dados de 16 bits úteis.
             let packed = _mm256_packus_epi32(v_shifted, v_shifted);
+            // 4. Permuta os canais de 64 bits usando o padrão (8/0x08) para reagrupar os resultados válidos
+            // que foram misturados devido ao comportamento inerente da instrução _mm256_packus_epi32.
             let permuted = _mm256_permute4x64_epi64(packed, 8);
+            // 5. Extrai a metade inferior (128 bits de um registrador de 256 bits), contendo os 8 valores BF16.
             let v_low = _mm256_castsi256_si128(permuted);
+            // 6. Grava os 8 BF16 compactados diretamente no destino da memória RAM.
             _mm_storeu_si128(ptr as *mut __m128i, v_low);
         }
     }
@@ -306,7 +345,13 @@ impl SimdMath for Avx2Math {
         unsafe { super::super::dsp::stereo::compute_max_diff_avx2(a, b) }
     }
 
-    // Convolve Stereo: Aplica filtragem (equalização) nos dois canais ao mesmo tempo.
+    // Convolve Stereo: Aplica filtragem (equalização) nos dois canais (esquerdo e direito) simultaneamente.
+    //
+    // ## Otimização de Vazão (Throughput SIMD):
+    // Como a resposta ao impulso (coeficientes de filtro FIR) é idêntica para ambos os canais em um
+    // processamento estéreo padrão, carregamos os coeficientes uma única vez nos registradores AVX2 e
+    // os multiplicamos concorrentemente pelas amostras de áudio esquerda (input_l) e direita (input_r).
+    // Isso dobra a eficiência do cálculo em relação a filtrar cada canal sequencialmente.
     #[inline(always)]
     unsafe fn convolve_stereo(
         coeffs: *const f32,

@@ -118,12 +118,25 @@ impl SimdMathConfig {
     }
 }
 
-/// Instância global da configuração SIMD, detectada no boot.
+/// Instância global da configuração SIMD, detectada no boot do sistema.
+/// 
+/// O uso de `LazyLock` garante que a CPU do usuário seja inspecionada apenas uma única vez,
+/// no momento em que a primeira operação matemática do DSP for invocada. Depois disso, a
+/// estrutura de configuração SIMD correspondente (com ponteiros de função de kernel otimizados)
+/// é gravada em cache na memória e acessada de forma imediata (sem custo de checagem em tempo real).
 pub static SIMD_MATH: LazyLock<SimdMathConfig> = LazyLock::new(detect_best_simd);
 
+/// Inspeciona os recursos de hardware da CPU em tempo de execução e retorna a melhor
+/// tabela de ponteiros de funções matemáticas (SIMD) compatível.
+///
+/// A detecção verifica os recursos de hardware suportados usando a macro do compilador `is_x86_feature_detected!`.
+/// Seguimos uma ordem de prioridade decrescente, escolhendo o conjunto de instruções mais avançado
+/// disponível no processador onde o software está rodando.
 fn detect_best_simd() -> SimdMathConfig {
     #[cfg(target_arch = "x86_64")]
     {
+        // 1. AVX-512 com suporte a VNNI (Vector Neural Network Instructions) e BF16 (Bfloat16).
+        // Representa o topo da otimização para processadores Intel/AMD de última geração (ex: Xeon Cooper Lake/Sapphire Rapids, AMD EPYC Zen4).
         if is_x86_feature_detected!("avx512bf16") && is_x86_feature_detected!("avx512vnni") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512VnniBf16,
@@ -148,6 +161,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx512VnniBf16Math::compute_max_diff,
             };
         }
+        // 2. AVX-512 apenas com suporte a VNNI.
+        // Processadores Intel Cascade Lake/Ice Lake e similares. Acelera multiplicação e acumulação de inteiros/floats.
         if is_x86_feature_detected!("avx512vnni") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512Vnni,
@@ -172,6 +187,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx512VnniMath::compute_max_diff,
             };
         }
+        // 3. AVX-512 Foundation básico (512 bits).
+        // CPUs Intel Skylake-X/Zen4 comuns. Permite processar 16 floats de 32 bits em uma única instrução de CPU.
         if is_x86_feature_detected!("avx512f") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512,
@@ -196,6 +213,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx512Math::compute_max_diff,
             };
         }
+        // 4. AVX2 com suporte a VNNI (AVX-VNNI).
+        // CPUs modernas que suportam aceleração de redes neurais VNNI sobre registradores YMM de 256 bits (ex: Intel Alder Lake).
         if is_x86_feature_detected!("avxvnni") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx2Vnni,
@@ -220,6 +239,9 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx2VnniMath::compute_max_diff,
             };
         }
+        // 5. AVX2 com FMA (Floating-Point Multiply-Add) padrão de 256 bits.
+        // O mínimo absoluto exigido para rodar o NAM-rs (especificação x86-64-v3).
+        // Processadores Intel Haswell (2013) ou AMD Excavator (2015) em diante.
         if is_x86_feature_detected!("avx2") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx2,

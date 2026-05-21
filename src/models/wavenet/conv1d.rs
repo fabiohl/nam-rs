@@ -227,6 +227,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
 
+        // Processamento de Convolução 1D por Blocos Intercalados (Interleaved):
+        // Para otimizar o throughput de cálculo e uso de cache, processamos os canais de saída
+        // agrupados em blocos de 4 elementos. Isso permite computar 4 saídas em paralelo usando
+        // instruções SIMD que lêem os pesos e as entradas de forma altamente combinada.
         let num_blocks = OUT / 4;
         let mut out_c = 0;
 
@@ -236,6 +240,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let mut r2;
             let mut r3;
 
+            // Carrega os 4 acumuladores temporários a partir do frame de saída atual.
             unsafe {
                 r0 = *out_frame.get_unchecked(out_c);
                 r1 = *out_frame.get_unchecked(out_c + 1);
@@ -243,6 +248,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 r3 = *out_frame.get_unchecked(out_c + 3);
             }
 
+            // Para cada tap (atraso/deslocamento no buffer de áudio circular) da convolução
             for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = (b * K + k) * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
@@ -250,6 +256,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
+                // Realiza o produto escalar intercalado de 4 canais de uma só vez.
                 let [t0, t1, t2, t3] =
                     unsafe { T::dot_product_4x_interleaved::<M>(w_slice, in_slice) };
                 r0 += t0;
@@ -258,6 +265,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 r3 += t3;
             }
 
+            // Grava de volta os 4 acumuladores processados no buffer de saída in-place.
             unsafe {
                 *out_frame.get_unchecked_mut(out_c) = r0;
                 *out_frame.get_unchecked_mut(out_c + 1) = r1;
@@ -267,11 +275,16 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_c += 4;
         }
 
+        // Loop de Cauda / Remanescente (Tail Loop):
+        // Limpeza dos canais de saída restantes caso a dimensão total de saída (OUT)
+        // não seja um múltiplo exato de 4. Esse loop escalar de fallback previne acessos a
+        // memória fora dos limites do buffer de pesos e saídas.
         while out_c < OUT {
             let mut r = unsafe { *out_frame.get_unchecked(out_c) };
             for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = out_c * K * IN + k * IN;
                 let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
+                // Computa o produto escalar simples para o canal remanescente.
                 r += unsafe { T::dot_product::<M>(in_slice, w) };
             }
             unsafe {

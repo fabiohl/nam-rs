@@ -82,34 +82,43 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     let one = _mm256_set1_ps(1.0);
     let zero = _mm256_setzero_ps();
 
+    // neg_x = -x
     let neg_x1 = _mm256_sub_ps(zero, x1);
     let neg_x2 = _mm256_sub_ps(zero, x2);
 
+    // Evita estouro numérico/limita o expoente para manter a precisão ideal da série polinomial
     let clamp_limit = _mm256_set1_ps(SIGMOID_CLAMP_LIMIT);
     let clamp_min = _mm256_set1_ps(-SIGMOID_CLAMP_LIMIT);
     let neg_x1 = _mm256_max_ps(clamp_min, _mm256_min_ps(clamp_limit, neg_x1));
     let neg_x2 = _mm256_max_ps(clamp_min, _mm256_min_ps(clamp_limit, neg_x2));
 
+    // Constantes de cálculo do exp(x) rápido
     let log2e = _mm256_set1_ps(EXP_LOG2E);
     let ln2_hi = _mm256_set1_ps(EXP_LN2_HI);
     let ln2_lo = _mm256_set1_ps(EXP_LN2_LO);
 
+    // Intercalamos as instruções para ambos os vetores (1 e 2)
+    // Isso permite ao pipeline superescalar do processador executar instruções independentes em paralelo,
+    // ocultando latências de dependência de dados (Instruction Level Parallelism - ILP).
     let k1 = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x1, log2e, zero));
     let k2 = _mm256_cvtps_epi32(_mm256_fmadd_ps(neg_x2, log2e, zero));
     let k_f1 = _mm256_cvtepi32_ps(k1);
     let k_f2 = _mm256_cvtepi32_ps(k2);
 
+    // Ajuste fino dos resíduos
     let mut f1 = _mm256_fmadd_ps(k_f1, ln2_hi, neg_x1);
     let mut f2 = _mm256_fmadd_ps(k_f2, ln2_hi, neg_x2);
     f1 = _mm256_fmadd_ps(k_f1, ln2_lo, f1);
     f2 = _mm256_fmadd_ps(k_f2, ln2_lo, f2);
 
+    // Carrega coeficientes do polinômio de Minimax de grau 6
     let c6 = _mm256_set1_ps(EXP_C6);
     let c5 = _mm256_set1_ps(EXP_C5);
     let c4 = _mm256_set1_ps(EXP_C4);
     let c3 = _mm256_set1_ps(EXP_C3);
     let c2 = _mm256_set1_ps(EXP_C2);
 
+    // Avaliação do polinômio de Minimax para exp(f) usando FMA encadeado
     let mut poly1 = _mm256_fmadd_ps(f1, c6, c5);
     let mut poly2 = _mm256_fmadd_ps(f2, c6, c5);
     poly1 = _mm256_fmadd_ps(poly1, f1, c4);
@@ -123,6 +132,7 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     poly1 = _mm256_fmadd_ps(poly1, f1, one);
     poly2 = _mm256_fmadd_ps(poly2, f2, one);
 
+    // Reconstrói o expoente deslocando bits (equivalente a 2^k)
     let bias = _mm256_set1_epi32(127);
     let k_int1 = _mm256_add_epi32(k1, bias);
     let k_int2 = _mm256_add_epi32(k2, bias);
@@ -131,16 +141,21 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     let e1 = _mm256_mul_ps(poly1, twok1);
     let e2 = _mm256_mul_ps(poly2, twok2);
 
+    // den = 1 + exp(-x)
     let den1 = _mm256_add_ps(one, e1);
     let den2 = _mm256_add_ps(one, e2);
+    
+    // Obtém uma aproximação grosseira e rápida do recíproco 1/den (precisão de ~12 bits)
     let mut res1 = _mm256_rcp_ps(den1);
     let mut res2 = _mm256_rcp_ps(den2);
 
     let two = _mm256_set1_ps(2.0);
-    // 1ª NR
+    
+    // 1ª iteração de Newton-Raphson: eleva a precisão para aproximadamente 23 bits
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
-    // 2ª NR: satura f32
+    
+    // 2ª iteração de Newton-Raphson: satura a precisão do formato float32 de 24 bits
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
 

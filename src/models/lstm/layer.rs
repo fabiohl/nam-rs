@@ -272,6 +272,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     // --- Especializações por Hardware (SIMD) ---
     // Criamos versões diferentes da mesma lógica para tirar o máximo proveito de cada CPU.
 
+    // 1. Especialização AVX2 (Padrão para x86-64-v3):
+    // Utiliza registradores de 256 bits (processando 8 floats em paralelo) com aproximadores
+    // rápidos de Tanh e Sigmoid via SIMD AVX2.
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
@@ -289,6 +292,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
+    // 2. Especialização AVX-512 (F/VL):
+    // Utiliza registradores de 512 bits (processando 16 floats de uma só vez). Ideal para
+    // servidores ou CPUs Intel/AMD mais recentes que suportam instruções vetoriais estendidas.
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
@@ -306,6 +312,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
+    // 3. Especialização AVX2 VNNI (Vector Neural Network Instructions):
+    // Voltado para processamento de redes neurais em CPUs que suportam aceleração VNNI
+    // sobre registradores de 256 bits, otimizando o throughput aritmético.
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
@@ -323,6 +332,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
+    // 4. Especialização AVX-512 VNNI:
+    // Combina a largura de registrador de 512 bits (16 floats) com a aceleração de hardware VNNI
+    // para ganho massivo de throughput em operações GEMV.
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
