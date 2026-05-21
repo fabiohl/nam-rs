@@ -516,7 +516,10 @@ impl Conv1dDyn {
             let (mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1);
 
             unsafe {
-                // Inicialização com bias/mixin (Idêntico à versão padrão).
+                // 1. Inicialização do Acumulador para o Frame 0:
+                // Se houver um mixin (conexão residual paralela), carregamos os 4 canais correspondentes.
+                // Se a largura dos canais for divisível por 4, fazemos a leitura rápida sem verificação de limites;
+                // caso contrário, usamos um array temporário com verificação segura de limites.
                 let (mv0_f0, mv1_f0, mv2_f0, mv3_f0) = if let Some(m) = mixin_f0 {
                     if out_c + 3 < m.len() {
                         (
@@ -540,6 +543,7 @@ impl Conv1dDyn {
                     (0.0, 0.0, 0.0, 0.0)
                 };
 
+                // Adiciona o viés (bias) do neurônio ao acumulador do Frame 0, se ativo.
                 if do_bias {
                     r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
                     r1_f0 = *self.bias.get_unchecked(out_c + 1) + mv1_f0;
@@ -552,6 +556,8 @@ impl Conv1dDyn {
                     r3_f0 = mv3_f0;
                 }
 
+                // 2. Inicialização do Acumulador para o Frame 1:
+                // Repete o processo de carregamento do mixin para o segundo frame da dupla.
                 let (mv0_f1, mv1_f1, mv2_f1, mv3_f1) = if let Some(m) = mixin_f1 {
                     if out_c + 3 < m.len() {
                         (
@@ -575,6 +581,7 @@ impl Conv1dDyn {
                     (0.0, 0.0, 0.0, 0.0)
                 };
 
+                // Adiciona o viés (bias) ao acumulador do Frame 1, se ativo.
                 if do_bias {
                     r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
                     r1_f1 = *self.bias.get_unchecked(out_c + 1) + mv1_f1;
@@ -587,6 +594,9 @@ impl Conv1dDyn {
                     r3_f1 = mv3_f1;
                 }
 
+                // 3. Loop sobre os Taps da Convolução Dilatada:
+                // Para cada atraso do kernel, buscamos os buffers correspondentes a ambos os frames
+                // e realizamos um produto escalar intercalado simultâneo (dual-frame).
                 for k in 0..kernel {
                     let tap_f0 = *tap_ptrs_f0.get_unchecked(k);
                     let tap_f1 = *tap_ptrs_f1.get_unchecked(k);
@@ -600,8 +610,9 @@ impl Conv1dDyn {
                     let in_f0 = core::slice::from_raw_parts(tap_f0, in_ch);
                     let in_f1 = core::slice::from_raw_parts(tap_f1, in_ch);
 
-                    // Produto Escalar Intercalado BF16:
-                    // Matemática de alta performance usando o formato compacto.
+                    // Produto Escalar Intercalado BF16 em Frame Duplo (Dual-Frame):
+                    // Executa a inferência de 4 saídas ao mesmo tempo para ambos os frames, aproveitando o
+                    // alinhamento espacial de dados em cache e instruções de multiplicação/acumulação SIMD.
                     let (t_f0, t_f1) =
                         M::dot_product_4x_interleaved_dual_frame_bf16(w_slice, in_f0, in_f1);
                     r0_f0 += t_f0[0];

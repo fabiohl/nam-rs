@@ -22,6 +22,8 @@ for arg in "$@"; do
         TARGET_DIR="target/clap/debug"
     elif [ "$arg" == "--headless" ] || [ "$arg" == "--no-gui" ]; then
         FEATURES="clap-plugin"
+    elif [ "$arg" == "--heap-audit" ]; then
+        FEATURES="$FEATURES,heap-audit"
     fi
 done
 

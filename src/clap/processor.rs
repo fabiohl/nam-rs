@@ -115,6 +115,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         shared: &'a NamClapShared,
         audio_config: PluginAudioConfiguration,
     ) -> Result<Self, PluginError> {
+        #[cfg(feature = "heap-audit")]
+        {
+            let audit = std::env::var("NAM_HEAP_AUDIT").is_ok();
+            crate::clap::heap_audit::AUDIT_ENABLED.store(audit, Ordering::Relaxed);
+        }
         // 1. Extração dos canais SPSC do Shared (ownership transfer)
         let param_rx = shared
             .param_rx
@@ -207,6 +212,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         mut audio: Audio,
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
+        #[cfg(feature = "heap-audit")]
+        let _guard = if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
+            Some(crate::clap::heap_audit::TrackingGuard::new())
+        } else {
+            None
+        };
+
         let start_time = minstant::Instant::now();
 
         // Consulta única da prioridade da thread no primeiro bloco processado
@@ -609,6 +621,21 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             let threshold_ns = (budget_ns * 85) / 100;
             if elapsed_nanos > threshold_ns {
                 self.rt_status.dsp_overloads.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+
+        #[cfg(feature = "heap-audit")]
+        if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
+            let allocs = crate::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed);
+            if allocs > 0 {
+                eprintln!(
+                    "[NAM-rs Heap Audit] ERROR: {} heap allocation(s) detected in audio thread during process()!",
+                    allocs
+                );
+                panic!(
+                    "Heap allocation detected in RT thread! Count: {}",
+                    allocs
+                );
             }
         }
 

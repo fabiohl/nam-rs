@@ -53,6 +53,7 @@ default = ["standalone"]
 standalone = ["dep:pipewire"]
 clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "clack-extensions/clack-host"]
 clap-plugin-gui = ["clap-plugin", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types"]
+heap-audit = []
 long_bench = []
 
 [[bin]]

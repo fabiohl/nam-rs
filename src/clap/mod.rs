@@ -7,6 +7,8 @@
 
 pub mod descriptor;
 pub mod extensions;
+#[cfg(feature = "heap-audit")]
+pub mod heap_audit;
 pub mod param_smoother;
 pub mod plugin;
 pub mod processor;
