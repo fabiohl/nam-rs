@@ -269,32 +269,6 @@
   * ✅ PASS: Drag funcional, overlay visual presente, extensões inválidas ignoradas.
   * ❌ FAIL se: Crash, modelo não carrega, ou overlay não aparece/desaparece.
 
-* [ ] **9.3 — Undo de Modelo (Tarefa C.3):** Carregar modelo A (`jcm800.nam`), depois modelo B (`twin_reverb.nam`):
-
-  * Botão "⬅" deve aparecer ao lado da caixa de nome do modelo.
-  * Clicar no "⬅" ou pressionar `Ctrl+Z` → reverte a modelo A.
-  * Carregar 6+ modelos → apenas os últimos 5 ficam no histórico.
-  * ✅ PASS: Undo funcional, botão visível, limite de 5 entradas.
-  * ❌ FAIL se: `Ctrl+Z` não funciona, botão ausente, ou histórico sem limite.
-
-* [ ] **9.4 — Hot-Reload de Modelo (Tarefa C.5):** Com toggle "🔄 Auto" ativado na Zona 1:
-
-  * Modificar o `.nam` no disco (ex: copiar outro arquivo por cima com `cp`).
-  * O plugin detecta a mudança em ≤ 1s e recarrega automaticamente.
-  * Toast "Model updated ⚡" deve aparecer na status bar por ~2 segundos.
-  * Desativar o toggle → modificar o arquivo → plugin **não** recarrega.
-  * ✅ PASS: Reload automático quando ativo, toast visível, toggle funcional.
-  * ❌ FAIL se: Reload não ocorre, toast ausente, ou crash.
-
-* [ ] **9.5 — LUFS Metering (Tarefa C.2):** Com modelo carregado e sinal dinâmico passando:
-
-  * Toggle "dBFS / LUFS" abaixo dos medidores VU deve alternar modos.
-  * No modo LUFS-S, valor numérico grande (18pt) exibido em vez das barras.
-  * Cores do valor: verde (-24 a -14 LUFS), amarelo (-14 a -9 LUFS), vermelho (> -9 LUFS).
-  * Com silêncio completo, exibe `-inf` ou `---`.
-  * ✅ PASS: Alternância instantânea, valores coerentes com a dinâmica do sinal.
-  * ❌ FAIL se: Toggle não funciona, valor fixo, ou crash.
-
 ## Teste 10 — Parameter Indication
 
 > **Host:** Bitwig Studio.
