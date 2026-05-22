@@ -4,6 +4,10 @@
 #
 # Build e instalação do plugin NAM-rs no formato CLAP.
 # Gera libnam_rs.so e copia para ~/.clap/nam-rs.clap
+#
+# Uso: ./utils/build-clap.sh [--debug] [--heap-audit]
+#   --debug       Compila em modo debug (mais lento, com símbolos de depuração)
+#   --heap-audit  Ativa auditoria de alocações de heap (para testes de RT-safety)
 
 set -euo pipefail
 
@@ -12,7 +16,7 @@ PLUGIN_NAME="nam-rs.clap"
 BUILD_MODE="release"
 CARGO_FLAGS="--release --target-dir target/clap"
 TARGET_DIR="target/clap/release"
-FEATURES="clap-plugin-gui"
+FEATURES="clap-plugin"
 
 # Processar argumentos
 for arg in "$@"; do
@@ -20,8 +24,6 @@ for arg in "$@"; do
         BUILD_MODE="debug"
         CARGO_FLAGS="--target-dir target/clap"
         TARGET_DIR="target/clap/debug"
-    elif [ "$arg" == "--headless" ] || [ "$arg" == "--no-gui" ]; then
-        FEATURES="clap-plugin"
     elif [ "$arg" == "--heap-audit" ]; then
         FEATURES="$FEATURES,heap-audit"
     fi

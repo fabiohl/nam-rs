@@ -38,9 +38,9 @@ O caminho do modelo (`model_path`) será tratado como um **State Property**, per
 O projeto utiliza *feature flags* para permitir múltiplos alvos de build:
 
 - `cargo build --features standalone`: Binário executável com backend PipeWire (padrão).
-- `cargo build --no-default-features --features clap-plugin`: Biblioteca dinâmica (`.clap`) sem dependência de PipeWire.
+- `cargo build --no-default-features --features clap-plugin`: Biblioteca dinâmica (`.clap`) com GUI completa.
 
-A feature `clap-plugin` omitirá os módulos `pw_host.rs` e `rt_setup.rs`, mantendo o binário final enxuto.
+A feature `clap-plugin` omitirá os módulos `pw_host.rs` e `rt_setup.rs`, mantendo o binário final sem dependências de PipeWire.
 
 ## 4. Framework: `clack-plugin`
 
@@ -88,17 +88,10 @@ O descritor de metadados do plugin seguirá o seguinte padrão:
 O projeto fornece um script automatizado para compilar, instalar e realizar uma auditoria preliminar do plugin no formato CLAP:
 
 - **Build Padrão (com GUI)**:
-  Por padrão, o script compila o plugin com suporte a interface gráfica nativa (utilizando a feature `clap-plugin-gui`).
+  Por padrão, o script compila o plugin com suporte a interface gráfica nativa (utilizando a feature `clap-plugin`).
   
   ```bash
   ./utils/build-clap.sh
-  ```
-
-- **Build Headless (sem GUI)**:
-  Caso queira compilar a versão enxuta para testes sem suporte à interface gráfica, utilize a flag `--headless` ou `--no-gui`:
-  
-  ```bash
-  ./utils/build-clap.sh --headless
   ```
 
 - **Modo Debug**:

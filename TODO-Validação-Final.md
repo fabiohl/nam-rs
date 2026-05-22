@@ -1,11 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# TODO — Validações Finais Pré-Release
+# TODO — Validações Finais Pré-Release (Dev Humano)
 
 ---
 
-## Épico 1 — Auditoria Final de Código (Dev Humano)
+## Épico 1 — Auditoria Final de Código
 
 * [ ] **Tarefa 1.1** — Regressão do Modo Standalone
   * **Contexto:**

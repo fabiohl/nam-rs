@@ -14,7 +14,7 @@
 //! - **Common**: Infraestrutura agnóstica de host (diagnósticos, comunicação SPSC, parâmetros).
 //! - **Standalone**: Implementação nativa para PipeWire e utilitários de CLI.
 //!   Ativado via feature `standalone`. Utilizado por `main.rs`.
-//! - **CLAP Plugin**: Integração como plugin no formato CLAP (CLever Audio Plug-in).
+//! - **CLAP Plugin**: Integração como plugin no formato CLAP (CLever Audio Plug-in) com GUI completa.
 //!   Ativado via feature `clap-plugin`.
 //!
 //! O motor de inferência, os kernels de processamento (SIMD) e a lógica de carregamento

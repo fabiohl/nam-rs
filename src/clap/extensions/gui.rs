@@ -38,7 +38,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         self.shared
             .alive_fence
             .store(false, std::sync::atomic::Ordering::Relaxed);
-        #[cfg(feature = "clap-plugin-gui")]
+        #[cfg(feature = "clap-plugin")]
         if let Some(mut window_handle) = self.window_handle.take() {
             window_handle.close();
         }
@@ -70,7 +70,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
     /// Define a janela pai (host) onde a GUI deve ser embutida.
     fn set_parent(&mut self, _window: Window) -> Result<(), PluginError> {
-        #[cfg(feature = "clap-plugin-gui")]
+        #[cfg(feature = "clap-plugin")]
         {
             use crate::clap::gui::window::NamPluginWindow;
 

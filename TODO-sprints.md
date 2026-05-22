@@ -378,16 +378,39 @@
     * Focus ring visível.
     * Arrow keys ajustam valores.
 
+> **📝 Auditoria de Sprint (Épico D - 2026-05-21):** O Épico D passou por auditoria. As funcionalidades de GUI (D.2, D.3) e acessibilidade (D.4) foram confirmadas. No entanto, falhas na internacionalização (D.1) foram identificadas.
+>
+> * Foi constatado que a Tarefa D.1 foi apenas parcialmente executada: ainda existem várias mensagens de erro e logs críticos em português em arquivos essenciais como `src/clap/extensions/state.rs`, `src/clap/extensions/gui.rs`, `src/clap/plugin.rs`, `src/loader/*` e `src/dsp/*`.
+> * **Status:** Adicionada uma nova tarefa corretiva (Tarefa D.5) para garantir a conformidade da internacionalização antes da conclusão definitiva deste Épico.
+
+---
+
+* [ ] **Tarefa D.5** — Correção e Conclusão da Internacionalização (Logs e Erros)
+
+  * **Contexto:**
+    A Tarefa D.1 não abrangeu todas as strings user-facing. Existem diversas mensagens de log (`log::error!`, `log::info!`) e de erro (`PluginError::Message`, `eprintln!`, `bail!`) ainda em português que precisam ser traduzidas para o inglês.
+  * **Ações Técnicas:**
+    1. Traduzir as strings literais em português (ex: `"Falha ao restaurar..."`, `"Configuração de GUI não suportada"`, `"Arquitetura não suportada"`) presentes em:
+       * `src/clap/extensions/state.rs`
+       * `src/clap/extensions/gui.rs`
+       * `src/clap/extensions/param_indication.rs`
+       * `src/loader/dispatcher/wavenet.rs` e `lstm.rs`
+       * `src/standalone/cli.rs` e `pw_host.rs`
+       * Demais arquivos da base de código que emitam texto de erro/log (observando-se que comentários literais de código permanecem em português).
+    2. Garantir que as mensagens fiquem claras em inglês internacional, mantendo os parâmetros de formatação (ex: `"{}"`).
+  * **Aceite:**
+    * Nenhuma mensagem de erro ou log de sistema (não comentada) aparece em português após a execução.
+
 ---
 
 ## Épico E — Enxugamento
 
 ---
 
-* [ ] **Tarefa E.1** — Remoção Completa do Modo Headless
+* [x] **Tarefa E.1** — Remoção Completa do Modo Headless
 
   * **Contexto:**
-    O modo headless não é útil, ao menos agora, para o público do NAM-rs. Focaremos no modo CLI e no modo Plugin.
+    O modo CLAP headless (compilável via `utils/build-clap.sh`) não é útil, ao menos agora, para o público do NAM-rs. Focaremos no modo CLI e no modo Plugin.
   * **Ações Técnicas:**
     1. Grep por referências a "headless" em todo o codebase (`src/`, `Cargo.toml`, `docs/`, scripts em `utils/`).
     2. Remover imports, cfg flags, e trechos de código morto associados.

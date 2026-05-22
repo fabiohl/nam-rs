@@ -180,11 +180,11 @@ Essa separação garante que o build para CLAP não arraste dependências do Pip
 
 O NAM-rs utiliza *feature flags* para isolar backends e reduzir o footprint do binário final:
 
-| Perfil de Build         | Comando de Compilação                                            | Artefato Gerado           | Dependências Principais            |
-|:----------------------- |:---------------------------------------------------------------- |:------------------------- |:---------------------------------- |
-| **Standalone** (padrão) | `cargo build --features standalone`                              | Binário Executável        | `pipewire`, `rtrb`, `clap` (CLI)   |
-| **CLAP Plugin**         | `cargo build --no-default-features --features clap-plugin --lib` | Biblioteca `.so` (cdylib) | `clack-plugin`, `clack-extensions` |
-| **DSP Lib (Pure)**      | `cargo build --no-default-features --lib`                        | Biblioteca Rust (`.rlib`) | Apenas Core DSP (no-std ready)     |
+| Perfil de Build         | Comando de Compilação                                                | Artefato Gerado           | Dependências Principais                                |
+|:----------------------- |:-------------------------------------------------------------------- |:------------------------- |:------------------------------------------------------ |
+| **Standalone** (padrão) | `cargo build --features standalone`                                  | Binário Executável        | `pipewire`, `rtrb`, `clap` (CLI)                       |
+| **CLAP Plugin**         | `cargo build --no-default-features --features clap-plugin --lib`     | Biblioteca `.so` (cdylib) | `clack-plugin`, `clack-extensions`, `egui`, `baseview` |
+| **DSP Lib (Pure)**      | `cargo build --no-default-features --lib`                            | Biblioteca Rust (`.rlib`) | Apenas Core DSP (no-std ready)                         |
 
 ## 5. DSP & Resampling Nativo
 
@@ -233,7 +233,7 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 | **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta     | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
 | **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato    | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
 | **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout     | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
-| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                              | Inicialização do host em modo headless, processamento de buffers e teardown seguro.                     |
+| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                              | Inicialização do host PipeWire, processamento de buffers e teardown seguro.                             |
 | **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                              | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
 | **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                              | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
 | **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                              | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
@@ -396,14 +396,13 @@ A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente i
 | Windowing     | `baseview`       | Janela nativa embutida X11 via `RawWindowHandle`. Event loop dedicado                          |
 | File Picker   | `rfd`            | File dialog nativo assíncrono (zenity/xdg-portal). Nunca bloqueia a UI thread                  |
 
-#### Feature Flag `clap-plugin-gui`
+#### Feature Flag `clap-plugin`
 
-A GUI é compilada condicionalmente sob a feature `clap-plugin-gui`, permitindo builds headless:
+A GUI é compilada condicionalmente sob a feature `clap-plugin`. Para o build padrão (com GUI completa):
 
-- `cargo build --features clap-plugin` — Plugin CLAP sem janela (para servidores, testes, CI).
-- `cargo build --features clap-plugin-gui` — Plugin CLAP com GUI completa.
+- `cargo build --features clap-plugin` — Plugin CLAP com GUI completa.
 
-Todo código de GUI vive em `src/clap/gui/` e é gateado por `#[cfg(feature = "clap-plugin-gui")]`.
+Todo código de GUI vive em `src/clap/gui/` e é gateado por `#[cfg(feature = "clap-plugin")]`.
 
 #### Isolamento de Threads (UI ↔ Audio)
 

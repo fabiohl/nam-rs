@@ -211,7 +211,7 @@ pub struct NamClapMainThread<'a> {
     /// Cache da última latência reportada ao host para evitar notificações redundantes.
     pub last_reported_latency: u32,
     /// Handle da janela baseview para controle de ciclo de vida da GUI.
-    #[cfg(feature = "clap-plugin-gui")]
+    #[cfg(feature = "clap-plugin")]
     pub window_handle: Option<baseview::WindowHandle>,
 }
 
@@ -394,7 +394,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<crate::clap::extensions::remote_controls::NamPluginRemoteControls>();
         builder.register::<crate::clap::extensions::param_indication::NamPluginParamIndication>();
 
-        #[cfg(feature = "clap-plugin-gui")]
+        #[cfg(feature = "clap-plugin")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();
     }
 }
@@ -501,7 +501,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             param_tx,
             gc_rx,
             last_reported_latency: 0,
-            #[cfg(feature = "clap-plugin-gui")]
+            #[cfg(feature = "clap-plugin")]
             window_handle: None,
         };
 

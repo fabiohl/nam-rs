@@ -8,7 +8,7 @@
 ## Pré-Requisitos do Ambiente de Teste
 
 * [ ] Sistema operacional: Ubuntu 26.04+ (ou derivado) com sessão gráfica X11 ou Wayland+XWayland.
-* [ ] Plugin instalado: `~/.clap/nam-rs.clap` (build Release: `cargo build --no-default-features --features clap-plugin-gui --lib --release`).
+* [ ] Plugin instalado: `~/.clap/nam-rs.clap` (build Release: `cargo build --no-default-features --features clap-plugin --lib --release`).
 * [ ] DAWs configuradas: Bitwig Studio 6+ e Fender Studio Pro instalados e funcionais.
 * [ ] Modelo de teste: Ter pelo menos 2 modelos `.nam` ou `.namb` disponíveis (ex: `jcm800.nam`, `twin_reverb.nam`). Recomenda-se um modelo WaveNet e um LSTM para variar a carga de CPU.
 * [ ] Sinal de áudio de entrada: DI de guitarra gravado (ex: `tests/amostra-guitarra.wav`) ou gerador de sinal (tone/sweep) conectado a uma trilha de áudio com o NAM-rs inserido.

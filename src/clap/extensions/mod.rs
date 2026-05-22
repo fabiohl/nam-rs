@@ -11,5 +11,5 @@ pub mod remote_controls;
 pub mod state;
 pub mod track_info;
 
-#[cfg(feature = "clap-plugin-gui")]
+#[cfg(feature = "clap-plugin")]
 pub mod gui;

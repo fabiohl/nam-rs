@@ -479,7 +479,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "clap-plugin-gui")]
+    #[cfg(feature = "clap-plugin")]
     #[test]
     fn test_gui_extension_x11() {
         use clack_extensions::gui::{GuiApiType, GuiConfiguration, GuiSize, PluginGui};

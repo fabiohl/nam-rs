@@ -14,7 +14,7 @@ pub mod plugin;
 pub mod processor;
 
 /// Módulo contendo a implementação da interface gráfica (GUI).
-#[cfg(feature = "clap-plugin-gui")]
+#[cfg(feature = "clap-plugin")]
 pub mod gui;
 
 use clack_plugin::prelude::*;

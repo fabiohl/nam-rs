@@ -7,8 +7,8 @@
 //!
 //! Este teste garante o correto inicializador do contexto do PipeWire Core.
 //! Nota: Falhará propositalmente sem ser ignorado caso PipeWire não esteja presente,
-//! a menos que seja mockado. O ambiente CI (ex: GitHub Actions) precisa de dependências
-//! de PipeWire-headless rodando.
+//! a menos que seja mockado. O ambiente CI (ex: GitHub Actions) precisa do daemon PipeWire
+//! ou de um ambiente de testes com suporte a PipeWire.
 
 use minstant::Anchor;
 use nam_rs::common::diagnostics::SystemSnapshot;
@@ -20,7 +20,7 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
-/// Testa a inicialização e a comunicação básica da pipeline PipeWire em modo Headless.
+/// Testa a inicialização e a comunicação básica da pipeline PipeWire.
 ///
 /// Este teste simula o ciclo de vida completo do motor:
 /// 1. Criação de RingBuffers SPSC (Single-Producer Single-Consumer) para comandos e telemetria.
@@ -28,7 +28,7 @@ use std::time::Duration;
 /// 3. Envio de parâmetros de ganho via canal de controle.
 /// 4. Desligamento sinalizado via flag atômica.
 #[test]
-fn test_pipewire_headless_integration() {
+fn test_pipewire_integration() {
     // Inicializa a biblioteca nativa. Em ambientes sem libpipewire instalada, isso causará pânico.
     pipewire::init();
 
