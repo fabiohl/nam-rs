@@ -88,6 +88,9 @@
        * Deixar o plugin em execução em sessões de áudio por 15 minutos em ambos os hosts.
        * Repetir a contagem de FDs e threads. Crescimento > 0 FDs persistentes = ⚠️ leak provável.
        * Executar `lsof -p <PID> | grep -c '.nam\|rfd\|zenity'` para verificar que não há File Descriptors retidos do File Picker ou de portais D-Bus.
+    6. **File Picker Wayland:**
+       * Verificar que o File Picker abre via `xdg-desktop-portal` sem congelamento.
+       * Se `xdg-desktop-portal-gtk` não estiver instalado, o picker deve falhar graciosamente (timeout de 120s reseta o estado de loading) sem crash.
   * **Aceite:** Zero crashes, zero panics na DAW ou no processo sandbox. Uso de memória RSS estabilizado (crescimento < 2 MB após trocas de modelos). Zero XRUNs adicionais acusados pelo host de áudio. Zero leak de FDs ou threads.
 
 ---
@@ -98,7 +101,7 @@
   * **Ações Técnicas:**
     1. Montar um projeto de teste de endurance na DAW contendo 4 instâncias concorrentes do NAM-rs utilizando modelos de redes neurais distintos (2× WaveNet Standard + 2× LSTM 1×16) e com 2 moduladores LFO associados a cada parâmetro.
     2. **Null Test de Bypass (verificação de integridade):** Adicionar uma trilha extra com o NAM-rs em **bypass**, sinal idêntico em paralelo com fase invertida e compensação automática de atraso (ADC) ativa. O resultado deve ser silêncio absoluto (null perfeito), confirmando que o bypass não altera o sinal. *(Nota: o null test NÃO se aplica com processamento neural ativo, pois o NAM transforma a forma de onda.)*
-    3. **Teste de Determinismo:** Com processamento ativo, renderizar (bounce) o projeto 2 vezes consecutivas e comparar os arquivos WAV bit-a-bit (`cmp` ou `diff`). Resultados devem ser idênticos (determinismo de processamento).
+    3. **Teste de Determinismo:** Com processamento ativo, renderizar (bounce **offline/não-tempo-real**) o projeto 2 vezes consecutivas e comparar os arquivos WAV bit-a-bit (`cmp` ou `diff`). Resultados devem ser idênticos (determinismo de processamento). **Importante:** usar o modo de bounce offline da DAW para garantir repetição determinística; bounces em tempo real podem divergir por timing do scheduler.
     4. Iniciar um script de monitoramento em segundo plano que captura a cada 30 segundos:
        * Memória residente (RSS) e virtual (VSZ) via `/proc/<PID>/status`.
        * Contagem de File Descriptors (`ls /proc/<PID>/fd | wc -l`).

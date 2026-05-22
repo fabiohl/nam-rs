@@ -124,16 +124,16 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let param_rx = shared
             .param_rx
             .lock()
-            .expect("Falha ao travar o Mutex do param_rx")
+            .expect("Failed to lock param_rx Mutex")
             .take()
-            .expect("Consumidor param_rx já foi extraído");
+            .expect("param_rx consumer has already been extracted");
 
         let gc_tx = shared
             .gc_tx
             .lock()
-            .expect("Falha ao travar o Mutex do gc_tx")
+            .expect("Failed to lock gc_tx Mutex")
             .take()
-            .expect("Produtor gc_tx já foi extraído");
+            .expect("gc_tx producer has already been extracted");
 
         // 2. Pré-alocação de buffers intermediários (Disjoint Stages)
         let buf_capacity = (audio_config.max_frames_count as usize)
@@ -152,7 +152,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // 3. Inicialização de componentes DSP
         let resampler = Box::new(
             NamResampler::new(audio_config.sample_rate as u32, 48000, buf_capacity)
-                .expect("Falha ao criar NamResampler"),
+                .expect("Failed to create NamResampler"),
         );
 
         let silence_hyst = DynamicHysteresis::new();

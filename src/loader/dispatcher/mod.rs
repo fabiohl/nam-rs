@@ -57,7 +57,7 @@ impl<'a> WeightCursor<'a> {
     fn read_slice(&mut self, len: usize) -> anyhow::Result<&'a [f32]> {
         if self.pos + len > self.data.len() {
             bail!(
-                "Pesos insuficientes: necessários {} a partir da posição {}, disponíveis {}",
+                "Insufficient weights: required {} starting from position {}, available {}",
                 len,
                 self.pos,
                 self.data.len()
@@ -78,7 +78,7 @@ impl<'a> WeightCursor<'a> {
     fn verify_exhausted(&self) -> anyhow::Result<()> {
         if self.pos != self.data.len() {
             bail!(
-                "Modelo com pesos inconsistentes: consumidos {}, total {}",
+                "Model with inconsistent weights: consumed {}, total {}",
                 self.pos,
                 self.data.len()
             );
@@ -99,7 +99,7 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     match data.architecture.as_str() {
         "WaveNet" => wavenet::build_wavenet(data),
         "LSTM" => lstm::build_lstm(data),
-        other => bail!("Arquitetura não suportada: '{}'", other),
+        other => bail!("Unsupported architecture: '{}'", other),
     }
 }
 

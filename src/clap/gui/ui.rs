@@ -1430,8 +1430,11 @@ pub fn draw_ui(
                     "-".to_string()
                 } else {
                     let s = name_guard.as_str();
-                    if s.len() > 35 {
-                        format!("{}...", &s[..32])
+                    if s.chars().count() > 35 {
+                        // Truncamento seguro para Unicode: encontra o limite de byte
+                        // no 32º caractere sem cortar no meio de sequências multi-byte.
+                        let end = s.char_indices().nth(32).map_or(s.len(), |(idx, _)| idx);
+                        format!("{}...", &s[..end])
                     } else {
                         s.to_string()
                     }

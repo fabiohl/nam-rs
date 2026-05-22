@@ -53,7 +53,8 @@
 
   Arrastar cada knob até o limite inferior e verificar que o tooltip (hover) mostra o valor mínimo. Repetir para o limite superior.
 
-  * ❌ FAIL se: Algum knob permite valores fora dos limites listados.
+  * Verificar o sufixo do tooltip de cada knob: INPUT/OUTPUT devem mostrar `"X.XX dB"`, GATE deve mostrar `"X.XX dB (Threshold)"`.
+  * ❌ FAIL se: Algum knob permite valores fora dos limites listados, ou sufixo do tooltip incorreto.
 
 * [ ] **2.2 — Drag Normal:** Arrastar o knob INPUT verticalmente. O arco turquesa deve acompanhar o arrasto de forma fluida, sem saltos. O valor em dB (label abaixo do knob, formato `X.X dB`) deve atualizar a cada frame.
 
@@ -157,7 +158,7 @@
 ## Teste 5 — Remote Controls e Integração de Hardware
 
 > **Host:** Bitwig Studio.
-> **⚠️ Dependência:** Requer implementação da extensão `CLAP_EXT_REMOTE_CONTROLS` (vide `TODO-sprints.md`, Tarefa A.2). **Pular se ainda não implementado.**
+> **Implementado:** Extensão `CLAP_EXT_REMOTE_CONTROLS` (Tarefa A.2, Épico A).
 
 * [ ] **5.1** Abrir o Device Panel do Bitwig Studio para o NAM-rs. Verificar que 2 páginas aparecem:
 
@@ -175,7 +176,7 @@
 ## Teste 6 — Accent Color Dinâmico
 
 > **Host:** Bitwig Studio.
-> **⚠️ Dependência:** Requer implementação da extensão `CLAP_EXT_TRACK_INFO` (vide `TODO-sprints.md`, Tarefa A.1). **Pular se ainda não implementado.**
+> **Implementado:** Extensão `CLAP_EXT_TRACK_INFO` (Tarefa A.1, Épico A).
 
 * [ ] **6.1** No Bitwig Studio, clicar com botão direito na cabeça da trilha do NAM-rs e alterar a cor para **vermelho**. Observar a GUI do plugin:
 
@@ -251,9 +252,9 @@
 ## Teste 9 — Features Avançadas de UX
 
 > **Hosts:** Bitwig Studio e Fender Studio Pro.
-> **⚠️ Dependência:** Requer implementação das Tarefas C.1, C.2, C.3, C.4, C.5 do `TODO-sprints.md`. **Pular itens cujas features ainda não foram implementadas.**
+> **Implementado:** Drag & Drop (Tarefa C.1) e DSP Load Meter (Tarefa C.2), ambos do Épico C.
 
-* [ ] **9.1 — DSP Load Meter (Tarefa C.4):** Na status bar, entre a latência e o botão "RT", verificar presença do indicador `"DSP: XX.X%"`:
+* [ ] **9.1 — DSP Load Meter (Tarefa C.2):** Na status bar, entre a latência e o botão "RT", verificar presença do indicador `"DSP: XX.X%"`:
 
   * Com modelo leve: cor verde (< 50%).
   * Com modelo pesado (WaveNet grande): cor âmbar ou vermelha.
@@ -272,7 +273,7 @@
 ## Teste 10 — Parameter Indication
 
 > **Host:** Bitwig Studio.
-> **⚠️ Dependência:** Requer implementação da Tarefa A.3 do `TODO-sprints.md`. **Pular se ainda não implementado.**
+> **Implementado:** Extensão `CLAP_EXT_PARAM_INDICATION` (Tarefa A.3, Épico A).
 
 * [ ] **10.1** Mapear o knob INPUT a um controlador MIDI no Bitwig (via MIDI Learn ou Device Panel) → halo pontilhado com dots azuis ao redor do knob deve aparecer.
 
@@ -292,7 +293,7 @@
 ## Teste 11 — Erro de Carregamento de Modelo
 
 > **Hosts:** Bitwig Studio e Fender Studio Pro.
-> **⚠️ Dependência:** Requer implementação da Tarefa D.3 do `TODO-sprints.md`. **Pular se ainda não implementado.**
+> **Implementado:** Feedback visual de erro no carregamento de modelo (Tarefa D.2, Épico D).
 
 * [ ] **11.1** Tentar carregar o arquivo inválido preparado nos pré-requisitos (`invalid_model.nam` — arquivo texto renomeado):
 
@@ -312,6 +313,42 @@
   * O áudio processado não deve ser interrompido durante a tentativa de carga.
   * ✅ PASS: Modelo anterior preservado, áudio contínuo.
   * ❌ FAIL se: Modelo anterior perdido ou áudio cortado.
+
+## Teste 12 — Acessibilidade e Navegação por Teclado
+
+> **Hosts:** Bitwig Studio e Fender Studio Pro.
+> **Implementado:** Acessibilidade via Tab, Arrow keys e Focus ring (Tarefa D.4, Épico D).
+
+* [ ] **12.1 — Tab Order:** Pressionar `Tab` repetidamente na janela do plugin. O focus deve ciclar na ordem:
+
+  `INPUT → OUTPUT → GATE → BYPASS → Load Model → INPUT → …`
+
+  * Verificar que o focus ring (anel de 2px na cor accent) aparece visivelmente ao redor do controle focado.
+  * Pressionar `Shift+Tab` deve navegar na ordem inversa.
+  * ✅ PASS: Ciclo completo sem pular controles, focus ring visível em cada um.
+  * ❌ FAIL se: Algum controle é pulado, focus ring ausente, ou Tab não funciona.
+
+* [ ] **12.2 — Arrow Keys em Knobs:** Com o knob INPUT focado (via Tab):
+
+  * Pressionar `↑` ou `→`: o valor deve aumentar em `+1.0 dB` por pressionamento.
+  * Pressionar `↓` ou `←`: o valor deve diminuir em `-1.0 dB` por pressionamento.
+  * Pressionar `Ctrl+↑`: o valor deve aumentar em `+0.1 dB` (fine-tune).
+  * Pressionar `Ctrl+↓`: o valor deve diminuir em `-0.1 dB` (fine-tune).
+  * Verificar que os limites do range são respeitados (não ultrapassa `-96.0 dB` nem `+30.0 dB`).
+  * ✅ PASS: Ajuste preciso, limites respeitados, arco e label atualizam a cada keypress.
+
+* [ ] **12.3 — Ativação por Teclado (Load Model e Bypass):**
+
+  * Com o botão `[📂 Load Model]` focado, pressionar `Space` ou `Enter`. O File Picker deve abrir.
+  * Com o controle BYPASS focado, pressionar `Space` ou `Enter`. O estado de bypass deve alternar.
+  * ✅ PASS: Ambos os controles respondem ao teclado.
+  * ❌ FAIL se: Teclado não ativa os controles.
+
+* [ ] **12.4 — Contraste Visual:** Verificar visualmente que todos os textos (labels, valores, status bar) são legíveis contra seus respectivos fundos. Em particular:
+
+  * `COL_MUTED` (`#8B95A5`) sobre `COL_PANEL` (`#232830`) — deve ser legível sem esforço.
+  * `COL_TEXT` (`#E5E9F0`) sobre `COL_BG` (`#1A1D23`) — alto contraste.
+  * ❌ FAIL se: Algum texto é ilegível ou difícil de distinguir do fundo.
 
 ### Critérios Globais de Aceite (PASS em todos os testes)
 
