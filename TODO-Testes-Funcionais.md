@@ -5,24 +5,32 @@
 
 * **Contexto:** Validação completa da experiência do usuário ponta-a-ponta nas DAWs de referência (Bitwig Studio 6+ e Fender Studio Pro), certificando que o comportamento visual, a latência de interface e o áudio funcionam de forma impecável e harmoniosa. Cada seção abaixo é um teste independente com critérios de PASS/FAIL explícitos.
 
+>> Nota à IA: As notas do testador virão em citações neste formato de setas duplas.
+
 ## Pré-Requisitos do Ambiente de Teste
 
-* [ ] Sistema operacional: Ubuntu 26.04+ (ou derivado) com sessão gráfica X11 ou Wayland+XWayland.
-* [ ] Plugin instalado: `~/.clap/nam-rs.clap` (build Release: `cargo build --no-default-features --features clap-plugin --lib --release`).
-* [ ] DAWs configuradas: Bitwig Studio 6+ e Fender Studio Pro instalados e funcionais.
-* [ ] Modelo de teste: Ter pelo menos 2 modelos `.nam` ou `.namb` disponíveis (ex: `jcm800.nam`, `twin_reverb.nam`). Recomenda-se um modelo WaveNet e um LSTM para variar a carga de CPU.
-* [ ] Sinal de áudio de entrada: DI de guitarra gravado (ex: `tests/amostra-guitarra.wav`) ou gerador de sinal (tone/sweep) conectado a uma trilha de áudio com o NAM-rs inserido.
-* [ ] Monitoramento de XRUNs: Abrir em um terminal separado: `pw-top` (PipeWire) ou `jack_ipc` (JACK) para observar contadores de XRUNs durante toda a sessão de teste.
-* [ ] Arquivo de modelo **inválido** para testes de erro: arquivo texto `.txt` renomeado para `.nam` (ex: `invalid_model.nam`).
-* [ ] *(Opcional, se Tarefa B.3 implementada)* Sessão Wayland disponível (Sway ou GNOME Wayland) para teste de compatibilidade do File Picker.
-* [ ] ⚠️ **Volume seguro:** Antes de iniciar qualquer teste, certificar-se de que o volume de monitoração está em nível seguro (≤ -20 dB nos outputs). Testes de clipping podem gerar picos altos.
+* [x] Sistema operacional: Ubuntu 26.04+ (ou derivado) com sessão gráfica X11 ou Wayland+XWayland.
+  >> Máquina de teste: AMD Ryzen 7 5700U with Radeon Graphics,  4.27 GHz, 16 cores, 16GB RAM, Linux 7.0.0-15-generic.
+* [x] Plugin instalado: `~/.clap/nam-rs.clap` (build Release: `cargo build --no-default-features --features clap-plugin --lib --release`).
+* [x] DAWs configuradas: Bitwig Studio 6+ e Fender Studio Pro instalados e funcionais.
+  >> Usando Bitwig Studio Demo 6.0.6, Flatpak, Wayland, Extension API version 25, CLAP API Version 1.2.7, VST API Version 3.8.0, Graphics Backend skia-vulkan, Build date 2026-04-20.
+  >> Usando Fender Studio Pro+ 8.0.3.111164 Linux x64 (Build on Mar 13 2026), Flatpak, Wayland.
+* [x] Ter pelo menos 2 modelos `.nam` ou `.namb` disponíveis (ex: `jcm800.nam`, `twin_reverb.nam`). Recomenda-se um modelo WaveNet e um LSTM para variar a carga de CPU.
+* [x] Sinal de áudio de entrada: DI de guitarra gravado (ex: `tests/amostra-guitarra.wav`) ou gerador de sinal (tone/sweep) conectado a uma trilha de áudio com o NAM-rs inserido.
+* [x] Monitoramento de XRUNs: Abrir em um terminal separado: `pw-top` (PipeWire) ou `jack_ipc` (JACK) para observar contadores de XRUNs durante toda a sessão de teste.
+* [x] Arquivo de modelo **inválido** para testes de erro: arquivo texto `.txt` renomeado para `.nam` (ex: `invalid_model.nam`).
+* [x] *(Opcional, se Tarefa B.3 implementada)* Sessão Wayland disponível (Sway ou GNOME Wayland) para teste de compatibilidade do File Picker.
+  >> Não se aplica. Estamos definindo como desktop wayland first.
+* [x] ⚠️ **Volume seguro:** Antes de iniciar qualquer teste, certificar-se de que o volume de monitoração está em nível seguro (≤ -20 dB nos outputs). Testes de clipping podem gerar picos altos.
 
 ## Teste 1 — File Picker & Thread Safety
 
 > **Hosts:** Bitwig Studio e Fender Studio Pro.
 
-* [ ] **1.1** Inserir o NAM-rs em uma trilha de áudio e abrir a GUI. A janela deve ter exatamente **600×260 pixels** (tamanho fixo). Verificar que a GUI abre sem delay perceptível (< 500ms).
+* [x] **1.1** Inserir o NAM-rs em uma trilha de áudio e abrir a GUI. A janela deve ter exatamente **600×260 pixels** (tamanho fixo). Verificar que a GUI abre sem delay perceptível (< 500ms).
   * ❌ FAIL se: A janela aparece preta, com artefatos, ou em tamanho diferente de 600×260.
+  >> Bitwig: Aproximadamente isso, considerando decoração de janelas e não computando a barra de títulos da janela totalmente flutuante da gui principal do plugin no Bitwig.
+  >> Fender Studio: Prejudicado por um bug estranho. Somente os plugins próprios da Presonus e da Fender (tipo "Native") estão exibindo interface gráfica. Todos os plugins VST2, VST3 e CLAP de terceiros que tenho instalados via Flatpak, além do próprio nam-rs, só estão exibindo uma janela genérica com os parâmetros de preset - mas sem GUI. Isto não acontece no Bitwig, so no Fender Studio Pro (Mesmo que ambos tenham instalações absolutamente similares). Investigar isto à parte.
 * [ ] **1.2** Iniciar playback na DAW com sinal de áudio passando pelo plugin (sem modelo carregado). Confirmar que a Zona 1 exibe `"No model loaded"` na caixa de nome do modelo.
 * [ ] **1.3** Clicar no botão `[📂 Load Model]` na Zona 1 (canto superior esquerdo).
   * ✅ PASS: O File Picker do sistema (zenity/xdg-portal) abre em janela separada. A GUI do plugin e a DAW permanecem responsivas — arraste a janela da DAW ou redimensione-a enquanto o picker está aberto para confirmar.
