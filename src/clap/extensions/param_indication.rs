@@ -28,7 +28,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         _description: Option<&CStr>,
     ) {
         let idx = param_id.get() as usize;
-        if idx < 4 {
+        if idx < 5 {
             let atomic_val = &self.shared.param_indication[idx];
             if has_mapping {
                 atomic_val.fetch_or(INDICATION_MAPPED, Ordering::Relaxed);
@@ -45,7 +45,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         _color: Option<Color>,
     ) {
         let idx = param_id.get() as usize;
-        if idx < 4 {
+        if idx < 5 {
             let atomic_val = &self.shared.param_indication[idx];
             match automation_state {
                 ParamIndicationAutomation::None | ParamIndicationAutomation::Present => {

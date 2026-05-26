@@ -4,7 +4,7 @@
 //! Implementação da extensão `clap_plugin_remote_controls` para o NAM-rs.
 
 use crate::clap::extensions::params::{
-    PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+    PARAM_ACTIVE_MODEL, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
 };
 use crate::clap::plugin::NamClapMainThread;
 use clack_common::utils::ClapId;
@@ -25,6 +25,7 @@ pub fn fill_remote_controls_page(index: u32, writer: &mut RemoteControlsPageWrit
             param_ids[0] = Some(ClapId::new(PARAM_INPUT_GAIN));
             param_ids[1] = Some(ClapId::new(PARAM_OUTPUT_GAIN));
             param_ids[2] = Some(ClapId::new(PARAM_BYPASS));
+            param_ids[3] = Some(ClapId::new(PARAM_ACTIVE_MODEL));
 
             let page = RemoteControlsPage {
                 section_name: b"NAM-rs",
@@ -95,7 +96,11 @@ mod tests {
                 Some(PARAM_OUTPUT_GAIN)
             );
             assert_eq!(page.param_ids[2].map(|id| id.get()), Some(PARAM_BYPASS));
-            for i in 3..8 {
+            assert_eq!(
+                page.param_ids[3].map(|id| id.get()),
+                Some(PARAM_ACTIVE_MODEL)
+            );
+            for i in 4..8 {
                 assert!(page.param_ids[i].is_none());
             }
         }

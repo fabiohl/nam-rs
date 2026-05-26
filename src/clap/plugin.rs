@@ -85,9 +85,11 @@ pub struct NamClapShared {
     pub sample_rate: AtomicU32,
     /// Cor de accent dinâmica baseada na cor da track do DAW (ARGB compactado).
     pub track_accent_color: AtomicU32,
-    /// Indicação de parâmetros (mapeamento, automação e override) para os 4 parâmetros.
+    /// Indicação de parâmetros (mapeamento, automação e override) para os 5 parâmetros.
     /// Bit 0: Mapeado, Bit 1: Automatizando, Bit 2: Override.
-    pub param_indication: [std::sync::atomic::AtomicU8; 4],
+    pub param_indication: [std::sync::atomic::AtomicU8; 5],
+    /// Contador de carregamentos de modelo (incrementado a cada modelo carregado com sucesso).
+    pub model_load_counter: AtomicU32,
     /// Fence de vida útil: true enquanto o plugin existe. Verificado pela thread do File Picker.
     pub alive_fence: Arc<std::sync::atomic::AtomicBool>,
 
@@ -378,6 +380,20 @@ impl<'a> NamClapMainThread<'a> {
         if let Ok(mut name_guard) = self.shared.ui_model_name.lock() {
             *name_guard = basename;
         }
+        self.shared
+            .model_load_counter
+            .fetch_add(1, Ordering::Relaxed);
+
+        // Notifica o host que o valor do parâmetro de modelo ativo mudou
+        if let Some(params_ext) = self
+            .host
+            .get_extension::<clack_extensions::params::HostParams>()
+        {
+            params_ext.rescan(
+                &mut self.host,
+                clack_extensions::params::ParamRescanFlags::VALUES,
+            );
+        }
 
         // 4. Notifica o host sobre o carregamento bem-sucedido (Cold Path)
         if let Some(log) = self.host.get_extension::<HostLog>() {
@@ -461,7 +477,9 @@ impl DefaultPluginFactory for NamClapPlugin {
                 std::sync::atomic::AtomicU8::new(0),
                 std::sync::atomic::AtomicU8::new(0),
                 std::sync::atomic::AtomicU8::new(0),
+                std::sync::atomic::AtomicU8::new(0),
             ],
+            model_load_counter: AtomicU32::new(0),
             alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
             gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),

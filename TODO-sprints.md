@@ -123,9 +123,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
     - Atualizada a lógica `on_main_thread` para notificar a extensão de latência e invocar `request_restart()` forçando o recálculo imediato do PDC pelo host DAW.
   - **Validação de Não-Regressão:** Suíte completa com 192 testes e testes de integração passando com sucesso absoluto. Clippy e lints 100% limpos.
 
-- [ ] **Tarefa 2.3: Atualização Visual da UI e Exposição de Metadados de Modelo**
+- [x] **Tarefa 2.3: Atualização Visual da UI e Exposição de Metadados de Modelo**
   - **Descrição:** Expor de forma simplificada o nome do modelo carregado ativamente para a DAW, facilitando a legibilidade do projeto no painel de dispositivos (Device Panel) do Bitwig.
-  - **Passo a Passo:**
-    - Adicionar um parâmetro somente leitura (ou atualizar metadados do estado) indicando o nome do arquivo do modelo NAM.
-    - Configurar o layout e as páginas de Remote Controls para exibir a string abreviada do modelo.
-  - **Validação de Não-Regressão:** Verificar se o `clap-validator` valida o plugin com sucesso e inspecionar se a barra de controle remoto do Bitwig exibe o nome do modelo ativado corretamente.
+  - **Ações Executadas:**
+    - Adicionado o parâmetro somente leitura `Active Model` (`PARAM_ACTIVE_MODEL`) mapeando a string do modelo ativo a partir de `ui_model_name` em `value_to_text`.
+    - Configurado o mapeamento do parâmetro `Active Model` na primeira página de Remote Controls (`Main`) no índice 3.
+    - Implementada notificação de atualização dos valores de parâmetros para o host (`HostParams::rescan`) durante o carregamento de modelo em `load_model`.
+    - Atualizados os testes unitários de remote controls, indicações de parâmetro e estados mockados.
+  - **Validação de Não-Regressão:** Executada a validação completa via `clap-validator` obtendo 100% de sucesso (16 testes aprovados, 0 falhas) e rodando toda a suíte de testes locais sem falhas.

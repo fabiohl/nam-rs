@@ -23,10 +23,12 @@ pub const PARAM_OUTPUT_GAIN: u32 = 1;
 pub const PARAM_GATE_THRESH: u32 = 2;
 /// ID do parâmetro de bypass do plugin.
 pub const PARAM_BYPASS: u32 = 3;
+/// ID do parâmetro do nome do modelo carregado (somente leitura).
+pub const PARAM_ACTIVE_MODEL: u32 = 4;
 
 impl PluginMainThreadParams for NamClapMainThread<'_> {
     fn count(&mut self) -> u32 {
-        4
+        5
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -81,6 +83,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     default_value: 0.0,
                 });
             }
+            PARAM_ACTIVE_MODEL => {
+                info.set(&ParamInfo {
+                    id: ClapId::new(PARAM_ACTIVE_MODEL),
+                    flags: ParamInfoFlags::IS_READONLY,
+                    cookie: clack_plugin::utils::Cookie::empty(),
+                    name: b"Active Model",
+                    module: b"",
+                    min_value: 0.0,
+                    max_value: 1000.0,
+                    default_value: 0.0,
+                });
+            }
             _ => {}
         }
     }
@@ -114,6 +128,11 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     0.0
                 },
             ),
+            PARAM_ACTIVE_MODEL => Some(
+                self.shared
+                    .model_load_counter
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64,
+            ),
             _ => None,
         }
     }
@@ -136,6 +155,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     writer.write_str("Active")
                 }
             }
+            PARAM_ACTIVE_MODEL => {
+                let name = if let Ok(guard) = self.shared.ui_model_name.lock() {
+                    if guard.is_empty() {
+                        "None".to_string()
+                    } else {
+                        guard.clone()
+                    }
+                } else {
+                    "None".to_string()
+                };
+                writer.write_str(&name)
+            }
             _ => Ok(()),
         }
     }
@@ -153,6 +184,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 "bypassed" | "1" | "true" | "on" => Some(1.0),
                 _ => None,
             },
+            PARAM_ACTIVE_MODEL => Some(0.0),
             _ => None,
         }
     }
