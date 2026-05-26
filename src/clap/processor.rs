@@ -355,6 +355,31 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             }
         }
 
+        // Sincroniza parâmetros alterados via GUI que não foram ecoados como eventos de entrada pelo host.
+        let shared_in_db = f32::from_bits(self.shared.param_input_gain.load(Ordering::Relaxed));
+        if shared_in_db != self.params.input_gain_db {
+            self.params.input_gain_db = shared_in_db;
+            self.smoother_in
+                .set_target(lut.db_to_linear(shared_in_db + self.mod_input_gain));
+        }
+
+        let shared_out_db = f32::from_bits(self.shared.param_output_gain.load(Ordering::Relaxed));
+        if shared_out_db != self.params.output_gain_db {
+            self.params.output_gain_db = shared_out_db;
+            self.smoother_out
+                .set_target(lut.db_to_linear(shared_out_db + self.mod_output_gain));
+        }
+
+        let shared_gate_db = f32::from_bits(self.shared.param_gate_thresh.load(Ordering::Relaxed));
+        if shared_gate_db != self.params.gate_threshold_db {
+            self.params.gate_threshold_db = shared_gate_db;
+        }
+
+        let shared_bypass = self.shared.param_bypass.load(Ordering::Relaxed) != 0;
+        if shared_bypass != self.params.bypass {
+            self.params.bypass = shared_bypass;
+        }
+
         // Monitoramento dinâmico de latência na Audio Thread
         let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };

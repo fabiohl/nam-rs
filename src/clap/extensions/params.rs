@@ -284,5 +284,42 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                 _ => continue,
             }
         }
+
+        // Sincroniza parâmetros alterados via GUI que não foram ecoados como eventos de entrada pelo host.
+        let shared_in_db = f32::from_bits(
+            self.shared
+                .param_input_gain
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        if shared_in_db != self.params.input_gain_db {
+            self.params.input_gain_db = shared_in_db;
+        }
+
+        let shared_out_db = f32::from_bits(
+            self.shared
+                .param_output_gain
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        if shared_out_db != self.params.output_gain_db {
+            self.params.output_gain_db = shared_out_db;
+        }
+
+        let shared_gate_db = f32::from_bits(
+            self.shared
+                .param_gate_thresh
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
+        if shared_gate_db != self.params.gate_threshold_db {
+            self.params.gate_threshold_db = shared_gate_db;
+        }
+
+        let shared_bypass = self
+            .shared
+            .param_bypass
+            .load(std::sync::atomic::Ordering::Relaxed)
+            != 0;
+        if shared_bypass != self.params.bypass {
+            self.params.bypass = shared_bypass;
+        }
     }
 }
