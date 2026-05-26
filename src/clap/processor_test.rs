@@ -687,4 +687,267 @@ mod tests {
             "ui_clipped should be true since input right was 1.5"
         );
     }
+
+    #[test]
+    fn test_monophonic_parameter_modulation() {
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Falha ao carregar PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Falha ao instanciar plugin");
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 512,
+            max_frames_count: 512,
+        };
+
+        let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
+        let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        let n = 512;
+        // Sinal constante de 0.5 (DC)
+        let mut in_l = vec![0.5f32; n];
+        let mut in_r = vec![0.5f32; n];
+        let mut out_l = vec![0.0f32; n];
+        let mut out_r = vec![0.0f32; n];
+
+        let mut input_ports = AudioPorts::with_capacity(2, 1);
+        let mut output_ports = AudioPorts::with_capacity(2, 1);
+
+        use crate::clap::extensions::params::{PARAM_GATE_THRESH, PARAM_INPUT_GAIN};
+        use clack_common::events::Pckn;
+        use clack_common::events::event_types::{ParamModEvent, ParamValueEvent};
+        use clack_common::utils::{ClapId, Cookie};
+
+        // 1. Caso base: Sem modulação, ganho base = 0dB. A saída deve ser igual à entrada (ou próxima).
+        {
+            let mut input_events_buffer = EventBuffer::new();
+            // Garante que o input gain base esteja em 0.0 dB
+            let val_event = ParamValueEvent::new(
+                0,
+                ClapId::new(PARAM_INPUT_GAIN),
+                Pckn::match_all(),
+                0.0,
+                Cookie::empty(),
+            );
+            input_events_buffer.push(&val_event);
+
+            // Garante que o gate threshold esteja em -90.0 dB (completamente aberto)
+            let gate_event = ParamValueEvent::new(
+                0,
+                ClapId::new(PARAM_GATE_THRESH),
+                Pckn::match_all(),
+                -90.0,
+                Cookie::empty(),
+            );
+            input_events_buffer.push(&gate_event);
+
+            let input_events = InputEvents::from_buffer(&input_events_buffer);
+            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_channels.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
+            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+            }]);
+
+            let mut output_events_buffer = EventBuffer::new();
+            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Falha no process de caso base");
+
+            // A saída deve ter processado o sinal (como não temos modelo carregado, ele faz bypass no modelo interno do pipeline, mas aplica os ganhos)
+            // Esperamos que o ganho seja 1.0 (0dB) após convergência do smoother.
+            // Para as primeiras amostras, o smoother converge a partir do valor inicial 1.0.
+            // Então todas as amostras devem ser aproximadamente 0.5.
+            for (i, &val) in out_l.iter().enumerate().take(n) {
+                assert!(
+                    (val - 0.5).abs() < 1e-4,
+                    "Caso base L amostra {}: {}",
+                    i,
+                    val
+                );
+            }
+        }
+
+        // 2. Modulação: Aplicar modulação de +6dB ao Input Gain.
+        // O smoother deve subir em direção a 6dB (linear ~1.995).
+        {
+            let mut input_events_buffer = EventBuffer::new();
+            // Modula o input gain por +6.0 dB no sample 0
+            let mod_event = ParamModEvent::new(
+                0,
+                ClapId::new(PARAM_INPUT_GAIN),
+                Pckn::match_all(),
+                6.0,
+                Cookie::empty(),
+            );
+            input_events_buffer.push(&mod_event);
+
+            let input_events = InputEvents::from_buffer(&input_events_buffer);
+            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_channels.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
+            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+            }]);
+
+            let mut output_events_buffer = EventBuffer::new();
+            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+            let _guard = TrackingGuard::new();
+            let before = ALLOC_COUNT.load(Ordering::Relaxed);
+
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Falha no process com modulação");
+
+            let after = ALLOC_COUNT.load(Ordering::Relaxed);
+            assert_eq!(
+                after - before,
+                0,
+                "Alocação detectada no process com modulação"
+            );
+
+            // O smoother deve convergir em direção a 1.995 * 0.5 = 0.9975.
+            // Ao final do bloco (amostra 511), o valor deve ter subido significativamente em relação a 0.5.
+            assert!(
+                out_l[n - 1] > 0.6,
+                "Modulação não aplicada, último sample: {}",
+                out_l[n - 1]
+            );
+        }
+
+        // 3. Modulação do Gate: Modular o limiar do gate para um valor extremamente alto, tipo +90dB (fazendo -90 + 90 = 0dB),
+        // o sinal de entrada -6dB estará abaixo do limiar (0dB), silenciando a saída.
+        {
+            let mut input_events_buffer = EventBuffer::new();
+            // Modula o gate threshold por +120dB (trazendo o threshold efetivo para +30dB)
+            let mod_event = ParamModEvent::new(
+                0,
+                ClapId::new(PARAM_GATE_THRESH),
+                Pckn::match_all(),
+                120.0,
+                Cookie::empty(),
+            );
+            input_events_buffer.push(&mod_event);
+
+            let input_events = InputEvents::from_buffer(&input_events_buffer);
+            let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_channels.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            // Reseta a saída para garantir que não restaram valores
+            let mut out_l_gate = vec![0.0f32; n];
+            let mut out_r_gate = vec![0.0f32; n];
+            let output_channels = [out_l_gate.as_mut_slice(), out_r_gate.as_mut_slice()];
+            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+            }]);
+
+            let mut output_events_buffer = EventBuffer::new();
+            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+            // Processa o primeiro bloco contendo o evento de modulação
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Falha no process com modulação do gate");
+
+            // Processa mais 5 blocos sem novos eventos de modulação para permitir que a FSM do gate transicione:
+            // Open -> hold (2048 frames) -> FadingOut (256 frames) -> Closed
+            let empty_events = InputEvents::empty();
+            for _ in 0..5 {
+                out_l_gate.fill(0.0);
+                out_r_gate.fill(0.0);
+
+                let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+                let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                    latency: 0,
+                    channels: AudioPortBufferType::f32_input_only(
+                        input_channels.iter_mut().map(InputChannel::constant),
+                    ),
+                }]);
+
+                let output_channels = [out_l_gate.as_mut_slice(), out_r_gate.as_mut_slice()];
+                let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                    latency: 0,
+                    channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+                }]);
+
+                let mut output_events_buffer = EventBuffer::new();
+                let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+                started_processor
+                    .process(
+                        &input_audio,
+                        &mut output_audio,
+                        &empty_events,
+                        &mut output_events,
+                        None,
+                        None,
+                    )
+                    .expect("Falha no process de blocos subsequentes do gate");
+            }
+
+            // Como o threshold efetivo é 0dB e o sinal é -6dB, o gate deve fechar e silenciar a saída.
+            assert_eq!(
+                out_l_gate[n - 1],
+                0.0,
+                "Gate deveria ter silenciado o sinal na última amostra. Última amostra: {}",
+                out_l_gate[n - 1]
+            );
+        }
+    }
 }

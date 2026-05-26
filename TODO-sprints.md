@@ -104,7 +104,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 **Objetivo:** Elevar o nível de integração do NAM-rs como cidadão de primeira classe no Bitwig Studio, implementando recursos modernos da especificação CLAP que otimizam a automação, modulação e latência sem introduzir incompatibilidades em DAWs simplificadas.
 
-- [ ] **Tarefa 2.1: Suporte a Eventos de Modulação Monofônica (CLAP Parameter Modulation)**
+- [x] **Tarefa 2.1: Suporte a Eventos de Modulação Monofônica (CLAP Parameter Modulation)**
   - **Descrição:** Habilitar a recepção e aplicação de offsets de modulação em tempo real (`CLAP_EVENT_PARAM_MOD`) na thread de áudio. Permite que moduladores nativos do Bitwig (LFOs, Envelopes) modulem parâmetros do NAM-rs (como os ganhos e o gate) sem alterar seus valores base de automação.
   - **Passo a Passo:**
     - Configurar a flag `CLAP_PARAM_IS_MODULATABLE` nas definições de parâmetros em [src/clap/extensions/params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs).

@@ -70,6 +70,12 @@ pub struct NamClapProcessor<'a> {
     gc_tx: Producer<GcItem>,
     /// Buffer de fallback para overflow de GC (overwrite).
     gc_overflow: Arc<GcOverflowBuffer>,
+    /// Offsets de modulação (CLAP Parameter Modulation).
+    mod_input_gain: f32,
+    /// Offsets de modulação (CLAP Parameter Modulation).
+    mod_output_gain: f32,
+    /// Offsets de modulação (CLAP Parameter Modulation).
+    mod_gate_thresh: f32,
 }
 
 impl<'a> NamClapProcessor<'a> {
@@ -196,6 +202,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             gc_tx,
             gc_overflow: Arc::clone(&shared.gc_overflow),
             parking_lot: Default::default(),
+            mod_input_gain: 0.0,
+            mod_output_gain: 0.0,
+            mod_gate_thresh: 0.0,
         })
     }
 
@@ -254,10 +263,12 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 ClapParamPayload::Params(new_params) => {
                     self.params = new_params;
                     // Usa GainLut ao invés de powf() para consistência RT (~2-3 ciclos vs ~20-60).
-                    self.smoother_in
-                        .set_target(lut.db_to_linear(self.params.input_gain_db));
-                    self.smoother_out
-                        .set_target(lut.db_to_linear(self.params.output_gain_db));
+                    self.smoother_in.set_target(
+                        lut.db_to_linear(self.params.input_gain_db + self.mod_input_gain),
+                    );
+                    self.smoother_out.set_target(
+                        lut.db_to_linear(self.params.output_gain_db + self.mod_output_gain),
+                    );
                 }
                 ClapParamPayload::LoadModel(model_pair) => {
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
@@ -274,44 +285,66 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         use crate::clap::extensions::params::{
             PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
         };
-        use clack_plugin::events::event_types::ParamValueEvent;
+        use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 
         for event in events.input {
-            let Some(param_event) = event.as_event::<ParamValueEvent>() else {
-                continue;
-            };
-            let Some(clap_id) = param_event.param_id() else {
-                continue;
-            };
-            let val = param_event.value() as f32;
-            match clap_id.get() {
-                PARAM_INPUT_GAIN => {
-                    self.params.input_gain_db = val;
-                    self.shared
-                        .param_input_gain
-                        .store(val.to_bits(), Ordering::Relaxed);
-                    self.smoother_in.set_target(lut.db_to_linear(val));
+            if let Some(param_event) = event.as_event::<ParamValueEvent>() {
+                let Some(clap_id) = param_event.param_id() else {
+                    continue;
+                };
+                let val = param_event.value() as f32;
+                match clap_id.get() {
+                    PARAM_INPUT_GAIN => {
+                        self.params.input_gain_db = val;
+                        self.shared
+                            .param_input_gain
+                            .store(val.to_bits(), Ordering::Relaxed);
+                        self.smoother_in
+                            .set_target(lut.db_to_linear(val + self.mod_input_gain));
+                    }
+                    PARAM_OUTPUT_GAIN => {
+                        self.params.output_gain_db = val;
+                        self.shared
+                            .param_output_gain
+                            .store(val.to_bits(), Ordering::Relaxed);
+                        self.smoother_out
+                            .set_target(lut.db_to_linear(val + self.mod_output_gain));
+                    }
+                    PARAM_GATE_THRESH => {
+                        self.params.gate_threshold_db = val;
+                        self.shared
+                            .param_gate_thresh
+                            .store(val.to_bits(), Ordering::Relaxed);
+                    }
+                    PARAM_BYPASS => {
+                        self.params.bypass = val > 0.5;
+                        self.shared
+                            .param_bypass
+                            .store(if val > 0.5 { 1 } else { 0 }, Ordering::Relaxed);
+                    }
+                    _ => {}
                 }
-                PARAM_OUTPUT_GAIN => {
-                    self.params.output_gain_db = val;
-                    self.shared
-                        .param_output_gain
-                        .store(val.to_bits(), Ordering::Relaxed);
-                    self.smoother_out.set_target(lut.db_to_linear(val));
+            } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
+                let Some(clap_id) = mod_event.param_id() else {
+                    continue;
+                };
+                let amount = mod_event.amount() as f32;
+                match clap_id.get() {
+                    PARAM_INPUT_GAIN => {
+                        self.mod_input_gain = amount;
+                        self.smoother_in
+                            .set_target(lut.db_to_linear(self.params.input_gain_db + amount));
+                    }
+                    PARAM_OUTPUT_GAIN => {
+                        self.mod_output_gain = amount;
+                        self.smoother_out
+                            .set_target(lut.db_to_linear(self.params.output_gain_db + amount));
+                    }
+                    PARAM_GATE_THRESH => {
+                        self.mod_gate_thresh = amount;
+                    }
+                    _ => {}
                 }
-                PARAM_GATE_THRESH => {
-                    self.params.gate_threshold_db = val;
-                    self.shared
-                        .param_gate_thresh
-                        .store(val.to_bits(), Ordering::Relaxed);
-                }
-                PARAM_BYPASS => {
-                    self.params.bypass = val > 0.5;
-                    self.shared
-                        .param_bypass
-                        .store(if val > 0.5 { 1 } else { 0 }, Ordering::Relaxed);
-                }
-                _ => {}
             }
         }
 
@@ -472,9 +505,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             }
 
             // A LUT já foi obtida acima do loop de ports (linha ~178).
+            let modulated_gate_db = self.params.gate_threshold_db + self.mod_gate_thresh;
             let gate_params = GateParams {
-                threshold_open_db: self.params.gate_threshold_db,
-                threshold_close_db: self.params.gate_threshold_db - 6.0,
+                threshold_open_db: modulated_gate_db,
+                threshold_close_db: modulated_gate_db - 6.0,
                 ..Default::default()
             };
 
@@ -490,10 +524,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 // Decisão técnica: powi(2) é otimizado pelo compilador como
                 // uma simples multiplicação (x * x) — overhead zero. Mantido por clareza semântica
                 // ("quadrado do threshold") ao invés de manual `let x = ...; x * x`.
-                threshold_open_sq: lut.db_to_linear(self.params.gate_threshold_db).powi(2),
-                threshold_close_sq: lut
-                    .db_to_linear(self.params.gate_threshold_db - 6.0)
-                    .powi(2),
+                threshold_open_sq: lut.db_to_linear(modulated_gate_db).powi(2),
+                threshold_close_sq: lut.db_to_linear(modulated_gate_db - 6.0).powi(2),
                 process_mono: &mut self.process_mono,
                 rt_status: &self.rt_status,
                 bridge_ptr: crate::dsp::pipeline::BridgeRef::null(),

@@ -34,7 +34,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             PARAM_INPUT_GAIN => {
                 info.set(&ParamInfo {
                     id: ClapId::new(PARAM_INPUT_GAIN),
-                    flags: ParamInfoFlags::IS_AUTOMATABLE,
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_MODULATABLE,
                     cookie: clack_plugin::utils::Cookie::empty(),
                     name: b"Input Gain",
                     module: b"",
@@ -46,7 +46,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             PARAM_OUTPUT_GAIN => {
                 info.set(&ParamInfo {
                     id: ClapId::new(PARAM_OUTPUT_GAIN),
-                    flags: ParamInfoFlags::IS_AUTOMATABLE,
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_MODULATABLE,
                     cookie: clack_plugin::utils::Cookie::empty(),
                     name: b"Output Gain",
                     module: b"",
@@ -58,7 +58,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             PARAM_GATE_THRESH => {
                 info.set(&ParamInfo {
                     id: ClapId::new(PARAM_GATE_THRESH),
-                    flags: ParamInfoFlags::IS_AUTOMATABLE,
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_MODULATABLE,
                     cookie: clack_plugin::utils::Cookie::empty(),
                     name: b"Gate Threshold",
                     module: b"",
