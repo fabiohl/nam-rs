@@ -3,6 +3,7 @@
 
 //! Implementação da extensão `clap_plugin_gui` para o NAM-rs.
 
+use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
 use crate::clap::plugin::NamClapMainThread;
 use clack_extensions::gui::{
     GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window,
@@ -49,17 +50,17 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         Ok(())
     }
 
-    /// Retorna o tamanho fixo da GUI (600x260 pixels).
+    /// Retorna o tamanho fixo da GUI (GUI_WIDTH x GUI_HEIGHT pixels).
     fn get_size(&mut self) -> Option<GuiSize> {
         Some(GuiSize {
-            width: 600,
-            height: 260,
+            width: GUI_WIDTH,
+            height: GUI_HEIGHT,
         })
     }
 
-    /// Define o tamanho da GUI. Aceita apenas o tamanho fixo 600x260.
+    /// Define o tamanho da GUI. Aceita apenas o tamanho fixo.
     fn set_size(&mut self, size: GuiSize) -> Result<(), PluginError> {
-        if size.width == 600 && size.height == 260 {
+        if size.width == GUI_WIDTH && size.height == GUI_HEIGHT {
             Ok(())
         } else {
             Err(PluginError::Message(
@@ -82,7 +83,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
                 // Título vazio: o host (Bitwig) já exibe o nome do plugin no frame da janela.
                 // Usar um título aqui causaria duplicação: "NAM-rs / NAM-rs Neural Amp Modeler".
                 title: String::new(),
-                size: baseview::Size::new(600.0, 260.0),
+                size: baseview::Size::new(GUI_WIDTH as f64, GUI_HEIGHT as f64),
                 scale: baseview::WindowScalePolicy::SystemScaleFactor,
                 gl_config: Some(baseview::gl::GlConfig::default()),
             };

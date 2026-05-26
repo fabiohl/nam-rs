@@ -11,6 +11,8 @@ use std::time::Instant;
 
 use glow::HasContext;
 
+const SCROLL_LINES_TO_POINTS: f32 = 10.0; // ~10 pixels/linha (heurística baseview→egui)
+
 const VERTEX_SHADER_SRC: &str = r#"#version 330 core
 uniform vec4 u_viewport;
 uniform vec4 u_meter_rect;
@@ -282,8 +284,11 @@ impl NamPluginWindow {
         visuals.selection.bg_fill = egui::Color32::from_rgb(120, 90, 230); // Vibrant purple accent
         egui_ctx.set_visuals(visuals);
 
-        let width = 600;
-        let height = 260;
+        let width = super::GUI_WIDTH;
+        let height = super::GUI_HEIGHT;
+        // TODO(HiDPI): baseview::Window does not expose the current scale_factor() / WindowScalePolicy
+        // in its public API. The scale will be correctly updated on the first WindowEvent::Resized event.
+        // Tracking: nam-rs issue / task "Tarefa 1.5.4" in TODO-sprints.md
         let scale = 1.0f32;
 
         let mut raw_input = egui::RawInput {
@@ -342,12 +347,9 @@ impl WindowHandler for NamPluginWindow {
             info.native_pixels_per_point = Some(self.scale);
         }
 
-        let host_ref: &clack_plugin::host::HostSharedHandle =
-            unsafe { std::mem::transmute(&self.host) };
-
         let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
             egui::CentralPanel::default().show_inside(ui, |ui| {
-                crate::clap::gui::ui::draw_ui(ui, shared, host_ref, &mut self.state);
+                crate::clap::gui::ui::draw_ui(ui, shared, &self.host, &mut self.state);
             });
         });
 
@@ -422,9 +424,10 @@ impl WindowHandler for NamPluginWindow {
                     }
                     MouseEvent::WheelScrolled { delta, modifiers } => {
                         let (unit, delta_vec) = match delta {
-                            ScrollDelta::Lines { x, y } => {
-                                (egui::MouseWheelUnit::Line, egui::vec2(x * 10.0, y * 10.0))
-                            }
+                            ScrollDelta::Lines { x, y } => (
+                                egui::MouseWheelUnit::Line,
+                                egui::vec2(x * SCROLL_LINES_TO_POINTS, y * SCROLL_LINES_TO_POINTS),
+                            ),
                             ScrollDelta::Pixels { x, y } => {
                                 (egui::MouseWheelUnit::Point, egui::vec2(x, y))
                             }

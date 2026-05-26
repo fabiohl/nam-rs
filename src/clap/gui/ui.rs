@@ -5,6 +5,7 @@ use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
 use glow::HasContext;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
@@ -32,6 +33,21 @@ fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
         let blue = (packed & 0xFF) as u8;
         egui::Color32::from_rgba_unmultiplied(red, green, blue, alpha)
     }
+}
+
+/// Cache de locais de variáveis uniformes no shader GLSL do VU meter.
+#[derive(Debug, Clone)]
+pub struct VuUniforms {
+    /// Localização do uniform de viewport.
+    pub loc_viewport: Option<glow::UniformLocation>,
+    /// Localização do uniform do retângulo do medidor.
+    pub loc_meter_rect: Option<glow::UniformLocation>,
+    /// Localização do uniform do valor de pico.
+    pub loc_peak_frac: Option<glow::UniformLocation>,
+    /// Localização do uniform do valor hold.
+    pub loc_hold_frac: Option<glow::UniformLocation>,
+    /// Localização do uniform da cor do hold.
+    pub loc_hold_color_type: Option<glow::UniformLocation>,
 }
 
 /// Estado persistente da interface gráfica entre frames.
@@ -65,6 +81,8 @@ pub struct UiState {
     pub vu_program: Option<glow::Program>,
     /// VAO vazio para draw calls sem buffers.
     pub vu_vao: Option<glow::VertexArray>,
+    /// Cache de locations dos uniforms do shader GLSL do VU meter.
+    pub vu_uniforms: Arc<OnceLock<VuUniforms>>,
     /// Estado compartilhado do medidor esquerdo.
     pub vu_l_state: Option<Arc<VuMeterSharedState>>,
     /// Estado compartilhado do medidor direito.
@@ -104,6 +122,7 @@ impl std::fmt::Debug for UiState {
             .field("telem_overloads", &self.telem_overloads)
             .field("vu_program", &self.vu_program)
             .field("vu_vao", &self.vu_vao)
+            .field("vu_uniforms", &self.vu_uniforms)
             .field("vu_l_state", &self.vu_l_state)
             .field("vu_r_state", &self.vu_r_state)
             .field(
@@ -172,6 +191,7 @@ impl Default for UiState {
             telem_overloads: 0,
             vu_program: None,
             vu_vao: None,
+            vu_uniforms: Arc::new(OnceLock::new()),
             vu_l_state: None,
             vu_r_state: None,
             vu_l_callback: None,
@@ -509,6 +529,7 @@ fn draw_vertical_meter(
     vu_vao: Option<glow::VertexArray>,
     vu_shared_state: &mut Option<Arc<VuMeterSharedState>>,
     vu_callback: &mut Option<Arc<egui_glow::CallbackFn>>,
+    vu_uniforms: Arc<OnceLock<VuUniforms>>,
 ) {
     // Parâmetros visuais — m3: largura aumentada para 16px
     let meter_h = 130.0f32;
@@ -631,6 +652,7 @@ fn draw_vertical_meter(
                 vu_shared_state.get_or_insert_with(|| Arc::new(VuMeterSharedState::default()));
             let callback = vu_callback.get_or_insert_with(|| {
                 let shared_state_capture = Arc::clone(shared_state);
+                let uniforms_capture = Arc::clone(&vu_uniforms);
                 Arc::new(egui_glow::CallbackFn::new(move |info, painter| {
                     let gl = painter.gl();
                     let peak_frac =
@@ -666,20 +688,29 @@ fn draw_vertical_meter(
                         gl.use_program(Some(program));
                         gl.bind_vertex_array(Some(vao));
 
-                        if let Some(loc) = gl.get_uniform_location(program, "u_viewport") {
-                            gl.uniform_4_f32(Some(&loc), vp_left, vp_top, vp_right, vp_bottom);
+                        let uniforms = uniforms_capture.get_or_init(|| VuUniforms {
+                            loc_viewport: gl.get_uniform_location(program, "u_viewport"),
+                            loc_meter_rect: gl.get_uniform_location(program, "u_meter_rect"),
+                            loc_peak_frac: gl.get_uniform_location(program, "u_peak_frac"),
+                            loc_hold_frac: gl.get_uniform_location(program, "u_hold_frac"),
+                            loc_hold_color_type: gl
+                                .get_uniform_location(program, "u_hold_color_type"),
+                        });
+
+                        if let Some(ref loc) = uniforms.loc_viewport {
+                            gl.uniform_4_f32(Some(loc), vp_left, vp_top, vp_right, vp_bottom);
                         }
-                        if let Some(loc) = gl.get_uniform_location(program, "u_meter_rect") {
-                            gl.uniform_4_f32(Some(&loc), p_left, p_top, p_right, p_bottom);
+                        if let Some(ref loc) = uniforms.loc_meter_rect {
+                            gl.uniform_4_f32(Some(loc), p_left, p_top, p_right, p_bottom);
                         }
-                        if let Some(loc) = gl.get_uniform_location(program, "u_peak_frac") {
-                            gl.uniform_1_f32(Some(&loc), peak_frac);
+                        if let Some(ref loc) = uniforms.loc_peak_frac {
+                            gl.uniform_1_f32(Some(loc), peak_frac);
                         }
-                        if let Some(loc) = gl.get_uniform_location(program, "u_hold_frac") {
-                            gl.uniform_1_f32(Some(&loc), hold_frac);
+                        if let Some(ref loc) = uniforms.loc_hold_frac {
+                            gl.uniform_1_f32(Some(loc), hold_frac);
                         }
-                        if let Some(loc) = gl.get_uniform_location(program, "u_hold_color_type") {
-                            gl.uniform_1_i32(Some(&loc), hold_color_type);
+                        if let Some(ref loc) = uniforms.loc_hold_color_type {
+                            gl.uniform_1_i32(Some(loc), hold_color_type);
                         }
 
                         gl.draw_arrays(glow::TRIANGLES, 0, 6);
@@ -1300,6 +1331,7 @@ pub fn draw_ui(
                             state.vu_vao,
                             &mut state.vu_l_state,
                             &mut state.vu_l_callback,
+                            Arc::clone(&state.vu_uniforms),
                         );
                     });
                     ui.add_space(4.0);
@@ -1315,6 +1347,7 @@ pub fn draw_ui(
                             state.vu_vao,
                             &mut state.vu_r_state,
                             &mut state.vu_r_callback,
+                            Arc::clone(&state.vu_uniforms),
                         );
                     });
                 });

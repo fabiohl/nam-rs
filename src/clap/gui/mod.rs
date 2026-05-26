@@ -7,3 +7,8 @@
 pub mod ui;
 /// Janela principal e gerenciador de eventos/desenho com baseview + egui.
 pub mod window;
+
+/// Largura padrão da janela do plugin.
+pub const GUI_WIDTH: u32 = 600;
+/// Altura padrão da janela do plugin.
+pub const GUI_HEIGHT: u32 = 260;
