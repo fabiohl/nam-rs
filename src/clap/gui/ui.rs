@@ -253,7 +253,7 @@ fn knob_widget(
     indication: u8,
     tooltip_suffix: &str,
 ) -> (egui::Response, f32) {
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::drag());
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
     let response = ui.interact(rect, id, egui::Sense::drag());
     ui.memory_mut(|mem| mem.interested_in_focus(id, ui.layer_id()));
 
@@ -555,7 +555,7 @@ fn draw_vertical_meter(
                 if space > 0.0 {
                     ui.add_space(space);
                 }
-                let (r, _) = ui.allocate_exact_size(desired_led, egui::Sense::click());
+                let (r, _) = ui.allocate_exact_size(desired_led, egui::Sense::hover());
                 r
             })
             .inner;
@@ -589,7 +589,7 @@ fn draw_vertical_meter(
                 if space > 0.0 {
                     ui.add_space(space);
                 }
-                let (r, _) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+                let (r, _) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
                 r
             })
             .inner;
@@ -834,7 +834,7 @@ fn handle_bypass(
             if space > 0.0 {
                 ui.add_space(space);
             }
-            let (rect, _) = ui.allocate_exact_size(button_size, egui::Sense::click());
+            let (rect, _) = ui.allocate_exact_size(button_size, egui::Sense::hover());
             ui.interact(rect, id, egui::Sense::click())
         })
         .inner;
