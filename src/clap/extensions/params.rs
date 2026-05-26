@@ -189,6 +189,11 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
         }
     }
 
+    /// Processa eventos de parâmetros recebidos do host enquanto o processamento está inativo.
+    ///
+    /// Este método é chamado pela Main Thread quando não há `AudioProcessor` ativo.
+    /// Atualiza tanto os parâmetros locais quanto os atômicos compartilhados, e
+    /// envia o snapshot atualizado para a Audio Thread via canal SPSC.
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
         // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
         self.shared.write_gui_events(output);
@@ -240,7 +245,25 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
     }
 }
 
+/// Implementação de `PluginAudioProcessorParams` para a Audio Thread.
+///
+/// # Design: Duplicação Intencional
+///
+/// O parsing de eventos de parâmetros aqui é estruturalmente idêntico ao de
+/// `PluginMainThreadParams::flush()` acima. Esta duplicação é **intencional**:
+///
+/// - **Main Thread flush()**: Atualiza `self.params` + atômicos + envia snapshot via SPSC
+///   (necessário porque a Audio Thread pode não estar ativa).
+/// - **Audio Thread flush()**: Atualiza `self.params` + atômicos + sincroniza parâmetros
+///   vindos da GUI via leitura direta dos atômicos (sem SPSC, pois já estamos na Audio Thread).
+///
+/// Extrair uma helper comum seria possível mas adicionaria indireção desnecessária
+/// e complicaria os lifetimes do `self` mutável em cada contexto.
 impl PluginAudioProcessorParams for NamClapProcessor<'_> {
+    /// Processa eventos de parâmetros na Audio Thread quando `process()` não está sendo chamado.
+    ///
+    /// Além de aplicar eventos do host, este método também sincroniza parâmetros
+    /// que foram alterados pela GUI diretamente nos atômicos compartilhados.
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
         // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
         self.shared.write_gui_events(output);
@@ -285,7 +308,11 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             }
         }
 
-        // Sincroniza parâmetros alterados via GUI que não foram ecoados como eventos de entrada pelo host.
+        // ── Sincronização GUI → Audio Thread ───────────────────────────────────
+        // A GUI escreve diretamente nos atômicos de `NamClapShared` (ex: `param_input_gain`).
+        // O host pode não ecoar essas mudanças como eventos de entrada neste ciclo.
+        // Aqui, lemos os atômicos e atualizamos `self.params` se houver divergência.
+        // Isso garante que o próximo `process()` use valores atualizados.
         let shared_in_db = f32::from_bits(
             self.shared
                 .param_input_gain

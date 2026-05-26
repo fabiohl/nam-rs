@@ -18,13 +18,13 @@
     * Executável standalone compila e todos os testes unitários/integração integrados passam com status de sucesso.
     * Desempenho do benchmark DSP de inferência e resampling standalone mantido com variação máxima tolerada de ±2% em comparação ao baseline pré-sprint.
 
-* [ ] **Tarefa 1.2** — Revisão Crítica de Todo Código CLAP Adicionado
+* [x] **Tarefa 1.2** — Revisão Crítica de Todo Código CLAP Adicionado
   * **Contexto:**
-    Ao longo das sprints rápidas, múltiplos módulos foram criados em `src/clap/`. É imperativo realizar uma auditoria rigorosa baseada nas Diretrizes Técnicas e de Performance para garantir coesão arquitetural, nomenclatura aderente à convenção do Rust, ausência de vazamento de memória e que todas as operações no hot-path obedeçam às garantias de RT-Safety (ex: zero blocos de lock, zero heap drops indiretos e tratamento seguro de concorrência).
+    Ao longo das sprints rápidas, múltiplos módulos foram criados em `src/clap/`. É imperativo realizar uma auditoria rigorosa baseada nas Diretrizes Técnicas e de Performance para garantir coesão arquitetural, nomenclatura aderente à convenção do Rust, ausência de vazamento de memória e que todas as operações no hot-path obedeçam às garantias de RT-Safety (ex: zero blocos de lock, zero heap drops indiretos e tratamento seguro de concorrência) - dentre outras coisas.
   * **Ações Humanas:**
-    1. Skill `revisor-auditor` focado exclusivamente na pasta `src/clap/`. Demais pastas apenas nas' suas realações com `src/clap/`.
+    1. Skill `revisor-auditor` focado exclusivamente na pasta `src/clap/`. Demais pastas apenas nas suas realações com `src/clap/`.
     2. Revisão completa do `README.md` e do `docs/*.md` para refletir o estado real do código.
-    3. Leitura humana o código em `src/clap/` e assegurar completa cobertura de docsys e comentários inline no código fonte.
+    3. Revisão crítica do código em `src/clap/` e assegurar completa cobertura de docsys e comentários inline no código fonte.
 
 ---
 

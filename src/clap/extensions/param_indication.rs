@@ -19,6 +19,10 @@ pub const INDICATION_AUTOMATING: u8 = 1 << 1;
 pub const INDICATION_OVERRIDING: u8 = 1 << 2;
 
 impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
+    /// Informa ao plugin que um parâmetro possui (ou não) mapeamento ativo no host.
+    ///
+    /// Atualiza o bit `INDICATION_MAPPED` e armazena a cor ARGB empacotada
+    /// nos atômicos compartilhados para leitura pela GUI thread.
     fn set_mapping(
         &mut self,
         param_id: ClapId,
@@ -28,7 +32,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         _description: Option<&CStr>,
     ) {
         let idx = param_id.get() as usize;
-        if idx < 5 {
+        if idx < self.shared.param_indication.len() {
             let atomic_val = &self.shared.param_indication[idx];
             if has_mapping {
                 atomic_val.fetch_or(INDICATION_MAPPED, Ordering::Relaxed);
@@ -47,6 +51,11 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         }
     }
 
+    /// Informa ao plugin o estado de automação de um parâmetro (None/Present/Playing/Recording/Overriding).
+    ///
+    /// Atualiza os bits `INDICATION_AUTOMATING` e `INDICATION_OVERRIDING`,
+    /// garantindo exclusão mútua entre os dois estados. A cor fornecida pelo host
+    /// é armazenada para uso pela GUI na renderização dos halos de automação.
     fn set_automation(
         &mut self,
         param_id: ClapId,
@@ -54,7 +63,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         color: Option<Color>,
     ) {
         let idx = param_id.get() as usize;
-        if idx < 5 {
+        if idx < self.shared.param_indication.len() {
             let atomic_val = &self.shared.param_indication[idx];
             match automation_state {
                 ParamIndicationAutomation::None | ParamIndicationAutomation::Present => {

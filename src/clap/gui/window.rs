@@ -13,6 +13,12 @@ use glow::HasContext;
 
 const SCROLL_LINES_TO_POINTS: f32 = 10.0; // ~10 pixels/linha (heurística baseview→egui)
 
+/// Shader GLSL de vértices para o medidor VU.
+///
+/// Geometria: gera um quad (2 triângulos, 6 vértices) a partir dos uniforms `u_viewport` e
+/// `u_meter_rect`. As coordenadas do retângulo do medidor são convertidas para NDC (Normalized
+/// Device Coordinates) usando o viewport do egui. O atributo `v_uv` (0→1 em ambos os eixos)
+/// é interpolado para uso no fragment shader.
 const VERTEX_SHADER_SRC: &str = r#"#version 330 core
 uniform vec4 u_viewport;
 uniform vec4 u_meter_rect;
@@ -56,6 +62,16 @@ void main() {
 }
 "#;
 
+/// Shader GLSL de fragmento para o medidor VU.
+///
+/// Implementa um medidor vertical com gradiente tricolor baseado em thresholds de dB:
+/// - **Verde** (`COL_VU_GREEN`): até `green_frac` (≈ -12 dBFS → 48/66 do range)
+/// - **Amarelo** (`COL_VU_YELLOW`): de `green_frac` até `yellow_frac` (≈ -3 dBFS → 57/66)
+/// - **Vermelho** (`COL_VU_RED`): acima de `yellow_frac`
+///
+/// O indicador de peak hold é renderizado como uma linha horizontal fina (1.5px)
+/// na posição `u_hold_frac`, colorida conforme `u_hold_color_type` (0=verde, 1=amarelo, 2=vermelho).
+/// Cantos arredondados (raio 1.5px) são aplicados via distance field no espaço de textura.
 const FRAGMENT_SHADER_SRC: &str = r#"#version 330 core
 precision mediump float;
 in vec2 v_uv;
@@ -128,6 +144,11 @@ void main() {
 }
 "#;
 
+/// Compila e linka um programa OpenGL a partir de fontes GLSL de vértice e fragmento.
+///
+/// Em caso de erro de compilação ou linkagem, todos os recursos parciais (shaders, programa)
+/// são limpos antes de retornar o erro. Os shaders são desanexados e deletados após a
+/// linkagem bem-sucedida, conforme boas práticas de OpenGL.
 fn compile_shader_program(
     gl: &glow::Context,
     vertex_source: &str,
@@ -181,6 +202,10 @@ fn compile_shader_program(
 
 use crate::clap::plugin::NamClapSharedRef;
 
+/// Verifica se os dados de drag-and-drop contêm um arquivo de modelo NAM válido.
+///
+/// Aceita arquivos com extensão `.nam` (JSON) ou `.namb` (binário compacto).
+/// Retorna o `PathBuf` do primeiro arquivo válido encontrado, ou `None`.
 fn get_valid_model_file(data: &DropData) -> Option<PathBuf> {
     if let DropData::Files(files) = data {
         for file in files {
@@ -374,6 +399,11 @@ impl WindowHandler for NamPluginWindow {
         }
     }
 
+    /// Processa eventos de janela (mouse, teclado, redimensionamento, drag-and-drop).
+    ///
+    /// Converte eventos do baseview para o formato `egui::RawInput` que será consumido
+    /// no próximo `on_frame()`. Para drag-and-drop de modelos NAM, comunica diretamente
+    /// com o `NamClapShared` para enfileirar o carregamento via `ui_pending_model`.
     fn on_event(&mut self, _window: &mut Window, event: Event) -> EventStatus {
         match event {
             Event::Window(WindowEvent::Resized(window_info)) => {
@@ -505,6 +535,7 @@ impl WindowHandler for NamPluginWindow {
     }
 }
 
+/// Mapeia botões do mouse baseview → egui.
 fn map_mouse_button(button: MouseButton) -> Option<egui::PointerButton> {
     match button {
         MouseButton::Left => Some(egui::PointerButton::Primary),
@@ -514,6 +545,10 @@ fn map_mouse_button(button: MouseButton) -> Option<egui::PointerButton> {
     }
 }
 
+/// Mapeia modificadores de teclado baseview → egui.
+///
+/// No Linux, `META` (Super/Win) é mapeado tanto para `mac_cmd` quanto para `command`,
+/// mantendo compatibilidade com atalhos multiplataforma do egui.
 fn map_modifiers(mods: keyboard_types::Modifiers) -> egui::Modifiers {
     egui::Modifiers {
         alt: mods.contains(keyboard_types::Modifiers::ALT),
@@ -525,6 +560,10 @@ fn map_modifiers(mods: keyboard_types::Modifiers) -> egui::Modifiers {
     }
 }
 
+/// Converte um evento de teclado baseview em um `egui::Event::Key`.
+///
+/// Mapeia teclas de navegação (setas, Tab, Enter, etc.), letras (a-z), dígitos (0-9)
+/// e espaço. Teclas não mapeadas (F-keys, teclas especiais) retornam `None` e são ignoradas.
 fn map_keyboard_event(key_event: &keyboard_types::KeyboardEvent) -> Option<egui::Event> {
     let pressed = match key_event.state {
         keyboard_types::KeyState::Down => true,

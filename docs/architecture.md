@@ -129,7 +129,7 @@ graph TD
 
 ## 4. Estrutura de Módulos (Organização Tripartida)
 
-A partir da v1.5, o NAM-rs adota uma estrutura modular clara para suportar múltiplos hosts (Standalone/PipeWire e Plugin/CLAP) sem poluição de dependências:
+A partir da v1.4, o NAM-rs adota uma estrutura modular clara para suportar múltiplos hosts (Standalone/PipeWire e Plugin/CLAP) sem poluição de dependências:
 
 | Camada                             | Sub-módulos                                            | Responsabilidade                                                                                                       |
 |:---------------------------------- |:------------------------------------------------------ |:---------------------------------------------------------------------------------------------------------------------- |
@@ -265,7 +265,7 @@ Estamos acompanhando a evolução do trabalho de [Steven Atkinson](https://githu
 
 ## 8. Integração com DAWs (CLAP Integration)
 
-A arquitetura do NAM-rs v1.5.0-alpha já suporta o desacoplamento necessário para execução como plugin CLAP (Clever Audio Plug-in), permitindo o uso em DAWs (Digital Audio Workstations).
+A arquitetura do NAM-rs suporta o desacoplamento necessário para execução como plugin CLAP (Clever Audio Plug-in), permitindo o uso em DAWs (Digital Audio Workstations).
 
 - **Trait `AudioHost`:** Define a interface agnóstica de comunicação entre o motor DSP e o host. Localizado em `src/common/audio_host.rs`.
 - **Feature Flags:** O build é controlado por flags (`standalone` vs `clap-plugin`), garantindo que dependências de sistema (como `pipewire`) sejam removidas no binário do plugin para máxima portabilidade.
@@ -369,21 +369,21 @@ A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente i
 ┌────────────────────────────────────────────────┐
 │                  NAM-rs GUI                    │
 │              (egui + egui_glow)                │
-│         Lógica de UI 100% agnóstica            │
+│    draw_ui() — Lógica de UI 100% agnóstica    │
 ├────────────────────────────────────────────────┤
-│            Window Abstraction Layer            │
-│    trait NamWindow { create, show, events... } │
+│       NamPluginWindow (WindowHandler)          │
+│   Tradução baseview events → egui::RawInput   │
+│   Renderização via egui_glow::Painter + glow  │
 ├────────────────────────────────────────────────┤
 │                  Backend X11                   │
-│   (baseview - raw-window-handle 0.5 -> 0.6)    │
+│   (baseview - raw-window-handle 0.5 → 0.6)    │
 │           X11 Puro / XWayland nativo           │
 └────────────────────────────────────────────────┘
 ```
 
 - **Backend X11:** O plugin declara suporte exclusivo a `CLAP_WINDOW_API_X11`.
 - **Stack:** A stack gráfica utiliza `egui v0.34` e `glow v0.17`, com tradução de handles de janela (`raw-window-handle 0.5` do host para `0.6` do `egui`/`baseview`) na inicialização.
-
-> **Referência:** A pesquisa inicial sobre as limitações e experimentos de Wayland nativo in-process está registrada de forma histórica no documento arquivado [lab-gui-wayland.md](file:///home/fabio/nam-rs/docs/lab-gui-wayland.md).
+- **Implementação:** A struct `NamPluginWindow` implementa diretamente a trait `baseview::WindowHandler`, traduzindo eventos de mouse, teclado e drag-and-drop para `egui::RawInput` sem camada de abstração intermediária.
 
 #### Stack Tecnológico
 

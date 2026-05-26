@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-
+//! Interface gráfica do plugin NAM-rs renderizada via `egui` + `egui_glow`.
+//!
+//! Este módulo implementa toda a renderização da GUI do plugin CLAP,
+//! organizada em 5 zonas visuais:
+//!
+//! - **Zona 1** (esquerda): Identidade — logo, versão, badge SIMD, botão de carga de modelo
+//! - **Zona 2** (centro): Controles — knobs de Input Gain, Output Gain e Gate Threshold
+//! - **Zona 3** (direita): Medidores VU stereo com peak hold e LEDs de clipping
+//! - **Zona 4** (extrema direita): Toggle de Bypass com LED de status
+//! - **Zona 5** (footer): Status bar com sample rate, latência, carga DSP e telemetria
+//!
+//! A comunicação com o estado do plugin é feita inteiramente via atômicos
+//! em `NamClapShared`, sem locks no caminho de renderização.
 use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
 use glow::HasContext;
@@ -22,6 +34,11 @@ const COL_VU_YELLOW: egui::Color32 = egui::Color32::from_rgb(245, 206, 98); // #
 const COL_VU_RED: egui::Color32 = egui::Color32::from_rgb(247, 78, 78); // #F74E4E
 const COL_BYPASS_OFF: egui::Color32 = egui::Color32::from_rgb(74, 79, 90); // #4A4F5A
 
+/// Resolve a cor de accent dinâmica do plugin.
+///
+/// Primeiro tenta usar a cor da track fornecida pelo host DAW (armazenada em
+/// `track_accent_color` como ARGB empacotado). Se `alpha == 0` (sentinela de
+/// "sem cor"), retorna `COL_ACCENT` (turquesa padrão).
 fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
     let packed = shared.track_accent_color.load(Ordering::Relaxed);
     let alpha = (packed >> 24) as u8;
@@ -35,6 +52,10 @@ fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
     }
 }
 
+/// Resolve uma cor ARGB empacotada em u32 para `egui::Color32`, com fallback.
+///
+/// Segue a mesma convenção de `resolve_accent`: `alpha == 0` indica ausência
+/// de cor e retorna o fallback fornecido.
 fn resolve_color(packed: u32, fallback: egui::Color32) -> egui::Color32 {
     let alpha = (packed >> 24) as u8;
     if alpha == 0 {
@@ -328,7 +349,9 @@ fn knob_widget(
     let angle_end = 135.0f32.to_radians();
     let angle = angle_start + frac * (angle_end - angle_start);
 
-    // Halo de mapeamento (A.3): 6 pontos coloridos (baseados na indicação ou fallback) espaçados uniformemente
+    // Halo de mapeamento (A.3): 6 pontos coloridos ao redor do knob indicando que o
+    // parâmetro está mapeado a um controle remoto no host. O bit 0 de `indication`
+    // corresponde a `INDICATION_MAPPED`. A cor vem do host via `param_indication_color`.
     if indication & 1 != 0 {
         let dot_color = indication_color;
         let halo_radius = radius + 5.0;
@@ -351,7 +374,9 @@ fn knob_widget(
         color
     };
 
-    // Pulsação de automação (A.3: modulating alpha de 0.3 a 1.0)
+    // Pulsação de automação (A.3): quando o bit 1 (`INDICATION_AUTOMATING`) está setado,
+    // modula o alpha da cor do arco de 0.3 a 1.0 usando uma onda senoidal no tempo,
+    // criando um efeito visual de "respiração" que indica automação ativa.
     if indication & 2 != 0 {
         let time = ui.input(|i| i.time) as f32;
         let pulse = (time * std::f32::consts::PI).sin().abs();
@@ -982,6 +1007,22 @@ fn styled_vsep(ui: &mut egui::Ui) {
 }
 
 /// Desenha os componentes e o layout de 5 zonas da interface gráfica do NAM-rs.
+///
+/// Esta é a função principal de renderização da GUI, chamada a cada frame pelo
+/// `NamPluginWindow::on_frame()`. Lê o estado compartilhado via atômicos e
+/// escreve alterações de parâmetros de volta nos atômicos + solicita flush ao host.
+///
+/// # Layout
+///
+/// ```text
+/// ┌─────────┬────────────────┬───────┬──────┐
+/// │  ZONA 1  │    ZONA 2        │ ZONA 3  │ ZONA 4 │
+/// │  Logo    │  Input  Out Gate │  VU L R │ Bypass │
+/// │  Model   │  Knobs           │  Meters │ Switch │
+/// ├─────────┴────────────────┴───────┴──────┤
+/// │            ZONA 5: Status Bar              │
+/// └─────────────────────────────────────────┘
+/// ```
 pub fn draw_ui(
     ui: &mut egui::Ui,
     shared: &NamClapShared,
@@ -1089,6 +1130,18 @@ pub fn draw_ui(
                     });
                 }
 
+                // ── File Picker (Load Model): Thread Architecture ─────────────
+                // O carregamento de modelo usa uma arquitetura de 3 threads:
+                //
+                // 1. GUI Thread (aqui): Verifica a flag `ui_loading`, captura ponteiros.
+                // 2. Picker Manager Thread: Coordena o timeout de 120s e verifica `alive_fence`.
+                // 3. Dialog Runner Thread: Executa `rfd::FileDialog` (bloqueante, XDG portal).
+                //
+                // A separção em 3 threads garante que:
+                // - A GUI não trava enquanto o diálogo está aberto.
+                // - O timeout de 120s protege contra portais XDG travados.
+                // - O `alive_fence` evita acesso a memória após destruição do plugin.
+                //
                 // A1+A2 FIX: usar NamClapSharedRef (já Send+Sync) como endereço usize é a única
                 // forma viável dado que NamClapShared tem lifetime gerenciado pelo framework CLAP.
                 // A flag `ui_loading` garante que a janela espera o resultado antes de fechar —
@@ -1645,7 +1698,12 @@ pub fn draw_ui(
             });
     }
 
-    // Programmatic Tab Order focus management
+    // ── Programmatic Tab Order Focus Management ───────────────────────────
+    // O egui não tem suporte nativo a tab order entre widgets customizados.
+    // Aqui, interceptamos o evento Tab (antes que o egui o processe) e movemos
+    // o foco manualmente entre os 5 controles interativos do plugin:
+    // [Input Knob] → [Output Knob] → [Gate Knob] → [Bypass Switch] → [Load Button]
+    // Shift+Tab inverte a direção. O ciclo é circular (wraparound).
     let load_btn_id = load_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_model_button"));
     let controls = [
         ui.make_persistent_id("input_gain_knob"),

@@ -6,7 +6,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
-> ⚠️ **Standalone PipeWire:** STABLE (v1.4.4) | **CLAP Plugin:** IN DEVELOPMENT (alpha)
+> ⚠️ **Standalone PipeWire:** STABLE | **CLAP Plugin:** BETA (GUI completa, 8 extensões)
 
 **NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
 
@@ -33,7 +33,7 @@ NAM-rs can be compiled in two main modes via *feature flags*:
    cargo build --release --features standalone
    ```
 
-2. **CLAP Plugin (alpha):** `.so` library for use in DAWs (such as REAPER, Bitwig Studio, Fender Studio Pro, etc.). Active development (alpha).
+2. **CLAP Plugin (beta):** `.so` library for use in DAWs (such as REAPER, Bitwig Studio, Fender Studio Pro, etc.). Full GUI with knobs, VU meters, drag-and-drop model loading, telemetry, and 8 CLAP extensions.
 
    ```bash
    # CLAP Plugin build
