@@ -23,7 +23,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         &mut self,
         param_id: ClapId,
         has_mapping: bool,
-        _color: Option<Color>,
+        color: Option<Color>,
         _label: Option<&CStr>,
         _description: Option<&CStr>,
     ) {
@@ -32,8 +32,17 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
             let atomic_val = &self.shared.param_indication[idx];
             if has_mapping {
                 atomic_val.fetch_or(INDICATION_MAPPED, Ordering::Relaxed);
+                if let Some(c) = color {
+                    let packed = crate::clap::extensions::track_info::pack_argb(
+                        c.alpha, c.red, c.green, c.blue,
+                    );
+                    self.shared.param_indication_color[idx].store(packed, Ordering::Relaxed);
+                } else {
+                    self.shared.param_indication_color[idx].store(0, Ordering::Relaxed);
+                }
             } else {
                 atomic_val.fetch_and(!INDICATION_MAPPED, Ordering::Relaxed);
+                self.shared.param_indication_color[idx].store(0, Ordering::Relaxed);
             }
         }
     }
@@ -42,7 +51,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         &mut self,
         param_id: ClapId,
         automation_state: ParamIndicationAutomation,
-        _color: Option<Color>,
+        color: Option<Color>,
     ) {
         let idx = param_id.get() as usize;
         if idx < 5 {
@@ -53,14 +62,27 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
                         !(INDICATION_AUTOMATING | INDICATION_OVERRIDING),
                         Ordering::Relaxed,
                     );
+                    self.shared.param_indication_color[idx].store(0, Ordering::Relaxed);
                 }
                 ParamIndicationAutomation::Playing | ParamIndicationAutomation::Recording => {
                     atomic_val.fetch_or(INDICATION_AUTOMATING, Ordering::Relaxed);
                     atomic_val.fetch_and(!INDICATION_OVERRIDING, Ordering::Relaxed);
+                    if let Some(c) = color {
+                        let packed = crate::clap::extensions::track_info::pack_argb(
+                            c.alpha, c.red, c.green, c.blue,
+                        );
+                        self.shared.param_indication_color[idx].store(packed, Ordering::Relaxed);
+                    }
                 }
                 ParamIndicationAutomation::Overriding => {
                     atomic_val.fetch_or(INDICATION_OVERRIDING, Ordering::Relaxed);
                     atomic_val.fetch_and(!INDICATION_AUTOMATING, Ordering::Relaxed);
+                    if let Some(c) = color {
+                        let packed = crate::clap::extensions::track_info::pack_argb(
+                            c.alpha, c.red, c.green, c.blue,
+                        );
+                        self.shared.param_indication_color[idx].store(packed, Ordering::Relaxed);
+                    }
                 }
             }
         }

@@ -35,6 +35,18 @@ fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
     }
 }
 
+fn resolve_color(packed: u32, fallback: egui::Color32) -> egui::Color32 {
+    let alpha = (packed >> 24) as u8;
+    if alpha == 0 {
+        fallback
+    } else {
+        let red = ((packed >> 16) & 0xFF) as u8;
+        let green = ((packed >> 8) & 0xFF) as u8;
+        let blue = (packed & 0xFF) as u8;
+        egui::Color32::from_rgba_unmultiplied(red, green, blue, alpha)
+    }
+}
+
 /// Cache de locais de variáveis uniformes no shader GLSL do VU meter.
 #[derive(Debug, Clone)]
 pub struct VuUniforms {
@@ -251,6 +263,7 @@ fn knob_widget(
     color: egui::Color32,
     accent_color: egui::Color32,
     indication: u8,
+    indication_color: egui::Color32,
     tooltip_suffix: &str,
 ) -> (egui::Response, f32) {
     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
@@ -315,9 +328,9 @@ fn knob_widget(
     let angle_end = 135.0f32.to_radians();
     let angle = angle_start + frac * (angle_end - angle_start);
 
-    // Halo de mapeamento (A.3): 6 pontos azuis (#5e81ac) espaçados uniformemente
+    // Halo de mapeamento (A.3): 6 pontos coloridos (baseados na indicação ou fallback) espaçados uniformemente
     if indication & 1 != 0 {
-        let dot_color = egui::Color32::from_rgb(94, 129, 172); // #5e81ac
+        let dot_color = indication_color;
         let halo_radius = radius + 5.0;
         for i in 0..6 {
             let a = (i as f32) * (std::f32::consts::TAU / 6.0);
@@ -332,6 +345,8 @@ fn knob_widget(
     // Determina a cor base do arco de valor ativo (A.3: override vira COL_AMBER)
     let mut active_arc_color = if indication & 4 != 0 {
         COL_AMBER
+    } else if indication & 2 != 0 {
+        indication_color
     } else {
         color
     };
@@ -433,6 +448,7 @@ fn handle_knob(
     host: &HostSharedHandle,
     knob_size: egui::Vec2,
     indication: u8,
+    indication_color: egui::Color32,
     tooltip_suffix: &str,
 ) {
     ui.vertical(|ui| {
@@ -455,6 +471,7 @@ fn handle_knob(
                         color,
                         accent_color,
                         indication,
+                        indication_color,
                         tooltip_suffix,
                     )
                 })
@@ -823,6 +840,7 @@ fn handle_bypass(
     accent_color: egui::Color32,
     host: &HostSharedHandle,
     indication: u8,
+    indication_color: egui::Color32,
 ) {
     let current_bypass = atomic_val.load(Ordering::Relaxed) != 0;
     let button_size = egui::vec2(32.0, 56.0);
@@ -918,9 +936,9 @@ fn handle_bypass(
         painter.rect_filled(led_rect.expand(3.0), 4.0, glow);
     }
 
-    // Halo de mapeamento (A.3): 4 dots azuis (#5e81ac) nos cantos do botão quando IS_MAPPED
+    // Halo de mapeamento (A.3): 4 dots nos cantos do botão quando IS_MAPPED
     if indication & 1 != 0 {
-        let dot_color = egui::Color32::from_rgb(94, 129, 172); // #5e81ac
+        let dot_color = indication_color;
         let corners = [
             rect.left_top() + egui::vec2(4.0, 4.0),
             rect.right_top() + egui::vec2(-4.0, 4.0),
@@ -1230,12 +1248,32 @@ pub fn draw_ui(
                 let ind_input = shared.param_indication
                     [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
                     .load(Ordering::Relaxed);
+                let ind_input_color = resolve_color(
+                    shared.param_indication_color
+                        [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
+                        .load(Ordering::Relaxed),
+                    egui::Color32::from_rgb(94, 129, 172),
+                );
+
                 let ind_output = shared.param_indication
                     [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
                     .load(Ordering::Relaxed);
+                let ind_output_color = resolve_color(
+                    shared.param_indication_color
+                        [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
+                        .load(Ordering::Relaxed),
+                    egui::Color32::from_rgb(94, 129, 172),
+                );
+
                 let ind_gate = shared.param_indication
                     [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
                     .load(Ordering::Relaxed);
+                let ind_gate_color = resolve_color(
+                    shared.param_indication_color
+                        [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
+                        .load(Ordering::Relaxed),
+                    egui::Color32::from_rgb(94, 129, 172),
+                );
 
                 ui.horizontal(|ui| {
                     // INPUT — knob grande, C2: 70×70
@@ -1256,6 +1294,7 @@ pub fn draw_ui(
                             host,
                             egui::vec2(70.0, 70.0),
                             ind_input,
+                            ind_input_color,
                             " dB",
                         );
                     });
@@ -1278,6 +1317,7 @@ pub fn draw_ui(
                             host,
                             egui::vec2(70.0, 70.0),
                             ind_output,
+                            ind_output_color,
                             " dB",
                         );
                     });
@@ -1299,6 +1339,7 @@ pub fn draw_ui(
                             host,
                             egui::vec2(42.0, 42.0),
                             ind_gate,
+                            ind_gate_color,
                             " dB (Threshold)",
                         );
                     });
@@ -1364,6 +1405,12 @@ pub fn draw_ui(
                 let ind_bypass = shared.param_indication
                     [crate::clap::extensions::params::PARAM_BYPASS as usize]
                     .load(Ordering::Relaxed);
+                let ind_bypass_color = resolve_color(
+                    shared.param_indication_color
+                        [crate::clap::extensions::params::PARAM_BYPASS as usize]
+                        .load(Ordering::Relaxed),
+                    egui::Color32::from_rgb(94, 129, 172),
+                );
                 let bypass_id = ui.make_persistent_id("bypass_switch");
                 handle_bypass(
                     ui,
@@ -1375,6 +1422,7 @@ pub fn draw_ui(
                     accent_color,
                     host,
                     ind_bypass,
+                    ind_bypass_color,
                 );
             });
         });

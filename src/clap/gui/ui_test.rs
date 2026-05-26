@@ -43,6 +43,13 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
             std::sync::atomic::AtomicU8::new(0),
             std::sync::atomic::AtomicU8::new(0),
         ],
+        param_indication_color: [
+            std::sync::atomic::AtomicU32::new(0),
+            std::sync::atomic::AtomicU32::new(0),
+            std::sync::atomic::AtomicU32::new(0),
+            std::sync::atomic::AtomicU32::new(0),
+            std::sync::atomic::AtomicU32::new(0),
+        ],
         model_load_counter: AtomicU32::new(0),
         gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
         gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
@@ -99,6 +106,21 @@ fn test_track_color_conversion_and_fallback() {
     assert_eq!(
         resolve_accent(&shared_bitwig),
         egui::Color32::from_rgb(0x5E, 0x81, 0xAC)
+    );
+}
+
+#[test]
+fn test_resolve_color() {
+    let fallback = egui::Color32::BLUE;
+
+    // 1. Fallback (alpha == 0)
+    assert_eq!(resolve_color(0, fallback), fallback);
+
+    // 2. Parsed color (alpha != 0)
+    let packed = crate::clap::extensions::track_info::pack_argb(0xFF, 0xFF, 0x00, 0x00); // Red
+    assert_eq!(
+        resolve_color(packed, fallback),
+        egui::Color32::from_rgb(255, 0, 0)
     );
 }
 
@@ -164,6 +186,7 @@ fn test_knob_tooltip_suffixes() {
                 color,
                 color,
                 indication,
+                egui::Color32::from_rgb(94, 129, 172),
                 " dB",
             );
             assert_eq!(new_val_db, value);
@@ -178,6 +201,7 @@ fn test_knob_tooltip_suffixes() {
                 color,
                 color,
                 indication,
+                egui::Color32::from_rgb(94, 129, 172),
                 " dB (Threshold)",
             );
             assert_eq!(new_val_threshold, value);
@@ -259,6 +283,7 @@ fn test_knob_keyboard_navigation() {
                 color,
                 accent_color,
                 0,
+                egui::Color32::from_rgb(94, 129, 172),
                 " dB",
             );
             state = val;
@@ -286,6 +311,7 @@ fn test_knob_keyboard_navigation() {
                 color,
                 accent_color,
                 0,
+                egui::Color32::from_rgb(94, 129, 172),
                 " dB",
             );
             state = val;
@@ -317,6 +343,7 @@ fn test_knob_keyboard_navigation() {
                 color,
                 accent_color,
                 0,
+                egui::Color32::from_rgb(94, 129, 172),
                 " dB",
             );
             state = val;
@@ -351,6 +378,7 @@ fn test_bypass_keyboard_trigger() {
                 egui::Color32::GREEN,
                 &host,
                 0,
+                egui::Color32::from_rgb(94, 129, 172),
             );
             ui.memory_mut(|mem| mem.request_focus(id));
         });
@@ -377,6 +405,7 @@ fn test_bypass_keyboard_trigger() {
                 egui::Color32::GREEN,
                 &host,
                 0,
+                egui::Color32::from_rgb(94, 129, 172),
             );
         });
     });

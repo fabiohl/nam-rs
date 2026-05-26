@@ -88,6 +88,8 @@ pub struct NamClapShared {
     /// Indicação de parâmetros (mapeamento, automação e override) para os 5 parâmetros.
     /// Bit 0: Mapeado, Bit 1: Automatizando, Bit 2: Override.
     pub param_indication: [std::sync::atomic::AtomicU8; 5],
+    /// Cores dos parâmetros indicados/mapeados (ARGB compactado).
+    pub param_indication_color: [std::sync::atomic::AtomicU32; 5],
     /// Contador de carregamentos de modelo (incrementado a cada modelo carregado com sucesso).
     pub model_load_counter: AtomicU32,
     /// Fence de vida útil: true enquanto o plugin existe. Verificado pela thread do File Picker.
@@ -478,6 +480,13 @@ impl DefaultPluginFactory for NamClapPlugin {
                 std::sync::atomic::AtomicU8::new(0),
                 std::sync::atomic::AtomicU8::new(0),
                 std::sync::atomic::AtomicU8::new(0),
+            ],
+            param_indication_color: [
+                std::sync::atomic::AtomicU32::new(0),
+                std::sync::atomic::AtomicU32::new(0),
+                std::sync::atomic::AtomicU32::new(0),
+                std::sync::atomic::AtomicU32::new(0),
+                std::sync::atomic::AtomicU32::new(0),
             ],
             model_load_counter: AtomicU32::new(0),
             alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
