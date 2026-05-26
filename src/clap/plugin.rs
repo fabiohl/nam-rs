@@ -8,6 +8,7 @@ use crate::clap::processor::NamClapProcessor;
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags, drain_gc_channels};
+use crate::dsp::resampler::NamResampler;
 use crate::loader::{LoadedModelPair, load_and_build_model};
 use clack_extensions::log::{HostLog, LogSeverity};
 use clack_plugin::prelude::*;
@@ -21,8 +22,8 @@ use std::sync::{Arc, Mutex};
 pub enum ClapParamPayload {
     /// Atualização de parâmetros (ganho, gate, bypass).
     Params(NamPluginParams),
-    /// Carregamento de um novo par de modelos com metadados de calibração.
-    LoadModel(Box<LoadedModelPair>),
+    /// Carregamento de um novo par de modelos com metadados de calibração e seu resampler.
+    LoadModel(Box<LoadedModelPair>, Box<NamResampler>),
 }
 
 /// Wrapper seguro para ponteiro de NamClapShared repassado à thread de GUI.
@@ -54,6 +55,8 @@ pub struct NamClapShared {
     pub rt_status: Arc<RtStatusFlags>,
     /// Latência atual reportada ao host (em samples).
     pub current_latency: AtomicU32,
+    /// Taxa de amostragem nativa exigida pelo modelo carregado ativamente.
+    pub model_sample_rate: AtomicU32,
     /// Último valor do parâmetro Input Gain (f32 como bits).
     pub param_input_gain: AtomicU32,
     /// Último valor do parâmetro Output Gain (f32 como bits).
@@ -310,6 +313,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             {
                 latency_ext.changed(&mut self.host);
             }
+            self.host.request_restart();
         }
     }
 }
@@ -330,9 +334,30 @@ impl<'a> NamClapMainThread<'a> {
             )
         })?;
 
+        // Construção do novo resampler para a taxa do host e do modelo
+        let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+        let new_resampler = Box::new(
+            NamResampler::new(host_rate, model_pair.sample_rate, 0).map_err(|e| {
+                Box::new(
+                    NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
+                        .message("Failed to build resampler")
+                        .param("error", e.to_string()),
+                )
+            })?,
+        );
+
+        // Atualiza o sample rate do modelo
+        self.shared
+            .model_sample_rate
+            .store(model_pair.sample_rate, Ordering::Relaxed);
+
         // 2. Envio para a thread RT via canal SPSC
         self.param_tx
-            .push(ClapParamPayload::LoadModel(Box::new(model_pair)))
+            .push(ClapParamPayload::LoadModel(
+                Box::new(model_pair),
+                new_resampler,
+            ))
             .map_err(|_| {
                 Box::new(
                     NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)
@@ -416,6 +441,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
             rt_status: Arc::new(RtStatusFlags::new()),
             current_latency: AtomicU32::new(0),
+            model_sample_rate: AtomicU32::new(48000),
             param_input_gain: AtomicU32::new(0.0f32.to_bits()),
             param_output_gain: AtomicU32::new(0.0f32.to_bits()),
             param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),

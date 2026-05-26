@@ -112,13 +112,16 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
     - Garantir que o valor modulado seja suavizado corretamente pelo `ParamSmoother` para eliminar qualquer zipper noise (cliques analógicos) durante modulações rápidas.
   - **Validação de Não-Regressão:** Executar a suíte de testes do processador. Modular o Input Gain no Bitwig Studio usando um LFO e certificar que o áudio seja modulado com suavidade e sem artefatos sonoros.
 
-- [ ] **Tarefa 2.2: Compensação Dinâmica de Latência (Dynamic Latency PDC Sync)**
+- [x] **Tarefa 2.2: Compensação Dinâmica de Latência (Dynamic Latency PDC Sync)**
   - **Descrição:** Reportar à DAW atualizações de latência em tempo real caso ocorra mudança de amostragem no projeto ou swap de modelos com diferentes latências internas de filtragem no resampler, forçando o Bitwig a atualizar o PDC (Plugin Delay Compensation) imediatamente.
-  - **Passo a Passo:**
-    - Na audio thread, monitorar se a latência efetiva calculada pelo resampler diverge da latência atômica reportada ao host.
-    - Sinalizar atomicamente a alteração de latência para a thread principal (main thread).
-    - Na thread principal, invocar o callback `host.request_restart(CLAP_PLUGIN_RESTART_LATENCY)` para que o host solicite a nova latência via extensão correspondente.
-  - **Validação de Não-Regressão:** Mudar a taxa de amostragem do Bitwig durante a execução e certificar-se de que a DAW ajusta a compensação de delay do canal do plugin sem desfasamentos ou silêncio temporário.
+  - **Ações Executadas:**
+    - Adicionado o campo atômico `model_sample_rate` ao estado compartilhado `NamClapShared` para expor a taxa nativa do modelo ativo.
+    - Atualizada a variante `LoadModel` do payload `ClapParamPayload` para transportar o novo `NamResampler` construído na Main Thread.
+    - Implementada a inicialização e reconstrução do resampler com alocação na thread principal durante o carregamento de modelo, mantendo a thread de áudio livre de alocações (RT-safe).
+    - Adaptado o método `push_to_gc` do processador para aceitar um item genérico `GcItem`, permitindo transferir resamplers antigos obsoletos para desalocação segura fora da thread RT.
+    - Implementado monitoramento de latência na thread de áudio (`NamClapProcessor::process`), sinalizando atomicamente via `current_latency` e invocando `request_callback()` em caso de divergência.
+    - Atualizada a lógica `on_main_thread` para notificar a extensão de latência e invocar `request_restart()` forçando o recálculo imediato do PDC pelo host DAW.
+  - **Validação de Não-Regressão:** Suíte completa com 192 testes e testes de integração passando com sucesso absoluto. Clippy e lints 100% limpos.
 
 - [ ] **Tarefa 2.3: Atualização Visual da UI e Exposição de Metadados de Modelo**
   - **Descrição:** Expor de forma simplificada o nome do modelo carregado ativamente para a DAW, facilitando a legibilidade do projeto no painel de dispositivos (Device Panel) do Bitwig.

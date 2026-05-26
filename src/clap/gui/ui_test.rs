@@ -20,6 +20,7 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
         gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
         rt_status: Arc::new(RtStatusFlags::new()),
         current_latency: AtomicU32::new(0),
+        model_sample_rate: AtomicU32::new(48000),
         param_input_gain: AtomicU32::new(0.0f32.to_bits()),
         param_output_gain: AtomicU32::new(0.0f32.to_bits()),
         param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),

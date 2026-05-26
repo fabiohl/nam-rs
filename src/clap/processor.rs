@@ -76,13 +76,15 @@ pub struct NamClapProcessor<'a> {
     mod_output_gain: f32,
     /// Offsets de modulação (CLAP Parameter Modulation).
     mod_gate_thresh: f32,
+    /// Handle do host para chamadas na thread de áudio.
+    host: HostAudioProcessorHandle<'a>,
 }
 
 impl<'a> NamClapProcessor<'a> {
     /// Tenta enviar um item para descarte seguro (GC).
     /// Se o canal principal estiver cheio, usa o parking lot e então o overflow buffer.
-    fn push_to_gc(&mut self, model: Box<DynamicModel>) {
-        let mut item = Some(GcItem::Model(model));
+    fn push_to_gc(&mut self, item: GcItem) {
+        let mut item = Some(item);
 
         // 1. Tenta o canal principal (SPSC)
         if let Some(i) = item.take() {
@@ -116,7 +118,7 @@ impl<'a> NamClapProcessor<'a> {
 
 impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor<'a> {
     fn activate(
-        _host: HostAudioProcessorHandle<'a>,
+        host: HostAudioProcessorHandle<'a>,
         _main_thread: &mut NamClapMainThread<'a>,
         shared: &'a NamClapShared,
         audio_config: PluginAudioConfiguration,
@@ -156,8 +158,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let buf_out_r = vec![0.0f32; buf_capacity].into_boxed_slice();
 
         // 3. Inicialização de componentes DSP
+        let model_rate = shared.model_sample_rate.load(Ordering::Relaxed);
+        let model_rate = if model_rate == 0 { 48000 } else { model_rate };
         let resampler = Box::new(
-            NamResampler::new(audio_config.sample_rate as u32, 48000, buf_capacity)
+            NamResampler::new(audio_config.sample_rate as u32, model_rate, buf_capacity)
                 .expect("Failed to create NamResampler"),
         );
 
@@ -205,6 +209,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             mod_input_gain: 0.0,
             mod_output_gain: 0.0,
             mod_gate_thresh: 0.0,
+            host,
         })
     }
 
@@ -270,13 +275,15 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                         lut.db_to_linear(self.params.output_gain_db + self.mod_output_gain),
                     );
                 }
-                ClapParamPayload::LoadModel(model_pair) => {
+                ClapParamPayload::LoadModel(model_pair, new_resampler) => {
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
-                        self.push_to_gc(old_l);
+                        self.push_to_gc(GcItem::Model(old_l));
                     }
                     if let Some(old_r) = std::mem::replace(&mut self.model_r, model_pair.model_r) {
-                        self.push_to_gc(old_r);
+                        self.push_to_gc(GcItem::Model(old_r));
                     }
+                    let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
+                    self.push_to_gc(GcItem::Resampler(old_resampler));
                 }
             }
         }
@@ -346,6 +353,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     _ => {}
                 }
             }
+        }
+
+        // Monitoramento dinâmico de latência na Audio Thread
+        let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+        let effective_latency = self.resampler.latency_samples(host_rate);
+        if effective_latency != self.shared.current_latency.load(Ordering::Relaxed) {
+            self.shared
+                .current_latency
+                .store(effective_latency, Ordering::Relaxed);
+            self.host.request_callback();
         }
 
         for mut port_pair in &mut audio {
