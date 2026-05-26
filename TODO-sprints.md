@@ -91,6 +91,13 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
     - Substituir o literal `10.0` pelo constante.
   - **Validação de Não-Regressão:** `./utils/lints.sh`.
 
+- [x] **Auditoria Pós-Sprint (Revisor-Auditor):** Revisão sistemática de todos os arquivos do Épico 1.5 para garantir zero dívida técnica.
+  - **Achados e Correções:**
+    - **`gui.rs` (CRÍTICO → CORRIGIDO):** `transmute` de lifetime sem comentário `// SAFETY:` — adicionado comentário completo documentando o invariante: handle do host tem lifetime real da instância do plugin, garantido válido durante toda a execução da janela graças ao `destroy()`.
+    - **`window.rs` (MÉDIO → CORRIGIDO):** `.unwrap()` sem fallback em `chars().next()` — substituído por `.unwrap_or('\0')` com comentário explicativo. A guarda `len() == 1` torna o fallback inalcançável em produção, mas o código agora expressa isso explicitamente.
+    - **Unsafe residuais auditados:** 3 blocos `unsafe` legítimos permanecem (`transmute` de lifetime em `gui.rs`, `make_current()`/`make_not_current()` da API GL, e deref do raw pointer CLAP shared), todos com justificativa clara.
+  - **Validação Final:** `cargo test` (100% passando) e `./utils/lints.sh` (limpo, sem warnings).
+
 ---
 
 ## 🚀 Épico 2: Integração de Alta Fidelidade com Bitwig Studio (CLAP)

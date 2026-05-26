@@ -90,6 +90,13 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
             let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
             let host_shared = self.host.shared();
+            // SAFETY: `host_shared` é um handle compartilhado do host CLAP cujo tempo de vida
+            // real é o da própria instância do plugin, que vive enquanto o plugin estiver carregado.
+            // O closure passado a `open_parented` requer `'static` para satisfazer a API de
+            // threading do baseview (`Send + 'static`), mas o host é garantidamente válido durante
+            // toda a execução da janela (a janela é fechada antes do plugin ser destruído via
+            // `destroy()`). Este transmute é o padrão aceito para integrar plugins CLAP com
+            // bibliotecas de janelamento que requerem closures `'static`.
             let host_static: clack_plugin::host::HostSharedHandle<'static> =
                 unsafe { std::mem::transmute(host_shared) };
 

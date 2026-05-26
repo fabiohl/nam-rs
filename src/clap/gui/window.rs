@@ -549,7 +549,8 @@ fn map_keyboard_event(key_event: &keyboard_types::KeyboardEvent) -> Option<egui:
         keyboard_types::Key::PageDown => Some(egui::Key::PageDown),
         keyboard_types::Key::Character(s) => {
             if s.len() == 1 {
-                let c = s.chars().next().unwrap().to_ascii_lowercase();
+                // SAFETY: len() == 1 garante que next() não retorna None.
+                let c = s.chars().next().unwrap_or('\0').to_ascii_lowercase();
                 match c {
                     'a' => Some(egui::Key::A),
                     'b' => Some(egui::Key::B),
