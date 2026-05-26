@@ -7,7 +7,7 @@
 
 ## Épico 1 — Auditoria Final de Código
 
-* [ ] **Tarefa 1.1** — Regressão do Modo Standalone
+* [x] **Tarefa 1.1** — Regressão do Modo Standalone
   * **Contexto:**
     A introdução de feature flags e a refatoração do pipeline DSP principal podem ter afetado o modo standalone (PipeWire/JACK nativo). É vital atestar que o NAM-rs rodando em modo CLI standalone preserva suas propriedades de baixa latência e compatibilidade.
   * **Ações Técnicas:**
