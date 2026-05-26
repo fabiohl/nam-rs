@@ -21,9 +21,9 @@ libc = "0.2.186"
 pipewire = { version = "0.9.2", optional = true }
 rtrb = "0.3.4"
 serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.149"
+serde_json = "1.0.150"
 lexopt = "0.3.2"
-log = "0.4.29"
+log = "0.4.30"
 env_logger = { version = "0.11.10", default-features = false }
 half = "2.7.1"
 minstant = "0.1.7"
@@ -31,9 +31,9 @@ rustfft = { version = "6.4.1", default-features = false }
 clack-common = "0.1"
 clack-plugin = { version = "0.1", optional = true }
 clack-extensions = { version = "0.1", optional = true, features = ["audio-ports", "clack-plugin", "gui", "latency", "log", "params", "state", "raw-window-handle_05", "track-info", "remote-controls", "param-indication", "clack-host"] }
-egui      = { version = "0.34",  optional = true }
-egui_glow = { version = "0.34",  optional = true }
-glow      = { version = "0.17",  optional = true }
+egui      = { version = "0.34.2",  optional = true }
+egui_glow = { version = "0.34.2",  optional = true }
+glow      = { version = "0.17.0",  optional = true }
 baseview  = { git = "https://github.com/RustAudio/baseview", optional = true }
 rfd       = { version = "0.15",  optional = true }
 keyboard-types = { version = "0.6", default-features = false, optional = true }

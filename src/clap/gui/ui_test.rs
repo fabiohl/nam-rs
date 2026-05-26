@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-#![allow(deprecated)]
-
 use super::*;
 use crate::common::spsc::{GcOverflowBuffer, RtStatusFlags};
 use rtrb::RingBuffer;
@@ -118,8 +116,8 @@ fn test_ui_load_error_visual_feedback() {
     let dummy = 42i32;
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
 
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             draw_ui(ui, &shared, &host, &mut state);
         });
     });
@@ -133,8 +131,8 @@ fn test_ui_load_error_visual_feedback() {
 
     // 3. If we set error_expiration to the past, the next draw_ui should reset/clear it.
     state.error_expiration = Some(Instant::now() - Duration::from_secs(1));
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             draw_ui(ui, &shared, &host, &mut state);
         });
     });
@@ -145,8 +143,8 @@ fn test_ui_load_error_visual_feedback() {
 #[test]
 fn test_knob_tooltip_suffixes() {
     let ctx = egui::Context::default();
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let value = 0.0;
             let range = -10.0..=10.0;
             let size = egui::vec2(50.0, 50.0);
@@ -247,8 +245,8 @@ fn test_knob_keyboard_navigation() {
     let accent_color = egui::Color32::GREEN;
 
     // Frame 1: Render and request focus
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let (_, val) = knob_widget(
                 ui,
                 id,
@@ -274,8 +272,8 @@ fn test_knob_keyboard_navigation() {
         modifiers: egui::Modifiers::default(),
         repeat: false,
     });
-    let _ = ctx.run(input_up, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(input_up, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let (_, val) = knob_widget(
                 ui,
                 id,
@@ -305,8 +303,8 @@ fn test_knob_keyboard_navigation() {
         },
         repeat: false,
     });
-    let _ = ctx.run(input_down_ctrl, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(input_down_ctrl, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             let (_, val) = knob_widget(
                 ui,
                 id,
@@ -338,8 +336,8 @@ fn test_bypass_keyboard_trigger() {
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
 
     // Frame 1: Render and request focus
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             handle_bypass(
                 ui,
                 id,
@@ -364,8 +362,8 @@ fn test_bypass_keyboard_trigger() {
         modifiers: egui::Modifiers::default(),
         repeat: false,
     });
-    let _ = ctx.run(input_space, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(input_space, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             handle_bypass(
                 ui,
                 id,
@@ -394,8 +392,8 @@ fn test_tab_order_navigation() {
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
 
     // Frame 1: Initial render, no focus
-    let _ = ctx.run(egui::RawInput::default(), |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             draw_ui(ui, &shared, &host, &mut state);
         });
     });
@@ -410,8 +408,8 @@ fn test_tab_order_navigation() {
         modifiers: egui::Modifiers::default(),
         repeat: false,
     });
-    let _ = ctx.run(tab_input, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(tab_input, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             draw_ui(ui, &shared, &host, &mut state);
         });
     });
@@ -427,8 +425,8 @@ fn test_tab_order_navigation() {
         modifiers: egui::Modifiers::default(),
         repeat: false,
     });
-    let _ = ctx.run(tab_input2, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    let _ = ctx.run_ui(tab_input2, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             draw_ui(ui, &shared, &host, &mut state);
         });
     });

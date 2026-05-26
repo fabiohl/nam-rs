@@ -1545,8 +1545,7 @@ pub fn draw_ui(
             .order(egui::Order::Foreground)
             .interactable(false)
             .show(ui.ctx(), |ui| {
-                #[allow(deprecated)]
-                let screen_rect = ui.ctx().screen_rect();
+                let screen_rect = ui.ctx().content_rect();
                 let painter = ui.painter();
                 painter.rect_filled(
                     screen_rect,
