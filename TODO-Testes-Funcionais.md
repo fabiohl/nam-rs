@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# TODO — Validação Humana em DAWs (Bitwig & Fender Studio Pro)
+# TODO — Validação Humana em DAWs (Bitwig Studio)
 
-* **Contexto:** Validação completa da experiência do usuário ponta-a-ponta nas DAWs de referência (Bitwig Studio 6+ e Fender Studio Pro), certificando que o comportamento visual, a latência de interface e o áudio funcionam de forma impecável e harmoniosa. Cada seção abaixo é um teste independente com critérios de PASS/FAIL explícitos.
+* **Contexto:** Validação completa da experiência do usuário ponta-a-ponta na DAW de referência (Bitwig Studio 6+ via XWayland), certificando que o comportamento visual, a latência de interface e o áudio funcionam de forma impecável e harmoniosa. O Fender Studio Pro é considerado objetivo futuro para testes visuais completos (devido à exigência de Wayland Nativo), sendo testado de forma limitada apenas quanto ao processamento DSP básico de áudio e parâmetros genéricos expostos pelo host. Cada seção abaixo é um teste independente com critérios de PASS/FAIL explícitos.
 
 >> Nota à IA: As notas do testador virão em citações neste formato de setas duplas.
 
@@ -12,9 +12,9 @@
 * [x] Sistema operacional: Ubuntu 26.04+ (ou derivado) com sessão gráfica X11 ou Wayland+XWayland.
   >> Máquina de teste: AMD Ryzen 7 5700U with Radeon Graphics,  4.27 GHz, 16 cores, 16GB RAM, Linux 7.0.0-15-generic.
 * [x] Plugin instalado: `~/.clap/nam-rs.clap` (build Release: `cargo build --no-default-features --features clap-plugin --lib --release`).
-* [x] DAWs configuradas: Bitwig Studio 6+ e Fender Studio Pro instalados e funcionais.
+* [x] DAWs configuradas: Bitwig Studio 6+ instalada e funcional. Fender Studio Pro instalada para testes limitados de áudio e parâmetros genéricos.
   >> Usando Bitwig Studio Demo 6.0.6, Flatpak, Wayland, Extension API version 25, CLAP API Version 1.2.7, VST API Version 3.8.0, Graphics Backend skia-vulkan, Build date 2026-04-20.
-  >> Usando Fender Studio Pro+ 8.0.3.111164 Linux x64 (Build on Mar 13 2026), Flatpak, Wayland.
+  >> Usando Fender Studio Pro+ 8.0.3.111164 Linux x64 (Build on Mar 13 2026), Flatpak, Wayland (restrito a parâmetros nativos de host, GUI desabilitada nesta fase).
 * [x] Ter pelo menos 2 modelos `.nam` ou `.namb` disponíveis (ex: `jcm800.nam`, `twin_reverb.nam`). Recomenda-se um modelo WaveNet e um LSTM para variar a carga de CPU.
 * [x] Sinal de áudio de entrada: DI de guitarra gravado (ex: `tests/amostra-guitarra.wav`) ou gerador de sinal (tone/sweep) conectado a uma trilha de áudio com o NAM-rs inserido.
 * [x] Monitoramento de XRUNs: Abrir em um terminal separado: `pw-top` (PipeWire) ou `jack_ipc` (JACK) para observar contadores de XRUNs durante toda a sessão de teste.
@@ -357,6 +357,29 @@
   * `COL_MUTED` (`#8B95A5`) sobre `COL_PANEL` (`#232830`) — deve ser legível sem esforço.
   * `COL_TEXT` (`#E5E9F0`) sobre `COL_BG` (`#1A1D23`) — alto contraste.
   * ❌ FAIL se: Algum texto é ilegível ou difícil de distinguir do fundo.
+
+## Teste 13 — Modulação de Parâmetros em Tempo Real
+
+> **Host:** Bitwig Studio.
+> **Pré-requisito:** Modelo carregado, playback ativo.
+
+* [ ] **13.1 — Modulação via LFO:** No Bitwig Studio, adicione um modulador LFO direcionado ao parâmetro `input_gain_db` do NAM-rs. Configure o LFO para uma frequência moderada (ex: 1Hz a 5Hz) e profundidade média (ex: ±6 dB).
+  * ✅ PASS: O arco turquesa do knob INPUT na GUI do plugin oscila dinamicamente de forma contínua e suave, acompanhando a modulação. O áudio do plugin deve oscilar de ganho sem estalos, distorções espúrias ou ruídos de descontinuidade (zipper noise), comprovando que o `ParamSmoother` está suavizando a modulação em tempo real de forma sample-accurate.
+  * ❌ FAIL se: O áudio apresentar cliques/estalos analógicos ("zipper noise") sob modulação, ou se o arco da GUI não se mover de forma suave.
+* [ ] **13.2 — Modulação de Alta Velocidade:** Eleve a taxa do LFO do Bitwig para 20Hz.
+  * ✅ PASS: O áudio modula em frequência de tremolo rápida sem artefatos ou picos de CPU, demonstrando estabilidade do processador e otimização RT-Safety.
+
+## Teste 14 — Compensação Dinâmica de Latência (Tarefa 2.2)
+
+> **Host:** Bitwig Studio.
+> **Pré-requisito:** Trilha com sinal ativo.
+
+* [ ] **14.1 — Alteração de Amostragem do Projeto:** Com a sessão do Bitwig ativa, mude a taxa de amostragem global da DAW (ex: de 44.1 kHz para 96 kHz).
+  * ✅ PASS: O plugin atualiza internamente a taxa de amostragem do resampler sem panics. A status bar do plugin reflete instantaneamente `"96kHz"` (se o painel de telemetria RT estiver aberto) e a latência de samples correspondente. A DAW Bitwig recalcula e atualiza o tempo do PDC (compensação de delay) da pista sem desfasamentos ou travamento.
+  * ❌ FAIL se: A DAW congelar, crashar, ou o display de compensação de delay do canal no Bitwig não atualizar.
+* [ ] **14.2 — Troca de Modelo com Latência Variada (Bypass vs Processamento):**
+  * Desativar e ativar o bypass do plugin ou carregar modelos de tamanhos diferentes que forcem o bypass/ativação do `NamResampler` (se o sample rate do projeto diferir de 48 kHz).
+  * ✅ PASS: A latência reportada e exibida na status bar muda dinamicamente, e o Bitwig atualiza sua compensação de atraso imediatamente, sem silenciar a trilha de forma de phase.
 
 ### Critérios Globais de Aceite (PASS em todos os testes)
 

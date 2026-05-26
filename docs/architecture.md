@@ -292,7 +292,7 @@ Este projeto utiliza um registro simplificado de decisões arquiteturais para ma
 - **Justificativa:** O Bitwig Studio oferece a implementação de referência do padrão CLAP (sendo co-autor do spec). Seu sistema de *Sandboxing* (isolamento de processos) e o suporte nativo a modulações sample-accurate são ideais para testar a robustez e o determinismo temporal do motor DSP do NAM-rs.
 - **REAPER:** Validação secundária e suporte à comunidade de baixo custo. Excelente para depuração de buffers irregulares.
   - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
-- **Fender Studio Pro:** Validação de compatibilidade em hosts comerciais de grande escala.
+- **Fender Studio Pro:** Validação de compatibilidade em hosts comerciais de grande escala. Meta futura pois suporta apenas modo wayland.
 
 ## 8.1 Arquitetura CLAP: Threads e Ciclo de Vida
 
@@ -361,9 +361,9 @@ A troca de modelos na audio thread é RT-safe:
 
 ### Interface Gráfica: Estratégia de Windowing e Stack
 
-A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente isolada da `audio thread`. A arquitetura é desenhada em camadas para permitir evolução futura do backend de janela sem reescrever a lógica de UI.
+A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente isolada da `audio thread`. A arquitetura é unificada no backend X11, garantindo estabilidade e portabilidade.
 
-#### Estratégia de Windowing em Camadas
+#### Estratégia de Windowing Unificada (X11 Puro)
 
 ```text
 ┌────────────────────────────────────────────────┐
@@ -373,19 +373,17 @@ A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente i
 ├────────────────────────────────────────────────┤
 │            Window Abstraction Layer            │
 │    trait NamWindow { create, show, events... } │
-├──────────┬──────────────┬──────────────────────┤
-│ Backend  │   Backend    │      Backend         │
-│   X11    │  Wayland     │  Wayland Embedded    │
-│(baseview)│ (floating)   │ (nested compositor)  │
-│  v1.0 ✅ │  v1.1 🔬     │     v2.0 🔮          │
-└──────────┴──────────────┴──────────────────────┘
+├────────────────────────────────────────────────┤
+│                  Backend X11                   │
+│   (baseview - raw-window-handle 0.5 -> 0.6)    │
+│           X11 Puro / XWayland nativo           │
+└────────────────────────────────────────────────┘
 ```
 
-- **v1.0 (Atual):** Backend X11 via `baseview`. O plugin declara suporte exclusivo a `CLAP_WINDOW_API_X11`, forçando a DAW a usar o path XWayland estável em sessões Wayland. Comprovado em produção por centenas de plugins no ecossistema.
-- **v1.1 (Futuro — Experimento):** Backend Wayland floating via protocolo `xdg-foreign`. Janela nativa Wayland com decorações do compositor, posicionada como transiente da janela da DAW. Requer backend Wayland no baseview (~1500-2500 LOC). O egui não muda.
-- **v2.0 (Futuro — Bloqueado):** Backend Wayland embedded via nested compositor (modelo `IWaylandHost` do VST3 SDK 3.8.0). Embedding real via `wl_subsurface`. Depende do CLAP padronizar uma extensão equivalente e das DAWs (Bitwig) implementarem nested compositor para CLAP.
+- **Backend X11:** O plugin declara suporte exclusivo a `CLAP_WINDOW_API_X11`.
+- **Stack:** A stack gráfica utiliza `egui v0.34` e `glow v0.17`, com tradução de handles de janela (`raw-window-handle 0.5` do host para `0.6` do `egui`/`baseview`) na inicialização.
 
-> **Referência:** A evolução da estratégia Wayland e o acompanhamento do suporte das DAWs são rastreados no documento vivo `docs/lab-gui-wayland.md`.
+> **Referência:** A pesquisa inicial sobre as limitações e experimentos de Wayland nativo in-process está registrada de forma histórica no documento arquivado [lab-gui-wayland.md](file:///home/fabio/nam-rs/docs/lab-gui-wayland.md).
 
 #### Stack Tecnológico
 

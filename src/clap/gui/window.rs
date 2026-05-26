@@ -321,6 +321,7 @@ impl NamPluginWindow {
 }
 
 impl WindowHandler for NamPluginWindow {
+    #[allow(deprecated)]
     fn on_frame(&mut self, window: &mut Window) {
         let gl_ctx = window.gl_context().expect("OpenGL context not available");
         unsafe {
@@ -345,7 +346,7 @@ impl WindowHandler for NamPluginWindow {
         let host_ref: &clack_plugin::host::HostSharedHandle =
             unsafe { std::mem::transmute(&self.host) };
 
-        let full_output = self.egui_ctx.run(raw_input, |ctx| {
+        let full_output = self.egui_ctx.run_ui(raw_input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 crate::clap::gui::ui::draw_ui(ui, shared, host_ref, &mut self.state);
             });
@@ -433,6 +434,7 @@ impl WindowHandler for NamPluginWindow {
                             unit,
                             delta: delta_vec,
                             modifiers: map_modifiers(modifiers),
+                            phase: egui::TouchPhase::Move,
                         });
                     }
                     MouseEvent::CursorLeft => {

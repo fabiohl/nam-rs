@@ -67,11 +67,11 @@
        * Abrir o File Picker e carregar modelos diferentes de forma rápida e consecutiva (10x em menos de 1 minuto) enquanto a DAW processa sinal de áudio real.
        * Monitorar o consumo de RAM (RSS) do processo sandbox ou da DAW no `htop`. A memória deve permanecer estável (crescimento RSS < 2 MB após 10 reloads consecutivos), provando que o coletor de lixo lock-free (`GcItem` e `GcOverflowBuffer`) na main thread está liberando corretamente os buffers e pesos de modelos anteriores do heap.
     3. **Modulação por LFO e Sinais de Alta Frequência (The Grid no Bitwig):**
-       * **No Bitwig Studio:** Adicionar um LFO rápido (ex: 20Hz a 100Hz) modulando o `input_gain_db` ou conectar uma cadeia complexa de modulação no *The Grid* direcionada a parâmetros do NAM-rs.
+       * **No Bitwig Studio (Nativo via CLAP modulation):** Adicionar um LFO rápido (ex: 20Hz a 100Hz) modulando o `input_gain_db` ou conectar uma cadeia complexa de modulação no *The Grid* direcionada a parâmetros do NAM-rs.
        * **Configuração crítica:** Usar buffer de 128 samples a 48 kHz (375 callbacks/segundo) para estressar o `ParamSmoother` ao máximo.
        * Deixar rodando por no mínimo 5 minutos sob playback contínuo.
        * Ouvir com atenção a saída para certificar-se de que o `ParamSmoother` eliminou completamente qualquer zipper noise ou artefato de clique, mesmo sob modulação sample-accurate rápida.
-       * **No Fender Studio Pro:** Utilizar envelopes de modulação ou LFOs de canal para estressar os parâmetros em playback por 5 minutos.
+       * **No Fender Studio Pro:** (Opcional, se o host expuser controle de parâmetros genéricos sem GUI nesta fase) Utilizar envelopes de modulação ou LFOs de canal para estressar os parâmetros em playback por 5 minutos.
     4. **Comportamento com Silêncio (Tail & CPU):**
        * ⚠️ **Nota:** O NAM-rs atualmente retorna `ProcessStatus::Continue` sempre — o host não recebe indicação de auto-sleep. Este item valida apenas que o **Gate FSM** opera corretamente durante transições silêncio → sinal.
        * Parar o playback e gerar silêncio no canal por 10 segundos. Observar que o Gate FSM fecha (multiplicador → 0.0) e a saída é silêncio limpo (sem ruído residual, sem denormals audíveis).
@@ -85,13 +85,15 @@
          echo "Threads: $(ls /proc/$PID/task | wc -l)"
          ```
 
-       * Deixar o plugin em execução em sessões de áudio por 15 minutos em ambos os hosts.
+       * Deixar o plugin em execução em sessões de áudio por 15 minutos no Bitwig Studio.
        * Repetir a contagem de FDs e threads. Crescimento > 0 FDs persistentes = ⚠️ leak provável.
        * Executar `lsof -p <PID> | grep -c '.nam\|rfd\|zenity'` para verificar que não há File Descriptors retidos do File Picker ou de portais D-Bus.
     6. **File Picker Wayland:**
        * Verificar que o File Picker abre via `xdg-desktop-portal` sem congelamento.
        * Se `xdg-desktop-portal-gtk` não estiver instalado, o picker deve falhar graciosamente (timeout de 120s reseta o estado de loading) sem crash.
-  * **Aceite:** Zero crashes, zero panics na DAW ou no processo sandbox. Uso de memória RSS estabilizado (crescimento < 2 MB após trocas de modelos). Zero XRUNs adicionais acusados pelo host de áudio. Zero leak de FDs ou threads.
+    7. **Compensação Dinâmica de Latência:**
+       * Alternar dinamicamente as taxas de amostragem da DAW e os estados de Bypass/Active e certificar-se de que a DAW atualiza o PDC sem cliques, perda de sincronia ou crashes no engine de áudio.
+  * **Aceite:** Zero crashes, zero panics na DAW ou no processo sandbox. Uso de memória RSS estabilizado (crescimento < 2 MB após trocas de modelos). Zero XRUNs adicionais acusados pelo host de áudio. Zero leak de FDs ou threads. PDC atualizado instantaneamente pela DAW ao mudar a latência.
 
 ---
 

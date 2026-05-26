@@ -61,7 +61,7 @@ A integração utiliza o crate `clack-extensions` para implementar as seguintes 
 | `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Suporte à cor da track do host para adaptar dinamicamente o accent color da GUI                                        |
 | `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Páginas de controle pré-configuradas ("Main" e "Gate") para integração com controladores de hardware e Device Panel    |
 | `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Feedback visual na GUI para indicar parâmetros mapeados, automatizados ou sob override temporário                      |
-| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Interface gráfica nativa construída com `egui` e embutida via `baseview`                                               |
+| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Interface gráfica nativa baseada em `egui` v0.34 embutida via `baseview` e backend X11/XWayland (`CLAP_WINDOW_API_X11`)|
 
 ## 6. Plugin Descriptor
 
@@ -78,7 +78,7 @@ O descritor de metadados do plugin seguirá o seguinte padrão:
 - **Bitwig Studio**: Plataforma de referência absoluta para conformidade CLAP (co-autora do padrão). Essencial para validar o comportamento de sandboxing e automação sample-accurate.
 - **REAPER**: Validação de compatibilidade com hosts de baixo custo e testes de buffers irregulares.
   - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
-- **Fender Studio Pro**: Garantia de funcionamento em ambientes de produção de larga escala.
+- **Fender Studio Pro**: Objetivo futuro por exigir modo wayland nativo.
 - **CLAP-info / CLAP-host**: Ferramentas de linha de comando para validação técnica rigorosa do spec.
 
 ## 8. Compilação e Validação do Plugin
@@ -89,14 +89,14 @@ O projeto fornece um script automatizado para compilar, instalar e realizar uma 
 
 - **Build Padrão (com GUI)**:
   Por padrão, o script compila o plugin com suporte a interface gráfica nativa (utilizando a feature `clap-plugin`).
-  
+
   ```bash
   ./utils/build-clap.sh
   ```
 
 - **Modo Debug**:
   Para compilar em modo de depuração (debug), adicione `--debug`:
-  
+
   ```bash
   ./utils/build-clap.sh --debug
   ```

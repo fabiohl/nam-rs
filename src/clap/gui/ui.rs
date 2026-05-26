@@ -254,7 +254,7 @@ fn knob_widget(
 
     // Scroll handling com Ctrl+fine-tune (E5)
     if response.hovered() {
-        let scroll_y = ui.input(|i| i.raw_scroll_delta.y);
+        let scroll_y = ui.input(|i| i.smooth_scroll_delta.y);
         if scroll_y != 0.0 {
             let ctrl_held = ui.input(|i| i.modifiers.ctrl);
             let sensitivity = if ctrl_held {
@@ -1545,6 +1545,7 @@ pub fn draw_ui(
             .order(egui::Order::Foreground)
             .interactable(false)
             .show(ui.ctx(), |ui| {
+                #[allow(deprecated)]
                 let screen_rect = ui.ctx().screen_rect();
                 let painter = ui.painter();
                 painter.rect_filled(

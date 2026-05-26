@@ -25,7 +25,7 @@ use crate::models::{DynamicModel, NamModel};
 use minstant::Anchor;
 #[cfg(feature = "standalone")]
 use pipewire as pw;
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use std::sync::atomic::Ordering;
 /// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
 #[cfg(feature = "standalone")]
@@ -100,7 +100,7 @@ pub struct DspBridge {
     pub dropped_frames: std::sync::atomic::AtomicU32,
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl DspBridge {
     /// Drena o contador de frames descartados, retornando o valor acumulado e zerando-o.
     ///
@@ -195,7 +195,7 @@ pub struct DspBuffers<'a> {
 }
 
 /// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[cold]
 #[inline(never)]
 pub fn handle_silence_bypass(bridge: BridgeRef, rt_status: &RtStatusFlags) {
@@ -413,7 +413,7 @@ pub(crate) fn apply_output_stage(
     }
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 4: Escrita no DspBridge.
 #[inline(always)]
 pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bridge: BridgeRef) {
@@ -461,7 +461,7 @@ pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bri
         .store(current_gen + 1, Ordering::Release);
 }
 
-#[cfg(any(feature = "standalone", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Pipeline DSP Completo (Agregador).
 #[inline(always)]
 pub fn capture_dsp_pipeline(
