@@ -7,57 +7,26 @@ description: Acionado quando algo não funciona como esperado. Atua como um pain
 
 ## When to use this skill
 
-Use esta skill sob a manifestação de um erro ativo, crash, comportamento não-linear de DSP, áudio truncado com modulação/ringing, xruns do PipeWire ou redes neurais produzindo degradação nos cálculos de áudio em tempo real.
+Use sob erro ativo, crash, comportamento não-linear de DSP, áudio truncado, xruns do PipeWire ou degradação nos cálculos de inferência neural em tempo real.
 
-Também é acionada automaticamente pela workflow `diagnostico` quando o usuário cola um bloco de suporte gerado pelo NAM-rs.
-
-## Contexto de Referência
-
-* Guie-se pelas rules em `.agents/rules/`.
-
-## Sistema de Diagnósticos Estruturados (`src/diagnostics.rs`)
-
-O NAM-rs possui um sistema de diagnósticos com códigos de erro tipados. Ao receber um erro do usuário, **sempre** extraia e interprete o bloco de suporte antes de investigar o código-fonte.
-
-### Anatomia de um Bloco de Suporte
-
-```text
-──── NAM-rs Diagnostic ────────────────────────────
-nam-rs v1.x.x | E1201 | NAMB_CRC32_MISMATCH
-expected=0xA3B4C5D6 computed=0x12345678
-file="MesaBoogie.namb" size=1048576 offset=80
-arch=x86_64 avx2=true fma=true
-os=linux kernel=6.8.0-generic
-pw_rate=48000 buffer=256
-timestamp=2026-04-10T01:56:18Z
-────────────────────────────────────────────────────
-```
-
-### Catálogo de Códigos de Erro
-
-| Faixa     | Categoria              | Módulo Investigação                                    |
-| --------- | ---------------------- | ------------------------------------------------------ |
-| **E1xxx** | Carregamento de modelo | `src/loader/`, `src/main.rs::load_and_send_model()`    |
-| **E2xxx** | PipeWire / Áudio       | `src/pw_host.rs`, `src/dsp/`                           |
-| **E3xxx** | SPSC / Comunicação     | `src/spsc.rs`, `src/main.rs::cli_loop()`               |
-| **E4xxx** | Runtime / CLI          | `src/main.rs::cli_loop()`, `src/main.rs::parse_args()` |
-| **E5xxx** | Sistema / Hardware     | `src/main.rs::main()` (detecção AVX2/FMA)              |
+Também é acionada pelo workflow `diagnostico` quando o usuário cola um bloco de suporte.
 
 ## Instructions
 
-### 1. Diagnóstico por Evidências
+### Referências Primárias
 
-* **Xruns / clicks**: Verifique se o closure `.process()` ou funções invocadas respeitam o budget de tempo (sem `Vec`, `Box`, `println!` ou travas).
-* **Degradação numérica**: Valide se os multiplicadores de ganho e o resampling respeitam os metadados do modelo e as taxas de amostragem do host.
-* **Deadlock / contenção**: Inspecione o uso de `rtrb` e garanta que não há primitivas bloqueantes tocando o caminho RT.
+* Códigos de erro `Exxxx` e formato do bloco de suporte: `src/diagnostics.rs` (`NamErrorCode`, `emit_diagnostic()`).
+* Diretrizes RT-safe e DSP: `.agents/rules/rust.md`.
+* Arquitetura geral: `docs/architecture.md`.
 
-### 2. Intervenção Cirúrgica
+### Diagnóstico por Evidências
 
-* Use intrinsics `core::arch::x86_64::*` com `const generics` (SoA) para correções em tensores.
-* Mantenha `#[repr(align(128))]` em toda estrutura compartilhada via buffer SPSC.
-* Após sanado, remova **toda** linha de log, `dbg!()` ou `eprintln!` inserida para depuração visual dentro do callback RT.
+* **Xruns / clicks**: Verifique se `process()` respeita o budget de tempo (sem `Vec`, `Box`, `println!` ou locks).
+* **Degradação numérica**: Valide multiplicadores de ganho e metadados de resampling vs taxas de amostragem do host.
+* **Deadlock / contenção**: Inspecione uso de `rtrb` — sem primitivas bloqueantes no caminho RT.
 
-### 3. Emissão de Diagnósticos
+### Intervenção Cirúrgica
 
-* Se o fix introduzir novos pontos de falha fora da thread RT, use o sistema `NamDiagnostic`.
-* Mensagens informativas (logging, não-erros) continuam com `println!("[CLI] ...")` ou `println!("[NAM-rs] ...")`.
+* Mantenha `#[repr(align(128))]` em estruturas compartilhadas via SPSC.
+* Após fix, remova **toda** linha de log, `dbg!()` ou `eprintln!` inserida para depuração no callback RT.
+* Se o fix introduzir novos pontos de falha fora do RT, use o sistema `NamDiagnostic` para emitir erros estruturados.

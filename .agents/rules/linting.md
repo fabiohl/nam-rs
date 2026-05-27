@@ -11,12 +11,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 # Qualidade e Linting ao Fim das Atividades
 
-1. **Regra de Conclusão**: Ao término de *qualquer atividade* executada por você (a IA) que crie ou altere arquivos Rust, você jamais deve considerar a tarefa encerrada ou reportar término definitivo ao usuário sem antes realizar a validação final.
-2. **Documentação Atualizada:** Verifique se houve alguma alteração arquitetural relevante. Acione a skill `documentador` se for o caso.
-3. **Compilação sem Erros**: É salutar, em momentos oportunos no decorrer da ativade, a execução de `cargo check` e de `cargo build` para descobir problemas logo cedo.
-4. **Validação Obrigatória**: Como antepenúltima fase obrigatória:
-   * SE - E SOMENTE SE - algum arquivo rust .rs tiver sido alterado, rode as verificações `cargo test` para assegurar nenhuma quebra de funcionalidade.
-   * SE - E SOMENTE SE - algum arquivo rust .rs tiver sido alterado com OBJETIVO DE GANHO DE PERFORMANCE, rode `cargo bench` para averiguar se houve ganho - ou ao menos não houve perda.
-5. **Correção Exaustiva**: Analise o resultado de cada fase e só passe para a seguinte quando aquela passar sem quaisquer quebras, erros, warnings ou "mensagens suspeitas" de qualquer tipo.
-6. **Ciclo de Ajustes**: Identifique a fonte dos problemas apresentados (skill `debugger`), realize as correções necessárias no código e reexecute o passo que apontou o erro. Só prossiga se a checagem passar com status de sucesso absoluto.
-7. **Higiene do Repositório**: E ao final de toda atividade, verifique se não há arquivos temporários, de log, ou artefatos de debug não listados no `.gitignore` que possam ter sido gerados durante a execução (ex: `console.log`, dumps, `.tmp`). Não polua o histórico git com artefatos de trabalho.
+1. **Compilação incremental**: Execute `cargo check` e `cargo build` em momentos oportunos durante o trabalho.
+2. **Documentação**: Se houve alteração arquitetural relevante, acione a skill `documentador`.
+3. **Testes (se `.rs` alterado)**: `cargo test` — nenhuma quebra de funcionalidade.
+4. **Benchmarks (se `.rs` alterado com objetivo de performance)**: `cargo bench` — verificar ganho ou ao menos não-regressão.
+5. **Correção exaustiva**: Analise cada fase e só prossiga quando passar sem erros, warnings ou mensagens suspeitas. Ciclo: identificar fonte → corrigir → reexecutar.
+6. **Higiene do repo**: Remova arquivos temporários, logs ou artefatos de debug não listados no `.gitignore`.
