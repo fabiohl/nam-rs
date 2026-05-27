@@ -31,7 +31,7 @@ sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev \
   * `pipewire` e `libpipewire-0.3-dev`: Headers do core de processamento. Necessários apenas para a feature `standalone`.
   * `qpwgraph`: Utilitário recomendado para roteamento visual do grafo de áudio (opcional, mas altamente sugerido para usuários).
 
-* **Interface Gráfica e Janelamento (Sprint 4 — Implementada)**:
+* **Interface Gráfica e Janelamento**:
 
   * `libgtk-3-dev`, `libxcb-*`, `libxkbcommon-dev`: Bibliotecas de sistema para suporte a janelas nativas, renderização via X11/Wayland e gerenciamento de teclado. Exigidas pelas crates `egui` e `baseview` para a interface do plugin CLAP.
 
@@ -64,21 +64,21 @@ Acessadas secundariamente via `cargo bench` e `cargo test`, não impactam no foo
 
 Estes componentes devem ser instalados via `cargo install` para habilitar rotinas avançadas de manutenção e garantia de qualidade:
 
-| Utilitário       | Função no Projeto                                                                                                                                                                   |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`cargo-edit`** | Gerenciamento de dependências. Utilizado no script `utils/mod-update.sh` para o comando `cargo upgrade`, garantindo que as bibliotecas permaneçam seguras e atualizadas.            |
-| **`cargo-fuzz`** | Fuzz testing (libFuzzer). Utilizado para testar a robustez dos parsers JSON e NAMB contra entradas malformadas ou adversárias. Localizado no diretório `/fuzz`.                     |
-| **`clippy`**     | Linter estático para Rust. Utilizado no script `utils/lints.sh` para garantir a adesão às melhores práticas e evitar antipadrões que possam comprometer a performance ou segurança. |
-| **`rustfmt`**    | Formatador de código. Garante consistência visual em todo o repositório, essencial para revisão de código e manutenção por múltiplos colaboradores.                                 |
+| Utilitário           | Função no Projeto                                                                                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`cargo-edit`**     | Gerenciamento de dependências. Utilizado no script `utils/mod-update.sh` para o comando `cargo upgrade`, garantindo que as bibliotecas permaneçam seguras e atualizadas.                |
+| **`clippy`**         | Linter estático para Rust. Utilizado no script `utils/lints.sh` para garantir a adesão às melhores práticas e evitar antipadrões que possam comprometer a performance ou segurança.     |
+| **`rustfmt`**        | Formatador de código. Garante consistência visual em todo o repositório, essencial para revisão de código e manutenção por múltiplos colaboradores.                                     |
+| **`clap-validator`** | é a ferramenta de linha de comando oficial da organização `free-audio` para validar conformidade com a especificação CLAP e identificar potenciais problemas ou vazamentos de recursos. |
 
 ## 5. Dependências para Plugin e GUI (CLAP)
 
 As seguintes dependências estão implementadas para viabilizar o suporte a plugins CLAP e a interface gráfica embarcada:
 
-| Crate | Versão | Feature Flag | Status | Justificativa |
-| :--- | :--- | :--- | :--- | :--- |
-| `clack-plugin` | `0.1` | `clap-plugin` | Introduzida na Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
-| `clack-extensions` | `0.1` | `clap-plugin` | Introduzida na Sprint 1 | Extensões do spec CLAP (params, state, gui, latency, track-info, remote-controls, param-indication). Crate separado do `clack-plugin` para modularidade. |
-| `egui` | `0.34.2` | `clap-plugin` | Introduzida na Sprint 4 | Framework GUI de modo imediato, puro Rust. Renderização de GPU via OpenGL (`egui_glow` e `glow`). |
-| `baseview` | `0.1.1` | `clap-plugin` | Introduzida na Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Publicada e consumida a partir do crates.io. |
-| `rfd` | `0.17.2` | `clap-plugin` | Introduzida na Sprint 4 | File Dialog nativo e assíncrono para carregamento de modelos (.nam/.namb) via GUI. |
+| Crate              | Versão   | Feature Flag  | Status                  | Justificativa                                                                                                                                                   |
+|:------------------ |:-------- |:------------- |:----------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clack-plugin`     | `0.1`    | `clap-plugin` | Introduzida na Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
+| `clack-extensions` | `0.1`    | `clap-plugin` | Introduzida na Sprint 1 | Extensões do spec CLAP (params, state, gui, latency, track-info, remote-controls, param-indication). Crate separado do `clack-plugin` para modularidade.        |
+| `egui`             | `0.34.2` | `clap-plugin` | Introduzida na Sprint 4 | Framework GUI de modo imediato, puro Rust. Renderização de GPU via OpenGL (`egui_glow` e `glow`).                                                               |
+| `baseview`         | `0.1.1`  | `clap-plugin` | Introduzida na Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Publicada e consumida a partir do crates.io.                                                   |
+| `rfd`              | `0.17.2` | `clap-plugin` | Introduzida na Sprint 4 | File Dialog nativo e assíncrono para carregamento de modelos (.nam/.namb) via GUI.                                                                              |

@@ -2,23 +2,19 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
-# 🎸 NAM-rs 1.4.5
+# 🎸 NAM-rs 1.5.0
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
 > ⚠️ **Standalone PipeWire:** STABLE | **CLAP Plugin:** BETA (GUI completa, 8 extensões)
 
-**NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear. It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
+**NAM-rs** is a real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client for simulating guitar amplifiers, pedals, and studio gear.
 
-In version 1.4, the focus is on standalone mode, but the groundwork is laid for plugins. It runs as an executable that captures any audio signal from your computer and sends the processed result to your desired output. This allowed for quick testing of the technology without immediately investing time on more complex abstractions.
-
-The inference engine is heavily based on Mike Oliphant's C++ [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) library, but entirely rewritten in native and idiomatic Rust with numerous tailor-made optimizations. In many parts of the *Hot Path*, it practically achieves the theoretical microarchitecture throughput target.
+It aims to maintain parity with the standard NAM implementation while introducing several performance improvements and optimizations.
 
 It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features.
 
-This search for state-of-the-art optimization truly pays off when you consider that computer audio signals are usually stereo. As a result, two audio channels are processed simultaneously with extremely low latency and very low CPU usage.
-
-> NOTE: Don't be fooled by the version number. It means the code is very complete, optimized, and functional. It has received a lot of love and effort. But so far, the only user is the maintainer. All testing and practical use is highly welcome!
+Two operation modes are available: **Standalone** (native PipeWire executable) and **CLAP Plugin** (`.so` library with full GUI for DAWs). Both process stereo audio with ultra-low latency and minimal CPU usage — a real payoff given that most audio signals are stereo.
 
 ---
 
@@ -33,7 +29,7 @@ NAM-rs can be compiled in two main modes via *feature flags*:
    cargo build --release --features standalone
    ```
 
-2. **CLAP Plugin (beta):** `.so` library for use in DAWs (such as REAPER, Bitwig Studio, Fender Studio Pro, etc.). Full GUI with knobs, VU meters, drag-and-drop model loading, telemetry, and 8 CLAP extensions.
+2. **CLAP Plugin:** `.so` library for use in DAWs (such as Bitwig Studio, Fender Studio Pro, etc.). Full GUI with knobs, VU meters, drag-and-drop model loading, telemetry, and 8 CLAP extensions.
 
    ```bash
    # CLAP Plugin build
@@ -178,23 +174,6 @@ To ensure the engine remains stable during hours of continuous usage, NAM-rs inc
 * **Memory Resilience:** Ring buffer boundary stress in `VirtualRingBuffer`.
 
 Run the full battery: `bash utils/tests-long.sh`
-
-Categories of validation include JSON/NAMB parsing, **fuzz testing via proptest** (adversarial bytes, malformed JSON, corrupted NAMB), **zero-allocation verification** in the hot-path (counting allocator), long-duration numerical stability, auto-consistency (determinism), C++ ↔ Rust golden vectors, E2E SPSC pipelines, static/dynamic parity, silent mode stability (denormals/DAZ/FTZ), gain staging roundtrip, fast model hot-swap, **variable block sizes** (1–512 samples), **community models** (5 .nam files), and **unsupported format rejection** (Keras Legacy, non-Tanh activations).
-
----
-
-## ⏲️ Changelog
-
-* 1.0 (2026-04-28): Initial release. Full support for Neural Amp Modeler "A1 Architecture".
-* 1.1 (2026-04-30): Miscellaneous performance optimizations.
-* 1.2 (2026-05-02): Integrated custom resampling algorithm.
-* 1.3 (2026-05-04): Intensive SIMD optimizations and telemetry refactoring.
-* 1.4 (2026-05-05): Staging for A2 and CLAP. Tons of performance optimizations.
-* 1.4.1 (2026-05-07): Cleanups and optimization passes.
-* 1.4.2 (2026-05-08): Micro fixes.
-* 1.4.3 (2026-05-10): Micro fixes.
-* 1.4.4 (2026-05-11): Removed faulty interactive CLI mode.
-* 1.4.5 (2026-05-11): Optimizations and licensing update.
 
 ---
 

@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -35,39 +34,16 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > **Decisão:** As funções de ativação `tanh` e `sigmoid` usam aproximações polinomiais SIMD
 > (Minimax + Newton-Raphson duplo) em vez de chamadas à libm IEEE-754 compliant.
 >
-> **Consequência:** Erro máximo por ativação vs libm (range completo `[-8, 8]`):
+> **Trade-off:** ~4–5 casas decimais de precisão por ~10-20× de throughput
+> (4-8 ciclos/ativação vs 20-60 ciclos/ativação no libm escalar).
+> Erro máximo: **tanh < 2e-5**, **sigmoid < 5e-6** (sweep 32.768 pontos em [-8, 8]).
+> A divergência vs C++ é perceptualmente inaudível (abaixo do piso de quantização 16-bit PCM).
 >
-> - **tanh**: **< 2e-5** (sweep de 32.768 pontos, T7.2-2026-05-08); pior ponto em x≈-4.34 (1.234e-5).
->   No range central `[-4, 4]` o erro cai para ~6e-8 (polinômio Minimax saturando o mantissa f32).
-> - **sigmoid**: **< 5e-6** (sweep de 32.768 pontos, T7.2-2026-05-08); erro uniforme por todo o range.
->   O áudio resultante **não é bit-a-bit idêntico** ao motor C++ NeuralAmpModelerCore.
->   A divergência é **perceptualmente inaudível** (erro uma ordem de magnitude abaixo
->   do piso de quantização 16-bit PCM).
->
-> **Justificativa:** O trade-off sacrifica ~4–5 casas decimais de precisão para ganhar
-> ~10-20× de throughput (4-8 ciclos/ativação vs 20-60 ciclos/ativação no libm escalar).
-> Para atingir paridade bit-a-bit seria necessário usar `exp()`/`tanh()` escalar via libm,
-> eliminando todo o ganho SIMD que é a razão de existência do NAM-rs.
->
-> **Impacto por modelo:**
->
-> - **LSTM** (1 camada, 4 ativações/sample): SNR ~24.5 dB vs C++ (divergência mínima)
-> - **WaveNet Standard** (20 camadas, ~60 ativações/sample): SNR ~10 dB vs C++ (acumulação sublinear √N)
->
-> **Fontes de erro do `simd_sigmoid_avx2` (após NR duplo, range central):**
->
-> 1. Polinômio Minimax D6 para `exp(f)`: erro ~1e-7 (fonte residual dominante)
-> 2. `_mm256_rcp_ps` + 2× Newton-Raphson: precisão saturada a ~24 bits (~6e-8 relativo)
-> 3. Range reduction via `_mm256_cvtps_epi32`: ~1 ULP em fronteiras
-> 4. Composição multiplicativa `rcp(1 + exp(-x))`: erro pico ~6e-8 para |x| < 5
->
-> **Validação:** Sweep determinístico de 32.768 pontos em `[-8, 8]` (`test_tanh_max_abs_error_sweep`,
-> `test_sigmoid_max_abs_error_sweep`); proptest com 10.000 inputs aleatórios (`prop_simd_tanh_avx2_rmse`,
-> `prop_simd_sigmoid_avx2_rmse`); golden vectors cross-C++ (4 modelos); regression goldens
-> self-reference (7 modelos, MSE < 1e-6).
+> **Validação:** Sweep determinístico, proptest (10k inputs), golden vectors cross-C++ (4 modelos),
+> regression goldens self-reference (7 modelos, MSE < 1e-6).
 >
 > **Referências:** `src/math/fastmath.rs` (docstring de `simd_tanh_avx2`),
-> `tests/fixtures/README.md`, `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)
+> `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)
 
 ### Formato Binário NAMB (Native Audio Model Binary)
 
@@ -180,11 +156,11 @@ Essa separação garante que o build para CLAP não arraste dependências do Pip
 
 O NAM-rs utiliza *feature flags* para isolar backends e reduzir o footprint do binário final:
 
-| Perfil de Build         | Comando de Compilação                                                | Artefato Gerado           | Dependências Principais                                |
-|:----------------------- |:-------------------------------------------------------------------- |:------------------------- |:------------------------------------------------------ |
-| **Standalone** (padrão) | `cargo build --features standalone`                                  | Binário Executável        | `pipewire`, `rtrb`, `clap` (CLI)                       |
-| **CLAP Plugin**         | `cargo build --no-default-features --features clap-plugin --lib`     | Biblioteca `.so` (cdylib) | `clack-plugin`, `clack-extensions`, `egui`, `baseview` |
-| **DSP Lib (Pure)**      | `cargo build --no-default-features --lib`                            | Biblioteca Rust (`.rlib`) | Apenas Core DSP (no-std ready)                         |
+| Perfil de Build         | Comando de Compilação                                            | Artefato Gerado           | Dependências Principais                                |
+|:----------------------- |:---------------------------------------------------------------- |:------------------------- |:------------------------------------------------------ |
+| **Standalone** (padrão) | `cargo build --features standalone`                              | Binário Executável        | `pipewire`, `rtrb`, `clap` (CLI)                       |
+| **CLAP Plugin**         | `cargo build --no-default-features --features clap-plugin --lib` | Biblioteca `.so` (cdylib) | `clack-plugin`, `clack-extensions`, `egui`, `baseview` |
+| **DSP Lib (Pure)**      | `cargo build --no-default-features --lib`                        | Biblioteca Rust (`.rlib`) | Apenas Core DSP (no-std ready)                         |
 
 ## 5. DSP & Resampling Nativo
 
@@ -226,27 +202,21 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 
 ### Camadas Ativas
 
-| Camada                        | Local                                                    | Força como Ground Truth        | O que captura                                                                                           |
-|:----------------------------- |:-------------------------------------------------------- |:------------------------------ |:------------------------------------------------------------------------------------------------------- |
-| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++  | Erros na composição de kernels, regressões end-to-end e paridade vs referência original.                |
-| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa| Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
-| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta     | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
-| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato    | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
-| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout     | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
-| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                              | Inicialização do host PipeWire, processamento de buffers e teardown seguro.                             |
-| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                              | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
-| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                              | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
-| **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                              | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
+| Camada                        | Local                                                    | Força como Ground Truth         | O que captura                                                                                           |
+|:----------------------------- |:-------------------------------------------------------- |:------------------------------- |:------------------------------------------------------------------------------------------------------- |
+| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência original.                |
+| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
+| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
+| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato     | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
+| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout      | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
+| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                               | Inicialização do host PipeWire, processamento de buffers e teardown seguro.                             |
+| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                               | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
+| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                               | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
+| **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
 
 ### Decisão de Arquitetura: Remoção dos Parity Tests com Inputs Fixos
 
-Os testes que comparavam kernels AVX2/AVX-512 contra `ScalarRefMath` com entradas artificiais fixas foram **removidos intencionalmente**. O raciocínio:
-
-1. **Circularidade:** Os testes unitários de `ScalarRefMath` validavam a struct contra valores calculados por ela mesma — sinal zero de corretude matemática.
-2. **Redundância:** Os PropTests já cobrem o mesmo espaço (SIMD vs. escalar) com 10.000 entradas aleatórias e referências independentes (`f64`, `f32::tanh()` nativa), eliminando a dependência circular.
-3. **Diagnóstico preservado:** Se um Golden Vector falhar, os PropTests narrowam o kernel quebrado sem necessidade dos parity tests fixos.
-
-> **Referência:** `src/math/common/scalar_ref.rs` mantém as funções livres (`_fallback`) usadas em produção por `avx2_impl.rs` e `avx512_impl.rs` como delegates escalares. A struct `ScalarRefMath` foi removida após a eliminação dos testes que a consumiam.
+> Testes que comparavam kernels SIMD contra `ScalarRefMath` com entradas fixas foram removidos — eram circulares (validação contra si mesmos) e redundantes com os PropTests (10k inputs aleatórios com referências independentes `f64`/`f32::tanh()`). A struct `ScalarRefMath` foi eliminada; as funções `_fallback` em `src/math/common/scalar_ref.rs` permanecem como delegates escalares.
 
 ### Benchmarks e Performance
 
@@ -273,26 +243,7 @@ A arquitetura do NAM-rs suporta o desacoplamento necessário para execução com
 
 ## 8.2 Decisões de Arquitetura
 
-Este projeto utiliza um registro simplificado de decisões arquiteturais para manter a rastreabilidade técnica:
-
-### Framework CLAP — `clack-plugin`
-
-- **Decisão:** Crate `clack-plugin` (baseado em `clack`) como framework principal para integração CLAP.
-- **Justificativa:** Oferece controle granular sobre o ciclo de vida do plugin, overhead zero de runtime e mapeamento direto ao spec CLAP sem forçar o uso de VST3 ou frameworks de GUI opinativos.
-- **Alternativa rejeitada:** `nih-plug` — descartado por impor VST3 como dependência, incluir GUI embutida opinativa e introduzir abstrações incompatíveis com as restrições de RT (zero-alloc, zero-lock) do NAM-rs.
-
-### Interface Gráfica — `egui` + `baseview`
-
-- **Decisão:** A GUI será implementada usando `egui` (Immediate Mode GUI) renderizada sobre janelas nativas via `baseview`.
-- **Justificativa:** Garantia de uma interface 100% Rust, sem dependências de C++ (como Qt/JUCE), facilitando o build determinístico e a integração nativa com o spec CLAP via extensões de janela.
-
-### DAW Primária de Desenvolvimento — Bitwig Studio
-
-- **Decisão:** Bitwig Studio 6+ (Ubuntu Linux 26.04+) como plataforma primária de desenvolvimento e validação técnica.
-- **Justificativa:** O Bitwig Studio oferece a implementação de referência do padrão CLAP (sendo co-autor do spec). Seu sistema de *Sandboxing* (isolamento de processos) e o suporte nativo a modulações sample-accurate são ideais para testar a robustez e o determinismo temporal do motor DSP do NAM-rs.
-- **REAPER:** Validação secundária e suporte à comunidade de baixo custo. Excelente para depuração de buffers irregulares.
-  - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
-- **Fender Studio Pro:** Validação de compatibilidade em hosts comerciais de grande escala. Meta futura pois suporta apenas modo wayland.
+As decisões detalhadas sobre framework (`clack-plugin`), GUI (`egui` + `baseview`), e DAWs alvo estão documentadas em [docs/clap_integration.md](file:///home/fabio/nam-rs/docs/clap_integration.md).
 
 ## 8.1 Arquitetura CLAP: Threads e Ciclo de Vida
 
@@ -346,77 +297,11 @@ A troca de modelos na audio thread é RT-safe:
 3. O `on_main_thread()` drena `gc_rx` e executa `drop()` dos modelos obsoletos.
 4. Se o canal GC estiver cheio, usa `GcOverflowBuffer` (overwrite ring buffer com `AtomicPtr`).
 
-### Extensões CLAP Implementadas
+### Extensões CLAP e Interface Gráfica
 
-| Extensão                       | Arquivo                                                                                  | Responsabilidade                                                                          |
-|:------------------------------ |:---------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | 1 porta stereo I/O com `in_place_pair`                                                    |
-| `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | 4 parâmetros (Input Gain, Output Gain, Gate Threshold, Bypass) com `flush()` bidirecional |
-| `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistência JSON de parâmetros e path do modelo                                          |
-| `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Reporte de latência induzida pelo processamento/resampling ao host                        |
-| `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Adaptação da cor de destaque da GUI à cor da trilha do host (Accent Color dinâmico)       |
-| `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Páginas pré-configuradas para Device Panel e controladores de hardware                    |
-| `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Feedback visual de mapeamento, automação e override de parâmetros                         |
-| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Janela embutida X11 via XWayland (600×280px, tamanho fixo)                                |
+O plugin implementa 8 extensões CLAP: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication` e `gui`. A GUI utiliza `egui` + `baseview` sobre backend X11 puro (600×260px), com isolamento completo entre UI thread e audio thread via campos atômicos e SPSC.
 
-### Interface Gráfica: Estratégia de Windowing e Stack
-
-A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente isolada da `audio thread`. A arquitetura é unificada no backend X11, garantindo estabilidade e portabilidade.
-
-#### Estratégia de Windowing Unificada (X11 Puro)
-
-```text
-┌────────────────────────────────────────────────┐
-│                  NAM-rs GUI                    │
-│              (egui + egui_glow)                │
-│    draw_ui() — Lógica de UI 100% agnóstica    │
-├────────────────────────────────────────────────┤
-│       NamPluginWindow (WindowHandler)          │
-│   Tradução baseview events → egui::RawInput   │
-│   Renderização via egui_glow::Painter + glow  │
-├────────────────────────────────────────────────┤
-│                  Backend X11                   │
-│   (baseview - raw-window-handle 0.5 → 0.6)    │
-│           X11 Puro / XWayland nativo           │
-└────────────────────────────────────────────────┘
-```
-
-- **Backend X11:** O plugin declara suporte exclusivo a `CLAP_WINDOW_API_X11`.
-- **Stack:** A stack gráfica utiliza `egui v0.34` e `glow v0.17`, com tradução de handles de janela (`raw-window-handle 0.5` do host para `0.6` do `egui`/`baseview`) na inicialização.
-- **Implementação:** A struct `NamPluginWindow` implementa diretamente a trait `baseview::WindowHandler`, traduzindo eventos de mouse, teclado e drag-and-drop para `egui::RawInput` sem camada de abstração intermediária.
-
-#### Stack Tecnológico
-
-| Componente    | Crate/Tecnologia | Papel                                                                                          |
-|:------------- |:---------------- |:---------------------------------------------------------------------------------------------- |
-| GUI Framework | `egui`           | Immediate Mode GUI — sem estado persistente, sem GC, sem alocações no render loop              |
-| Renderizador  | `egui_glow`      | Bridge egui → OpenGL 3.3 via `glow`. Integração manual (sem `egui-baseview`, abandonado ~2021) |
-| Windowing     | `baseview`       | Janela nativa embutida X11 via `RawWindowHandle`. Event loop dedicado                          |
-| File Picker   | `rfd`            | File dialog nativo assíncrono (zenity/xdg-portal). Nunca bloqueia a UI thread                  |
-
-#### Feature Flag `clap-plugin`
-
-A GUI é compilada condicionalmente sob a feature `clap-plugin`. Para o build padrão (com GUI completa):
-
-- `cargo build --features clap-plugin` — Plugin CLAP com GUI completa.
-
-Todo código de GUI vive em `src/clap/gui/` e é gateado por `#[cfg(feature = "clap-plugin")]`.
-
-#### Isolamento de Threads (UI ↔ Audio)
-
-A UI thread **nunca** acessa diretamente os campos de `NamClapProcessor`. A comunicação é estritamente via:
-
-- **Leitura de telemetria (Audio → UI):** Campos atômicos em `NamClapShared` (`AtomicU32` para peaks L/R, `AtomicBool` para clipping), lidos com `Ordering::Relaxed` — valores levemente atrasados são aceitáveis para medidores visuais.
-- **Envio de comandos (UI → Audio):** Canal SPSC de parâmetros (`ClapParamPayload`) via `param_tx`, drenado pela audio thread no início de cada `process()`.
-- **Metadados (Main → UI):** `Mutex<String>` para nome do modelo carregado — acessado apenas pela UI thread em intervalos de 500ms.
-
-### Ownership Transfer via `Mutex<Option<>>`
-
-O `NamClapShared` utiliza `Mutex<Option<Producer/Consumer>>` para os canais SPSC. Isso resolve o requisito `Sync` da trait `PluginShared` do clack: os canais são "extraídos" pelas respectivas threads durante `activate()` e `new_main_thread()`, e devolvidos no `deactivate()` para permitir re-ativações.
-
-### Smoothing Anti-Zipper (`ParamSmoother`)
-
-Filtro IIR de 1-pólo (20Hz cutoff @ sample_rate) para suavização de ganhos. Evita artefatos de descontinuidade (`zipper noise`) quando parâmetros são modulados sample-a-sample pelo host. Instanciado no `activate()` e aplicado por sample no `process()`.
+Para detalhes de cada extensão, stack gráfico e estratégia de windowing, veja [docs/clap_integration.md](file:///home/fabio/nam-rs/docs/clap_integration.md).
 
 ### Matemática & SIMD — Reorganização Modular
 
