@@ -6,7 +6,7 @@
 # Gera libnam_rs.so e copia para ~/.clap/nam-rs.clap
 #
 
-set -euo pipefail
+set -xeuo pipefail
 
 DEST_PATH="$HOME/.clap/nam-rs.clap"
 
