@@ -11,4 +11,4 @@ pub mod window;
 /// Largura padrão da janela do plugin.
 pub const GUI_WIDTH: u32 = 600;
 /// Altura padrão da janela do plugin.
-pub const GUI_HEIGHT: u32 = 260;
+pub const GUI_HEIGHT: u32 = 275;

@@ -86,6 +86,7 @@ fn main() -> anyhow::Result<()> {
                 input_mult_adj,
                 output_mult_adj,
                 sample_rate,
+                ..
             }) => {
                 let _ = producer.push(ParamPayload::LoadModel {
                     model_l,

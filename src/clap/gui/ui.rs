@@ -854,8 +854,35 @@ fn draw_vertical_meter(
             }
         }
 
+        // Float com o valor medido abaixo do Peak Meter (VU)
+        ui.add_space(2.0);
+        ui.vertical_centered(|ui| {
+            let peak_text = if !enabled || peak_db <= -59.9 {
+                "-inf".to_string()
+            } else {
+                format!("{:.1}", peak_db)
+            };
+
+            let peak_color = if !enabled {
+                COL_MUTED
+            } else if peak_db >= -3.0 {
+                COL_VU_RED
+            } else if peak_db >= -12.0 {
+                COL_VU_YELLOW
+            } else {
+                COL_VU_GREEN
+            };
+
+            ui.label(
+                egui::RichText::new(peak_text)
+                    .font(egui::FontId::monospace(9.5))
+                    .strong()
+                    .color(peak_color),
+            );
+        });
+
         // Label ABAIXO do medidor (m4)
-        ui.add_space(4.0);
+        ui.add_space(2.0);
         ui.vertical_centered(|ui| {
             ui.label(
                 egui::RichText::new(label)
@@ -1052,8 +1079,18 @@ pub fn draw_ui(
     let mut load_btn_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
-    // Layout principal: horizontal com Zonas 1–4
+    let available_w = ui.available_width();
+
+    // Layout principal: horizontal com Zonas 1–4 centralizadas
     ui.horizontal(|ui| {
+        let total_content_width =
+            135.0 + 240.0 + 80.0 + 60.0 + 3.0 * 13.0 + 6.0 * ui.spacing().item_spacing.x;
+        let extra_width = (available_w - total_content_width).max(0.0);
+        let left_space = (extra_width / 2.0) - ui.spacing().item_spacing.x;
+        if left_space > 0.0 {
+            ui.add_space(left_space);
+        }
+
         // ── Zona 1: Identidade (esquerda) ─────────────────────
         ui.allocate_ui(egui::vec2(135.0, 210.0), |ui| {
             ui.vertical(|ui| {
@@ -1538,169 +1575,323 @@ pub fn draw_ui(
 
     // ── Zona 5: Status Bar / Footer ──────────────────────────────────────────
     ui.with_layout(
-        egui::Layout::bottom_up(egui::Align::LEFT).with_main_justify(true),
+        egui::Layout::top_down(egui::Align::LEFT),
         |ui| {
-        ui.add_space(4.0);
+            // Desenha a linha separadora acima da status bar usando o topo absoluto do retângulo da status bar
+            ui.painter().line(
+                vec![
+                    ui.max_rect().left_top(),
+                    ui.max_rect().right_top(),
+                ],
+                egui::Stroke::new(0.5, COL_BORDER),
+            );
 
-        // Atualização da telemetria de forma incondicional (uma vez por segundo)
-        let now = Instant::now();
-        if now.duration_since(state.last_telem_update) >= Duration::from_secs(1)
-            || (state.telem_cycles == 0 && state.telem_last_n == 0)
-        {
-            state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
-            state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
-            state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
-            state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
-
-            let sr = shared.sample_rate.load(Ordering::Relaxed);
-            if sr > 0 && state.telem_last_n > 0 {
-                let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
-                state.telem_budget_ns = budget_ns;
-                state.telem_cycle_ns = state.telem_cycles;
-                state.telem_load_pct =
-                    ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
+            // Obtenção dos metadados de modelo carregados
+            let model_meta_opt = if let Ok(guard) = shared.ui_model_metadata.lock() {
+                guard.clone()
             } else {
-                state.telem_budget_ns = 0;
-                state.telem_cycle_ns = 0;
-                state.telem_load_pct = 0.0;
-            }
-
-            state.last_telem_update = now;
-        }
-
-        // Linha de status bar unificada com telemetria
-        ui.horizontal(|ui| {
-            let sr = shared.sample_rate.load(Ordering::Relaxed);
-            let lat = shared.current_latency.load(Ordering::Relaxed);
-
-            let sr_text = if sr == 0 {
-                "SR: Off".to_string()
-            } else {
-                format!("SR: {:.1} kHz", sr as f64 / 1000.0)
+                None
             };
 
-            let lat_ms = if sr > 0 {
-                (lat as f64 * 1000.0) / sr as f64
+            // Cálculo dinâmico do posicionamento vertical (centro-inferior)
+            let available_h = ui.available_height();
+            let has_meta = model_meta_opt.is_some();
+            let line_height = 11.5; // Estimativa de altura por linha (incluindo margens)
+            let spacing = 3.0; // Espaçamento compacto de metade do padrão entre as linhas
+            let content_height = if has_meta {
+                2.0 * line_height + spacing
             } else {
-                0.0
-            };
-            let lat_text = if lat == 0 {
-                "Lat: 0 ms".to_string()
-            } else {
-                format!("Lat: {:.1} ms ({} spl)", lat_ms, lat)
+                line_height
             };
 
-            let cycles = state.telem_cycles;
-            let last_n = state.telem_last_n;
-            let prio = state.telem_prio;
-            let overloads = state.telem_overloads;
-            let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
+            let extra_space = (available_h - content_height).max(0.0);
+            // 55% do espaço extra fica no topo, posicionando as linhas no "centro-inferior"
+            let top_space = extra_space * 0.55;
+            ui.add_space(top_space);
 
-            let telem_items = [
-                (
-                    sr_text,
-                    "Host DAW Sample Rate.\nThe neural model runs internally at 48 kHz. High quality resampling is automatically active if rates differ.",
-                    None,
-                ),
-                (
-                    lat_text,
-                    "Latency introduced by the internal resampler to align host sample rate with neural model's native 48 kHz.\nBypassed (0 ms) when host sample rate is 48 kHz.",
-                    None,
-                ),
-                (
-                    format!("DSP: {:.1}%", state.telem_load_pct),
-                    "DSP Thread Load: portion of real-time audio time budget used.",
-                    Some(if state.telem_load_pct < 50.0 {
-                        COL_VU_GREEN
-                    } else if state.telem_load_pct <= 80.0 {
-                        COL_AMBER
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = spacing;
+                ui.spacing_mut().interact_size.y = 10.0;
+
+                // 1. Linha de status bar unificada com telemetria (linha superior)
+                // Atualização da telemetria de forma incondicional (uma vez por segundo)
+                let now = Instant::now();
+                if now.duration_since(state.last_telem_update) >= Duration::from_secs(1)
+                    || (state.telem_cycles == 0 && state.telem_last_n == 0)
+                {
+                    state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
+                    state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
+                    state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
+                    state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
+
+                    let sr = shared.sample_rate.load(Ordering::Relaxed);
+                    if sr > 0 && state.telem_last_n > 0 {
+                        let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
+                        state.telem_budget_ns = budget_ns;
+                        state.telem_cycle_ns = state.telem_cycles;
+                        state.telem_load_pct =
+                            ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
                     } else {
-                        COL_VU_RED
-                    }),
-                ),
-                (
-                    format!("Cycles: {}", cycles),
-                    "Average CPU clock cycles consumed per real-time processing block",
-                    None,
-                ),
-                (
-                    format!("Last N: {}", last_n),
-                    "Number of audio samples processed in the last block",
-                    None,
-                ),
-                (
-                    format!("RT Prio: {}", prio),
-                    "Real-time thread scheduling priority. Values > 0 indicate active RT thread scheduling",
-                    None,
-                ),
-                (
-                    format!("Overloads: {}", overloads),
-                    "Number of real-time buffer deadline overruns (XRUNs) detected since start",
-                    None,
-                ),
-                (
-                    format!("Flags: {:#X}", status_bits),
-                    "Real-time engine diagnostic status flags bitmask",
-                    None,
-                ),
-            ];
+                        state.telem_budget_ns = 0;
+                        state.telem_cycle_ns = 0;
+                        state.telem_load_pct = 0.0;
+                    }
 
-            // Calcule o tamanho da fonte dinamicamente para ocupar o espaço disponível da linha única
-            let available_width = ui.available_width();
-            let baseline_s = 10.0;
-            let baseline_font = egui::FontId::proportional(baseline_s);
-            let mut sum_widths = 0.0;
-            for (text, _, _) in &telem_items {
-                let galley = ui.painter().layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
-                sum_widths += galley.rect.width();
-            }
-            let separator_text = " | ".to_string();
-            let sep_galley = ui.painter().layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
-            sum_widths += sep_galley.rect.width() * (telem_items.len() - 1) as f32;
-
-            let num_gaps = (telem_items.len() * 2 - 2) as f32; // 8 items e 7 separadores -> 14 gaps
-            let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
-
-            // Subtrai a largura dos gaps e adiciona uma margem de segurança
-            let target_width = available_width - total_gap_width - 8.0;
-            let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
-                let scale = target_width / sum_widths;
-                (baseline_s * scale).clamp(6.0, 14.0)
-            } else {
-                8.5
-            };
-            let font_size = egui::FontId::proportional(calculated_font_size);
-
-            let mut first = true;
-            for (text, tooltip, custom_color) in telem_items {
-                if !first {
-                    ui.label(
-                        egui::RichText::new("|")
-                            .font(font_size.clone())
-                            .color(COL_BORDER),
-                    );
+                    state.last_telem_update = now;
                 }
-                first = false;
 
-                let color = custom_color.unwrap_or(COL_MUTED);
-                let label = ui.label(
-                    egui::RichText::new(text)
-                        .font(font_size.clone())
-                        .color(color),
-                );
-                label.on_hover_text(tooltip);
-            }
-        });
+                ui.horizontal(|ui| {
+                    let sr = shared.sample_rate.load(Ordering::Relaxed);
+                    let lat = shared.current_latency.load(Ordering::Relaxed);
 
-        // Linha separadora acima da status bar
-        ui.painter().line(
-            vec![
-                ui.min_rect().left_top() + egui::vec2(0.0, -1.0),
-                ui.min_rect().right_top() + egui::vec2(0.0, -1.0),
-            ],
-            egui::Stroke::new(0.5, COL_BORDER),
-        );
-    });
+                    let sr_text = if sr == 0 {
+                        "SR: Off".to_string()
+                    } else {
+                        format!("SR: {:.1} kHz", sr as f64 / 1000.0)
+                    };
+
+                    let lat_ms = if sr > 0 {
+                        (lat as f64 * 1000.0) / sr as f64
+                    } else {
+                        0.0
+                    };
+                    let lat_text = if lat == 0 {
+                        "Lat: 0 ms".to_string()
+                    } else {
+                        format!("Lat: {:.1} ms ({} spl)", lat_ms, lat)
+                    };
+
+                    let cycles = state.telem_cycles;
+                    let last_n = state.telem_last_n;
+                    let prio = state.telem_prio;
+                    let overloads = state.telem_overloads;
+                    let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
+
+                    let telem_items = [
+                        (
+                            sr_text,
+                            "Host DAW Sample Rate.\nThe neural model runs internally at 48 kHz. High quality resampling is automatically active if rates differ.",
+                            None,
+                        ),
+                        (
+                            lat_text,
+                            "Latency introduced by the internal resampler to align host sample rate with neural model's native 48 kHz.\nBypassed (0 ms) when host sample rate is 48 kHz.",
+                            None,
+                        ),
+                        (
+                            format!("DSP: {:.1}%", state.telem_load_pct),
+                            "DSP Thread Load: portion of real-time audio time budget used.",
+                            Some(if state.telem_load_pct < 50.0 {
+                                COL_VU_GREEN
+                            } else if state.telem_load_pct <= 80.0 {
+                                COL_AMBER
+                            } else {
+                                COL_VU_RED
+                            }),
+                        ),
+                        (
+                            format!("Cycles: {}", cycles),
+                            "Average CPU clock cycles consumed per real-time processing block",
+                            None,
+                        ),
+                        (
+                            format!("Last N: {}", last_n),
+                            "Number of audio samples processed in the last block",
+                            None,
+                        ),
+                        (
+                            format!("RT Prio: {}", prio),
+                            "Real-time thread scheduling priority. Values > 0 indicate active RT thread scheduling",
+                            None,
+                        ),
+                        (
+                            format!("Overloads: {}", overloads),
+                            "Number of real-time buffer deadline overruns (XRUNs) detected since start",
+                            None,
+                        ),
+                        (
+                            format!("Flags: {:#X}", status_bits),
+                            "Real-time engine diagnostic status flags bitmask",
+                            None,
+                        ),
+                    ];
+
+                    let available_width = ui.available_width();
+                    let baseline_s = 10.0;
+                    let baseline_font = egui::FontId::proportional(baseline_s);
+                    let mut sum_widths = 0.0;
+                    for (text, _, _) in &telem_items {
+                        let galley = ui.painter().layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
+                        sum_widths += galley.rect.width();
+                    }
+                    let separator_text = " | ".to_string();
+                    let sep_galley = ui.painter().layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
+                    sum_widths += sep_galley.rect.width() * (telem_items.len() - 1) as f32;
+
+                    let num_gaps = (telem_items.len() * 2 - 2) as f32;
+                    let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+
+                    let target_width = available_width - total_gap_width - 8.0;
+                    let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
+                        let scale = target_width / sum_widths;
+                        (baseline_s * scale).clamp(6.0, 14.0)
+                    } else {
+                        8.5
+                    };
+                    let font_size = egui::FontId::proportional(calculated_font_size);
+
+                    let mut first = true;
+                    for (text, tooltip, custom_color) in telem_items {
+                        if !first {
+                            ui.label(
+                                egui::RichText::new("|")
+                                    .font(font_size.clone())
+                                    .color(COL_BORDER),
+                            );
+                        }
+                        first = false;
+
+                        let color = custom_color.unwrap_or(COL_MUTED);
+                        let label = ui.label(
+                            egui::RichText::new(text)
+                                .font(font_size.clone())
+                                .color(color),
+                        );
+                        label.on_hover_text(tooltip);
+                    }
+                });
+
+                // 2. Linha de Metadados do Modelo (linha inferior)
+                if let Some(meta) = model_meta_opt {
+                    let mut metadata_items = Vec::new();
+
+                    // 1. Architecture & Topology
+                    metadata_items.push((
+                        format!("Model: {} ({})", meta.architecture, meta.topology),
+                        "Neural network architecture type and topology geometry".to_string(),
+                        Some(accent_color),
+                    ));
+
+                    // 2. Author
+                    if let Some(ref author) = meta.modeled_by {
+                        let trimmed = author.trim();
+                        if !trimmed.is_empty() {
+                            metadata_items.push((
+                                format!("Author: {}", trimmed),
+                                "Creator / trainer of the model".to_string(),
+                                None,
+                            ));
+                        }
+                    }
+
+                    // 3. Gear
+                    let mut gear_parts = Vec::new();
+                    if let Some(ref make) = meta.gear_make {
+                        let trimmed = make.trim();
+                        if !trimmed.is_empty() {
+                            gear_parts.push(trimmed.to_string());
+                        }
+                    }
+                    if let Some(ref model) = meta.gear_model {
+                        let trimmed = model.trim();
+                        if !trimmed.is_empty() {
+                            gear_parts.push(trimmed.to_string());
+                        }
+                    }
+                    let gear_name = if gear_parts.is_empty() {
+                        None
+                    } else {
+                        let mut s = gear_parts.join(" ");
+                        if let Some(ref gtype) = meta.gear_type {
+                            let trimmed = gtype.trim();
+                            if !trimmed.is_empty() {
+                                s.push_str(&format!(" ({})", trimmed));
+                            }
+                        }
+                        Some(s)
+                    };
+                    if let Some(gear) = gear_name {
+                        metadata_items.push((
+                            format!("Gear: {}", gear),
+                            "Original hardware equipment modeled by this neural network".to_string(),
+                            None,
+                        ));
+                    }
+
+                    // 4. Tone
+                    if let Some(ref tone) = meta.tone_type {
+                        let trimmed = tone.trim();
+                        if !trimmed.is_empty() {
+                            metadata_items.push((
+                                format!("Tone: {}", trimmed),
+                                "Classification style of the tone".to_string(),
+                                None,
+                            ));
+                        }
+                    }
+
+                    // 5. Date
+                    if let Some(ref date) = meta.date {
+                        let trimmed = date.trim();
+                        if !trimmed.is_empty() {
+                            metadata_items.push((
+                                format!("Date: {}", trimmed),
+                                "Model creation / export date".to_string(),
+                                None,
+                            ));
+                        }
+                    }
+
+                    // Calcule o tamanho da fonte dinamicamente para ocupar o espaço disponível da linha única
+                    let available_width = ui.available_width();
+                    let baseline_s = 10.0;
+                    let baseline_font = egui::FontId::proportional(baseline_s);
+                    let mut sum_widths = 0.0;
+                    for (text, _, _) in &metadata_items {
+                        let galley = ui.painter().layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
+                        sum_widths += galley.rect.width();
+                    }
+                    let separator_text = " | ".to_string();
+                    let sep_galley = ui.painter().layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
+                    sum_widths += sep_galley.rect.width() * (metadata_items.len() - 1) as f32;
+
+                    let num_gaps = (metadata_items.len() * 2 - 2) as f32;
+                    let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+
+                    let target_width = available_width - total_gap_width - 8.0;
+                    let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
+                        let scale = target_width / sum_widths;
+                        (baseline_s * scale).clamp(9.0, 10.0) // Clamp do tamanho mínimo em 9.0 para não ficar pequeno
+                    } else {
+                        9.0
+                    };
+                    let font_size = egui::FontId::proportional(calculated_font_size);
+
+                    ui.horizontal(|ui| {
+                        let mut first = true;
+                        for (text, tooltip, custom_color) in metadata_items {
+                            if !first {
+                                ui.label(
+                                    egui::RichText::new("|")
+                                        .font(font_size.clone())
+                                        .color(COL_BORDER),
+                                );
+                            }
+                            first = false;
+
+                            let color = custom_color.unwrap_or(COL_MUTED);
+                            let label = ui.label(
+                                egui::RichText::new(text)
+                                    .font(font_size.clone())
+                                    .color(color),
+                            );
+                            label.on_hover_text(tooltip);
+                        }
+                    });
+                }
+            });
+        }
+    );
 
     if state.drag_active {
         egui::Area::new(egui::Id::new("drop_overlay"))

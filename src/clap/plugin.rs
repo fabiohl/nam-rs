@@ -26,6 +26,27 @@ pub enum ClapParamPayload {
     LoadModel(Box<LoadedModelPair>, Box<NamResampler>),
 }
 
+/// Metadados do modelo para exibição na GUI.
+#[derive(Clone, Debug, Default)]
+pub struct NamModelMetadata {
+    /// Arquitetura do modelo (ex: "LSTM", "WaveNet").
+    pub architecture: String,
+    /// Topologia do modelo (ex: "Standard", "1x64").
+    pub topology: String,
+    /// Autor / Modeled by.
+    pub modeled_by: Option<String>,
+    /// Fabricante do equipamento original.
+    pub gear_make: Option<String>,
+    /// O modelo do equipamento original.
+    pub gear_model: Option<String>,
+    /// Tipo de equipamento.
+    pub gear_type: Option<String>,
+    /// Estilo/Tipo de tom do equipamento.
+    pub tone_type: Option<String>,
+    /// Data formatada YYYY-MM-DD.
+    pub date: Option<String>,
+}
+
 /// Wrapper seguro para ponteiro de NamClapShared repassado à thread de GUI.
 #[derive(Clone, Copy)]
 pub struct NamClapSharedRef(pub *const NamClapShared);
@@ -73,6 +94,8 @@ pub struct NamClapShared {
     pub ui_clipped: std::sync::atomic::AtomicBool,
     /// Nome do modelo carregado (path basename). Escrito pela main thread, lido pela UI thread.
     pub ui_model_name: Mutex<String>,
+    /// Metadados do modelo carregado para exibição na UI.
+    pub ui_model_metadata: Mutex<Option<NamModelMetadata>>,
     /// Caminho do modelo pendente para ser carregado pela Main Thread. Escrito pela UI thread.
     pub ui_pending_model: Mutex<Option<std::path::PathBuf>>,
     /// Indica se a GUI está no meio de um carregamento assíncrono de modelo.
@@ -355,6 +378,35 @@ impl<'a> NamClapMainThread<'a> {
             })?,
         );
 
+        // 3. Atualiza o path nos parâmetros locais (espelhados)
+        self.params.model_path = Some(path.to_path_buf());
+
+        // Extrai e atualiza os metadados do modelo para a GUI
+        let metadata = model_pair.metadata.clone();
+        let architecture = model_pair.architecture.clone();
+        let topology = model_pair.topology.clone();
+        if let Ok(mut meta_guard) = self.shared.ui_model_metadata.lock() {
+            *meta_guard = Some(NamModelMetadata {
+                architecture,
+                topology,
+                modeled_by: metadata.as_ref().and_then(|m| m.modeled_by.clone()),
+                gear_make: metadata.as_ref().and_then(|m| m.gear_make.clone()),
+                gear_model: metadata.as_ref().and_then(|m| m.gear_model.clone()),
+                gear_type: metadata.as_ref().and_then(|m| m.gear_type.clone()),
+                tone_type: metadata.as_ref().and_then(|m| m.tone_type.clone()),
+                date: metadata
+                    .as_ref()
+                    .and_then(|m| m.date.as_ref())
+                    .map(|d| match (d.year, d.month, d.day) {
+                        (Some(y), Some(m), Some(d)) => format!("{:04}-{:02}-{:02}", y, m, d),
+                        (Some(y), Some(m), None) => format!("{:04}-{:02}", y, m),
+                        (Some(y), None, None) => format!("{:04}", y),
+                        _ => String::new(),
+                    })
+                    .filter(|s| !s.is_empty()),
+            });
+        }
+
         // Atualiza o sample rate do modelo
         self.shared
             .model_sample_rate
@@ -373,9 +425,6 @@ impl<'a> NamClapMainThread<'a> {
                         .hint("Please try loading the model again in a few moments."),
                 )
             })?;
-
-        // 3. Atualiza o path nos parâmetros locais (espelhados)
-        self.params.model_path = Some(path.to_path_buf());
 
         // Atualiza o nome do modelo carregado para exibição na UI (basename)
         let basename = path
@@ -472,6 +521,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
             ui_clipped: std::sync::atomic::AtomicBool::new(false),
             ui_model_name: Mutex::new(String::new()),
+            ui_model_metadata: Mutex::new(None),
             ui_pending_model: Mutex::new(None),
             ui_loading: std::sync::atomic::AtomicBool::new(false),
             ui_load_error: std::sync::atomic::AtomicBool::new(false),

@@ -29,6 +29,7 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
         ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
         ui_clipped: std::sync::atomic::AtomicBool::new(false),
         ui_model_name: Mutex::new(String::new()),
+        ui_model_metadata: Mutex::new(None),
         ui_pending_model: Mutex::new(None),
         ui_loading: std::sync::atomic::AtomicBool::new(false),
         ui_load_error: std::sync::atomic::AtomicBool::new(false),

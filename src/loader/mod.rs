@@ -36,6 +36,12 @@ pub struct LoadedModelPair {
     pub output_mult_adj: f32,
     /// Taxa de amostragem nativa do modelo.
     pub sample_rate: u32,
+    /// Arquitetura do modelo (ex: "LSTM", "WaveNet").
+    pub architecture: String,
+    /// Topologia do modelo (ex: "Standard", "1x64").
+    pub topology: String,
+    /// Metadados opcionais do modelo.
+    pub metadata: Option<crate::loader::nam_json::NamMetadata>,
 }
 
 impl std::fmt::Debug for LoadedModelPair {
@@ -46,6 +52,9 @@ impl std::fmt::Debug for LoadedModelPair {
             .field("input_mult_adj", &self.input_mult_adj)
             .field("output_mult_adj", &self.output_mult_adj)
             .field("sample_rate", &self.sample_rate)
+            .field("architecture", &self.architecture)
+            .field("topology", &self.topology)
+            .field("metadata", &self.metadata)
             .finish()
     }
 }
@@ -139,11 +148,33 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         m.prewarm(2048);
     }
 
+    let architecture = model_data.architecture.clone();
+    let topology = if architecture == "WaveNet" {
+        match nam_json::get_wavenet_topology(&model_data) {
+            Some(nam_json::NamWavenetTopology::Standard) => "Standard".to_string(),
+            Some(nam_json::NamWavenetTopology::Lite) => "Lite".to_string(),
+            Some(nam_json::NamWavenetTopology::Feather) => "Feather".to_string(),
+            Some(nam_json::NamWavenetTopology::Nano) => "Nano".to_string(),
+            None => "Custom".to_string(),
+        }
+    } else if architecture == "LSTM" {
+        match nam_json::get_lstm_topology(&model_data) {
+            Some((layers, hidden)) => format!("{}x{}", layers, hidden),
+            None => "Custom".to_string(),
+        }
+    } else {
+        "Unknown".to_string()
+    };
+    let metadata = model_data.metadata.clone();
+
     Ok(LoadedModelPair {
         model_l,
         model_r,
         input_mult_adj,
         output_mult_adj,
         sample_rate: nam_rate,
+        architecture,
+        topology,
+        metadata,
     })
 }
