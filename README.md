@@ -31,7 +31,7 @@ NAM-rs can be compiled in two main modes via *feature flags*:
    cargo build --release --features standalone
    ```
 
-2. **CLAP Plugin:** `.so` library for use in DAWs (such as Bitwig Studio, Fender Studio Pro, etc.). Full GUI with knobs, VU meters, drag-and-drop model loading, telemetry, and 8 CLAP extensions.
+2. **CLAP Plugin:** `.so` library for use in DAWs (such as Bitwig Studio, Fender Studio Pro, etc.). Full GUI with knobs, VU meters, model loading (drag-and-drop is pending upstream `baseview` updates on Linux), telemetry, and 8 CLAP extensions.
 
    ```bash
    # CLAP Plugin build

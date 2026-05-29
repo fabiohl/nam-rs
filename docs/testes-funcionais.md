@@ -116,8 +116,10 @@ Cada seção testável após mexer na feature correspondente. Autocontida, ~5–
 
 ### 2G — Drag & Drop + DSP Load Meter
 
-- [ ] Arrastar `.nam` do file manager sobre o plugin → overlay `"Drop NAM Model Here ⬇️"` aparece. Soltar → carrega modelo.
-- [ ] Arrastar `.wav` → overlay aparece mas ignora ao soltar.
+> ⚠️ **Nota sobre o Linux (X11):** O suporte a Drag & Drop (arrastar e soltar arquivos sobre o plugin) está atualmente **indisponível no Linux** devido a limitações da biblioteca de janela `baseview` (backend X11), que não implementa o protocolo XDND. Há uma Pull Request aberta ([RustAudio/baseview PR #187](https://github.com/RustAudio/baseview/pull/187)) aguardando aceite para integrar essa funcionalidade no futuro. Por enquanto, utilize o botão `[📂 Load Model]` no Linux. O comportamento de arrastar e soltar abaixo deve ser testado apenas em plataformas suportadas (ex: Windows).
+
+- [ ] Arrastar `.nam` do file manager sobre o plugin → overlay `"Drop NAM Model Here ⬇️"` aparece. Soltar → carrega modelo. (Apenas Windows).
+- [ ] Arrastar `.wav` → overlay aparece mas ignora ao soltar. (Apenas Windows).
 - [ ] Status bar: indicador `"DSP: XX.X%"` presente na telemetria (verde <50%, âmbar 50-80%, vermelho >80%).
 - [ ] Hover no DSP Load → tooltip descreve a porcentagem de uso do tempo real.
 
