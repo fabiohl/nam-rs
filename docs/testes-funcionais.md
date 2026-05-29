@@ -15,12 +15,12 @@ Objetivo: primeira impressão — layout, carregamento, som, controles básicos.
 
 ### 1.1 Layout e identidade
 
-- [ ] Abrir GUI do NAM-rs → janela fixa **600×260 px** (sem decoração de host).
+- [ ] Abrir GUI do NAM-rs → janela fixa **600×275 px** (sem decoração de host).
 - [ ] Zona 1 (esquerda): logo `"NAM-rs⚡"` turquesa, subtítulo `"Neural Amp Modeler"`, versão + badge SIMD, botão `[📂 Load Model]`, caixa de modelo com fundo escuro.
 - [ ] Zona 2 (centro): 3 knobs — **INPUT** (70px, turquesa), **OUTPUT** (70px, turquesa), **GATE** (42px, âmbar).
-- [ ] Zona 3 (direita): medidor VU **adaptativo** — em trilhas mono: 1 barra centralizada (sem label); em trilhas stereo: 2 barras verticais lado a lado com labels **L** e **R** (16px de largura cada).
+- [ ] Zona 3 (direita): medidor VU **adaptativo** — em trilhas mono: 1 barra centralizada (sem label) de 16px; em trilhas stereo: 2 barras verticais lado a lado com labels **L** e **R** (16px de largura cada).
 - [ ] Zona 4 (extrema direita): toggle **BYPASS** com LED e label `"ACTIVE"`/`"BYPASSED"`.
-- [ ] Zona 5 (footer): status bar com modelo (`-`), sample rate, latência, DSP load, botão `"RT"`.
+- [ ] Zona 5 (footer): status bar com telemetria RT (sample rate, latência, DSP load, CPU cycles, last N samples, RT priority, overruns/overloads, flags) e linha inferior com metadados do modelo (se carregado).
 - [ ] 3 separadores verticais finos visíveis entre as zonas 1–4.
 
 ### 1.2 Primeiro carregamento e som
@@ -76,7 +76,7 @@ Cada seção testável após mexer na feature correspondente. Autocontida, ~5–
 
 #### 2C.1 Modo Mono (padrão)
 
-- [ ] Inserir NAM-rs em trilha **mono** da DAW → Zona 3 exibe **1 medidor centralizado sem label**, ocupando toda a largura da zona (~76px).
+- [ ] Inserir NAM-rs em trilha **mono** da DAW → Zona 3 exibe **1 medidor centralizado sem label** (16px de largura) em uma zona de ~76px.
 - [ ] Alimentar com sinal dinâmico → barra VU única com gradiente tricolor: verde (−60 a −12 dB) → amarelo (−12 a −3 dB) → vermelho (−3 a +6 dB).
 - [ ] Transientes rápidos (pick attack) → barra responde sem atraso visual (~33 fps).
 - [ ] Provocar pico e parar sinal → marca de peak hold permanece ~2s, depois decai suavemente.
@@ -128,8 +128,8 @@ Cada seção testável após mexer na feature correspondente. Autocontida, ~5–
 
 - [ ] Arrastar `.nam` do file manager sobre o plugin → overlay `"Drop NAM Model Here ⬇️"` aparece. Soltar → carrega modelo.
 - [ ] Arrastar `.wav` → overlay aparece mas ignora ao soltar.
-- [ ] Status bar: indicador `"DSP: XX.X%"` presente entre latência e botão RT. Verde <50%, âmbar/vermelho com modelo pesado.
-- [ ] Hover no DSP Load → tooltip com `"DSP Load: XX.X% (YYμs / ZZμs budget)"`.
+- [ ] Status bar: indicador `"DSP: XX.X%"` presente na telemetria (verde <50%, âmbar 50-80%, vermelho >80%).
+- [ ] Hover no DSP Load → tooltip descreve a porcentagem de uso do tempo real.
 
 ---
 
@@ -257,5 +257,5 @@ Executar **após** Blocos 1 e 2 passarem. Buffer de 128 samples @ 48 kHz.
 **Buffer/Sample Rate:** <ex: 128 samples @ 48 kHz>
 **Esperado:** <comportamento descrito no roteiro>
 **Observado:** <o que realmente aconteceu>
-**Anexos:** screenshot/vídeo da GUI, log da DAW, XRUNs do pw-top, painel RT (botão "RT").
+**Anexos:** screenshot/vídeo da GUI, log da DAW, XRUNs do pw-top, telemetria RT da status bar.
 ```

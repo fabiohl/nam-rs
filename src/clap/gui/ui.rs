@@ -272,7 +272,7 @@ fn knob_widget(
     tooltip_suffix: &str,
 ) -> (egui::Response, f32) {
     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    let response = ui.interact(rect, id, egui::Sense::drag());
+    let response = ui.interact(rect, id, egui::Sense::click_and_drag());
     ui.memory_mut(|mem| mem.interested_in_focus(id, ui.layer_id()));
 
     let mut current_value = value;
@@ -292,7 +292,15 @@ fn knob_widget(
 
     // Scroll handling com Ctrl+fine-tune (E5)
     if response.hovered() {
-        let scroll_y = ui.input(|i| i.smooth_scroll_delta.y);
+        let scroll_y = ui.input(|i| {
+            let mut sum_y = 0.0;
+            for event in &i.raw.events {
+                if let egui::Event::MouseWheel { delta, .. } = event {
+                    sum_y += delta.y;
+                }
+            }
+            sum_y
+        });
         if scroll_y != 0.0 {
             let ctrl_held = ui.input(|i| i.modifiers.ctrl);
             let sensitivity = if ctrl_held {

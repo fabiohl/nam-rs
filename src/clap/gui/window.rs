@@ -424,8 +424,9 @@ impl WindowHandler for NamPluginWindow {
                 match mouse_event {
                     MouseEvent::CursorMoved {
                         position,
-                        modifiers: _,
+                        modifiers,
                     } => {
+                        self.raw_input.modifiers = map_modifiers(modifiers);
                         let egui_pos = egui::pos2(position.x as f32, position.y as f32);
                         self.last_mouse_pos = egui_pos;
                         self.raw_input
@@ -433,6 +434,7 @@ impl WindowHandler for NamPluginWindow {
                             .push(egui::Event::PointerMoved(egui_pos));
                     }
                     MouseEvent::ButtonPressed { button, modifiers } => {
+                        self.raw_input.modifiers = map_modifiers(modifiers);
                         if let Some(egui_button) = map_mouse_button(button) {
                             self.raw_input.events.push(egui::Event::PointerButton {
                                 pos: self.last_mouse_pos,
@@ -443,6 +445,7 @@ impl WindowHandler for NamPluginWindow {
                         }
                     }
                     MouseEvent::ButtonReleased { button, modifiers } => {
+                        self.raw_input.modifiers = map_modifiers(modifiers);
                         if let Some(egui_button) = map_mouse_button(button) {
                             self.raw_input.events.push(egui::Event::PointerButton {
                                 pos: self.last_mouse_pos,
@@ -453,6 +456,7 @@ impl WindowHandler for NamPluginWindow {
                         }
                     }
                     MouseEvent::WheelScrolled { delta, modifiers } => {
+                        self.raw_input.modifiers = map_modifiers(modifiers);
                         let (unit, delta_vec) = match delta {
                             ScrollDelta::Lines { x, y } => (
                                 egui::MouseWheelUnit::Line,
