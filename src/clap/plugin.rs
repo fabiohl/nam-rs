@@ -83,6 +83,10 @@ pub struct NamClapShared {
     pub ui_load_error_msg: Mutex<String>,
     /// Sample rate detectado do host.
     pub sample_rate: AtomicU32,
+    /// Número de canais ativos: 1 = mono, 2 = stereo.
+    /// Escrito pelo processor no início de cada process(), lido pela GUI para
+    /// adaptar o número de medidores VU exibidos.
+    pub active_channel_count: AtomicU32,
     /// Cor de accent dinâmica baseada na cor da track do DAW (ARGB compactado).
     pub track_accent_color: AtomicU32,
     /// Indicação de parâmetros (mapeamento, automação e override) para os 5 parâmetros.
@@ -473,6 +477,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             ui_load_error: std::sync::atomic::AtomicBool::new(false),
             ui_load_error_msg: Mutex::new(String::new()),
             sample_rate: AtomicU32::new(0),
+            active_channel_count: AtomicU32::new(1),
             track_accent_color: AtomicU32::new(0),
             param_indication: [
                 std::sync::atomic::AtomicU8::new(0),

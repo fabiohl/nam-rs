@@ -573,15 +573,19 @@ fn draw_vertical_meter(
     let meter_w = 16.0f32;
 
     ui.vertical(|ui| {
-        // Label ACIMA do medidor (m4)
-        ui.vertical_centered(|ui| {
-            ui.label(
-                egui::RichText::new(label)
-                    .font(egui::FontId::monospace(9.0))
-                    .color(COL_MUTED),
-            );
-        });
-        ui.add_space(2.0);
+        // Label ACIMA do medidor (m4) — omitido quando label é vazio (modo mono sem label)
+        if !label.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.label(
+                    egui::RichText::new(label)
+                        .font(egui::FontId::monospace(9.0))
+                        .color(COL_MUTED),
+                );
+            });
+            ui.add_space(2.0);
+        }
+        // Quando sem label (mono): nenhum espaço reservado aqui.
+        // O alinhamento vertical é controlado pelo allocate_ui + layout top_down no callsite.
 
         // LED de clipping (E4) — pisca em vermelho; clique para limpar
         let desired_led = egui::vec2(meter_w, 6.0);
@@ -1423,45 +1427,79 @@ pub fn draw_ui(
             if current_bypass {
                 ui.disable();
             }
-            ui.vertical(|ui| {
+            // Layout top_down garante alinhamento ao topo (egui centra por padrão
+            // quando o conteúdo é menor que a altura alocada).
+            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                 ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    let peak_l =
-                        f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
-                    let peak_r =
-                        f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
 
-                    ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
-                        draw_vertical_meter(
-                            ui,
-                            peak_l,
-                            &mut state.peak_l_hold,
-                            &mut state.peak_l_hold_time,
-                            &mut state.clip_l,
-                            "L",
-                            state.vu_program,
-                            state.vu_vao,
-                            &mut state.vu_l_state,
-                            &mut state.vu_l_callback,
-                            Arc::clone(&state.vu_uniforms),
-                        );
-                    });
-                    ui.add_space(4.0);
-                    ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
-                        draw_vertical_meter(
-                            ui,
-                            peak_r,
-                            &mut state.peak_r_hold,
-                            &mut state.peak_r_hold_time,
-                            &mut state.clip_r,
-                            "R",
-                            state.vu_program,
-                            state.vu_vao,
-                            &mut state.vu_r_state,
-                            &mut state.vu_r_callback,
-                            Arc::clone(&state.vu_uniforms),
-                        );
-                    });
+                let peak_l =
+                    f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
+                let peak_r =
+                    f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
+
+                // Adapta a exibição ao número de canais ativos reportado pelo processor.
+                // Mono (1 canal): 1 medidor centralizado sem label.
+                // Stereo (2 canais): 2 medidores lado a lado com labels "L" e "R".
+                let is_stereo =
+                    shared.active_channel_count.load(Ordering::Relaxed) >= 2;
+
+                ui.horizontal(|ui| {
+                    if is_stereo {
+                        ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                draw_vertical_meter(
+                                    ui,
+                                    peak_l,
+                                    &mut state.peak_l_hold,
+                                    &mut state.peak_l_hold_time,
+                                    &mut state.clip_l,
+                                    "L",
+                                    state.vu_program,
+                                    state.vu_vao,
+                                    &mut state.vu_l_state,
+                                    &mut state.vu_l_callback,
+                                    Arc::clone(&state.vu_uniforms),
+                                );
+                            });
+                        });
+                        ui.add_space(4.0);
+                        ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                draw_vertical_meter(
+                                    ui,
+                                    peak_r,
+                                    &mut state.peak_r_hold,
+                                    &mut state.peak_r_hold_time,
+                                    &mut state.clip_r,
+                                    "R",
+                                    state.vu_program,
+                                    state.vu_vao,
+                                    &mut state.vu_r_state,
+                                    &mut state.vu_r_callback,
+                                    Arc::clone(&state.vu_uniforms),
+                                );
+                            });
+                        });
+                    } else {
+                        // Mono: medidor único centralizado, sem label (por decisão de design).
+                        ui.allocate_ui(egui::vec2(76.0, 190.0), |ui| {
+                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                                draw_vertical_meter(
+                                    ui,
+                                    peak_l,
+                                    &mut state.peak_l_hold,
+                                    &mut state.peak_l_hold_time,
+                                    &mut state.clip_l,
+                                    "",
+                                    state.vu_program,
+                                    state.vu_vao,
+                                    &mut state.vu_l_state,
+                                    &mut state.vu_l_callback,
+                                    Arc::clone(&state.vu_uniforms),
+                                );
+                            });
+                        });
+                    }
                 });
             });
         });
@@ -1500,7 +1538,9 @@ pub fn draw_ui(
     });
 
     // ── Zona 5: Status Bar / Footer ──────────────────────────────────────────
-    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+    ui.with_layout(
+        egui::Layout::bottom_up(egui::Align::LEFT).with_main_justify(true),
+        |ui| {
         ui.add_space(4.0);
 
         // Atualização da telemetria de forma incondicional (uma vez por segundo)

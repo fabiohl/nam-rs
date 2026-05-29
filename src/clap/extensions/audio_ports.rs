@@ -19,8 +19,12 @@ impl PluginAudioPortsImpl for NamClapMainThread<'_> {
 
     /// Preenche as informações da porta de áudio no índice especificado.
     ///
-    /// Configura uma porta stereo (2 canais) com in-place pair habilitado
+    /// Configura uma porta **mono** (1 canal) com in-place pair habilitado
     /// (permite que o host use o mesmo buffer para entrada e saída).
+    ///
+    /// A porta é declarada como mono porque o NAM é mono-nativo por definição.
+    /// A DAW decide como conectar o plugin — em trilhas mono recebe/devolve 1 canal;
+    /// em trilhas stereo, o host gerencia o roteamento de canais externamente.
     fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
         if index == 0 {
             writer.set(&AudioPortInfo {
@@ -30,9 +34,9 @@ impl PluginAudioPortsImpl for NamClapMainThread<'_> {
                 } else {
                     b"Main Output"
                 },
-                channel_count: 2,
+                channel_count: 1,
                 flags: AudioPortFlags::IS_MAIN,
-                port_type: Some(AudioPortType::STEREO),
+                port_type: Some(AudioPortType::MONO),
                 in_place_pair: Some(ClapId::new(0)),
             });
         }

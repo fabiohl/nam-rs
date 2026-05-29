@@ -486,6 +486,21 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             let pair_l = channel_iter.next();
             let pair_r = channel_iter.next();
 
+            // Detecta o modo de canal e sinaliza para a GUI.
+            // Quando pair_r é None, o host forneceu apenas 1 canal (modo mono).
+            // Quando pair_r existe, operamos em stereo (2 canais).
+            let is_stereo = pair_r.is_some();
+            self.shared.active_channel_count.store(
+                if is_stereo { 2 } else { 1 },
+                Ordering::Relaxed,
+            );
+
+            // Modo mono explícito: força process_mono imediatamente, sem histerese.
+            // Não há canal R para comparar, portanto a decisão é determinista.
+            if !is_stereo {
+                *&mut self.process_mono = true;
+            }
+
             let mut out_l: Option<&mut [f32]> = None;
             let mut out_r: Option<&mut [f32]> = None;
 

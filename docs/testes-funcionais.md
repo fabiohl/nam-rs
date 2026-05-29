@@ -18,7 +18,7 @@ Objetivo: primeira impressão — layout, carregamento, som, controles básicos.
 - [ ] Abrir GUI do NAM-rs → janela fixa **600×260 px** (sem decoração de host).
 - [ ] Zona 1 (esquerda): logo `"NAM-rs⚡"` turquesa, subtítulo `"Neural Amp Modeler"`, versão + badge SIMD, botão `[📂 Load Model]`, caixa de modelo com fundo escuro.
 - [ ] Zona 2 (centro): 3 knobs — **INPUT** (70px, turquesa), **OUTPUT** (70px, turquesa), **GATE** (42px, âmbar).
-- [ ] Zona 3 (direita): medidores VU stereo (L/R), barras verticais de 16px.
+- [ ] Zona 3 (direita): medidor VU **adaptativo** — em trilhas mono: 1 barra centralizada (sem label); em trilhas stereo: 2 barras verticais lado a lado com labels **L** e **R** (16px de largura cada).
 - [ ] Zona 4 (extrema direita): toggle **BYPASS** com LED e label `"ACTIVE"`/`"BYPASSED"`.
 - [ ] Zona 5 (footer): status bar com modelo (`-`), sample rate, latência, DSP load, botão `"RT"`.
 - [ ] 3 separadores verticais finos visíveis entre as zonas 1–4.
@@ -71,11 +71,23 @@ Cada seção testável após mexer na feature correspondente. Autocontida, ~5–
 
 ### 2C — Medição VU, Peak Hold & Clipping
 
-- [ ] Alimentar com sinal dinâmico → barras VU com gradiente tricolor: verde (−60 a −12 dB) → amarelo (−12 a −3 dB) → vermelho (−3 a +6 dB). Transições suaves.
-- [ ] Transientes rápidos (pick attack) → barras respondem sem atraso visível (~33 fps).
+> **Comportamento adaptativo:** O número de medidores VU exibidos reflete o modo de canal
+> reportado pelo host. Plugin mono por padrão; stereo quando a DAW fornecer 2 canais.
+
+#### 2C.1 Modo Mono (padrão)
+
+- [ ] Inserir NAM-rs em trilha **mono** da DAW → Zona 3 exibe **1 medidor centralizado sem label**, ocupando toda a largura da zona (~76px).
+- [ ] Alimentar com sinal dinâmico → barra VU única com gradiente tricolor: verde (−60 a −12 dB) → amarelo (−12 a −3 dB) → vermelho (−3 a +6 dB).
+- [ ] Transientes rápidos (pick attack) → barra responde sem atraso visual (~33 fps).
 - [ ] Provocar pico e parar sinal → marca de peak hold permanece ~2s, depois decai suavemente.
-- [ ] Saturar saída (>0 dBFS) → LED vermelho acende no topo de cada canal e **persiste**.
-- [ ] Clique no LED do canal L → só L reseta. Clique no corpo do medidor R → só R reseta.
+- [ ] Saturar saída (>0 dBFS) → LED vermelho no topo do medidor único **persiste**. Clique no LED ou na barra → reseta.
+
+#### 2C.2 Modo Stereo
+
+- [ ] Inserir NAM-rs em trilha **stereo** da DAW → Zona 3 exibe **2 medidores lado a lado** com labels **L** e **R**.
+- [ ] Alimentar com sinal dinâmico em ambos os canais → ambas as barras respondem independentemente.
+- [ ] Saturar saída → LED vermelho acende no topo de **cada canal** e **persiste** independentemente.
+- [ ] Clique no LED do canal L → **só L** reseta. Clique no corpo do medidor R → **só R** reseta.
 
 ---
 

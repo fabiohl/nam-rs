@@ -17,6 +17,6 @@ pub fn nam_descriptor() -> PluginDescriptor {
             c"distortion",
             c"gate",
             c"simulator",
-            c"stereo",
+            c"mono",
         ])
 }
