@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# Roteiro-Mestre de Testes Funcionais — NAM-rs (Plugin CLAP)
+# Roteiro-Mestre de Testes Funcionais (por humanos) — NAM-rs (Plugin CLAP)
 
 **Público:** Especialistas UI/UX e usuários finais.
 **DAWs focais:** Bitwig Studio 6+ e Fender Studio Pro 8+ (Linux, Flatpak).

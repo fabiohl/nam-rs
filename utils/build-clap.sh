@@ -2,48 +2,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #
-# Build e instalação do plugin NAM-rs no formato CLAP.
+# Build e instalação do plugin NAM-rs no formato CLAP (Release/Produção).
 # Gera libnam_rs.so e copia para ~/.clap/nam-rs.clap
 #
-# Uso: ./utils/build-clap.sh [--debug] [--heap-audit]
-#   --debug       Compila em modo debug (mais lento, com símbolos de depuração)
-#   --heap-audit  Ativa auditoria de alocações de heap (para testes de RT-safety)
 
 set -euo pipefail
 
-CLAP_DIR="$HOME/.clap"
-PLUGIN_NAME="nam-rs.clap"
-BUILD_MODE="release"
-CARGO_FLAGS="--release --target-dir target/clap"
-TARGET_DIR="target/clap/release"
-FEATURES="clap-plugin"
+DEST_PATH="$HOME/.clap/nam-rs.clap"
 
-# Processar argumentos
-for arg in "$@"; do
-    if [ "$arg" == "--debug" ]; then
-        BUILD_MODE="debug"
-        CARGO_FLAGS="--target-dir target/clap"
-        TARGET_DIR="target/clap/debug"
-    elif [ "$arg" == "--heap-audit" ]; then
-        FEATURES="$FEATURES,heap-audit"
-    fi
-done
-
-echo "🔨 Building NAM-rs CLAP plugin ($BUILD_MODE) with features: $FEATURES..."
-#cargo clean $CARGO_FLAGS
+echo "🔨 Building NAM-rs CLAP plugin in release mode..."
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-    cargo build $CARGO_FLAGS --no-default-features --features "$FEATURES" --lib
+    cargo build --release --target-dir target/clap --no-default-features --features "clap-plugin" --lib
 
-echo "📁 Instalando em $CLAP_DIR/$PLUGIN_NAME ..."
-mkdir -p "$CLAP_DIR"
-rm -f "$CLAP_DIR/$PLUGIN_NAME"
-cp "$TARGET_DIR/libnam_rs.so" "$CLAP_DIR/$PLUGIN_NAME"
-ls -lath "$CLAP_DIR/$PLUGIN_NAME"
+echo "📁 Instalando em $DEST_PATH ..."
+mkdir -p "$HOME/.clap"
+rm -f "$DEST_PATH"
+cp target/clap/release/libnam_rs.so "$DEST_PATH"
+ls -lath "$DEST_PATH"
 
 echo "🔍 Auditando validade do binário..."
 
 # 1. Verificação de SONAME (Shared Object válida)
-if readelf -d "$CLAP_DIR/$PLUGIN_NAME" | grep -q SONAME; then
+if readelf -d "$DEST_PATH" | grep -q SONAME; then
     echo "  ✅ SONAME encontrado."
 else
     echo "  ❌ ERRO: SONAME não encontrado no binário!"
@@ -51,7 +31,7 @@ else
 fi
 
 # 2. Verificação de símbolo de entrada CLAP
-if nm -D "$CLAP_DIR/$PLUGIN_NAME" | grep -q "clap_entry"; then
+if nm -D "$DEST_PATH" | grep -q "clap_entry"; then
     echo "  ✅ Símbolo 'clap_entry' encontrado."
 else
     echo "  ❌ ERRO: Símbolo 'clap_entry' não encontrado! O plugin não será carregado."
@@ -59,16 +39,10 @@ else
 fi
 
 # 3. Verificação de tipo de arquivo ELF 64-bit
-FILE_INFO=$(file "$CLAP_DIR/$PLUGIN_NAME")
+FILE_INFO=$(file "$DEST_PATH")
 if [[ $FILE_INFO == *"ELF 64-bit LSB shared object"* ]] && [[ $FILE_INFO == *"x86-64"* ]]; then
     echo "  ✅ Formato ELF 64-bit x86-64 confirmado."
 else
     echo "  ❌ ERRO: Formato de arquivo inválido: $FILE_INFO"
     exit 1
 fi
-
-# 4. Execução do teste de integração do ciclo de vida do CLAP
-echo "🧪 Executando teste de ciclo de vida do CLAP..."
-cargo test --test clap_lifecycle_test --features "$FEATURES" --target-dir target/clap
-
-echo "📝 Reabra a DAW e faça um novo scan de plugins CLAP."

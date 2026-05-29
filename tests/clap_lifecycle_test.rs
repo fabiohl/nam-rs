@@ -23,20 +23,38 @@ impl HostHandlers for MyHost {
 
 #[test]
 fn test_clap_lifecycle() {
-    // Tenta carregar do local padrão de instalação do script build-clap.sh
-    let mut path = PathBuf::from(env::var("HOME").expect("HOME env var not set"));
-    path.push(".clap/nam-rs.clap");
+    let path = if let Ok(custom_path) = env::var("CLAP_PLUGIN_PATH") {
+        PathBuf::from(custom_path)
+    } else {
+        // Tenta carregar do local padrão de instalação do script build-clap.sh
+        let mut p = PathBuf::from(env::var("HOME").expect("HOME env var not set"));
+        p.push(".clap/nam-rs.clap");
+
+        if !p.exists() {
+            // Fallback para o diretório de build se não estiver instalado no HOME
+            let current_dir = env::current_dir().expect("Failed to get current dir");
+            p = current_dir.join("target/release/libnam_rs.so");
+            if !p.exists() {
+                p = current_dir.join("target/clap/release/libnam_rs.so");
+                if !p.exists() {
+                    p = current_dir.join("target/clap/debug/libnam_rs.so");
+                    if !p.exists() {
+                        p = current_dir.join("target/clap-test/release/libnam_rs.so");
+                        if !p.exists() {
+                            p = current_dir.join("target/clap-test/debug/libnam_rs.so");
+                        }
+                    }
+                }
+            }
+        }
+        p
+    };
 
     if !path.exists() {
-        // Fallback para o diretório de build se não estiver instalado no HOME
-        let current_dir = env::current_dir().expect("Failed to get current dir");
-        path = current_dir.join("target/release/libnam_rs.so");
-        if !path.exists() {
-            panic!(
-                "Plugin binary not found at ~/.clap/nam-rs.clap or {:?}. Run ./utils/build-clap.sh first.",
-                path
-            );
-        }
+        panic!(
+            "Plugin binary not found. Set CLAP_PLUGIN_PATH or run build first. Checked path: {:?}",
+            path
+        );
     }
 
     // SAFETY: Carregar um plugin CLAP é inerentemente inseguro pois executa código de uma biblioteca dinâmica.
