@@ -1440,8 +1440,7 @@ pub fn draw_ui(
                 // Adapta a exibição ao número de canais ativos reportado pelo processor.
                 // Mono (1 canal): 1 medidor centralizado sem label.
                 // Stereo (2 canais): 2 medidores lado a lado com labels "L" e "R".
-                let is_stereo =
-                    shared.active_channel_count.load(Ordering::Relaxed) >= 2;
+                let is_stereo = shared.active_channel_count.load(Ordering::Relaxed) >= 2;
 
                 ui.horizontal(|ui| {
                     if is_stereo {
