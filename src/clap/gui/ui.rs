@@ -240,29 +240,13 @@ impl Default for UiState {
 }
 
 fn get_simd_badge() -> &'static str {
-    #[cfg(target_feature = "avx512f")]
-    {
-        "AVX-512"
-    }
-    #[cfg(all(not(target_feature = "avx512f"), target_feature = "avx2"))]
-    {
-        "AVX2"
-    }
-    #[cfg(all(
-        not(target_feature = "avx512f"),
-        not(target_feature = "avx2"),
-        target_feature = "sse4.1"
-    ))]
-    {
-        "SSE4.1"
-    }
-    #[cfg(all(
-        not(target_feature = "avx512f"),
-        not(target_feature = "avx2"),
-        not(target_feature = "sse4.1")
-    ))]
-    {
-        "GENERIC"
+    use crate::math::common::{InstructionSet, SIMD_MATH};
+    match SIMD_MATH.instruction_set {
+        InstructionSet::Avx2 => "AVX2",
+        InstructionSet::Avx2Vnni => "AVX2-VNNI",
+        InstructionSet::Avx512 => "AVX-512",
+        InstructionSet::Avx512Vnni => "AVX-512-VNNI",
+        InstructionSet::Avx512VnniBf16 => "AVX-512-BF16",
     }
 }
 
@@ -362,11 +346,15 @@ fn knob_widget(
         }
     }
 
+    let enabled = ui.is_enabled();
+
     // Track externo escuro
     painter.circle_stroke(center, radius, egui::Stroke::new(3.0, COL_BG));
 
     // Determina a cor base do arco de valor ativo (A.3: override vira COL_AMBER)
-    let mut active_arc_color = if indication & 4 != 0 {
+    let mut active_arc_color = if !enabled {
+        COL_BYPASS_OFF
+    } else if indication & 4 != 0 {
         COL_AMBER
     } else if indication & 2 != 0 {
         indication_color
@@ -423,10 +411,15 @@ fn knob_widget(
 
     // Corpo do knob
     let body_radius = radius - 3.0;
-    painter.circle_filled(center, body_radius, egui::Color32::from_rgb(46, 52, 64));
+    let body_color = if enabled {
+        egui::Color32::from_rgb(46, 52, 64)
+    } else {
+        egui::Color32::from_rgb(32, 36, 44)
+    };
+    painter.circle_filled(center, body_radius, body_color);
     painter.circle_stroke(center, body_radius, egui::Stroke::new(1.0, COL_BORDER));
 
-    if response.has_focus() {
+    if response.has_focus() && enabled {
         painter.circle_stroke(
             center,
             body_radius + 1.0,
@@ -448,9 +441,10 @@ fn knob_widget(
             pointer_angle.cos() * pointer_len_end,
             pointer_angle.sin() * pointer_len_end,
         );
+    let pointer_color = if enabled { COL_TEXT } else { COL_MUTED };
     painter.line(
         vec![p_start, p_end],
-        egui::Stroke::new(rect.width() * 0.05, COL_TEXT),
+        egui::Stroke::new(rect.width() * 0.05, pointer_color),
     );
 
     (response, current_value)
@@ -548,10 +542,11 @@ fn handle_knob(
                     .strong()
                     .color(COL_MUTED),
             );
+            let val_color = if ui.is_enabled() { COL_TEXT } else { COL_MUTED };
             ui.label(
                 egui::RichText::new(format!("{:.1} dB", final_val))
                     .font(egui::FontId::monospace(10.0))
-                    .color(COL_TEXT),
+                    .color(val_color),
             );
         });
     });
@@ -602,9 +597,10 @@ fn draw_vertical_meter(
             })
             .inner;
         {
+            let enabled = ui.is_enabled();
             let painter = ui.painter();
             let clip_color = if *clipped {
-                COL_VU_RED
+                if enabled { COL_VU_RED } else { COL_BYPASS_OFF }
             } else {
                 egui::Color32::from_rgb(50, 30, 30)
             };
@@ -689,7 +685,9 @@ fn draw_vertical_meter(
             0
         };
 
-        if let (Some(program), Some(vao)) = (vu_program, vu_vao) {
+        let enabled = ui.is_enabled();
+        let mut drawn_with_glow = false;
+        if let (true, Some(program), Some(vao)) = (enabled, vu_program, vu_vao) {
             let shared_state =
                 vu_shared_state.get_or_insert_with(|| Arc::new(VuMeterSharedState::default()));
             let callback = vu_callback.get_or_insert_with(|| {
@@ -793,7 +791,9 @@ fn draw_vertical_meter(
                 callback: callback_fn,
             };
             ui.painter().add(egui::Shape::Callback(callback));
-        } else {
+            drawn_with_glow = true;
+        }
+        if !drawn_with_glow {
             let painter = ui.painter();
             painter.rect_filled(meter_rect, 1.5, COL_BG);
 
@@ -809,26 +809,36 @@ fn draw_vertical_meter(
                 }
             };
 
+            let (col_g, col_y, col_r) = if enabled {
+                (COL_VU_GREEN, COL_VU_YELLOW, COL_VU_RED)
+            } else {
+                (COL_BYPASS_OFF, COL_BYPASS_OFF, COL_BYPASS_OFF)
+            };
+
             // Verde
-            draw_segment(0.0, peak_frac.min(green_frac), COL_VU_GREEN);
+            draw_segment(0.0, peak_frac.min(green_frac), col_g);
             // Amarelo
             if peak_frac > green_frac {
-                draw_segment(green_frac, peak_frac.min(yellow_frac), COL_VU_YELLOW);
+                draw_segment(green_frac, peak_frac.min(yellow_frac), col_y);
             }
             // Vermelho
             if peak_frac > yellow_frac {
-                draw_segment(yellow_frac, peak_frac, COL_VU_RED);
+                draw_segment(yellow_frac, peak_frac, col_r);
             }
 
             // Linha de Peak Hold
             if hold_frac > 0.0 {
                 let y_hold = meter_rect.bottom() - hold_frac * meter_h;
-                let hold_color = if hold_db >= -3.0 {
-                    COL_VU_RED
-                } else if hold_db >= -12.0 {
-                    COL_VU_YELLOW
+                let hold_color = if enabled {
+                    if hold_db >= -3.0 {
+                        COL_VU_RED
+                    } else if hold_db >= -12.0 {
+                        COL_VU_YELLOW
+                    } else {
+                        COL_VU_GREEN
+                    }
                 } else {
-                    COL_VU_GREEN
+                    COL_MUTED
                 };
                 painter.line(
                     vec![
@@ -975,19 +985,14 @@ fn handle_bypass(
         }
     }
 
-    ui.add_space(8.0);
+    ui.add_space(14.0);
     ui.vertical_centered(|ui| {
-        ui.label(
-            egui::RichText::new("BYPASS")
-                .font(egui::FontId::proportional(11.0))
-                .strong()
-                .color(COL_MUTED),
-        );
         let status_text = if current_bypass { "BYPASSED" } else { "ACTIVE" };
         let text_color = if current_bypass { COL_MUTED } else { led_color };
         ui.label(
             egui::RichText::new(status_text)
-                .font(egui::FontId::monospace(9.0))
+                .font(egui::FontId::proportional(11.0))
+                .strong()
                 .color(text_color),
         );
     });
@@ -1038,6 +1043,7 @@ pub fn draw_ui(
         }
     }
 
+    let current_bypass = shared.param_bypass.load(Ordering::Relaxed) != 0;
     let accent_color = resolve_accent(shared);
     let mut load_btn_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
@@ -1078,12 +1084,16 @@ pub fn draw_ui(
                     } else {
                         COL_MUTED
                     };
-                    ui.label(
+                    let response = ui.label(
                         egui::RichText::new(simd)
                             .font(egui::FontId::monospace(8.0))
                             .strong()
                             .color(badge_color),
                     );
+                    response.on_hover_text(format!(
+                        "Active runtime SIMD engine backend: {}.",
+                        crate::math::common::SIMD_MATH.name
+                    ));
                 });
 
                 ui.add_space(14.0);
@@ -1281,12 +1291,14 @@ pub fn draw_ui(
                                     .color(text_color)
                                     .italics(),
                             )
-                            .truncate(),
+                            .wrap(),
                         );
                     });
 
                 if is_error_active {
                     frame_res.response.on_hover_text(&state.error_msg);
+                } else {
+                    frame_res.response.on_hover_text(&model_name);
                 }
             });
         });
@@ -1296,6 +1308,9 @@ pub fn draw_ui(
 
         // ── Zona 2: Controles (centro) ─────────────────────
         ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
+            if current_bypass {
+                ui.disable();
+            }
             ui.vertical(|ui| {
                 ui.add_space(12.0);
                 let ind_input = shared.param_indication
@@ -1405,6 +1420,9 @@ pub fn draw_ui(
 
         // ── Zona 3: Medidores VU (direita) ──────────────────
         ui.allocate_ui(egui::vec2(80.0, 210.0), |ui| {
+            if current_bypass {
+                ui.disable();
+            }
             ui.vertical(|ui| {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
@@ -1511,156 +1529,128 @@ pub fn draw_ui(
             state.last_telem_update = now;
         }
 
-        // Painel de telemetria expandido (colapsado por default)
-        if state.show_telemetry {
-            ui.horizontal(|ui| {
-                let cycles = state.telem_cycles;
-                let last_n = state.telem_last_n;
-                let prio = state.telem_prio;
-                let overloads = state.telem_overloads;
-                let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
-
-                for text in [
-                    format!("Cycles: {}", cycles),
-                    format!("Last N: {}", last_n),
-                    format!("RT Prio: {}", prio),
-                    format!("Overloads: {}", overloads),
-                    format!("Flags: {:#X}", status_bits),
-                ] {
-                    ui.label(
-                        egui::RichText::new(text)
-                            .font(egui::FontId::monospace(10.0))
-                            .color(COL_MUTED),
-                    );
-                }
-            });
-            ui.painter().line(
-                vec![
-                    ui.min_rect().left_top() + egui::vec2(0.0, -2.0),
-                    ui.min_rect().right_top() + egui::vec2(0.0, -2.0),
-                ],
-                egui::Stroke::new(0.5, COL_BORDER),
-            );
-        }
-
-        // Linha de status bar
+        // Linha de status bar unificada com telemetria
         ui.horizontal(|ui| {
             let sr = shared.sample_rate.load(Ordering::Relaxed);
             let lat = shared.current_latency.load(Ordering::Relaxed);
 
             let sr_text = if sr == 0 {
-                "Rate: Off".to_string()
+                "SR: Off".to_string()
             } else {
-                format!("{}kHz", sr / 1000)
+                format!("SR: {:.1} kHz", sr as f64 / 1000.0)
             };
 
-            // M5: Nome do modelo à esquerda na status bar
-            let model_in_bar = {
-                let name_guard = shared
-                    .ui_model_name
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
-                if name_guard.is_empty() {
-                    "-".to_string()
-                } else {
-                    let s = name_guard.as_str();
-                    if s.chars().count() > 35 {
-                        // Truncamento seguro para Unicode: encontra o limite de byte
-                        // no 32º caractere sem cortar no meio de sequências multi-byte.
-                        let end = s.char_indices().nth(32).map_or(s.len(), |(idx, _)| idx);
-                        format!("{}...", &s[..end])
+            let lat_ms = if sr > 0 {
+                (lat as f64 * 1000.0) / sr as f64
+            } else {
+                0.0
+            };
+            let lat_text = if lat == 0 {
+                "Lat: 0 ms".to_string()
+            } else {
+                format!("Lat: {:.1} ms ({} spl)", lat_ms, lat)
+            };
+
+            let cycles = state.telem_cycles;
+            let last_n = state.telem_last_n;
+            let prio = state.telem_prio;
+            let overloads = state.telem_overloads;
+            let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
+
+            let telem_items = [
+                (
+                    sr_text,
+                    "Host DAW Sample Rate.\nThe neural model runs internally at 48 kHz. High quality resampling is automatically active if rates differ.",
+                    None,
+                ),
+                (
+                    lat_text,
+                    "Latency introduced by the internal resampler to align host sample rate with neural model's native 48 kHz.\nBypassed (0 ms) when host sample rate is 48 kHz.",
+                    None,
+                ),
+                (
+                    format!("DSP: {:.1}%", state.telem_load_pct),
+                    "DSP Thread Load: portion of real-time audio time budget used.",
+                    Some(if state.telem_load_pct < 50.0 {
+                        COL_VU_GREEN
+                    } else if state.telem_load_pct <= 80.0 {
+                        COL_AMBER
                     } else {
-                        s.to_string()
-                    }
-                }
-            };
+                        COL_VU_RED
+                    }),
+                ),
+                (
+                    format!("Cycles: {}", cycles),
+                    "Average CPU clock cycles consumed per real-time processing block",
+                    None,
+                ),
+                (
+                    format!("Last N: {}", last_n),
+                    "Number of audio samples processed in the last block",
+                    None,
+                ),
+                (
+                    format!("RT Prio: {}", prio),
+                    "Real-time thread scheduling priority. Values > 0 indicate active RT thread scheduling",
+                    None,
+                ),
+                (
+                    format!("Overloads: {}", overloads),
+                    "Number of real-time buffer deadline overruns (XRUNs) detected since start",
+                    None,
+                ),
+                (
+                    format!("Flags: {:#X}", status_bits),
+                    "Real-time engine diagnostic status flags bitmask",
+                    None,
+                ),
+            ];
 
-            ui.label(
-                egui::RichText::new(model_in_bar)
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_MUTED),
-            );
+            // Calcule o tamanho da fonte dinamicamente para ocupar o espaço disponível da linha única
+            let available_width = ui.available_width();
+            let baseline_s = 10.0;
+            let baseline_font = egui::FontId::proportional(baseline_s);
+            let mut sum_widths = 0.0;
+            for (text, _, _) in &telem_items {
+                let galley = ui.painter().layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
+                sum_widths += galley.rect.width();
+            }
+            let separator_text = " | ".to_string();
+            let sep_galley = ui.painter().layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
+            sum_widths += sep_galley.rect.width() * (telem_items.len() - 1) as f32;
 
-            // Separador de pipe
-            ui.label(
-                egui::RichText::new("|")
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_BORDER),
-            );
+            let num_gaps = (telem_items.len() * 2 - 2) as f32; // 8 items e 7 separadores -> 14 gaps
+            let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
 
-            ui.label(
-                egui::RichText::new(sr_text)
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_MUTED),
-            );
-
-            ui.label(
-                egui::RichText::new("|")
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_BORDER),
-            );
-
-            ui.label(
-                egui::RichText::new(format!("{} samples", lat))
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_MUTED),
-            );
-
-            // Separador de pipe
-            ui.label(
-                egui::RichText::new("|")
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_BORDER),
-            );
-
-            // Indicador de carga DSP
-            let dsp_color = if state.telem_load_pct < 50.0 {
-                COL_VU_GREEN
-            } else if state.telem_load_pct <= 80.0 {
-                COL_AMBER
+            // Subtrai a largura dos gaps e adiciona uma margem de segurança
+            let target_width = available_width - total_gap_width - 8.0;
+            let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
+                let scale = target_width / sum_widths;
+                (baseline_s * scale).clamp(6.0, 14.0)
             } else {
-                COL_VU_RED
+                8.5
             };
+            let font_size = egui::FontId::proportional(calculated_font_size);
 
-            let dsp_label = ui.label(
-                egui::RichText::new(format!("DSP: {:.1}%", state.telem_load_pct))
-                    .font(egui::FontId::monospace(10.0))
-                    .color(dsp_color),
-            );
-
-            dsp_label.on_hover_text(format!(
-                "DSP Load: {:.1}% ({:.1}μs / {:.1}μs budget)",
-                state.telem_load_pct,
-                state.telem_cycle_ns as f64 / 1000.0,
-                state.telem_budget_ns as f64 / 1000.0
-            ));
-
-            // Separador de pipe
-            ui.label(
-                egui::RichText::new("|")
-                    .font(egui::FontId::proportional(10.0))
-                    .color(COL_BORDER),
-            );
-
-            // Botão de telemetria alinhado à direita
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let telem_btn = ui.add(
-                    egui::Button::new(
-                        egui::RichText::new("RT")
-                            .font(egui::FontId::monospace(9.0))
-                            .strong()
-                            .color(if state.show_telemetry {
-                                accent_color
-                            } else {
-                                COL_MUTED
-                            }),
-                    )
-                    .fill(COL_PANEL),
-                );
-                if telem_btn.clicked() {
-                    state.show_telemetry = !state.show_telemetry;
+            let mut first = true;
+            for (text, tooltip, custom_color) in telem_items {
+                if !first {
+                    ui.label(
+                        egui::RichText::new("|")
+                            .font(font_size.clone())
+                            .color(COL_BORDER),
+                    );
                 }
-            });
+                first = false;
+
+                let color = custom_color.unwrap_or(COL_MUTED);
+                let label = ui.label(
+                    egui::RichText::new(text)
+                        .font(font_size.clone())
+                        .color(color),
+                );
+                label.on_hover_text(tooltip);
+            }
         });
 
         // Linha separadora acima da status bar

@@ -13,11 +13,13 @@ DEST_PATH="$HOME/.clap/nam-rs.clap"
 echo "🔨 Building NAM-rs CLAP plugin in release mode..."
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
     cargo build --release --target-dir target/clap --no-default-features --features "clap-plugin" --lib
+sync
 
 echo "📁 Instalando em $DEST_PATH ..."
 mkdir -p "$HOME/.clap"
 rm -f "$DEST_PATH"
 cp target/clap/release/libnam_rs.so "$DEST_PATH"
+sync
 ls -lath "$DEST_PATH"
 
 echo "🔍 Auditando validade do binário..."
