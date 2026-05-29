@@ -54,7 +54,7 @@ A integração utiliza o crate `clack-extensions` para implementar as seguintes 
 
 | Extensão                       | Arquivo                                                                                  | Finalidade                                                                                                              |
 |:------------------------------ |:---------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | Declaração explícita de portas de entrada/saída estéreo e suporte a processamento in-place                              |
+| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | Declaração explícita de portas de entrada/saída mono e suporte a processamento in-place                                 |
 | `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | Mapeamento e automação de parâmetros (`input_gain`, `output_gain`, `gate`, `bypass`) com suporte a gesture e `flush()`  |
 | `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistência do estado do plugin (parâmetros e caminho do modelo) no projeto da DAW                                     |
 | `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Reporte dinâmico de latência induzida pelo processamento e resampling ao host                                           |
@@ -71,7 +71,10 @@ O descritor de metadados do plugin seguirá o seguinte padrão:
 - **Nome**: `NAM-rs`
 - **Vendor**: `Fabio Lima`
 - **URL**: [https://github.com/fabiohl/nam-rs](https://github.com/fabiohl/nam-rs)
-- **Features**: `["audio-effect", "distortion", "gate", "simulator", "stereo"]`
+- **Features**: `["audio-effect", "distortion", "gate", "simulator", "mono"]`
+
+> [!NOTE]
+> O padrão NAM é, por definição, mono. O plugin CLAP funciona estritamente como mono (mono-in/mono-out) para se alinhar aos workflows tradicionais das DAWs, onde o roteamento de canais é gerenciado externamente pelo host. Já no executável Standalone/Pipewire, o processamento estéreo é fornecido como uma conveniência para sinais estéreo nativos.
 
 ## 7. DAWs Alvo de Validação
 

@@ -14,7 +14,9 @@ It aims to maintain parity with the standard NAM implementation while introducin
 
 It is fully optimized for maximum performance and ultra-low latency. This is achieved through a clean and organized codebase, intensive use of modern SIMD instructions (AVX2/FMA/x86-64-v3), and modern PipeWire/Linux features.
 
-Two operation modes are available: **Standalone** (native PipeWire executable) and **CLAP Plugin** (`.so` library with full GUI for DAWs). Both process stereo audio with ultra-low latency and minimal CPU usage — a real payoff given that most audio signals are stereo.
+Two operation modes are available: **Standalone** (native PipeWire executable) and **CLAP Plugin** (`.so` library with full GUI for DAWs).
+
+The standard NAM model is mono by definition. To respect traditional DAW workflows, the **CLAP Plugin** operates strictly as a mono-in/mono-out effect, letting the host DAW manage channel routing (such as routing a mono signal on a stereo track). In contrast, the **Standalone** mode supports stereo processing as a built-in convenience feature for native PipeWire audio environments, running with ultra-low latency and minimal CPU usage — a real payoff given that most native hardware setups operate in stereo.
 
 ---
 

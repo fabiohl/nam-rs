@@ -25,8 +25,6 @@ use std::sync::atomic::Ordering;
 pub struct NamClapProcessor<'a> {
     /// Modelo ativo para o canal esquerdo (None = bypass).
     model_l: Option<Box<DynamicModel>>,
-    /// Modelo ativo para o canal direito (None = bypass).
-    model_r: Option<Box<DynamicModel>>,
     /// Resampler sinc polifásico (bypass quando sample_rate == 48000).
     /// Mantido em Box para descarte RT-safe sem alocação.
     resampler: Box<NamResampler>,
@@ -49,8 +47,6 @@ pub struct NamClapProcessor<'a> {
 
     /// Histerese para detecção de silêncio absoluto.
     silence_hyst: DynamicHysteresis,
-    /// Histerese para detecção de sinal mono estável.
-    mono_hyst: DynamicHysteresis,
     /// Flag indicando se estamos processando em mono (para otimização).
     process_mono: bool,
 
@@ -166,7 +162,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         );
 
         let silence_hyst = DynamicHysteresis::new();
-        let mono_hyst = DynamicHysteresis::new();
 
         // 4. Inicialização de Smoothers (Sample-Accurate)
         // Começamos em 1.0 (ganho unitário) para evitar silêncio no primeiro bloco.
@@ -184,7 +179,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         Ok(Self {
             model_l: None,
-            model_r: None,
             resampler,
             params: NamPluginParams::default(),
             buf_host_l,
@@ -196,8 +190,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             buf_out_l,
             buf_out_r,
             silence_hyst,
-            mono_hyst,
-            process_mono: false,
+            process_mono: true,
             rt_status: Arc::clone(&shared.rt_status),
             shared,
             smoother_in,
@@ -279,8 +272,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
                         self.push_to_gc(GcItem::Model(old_l));
                     }
-                    if let Some(old_r) = std::mem::replace(&mut self.model_r, model_pair.model_r) {
-                        self.push_to_gc(GcItem::Model(old_r));
+                    if let Some(model_r) = model_pair.model_r {
+                        self.push_to_gc(GcItem::Model(model_r));
                     }
                     let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
                     self.push_to_gc(GcItem::Resampler(old_resampler));
@@ -486,19 +479,10 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             let pair_l = channel_iter.next();
             let pair_r = channel_iter.next();
 
-            // Detecta o modo de canal e sinaliza para a GUI.
-            // Quando pair_r é None, o host forneceu apenas 1 canal (modo mono).
-            // Quando pair_r existe, operamos em stereo (2 canais).
-            let is_stereo = pair_r.is_some();
-            self.shared
-                .active_channel_count
-                .store(if is_stereo { 2 } else { 1 }, Ordering::Relaxed);
-
-            // Modo mono explícito: força process_mono imediatamente, sem histerese.
-            // Não há canal R para comparar, portanto a decisão é determinista.
-            if !is_stereo {
-                self.process_mono = true;
-            }
+            // Como o plugin funciona estritamente em mono, definimos a contagem de canais como 1
+            // e process_mono como true. Não executamos nenhuma detecção de estéreo ativa.
+            self.shared.active_channel_count.store(1, Ordering::Relaxed);
+            self.process_mono = true;
 
             let mut out_l: Option<&mut [f32]> = None;
             let mut out_r: Option<&mut [f32]> = None;
@@ -525,26 +509,20 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 self.buf_host_l[..n_samples].fill(0.0);
             }
 
+            // Copia o input do canal esquerdo para o direito para garantir que o pipeline DSP
+            // (que espera buffers válidos em ambos os lados L/R) processe o mesmo sinal mono.
+            self.buf_host_r[..n_samples].copy_from_slice(&self.buf_host_l[..n_samples]);
+
             if let Some(pair) = pair_r {
                 match pair {
-                    ChannelPair::InputOutput(i, o) => {
-                        self.buf_host_r[..n_samples].copy_from_slice(&i[..n_samples]);
+                    ChannelPair::InputOutput(_, o) | ChannelPair::OutputOnly(o) => {
                         out_r = Some(o);
                     }
                     ChannelPair::InPlace(io) => {
-                        self.buf_host_r[..n_samples].copy_from_slice(&io[..n_samples]);
                         out_r = Some(io);
                     }
-                    ChannelPair::InputOnly(i) => {
-                        self.buf_host_r[..n_samples].copy_from_slice(&i[..n_samples]);
-                    }
-                    ChannelPair::OutputOnly(o) => {
-                        self.buf_host_r[..n_samples].fill(0.0);
-                        out_r = Some(o);
-                    }
+                    ChannelPair::InputOnly(_) => {}
                 }
-            } else {
-                self.buf_host_r[..n_samples].fill(0.0);
             }
 
             // 2. Aplicação do Ganho de Entrada (Sample-Accurate Smoothing)
@@ -569,15 +547,18 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 ..Default::default()
             };
 
+            let mut active_model_r: Option<Box<DynamicModel>> = None;
+            let mut mono_hyst = DynamicHysteresis::new();
+
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
-                active_model_r: &mut self.model_r,
+                active_model_r: &mut active_model_r,
                 input_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
                 output_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
                 gate_params: &gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
-                mono_hysteresis: &mut self.mono_hyst,
+                mono_hysteresis: &mut mono_hyst,
                 // Decisão técnica: powi(2) é otimizado pelo compilador como
                 // uma simples multiplicação (x * x) — overhead zero. Mantido por clareza semântica
                 // ("quadrado do threshold") ao invés de manual `let x = ...; x * x`.

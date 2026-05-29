@@ -10,7 +10,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **Virtual Sink (Audio/Sink):** O NAM-rs declara-se como saída de som padrão via `pw_stream`. Apps conectam-se automaticamente via WirePlumber.
 - **Playback Stream (Stream/Output):** Uma segunda stream lê o áudio processado e o entrega ao hardware real, contornando limitações de monitor ports de sinks virtuais.
 - **DspBridge (Lock-Free Double-Buffer):** Estrutura alinhada (128B) que isola as streams. O capture escreve no buffer inativo (Release); o playback lê do ativo (Acquire), sincronizado por `AtomicU64` (generation).
-- **True Stereo e Bypass:** Inferência simétrica L/R. Se R for silêncio ou idêntico a L, o sistema pula a inferência de R (poupando ~50% de CPU).
+- **True Stereo e Bypass:** Inferência simétrica L/R no modo Standalone/Pipewire. Sendo o padrão NAM mono por definição, o funcionamento estéreo é uma conveniência implementada em standalone. Se R for silêncio ou idêntico a L, o sistema pula a inferência de R (poupando ~50% de CPU).
 
 > **Nota:** A topologia Dual-Stream é mantida em preferência ao `pw_filter` por garantir roteamento "plug-and-play" automático pelo WirePlumber e pela maturidade dos wrappers safe no crate `pipewire`.
 
@@ -299,7 +299,7 @@ A troca de modelos na audio thread é RT-safe:
 
 ### Extensões CLAP e Interface Gráfica
 
-O plugin implementa 8 extensões CLAP: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication` e `gui`. A GUI utiliza `egui` + `baseview` sobre backend X11 puro (600×260px), com isolamento completo entre UI thread e audio thread via campos atômicos e SPSC.
+O plugin implementa 8 extensões CLAP: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication` e `gui`. O plugin opera estritamente em mono para acomodar os fluxos de trabalho padrão de DAW (mono-in/mono-out), enquanto a GUI utiliza `egui` + `baseview` sobre backend X11 puro (600×260px), com isolamento completo entre UI thread e audio thread via campos atômicos e SPSC.
 
 Para detalhes de cada extensão, stack gráfico e estratégia de windowing, veja [docs/clap_integration.md](file:///home/fabio/nam-rs/docs/clap_integration.md).
 

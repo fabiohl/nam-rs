@@ -12,7 +12,7 @@ use clack_plugin::prelude::ClapId;
 impl PluginAudioPortsImpl for NamClapMainThread<'_> {
     /// Retorna o número de portas de áudio (entrada ou saída).
     ///
-    /// O NAM-rs é um plugin stereo simples com exatamente 1 porta de entrada e 1 de saída.
+    /// O NAM-rs é um plugin mono-nativo por definição com exatamente 1 porta de entrada e 1 de saída.
     fn count(&mut self, _is_input: bool) -> u32 {
         1
     }
@@ -23,8 +23,9 @@ impl PluginAudioPortsImpl for NamClapMainThread<'_> {
     /// (permite que o host use o mesmo buffer para entrada e saída).
     ///
     /// A porta é declarada como mono porque o NAM é mono-nativo por definição.
-    /// A DAW decide como conectar o plugin — em trilhas mono recebe/devolve 1 canal;
-    /// em trilhas stereo, o host gerencia o roteamento de canais externamente.
+    /// Para respeitar os workflows tradicionais em DAWs, o plugin funciona estritamente como mono.
+    /// A DAW decide como conectar o plugin (por exemplo, gerenciando o roteamento de canais estéreo externamente),
+    /// enquanto o suporte a estéreo é fornecido exclusivamente como conveniência no modo standalone.
     fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
         if index == 0 {
             writer.set(&AudioPortInfo {
