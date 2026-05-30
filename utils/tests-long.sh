@@ -22,8 +22,8 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
 echo "========================================================"
 echo "🔍 Validando o plugin com clap-validator e heap-audit..."
 NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/debug/libnam_rs.so --json > /tmp/debug-validation.json
-jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' /tmp/debug-validation.json
+  clap-validator validate target/clap-test/debug/libnam_rs.so --json > debug-validation.json
+jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' debug-validation.json
 
 echo "=========================================="
 echo "🔨 Compilando em Release com heap-audit..."
@@ -33,8 +33,8 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
 echo "==========================================================="
 echo "🔍 Validando o plugin com clap-validator no modo release..."
 NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/release/libnam_rs.so --json > /tmp/release-validation.json
-jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' /tmp/release-validation.json
+  clap-validator validate target/clap-test/release/libnam_rs.so --json > release-validation.json
+jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' release-validation.json
 
 echo "=============================================="
 echo "📊 Executando Long Benchmarks (Performance)..."
@@ -43,5 +43,5 @@ time cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1
 
 echo -e "\n==================================="
 echo "✅ Auditoria concluída com sucesso!"
-echo "📄 Logs: soak-test.log, long-bench.log, /tmp/debug-validation.json, /tmp/release-validation.json"
+echo "📄 Logs: soak-test.log, long-bench.log, debug-validation.json, release-validation.json"
 date

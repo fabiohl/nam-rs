@@ -13,6 +13,7 @@ repomix-*.xml
 *.swp
 *.tar
 *.log
+*.json
 
 # Espelho dos projetos de referência no GitHub
 /github.com/
