@@ -335,6 +335,7 @@ where
 {
     deserializer.deserialize_option(TrainingOptionVisitor)
 }
+/// Estrutura que representa uma data e hora associada aos metadados do modelo.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct NamDate {
     /// Ano.
@@ -453,6 +454,19 @@ pub struct NamModelData {
     pub weights_layout: WeightsLayout,
 }
 
+/// Realiza o parsing de uma string de versão no formato SemVer mínimo.
+/// Suporta sufixos de pré-lançamento ou metadados e prefixo 'v' ou 'V'.
+/// Retorna `Some((major, minor, patch))` ou `None` em caso de falha de parsing.
+fn parse_semver(version: &str) -> Option<(u16, u16, u16)> {
+    let clean = version.trim().trim_start_matches(['v', 'V']);
+    let clean = clean.split('-').next()?.split('+').next()?;
+    let mut parts = clean.split('.');
+    let major = parts.next()?.trim().parse::<u16>().ok()?;
+    let minor = parts.next().unwrap_or("0").trim().parse::<u16>().ok()?;
+    let patch = parts.next().unwrap_or("0").trim().parse::<u16>().ok()?;
+    Some((major, minor, patch))
+}
+
 impl NamModelData {
     /// Detecta se o modelo utiliza a arquitetura WaveNet A2.
     ///
@@ -466,7 +480,8 @@ impl NamModelData {
 
         // Versão >= 0.6.0 introduziu A2
         if let Some(ref v) = self.version
-            && (v.starts_with("0.6") || v.starts_with("0.7") || v.starts_with("0.8"))
+            && let Some(ver) = parse_semver(v)
+            && ver >= (0, 6, 0)
         {
             return true;
         }

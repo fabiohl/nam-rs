@@ -442,3 +442,73 @@ fn test_weights_exceed_limit_fast_rejection() {
     );
     assert_eq!(result.unwrap().weights.len(), test_limit);
 }
+
+#[test]
+fn test_parse_semver() {
+    assert_eq!(parse_semver("0.5.4"), Some((0, 5, 4)));
+    assert_eq!(parse_semver("0.6.0"), Some((0, 6, 0)));
+    assert_eq!(parse_semver("0.9"), Some((0, 9, 0)));
+    assert_eq!(parse_semver("1.0.0-rc1"), Some((1, 0, 0)));
+    assert_eq!(parse_semver("2.0"), Some((2, 0, 0)));
+    assert_eq!(parse_semver("0.10.2"), Some((0, 10, 2)));
+    assert_eq!(parse_semver("v0.6.0"), Some((0, 6, 0)));
+    assert_eq!(parse_semver(" V1.2.3 "), Some((1, 2, 3)));
+    assert_eq!(parse_semver("invalid"), None);
+}
+
+#[test]
+fn test_is_wavenet_a2_versions() {
+    let mut model = NamModelData {
+        version: None,
+        architecture: "WaveNet".to_string(),
+        config: NamConfig {
+            layers: vec![],
+            head: None,
+            head_scale: None,
+            num_layers: None,
+            hidden_size: None,
+        },
+        weights: vec![],
+        sample_rate: None,
+        metadata: None,
+        weights_layout: WeightsLayout::Original,
+    };
+
+    // Sem versão, deve retornar false se não houver ativação customizada
+    assert!(!model.is_wavenet_a2());
+
+    // Versão menor que 0.6.0
+    model.version = Some("0.5.4".to_string());
+    assert!(!model.is_wavenet_a2());
+
+    // Versões >= 0.6.0
+    model.version = Some("0.6.0".to_string());
+    assert!(model.is_wavenet_a2());
+
+    model.version = Some("0.9.1".to_string());
+    assert!(model.is_wavenet_a2());
+
+    model.version = Some("0.10".to_string());
+    assert!(model.is_wavenet_a2());
+
+    model.version = Some("1.0.0-rc1".to_string());
+    assert!(model.is_wavenet_a2());
+
+    model.version = Some("2.0".to_string());
+    assert!(model.is_wavenet_a2());
+
+    // Alternativa: Ativação customizada (mesmo com versão menor que 0.6.0)
+    model.version = Some("0.5.4".to_string());
+    model.config.layers = vec![NamLayerConfig {
+        input_size: None,
+        condition_size: None,
+        head_size: None,
+        channels: None,
+        kernel_size: None,
+        dilations: None,
+        activation: Some("ReLU".to_string()),
+        gated: None,
+        head_bias: None,
+    }];
+    assert!(model.is_wavenet_a2());
+}
