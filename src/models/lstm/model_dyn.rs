@@ -194,7 +194,9 @@ impl LstmDynModel {
     /// # Safety
     /// Call this via `dispatch_simd!` macro only.
     unsafe fn prewarm_internal<M: crate::math::common::SimdMath>(&mut self, num_samples: usize) {
-        self.reset_states();
+        for layer in self.layers.iter_mut() {
+            layer.state[..layer.input_size].fill(0.0);
+        }
 
         const CHUNK: usize = 512;
         let mut zero_out = [0.0f32; CHUNK];

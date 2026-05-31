@@ -422,6 +422,14 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         }
     }
 
+    /// Reseta apenas o slot de entrada, preservando o estado oculto e o estado da célula.
+    ///
+    /// Usado no prewarm para evitar descartar os estados iniciais `_xh` e `_c`
+    /// carregados do arquivo NAM.
+    pub fn reset_input_slot(&mut self) {
+        self.state[..I].fill(0.0);
+    }
+
     /// Reseta os estados internos para zero.
     ///
     /// Importante para 'limpar a memória' do modelo entre diferentes execuções.

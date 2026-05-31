@@ -351,7 +351,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Critérios de aceitação:** Conformidade documentada em `docs/architecture.md`. Goldens não regridem.
 - **Especialista:** `documentador` + `implementador`.
 
-#### Tarefa S4.T05 — Manter estados iniciais carregados em LSTM dyn prewarm ⚠️
+#### Tarefa S4.T05 — Manter estados iniciais carregados em LSTM dyn prewarm ⚠️ [DONE]
 
 - **Onde:** `src/models/lstm/model_dyn.rs` — função `prewarm` ou `prewarm_internal` (verificar onde ocorre o reset de `state`/`cell_state`).
 - **Problema:** `prewarm_internal` zera `state` e `cell_state` ANTES de processar o silêncio, descartando os valores `_xh` e `_c` carregados do arquivo NAM (que foram preservados em `build_lstm_dynamic:204-209` usando `copy_from_slice`). Comportamento divergente da referência C++.

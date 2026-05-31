@@ -132,30 +132,32 @@ impl NamModel for LstmDynModel {
 
 /// Trait interno para unificar modelos que possuem estado LSTM resetável.
 trait LstmLike: NamModel {
-    fn reset_states(&mut self);
+    fn reset_input_slots(&mut self);
 }
 
 impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmLike
     for LstmModel1<H, H1_IH, H_H4>
 {
-    fn reset_states(&mut self) {
-        self.reset_states();
+    fn reset_input_slots(&mut self) {
+        self.layer.reset_input_slot();
     }
 }
 
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> LstmLike
     for LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
-    fn reset_states(&mut self) {
-        self.reset_states();
+    fn reset_input_slots(&mut self) {
+        self.layer1.reset_input_slot();
+        self.layer2.reset_input_slot();
     }
 }
 
 /// Implementação genérica de aquecimento (prewarm) para modelos baseados em LSTM.
-/// Injeta silêncio para estabilizar os estados internos antes do uso real.
+/// Zera apenas os slots de entrada, preservando os estados oculto e de célula
+/// carregados do arquivo NAM (`_xh` e `_c`), e processa silêncio para estabilização.
 fn lstm_prewarm_common(model: &mut impl LstmLike, num_samples: usize) {
-    // 1. Limpa qualquer resíduo de processamentos anteriores.
-    model.reset_states();
+    // 1. Zera apenas o slot de entrada de cada camada, preservando _xh e _c do arquivo.
+    model.reset_input_slots();
 
     // 2. Processa amostras de valor zero.
     const CHUNK: usize = 512;
