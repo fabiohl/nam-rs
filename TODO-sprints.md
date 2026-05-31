@@ -312,7 +312,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 - **Especialista:** `implementador`.
 
-#### Tarefa S4.T02 — Substituir stack buffers hardcoded `[f32; 1024]` 🔥
+#### Tarefa S4.T02 — Substituir stack buffers hardcoded `[f32; 1024]` 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/model.rs:51, 64` (dois buffers `[0.0f32; 1024]` em `process_block_internal`); `src/models/wavenet/model_dyn.rs` (padrão equivalente).
 - **Problema:** Buffers de stack fixos em 1024 podem ser excedidos por geometrias com `CH>16` ou `WAVENET_MAX_NUM_FRAMES>64` sem aviso em release. Atualmente há `debug_assert!(num_frames * CH <= 1024)` em `model.rs:46-50` que protege apenas em debug — em release o overflow silencioso corrompe o stack.

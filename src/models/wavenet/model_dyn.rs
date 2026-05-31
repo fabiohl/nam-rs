@@ -179,15 +179,18 @@ impl WaveNetLayerDyn {
         // Usamos um buffer alinhado diretamente na memória de execução (pilha).
         // Isso evita alocações lentas e garante que o processamento seja
         // determinístico e ultra-rápido para áudio em tempo real.
+        const MAX_STACK: usize = 8192;
+
         #[repr(align(64))]
-        struct AlignedMixinBuffer([f32; 4096]);
-        let mut mixin_out = AlignedMixinBuffer([0.0f32; 4096]);
+        struct AlignedMixinBuffer([f32; MAX_STACK]);
+        let mut mixin_out = AlignedMixinBuffer([0.0f32; MAX_STACK]);
 
         let mixin_len = num_frames * ch;
-        debug_assert!(
-            mixin_len <= 4096,
-            "mixin_len overflow: {} (max 4096)",
-            mixin_len
+        assert!(
+            mixin_len <= MAX_STACK,
+            "mixin_len overflow: {} (max {})",
+            mixin_len,
+            MAX_STACK,
         );
         let mixin_out_slice = &mut mixin_out.0[..mixin_len];
 

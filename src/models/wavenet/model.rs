@@ -40,10 +40,9 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
         unsafe {
             // [PASSO 2: Condicionamento (Input Mixin)]
             // Buffer stack de 1024 f32 = WAVENET_MAX_NUM_FRAMES(64) × max_CH(16).
-            // O Rust estável não permite `CH` em expressões const, então usamos
-            // o limite superior. O debug_assert abaixo captura qualquer topologia
-            // futura que exceda este tamanho (ex: CH=32, num_frames=64 → 2048 > 1024).
-            debug_assert!(
+            // Nota: generic_const_exprs (nightly) seria necessário para `[f32; CH * WAVENET_MAX_NUM_FRAMES]`
+            // em Rust estável. O assert abaixo captura qualquer topologia futura que exceda este tamanho.
+            assert!(
                 num_frames * CH <= 1024,
                 "process_block_internal: num_frames*CH ({}) excede o buffer stack (1024)",
                 num_frames * CH,
