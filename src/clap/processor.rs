@@ -707,11 +707,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
             let allocs = crate::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed);
             if allocs > 0 {
+                self.rt_status
+                    .set_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
+                #[cfg(debug_assertions)]
                 eprintln!(
                     "[NAM-rs Heap Audit] ERROR: {} heap allocation(s) detected in audio thread during process()!",
                     allocs
                 );
-                panic!("Heap allocation detected in RT thread! Count: {}", allocs);
+                return Ok(ProcessStatus::Sleep);
             }
         }
 

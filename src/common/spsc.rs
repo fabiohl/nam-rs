@@ -42,6 +42,8 @@ pub const RT_STATUS_GC_OVERFLOW: u64 = 1 << 5;
 pub const RT_STATUS_IS_FADING: u64 = 1 << 6;
 /// Flag indicando que houve falha crítica no carregamento do modelo na thread RT.
 pub const RT_STATUS_MODEL_LOAD_FAILED: u64 = 1 << 7;
+/// Flag indicando que ocorreu alocação no heap na thread RT (detectada por heap-audit).
+pub const RT_STATUS_HEAP_ALLOC: u64 = 1 << 8;
 
 /// Flags atômicas de status para comunicação silenciosa RT→Main.
 ///
@@ -61,6 +63,7 @@ pub const RT_STATUS_MODEL_LOAD_FAILED: u64 = 1 << 7;
 /// | 5 | `GC_OVERFLOW` | Overflow no canal de Garbage Collection |
 /// | 6 | `IS_FADING` | Gate em transição (Fading In/Out) |
 /// | 7 | `MODEL_LOAD_FAILED` | Falha no carregamento do modelo na RT |
+/// | 8 | `HEAP_ALLOC` | Alocação no heap detectada na thread RT |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.

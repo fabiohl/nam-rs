@@ -332,6 +332,18 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                     .expect("Failed to create CString");
                 log.log(&shared, LogSeverity::Error, &msg);
             }
+
+            if self
+                .shared
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)
+            {
+                let msg = CString::new(
+                    "NAM-rs: Heap allocation detected in audio thread during process()!",
+                )
+                .expect("Failed to create CString");
+                log.log(&shared, LogSeverity::Error, &msg);
+            }
         }
 
         // 2. Monitoramento de Latência: Notifica o host se o valor mudou

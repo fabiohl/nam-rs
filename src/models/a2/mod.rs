@@ -35,6 +35,11 @@ pub struct WavenetA2Placeholder {
 
 impl NamModel for WavenetA2Placeholder {
     fn process(&mut self, _input: &[f32], output: &mut [f32]) {
+        #[cfg(feature = "heap-audit")]
+        if crate::clap::heap_audit::AUDIT_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+            crate::clap::heap_audit::ALLOC_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+
         if !self.warned {
             log::warn!(
                 "Arquitetura WaveNet A2 detectada: Modo Placeholder (Silencioso) ativo. A implementação real está em desenvolvimento."

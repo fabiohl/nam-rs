@@ -61,7 +61,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **panics dentro da audio thread**. Bloqueador de qualquer release estável.
 
-### Sprint S1 — Soundness do `DspBridge` & FFI
+### Sprint S1 — Soundness do `DspBridge` & FFI [DONE]
 
 > **Nota de Auditoria (2026-05-31):** Todas as tarefas foram auditadas. Sanidade das faces de escrita/leitura do `DspBridge` e propagação de erros do `MirroredBuffer` validadas. Alinhamento de warnings e gating dos testes específicos para Linux concluídos com sucesso.
 
@@ -119,7 +119,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 
 ### Sprint S2 — Panics & FFI seguro
 
-#### Tarefa S2.T01 — Eliminar `panic!` em `process()` sob feature `heap-audit` 🔥
+#### Tarefa S2.T01 — Eliminar `panic!` em `process()` sob feature `heap-audit` 🔥 [DONE]
 
 - **Onde:** `src/clap/processor.rs:709-714`.
 - **Problema:** Panic atravessando a fronteira FFI do host (clack/clap) é **UB** em hosts que não tratam unwind (Bitwig, FL Studio C++).

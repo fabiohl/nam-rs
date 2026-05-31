@@ -950,4 +950,127 @@ mod tests {
             );
         }
     }
+
+    #[cfg(feature = "heap-audit")]
+    #[test]
+    fn test_heap_audit_trigger() {
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Falha ao carregar PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Falha ao instanciar plugin");
+
+        // Carrega o modelo A2 para disparar o incremento de alocação simulado durante process()
+        let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        model_dir.push("tests/fixtures/models/mock_a2.nam");
+
+        let state_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginState>()
+            .expect("PluginState extension not found");
+
+        let params = NamPluginParams {
+            model_path: Some(model_dir),
+            input_gain_db: 0.0,
+            output_gain_db: 0.0,
+            gate_threshold_db: -70.0,
+            bypass: false,
+        };
+        let state_bytes = serde_json::to_vec(&params).unwrap();
+        let mut handle = plugin_instance.plugin_handle();
+        state_ext
+            .load(&mut handle, &mut state_bytes.as_slice())
+            .expect("Falha ao carregar estado");
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 512,
+            max_frames_count: 512,
+        };
+
+        // Obtain shared instance
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Falha ao obter wrapper do plugin")
+        };
+        let shared = unsafe { &*shared_ptr };
+
+        let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
+        let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        let n = 512;
+        let mut in_l = vec![0.1f32; n];
+        let mut in_r = vec![0.2f32; n];
+        let mut out_l = vec![0.0f32; n];
+        let mut out_r = vec![0.0f32; n];
+
+        let mut input_ports = AudioPorts::with_capacity(2, 1);
+        let mut output_ports = AudioPorts::with_capacity(2, 1);
+        let mut output_events_buffer = EventBuffer::new();
+
+        let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
+        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_input_only(
+                input_channels.iter_mut().map(InputChannel::constant),
+            ),
+        }]);
+
+        let output_channels = [out_l.as_mut_slice(), out_r.as_mut_slice()];
+        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+        }]);
+
+        let input_events = InputEvents::empty();
+        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+        // Ativa a auditoria de heap e força o contador para simular alocação
+        crate::clap::heap_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
+
+        // Reseta o flag no status para garantir que está limpo antes
+        shared
+            .rt_status
+            .clear_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
+
+        // Executa o process(), que deve retornar Ok(ProcessStatus::Sleep)
+        let status = started_processor
+            .process(
+                &input_audio,
+                &mut output_audio,
+                &input_events,
+                &mut output_events,
+                None,
+                None,
+            )
+            .expect("process falhou na simulação de alocação de heap");
+
+        // Desativa a auditoria de heap para não interferir em outros testes
+        crate::clap::heap_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
+        crate::clap::heap_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
+
+        // Verifica que o status retornado é Sleep
+        assert!(matches!(status, ProcessStatus::Sleep));
+
+        // Verifica se o flag RT_STATUS_HEAP_ALLOC foi setado nas flags de status
+        assert!(
+            shared
+                .rt_status
+                .check_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)
+        );
+    }
 }
