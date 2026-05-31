@@ -144,11 +144,20 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
         out_weights.extend_from_slice(&data.weights[cursor..cursor + bias_size]);
         cursor += bias_size;
 
+        // Processamento dos estados iniciais da camada (hidden_init e cell_init).
+        // Isso é necessário para manter a paridade com a ordem que o decodificador espera.
+        let state_size = 2 * h; // hidden_init (h) + cell_init (h)
+        if cursor + state_size > data.weights.len() {
+            anyhow::bail!("Estados iniciais insuficientes para LSTM na camada {l}");
+        }
+        out_weights.extend_from_slice(&data.weights[cursor..cursor + state_size]);
+        cursor += state_size;
+
         current_input_size = hidden_size;
     }
 
     // Caso existam pesos extras no final do arquivo (como a camada de saída),
-    // nós os adicionamos sem alteração.
+    // nós os adicionamos sem alteração (head_weights e head_bias).
     if cursor < data.weights.len() {
         out_weights.extend_from_slice(&data.weights[cursor..]);
     }

@@ -228,7 +228,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Critérios de aceitação:** Em CPU AVX-512 BF16, golden vectors LSTM 1x16 e 2x16 produzem mesma saída de `build_lstm_dynamic`.
 - **Especialista:** `implementador`.
 
-#### Tarefa S3.T03 — Corrigir round-trip de layout `GateMajorLstm` para multi-layer 🔥
+#### Tarefa S3.T03 — Corrigir round-trip de layout `GateMajorLstm` para multi-layer 🔥 [DONE]
 
 - **Onde:** `src/loader/namb_encoder.rs:99-157` (encoder) vs `src/loader/dispatcher/lstm.rs:266-312` (decoder `read_lstm_layer`).
 - **Problema:** O encoder grava no header `weights_layout = GateMajorLstm` mas serializa pesos **em ordem incorreta** para LSTM 2-layer:
