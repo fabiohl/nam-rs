@@ -126,7 +126,9 @@ mod block_tests {
                 process_mono: &mut process_mono,
                 rt_status: &rt_status,
                 // BridgeRef é um ponteiro seguro para a ponte de áudio.
-                bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+                bridge_writer: unsafe {
+                    Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
+                },
             };
 
             let bufs = DspBuffers {

@@ -138,10 +138,172 @@ impl BridgeRef {
         self.0.is_null()
     }
 
-    /// Dereferencia o ponteiro para acesso mutável.
+    /// Retorna o ponteiro bruto interno.
+    /// # Safety
+    /// O chamador deve garantir que o ponteiro é válido se for desreferenciado.
     #[inline(always)]
-    pub fn as_mut(self) -> &'static mut DspBridge {
-        unsafe { &mut *self.0 }
+    pub unsafe fn as_ptr(self) -> *mut DspBridge {
+        self.0
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[derive(Clone, Copy)]
+/// Face de escrita do `DspBridge` exposta à capture thread.
+pub struct DspBridgeWriter(std::ptr::NonNull<DspBridge>);
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// SAFETY: DspBridgeWriter é seguro de enviar entre threads para inicialização.
+/// O acesso em tempo real ocorre de forma exclusiva/síncrona na capture thread.
+unsafe impl Send for DspBridgeWriter {}
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// SAFETY: DspBridgeWriter é seguro de compartilhar entre threads pois o acesso é internamente atômico/síncrono.
+unsafe impl Sync for DspBridgeWriter {}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+impl DspBridgeWriter {
+    /// Cria um `DspBridgeWriter` a partir de um ponteiro bruto para `DspBridge`.
+    /// # Safety
+    /// O ponteiro deve ser válido e não nulo.
+    #[inline(always)]
+    pub unsafe fn new(ptr: *mut DspBridge) -> Self {
+        debug_assert!(!ptr.is_null());
+        Self(unsafe { std::ptr::NonNull::new_unchecked(ptr) })
+    }
+
+    /// Cria um `DspBridgeWriter` a partir de um `BridgeRef`.
+    /// Retorna `None` se a referência for nula.
+    #[inline(always)]
+    pub fn from_ref(r: BridgeRef) -> Option<Self> {
+        std::ptr::NonNull::new(r.0).map(Self)
+    }
+
+    /// Escreve um bloco de amostras estéreo no buffer back-buffer ativo do bridge.
+    pub fn write_block(&self, resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize) {
+        // SAFETY: O ponteiro subjacente é válido e o acesso ao back-buffer é exclusivo e atômico.
+        unsafe {
+            let bridge = self.0.as_ref();
+            let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
+            let back_buf = &mut (*self.0.as_ptr()).buffers[back_idx];
+
+            let n_bridge = n_pw.min(MAX_BRIDGE_BUF);
+            core::ptr::copy_nonoverlapping(
+                resamp_out_l.as_ptr(),
+                back_buf.buf_l.as_mut_ptr(),
+                n_bridge,
+            );
+            core::ptr::copy_nonoverlapping(
+                resamp_out_r.as_ptr(),
+                back_buf.buf_r.as_mut_ptr(),
+                n_bridge,
+            );
+            back_buf.n_samples = n_bridge as u32;
+
+            bridge.active_read_idx.store(back_idx, Ordering::Release);
+
+            let current_gen = bridge.generation.load(Ordering::Relaxed);
+            let consumed_gen = bridge.consumed_gen.load(Ordering::Relaxed);
+            if current_gen > consumed_gen {
+                let _ =
+                    bridge
+                        .dropped_frames
+                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                            Some(v.saturating_add(1))
+                        });
+            }
+
+            bridge.generation.store(current_gen + 1, Ordering::Release);
+        }
+    }
+
+    /// Reseta o buffer back-buffer ativo para indicar silêncio (0 amostras).
+    pub fn write_silence(&self) {
+        // SAFETY: O ponteiro subjacente é válido e o acesso ao back-buffer é exclusivo e atômico.
+        unsafe {
+            let bridge = self.0.as_ref();
+            let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
+            let back_buf = &mut (*self.0.as_ptr()).buffers[back_idx];
+            back_buf.n_samples = 0;
+
+            bridge.active_read_idx.store(back_idx, Ordering::Release);
+
+            let current_gen = bridge.generation.load(Ordering::Relaxed);
+            let consumed_gen = bridge.consumed_gen.load(Ordering::Relaxed);
+            if current_gen > consumed_gen {
+                let _ =
+                    bridge
+                        .dropped_frames
+                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                            Some(v.saturating_add(1))
+                        });
+            }
+
+            bridge.generation.store(current_gen + 1, Ordering::Release);
+        }
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[derive(Clone, Copy)]
+/// Face de leitura do `DspBridge` exposta à playback thread.
+pub struct DspBridgeReader(std::ptr::NonNull<DspBridge>);
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// SAFETY: DspBridgeReader é seguro de enviar entre threads para inicialização.
+/// O acesso em tempo real ocorre de forma exclusiva/síncrona na playback thread.
+unsafe impl Send for DspBridgeReader {}
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// SAFETY: DspBridgeReader é seguro de compartilhar entre threads pois o acesso é internamente atômico/síncrono.
+unsafe impl Sync for DspBridgeReader {}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+impl DspBridgeReader {
+    /// Cria um `DspBridgeReader` a partir de um ponteiro bruto para `DspBridge`.
+    /// # Safety
+    /// O ponteiro deve ser válido e não nulo.
+    #[inline(always)]
+    pub unsafe fn new(ptr: *mut DspBridge) -> Self {
+        debug_assert!(!ptr.is_null());
+        Self(unsafe { std::ptr::NonNull::new_unchecked(ptr) })
+    }
+
+    /// Cria um `DspBridgeReader` a partir de um `BridgeRef`.
+    /// Retorna `None` se a referência for nula.
+    #[inline(always)]
+    pub fn from_ref(r: BridgeRef) -> Option<Self> {
+        std::ptr::NonNull::new(r.0).map(Self)
+    }
+
+    /// Tenta ler um bloco de áudio do bridge, passando referências aos canais L e R para um closure.
+    ///
+    /// Retorna `Some(R)` se houver um bloco novo e válido disponível.
+    /// Caso contrário, retorna `None`.
+    pub fn read_block<F, R>(&self, last_bridge_gen: &mut u64, f: F) -> Option<R>
+    where
+        F: FnOnce(&[f32], &[f32]) -> R,
+    {
+        // SAFETY: O ponteiro é válido e o acesso ao buffer ativo é exclusivo e atômico.
+        unsafe {
+            let bridge = self.0.as_ref();
+            let current_gen = bridge.generation.load(Ordering::Acquire);
+            if current_gen == *last_bridge_gen {
+                return None;
+            }
+            *last_bridge_gen = current_gen;
+            bridge.consumed_gen.store(current_gen, Ordering::Release);
+
+            let read_idx = bridge.active_read_idx.load(Ordering::Relaxed);
+            let front_buf = &bridge.buffers[read_idx];
+            let n_samples = front_buf.n_samples as usize;
+            if n_samples == 0 || n_samples > MAX_BRIDGE_BUF {
+                return None;
+            }
+
+            Some(f(
+                &front_buf.buf_l[..n_samples],
+                &front_buf.buf_r[..n_samples],
+            ))
+        }
     }
 }
 
@@ -173,7 +335,7 @@ pub struct DspPipelineContext<'a> {
     /// Flags de status RT.
     pub rt_status: &'a RtStatusFlags,
     /// Referência para a ponte de monitoração de áudio (opcional).
-    pub bridge_ptr: BridgeRef,
+    pub bridge_writer: Option<DspBridgeWriter>,
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -198,31 +360,13 @@ pub struct DspBuffers<'a> {
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[cold]
 #[inline(never)]
-pub fn handle_silence_bypass(bridge: BridgeRef, rt_status: &RtStatusFlags) {
+pub fn handle_silence_bypass(bridge: Option<DspBridgeWriter>, rt_status: &RtStatusFlags) {
     rt_status.set_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
     rt_status.clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
 
-    let bridge_ref = bridge.as_mut();
-    let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
-    bridge_ref.buffers[back_idx].n_samples = 0;
-    bridge_ref
-        .active_read_idx
-        .store(back_idx, Ordering::Release);
-    // Detecção de Drop: se a geração atual ainda não foi consumida pelo playback,
-    // a troca atual para silêncio irá 'pular' o bloco anterior.
-    let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
-    let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
-    if current_gen > consumed_gen {
-        let _ = bridge_ref
-            .dropped_frames
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                Some(v.saturating_add(1))
-            });
+    if let Some(writer) = bridge {
+        writer.write_silence();
     }
-
-    bridge_ref
-        .generation
-        .store(current_gen + 1, Ordering::Release);
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -416,49 +560,15 @@ pub(crate) fn apply_output_stage(
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 4: Escrita no DspBridge.
 #[inline(always)]
-pub fn write_bridge(resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize, bridge: BridgeRef) {
-    let bridge_ref = bridge.as_mut();
-    // Identifica qual "gaveta" da ponte (bridge) está vazia para podermos escrever o novo som.
-    let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
-    let back_buf = &mut bridge_ref.buffers[back_idx];
-
-    let n_bridge = n_pw.min(MAX_BRIDGE_BUF);
-    unsafe {
-        // Copia o som processado para a gaveta vazia de forma ultra-rápida.
-        core::ptr::copy_nonoverlapping(
-            resamp_out_l.as_ptr(),
-            back_buf.buf_l.as_mut_ptr(),
-            n_bridge,
-        );
-        core::ptr::copy_nonoverlapping(
-            resamp_out_r.as_ptr(),
-            back_buf.buf_r.as_mut_ptr(),
-            n_bridge,
-        );
+pub fn write_bridge(
+    resamp_out_l: &[f32],
+    resamp_out_r: &[f32],
+    n_pw: usize,
+    bridge: Option<DspBridgeWriter>,
+) {
+    if let Some(writer) = bridge {
+        writer.write_block(resamp_out_l, resamp_out_r, n_pw);
     }
-    back_buf.n_samples = n_bridge as u32;
-    // Avisa o sistema de som (PipeWire) que esta gaveta está pronta para ser "ouvida".
-    bridge_ref
-        .active_read_idx
-        .store(back_idx, Ordering::Release);
-
-    // DETECÇÃO DE ATRASO (DROP):
-    // Se o sistema ainda não tocou o som anterior e já estamos entregando um novo,
-    // significa que o computador atrasou. Contamos isso como um "pacote perdido".
-    let current_gen = bridge_ref.generation.load(Ordering::Relaxed);
-    let consumed_gen = bridge_ref.consumed_gen.load(Ordering::Relaxed);
-    if current_gen > consumed_gen {
-        let _ = bridge_ref
-            .dropped_frames
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                Some(v.saturating_add(1))
-            });
-    }
-
-    // Atualiza o contador de entregas (Geração) para manter o sistema sincronizado.
-    bridge_ref
-        .generation
-        .store(current_gen + 1, Ordering::Release);
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -471,7 +581,7 @@ pub fn capture_dsp_pipeline(
     mut ctx: DspPipelineContext<'_>,
     bufs: DspBuffers<'_>,
 ) {
-    if ctx.bridge_ptr.is_null() {
+    if ctx.bridge_writer.is_none() {
         return;
     }
     // ESTÁGIO 1: ENTRADA E LIMPEZA
@@ -482,7 +592,7 @@ pub fn capture_dsp_pipeline(
     match gate_state {
         GateState::Closed => {
             // Se o portão está fechado (silêncio total), avisamos o sistema para economizar CPU.
-            handle_silence_bypass(ctx.bridge_ptr, ctx.rt_status);
+            handle_silence_bypass(ctx.bridge_writer, ctx.rt_status);
             return;
         }
         GateState::FadingIn | GateState::FadingOut => {
@@ -529,7 +639,12 @@ pub fn capture_dsp_pipeline(
 
     // ESTÁGIO 4: ENTREGA FINAL (A PONTE)
     // Envia o resultado processado para os seus alto-falantes através da ponte (bridge).
-    write_bridge(bufs.resamp_out_l, bufs.resamp_out_r, n_pw, ctx.bridge_ptr);
+    write_bridge(
+        bufs.resamp_out_l,
+        bufs.resamp_out_r,
+        n_pw,
+        ctx.bridge_writer,
+    );
 }
 
 /// Pipeline DSP de Reprodução (Bridge → Hardware).
@@ -537,78 +652,64 @@ pub fn capture_dsp_pipeline(
 #[inline(always)]
 pub(crate) fn playback_dsp_cycle(
     stream: &pw::stream::Stream,
-    bridge: BridgeRef,
+    bridge: DspBridgeReader,
     last_bridge_gen: &mut u64,
 ) {
-    let bridge_ref = bridge.as_mut();
-    // Verifica se há som novo na "ponte" (bridge). Se não houver nada novo, apenas esperamos.
-    let current_gen = bridge_ref.generation.load(Ordering::Acquire);
-    if current_gen == *last_bridge_gen {
-        return;
-    }
-    *last_bridge_gen = current_gen;
-    // Marca que este som já foi "consumido" e pode ser retirado da fila.
-    bridge_ref
-        .consumed_gen
-        .store(current_gen, Ordering::Release);
+    bridge.read_block(last_bridge_gen, |buf_l, buf_r| {
+        let n_samples = buf_l.len();
+        if n_samples == 0 {
+            return;
+        }
 
-    // Pega o som que está na "gaveta" ativa para ser tocado.
-    let read_idx = bridge_ref.active_read_idx.load(Ordering::Relaxed);
-    let front_buf = &bridge_ref.buffers[read_idx];
+        // Pede ao sistema de som (PipeWire) um espaço vazio para colocar o áudio.
+        let mut buf = match stream.dequeue_buffer() {
+            Some(b) => b,
+            None => return,
+        };
 
-    let n_samples = front_buf.n_samples as usize;
-    if n_samples == 0 || n_samples > MAX_BRIDGE_BUF {
-        return;
-    }
+        let datas = buf.datas_mut();
+        if datas.len() < 2 {
+            return;
+        }
 
-    // Pede ao sistema de som (PipeWire) um espaço vazio para colocar o áudio.
-    let mut buf = match stream.dequeue_buffer() {
-        Some(b) => b,
-        None => return,
-    };
+        // Separa os canais Esquerdo e Direito para a entrega final.
+        let (datas_left, datas_right) = datas.split_at_mut(1);
+        let data_l = &mut datas_left[0];
+        let data_r = &mut datas_right[0];
 
-    let datas = buf.datas_mut();
-    if datas.len() < 2 {
-        return;
-    }
+        let max_l = data_l.as_raw().maxsize as usize / std::mem::size_of::<f32>();
+        let max_r = data_r.as_raw().maxsize as usize / std::mem::size_of::<f32>();
+        let n_out = n_samples.min(max_l).min(max_r);
+        if n_out == 0 {
+            return;
+        }
 
-    // Separa os canais Esquerdo e Direito para a entrega final.
-    let (datas_left, datas_right) = datas.split_at_mut(1);
-    let data_l = &mut datas_left[0];
-    let data_r = &mut datas_right[0];
+        // Copia o som processado diretamente para as saídas da sua placa de som.
+        if let Some(raw_l) = data_l.data() {
+            let out_l =
+                unsafe { std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out) };
+            out_l.copy_from_slice(&buf_l[..n_out]);
+        }
+        if let Some(raw_r) = data_r.data() {
+            let out_r =
+                unsafe { std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out) };
+            out_r.copy_from_slice(&buf_r[..n_out]);
+        }
 
-    let max_l = data_l.as_raw().maxsize as usize / std::mem::size_of::<f32>();
-    let max_r = data_r.as_raw().maxsize as usize / std::mem::size_of::<f32>();
-    let n_out = n_samples.min(max_l).min(max_r);
-    if n_out == 0 {
-        return;
-    }
-
-    // Copia o som processado diretamente para as saídas da sua placa de som.
-    if let Some(raw_l) = data_l.data() {
-        let out_l =
-            unsafe { std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out) };
-        out_l.copy_from_slice(&front_buf.buf_l[..n_out]);
-    }
-    if let Some(raw_r) = data_r.data() {
-        let out_r =
-            unsafe { std::slice::from_raw_parts_mut(raw_r.as_mut_ptr().cast::<f32>(), n_out) };
-        out_r.copy_from_slice(&front_buf.buf_r[..n_out]);
-    }
-
-    // Informa ao hardware exatamente quanto de som foi entregue agora.
-    {
-        let chunk = data_l.chunk_mut();
-        *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
-        *chunk.offset_mut() = 0;
-        *chunk.stride_mut() = std::mem::size_of::<f32>() as i32;
-    }
-    {
-        let chunk = data_r.chunk_mut();
-        *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
-        *chunk.offset_mut() = 0;
-        *chunk.stride_mut() = std::mem::size_of::<f32>() as i32;
-    }
+        // Informa ao hardware exatamente quanto de som foi entregue agora.
+        {
+            let chunk = data_l.chunk_mut();
+            *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
+            *chunk.offset_mut() = 0;
+            *chunk.stride_mut() = std::mem::size_of::<f32>() as i32;
+        }
+        {
+            let chunk = data_r.chunk_mut();
+            *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
+            *chunk.offset_mut() = 0;
+            *chunk.stride_mut() = std::mem::size_of::<f32>() as i32;
+        }
+    });
 }
 
 /// Constrói um SPA Pod de formato de áudio F32P stereo para negociação PipeWire.

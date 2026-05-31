@@ -566,7 +566,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 threshold_close_sq: lut.db_to_linear(modulated_gate_db - 6.0).powi(2),
                 process_mono: &mut self.process_mono,
                 rt_status: &self.rt_status,
-                bridge_ptr: crate::dsp::pipeline::BridgeRef::null(),
+                bridge_writer: None,
             };
 
             let gate_state = apply_input_stage(

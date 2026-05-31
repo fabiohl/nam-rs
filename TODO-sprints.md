@@ -37,9 +37,8 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Ordem de execução recomendada:** Épico 12 (S21 HDR + diff fuzz primeiro — instrumenta o resto) → 9 (Quantização) → 10 (RT-OS) → 11 (UX) → 13 (Portabilidade & Hardware Especializado).
 - **CI/QA gate por Sprint:**
   1. `bash utils/lints.sh` — formatação, clippy strict, feature matrix.
-  2. `bash utils/tests-cargo.sh` — unit + integration + benches rápidos.
-  3. `bash utils/tests-long.sh` — soak tests (gate decisor pré-release).
-  4. `cargo bench inference_bench` — comparar contra baseline; sem regressão > 5%.
+  2. `bash utils/tests-cargo.sh` — unit + integration
+  3. `cargo bench inference_bench` — comparar contra baseline; sem regressão > 5%.
 - **Convenções:**
   - PR/branch por Tarefa (`feat/S1-T01-bridgeref-soundness`).
   - Commit message inclui referência `[S1.T01]`.

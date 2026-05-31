@@ -52,8 +52,9 @@ use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags,
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 pub use crate::dsp::pipeline::PipewireHostConfig;
 use crate::dsp::pipeline::{
-    AppState, BridgeBuffer, BridgeRef, DspBridge, DspBuffers, DspPipelineContext, MAX_BRIDGE_BUF,
-    MAX_RESAMP_BUF, build_spa_format_pod, capture_dsp_pipeline, playback_dsp_cycle,
+    AppState, BridgeBuffer, BridgeRef, DspBridge, DspBridgeReader, DspBridgeWriter, DspBuffers,
+    DspPipelineContext, MAX_BRIDGE_BUF, MAX_RESAMP_BUF, build_spa_format_pod, capture_dsp_pipeline,
+    playback_dsp_cycle,
 };
 use crate::dsp::resampler::NamResampler;
 use crate::standalone::colors::Colorize;
@@ -419,7 +420,7 @@ pub fn run_pipewire_host(
                         threshold_close_sq,
                         process_mono: &mut process_mono,
                         rt_status: &rt_status_for_process,
-                        bridge_ptr,
+                        bridge_writer: DspBridgeWriter::from_ref(bridge_ptr),
                     },
                     DspBuffers {
                         resamp_mid_l: &mut resamp_mid_l,
@@ -476,7 +477,7 @@ pub fn run_pipewire_host(
         // 7.1. Configuração do Ponteiro Compartilhado
         // O bridge_ptr_playback é enviado para o callback da playback stream, de forma que ele
         // saiba de onde puxar as amostras de áudio que foram preenchidas pela stream de captura.
-        let bridge_ptr_playback = bridge_ptr;
+        let bridge_ptr_playback = unsafe { DspBridgeReader::new(bridge_ptr.as_ptr()) };
 
         // 7.2. Detecção Automática de Placa de Som
         // Verifica as interfaces de saída física ativas (ALSA/USB). Isso evita que o

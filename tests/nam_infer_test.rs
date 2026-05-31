@@ -1541,8 +1541,8 @@ fn test_zero_alloc_capture_pipeline() {
     use nam_rs::common::spsc::RtStatusFlags;
     use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
     use nam_rs::dsp::pipeline::{
-        BridgeBuffer, BridgeRef, DspBridge, DspPipelineContext, MAX_BRIDGE_BUF, MAX_RESAMP_BUF,
-        capture_dsp_pipeline,
+        BridgeBuffer, DspBridge, DspBridgeWriter, DspPipelineContext, MAX_BRIDGE_BUF,
+        MAX_RESAMP_BUF, capture_dsp_pipeline,
     };
     use nam_rs::dsp::resampler::NamResampler;
 
@@ -1613,7 +1613,7 @@ fn test_zero_alloc_capture_pipeline() {
         threshold_close_sq: 0.0,
         process_mono: &mut process_mono,
         rt_status: &rt_status,
-        bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+        bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
     };
 
     let bufs = nam_rs::dsp::pipeline::DspBuffers {

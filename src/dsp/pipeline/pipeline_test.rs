@@ -80,7 +80,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
         let bufs = DspBuffers {
@@ -276,7 +276,7 @@ mod tests {
             threshold_close_sq: 0.01,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
         let bufs = DspBuffers {
@@ -384,7 +384,7 @@ mod tests {
             threshold_close_sq: 0.01,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
         let bufs = DspBuffers {
@@ -470,7 +470,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
         let bufs = DspBuffers {
@@ -551,7 +551,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
         let bufs = DspBuffers {
@@ -582,7 +582,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono2,
             rt_status: &rt_status,
-            bridge_ptr: unsafe { BridgeRef::new(&mut *bridge as *mut DspBridge) },
+            bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
         let bufs2 = DspBuffers {
