@@ -601,16 +601,16 @@ impl DefaultPluginFactory for NamClapPlugin {
         let param_tx = shared
             .param_tx
             .lock()
-            .expect("Failed to lock param_tx Mutex")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
-            .expect("param_tx producer already taken");
+            .ok_or(PluginError::Message("param_tx producer already taken"))?;
 
         let gc_rx = shared
             .gc_rx
             .lock()
-            .expect("Failed to lock gc_rx Mutex")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
-            .expect("gc_rx consumer already taken");
+            .ok_or(PluginError::Message("gc_rx consumer already taken"))?;
 
         #[cfg_attr(test, allow(unused_mut))]
         let main_thread = NamClapMainThread {

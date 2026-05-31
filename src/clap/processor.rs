@@ -128,16 +128,20 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let param_rx = shared
             .param_rx
             .lock()
-            .expect("Failed to lock param_rx Mutex")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
-            .expect("param_rx consumer has already been extracted");
+            .ok_or_else(|| {
+                PluginError::Message("param_rx consumer has already been extracted")
+            })?;
 
         let gc_tx = shared
             .gc_tx
             .lock()
-            .expect("Failed to lock gc_tx Mutex")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
-            .expect("gc_tx producer has already been extracted");
+            .ok_or_else(|| {
+                PluginError::Message("gc_tx producer has already been extracted")
+            })?;
 
         // 2. Pré-alocação de buffers intermediários (Disjoint Stages)
         let buf_capacity = (audio_config.max_frames_count as usize)
@@ -158,7 +162,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let model_rate = if model_rate == 0 { 48000 } else { model_rate };
         let resampler = Box::new(
             NamResampler::new(audio_config.sample_rate as u32, model_rate, buf_capacity)
-                .expect("Failed to create NamResampler"),
+                .map_err(|e| {
+                    PluginError::Message(Box::leak(
+                        format!("Failed to create NamResampler: {:?}", e).into_boxed_str(),
+                    ))
+                })?,
         );
 
         let silence_hyst = DynamicHysteresis::new();
@@ -207,12 +215,15 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     }
 
     fn deactivate(self, _main_thread: &mut NamClapMainThread<'a>) {
-        if let Ok(mut guard) = self.shared.param_rx.lock() {
-            *guard = Some(self.param_rx);
-        }
-        if let Ok(mut guard) = self.shared.gc_tx.lock() {
-            *guard = Some(self.gc_tx);
-        }
+        let mut param_rx_guard = self
+            .shared
+            .param_rx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *param_rx_guard = Some(self.param_rx);
+
+        let mut gc_tx_guard = self.shared.gc_tx.lock().unwrap_or_else(|e| e.into_inner());
+        *gc_tx_guard = Some(self.gc_tx);
     }
 
     fn process(

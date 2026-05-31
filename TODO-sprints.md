@@ -129,7 +129,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Critérios de aceitação:** `cargo test --features heap-audit` ainda detecta regressões mas sem panic. Stress-run via DAW host real (Bitwig + FL) por 5 minutos sem crashes.
 - **Especialista:** `implementador`.
 
-#### Tarefa S2.T02 — Remover `.expect()` de `activate()` 🔥
+#### Tarefa S2.T02 — Remover `.expect()` de `activate()` 🔥 [DONE]
 
 - **Onde:** `src/clap/processor.rs:131-133, 161`; `src/clap/plugin.rs:594`.
 - **Problema:** `.expect()` em `activate()` mata o host se houver Mutex poisoning, dupla activate, ou falha rara do resampler. Especialmente perigoso em hosts agressivos (Reaper render).
