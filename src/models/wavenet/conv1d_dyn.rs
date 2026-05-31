@@ -59,7 +59,8 @@ impl Conv1dDyn {
         // --- Processamento em Par (Dual Frame) ---
         // Para economizar energia da CPU, calculamos dois momentos do áudio (f0 e f1) ao mesmo tempo.
         // Isso aproveita melhor os dados que já estão 'quentes' no cache do processador.
-        let num_blocks = self.out_ch / 4;
+        let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
         // 'Tap Pointers': São como mãos que buscam amostras de áudio no passado.
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];
@@ -68,7 +69,7 @@ impl Conv1dDyn {
 
         // 1. Localização no Tempo (Dilatação):
         // O WaveNet usa 'Dilatação' para olhar para trás no tempo.
-        // Em vez de olhar apenas para o vizinho imediato, ele pula amostras para
+        // Em vai de olhar apenas para o vizinho imediato, ele pula amostras para
         // conseguir 'ouvir' padrões de longa duração (como o ritmo de uma guitarra).
         for k in 0..k_limit {
             // Calculamos a distância exata no passado baseada na dilatação e no tamanho do kernel.
@@ -133,9 +134,9 @@ impl Conv1dDyn {
 
                 if do_bias {
                     r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
-                    r1_f0 = *self.bias.get_unchecked(out_c + 1) + mv1_f0;
-                    r2_f0 = *self.bias.get_unchecked(out_c + 2) + mv2_f0;
-                    r3_f0 = *self.bias.get_unchecked(out_c + 3) + mv3_f0;
+                    r1_f0 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f0;
+                    r2_f0 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f0;
+                    r3_f0 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f0;
                 } else {
                     r0_f0 = mv0_f0;
                     r1_f0 = mv1_f0;
@@ -169,9 +170,9 @@ impl Conv1dDyn {
 
                 if do_bias {
                     r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
-                    r1_f1 = *self.bias.get_unchecked(out_c + 1) + mv1_f1;
-                    r2_f1 = *self.bias.get_unchecked(out_c + 2) + mv2_f1;
-                    r3_f1 = *self.bias.get_unchecked(out_c + 3) + mv3_f1;
+                    r1_f1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f1;
+                    r2_f1 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f1;
+                    r3_f1 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f1;
                 } else {
                     r0_f1 = mv0_f1;
                     r1_f1 = mv1_f1;
@@ -213,43 +214,27 @@ impl Conv1dDyn {
 
                 // 5. Armazenamento Final:
                 // Guardamos o som processado nos buffers de saída para a próxima camada da rede.
-                *out_f0.get_unchecked_mut(out_c) = r0_f0;
-                *out_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                *out_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                *out_f0.get_unchecked_mut(out_c + 3) = r3_f0;
+                if out_c + 3 < self.out_ch {
+                    *out_f0.get_unchecked_mut(out_c) = r0_f0;
+                    *out_f0.get_unchecked_mut(out_c + 1) = r1_f0;
+                    *out_f0.get_unchecked_mut(out_c + 2) = r2_f0;
+                    *out_f0.get_unchecked_mut(out_c + 3) = r3_f0;
 
-                *out_f1.get_unchecked_mut(out_c) = r0_f1;
-                *out_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                *out_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                *out_f1.get_unchecked_mut(out_c + 3) = r3_f1;
-            }
-        }
-
-        // Remainder canais
-        let mut out_c = num_blocks * 4;
-        while out_c < self.out_ch {
-            let mut r_f0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let mut r_f1 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            unsafe {
-                if let Some(m) = mixin_f0.filter(|m| out_c < m.len()) {
-                    r_f0 += *m.get_unchecked(out_c);
-                }
-                if let Some(m) = mixin_f1.filter(|m| out_c < m.len()) {
-                    r_f1 += *m.get_unchecked(out_c);
-                }
-
-                for k in 0..self.kernel {
-                    let in_f0 = core::slice::from_raw_parts(tap_ptrs_f0[k], self.in_ch);
-                    let in_f1 = core::slice::from_raw_parts(tap_ptrs_f1[k], self.in_ch);
-                    let w_start = (out_c * self.kernel + k) * self.in_ch;
-                    let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
-                    r_f0 += M::dot_product(in_f0, w);
-                    r_f1 += M::dot_product(in_f1, w);
+                    *out_f1.get_unchecked_mut(out_c) = r0_f1;
+                    *out_f1.get_unchecked_mut(out_c + 1) = r1_f1;
+                    *out_f1.get_unchecked_mut(out_c + 2) = r2_f1;
+                    *out_f1.get_unchecked_mut(out_c + 3) = r3_f1;
+                } else {
+                    let r_f0 = [r0_f0, r1_f0, r2_f0, r3_f0];
+                    let r_f1 = [r0_f1, r1_f1, r2_f1, r3_f1];
+                    for lane in 0..4 {
+                        if out_c + lane < self.out_ch {
+                            *out_f0.get_unchecked_mut(out_c + lane) = r_f0[lane];
+                            *out_f1.get_unchecked_mut(out_c + lane) = r_f1[lane];
+                        }
+                    }
                 }
             }
-            out_f0[out_c] = r_f0;
-            out_f1[out_c] = r_f1;
-            out_c += 1;
         }
     }
 
@@ -345,7 +330,8 @@ impl Conv1dDyn {
         // --- Modo de Frame Único ---
         // Esta função é o 'estepe'. Ela entra em ação quando não podemos
         // processar em pares (como na última amostra de um bloco com tamanho ímpar).
-        let num_blocks = self.out_ch / 4;
+        let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
         let mut tap_ptrs = [core::ptr::null::<f32>(); 8];
         let k_limit = self.kernel.min(8);
 
@@ -403,9 +389,9 @@ impl Conv1dDyn {
 
                 if self.do_bias {
                     r0 = *self.bias.get_unchecked(out_c) + mv0;
-                    r1 = *self.bias.get_unchecked(out_c + 1) + mv1;
-                    r2 = *self.bias.get_unchecked(out_c + 2) + mv2;
-                    r3 = *self.bias.get_unchecked(out_c + 3) + mv3;
+                    r1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1;
+                    r2 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2;
+                    r3 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3;
                 } else {
                     r0 = mv0;
                     r1 = mv1;
@@ -432,32 +418,20 @@ impl Conv1dDyn {
                 }
 
                 // Guardamos os resultados parciais.
-                *out_frame.get_unchecked_mut(out_c) = r0;
-                *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                *out_frame.get_unchecked_mut(out_c + 3) = r3;
-            }
-        }
-
-        // 3. Canais Restantes (Tail):
-        // Se o número de canais de saída não for um múltiplo exato de 4,
-        // processamos as sobras finais uma por uma aqui.
-        let mut out_c = num_blocks * 4;
-        while out_c < self.out_ch {
-            let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            unsafe {
-                if let Some(m) = mixin.filter(|m| out_c < m.len()) {
-                    r += *m.get_unchecked(out_c);
-                }
-                for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
-                    let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
-                    let w_start = (out_c * self.kernel + k) * self.in_ch;
-                    let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
-                    r += M::dot_product(in_slice, w);
+                if out_c + 3 < self.out_ch {
+                    *out_frame.get_unchecked_mut(out_c) = r0;
+                    *out_frame.get_unchecked_mut(out_c + 1) = r1;
+                    *out_frame.get_unchecked_mut(out_c + 2) = r2;
+                    *out_frame.get_unchecked_mut(out_c + 3) = r3;
+                } else {
+                    let r = [r0, r1, r2, r3];
+                    for (lane, &val) in r.iter().enumerate() {
+                        if out_c + lane < self.out_ch {
+                            *out_frame.get_unchecked_mut(out_c + lane) = val;
+                        }
+                    }
                 }
             }
-            out_frame[out_c] = r;
-            out_c += 1;
         }
     }
 
@@ -481,7 +455,8 @@ impl Conv1dDyn {
         // Esta é a versão 'turbinada' do processamento. Usamos números de 16 bits (BF16)
         // em vez de 32 bits. Isso corta o uso de memória pela metade e permite que a CPU
         // processe o dobro de dados no mesmo tempo em hardwares compatíveis.
-        let num_blocks = self.out_ch / 4;
+        let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
         // Tap Pointers para f0 e f1 em BF16
         let mut tap_ptrs_f0 = [core::ptr::null::<u16>(); 8];
@@ -546,9 +521,9 @@ impl Conv1dDyn {
                 // Adiciona o viés (bias) do neurônio ao acumulador do Frame 0, se ativo.
                 if do_bias {
                     r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
-                    r1_f0 = *self.bias.get_unchecked(out_c + 1) + mv1_f0;
-                    r2_f0 = *self.bias.get_unchecked(out_c + 2) + mv2_f0;
-                    r3_f0 = *self.bias.get_unchecked(out_c + 3) + mv3_f0;
+                    r1_f0 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f0;
+                    r2_f0 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f0;
+                    r3_f0 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f0;
                 } else {
                     r0_f0 = mv0_f0;
                     r1_f0 = mv1_f0;
@@ -584,9 +559,9 @@ impl Conv1dDyn {
                 // Adiciona o viés (bias) ao acumulador do Frame 1, se ativo.
                 if do_bias {
                     r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
-                    r1_f1 = *self.bias.get_unchecked(out_c + 1) + mv1_f1;
-                    r2_f1 = *self.bias.get_unchecked(out_c + 2) + mv2_f1;
-                    r3_f1 = *self.bias.get_unchecked(out_c + 3) + mv3_f1;
+                    r1_f1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f1;
+                    r2_f1 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f1;
+                    r3_f1 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f1;
                 } else {
                     r0_f1 = mv0_f1;
                     r1_f1 = mv1_f1;
@@ -625,43 +600,27 @@ impl Conv1dDyn {
                     r3_f1 += t_f1[3];
                 }
 
-                *out_f0.get_unchecked_mut(out_c) = r0_f0;
-                *out_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                *out_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                *out_f0.get_unchecked_mut(out_c + 3) = r3_f0;
+                if out_c + 3 < self.out_ch {
+                    *out_f0.get_unchecked_mut(out_c) = r0_f0;
+                    *out_f0.get_unchecked_mut(out_c + 1) = r1_f0;
+                    *out_f0.get_unchecked_mut(out_c + 2) = r2_f0;
+                    *out_f0.get_unchecked_mut(out_c + 3) = r3_f0;
 
-                *out_f1.get_unchecked_mut(out_c) = r0_f1;
-                *out_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                *out_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                *out_f1.get_unchecked_mut(out_c + 3) = r3_f1;
-            }
-        }
-
-        // Remainder canais (Sobra) em BF16.
-        let mut out_c = num_blocks * 4;
-        while out_c < self.out_ch {
-            let mut r_f0 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            let mut r_f1 = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            unsafe {
-                if let Some(m) = mixin_f0 {
-                    r_f0 += m[out_c];
-                }
-                if let Some(m) = mixin_f1 {
-                    r_f1 += m[out_c];
-                }
-
-                for k in 0..self.kernel {
-                    let in_f0 = core::slice::from_raw_parts(tap_ptrs_f0[k], self.in_ch);
-                    let in_f1 = core::slice::from_raw_parts(tap_ptrs_f1[k], self.in_ch);
-                    let w_start = (out_c * self.kernel + k) * self.in_ch;
-                    let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
-                    r_f0 += M::dot_product_bf16(in_f0, w);
-                    r_f1 += M::dot_product_bf16(in_f1, w);
+                    *out_f1.get_unchecked_mut(out_c) = r0_f1;
+                    *out_f1.get_unchecked_mut(out_c + 1) = r1_f1;
+                    *out_f1.get_unchecked_mut(out_c + 2) = r2_f1;
+                    *out_f1.get_unchecked_mut(out_c + 3) = r3_f1;
+                } else {
+                    let r_f0 = [r0_f0, r1_f0, r2_f0, r3_f0];
+                    let r_f1 = [r0_f1, r1_f1, r2_f1, r3_f1];
+                    for lane in 0..4 {
+                        if out_c + lane < self.out_ch {
+                            *out_f0.get_unchecked_mut(out_c + lane) = r_f0[lane];
+                            *out_f1.get_unchecked_mut(out_c + lane) = r_f1[lane];
+                        }
+                    }
                 }
             }
-            out_f0[out_c] = r_f0;
-            out_f1[out_c] = r_f1;
-            out_c += 1;
         }
     }
 
@@ -753,7 +712,8 @@ impl Conv1dDyn {
         // Este é o 'plano B' do caminho de alta performance. Ele entra em ação
         // para processar amostras que sobraram de blocos ímpares, usando
         // a economia de memória do formato BF16.
-        let num_blocks = self.out_ch / 4;
+        let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
         let mut tap_ptrs = [core::ptr::null::<u16>(); 8];
         let k_limit = self.kernel.min(8);
 
@@ -810,9 +770,9 @@ impl Conv1dDyn {
 
                 if self.do_bias {
                     r0 = *self.bias.get_unchecked(out_c) + mv0;
-                    r1 = *self.bias.get_unchecked(out_c + 1) + mv1;
-                    r2 = *self.bias.get_unchecked(out_c + 2) + mv2;
-                    r3 = *self.bias.get_unchecked(out_c + 3) + mv3;
+                    r1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1;
+                    r2 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2;
+                    r3 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3;
                 } else {
                     r0 = mv0;
                     r1 = mv1;
@@ -837,31 +797,20 @@ impl Conv1dDyn {
                     r3 += t3;
                 }
 
-                *out_frame.get_unchecked_mut(out_c) = r0;
-                *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                *out_frame.get_unchecked_mut(out_c + 3) = r3;
-            }
-        }
-
-        // 3. Sobra de Canais (Tail) em BF16:
-        // Finalizamos os últimos canais de saída que não completam um bloco de 4.
-        let mut out_c = num_blocks * 4;
-        while out_c < self.out_ch {
-            let mut r = if self.do_bias { self.bias[out_c] } else { 0.0 };
-            unsafe {
-                if let Some(m) = mixin.filter(|m| out_c < m.len()) {
-                    r += *m.get_unchecked(out_c);
-                }
-                for (k, &tap_ptr) in tap_ptrs.iter().enumerate().take(self.kernel) {
-                    let in_slice = core::slice::from_raw_parts(tap_ptr, self.in_ch);
-                    let w_start = (out_c * self.kernel + k) * self.in_ch;
-                    let w = self.weights.get_unchecked(w_start..w_start + self.in_ch);
-                    r += M::dot_product_bf16(in_slice, w);
+                if out_c + 3 < self.out_ch {
+                    *out_frame.get_unchecked_mut(out_c) = r0;
+                    *out_frame.get_unchecked_mut(out_c + 1) = r1;
+                    *out_frame.get_unchecked_mut(out_c + 2) = r2;
+                    *out_frame.get_unchecked_mut(out_c + 3) = r3;
+                } else {
+                    let r = [r0, r1, r2, r3];
+                    for (lane, &val) in r.iter().enumerate() {
+                        if out_c + lane < self.out_ch {
+                            *out_frame.get_unchecked_mut(out_c + lane) = val;
+                        }
+                    }
                 }
             }
-            out_frame[out_c] = r;
-            out_c += 1;
         }
     }
 }

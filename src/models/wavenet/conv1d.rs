@@ -44,9 +44,6 @@ trait ConvInput: Copy + Default {
         state_f1: &[Self],
     ) -> ([f32; 4], [f32; 4]);
 
-    /// Produto Escalar simples: Multiplicação básica de vetores.
-    unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32;
-
     /// Ajuste de Ponteiro: Garante que o endereço de memória esteja no formato correto.
     fn cast_ptr(ptr: *const Self) -> *const f32;
 }
@@ -68,10 +65,6 @@ impl ConvInput for f32 {
         state_f1: &[Self],
     ) -> ([f32; 4], [f32; 4]) {
         unsafe { M::dot_product_4x_interleaved_dual_frame(weights, state_f0, state_f1) }
-    }
-    #[inline(always)]
-    unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32 {
-        unsafe { M::dot_product(a, b) }
     }
     #[inline(always)]
     fn cast_ptr(ptr: *const Self) -> *const f32 {
@@ -98,10 +91,6 @@ impl ConvInput for u16 {
         state_f1: &[Self],
     ) -> ([f32; 4], [f32; 4]) {
         unsafe { M::dot_product_4x_interleaved_dual_frame_bf16(weights, state_f0, state_f1) }
-    }
-    #[inline(always)]
-    unsafe fn dot_product<M: SimdMath>(a: &[Self], b: &[u16]) -> f32 {
-        unsafe { M::dot_product_bf16(a, b) }
     }
     #[inline(always)]
     fn cast_ptr(ptr: *const Self) -> *const f32 {
@@ -231,7 +220,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         // Para otimizar o throughput de cálculo e uso de cache, processamos os canais de saída
         // agrupados em blocos de 4 elementos. Isso permite computar 4 saídas em paralelo usando
         // instruções SIMD que lêem os pesos e as entradas de forma altamente combinada.
-        let num_blocks = OUT / 4;
+        let num_blocks = OUT.div_ceil(4);
         let mut out_c = 0;
 
         for b in 0..num_blocks {
@@ -243,9 +232,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Carrega os 4 acumuladores temporários a partir do frame de saída atual.
             unsafe {
                 r0 = *out_frame.get_unchecked(out_c);
-                r1 = *out_frame.get_unchecked(out_c + 1);
-                r2 = *out_frame.get_unchecked(out_c + 2);
-                r3 = *out_frame.get_unchecked(out_c + 3);
+                r1 = if out_c + 1 < OUT { *out_frame.get_unchecked(out_c + 1) } else { 0.0 };
+                r2 = if out_c + 2 < OUT { *out_frame.get_unchecked(out_c + 2) } else { 0.0 };
+                r3 = if out_c + 3 < OUT { *out_frame.get_unchecked(out_c + 3) } else { 0.0 };
             }
 
             // Para cada tap (atraso/deslocamento no buffer de áudio circular) da convolução
@@ -268,29 +257,17 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Grava de volta os 4 acumuladores processados no buffer de saída in-place.
             unsafe {
                 *out_frame.get_unchecked_mut(out_c) = r0;
-                *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                *out_frame.get_unchecked_mut(out_c + 3) = r3;
+                if out_c + 1 < OUT {
+                    *out_frame.get_unchecked_mut(out_c + 1) = r1;
+                }
+                if out_c + 2 < OUT {
+                    *out_frame.get_unchecked_mut(out_c + 2) = r2;
+                }
+                if out_c + 3 < OUT {
+                    *out_frame.get_unchecked_mut(out_c + 3) = r3;
+                }
             }
             out_c += 4;
-        }
-
-        // Loop de Cauda / Remanescente (Tail Loop):
-        // Limpeza dos canais de saída restantes caso a dimensão total de saída (OUT)
-        // não seja um múltiplo exato de 4. Esse loop escalar de fallback previne acessos a
-        // memória fora dos limites do buffer de pesos e saídas.
-        while out_c < OUT {
-            let mut r = unsafe { *out_frame.get_unchecked(out_c) };
-            for (k, in_slice) in in_taps.iter().enumerate() {
-                let w_start = out_c * K * IN + k * IN;
-                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                // Computa o produto escalar simples para o canal remanescente.
-                r += unsafe { T::dot_product::<M>(in_slice, w) };
-            }
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) = r;
-            }
-            out_c += 1;
         }
     }
 
@@ -498,7 +475,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
 
-        let num_blocks = OUT / 4;
+        let num_blocks = OUT.div_ceil(4);
         let mut out_c = 0;
 
         // --- 3. Loop de Cálculo Central (Blocks de 4) ---
@@ -517,14 +494,14 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             unsafe {
                 // Carregamos o que já calculamos até agora (bias + mixin).
                 r0_f0 = *out_frame_f0.get_unchecked(out_c);
-                r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
-                r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
-                r3_f0 = *out_frame_f0.get_unchecked(out_c + 3);
+                r1_f0 = if out_c + 1 < OUT { *out_frame_f0.get_unchecked(out_c + 1) } else { 0.0 };
+                r2_f0 = if out_c + 2 < OUT { *out_frame_f0.get_unchecked(out_c + 2) } else { 0.0 };
+                r3_f0 = if out_c + 3 < OUT { *out_frame_f0.get_unchecked(out_c + 3) } else { 0.0 };
 
                 r0_f1 = *out_frame_f1.get_unchecked(out_c);
-                r1_f1 = *out_frame_f1.get_unchecked(out_c + 1);
-                r2_f1 = *out_frame_f1.get_unchecked(out_c + 2);
-                r3_f1 = *out_frame_f1.get_unchecked(out_c + 3);
+                r1_f1 = if out_c + 1 < OUT { *out_frame_f1.get_unchecked(out_c + 1) } else { 0.0 };
+                r2_f1 = if out_c + 2 < OUT { *out_frame_f1.get_unchecked(out_c + 2) } else { 0.0 };
+                r3_f1 = if out_c + 3 < OUT { *out_frame_f1.get_unchecked(out_c + 3) } else { 0.0 };
             }
 
             for k in 0..K {
@@ -558,36 +535,28 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             unsafe {
                 // Devolvemos o resultado final para o buffer de saída.
                 *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
-                *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
+                if out_c + 1 < OUT {
+                    *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
+                }
+                if out_c + 2 < OUT {
+                    *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
+                }
+                if out_c + 3 < OUT {
+                    *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
+                }
 
                 *out_frame_f1.get_unchecked_mut(out_c) = r0_f1;
-                *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
+                if out_c + 1 < OUT {
+                    *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
+                }
+                if out_c + 2 < OUT {
+                    *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
+                }
+                if out_c + 3 < OUT {
+                    *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
+                }
             }
             out_c += 4;
-        }
-
-        // --- 4. Canais Restantes (Tail) ---
-        // Se o número de canais não for múltiplo de 4, processamos as sobras aqui.
-        while out_c < OUT {
-            let mut r_f0 = unsafe { *out_frame_f0.get_unchecked(out_c) };
-            let mut r_f1 = unsafe { *out_frame_f1.get_unchecked(out_c) };
-            for k in 0..K {
-                let w_start = out_c * K * IN + k * IN;
-                let w = unsafe { self.weights.get_unchecked(w_start..w_start + IN) };
-                let in_slice_f0 = &in_taps_f0[k];
-                let in_slice_f1 = &in_taps_f1[k];
-                r_f0 += unsafe { T::dot_product::<M>(in_slice_f0, w) };
-                r_f1 += unsafe { T::dot_product::<M>(in_slice_f1, w) };
-            }
-            unsafe {
-                *out_frame_f0.get_unchecked_mut(out_c) = r_f0;
-                *out_frame_f1.get_unchecked_mut(out_c) = r_f1;
-            }
-            out_c += 1;
         }
     }
 

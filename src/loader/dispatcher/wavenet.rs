@@ -343,18 +343,21 @@ fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
     dilation: usize,
     do_bias: bool,
 ) -> anyhow::Result<Conv1d<IN, OUT, K>> {
-    let total = OUT * IN * K;
-    let raw = cursor.read_slice(total)?;
+    let num_blocks = OUT.div_ceil(4);
+    let padded_total = num_blocks * 4 * IN * K;
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
-    let mut weights = AlignedVec::new(total, 0u16);
+    let mut weights = AlignedVec::new(padded_total, 0u16);
 
     if cursor.is_interleaved4() {
-        for i in 0..total {
+        let raw = cursor.read_slice(padded_total)?;
+        for i in 0..padded_total {
             weights[i] = quantize_weight(raw[i], is_bf16);
         }
     } else {
+        let total = OUT * IN * K;
+        let raw = cursor.read_slice(total)?;
         transpose_conv1d_interleaved_4wide(raw, &mut weights, IN, OUT, K, is_bf16);
     }
 
@@ -419,23 +422,26 @@ fn read_conv1d_weights_dyn(
     dilation: usize,
     do_bias: bool,
 ) -> anyhow::Result<Conv1dDyn> {
-    let total = out_size * in_size * k_size;
-    let raw = cursor.read_slice(total)?;
+    let num_blocks = out_size.div_ceil(4);
+    let padded_total = num_blocks * 4 * in_size * k_size;
 
     // Identifica se o processador suporta o formato ultra-rápido BF16.
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     // Criamos um espaço na memória alinhado para alta performance.
-    let mut weights = AlignedVec::new(total, 0u16);
+    let mut weights = AlignedVec::new(padded_total, 0u16);
 
     // Se os pesos já estiverem reorganizados no arquivo, apenas os convertemos.
     // Caso contrário, fazemos a reorganização (transposição) agora.
     if cursor.is_interleaved4() {
-        for i in 0..total {
+        let raw = cursor.read_slice(padded_total)?;
+        for i in 0..padded_total {
             weights[i] = quantize_weight(raw[i], is_bf16);
         }
     } else {
+        let total = out_size * in_size * k_size;
+        let raw = cursor.read_slice(total)?;
         transpose_conv1d_interleaved_4wide(raw, &mut weights, in_size, out_size, k_size, is_bf16);
     }
 
@@ -616,7 +622,7 @@ fn quantize_weight(raw: f32, is_bf16: bool) -> u16 {
 /// Reorganiza os pesos das camadas de convolução no formato "Interleaved 4-Wide".
 /// Esta técnica agrupa os dados de 4 em 4, permitindo que o processador execute
 /// cálculos em "lote" (SIMD), processando 4 canais de áudio de uma só vez.
-fn transpose_conv1d_interleaved_4wide(
+pub fn transpose_conv1d_interleaved_4wide(
     raw: &[f32],
     weights: &mut [u16],
     in_ch: usize,
@@ -624,32 +630,20 @@ fn transpose_conv1d_interleaved_4wide(
     kernel: usize,
     is_bf16: bool,
 ) {
-    let num_blocks = out_ch / 4;
+    let num_blocks = out_ch.div_ceil(4);
     for b in 0..num_blocks {
         for k in 0..kernel {
             for in_c in 0..in_ch {
-                // Preenchemos as 4 "faixas" (lanes) do processador simultaneamente.
                 for lane in 0..4 {
                     let out_c = b * 4 + lane;
-                    let raw_idx = (out_c * in_ch + in_c) * kernel + k;
-                    let val = quantize_weight(raw[raw_idx], is_bf16);
-                    // Calculamos o endereço exato onde os dados devem morar para leitura rápida.
                     let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
-                    weights[target_idx] = val;
+                    if out_c < out_ch {
+                        let raw_idx = (out_c * in_ch + in_c) * kernel + k;
+                        weights[target_idx] = quantize_weight(raw[raw_idx], is_bf16);
+                    } else {
+                        weights[target_idx] = 0;
+                    }
                 }
-            }
-        }
-    }
-
-    // Caso o número de canais não seja múltiplo de 4, cuidamos do "resto" aqui.
-    let tail_start_ch = num_blocks * 4;
-    for out_c in tail_start_ch..out_ch {
-        for in_c in 0..in_ch {
-            for k in 0..kernel {
-                let raw_idx = (out_c * in_ch + in_c) * kernel + k;
-                let val = quantize_weight(raw[raw_idx], is_bf16);
-                let target_idx = out_c * kernel * in_ch + k * in_ch + in_c;
-                weights[target_idx] = val;
             }
         }
     }

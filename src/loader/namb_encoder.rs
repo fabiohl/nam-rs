@@ -219,23 +219,18 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
                 format!("Array {} Layer {} Conv1D Weights", li, di),
             )?;
             let raw = &data.weights[cursor..cursor + size];
-            let num_blocks = conv_out_ch / 4;
+            let num_blocks = conv_out_ch.div_ceil(4);
             for b in 0..num_blocks {
                 for ki in 0..k {
                     for in_c in 0..ch {
                         for lane in 0..4 {
                             let out_c = b * 4 + lane;
-                            out_weights.push(raw[(out_c * ch + in_c) * k + ki]);
+                            if out_c < conv_out_ch {
+                                out_weights.push(raw[(out_c * ch + in_c) * k + ki]);
+                            } else {
+                                out_weights.push(0.0);
+                            }
                         }
-                    }
-                }
-            }
-            // Caso o número de canais não seja múltiplo de 4, processamos o resto normalmente.
-            let tail_start = num_blocks * 4;
-            for out_c in tail_start..conv_out_ch {
-                for ki in 0..k {
-                    for in_c in 0..ch {
-                        out_weights.push(raw[(out_c * ch + in_c) * k + ki]);
                     }
                 }
             }

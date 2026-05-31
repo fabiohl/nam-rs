@@ -14,13 +14,25 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     // Generics: <COND=1, CH=4, K=3>.
     // No WaveNet, cada camada é uma unidade funcional que processa o sinal dilatado.
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
+        let raw_weights = vec![0.01f32; 4 * 3 * 4];
+        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+            == crate::math::common::InstructionSet::Avx512VnniBf16;
+        let mut weights = AlignedVec::new(48, 0u16);
+        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+            &raw_weights,
+            &mut weights,
+            4, // IN
+            4, // OUT
+            3, // K
+            is_bf16,
+        );
         WaveNetLayer {
             // A Convolução Causal Dilatada permite capturar dependências temporais longas
             // sem aumentar linearmente o número de parâmetros.
             conv1d: Conv1d {
                 // Dimensões: OUT * K * IN = 4 * 3 * 4.
                 // Aqui, IN=CH pois a camada recebe o sinal das camadas anteriores.
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 3 * 4]),
+                weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
                 dilation,
@@ -52,10 +64,21 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     // Generics: <COND=1, CH=2, K=3>.
     // Este array geralmente possui menos canais e foca no refinamento final do áudio.
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
+        let raw_weights = vec![0.01f32; 2 * 3 * 2];
+        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+            == crate::math::common::InstructionSet::Avx512VnniBf16;
+        let mut weights = AlignedVec::new(24, 0u16);
+        crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+            &raw_weights,
+            &mut weights,
+            2, // IN
+            2, // OUT
+            3, // K
+            is_bf16,
+        );
         WaveNetLayer {
             conv1d: Conv1d {
-                // Dimensões: OUT * K * IN = 2 * 3 * 2.
-                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 3 * 2]),
+                weights,
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
                 dilation,
@@ -286,10 +309,21 @@ fn test_wavenet_process_deterministic() {
 fn test_conv1d_identity_kernel() {
     // Criamos uma matriz de pesos 4x4 (achatada para 16 floats).
     // Ao preencher apenas a diagonal principal com 1.0, criamos um "Kernel Identidade".
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16]); // OUT=4 * K=1 * IN=4
+    let mut raw_weights = vec![0.0f32; 16];
     for i in 0..4 {
-        weights[i * 4 + i] = half::f16::from_f32(1.0).to_bits();
+        raw_weights[i * 4 + i] = 1.0;
     }
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let mut weights = AlignedVec::new(16, 0u16);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        &raw_weights,
+        &mut weights,
+        4, // IN
+        4, // OUT
+        1, // K
+        is_bf16,
+    );
 
     // Instanciamos a Convolução 1D sem bias e com dilatação 1 (processamento linear).
     let conv = Conv1d::<4, 4, 1> {
@@ -322,10 +356,21 @@ fn test_conv1d_identity_kernel() {
 #[test]
 fn test_conv1d_with_bias() {
     // Novamente, usamos um kernel identidade para isolar o efeito do Bias.
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16]);
+    let mut raw_weights = vec![0.0f32; 16];
     for i in 0..4 {
-        weights[i * 4 + i] = half::f16::from_f32(1.0).to_bits();
+        raw_weights[i * 4 + i] = 1.0;
     }
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let mut weights = AlignedVec::new(16, 0u16);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        &raw_weights,
+        &mut weights,
+        4, // IN
+        4, // OUT
+        1, // K
+        is_bf16,
+    );
 
     // Configuramos a camada com Bias de 0.5 em todos os canais de saída.
     let conv = Conv1d::<4, 4, 1> {
@@ -358,10 +403,18 @@ fn test_conv1d_with_bias() {
 #[test]
 fn test_conv1d_dilation() {
     // Configuramos pesos unitários (1.0) para somar todos os inputs diretamente.
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 2 * 3 * 2]); // OUT=2 * K=3 * IN=2
-    for w in weights.iter_mut().take(12) {
-        *w = half::f16::from_f32(1.0).to_bits();
-    }
+    let raw_weights = vec![1.0f32; 2 * 3 * 2];
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let mut weights = AlignedVec::new(24, 0u16);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        &raw_weights,
+        &mut weights,
+        2, // IN
+        2, // OUT
+        3, // K
+        is_bf16,
+    );
 
     // Definimos dilation: 2. Isso fará o kernel "saltar" um frame a cada tap.
     let conv = Conv1d::<2, 2, 3> {
@@ -410,10 +463,18 @@ fn test_conv1d_dilation() {
 #[test]
 fn test_conv1d_zero_input() {
     // Pesos extremamente altos para testar se qualquer ruído residual é amplificado.
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 2 * 3 * 2]);
-    for w in weights.iter_mut().take(12) {
-        *w = half::f16::from_f32(100.0).to_bits();
-    }
+    let raw_weights = vec![100.0f32; 2 * 3 * 2];
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let mut weights = AlignedVec::new(24, 0u16);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        &raw_weights,
+        &mut weights,
+        2, // IN
+        2, // OUT
+        3, // K
+        is_bf16,
+    );
 
     let mut conv = Conv1d::<2, 2, 3> {
         weights: weights.clone(),
@@ -455,15 +516,23 @@ fn test_conv1d_zero_input() {
 fn test_conv1d_known_output() {
     // Matriz de pesos heterogênea para validar o cruzamento de canais (Dot Product).
     // Estrutura: OUT=2, K=2, IN=2. Total 8 pesos.
-    let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 2 * 2 * 2]);
-    weights[0] = half::f16::from_f32(0.5).to_bits();
-    weights[1] = half::f16::from_f32(1.0).to_bits(); // out0, k0
-    weights[2] = half::f16::from_f32(1.5).to_bits();
-    weights[3] = half::f16::from_f32(2.0).to_bits(); // out0, k1
-    weights[4] = half::f16::from_f32(-0.5).to_bits();
-    weights[5] = half::f16::from_f32(-1.0).to_bits(); // out1, k0
-    weights[6] = half::f16::from_f32(-1.5).to_bits();
-    weights[7] = half::f16::from_f32(-2.0).to_bits(); // out1, k1
+    let raw_weights = vec![
+        0.5, 1.5,   // out0, in0, k0 and k1
+        1.0, 2.0,   // out0, in1, k0 and k1
+        -0.5, -1.5, // out1, in0, k0 and k1
+        -1.0, -2.0, // out1, in1, k0 and k1
+    ];
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let mut weights = AlignedVec::new(16, 0u16);
+    crate::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+        &raw_weights,
+        &mut weights,
+        2, // IN
+        2, // OUT
+        2, // K
+        is_bf16,
+    );
 
     let conv = Conv1d::<2, 2, 2> {
         weights,
@@ -607,11 +676,13 @@ use crate::models::wavenet::model_dyn::*;
 /// - `out_ch`: canais de saída (2×ch quando gated)
 /// - `weight`: valor fixo para todos os pesos (facilita cálculo analítico)
 fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
+    let num_blocks = out_ch.div_ceil(4);
+    let needed = num_blocks * 4 * in_ch;
     Conv1dDyn {
         weights: AlignedVec::from_vec(vec![
             half::f16::from_f32(weight).to_bits();
-            (out_ch * in_ch + 7) & !7
-        ]), // kernel=1, padded to 8
+            needed
+        ]), // kernel=1, padded to block boundary
         bias: AlignedVec::from_vec(vec![0.0; out_ch]),
         do_bias: false,
         dilation: 1,
@@ -841,4 +912,66 @@ fn test_wavenet_layer_array_dyn_block_size_gated() {
         "block_buffer deve ter tamanho 2*ch para suportar ativação gated (filter + gate)"
     );
     assert_eq!(array.block_size, 2 * ch);
+}
+
+#[test]
+fn test_conv1d_dyn_padding_non_multiple_of_4() {
+    let in_ch = 2;
+    let out_ch: usize = 6;
+    let kernel = 3;
+    let dilation = 1;
+
+    let num_blocks = out_ch.div_ceil(4);
+    let total_padded = num_blocks * 4 * in_ch * kernel;
+
+    let mut raw_weights = vec![0.0f32; out_ch * kernel * in_ch];
+    for out_c in 0..out_ch {
+        for k in 0..kernel {
+            for in_c in 0..in_ch {
+                let idx = (out_c * in_ch + in_c) * kernel + k;
+                raw_weights[idx] = (out_c + 1) as f32;
+            }
+        }
+    }
+
+    let mut weights = AlignedVec::new(total_padded, 0u16);
+    for b in 0..num_blocks {
+        for k in 0..kernel {
+            for in_c in 0..in_ch {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
+                    if out_c < out_ch {
+                        let raw_idx = (out_c * in_ch + in_c) * kernel + k;
+                        weights[target_idx] = half::f16::from_f32(raw_weights[raw_idx]).to_bits();
+                    } else {
+                        weights[target_idx] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    let bias = AlignedVec::from_vec(vec![0.5f32; out_ch]);
+
+    let conv = Conv1dDyn {
+        weights,
+        bias,
+        do_bias: true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        prefetch_fn: crate::math::common::prefetch_strategy_simple,
+    };
+
+    let layer_buffer = vec![1.0f32; 5 * in_ch];
+    let mut block = vec![0.0f32; out_ch];
+
+    unsafe {
+        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 4, None);
+    }
+
+    let expected = vec![6.5, 12.5, 18.5, 24.5, 30.5, 36.5];
+    assert_eq!(block, expected);
 }

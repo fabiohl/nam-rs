@@ -95,9 +95,22 @@ fn build_wavenet_layer_array<
 
     // Função auxiliar para inicializar uma única camada
     let make_layer = |dilation: usize| -> WaveNetLayer<COND, CH, K> {
+        let num_blocks = CH.div_ceil(4);
+        let raw_weights = vec![val; CH * K * CH];
+        let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
+            == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
+        let mut weights = AlignedVec::new(num_blocks * 4 * CH * K, 0u16);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+            &raw_weights,
+            &mut weights,
+            CH, // IN
+            CH, // OUT
+            K,  // K
+            is_bf16,
+        );
         WaveNetLayer {
             conv1d: Conv1d {
-                weights: AlignedVec::from_vec(vec![bits; CH * K * CH]),
+                weights,
                 bias: AlignedVec::from_vec(vec![val; CH]),
                 do_bias: true,
                 dilation,

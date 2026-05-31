@@ -243,7 +243,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Critérios de aceitação:** Teste round-trip passa para 7 topologias; modelo `tests/fixtures/models/*-2x16.nam` produz mesma saída via JSON e NAMB v2.
 - **Especialista:** `implementador`.
 
-#### Tarefa S3.T04 — Corrigir tail loop layout-mismatch em Conv1D (encoder padding interleaved) 🔥
+#### Tarefa S3.T04 — Corrigir tail loop layout-mismatch em Conv1D (encoder padding interleaved) 🔥 [DONE]
 
 - **Onde:** Encoder `src/loader/namb_encoder.rs:213-232` (Interleaved-4 transpose); decoder `src/models/wavenet/conv1d_dyn.rs` — tail loops nas linhas 229-253 (`process_dual_frame`) e 445-461 (`process_single_frame`), e equivalentes BF16 nas linhas 641-665 (`process_dual_frame_bf16`) e ~838-860 (`process_single_frame_bf16`).
 - **Problema:** O loop SIMD escreve em **`[OUT_BLK][K][IN][4]` interleaved** mas os tail loops (canais restantes `OUT % 4 != 0`) lêem pesos do offset `(out_c * self.kernel + k) * self.in_ch`, assumindo layout `[OUT][K][IN]`. Layouts incompatíveis ⇒ leitura de **bytes errados** ⇒ ruído na saída. Hoje os catálogos (`CH ∈ {4,8,12,16}`) garantem `OUT % 4 == 0` e o bug está latente, mas geometrias futuras (de comunidade) acionariam o defeito. O `conv1d.rs` estático usa `const CH` sempre múltiplo de 4 no catálogo atual — o problema é principalmente no path dinâmico (`conv1d_dyn.rs`).
