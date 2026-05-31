@@ -285,7 +285,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 > Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 > Nota do PO: Arquitetura A2 está fora do escopo, ao menos por enquanto. É permitido apenas placeholders e outras medidas para evitar algo que possa se chocar com o A2 mais adiante.
 
-#### Tarefa S4.T01 — Prevenir underflow `usize` no backfill de prewarm 🔥
+#### Tarefa S4.T01 — Prevenir underflow `usize` no backfill de prewarm 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/model.rs:261` (linha `(current_state.buffer_start - offset) * CH`); `src/models/wavenet/model_dyn.rs` (padrão equivalente no `prewarm_internal`).
 

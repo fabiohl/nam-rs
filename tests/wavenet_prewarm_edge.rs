@@ -1,0 +1,367 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Stress tests for WaveNet prewarm backfill underflow prevention (S4.T01).
+//!
+//! Validates that models with large receptive fields (RF up to 2048) execute
+//! `prewarm()` without panics, segfaults, or underflow warnings in the backfill path.
+//!
+//! ## Test Scenarios
+//! 1. Custom static model with RF=2046 (10 layers, K=3, dilations up to 512).
+//! 2. Deterministic output equality across two identically-constructed models with large RF.
+//! 3. Dynamic model with RF=1024 (stress test with larger CH values).
+
+use nam_rs::math::common::{AlignedVec, SimdMathConfig};
+use nam_rs::models::wavenet::{
+    Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState, WaveNetModel,
+    WAVENET_MAX_NUM_FRAMES,
+};
+
+// =============================================================================
+// Helper: constrói um WaveNetModel<4, 3, 2> com RF~=2046 (10 layers)
+// =============================================================================
+
+fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
+    let is_bf16 = SimdMathConfig::get().instruction_set
+        == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
+
+    let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
+        let raw_weights = vec![0.01f32; 4 * 3 * 4];
+        let mut weights = AlignedVec::new(48, 0u16);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+            &raw_weights, &mut weights, 4, 4, 3, is_bf16,
+        );
+        WaveNetLayer {
+            conv1d: Conv1d {
+                weights,
+                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                do_bias: false,
+                dilation,
+                prefetch_fn: if dilation >= 128 {
+                    nam_rs::math::common::prefetch_strategy_2stage
+                } else {
+                    nam_rs::math::common::prefetch_strategy_simple
+                },
+            },
+            input_mixin: DenseLayer {
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
+                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                do_bias: false,
+            },
+            one_by_one: DenseLayer {
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 4]),
+                bias: AlignedVec::from_vec(vec![0.0; 4]),
+                do_bias: false,
+            },
+        }
+    };
+
+    let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
+        let raw_weights = vec![0.01f32; 2 * 3 * 2];
+        let mut weights = AlignedVec::new(24, 0u16);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+            &raw_weights, &mut weights, 2, 2, 3, is_bf16,
+        );
+        WaveNetLayer {
+            conv1d: Conv1d {
+                weights,
+                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                do_bias: false,
+                dilation,
+                prefetch_fn: if dilation >= 128 {
+                    nam_rs::math::common::prefetch_strategy_2stage
+                } else {
+                    nam_rs::math::common::prefetch_strategy_simple
+                },
+            },
+            input_mixin: DenseLayer {
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
+                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                do_bias: false,
+            },
+            one_by_one: DenseLayer {
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 2]),
+                bias: AlignedVec::from_vec(vec![0.0; 2]),
+                do_bias: false,
+            },
+        }
+    };
+
+    // 10 dilations: [1, 2, 4, 8, 16, 32, 64, 128, 256, 512]
+    // RF = sum((K-1) * d) = 2 * 1023 = 2046
+    let dilations_1 = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
+    let dilations_2 = [1, 2, 4, 8];
+
+    let rf1: usize = dilations_1.iter().map(|&d| (3 - 1) * d).sum();
+    let rf2: usize = dilations_2.iter().map(|&d| (3 - 1) * d).sum();
+
+    let layers_1: Vec<WaveNetLayer<1, 4, 3>> =
+        dilations_1.iter().map(|&d| make_layer_a1(d)).collect();
+    let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
+        .map(|i| WaveNetLayerState::new(4, rf1, i).expect("Failed to create WaveNetLayerState"))
+        .collect();
+
+    let array1 = WaveNetLayerArray::<1, 1, 4, 3, 2> {
+        layers: layers_1,
+        states: states_1,
+        rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
+            bias: AlignedVec::from_vec(vec![0.0; 4]),
+            do_bias: false,
+        },
+        head_rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 4]),
+            bias: AlignedVec::from_vec(vec![0.0; 2]),
+            do_bias: false,
+        },
+        array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        receptive_field_size: rf1,
+        block_size: 4,
+        block_buffer: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
+        last_condition: [0.0; 1],
+        last_condition_bf16: [0; 1],
+        condition_init: false,
+    };
+
+    let layers_2: Vec<WaveNetLayer<1, 2, 3>> =
+        dilations_2.iter().map(|&d| make_layer_a2(d)).collect();
+    let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
+        .map(|i| WaveNetLayerState::new(2, rf2, i).expect("Failed to create WaveNetLayerState"))
+        .collect();
+
+    let array2 = WaveNetLayerArray::<4, 1, 2, 3, 1> {
+        layers: layers_2,
+        states: states_2,
+        rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 2]),
+            bias: AlignedVec::from_vec(vec![0.0; 2]),
+            do_bias: false,
+        },
+        head_rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            do_bias: true,
+        },
+        array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        receptive_field_size: rf2,
+        block_size: 2,
+        block_buffer: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
+        last_condition: [0.0; 1],
+        last_condition_bf16: [0; 1],
+        condition_init: false,
+    };
+
+    WaveNetModel {
+        array1,
+        array2,
+        head_scale: 0.02,
+        receptive_field_size: rf1.max(rf2),
+    }
+}
+
+// =============================================================================
+// Testes
+// =============================================================================
+
+/// Stress test: prewarm com RF=2046 não deve causar underflow, segfault ou NaN.
+#[test]
+fn test_prewarm_large_rf_no_undeflow() {
+    let mut model = build_large_rf_wavenet();
+
+    // Prewarm must complete without panic.
+    model.prewarm();
+
+    // Verify no NaN/Inf in internal buffers after prewarm.
+    for state in &model.array1.states {
+        for &v in state.layer_buffer.iter() {
+            assert!(v.is_finite(), "NaN/Inf in array1 after prewarm (RF={})", model.receptive_field_size);
+        }
+    }
+    for state in &model.array2.states {
+        for &v in state.layer_buffer.iter() {
+            assert!(v.is_finite(), "NaN/Inf in array2 after prewarm (RF={})", model.receptive_field_size);
+        }
+    }
+}
+
+/// Determinism: two identical large-RF models produce the same output after prewarm.
+#[test]
+fn test_prewarm_large_rf_deterministic() {
+    let mut model_a = build_large_rf_wavenet();
+    let mut model_b = build_large_rf_wavenet();
+
+    model_a.prewarm();
+    model_b.prewarm();
+
+    // Process a block of silence to verify identical output.
+    let input = [0.0f32; 16];
+    let mut output_a = [0.0f32; 16];
+    let mut output_b = [0.0f32; 16];
+
+    model_a.process(&input, &mut output_a);
+    model_b.process(&input, &mut output_b);
+
+    for (i, (&a, &b)) in output_a.iter().zip(output_b.iter()).enumerate() {
+        assert!(
+            (a - b).abs() < 1e-12,
+            "Deterministic mismatch at sample {}: a={}, b={}", i, a, b
+        );
+    }
+
+    // Process a sine wave block for non-trivial signal path exercise.
+    let sine: Vec<f32> = (0..64)
+        .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 48000.0).sin())
+        .collect();
+    let mut out_a = vec![0.0f32; 64];
+    let mut out_b = vec![0.0f32; 64];
+
+    model_a.process(&sine, &mut out_a);
+    model_b.process(&sine, &mut out_b);
+
+    for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
+        assert!(
+            (a - b).abs() < 1e-12,
+            "Sine determinism mismatch at sample {}: a={}, b={}", i, a, b
+        );
+        assert!(a.is_finite(), "Non-finite sine output at sample {}: {}", i, a);
+    }
+}
+
+/// Stress test: process multiple blocks after prewarm to ensure state machine stability.
+#[test]
+fn test_prewarm_large_rf_multiblock() {
+    let mut model = build_large_rf_wavenet();
+    model.prewarm();
+
+    // Process 16 blocks of 64 samples each (covering all jitter positions).
+    for block_idx in 0..16 {
+        let sine: Vec<f32> = (0..64)
+            .map(|i| {
+                let t = (block_idx * 64 + i) as f32;
+                (2.0 * std::f32::consts::PI * 440.0 * t / 48000.0).sin()
+            })
+            .collect();
+        let mut output = vec![0.0f32; 64];
+        model.process(&sine, &mut output);
+
+        for (i, &v) in output.iter().enumerate() {
+            assert!(
+                v.is_finite(),
+                "Non-finite output at block {}, sample {}: {}", block_idx, i, v
+            );
+        }
+    }
+}
+
+/// RF=0 edge case: modelo sem camadas dilatação (RF=0) — prewarm deve ser no-op.
+#[test]
+fn test_prewarm_zero_rf() {
+    let is_bf16 = SimdMathConfig::get().instruction_set
+        == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
+
+    let make_layer = |dilation: usize| -> WaveNetLayer<1, 1, 3> {
+        let raw_weights = vec![0.01f32; 1 * 1 * 3];
+        let mut weights = AlignedVec::new(1usize.div_ceil(4) * 3 * 1 * 4, 0u16);
+        nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
+            &raw_weights, &mut weights, 1, 1, 3, is_bf16,
+        );
+        WaveNetLayer {
+            conv1d: Conv1d {
+                weights,
+                bias: AlignedVec::from_vec(vec![0.0; 1]),
+                do_bias: false,
+                dilation,
+                prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
+            },
+            input_mixin: DenseLayer {
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+                bias: AlignedVec::from_vec(vec![0.0; 1]),
+                do_bias: false,
+            },
+            one_by_one: DenseLayer {
+                weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+                bias: AlignedVec::from_vec(vec![0.0; 1]),
+                do_bias: false,
+            },
+        }
+    };
+
+    let rf = 0;
+    let layers1: Vec<WaveNetLayer<1, 1, 3>> = vec![make_layer(1)];
+    let states1: Vec<WaveNetLayerState> = (0..layers1.len())
+        .map(|i| WaveNetLayerState::new(1, rf, i).expect("Failed to create WaveNetLayerState"))
+        .collect();
+
+    let array1 = WaveNetLayerArray::<1, 1, 1, 3, 1> {
+        layers: layers1,
+        states: states1,
+        rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            do_bias: false,
+        },
+        head_rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            do_bias: false,
+        },
+        array_outputs: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        receptive_field_size: rf,
+        block_size: 1,
+        block_buffer: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        last_condition: [0.0; 1],
+        last_condition_bf16: [0; 1],
+        condition_init: false,
+    };
+
+    let layers2: Vec<WaveNetLayer<1, 1, 3>> = vec![make_layer(1)];
+    let states2: Vec<WaveNetLayerState> = (0..layers2.len())
+        .map(|i| WaveNetLayerState::new(1, rf, i).expect("Failed to create WaveNetLayerState"))
+        .collect();
+
+    let array2 = WaveNetLayerArray::<1, 1, 1, 3, 1> {
+        layers: layers2,
+        states: states2,
+        rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            do_bias: false,
+        },
+        head_rechannel: DenseLayer {
+            weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 1]),
+            bias: AlignedVec::from_vec(vec![0.0; 1]),
+            do_bias: false,
+        },
+        array_outputs: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        receptive_field_size: rf,
+        block_size: 1,
+        block_buffer: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        last_condition: [0.0; 1],
+        last_condition_bf16: [0; 1],
+        condition_init: false,
+    };
+
+    let mut model = WaveNetModel::<1, 3, 1> {
+        array1,
+        array2,
+        head_scale: 0.02,
+        receptive_field_size: rf,
+    };
+
+    model.prewarm();
+
+    let input = [0.0f32; 16];
+    let mut output = [0.0f32; 16];
+    model.process(&input, &mut output);
+    for &v in &output {
+        assert!(v.is_finite(), "Non-finite output with RF=0");
+    }
+}

@@ -76,6 +76,17 @@ impl WaveNetLayerState {
         let jitter = (alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1;
         let start = actual_buffer_frames * 2 - (WAVENET_MAX_NUM_FRAMES * jitter);
 
+        if start < receptive_field_size {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "buffer_start ({}) is smaller than receptive_field_size ({}); \
+                     increase LAYER_ARRAY_BUFFER_PADDING or reduce RF",
+                    start, receptive_field_size
+                ),
+            ));
+        }
+
         Ok(Self {
             layer_buffer: buffer,
             layer_buffer_bf16: buffer_bf16,
