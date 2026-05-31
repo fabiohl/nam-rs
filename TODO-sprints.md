@@ -176,9 +176,19 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 > Nota do PO: Arquitetura A2 está fora do escopo, ao menos por enquanto. É permitido apenas placeholders e outras medidas para evitar algo que possa se chocar com o A2 mais adiante.
 > Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 
-### Sprint S3 — Bugs latentes de paridade matemática (estática + dinâmica)
+### Sprint S3 — Bugs latentes de paridade matemática (estática + dinâmica) [DONE]
 
 > Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
+>
+> **Nota de Auditoria (2026-05-31):** Todas as 5 tarefas auditadas e verificadas. Pontos confirmados:
+>
+> 1. **S3.T01 — BF16 vs F16 scalar:** `process_sample_scalar`, `LstmModel1::process_scalar` e `LstmModel2::process_scalar` corretamente consultam `SimdMathConfig::get().instruction_set` em runtime e usam `f32::from_bits((w as u32) << 16)` para BF16. Proptest `tests/lstm_scalar_bf16_parity.rs` com 10k casos passa.
+> 2. **S3.T02 — Unificação quantização LSTM estático:** Helper `quantize_weight` centralizado em `src/math/common/ops.rs` usado consistentemente em `build_lstm_1layer`, `build_lstm_2layer` e `read_lstm_layer(is_bf16)`. Round-trip NAMB v2 Gate-Major passa.
+> 3. **S3.T03 — Round-trip GateMajorLstm multi-layer:** Encoder `namb_encoder.rs` agora intercala por camada (weights → bias → hidden_init → cell_init) per-layer antes do head. `tests/namb_v2_roundtrip.rs` valida 7 topologias (MSE < 1e-12).
+> 4. **S3.T04 — Tail loop layout-mismatch Conv1D:** Encoder usa `num_blocks = conv_out_ch.div_ceil(4)` com padding zero para canais extras; todos os blocos em formato `[BLK][K][IN][4]` uniforme. Decoder elimina tail-loops separados. Teste `test_conv1d_dyn_padding_non_multiple_of_4` valida `OUT=6`.
+> 5. **S3.T05 — Segfault tap_ptrs[8]:** `const MAX_KERNEL: usize = 16` substituiu todos os arrays `[_; 8]` nos 4 variantes de `process_*_frame*`. `debug_assert!(self.kernel <= MAX_KERNEL)` em todos os paths. Validação de carga em `wavenet.rs:425` retorna `Err` se `k > MAX_KERNEL`. Teste `test_conv1d_dyn_large_kernel_no_segfault` confirma.
+> 6. **Compilação:** `cargo check --all-features` 100% limpo (zero warnings/errors).
+> 7. **Nenhum gap identificado** — todos os critérios de aceitação das 5 tarefas foram cumpridos.
 
 #### Tarefa S3.T01 — Corrigir `process_sample_scalar` LSTM (BF16 vs F16) 🔥 [DONE]
 
