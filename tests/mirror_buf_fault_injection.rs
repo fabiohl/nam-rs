@@ -4,6 +4,7 @@
 use nam_rs::dsp::mirror_buf::{MirroredBuffer, set_simulate_fail};
 
 #[test]
+#[cfg(target_os = "linux")]
 fn test_mirror_buf_mmap_failure_injection() {
     // Activating failure simulation
     set_simulate_fail(true);

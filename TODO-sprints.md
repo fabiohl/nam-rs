@@ -63,6 +63,8 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 
 ### Sprint S1 — Soundness do `DspBridge` & FFI
 
+> **Nota de Auditoria (2026-05-31):** Todas as tarefas foram auditadas. Sanidade das faces de escrita/leitura do `DspBridge` e propagação de erros do `MirroredBuffer` validadas. Alinhamento de warnings e gating dos testes específicos para Linux concluídos com sucesso.
+
 #### Tarefa S1.T01 — Eliminar `&'static mut` em `BridgeRef::as_mut` 🔥 [DONE]
 
 - **Onde:** `src/dsp/pipeline.rs:116-146` (e callers em `src/standalone/pw_host.rs:525, 972` e `src/clap/processor.rs`).

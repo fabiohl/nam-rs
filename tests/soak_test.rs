@@ -449,6 +449,7 @@ fn test_resampler_drift_soak() {
 /// permanece consistente após bilhões de escritas.
 #[test]
 #[ignore]
+#[cfg(target_os = "linux")]
 fn test_mirror_buf_long_run() {
     let mut buf = MirroredBuffer::<f32>::new(1024 * 1024).expect("Failed to create MirroredBuffer"); // 1M elementos
     let size = buf.size();

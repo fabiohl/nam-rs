@@ -6,10 +6,12 @@ use super::SIMULATE_FAIL;
 /// Cria o backing store (memfd) específico para Linux.
 pub(crate) unsafe fn create_backing_fd() -> std::io::Result<libc::c_int> {
     let fd = if SIMULATE_FAIL.with(|f| f.get()) {
-        *libc::__errno_location() = libc::ENOMEM;
+        unsafe {
+            *libc::__errno_location() = libc::ENOMEM;
+        }
         -1
     } else {
-        libc::memfd_create(c"mirror_buf".as_ptr(), libc::MFD_CLOEXEC)
+        unsafe { libc::memfd_create(c"mirror_buf".as_ptr(), libc::MFD_CLOEXEC) }
     };
 
     if fd == -1 {

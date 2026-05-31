@@ -286,6 +286,6 @@ impl<T: Clone> Clone for MirroredBuffer<T> {
 unsafe impl<T: Send> Send for MirroredBuffer<T> {}
 unsafe impl<T: Sync> Sync for MirroredBuffer<T> {}
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 #[path = "mirror_buf_test.rs"]
 mod mirror_buf_test;
