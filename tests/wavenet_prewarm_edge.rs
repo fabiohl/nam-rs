@@ -13,8 +13,8 @@
 
 use nam_rs::math::common::{AlignedVec, SimdMathConfig};
 use nam_rs::models::wavenet::{
-    Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState, WaveNetModel,
-    WAVENET_MAX_NUM_FRAMES,
+    Conv1d, DenseLayer, WAVENET_MAX_NUM_FRAMES, WaveNetLayer, WaveNetLayerArray, WaveNetLayerState,
+    WaveNetModel,
 };
 
 // =============================================================================
@@ -29,7 +29,12 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         let raw_weights = vec![0.01f32; 4 * 3 * 4];
         let mut weights = AlignedVec::new(48, 0u16);
         nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-            &raw_weights, &mut weights, 4, 4, 3, is_bf16,
+            &raw_weights,
+            &mut weights,
+            4,
+            4,
+            3,
+            is_bf16,
         );
         WaveNetLayer {
             conv1d: Conv1d {
@@ -60,7 +65,12 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         let raw_weights = vec![0.01f32; 2 * 3 * 2];
         let mut weights = AlignedVec::new(24, 0u16);
         nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-            &raw_weights, &mut weights, 2, 2, 3, is_bf16,
+            &raw_weights,
+            &mut weights,
+            2,
+            2,
+            3,
+            is_bf16,
         );
         WaveNetLayer {
             conv1d: Conv1d {
@@ -178,12 +188,20 @@ fn test_prewarm_large_rf_no_undeflow() {
     // Verify no NaN/Inf in internal buffers after prewarm.
     for state in &model.array1.states {
         for &v in state.layer_buffer.iter() {
-            assert!(v.is_finite(), "NaN/Inf in array1 after prewarm (RF={})", model.receptive_field_size);
+            assert!(
+                v.is_finite(),
+                "NaN/Inf in array1 after prewarm (RF={})",
+                model.receptive_field_size
+            );
         }
     }
     for state in &model.array2.states {
         for &v in state.layer_buffer.iter() {
-            assert!(v.is_finite(), "NaN/Inf in array2 after prewarm (RF={})", model.receptive_field_size);
+            assert!(
+                v.is_finite(),
+                "NaN/Inf in array2 after prewarm (RF={})",
+                model.receptive_field_size
+            );
         }
     }
 }
@@ -208,7 +226,10 @@ fn test_prewarm_large_rf_deterministic() {
     for (i, (&a, &b)) in output_a.iter().zip(output_b.iter()).enumerate() {
         assert!(
             (a - b).abs() < 1e-12,
-            "Deterministic mismatch at sample {}: a={}, b={}", i, a, b
+            "Deterministic mismatch at sample {}: a={}, b={}",
+            i,
+            a,
+            b
         );
     }
 
@@ -225,9 +246,17 @@ fn test_prewarm_large_rf_deterministic() {
     for (i, (&a, &b)) in out_a.iter().zip(out_b.iter()).enumerate() {
         assert!(
             (a - b).abs() < 1e-12,
-            "Sine determinism mismatch at sample {}: a={}, b={}", i, a, b
+            "Sine determinism mismatch at sample {}: a={}, b={}",
+            i,
+            a,
+            b
         );
-        assert!(a.is_finite(), "Non-finite sine output at sample {}: {}", i, a);
+        assert!(
+            a.is_finite(),
+            "Non-finite sine output at sample {}: {}",
+            i,
+            a
+        );
     }
 }
 
@@ -251,7 +280,10 @@ fn test_prewarm_large_rf_multiblock() {
         for (i, &v) in output.iter().enumerate() {
             assert!(
                 v.is_finite(),
-                "Non-finite output at block {}, sample {}: {}", block_idx, i, v
+                "Non-finite output at block {}, sample {}: {}",
+                block_idx,
+                i,
+                v
             );
         }
     }
@@ -264,10 +296,15 @@ fn test_prewarm_zero_rf() {
         == nam_rs::math::common::InstructionSet::Avx512VnniBf16;
 
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 1, 3> {
-        let raw_weights = vec![0.01f32; 1 * 1 * 3];
-        let mut weights = AlignedVec::new(1usize.div_ceil(4) * 3 * 1 * 4, 0u16);
+        let raw_weights = vec![0.01f32; 3];
+        let mut weights = AlignedVec::new(1usize.div_ceil(4) * 3 * 4, 0u16);
         nam_rs::loader::dispatcher::wavenet::transpose_conv1d_interleaved_4wide(
-            &raw_weights, &mut weights, 1, 1, 3, is_bf16,
+            &raw_weights,
+            &mut weights,
+            1,
+            1,
+            3,
+            is_bf16,
         );
         WaveNetLayer {
             conv1d: Conv1d {
@@ -309,12 +346,12 @@ fn test_prewarm_zero_rf() {
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
-        head_outputs: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf,
         block_size: 1,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
@@ -338,12 +375,12 @@ fn test_prewarm_zero_rf() {
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: false,
         },
-        array_outputs: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
-        head_accum: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        array_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
+        head_accum: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         head_outputs: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         receptive_field_size: rf,
         block_size: 1,
-        block_buffer: AlignedVec::from_vec(vec![0.0; 1 * WAVENET_MAX_NUM_FRAMES]),
+        block_buffer: AlignedVec::from_vec(vec![0.0; WAVENET_MAX_NUM_FRAMES]),
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,

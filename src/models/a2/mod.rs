@@ -29,20 +29,12 @@ pub use params::{HeadParams, LayerArrayParamsA2, LayerParamsA2};
 ///
 /// Este struct permite que o sistema carregue modelos A2 sem falhar, retornando
 /// silêncio até que a implementação completa do motor de inferência esteja pronta.
+#[derive(Default)]
 pub struct WavenetA2Placeholder {
     /// Flag para emitir o aviso de log apenas uma vez por instância.
     warned: bool,
     /// Flags de status RT compartilhadas para sinalizar o placeholder ao UI.
     rt_status: Option<Arc<RtStatusFlags>>,
-}
-
-impl Default for WavenetA2Placeholder {
-    fn default() -> Self {
-        Self {
-            warned: false,
-            rt_status: None,
-        }
-    }
 }
 
 impl WavenetA2Placeholder {

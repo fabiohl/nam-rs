@@ -7,8 +7,60 @@
 //! a partir de um bloco binário para a estrutura `NamModelData`.
 
 use super::nam_json::{NamConfig, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout};
-use anyhow::{Result, bail};
+use anyhow::Result;
 use log::info;
+
+/// Erro tipado para parsing de arquivos `.namb`.
+///
+/// Cada variante corresponde a uma falha específica de integridade ou
+/// formato do arquivo binário, permitindo diagnóstico preciso via
+/// `downcast_ref` no módulo `loader`.
+#[derive(Debug, thiserror::Error)]
+pub enum NambError {
+    /// Arquivo truncado: bytes insuficientes para o cabeçalho mínimo.
+    #[error("file truncated: got {got} bytes, need at least {need}")]
+    Truncated {
+        /// Bytes disponíveis no arquivo.
+        got: usize,
+        /// Bytes mínimos necessários.
+        need: usize,
+    },
+
+    /// Número mágico inválido (não é 0x4E414D42 nem 0x424D414E).
+    #[error("invalid magic number: 0x{0:08X}")]
+    InvalidMagic(u32),
+
+    /// Versão do formato `.namb` não suportada.
+    #[error("unsupported .namb version: {0}")]
+    InvalidVersion(u16),
+
+    /// Offset da seção de pesos além do tamanho do arquivo.
+    #[error("weights offset {offset} out of file bounds (file size: {file_len})")]
+    WeightsOffsetOutOfBounds {
+        /// Offset declarado no cabeçalho.
+        offset: usize,
+        /// Tamanho total do arquivo em bytes.
+        file_len: usize,
+    },
+
+    /// Offset da seção de pesos menor que o tamanho do cabeçalho.
+    #[error("invalid weights offset {offset} (smaller than header size {header_size})")]
+    InvalidWeightsOffset {
+        /// Offset declarado no cabeçalho.
+        offset: usize,
+        /// Tamanho esperado do cabeçalho.
+        header_size: usize,
+    },
+
+    /// Checksum CRC32 da seção de pesos não confere.
+    #[error("CRC32 mismatch: got 0x{got:08X}, expected 0x{expected:08X}")]
+    CrcMismatch {
+        /// CRC calculado a partir dos dados.
+        got: u32,
+        /// CRC declarado no cabeçalho.
+        expected: u32,
+    },
+}
 
 /// Calcula o CRC32 (IEEE 802.3) de um slice de bytes.
 /// Substitui a dependência externa `crc32fast` por uma versão leve em software.
@@ -58,21 +110,18 @@ pub struct NambHeader {
 
 impl NambHeader {
     /// Valida se o cabeçalho possui o número mágico e versão suportada.
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<(), NambError> {
         let magic = self.magic;
         let version = self.version;
         if magic != 0x4E414D42 {
             // Alguns arquivos antigos podem vir como "BMAN" (0x424D414E) em big-endian ou vice-versa.
             // Mas o padrão NAMB oficial é 0x4E414D42.
             if magic != 0x424D414E {
-                bail!("Invalid magic number: expected 'NAMB' (0x4E414D42)");
+                return Err(NambError::InvalidMagic(magic));
             }
         }
         if version != 1 && version != 2 {
-            bail!(
-                "Unsupported .namb version: {}. We support 1 and 2.",
-                version
-            );
+            return Err(NambError::InvalidVersion(version));
         }
         Ok(())
     }
@@ -95,7 +144,11 @@ impl NambHeader {
 pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     let header_size = std::mem::size_of::<NambHeader>();
     if data.len() < header_size {
-        bail!("The provided file is too small to contain the .namb header");
+        return Err(NambError::Truncated {
+            got: data.len(),
+            need: header_size,
+        }
+        .into());
     }
 
     // 1. Lê o cabeçalho (Header)
@@ -106,13 +159,18 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     // Se weights_offset > header_size, há um JSON entre eles.
     let weights_offset = header.weights_offset as usize;
     if weights_offset > data.len() {
-        bail!("Weights offset out of file bounds: {}", weights_offset);
+        return Err(NambError::WeightsOffsetOutOfBounds {
+            offset: weights_offset,
+            file_len: data.len(),
+        }
+        .into());
     }
     if weights_offset < header_size {
-        bail!(
-            "Invalid weights offset (smaller than header): {}",
-            weights_offset
-        );
+        return Err(NambError::InvalidWeightsOffset {
+            offset: weights_offset,
+            header_size,
+        }
+        .into());
     }
 
     let mut model_data = if weights_offset > header_size {
@@ -138,11 +196,11 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     if crc32_header != 0 {
         let crc_calculated = crc32_ieee(&data[weights_offset..]);
         if crc_calculated != crc32_header {
-            bail!(
-                "CRC32 integrity check failed: expected 0x{:08X}, calculated 0x{:08X}",
-                crc32_header,
-                crc_calculated
-            );
+            return Err(NambError::CrcMismatch {
+                got: crc_calculated,
+                expected: crc32_header,
+            }
+            .into());
         }
     }
 

@@ -232,9 +232,21 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Carrega os 4 acumuladores temporários a partir do frame de saída atual.
             unsafe {
                 r0 = *out_frame.get_unchecked(out_c);
-                r1 = if out_c + 1 < OUT { *out_frame.get_unchecked(out_c + 1) } else { 0.0 };
-                r2 = if out_c + 2 < OUT { *out_frame.get_unchecked(out_c + 2) } else { 0.0 };
-                r3 = if out_c + 3 < OUT { *out_frame.get_unchecked(out_c + 3) } else { 0.0 };
+                r1 = if out_c + 1 < OUT {
+                    *out_frame.get_unchecked(out_c + 1)
+                } else {
+                    0.0
+                };
+                r2 = if out_c + 2 < OUT {
+                    *out_frame.get_unchecked(out_c + 2)
+                } else {
+                    0.0
+                };
+                r3 = if out_c + 3 < OUT {
+                    *out_frame.get_unchecked(out_c + 3)
+                } else {
+                    0.0
+                };
             }
 
             // Para cada tap (atraso/deslocamento no buffer de áudio circular) da convolução
@@ -494,14 +506,38 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             unsafe {
                 // Carregamos o que já calculamos até agora (bias + mixin).
                 r0_f0 = *out_frame_f0.get_unchecked(out_c);
-                r1_f0 = if out_c + 1 < OUT { *out_frame_f0.get_unchecked(out_c + 1) } else { 0.0 };
-                r2_f0 = if out_c + 2 < OUT { *out_frame_f0.get_unchecked(out_c + 2) } else { 0.0 };
-                r3_f0 = if out_c + 3 < OUT { *out_frame_f0.get_unchecked(out_c + 3) } else { 0.0 };
+                r1_f0 = if out_c + 1 < OUT {
+                    *out_frame_f0.get_unchecked(out_c + 1)
+                } else {
+                    0.0
+                };
+                r2_f0 = if out_c + 2 < OUT {
+                    *out_frame_f0.get_unchecked(out_c + 2)
+                } else {
+                    0.0
+                };
+                r3_f0 = if out_c + 3 < OUT {
+                    *out_frame_f0.get_unchecked(out_c + 3)
+                } else {
+                    0.0
+                };
 
                 r0_f1 = *out_frame_f1.get_unchecked(out_c);
-                r1_f1 = if out_c + 1 < OUT { *out_frame_f1.get_unchecked(out_c + 1) } else { 0.0 };
-                r2_f1 = if out_c + 2 < OUT { *out_frame_f1.get_unchecked(out_c + 2) } else { 0.0 };
-                r3_f1 = if out_c + 3 < OUT { *out_frame_f1.get_unchecked(out_c + 3) } else { 0.0 };
+                r1_f1 = if out_c + 1 < OUT {
+                    *out_frame_f1.get_unchecked(out_c + 1)
+                } else {
+                    0.0
+                };
+                r2_f1 = if out_c + 2 < OUT {
+                    *out_frame_f1.get_unchecked(out_c + 2)
+                } else {
+                    0.0
+                };
+                r3_f1 = if out_c + 3 < OUT {
+                    *out_frame_f1.get_unchecked(out_c + 3)
+                } else {
+                    0.0
+                };
             }
 
             for k in 0..K {

@@ -446,9 +446,18 @@ impl WaveNetLayerArrayDyn {
                 if prewarm_mode {
                     let start_idx = current_state.buffer_start * ch;
                     for offset in 1..=current_state.receptive_field_size {
-                        debug_assert!(current_state.buffer_start >= offset, "backfill underflow: bs={}, off={}", current_state.buffer_start, offset);
+                        debug_assert!(
+                            current_state.buffer_start >= offset,
+                            "backfill underflow: bs={}, off={}",
+                            current_state.buffer_start,
+                            offset
+                        );
                         let Some(dst_start) = current_state.buffer_start.checked_sub(offset) else {
-                            log::error!("backfill underflow: bs={}, off={}", current_state.buffer_start, offset);
+                            log::error!(
+                                "backfill underflow: bs={}, off={}",
+                                current_state.buffer_start,
+                                offset
+                            );
                             continue;
                         };
                         let dst_idx = dst_start * ch;

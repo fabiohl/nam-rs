@@ -10,8 +10,8 @@ pub mod a2;
 pub mod lstm;
 pub mod wavenet;
 
-use std::sync::Arc;
 use crate::common::spsc::RtStatusFlags;
+use std::sync::Arc;
 
 // =============================================================================
 // Trait NamModel — Contrato Público

@@ -517,8 +517,8 @@ fn test_conv1d_known_output() {
     // Matriz de pesos heterogênea para validar o cruzamento de canais (Dot Product).
     // Estrutura: OUT=2, K=2, IN=2. Total 8 pesos.
     let raw_weights = vec![
-        0.5, 1.5,   // out0, in0, k0 and k1
-        1.0, 2.0,   // out0, in1, k0 and k1
+        0.5, 1.5, // out0, in0, k0 and k1
+        1.0, 2.0, // out0, in1, k0 and k1
         -0.5, -1.5, // out1, in0, k0 and k1
         -1.0, -2.0, // out1, in1, k0 and k1
     ];
@@ -679,10 +679,7 @@ fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
     let num_blocks = out_ch.div_ceil(4);
     let needed = num_blocks * 4 * in_ch;
     Conv1dDyn {
-        weights: AlignedVec::from_vec(vec![
-            half::f16::from_f32(weight).to_bits();
-            needed
-        ]), // kernel=1, padded to block boundary
+        weights: AlignedVec::from_vec(vec![half::f16::from_f32(weight).to_bits(); needed]), // kernel=1, padded to block boundary
         bias: AlignedVec::from_vec(vec![0.0; out_ch]),
         do_bias: false,
         dilation: 1,
@@ -969,7 +966,12 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
     let mut block = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 4, None);
+        conv.process_single_frame::<crate::math::common::Avx2Math>(
+            &layer_buffer,
+            &mut block,
+            4,
+            None,
+        );
     }
 
     let expected = vec![6.5, 12.5, 18.5, 24.5, 30.5, 36.5];
@@ -1009,8 +1011,21 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
     let mut out_f1 = vec![0.0f32; out_ch];
 
     unsafe {
-        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut out_f0, 9, None);
-        conv.process_dual_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut out_f0, &mut out_f1, 9, 10, None, None);
+        conv.process_single_frame::<crate::math::common::Avx2Math>(
+            &layer_buffer,
+            &mut out_f0,
+            9,
+            None,
+        );
+        conv.process_dual_frame::<crate::math::common::Avx2Math>(
+            &layer_buffer,
+            &mut out_f0,
+            &mut out_f1,
+            9,
+            10,
+            None,
+            None,
+        );
     }
 
     // Single frame calculation: bias (0.5) + 10 (taps) * 2 (channels) * 1.0 (input) * 1.0 (weight) = 20.5
@@ -1025,47 +1040,47 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
 #[test]
 fn test_read_conv1d_weights_dyn_limits() {
     // Call with k_size = 17 (which is > MAX_KERNEL = 16)
-    let build_res = crate::loader::dispatcher::build_wavenet_dynamic(&crate::loader::nam_json::NamModelData {
-        version: Some("0.5.4".to_string()),
-        architecture: "WaveNet".to_string(),
-        config: crate::loader::nam_json::NamConfig {
-            layers: vec![
-                crate::loader::nam_json::NamLayerConfig {
-                    input_size: Some(1),
-                    condition_size: Some(1),
-                    channels: Some(4),
-                    dilations: Some(vec![1]),
-                    kernel_size: Some(17), // k_size > MAX_KERNEL
-                    head_size: Some(4),
-                    activation: Some("Tanh".to_string()),
-                    gated: Some(false),
-                    head_bias: Some(false),
-                },
-                crate::loader::nam_json::NamLayerConfig {
-                    input_size: Some(4),
-                    condition_size: Some(1),
-                    channels: Some(4),
-                    dilations: Some(vec![1]),
-                    kernel_size: Some(3),
-                    head_size: Some(1),
-                    activation: Some("Tanh".to_string()),
-                    gated: Some(false),
-                    head_bias: Some(true),
-                },
-            ],
-            head: None,
-            head_scale: None,
-            num_layers: None,
-            hidden_size: None,
-        },
-        weights: vec![0.01f32; 500],
-        weights_layout: crate::loader::nam_json::WeightsLayout::Original,
-        sample_rate: Some(48000.0),
-        metadata: None,
-    });
-    
+    let build_res =
+        crate::loader::dispatcher::build_wavenet_dynamic(&crate::loader::nam_json::NamModelData {
+            version: Some("0.5.4".to_string()),
+            architecture: "WaveNet".to_string(),
+            config: crate::loader::nam_json::NamConfig {
+                layers: vec![
+                    crate::loader::nam_json::NamLayerConfig {
+                        input_size: Some(1),
+                        condition_size: Some(1),
+                        channels: Some(4),
+                        dilations: Some(vec![1]),
+                        kernel_size: Some(17), // k_size > MAX_KERNEL
+                        head_size: Some(4),
+                        activation: Some("Tanh".to_string()),
+                        gated: Some(false),
+                        head_bias: Some(false),
+                    },
+                    crate::loader::nam_json::NamLayerConfig {
+                        input_size: Some(4),
+                        condition_size: Some(1),
+                        channels: Some(4),
+                        dilations: Some(vec![1]),
+                        kernel_size: Some(3),
+                        head_size: Some(1),
+                        activation: Some("Tanh".to_string()),
+                        gated: Some(false),
+                        head_bias: Some(true),
+                    },
+                ],
+                head: None,
+                head_scale: None,
+                num_layers: None,
+                hidden_size: None,
+            },
+            weights: vec![0.01f32; 500],
+            weights_layout: crate::loader::nam_json::WeightsLayout::Original,
+            sample_rate: Some(48000.0),
+            metadata: None,
+        });
+
     assert!(build_res.is_err());
     let err_msg = build_res.err().unwrap().to_string();
     assert!(err_msg.contains("Tamanho do kernel"));
 }
-

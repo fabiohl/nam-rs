@@ -107,8 +107,12 @@ fn test_topology_roundtrip(num_layers: usize, hidden_size: usize) {
     let orig_data = make_synthetic_lstm(num_layers, hidden_size);
 
     // 1. Constrói modelo original (JSON/Original layout)
-    let mut model_orig = build_model(&orig_data)
-        .unwrap_or_else(|e| panic!("Erro ao construir original {}x{}: {:?}", num_layers, hidden_size, e));
+    let mut model_orig = build_model(&orig_data).unwrap_or_else(|e| {
+        panic!(
+            "Erro ao construir original {}x{}: {:?}",
+            num_layers, hidden_size, e
+        )
+    });
     model_orig.prewarm(1024);
 
     // 2. Codifica para NAMB v2 (GateMajorLstm)
@@ -116,13 +120,21 @@ fn test_topology_roundtrip(num_layers: usize, hidden_size: usize) {
         .unwrap_or_else(|e| panic!("Erro ao codificar {}x{}: {:?}", num_layers, hidden_size, e));
 
     // 3. Decodifica para NAMModelData
-    let v2_data = parse_namb(&namb_v2)
-        .unwrap_or_else(|e| panic!("Erro ao decodificar {}x{}: {:?}", num_layers, hidden_size, e));
+    let v2_data = parse_namb(&namb_v2).unwrap_or_else(|e| {
+        panic!(
+            "Erro ao decodificar {}x{}: {:?}",
+            num_layers, hidden_size, e
+        )
+    });
     assert_eq!(v2_data.weights_layout, WeightsLayout::GateMajorLstm);
 
     // 4. Constrói o modelo decodificado
-    let mut model_v2 = build_model(&v2_data)
-        .unwrap_or_else(|e| panic!("Erro ao construir v2 {}x{}: {:?}", num_layers, hidden_size, e));
+    let mut model_v2 = build_model(&v2_data).unwrap_or_else(|e| {
+        panic!(
+            "Erro ao construir v2 {}x{}: {:?}",
+            num_layers, hidden_size, e
+        )
+    });
     model_v2.prewarm(1024);
 
     // 5. Verifica a saída de inferência
@@ -145,15 +157,7 @@ fn test_topology_roundtrip(num_layers: usize, hidden_size: usize) {
 
 #[test]
 fn test_lstm_topologies_roundtrip() {
-    let topologies = [
-        (1, 8),
-        (1, 12),
-        (1, 16),
-        (1, 24),
-        (2, 8),
-        (2, 12),
-        (2, 16),
-    ];
+    let topologies = [(1, 8), (1, 12), (1, 16), (1, 24), (2, 8), (2, 12), (2, 16)];
 
     for &(layers, hidden) in &topologies {
         test_topology_roundtrip(layers, hidden);

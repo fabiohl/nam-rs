@@ -64,7 +64,11 @@ impl Conv1dDyn {
         let num_blocks = self.out_ch.div_ceil(4);
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
-        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
+        debug_assert!(
+            self.kernel <= MAX_KERNEL,
+            "kernel {} excede MAX_KERNEL",
+            self.kernel
+        );
         // 'Tap Pointers': São como mãos que buscam amostras de áudio no passado.
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); MAX_KERNEL];
         let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); MAX_KERNEL];
@@ -137,9 +141,21 @@ impl Conv1dDyn {
 
                 if do_bias {
                     r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
-                    r1_f0 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f0;
-                    r2_f0 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f0;
-                    r3_f0 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f0;
+                    r1_f0 = if out_c + 1 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mv1_f0;
+                    r2_f0 = if out_c + 2 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mv2_f0;
+                    r3_f0 = if out_c + 3 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mv3_f0;
                 } else {
                     r0_f0 = mv0_f0;
                     r1_f0 = mv1_f0;
@@ -173,9 +189,21 @@ impl Conv1dDyn {
 
                 if do_bias {
                     r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
-                    r1_f1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f1;
-                    r2_f1 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f1;
-                    r3_f1 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f1;
+                    r1_f1 = if out_c + 1 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mv1_f1;
+                    r2_f1 = if out_c + 2 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mv2_f1;
+                    r3_f1 = if out_c + 3 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mv3_f1;
                 } else {
                     r0_f1 = mv0_f1;
                     r1_f1 = mv1_f1;
@@ -334,7 +362,11 @@ impl Conv1dDyn {
         // Esta função é o 'estepe'. Ela entra em ação quando não podemos
         // processar em pares (como na última amostra de um bloco com tamanho ímpar).
         let num_blocks = self.out_ch.div_ceil(4);
-        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
+        debug_assert!(
+            self.kernel <= MAX_KERNEL,
+            "kernel {} excede MAX_KERNEL",
+            self.kernel
+        );
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
         let mut tap_ptrs = [core::ptr::null::<f32>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
@@ -393,9 +425,21 @@ impl Conv1dDyn {
 
                 if self.do_bias {
                     r0 = *self.bias.get_unchecked(out_c) + mv0;
-                    r1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1;
-                    r2 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2;
-                    r3 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3;
+                    r1 = if out_c + 1 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mv1;
+                    r2 = if out_c + 2 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mv2;
+                    r3 = if out_c + 3 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mv3;
                 } else {
                     r0 = mv0;
                     r1 = mv1;
@@ -460,7 +504,11 @@ impl Conv1dDyn {
         // em vez de 32 bits. Isso corta o uso de memória pela metade e permite que a CPU
         // processe o dobro de dados no mesmo tempo em hardwares compatíveis.
         let num_blocks = self.out_ch.div_ceil(4);
-        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
+        debug_assert!(
+            self.kernel <= MAX_KERNEL,
+            "kernel {} excede MAX_KERNEL",
+            self.kernel
+        );
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
         // Tap Pointers para f0 e f1 em BF16
@@ -526,9 +574,21 @@ impl Conv1dDyn {
                 // Adiciona o viés (bias) do neurônio ao acumulador do Frame 0, se ativo.
                 if do_bias {
                     r0_f0 = *self.bias.get_unchecked(out_c) + mv0_f0;
-                    r1_f0 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f0;
-                    r2_f0 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f0;
-                    r3_f0 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f0;
+                    r1_f0 = if out_c + 1 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mv1_f0;
+                    r2_f0 = if out_c + 2 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mv2_f0;
+                    r3_f0 = if out_c + 3 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mv3_f0;
                 } else {
                     r0_f0 = mv0_f0;
                     r1_f0 = mv1_f0;
@@ -564,9 +624,21 @@ impl Conv1dDyn {
                 // Adiciona o viés (bias) ao acumulador do Frame 1, se ativo.
                 if do_bias {
                     r0_f1 = *self.bias.get_unchecked(out_c) + mv0_f1;
-                    r1_f1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1_f1;
-                    r2_f1 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2_f1;
-                    r3_f1 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3_f1;
+                    r1_f1 = if out_c + 1 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mv1_f1;
+                    r2_f1 = if out_c + 2 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mv2_f1;
+                    r3_f1 = if out_c + 3 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mv3_f1;
                 } else {
                     r0_f1 = mv0_f1;
                     r1_f1 = mv1_f1;
@@ -718,7 +790,11 @@ impl Conv1dDyn {
         // para processar amostras que sobraram de blocos ímpares, usando
         // a economia de memória do formato BF16.
         let num_blocks = self.out_ch.div_ceil(4);
-        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
+        debug_assert!(
+            self.kernel <= MAX_KERNEL,
+            "kernel {} excede MAX_KERNEL",
+            self.kernel
+        );
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
         let mut tap_ptrs = [core::ptr::null::<u16>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
@@ -776,9 +852,21 @@ impl Conv1dDyn {
 
                 if self.do_bias {
                     r0 = *self.bias.get_unchecked(out_c) + mv0;
-                    r1 = if out_c + 1 < self.out_ch { *self.bias.get_unchecked(out_c + 1) } else { 0.0 } + mv1;
-                    r2 = if out_c + 2 < self.out_ch { *self.bias.get_unchecked(out_c + 2) } else { 0.0 } + mv2;
-                    r3 = if out_c + 3 < self.out_ch { *self.bias.get_unchecked(out_c + 3) } else { 0.0 } + mv3;
+                    r1 = if out_c + 1 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 1)
+                    } else {
+                        0.0
+                    } + mv1;
+                    r2 = if out_c + 2 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 2)
+                    } else {
+                        0.0
+                    } + mv2;
+                    r3 = if out_c + 3 < self.out_ch {
+                        *self.bias.get_unchecked(out_c + 3)
+                    } else {
+                        0.0
+                    } + mv3;
                 } else {
                     r0 = mv0;
                     r1 = mv1;

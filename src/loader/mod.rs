@@ -69,16 +69,17 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
 
     // 1. Leitura e Parsing
     let model_data = if ext_lower == "namb" {
-        let len = std::fs::metadata(path).map_err(|e| {
-            NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Failed to read metadata of \"{}\".", path_str))
-                .hint("Please verify file access permissions.")
-                .param("file", &path_str)
-                .param("io_error", &e)
-                .emit();
-            anyhow::Error::from(e)
-        })?
-        .len();
+        let len = std::fs::metadata(path)
+            .map_err(|e| {
+                NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+                    .message(format!("Failed to read metadata of \"{}\".", path_str))
+                    .hint("Please verify file access permissions.")
+                    .param("file", &path_str)
+                    .param("io_error", &e)
+                    .emit();
+                anyhow::Error::from(e)
+            })?
+            .len();
         if len > MAX_MODEL_BYTES {
             NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
                 .message(format!(
@@ -87,7 +88,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                 ))
                 .hint("Please check the file size and ensure it is a valid NAM model.")
                 .param("file", &path_str)
-                .param("size_bytes", &len)
+                .param("size_bytes", len)
                 .emit();
             return Err(anyhow::anyhow!(
                 "Model file \"{}\" exceeds maximum allowed size of {} MiB.",
@@ -105,30 +106,32 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
             anyhow::Error::from(e)
         })?;
         namb::parse_namb(&bytes).inspect_err(|e| {
-            let msg = e.to_string();
-            let code = if msg.contains("muito pequeno") {
-                NamErrorCode::NambTruncated
-            } else if msg.contains("mágica inválida") {
-                NamErrorCode::NambInvalidMagic
-            } else {
-                NamErrorCode::ModelBuildFailed
+            let code = match e.downcast_ref::<namb::NambError>() {
+                Some(namb::NambError::Truncated { .. }) => NamErrorCode::NambTruncated,
+                Some(namb::NambError::InvalidMagic(_)) => NamErrorCode::NambInvalidMagic,
+                Some(namb::NambError::InvalidVersion(_)) => NamErrorCode::NambUnsupportedVersion,
+                Some(namb::NambError::WeightsOffsetOutOfBounds { .. })
+                | Some(namb::NambError::InvalidWeightsOffset { .. }) => NamErrorCode::NambTruncated,
+                Some(namb::NambError::CrcMismatch { .. }) => NamErrorCode::NambCrc32Mismatch,
+                None => NamErrorCode::ModelBuildFailed,
             };
             NamDiagnostic::new(code, sys)
                 .message(format!("Invalid \".namb\" file: {}", path_str))
-                .param("detail", &msg)
+                .param("detail", e.to_string())
                 .emit();
         })?
     } else if ext_lower == "nam" {
-        let len = std::fs::metadata(path).map_err(|e| {
-            NamDiagnostic::new(NamErrorCode::FileReadError, sys)
-                .message(format!("Failed to read metadata of \"{}\".", path_str))
-                .hint("Please verify file access permissions.")
-                .param("file", &path_str)
-                .param("io_error", &e)
-                .emit();
-            anyhow::Error::from(e)
-        })?
-        .len();
+        let len = std::fs::metadata(path)
+            .map_err(|e| {
+                NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+                    .message(format!("Failed to read metadata of \"{}\".", path_str))
+                    .hint("Please verify file access permissions.")
+                    .param("file", &path_str)
+                    .param("io_error", &e)
+                    .emit();
+                anyhow::Error::from(e)
+            })?
+            .len();
         if len > MAX_MODEL_BYTES {
             NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
                 .message(format!(
@@ -137,7 +140,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                 ))
                 .hint("Please check the file size and ensure it is a valid NAM model.")
                 .param("file", &path_str)
-                .param("size_bytes", &len)
+                .param("size_bytes", len)
                 .emit();
             return Err(anyhow::anyhow!(
                 "Model file \"{}\" exceeds maximum allowed size of {} MiB.",

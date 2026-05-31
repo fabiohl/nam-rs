@@ -394,7 +394,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Critérios de aceitação:** Tentar carregar arquivo 300 MiB rejeita com mensagem clara em < 50ms.
 - **Especialista:** `implementador`.
 
-#### Tarefa S5.T02 — Substituir categorização de erro por substring por `thiserror` 🔥
+#### Tarefa S5.T02 — Substituir categorização de erro por substring por `thiserror` 🔥 [DONE]
 
 - **Onde:** `src/loader/mod.rs:79-92`; `src/loader/namb.rs:68, 73, 98, 109, 113, 142`.
 - **Problema:** O matcher de erro busca substrings em português (`"muito pequeno"`, `"mágica inválida"`) mas as mensagens estão em **inglês** → `NambTruncated`, `NambInvalidMagic` etc. **nunca disparam**. Todo erro vira `ModelBuildFailed`.

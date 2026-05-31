@@ -17,6 +17,7 @@ categories = [
 
 [dependencies]
 anyhow = "1.0.102"
+thiserror = "2.0"
 libc = "0.2.186"
 pipewire = { version = "0.10.0", optional = true }
 rtrb = "0.3.4"

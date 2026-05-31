@@ -284,7 +284,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     );
                 }
                 ClapParamPayload::LoadModel(model_pair, new_resampler) => {
-                    self.shared.rt_status.clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
+                    self.shared
+                        .rt_status
+                        .clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
                         self.push_to_gc(GcItem::Model(old_l));
                     }
