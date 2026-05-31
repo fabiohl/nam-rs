@@ -258,7 +258,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
   - Round-trip encode→decode preserva o `out_ch` lógico mesmo com padding zero.
 - **Especialista:** `implementador` + `pesquisador-inovador`.
 
-#### Tarefa S3.T05 — Eliminar segfault potencial em `tap_ptrs[8]` (Conv1D dyn com kernel>8) 🔥
+#### Tarefa S3.T05 — Eliminar segfault potencial em `tap_ptrs[8]` (Conv1D dyn com kernel>8) 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs` — `process_dual_frame` linhas 65-93 (populate de `tap_ptrs_f0[8]`) e 184 (loop de convolução); `process_single_frame` linhas 349-366 (populate de `tap_ptrs[8]`) e 417 (loop); variantes BF16 em `process_dual_frame_bf16:487-506` e `process_single_frame_bf16:757-774`.
 - **Problema:** `let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];` é populado apenas até `k_limit = self.kernel.min(8)` (linha 67), mas os loops de convolução usam `tap_ptrs_f0.get_unchecked(k)` iterando `for k in 0..kernel` (linha 184) — desreferencia ponteiro nulo se `kernel > 8`. O mesmo padrão ocorre nas 4 variantes de `process_*_frame*`. O limite de 8 é um hardcode que não reflete o `kernel` real do modelo carregado.

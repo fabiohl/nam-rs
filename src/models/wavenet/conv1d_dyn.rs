@@ -16,6 +16,8 @@ use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
 /// Padding temporal circular das memórias no framework de Ring Buffers.
 pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
+/// Limite máximo suportado para o tamanho do kernel.
+pub const MAX_KERNEL: usize = 16;
 
 /// Estrutura para convolução causal 1D com dimensões dinâmicas.
 #[derive(Clone)]
@@ -62,10 +64,11 @@ impl Conv1dDyn {
         let num_blocks = self.out_ch.div_ceil(4);
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
+        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
         // 'Tap Pointers': São como mãos que buscam amostras de áudio no passado.
-        let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];
-        let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); 8];
-        let k_limit = self.kernel.min(8);
+        let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); MAX_KERNEL];
+        let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); MAX_KERNEL];
+        let k_limit = self.kernel.min(MAX_KERNEL);
 
         // 1. Localização no Tempo (Dilatação):
         // O WaveNet usa 'Dilatação' para olhar para trás no tempo.
@@ -331,9 +334,10 @@ impl Conv1dDyn {
         // Esta função é o 'estepe'. Ela entra em ação quando não podemos
         // processar em pares (como na última amostra de um bloco com tamanho ímpar).
         let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
-        let mut tap_ptrs = [core::ptr::null::<f32>(); 8];
-        let k_limit = self.kernel.min(8);
+        let mut tap_ptrs = [core::ptr::null::<f32>(); MAX_KERNEL];
+        let k_limit = self.kernel.min(MAX_KERNEL);
 
         // 1. Localização no Passado:
         // Assim como no modo Dual Frame, buscamos onde estão as amostras antigas (dilatadas).
@@ -456,12 +460,13 @@ impl Conv1dDyn {
         // em vez de 32 bits. Isso corta o uso de memória pela metade e permite que a CPU
         // processe o dobro de dados no mesmo tempo em hardwares compatíveis.
         let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
         // Tap Pointers para f0 e f1 em BF16
-        let mut tap_ptrs_f0 = [core::ptr::null::<u16>(); 8];
-        let mut tap_ptrs_f1 = [core::ptr::null::<u16>(); 8];
-        let k_limit = self.kernel.min(8);
+        let mut tap_ptrs_f0 = [core::ptr::null::<u16>(); MAX_KERNEL];
+        let mut tap_ptrs_f1 = [core::ptr::null::<u16>(); MAX_KERNEL];
+        let k_limit = self.kernel.min(MAX_KERNEL);
 
         for k in 0..k_limit {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
@@ -713,9 +718,10 @@ impl Conv1dDyn {
         // para processar amostras que sobraram de blocos ímpares, usando
         // a economia de memória do formato BF16.
         let num_blocks = self.out_ch.div_ceil(4);
+        debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
-        let mut tap_ptrs = [core::ptr::null::<u16>(); 8];
-        let k_limit = self.kernel.min(8);
+        let mut tap_ptrs = [core::ptr::null::<u16>(); MAX_KERNEL];
+        let k_limit = self.kernel.min(MAX_KERNEL);
 
         // 1. Localização com Dilatação (BF16):
         // Buscamos o passado no buffer de 16 bits.

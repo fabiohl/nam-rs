@@ -975,3 +975,97 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
     let expected = vec![6.5, 12.5, 18.5, 24.5, 30.5, 36.5];
     assert_eq!(block, expected);
 }
+
+#[test]
+fn test_conv1d_dyn_large_kernel_no_segfault() {
+    let in_ch = 2;
+    let out_ch: usize = 4;
+    let kernel = 10;
+    let dilation = 1;
+
+    let num_blocks = out_ch.div_ceil(4);
+    let total_padded = num_blocks * 4 * in_ch * kernel;
+
+    let mut weights = AlignedVec::new(total_padded, 0u16);
+    for i in 0..total_padded {
+        weights[i] = half::f16::from_f32(1.0).to_bits();
+    }
+
+    let bias = AlignedVec::from_vec(vec![0.5f32; out_ch]);
+
+    let conv = Conv1dDyn {
+        weights,
+        bias,
+        do_bias: true,
+        dilation,
+        in_ch,
+        out_ch,
+        kernel,
+        prefetch_fn: crate::math::common::prefetch_strategy_simple,
+    };
+
+    let layer_buffer = vec![1.0f32; 24];
+    let mut out_f0 = vec![0.0f32; out_ch];
+    let mut out_f1 = vec![0.0f32; out_ch];
+
+    unsafe {
+        conv.process_single_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut out_f0, 9, None);
+        conv.process_dual_frame::<crate::math::common::Avx2Math>(&layer_buffer, &mut out_f0, &mut out_f1, 9, 10, None, None);
+    }
+
+    // Single frame calculation: bias (0.5) + 10 (taps) * 2 (channels) * 1.0 (input) * 1.0 (weight) = 20.5
+    for val in out_f0 {
+        assert!((val - 20.5).abs() < 1e-4);
+    }
+    for val in out_f1 {
+        assert!((val - 20.5).abs() < 1e-4);
+    }
+}
+
+#[test]
+fn test_read_conv1d_weights_dyn_limits() {
+    // Call with k_size = 17 (which is > MAX_KERNEL = 16)
+    let build_res = crate::loader::dispatcher::build_wavenet_dynamic(&crate::loader::nam_json::NamModelData {
+        version: Some("0.5.4".to_string()),
+        architecture: "WaveNet".to_string(),
+        config: crate::loader::nam_json::NamConfig {
+            layers: vec![
+                crate::loader::nam_json::NamLayerConfig {
+                    input_size: Some(1),
+                    condition_size: Some(1),
+                    channels: Some(4),
+                    dilations: Some(vec![1]),
+                    kernel_size: Some(17), // k_size > MAX_KERNEL
+                    head_size: Some(4),
+                    activation: Some("Tanh".to_string()),
+                    gated: Some(false),
+                    head_bias: Some(false),
+                },
+                crate::loader::nam_json::NamLayerConfig {
+                    input_size: Some(4),
+                    condition_size: Some(1),
+                    channels: Some(4),
+                    dilations: Some(vec![1]),
+                    kernel_size: Some(3),
+                    head_size: Some(1),
+                    activation: Some("Tanh".to_string()),
+                    gated: Some(false),
+                    head_bias: Some(true),
+                },
+            ],
+            head: None,
+            head_scale: None,
+            num_layers: None,
+            hidden_size: None,
+        },
+        weights: vec![0.01f32; 500],
+        weights_layout: crate::loader::nam_json::WeightsLayout::Original,
+        sample_rate: Some(48000.0),
+        metadata: None,
+    });
+    
+    assert!(build_res.is_err());
+    let err_msg = build_res.err().unwrap().to_string();
+    assert!(err_msg.contains("Tamanho do kernel"));
+}
+

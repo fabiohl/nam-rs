@@ -422,6 +422,13 @@ fn read_conv1d_weights_dyn(
     dilation: usize,
     do_bias: bool,
 ) -> anyhow::Result<Conv1dDyn> {
+    if k_size > crate::models::wavenet::conv1d_dyn::MAX_KERNEL {
+        bail!(
+            "Tamanho do kernel {} excede o máximo suportado ({})",
+            k_size,
+            crate::models::wavenet::conv1d_dyn::MAX_KERNEL
+        );
+    }
     let num_blocks = out_size.div_ceil(4);
     let padded_total = num_blocks * 4 * in_size * k_size;
 
