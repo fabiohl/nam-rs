@@ -383,7 +383,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 
 ### Sprint S5 — Loader hardening
 
-#### Tarefa S5.T01 — Validar tamanho do arquivo antes de `std::fs::read` 🔥
+#### Tarefa S5.T01 — Validar tamanho do arquivo antes de `std::fs::read` 🔥 [DONE]
 
 - **Onde:** `src/loader/mod.rs:70, 94`.
 - **Problema:** `std::fs::read` carrega o arquivo inteiro em RAM. Sem cap de tamanho, um `.namb` adversário de 4 GB consome 4 GB de memória.

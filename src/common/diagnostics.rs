@@ -63,6 +63,8 @@ pub enum NamErrorCode {
     WeightCountMismatch,
     /// Falha genérica na construção do modelo pelo dispatcher.
     ModelBuildFailed,
+    /// Arquivo de modelo excede o tamanho máximo permitido (256 MiB).
+    ModelTooLarge,
 
     // E2xxx — PipeWire / Áudio
     /// Falha ao inicializar o PipeWire ou criar o contexto/core.
@@ -111,6 +113,7 @@ impl NamErrorCode {
             Self::TopologyDetectionFailed => "E1301",
             Self::WeightCountMismatch => "E1302",
             Self::ModelBuildFailed => "E1303",
+            Self::ModelTooLarge => "E1304",
             Self::PipewireInitFailed => "E2100",
             Self::StreamConnectFailed => "E2101",
             Self::ResamplerBuildFailed => "E2200",
@@ -141,6 +144,7 @@ impl NamErrorCode {
             Self::TopologyDetectionFailed => "TOPOLOGY_DETECTION_FAILED",
             Self::WeightCountMismatch => "WEIGHT_COUNT_MISMATCH",
             Self::ModelBuildFailed => "MODEL_BUILD_FAILED",
+            Self::ModelTooLarge => "MODEL_TOO_LARGE",
             Self::PipewireInitFailed => "PIPEWIRE_INIT_FAILED",
             Self::StreamConnectFailed => "STREAM_CONNECT_FAILED",
             Self::ResamplerBuildFailed => "RESAMPLER_BUILD_FAILED",

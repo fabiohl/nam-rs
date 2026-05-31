@@ -281,6 +281,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                         NamErrorCode::TopologyDetectionFailed => "Topology detection failed",
                         NamErrorCode::WeightCountMismatch => "Weight count mismatch",
                         NamErrorCode::ModelBuildFailed => "Model build failed",
+                        NamErrorCode::ModelTooLarge => "Model file too large",
                         _ => "Internal error",
                     };
                     if let Ok(mut msg_guard) = self.shared.ui_load_error_msg.lock() {

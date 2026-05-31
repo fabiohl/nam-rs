@@ -23,6 +23,8 @@ const DEFAULT_INPUT_LEVEL_DBU: f32 = 12.0;
 const DEFAULT_LOUDNESS_DB: f32 = -18.0;
 /// Taxa de amostragem padrão de referência (NAM standard).
 const DEFAULT_SAMPLE_RATE: f32 = 48000.0;
+/// Tamanho máximo de arquivo de modelo permitido (256 MiB).
+const MAX_MODEL_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Par de modelos carregados com metadados de calibração.
 pub struct LoadedModelPair {
@@ -67,6 +69,32 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
 
     // 1. Leitura e Parsing
     let model_data = if ext_lower == "namb" {
+        let len = std::fs::metadata(path).map_err(|e| {
+            NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+                .message(format!("Failed to read metadata of \"{}\".", path_str))
+                .hint("Please verify file access permissions.")
+                .param("file", &path_str)
+                .param("io_error", &e)
+                .emit();
+            anyhow::Error::from(e)
+        })?
+        .len();
+        if len > MAX_MODEL_BYTES {
+            NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
+                .message(format!(
+                    "Model file \"{}\" is too large ({} bytes, max is {} bytes).",
+                    path_str, len, MAX_MODEL_BYTES
+                ))
+                .hint("Please check the file size and ensure it is a valid NAM model.")
+                .param("file", &path_str)
+                .param("size_bytes", &len)
+                .emit();
+            return Err(anyhow::anyhow!(
+                "Model file \"{}\" exceeds maximum allowed size of {} MiB.",
+                path_str,
+                MAX_MODEL_BYTES / (1024 * 1024)
+            ));
+        }
         let bytes = std::fs::read(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
                 .message(format!("Failed to read the file \"{}\".", path_str))
@@ -91,6 +119,32 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                 .emit();
         })?
     } else if ext_lower == "nam" {
+        let len = std::fs::metadata(path).map_err(|e| {
+            NamDiagnostic::new(NamErrorCode::FileReadError, sys)
+                .message(format!("Failed to read metadata of \"{}\".", path_str))
+                .hint("Please verify file access permissions.")
+                .param("file", &path_str)
+                .param("io_error", &e)
+                .emit();
+            anyhow::Error::from(e)
+        })?
+        .len();
+        if len > MAX_MODEL_BYTES {
+            NamDiagnostic::new(NamErrorCode::ModelTooLarge, sys)
+                .message(format!(
+                    "Model file \"{}\" is too large ({} bytes, max is {} bytes).",
+                    path_str, len, MAX_MODEL_BYTES
+                ))
+                .hint("Please check the file size and ensure it is a valid NAM model.")
+                .param("file", &path_str)
+                .param("size_bytes", &len)
+                .emit();
+            return Err(anyhow::anyhow!(
+                "Model file \"{}\" exceeds maximum allowed size of {} MiB.",
+                path_str,
+                MAX_MODEL_BYTES / (1024 * 1024)
+            ));
+        }
         let json = std::fs::read_to_string(path).map_err(|e| {
             NamDiagnostic::new(NamErrorCode::FileReadError, sys)
                 .message(format!("Failed to read the file \"{}\".", path_str))
