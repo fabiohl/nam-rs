@@ -421,7 +421,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
   - Teste v1 com `crc==0` continua a passar emitindo warning.
 - **Especialista:** `implementador`.
 
-#### Tarefa S5.T04 — Cap de tamanho em `Vec<f32> weights` do JSON (preservando forward-compat) ⚠️
+#### Tarefa S5.T04 — Cap de tamanho em `Vec<f32> weights` do JSON (preservando forward-compat) ⚠️ [DONE]
 
 - **Onde:** `src/loader/nam_json.rs:46, 117, 176-179`.
 - **Problema:** `serde_json::from_str` aloca `Vec<f32>` ilimitado. JSON com 100M floats consome 400 MB instantaneamente. Adicionalmente `metadata.training: Option<serde_json::Value>` aceita árvore JSON ilimitada.

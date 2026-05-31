@@ -5,9 +5,336 @@
 //!
 //! Realiza o carregamento dos tensores e metadados fora do caminho RT.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
-/// Estrutura de data usada na seção metadata do `.nam`.
+/// Tamanho máximo de floats no array `weights` (MAX_MODEL_BYTES / 4).
+const MAX_WEIGHTS: usize = (256 * 1024 * 1024 / 4) as usize; // 64 Mi floats
+
+/// Tamanho máximo do campo `metadata.training` em bytes.
+const MAX_TRAINING_BYTES: usize = 1024 * 1024; // 1 MiB
+
+/// Profundidade máxima da árvore JSON em `metadata.training`.
+const MAX_TRAINING_DEPTH: usize = 16;
+
+/// Erros tipados do parser JSON `.nam`.
+#[derive(Debug)]
+pub enum JsonError {
+    /// O array `weights` excede o limite de floats.
+    WeightsExceedLimit {
+        /// Quantidade de floats recebida.
+        got: usize,
+        /// Limite máximo configurado.
+        max: usize,
+    },
+    /// O campo `metadata.training` excede o limite de profundidade da árvore JSON.
+    TrainingTooDeep {
+        /// Profundidade encontrada.
+        depth: usize,
+        /// Profundidade máxima permitida.
+        max_depth: usize,
+    },
+    /// O campo `metadata.training` excede o limite de tamanho.
+    TrainingTooLarge {
+        /// Tamanho aproximado em bytes.
+        size: usize,
+        /// Tamanho máximo permitido.
+        max_size: usize,
+    },
+    /// Erro genérico de parse do serde_json.
+    Serde(String),
+}
+
+impl std::fmt::Display for JsonError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WeightsExceedLimit { got, max } => {
+                write!(
+                    f,
+                    "weights array exceeds limit ({} floats, max is {})",
+                    got, max
+                )
+            }
+            Self::TrainingTooDeep { depth, max_depth } => {
+                write!(
+                    f,
+                    "metadata.training JSON tree too deep (depth {}, max is {})",
+                    depth, max_depth
+                )
+            }
+            Self::TrainingTooLarge { size, max_size } => {
+                write!(
+                    f,
+                    "metadata.training JSON too large ({} bytes, max is {} bytes)",
+                    size, max_size
+                )
+            }
+            Self::Serde(msg) => write!(f, "JSON parse error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for JsonError {}
+
+/// Converte `serde_json::Error` para `JsonError::Serde`.
+impl From<serde_json::Error> for JsonError {
+    fn from(e: serde_json::Error) -> Self {
+        JsonError::Serde(e.to_string())
+    }
+}
+
+/// Visitor custom para `Vec<f32>` que aborta ao exceder MAX_WEIGHTS floats.
+struct WeightsVisitor;
+
+impl<'de> serde::de::Visitor<'de> for WeightsVisitor {
+    type Value = Vec<f32>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a sequence of f32 floats within the size limit")
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<Vec<f32>, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        let mut weights = Vec::new();
+        loop {
+            match seq.next_element::<f32>() {
+                Ok(Some(val)) => {
+                    if weights.len() >= MAX_WEIGHTS {
+                        return Err(serde::de::Error::custom(JsonError::WeightsExceedLimit {
+                            got: weights.len() + 1,
+                            max: MAX_WEIGHTS,
+                        }));
+                    }
+                    weights.push(val);
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(weights)
+    }
+}
+
+/// Custom deserializer para `weights: Vec<f32>` com cap em MAX_WEIGHTS.
+fn deserialize_weights<'de, D>(deserializer: D) -> Result<Vec<f32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserializer.deserialize_seq(WeightsVisitor)
+}
+
+/// Visitor da árvore JSON para `metadata.training` com limites de profundidade e tamanho.
+/// Usa `std::cell::Cell<usize>` para que child visitors compartilhem o contador
+/// de tamanho com o parent, evitando bypass do limite agregado de 1 MiB.
+struct LimitedValueVisitor {
+    depth: usize,
+    max_depth: usize,
+    max_size: usize,
+    current_size: std::cell::Cell<usize>,
+}
+
+impl LimitedValueVisitor {
+    fn root(max_depth: usize, max_size: usize) -> Self {
+        Self {
+            depth: 0,
+            max_depth,
+            max_size,
+            current_size: std::cell::Cell::new(0),
+        }
+    }
+
+    fn child(&self) -> Self {
+        Self {
+            depth: self.depth + 1,
+            max_depth: self.max_depth,
+            max_size: self.max_size,
+            current_size: self.current_size.clone(),
+        }
+    }
+
+    fn add_size(&self, bytes: usize) -> Result<(), serde_json::Error> {
+        let new = self.current_size.get() + bytes;
+        self.current_size.set(new);
+        if new > self.max_size {
+            return Err(serde::de::Error::custom(JsonError::TrainingTooLarge {
+                size: new,
+                max_size: self.max_size,
+            }));
+        }
+        Ok(())
+    }
+
+    fn check_depth(&self) -> Result<(), serde_json::Error> {
+        if self.depth > self.max_depth {
+            return Err(serde::de::Error::custom(JsonError::TrainingTooDeep {
+                depth: self.depth,
+                max_depth: self.max_depth,
+            }));
+        }
+        Ok(())
+    }
+}
+
+impl<'de> serde::de::Visitor<'de> for LimitedValueVisitor {
+    type Value = serde_json::Value;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a JSON value within depth and size limits")
+    }
+
+    fn visit_bool<E>(self, v: bool) -> Result<serde_json::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.add_size(if v { 4 } else { 5 }).map_err(E::custom)?;
+        Ok(serde_json::Value::Bool(v))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> Result<serde_json::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.add_size(16).map_err(E::custom)?;
+        Ok(serde_json::Value::Number(serde_json::Number::from(v)))
+    }
+
+    fn visit_u64<E>(self, v: u64) -> Result<serde_json::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.add_size(16).map_err(E::custom)?;
+        Ok(serde_json::Value::Number(serde_json::Number::from(v)))
+    }
+
+    fn visit_f64<E>(self, v: f64) -> Result<serde_json::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.add_size(16).map_err(E::custom)?;
+        Ok(serde_json::Value::Number(
+            serde_json::Number::from_f64(v).unwrap_or(serde_json::Number::from(0)),
+        ))
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<serde_json::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.add_size(v.len() + 2).map_err(E::custom)?;
+        Ok(serde_json::Value::String(v.to_string()))
+    }
+
+    fn visit_string<E>(self, v: String) -> Result<serde_json::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        self.add_size(v.len() + 2).map_err(E::custom)?;
+        Ok(serde_json::Value::String(v))
+    }
+
+    fn visit_unit<E>(self) -> Result<serde_json::Value, E> {
+        Ok(serde_json::Value::Null)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> Result<serde_json::Value, A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        self.check_depth().map_err(serde::de::Error::custom)?;
+        self.add_size(2).map_err(serde::de::Error::custom)?; // [ ]
+        let mut arr = Vec::new();
+        loop {
+            match seq.next_element_seed(self.child()) {
+                Ok(Some(val)) => {
+                    self.add_size(1).map_err(serde::de::Error::custom)?; // comma
+                    arr.push(val);
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(serde_json::Value::Array(arr))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> Result<serde_json::Value, A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        self.check_depth().map_err(serde::de::Error::custom)?;
+        self.add_size(2).map_err(serde::de::Error::custom)?; // { }
+        let mut obj = serde_json::Map::new();
+        loop {
+            match map.next_key::<String>() {
+                Ok(Some(key)) => {
+                    let key_len = key.len() + 4; // quotes and colon
+                    self.add_size(key_len).map_err(serde::de::Error::custom)?;
+                    let val: serde_json::Value = map.next_value_seed(self.child())?;
+                    obj.insert(key, val);
+                    self.add_size(1).map_err(serde::de::Error::custom)?; // comma
+                }
+                Ok(None) => break,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(serde_json::Value::Object(obj))
+    }
+}
+
+impl<'de> serde::de::DeserializeSeed<'de> for LimitedValueVisitor {
+    type Value = serde_json::Value;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(self)
+    }
+}
+
+/// Visitor externo para `Option<serde_json::Value>`: retorna `None` para null/ausente,
+/// e `Some(value)` com limites de profundidade/tamanho para valores presentes.
+struct TrainingOptionVisitor;
+
+impl<'de> serde::de::Visitor<'de> for TrainingOptionVisitor {
+    type Value = Option<serde_json::Value>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("an optional JSON value")
+    }
+
+    fn visit_none<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(None)
+    }
+
+    fn visit_unit<E>(self) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        Ok(None)
+    }
+
+    fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let visitor = LimitedValueVisitor::root(MAX_TRAINING_DEPTH, MAX_TRAINING_BYTES);
+        let value: serde_json::Value = deserializer.deserialize_any(visitor)?;
+        Ok(Some(value))
+    }
+}
+
+/// Custom deserializer para `metadata.training` com limites de profundidade e tamanho.
+/// Usa `deserialize_option` para retornar corretamente `None` quando o campo é null.
+fn deserialize_training<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserializer.deserialize_option(TrainingOptionVisitor)
+}
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct NamDate {
     /// Ano.
@@ -43,6 +370,7 @@ pub struct NamMetadata {
     /// De qual estilo do equipamento? Opções: "clean", "overdrive", "crunch", "hi_gain" e "fuzz".
     pub tone_type: Option<String>,
     /// Informação opcional de documentação sobre configuração Pydantic de treinamento.
+    #[serde(default, deserialize_with = "deserialize_training")]
     pub training: Option<serde_json::Value>,
     /// Nível de entrada esperado pelo modelo (dBu). Usado no gain staging de entrada.
     pub input_level_dbu: Option<f32>,
@@ -114,6 +442,7 @@ pub struct NamModelData {
     /// Configuração estrutural de hiperparâmetros
     pub config: NamConfig,
     /// Os imensos tensores Float32 planificados em formato SoA.
+    #[serde(deserialize_with = "deserialize_weights")]
     pub weights: Vec<f32>,
     /// Frequência de amostragem original projetada pela modelagem (referência sempre ideal 48 kHz).
     pub sample_rate: Option<f32>,
@@ -173,7 +502,8 @@ static LITE_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64];
 static LITE_DILATIONS_2: &[usize] = &[128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
 /// Desserialização universal bruta da string do JSON via `serde_json`.
-pub fn parse_nam_json(json_str: &str) -> anyhow::Result<NamModelData> {
+/// Retorna `JsonError` tipado para falhas de tamanho ou parse.
+pub fn parse_nam_json(json_str: &str) -> Result<NamModelData, JsonError> {
     let data: NamModelData = serde_json::from_str(json_str)?;
     Ok(data)
 }

@@ -47,6 +47,12 @@ pub enum NamErrorCode {
     UnknownExtension,
     /// Falha ao fazer parse do JSON no formato .nam.
     NamJsonParseError,
+    /// Array `weights` do JSON excede o limite de floats (MAX_WEIGHTS).
+    NamJsonWeightsExceedLimit,
+    /// Campo `metadata.training` do JSON excede limite de tamanho (1 MiB).
+    NamJsonTrainingTooLarge,
+    /// Campo `metadata.training` do JSON excede limite de profundidade de árvore.
+    NamJsonTrainingTooDeep,
     /// Checksum CRC32 do .namb não confere com o esperado.
     NambCrc32Mismatch,
     /// Flag CRC32 ausente em arquivo .namb v2+ (obrigatório).
@@ -107,6 +113,9 @@ impl NamErrorCode {
             Self::FileReadError => "E1101",
             Self::UnknownExtension => "E1102",
             Self::NamJsonParseError => "E1200",
+            Self::NamJsonWeightsExceedLimit => "E1206",
+            Self::NamJsonTrainingTooLarge => "E1207",
+            Self::NamJsonTrainingTooDeep => "E1208",
             Self::NambCrc32Mismatch => "E1201",
             Self::NambCrc32Missing => "E1205",
             Self::NambInvalidMagic => "E1202",
@@ -139,6 +148,9 @@ impl NamErrorCode {
             Self::FileReadError => "FILE_READ_ERROR",
             Self::UnknownExtension => "UNKNOWN_EXTENSION",
             Self::NamJsonParseError => "NAM_JSON_PARSE_ERROR",
+            Self::NamJsonWeightsExceedLimit => "NAM_JSON_WEIGHTS_EXCEED_LIMIT",
+            Self::NamJsonTrainingTooLarge => "NAM_JSON_TRAINING_TOO_LARGE",
+            Self::NamJsonTrainingTooDeep => "NAM_JSON_TRAINING_TOO_DEEP",
             Self::NambCrc32Mismatch => "NAMB_CRC32_MISMATCH",
             Self::NambCrc32Missing => "NAMB_CRC32_MISSING",
             Self::NambInvalidMagic => "NAMB_INVALID_MAGIC",

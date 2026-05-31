@@ -159,7 +159,17 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
             anyhow::Error::from(e)
         })?;
         nam_json::parse_nam_json(&json).inspect_err(|e| {
-            NamDiagnostic::new(NamErrorCode::NamJsonParseError, sys)
+            let code = match e {
+                nam_json::JsonError::WeightsExceedLimit { .. } => {
+                    NamErrorCode::NamJsonWeightsExceedLimit
+                }
+                nam_json::JsonError::TrainingTooLarge { .. } => {
+                    NamErrorCode::NamJsonTrainingTooLarge
+                }
+                nam_json::JsonError::TrainingTooDeep { .. } => NamErrorCode::NamJsonTrainingTooDeep,
+                _ => NamErrorCode::NamJsonParseError,
+            };
+            NamDiagnostic::new(code, sys)
                 .message(format!("Error parsing model JSON: {}", path_str))
                 .param("detail", e)
                 .emit();
