@@ -15,6 +15,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >
 > Nota do PO 1: Arquitetura A2 está fora do escopo, ao menos por enquanto. É permitido apenas placeholders e outras medidas para evitar algo que possa se chocar com o A2 mais adiante.
 > Nota do PO 2: Sempre assegure ótima cobertura de docsys e comentários rust inline.
+> Nota do PO 3: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 >
 > **Legenda de severidade**
 >
@@ -173,30 +174,40 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a implementação de referência C++, antes que algum modelo de produção (CH≠múltiplo de 4, K>3, geometria multi-layer atípica) exponha o bug.
 
 > Nota do PO: Arquitetura A2 está fora do escopo, ao menos por enquanto. É permitido apenas placeholders e outras medidas para evitar algo que possa se chocar com o A2 mais adiante.
+> Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 
 ### Sprint S3 — Bugs latentes de paridade matemática (estática + dinâmica)
 
+> Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
+
 #### Tarefa S3.T01 — Corrigir `process_sample_scalar` LSTM (BF16 vs F16) 🔥
 
-- **Onde:** `src/models/lstm/layer.rs:378-416` (linha 390); replicar em `src/models/lstm/tests.rs:519, 626`.
+- **Onde:** `src/models/lstm/layer.rs:378-416` (linha 390); replicar em linhas 519 e 626 do mesmo arquivo.
 
 - **Problema:** Pesos são armazenados como `bf16` (bits empacotados em `u16`) quando o dispatcher detecta AVX-512 BF16, mas `process_sample_scalar` interpreta-os como `f16::from_bits(w).to_f32()` — leitura **errada de bits**. Os bits BF16 têm expoente de 8 bits e mantissa de 7; F16 tem expoente de 5 e mantissa de 10. Mesmo bit-pattern, valor numérico totalmente diferente. Os testes de paridade SIMD↔Scalar passam apenas porque os pesos de teste são pequenos (próx. de zero, onde ambos os formatos coincidem perto de 0).
 
+- **Estado atual do código:** `process_sample_scalar` em `layer.rs:378-416` hardcoda `half::f16::from_bits(w).to_f32()` (linha 390) sem consultar o dispatcher. O mesmo padrão errado aparece nas funções `process_scalar` de `LstmModel1` (linha 519) e `LstmModel2` (linha 626). A macro `define_lstm_process!` tem `$is_bf16: expr` como parâmetro (linha 39), mas `process_sample_scalar` é implementado **fora** dela e ignora esse contexto. `SimdMathConfig::get().instruction_set` está disponível — já é usado em `build_lstm_dynamic` (`src/loader/dispatcher/lstm.rs:159-160`).
+
 - **Solução técnica:**
 
-  1. Adicionar `const IS_BF16: bool` ao trait/marker `SimdMath` (já existe em `traits.rs` provavelmente — confirmar).
-
-  2. `process_sample_scalar` recebe parâmetro genérico `M: SimdMath` ou consulta `SimdMathConfig::get().instruction_set` para descobrir o formato.
-
-  3. Substituir `half::f16::from_bits(w).to_f32()` por:
+  1. Dentro de `process_sample_scalar` (e nos dois locais de `process_scalar`), detectar o formato em runtime consultando o dispatcher:
 
      ```rust
-     let w_f32 = if IS_BF16 {
+     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+         == crate::math::common::InstructionSet::Avx512VnniBf16;
+     ```
+
+  2. Substituir `half::f16::from_bits(w).to_f32()` por:
+
+     ```rust
+     let w_f32 = if is_bf16 {
          f32::from_bits((w as u32) << 16)  // BF16 → F32 (zero-extend dos 16 bits)
      } else {
          half::f16::from_bits(w).to_f32()
      };
      ```
+
+  3. Aplicar o mesmo fix nos locais de `head_weights` em `LstmModel1::process_scalar` (linha 519) e `LstmModel2::process_scalar` (linha 626).
 
   4. Adicionar teste explícito: `tests/lstm_scalar_bf16_parity.rs` com pesos não-triviais (ex.: `[-1.5, 0.8, 2.3, ...]`).
 
@@ -206,23 +217,25 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 #### Tarefa S3.T02 — Unificar quantização BF16/F16 em LSTM estático 🔥
 
-- **Onde:** `src/loader/dispatcher/lstm.rs:74, 118, 234, 279, 293`.
-- **Problema:** `build_lstm_dynamic` detecta CPU (`is_bf16 = ... == Avx512VnniBf16`) e quantiza adequadamente. Mas `build_lstm_1layer`, `build_lstm_2layer`, `read_lstm_layer` **sempre usam `half::f16::from_f32(w).to_bits()`** — ignorando o dispatcher dinâmico. Em CPUs Sapphire Rapids+ com kernels BF16-nativos, drift numérico imediato.
+- **Onde:** `src/loader/dispatcher/lstm.rs:74, 118, 279, 293` (funções `build_lstm_1layer`, `build_lstm_2layer`, `read_lstm_layer`).
+- **Problema:** `build_lstm_dynamic` detecta CPU (`is_bf16`, linha 159-160) e quantiza adequadamente usando `f32_to_bf16` (já importado no topo do arquivo). Mas `build_lstm_1layer` (linha 74), `build_lstm_2layer` (linha 118), e `read_lstm_layer` (linhas 279, 293) **sempre usam `half::f16::from_f32(w).to_bits()`** — ignorando o dispatcher dinâmico. Em CPUs Sapphire Rapids+ com kernels BF16-nativos, drift numérico imediato.
+- **Estado atual do código:** `build_lstm_dynamic:159-160` detecta `is_bf16` via `SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16` e usa `f32_to_bf16` (importado em linha 6). `read_lstm_layer` (linhas 266-312) e os builders estáticos usam apenas `half::f16::from_f32(w).to_bits()`.
 - **Solução técnica:**
-  1. Extrair `fn quantize_weight(f: f32, is_bf16: bool) -> u16` para `src/math/common/mod.rs`.
-  2. Detectar `is_bf16` no início de cada `build_lstm_*layer` e passar adiante.
-  3. Substituir todas as ocorrências de `half::f16::from_f32(w).to_bits()` pelo helper.
-  4. Idem para `head_weights` em WaveNet (`src/loader/dispatcher/wavenet.rs:348-349` já detecta — manter coerente).
+  1. Extrair `fn quantize_weight(f: f32, is_bf16: bool) -> u16` para `src/math/common/mod.rs` (usa `f32_to_bf16` se `is_bf16`, senão `half::f16::from_f32(f).to_bits()`).
+  2. Detectar `is_bf16` no início de `build_lstm_1layer` e `build_lstm_2layer` (mesmo padrão de `build_lstm_dynamic:159-160`).
+  3. Adicionar `is_bf16: bool` como parâmetro de `read_lstm_layer` e substituir as duas ocorrências de `half::f16::from_f32(w).to_bits()` (linhas 279, 293) pelo helper.
+  4. Substituir `head_weights` em `build_lstm_1layer:74` e `build_lstm_2layer:118` pelo helper.
 - **Critérios de aceitação:** Em CPU AVX-512 BF16, golden vectors LSTM 1x16 e 2x16 produzem mesma saída de `build_lstm_dynamic`.
 - **Especialista:** `implementador`.
 
 #### Tarefa S3.T03 — Corrigir round-trip de layout `GateMajorLstm` para multi-layer 🔥
 
-- **Onde:** `src/loader/namb_encoder.rs:99-157` (encoder) vs `src/loader/dispatcher/lstm.rs:266-311` (decoder).
+- **Onde:** `src/loader/namb_encoder.rs:99-157` (encoder) vs `src/loader/dispatcher/lstm.rs:266-312` (decoder `read_lstm_layer`).
 - **Problema:** O encoder grava no header `weights_layout = GateMajorLstm` mas serializa pesos **em ordem incorreta** para LSTM 2-layer:
   - **Encoder grava:** `[W1_transposed, bias1, W2_transposed, bias2, hidden_init1, cell_init1, hidden_init2, cell_init2, head_weights, head_bias]`.
   - **Decoder espera (via `read_lstm_layer` em sequência por camada):** `[W1, bias1, hidden_init1, cell_init1, W2, bias2, hidden_init2, cell_init2, head_weights, head_bias]`.
   - Para 2-layer, isso embaralha `bias2` com `hidden_init1`.
+- **Estado atual do código:** `read_lstm_layer` lê na ordem `weights (H4×IH) → bias (H4) → hidden_init (H) → cell_init (H)` (linhas 271-309). Verificar o encoder (`namb_encoder.rs:99-157`) para confirmar a divergência na ordenação de camadas.
 - **Solução técnica:**
   1. No encoder, intercalar por camada: após escrever `W_l, bias_l`, escrever `hidden_init_l, cell_init_l` imediatamente.
   2. Substituir o "resto" final (`namb_encoder.rs:152-154`) pela escrita explícita de `head_weights, head_bias`.
@@ -232,12 +245,12 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 #### Tarefa S3.T04 — Corrigir tail loop layout-mismatch em Conv1D (encoder padding interleaved) 🔥
 
-- **Onde:** Encoder `src/loader/namb_encoder.rs:213-232` (Interleaved-4 transpose); decoder `src/models/wavenet/conv1d.rs:285`; `src/models/wavenet/conv1d_dyn.rs:244, 454, 656, 858`.
-- **Problema:** O loop SIMD escreve em **`[OUT_BLK][K][IN][4]` interleaved** mas o tail loop (canais restantes `OUT % 4 != 0`) lê pesos do offset `out_c * K * IN + k * IN`, assumindo layout `[OUT][K][IN]`. Layouts incompatíveis ⇒ leitura de **bytes errados** ⇒ ruído na saída. Hoje os catálogos (`CH ∈ {4,8,12,16}`) garantem `OUT % 4 == 0` e o bug está latente, mas geometrias futuras (A2 ou de comunidade) acionariam o defeito.
+- **Onde:** Encoder `src/loader/namb_encoder.rs:213-232` (Interleaved-4 transpose); decoder `src/models/wavenet/conv1d_dyn.rs` — tail loops nas linhas 229-253 (`process_dual_frame`) e 445-461 (`process_single_frame`), e equivalentes BF16 nas linhas 641-665 (`process_dual_frame_bf16`) e ~838-860 (`process_single_frame_bf16`).
+- **Problema:** O loop SIMD escreve em **`[OUT_BLK][K][IN][4]` interleaved** mas os tail loops (canais restantes `OUT % 4 != 0`) lêem pesos do offset `(out_c * self.kernel + k) * self.in_ch`, assumindo layout `[OUT][K][IN]`. Layouts incompatíveis ⇒ leitura de **bytes errados** ⇒ ruído na saída. Hoje os catálogos (`CH ∈ {4,8,12,16}`) garantem `OUT % 4 == 0` e o bug está latente, mas geometrias futuras (de comunidade) acionariam o defeito. O `conv1d.rs` estático usa `const CH` sempre múltiplo de 4 no catálogo atual — o problema é principalmente no path dinâmico (`conv1d_dyn.rs`).
 - **Solução técnica (única):** Padding implícito no encoder para sempre gerar layout `[CEIL(OUT/4)][K][IN][4]`.
   1. No `transpose_wavenet_interleaved4` (`namb_encoder.rs:213-232`), trocar o "tail-loop separado" por padding de até 3 canais zero, escrevendo **todo** o bloco no formato interleaved-4 uniformemente.
-  2. Remover os tail-loops com layout não-interleaved (`conv1d.rs:282-294` e as 4 ocorrências em `conv1d_dyn.rs`). O decoder passa a ler sempre via dot_product_4x_interleaved.
-  3. Adicionar `assert!(self.out_ch <= num_blocks * 4)` nos construtores `Conv1D::new`/`Conv1DDyn::new` (com `num_blocks = (out_ch + 3) / 4`).
+  2. Remover os 4 tail-loops com layout não-interleaved em `conv1d_dyn.rs`. O decoder passa a ler sempre via `dot_product_4x_interleaved`.
+  3. Adicionar `assert!(self.out_ch <= num_blocks * 4)` nos construtores de `Conv1dDyn` (com `num_blocks = (out_ch + 3) / 4`).
   4. Adicionar teste com `OUT = 6` (não múltiplo de 4) sintético; o encoder gera `2 * 4 = 8` slots interleaved, os 2 últimos preenchidos com zero, e a saída ignora os canais excedentes via `out_ch` lógico.
   5. **Compatibilidade retroativa:** modelos NAMB v2 produzidos antes do fix permanecem corretos (afetam só geometrias `OUT % 4 != 0` que não existem no catálogo atual). Documentar como bump implícito em NAMB v2 (sem mudança de versão).
 - **Critérios de aceitação:**
@@ -247,37 +260,41 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 #### Tarefa S3.T05 — Eliminar segfault potencial em `tap_ptrs[8]` (Conv1D dyn com kernel>8) 🔥
 
-- **Onde:** `src/models/wavenet/conv1d_dyn.rs:65-92` (populate) vs `:184-212` (uso).
-- **Problema:** `let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];` é populado até `k_limit = kernel.min(8)`, mas o loop principal de cálculo (`for k in 0..kernel` na linha 184) acessa `tap_ptrs_f0.get_unchecked(k)` — desreferencia null pointer se `kernel > 8`.
+- **Onde:** `src/models/wavenet/conv1d_dyn.rs` — `process_dual_frame` linhas 65-93 (populate de `tap_ptrs_f0[8]`) e 184 (loop de convolução); `process_single_frame` linhas 349-366 (populate de `tap_ptrs[8]`) e 417 (loop); variantes BF16 em `process_dual_frame_bf16:487-506` e `process_single_frame_bf16:757-774`.
+- **Problema:** `let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];` é populado apenas até `k_limit = self.kernel.min(8)` (linha 67), mas os loops de convolução usam `tap_ptrs_f0.get_unchecked(k)` iterando `for k in 0..kernel` (linha 184) — desreferencia ponteiro nulo se `kernel > 8`. O mesmo padrão ocorre nas 4 variantes de `process_*_frame*`. O limite de 8 é um hardcode que não reflete o `kernel` real do modelo carregado.
 - **Solução técnica:**
-  1. Substituir array fixo por `let mut tap_ptrs_f0: [_; MAX_KERNEL] = [...]` com `const MAX_KERNEL: usize = 16;`.
-  2. Adicionar `if self.kernel > MAX_KERNEL { return Err(...); }` no construtor `Conv1DDyn::new`.
-  3. Validar `assert!(self.kernel <= MAX_KERNEL)` em `process_*_frame` antes do loop.
-  4. Idem para `process_single_frame` (sem dual) — verificar todas as 4 ocorrências do array de 8.
+  1. Definir `const MAX_KERNEL: usize = 16;` (ou valor adequado) no topo de `conv1d_dyn.rs`.
+  2. Substituir todos os arrays `[_; 8]` por `[_; MAX_KERNEL]` nos 4 locais.
+  3. Adicionar no início de cada `process_*_frame*`: `debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);`.
+  4. No construtor ou ao carregar o modelo, validar `kernel <= MAX_KERNEL` e retornar `Err` se violado.
 - **Critérios de aceitação:** Teste com modelo sintético `kernel=10` carrega sem segfault, produz saída numérica correta vs referência escalar.
 - **Especialista:** `implementador`.
 
 ### Sprint S4 — Backfill safety & A2 placeholder
 
+> Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 > Nota do PO: Arquitetura A2 está fora do escopo, ao menos por enquanto. É permitido apenas placeholders e outras medidas para evitar algo que possa se chocar com o A2 mais adiante.
 
 #### Tarefa S4.T01 — Prevenir underflow `usize` no backfill de prewarm 🔥
 
-- **Onde:** `src/models/wavenet/model.rs:260-264`; `src/models/wavenet/model_dyn.rs:443-454`.
+- **Onde:** `src/models/wavenet/model.rs:261` (linha `(current_state.buffer_start - offset) * CH`); `src/models/wavenet/model_dyn.rs` (padrão equivalente no `prewarm_internal`).
 
-- **Problema:** `let dst_idx = (current_state.buffer_start - offset) * CH;` faz **subtração não-checada** em `usize`. Se a invariante `buffer_start >= receptive_field_size` for quebrada por rewinds exóticos ou geometrias com RF grandes, underflow → endereço gigante → OOB.
+- **Problema:** `(current_state.buffer_start - offset) * CH` faz **subtração não-checada** em `usize`. Se a invariante `buffer_start >= offset` for quebrada por rewinds exóticos ou geometrias com RF grandes, underflow → endereço gigante → OOB.
+
+- **Estado atual do código:** O backfill está em `model.rs:260-271` dentro de `process_block_internal::<M, true>` (modo PREWARM). O código executa `copy_within(src_range.clone(), dst_idx)` onde `dst_idx = (current_state.buffer_start - offset) * CH` sem checagem. O `buffer_start` é inicializado via `WaveNetLayerState` em `common.rs`.
 
 - **Solução técnica:**
 
-  1. Adicionar `debug_assert!(current_state.buffer_start >= offset, "backfill underflow: bs={}, off={}");`.
+  1. Adicionar `debug_assert!(current_state.buffer_start >= offset, "backfill underflow: bs={}, off={}", current_state.buffer_start, offset);` antes do `copy_within`.
 
-  2. Refatorar para `checked_sub`:
+  2. Em release, usar saturating_sub com log de erro:
 
      ```rust
-     let src_idx = current_state.buffer_start.checked_sub(offset).expect("backfill underflow");
+     let dst_start = current_state.buffer_start.checked_sub(offset)
+         .unwrap_or_else(|| { log::error!("backfill underflow"); return; }) * CH;
      ```
 
-  3. No construtor `WaveNetLayerState::new` (`src/models/wavenet/common.rs:73`), validar `actual_buffer_frames * 2 - WAVENET_MAX_NUM_FRAMES * jitter >= receptive_field_size`.
+  3. No construtor `WaveNetLayerState::new` (`src/models/wavenet/common.rs`), validar que `buffer_start >= receptive_field_size` na inicialização.
 
   4. Adicionar teste `tests/wavenet_prewarm_edge.rs` com RF=2048 (modelo customizado).
 
@@ -287,13 +304,14 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 #### Tarefa S4.T02 — Substituir stack buffers hardcoded `[f32; 1024]` 🔥
 
-- **Onde:** `src/models/wavenet/model.rs:51, 64`; `src/models/wavenet/model_dyn.rs:184`.
-- **Problema:** Buffers de stack fixos em 1024 (estático) / 4096 (dinâmico) podem ser excedidos por geometrias com CH>16 ou WAVENET_MAX_NUM_FRAMES>64 sem aviso em release.
+- **Onde:** `src/models/wavenet/model.rs:51, 64` (dois buffers `[0.0f32; 1024]` em `process_block_internal`); `src/models/wavenet/model_dyn.rs` (padrão equivalente).
+- **Problema:** Buffers de stack fixos em 1024 podem ser excedidos por geometrias com `CH>16` ou `WAVENET_MAX_NUM_FRAMES>64` sem aviso em release. Atualmente há `debug_assert!(num_frames * CH <= 1024)` em `model.rs:46-50` que protege apenas em debug — em release o overflow silencioso corrompe o stack.
+- **Estado atual do código:** Em `model.rs`, `process_block_internal` usa dois arrays `[0.0f32; 1024]` na stack (linhas 51 e 64). O `debug_assert!` em linhas 46-50 valida `num_frames * CH <= 1024`. O `const WAVENET_MAX_NUM_FRAMES = 64` está definido em `conv1d_dyn.rs:16`.
 - **Solução técnica:**
-  1. Para o caminho estático, usar `[f32; CH * WAVENET_MAX_NUM_FRAMES]` via `const fn` (estável em Rust ≥1.79).
-  2. Adicionar `const_assert!(CH * WAVENET_MAX_NUM_FRAMES <= 1024)` em compile-time.
-  3. Para o caminho dinâmico, redimensionar para 8192 com `assert!(num_frames * ch <= 8192)` ou pré-alocar via `AlignedVec` em `WaveNetDynModel::new`.
-- **Critérios de aceitação:** Compilação falha (com erro útil) ao tentar topologia maior; tested no painel de 4 topologias atual.
+  1. Para o caminho estático, trocar para `[f32; CH * WAVENET_MAX_NUM_FRAMES]` usando const generics (estável em Rust ≥1.79). Isso tornará o `debug_assert` desnecessário (erro de compilação em topologias inválidas).
+  2. Elevar o `debug_assert` atual para um `const_assert!(CH * WAVENET_MAX_NUM_FRAMES <= 1024)` em compile-time.
+  3. Para o caminho dinâmico (`model_dyn.rs`), usar `assert!(num_frames * ch <= MAX_STACK)` com `const MAX_STACK: usize = 8192` ou pré-alocar via `AlignedVec` em `WaveNetDynModel::new`.
+- **Critérios de aceitação:** Compilação falha (com erro útil) ao tentar topologia maior; testes passam no painel de 4 topologias atual.
 - **Especialista:** `implementador`.
 
 #### Tarefa S4.T03 — Sinalizar `WavenetA2Placeholder` no UI 🔥
@@ -301,33 +319,35 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Onde:** `src/models/a2/mod.rs:37-49`; `src/clap/gui/ui.rs` (status bar).
 - **Problema:** Modelos A2 carregados produzem **silêncio absoluto** sem feedback adequado ao usuário (apenas um `log::warn!` único).
 - **Solução técnica:**
-  1. Adicionar `RT_STATUS_A2_PLACEHOLDER` em `src/common/spsc.rs`.
-  2. Em `WavenetA2Placeholder::process` setar o flag (uma vez por modelo).
-  3. Em `src/clap/gui/ui.rs` (status bar), exibir mensagem "Modelo A2 não suportado — bypass ativo".
+  1. Adicionar `RT_STATUS_A2_PLACEHOLDER` em `src/common/spsc.rs` (seguindo o padrão dos outros flags RT já existentes).
+  2. Em `WavenetA2Placeholder::process` setar o flag atomicamente (uma vez por modelo carregado, não a cada buffer).
+  3. Em `src/clap/gui/ui.rs` (status bar), exibir mensagem "Modelo A2 não suportado — bypass ativo" quando o flag estiver ativo.
   4. Em standalone, log INFO uma única vez por carregamento.
-- **Critérios de aceitação:** Carregar modelo A2 exibe mensagem clara; bypass sonoro permanece.
+- **Critérios de aceitação:** Carregar modelo A2 exibe mensagem clara no UI; bypass sonoro permanece ativo.
 - **Especialista:** `implementador`.
 
 #### Tarefa S4.T04 — Adicionar `reset(sr, max_buf)` no trait `NamModel` ⚠️
 
-- **Onde:** `src/models/mod.rs:18` (trait definition).
-- **Problema:** A referência C++ `NAM/dsp.cpp::Reset(sr, max_buf)` deve ser chamada antes de `process`. NAM-rs não tem equivalente: `prewarm(2048)` é hardcoded.
+- **Onde:** `src/models/mod.rs:18` (trait `NamModel` — atualmente tem apenas `process` e `prewarm`).
+- **Problema:** A referência C++ `NAM/dsp.cpp::Reset(sr, max_buf)` deve ser chamada antes de `process`. NAM-rs não tem equivalente: `prewarm(2048)` é hardcoded no loader. O trait `NamModel` em `mod.rs:18` define apenas `process` e `prewarm`.
+- **Estado atual do código:** `NamModel` em `mod.rs:18-24` tem `fn process` e `fn prewarm`. O `DynamicModel::prewarm` na linha 81 recebe `num_samples` mas WaveNet variants ignoram esse parâmetro (chamam `m.prewarm()` sem argumento — linhas 83-88).
 - **Solução técnica:**
-  1. Adicionar `fn reset(&mut self, sample_rate: u32, max_buffer_size: usize)` ao trait `NamModel`.
-  2. Implementação default chama `prewarm(max_buffer_size)`.
-  3. Modelos específicos podem override (ex.: LSTM pode resetar `state` sem reposicionar `cell_state`).
-  4. Chamar no `loader/mod.rs:127-149` antes de `prewarm`.
+  1. Adicionar `fn reset(&mut self, sample_rate: u32, max_buffer_size: usize)` ao trait `NamModel` com implementação default que chama `self.prewarm(max_buffer_size)`.
+  2. WaveNet: implementação default é adequada (prewarm com silêncio).
+  3. LSTM: pode override para resetar apenas o input slot (`state[0..I] = 0.0`) sem reprocessar prewarm completo.
+  4. Chamar no `loader/mod.rs` antes do primeiro `process`.
 - **Critérios de aceitação:** Conformidade documentada em `docs/architecture.md`. Goldens não regridem.
 - **Especialista:** `documentador` + `implementador`.
 
 #### Tarefa S4.T05 — Manter estados iniciais carregados em LSTM dyn prewarm ⚠️
 
-- **Onde:** `src/models/lstm/model_dyn.rs:200-201`.
-- **Problema:** `prewarm_internal` zera `state` e `cell_state` ANTES de aplicar zeros, descartando os valores `_xh` e `_c` carregados do arquivo NAM. Comportamento divergente da referência C++.
+- **Onde:** `src/models/lstm/model_dyn.rs` — função `prewarm` ou `prewarm_internal` (verificar onde ocorre o reset de `state`/`cell_state`).
+- **Problema:** `prewarm_internal` zera `state` e `cell_state` ANTES de processar o silêncio, descartando os valores `_xh` e `_c` carregados do arquivo NAM (que foram preservados em `build_lstm_dynamic:204-209` usando `copy_from_slice`). Comportamento divergente da referência C++.
+- **Estado atual do código:** Em `build_lstm_dynamic` (linhas 203-209), `state` e `cell_state` são inicializados com os valores do arquivo. Verificar se `prewarm` reseta esses valores antes de processar o silêncio.
 - **Solução técnica:**
-  1. Substituir reset por preservação do estado pré-carregado.
-  2. Apenas `state[0..I] = 0.0` (input slot), preservar `state[I..]`.
-  3. `cell_state` permanece inalterado.
+  1. No prewarm, apenas zerar o input slot: `state[0..input_size] = 0.0`, preservar `state[input_size..]`.
+  2. `cell_state` permanece inalterado (valores carregados do arquivo).
+  3. Processar as amostras de silêncio normalmente a partir desse estado.
 - **Critérios de aceitação:** Goldens LSTM 1×16 batem com saída C++ de referência.
 - **Especialista:** `implementador`.
 
