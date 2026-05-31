@@ -62,7 +62,7 @@ O diagrama abaixo ilustra o fluxo de dados em um bloco de inferência WaveNet, d
 ```mermaid
 graph TD
     In[/"Input Block (f32)"/] --> RC["Rechannel (Dense 1x1)"]
-    RC --> VRB["Virtual Ring Buffer (Delay Line)"]
+    RC --> MB["Mirrored Buffer (Delay Line)"]
 
     subgraph LayerCascade ["Cascata de Camadas (WaveNet Layers)"]
         direction TB
@@ -70,7 +70,7 @@ graph TD
         L2 -.-> LN["Layer N"]
     end
 
-    VRB --> LayerCascade
+    MB --> LayerCascade
 
     subgraph Internal ["Micro-Arquitetura da Camada (Hot-Path)"]
         direction TB

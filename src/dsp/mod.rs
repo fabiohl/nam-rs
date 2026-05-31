@@ -6,8 +6,8 @@
 
 pub mod gain;
 pub mod gate;
+pub mod mirror_buf;
 pub mod pipeline;
 pub mod resampler;
 pub mod sinc_kernel;
 pub mod telemetry;
-pub mod vring;

@@ -10,8 +10,8 @@
 //! Execução: `cargo test --release -- --ignored --nocapture`
 
 use nam_rs::dsp::gate::*;
+use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
-use nam_rs::dsp::vring::*;
 use nam_rs::math::common::AlignedVec;
 use nam_rs::models::lstm::*;
 use nam_rs::models::wavenet::*;
@@ -442,17 +442,16 @@ fn test_resampler_drift_soak() {
     println!("Amostras In: {}, Out: {}", processed_in, processed_out);
 }
 
-/// Soak Test: Integridade da memória do VirtualRingBuffer.
+/// Soak Test: Integridade da memória do MirroredBuffer.
 ///
-/// O VirtualRingBuffer usa mmap para espelhar a memória, permitindo acessos lineares
+/// O MirroredBuffer usa mmap para espelhar a memória, permitindo acessos lineares
 /// contínuos que cruzam a borda do buffer. Este teste verifica se o espelhamento
 /// permanece consistente após bilhões de escritas.
 #[test]
 #[ignore]
-fn test_vring_long_run() {
-    let mut vring =
-        VirtualRingBuffer::<f32>::new(1024 * 1024).expect("Failed to create VirtualRingBuffer"); // 1M elementos
-    let size = vring.size();
+fn test_mirror_buf_long_run() {
+    let mut buf = MirroredBuffer::<f32>::new(1024 * 1024).expect("Failed to create MirroredBuffer"); // 1M elementos
+    let size = buf.size();
     let num_cycles = 100_000_000;
     let mut pos = 0;
     let chunk = 64;
@@ -461,8 +460,7 @@ fn test_vring_long_run() {
     for i in 0..(num_cycles / chunk) {
         // Simula escrita e avanço no buffer espelhado
         for j in 0..chunk {
-            std::hint::black_box(&mut vring)[pos + j] =
-                std::hint::black_box((i * chunk + j) as f32);
+            std::hint::black_box(&mut buf)[pos + j] = std::hint::black_box((i * chunk + j) as f32);
         }
 
         // Verifica integridade na fronteira: o valor escrito no final
@@ -471,9 +469,9 @@ fn test_vring_long_run() {
             let offset = (pos + chunk) - size;
             for j in 0..offset {
                 assert_eq!(
-                    vring[j],
-                    vring[size + j],
-                    "Falha crítica de espelhamento de memória no VirtualRingBuffer no índice {}",
+                    buf[j],
+                    buf[size + j],
+                    "Falha crítica de espelhamento de memória no MirroredBuffer no índice {}",
                     j
                 );
             }
@@ -486,7 +484,7 @@ fn test_vring_long_run() {
     }
     let duration = start.elapsed();
 
-    println!("--- VirtualRingBuffer Long Run ---");
+    println!("--- MirroredBuffer Long Run ---");
     println!("Duração: {:?}", duration);
     println!("Ciclos (amostras): {}", num_cycles);
 }

@@ -3,7 +3,7 @@
 
 //! Tipos comuns, constantes e estado de camada para módulos WaveNet.
 
-use crate::dsp::vring::VirtualRingBuffer;
+use crate::dsp::mirror_buf::MirroredBuffer;
 
 /// Máximo de frames a processar em um pulso do callback.
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
@@ -42,10 +42,10 @@ pub struct WavenetProcessContext<'a> {
 #[repr(align(64))]
 #[derive(Clone)]
 pub struct WaveNetLayerState {
-    /// Buffer Circular Virtual (zero alocações em contexto DSP, eliminação de rewind).
-    pub layer_buffer: VirtualRingBuffer<f32>,
-    /// Buffer Circular Virtual em BF16 para processamento VNNI.
-    pub layer_buffer_bf16: VirtualRingBuffer<u16>,
+    /// Buffer Espelhado (zero alocações em contexto DSP, eliminação de rewind).
+    pub layer_buffer: MirroredBuffer<f32>,
+    /// Buffer Espelhado em BF16 para processamento VNNI.
+    pub layer_buffer_bf16: MirroredBuffer<u16>,
     /// Ponteiro numérico do frame atual (avança a cada frame processado).
     pub buffer_start: usize,
     /// Dimensão física do espaço vetorial receptivo (tamanho do histórico de dilatação).
@@ -61,12 +61,12 @@ impl WaveNetLayerState {
     ) -> std::io::Result<Self> {
         // [PASSO 1: Cálculo do Tamanho do Buffer Temporal]
         // O buffer precisa acomodar o campo receptivo e o padding de blocos.
-        // Arredondamento para página é feito internamente pelo VirtualRingBuffer.
+        // Arredondamento para página é feito internamente pelo MirroredBuffer.
         let min_buffer_frames =
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
 
-        let buffer = VirtualRingBuffer::<f32>::new(min_buffer_frames * channels)?;
-        let buffer_bf16 = VirtualRingBuffer::<u16>::new(min_buffer_frames * channels)?;
+        let buffer = MirroredBuffer::<f32>::new(min_buffer_frames * channels)?;
+        let buffer_bf16 = MirroredBuffer::<u16>::new(min_buffer_frames * channels)?;
 
         let actual_buffer_frames = buffer.size() / channels;
 
@@ -89,7 +89,7 @@ impl WaveNetLayerState {
         self.buffer_start += num_frames;
         let buffer_frames = self.layer_buffer.size() / channels;
 
-        // [VIRTUAL RING BUFFER]
+        // [MIRRORED BUFFER]
         // Se o próximo bloco de tamanho máximo (64) puder ultrapassar o limite do mapeamento 2N,
         // retrocedemos o ponteiro para a primeira metade (mantendo a paridade de endereço virtual).
         // Isso garante que [buffer_start .. buffer_start + 64] seja sempre um acesso seguro.

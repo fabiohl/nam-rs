@@ -173,7 +173,7 @@ To ensure the engine remains stable during hours of continuous usage, NAM-rs inc
 
 * **Numerical Drift:** Rounding error accumulations in filters and resamplers.
 * **FSM Stability:** Integrity of Gate counters and fade transitions.
-* **Memory Resilience:** Ring buffer boundary stress in `VirtualRingBuffer`.
+* **Memory Resilience:** Ring buffer boundary stress in `MirroredBuffer`.
 
 Run the full battery: `bash utils/tests-long.sh`
 

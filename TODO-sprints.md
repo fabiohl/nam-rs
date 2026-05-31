@@ -78,24 +78,24 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
   - Smoke test PipeWire (`utils/tests-cargo.sh`) sem regressão.
 - **Especialista:** `implementador`.
 
-#### Tarefa S1.T02 — Tornar `VirtualRingBuffer::new` falível 🔥 [DONE]
+#### Tarefa S1.T02 — Tornar `MirroredBuffer::new` falível 🔥 [DONE]
 
-- **Onde:** `src/dsp/vring.rs:62-164` e construtor portado para `Result<Self>`.
+- **Onde:** `src/dsp/mirror_buf.rs:62-164` e construtor portado para `Result<Self>`.
 - **Problema:** `new()` faz `panic!` em casos legítimos (sandboxes, container, RLIMIT_AS baixo). Inaceitável em plugin CLAP carregado por host arbitrário.
 - **Solução técnica:**
   1. Mudar `pub fn new(...) -> Self` para `pub fn new(...) -> std::io::Result<Self>`.
   2. Propagar erro pelo construtor de `WaveNetLayerState` (`src/models/wavenet/common.rs:73`).
-  3. Adicionar `checked_mul(2)` em `vring.rs:96` (overflow protection).
+  3. Adicionar `checked_mul(2)` em `mirror_buf.rs:96` (overflow protection).
   4. Adicionar `assert!(requested_size > 0)` antes de `mmap` para evitar UB POSIX.
-  5. Adicionar `#[cold]` no `Clone` impl (`vring.rs:209-214`).
+  5. Adicionar `#[cold]` no `Clone` impl (`mirror_buf.rs:209-214`).
 - **Critérios de aceitação:**
-  - Nenhum `panic!`/`expect`/`unwrap` em `vring.rs`.
-  - Novo teste `tests/vring_fault_injection.rs` simulando falha de `mmap` (via wrapper opt-in).
+  - Nenhum `panic!`/`expect`/`unwrap` em `mirror_buf.rs`.
+  - Novo teste `tests/mirror_buf_fault_injection.rs` simulando falha de `mmap` (via wrapper opt-in).
 - **Especialista:** `implementador`.
 
-#### Tarefa S1.T03 — Renomear `VirtualRingBuffer` para `MirroredBuffer` 🔥
+#### Tarefa S1.T03 — Renomear `VirtualRingBuffer` para `MirroredBuffer` 🔥 [DONE]
 
-- **Onde:** `src/dsp/vring.rs` (todo o arquivo), `src/models/wavenet/common.rs` (uso).
+- **Onde:** `src/dsp/mirror_buf.rs` (todo o arquivo), `src/models/wavenet/common.rs` (uso).
 - **Problema:** O tipo **não é um ring buffer funcional** — não armazena `read_pos`/`write_pos`. É apenas um alocador de buffer espelhado. Nome induz a erros futuros.
 - **Solução técnica:**
   1. Renomear o tipo, módulo (`vring.rs` → `mirror_buf.rs`), e re-export.
@@ -104,9 +104,9 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Critérios de aceitação:** `cargo check --all-features` verde, sem warnings.
 - **Especialista:** `implementador`.
 
-#### Tarefa S1.T04 — Cobertura portátil de `vring.rs` 💡
+#### Tarefa S1.T04 — Cobertura portátil de `mirror_buf.rs` 💡
 
-- **Onde:** `src/dsp/vring.rs:62, 199`.
+- **Onde:** `src/dsp/mirror_buf.rs:62, 199`.
 - **Problema:** Usa `memfd_create`, Linux-only. Para manter o crate portátil para outros sistemas operacionais (não-Linux), precisamos de fallback ou cfg-gate.
 - **Solução técnica:**
   1. Adicionar `#[cfg(target_os = "linux")] mod linux;` e `#[cfg(not(target_os = "linux"))] mod fallback;`.
