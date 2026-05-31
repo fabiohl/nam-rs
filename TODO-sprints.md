@@ -104,7 +104,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Critérios de aceitação:** `cargo check --all-features` verde, sem warnings.
 - **Especialista:** `implementador`.
 
-#### Tarefa S1.T04 — Cobertura portátil de `mirror_buf.rs` 💡
+#### Tarefa S1.T04 — Cobertura portátil de `mirror_buf.rs` 💡 [DONE]
 
 - **Onde:** `src/dsp/mirror_buf.rs:62, 199`.
 - **Problema:** Usa `memfd_create`, Linux-only. Para manter o crate portátil para outros sistemas operacionais (não-Linux), precisamos de fallback ou cfg-gate.

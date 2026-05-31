@@ -41,6 +41,12 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
 
+#[cfg(target_os = "linux")]
+mod linux;
+
+#[cfg(not(target_os = "linux"))]
+mod fallback;
+
 /// Um Buffer Espelhado que usa mapeamento de memória espelhado.
 ///
 /// Esta estrutura mapeia o mesmo conteúdo físico duas vezes consecutivas no espaço
@@ -111,19 +117,17 @@ impl<T> MirroredBuffer<T> {
         };
         let size_elements = size_bytes / element_size;
 
-        // 1. Criar backing store (memfd no Linux)
-        // MFD_CLOEXEC evita que o FD seja herdado por processos filhos.
+        // 1. Criar backing store (memfd no Linux, stub fallback em outras plataformas)
         let fd = unsafe {
-            if SIMULATE_FAIL.with(|f| f.get()) {
-                *libc::__errno_location() = libc::ENOMEM;
-                -1
-            } else {
-                libc::memfd_create(c"mirror_buf".as_ptr(), libc::MFD_CLOEXEC)
+            #[cfg(target_os = "linux")]
+            {
+                linux::create_backing_fd()?
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                fallback::create_backing_fd()?
             }
         };
-        if fd == -1 {
-            return Err(std::io::Error::last_os_error());
-        }
 
         // 2. Definir o tamanho do arquivo
         if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {

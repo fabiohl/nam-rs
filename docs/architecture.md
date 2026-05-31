@@ -45,6 +45,12 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > **Referências:** `src/math/fastmath.rs` (docstring de `simd_tanh_avx2`),
 > `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)
 
+### Decisão Técnica: Portabilidade e Alocação Virtual de `MirroredBuffer`
+
+> **Decisão:** A estrutura `MirroredBuffer` realiza o espelhamento de memória virtual mapeando o mesmo bloco físico duas vezes consecutivas para evitar wrap-around lógico no hot-path DSP. O suporte principal é direcionado estritamente para o Linux, utilizando `memfd_create`. Para plataformas não-Linux, é fornecido um fallback (stub) que retorna um erro de incompatibilidade (`Unsupported`).
+>
+> **Trade-off:** O uso de `memfd_create` no Linux oferece uma maneira ideal de alocação de buffers espelhados sem criar arquivos no disco físico e sem requerer limpezas complexas no filesystem. Como o ecossistema de produção do NAM-rs é focado exclusivamente no Linux (Standalone PipeWire e plugin CLAP), a implementação de stubs para outras plataformas é suficiente para a portabilidade estática da compilação do crate, evitando complexidades de concorrência ou I/O adicionais no cold-path de carregamento.
+
 ### Formato Binário NAMB (Native Audio Model Binary)
 
 O formato `.namb` é uma evolução otimizada do JSON original para uso em tempo-real.
