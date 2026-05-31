@@ -38,9 +38,11 @@ impl NamModel for WavenetA2Placeholder {
         #[cfg(feature = "heap-audit")]
         if crate::clap::heap_audit::AUDIT_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            let audit_thread = crate::clap::heap_audit::AUDIT_THREAD.load(std::sync::atomic::Ordering::Relaxed);
+            let audit_thread =
+                crate::clap::heap_audit::AUDIT_THREAD.load(std::sync::atomic::Ordering::Relaxed);
             if audit_thread == 0 || audit_thread == tid {
-                crate::clap::heap_audit::ALLOC_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                crate::clap::heap_audit::ALLOC_COUNT
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
         }
 

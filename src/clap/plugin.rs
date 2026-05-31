@@ -293,8 +293,10 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                         let err_str = format!("NAM-rs: Failed to load model from GUI: {:?}", e);
                         let sanitized_err = err_str.replace('\0', " ");
                         let msg = CString::new(sanitized_err).unwrap_or_else(|_| {
-                            CString::new("NAM-rs: Failed to load model from GUI due to invalid characters")
-                                .unwrap()
+                            CString::new(
+                                "NAM-rs: Failed to load model from GUI due to invalid characters",
+                            )
+                            .unwrap()
                         });
                         log.log(&shared, LogSeverity::Error, &msg);
                     }
@@ -306,6 +308,10 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         if let Some(log) = self.host.get_extension::<HostLog>() {
             let shared = self.host.shared();
 
+            // WHITELIST: CString::new(…).expect() nas linhas abaixo é seguro porque:
+            // - Todas as strings são literais ASCII estáticos sem bytes nulos internos.
+            // - O compilador garante que tais strings não contêm '\0' antes do terminador.
+            // - Estas chamadas estão na main thread, fora de qualquer hotpath RT ou FFI de áudio.
             if self
                 .shared
                 .rt_status

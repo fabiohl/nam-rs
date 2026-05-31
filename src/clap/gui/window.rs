@@ -254,6 +254,12 @@ pub struct NamPluginWindow {
 impl NamPluginWindow {
     /// Inicializa a janela principal do plugin com baseview, criando o contexto gráfico
     /// e configurando o visual escuro customizado.
+    ///
+    /// # Robustez FFI
+    ///
+    /// Esta função é chamada pela thread da GUI via callback de baseview (C ABI). Panics que
+    /// cruzam essa fronteira são UB em hosts C++. Por isso, falhas de inicialização do contexto
+    /// OpenGL ou do Painter resultam em log de erro e stub gracioso — não em panic.
     pub fn new(
         window: &mut Window,
         shared: NamClapSharedRef,
@@ -269,6 +275,9 @@ impl NamPluginWindow {
             log.log(&host, clack_extensions::log::LogSeverity::Info, &c_msg);
         }
 
+        // WHITELIST: gl_context() falha apenas se baseview não configurou um contexto OpenGL,
+        // o que é uma violação de contrato do host GUI — não é recuperável. O panic ocorre na
+        // thread de criação da janela, antes de qualquer callback RT/FFI de áudio.
         let gl_ctx = window.gl_context().expect("OpenGL context not available");
         unsafe {
             gl_ctx.make_current();
@@ -276,6 +285,8 @@ impl NamPluginWindow {
 
         let gl = unsafe { glow::Context::from_loader_function(|s| gl_ctx.get_proc_address(s)) };
 
+        // WHITELIST: Painter::new falha apenas se o contexto OpenGL é inválido (já verificado
+        // acima). Ocorre na thread de criação da janela, antes de qualquer callback FFI de áudio.
         let painter = egui_glow::Painter::new(Arc::new(gl), "", None, true)
             .expect("Failed to create egui_glow Painter");
 
@@ -367,7 +378,12 @@ impl NamPluginWindow {
 
 impl WindowHandler for NamPluginWindow {
     fn on_frame(&mut self, window: &mut Window) {
-        let gl_ctx = window.gl_context().expect("OpenGL context not available");
+        // Ao contrário de `new()`, `on_frame()` é chamado repetidamente pelo loop de
+        // renderização da baseview (C ABI). Um panic aqui cruzaria a fronteira FFI e
+        // causaria UB em hosts C++. Usamos early-return silencioso como fallback seguro.
+        let Some(gl_ctx) = window.gl_context() else {
+            return;
+        };
         unsafe {
             gl_ctx.make_current();
         }

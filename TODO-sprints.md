@@ -57,7 +57,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Épico 1 — Correções de Soundness / UB / Panics em Hotpath RT
+## Épico 1 — Correções de Soundness / UB / Panics em Hotpath RT [DONE]
 
 Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **panics dentro da audio thread**. Bloqueador de qualquer release estável.
 
@@ -117,7 +117,12 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Critérios de aceitação:** Crate compila com sucesso em alvos não-Linux sem erros ou warnings sobre `memfd_create`.
 - **Especialista:** `implementador`.
 
-### Sprint S2 — Panics & FFI seguro
+### Sprint S2 — Panics & FFI seguro [DONE]
+
+> **Nota de Auditoria (2026-05-31):** Todas as tarefas auditadas e validadas. Dois achados adicionais identificados e corrigidos:
+>
+> 1. **`window.rs` — `on_frame()` panic em FFI callback de baseview:** O `.expect()` no loop de render (chamado a cada frame via C ABI da baseview) foi substituído por early-return silencioso, eliminando possível UB em hosts C++.
+> 2. **Whitelist de `.expect()` documentada:** Comentários `WHITELIST:` adicionados em `plugin.rs` e `window.rs` para todos os `.expect()` residuais permitidos, justificando por que são seguros (strings literais ASCII, contexto de inicialização de janela antes de qualquer callback RT/FFI de áudio). Critério de aceitação da S2.T02 totalmente cumprido.
 
 #### Tarefa S2.T01 — Eliminar `panic!` em `process()` sob feature `heap-audit` 🔥 [DONE]
 
@@ -640,6 +645,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
   - `window/mod.rs` — `WindowHandler` (~250 LoC).
   - `window/shaders.rs` — GLSL VU meter (~150 LoC).
   - `window/input_map.rs` — keyboard/mouse maps (~200 LoC).
+- **Nota técnica (Épico 1):** Ao refatorar `on_frame()` e demais callbacks de `WindowHandler`, preservar o padrão de **early-return silencioso** (sem `.expect()` ou `panic!`) estabelecido na auditoria do Épico 1. Callbacks de baseview cruzam fronteira C ABI — panics causam UB em hosts C++.
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 

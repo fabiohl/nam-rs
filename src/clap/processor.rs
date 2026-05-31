@@ -131,18 +131,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take()
-            .ok_or_else(|| {
-                PluginError::Message("param_rx consumer has already been extracted")
-            })?;
+            .ok_or_else(|| PluginError::Message("param_rx consumer has already been extracted"))?;
 
         let gc_tx = shared
             .gc_tx
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .take()
-            .ok_or_else(|| {
-                PluginError::Message("gc_tx producer has already been extracted")
-            })?;
+            .ok_or_else(|| PluginError::Message("gc_tx producer has already been extracted"))?;
 
         // 2. Pré-alocação de buffers intermediários (Disjoint Stages)
         let buf_capacity = (audio_config.max_frames_count as usize)
@@ -162,12 +158,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let model_rate = shared.model_sample_rate.load(Ordering::Relaxed);
         let model_rate = if model_rate == 0 { 48000 } else { model_rate };
         let resampler = Box::new(
-            NamResampler::new(audio_config.sample_rate as u32, model_rate, buf_capacity)
-                .map_err(|e| {
+            NamResampler::new(audio_config.sample_rate as u32, model_rate, buf_capacity).map_err(
+                |e| {
                     PluginError::Message(Box::leak(
                         format!("Failed to create NamResampler: {:?}", e).into_boxed_str(),
                     ))
-                })?,
+                },
+            )?,
         );
 
         let silence_hyst = DynamicHysteresis::new();

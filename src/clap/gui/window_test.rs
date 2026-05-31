@@ -79,9 +79,9 @@ fn test_gui_drag_drop_fuzz() {
     use crate::clap::plugin::NamClapShared;
     use crate::common::spsc::{GcOverflowBuffer, RtStatusFlags};
     use rtrb::RingBuffer;
-    use std::sync::{Arc, Mutex};
     use std::sync::atomic::AtomicU32;
     use std::sync::atomic::Ordering;
+    use std::sync::{Arc, Mutex};
 
     let (param_tx, _) = RingBuffer::new(8);
     let (gc_tx, _) = RingBuffer::new(32);
@@ -145,18 +145,19 @@ fn test_gui_drag_drop_fuzz() {
     let alive_fence = Arc::clone(&shared.alive_fence);
 
     // Simula a lógica de helper safe_shared para o drag-drop:
-    let check_and_drop = |alive: &Arc<std::sync::atomic::AtomicBool>, s_ref: NamClapSharedRef, path: PathBuf| {
-        if alive.load(Ordering::Relaxed) {
-            let s = unsafe { &*s_ref.0 };
-            if let Ok(mut pending_guard) = s.ui_pending_model.lock() {
-                *pending_guard = Some(path);
-                s.ui_loading.store(true, Ordering::Relaxed);
+    let check_and_drop =
+        |alive: &Arc<std::sync::atomic::AtomicBool>, s_ref: NamClapSharedRef, path: PathBuf| {
+            if alive.load(Ordering::Relaxed) {
+                let s = unsafe { &*s_ref.0 };
+                if let Ok(mut pending_guard) = s.ui_pending_model.lock() {
+                    *pending_guard = Some(path);
+                    s.ui_loading.store(true, Ordering::Relaxed);
+                }
+                true
+            } else {
+                false
             }
-            true
-        } else {
-            false
-        }
-    };
+        };
 
     // 1. Caso vivo: deve setar o modelo pendente
     let path = PathBuf::from("model.nam");
@@ -169,8 +170,11 @@ fn test_gui_drag_drop_fuzz() {
 
     // 2. Caso morto (cerca false): não deve acessar ou alterar nada
     alive_fence.store(false, Ordering::Relaxed);
-    assert!(!check_and_drop(&alive_fence, shared_ref, PathBuf::from("another.nam")));
+    assert!(!check_and_drop(
+        &alive_fence,
+        shared_ref,
+        PathBuf::from("another.nam")
+    ));
     assert_eq!(*shared.ui_pending_model.lock().unwrap(), None);
     assert!(!shared.ui_loading.load(Ordering::Relaxed));
 }
-
