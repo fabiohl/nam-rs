@@ -3,7 +3,7 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
-use crate::math::common::f32_to_bf16;
+use crate::math::common::{f32_to_bf16, quantize_weight};
 use crate::models::DynamicModel;
 use crate::models::lstm::{LstmDynLayer, LstmDynModel, LstmLayer, LstmModel1, LstmModel2};
 use anyhow::Context;
@@ -63,15 +63,17 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     hidden_size: usize,
 ) -> anyhow::Result<LstmModel1<H, H1_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     // Layer 1: input_size=1
-    let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor)?;
+    let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
 
     // Head: pesos da projeção linear de saída
     let head_weights_data = cursor.read_slice(H)?;
     let mut head_weights = [0u16; H];
     for i in 0..H {
-        head_weights[i] = half::f16::from_f32(head_weights_data[i]).to_bits();
+        head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
     }
     let head_bias = cursor.read_f32()?;
 
@@ -104,18 +106,20 @@ pub(crate) fn build_lstm_2layer<
     hidden_size: usize,
 ) -> anyhow::Result<LstmModel2<H, H1_IH, H2_IH, H_H4>> {
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     // Layer 1: input_size=1
-    let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor)?;
+    let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
 
     // Layer 2: input_size=H (estado oculto da camada anterior)
-    let layer2 = read_lstm_layer::<H, H, H2_IH, H_H4>(&mut cursor)?;
+    let layer2 = read_lstm_layer::<H, H, H2_IH, H_H4>(&mut cursor, is_bf16)?;
 
     // Head: pesos da projeção final
     let head_weights_data = cursor.read_slice(H)?;
     let mut head_weights = [0u16; H];
     for i in 0..H {
-        head_weights[i] = half::f16::from_f32(head_weights_data[i]).to_bits();
+        head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
     }
     let head_bias = cursor.read_f32()?;
 
@@ -265,6 +269,7 @@ pub fn build_lstm_dynamic(
 /// ```
 fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: usize>(
     cursor: &mut WeightCursor<'_>,
+    is_bf16: bool,
 ) -> anyhow::Result<LstmLayer<I, H, IH, H4>> {
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
@@ -276,7 +281,7 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
                 for i in 0..H {
                     let idx = k * IH * H + j * H + i;
                     layer.input_hidden_weights[k][j][i] =
-                        half::f16::from_f32(raw_weights[idx]).to_bits();
+                        quantize_weight(raw_weights[idx], is_bf16);
                 }
             }
         }
@@ -290,7 +295,7 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
             for i in 0..H {
                 for j in 0..IH {
                     let w = raw_weights[k * IH * H + i * IH + j];
-                    layer.input_hidden_weights[k][j][i] = half::f16::from_f32(w).to_bits();
+                    layer.input_hidden_weights[k][j][i] = quantize_weight(w, is_bf16);
                 }
             }
         }

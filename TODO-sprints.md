@@ -215,7 +215,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 
-#### Tarefa S3.T02 — Unificar quantização BF16/F16 em LSTM estático 🔥
+#### Tarefa S3.T02 — Unificar quantização BF16/F16 em LSTM estático 🔥 [DONE]
 
 - **Onde:** `src/loader/dispatcher/lstm.rs:74, 118, 279, 293` (funções `build_lstm_1layer`, `build_lstm_2layer`, `read_lstm_layer`).
 - **Problema:** `build_lstm_dynamic` detecta CPU (`is_bf16`, linha 159-160) e quantiza adequadamente usando `f32_to_bf16` (já importado no topo do arquivo). Mas `build_lstm_1layer` (linha 74), `build_lstm_2layer` (linha 118), e `read_lstm_layer` (linhas 279, 293) **sempre usam `half::f16::from_f32(w).to_bits()`** — ignorando o dispatcher dinâmico. Em CPUs Sapphire Rapids+ com kernels BF16-nativos, drift numérico imediato.

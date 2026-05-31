@@ -11,6 +11,16 @@ pub fn f32_to_bf16(f: f32) -> u16 {
     (f.to_bits() >> 16) as u16
 }
 
+/// Quantiza um peso f32 para u16 (bits de BF16 ou F16), baseado em `is_bf16`.
+#[inline(always)]
+pub fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
+    if is_bf16 {
+        f32_to_bf16(f)
+    } else {
+        half::f16::from_f32(f).to_bits()
+    }
+}
+
 /// Converte um vetor de números f32 (normais) para bf16 (compactos) via AVX-512.
 /// O formato bf16 ocupa metade do espaço, mas mantém o alcance dos números f32,
 /// sendo ideal para modelos de inteligência artificial rápidos.
