@@ -471,17 +471,6 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Especialista:** `documentador`.
 - **Nota:** S14.T01 abaixo é **apenas referência cruzada** — esta é a entrega real.
 
-#### Tarefa S5.T08 — Fuzzing dos parsers NAMB/JSON 💡
-
-- **Onde:** `tests/fuzz/` (novo).
-- **Problema:** Sem fuzzing sistemático além do proptest existente.
-- **Solução técnica:**
-  1. Adicionar `cargo-fuzz` configuration em `fuzz/`.
-  2. Targets: `fuzz_parse_namb`, `fuzz_parse_nam_json`.
-  3. Roda em CI (24h em GitHub Actions ou local).
-- **Critérios de aceitação:** Nenhum panic em 1M iterações.
-- **Especialista:** `implementador`.
-
 #### Tarefa S5.T09 — Rejeitar magic alternativo `0x424D414E` ou implementar byte-swap 💡
 
 - **Onde:** `src/loader/namb.rs:64-70`.
