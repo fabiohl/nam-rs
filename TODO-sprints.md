@@ -383,6 +383,20 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 
 ### Sprint S5 — Loader hardening
 
+> **Nota de Auditoria (2026-05-31):** Todas as 7 tarefas implementadas (T01–T07, T09) auditadas e verificadas — zero gaps de implementação. Todas possuem cobertura de testes adequada, tratamento de erro tipado, e seguem os critérios de aceitação conforme especificado. S5.T08 foi definida retroativamente como infraestrutura de cargo-fuzz (foundation para S21.T01).
+>
+> Resumo por tarefa:
+>
+> - **S5.T01** ✓ — `MAX_MODEL_BYTES` (256 MiB) + metadata check O(1) em `mod.rs:72-98` (NAMB) e `mod.rs:125-151` (JSON). Diagnóstico `NamErrorCode::ModelTooLarge` tipado.
+> - **S5.T02** ✓ — `NambError` enum com 7 variantes `thiserror::Error` em `namb.rs:18-70`. `downcast_ref::<NambError>()` em `mod.rs:109-117` mapeia cada variante para `NamErrorCode` correto.
+> - **S5.T03** ✓ — Flag `FLAG_HAS_CRC32 = 0x01` em `namb.rs:98`. v2 exige flag + valida CRC sempre (incl. zero legítimo); v1 mantém sentinel `crc==0 ⇒ skip` com warning. Encoder seta flag em `namb_encoder.rs:40`. Testes cobrem 3 branches (v2-missing, v2-zero-legit, v1-warn).
+> - **S5.T04** ✓ — Custom deserializers: `WeightsVisitor` capa `MAX_WEIGHTS = 67M floats`; `LimitedValueVisitor` limita profundidade 16 e 1 MiB em `metadata.training`. Forward-compat preservada (sem `deny_unknown_fields`). Testes cobrem nested depth, weight limit, unknown fields em 3 níveis.
+> - **S5.T05** ✓ — `parse_semver()` em `nam_json.rs:460-468` com split por `.`, parse u16, strip `v/V`, pre-release/metadata suffix. `is_wavenet_a2` usa `ver >= (0,6,0)` + activation `!= "Tanh"`. Testes para 9 versões.
+> - **S5.T06** ✓ — Traits `ConvWeightsOutput` e `DenseWeightsOutput` em `wavenet.rs:345-451` unificam paths estático e dinâmico. `read_conv1d_weights_typed<T>()` e `read_dense_weights_typed<T>()` genéricos. `read_lstm_weights_into()` e `read_lstm_layer()` compartilhados em LSTM.
+> - **S5.T07** ✓ — `docs/namb-spec.md` (425 linhas): header offsets, magic, versionamento, flags, 3 layouts com exemplos hex, CRC32 spec, tabela de erros, política de evolução, constantes com referências a source.
+> - **S5.T08** — Definida retroativamente (infra cargo-fuzz para loaders). Pendente implementação.
+> - **S5.T09** ✓ — Magic alternativo `0x424D414E` rejeitado com `NambError::InvalidMagic`. Decisão documentada em `namb.rs:29` e `namb-spec.md:34-38`. Teste `test_reject_magic_bman()` confirma.
+
 #### Tarefa S5.T01 — Validar tamanho do arquivo antes de `std::fs::read` 🔥 [DONE]
 
 - **Onde:** `src/loader/mod.rs:70, 94`.
@@ -470,6 +484,24 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Critérios de aceitação:** Doc revisto pela skill `documentador`; cobre todas as decisões tomadas em S3.T03/S3.T04/S5.T02/S5.T03.
 - **Especialista:** `documentador`.
 - **Nota:** S14.T01 abaixo é **apenas referência cruzada** — esta é a entrega real.
+
+#### Tarefa S5.T08 — Infraestrutura de fuzzing para loaders NAMB/JSON (cargo-fuzz) 🔥💡
+
+- **Onde:** Criar `fuzz/` (cargo-fuzz) e targets para os parsers de loader.
+- **Problema:** Testes unitários e de integração cobrem casos felizes e erros conhecidos, mas não geram inputs adversariais. O formato NAMB é binário complexo — bugs de parsing são latentes. A carga JSON também é vetor de injeção adversarial (campos aninhados, floats extremos, strings longas). A infraestrutura de fuzz é o primeiro passo antes de estendê-la para differential fuzzing C++↔Rust (S21.T01).
+- **Solução técnica:**
+  1. Criar `fuzz/Cargo.toml` com `cargo-fuzz` e dependência no crate principal.
+  2. Target `fuzz/fuzz_targets/namb_parse.rs`: fornece `data: &[u8]` ao parser NAMB (`NambHeader::parse` + `read_weights`). O fuzzer exercita magic, version, flags, CRC32, offset boundaries, weight layouts (Original, GateMajorLstm, Interleaved4WaveNet) e VLA de pesos. Panics, OOM e timeouts são bugs.
+  3. Target `fuzz/fuzz_targets/nam_json_parse.rs`: fornece `data: &[u8]` ao parser JSON (`serde_json::from_str::<NamConfig>`). O custom deserializer de pesos e o `LimitedValueVisitor` de training são exercitados sob inputs adversariais.
+  4. Target `fuzz/fuzz_targets/namb_roundtrip.rs`: gera modelo sintético aleatório (`Arbitrary`) → encode NAMB v2 → decode → assert decode(encode(x)) == x. Cobre encoder e decoder simultaneamente.
+  5. Documentar no `fuzz/README.md` como rodar localmente e em CI (1 min de smoke por PR, 1h nightly).
+- **Critérios de aceitação:**
+  - `cargo fuzz run namb_parse -- -max_total_time=30` não encontra panics/OOM/timeouts em 30s.
+  - `cargo fuzz run nam_json_parse -- -max_total_time=30` idem.
+  - `cargo fuzz run namb_roundtrip -- -max_total_time=30` idem.
+  - Nenhum fuzz target compila com panics conhecidos sinalizados no código.
+- **Especialista:** `implementador`.
+- **Nota:** S21.T01 estende esta tarefa adicionando differential fuzzing C++↔Rust ao target `cpp_diff.rs`.
 
 #### Tarefa S5.T09 — Rejeitar magic alternativo `0x424D414E` ou implementar byte-swap 💡 [DONE]
 

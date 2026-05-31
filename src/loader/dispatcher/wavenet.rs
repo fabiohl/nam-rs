@@ -205,7 +205,8 @@ pub(crate) fn build_wavenet_array<
             read_conv1d_weights_typed::<Conv1d<CH, CH, K>>(cursor, CH, CH, K, dilation, true)?;
 
         // input_mixin: Adiciona informações externas ao processamento (como ajustes do usuário).
-        let input_mixin = read_dense_weights_typed::<DenseLayer<COND, CH>>(cursor, COND, CH, false)?;
+        let input_mixin =
+            read_dense_weights_typed::<DenseLayer<COND, CH>>(cursor, COND, CH, false)?;
 
         // one_by_one: Um ajuste final de "mistura" de canais para cada momento do som.
         let one_by_one = read_dense_weights_typed::<DenseLayer<CH, CH>>(cursor, CH, CH, true)?;
