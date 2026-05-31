@@ -180,7 +180,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 
 > Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 
-#### Tarefa S3.T01 — Corrigir `process_sample_scalar` LSTM (BF16 vs F16) 🔥
+#### Tarefa S3.T01 — Corrigir `process_sample_scalar` LSTM (BF16 vs F16) 🔥 [DONE]
 
 - **Onde:** `src/models/lstm/layer.rs:378-416` (linha 390); replicar em linhas 519 e 626 do mesmo arquivo.
 

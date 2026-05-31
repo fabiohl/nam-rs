@@ -376,6 +376,8 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// que as versões ultra-rápidas acima não tenham erros matemáticos.
     #[inline(always)]
     pub fn process_sample_scalar(&mut self, input: &[f32]) {
+        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+            == crate::math::common::InstructionSet::Avx512VnniBf16;
         let ih = I + H;
         let h = H;
         self.state[..I].copy_from_slice(&input[..I]);
@@ -387,7 +389,12 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
                 let mut sum = 0.0;
                 for (j, &s) in self.state.iter().enumerate().take(ih) {
                     let w = self.input_hidden_weights[k][j][i];
-                    sum += half::f16::from_bits(w).to_f32() * s;
+                    let w_f32 = if is_bf16 {
+                        f32::from_bits((w as u32) << 16)
+                    } else {
+                        half::f16::from_bits(w).to_f32()
+                    };
+                    sum += w_f32 * s;
                 }
                 self.gates[target_gate_offset + i] = sum + self.bias[target_gate_offset + i];
             }
@@ -511,12 +518,20 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     /// # Atenção
     /// Exclusivo para testes de paridade. Extremamente lento.
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+            == crate::math::common::InstructionSet::Avx512VnniBf16;
         for i in 0..input.len() {
             self.layer.process_sample_scalar(&[input[i]]);
             let hidden = self.layer.get_hidden_state();
             let mut dot = 0.0;
             for (j, &h_val) in hidden.iter().enumerate().take(H) {
-                dot += h_val * half::f16::from_bits(self.head_weights[j]).to_f32();
+                let w = self.head_weights[j];
+                let w_f32 = if is_bf16 {
+                    f32::from_bits((w as u32) << 16)
+                } else {
+                    half::f16::from_bits(w).to_f32()
+                };
+                dot += h_val * w_f32;
             }
             output[i] = dot + self.head_bias;
         }
@@ -616,6 +631,8 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     /// # Atenção
     /// Exclusivo para testes de paridade. Extremamente lento.
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
+        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+            == crate::math::common::InstructionSet::Avx512VnniBf16;
         for i in 0..input.len() {
             self.layer1.process_sample_scalar(&[input[i]]);
             self.layer2
@@ -623,7 +640,13 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             let hidden2 = self.layer2.get_hidden_state();
             let mut dot = 0.0;
             for (j, &h_val) in hidden2.iter().enumerate().take(H) {
-                dot += h_val * half::f16::from_bits(self.head_weights[j]).to_f32();
+                let w = self.head_weights[j];
+                let w_f32 = if is_bf16 {
+                    f32::from_bits((w as u32) << 16)
+                } else {
+                    half::f16::from_bits(w).to_f32()
+                };
+                dot += h_val * w_f32;
             }
             output[i] = dot + self.head_bias;
         }
