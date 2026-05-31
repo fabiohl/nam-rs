@@ -458,7 +458,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Critérios de aceitação:** ~200 LoC removidas; testes passam.
 - **Especialista:** `implementador`.
 
-#### Tarefa S5.T07 — Documentar formato NAMB em `docs/namb-spec.md` ⚠️ (entrega única — referenciada por S14.T01)
+#### Tarefa S5.T07 — Documentar formato NAMB em `docs/namb-spec.md` ⚠️ (entrega única — referenciada por S14.T01) [DONE]
 
 - **Onde:** Criar `docs/namb-spec.md`.
 - **Problema:** Especificação do formato não está documentada formalmente. Comentários in-line são insuficientes para implementadores externos.
@@ -471,7 +471,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Especialista:** `documentador`.
 - **Nota:** S14.T01 abaixo é **apenas referência cruzada** — esta é a entrega real.
 
-#### Tarefa S5.T09 — Rejeitar magic alternativo `0x424D414E` ou implementar byte-swap 💡
+#### Tarefa S5.T09 — Rejeitar magic alternativo `0x424D414E` ou implementar byte-swap 💡 [DONE]
 
 - **Onde:** `src/loader/namb.rs:64-70`.
 - **Problema:** Aceitar magic alternativo "BMAN" sem byte-swap leva à leitura errada de `weights_offset` (u32 LE).

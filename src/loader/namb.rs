@@ -26,8 +26,8 @@ pub enum NambError {
         need: usize,
     },
 
-    /// Número mágico inválido (não é 0x4E414D42 nem 0x424D414E).
-    #[error("invalid magic number: 0x{0:08X}")]
+    /// Número mágico inválido (não é 0x4E414D42).
+    #[error("invalid magic number: 0x{0:08X} (expected 0x4E414D42)")]
     InvalidMagic(u32),
 
     /// Versão do formato `.namb` não suportada.
@@ -137,11 +137,7 @@ impl NambHeader {
         let magic = self.magic;
         let version = self.version;
         if magic != 0x4E414D42 {
-            // Alguns arquivos antigos podem vir como "BMAN" (0x424D414E) em big-endian ou vice-versa.
-            // Mas o padrão NAMB oficial é 0x4E414D42.
-            if magic != 0x424D414E {
-                return Err(NambError::InvalidMagic(magic));
-            }
+            return Err(NambError::InvalidMagic(magic));
         }
         if version != 1 && version != 2 {
             return Err(NambError::InvalidVersion(version));
@@ -476,5 +472,26 @@ mod tests {
         let parsed = parse_namb(&data)?;
         assert_eq!(parsed.weights, vec![0.5f32]);
         Ok(())
+    }
+
+    #[test]
+    fn test_reject_magic_bman() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x424D414E; // "BMAN" — não mais aceito (S5.T09)
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Erro deveria ser NambError::InvalidMagic");
+        assert!(
+            matches!(namb_err, NambError::InvalidMagic(m) if *m == 0x424D414E),
+            "Esperado InvalidMagic(0x424D414E), obtido: {:?}",
+            namb_err
+        );
     }
 }

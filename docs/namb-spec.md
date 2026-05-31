@@ -14,7 +14,7 @@ Todos os inteiros multi-byte estão em **little-endian**.
 
 | Offset | Tamanho | Campo              | Tipo      | Descrição                                                                                                 |
 | ------ | ------- | ------------------ | --------- | --------------------------------------------------------------------------------------------------------- |
-| 0x00   | 4       | `magic`            | `u32`     | Número mágico `0x4E414D42` ("NAMB" em ASCII LE). Fallback legado: `0x424D414E` ("BMAN")                   |
+| 0x00   | 4       | `magic`            | `u32`     | Número mágico `0x4E414D42` ("NAMB" em ASCII LE). Valores diferentes são rejeitados com `InvalidMagic`.    |
 | 0x04   | 2       | `version`          | `u16`     | Versão do formato: `1` = legado, `2` = pré-transposto                                                     |
 | 0x06   | 1       | `layout_type`      | `u8`      | Layout dos pesos (ativo p/ `version >= 2`): `0`=Original, `1`=GateMajorLstm, `2`=Interleaved4WaveNet      |
 | 0x07   | 1       | `flags`            | `u8`      | Bitmask de flags de funcionalidade (ver §2)                                                               |
@@ -34,9 +34,8 @@ Todos os inteiros multi-byte estão em **little-endian**.
 ### 1.1 Número mágico
 
 O valor canônico é `0x4E414D42` (bytes `42 4D 41 4E` = `"NAMB"` em little-endian).
-
-Para compatibilidade com arquivos legados, o decodificador também aceita
-`0x424D414E` ("BMAN"), emitindo warning. O encoder **sempre** grava `0x4E414D42`.
+Qualquer outro valor é rejeitado com `NambError::InvalidMagic` (E1202).
+O encoder **sempre** grava `0x4E414D42`.
 
 ### 1.2 Versionamento
 
@@ -364,7 +363,7 @@ mapear cada variante ao código `NamErrorCode` correspondente.
 | Variante                                        | Código | Mnemônico                  | Condição                                         |
 | ----------------------------------------------- | ------ | -------------------------- | ------------------------------------------------ |
 | `Truncated { got, need }`                       | E1204  | `NAMB_TRUNCATED`           | Arquivo < 80 bytes (tamanho mínimo do cabeçalho) |
-| `InvalidMagic(u32)`                             | E1202  | `NAMB_INVALID_MAGIC`       | Magic não é `0x4E414D42` nem `0x424D414E`        |
+| `InvalidMagic(u32)`                             | E1202  | `NAMB_INVALID_MAGIC`       | Magic não é `0x4E414D42`                         |
 | `InvalidVersion(u16)`                           | E1203  | `NAMB_UNSUPPORTED_VERSION` | Versão diferente de 1 e 2                        |
 | `WeightsOffsetOutOfBounds { offset, file_len }` | E1204  | `NAMB_TRUNCATED`           | `weights_offset` além do tamanho do arquivo      |
 | `InvalidWeightsOffset { offset, header_size }`  | E1204  | `NAMB_TRUNCATED`           | `weights_offset` < 80 (menor que o cabeçalho)    |
@@ -407,7 +406,6 @@ são rejeitados com `NamErrorCode::ModelTooLarge` (E1304).
 | CRC init            | `0xFFFFFFFF`            | `src/loader/namb.rs:75`             |
 | CRC xorout          | `0xFFFFFFFF`            | `src/loader/namb.rs:83`             |
 | Magic LE            | `0x4E414D42`            | `src/loader/namb.rs:104`            |
-| Magic BE (legacy)   | `0x424D414E`            | `src/loader/namb.rs:142`            |
 | Default sample rate | `48000.0` (f32)         | `src/loader/mod.rs:25`              |
 | Default input dBu   | `12.0` (f32)            | `src/loader/mod.rs:21`              |
 | Default output dBu  | `-6.0` (f32)            | `src/loader/namb_encoder.rs:64`     |
