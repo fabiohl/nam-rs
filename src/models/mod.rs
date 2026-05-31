@@ -24,6 +24,16 @@ pub trait NamModel: Send + Sync {
 
     /// "Aquece" as válvulas virtuais do motor neural (`prewarm`).
     fn prewarm(&mut self, num_samples: usize);
+
+    /// Reseta o estado interno do modelo com nova taxa de amostragem e tamanho máximo de buffer.
+    ///
+    /// A implementação default chama `prewarm(max_buffer_size)`, o que é adequado para
+    /// arquiteturas como WaveNet que precisam preencher o campo receptivo com silêncio.
+    /// Arquiteturas com estado recorrente (LSTM) podem sobrescrever para um reset
+    /// mais leve (apenas zerar os estados internos sem reprocessar prewarm completo).
+    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) {
+        self.prewarm(max_buffer_size);
+    }
 }
 
 /// Wrapper enum para as variantes de modelo treinadas.
@@ -107,6 +117,25 @@ impl NamModel for DynamicModel {
             Self::Lstm2x12(m) => m.prewarm(num_samples),
             Self::Lstm2x16(m) => m.prewarm(num_samples),
             Self::LstmDyn(m) => m.prewarm(num_samples),
+        }
+    }
+
+    fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) {
+        match self {
+            Self::WavenetStandard(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetLite(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetFeather(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetNano(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetDyn(m) => m.reset(sample_rate, max_buffer_size),
+            Self::WavenetA2(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm1x8(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm1x12(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm1x16(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm1x24(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm2x8(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm2x12(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm2x16(m) => m.reset(sample_rate, max_buffer_size),
+            Self::LstmDyn(m) => m.reset(sample_rate, max_buffer_size),
         }
     }
 }

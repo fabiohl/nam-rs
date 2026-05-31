@@ -336,7 +336,9 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Critérios de aceitação:** Carregar modelo A2 exibe mensagem clara no UI; bypass sonoro permanece ativo.
 - **Especialista:** `implementador`.
 
-#### Tarefa S4.T04 — Adicionar `reset(sr, max_buf)` no trait `NamModel` ⚠️
+#### Tarefa S4.T04 — Adicionar `reset(sr, max_buf)` no trait `NamModel` ⚠️ [DONE]
+
+> Nota do PO: O repositório oficial do NeuralAmpModelerCore (C++) está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 
 - **Onde:** `src/models/mod.rs:18` (trait `NamModel` — atualmente tem apenas `process` e `prewarm`).
 - **Problema:** A referência C++ `NAM/dsp.cpp::Reset(sr, max_buf)` deve ser chamada antes de `process`. NAM-rs não tem equivalente: `prewarm(2048)` é hardcoded no loader. O trait `NamModel` em `mod.rs:18` define apenas `process` e `prewarm`.

@@ -70,6 +70,12 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> NamModel
     fn prewarm(&mut self, num_samples: usize) {
         lstm_prewarm_common(self, num_samples);
     }
+
+    /// Reset leve para LSTM: apenas zera os estados internos sem reprocessar
+    /// o prewarm completo com silêncio.
+    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
+        self.reset_states();
+    }
 }
 
 // =============================================================================
@@ -89,6 +95,12 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     fn prewarm(&mut self, num_samples: usize) {
         lstm_prewarm_common(self, num_samples);
     }
+
+    /// Reset leve para LSTM de 2 camadas: apenas zera os estados internos sem
+    /// reprocessar o prewarm completo com silêncio.
+    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
+        self.reset_states();
+    }
 }
 
 // =============================================================================
@@ -105,6 +117,12 @@ impl NamModel for LstmDynModel {
     #[cold]
     fn prewarm(&mut self, num_samples: usize) {
         self.prewarm(num_samples);
+    }
+
+    /// Reset leve para LSTM dinâmico: apenas zera os estados internos sem
+    /// reprocessar o prewarm completo com silêncio.
+    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
+        self.reset_states();
     }
 }
 
