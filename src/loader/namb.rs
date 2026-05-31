@@ -60,6 +60,13 @@ pub enum NambError {
         /// CRC declarado no cabeçalho.
         expected: u32,
     },
+
+    /// CRC32 ausente em arquivo NAMB v2+ (flag FLAG_HAS_CRC32 não setado).
+    #[error("CRC32 flag missing in NAMB v{version} file (FLAG_HAS_CRC32 not set)")]
+    CrcMissing {
+        /// Versão do arquivo NAMB.
+        version: u16,
+    },
 }
 
 /// Calcula o CRC32 (IEEE 802.3) de um slice de bytes.
@@ -76,6 +83,20 @@ pub fn crc32_ieee(data: &[u8]) -> u32 {
     crc ^ 0xFFFFFFFFu32
 }
 
+fn check_crc(data: &[u8], weights_offset: usize, expected: u32) -> Result<(), NambError> {
+    let calculated = crc32_ieee(&data[weights_offset..]);
+    if calculated != expected {
+        return Err(NambError::CrcMismatch {
+            got: calculated,
+            expected,
+        });
+    }
+    Ok(())
+}
+
+/// Flag bitmask para o campo `flags` do header NAMB.
+pub const FLAG_HAS_CRC32: u8 = 0x01;
+
 /// Cabeçalho binário fixo do formato `.namb`.
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
@@ -86,8 +107,10 @@ pub struct NambHeader {
     pub version: u16,
     /// Layout dos pesos (apenas se version >= 2). Offset: 6.
     pub layout_type: u8,
-    /// Reservado para expansão futura. Offset: 7.
-    pub reserved_v2: [u8; 5],
+    /// Flags de feature (bit 0 = FLAG_HAS_CRC32). Offset: 7.
+    pub flags: u8,
+    /// Reservado para expansão futura. Offset: 8.
+    pub reserved_v2: [u8; 4],
     /// Offset (em bytes) do início da seção de pesos em relação ao início do arquivo.
     pub weights_offset: u32,
     /// Reservado para expansão futura.
@@ -192,16 +215,17 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     };
 
     // 3. Validação de Integridade (CRC32)
+    let version = header.version;
     let crc32_header = header.crc32;
-    if crc32_header != 0 {
-        let crc_calculated = crc32_ieee(&data[weights_offset..]);
-        if crc_calculated != crc32_header {
-            return Err(NambError::CrcMismatch {
-                got: crc_calculated,
-                expected: crc32_header,
-            }
-            .into());
+    if version >= 2 {
+        if header.flags & FLAG_HAS_CRC32 == 0 {
+            return Err(NambError::CrcMissing { version }.into());
         }
+        check_crc(data, weights_offset, crc32_header)?;
+    } else if crc32_header != 0 {
+        check_crc(data, weights_offset, crc32_header)?;
+    } else {
+        log::warn!("CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check");
     }
 
     // 4. Lê os pesos binários
@@ -373,11 +397,84 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 2;
         header.layout_type = 1; // 1 indica "GateMajorLstm" (layout otimizado para LSTM)
+        header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
+
+        // Escreve os pesos no buffer
+        for (i, &f) in w.iter().enumerate() {
+            let offset = header_size + i * 4;
+            data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
+        }
+        header.crc32 = crc32_ieee(&data[header_size..]);
 
         let parsed = parse_namb(&data)?;
         // Garantimos que o programa entendeu que este arquivo precisa de uma reorganização especial.
         assert_eq!(parsed.weights_layout, WeightsLayout::GateMajorLstm);
+        Ok(())
+    }
+
+    #[test]
+    fn test_v2_missing_crc32_flag_rejected() {
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size];
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 2;
+        header.layout_type = 1;
+        header.flags = 0; // FLAG_HAS_CRC32 NÃO setado
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0xDEADBEEF;
+
+        let err = parse_namb(&data).unwrap_err();
+        let namb_err = err
+            .downcast_ref::<NambError>()
+            .expect("Erro deveria ser NambError::CrcMissing");
+        assert!(
+            matches!(namb_err, NambError::CrcMissing { version: 2 }),
+            "Esperado CrcMissing, obtido: {:?}",
+            namb_err
+        );
+    }
+
+    #[test]
+    fn test_v2_crc32_zero_legitimate_passes() -> Result<()> {
+        // CRC32 de um slice vazio é 0 (propriedade do algoritmo IEEE 802.3).
+        // Com FLAG_HAS_CRC32 setado e crc32=0 legítimo, o parser deve aceitar.
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size]; // Sem pesos → crc32_ieee(&[]) == 0
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 2;
+        header.layout_type = 1;
+        header.flags = FLAG_HAS_CRC32;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0; // CRC32 legítimo para slice vazio
+
+        let parsed = parse_namb(&data)?;
+        assert!(parsed.weights.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_v1_crc32_zero_warns_but_passes() -> Result<()> {
+        // v1 com crc==0 (sentinel) deve passar com warning, não bloquear.
+        let header_size = std::mem::size_of::<NambHeader>();
+        let mut data = vec![0u8; header_size + 4]; // 1 float dummy
+        let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+        header.magic = 0x4E414D42;
+        header.version = 1;
+        header.weights_offset = header_size as u32;
+        header.crc32 = 0; // Sentinel: CRC ausente em v1
+
+        // Escreve um peso dummy
+        let w = 0.5f32;
+        data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
+
+        let parsed = parse_namb(&data)?;
+        assert_eq!(parsed.weights, vec![0.5f32]);
         Ok(())
     }
 }

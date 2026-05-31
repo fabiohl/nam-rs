@@ -405,7 +405,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Critérios de aceitação:** Cada variante de erro maps para `NamErrorCode` correto; teste `test_error_codes_*` cobre todas.
 - **Especialista:** `implementador`.
 
-#### Tarefa S5.T03 — Tornar CRC32 obrigatório em NAMB v2 (via flag explícito) 🔥
+#### Tarefa S5.T03 — Tornar CRC32 obrigatório em NAMB v2 (via flag explícito) 🔥 [DONE]
 
 - **Onde:** `src/loader/namb.rs:28-57` (header struct), `:137-147` (verificação).
 - **Problema:** `if crc32_header != 0` usa `crc=0` como sentinel "CRC ausente", mas arquivos legítimos podem produzir `crc32 == 0` por coincidência (~1/2³²) ou por escolha adversarial de pesos. Em v1 é tolerável (compatibilidade); em v2+ a obrigatoriedade deve usar **flag explícito** em vez de sentinel.

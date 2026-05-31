@@ -23,6 +23,7 @@ fn test_all_codes_have_unique_numeric() {
         UnknownExtension,
         NamJsonParseError,
         NambCrc32Mismatch,
+        NambCrc32Missing,
         NambInvalidMagic,
         NambUnsupportedVersion,
         NambTruncated,

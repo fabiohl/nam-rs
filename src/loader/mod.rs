@@ -113,6 +113,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                 Some(namb::NambError::WeightsOffsetOutOfBounds { .. })
                 | Some(namb::NambError::InvalidWeightsOffset { .. }) => NamErrorCode::NambTruncated,
                 Some(namb::NambError::CrcMismatch { .. }) => NamErrorCode::NambCrc32Mismatch,
+                Some(namb::NambError::CrcMissing { .. }) => NamErrorCode::NambCrc32Missing,
                 None => NamErrorCode::ModelBuildFailed,
             };
             NamDiagnostic::new(code, sys)

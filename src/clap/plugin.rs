@@ -274,6 +274,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                         NamErrorCode::UnknownExtension => "Unknown extension",
                         NamErrorCode::NamJsonParseError => "Invalid JSON format",
                         NamErrorCode::NambCrc32Mismatch => "CRC32 checksum mismatch",
+                        NamErrorCode::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
                         NamErrorCode::NambInvalidMagic => "Invalid signature",
                         NamErrorCode::NambUnsupportedVersion => "Unsupported version",
                         NamErrorCode::NambTruncated => "Corrupted/truncated file",

@@ -49,6 +49,8 @@ pub enum NamErrorCode {
     NamJsonParseError,
     /// Checksum CRC32 do .namb não confere com o esperado.
     NambCrc32Mismatch,
+    /// Flag CRC32 ausente em arquivo .namb v2+ (obrigatório).
+    NambCrc32Missing,
     /// Assinatura mágica do .namb inválida.
     NambInvalidMagic,
     /// Versão do formato .namb não suportada.
@@ -106,6 +108,7 @@ impl NamErrorCode {
             Self::UnknownExtension => "E1102",
             Self::NamJsonParseError => "E1200",
             Self::NambCrc32Mismatch => "E1201",
+            Self::NambCrc32Missing => "E1205",
             Self::NambInvalidMagic => "E1202",
             Self::NambUnsupportedVersion => "E1203",
             Self::NambTruncated => "E1204",
@@ -137,6 +140,7 @@ impl NamErrorCode {
             Self::UnknownExtension => "UNKNOWN_EXTENSION",
             Self::NamJsonParseError => "NAM_JSON_PARSE_ERROR",
             Self::NambCrc32Mismatch => "NAMB_CRC32_MISMATCH",
+            Self::NambCrc32Missing => "NAMB_CRC32_MISSING",
             Self::NambInvalidMagic => "NAMB_INVALID_MAGIC",
             Self::NambUnsupportedVersion => "NAMB_UNSUPPORTED_VERSION",
             Self::NambTruncated => "NAMB_TRUNCATED",

@@ -7,7 +7,7 @@
 //! binário otimizado com pesos pré-transpostos.
 
 use super::nam_json::{NamModelData, WeightsLayout};
-use super::namb::{NambHeader, crc32_ieee};
+use super::namb::{FLAG_HAS_CRC32, NambHeader, crc32_ieee};
 use anyhow::{Context, Result};
 use std::io::Write;
 
@@ -37,12 +37,15 @@ pub fn encode_namb(
     let json_str = serde_json::to_string(&metadata_only)?;
     let json_bytes = json_str.as_bytes();
 
+    let header_flags = if version >= 2 { FLAG_HAS_CRC32 } else { 0 };
+
     // 3. Constrói o Header
     let mut header = NambHeader {
         magic: 0x4E414D42,
         version,
         layout_type: target_layout as u8,
-        reserved_v2: [0; 5],
+        flags: header_flags,
+        reserved_v2: [0; 4],
         weights_offset: (std::mem::size_of::<NambHeader>() + json_bytes.len()) as u32,
         reserved1: [0; 2],
         crc32: crc32_ieee(&weights_bytes),
