@@ -76,7 +76,7 @@ pub use common::{
     LAYER_ARRAY_BUFFER_PADDING, WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext,
 };
 pub use conv1d::Conv1d;
-pub use conv1d_dyn::Conv1dDyn;
+pub use conv1d_dyn::{Conv1dDyn, MAX_KERNEL};
 pub use dense::DenseLayer;
 pub use model::{WaveNetLayer, WaveNetLayerArray, WaveNetModel};
 pub use model_dyn::{DenseLayerDyn, WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn};

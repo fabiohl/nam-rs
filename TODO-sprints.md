@@ -437,7 +437,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
   - JSON com `training: {"a": {"b": {... aninhado 20 níveis ...}}}` rejeitado.
 - **Especialista:** `implementador`.
 
-#### Tarefa S5.T05 — Detecção A2 SemVer-aware ⚠️
+#### Tarefa S5.T05 — Detecção A2 SemVer-aware ⚠️ [DONE]
 
 - **Onde:** `src/loader/nam_json.rs:133-155`.
 - **Problema:** Detecção via `starts_with("0.6")` quebra para versões 0.9+ ou 1.0.
@@ -448,7 +448,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Critérios de aceitação:** Todas as versões futuras detectadas; teste exaustivo passa.
 - **Especialista:** `implementador`.
 
-#### Tarefa S5.T06 — Refatorar duplicação `*_dyn` em dispatcher WaveNet/LSTM ⚠️
+#### Tarefa S5.T06 — Refatorar duplicação `*_dyn` em dispatcher WaveNet/LSTM ⚠️ [DONE]
 
 - **Onde:** `src/loader/dispatcher/wavenet.rs:341-378 vs :414-465`, `:467-510 vs :503-540`.
 - **Problema:** Funções `read_conv1d_weights` e `read_conv1d_weights_dyn` duplicam ~100 LoC. Same para `read_dense_layer`.

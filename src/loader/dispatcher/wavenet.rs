@@ -3,11 +3,12 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topology};
-use crate::math::common::{AlignedVec, f32_to_bf16};
+use crate::math::common::{AlignedVec, PrefetchFn, quantize_weight};
 use crate::models::DynamicModel;
 use crate::models::wavenet::{Conv1d, DenseLayer, WaveNetLayer, WaveNetLayerArray, WaveNetModel};
 use crate::models::wavenet::{
-    Conv1dDyn, DenseLayerDyn, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn, WaveNetLayerState,
+    Conv1dDyn, DenseLayerDyn, MAX_KERNEL, WAVENET_MAX_NUM_FRAMES, WaveNetLayerDyn,
+    WaveNetLayerState,
 };
 use crate::models::wavenet::{WaveNetDynModel, WaveNetLayerArrayDyn};
 use anyhow::{Context, bail};
@@ -191,7 +192,7 @@ pub(crate) fn build_wavenet_array<
 
     // 1. Rechannel: Aqui transformamos o sinal de entrada (1 fio) em vários
     // canais internos (ex: 16 fios) para que a rede tenha mais "espaço" para pensar.
-    let rechannel = read_dense_layer::<IN, CH>(cursor, false)?;
+    let rechannel = read_dense_weights_typed::<DenseLayer<IN, CH>>(cursor, IN, CH, false)?;
 
     // 2. Camadas (Layers): Criamos uma camada para cada "dilatação".
     // Uma dilatação é como um eco: a rede olha para o que aconteceu há 1, 2, 4, 8... amostras atrás.
@@ -200,13 +201,14 @@ pub(crate) fn build_wavenet_array<
 
     for &dilation in dilations {
         // conv1d: É o filtro matemático principal que processa o áudio e seus "ecos".
-        let conv1d = read_conv1d_weights::<CH, CH, K>(cursor, dilation, true)?;
+        let conv1d =
+            read_conv1d_weights_typed::<Conv1d<CH, CH, K>>(cursor, CH, CH, K, dilation, true)?;
 
         // input_mixin: Adiciona informações externas ao processamento (como ajustes do usuário).
-        let input_mixin = read_dense_layer::<COND, CH>(cursor, false)?;
+        let input_mixin = read_dense_weights_typed::<DenseLayer<COND, CH>>(cursor, COND, CH, false)?;
 
         // one_by_one: Um ajuste final de "mistura" de canais para cada momento do som.
-        let one_by_one = read_dense_layer::<CH, CH>(cursor, true)?;
+        let one_by_one = read_dense_weights_typed::<DenseLayer<CH, CH>>(cursor, CH, CH, true)?;
 
         layers.push(WaveNetLayer {
             conv1d,
@@ -222,7 +224,8 @@ pub(crate) fn build_wavenet_array<
 
     // 3. Head Rechannel: Transforma os vários canais internos de volta no
     // formato de saída (geralmente reduzindo para preparar para o próximo estágio).
-    let head_rechannel = read_dense_layer::<CH, HEAD>(cursor, has_head_bias)?;
+    let head_rechannel =
+        read_dense_weights_typed::<DenseLayer<CH, HEAD>>(cursor, CH, HEAD, has_head_bias)?;
 
     // Campo receptivo: É o tempo total de "memória" que este bloco tem (quantas amostras do passado ele olha).
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
@@ -334,113 +337,141 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
 
     Ok(Box::new(DynamicModel::WavenetDyn(Box::new(model))))
 }
-/// Lê os pesos de um `Conv1d<IN, OUT, K>` aplicando transposição de layout.
+// =============================================================================
+// Trait e Funções Compartilhadas para Leitura de Pesos (unifica estático/dinâmico)
+// =============================================================================
+
+/// Tipo de saída para pesos de convolução, unificando `Conv1d<IN,OUT,K>` e `Conv1dDyn`.
+trait ConvWeightsOutput: Sized {
+    #[allow(clippy::too_many_arguments)]
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        dilation: usize,
+        in_ch: usize,
+        out_ch: usize,
+        k_size: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self;
+}
+
+impl<const IN: usize, const OUT: usize, const K: usize> ConvWeightsOutput for Conv1d<IN, OUT, K> {
+    #[inline(always)]
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        dilation: usize,
+        _in_ch: usize,
+        _out_ch: usize,
+        _k_size: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self {
+        Conv1d {
+            weights,
+            bias,
+            do_bias,
+            dilation,
+            prefetch_fn,
+        }
+    }
+}
+
+impl ConvWeightsOutput for Conv1dDyn {
+    #[inline(always)]
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        dilation: usize,
+        in_ch: usize,
+        out_ch: usize,
+        k_size: usize,
+        prefetch_fn: PrefetchFn,
+    ) -> Self {
+        Conv1dDyn {
+            weights,
+            bias,
+            do_bias,
+            dilation,
+            in_ch,
+            out_ch,
+            kernel: k_size,
+            prefetch_fn,
+        }
+    }
+}
+
+/// Tipo de saída para pesos de camada densa, unificando `DenseLayer<IN,OUT>` e `DenseLayerDyn`.
+trait DenseWeightsOutput: Sized {
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        in_size: usize,
+        out_size: usize,
+    ) -> Self;
+}
+
+impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OUT> {
+    #[inline(always)]
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        _in_size: usize,
+        _out_size: usize,
+    ) -> Self {
+        DenseLayer {
+            weights,
+            bias,
+            do_bias,
+        }
+    }
+}
+
+impl DenseWeightsOutput for DenseLayerDyn {
+    #[inline(always)]
+    fn from_parts(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        in_size: usize,
+        out_size: usize,
+    ) -> Self {
+        DenseLayerDyn {
+            weights,
+            bias,
+            do_bias,
+            in_size,
+            out_size,
+        }
+    }
+}
+
+/// Lê pesos de uma convolução 1D, aplicando transposição de layout quando necessário.
 ///
 /// O C++ lê `[out][in][k]` (Conv1DT::SetWeights) mas o Rust armazena
 /// como `[out * K * IN + k * IN + in_c]` — requer scatter do eixo `k ↔ in`.
-fn read_conv1d_weights<const IN: usize, const OUT: usize, const K: usize>(
-    cursor: &mut WeightCursor<'_>,
-    dilation: usize,
-    do_bias: bool,
-) -> anyhow::Result<Conv1d<IN, OUT, K>> {
-    let num_blocks = OUT.div_ceil(4);
-    let padded_total = num_blocks * 4 * IN * K;
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-
-    let mut weights = AlignedVec::new(padded_total, 0u16);
-
-    if cursor.is_interleaved4() {
-        let raw = cursor.read_slice(padded_total)?;
-        for i in 0..padded_total {
-            weights[i] = quantize_weight(raw[i], is_bf16);
-        }
-    } else {
-        let total = OUT * IN * K;
-        let raw = cursor.read_slice(total)?;
-        transpose_conv1d_interleaved_4wide(raw, &mut weights, IN, OUT, K, is_bf16);
-    }
-
-    let bias = if do_bias {
-        AlignedVec::from_vec(cursor.read_slice(OUT)?.to_vec())
-    } else {
-        AlignedVec::new(OUT, 0.0)
-    };
-
-    Ok(Conv1d {
-        weights,
-        bias,
-        do_bias,
-        dilation,
-        prefetch_fn: if dilation >= 128 {
-            crate::math::common::prefetch_strategy_2stage
-        } else {
-            crate::math::common::prefetch_strategy_simple
-        },
-    })
-}
-
-/// Lê os pesos de um `DenseLayer<IN, OUT>` (layout compatível sem transposição).
 ///
-/// Tanto C++ (`DenseLayerT::SetWeights`) quanto Rust usam layout `[out][in]` row-major.
-fn read_dense_layer<const IN: usize, const OUT: usize>(
-    cursor: &mut WeightCursor<'_>,
-    do_bias: bool,
-) -> anyhow::Result<DenseLayer<IN, OUT>> {
-    let total = OUT * IN;
-    let raw = cursor.read_slice(total)?;
-    let mut weights = AlignedVec::new(total, 0u16);
-    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-        == crate::math::common::InstructionSet::Avx512VnniBf16;
-
-    if cursor.is_interleaved4() {
-        for i in 0..total {
-            weights[i] = quantize_weight(raw[i], is_bf16);
-        }
-    } else {
-        transpose_dense_layer(raw, &mut weights, IN, OUT, is_bf16);
-    }
-
-    let bias = if do_bias {
-        AlignedVec::from_vec(cursor.read_slice(OUT)?.to_vec())
-    } else {
-        AlignedVec::new(OUT, 0.0)
-    };
-
-    Ok(DenseLayer {
-        weights,
-        bias,
-        do_bias,
-    })
-}
-/// Lê e inicializa uma camada de convolução (o "filtro" de som principal do WaveNet).
-fn read_conv1d_weights_dyn(
+/// Unifica os caminhos estático (`Conv1d<IN,OUT,K>`) e dinâmico (`Conv1dDyn`).
+#[allow(clippy::too_many_arguments)]
+fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
     cursor: &mut WeightCursor<'_>,
     in_size: usize,
     out_size: usize,
     k_size: usize,
     dilation: usize,
     do_bias: bool,
-) -> anyhow::Result<Conv1dDyn> {
-    if k_size > crate::models::wavenet::conv1d_dyn::MAX_KERNEL {
-        bail!(
-            "Tamanho do kernel {} excede o máximo suportado ({})",
-            k_size,
-            crate::models::wavenet::conv1d_dyn::MAX_KERNEL
-        );
-    }
+) -> anyhow::Result<T> {
     let num_blocks = out_size.div_ceil(4);
     let padded_total = num_blocks * 4 * in_size * k_size;
-
-    // Identifica se o processador suporta o formato ultra-rápido BF16.
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
-    // Criamos um espaço na memória alinhado para alta performance.
     let mut weights = AlignedVec::new(padded_total, 0u16);
 
-    // Se os pesos já estiverem reorganizados no arquivo, apenas os convertemos.
-    // Caso contrário, fazemos a reorganização (transposição) agora.
     if cursor.is_interleaved4() {
         let raw = cursor.read_slice(padded_total)?;
         for i in 0..padded_total {
@@ -452,45 +483,47 @@ fn read_conv1d_weights_dyn(
         transpose_conv1d_interleaved_4wide(raw, &mut weights, in_size, out_size, k_size, is_bf16);
     }
 
-    // Lê os valores de Bias (ajuste fino) se existirem.
     let bias = if do_bias {
         AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
     } else {
         AlignedVec::new(out_size, 0.0)
     };
 
-    Ok(Conv1dDyn {
+    let prefetch_fn = if dilation >= 128 {
+        crate::math::common::prefetch_strategy_2stage
+    } else {
+        crate::math::common::prefetch_strategy_simple
+    };
+
+    Ok(T::from_parts(
         weights,
         bias,
         do_bias,
         dilation,
-        in_ch: in_size,
-        out_ch: out_size,
-        kernel: k_size,
-        // Estratégia de "Antecipação" (Prefetch): para memórias distantes (dilatações longas),
-        // pedimos para o processador buscar os dados antes mesmo de precisarmos deles.
-        prefetch_fn: if dilation >= 128 {
-            crate::math::common::prefetch_strategy_2stage
-        } else {
-            crate::math::common::prefetch_strategy_simple
-        },
-    })
+        in_size,
+        out_size,
+        k_size,
+        prefetch_fn,
+    ))
 }
 
-/// Lê e inicializa uma camada densa (responsável por misturar os sinais processados).
-fn read_dense_layer_dyn(
+/// Lê pesos de uma camada densa (layout compatível sem transposição).
+///
+/// Tanto C++ (`DenseLayerT::SetWeights`) quanto Rust usam layout `[out][in]` row-major.
+///
+/// Unifica os caminhos estático (`DenseLayer<IN,OUT>`) e dinâmico (`DenseLayerDyn`).
+fn read_dense_weights_typed<T: DenseWeightsOutput>(
     cursor: &mut WeightCursor<'_>,
     in_size: usize,
     out_size: usize,
     do_bias: bool,
-) -> anyhow::Result<DenseLayerDyn> {
+) -> anyhow::Result<T> {
     let total = out_size * in_size;
     let raw = cursor.read_slice(total)?;
     let mut weights = AlignedVec::new(total, 0u16);
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
-    // Similar à camada de convolução, garantimos que os pesos estejam no layout ideal.
     if cursor.is_interleaved4() {
         for i in 0..total {
             weights[i] = quantize_weight(raw[i], is_bf16);
@@ -505,13 +538,7 @@ fn read_dense_layer_dyn(
         AlignedVec::new(out_size, 0.0)
     };
 
-    Ok(DenseLayerDyn {
-        weights,
-        bias,
-        do_bias,
-        in_size,
-        out_size,
-    })
+    Ok(T::from_parts(weights, bias, do_bias, in_size, out_size))
 }
 
 /// Configurações para construção de um WaveNetLayerArrayDyn.
@@ -558,16 +585,24 @@ pub(crate) fn build_wavenet_array_dyn(
         );
     }
 
-    let rechannel = read_dense_layer_dyn(cursor, in_size, ch, false)?;
+    let rechannel = read_dense_weights_typed::<DenseLayerDyn>(cursor, in_size, ch, false)?;
 
     let mut layers = Vec::with_capacity(dilations.len());
     let mut states = Vec::with_capacity(dilations.len());
 
     for &dilation in dilations {
         // Criamos cada camada com sua respectiva "distância de memória" (dilatação).
-        let conv1d = read_conv1d_weights_dyn(cursor, ch, conv_out_ch, k, dilation, true)?;
-        let input_mixin = read_dense_layer_dyn(cursor, cond_size, ch, false)?;
-        let one_by_one = read_dense_layer_dyn(cursor, ch, ch, true)?;
+        if k > MAX_KERNEL {
+            bail!(
+                "Tamanho do kernel {} excede o máximo suportado ({})",
+                k,
+                MAX_KERNEL
+            );
+        }
+        let conv1d =
+            read_conv1d_weights_typed::<Conv1dDyn>(cursor, ch, conv_out_ch, k, dilation, true)?;
+        let input_mixin = read_dense_weights_typed::<DenseLayerDyn>(cursor, cond_size, ch, false)?;
+        let one_by_one = read_dense_weights_typed::<DenseLayerDyn>(cursor, ch, ch, true)?;
 
         layers.push(WaveNetLayerDyn {
             conv1d,
@@ -583,7 +618,8 @@ pub(crate) fn build_wavenet_array_dyn(
         *alloc_num += 1;
     }
 
-    let head_rechannel = read_dense_layer_dyn(cursor, ch, head, has_head_bias)?;
+    let head_rechannel =
+        read_dense_weights_typed::<DenseLayerDyn>(cursor, ch, head, has_head_bias)?;
 
     let receptive_field_size: usize = dilations.iter().map(|&d| (k - 1) * d).sum();
 
@@ -612,19 +648,6 @@ pub(crate) fn build_wavenet_array_dyn(
 // =============================================================================
 // WaveNet — Auxiliares de Quantização e Transposição
 // =============================================================================
-
-/// Converte um peso de alta precisão (f32) para um formato mais compacto (BF16 ou F16).
-/// Isso economiza memória e acelera drasticamente o processamento no computador.
-#[inline(always)]
-fn quantize_weight(raw: f32, is_bf16: bool) -> u16 {
-    if is_bf16 {
-        // BF16 é o formato ideal para processadores modernos que suportam aceleração de IA.
-        f32_to_bf16(raw)
-    } else {
-        // F16 é um formato padrão de meia-precisão muito eficiente.
-        half::f16::from_f32(raw).to_bits()
-    }
-}
 
 /// Reorganiza os pesos das camadas de convolução no formato "Interleaved 4-Wide".
 /// Esta técnica agrupa os dados de 4 em 4, permitindo que o processador execute

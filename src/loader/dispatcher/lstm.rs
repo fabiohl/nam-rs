@@ -3,7 +3,7 @@
 
 use super::WeightCursor;
 use crate::loader::nam_json::{NamModelData, get_lstm_topology};
-use crate::math::common::{f32_to_bf16, quantize_weight};
+use crate::math::common::quantize_weight;
 use crate::models::DynamicModel;
 use crate::models::lstm::{LstmDynLayer, LstmDynModel, LstmLayer, LstmModel1, LstmModel2};
 use anyhow::Context;
@@ -168,35 +168,15 @@ pub fn build_lstm_dynamic(
         let raw_weights =
             cursor.read_slice(hidden_size * 4 * (current_input_size + hidden_size))?;
 
-        let ih = current_input_size + hidden_size;
         let mut input_hidden_weights = vec![0u16; raw_weights.len()];
-
-        if cursor.is_gate_major_lstm() {
-            // Layout já otimizado: [Gate][IH][H] — Cópia direta
-            for i in 0..raw_weights.len() {
-                input_hidden_weights[i] = if is_bf16 {
-                    f32_to_bf16(raw_weights[i])
-                } else {
-                    half::f16::from_f32(raw_weights[i]).to_bits()
-                };
-            }
-        } else {
-            // Layout original (Transposição necessária)
-            for k in 0..4 {
-                let gate_offset = k * hidden_size * ih;
-                for i in 0..hidden_size {
-                    for j in 0..ih {
-                        let v = raw_weights[k * hidden_size * ih + i * ih + j];
-                        let weight = if is_bf16 {
-                            f32_to_bf16(v)
-                        } else {
-                            half::f16::from_f32(v).to_bits()
-                        };
-                        input_hidden_weights[gate_offset + j * hidden_size + i] = weight;
-                    }
-                }
-            }
-        }
+        read_lstm_weights_into(
+            raw_weights,
+            &mut input_hidden_weights,
+            cursor.is_gate_major_lstm(),
+            hidden_size,
+            current_input_size,
+            is_bf16,
+        );
 
         // O 'bias' é um ajuste fixo somado ao final de cada conta, como uma "calibração".
         let bias = cursor.read_slice(hidden_size * 4)?.to_vec();
@@ -232,11 +212,7 @@ pub fn build_lstm_dynamic(
     let raw_head_weights = cursor.read_slice(hidden_size)?;
     let mut head_weights = vec![0u16; hidden_size];
     for i in 0..hidden_size {
-        head_weights[i] = if is_bf16 {
-            f32_to_bf16(raw_head_weights[i])
-        } else {
-            half::f16::from_f32(raw_head_weights[i]).to_bits()
-        };
+        head_weights[i] = quantize_weight(raw_head_weights[i], is_bf16);
     }
     let head_bias = cursor.read_f32()?;
 
@@ -258,6 +234,41 @@ pub fn build_lstm_dynamic(
 
     Ok(Box::new(DynamicModel::LstmDyn(Box::new(model))))
 }
+
+// =============================================================================
+// LSTM — Função Compartilhada para Leitura de Pesos
+// =============================================================================
+
+/// Preenche `output` (buffer de `u16` com tamanho `4 * hidden * (input + hidden)`)
+/// com os pesos do LSTM quantizados a partir de `raw` (fatia `f32` já lida do cursor).
+///
+/// Aplica transposição de layout quando necessário (Original → GateMajor).
+fn read_lstm_weights_into(
+    raw: &[f32],
+    output: &mut [u16],
+    is_gate_major: bool,
+    hidden: usize,
+    input: usize,
+    is_bf16: bool,
+) {
+    let ih = input + hidden;
+    if is_gate_major {
+        for i in 0..output.len() {
+            output[i] = quantize_weight(raw[i], is_bf16);
+        }
+    } else {
+        for k in 0..4 {
+            let gate_offset = k * hidden * ih;
+            for i in 0..hidden {
+                for j in 0..ih {
+                    let v = raw[k * ih * hidden + i * ih + j];
+                    output[gate_offset + j * hidden + i] = quantize_weight(v, is_bf16);
+                }
+            }
+        }
+    }
+}
+
 /// Lê os pesos de uma `LstmLayer<I, H, IH, H4>`.
 ///
 /// Layout NAM JSON (C++ `LSTMLayerT::SetNAMWeights`):
@@ -274,42 +285,22 @@ fn read_lstm_layer<const I: usize, const H: usize, const IH: usize, const H4: us
     let mut layer = LstmLayer::<I, H, IH, H4>::new();
 
     let raw_weights = cursor.read_slice(H4 * IH)?;
-    if cursor.is_gate_major_lstm() {
-        // Layout já otimizado: [Gate][IH][H] — Cópia direta
-        for k in 0..4 {
-            for j in 0..IH {
-                for i in 0..H {
-                    let idx = k * IH * H + j * H + i;
-                    layer.input_hidden_weights[k][j][i] =
-                        quantize_weight(raw_weights[idx], is_bf16);
-                }
-            }
-        }
-    } else {
-        // Reorganização de Pesos:
-        // Uma rede LSTM tem 4 "portas" (Input, Forget, Cell, Output).
-        // Para que o processamento de áudio seja ultrarrápido, nós misturamos os pesos
-        // dessas 4 portas em uma sequência intercalada. Isso permite que o processador
-        // faça as 4 contas de uma vez só (usando uma técnica chamada SIMD).
-        for k in 0..4 {
-            for i in 0..H {
-                for j in 0..IH {
-                    let w = raw_weights[k * IH * H + i * IH + j];
-                    layer.input_hidden_weights[k][j][i] = quantize_weight(w, is_bf16);
-                }
-            }
-        }
-    }
+    let is_gate_major = cursor.is_gate_major_lstm();
 
-    // 2. bias: [H4] valores
+    let dst = unsafe {
+        core::slice::from_raw_parts_mut(
+            layer.input_hidden_weights.as_mut_ptr() as *mut u16,
+            H4 * IH,
+        )
+    };
+    read_lstm_weights_into(raw_weights, dst, is_gate_major, H, I, is_bf16);
+
     let bias_data = cursor.read_slice(H4)?;
     layer.bias.copy_from_slice(bias_data);
 
-    // 3. initial hidden state: [H] → armazenado em state[I..I+H]
     let hidden_init = cursor.read_slice(H)?;
     layer.state[I..I + H].copy_from_slice(hidden_init);
 
-    // 4. initial cell state: [H]
     let cell_init = cursor.read_slice(H)?;
     layer.cell_state.copy_from_slice(cell_init);
 
