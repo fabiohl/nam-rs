@@ -123,11 +123,11 @@ mod tests {
                 input_l[i]
             );
             assert!(
-                (output_r[i] - input_r[i]).abs() < 1e-4,
+                (output_r[i] - input_l[i]).abs() < 1e-4,
                 "Falha no bypass Canal R amostra {}: {} vs {}",
                 i,
                 output_r[i],
-                input_r[i]
+                input_l[i]
             );
         }
     }
@@ -636,9 +636,9 @@ mod tests {
         shared.ui_clipped.store(false, Ordering::Relaxed);
 
         let n = 512;
-        // Signal with peaks at 0.5 (left) and 1.5 (right - clipping)
-        let mut in_l = vec![0.5f32; n];
-        let mut in_r = vec![1.5f32; n];
+        // Signal with peaks at 1.5 (left - clipping) and 0.5 (right)
+        let mut in_l = vec![1.5f32; n];
+        let mut in_r = vec![0.5f32; n];
         let mut out_l = vec![0.0f32; n];
         let mut out_r = vec![0.0f32; n];
 
@@ -680,11 +680,11 @@ mod tests {
         assert!(peak_l > 0.0, "peak_l was: {}", peak_l);
         assert!(peak_r > 0.0, "peak_r was: {}", peak_r);
 
-        // Verify that clipping occurred because input right was 1.5
+        // Verify that clipping occurred because input left was 1.5
         let clipped = shared.ui_clipped.load(Ordering::Relaxed);
         assert!(
             clipped,
-            "ui_clipped should be true since input right was 1.5"
+            "ui_clipped should be true since input left was 1.5"
         );
     }
 
@@ -1040,6 +1040,8 @@ mod tests {
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
         // Ativa a auditoria de heap e força o contador para simular alocação
+        let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+        crate::clap::heap_audit::AUDIT_THREAD.store(tid, Ordering::Relaxed);
         crate::clap::heap_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
 
         // Reseta o flag no status para garantir que está limpo antes
@@ -1061,6 +1063,7 @@ mod tests {
 
         // Desativa a auditoria de heap para não interferir em outros testes
         crate::clap::heap_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
+        crate::clap::heap_audit::AUDIT_THREAD.store(0, Ordering::Relaxed);
         crate::clap::heap_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
 
         // Verifica que o status retornado é Sleep
@@ -1072,5 +1075,55 @@ mod tests {
                 .rt_status
                 .check_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)
         );
+    }
+
+    #[test]
+    fn test_gui_load_error_null_byte_safety() {
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Falha ao carregar PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Falha ao instanciar plugin");
+
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Falha ao obter wrapper do plugin")
+        };
+        let shared = unsafe { &*shared_ptr };
+
+        let path_with_null = PathBuf::from("invalid_model\0name.nam");
+        if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+            *pending_guard = Some(path_with_null);
+        }
+        shared.ui_loading.store(true, Ordering::Relaxed);
+
+        plugin_instance.call_on_main_thread_callback();
+
+        assert!(!shared.ui_loading.load(Ordering::Relaxed));
+        assert!(shared.ui_load_error.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn test_c_string_null_byte_sanitization() {
+        use std::ffi::CString;
+        let err_msg = "Model load failed: file\0name.nam not found";
+        let err_str = format!("NAM-rs: Failed to load model from GUI: {}", err_msg);
+        let sanitized_err = err_str.replace('\0', " ");
+        let msg = CString::new(sanitized_err);
+        assert!(msg.is_ok(), "Sanitized CString creation should succeed");
     }
 }

@@ -12,6 +12,8 @@ pub static AUDIT_ENABLED: AtomicBool = AtomicBool::new(false);
 pub static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
 /// ID da thread (tid) que estamos vigiando.
 pub static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
+/// ID da thread que está autorizada a realizar a auditoria (usada para isolar testes paralelos).
+pub static AUDIT_THREAD: AtomicI32 = AtomicI32::new(0);
 
 /// O "Vigia de Memória": intercepta todos os pedidos de memória do programa.
 pub struct CountingAllocator;

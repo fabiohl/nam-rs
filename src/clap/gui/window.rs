@@ -508,6 +508,7 @@ impl WindowHandler for NamPluginWindow {
                     MouseEvent::DragDropped { data, .. } => {
                         self.state.drag_active = false;
                         if let Some(path) = get_valid_model_file(&data) {
+                            #[allow(clippy::collapsible_if)]
                             if let Some(shared) = self.safe_shared() {
                                 if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
                                     *pending_guard = Some(path);

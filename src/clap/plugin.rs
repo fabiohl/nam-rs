@@ -290,9 +290,12 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 
                     if let Some(log) = self.host.get_extension::<HostLog>() {
                         let shared = self.host.shared();
-                        let msg =
-                            CString::new(format!("NAM-rs: Failed to load model from GUI: {:?}", e))
-                                .expect("Failed to create CString");
+                        let err_str = format!("NAM-rs: Failed to load model from GUI: {:?}", e);
+                        let sanitized_err = err_str.replace('\0', " ");
+                        let msg = CString::new(sanitized_err).unwrap_or_else(|_| {
+                            CString::new("NAM-rs: Failed to load model from GUI due to invalid characters")
+                                .unwrap()
+                        });
                         log.log(&shared, LogSeverity::Error, &msg);
                     }
                 }

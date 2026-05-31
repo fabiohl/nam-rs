@@ -121,8 +121,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     ) -> Result<Self, PluginError> {
         #[cfg(feature = "heap-audit")]
         {
-            let audit = std::env::var("NAM_HEAP_AUDIT").is_ok();
-            crate::clap::heap_audit::AUDIT_ENABLED.store(audit, Ordering::Relaxed);
+            if std::env::var("NAM_HEAP_AUDIT").is_ok() {
+                crate::clap::heap_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
+            }
         }
         // 1. Extração dos canais SPSC do Shared (ownership transfer)
         let param_rx = shared
@@ -234,7 +235,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     ) -> Result<ProcessStatus, PluginError> {
         #[cfg(feature = "heap-audit")]
         let _guard = if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
-            Some(crate::clap::heap_audit::TrackingGuard::new())
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+            let audit_thread = crate::clap::heap_audit::AUDIT_THREAD.load(Ordering::Relaxed);
+            if audit_thread == 0 || audit_thread == tid {
+                Some(crate::clap::heap_audit::TrackingGuard::new())
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -716,16 +723,20 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         #[cfg(feature = "heap-audit")]
         if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
-            let allocs = crate::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed);
-            if allocs > 0 {
-                self.rt_status
-                    .set_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
-                #[cfg(debug_assertions)]
-                eprintln!(
-                    "[NAM-rs Heap Audit] ERROR: {} heap allocation(s) detected in audio thread during process()!",
-                    allocs
-                );
-                return Ok(ProcessStatus::Sleep);
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+            let audit_thread = crate::clap::heap_audit::AUDIT_THREAD.load(Ordering::Relaxed);
+            if audit_thread == 0 || audit_thread == tid {
+                let allocs = crate::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed);
+                if allocs > 0 {
+                    self.rt_status
+                        .set_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
+                    #[cfg(debug_assertions)]
+                    eprintln!(
+                        "[NAM-rs Heap Audit] ERROR: {} heap allocation(s) detected in audio thread during process()!",
+                        allocs
+                    );
+                    return Ok(ProcessStatus::Sleep);
+                }
             }
         }
 
