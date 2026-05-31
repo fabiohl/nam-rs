@@ -54,15 +54,19 @@ pub struct WaveNetLayerState {
 
 impl WaveNetLayerState {
     /// Construtor alocador estático do Estado (executar antes do Thread DSP).
-    pub fn new(channels: usize, receptive_field_size: usize, alloc_num: usize) -> Self {
+    pub fn new(
+        channels: usize,
+        receptive_field_size: usize,
+        alloc_num: usize,
+    ) -> std::io::Result<Self> {
         // [PASSO 1: Cálculo do Tamanho do Buffer Temporal]
         // O buffer precisa acomodar o campo receptivo e o padding de blocos.
         // Arredondamento para página é feito internamente pelo VirtualRingBuffer.
         let min_buffer_frames =
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
 
-        let buffer = VirtualRingBuffer::<f32>::new(min_buffer_frames * channels);
-        let buffer_bf16 = VirtualRingBuffer::<u16>::new(min_buffer_frames * channels);
+        let buffer = VirtualRingBuffer::<f32>::new(min_buffer_frames * channels)?;
+        let buffer_bf16 = VirtualRingBuffer::<u16>::new(min_buffer_frames * channels)?;
 
         let actual_buffer_frames = buffer.size() / channels;
 
@@ -72,12 +76,12 @@ impl WaveNetLayerState {
         let jitter = (alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1;
         let start = actual_buffer_frames * 2 - (WAVENET_MAX_NUM_FRAMES * jitter);
 
-        Self {
+        Ok(Self {
             layer_buffer: buffer,
             layer_buffer_bf16: buffer_bf16,
             buffer_start: start,
             receptive_field_size,
-        }
+        })
     }
 
     /// Executa um passo do ponteiro do Ring Buffer. Se chegar na margem, volta para o início.

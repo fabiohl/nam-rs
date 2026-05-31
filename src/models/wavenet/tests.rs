@@ -96,7 +96,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     let layers_1: Vec<WaveNetLayer<1, 4, 3>> =
         dilations_1.iter().map(|&d| make_layer_a1(d)).collect();
     let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
-        .map(|i| WaveNetLayerState::new(4, rf1, i))
+        .map(|i| WaveNetLayerState::new(4, rf1, i).expect("Failed to create WaveNetLayerState"))
         .collect();
 
     let array1 = WaveNetLayerArray::<1, 1, 4, 3, 2> {
@@ -132,7 +132,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     let layers_2: Vec<WaveNetLayer<1, 2, 3>> =
         dilations_2.iter().map(|&d| make_layer_a2(d)).collect();
     let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
-        .map(|i| WaveNetLayerState::new(2, rf2, i))
+        .map(|i| WaveNetLayerState::new(2, rf2, i).expect("Failed to create WaveNetLayerState"))
         .collect();
 
     let array2 = WaveNetLayerArray::<4, 1, 2, 3, 1> {
@@ -791,7 +791,7 @@ fn test_wavenet_layer_array_dyn_block_size_gated() {
 
     // 'WaveNetLayerState' gerencia o buffer circular (histórico) de uma camada.
     // Receptive Field (RF) aqui é 0 apenas para simplificar a alocação do teste.
-    let state = WaveNetLayerState::new(ch, 0, 0);
+    let state = WaveNetLayerState::new(ch, 0, 0).expect("Failed to create WaveNetLayerState");
 
     let conv1d = Conv1dDyn {
         weights: AlignedVec::from_vec(vec![0u16; 2 * ch * ch]),

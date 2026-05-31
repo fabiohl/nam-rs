@@ -126,7 +126,10 @@ fn build_wavenet_layer_array<
 
     // Aloca as fatias de memória (estados) de cada camada no buffer circular
     let states: Vec<WaveNetLayerState> = (0..layers.len())
-        .map(|i| WaveNetLayerState::new(CH, rf, *alloc_offset + i))
+        .map(|i| {
+            WaveNetLayerState::new(CH, rf, *alloc_offset + i)
+                .expect("Failed to create WaveNetLayerState")
+        })
         .collect();
     *alloc_offset += layers.len();
 

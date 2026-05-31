@@ -216,7 +216,7 @@ pub(crate) fn build_wavenet_array<
 
         // Estado do Ring Buffer com RF per-layer: (K-1) * dilation
         let rf = (K - 1) * dilation;
-        states.push(WaveNetLayerState::new(CH, rf, *alloc_num));
+        states.push(WaveNetLayerState::new(CH, rf, *alloc_num)?);
         *alloc_num += 1;
     }
 
@@ -566,7 +566,7 @@ pub(crate) fn build_wavenet_array_dyn(
 
         // O 'rf' (Receptive Field) é quanto tempo de áudio esta camada consegue "lembrar".
         let rf = (k - 1) * dilation;
-        states.push(WaveNetLayerState::new(ch, rf, *alloc_num));
+        states.push(WaveNetLayerState::new(ch, rf, *alloc_num)?);
         *alloc_num += 1;
     }
 

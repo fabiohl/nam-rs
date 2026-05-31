@@ -53,64 +53,122 @@ pub struct VirtualRingBuffer<T> {
     _marker: PhantomData<T>,
 }
 
+thread_local! {
+    pub(crate) static SIMULATE_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Define se as próximas chamadas de criação do `VirtualRingBuffer` devem simular
+/// falha de alocação de memória virtual.
+pub fn set_simulate_fail(fail: bool) {
+    SIMULATE_FAIL.with(|f| f.set(fail));
+}
+
 impl<T> VirtualRingBuffer<T> {
     /// Cria um novo buffer circular virtual.
     ///
     /// O tamanho `requested_size` (em elementos) será arredondado para cima para
     /// o próximo múltiplo do tamanho da página do sistema.
     #[cold]
-    pub fn new(requested_size: usize) -> Self {
+    pub fn new(requested_size: usize) -> std::io::Result<Self> {
         let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<T>();
 
         // Garantir que o tamanho do elemento não seja zero (ex: ZST)
-        assert!(
-            element_size > 0,
-            "VirtualRingBuffer does not support Zero Sized Types"
-        );
+        if element_size == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "VirtualRingBuffer does not support Zero Sized Types",
+            ));
+        }
 
-        let requested_bytes = requested_size * element_size;
+        if requested_size == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "requested_size must be greater than zero",
+            ));
+        }
+
+        let requested_bytes = match requested_size.checked_mul(element_size) {
+            Some(val) => val,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "requested_size * element_size overflowed",
+                ));
+            }
+        };
 
         // Arredonda para múltiplo da página
-        let size_bytes = (requested_bytes + page_size - 1) & !(page_size - 1);
+        let page_mask = page_size - 1;
+        let size_bytes = match requested_bytes.checked_add(page_mask) {
+            Some(val) => val & !page_mask,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "size_bytes calculation overflowed",
+                ));
+            }
+        };
         let size_elements = size_bytes / element_size;
 
         // 1. Criar backing store (memfd no Linux)
         // MFD_CLOEXEC evita que o FD seja herdado por processos filhos.
-        let fd = unsafe { libc::memfd_create(c"vring".as_ptr(), libc::MFD_CLOEXEC) };
+        let fd = unsafe {
+            if SIMULATE_FAIL.with(|f| f.get()) {
+                *libc::__errno_location() = libc::ENOMEM;
+                -1
+            } else {
+                libc::memfd_create(c"vring".as_ptr(), libc::MFD_CLOEXEC)
+            }
+        };
         if fd == -1 {
-            panic!(
-                "Failed to create memfd for VirtualRingBuffer: {}",
-                std::io::Error::last_os_error()
-            );
+            return Err(std::io::Error::last_os_error());
         }
 
         // 2. Definir o tamanho do arquivo
         if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
-            panic!("Failed to truncate memfd for VirtualRingBuffer: {}", err);
+            return Err(err);
         }
 
         // 3. Reservar espaço virtual contíguo (2x tamanho)
-        let total_size = size_bytes * 2;
+        let total_size = match size_bytes.checked_mul(2) {
+            Some(val) => val,
+            None => {
+                unsafe { libc::close(fd) };
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "total_size (size_bytes * 2) overflowed",
+                ));
+            }
+        };
+
+        // Assegurar invariante requerida antes de mmap
+        assert!(
+            requested_size > 0,
+            "requested_size must be greater than zero"
+        );
+
         let base_ptr = unsafe {
-            mmap(
-                ptr::null_mut(),
-                total_size,
-                PROT_NONE,
-                MAP_PRIVATE | MAP_ANONYMOUS,
-                -1,
-                0,
-            )
+            if SIMULATE_FAIL.with(|f| f.get()) {
+                *libc::__errno_location() = libc::ENOMEM;
+                MAP_FAILED
+            } else {
+                mmap(
+                    ptr::null_mut(),
+                    total_size,
+                    PROT_NONE,
+                    MAP_PRIVATE | MAP_ANONYMOUS,
+                    -1,
+                    0,
+                )
+            }
         };
         if base_ptr == MAP_FAILED {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
-            panic!(
-                "Failed to reserve virtual memory for VirtualRingBuffer: {}",
-                err
-            );
+            return Err(err);
         }
 
         // 4. Mapear a primeira metade
@@ -130,7 +188,7 @@ impl<T> VirtualRingBuffer<T> {
                 munmap(base_ptr, total_size);
                 libc::close(fd);
             }
-            panic!("Failed to map first half of VirtualRingBuffer: {}", err);
+            return Err(err);
         }
 
         // 5. Mapear a segunda metade (espelho)
@@ -150,17 +208,17 @@ impl<T> VirtualRingBuffer<T> {
                 munmap(base_ptr, total_size);
                 libc::close(fd);
             }
-            panic!("Failed to map second half of VirtualRingBuffer: {}", err);
+            return Err(err);
         }
 
         // O FD não é mais necessário após o mmap (ele mantém uma referência ao arquivo)
         unsafe { libc::close(fd) };
 
-        Self {
+        Ok(Self {
             ptr: base_ptr as *mut T,
             size_elements,
             _marker: PhantomData,
-        }
+        })
     }
 
     /// Retorna o tamanho físico do buffer (antes do espelhamento) em elementos.
@@ -207,10 +265,17 @@ impl<T> Drop for VirtualRingBuffer<T> {
 }
 
 impl<T: Clone> Clone for VirtualRingBuffer<T> {
+    #[cold]
     fn clone(&self) -> Self {
-        let mut new_vring = Self::new(self.size_elements);
-        new_vring[..self.size_elements].clone_from_slice(&self[..self.size_elements]);
-        new_vring
+        match Self::new(self.size_elements) {
+            Ok(mut new_vring) => {
+                new_vring[..self.size_elements].clone_from_slice(&self[..self.size_elements]);
+                new_vring
+            }
+            Err(err) => {
+                std::panic::panic_any(format!("Failed to clone VirtualRingBuffer: {:?}", err));
+            }
+        }
     }
 }
 
@@ -222,25 +287,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vring_page_alignment() {
+    fn test_vring_page_alignment() -> Result<(), Box<dyn std::error::Error>> {
         let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<f32>();
 
         // Pede 1 elemento, deve arredondar para 1 página
-        let vring = VirtualRingBuffer::<f32>::new(1);
+        let vring = VirtualRingBuffer::<f32>::new(1)?;
         let expected_elements = page_size / element_size;
 
         assert_eq!(vring.size(), expected_elements);
         assert_eq!(vring.len(), expected_elements * 2);
+        Ok(())
     }
 
     #[test]
-    fn test_vring_mirroring() {
+    fn test_vring_mirroring() -> Result<(), Box<dyn std::error::Error>> {
         // Teste do Espelhamento: Verifica se o "truque" da memória virtual está funcionando.
         // Qualquer valor escrito na primeira metade deve aparecer instantaneamente na
         // segunda metade (o espelho), pois ambas as janelas apontam para o mesmo lugar físico.
         // Cria um buffer pequeno (será arredondado para 1 página)
-        let mut vring = VirtualRingBuffer::<u32>::new(1);
+        let mut vring = VirtualRingBuffer::<u32>::new(1)?;
         let size = vring.size();
 
         // 1. Escrita no início da primeira metade
@@ -272,11 +338,12 @@ mod tests {
         for i in 8..16 {
             assert_eq!(vring[i - 8], i as u32);
         }
+        Ok(())
     }
 
     #[test]
-    fn test_vring_clone() {
-        let mut vring = VirtualRingBuffer::<i32>::new(100);
+    fn test_vring_clone() -> Result<(), Box<dyn std::error::Error>> {
+        let mut vring = VirtualRingBuffer::<i32>::new(100)?;
         vring[0] = 42;
 
         let vring2 = vring.clone();
@@ -289,29 +356,31 @@ mod tests {
             vring2[0], 42,
             "Clones de VirtualRingBuffer devem ser independentes"
         );
+        Ok(())
     }
 
     #[test]
-    #[should_panic(expected = "VirtualRingBuffer does not support Zero Sized Types")]
-    fn test_vring_zst_panic() {
-        let _ = VirtualRingBuffer::<()>::new(1024);
+    fn test_vring_zst_error() {
+        assert!(VirtualRingBuffer::<()>::new(1024).is_err());
     }
 
     #[test]
-    fn test_vring_large_allocation() {
+    fn test_vring_large_allocation() -> Result<(), Box<dyn std::error::Error>> {
         // Testa alocação de ~1MB
         let size = 1024 * 1024 / 4;
-        let vring = VirtualRingBuffer::<f32>::new(size);
+        let vring = VirtualRingBuffer::<f32>::new(size)?;
         assert!(vring.size() >= size);
         // Apenas garante que não deu panic e o mmap foi bem sucedido
+        Ok(())
     }
 
     #[test]
-    fn test_vring_debug() {
-        let vring = VirtualRingBuffer::<f32>::new(1024);
+    fn test_vring_debug() -> Result<(), Box<dyn std::error::Error>> {
+        let vring = VirtualRingBuffer::<f32>::new(1024)?;
         let debug_str = format!("{:?}", vring);
         assert!(debug_str.contains("VirtualRingBuffer"));
         assert!(debug_str.contains("ptr"));
         assert!(debug_str.contains("size_elements"));
+        Ok(())
     }
 }

@@ -90,7 +90,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
 
     let layers_1: Vec<WaveNetLayer<1, 16, 3>> = dilations.iter().map(|&d| make_layer(d)).collect();
     let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
-        .map(|i| WaveNetLayerState::new(16, rf, i))
+        .map(|i| WaveNetLayerState::new(16, rf, i).expect("Failed to create WaveNetLayerState"))
         .collect();
 
     // Array 1: Responsável pela extração de features temporais profundas
@@ -143,7 +143,9 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
 
     let layers_2: Vec<WaveNetLayer<1, 8, 3>> = [1, 2].iter().map(|&d| make_layer_a2(d)).collect();
     let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
-        .map(|i| WaveNetLayerState::new(8, 2 * (3 - 1), i))
+        .map(|i| {
+            WaveNetLayerState::new(8, 2 * (3 - 1), i).expect("Failed to create WaveNetLayerState")
+        })
         .collect();
 
     let array2 = WaveNetLayerArray::<16, 1, 8, 3, 1> {
@@ -448,7 +450,8 @@ fn test_resampler_drift_soak() {
 #[test]
 #[ignore]
 fn test_vring_long_run() {
-    let mut vring = VirtualRingBuffer::<f32>::new(1024 * 1024); // 1M elementos
+    let mut vring =
+        VirtualRingBuffer::<f32>::new(1024 * 1024).expect("Failed to create VirtualRingBuffer"); // 1M elementos
     let size = vring.size();
     let num_cycles = 100_000_000;
     let mut pos = 0;

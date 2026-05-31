@@ -215,7 +215,10 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
     let states_1: Vec<wavenet::WaveNetLayerState> = dilations_1
         .iter()
         .enumerate()
-        .map(|(i, &d)| wavenet::WaveNetLayerState::new(16, (K - 1) * d, i))
+        .map(|(i, &d)| {
+            wavenet::WaveNetLayerState::new(16, (K - 1) * d, i)
+                .expect("Failed to create WaveNetLayerState")
+        })
         .collect();
 
     let array1 = wavenet::WaveNetLayerArray::<1, 1, 16, 3, 8> {
@@ -254,6 +257,7 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         .map(|(i, &d)| {
             // alloc_num continua de onde array1 parou — espelha o alloc_num global do dispatcher
             wavenet::WaveNetLayerState::new(8, (K - 1) * d, dilations_1.len() + i)
+                .expect("Failed to create WaveNetLayerState")
         })
         .collect();
 

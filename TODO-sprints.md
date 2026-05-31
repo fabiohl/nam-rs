@@ -63,7 +63,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 
 ### Sprint S1 — Soundness do `DspBridge` & FFI
 
-#### Tarefa S1.T01 — Eliminar `&'static mut` em `BridgeRef::as_mut` 🔥
+#### Tarefa S1.T01 — Eliminar `&'static mut` em `BridgeRef::as_mut` 🔥 [DONE]
 
 - **Onde:** `src/dsp/pipeline.rs:116-146` (e callers em `src/standalone/pw_host.rs:525, 972` e `src/clap/processor.rs`).
 - **Problema:** `BridgeRef::as_mut(self) -> &'static mut DspBridge` cria múltiplas referências mutáveis ao mesmo objeto a partir de threads distintas (capture e playback), violando o **aliasing XOR-mut** do modelo de memória Rust. Apesar de funcional na prática (todos os campos sensíveis são `AtomicU*`), é UB segundo o ref. abstract do `rustc`.
@@ -78,7 +78,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
   - Smoke test PipeWire (`utils/tests-cargo.sh`) sem regressão.
 - **Especialista:** `implementador`.
 
-#### Tarefa S1.T02 — Tornar `VirtualRingBuffer::new` falível 🔥
+#### Tarefa S1.T02 — Tornar `VirtualRingBuffer::new` falível 🔥 [DONE]
 
 - **Onde:** `src/dsp/vring.rs:62-164` e construtor portado para `Result<Self>`.
 - **Problema:** `new()` faz `panic!` em casos legítimos (sandboxes, container, RLIMIT_AS baixo). Inaceitável em plugin CLAP carregado por host arbitrário.
