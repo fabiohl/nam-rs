@@ -755,7 +755,7 @@ fn receive_commands(
     gc_producer: &mut rtrb::Producer<GcItem>,
     parking_lot: &mut [Option<GcItem>; 16],
     gc_overflow_for_process: &crate::common::spsc::GcOverflowBuffer,
-    rt_status_for_process: &RtStatusFlags,
+    rt_status_for_process: &Arc<RtStatusFlags>,
     user_input_gain_mult: &mut f32,
     user_output_gain_mult: &mut f32,
     gate_params: &mut GateParams,
@@ -792,11 +792,18 @@ fn receive_commands(
 
                 // Troca nos canais L e R.
                 let mut old_models = Vec::with_capacity(2);
+                rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
                 if let Some(old) = std::mem::replace(active_model_l, new_model_l) {
                     old_models.push(old);
                 }
+                if let Some(model) = active_model_l {
+                    model.inject_rt_status(Arc::clone(rt_status_for_process));
+                }
                 if let Some(old) = std::mem::replace(active_model_r, new_model_r) {
                     old_models.push(old);
+                }
+                if let Some(model) = active_model_r {
+                    model.inject_rt_status(Arc::clone(rt_status_for_process));
                 }
 
                 for m in old_models {

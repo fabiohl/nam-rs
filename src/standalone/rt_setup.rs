@@ -156,6 +156,14 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
+    // 1.5. MODELO A2 PLACEHOLDER
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER) {
+        log::info!(
+            "{} Modelo A2 não suportado — bypass ativo. A implementação real está em desenvolvimento.",
+            "⚠️".yellow()
+        );
+    }
+
     // 2. MUDANÇA DE RITMO (Sample Rate):
     // Avisa quando o servidor de áudio (PipeWire) altera a frequência de amostragem
     // (ex: mudou de 44.100 para 48.000 batidas por segundo).

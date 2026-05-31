@@ -10,6 +10,9 @@ pub mod a2;
 pub mod lstm;
 pub mod wavenet;
 
+use std::sync::Arc;
+use crate::common::spsc::RtStatusFlags;
+
 // =============================================================================
 // Trait NamModel — Contrato Público
 // =============================================================================
@@ -54,6 +57,16 @@ pub enum DynamicModel {
     Lstm2x16(Box<lstm::Lstm2x16>),
     /// LSTM Dinâmico (usado como fallback).
     LstmDyn(Box<lstm::LstmDynModel>),
+}
+
+impl DynamicModel {
+    /// Injeta `RtStatusFlags` na variante `WavenetA2` para que o placeholder
+    /// possa sinalizar seu estado ao UI via flags atômicas.
+    pub fn inject_rt_status(&mut self, rt_status: Arc<RtStatusFlags>) {
+        if let Self::WavenetA2(m) = self {
+            m.inject_rt_status(rt_status);
+        }
+    }
 }
 
 impl NamModel for DynamicModel {

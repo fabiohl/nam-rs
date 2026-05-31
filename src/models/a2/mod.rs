@@ -11,7 +11,9 @@ pub mod film;
 pub mod gating;
 pub mod params;
 
+use crate::common::spsc::RtStatusFlags;
 use crate::models::NamModel;
+use std::sync::Arc;
 
 /// Re-exports públicos para facilitar o acesso.
 pub use activations::{ActivationFn, ActivationType};
@@ -27,10 +29,28 @@ pub use params::{HeadParams, LayerArrayParamsA2, LayerParamsA2};
 ///
 /// Este struct permite que o sistema carregue modelos A2 sem falhar, retornando
 /// silêncio até que a implementação completa do motor de inferência esteja pronta.
-#[derive(Default)]
 pub struct WavenetA2Placeholder {
     /// Flag para emitir o aviso de log apenas uma vez por instância.
     warned: bool,
+    /// Flags de status RT compartilhadas para sinalizar o placeholder ao UI.
+    rt_status: Option<Arc<RtStatusFlags>>,
+}
+
+impl Default for WavenetA2Placeholder {
+    fn default() -> Self {
+        Self {
+            warned: false,
+            rt_status: None,
+        }
+    }
+}
+
+impl WavenetA2Placeholder {
+    /// Injeta a referência para `RtStatusFlags` para que o placeholder possa
+    /// sinalizar seu estado ao UI via flags atômicas.
+    pub fn inject_rt_status(&mut self, rt_status: Arc<RtStatusFlags>) {
+        self.rt_status = Some(rt_status);
+    }
 }
 
 impl NamModel for WavenetA2Placeholder {
@@ -51,6 +71,9 @@ impl NamModel for WavenetA2Placeholder {
                 "Arquitetura WaveNet A2 detectada: Modo Placeholder (Silencioso) ativo. A implementação real está em desenvolvimento."
             );
             self.warned = true;
+            if let Some(ref rt) = self.rt_status {
+                rt.set_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
+            }
         }
 
         // Retorna silêncio absoluto.

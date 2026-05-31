@@ -44,6 +44,8 @@ pub const RT_STATUS_IS_FADING: u64 = 1 << 6;
 pub const RT_STATUS_MODEL_LOAD_FAILED: u64 = 1 << 7;
 /// Flag indicando que ocorreu alocação no heap na thread RT (detectada por heap-audit).
 pub const RT_STATUS_HEAP_ALLOC: u64 = 1 << 8;
+/// Flag indicando que um modelo A2 placeholder está ativo (bypass silencioso).
+pub const RT_STATUS_A2_PLACEHOLDER: u64 = 1 << 9;
 
 /// Flags atômicas de status para comunicação silenciosa RT→Main.
 ///
@@ -64,6 +66,7 @@ pub const RT_STATUS_HEAP_ALLOC: u64 = 1 << 8;
 /// | 6 | `IS_FADING` | Gate em transição (Fading In/Out) |
 /// | 7 | `MODEL_LOAD_FAILED` | Falha no carregamento do modelo na RT |
 /// | 8 | `HEAP_ALLOC` | Alocação no heap detectada na thread RT |
+/// | 9 | `A2_PLACEHOLDER` | Modelo A2 placeholder ativo (bypass silencioso) |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.

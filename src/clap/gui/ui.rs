@@ -21,6 +21,8 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
+use crate::common::spsc;
+
 // ── Paleta de cores aprovada (T4.0.2) ─────────────────────────────────────────
 const COL_BG: egui::Color32 = egui::Color32::from_rgb(26, 29, 35); // #1A1D23
 const COL_PANEL: egui::Color32 = egui::Color32::from_rgb(35, 40, 48); // #232830
@@ -1601,15 +1603,18 @@ pub fn draw_ui(
                 None
             };
 
+            // Verifica se um modelo A2 placeholder está ativo
+            let a2_placeholder = shared.rt_status.check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
+
             // Cálculo dinâmico do posicionamento vertical (centro-inferior)
             let available_h = ui.available_height();
             let has_meta = model_meta_opt.is_some();
             let line_height = 11.5; // Estimativa de altura por linha (incluindo margens)
             let spacing = 3.0; // Espaçamento compacto de metade do padrão entre as linhas
-            let content_height = if has_meta {
-                2.0 * line_height + spacing
-            } else {
-                line_height
+            let content_height = match (has_meta, a2_placeholder) {
+                (true, true) => 3.0 * line_height + 2.0 * spacing,
+                (true, false) | (false, true) => 2.0 * line_height + spacing,
+                (false, false) => line_height,
             };
 
             let extra_space = (available_h - content_height).max(0.0);
@@ -1768,6 +1773,26 @@ pub fn draw_ui(
                         label.on_hover_text(tooltip);
                     }
                 });
+
+                // 1.5. Aviso de modelo A2 placeholder
+                if a2_placeholder {
+                    ui.horizontal(|ui| {
+                        let warn_font = egui::FontId::proportional(9.0);
+                        let galley = ui.painter().layout_no_wrap(
+                            "⚠ Modelo A2 não suportado — bypass ativo".to_string(),
+                            warn_font.clone(),
+                            COL_AMBER,
+                        );
+                        let available_width = ui.available_width();
+                        let x_center = (available_width - galley.rect.width()).max(0.0) / 2.0;
+                        ui.add_space(x_center);
+                        ui.label(
+                            egui::RichText::new("⚠ Modelo A2 não suportado — bypass ativo")
+                                .font(warn_font)
+                                .color(COL_AMBER),
+                        );
+                    });
+                }
 
                 // 2. Linha de Metadados do Modelo (linha inferior)
                 if let Some(meta) = model_meta_opt {

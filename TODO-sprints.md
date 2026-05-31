@@ -324,7 +324,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Critérios de aceitação:** Compilação falha (com erro útil) ao tentar topologia maior; testes passam no painel de 4 topologias atual.
 - **Especialista:** `implementador`.
 
-#### Tarefa S4.T03 — Sinalizar `WavenetA2Placeholder` no UI 🔥
+#### Tarefa S4.T03 — Sinalizar `WavenetA2Placeholder` no UI 🔥 [DONE]
 
 - **Onde:** `src/models/a2/mod.rs:37-49`; `src/clap/gui/ui.rs` (status bar).
 - **Problema:** Modelos A2 carregados produzem **silêncio absoluto** sem feedback adequado ao usuário (apenas um `log::warn!` único).
