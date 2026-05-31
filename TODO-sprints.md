@@ -280,7 +280,7 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Critérios de aceitação:** Teste com modelo sintético `kernel=10` carrega sem segfault, produz saída numérica correta vs referência escalar.
 - **Especialista:** `implementador`.
 
-### Sprint S4 — Backfill safety & A2 placeholder
+### Sprint S4 — Backfill safety & A2 placeholder [DONE]
 
 > Nota do PO: O repositório oficial do NeuralAmpModelerCore está espelhado integralmente em `github.com/NeuralAmpModelerCore/`.
 > Nota do PO: Arquitetura A2 está fora do escopo, ao menos por enquanto. É permitido apenas placeholders e outras medidas para evitar algo que possa se chocar com o A2 mais adiante.
@@ -362,6 +362,18 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
   3. Processar as amostras de silêncio normalmente a partir desse estado.
 - **Critérios de aceitação:** Goldens LSTM 1×16 batem com saída C++ de referência.
 - **Especialista:** `implementador`.
+
+> **Auditoria da Sprint S4 (2026-05-31):**
+>
+> **S4.T01** ✓ — Underflow prevention totalmente implementado (`debug_assert` + `checked_sub` em `model.rs` e `model_dyn.rs`, validação no construtor em `common.rs`, testes em `tests/wavenet_prewarm_edge.rs` com RF=2046).
+>
+> **S4.T02** ✓ — Stack buffers: `model_dyn.rs` usa `MAX_STACK=8192` conforme especificado. `model.rs` mantém `[0.0f32; 1024]` porque a substituição por `[f32; CH * WAVENET_MAX_NUM_FRAMES]` requer `generic_const_exprs` (nightly-only — verificado em Rust 1.96). Mitigação: `debug_assert!` substituído por `assert!` (protege em release). Adicionado `const { assert!(CH * WAVENET_MAX_NUM_FRAMES <= 1024) }` para verificação em compile-time (stabilized desde Rust 1.79).
+>
+> **S4.T03** ✓ — `RT_STATUS_A2_PLACEHOLDER` definido, setado uma vez por carregamento em `WaveNetA2Placeholder::process`, exibido em âmbar na status bar do UI.
+>
+> **S4.T04** ✓ — Trait `NamModel::reset()` implementado corretamente com default que chama `prewarm(max_buffer_size)`. LSTM overrides chamam `reset_states()` (reset completo — apropriado para mudanças de sample rate ou ciclo de vida do plugin). **O loader mantém `prewarm(2048)` (não `reset()`), decisão arquitetural correta**: chamar `reset()` do loader zeraria os estados LSTM carregados do arquivo NAM, conflitando com S4.T05. O `reset()` é API pública para o host disparar limpeza explícita de estado.
+>
+> **S4.T05** ✓ — `prewarm_internal` preserva `state[input_size..]` e `cell_state`, zerando apenas o input slot. `build_lstm_dynamic` carrega `hidden_init` e `cell_init` do arquivo via `copy_from_slice`.
 
 ---
 

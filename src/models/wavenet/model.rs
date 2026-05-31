@@ -42,6 +42,12 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             // Buffer stack de 1024 f32 = WAVENET_MAX_NUM_FRAMES(64) × max_CH(16).
             // Nota: generic_const_exprs (nightly) seria necessário para `[f32; CH * WAVENET_MAX_NUM_FRAMES]`
             // em Rust estável. O assert abaixo captura qualquer topologia futura que exceda este tamanho.
+            const {
+                assert!(
+                    CH * WAVENET_MAX_NUM_FRAMES <= 1024,
+                    "topology CH excede o buffer stack (1024)"
+                );
+            }
             assert!(
                 num_frames * CH <= 1024,
                 "process_block_internal: num_frames*CH ({}) excede o buffer stack (1024)",
