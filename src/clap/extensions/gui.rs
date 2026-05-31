@@ -95,7 +95,7 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             // `destroy()`). Este transmute é o padrão aceito para integrar plugins CLAP com
             // bibliotecas de janelamento que requerem closures `'static`.
             let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                unsafe { std::mem::transmute(host_shared) };
+                unsafe { crate::clap::gui::extend_host_lifetime(host_shared) };
 
             let window_handle = baseview::Window::open_parented(&_window, options, move |win| {
                 NamPluginWindow::new(win, shared_ptr, host_static)

@@ -151,7 +151,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Critérios de aceitação:** Stress test fechando janela de modo agressivo durante drag (`utils/tests-cargo.sh test_gui_drag_drop_fuzz`).
 - **Especialista:** `implementador`.
 
-#### Tarefa S2.T04 — Encapsular `transmute` para estender lifetime de `HostSharedHandle` 🔥
+#### Tarefa S2.T04 — Encapsular `transmute` para estender lifetime de `HostSharedHandle` 🔥 [DONE]
 
 - **Onde:** `src/clap/gui/gui.rs:97-98`; `src/clap/gui/ui.rs:1212-1214`.
 - **Problema:** `transmute::<HostSharedHandle<'a>, HostSharedHandle<'static>>` repetido em dois lugares — chance de divergência. Padrão de ocultação de UB.

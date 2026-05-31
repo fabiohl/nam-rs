@@ -1211,7 +1211,7 @@ pub fn draw_ui(
                     shared.ui_loading.store(true, Ordering::Relaxed);
                     let shared_addr = shared as *const NamClapShared as usize;
                     let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                        unsafe { std::mem::transmute(*host) };
+                        unsafe { super::extend_host_lifetime(*host) };
                     let alive_fence = Arc::clone(&shared.alive_fence);
                     std::thread::spawn(move || {
                         // "Picker Manager Thread"
