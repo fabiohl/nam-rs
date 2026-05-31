@@ -140,7 +140,7 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Critérios de aceitação:** Nenhum `expect`/`unwrap` em paths de activate/deactivate/process (lista whitelisted documentada).
 - **Especialista:** `implementador`.
 
-#### Tarefa S2.T03 — Verificar `alive_fence` antes de `unsafe { &*shared }` em drag-drop 🔥
+#### Tarefa S2.T03 — Verificar `alive_fence` antes de `unsafe { &*shared }` em drag-drop 🔥 [DONE]
 
 - **Onde:** `src/clap/gui/window.rs:492-507`; `src/clap/gui/ui.rs:1212-1273`.
 - **Problema:** UAF latente. Em `DragDropped`, dereferencia `self.shared.0` sem checar `alive_fence`. Se host destruir o plugin entre eventos, há use-after-free.

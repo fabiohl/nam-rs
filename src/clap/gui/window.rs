@@ -241,6 +241,8 @@ pub struct NamPluginWindow {
     scale: f32,
     /// Referência ao estado compartilhado do plugin.
     shared: NamClapSharedRef,
+    /// Cerca de vida útil (Arc compartilhado para detecção de destruição).
+    alive_fence: Arc<std::sync::atomic::AtomicBool>,
     /// Handle compartilhado estático do host CLAP.
     host: clack_plugin::host::HostSharedHandle<'static>,
     /// Estado persistente local da interface gráfica.
@@ -334,6 +336,8 @@ impl NamPluginWindow {
             ..Default::default()
         };
 
+        let alive_fence = unsafe { &*shared.0 }.alive_fence.clone();
+
         Self {
             egui_ctx,
             painter,
@@ -343,9 +347,20 @@ impl NamPluginWindow {
             height,
             scale,
             shared,
+            alive_fence,
             host,
             state,
             last_mouse_pos: egui::Pos2::ZERO,
+        }
+    }
+
+    fn safe_shared(&self) -> Option<&'static crate::clap::plugin::NamClapShared> {
+        if self.alive_fence.load(std::sync::atomic::Ordering::Relaxed) {
+            // SAFETY: Se a alive_fence for true, o plugin e seu estado compartilhado
+            // ainda estão vivos em memória, logo o ponteiro é válido.
+            unsafe { Some(&*self.shared.0) }
+        } else {
+            None
         }
     }
 }
@@ -357,42 +372,43 @@ impl WindowHandler for NamPluginWindow {
             gl_ctx.make_current();
         }
 
-        let shared = unsafe { &*self.shared.0 };
-        let mut raw_input = self.raw_input.take();
-        raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
+        if let Some(shared) = self.safe_shared() {
+            let mut raw_input = self.raw_input.take();
+            raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
 
-        let logical_width = self.width as f32 / self.scale;
-        let logical_height = self.height as f32 / self.scale;
-        raw_input.screen_rect = Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(logical_width, logical_height),
-        ));
+            let logical_width = self.width as f32 / self.scale;
+            let logical_height = self.height as f32 / self.scale;
+            raw_input.screen_rect = Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(logical_width, logical_height),
+            ));
 
-        if let Some(info) = raw_input.viewports.get_mut(&egui::ViewportId::ROOT) {
-            info.native_pixels_per_point = Some(self.scale);
-        }
+            if let Some(info) = raw_input.viewports.get_mut(&egui::ViewportId::ROOT) {
+                info.native_pixels_per_point = Some(self.scale);
+            }
 
-        let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-            egui::CentralPanel::default().show_inside(ui, |ui| {
-                crate::clap::gui::ui::draw_ui(ui, shared, &self.host, &mut self.state);
+            let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    crate::clap::gui::ui::draw_ui(ui, shared, &self.host, &mut self.state);
+                });
             });
-        });
 
-        let clipped_primitives = self
-            .egui_ctx
-            .tessellate(full_output.shapes, full_output.pixels_per_point);
+            let clipped_primitives = self
+                .egui_ctx
+                .tessellate(full_output.shapes, full_output.pixels_per_point);
 
-        let screen_size = [self.width, self.height];
-        // Cor de fundo: #1A1D23 (paleta dark mode aprovada — T4.0.2)
-        self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
-        self.painter.paint_and_update_textures(
-            screen_size,
-            full_output.pixels_per_point,
-            &clipped_primitives,
-            &full_output.textures_delta,
-        );
+            let screen_size = [self.width, self.height];
+            // Cor de fundo: #1A1D23 (paleta dark mode aprovada — T4.0.2)
+            self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
+            self.painter.paint_and_update_textures(
+                screen_size,
+                full_output.pixels_per_point,
+                &clipped_primitives,
+                &full_output.textures_delta,
+            );
 
-        gl_ctx.swap_buffers();
+            gl_ctx.swap_buffers();
+        }
 
         unsafe {
             gl_ctx.make_not_current();
@@ -492,13 +508,14 @@ impl WindowHandler for NamPluginWindow {
                     MouseEvent::DragDropped { data, .. } => {
                         self.state.drag_active = false;
                         if let Some(path) = get_valid_model_file(&data) {
-                            let shared = unsafe { &*self.shared.0 };
-                            if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
-                                *pending_guard = Some(path);
-                                shared
-                                    .ui_loading
-                                    .store(true, std::sync::atomic::Ordering::Relaxed);
-                                self.host.request_callback();
+                            if let Some(shared) = self.safe_shared() {
+                                if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+                                    *pending_guard = Some(path);
+                                    shared
+                                        .ui_loading
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                    self.host.request_callback();
+                                }
                             }
                             return EventStatus::AcceptDrop(DropEffect::Copy);
                         } else {
