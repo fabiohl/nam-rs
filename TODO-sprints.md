@@ -383,7 +383,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 
 ### Sprint S5 — Loader hardening
 
-> **Nota de Auditoria (2026-05-31):** Todas as 7 tarefas implementadas (T01–T07, T09) auditadas e verificadas — zero gaps de implementação. Todas possuem cobertura de testes adequada, tratamento de erro tipado, e seguem os critérios de aceitação conforme especificado. S5.T08 foi definida retroativamente como infraestrutura de cargo-fuzz (foundation para S21.T01).
+> **Nota de Auditoria (2026-05-31):** Todas as 7 tarefas implementadas (T01–T07, T09) auditadas e verificadas — zero gaps de implementação. Todas possuem cobertura de testes adequada, tratamento de erro tipado, e seguem os critérios de aceitação conforme especificado. S5.T08 (cargo-fuzz) cancelada por política (sem nightly); cobertura adversarial provida pelos 9 proptest fuzz-tests.
 >
 > Resumo por tarefa:
 >
@@ -394,7 +394,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 > - **S5.T05** ✓ — `parse_semver()` em `nam_json.rs:460-468` com split por `.`, parse u16, strip `v/V`, pre-release/metadata suffix. `is_wavenet_a2` usa `ver >= (0,6,0)` + activation `!= "Tanh"`. Testes para 9 versões.
 > - **S5.T06** ✓ — Traits `ConvWeightsOutput` e `DenseWeightsOutput` em `wavenet.rs:345-451` unificam paths estático e dinâmico. `read_conv1d_weights_typed<T>()` e `read_dense_weights_typed<T>()` genéricos. `read_lstm_weights_into()` e `read_lstm_layer()` compartilhados em LSTM.
 > - **S5.T07** ✓ — `docs/namb-spec.md` (425 linhas): header offsets, magic, versionamento, flags, 3 layouts com exemplos hex, CRC32 spec, tabela de erros, política de evolução, constantes com referências a source.
-> - **S5.T08** — Definida retroativamente (infra cargo-fuzz para loaders). Pendente implementação.
+> - **S5.T08** — ⚠️ **Fora de escopo por política:** cargo-fuzz requer nightly Rust, que não é utilizado no projeto. A cobertura adversarial é provida pelos 9 proptest fuzz-tests em `tests/proptest_parsers.rs` (5k–45k casos por target). Tarefa marcada como cancelada; S21.T01 (differential fuzzing) também excluída do roadmap até revisão de política.
 > - **S5.T09** ✓ — Magic alternativo `0x424D414E` rejeitado com `NambError::InvalidMagic`. Decisão documentada em `namb.rs:29` e `namb-spec.md:34-38`. Teste `test_reject_magic_bman()` confirma.
 
 #### Tarefa S5.T01 — Validar tamanho do arquivo antes de `std::fs::read` 🔥 [DONE]
@@ -485,23 +485,9 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Especialista:** `documentador`.
 - **Nota:** S14.T01 abaixo é **apenas referência cruzada** — esta é a entrega real.
 
-#### Tarefa S5.T08 — Infraestrutura de fuzzing para loaders NAMB/JSON (cargo-fuzz) 🔥💡
+#### Tarefa S5.T08 — Infraestrutura de fuzzing para loaders NAMB/JSON ~~(cargo-fuzz)~~ ❌ [CANCELADA]
 
-- **Onde:** Criar `fuzz/` (cargo-fuzz) e targets para os parsers de loader.
-- **Problema:** Testes unitários e de integração cobrem casos felizes e erros conhecidos, mas não geram inputs adversariais. O formato NAMB é binário complexo — bugs de parsing são latentes. A carga JSON também é vetor de injeção adversarial (campos aninhados, floats extremos, strings longas). A infraestrutura de fuzz é o primeiro passo antes de estendê-la para differential fuzzing C++↔Rust (S21.T01).
-- **Solução técnica:**
-  1. Criar `fuzz/Cargo.toml` com `cargo-fuzz` e dependência no crate principal.
-  2. Target `fuzz/fuzz_targets/namb_parse.rs`: fornece `data: &[u8]` ao parser NAMB (`NambHeader::parse` + `read_weights`). O fuzzer exercita magic, version, flags, CRC32, offset boundaries, weight layouts (Original, GateMajorLstm, Interleaved4WaveNet) e VLA de pesos. Panics, OOM e timeouts são bugs.
-  3. Target `fuzz/fuzz_targets/nam_json_parse.rs`: fornece `data: &[u8]` ao parser JSON (`serde_json::from_str::<NamConfig>`). O custom deserializer de pesos e o `LimitedValueVisitor` de training são exercitados sob inputs adversariais.
-  4. Target `fuzz/fuzz_targets/namb_roundtrip.rs`: gera modelo sintético aleatório (`Arbitrary`) → encode NAMB v2 → decode → assert decode(encode(x)) == x. Cobre encoder e decoder simultaneamente.
-  5. Documentar no `fuzz/README.md` como rodar localmente e em CI (1 min de smoke por PR, 1h nightly).
-- **Critérios de aceitação:**
-  - `cargo fuzz run namb_parse -- -max_total_time=30` não encontra panics/OOM/timeouts em 30s.
-  - `cargo fuzz run nam_json_parse -- -max_total_time=30` idem.
-  - `cargo fuzz run namb_roundtrip -- -max_total_time=30` idem.
-  - Nenhum fuzz target compila com panics conhecidos sinalizados no código.
-- **Especialista:** `implementador`.
-- **Nota:** S21.T01 estende esta tarefa adicionando differential fuzzing C++↔Rust ao target `cpp_diff.rs`.
+> **Cancelada por política do projeto:** `cargo-fuzz` requer toolchain `nightly`, que não é utilizado no projeto. A cobertura adversarial é provida pelos 9 proptest fuzz-tests em `tests/proptest_parsers.rs` (5k–45k casos por target). Tarefa marcada como cancelada; S21.T01 (differential fuzzing) também excluída do roadmap até revisão de política.
 
 #### Tarefa S5.T09 — Rejeitar magic alternativo `0x424D414E` ou implementar byte-swap 💡 [DONE]
 
@@ -518,6 +504,19 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 ## Épico 4 — Otimização Hotpath (SIMD/ILP/cache/branchless)
 
 Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, reduzindo divisões, branches e cadeias de dependência longas.
+
+> **⚠️ Nota de Impacto (2026-05-31) — Regressões medidas pós-Épicos 2 e 3:**
+>
+> As correções de soundness dos Épicos 2 e 3 (S3.T01–T05, S4.T01–T05) introduziram regressões mensuráveis nos benchmarks. O Épico 4 tem o **mandato explícito de recuperar essas regressões** antes de buscar ganhos adicionais.
+>
+> | Benchmark                    | Regressão | Causa provável                                                |
+> | ---------------------------- | --------- | ------------------------------------------------------------- |
+> | `DotProduct_AVX2_256elem`    | +6.3%     | `debug_assert!` em `process_*_frame*` + MAX_KERNEL guardrails |
+> | `Prewarm_LSTM_2x16`          | +5.2%     | Detecção `SimdMathConfig` por sample no scalar path           |
+> | `Prewarm_WaveNet_Standard`   | +2.4%     | Overhead de `checked_sub` no backfill de prewarm              |
+> | `Long_WaveNet_CH16_4096samp` | +1.2%     | `div_ceil` + padding zero no encoder interleaved              |
+>
+> Prioridade de recuperação: **Sprint S7.R** (tarefas S7.R01–R04, estimativa total: ~2h) → S6 (telemetria/gate) → S7 restante.
 
 ### Sprint S6 — Telemetria & Gain hotpath
 
@@ -571,6 +570,66 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   1. Adicionar `cycles_since_telemetry: u32` em `NamClapProcessor`.
   2. Decimar 1-em-16 (igual ao standalone — `pw_host.rs:962`).
 - **Critérios de aceitação:** Overhead de telemetria fica abaixo de 1% nas medidas.
+- **Especialista:** `implementador`.
+
+### Sprint S7.R — Recuperação de Performance (Regressões pós-Épicos 2–3) 🔥
+
+> **Contexto:** Esta sprint foi criada retroativamente para recuperar as 4 regressões de performance introduzidas pelos guardrails de soundness dos Épicos 2–3. Cada tarefa tem análise de causa raiz e estratégia de recuperação zero-risco (sem abrir mão das garantias de correção). Execute antes das tarefas S7.T01+ para restaurar a baseline.
+
+#### Tarefa S7.R01 — Pré-calcular `num_blocks` e eliminar `div_ceil` por frame em `Conv1dDyn` 🔥
+
+- **Onde:** `src/models/wavenet/conv1d_dyn.rs:64, 364, 506, 792`.
+- **Problema:** `num_blocks = self.out_ch.div_ceil(4)` é recalculado em **cada chamada** às 4 variantes de `process_dual_frame`, `process_single_frame` e suas contrapartes BF16. Para um modelo WaveNet Standard (CH=16, 20 layers, 4096 amostras), isso representa ~80k divisões desnecessárias por bloco de áudio. A regressão de +6.3% no benchmark `DotProduct_AVX2_256elem` é atribuída principalmente a este padrão.
+- **Causa raiz:** `div_ceil(4)` foi introduzido como parte do fix S3.T04 (encoder interleaved padding). O valor nunca muda após construção do struct.
+- **Solução técnica:**
+  1. Adicionar campo `pub num_blocks: usize` em `Conv1dDyn` (em `src/models/wavenet/conv1d_dyn.rs`, na struct de definição).
+  2. Inicializar `num_blocks = out_ch.div_ceil(4)` no construtor `Conv1dDyn::new(...)`.
+  3. Substituir as 4 ocorrências `let num_blocks = self.out_ch.div_ceil(4);` por `let num_blocks = self.num_blocks;`.
+  4. Atualizar leitores do struct (se houver) para usar o campo cached.
+- **Critérios de aceitação:** Benchmark `DotProduct_AVX2_256elem` retorna a ≤ baseline pré-S3 (alvo: ≤ +1.0% vs baseline histórica). Todos os testes de paridade `conv1d_dyn_*` continuam passando.
+- **Esforço:** 30 min.
+- **Especialista:** `implementador`.
+
+#### Tarefa S7.R02 — Hoistar `is_bf16` para fora do loop em `process_sample_scalar` e `process_scalar` 🔥
+
+- **Onde:** `src/models/lstm/layer.rs:379` (`process_sample_scalar`); `:529` (`LstmModel1::process_scalar`); `:642` (`LstmModel2::process_scalar`).
+- **Problema:** `SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16` é avaliado **por amostra** — para um modelo LSTM 2×16 processando 2048 amostras de prewarm, isso representa 2048 leituras atômicas de `LazyLock`. A `LazyLock` é segura, mas tem custo de barreira de memória `Acquire` por chamada. O resultado nunca muda durante a vida do processo. Regressão de +5.2% em `Prewarm_LSTM_2x16`.
+- **Causa raiz:** Fix S3.T01 corretamente adicionou a detecção runtime, mas não hoistou a detecção para fora do loop.
+- **Solução técnica:**
+  1. Em `LstmModel1::process_scalar` (linha 529): mover `let is_bf16 = ...` para **antes** do `for i in 0..input.len()`, mantendo-a uma única leitura por chamada.
+  2. Em `LstmLayer::process_sample_scalar` (linha 379): este método é chamado dentro do loop de `process_scalar`. O fix correto é **remover** a detecção de `is_bf16` daqui e receber `is_bf16: bool` como parâmetro (passado pelo caller, que já o detectou antes do loop).
+  3. Atualizar os 3 callers de `process_sample_scalar` (em `LstmModel1::process_scalar`, `LstmModel2::process_scalar` e o path de `process_scalar` da `DynamicLstmModel`) para passar `is_bf16`.
+  4. Em `LstmModel2::process_scalar` (linha 642): mesmo padrão — hoistar `is_bf16` para fora do loop.
+- **Critérios de aceitação:** Benchmark `Prewarm_LSTM_2x16` retorna a ≤ baseline (alvo: ≤ +1.0%). Proptest `test_lstm_scalar_vs_simd_parity` (10k casos) continua passando.
+- **Esforço:** 45 min.
+- **Especialista:** `implementador`.
+
+#### Tarefa S7.R03 — Eliminar `checked_sub` do loop de backfill de prewarm WaveNet 🔥
+
+- **Onde:** `src/models/wavenet/model.rs:272` (loop `for offset in 1..=receptive_field_size`).
+- **Problema:** O `checked_sub` introduz uma ramificação condicional + `Option` unwrap dentro de um loop tight de `O(RF)` iterações onde `RF` pode chegar a 2046 (WaveNet Standard). O `log::error!` dentro do branch `None` bloqueia o LLVM de otimizar o loop (presença de side effects). O `debug_assert!` acima (linha 266) já garante a invariante em debug; em release a proteção real vem do construtor `WaveNetLayerState::new` que valida `buffer_start >= receptive_field_size`. Regressão de +2.4% em `Prewarm_WaveNet_Standard`.
+- **Causa raiz:** Fix S4.T01 usou `checked_sub` como proteção release, mas com o construtor já validando a invariante, o `checked_sub` em release é overhead puro.
+- **Solução técnica:**
+  1. Substituir o bloco `let Some(dst_start) = current_state.buffer_start.checked_sub(offset) else { log::error!(...); continue; };` por subtração direta: `let dst_start = current_state.buffer_start - offset;`.
+  2. Manter o `debug_assert!` acima (linha 266) — ele continua protegendo em debug builds.
+  3. Adicionar comentário `// SAFETY: garantido pelo construtor WaveNetLayerState::new` que valida `buffer_start >= receptive_field_size`.
+  4. Rodar `cargo test --test wavenet_prewarm_edge` para confirmar que nenhuma regressão de correção é introduzida.
+- **Critérios de aceitação:** Benchmark `Prewarm_WaveNet_Standard` retorna a ≤ baseline (alvo: ≤ +0.5%). Teste `wavenet_prewarm_edge.rs` continua passando.
+- **Esforço:** 20 min.
+- **Especialista:** `implementador`.
+
+#### Tarefa S7.R04 — Investigar e mitigar regressão residual em `Long_WaveNet_CH16_4096samp` ⚠️
+
+- **Onde:** `src/models/wavenet/conv1d_dyn.rs` — hotpath dos 4 variantes de `process_*_frame*`.
+- **Problema:** Regressão de +1.2% em `Long_Run_WaveNet`. Após resolver S7.R01 (cache de `num_blocks`), esta regressão pode se auto-corrigir. Se persistir, a causa pode ser:
+  - (a) Os `debug_assert!` adicionais em S3.T05 — inofensivos em release, mas podem afetar o cache de instruções (Icache pressure).
+  - (b) O campo adicional `num_blocks` no struct pode desalinhar outros campos do `Conv1dDyn` (falso sharing / cache line split).
+- **Solução técnica:**
+  1. Após implementar S7.R01, re-rodar `cargo bench Long_Run_WaveNet` e medir delta.
+  2. Se regressão persistir > 0.5%: verificar o alinhamento do struct `Conv1dDyn` com `#[repr(align(64))]` e usar `cargo asm` para confirmar ausência de `panic_bounds_check` nos loops internos.
+  3. Se regressão persistir > 1%: adicionar `#[cold]` nos path de erro dos `debug_assert!` para isolar o código quente.
+- **Critérios de aceitação:** `Long_Run_WaveNet` retorna a ≤ +0.3% da baseline histórica (dentro do ruído de medição do criterion). Se a regressão for eliminada por S7.R01, esta tarefa é CONCLUÍDA por consequência.
+- **Esforço:** 30 min (+ S7.R01).
 - **Especialista:** `implementador`.
 
 ### Sprint S7 — Hotpath de pipeline e resampler
@@ -1332,18 +1391,9 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 ### Sprint S21 — Differential Validation & Métricas Perceptuais
 
-#### Tarefa S21.T01 — Differential fuzzing C++↔Rust com cargo-fuzz ✨🔥
+#### Tarefa S21.T01 — Differential fuzzing C++↔Rust ~~com cargo-fuzz~~ ❌ [CANCELADA]
 
-- **Onde:** `fuzz/fuzz_targets/cpp_diff.rs` (estende S5.T08); `utils/cpp_parity/` (S13.T01).
-- **Problema/Oportunedade:** Hoje a paridade C++↔Rust é validada em fixed inputs (S13.T01). Differential fuzzing **gera inputs adversariais** e detecta drift escondido — abordagem padrão da indústria (libFuzzer + sancov, OSS-Fuzz).
-- **Solução técnica:**
-  1. Target lê `data: &[u8]` → interpretar como (model_path_index, audio_samples).
-  2. Run both engines (Rust nam-rs lib + C++ NeuralAmpModelerCore via FFI).
-  3. Assert `mse(rust_out, cpp_out) < 1e-3`; falhas geram corpus.
-  4. CI roda 1h por commit em GitHub Actions.
-- **Critérios de aceitação:** 100M iterações sem failure; corpus persistido em `fuzz/corpus/cpp_diff/`.
-- **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
-- **Esforço:** 2 dias.
+> **Cancelada por política do projeto:** `cargo-fuzz` requer toolchain `nightly`, que não é utilizado no projeto. Técnicas avançadas de fuzzing estão fora do escopo no momento. Reabrir junto com S5.T08 se a política for revisada.
 
 #### Tarefa S21.T02 — Métricas perceptuais (MR-STFT, ESR) em CI ✨⚠️
 
