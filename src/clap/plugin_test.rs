@@ -66,12 +66,18 @@ fn test_gui_gestures_and_parameter_flow() {
     const BEGIN_SHIFT: u32 = 1;
     const END_SHIFT: u32 = 2;
     let offset = input_idx as u32 * BITS_PER_PARAM;
-    shared.gesture_flags.fetch_or(1 << (offset + BEGIN_SHIFT), Ordering::Relaxed);
-    shared.gesture_flags.fetch_or(1 << (offset + CHANGED_SHIFT), Ordering::Relaxed);
+    shared
+        .gesture_flags
+        .fetch_or(1 << (offset + BEGIN_SHIFT), Ordering::Relaxed);
+    shared
+        .gesture_flags
+        .fetch_or(1 << (offset + CHANGED_SHIFT), Ordering::Relaxed);
     shared
         .param_input_gain
         .store(1.5f32.to_bits(), Ordering::Relaxed);
-    shared.gesture_flags.fetch_or(1 << (offset + END_SHIFT), Ordering::Relaxed);
+    shared
+        .gesture_flags
+        .fetch_or(1 << (offset + END_SHIFT), Ordering::Relaxed);
 
     let mut output_events_buffer = EventBuffer::new();
     {
@@ -107,9 +113,21 @@ fn test_gui_gestures_and_parameter_flow() {
 
     // Verifica que as flags foram limpas
     let flags = shared.gesture_flags.load(Ordering::Relaxed);
-    assert_eq!(flags & (1 << (offset + BEGIN_SHIFT)), 0, "begin flag should be cleared");
-    assert_eq!(flags & (1 << (offset + CHANGED_SHIFT)), 0, "changed flag should be cleared");
-    assert_eq!(flags & (1 << (offset + END_SHIFT)), 0, "end flag should be cleared");
+    assert_eq!(
+        flags & (1 << (offset + BEGIN_SHIFT)),
+        0,
+        "begin flag should be cleared"
+    );
+    assert_eq!(
+        flags & (1 << (offset + CHANGED_SHIFT)),
+        0,
+        "changed flag should be cleared"
+    );
+    assert_eq!(
+        flags & (1 << (offset + END_SHIFT)),
+        0,
+        "end flag should be cleared"
+    );
 }
 
 #[test]

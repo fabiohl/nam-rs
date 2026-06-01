@@ -171,10 +171,26 @@ impl NamClapShared {
         };
 
         let params: [(u32, u32, &AtomicU32); 4] = [
-            (PARAM_INPUT_GAIN, Self::param_index(PARAM_INPUT_GAIN) as u32, &self.param_input_gain),
-            (PARAM_OUTPUT_GAIN, Self::param_index(PARAM_OUTPUT_GAIN) as u32, &self.param_output_gain),
-            (PARAM_GATE_THRESH, Self::param_index(PARAM_GATE_THRESH) as u32, &self.param_gate_thresh),
-            (PARAM_BYPASS, Self::param_index(PARAM_BYPASS) as u32, &self.param_bypass),
+            (
+                PARAM_INPUT_GAIN,
+                Self::param_index(PARAM_INPUT_GAIN) as u32,
+                &self.param_input_gain,
+            ),
+            (
+                PARAM_OUTPUT_GAIN,
+                Self::param_index(PARAM_OUTPUT_GAIN) as u32,
+                &self.param_output_gain,
+            ),
+            (
+                PARAM_GATE_THRESH,
+                Self::param_index(PARAM_GATE_THRESH) as u32,
+                &self.param_gate_thresh,
+            ),
+            (
+                PARAM_BYPASS,
+                Self::param_index(PARAM_BYPASS) as u32,
+                &self.param_bypass,
+            ),
         ];
 
         for (param_id, param_idx, value_atomic) in &params {
