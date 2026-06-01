@@ -885,7 +885,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 ### Sprint S10 — Refatoração de plugin/processor e pipeline
 
-#### Tarefa S10.T01 — Quebrar `src/clap/plugin.rs` (645 LoC) 💡
+#### Tarefa S10.T01 — Quebrar `src/clap/plugin.rs` (645 LoC) 💡 [DONE]
 
 - **Onde:** `src/clap/plugin.rs` → `src/clap/plugin/`.
 - **Solução técnica:**
