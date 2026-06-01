@@ -705,7 +705,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Especialista:** `pesquisador-inovador`.
 - **Resultado:** Implementados `dot_product_4x_interleaved_avx512` e `dot_product_4x_interleaved_dual_frame_avx512` com 8+16 ZMM accumulators (2 conjuntos alternados de 4/8 por frame), `_mm512_permutexvar_ps` para broadcast 4-way, prefetch a 4 cache lines. 6 testes unitários de paridade (avx512 vs avx2 vs fallback) em `dot_4x_test.rs`. Benchmark `dot_4x_bench` criado medindo fallback/avx2/avx512 para tamanhos 16–4096. Speedup teórico vs fallback: ~16× (largura 16-lane ZMM), vs avx2: ~4× (processa 4 entradas/iter com ZMM vs 2/iter com YMM).
 
-#### Tarefa S7.T06 — Aumentar paralelismo em `gemv.rs` (4–8 acumuladores) ⚠️
+#### Tarefa S7.T06 — Aumentar paralelismo em `gemv.rs` (4–8 acumuladores) ✅ [DONE]
 
 - **Onde:** `src/math/gemm/gemv.rs`.
 - **Problema:** GEMV com 1 acumulador atinge ~12-25% do peak FMA. Cadeia de dependência limita throughput.
@@ -714,6 +714,11 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   2. Reduzir loop de fora para minimizar pressure no register file.
 - **Critérios de aceitação:** GEMV achieves ≥70% peak FMA em AVX2/AVX-512.
 - **Especialista:** `pesquisador-inovador`.
+- **Resultado:** Todos os 6 kernels GEMV reescritos com múltiplos acumuladores:
+  - `fused_add_gemv_avx2` e `gemv_overwrite_avx2`: 4 acumuladores YMM (loop interno passo 4), prefetch em `in_frame`.
+  - `gemv_overwrite_avx512_small` e `fused_add_gemv_avx512_small`: 8 acumuladores ZMM (loop interno passo 8), prefetch.
+  - `gemv_overwrite_avx512` e `fused_add_gemv_avx512`: 8 acumuladores ZMM (loop interno passo 8), prefetch.
+  Redução via árvore de 3 níveis (`((a0+a1)+(a2+a3))+((a4+a5)+(a6+a7))`). 244 testes passam sem regressão.
 
 #### Tarefa S7.T07 — Corrigir `gemv_4gate.rs` BF16 (paridade numérica) 🔥
 

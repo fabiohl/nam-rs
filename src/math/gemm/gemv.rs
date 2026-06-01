@@ -10,6 +10,12 @@
 //!
 //! Inclui variantes `_small` especializadas para Standard WaveNet (CH=16),
 //! versões em batch e a operação fundida `fused_add_gemv`.
+//!
+//! # Estratégia de Paralelismo
+//! - AVX2: 4 acumuladores YMM (4×8 = 32 lanes), loop interno com passo 4.
+//! - AVX-512: 8 acumuladores ZMM (8×16 = 128 lanes), loop interno com passo 8.
+//! - Quebra de cadeias de dependência FMA via múltiplos acumuladores.
+//! - Software prefetch em in_frame para reduzir latência de cache miss.
 
 use core::arch::x86_64::*;
 
@@ -21,6 +27,9 @@ use core::arch::x86_64::*;
 /// ajuste (bias) e adiciona o resultado de uma multiplicação de pesos por entrada. Fazer tudo
 /// de uma vez evita que o processador precise ler e escrever na memória várias vezes, mantendo
 /// os dados "quentes" e prontos para o próximo cálculo.
+///
+/// Utiliza 4 acumuladores independentes para quebrar a cadeia de dependência do pipeline FMA,
+/// permitindo que o processador execute até 4 FMAs em paralelo.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemv_avx2(
     in_frame: &[f32],
@@ -34,31 +43,59 @@ pub unsafe fn fused_add_gemv_avx2(
 
     unsafe {
         let mut out_c = 0;
-        // Processa 8 saídas de uma vez usando AVX2.
         while out_c + 8 <= out_len {
-            // Carrega o valor atual (residual) que já estava no balde.
-            let mut accum = _mm256_loadu_ps(out_frame.as_ptr().add(out_c));
-            // Se tiver um ajuste (bias), soma-o agora.
+            let mut acc0 = _mm256_loadu_ps(out_frame.as_ptr().add(out_c));
             if do_bias {
-                accum = _mm256_add_ps(accum, _mm256_loadu_ps(bias.as_ptr().add(out_c)));
+                acc0 = _mm256_add_ps(acc0, _mm256_loadu_ps(bias.as_ptr().add(out_c)));
+            }
+            let mut acc1 = _mm256_setzero_ps();
+            let mut acc2 = _mm256_setzero_ps();
+            let mut acc3 = _mm256_setzero_ps();
+
+            let mut in_c = 0;
+            while in_c + 4 <= in_len {
+                _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 32) as *const i8);
+
+                let vs0 = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
+                let vs1 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 1));
+                let vs2 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 2));
+                let vs3 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 3));
+
+                let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
+                acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
+
+                let w1 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
+                acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
+
+                let w2 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
+                acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
+
+                let w3 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
+                acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
+
+                in_c += 4;
             }
 
-            // Para cada entrada, multiplica pelo peso e soma no acumulador.
-            for in_c in 0..in_len {
+            acc0 = _mm256_add_ps(acc0, acc1);
+            acc2 = _mm256_add_ps(acc2, acc3);
+            acc0 = _mm256_add_ps(acc0, acc2);
+
+            while in_c < in_len {
                 let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                // Converte o peso comprimido (f16) para f32 na hora.
                 let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
-                // A instrução 'fmadd' faz a multiplicação e a soma em um só golpe.
-                accum = _mm256_fmadd_ps(vs, vw, accum);
+                acc0 = _mm256_fmadd_ps(vs, vw, acc0);
+                in_c += 1;
             }
 
-            // Salva o resultado final de volta no balde.
-            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
             out_c += 8;
         }
 
-        // Trata o que sobrou um por um.
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
@@ -73,9 +110,7 @@ pub unsafe fn fused_add_gemv_avx2(
 
 /// Realiza uma projeção linear (Y = Bias + W * Z), substituindo o conteúdo anterior.
 ///
-/// Diferente da função anterior, esta limpa o "balde" de saída antes de começar, colocando
-/// apenas o novo resultado da multiplicação (mais o ajuste opcional). É usada para iniciar
-/// o cálculo de uma nova camada da rede neural do zero.
+/// Utiliza 4 acumuladores independentes para quebrar a cadeia de dependência do pipeline FMA.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn gemv_overwrite_avx2(
     in_frame: &[f32],
@@ -89,27 +124,60 @@ pub unsafe fn gemv_overwrite_avx2(
 
     unsafe {
         let mut out_c = 0;
-        // Processa 8 saídas de uma vez.
         while out_c + 8 <= out_len {
-            // Começa o balde do zero (ou com o ajuste/bias).
-            let mut accum = if do_bias {
+            let mut acc0 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(out_c))
             } else {
                 _mm256_setzero_ps()
             };
+            let mut acc1 = _mm256_setzero_ps();
+            let mut acc2 = _mm256_setzero_ps();
+            let mut acc3 = _mm256_setzero_ps();
 
-            for in_c in 0..in_len {
+            let mut in_c = 0;
+            while in_c + 4 <= in_len {
+                _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 32) as *const i8);
+
+                let vs0 = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
+                let vs1 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 1));
+                let vs2 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 2));
+                let vs3 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 3));
+
+                let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+                let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
+                acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
+
+                let w1 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
+                acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
+
+                let w2 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
+                acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
+
+                let w3 =
+                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
+                acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
+
+                in_c += 4;
+            }
+
+            acc0 = _mm256_add_ps(acc0, acc1);
+            acc2 = _mm256_add_ps(acc2, acc3);
+            acc0 = _mm256_add_ps(acc0, acc2);
+
+            while in_c < in_len {
                 let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
                 let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
                 let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
-                accum = _mm256_fmadd_ps(vs, vw, accum);
+                acc0 = _mm256_fmadd_ps(vs, vw, acc0);
+                in_c += 1;
             }
 
-            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
             out_c += 8;
         }
 
-        // Finaliza o resto.
         while out_c < out_len {
             let mut sum = if do_bias { bias[out_c] } else { 0.0 };
             for in_c in 0..in_len {
@@ -126,89 +194,117 @@ pub unsafe fn gemv_overwrite_avx2(
 // ── AVX-512 Small (CH=16 especializado) ──────────────────────────────────────
 
 /// Kernel GEMV AVX-512 especializado para Standard WaveNet (CH=16).
-/// GEMV significa "Multiplicação de Matriz por Vetor". É o "coração" do processamento neural.
-/// Esta versão é otimizada para quando temos exatamente 16 canais de áudio.
+///
+/// Utiliza 8 acumuladores ZMM independentes (8×16 = 128 lanes) e loop interno
+/// com passo 8, quebrando a cadeia de dependência FMA e saturando as portas
+/// de execução AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_overwrite_avx512_small(
-    in_frame: &[f32],      // Entrada: os números que vamos processar.
-    weights: &[u16],       // Pesos: a "inteligência" do modelo (em formato compactado f16).
-    bias: &[f32],          // Viés: um ajuste fixo somado ao final.
-    out_frame: &mut [f32], // Saída: onde guardaremos o resultado.
-    do_bias: bool,         // Pergunta: devemos somar o viés?
+    in_frame: &[f32],
+    weights: &[u16],
+    bias: &[f32],
+    out_frame: &mut [f32],
+    do_bias: bool,
 ) {
-    let in_len = in_frame.len(); // Quantos números temos na entrada.
+    let in_len = in_frame.len();
 
-    // "Acumuladores" são como baldes onde vamos somando os resultados parciais.
-    // O AVX-512 usa registradores de 512 bits que cabem 16 números f32.
-    let mut accum0 = if do_bias {
-        // Se precisar de viés, já começamos o balde com os valores do viés.
+    let mut acc0 = if do_bias {
         _mm512_loadu_ps(bias.as_ptr())
     } else {
-        // Se não, começamos o balde com zeros.
         _mm512_setzero_ps()
     };
-    let mut accum1 = _mm512_setzero_ps(); // Um segundo balde para ajudar na velocidade.
+    let mut acc1 = _mm512_setzero_ps();
+    let mut acc2 = _mm512_setzero_ps();
+    let mut acc3 = _mm512_setzero_ps();
+    let mut acc4 = _mm512_setzero_ps();
+    let mut acc5 = _mm512_setzero_ps();
+    let mut acc6 = _mm512_setzero_ps();
+    let mut acc7 = _mm512_setzero_ps();
 
     let mut in_c = 0;
-    // Processamos a entrada de 4 em 4 elementos para ganhar velocidade (unrolling).
-    while in_c + 4 <= in_len {
-        // Pegamos 1 número da entrada e "espalhamos" ele por todas as 16 posições de um registrador.
+    while in_c + 8 <= in_len {
+        _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
+
         let v_in0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
         let v_in1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
         let v_in2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
         let v_in3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
+        let v_in4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
+        let v_in5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
+        let v_in6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
+        let v_in7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
 
-        // Descobrimos onde na memória estão os pesos para este grupo.
         let w_ptr = weights.as_ptr().add(in_c * 16);
 
-        // fmadd_ps: Faz (entrada * peso) + acumulador. Tudo de uma vez!
-        // cvtph_ps: Converte os pesos de 16 bits (metade do tamanho) para 32 bits (normal) na hora do cálculo.
-        accum0 = _mm512_fmadd_ps(
+        acc0 = _mm512_fmadd_ps(
             v_in0,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i)),
-            accum0,
+            acc0,
         );
-        accum1 = _mm512_fmadd_ps(
+        acc1 = _mm512_fmadd_ps(
             v_in1,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(16) as *const __m256i)),
-            accum1,
+            acc1,
         );
-        accum0 = _mm512_fmadd_ps(
+        acc2 = _mm512_fmadd_ps(
             v_in2,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(32) as *const __m256i)),
-            accum0,
+            acc2,
         );
-        accum1 = _mm512_fmadd_ps(
+        acc3 = _mm512_fmadd_ps(
             v_in3,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(48) as *const __m256i)),
-            accum1,
+            acc3,
         );
-        in_c += 4;
+        acc4 = _mm512_fmadd_ps(
+            v_in4,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(64) as *const __m256i)),
+            acc4,
+        );
+        acc5 = _mm512_fmadd_ps(
+            v_in5,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(80) as *const __m256i)),
+            acc5,
+        );
+        acc6 = _mm512_fmadd_ps(
+            v_in6,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(96) as *const __m256i)),
+            acc6,
+        );
+        acc7 = _mm512_fmadd_ps(
+            v_in7,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(112) as *const __m256i)),
+            acc7,
+        );
+        in_c += 8;
     }
 
-    // Somamos os dois baldes de resultados no final.
-    accum0 = _mm512_add_ps(accum0, accum1);
+    acc0 = _mm512_add_ps(acc0, acc1);
+    acc2 = _mm512_add_ps(acc2, acc3);
+    acc4 = _mm512_add_ps(acc4, acc5);
+    acc6 = _mm512_add_ps(acc6, acc7);
+    acc0 = _mm512_add_ps(acc0, acc2);
+    acc4 = _mm512_add_ps(acc4, acc6);
+    acc0 = _mm512_add_ps(acc0, acc4);
 
-    // Se sobrar algum número (menos que 4), processamos um por um.
     while in_c < in_len {
         let v_in = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-        accum0 = _mm512_fmadd_ps(
+        acc0 = _mm512_fmadd_ps(
             v_in,
             _mm512_cvtph_ps(_mm256_loadu_si256(
-                weights.as_ptr().add(in_c * 16) as *const __m256i
+                weights.as_ptr().add(in_c * 16) as *const __m256i,
             )),
-            accum0,
+            acc0,
         );
         in_c += 1;
     }
 
-    // Salva o resultado final (os 16 números calculados) na memória de saída.
-    _mm512_storeu_ps(out_frame.as_mut_ptr(), accum0);
+    _mm512_storeu_ps(out_frame.as_mut_ptr(), acc0);
 }
 
 /// Kernel Fused-Add-GEMV AVX-512 especializado para Standard WaveNet (CH=16).
-/// Esta versão faz o mesmo que a anterior, mas em vez de substituir o resultado,
-/// ela SOMA o novo resultado ao que já existia na saída. É útil para conexões residuais (atalhos).
+///
+/// 8 acumuladores ZMM independentes com passo 8 no loop interno.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemv_avx512_small(
     in_frame: &[f32],
@@ -218,68 +314,106 @@ pub unsafe fn fused_add_gemv_avx512_small(
     do_bias: bool,
 ) {
     let in_len = in_frame.len();
-    // Carrega o valor que já estava na saída para somar em cima dele.
-    let mut accum0 = _mm512_loadu_ps(out_frame.as_ptr());
+
+    let mut acc0 = _mm512_loadu_ps(out_frame.as_ptr());
     if do_bias {
-        // Se tiver viés, soma ele também.
-        accum0 = _mm512_add_ps(accum0, _mm512_loadu_ps(bias.as_ptr()));
+        acc0 = _mm512_add_ps(acc0, _mm512_loadu_ps(bias.as_ptr()));
     }
-    let mut accum1 = _mm512_setzero_ps();
+    let mut acc1 = _mm512_setzero_ps();
+    let mut acc2 = _mm512_setzero_ps();
+    let mut acc3 = _mm512_setzero_ps();
+    let mut acc4 = _mm512_setzero_ps();
+    let mut acc5 = _mm512_setzero_ps();
+    let mut acc6 = _mm512_setzero_ps();
+    let mut acc7 = _mm512_setzero_ps();
 
     let mut in_c = 0;
-    // Processamento em grupo de 4 para velocidade.
-    while in_c + 4 <= in_len {
+    while in_c + 8 <= in_len {
+        _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
+
         let v_in0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
         let v_in1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
         let v_in2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
         let v_in3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
+        let v_in4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
+        let v_in5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
+        let v_in6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
+        let v_in7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
 
         let w_ptr = weights.as_ptr().add(in_c * 16);
-        // fmadd_ps: Multiplica e Soma no acumulador.
-        accum0 = _mm512_fmadd_ps(
+
+        acc0 = _mm512_fmadd_ps(
             v_in0,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i)),
-            accum0,
+            acc0,
         );
-        accum1 = _mm512_fmadd_ps(
+        acc1 = _mm512_fmadd_ps(
             v_in1,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(16) as *const __m256i)),
-            accum1,
+            acc1,
         );
-        accum0 = _mm512_fmadd_ps(
+        acc2 = _mm512_fmadd_ps(
             v_in2,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(32) as *const __m256i)),
-            accum0,
+            acc2,
         );
-        accum1 = _mm512_fmadd_ps(
+        acc3 = _mm512_fmadd_ps(
             v_in3,
             _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(48) as *const __m256i)),
-            accum1,
+            acc3,
         );
-        in_c += 4;
+        acc4 = _mm512_fmadd_ps(
+            v_in4,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(64) as *const __m256i)),
+            acc4,
+        );
+        acc5 = _mm512_fmadd_ps(
+            v_in5,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(80) as *const __m256i)),
+            acc5,
+        );
+        acc6 = _mm512_fmadd_ps(
+            v_in6,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(96) as *const __m256i)),
+            acc6,
+        );
+        acc7 = _mm512_fmadd_ps(
+            v_in7,
+            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(112) as *const __m256i)),
+            acc7,
+        );
+        in_c += 8;
     }
-    accum0 = _mm512_add_ps(accum0, accum1);
 
-    // Trata o que sobrar individualmente.
+    acc0 = _mm512_add_ps(acc0, acc1);
+    acc2 = _mm512_add_ps(acc2, acc3);
+    acc4 = _mm512_add_ps(acc4, acc5);
+    acc6 = _mm512_add_ps(acc6, acc7);
+    acc0 = _mm512_add_ps(acc0, acc2);
+    acc4 = _mm512_add_ps(acc4, acc6);
+    acc0 = _mm512_add_ps(acc0, acc4);
+
     while in_c < in_len {
         let v_in = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-        accum0 = _mm512_fmadd_ps(
+        acc0 = _mm512_fmadd_ps(
             v_in,
             _mm512_cvtph_ps(_mm256_loadu_si256(
-                weights.as_ptr().add(in_c * 16) as *const __m256i
+                weights.as_ptr().add(in_c * 16) as *const __m256i,
             )),
-            accum0,
+            acc0,
         );
         in_c += 1;
     }
-    // Salva o resultado final acumulado.
-    _mm512_storeu_ps(out_frame.as_mut_ptr(), accum0);
+
+    _mm512_storeu_ps(out_frame.as_mut_ptr(), acc0);
 }
 
 // ── AVX-512 Geral ────────────────────────────────────────────────────────────
 
 /// Realiza a projeção linear Y = Bias + W * Z (GEMV) substituindo o conteúdo de out_frame via AVX-512.
-/// Esta é a versão geral, que funciona para qualquer tamanho de saída (múltiplos de 16).
+///
+/// Utiliza 8 acumuladores ZMM independentes (8×16 = 128 lanes) com loop interno
+/// de passo 8 para quebrar a cadeia de dependência FMA.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_overwrite_avx512(
     in_frame: &[f32],
@@ -291,41 +425,100 @@ pub unsafe fn gemv_overwrite_avx512(
     let out_len = out_frame.len();
     let in_len = in_frame.len();
 
-    // Se o tamanho for exatamente 16, usa a versão ultra-otimizada lá de cima.
     if out_len == 16 {
         gemv_overwrite_avx512_small(in_frame, weights, bias, out_frame, do_bias);
         return;
     }
 
     let mut out_c = 0;
-    // Percorre a saída em blocos de 16 números (largura de um registrador AVX-512).
     while out_c + 16 <= out_len {
-        let mut accum = if do_bias {
-            // Carrega o viés inicial para este bloco.
+        let mut acc0 = if do_bias {
             _mm512_loadu_ps(bias.as_ptr().add(out_c))
         } else {
             _mm512_setzero_ps()
         };
+        let mut acc1 = _mm512_setzero_ps();
+        let mut acc2 = _mm512_setzero_ps();
+        let mut acc3 = _mm512_setzero_ps();
+        let mut acc4 = _mm512_setzero_ps();
+        let mut acc5 = _mm512_setzero_ps();
+        let mut acc6 = _mm512_setzero_ps();
+        let mut acc7 = _mm512_setzero_ps();
 
-        // Para cada entrada, multiplica pelo peso correspondente e soma no balde.
-        for in_c in 0..in_len {
-            let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-            let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-            // Pega 16 pesos de uma vez, converte e calcula.
-            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
-            accum = _mm512_fmadd_ps(vs, vw, accum);
+        let mut in_c = 0;
+        while in_c + 8 <= in_len {
+            _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
+
+            let vs0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let vs1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
+            let vs2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
+            let vs3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
+            let vs4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
+            let vs5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
+            let vs6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
+            let vs7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
+
+            let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+
+            let w0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
+            acc0 = _mm512_fmadd_ps(vs0, w0, acc0);
+
+            let w1 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
+            acc1 = _mm512_fmadd_ps(vs1, w1, acc1);
+
+            let w2 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
+            acc2 = _mm512_fmadd_ps(vs2, w2, acc2);
+
+            let w3 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
+            acc3 = _mm512_fmadd_ps(vs3, w3, acc3);
+
+            let w4 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
+            acc4 = _mm512_fmadd_ps(vs4, w4, acc4);
+
+            let w5 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
+            acc5 = _mm512_fmadd_ps(vs5, w5, acc5);
+
+            let w6 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
+            acc6 = _mm512_fmadd_ps(vs6, w6, acc6);
+
+            let w7 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
+            acc7 = _mm512_fmadd_ps(vs7, w7, acc7);
+
+            in_c += 8;
         }
 
-        // Salva os 16 resultados processados na memória.
-        _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+        acc0 = _mm512_add_ps(acc0, acc1);
+        acc2 = _mm512_add_ps(acc2, acc3);
+        acc4 = _mm512_add_ps(acc4, acc5);
+        acc6 = _mm512_add_ps(acc6, acc7);
+        acc0 = _mm512_add_ps(acc0, acc2);
+        acc4 = _mm512_add_ps(acc4, acc6);
+        acc0 = _mm512_add_ps(acc0, acc4);
+
+        while in_c < in_len {
+            let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
+            acc0 = _mm512_fmadd_ps(vs, vw, acc0);
+            in_c += 1;
+        }
+
+        _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
         out_c += 16;
     }
 
-    // "Resto": Se o tamanho total não for múltiplo de 16, calcula o que sobrou da forma lenta.
     while out_c < out_len {
         let mut sum = if do_bias { bias[out_c] } else { 0.0 };
         for in_c in 0..in_len {
-            let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+            let w =
+                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
             sum += *in_frame.get_unchecked(in_c) * w;
         }
         *out_frame.get_unchecked_mut(out_c) = sum;
@@ -334,7 +527,6 @@ pub unsafe fn gemv_overwrite_avx512(
 }
 
 /// Versão em batch de gemv_overwrite via AVX-512.
-/// "Batch" significa processar vários quadros de áudio de uma vez, o que é mais eficiente que um por um.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_overwrite_batch_avx512(
     in_frames: &[f32],
@@ -347,10 +539,9 @@ pub unsafe fn gemv_overwrite_batch_avx512(
     if num_frames == 0 {
         return;
     }
-    let in_len = in_frames.len() / num_frames; // Tamanho de cada quadro na entrada.
-    let out_len = out_frames.len() / num_frames; // Tamanho de cada quadro na saída.
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
     for i in 0..num_frames {
-        // Pega uma fatia (slice) de cada quadro e processa usando a função de quadro único.
         let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
         let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
         gemv_overwrite_avx512(in_slice, weights, bias, out_slice, do_bias);
@@ -358,8 +549,8 @@ pub unsafe fn gemv_overwrite_batch_avx512(
 }
 
 /// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX-512.
-/// "Fundida" (Fused) significa que fazemos a soma do residual e o cálculo neural no mesmo passo,
-/// economizando viagens desnecessárias dos dados entre a memória e o processador.
+///
+/// 8 acumuladores ZMM independentes com passo 8 no loop interno.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemv_avx512(
     in_frame: &[f32],
@@ -371,7 +562,6 @@ pub unsafe fn fused_add_gemv_avx512(
     let out_len = out_frame.len();
     let in_len = in_frame.len();
 
-    // Novamente, se for pequeno (16), usa o especialista.
     if out_len == 16 {
         fused_add_gemv_avx512_small(in_frame, weights, bias, out_frame, do_bias);
         return;
@@ -379,31 +569,92 @@ pub unsafe fn fused_add_gemv_avx512(
 
     let mut out_c = 0;
     while out_c + 16 <= out_len {
-        // Começa o balde com o valor que já estava na saída (residual).
-        let mut accum = _mm512_loadu_ps(out_frame.as_ptr().add(out_c));
+        let mut acc0 = _mm512_loadu_ps(out_frame.as_ptr().add(out_c));
         if do_bias {
-            // Soma o viés também.
-            accum = _mm512_add_ps(accum, _mm512_loadu_ps(bias.as_ptr().add(out_c)));
+            acc0 = _mm512_add_ps(acc0, _mm512_loadu_ps(bias.as_ptr().add(out_c)));
+        }
+        let mut acc1 = _mm512_setzero_ps();
+        let mut acc2 = _mm512_setzero_ps();
+        let mut acc3 = _mm512_setzero_ps();
+        let mut acc4 = _mm512_setzero_ps();
+        let mut acc5 = _mm512_setzero_ps();
+        let mut acc6 = _mm512_setzero_ps();
+        let mut acc7 = _mm512_setzero_ps();
+
+        let mut in_c = 0;
+        while in_c + 8 <= in_len {
+            _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
+
+            let vs0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
+            let vs1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
+            let vs2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
+            let vs3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
+            let vs4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
+            let vs5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
+            let vs6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
+            let vs7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
+
+            let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
+
+            let w0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
+            acc0 = _mm512_fmadd_ps(vs0, w0, acc0);
+
+            let w1 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
+            acc1 = _mm512_fmadd_ps(vs1, w1, acc1);
+
+            let w2 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
+            acc2 = _mm512_fmadd_ps(vs2, w2, acc2);
+
+            let w3 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
+            acc3 = _mm512_fmadd_ps(vs3, w3, acc3);
+
+            let w4 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
+            acc4 = _mm512_fmadd_ps(vs4, w4, acc4);
+
+            let w5 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
+            acc5 = _mm512_fmadd_ps(vs5, w5, acc5);
+
+            let w6 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
+            acc6 = _mm512_fmadd_ps(vs6, w6, acc6);
+
+            let w7 =
+                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
+            acc7 = _mm512_fmadd_ps(vs7, w7, acc7);
+
+            in_c += 8;
         }
 
-        // Loop principal de multiplicação e acumulação.
-        for in_c in 0..in_len {
+        acc0 = _mm512_add_ps(acc0, acc1);
+        acc2 = _mm512_add_ps(acc2, acc3);
+        acc4 = _mm512_add_ps(acc4, acc5);
+        acc6 = _mm512_add_ps(acc6, acc7);
+        acc0 = _mm512_add_ps(acc0, acc2);
+        acc4 = _mm512_add_ps(acc4, acc6);
+        acc0 = _mm512_add_ps(acc0, acc4);
+
+        while in_c < in_len {
             let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
             let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
             let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
-            accum = _mm512_fmadd_ps(vs, vw, accum);
+            acc0 = _mm512_fmadd_ps(vs, vw, acc0);
+            in_c += 1;
         }
 
-        // Devolve os 16 números calculados para a memória.
-        _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), accum);
+        _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
         out_c += 16;
     }
 
-    // Calcula o resto que sobrar.
     while out_c < out_len {
         let mut sum = if do_bias { bias[out_c] } else { 0.0 };
         for in_c in 0..in_len {
-            let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+            let w =
+                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
             sum += *in_frame.get_unchecked(in_c) * w;
         }
         *out_frame.get_unchecked_mut(out_c) += sum;
