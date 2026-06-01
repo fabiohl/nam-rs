@@ -141,8 +141,8 @@ pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
     let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
     // Trata o que sobrar de forma manual.
     while i < len {
-        let fa = half::f16::from_bits(*a.get_unchecked(i)).to_f32();
-        let fb = half::f16::from_bits(*b.get_unchecked(i)).to_f32();
+        let fa = f32::from_bits((*a.get_unchecked(i) as u32) << 16);
+        let fb = f32::from_bits((*b.get_unchecked(i) as u32) << 16);
         sum += fa * fb;
         i += 1;
     }

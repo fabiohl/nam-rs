@@ -45,7 +45,7 @@ pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
     // Converte o resto manualmente.
     while i < n {
         unsafe {
-            *dest.get_unchecked_mut(i) = (*src.get_unchecked(i)).to_bits() as u16;
+            *dest.get_unchecked_mut(i) = ((*src.get_unchecked(i)).to_bits() >> 16) as u16;
         }
         i += 1;
     }

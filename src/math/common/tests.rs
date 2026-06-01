@@ -357,3 +357,135 @@ fn test_convolve_stereo_dual_parity() {
         assert!((res_avx512.1.1 - expected.1.1).abs() < 1e-5);
     }
 }
+
+// ── S7.T08 Regression Tests ──────────────────────────────────────────────────
+
+/// Converte um slice f32 para BF16 usando o método correto (shift right by 16).
+fn f32_to_bf16_ref(src: &[f32]) -> Vec<u16> {
+    src.iter().map(|s| (s.to_bits() >> 16) as u16).collect()
+}
+
+/// Gera dados BF16 pseudo-aleatórios a partir de sementes determinísticas.
+fn gen_bf16_data(len: usize, seed: f32) -> Vec<u16> {
+    (0..len)
+        .map(|i| {
+            let v = (i as f32 * 1.7 + seed).sin() * 0.8 + (i as f32 * 0.3).cos();
+            (v.to_bits() >> 16) as u16
+        })
+        .collect()
+}
+
+/// Verifica que a conversão F32→BF16 via AVX-512 produz os mesmos bits
+/// que a referência escalar, inclusive no remainder (< 16 elementos).
+#[test]
+fn test_f32_to_bf16_avx512_regression() {
+    if !is_x86_feature_detected!("avx512f") {
+        return;
+    }
+
+    for len in [0, 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 33, 47, 48, 64, 100, 127, 128] {
+        let src: Vec<f32> = (0..len).map(|i| (i as f32 * 0.77).sin() * 2.5).collect();
+        let mut dest = vec![0u16; len];
+        let expected = f32_to_bf16_ref(&src);
+
+        unsafe {
+            super::ops::f32_to_bf16_avx512(&src, &mut dest);
+        }
+
+        assert_eq!(
+            dest, expected,
+            "F32→BF16 divergiu no len={}: simd={:?}, ref={:?}",
+            len, &dest[..], &expected[..]
+        );
+    }
+}
+
+/// Valida que dot_product_bf16_avx512 bate com o fallback escalar (já correto).
+#[test]
+fn test_dot_product_bf16_avx512_regression() {
+    if !is_x86_feature_detected!("avx512bf16") {
+        return;
+    }
+
+    let sizes = [
+        0, 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 33, 63, 64, 127, 128, 255, 256, 511, 512,
+    ];
+    for &len in &sizes {
+        let a = gen_bf16_data(len, 0.5);
+        let b = gen_bf16_data(len, -1.3);
+        let expected =
+            unsafe { crate::math::common::dot_product_bf16_fallback(&a, &b) };
+        let result =
+            unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(&a, &b) };
+
+        let error = (result - expected).abs();
+        assert!(
+            error < 1e-5,
+            "BF16 dot product divergiu no len={}: simd={}, ref={}, err={}",
+            len,
+            result,
+            expected,
+            error
+        );
+    }
+}
+
+/// Valida que gemv_overwrite_bf16_avx512 bate com o fallback escalar.
+#[test]
+fn test_gemv_overwrite_bf16_avx512_regression() {
+    if !is_x86_feature_detected!("avx512bf16") {
+        return;
+    }
+
+    let configs = [
+        (1, 1),
+        (2, 1),
+        (4, 4),
+        (8, 8),
+        (16, 16),
+        (17, 16),
+        (32, 32),
+        (33, 16),
+        (47, 32),
+        (64, 64),
+        (128, 128),
+    ];
+
+    for &(in_len, out_len) in &configs {
+        let in_frame = gen_bf16_data(in_len, 0.3);
+        let weights: Vec<u16> = (0..(in_len * out_len))
+            .map(|j| {
+                let v = (j as f32 * 0.23).sin() * 0.6;
+                (v.to_bits() >> 16) as u16
+            })
+            .collect();
+        let bias: Vec<f32> = (0..out_len).map(|j| (j as f32 * 0.1).cos()).collect();
+
+        let mut out_simd = vec![0.0f32; out_len];
+        let mut out_ref = vec![0.0f32; out_len];
+
+        unsafe {
+            crate::math::gemm::gemv_bf16::gemv_overwrite_bf16_avx512(
+                &in_frame, &weights, &bias, &mut out_simd, true,
+            );
+            crate::math::common::gemv_overwrite_bf16_fallback(
+                &in_frame, &weights, &bias, &mut out_ref, true,
+            );
+        }
+
+        for j in 0..out_len {
+            let error = (out_simd[j] - out_ref[j]).abs();
+            assert!(
+                error < 1e-5,
+                "BF16 GEMV divergiu: in={} out={} ch={}: simd={}, ref={}, err={}",
+                in_len,
+                out_len,
+                j,
+                out_simd[j],
+                out_ref[j],
+                error
+            );
+        }
+    }
+}
+

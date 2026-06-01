@@ -929,7 +929,9 @@ impl SimdMath for Avx512VnniBf16Math {
         out_frame: &mut [f32],
         do_bias: bool,
     ) {
-        Avx512Math::gemv_overwrite_bf16(in_frame, weights, bias, out_frame, do_bias)
+        super::super::gemm::gemv_bf16::gemv_overwrite_bf16_avx512(
+            in_frame, weights, bias, out_frame, do_bias,
+        )
     }
 
     #[inline(always)]
@@ -1121,7 +1123,7 @@ impl SimdMath for Avx512VnniBf16Math {
         num_frames: usize,
         do_bias: bool,
     ) {
-        Avx512Math::gemv_overwrite_batch_bf16(
+        super::super::gemm::gemv_bf16::gemv_overwrite_batch_bf16_avx512(
             in_frames, weights, bias, out_frames, num_frames, do_bias,
         )
     }

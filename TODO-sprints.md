@@ -731,7 +731,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Diferença vs F32 < 1e-3 em proptest com 10k inputs.
 - **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
 
-#### Tarefa S7.T08 — Corrigir bugs SIMD identificados em `dot.rs` e `ops.rs` 🔥
+#### Tarefa S7.T08 — Corrigir bugs SIMD identificados em `dot.rs` e `ops.rs` 🔥 [DONE]
 
 - **Onde:** `src/math/gemm/dot.rs:144-147`; `src/math/common/ops.rs:38`; `src/math/common/avx512_impl.rs:780`.
 - **Problema:** Auditoria identificou falhas de correção numérica nesses pontos (ordering de reduções, broadcast errado, conversões F16 indevidas).
