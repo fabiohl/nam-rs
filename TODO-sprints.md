@@ -821,7 +821,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC; testes existentes passam.
 - **Especialista:** `implementador`.
 
-#### Tarefa S8.T02 — Quebrar `src/clap/gui/window.rs` (689 LoC) 💡
+#### Tarefa S8.T02 — Quebrar `src/clap/gui/window.rs` (689 LoC) 💡 [DONE]
 
 - **Onde:** `src/clap/gui/window.rs` → `src/clap/gui/window/`.
 - **Solução técnica:**
