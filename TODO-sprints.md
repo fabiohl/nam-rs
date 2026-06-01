@@ -1002,7 +1002,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum submódulo > 250 LoC; `dispatcher_test.rs` continua verde.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10b.T05 — Quebrar `src/models/lstm/layer.rs` (673 LoC) e `src/models/wavenet/conv1d.rs` (691 LoC) 💡
+#### Tarefa S10b.T05 — Quebrar `src/models/lstm/layer.rs` (673 LoC) e `src/models/wavenet/conv1d.rs` (691 LoC) 💡 [DONE]
 
 - **Onde:** `src/models/lstm/layer.rs` → `src/models/lstm/layer/`; `src/models/wavenet/conv1d.rs` → `src/models/wavenet/conv1d/`.
 - **Problema:** Ambos misturam definição de struct, `process_sample_scalar`, paths SIMD (com `is_bf16: bool` injetado em S7.R02 — vide observação 1 do relatório Épico 4 em :791) e estado interno. Refactoring é pré-requisito para mover `is_bf16` para field (eliminando regressão escalar de +1.74% identificada em S7).

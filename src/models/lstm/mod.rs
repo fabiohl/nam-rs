@@ -12,7 +12,9 @@
 //! ```text
 //! lstm/
 //! ├── mod.rs        # Re-exports, type aliases, NamModel impls, LstmLike trait
-//! ├── layer.rs      # LstmLayer + LstmModel1 + LstmModel2 + macros SIMD
+//! ├── layer.rs      # LstmLayer + macros SIMD de processamento por amostra
+//! ├── model1.rs     # LstmModel1 + macro define_lstm1_process!
+//! ├── model2.rs     # LstmModel2 + macro define_lstm2_process_pipelined!
 //! ├── model_dyn.rs  # LstmDynLayer + LstmDynModel (fallback dinâmico)
 //! └── tests.rs      # Testes unitários e de paridade SIMD vs escalar
 //! ```
@@ -20,13 +22,17 @@
 use super::NamModel;
 
 pub mod layer;
+pub mod model1;
+pub mod model2;
 pub mod model_dyn;
 
 // =============================================================================
 // Re-exports — Structs públicas
 // =============================================================================
 
-pub use layer::{LstmLayer, LstmModel1, LstmModel2};
+pub use layer::LstmLayer;
+pub use model1::LstmModel1;
+pub use model2::LstmModel2;
 pub use model_dyn::{LstmDynLayer, LstmDynModel};
 
 // =============================================================================

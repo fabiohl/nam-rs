@@ -23,6 +23,7 @@
 
 pub mod common;
 pub mod conv1d;
+pub mod conv1d_dual;
 pub mod conv1d_dyn;
 /// Camada densa 1x1 estática (`DenseLayer<IN, OUT>`).
 pub mod dense;
