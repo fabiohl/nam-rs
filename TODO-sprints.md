@@ -804,7 +804,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 > Nota do PO: Sempre assegure ótima cobertura de docsys e comentários rust inline.
 
-#### Tarefa S8.T01 — Quebrar `src/clap/gui/ui.rs` (2029 LoC) em módulos 🔥
+#### Tarefa S8.T01 — Quebrar `src/clap/gui/ui.rs` (2029 LoC) em módulos 🔥 [DONE]
 
 - **Onde:** `src/clap/gui/ui.rs` → `src/clap/gui/ui/`.
 - **Problema:** Monolito de 2029 LoC (cresceu de 2004 desde a auditoria original); função `draw_ui` em `src/clap/gui/ui.rs:1072` com ~930 linhas. Inviável para revisão e manutenção.
