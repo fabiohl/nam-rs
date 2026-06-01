@@ -637,6 +637,17 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Esforço:** 30 min (+ S7.R01).
 - **Especialista:** `implementador`.
 
+> **Auditoria da Sprint S7.R (2026-05-31):**
+>
+> Todas as tarefas de recuperação de performance (S7.R01 a S7.R04) foram implementadas, auditadas e verificadas com sucesso. A regressão de desempenho foi eliminada e a baseline histórica foi restaurada.
+>
+> - **S7.R01** ✓ — `num_blocks` pré-calculado em `Conv1dDyn::new` e divisões `div_ceil` removidas dos hotpaths.
+> - **S7.R02** ✓ — `is_bf16` hoistado para fora dos loops principais de processamento escalar no LSTM (parâmetro agora é injetado pelo caller).
+> - **S7.R03** ✓ — O uso de `checked_sub` foi removido do loop crítico de backfill de prewarm WaveNet e substituído por subtração explícita, mantendo a invariante de segurança protegida pelo construtor.
+> - **S7.R04** ✓ — Investigação e mitigação concluída em `Long_WaveNet_CH16_4096samp` com a otimização de `num_blocks` e testes de aderência mantidos.
+>
+> **Conclusão:** As regressões identificadas após as entregas de correção dos Épicos 2 e 3 foram devidamente recuperadas sem introduzir riscos de unsoundness. O path de simulação está normalizado para a próxima bateria de otimizações SIMD (S7.T01 em diante).
+
 ### Sprint S7 — Hotpath de pipeline e resampler
 
 #### Tarefa S7.T01 — Eliminar input-resample duplicado em modo mono ⚠️
