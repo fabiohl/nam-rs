@@ -1157,15 +1157,23 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 #### Tarefa S13.T01 — Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore 🔥
 
-- **Onde:** `tests/cpp_parity/` (novo).
-- **Problema:** Goldens existentes são auto-referenciais (regression). Para detectar drift estrutural, comparar com saída real do C++.
-- **Solução técnica:**
-  1. Compilar `NeuralAmpModelerCore` como binário CLI (`utils/cpp_parity/` script).
-  2. Para cada modelo em `tests/fixtures/models/` e cada arquivo de sinal de teste, gravar saída C++.
-  3. Test runner em `tests/cpp_parity.rs` carrega cada modelo, processa o mesmo input e compara MSE < 1e-4.
-- **Critérios de aceitação:** Todos os modelos referência (WaveNet Standard, Lite, Feather, Nano; LSTM 1×{8,12,16,24}, 2×{8,12,16}) batem com C++.
+- **Onde:** `tests/cpp_parity.rs` (novo); `utils/cpp_parity/generate_goldens.sh` (novo); `tests/fixtures/cpp_parity/` (novos goldens).
+- **Problema:** Os goldens existentes em `tests/golden/*.bin` são autorreferenciais (Rust-only) — se há um bug na implementação, o golden perpetua o bug. Os goldens em `tests/fixtures/golden_*.bin` comparam contra NeuralAudio (Mike Oliphant), uma reimplementação C++ independente (RTNeural + Eigen), mas **não** contra a referência canônica: o `NeuralAmpModelerCore` de Steven Atkinson — o código que treina e gera os modelos `.nam`.
+- **Solução técnica — Arquitetura de duas camadas:**
+  1. **Camada 1 — Goldens pré-commitados (rápido, `cargo test`):**
+     - Script `utils/cpp_parity/generate_goldens.sh` gera goldens **uma única vez**: compila o CLI `render` existente em `github.com/NeuralAmpModelerCore/tools/render.cpp` (CMake, já testado e funcional), processa cada modelo de referência com sinal senoidal 440 Hz @ 48 kHz (512 amostras, block_size=64), extrai samples f32 da saída WAV e salva como `.golden.bin` em `tests/fixtures/cpp_parity/` (~4 KB cada, ~25 KB total).
+     - Testes normais `#[test]` em `tests/cpp_parity.rs` carregam estes goldens e comparam contra saída Rust — roda em cada `cargo test` sem compilar C++.
+  2. **Camada 2 — Validação cruzada ao vivo (lento, `tests-long.sh`):**
+     - Testes `#[test] #[ignore]` que compilam o `render` (idempotente, cached), geram output C++ ao vivo, e comparam diretamente com Rust.
+     - Detecta drift se alguém atualizar o mirror `github.com/NeuralAmpModelerCore/` e os goldens commitados ficarem defasados.
+  3. **WAV I/O minimalista:** helpers ~60 LoC em `tests/common/wav.rs` para ler/escrever WAV mono float32 IEEE — sem crate externo.
+  4. **Documentação:** Atualizar `docs/dependencies.md` e `README.md` com pré-requisitos (CMake ≥ 3.10, compilador C++20, submodules) e instruções de setup para developers.
+- **Nota técnica:** O `NeuralAmpModelerCore` usa `std::tanh`/`std::exp` nativos (alta precisão), ao contrário do NeuralAudio que tem suas próprias aproximações. A divergência NAM-rs↔NAMCore será dominada exclusivamente pela FastMath Padé do NAM-rs. Thresholds serão calibrados na implementação; estimativas: LSTM MSE < 1e-3 / SNR ≥ 22 dB; WaveNet MSE < 5e-2 / SNR ≥ 9 dB.
+- **Zero poluição git:** Diretório `/github.com/` inteiro está no `.gitignore`; goldens em `tests/fixtures/cpp_parity/` são pequenos (~4 KB) e explicitamente permitidos (`!tests/fixtures/*.bin`).
+- **Modelos de referência:** BossWN-standard.nam, BossWN-feather.nam, BossWN-nano.nam, BossLSTM-1x16.nam, BossLSTM-2x8.nam.
+- **Critérios de aceitação:** Todos os modelos de referência passam na validação dual MSE+SNR tanto na Camada 1 (goldens pré-commitados) quanto na Camada 2 (validação ao vivo).
 - **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
-- **Nota do PO 1:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
+- **Nota do PO 1:** A Camada 2 (validação ao vivo com compilação C++) deve ser acionável apenas a partir do `utils/tests-long.sh`. A Camada 1 (goldens pré-commitados) roda no `cargo test` normal — rápido e sem dependência de C++.
 - **Nota do PO 2:** A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
 
 #### Tarefa S13.T02 — Round-trip encode→decode em NAMB v2 ⚠️
