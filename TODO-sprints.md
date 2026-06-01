@@ -650,7 +650,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 
 ### Sprint S7 — Hotpath de pipeline e resampler
 
-#### Tarefa S7.T01 — Eliminar input-resample duplicado em modo mono ⚠️
+#### Tarefa S7.T01 — Eliminar input-resample duplicado em modo mono ⚠️ [DONE]
 
 - **Onde:** `src/dsp/pipeline.rs:339-348` (e callers do resampler).
 - **Problema:** Em `process_mono`, o resampler executa **duas convoluções idênticas** em `state_l` e `state_r`. 50% de trabalho jogado fora.
@@ -662,7 +662,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Em modo mono, latência por bloco reduz em ≥30% vs estéreo.
 - **Especialista:** `implementador`.
 
-#### Tarefa S7.T02 — Bounds-elision em `DelayLine::push` e `process_internal` ⚠️
+#### Tarefa S7.T02 — Bounds-elision em `DelayLine::push` e `process_internal` ⚠️ [DONE]
 
 - **Onde:** `src/dsp/resampler.rs:65-72, 136-137`.
 - **Problema:** Indexação `self.buf[pos]` com bounds check no hotpath (provavelmente eliminado pelo LLVM, mas não garantido).

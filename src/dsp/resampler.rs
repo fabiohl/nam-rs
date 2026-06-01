@@ -63,8 +63,12 @@ impl DelayLine {
     /// Insere uma amostra no delay line (double-write para contiguidade).
     #[inline(always)]
     fn push(&mut self, sample: f32) {
-        self.buf[self.pos] = sample;
-        self.buf[self.pos + TAPS_PER_PHASE] = sample;
+        let pos = self.pos;
+        debug_assert!(pos < TAPS_PER_PHASE);
+        unsafe {
+            *self.buf.get_unchecked_mut(pos) = sample;
+            *self.buf.get_unchecked_mut(pos + TAPS_PER_PHASE) = sample;
+        }
         self.pos += 1;
         if self.pos >= TAPS_PER_PHASE {
             self.pos = 0;
@@ -133,8 +137,10 @@ impl ResamplerCore {
                 if in_idx >= n_in {
                     return out_idx;
                 }
-                self.state_l.push(in_l[in_idx]);
-                self.state_r.push(in_r[in_idx]);
+                unsafe {
+                    self.state_l.push(*in_l.get_unchecked(in_idx));
+                    self.state_r.push(*in_r.get_unchecked(in_idx));
+                }
                 self.phase_accum -= NUM_PHASES as f64;
                 // Em debug: verifica invariante de não-underflow.
                 // A subtração de NUM_PHASES (exato em f64) de phase_accum >= NUM_PHASES
@@ -172,8 +178,10 @@ impl ResamplerCore {
                 (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
             };
 
-            out_l[out_idx] = y_l;
-            out_r[out_idx] = y_r;
+            unsafe {
+                *out_l.get_unchecked_mut(out_idx) = y_l;
+                *out_r.get_unchecked_mut(out_idx) = y_r;
+            }
             out_idx += 1;
 
             self.phase_accum += self.phase_step;
@@ -181,8 +189,10 @@ impl ResamplerCore {
 
         // Consumir amostras de entrada restantes (manter state atualizado)
         while self.phase_accum >= NUM_PHASES as f64 && in_idx < n_in {
-            self.state_l.push(in_l[in_idx]);
-            self.state_r.push(in_r[in_idx]);
+            unsafe {
+                self.state_l.push(*in_l.get_unchecked(in_idx));
+                self.state_r.push(*in_r.get_unchecked(in_idx));
+            }
             self.phase_accum -= NUM_PHASES as f64;
             // Em debug: verifica invariante de não-underflow.
             #[cfg(debug_assertions)]
@@ -216,7 +226,9 @@ impl ResamplerCore {
                 if in_idx >= n_in {
                     return out_idx;
                 }
-                self.state_l.push(in_l[in_idx]);
+                unsafe {
+                    self.state_l.push(*in_l.get_unchecked(in_idx));
+                }
                 self.phase_accum -= NUM_PHASES as f64;
                 // Em debug: verifica invariante de não-underflow.
                 #[cfg(debug_assertions)]
@@ -251,8 +263,10 @@ impl ResamplerCore {
                 y0_l + frac * (y1_l - y0_l)
             };
 
-            out_l[out_idx] = y_l;
-            out_r[out_idx] = y_l;
+            unsafe {
+                *out_l.get_unchecked_mut(out_idx) = y_l;
+                *out_r.get_unchecked_mut(out_idx) = y_l;
+            }
             out_idx += 1;
 
             self.phase_accum += self.phase_step;
@@ -260,7 +274,9 @@ impl ResamplerCore {
 
         // Consumir amostras de entrada restantes (manter state atualizado)
         while self.phase_accum >= NUM_PHASES as f64 && in_idx < n_in {
-            self.state_l.push(in_l[in_idx]);
+            unsafe {
+                self.state_l.push(*in_l.get_unchecked(in_idx));
+            }
             self.phase_accum -= NUM_PHASES as f64;
             // Em debug: verifica invariante de não-underflow.
             #[cfg(debug_assertions)]
