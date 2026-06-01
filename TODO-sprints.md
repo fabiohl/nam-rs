@@ -895,7 +895,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T02 — Quebrar `src/clap/processor.rs` (788 LoC) 💡
+#### Tarefa S10.T02 — Quebrar `src/clap/processor.rs` (788 LoC) 💡 [DONE]
 
 > **Nota de sequenciamento:** o arquivo cresceu de 724 → 788 LoC (S12 adicionou gestures, hot-paths). Executar **antes** de S12.T02 (bitmap `AtomicU32`) e S12.T03 (mover `mono_hyst`/`active_model_r` para campos) — a refatoração do `processor/` torna essas migrações triviais.
 
