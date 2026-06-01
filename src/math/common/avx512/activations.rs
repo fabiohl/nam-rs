@@ -18,11 +18,13 @@ macro_rules! impl_avx512_activations {
             head_input: &mut [f32],
             block: &mut [f32],
             ch: usize,
-        ) { unsafe {
-            crate::math::wavenet::accumulate::gated_activation_and_accumulate_block_avx512(
-                head_input, block, ch,
-            )
-        }}
+        ) {
+            unsafe {
+                crate::math::wavenet::accumulate::gated_activation_and_accumulate_block_avx512(
+                    head_input, block, ch,
+                )
+            }
+        }
 
         #[inline(always)]
         unsafe fn tanh_slice(slice: &mut [f32]) {
@@ -45,11 +47,16 @@ macro_rules! impl_avx512_activations {
             cell_state: &mut [f32],
             hidden_state: &mut [f32],
             hidden_size: usize,
-        ) { unsafe {
-            crate::math::lstm::fused_lstm_gates_dyn_avx512(
-                gates, cell_state, hidden_state, hidden_size,
-            )
-        }}
+        ) {
+            unsafe {
+                crate::math::lstm::fused_lstm_gates_dyn_avx512(
+                    gates,
+                    cell_state,
+                    hidden_state,
+                    hidden_size,
+                )
+            }
+        }
     };
 }
 

@@ -26,9 +26,9 @@ mod dsp;
 mod gemv;
 mod reduce;
 
-use core::arch::x86_64::*;
 use crate::math::common::scalar_ref::*;
 use crate::math::common::traits::SimdMath;
+use core::arch::x86_64::*;
 
 /// Implementação SIMD via AVX-512.
 /// Esta struct agrupa todas as funções matemáticas otimizadas para processadores que suportam AVX-512.

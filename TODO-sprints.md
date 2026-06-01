@@ -958,7 +958,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum submódulo > 500 LoC; `cargo bench inference_bench` sem regressão; `S14.T05` (headers SIMD documentados) facilmente endereçável depois.
 - **Especialista:** `implementador` + revisão `pesquisador-inovador`.
 
-#### Tarefa S10b.T02 — Quebrar `src/math/gemm/dot_4x.rs` (930 LoC) ⚠️
+#### Tarefa S10b.T02 — Quebrar `src/math/gemm/dot_4x.rs` (930 LoC) ⚠️ [DONE]
 
 - **Onde:** `src/math/gemm/dot_4x.rs` → `src/math/gemm/dot_4x/`.
 - **Problema:** 930 LoC concentrando variantes de `DotProduct4x*` para AVX2, AVX-512, AVX-512 VNNI BF16 (S7.R02), escalar. Co-localização dificulta benchmarking diferencial e bloqueia adição limpa de kernels AMX (S23.T02) e NEON SVE2 (S24.T01).

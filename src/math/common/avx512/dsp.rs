@@ -10,7 +10,9 @@ macro_rules! impl_avx512_dsp {
             input_r: *const f32,
             taps: usize,
         ) -> (f32, f32) {
-            unsafe { crate::math::dsp::stereo::convolve_stereo_avx512(coeffs, input_l, input_r, taps) }
+            unsafe {
+                crate::math::dsp::stereo::convolve_stereo_avx512(coeffs, input_l, input_r, taps)
+            }
         }
 
         #[inline(always)]
@@ -20,11 +22,13 @@ macro_rules! impl_avx512_dsp {
             input_l: *const f32,
             input_r: *const f32,
             taps: usize,
-        ) -> ((f32, f32), (f32, f32)) { unsafe {
-            crate::math::dsp::stereo::convolve_stereo_dual_avx512(
-                coeffs0, coeffs1, input_l, input_r, taps,
-            )
-        }}
+        ) -> ((f32, f32), (f32, f32)) {
+            unsafe {
+                crate::math::dsp::stereo::convolve_stereo_dual_avx512(
+                    coeffs0, coeffs1, input_l, input_r, taps,
+                )
+            }
+        }
 
         #[inline(always)]
         unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
@@ -36,9 +40,13 @@ macro_rules! impl_avx512_dsp {
             left: &mut [f32],
             right: &mut [f32],
             gain: f32,
-        ) -> bool { unsafe {
-            crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo_avx512(left, right, gain)
-        }}
+        ) -> bool {
+            unsafe {
+                crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo_avx512(
+                    left, right, gain,
+                )
+            }
+        }
 
         #[inline(always)]
         unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
@@ -61,11 +69,13 @@ macro_rules! impl_avx512_dsp {
             head2: &[f32],
             output: &mut [f32],
             scale: f32,
-        ) { unsafe {
-            crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
-                head1, head2, output, scale,
-            )
-        }}
+        ) {
+            unsafe {
+                crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
+                    head1, head2, output, scale,
+                )
+            }
+        }
 
         #[inline(always)]
         unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
@@ -79,11 +89,13 @@ macro_rules! impl_avx512_dsp {
             output: &mut [f32],
             head: usize,
             scale: f32,
-        ) { unsafe {
-            crate::math::wavenet::head::batch_wavenet_head_sum_dyn_avx512(
-                head1, head2, output, head, scale,
-            )
-        }}
+        ) {
+            unsafe {
+                crate::math::wavenet::head::batch_wavenet_head_sum_dyn_avx512(
+                    head1, head2, output, head, scale,
+                )
+            }
+        }
     };
 }
 
@@ -145,11 +157,13 @@ macro_rules! impl_avx512vnni_dsp {
             head2: &[f32],
             output: &mut [f32],
             scale: f32,
-        ) { unsafe {
-            crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
-                head1, head2, output, scale,
-            )
-        }}
+        ) {
+            unsafe {
+                crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
+                    head1, head2, output, scale,
+                )
+            }
+        }
 
         #[inline(always)]
         unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
@@ -232,11 +246,13 @@ macro_rules! impl_avx512vnni_bf16_dsp {
             head2: &[f32],
             output: &mut [f32],
             scale: f32,
-        ) { unsafe {
-            crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
-                head1, head2, output, scale,
-            )
-        }}
+        ) {
+            unsafe {
+                crate::math::wavenet::head::batch_wavenet_head_sum_avx512::<HEAD>(
+                    head1, head2, output, scale,
+                )
+            }
+        }
 
         #[inline(always)]
         unsafe fn batch_wavenet_head_sum_dyn(
