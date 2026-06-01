@@ -1139,6 +1139,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 > - **S12.T03** ✓ — Mapeamento persistente de `mono_hyst` e `active_model_r` como campos da struct `NamClapProcessor` evitando qualquer re-alocação na thread de tempo real.
 >
 > **Ajustes de Conformidade e Correções Finais da Auditoria:**
+>
 > 1. **Adequação ao `testing.md`**: Como `src/clap/extensions/state.rs` (338 LoC) ultrapassa o limite de 300 linhas, seus testes unitários foram movidos para o arquivo separado [state_test.rs](file:///home/fabio/nam-rs/src/clap/extensions/state_test.rs).
 > 2. **Testes de Integração de Migração**: Criado o arquivo [clap_state_migration.rs](file:///home/fabio/nam-rs/tests/clap_state_migration.rs) com 3 testes automatizados via `clack_host` cobrindo detalhadamente a migração v0→v1, round-trip v1 e retrocompatibilidade de versões futuras (v2).
 > 3. **Instabilidade Numérica Solucionada**: Ajustada a tolerância de paridade LSTM BF16 em `lstm_scalar_bf16_parity.rs` de `1.5e-3` para `5.0e-3` para sanar a discrepância térmica natural sob saturação extrema (clamp de ±4.0 introduzido pelas ativações Padé SIMD vs tanh escalar nativo).
@@ -1164,7 +1165,8 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
   3. Test runner em `tests/cpp_parity.rs` carrega cada modelo, processa o mesmo input e compara MSE < 1e-4.
 - **Critérios de aceitação:** Todos os modelos referência (WaveNet Standard, Lite, Feather, Nano; LSTM 1×{8,12,16,24}, 2×{8,12,16}) batem com C++.
 - **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
-- A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
+- **Nota do PO 1:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
+- **Nota do PO 2:** A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
 
 #### Tarefa S13.T02 — Round-trip encode→decode em NAMB v2 ⚠️
 
@@ -1184,6 +1186,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
   2. 100k iterações com `arbitrary_namb_bytes` (header válido + corpo aleatório).
 - **Critérios de aceitação:** Zero panics em 100k inputs.
 - **Especialista:** `implementador`.
+- **Nota do PO:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
 
 #### Tarefa S13.T04 — Stress test multi-instância CLAP ⚠️
 
@@ -1194,6 +1197,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
   2. Verificar telemetria, params, activate/deactivate sem race conditions.
 - **Critérios de aceitação:** Sem panic; rt_priority correto em cada instância.
 - **Especialista:** `implementador`.
+- **Nota do PO:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
 
 #### Tarefa S13.T05 — Teste de prewarm edge (RF grande) ⚠️
 
@@ -1207,11 +1211,11 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 #### Tarefa S13.T06 — Adicionar variantes LSTM ao catálogo (1×40, 2×24) 💡
 
-- **Onde:** `src/models/lstm/mod.rs`; `src/loader/dispatcher/lstm.rs:17-46`.
+- **Onde:** `src/models/lstm/mod.rs` (enum `DynamicModel`); `src/loader/dispatcher/lstm.rs` (match de dispatch estático, região ~linha 17-46 pós-refatoração).
 - **Problema:** Modelos `LSTM 1×40` (tone matching) e `2×24` (deeper) caem em fallback dinâmico, perdendo performance.
 - **Solução técnica:**
-  1. Adicionar `Lstm1x40`, `Lstm2x24` ao enum `DynamicModel`.
-  2. Adicionar match no dispatcher.
+  1. Adicionar `Lstm1x40`, `Lstm2x24` ao enum `DynamicModel` em `src/models/lstm/mod.rs`.
+  2. Adicionar match no dispatcher estático em `src/loader/dispatcher/lstm.rs`.
   3. Testes de regressão e benchmark.
 - **Critérios de aceitação:** Modelos batem performance dentro de 5% das variantes catalogadas.
 - **Especialista:** `implementador`.
@@ -1240,7 +1244,7 @@ Objetivo: assegurar que cada decisão e cada subsistema crítico têm documenta�
 
 #### Tarefa S14.T03 — Adicionar `# Safety` faltantes em `unsafe { ... }` 💡
 
-- **Onde:** `src/clap/processor.rs:236-251, 387-389`; `src/dsp/pipeline.rs:240, 259`; outros identificados na auditoria.
+- **Onde:** `src/clap/processor/dsp.rs` (unsafe blocks do processamento DSP, migrados de `processor.rs`); `src/dsp/pipeline/bridge.rs` (acesso ao `DspBridge`); `src/math/common/avx2_impl.rs`; `src/math/common/avx512/` (kernels SIMD); outros identificados na auditoria.
 - **Solução técnica:** Adicionar comentário `// SAFETY: ...` justificando cada bloco.
 - **Critérios de aceitação:** `cargo clippy -- -D clippy::undocumented_unsafe_blocks` passa.
 - **Especialista:** `documentador` + `implementador`.
@@ -1248,13 +1252,13 @@ Objetivo: assegurar que cada decisão e cada subsistema crítico têm documenta�
 #### Tarefa S14.T04 — Atualizar `docs/architecture.md` 💡
 
 - **Onde:** `docs/architecture.md`.
-- **Solução técnica:** Refletir mudanças dos Épicos 1–6 (DspBridge split, ui module breakdown, etc.).
+- **Solução técnica:** Refletir mudanças dos Épicos 1–6: split de `DspBridge` em Reader/Writer (S1.T01), quebra dos módulos CLAP (`plugin/`, `processor/`, `gui/ui/`, `gui/window/`), standalone (`pw_host/`, `rt_setup/`), pipeline (`pipeline/`), math (`common/avx512/`, `gemm/dot_4x/`, `dsp/stereo/`), loader (`dispatcher/wavenet/`, `nam_json/`), diagnostics (`diagnostics/`), renomeação `vring`→`mirror_buf`, trait `NamModel::reset()`, Padé activations (S7.T09), e demais alterações estruturais.
 - **Critérios de aceitação:** Documento revisto pela skill `documentador`.
 - **Especialista:** `documentador`.
 
 #### Tarefa S14.T05 — Comentários técnicos em hotpath de SIMD 💡
 
-- **Onde:** `src/math/common/avx2_impl.rs`, `avx512_impl.rs`, `src/math/gemm/dot_4x.rs`.
+- **Onde:** `src/math/common/avx2_impl.rs`; `src/math/common/avx512/` (activations, gemv, bf16, reduce); `src/math/gemm/dot_4x/` (avx2, avx2_dual, avx512, avx512_dual, avx512_bf16); `src/math/gemm/gemv.rs`; `src/math/gemm/gemv_4gate.rs`.
 - **Problema:** Funções SIMD com algoritmos não-óbvios sem documentação de microarquitetura alvo (Skylake/Zen/Ice Lake).
 - **Solução técnica:** Adicionar header em cada kernel SIMD com:
   - Latência/throughput esperada.
@@ -1279,7 +1283,7 @@ Objetivo: reduzir 2–4× a memória de pesos e 2–8× a banda do hotpath via I
 
 #### Tarefa S15.T01 — INT8 weight quantization SmoothQuant para Conv1D heads ✨⚠️
 
-- **Onde:** `src/loader/dispatcher/wavenet.rs:348-349` (cabeças); novo `src/math/common/int8_quant.rs`; novo `weights_layout = SmoothQuantInt8`.
+- **Onde:** `src/loader/dispatcher/wavenet/` (heads de Conv1D — ver módulo `standard.rs` e `dynamic.rs`); novo `src/math/common/int8_quant.rs`; novo `weights_layout = SmoothQuantInt8`.
 - **Problema/Oportunidade:** Pesos do `head_weights` (Conv1D 1×1 do output) **dominam memória** em WaveNet Standard (40 KB de pesos vs 8 KB de activations). INT8 weights + FP32 activations (per-channel scale) reduzem 4× memory bandwidth (cache-friendly em L1/L2). SmoothQuant migra outliers de activations para weights via per-channel scaling — proven 99.5% accuracy retention em LLM.cpp e NAM-class workloads.
 - **Solução técnica:**
   1. **Treinamento-livre quantization** (post-training): para cada Conv1D head, computar per-channel scale `s_c = max(|W_c|) / 127`, armazenar `Q_W[c,i] = round(W[c,i] / s_c)` como `i8` + scale vector `s_c` como `f32`.
@@ -1327,7 +1331,7 @@ Objetivo: capturar todo o potencial do kernel Linux 6.x (PREEMPT_RT mainline), r
 
 #### Tarefa S16.T01 — Suporte opcional a SCHED_DEADLINE (CBS) ✨⚠️
 
-- **Onde:** `src/standalone/rt_setup.rs:431-450`; novo CLI flag `--scheduler {fifo,deadline}`.
+- **Onde:** `src/standalone/rt_setup/thread.rs` (configuração de scheduler RT); novo CLI flag `--scheduler {fifo,deadline}`.
 - **Problema/Oportunidade:** Paper Raspberry Pi 5 + PREEMPT_RT (arXiv 2604.19275, Abr/2026) demonstra que SCHED_DEADLINE bound max-latency em ≤197 µs sob carga heavy, **vs 224 µs de SCHED_FIFO p99**. CBS (Constant Bandwidth Server) garante admission control — impossível starvation. Apropriado para áudio onde "buffer fits in deadline" é uma garantia formal.
 - **Solução técnica:**
   1. Param/flag `nam-rs --scheduler deadline` (default mantém FIFO para compat).
@@ -1343,11 +1347,11 @@ Objetivo: capturar todo o potencial do kernel Linux 6.x (PREEMPT_RT mainline), r
 
 #### Tarefa S16.T02 — Huge Pages (THP / MAP_HUGETLB) para weights e mirror buffer ✨⚠️
 
-- **Onde:** `src/loader/mod.rs` (alocação de `AlignedVec<u16>` para pesos dinâmicos); `src/dsp/vring.rs:62-164` (mirror buffer).
+- **Onde:** `src/loader/mod.rs` (alocação de `AlignedVec<u16>` para pesos dinâmicos); `src/dsp/mirror_buf.rs` + `src/dsp/mirror_buf/linux.rs` (mirror buffer, renomeado de `vring.rs` no Épico 1).
 - **Problema/Oportunidade:** Modelos WaveNet Standard alocam ~80 KB de pesos contíguos. Em páginas de 4 KB, esses pesos consomem ~20 entradas TLB; em **2 MiB huge pages**, **1 entrada TLB**. TLB miss em hotpath custa ~100 ciclos. Para audio de 32 spl @ 96k = 333 µs, eliminar TLB misses pode reduzir p99 em 5–15%.
 - **Solução técnica:**
   1. **Allocator helper** `src/math/common/huge_alloc.rs`: tenta `mmap(MAP_HUGETLB | MAP_HUGE_2MB)` primeiro; fallback `mmap` anonymous + `madvise(MADV_HUGEPAGE)` para THP transparent; fallback `Vec` standard.
-  2. Substituir alocações de pesos > 1 MiB e mirror buffer (`vring.rs`) por esse allocator.
+  2. Substituir alocações de pesos > 1 MiB e mirror buffer (`mirror_buf.rs`) por esse allocator.
   3. **Métrica:** expor count via `RT_STATUS_HUGEPAGE_OK` flag (telemetria).
   4. **Cautela:** THP background scanning pode pausar threads — preferir explicit `MAP_HUGETLB`. Documentar setup: `echo 32 > /proc/sys/vm/nr_hugepages` ou cgroup hugetlb.2MB.max.
 - **Critérios de aceitação:**
@@ -1358,7 +1362,7 @@ Objetivo: capturar todo o potencial do kernel Linux 6.x (PREEMPT_RT mainline), r
 
 #### Tarefa S16.T03 — Detecção e tuning específico para PREEMPT_RT kernel ✨💡
 
-- **Onde:** `src/standalone/rt_setup.rs`; novo `is_preempt_rt()` check.
+- **Onde:** `src/standalone/rt_setup/` (módulo `mod.rs` ou novo `preempt_rt.rs`); novo `is_preempt_rt()` check.
 - **Problema/Oportunidade:** PREEMPT_RT mainline (kernel 6.x) tem semântica diferente: spinlocks viram sleeping locks, IRQs threadeadas. Comportamento "ideal" (`SCHED_FIFO prio 99`) pode mudar de "deve" para "pode preempar threaded-IRQ críticos".
 - **Solução técnica:**
   1. Checar `/sys/kernel/realtime` ou `uname -v | grep PREEMPT_RT`.
@@ -1439,11 +1443,11 @@ Objetivo: ir muito além de "carrega modelo + ajusta gain". Construir o engine N
 
 #### Tarefa S18.T01 — Hot model swap com crossfade ✨🔥
 
-- **Onde:** `src/clap/processor.rs`; `src/standalone/pw_host.rs:rt_callback`; `src/loader/mod.rs`.
+- **Onde:** `src/clap/processor/` (módulo `dsp.rs` — hotpath de processamento); `src/standalone/pw_host/rt_callback.rs`; `src/loader/mod.rs`.
 - **Problema/Oportunidade:** Hoje, trocar de modelo causa um silêncio de ~50ms (load + prewarm). Crossfade sample-accurate elimina audible dropout, permitindo **A/B blind comparison** e workflow rápido de tone-hunting.
 - **Solução técnica:**
   1. **Reader/Writer pattern de S1.T01 estendido:** introduzir `ModelReader { ptr: NonNull<dyn NamModel>, generation: u64 }` exposto à RT thread; o main thread mantém um `arc-swap::ArcSwap<Box<dyn NamModel>>` (ou equivalente custom lock-free) — **nunca** `&'static mut`. RT acessa via `&*ptr` com lifetime curto, dentro de uma única call de `process()`.
-  2. **Double-slot lock-free:** dois slots `[ModelSlot; 2]` indexados por `active_idx: AtomicUsize` (Relaxed). Main thread escreve em `[1 - active_idx]`, RT lê de `[active_idx]`. Swap via single `store(Release)`.
+  2. **Double-slot lock-free:** dois slots `[ModelSlot; 2]` indexados por `active_idx: AtomicUsize` (Relaxed). Main thread escreve em `[1 - active_idx]`, RT lê de `[active_idx]`. Swap via single `store(Release)`. Implementar em `src/clap/processor/dsp.rs` (herdando o `NamClapProcessor` do `mod.rs`).
   3. Main thread carrega novo modelo em background (io_uring de S17.T01), prewarm em separate thread.
   4. RT thread detecta `pending_slot.is_loaded()` no início do bloco; inicia crossfade linear de 64 ms.
   5. Durante crossfade: processa input por **ambos** modelos (`old` lido do slot atual + `new` lido do slot pendente), mixa output via `α · new + (1-α) · old`, com `α` rampando de 0→1 ao longo de 64 ms.
@@ -1468,7 +1472,7 @@ Objetivo: ir muito além de "carrega modelo + ajusta gain". Construir o engine N
 
 #### Tarefa S18.T02 — A/B model comparator (snapshot bank) ✨⚠️
 
-- **Onde:** `src/clap/extensions/state.rs`; novo módulo `src/clap/ab_bank.rs`.
+- **Onde:** `src/clap/extensions/state.rs` (schema de persistência, já versionado v1 em S11.T01); novo módulo `src/clap/ab_bank.rs`.
 - **Problema/Oportunidade:** Workflow profissional exige A/B blind comparison. Hoje é um swap manual de arquivo — destrutivo. Snapshot bank com 8 slots persistentes permite comparação instantânea (atalho de teclado A/B/1-8).
 - **Solução técnica:**
   1. `NamPluginParams` estendido com `Vec<SnapshotSlot>` (8 slots).
@@ -1501,7 +1505,7 @@ Objetivo: ir muito além de "carrega modelo + ajusta gain". Construir o engine N
 
 #### Tarefa S19.T02 — Auto LUFS normalization ao trocar modelo ✨💡
 
-- **Onde:** `src/dsp/lufs.rs` (novo); integração em `pipeline.rs`.
+- **Onde:** `src/dsp/lufs.rs` (novo); integração em `src/dsp/pipeline/stages.rs` (estágio de output do pipeline).
 - **Problema/Oportunidade:** Modelos NAM variam ~20 dB de output entre si — trocar modelo causa **shock de volume**. Auto-LUFS normaliza para −18 LUFS-S (target broadcast) com ramp suave de 200ms.
 - **Solução técnica:**
   1. Implementar BS.1770-4 LUFS meter (K-weighting pre-filter + RMS + gate −70 LUFS).
@@ -1513,7 +1517,7 @@ Objetivo: ir muito além de "carrega modelo + ajusta gain". Construir o engine N
 
 #### Tarefa S19.T03 — Spectrum analyzer pré/pós (visual feedback) ✨💡
 
-- **Onde:** novo `src/clap/gui/spectrum.rs`; integração em `ui.rs` (nova zona).
+- **Onde:** novo `src/clap/gui/spectrum.rs`; integração em `src/clap/gui/ui/mod.rs` (nova zona de spectrum).
 - **Problema/Oportunedade:** Visual feedback de "o que o modelo está fazendo no espectro" é altamente educativo e diferencial UX. STFT 2048-point @ 30 Hz refresh; overlay pre/post.
 - **Solução técnica:**
   1. Capture ring buffer (~256 ms) de input e output em SPSC.
@@ -1542,7 +1546,7 @@ Objetivo: ir muito além de "carrega modelo + ajusta gain". Construir o engine N
 
 #### Tarefa S20.T01 — MIDI Learn nativo (CC mapping) ✨⚠️
 
-- **Onde:** novo `src/clap/extensions/note_ports.rs` (já parcialmente existe via `clack-extensions`); UI binding em `ui.rs`.
+- **Onde:** novo `src/clap/extensions/note_ports.rs` (já parcialmente existe via `clack-extensions`); UI binding em `src/clap/gui/ui/mod.rs`.
 - **Problema/Oportunidade:** Controlar gain/gate/model com pedal MIDI é workflow live essencial. CLAP suporta `note_ports` + `params` via MIDI mapping nativo.
 - **Solução técnica:**
   1. Right-click em knob → "MIDI Learn" → próximo CC recebido bind ao param.
@@ -1613,7 +1617,7 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 ### Sprint S21.D — Suporte ao Usuário & Diagnóstico de Campo (Observability sem regressão) ✨⚠️
 
-> **Contexto e justificativa:** A skill `diagnostico` (vide `.agents/workflows/diagnostico.md`) espera receber um "bloco de suporte" colado pelo usuário contendo código de erro, mnemônico, parâmetros contextuais e info de sistema. Hoje o `Diagnostic::support_block()` (`src/common/diagnostics.rs:385`) só é gerado em **paths de erro** (`emit`/`emit_warning`). Cenários frequentes ficam descobertos:
+> **Contexto e justificativa:** A skill `diagnostico` (vide `.agents/workflows/diagnostico.md`) espera receber um "bloco de suporte" colado pelo usuário contendo código de erro, mnemônico, parâmetros contextuais e info de sistema. Hoje o `Diagnostic::support_block()` (`src/common/diagnostics/diagnostic.rs`, migrado do antigo `diagnostics.rs`) só é gerado em **paths de erro** (`emit`/`emit_warning`). Cenários frequentes ficam descobertos:
 >
 > - Usuário relata "som baixo" / "dropouts" / "GUI travada" — sem erro tipado, nada para colar.
 > - Usuário em hospedeiro CLAP (Bitwig/Reaper/FL Studio) não tem stderr acessível.
@@ -1630,10 +1634,10 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 #### Tarefa S21.D.T01 — Refatorar `support_block()` para `DiagnosticBundle` desacoplado de erro 💡
 
-- **Onde:** `src/common/diagnostics.rs:385-429` (atual `support_block` é método privado de `Diagnostic`).
+- **Onde:** `src/common/diagnostics/diagnostic.rs` (atual `support_block` é método privado de `Diagnostic`, migrado de `diagnostics.rs`).
 - **Problema:** `support_block()` é privado e exige um `NamErrorCode` para ser construído. Não há API pública para "gerar bundle em estado nominal".
 - **Solução técnica:**
-  1. Extrair `pub struct DiagnosticBundle { system: SystemInfo, runtime: RuntimeSnapshot, error: Option<ErrorContext> }` em `src/common/diagnostics.rs`.
+  1. Extrair `pub struct DiagnosticBundle { system: SystemInfo, runtime: RuntimeSnapshot, error: Option<ErrorContext> }` em `src/common/diagnostics/diagnostic.rs`.
   2. `impl DiagnosticBundle { pub fn capture() -> Self; pub fn capture_with_error(code, params) -> Self; pub fn render(&self) -> String; }`.
   3. `RuntimeSnapshot` (vazio nesta tarefa — preenchido em S21.D.T04) — placeholder com `Default`.
   4. Refatorar `Diagnostic::support_block` para delegar ao novo `DiagnosticBundle::capture_with_error(...).render()`.
@@ -1657,9 +1661,9 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 #### Tarefa S21.D.T03 — Botão "Copy Diagnostic" na GUI do CLAP ⚠️
 
-- **Onde:** `src/clap/gui/ui.rs` (status bar / nova zona "About"); após refactor de S8.T01 alvo é `src/clap/gui/ui/status_bar.rs` ou similar.
+- **Onde:** `src/clap/gui/ui/mod.rs` (status bar / nova zona "About"); após refactor de S8.T01 o alvo é `src/clap/gui/ui/mod.rs` ou módulo dedicado.
 - **Problema:** Usuário do plugin em DAW não tem acesso ao stderr do host. Sem botão na GUI, impossível obter bundle em hosts C++.
-- **Dependência:** **após S8.T01** (split de `ui.rs` em módulos) — caso contrário a alocação fica no monolito que será dividido. Se S8.T01 atrasar, fazer placeholder em `ui.rs:1663-1726` (status bar) e migrar depois.
+- **Dependência:** S8.T01 já concluído — `ui.rs` foi dividido em `src/clap/gui/ui/` (mod, state, knob, meter, bypass, colors, vsep, simd). O status bar reside em `ui/mod.rs` (função `draw_ui`).
 - **Solução técnica:**
   1. Botão pequeno na status bar (ou ícone "ℹ" abrindo modal "About / Diagnostic").
   2. Click → no **main thread** chamar `DiagnosticBundle::capture().render()` e:
@@ -1677,7 +1681,7 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 #### Tarefa S21.D.T04 — `RuntimeSnapshot` lock-free com estado RT-safe ⚠️
 
-- **Onde:** `src/common/diagnostics.rs` (novo `RuntimeSnapshot`); consumidores em `src/clap/processor.rs`, `src/standalone/pw_host.rs`, `src/dsp/telemetry.rs`.
+- **Onde:** `src/common/diagnostics/diagnostic.rs` (novo `RuntimeSnapshot`); consumidores em `src/clap/processor/dsp.rs` + `src/clap/processor/events.rs`, `src/standalone/pw_host/rt_callback.rs`, `src/dsp/telemetry.rs`.
 - **Problema:** Bundle atual só tem versão + arch + features estáticos. Falta o **estado dinâmico** crítico para diagnóstico: modelo carregado (arquitetura/CH/RF/path basename), SR efetivo, buffer size, contadores de xrun/drain, RT prio aplicada, scheduler ativo (FIFO/DEADLINE — S16.T01), percentis de latência (HDR — S21.T03), histórico recente de RT_STATUS flags.
 - **Solução técnica:**
   1. Definir struct `RuntimeSnapshot` com campos:
@@ -1699,7 +1703,7 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 #### Tarefa S21.D.T05 — Panic hook persiste `DiagnosticBundle` antes do abort 🔥
 
-- **Onde:** `src/main.rs::main` (standalone); `src/clap/plugin.rs` (init do plugin, `DefaultPluginFactory`); novo `src/common/panic_hook.rs`.
+- **Onde:** `src/main.rs::main` (standalone); `src/clap/plugin/mod.rs` (init do plugin, `DefaultPluginFactory`); novo `src/common/panic_hook.rs`.
 - **Problema:** Em hosts C++ (Bitwig, FL Studio), um panic Rust pode terminar o processo sem flush de `log::error!` — bundle perdido. Adicionalmente, a auditoria do Épico 1 (`window.rs`) eliminou panics em callbacks FFI, mas **qualquer panic residual fora do callback** ainda perde info.
 - **Solução técnica:**
   1. `pub fn install_panic_hook(component: &'static str)` em `src/common/panic_hook.rs`:
@@ -1719,7 +1723,7 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 
 #### Tarefa S21.D.T06 — Sanitização e política de redação 💡
 
-- **Onde:** `src/common/diagnostics.rs` (renderização).
+- **Onde:** `src/common/diagnostics/diagnostic.rs` (renderização do bundle).
 - **Problema:** Bundle atual já redige pouco. Paths absolutos podem expor `/home/<user>/...` em logs públicos.
 - **Solução técnica:**
   1. Helper `fn redact_path(p: &Path) -> String` substitui prefixo `$HOME` por `~` e `$XDG_RUNTIME_DIR` por `$XDG_RUNTIME_DIR`. Em `--diagnose-full`, retorna path bruto.
@@ -1832,10 +1836,10 @@ Objetivo: expandir nam-rs e aproveitar microarquitetura de hardware específica 
 
 #### Tarefa S23.T02 — Backend Intel AMX para LSTM 2-layer e WaveNet Standard (BF16) ✨🔥
 
-- **Onde:** novo módulo `src/math/common/amx_impl.rs`; integração em `src/math/common/dispatch.rs:140-163` (novo nível `InstructionSet::Amx_Bf16` acima de `Avx512VnniBf16`).
+- **Onde:** novo módulo `src/math/common/amx_impl.rs`; integração em `src/math/common/dispatch.rs` (novo nível `InstructionSet::Amx_Bf16` acima de `Avx512VnniBf16`, região ~linha 140-163 pós-refatoração).
 - **Problema/Oportunidade:** Sapphire Rapids+ executa **`_tile_dpbf16ps`** (DST = A·Bᵀ + DST) em **um único ciclo de 1024 FMAs BF16** (16×64 BF16 × 64×16 BF16 → 16×16 FP32, ~2 TFLOPS BF16 por core a 2 GHz). Para LSTM `2×16` (matmul 32×80 por amostra) e WaveNet Standard (matmul de 16×16 com kernel-3), AMX entrega potencial **10–20×** speedup sobre AVX-512 VNNI BF16. A referência C++ ainda não usa AMX; nam-rs pode ser o **primeiro engine NAM com AMX nativo**.
 - **Solução técnica:**
-  1. **Layout AMX-friendly do encoder:** novo `weights_layout = AmxTile16x64Bf16` que organiza pesos em tiles de 16 linhas × 64 colunas (= 64 BF16 = 1 KB por tile), padding zero quando necessário. Decoder em `loader/dispatcher/lstm.rs` e `loader/dispatcher/wavenet.rs` carrega blocos em `AlignedVec<u16>` 64-aligned.
+  1. **Layout AMX-friendly do encoder:** novo `weights_layout = AmxTile16x64Bf16` que organiza pesos em tiles de 16 linhas × 64 colunas (= 64 BF16 = 1 KB por tile), padding zero quando necessário. Decoder em `src/loader/dispatcher/lstm.rs` e `src/loader/dispatcher/wavenet/` (módulos `standard.rs`, `dynamic.rs`, `layout.rs`) carrega blocos em `AlignedVec<u16>` 64-aligned.
   2. **Trait `AmxBf16Math: SimdMath`** implementando `fused_add_gemv`, `fused_add_gemm_batch`, etc. Cada kernel:
      - Configurar palette 1 via `_tile_loadconfig()` (uma vez por activate).
      - `_tile_loadd::<TILE_A, STRIDE>(weights_ptr)` para tile A (16×32 BF16).
@@ -1907,7 +1911,7 @@ Objetivo: expandir nam-rs e aproveitar microarquitetura de hardware específica 
      - `svfmla_f32_z` predicado, eliminando tail loops.
      - `svbfdot_f32` para BF16 dot (ARMv8.6-A) — análogo a `_mm512_dpbf16_ps`.
   3. **Dispatcher:** `#[cfg(target_arch = "aarch64")]` com `std::arch::is_aarch64_feature_detected!("neon")` e `("sve2")`.
-  4. **`vring.rs` portabilidade:** já parcialmente coberto por S1.T04. Em Linux ARM64, `memfd_create` funciona normalmente.
+  4. **`mirror_buf.rs` portabilidade:** já parcialmente coberto por S1.T04. Em Linux ARM64, `memfd_create` funciona normalmente (fallback `mmap` anônimo para não-Linux já existe em `mirror_buf/fallback.rs`).
   5. **Build matrix CI:** `aarch64-unknown-linux-gnu` em GitHub Actions.
 - **Critérios de aceitação:**
   - `cargo test --target aarch64-unknown-linux-gnu` passa com emulação QEMU ou nativa.
