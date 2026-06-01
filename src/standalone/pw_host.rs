@@ -257,6 +257,11 @@ pub fn run_pipewire_host(
 
         // Thresholds pré-calculados em valor linear² (MS) — cold-path only.
         // Evita `powf` no callback RT (T16). Atualizados ao receber GateConfig.
+        // ALGORITMO COMPARTILHADO: Toda alteração aqui (LUT, quadratura,
+        // invalidação) deve ser refletida em src/clap/processor.rs
+        // (cached_threshold_open_sq / cached_threshold_close_sq / gate_dirty),
+        // e vice-versa. Ambos pré-calculam thresholds em linear² via LUT
+        // para evitar lookups no hotpath RT.
         let lut = crate::math::dsp::gain_lut::get_gain_lut();
         let open_lin = lut.db_to_linear(gate_params.threshold_open_db);
         let close_lin = lut.db_to_linear(gate_params.threshold_close_db);
@@ -854,6 +859,9 @@ fn receive_commands(
             }
             ParamPayload::GateConfig(params) => {
                 // Converte dB em escalas Lineares via tabela de busca LUT instantânea.
+                // Equivalente ao bloco if self.gate_dirty em src/clap/processor.rs.
+                // Ambos usam a mesma LUT db_to_linear + quadratura; mudanças aqui
+                // devem ensejar revisão no CLAP processor.
                 let open_lin = lut.db_to_linear(params.threshold_open_db);
                 let close_lin = lut.db_to_linear(params.threshold_close_db);
                 // Já trabalha valores quadrados em cold-path para que no callback T16 (per-sample)

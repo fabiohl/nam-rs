@@ -540,7 +540,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Benchmark de fade-in/fade-out melhora ≥10%.
 - **Especialista:** `implementador`.
 
-#### Tarefa S6.T03 — Eliminar duplicação `src/dsp/gain.rs` ↔ `src/math/dsp/gain.rs` 🔥
+#### Tarefa S6.T03 — Eliminar duplicação `src/dsp/gain.rs` ↔ `src/math/dsp/gain.rs` 🔥 [DONE]
 
 - **Onde:** `src/dsp/gain.rs` (todo o arquivo) vs `src/math/dsp/gain.rs:58-71`.
 - **Problema:** Duas implementações independentes de `apply_gain_simd`. A versão em `src/dsp/gain.rs:15` chama diretamente `apply_gain_avx2` **sem checagem de feature** — UB em CPUs sem AVX2. A versão em `math/dsp/gain.rs:20` usa `dispatch_simd!`.
@@ -552,7 +552,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Crate compila sem `src/dsp/gain.rs`; todos os testes passam.
 - **Especialista:** `implementador`.
 
-#### Tarefa S6.T04 — Pré-calcular `gate_threshold_linear_sq` no CLAP ⚠️
+#### Tarefa S6.T04 — Pré-calcular `gate_threshold_linear_sq` no CLAP ⚠️ [DONE]
 
 - **Onde:** `src/clap/processor.rs:565`.
 - **Problema:** `lut.db_to_linear(modulated_gate_db).powi(2)` recalculado a cada `process()` mesmo sem mudança.

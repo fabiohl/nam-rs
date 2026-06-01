@@ -72,6 +72,15 @@ pub struct NamClapProcessor<'a> {
     mod_output_gain: f32,
     /// Offsets de modulação (CLAP Parameter Modulation).
     mod_gate_thresh: f32,
+    /// Thresholds pré-calculados (linear²) — invalidados apenas quando
+    /// gate_threshold_db ou mod_gate_thresh muda (Exemplo: S6.T04).
+    /// ALGORITMO COMPARTILHADO: Toda alteração na lógica de cache/invalidação
+    /// aqui deve ser refletida em src/standalone/pw_host.rs (threshold_open_sq
+    /// e threshold_close_sq), e vice-versa. Ambos pré-calculam thresholds em
+    /// linear² via LUT para evitar lookups no hotpath RT.
+    cached_threshold_open_sq: f32,
+    cached_threshold_close_sq: f32,
+    gate_dirty: bool,
     /// Handle do host para chamadas na thread de áudio.
     host: HostAudioProcessorHandle<'a>,
 }
@@ -208,6 +217,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             mod_input_gain: 0.0,
             mod_output_gain: 0.0,
             mod_gate_thresh: 0.0,
+            cached_threshold_open_sq: 0.0,
+            cached_threshold_close_sq: 0.0,
+            gate_dirty: true,
             host,
         })
     }
@@ -336,6 +348,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                         self.shared
                             .param_gate_thresh
                             .store(val.to_bits(), Ordering::Relaxed);
+                        self.gate_dirty = true;
                     }
                     PARAM_BYPASS => {
                         self.params.bypass = val > 0.5;
@@ -363,6 +376,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     }
                     PARAM_GATE_THRESH => {
                         self.mod_gate_thresh = amount;
+                        self.gate_dirty = true;
                     }
                     _ => {}
                 }
@@ -387,6 +401,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let shared_gate_db = f32::from_bits(self.shared.param_gate_thresh.load(Ordering::Relaxed));
         if shared_gate_db != self.params.gate_threshold_db {
             self.params.gate_threshold_db = shared_gate_db;
+            self.gate_dirty = true;
         }
 
         let shared_bypass = self.shared.param_bypass.load(Ordering::Relaxed) != 0;
@@ -562,9 +577,20 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
             // A LUT já foi obtida acima do loop de ports (linha ~178).
             let modulated_gate_db = self.params.gate_threshold_db + self.mod_gate_thresh;
+            let close_db = modulated_gate_db - 6.0;
+
+            if self.gate_dirty {
+                // Pré-cálculo cold-path (equivalente a pw_host.rs:855-863).
+                // Ambos usam a mesma LUT db_to_linear + quadratura; mudanças
+                // aqui devem ensejar revisão no standalone.
+                self.cached_threshold_open_sq = lut.db_to_linear(modulated_gate_db).powi(2);
+                self.cached_threshold_close_sq = lut.db_to_linear(close_db).powi(2);
+                self.gate_dirty = false;
+            }
+
             let gate_params = GateParams {
                 threshold_open_db: modulated_gate_db,
-                threshold_close_db: modulated_gate_db - 6.0,
+                threshold_close_db: close_db,
                 ..Default::default()
             };
 
@@ -580,11 +606,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                 gate_params: &gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
                 mono_hysteresis: &mut mono_hyst,
-                // Decisão técnica: powi(2) é otimizado pelo compilador como
-                // uma simples multiplicação (x * x) — overhead zero. Mantido por clareza semântica
-                // ("quadrado do threshold") ao invés de manual `let x = ...; x * x`.
-                threshold_open_sq: lut.db_to_linear(modulated_gate_db).powi(2),
-                threshold_close_sq: lut.db_to_linear(modulated_gate_db - 6.0).powi(2),
+                threshold_open_sq: self.cached_threshold_open_sq,
+                threshold_close_sq: self.cached_threshold_close_sq,
                 process_mono: &mut self.process_mono,
                 rt_status: &self.rt_status,
                 bridge_writer: None,
