@@ -520,7 +520,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 
 ### Sprint S6 — Telemetria & Gain hotpath
 
-#### Tarefa S6.T01 — Trocar `fetch_update` por `fetch_add` em telemetria ⚠️
+#### Tarefa S6.T01 — Trocar `fetch_update` por `fetch_add` em telemetria ⚠️ [DONE]
 
 - **Onde:** `src/dsp/telemetry.rs:40, 52`.
 - **Problema:** `fetch_update` é um CAS-loop. Para um contador monotônico, `fetch_add` é um único `lock xadd` no x86 (3× mais rápido).

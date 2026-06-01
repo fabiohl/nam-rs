@@ -3,7 +3,7 @@
 
 //! Telemetria de latência em tempo real para o pipeline DSP.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Histograma exponencial para rastrear a distribuição de latências do callback RT.
 ///
@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[repr(align(128))]
 pub struct LatencyHistogram {
     /// Bins atômicos do histograma.
-    bins: [AtomicU32; 32],
+    bins: [AtomicU64; 32],
 }
 
 impl Default for LatencyHistogram {
@@ -26,7 +26,7 @@ impl LatencyHistogram {
     #[cold]
     pub fn new() -> Self {
         Self {
-            bins: [const { AtomicU32::new(0) }; 32],
+            bins: [const { AtomicU64::new(0) }; 32],
         }
     }
 
@@ -37,9 +37,7 @@ impl LatencyHistogram {
     #[inline(always)]
     pub fn record(&self, duration_ns: u64) {
         if duration_ns == 0 {
-            let _ = self.bins[0].fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                Some(v.saturating_add(1))
-            });
+            self.bins[0].fetch_add(1, Ordering::Relaxed);
             return;
         }
 
@@ -49,23 +47,21 @@ impl LatencyHistogram {
         let msb = 63 - duration_ns.leading_zeros();
         let index = msb.saturating_sub(5).min(31) as usize;
 
-        let _ = self.bins[index].fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-            Some(v.saturating_add(1))
-        });
+        self.bins[index].fetch_add(1, Ordering::Relaxed);
     }
 
     /// Calcula o valor aproximado de um percentil (ex: 0.95 para P95).
     /// Retorna o valor em nanosegundos da borda superior do bin.
     pub fn get_percentile(&self, p: f32) -> u64 {
-        let counts: [u32; 32] = core::array::from_fn(|i| self.bins[i].load(Ordering::Relaxed));
-        let total: u32 = counts.iter().sum();
+        let counts: [u64; 32] = core::array::from_fn(|i| self.bins[i].load(Ordering::Relaxed));
+        let total: u64 = counts.iter().sum();
 
         if total == 0 {
             return 0;
         }
 
-        let target = (total as f32 * p) as u32;
-        let mut accum = 0;
+        let target = (total as f64 * p as f64) as u64;
+        let mut accum: u64 = 0;
 
         for (i, &count) in counts.iter().enumerate() {
             accum += count;
@@ -89,7 +85,7 @@ impl LatencyHistogram {
     }
 
     /// Retorna o número total de observações registradas desde o último reset.
-    pub fn total_count(&self) -> u32 {
+    pub fn total_count(&self) -> u64 {
         self.bins.iter().map(|b| b.load(Ordering::Relaxed)).sum()
     }
 

@@ -395,6 +395,24 @@ fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
     group.finish();
 }
 
+/// Mede a performance da função `record` do histograma de latência.
+/// Simula 64 chamadas (equivalente a processar 1 segundo de áudio a 48 kHz
+/// com buffer de 64 amostras, ou ~750 callbacks). O benchmark valida que
+/// `fetch_add` é significativamente mais rápido que `fetch_update` (CAS-loop).
+fn bench_record(c: &mut Criterion) {
+    use nam_rs::dsp::telemetry::LatencyHistogram;
+    let hist = LatencyHistogram::new();
+    let durations: Vec<u64> = (0..64).map(|i| (i * 100) as u64).collect();
+
+    c.bench_function("bench_record_64calls", |b| {
+        b.iter(|| {
+            for &d in &durations {
+                hist.record(d);
+            }
+        });
+    });
+}
+
 /// Mede o overhead do resampler quando as taxas de amostragem são iguais.
 /// Serve para validar se o caminho de "bypass" é eficiente.
 fn bench_resampler_48000_bypass(c: &mut Criterion) {
@@ -566,6 +584,7 @@ criterion_group!(
     bench_resampler_44100_to_48000_256samp,
     bench_resampler_96000_to_48000_256samp,
     bench_resampler_48000_bypass,
+    bench_record,
     bench_tanh_avx512_256elem,
     bench_sigmoid_avx512_256elem,
     bench_prewarm_wavenet_standard,
