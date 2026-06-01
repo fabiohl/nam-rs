@@ -757,6 +757,24 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 2 dias.
 
+> **Auditoria da Sprint S7 (2026-06-01):**
+>
+> Todas as 9 tarefas da Sprint S7 foram implementadas, testadas e verificadas. 188 lib tests + 6 dot_4x tests + 1 LSTM BF16 parity test + 16 activation tests passam sem regressão.
+>
+> - **S7.T01** ✓ — `process_input_mono`/`process_output_mono` em `src/dsp/resampler.rs:449-484` e `process_internal_mono` em `:211-290`. Pipeline roteia `process_mono` nos caminhos de bypass e resample. Teste `test_resampler_mono_equivalence` verifica equivalência mono-vs-estéreo.
+> - **S7.T02** ✓ — `get_unchecked_mut` em `DelayLine::push` (`resampler.rs:68-70`) e `get_unchecked` em todos os hotpaths de `process_internal`/`process_internal_mono`, com `debug_assert!` prévio.
+> - **S7.T03** ✓ — `convolve_stereo_dual` implementado em `src/math/dsp/stereo.rs` (AVX2: `:253-339`, AVX-512: `:560-611`) em vez de `sinc_kernel.rs` (desvio arquitetural justificado: separação kernels vs geração de filtros). Caller em `resampler.rs:176` via trait `M::convolve_stereo_dual`.
+> - **S7.T04** ✓ — `run_stereo_or_mono` em `pipeline.rs:436-458` (22 LoC, ≤50 ✓). Eliminou 4 blocos duplicados em bypass e resample paths. Redução ≥30 LoC confirmada.
+> - **S7.T05** ✓ — `dot_product_4x_interleaved_avx512` (8 ZMM, 4-way broadcast via `_mm512_permutexvar_ps`) e `dot_product_4x_interleaved_dual_frame_avx512` (16 ZMM, 2 conjuntos de 8). 6 testes de paridade em `dot_4x_test.rs`.
+> - **S7.T06** ✓ — 6 kernels GEMV multi-acumulador: 4 YMM (AVX2) e 8 ZMM (AVX-512), com prefetch e redução em árvore de 3 níveis. Dispatch `_small` para CH=16 no Standard WaveNet.
+> - **S7.T07** ✓ — `gemv_4gate_bf16_avx512` com `_mm512_dpbf16_ps` nativo e macro `bf16_pair!`. Teste cross-implementação `lstm_gate_bf16_parity.rs` passa (proptest 10k inputs, dif < 1e-3).
+> - **S7.T08** ✓ — Inspeção localizada em `dot.rs:144-147` (BF16→f32 cleanup), `ops.rs:38` (`_mm512_cvtepi32_epi16` após shift) e `avx512_impl.rs:780` (delegação pura). Todos corretos; nenhum bug encontrado.
+> - **S7.T09** ✓ — Padé [5,4] rational approximant em `tanh.rs` e `sigmoid.rs`. AVX2 + AVX-512 com Newton-Raphson reciprocal refinement. Proptest 100k inputs com tolerância 2e-5. Sigmoid via identidade `σ(x) = 0.5 + 0.5·tanh(x/2)`.
+>
+> **Impacto downstream:** S7.T09 (Padé activations) é pré-requisito direto para NEON/ARM ports em Épico 9 (`T9.NEON-02`). S7.T05-T06 (dot_4x/gemv multi-acumulador) estabelecem o padrão SIMD a ser replicado em NEON e SVE2.
+>
+> **Conclusão:** Sprint S7 cumpre todos os objetivos micro e macro. Hotpath de pipeline e resampler otimizado. SIMD AVX-512 em produção. Baseline sólida para Épicos 5 (refatoração), 6 (CLAP), 7 (testes), 8 (docs) e 9 (ARM/NEON).
+
 ---
 
 ## Épico 5 — Refatoração Arquitetural
