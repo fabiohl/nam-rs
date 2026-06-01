@@ -720,7 +720,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   - `gemv_overwrite_avx512` e `fused_add_gemv_avx512`: 8 acumuladores ZMM (loop interno passo 8), prefetch.
   Redução via árvore de 3 níveis (`((a0+a1)+(a2+a3))+((a4+a5)+(a6+a7))`). 244 testes passam sem regressão.
 
-#### Tarefa S7.T07 — Corrigir `gemv_4gate.rs` BF16 (paridade numérica) 🔥
+#### Tarefa S7.T07 — Corrigir `gemv_4gate.rs` BF16 (paridade numérica) 🔥 [DONE]
 
 - **Onde:** `src/math/gemm/gemv_4gate.rs:281-322`.
 - **Problema:** Auditoria SIMD identificou que o kernel BF16 4-gate **produz áudio errado** (drift severo vs `Avx2Math` em LSTM 1×16).

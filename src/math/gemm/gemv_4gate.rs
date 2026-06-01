@@ -283,64 +283,49 @@ pub unsafe fn gemv_4gate_bf16_avx512(
             let v_in_raw = _mm256_set1_epi32(*(in_frame.as_ptr().add(in_c) as *const i32));
             let v_in = _mm512_broadcast_i32x8(v_in_raw);
 
-            // Carrega pesos intercalados para formar pares (w[i], w[i+1]) na hora.
-            let vw0_i =
-                _mm256_loadu_si256(w0.as_ptr().add(in_c * out_len + out_c) as *const __m256i);
-            let vw0_i1 =
-                _mm256_loadu_si256(w0.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i);
-            let vw0 = _mm512_inserti64x4::<1>(
-                _mm512_castsi256_si512(_mm256_unpacklo_epi16(vw0_i, vw0_i1)),
-                _mm256_unpackhi_epi16(vw0_i, vw0_i1),
-            );
+            // Constrói pares BF16 (w[i][j], w[i+1][j]) por canal j em cada
+            // lane de 32 bits via zero-extend → shift → OR, sem depender
+            // de unpack por lane (que trocaria canais 4-7 com 8-11).
+            macro_rules! bf16_pair {
+                ($w:ident) => {{
+                    let lo = _mm256_loadu_si256(
+                        $w.as_ptr().add(in_c * out_len + out_c) as *const __m256i,
+                    );
+                    let hi = _mm256_loadu_si256(
+                        $w.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i,
+                    );
+                    _mm512_or_si512(
+                        _mm512_cvtepu16_epi32(lo),
+                        _mm512_slli_epi32(_mm512_cvtepu16_epi32(hi), 16),
+                    )
+                }};
+            }
 
-            // ... Repete para as outras portas ...
-            let vw1_i =
-                _mm256_loadu_si256(w1.as_ptr().add(in_c * out_len + out_c) as *const __m256i);
-            let vw1_i1 =
-                _mm256_loadu_si256(w1.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i);
-            let vw1 = _mm512_inserti64x4::<1>(
-                _mm512_castsi256_si512(_mm256_unpacklo_epi16(vw1_i, vw1_i1)),
-                _mm256_unpackhi_epi16(vw1_i, vw1_i1),
-            );
-
-            let vw2_i =
-                _mm256_loadu_si256(w2.as_ptr().add(in_c * out_len + out_c) as *const __m256i);
-            let vw2_i1 =
-                _mm256_loadu_si256(w2.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i);
-            let vw2 = _mm512_inserti64x4::<1>(
-                _mm512_castsi256_si512(_mm256_unpacklo_epi16(vw2_i, vw2_i1)),
-                _mm256_unpackhi_epi16(vw2_i, vw2_i1),
-            );
-
-            let vw3_i =
-                _mm256_loadu_si256(w3.as_ptr().add(in_c * out_len + out_c) as *const __m256i);
-            let vw3_i1 =
-                _mm256_loadu_si256(w3.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i);
-            let vw3 = _mm512_inserti64x4::<1>(
-                _mm512_castsi256_si512(_mm256_unpacklo_epi16(vw3_i, vw3_i1)),
-                _mm256_unpackhi_epi16(vw3_i, vw3_i1),
-            );
+            let vw0 = bf16_pair!(w0);
+            let vw1 = bf16_pair!(w1);
+            let vw2 = bf16_pair!(w2);
+            let vw3 = bf16_pair!(w3);
 
             // Multiplica e acumula usando a instrução BF16 mágica.
             acc0 = _mm512_dpbf16_ps(
                 acc0,
                 core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
-                core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(vw0)),
+                core::mem::transmute::<__m512i, __m512bh>(vw0),
             );
             acc1 = _mm512_dpbf16_ps(
                 acc1,
                 core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
-                core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(vw1)),
+                core::mem::transmute::<__m512i, __m512bh>(vw1),
             );
             acc2 = _mm512_dpbf16_ps(
                 acc2,
                 core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
-                core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(vw2)),
+                core::mem::transmute::<__m512i, __m512bh>(vw2),
             );
             acc3 = _mm512_dpbf16_ps(
                 acc3,
                 core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
-                core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(vw3)),
+                core::mem::transmute::<__m512i, __m512bh>(vw3),
             );
 
             in_c += 2;
