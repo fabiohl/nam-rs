@@ -493,63 +493,71 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i))),
             );
-            let w_a = _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
+            let w_a =
+                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
             sum_a0 = _mm512_fmadd_ps(w_a, s_a, sum_a0);
 
             let s_b = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 4))),
             );
-            let w_b =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 4) as *const __m256i));
+            let w_b = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 4) as *const __m256i
+            ));
             sum_a1 = _mm512_fmadd_ps(w_b, s_b, sum_a1);
 
             let s_c = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 8))),
             );
-            let w_c =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 8) as *const __m256i));
+            let w_c = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 8) as *const __m256i
+            ));
             sum_a2 = _mm512_fmadd_ps(w_c, s_c, sum_a2);
 
             let s_d = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 12))),
             );
-            let w_d =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 12) as *const __m256i));
+            let w_d = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 12) as *const __m256i
+            ));
             sum_a3 = _mm512_fmadd_ps(w_d, s_d, sum_a3);
 
             let s_e = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 16))),
             );
-            let w_e =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 16) as *const __m256i));
+            let w_e = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 16) as *const __m256i
+            ));
             sum_b0 = _mm512_fmadd_ps(w_e, s_e, sum_b0);
 
             let s_f = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 20))),
             );
-            let w_f =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 20) as *const __m256i));
+            let w_f = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 20) as *const __m256i
+            ));
             sum_b1 = _mm512_fmadd_ps(w_f, s_f, sum_b1);
 
             let s_g = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 24))),
             );
-            let w_g =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 24) as *const __m256i));
+            let w_g = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 24) as *const __m256i
+            ));
             sum_b2 = _mm512_fmadd_ps(w_g, s_g, sum_b2);
 
             let s_h = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 28))),
             );
-            let w_h =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 28) as *const __m256i));
+            let w_h = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 28) as *const __m256i
+            ));
             sum_b3 = _mm512_fmadd_ps(w_h, s_h, sum_b3);
 
             i += 32;
@@ -560,31 +568,35 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i))),
             );
-            let w_a = _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
+            let w_a =
+                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
             sum_a0 = _mm512_fmadd_ps(w_a, s_a, sum_a0);
 
             let s_b = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 4))),
             );
-            let w_b =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 4) as *const __m256i));
+            let w_b = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 4) as *const __m256i
+            ));
             sum_a1 = _mm512_fmadd_ps(w_b, s_b, sum_a1);
 
             let s_c = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 8))),
             );
-            let w_c =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 8) as *const __m256i));
+            let w_c = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 8) as *const __m256i
+            ));
             sum_a2 = _mm512_fmadd_ps(w_c, s_c, sum_a2);
 
             let s_d = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state.as_ptr().add(i + 12))),
             );
-            let w_d =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 12) as *const __m256i));
+            let w_d = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 12) as *const __m256i
+            ));
             sum_a3 = _mm512_fmadd_ps(w_d, s_d, sum_a3);
 
             i += 16;
@@ -615,7 +627,7 @@ pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f
         while i < len {
             let s0 = _mm_load1_ps(state.as_ptr().add(i));
             let w0 = _mm_cvtph_ps(_mm_loadu_si64(
-                weights.as_ptr().add(i) as *const u16 as *const u8,
+                weights.as_ptr().add(i) as *const u16 as *const u8
             ));
             sum128 = _mm_fmadd_ps(w0, s0, sum128);
             i += 1;
@@ -638,7 +650,10 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
     state_f0: &[f32],
     state_f1: &[f32],
 ) -> ([f32; 4], [f32; 4]) {
-    let len = core::cmp::min(weights.len(), core::cmp::min(state_f0.len(), state_f1.len()));
+    let len = core::cmp::min(
+        weights.len(),
+        core::cmp::min(state_f0.len(), state_f1.len()),
+    );
     let mut i = 0;
 
     unsafe {
@@ -681,8 +696,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a0 = _mm512_fmadd_ps(w_a, s0_a, sum0_a0);
             sum1_a0 = _mm512_fmadd_ps(w_a, s1_a, sum1_a0);
 
-            let w_b =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 4) as *const __m256i));
+            let w_b = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 4) as *const __m256i
+            ));
             let s0_b = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 4))),
@@ -694,8 +710,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a1 = _mm512_fmadd_ps(w_b, s0_b, sum0_a1);
             sum1_a1 = _mm512_fmadd_ps(w_b, s1_b, sum1_a1);
 
-            let w_c =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 8) as *const __m256i));
+            let w_c = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 8) as *const __m256i
+            ));
             let s0_c = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 8))),
@@ -707,8 +724,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a2 = _mm512_fmadd_ps(w_c, s0_c, sum0_a2);
             sum1_a2 = _mm512_fmadd_ps(w_c, s1_c, sum1_a2);
 
-            let w_d =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 12) as *const __m256i));
+            let w_d = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 12) as *const __m256i
+            ));
             let s0_d = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 12))),
@@ -720,8 +738,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a3 = _mm512_fmadd_ps(w_d, s0_d, sum0_a3);
             sum1_a3 = _mm512_fmadd_ps(w_d, s1_d, sum1_a3);
 
-            let w_e =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 16) as *const __m256i));
+            let w_e = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 16) as *const __m256i
+            ));
             let s0_e = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 16))),
@@ -733,8 +752,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_b0 = _mm512_fmadd_ps(w_e, s0_e, sum0_b0);
             sum1_b0 = _mm512_fmadd_ps(w_e, s1_e, sum1_b0);
 
-            let w_f =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 20) as *const __m256i));
+            let w_f = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 20) as *const __m256i
+            ));
             let s0_f = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 20))),
@@ -746,8 +766,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_b1 = _mm512_fmadd_ps(w_f, s0_f, sum0_b1);
             sum1_b1 = _mm512_fmadd_ps(w_f, s1_f, sum1_b1);
 
-            let w_g =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 24) as *const __m256i));
+            let w_g = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 24) as *const __m256i
+            ));
             let s0_g = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 24))),
@@ -759,8 +780,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_b2 = _mm512_fmadd_ps(w_g, s0_g, sum0_b2);
             sum1_b2 = _mm512_fmadd_ps(w_g, s1_g, sum1_b2);
 
-            let w_h =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 28) as *const __m256i));
+            let w_h = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 28) as *const __m256i
+            ));
             let s0_h = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 28))),
@@ -789,8 +811,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a0 = _mm512_fmadd_ps(w_a, s0_a, sum0_a0);
             sum1_a0 = _mm512_fmadd_ps(w_a, s1_a, sum1_a0);
 
-            let w_b =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 4) as *const __m256i));
+            let w_b = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 4) as *const __m256i
+            ));
             let s0_b = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 4))),
@@ -802,8 +825,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a1 = _mm512_fmadd_ps(w_b, s0_b, sum0_a1);
             sum1_a1 = _mm512_fmadd_ps(w_b, s1_b, sum1_a1);
 
-            let w_c =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 8) as *const __m256i));
+            let w_c = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 8) as *const __m256i
+            ));
             let s0_c = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 8))),
@@ -815,8 +839,9 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             sum0_a2 = _mm512_fmadd_ps(w_c, s0_c, sum0_a2);
             sum1_a2 = _mm512_fmadd_ps(w_c, s1_c, sum1_a2);
 
-            let w_d =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i + 12) as *const __m256i));
+            let w_d = _mm512_cvtph_ps(_mm256_loadu_si256(
+                weights.as_ptr().add(i + 12) as *const __m256i
+            ));
             let s0_d = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i + 12))),
@@ -832,8 +857,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
         }
 
         while i + 4 <= len {
-            let w =
-                _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
+            let w = _mm512_cvtph_ps(_mm256_loadu_si256(weights.as_ptr().add(i) as *const __m256i));
             let s0 = _mm512_permutexvar_ps(
                 perm_idx,
                 _mm512_castps128_ps512(_mm_loadu_ps(state_f0.as_ptr().add(i))),
@@ -886,7 +910,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
             let s0_f0 = _mm_load1_ps(state_f0.as_ptr().add(i));
             let s0_f1 = _mm_load1_ps(state_f1.as_ptr().add(i));
             let w0 = _mm_cvtph_ps(_mm_loadu_si64(
-                weights.as_ptr().add(i) as *const u16 as *const u8,
+                weights.as_ptr().add(i) as *const u16 as *const u8
             ));
             sum128_f0 = _mm_fmadd_ps(w0, s0_f0, sum128_f0);
             sum128_f1 = _mm_fmadd_ps(w0, s0_f1, sum128_f1);

@@ -112,11 +112,11 @@ proptest! {
 
             assert!(actual.is_finite(), "Sigmoid gerou NaN/Inf indesejado!");
 
-            // O threshold de 2e-5 reflete a alta precisão da implementação baseada
-            // em exp_ps(avx2) ajustada. Erros nesta magnitude são negligenciáveis
-            // para controle de dinâmica e modulação de gating.
+            // O threshold de 5e-3 reflete a precisão da aproximação Padé [5,4]
+            // branchless via identidade tanh(x/2). Erros nesta magnitude são
+            // negligenciáveis para controle de dinâmica e modulação de gating.
             assert!(
-                error <= 2e-5,
+                error <= 5e-3,
                 "Falha ao validar FastMath Sigmoid em {}. Esperado: {}, Obtido: {}, Delta: {}",
                 input[i],
                 expected,

@@ -289,10 +289,10 @@ pub unsafe fn gemv_4gate_bf16_avx512(
             macro_rules! bf16_pair {
                 ($w:ident) => {{
                     let lo = _mm256_loadu_si256(
-                        $w.as_ptr().add(in_c * out_len + out_c) as *const __m256i,
+                        $w.as_ptr().add(in_c * out_len + out_c) as *const __m256i
                     );
                     let hi = _mm256_loadu_si256(
-                        $w.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i,
+                        $w.as_ptr().add((in_c + 1) * out_len + out_c) as *const __m256i
                     );
                     _mm512_or_si512(
                         _mm512_cvtepu16_epi32(lo),

@@ -383,7 +383,9 @@ fn test_f32_to_bf16_avx512_regression() {
         return;
     }
 
-    for len in [0, 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 33, 47, 48, 64, 100, 127, 128] {
+    for len in [
+        0, 1, 2, 3, 7, 8, 15, 16, 17, 31, 32, 33, 47, 48, 64, 100, 127, 128,
+    ] {
         let src: Vec<f32> = (0..len).map(|i| (i as f32 * 0.77).sin() * 2.5).collect();
         let mut dest = vec![0u16; len];
         let expected = f32_to_bf16_ref(&src);
@@ -393,9 +395,12 @@ fn test_f32_to_bf16_avx512_regression() {
         }
 
         assert_eq!(
-            dest, expected,
+            dest,
+            expected,
             "F32→BF16 divergiu no len={}: simd={:?}, ref={:?}",
-            len, &dest[..], &expected[..]
+            len,
+            &dest[..],
+            &expected[..]
         );
     }
 }
@@ -413,10 +418,8 @@ fn test_dot_product_bf16_avx512_regression() {
     for &len in &sizes {
         let a = gen_bf16_data(len, 0.5);
         let b = gen_bf16_data(len, -1.3);
-        let expected =
-            unsafe { crate::math::common::dot_product_bf16_fallback(&a, &b) };
-        let result =
-            unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(&a, &b) };
+        let expected = unsafe { crate::math::common::dot_product_bf16_fallback(&a, &b) };
+        let result = unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(&a, &b) };
 
         let error = (result - expected).abs();
         assert!(
@@ -466,10 +469,18 @@ fn test_gemv_overwrite_bf16_avx512_regression() {
 
         unsafe {
             crate::math::gemm::gemv_bf16::gemv_overwrite_bf16_avx512(
-                &in_frame, &weights, &bias, &mut out_simd, true,
+                &in_frame,
+                &weights,
+                &bias,
+                &mut out_simd,
+                true,
             );
             crate::math::common::gemv_overwrite_bf16_fallback(
-                &in_frame, &weights, &bias, &mut out_ref, true,
+                &in_frame,
+                &weights,
+                &bias,
+                &mut out_ref,
+                true,
             );
         }
 
@@ -488,4 +499,3 @@ fn test_gemv_overwrite_bf16_avx512_regression() {
         }
     }
 }
-

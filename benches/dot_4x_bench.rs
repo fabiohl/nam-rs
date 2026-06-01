@@ -31,9 +31,7 @@ fn bench_dot_4x_interleaved_avx512(c: &mut Criterion) {
         let (weights, state, _) = generate_test_data(size);
 
         group.bench_function(format!("fallback_{}", size), |b| {
-            b.iter(|| unsafe {
-                scalar_ref::dot_product_4x_interleaved_fallback(&weights, &state)
-            })
+            b.iter(|| unsafe { scalar_ref::dot_product_4x_interleaved_fallback(&weights, &state) })
         });
 
         group.bench_function(format!("avx2_{}", size), |b| {
@@ -42,9 +40,7 @@ fn bench_dot_4x_interleaved_avx512(c: &mut Criterion) {
 
         if std::is_x86_feature_detected!("avx512f") {
             group.bench_function(format!("avx512_{}", size), |b| {
-                b.iter(|| unsafe {
-                    dot_4x::dot_product_4x_interleaved_avx512(&weights, &state)
-                })
+                b.iter(|| unsafe { dot_4x::dot_product_4x_interleaved_avx512(&weights, &state) })
             });
         }
     }

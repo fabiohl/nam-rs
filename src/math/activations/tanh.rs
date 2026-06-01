@@ -34,14 +34,13 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     let x_sq_sq = _mm256_mul_ps(x_sq, x_sq);
 
     // num = x * (x_sq_sq + 105*x_sq + 945)
-    let num = _mm256_mul_ps(x, _mm256_add_ps(
-        _mm256_fmadd_ps(num_a, x_sq, x_sq_sq),
-        num_b,
-    ));
+    let num = _mm256_mul_ps(
+        x,
+        _mm256_add_ps(_mm256_fmadd_ps(num_a, x_sq, x_sq_sq), num_b),
+    );
 
     // den = 15*x_sq_sq + 420*x_sq + 945
-    let den = _mm256_fmadd_ps(den_c4, x_sq_sq,
-        _mm256_fmadd_ps(den_c2, x_sq, den_a));
+    let den = _mm256_fmadd_ps(den_c4, x_sq_sq, _mm256_fmadd_ps(den_c2, x_sq, den_a));
 
     let mut rden = _mm256_rcp_ps(den);
     rden = _mm256_mul_ps(rden, _mm256_fnmadd_ps(den, rden, two));
@@ -76,19 +75,17 @@ pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     let x_sq_sq1 = _mm256_mul_ps(x_sq1, x_sq1);
     let x_sq_sq2 = _mm256_mul_ps(x_sq2, x_sq2);
 
-    let num1 = _mm256_mul_ps(x1, _mm256_add_ps(
-        _mm256_fmadd_ps(num_a, x_sq1, x_sq_sq1),
-        num_b,
-    ));
-    let num2 = _mm256_mul_ps(x2, _mm256_add_ps(
-        _mm256_fmadd_ps(num_a, x_sq2, x_sq_sq2),
-        num_b,
-    ));
+    let num1 = _mm256_mul_ps(
+        x1,
+        _mm256_add_ps(_mm256_fmadd_ps(num_a, x_sq1, x_sq_sq1), num_b),
+    );
+    let num2 = _mm256_mul_ps(
+        x2,
+        _mm256_add_ps(_mm256_fmadd_ps(num_a, x_sq2, x_sq_sq2), num_b),
+    );
 
-    let den1 = _mm256_fmadd_ps(den_c4, x_sq_sq1,
-        _mm256_fmadd_ps(den_c2, x_sq1, den_a));
-    let den2 = _mm256_fmadd_ps(den_c4, x_sq_sq2,
-        _mm256_fmadd_ps(den_c2, x_sq2, den_a));
+    let den1 = _mm256_fmadd_ps(den_c4, x_sq_sq1, _mm256_fmadd_ps(den_c2, x_sq1, den_a));
+    let den2 = _mm256_fmadd_ps(den_c4, x_sq_sq2, _mm256_fmadd_ps(den_c2, x_sq2, den_a));
 
     let mut rden1 = _mm256_rcp_ps(den1);
     let mut rden2 = _mm256_rcp_ps(den2);
@@ -126,13 +123,12 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     let x_sq = _mm512_mul_ps(x, x);
     let x_sq_sq = _mm512_mul_ps(x_sq, x_sq);
 
-    let num = _mm512_mul_ps(x, _mm512_add_ps(
-        _mm512_fmadd_ps(num_a, x_sq, x_sq_sq),
-        num_b,
-    ));
+    let num = _mm512_mul_ps(
+        x,
+        _mm512_add_ps(_mm512_fmadd_ps(num_a, x_sq, x_sq_sq), num_b),
+    );
 
-    let den = _mm512_fmadd_ps(den_c4, x_sq_sq,
-        _mm512_fmadd_ps(den_c2, x_sq, den_a));
+    let den = _mm512_fmadd_ps(den_c4, x_sq_sq, _mm512_fmadd_ps(den_c2, x_sq, den_a));
 
     let mut rden = _mm512_rcp14_ps(den);
     rden = _mm512_mul_ps(rden, _mm512_fnmadd_ps(den, rden, two));

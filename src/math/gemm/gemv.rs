@@ -65,16 +65,13 @@ pub unsafe fn fused_add_gemv_avx2(
                 let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
                 acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
 
-                let w1 =
-                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
+                let w1 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
                 acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
 
-                let w2 =
-                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
+                let w2 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
                 acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
 
-                let w3 =
-                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
+                let w3 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
                 acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
 
                 in_c += 4;
@@ -147,16 +144,13 @@ pub unsafe fn gemv_overwrite_avx2(
                 let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
                 acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
 
-                let w1 =
-                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
+                let w1 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
                 acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
 
-                let w2 =
-                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
+                let w2 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
                 acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
 
-                let w3 =
-                    _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
+                let w3 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
                 acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
 
                 in_c += 4;
@@ -292,7 +286,7 @@ pub unsafe fn gemv_overwrite_avx512_small(
         acc0 = _mm512_fmadd_ps(
             v_in,
             _mm512_cvtph_ps(_mm256_loadu_si256(
-                weights.as_ptr().add(in_c * 16) as *const __m256i,
+                weights.as_ptr().add(in_c * 16) as *const __m256i
             )),
             acc0,
         );
@@ -398,7 +392,7 @@ pub unsafe fn fused_add_gemv_avx512_small(
         acc0 = _mm512_fmadd_ps(
             v_in,
             _mm512_cvtph_ps(_mm256_loadu_si256(
-                weights.as_ptr().add(in_c * 16) as *const __m256i,
+                weights.as_ptr().add(in_c * 16) as *const __m256i
             )),
             acc0,
         );
@@ -463,32 +457,25 @@ pub unsafe fn gemv_overwrite_avx512(
             let w0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
             acc0 = _mm512_fmadd_ps(vs0, w0, acc0);
 
-            let w1 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
+            let w1 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
             acc1 = _mm512_fmadd_ps(vs1, w1, acc1);
 
-            let w2 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
+            let w2 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
             acc2 = _mm512_fmadd_ps(vs2, w2, acc2);
 
-            let w3 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
+            let w3 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
             acc3 = _mm512_fmadd_ps(vs3, w3, acc3);
 
-            let w4 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
+            let w4 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
             acc4 = _mm512_fmadd_ps(vs4, w4, acc4);
 
-            let w5 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
+            let w5 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
             acc5 = _mm512_fmadd_ps(vs5, w5, acc5);
 
-            let w6 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
+            let w6 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
             acc6 = _mm512_fmadd_ps(vs6, w6, acc6);
 
-            let w7 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
+            let w7 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
             acc7 = _mm512_fmadd_ps(vs7, w7, acc7);
 
             in_c += 8;
@@ -517,8 +504,7 @@ pub unsafe fn gemv_overwrite_avx512(
     while out_c < out_len {
         let mut sum = if do_bias { bias[out_c] } else { 0.0 };
         for in_c in 0..in_len {
-            let w =
-                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+            let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
             sum += *in_frame.get_unchecked(in_c) * w;
         }
         *out_frame.get_unchecked_mut(out_c) = sum;
@@ -599,32 +585,25 @@ pub unsafe fn fused_add_gemv_avx512(
             let w0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
             acc0 = _mm512_fmadd_ps(vs0, w0, acc0);
 
-            let w1 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
+            let w1 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
             acc1 = _mm512_fmadd_ps(vs1, w1, acc1);
 
-            let w2 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
+            let w2 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
             acc2 = _mm512_fmadd_ps(vs2, w2, acc2);
 
-            let w3 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
+            let w3 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
             acc3 = _mm512_fmadd_ps(vs3, w3, acc3);
 
-            let w4 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
+            let w4 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
             acc4 = _mm512_fmadd_ps(vs4, w4, acc4);
 
-            let w5 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
+            let w5 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
             acc5 = _mm512_fmadd_ps(vs5, w5, acc5);
 
-            let w6 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
+            let w6 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
             acc6 = _mm512_fmadd_ps(vs6, w6, acc6);
 
-            let w7 =
-                _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
+            let w7 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
             acc7 = _mm512_fmadd_ps(vs7, w7, acc7);
 
             in_c += 8;
@@ -653,8 +632,7 @@ pub unsafe fn fused_add_gemv_avx512(
     while out_c < out_len {
         let mut sum = if do_bias { bias[out_c] } else { 0.0 };
         for in_c in 0..in_len {
-            let w =
-                half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+            let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
             sum += *in_frame.get_unchecked(in_c) * w;
         }
         *out_frame.get_unchecked_mut(out_c) += sum;

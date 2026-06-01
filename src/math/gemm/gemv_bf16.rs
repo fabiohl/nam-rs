@@ -118,13 +118,15 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
 
     // Resto de canais de saída via fallback escalar (já corrigido).
     while out_c < out_len {
-        let mut sum = if do_bias { *bias.get_unchecked(out_c) } else { 0.0f32 };
+        let mut sum = if do_bias {
+            *bias.get_unchecked(out_c)
+        } else {
+            0.0f32
+        };
         for in_c in 0..in_len {
             let s = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
-            sum += s
-                * f32::from_bits(
-                    (*weights.get_unchecked(in_c * out_len + out_c) as u32) << 16,
-                );
+            sum +=
+                s * f32::from_bits((*weights.get_unchecked(in_c * out_len + out_c) as u32) << 16);
         }
         *out_frame.get_unchecked_mut(out_c) = sum;
         out_c += 1;
