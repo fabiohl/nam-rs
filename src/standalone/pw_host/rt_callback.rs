@@ -41,6 +41,8 @@ pub fn drain_resamplers(
 
         let old_rs = std::mem::replace(resampler, new_rs);
 
+        rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
+
         let mut item = Some(GcItem::Resampler(old_rs));
 
         if let Some(i) = item.take() {
@@ -221,6 +223,7 @@ pub fn sync_rate(
             .requested_nam_rate
             .store(current_nam_rate, Ordering::Relaxed);
         rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+        rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
     }
 
     current_pw_rate

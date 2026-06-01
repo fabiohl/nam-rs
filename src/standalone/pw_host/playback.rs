@@ -6,7 +6,6 @@
 
 use crate::dsp::pipeline::{BridgeRef, DspBridgeReader, build_spa_format_pod, playback_dsp_cycle};
 use crate::standalone::colors::Colorize;
-use crate::standalone::rt_setup;
 
 use pipewire as pw;
 use pw::properties::properties;
@@ -23,8 +22,6 @@ pub fn setup_playback_stream<'c>(
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let bridge_ptr_playback = unsafe { DspBridgeReader::new(bridge_ptr.as_ptr()) };
 
-    let hardware_target = rt_setup::detect_hardware_sink();
-
     let mut playback_props = properties! {
         *pw::keys::MEDIA_TYPE => "Audio",
         *pw::keys::MEDIA_CATEGORY => "Playback",
@@ -36,15 +33,6 @@ pub fn setup_playback_stream<'c>(
         "node.group" => "nam-rs-dsp",
         "node.link-group" => "nam-rs-link-group",
     };
-
-    if let Some(target) = hardware_target {
-        playback_props.insert("node.target", target.as_str());
-        log::info!(
-            "{} Output automatically routed to default hardware: {}",
-            "🔌".green(),
-            target
-        );
-    }
 
     if buffer_size > 0 {
         playback_props.insert("node.latency", latency_str);

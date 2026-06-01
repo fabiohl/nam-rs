@@ -215,6 +215,19 @@ pub fn setup_capture_stream<'c>(
                 );
             }
 
+            if rt_status_for_process.check_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING)
+            {
+                if rt_status_for_process
+                    .check_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED)
+                {
+                    rt_status_for_process
+                        .clear_flag(crate::common::spsc::RT_STATUS_RESAMP_SWAP_PENDING);
+                } else {
+                    let _ = stream.dequeue_buffer();
+                    return;
+                }
+            }
+
             rt_callback::process_dsp_buffer(
                 stream,
                 DspPipelineContext {

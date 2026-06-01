@@ -46,6 +46,9 @@ pub const RT_STATUS_MODEL_LOAD_FAILED: u64 = 1 << 7;
 pub const RT_STATUS_HEAP_ALLOC: u64 = 1 << 8;
 /// Flag indicando que um modelo A2 placeholder está ativo (bypass silencioso).
 pub const RT_STATUS_A2_PLACEHOLDER: u64 = 1 << 9;
+/// Flag indicando que o callback RT deve pausar o processamento DSP até que
+/// o resampler seja substituído (durante hot-plug ou mudança de sample rate).
+pub const RT_STATUS_RESAMP_SWAP_PENDING: u64 = 1 << 10;
 
 /// Flags atômicas de status para comunicação silenciosa RT→Main.
 ///
@@ -67,6 +70,7 @@ pub const RT_STATUS_A2_PLACEHOLDER: u64 = 1 << 9;
 /// | 7 | `MODEL_LOAD_FAILED` | Falha no carregamento do modelo na RT |
 /// | 8 | `HEAP_ALLOC` | Alocação no heap detectada na thread RT |
 /// | 9 | `A2_PLACEHOLDER` | Modelo A2 placeholder ativo (bypass silencioso) |
+/// | 10 | `RESAMP_SWAP_PENDING` | Callback RT pausado aguardando swap de resampler |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.

@@ -858,7 +858,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC; smoke test `utils/tests-cargo.sh` passa.
 - **Especialista:** `implementador`.
 
-#### Tarefa S9.T02 — Tratar hot-plug & resample resync ⚠️
+#### Tarefa S9.T02 — Tratar hot-plug & resample resync ⚠️ [DONE]
 
 - **Onde:** `src/standalone/pw_host.rs:490` (`detect_hardware_sink`), `src/standalone/pw_host.rs:505-507` (set `node.target`), `src/standalone/pw_host.rs:882` (`sync_rate` fn).
 - **Problema:** `hardware_target` capturado uma vez; mudança de sample rate processa frames com resampler antigo (janela de dropout).
