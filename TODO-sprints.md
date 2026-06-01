@@ -907,7 +907,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T03 — Quebrar `src/dsp/pipeline.rs` (793 LoC) 💡
+#### Tarefa S10.T03 — Quebrar `src/dsp/pipeline.rs` (793 LoC) 💡 [DONE]
 
 - **Onde:** `src/dsp/pipeline.rs` → `src/dsp/pipeline/`.
 - **Problema:** Arquivo cresceu de 663 → 793 LoC (+20%); `pipeline.rs` já é o segundo arquivo `dsp/` mais alto. Bloqueador implícito para S18.T01 (hot-swap de modelo com crossfade) que precisa adicionar lógica de double-slot na RT thread.
