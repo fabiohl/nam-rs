@@ -31,6 +31,7 @@ pub use state::{UiState, VuMeterSharedState, VuUniforms};
 
 use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
+use std::fmt::Write;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -250,23 +251,37 @@ pub fn draw_ui(
                     false
                 };
 
-                let model_name = if is_error_active {
-                    "⚠ Load failed".to_string()
+                let model_name: &str = if is_error_active {
+                    if state.model_display_name != "⚠ Load failed" {
+                        state.model_display_name.clear();
+                        state.model_display_name.push_str("⚠ Load failed");
+                    }
+                    &state.model_display_name
                 } else if shared.ui_loading.load(Ordering::Relaxed) {
                     ui.ctx().request_repaint_after(Duration::from_millis(100));
                     let elapsed = ui.input(|i| i.time);
                     let frames = ["Loading", "Loading.", "Loading..", "Loading..."];
                     let idx = (elapsed * 4.0) as usize % frames.len();
-                    frames[idx].to_string()
+                    state.model_display_name.clear();
+                    state.model_display_name.push_str(frames[idx]);
+                    &state.model_display_name
                 } else {
                     let name_guard = shared
                         .ui_model_name
                         .lock()
                         .unwrap_or_else(|e| e.into_inner());
                     if name_guard.is_empty() {
-                        "No model loaded".to_string()
+                        if state.model_display_name != "No model loaded" {
+                            state.model_display_name.clear();
+                            state.model_display_name.push_str("No model loaded");
+                        }
+                        &state.model_display_name
                     } else {
-                        name_guard.clone()
+                        if *name_guard != state.model_display_name {
+                            state.model_display_name.clear();
+                            state.model_display_name.push_str(&name_guard);
+                        }
+                        &state.model_display_name
                     }
                 };
 
@@ -293,7 +308,7 @@ pub fn draw_ui(
                         ui.set_max_width(120.0);
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(&model_name)
+                                egui::RichText::new(model_name)
                                     .font(egui::FontId::proportional(9.5))
                                     .color(text_color)
                                     .italics(),
@@ -305,7 +320,7 @@ pub fn draw_ui(
                 if is_error_active {
                     frame_res.response.on_hover_text(&state.error_msg);
                 } else {
-                    frame_res.response.on_hover_text(&model_name);
+                    frame_res.response.on_hover_text(model_name);
                 }
             });
         });
@@ -528,293 +543,300 @@ pub fn draw_ui(
     });
 
     // ── Zona 5: Status Bar / Footer ──────────────────────────────────────────
-    ui.with_layout(
-        egui::Layout::top_down(egui::Align::LEFT),
-        |ui| {
-            ui.painter().line(
-                vec![ui.max_rect().left_top(), ui.max_rect().right_top()],
-                egui::Stroke::new(0.5, COL_BORDER),
-            );
+    ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
+        ui.painter().line(
+            vec![ui.max_rect().left_top(), ui.max_rect().right_top()],
+            egui::Stroke::new(0.5, COL_BORDER),
+        );
 
-            let model_meta_opt = if let Ok(guard) = shared.ui_model_metadata.lock() {
-                guard.clone()
-            } else {
-                None
-            };
+        let model_meta_opt = if let Ok(guard) = shared.ui_model_metadata.lock() {
+            guard.clone()
+        } else {
+            None
+        };
 
-            let a2_placeholder = shared.rt_status.check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
+        let a2_placeholder = shared.rt_status.check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
 
-            let available_h = ui.available_height();
-            let has_meta = model_meta_opt.is_some();
-            let line_height = 11.5;
-            let spacing = 3.0;
-            let content_height = match (has_meta, a2_placeholder) {
-                (true, true) => 3.0 * line_height + 2.0 * spacing,
-                (true, false) | (false, true) => 2.0 * line_height + spacing,
-                (false, false) => line_height,
-            };
+        let available_h = ui.available_height();
+        let has_meta = model_meta_opt.is_some();
+        let line_height = 11.5;
+        let spacing = 3.0;
+        let content_height = match (has_meta, a2_placeholder) {
+            (true, true) => 3.0 * line_height + 2.0 * spacing,
+            (true, false) | (false, true) => 2.0 * line_height + spacing,
+            (false, false) => line_height,
+        };
 
-            let extra_space = (available_h - content_height).max(0.0);
-            let top_space = extra_space * 0.55;
-            ui.add_space(top_space);
+        let extra_space = (available_h - content_height).max(0.0);
+        let top_space = extra_space * 0.55;
+        ui.add_space(top_space);
 
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = spacing;
-                ui.spacing_mut().interact_size.y = 10.0;
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = spacing;
+            ui.spacing_mut().interact_size.y = 10.0;
 
-                let now = Instant::now();
-                if now.duration_since(state.last_telem_update) >= Duration::from_secs(1)
-                    || (state.telem_cycles == 0 && state.telem_last_n == 0)
-                {
-                    state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
-                    state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
-                    state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
-                    state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
+            let now = Instant::now();
+            if now.duration_since(state.last_telem_update) >= Duration::from_secs(1)
+                || (state.telem_cycles == 0 && state.telem_last_n == 0)
+            {
+                state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
+                state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
+                state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
+                state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
 
-                    let sr = shared.sample_rate.load(Ordering::Relaxed);
-                    if sr > 0 && state.telem_last_n > 0 {
-                        let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
-                        state.telem_budget_ns = budget_ns;
-                        state.telem_cycle_ns = state.telem_cycles;
-                        state.telem_load_pct =
-                            ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
-                    } else {
-                        state.telem_budget_ns = 0;
-                        state.telem_cycle_ns = 0;
-                        state.telem_load_pct = 0.0;
-                    }
+                let sr = shared.sample_rate.load(Ordering::Relaxed);
+                let lat = shared.current_latency.load(Ordering::Relaxed);
 
-                    state.last_telem_update = now;
+                if sr > 0 && state.telem_last_n > 0 {
+                    let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
+                    state.telem_budget_ns = budget_ns;
+                    state.telem_cycle_ns = state.telem_cycles;
+                    state.telem_load_pct =
+                        ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
+                } else {
+                    state.telem_budget_ns = 0;
+                    state.telem_cycle_ns = 0;
+                    state.telem_load_pct = 0.0;
                 }
 
-                ui.horizontal(|ui| {
-                    let sr = shared.sample_rate.load(Ordering::Relaxed);
-                    let lat = shared.current_latency.load(Ordering::Relaxed);
+                state.status_strings[0].clear();
+                if sr == 0 {
+                    state.status_strings[0].push_str("SR: Off");
+                } else {
+                    let _ = write!(state.status_strings[0], "SR: {:.1} kHz", sr as f64 / 1000.0);
+                }
 
-                    let sr_text = if sr == 0 {
-                        "SR: Off".to_string()
-                    } else {
-                        format!("SR: {:.1} kHz", sr as f64 / 1000.0)
-                    };
+                state.status_strings[1].clear();
+                if lat == 0 {
+                    state.status_strings[1].push_str("Lat: 0 ms");
+                } else {
+                    let lat_ms = (lat as f64 * 1000.0) / sr.max(1) as f64;
+                    let _ = write!(
+                        state.status_strings[1],
+                        "Lat: {:.1} ms ({} spl)",
+                        lat_ms, lat
+                    );
+                }
 
-                    let lat_ms = if sr > 0 {
-                        (lat as f64 * 1000.0) / sr as f64
-                    } else {
-                        0.0
-                    };
-                    let lat_text = if lat == 0 {
-                        "Lat: 0 ms".to_string()
-                    } else {
-                        format!("Lat: {:.1} ms ({} spl)", lat_ms, lat)
-                    };
+                state.status_strings[2].clear();
+                let _ = write!(state.status_strings[2], "DSP: {:.1}%", state.telem_load_pct);
 
-                    let cycles = state.telem_cycles;
-                    let last_n = state.telem_last_n;
-                    let prio = state.telem_prio;
-                    let overloads = state.telem_overloads;
-                    let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
+                state.status_strings[3].clear();
+                let _ = write!(state.status_strings[3], "Cycles: {}", state.telem_cycles);
 
-                    let telem_items = [
-                        (
-                            sr_text,
-                            "Host DAW Sample Rate.\nThe neural model runs internally at 48 kHz. High quality resampling is automatically active if rates differ.",
-                            None,
-                        ),
-                        (
-                            lat_text,
-                            "Latency introduced by the internal resampler to align host sample rate with neural model's native 48 kHz.\nBypassed (0 ms) when host sample rate is 48 kHz.",
-                            None,
-                        ),
-                        (
-                            format!("DSP: {:.1}%", state.telem_load_pct),
-                            "DSP Thread Load: portion of real-time audio time budget used.",
-                            Some(if state.telem_load_pct < 50.0 {
-                                COL_VU_GREEN
-                            } else if state.telem_load_pct <= 80.0 {
-                                COL_AMBER
-                            } else {
-                                COL_VU_RED
-                            }),
-                        ),
-                        (
-                            format!("Cycles: {}", cycles),
-                            "Average CPU clock cycles consumed per real-time processing block",
-                            None,
-                        ),
-                        (
-                            format!("Last N: {}", last_n),
-                            "Number of audio samples processed in the last block",
-                            None,
-                        ),
-                        (
-                            format!("RT Prio: {}", prio),
-                            "Real-time thread scheduling priority. Values > 0 indicate active RT thread scheduling",
-                            None,
-                        ),
-                        (
-                            format!("Overloads: {}", overloads),
-                            "Number of real-time buffer deadline overruns (XRUNs) detected since start",
-                            None,
-                        ),
-                        (
-                            format!("Flags: {:#X}", status_bits),
-                            "Real-time engine diagnostic status flags bitmask",
-                            None,
-                        ),
-                    ];
+                state.status_strings[4].clear();
+                let _ = write!(state.status_strings[4], "Last N: {}", state.telem_last_n);
 
-                    let available_width = ui.available_width();
-                    let baseline_s = 10.0;
-                    let baseline_font = egui::FontId::proportional(baseline_s);
-                    let mut sum_widths = 0.0;
-                    for (text, _, _) in &telem_items {
-                        let galley = ui.painter().layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
-                        sum_widths += galley.rect.width();
-                    }
-                    let separator_text = " | ".to_string();
-                    let sep_galley = ui.painter().layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
-                    sum_widths += sep_galley.rect.width() * (telem_items.len() - 1) as f32;
+                state.status_strings[5].clear();
+                let _ = write!(state.status_strings[5], "RT Prio: {}", state.telem_prio);
 
-                    let num_gaps = (telem_items.len() * 2 - 2) as f32;
-                    let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+                state.status_strings[6].clear();
+                let _ = write!(
+                    state.status_strings[6],
+                    "Overloads: {}",
+                    state.telem_overloads
+                );
 
-                    let target_width = available_width - total_gap_width - 8.0;
-                    let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
-                        let scale = target_width / sum_widths;
-                        (baseline_s * scale).clamp(6.0, 14.0)
-                    } else {
-                        8.5
-                    };
-                    let font_size = egui::FontId::proportional(calculated_font_size);
+                let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
+                state.status_strings[7].clear();
+                let _ = write!(state.status_strings[7], "Flags: {:#X}", status_bits);
 
-                    let mut first = true;
-                    for (text, tooltip, custom_color) in telem_items {
-                        if !first {
-                            ui.label(
-                                egui::RichText::new("|")
-                                    .font(font_size.clone())
-                                    .color(COL_BORDER),
-                            );
-                        }
-                        first = false;
+                state.last_telem_update = now;
+            }
 
-                        let color = custom_color.unwrap_or(COL_MUTED);
-                        let label = ui.label(
-                            egui::RichText::new(text)
+            ui.horizontal(|ui| {
+                let dsp_color = if state.telem_load_pct < 50.0 {
+                    COL_VU_GREEN
+                } else if state.telem_load_pct <= 80.0 {
+                    COL_AMBER
+                } else {
+                    COL_VU_RED
+                };
+                let colors: [Option<egui::Color32>; 8] =
+                    [None, None, Some(dsp_color), None, None, None, None, None];
+
+                let available_width = ui.available_width();
+                let baseline_s = 10.0;
+                let baseline_font = egui::FontId::proportional(baseline_s);
+                let mut sum_widths = 0.0;
+                for text in &state.status_strings {
+                    let galley = ui.painter().layout_no_wrap(
+                        text.clone(),
+                        baseline_font.clone(),
+                        egui::Color32::WHITE,
+                    );
+                    sum_widths += galley.rect.width();
+                }
+                let separator_text = " | ".to_string();
+                let sep_galley = ui.painter().layout_no_wrap(
+                    separator_text,
+                    baseline_font.clone(),
+                    egui::Color32::WHITE,
+                );
+                sum_widths += sep_galley.rect.width() * (state.status_strings.len() - 1) as f32;
+
+                let num_gaps = (state.status_strings.len() * 2 - 2) as f32;
+                let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+
+                let target_width = available_width - total_gap_width - 8.0;
+                let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
+                    let scale = target_width / sum_widths;
+                    (baseline_s * scale).clamp(6.0, 14.0)
+                } else {
+                    8.5
+                };
+                let font_size = egui::FontId::proportional(calculated_font_size);
+
+                let mut first = true;
+                for (i, text) in state.status_strings.iter().enumerate() {
+                    if !first {
+                        ui.label(
+                            egui::RichText::new("|")
                                 .font(font_size.clone())
-                                .color(color),
+                                .color(COL_BORDER),
                         );
-                        label.on_hover_text(tooltip);
                     }
+                    first = false;
+
+                    let color = colors[i].unwrap_or(COL_MUTED);
+                    let label = ui.label(
+                        egui::RichText::new(text.as_str())
+                            .font(font_size.clone())
+                            .color(color),
+                    );
+                    label.on_hover_text(state.status_tooltips[i]);
+                }
+            });
+
+            if a2_placeholder {
+                ui.horizontal(|ui| {
+                    let warn_font = egui::FontId::proportional(9.0);
+                    let galley = ui.painter().layout_no_wrap(
+                        "⚠ Modelo A2 não suportado — bypass ativo".to_string(),
+                        warn_font.clone(),
+                        COL_AMBER,
+                    );
+                    let available_width = ui.available_width();
+                    let x_center = (available_width - galley.rect.width()).max(0.0) / 2.0;
+                    ui.add_space(x_center);
+                    ui.label(
+                        egui::RichText::new("⚠ Modelo A2 não suportado — bypass ativo")
+                            .font(warn_font)
+                            .color(COL_AMBER),
+                    );
+                });
+            }
+
+            if let Some(meta) = model_meta_opt {
+                let metadata_changed = state.cached_metadata.as_ref().is_none_or(|cached| {
+                    cached.architecture != meta.architecture
+                        || cached.topology != meta.topology
+                        || cached.modeled_by != meta.modeled_by
+                        || cached.gear_make != meta.gear_make
+                        || cached.gear_model != meta.gear_model
+                        || cached.gear_type != meta.gear_type
+                        || cached.tone_type != meta.tone_type
+                        || cached.date != meta.date
                 });
 
-                if a2_placeholder {
-                    ui.horizontal(|ui| {
-                        let warn_font = egui::FontId::proportional(9.0);
-                        let galley = ui.painter().layout_no_wrap(
-                            "⚠ Modelo A2 não suportado — bypass ativo".to_string(),
-                            warn_font.clone(),
-                            COL_AMBER,
-                        );
-                        let available_width = ui.available_width();
-                        let x_center = (available_width - galley.rect.width()).max(0.0) / 2.0;
-                        ui.add_space(x_center);
-                        ui.label(
-                            egui::RichText::new("⚠ Modelo A2 não suportado — bypass ativo")
-                                .font(warn_font)
-                                .color(COL_AMBER),
-                        );
-                    });
-                }
+                if metadata_changed {
+                    state.metadata_display.clear();
 
-                if let Some(meta) = model_meta_opt {
-                    let mut metadata_items = Vec::new();
-
-                    metadata_items.push((
-                        format!("Model: {} ({})", meta.architecture, meta.topology),
+                    let mut text_buf = String::new();
+                    let _ = write!(text_buf, "Model: {} ({})", meta.architecture, meta.topology);
+                    state.metadata_display.push((
+                        text_buf,
                         "Neural network architecture type and topology geometry".to_string(),
-                        Some(accent_color),
                     ));
 
                     if let Some(ref author) = meta.modeled_by {
                         let trimmed = author.trim();
                         if !trimmed.is_empty() {
-                            metadata_items.push((
-                                format!("Author: {}", trimmed),
-                                "Creator / trainer of the model".to_string(),
-                                None,
-                            ));
+                            let mut buf = String::new();
+                            let _ = write!(buf, "Author: {}", trimmed);
+                            state
+                                .metadata_display
+                                .push((buf, "Creator / trainer of the model".to_string()));
                         }
                     }
 
-                    let mut gear_parts = Vec::new();
+                    let mut gear_parts: Vec<&str> = Vec::new();
                     if let Some(ref make) = meta.gear_make {
                         let trimmed = make.trim();
                         if !trimmed.is_empty() {
-                            gear_parts.push(trimmed.to_string());
+                            gear_parts.push(trimmed);
                         }
                     }
                     if let Some(ref model) = meta.gear_model {
                         let trimmed = model.trim();
                         if !trimmed.is_empty() {
-                            gear_parts.push(trimmed.to_string());
+                            gear_parts.push(trimmed);
                         }
                     }
-                    let gear_name = if gear_parts.is_empty() {
-                        None
-                    } else {
-                        let mut s = gear_parts.join(" ");
+                    if !gear_parts.is_empty() {
+                        let mut buf = String::new();
+                        let _ = write!(buf, "Gear: {}", gear_parts.join(" "));
                         if let Some(ref gtype) = meta.gear_type {
                             let trimmed = gtype.trim();
                             if !trimmed.is_empty() {
-                                s.push_str(&format!(" ({})", trimmed));
+                                let _ = write!(buf, " ({})", trimmed);
                             }
                         }
-                        Some(s)
-                    };
-                    if let Some(gear) = gear_name {
-                        metadata_items.push((
-                            format!("Gear: {}", gear),
-                            "Original hardware equipment modeled by this neural network".to_string(),
-                            None,
+                        state.metadata_display.push((
+                            buf,
+                            "Original hardware equipment modeled by this neural network"
+                                .to_string(),
                         ));
                     }
 
                     if let Some(ref tone) = meta.tone_type {
                         let trimmed = tone.trim();
                         if !trimmed.is_empty() {
-                            metadata_items.push((
-                                format!("Tone: {}", trimmed),
-                                "Classification style of the tone".to_string(),
-                                None,
-                            ));
+                            let mut buf = String::new();
+                            let _ = write!(buf, "Tone: {}", trimmed);
+                            state
+                                .metadata_display
+                                .push((buf, "Classification style of the tone".to_string()));
                         }
                     }
 
                     if let Some(ref date) = meta.date {
                         let trimmed = date.trim();
                         if !trimmed.is_empty() {
-                            metadata_items.push((
-                                format!("Date: {}", trimmed),
-                                "Model creation / export date".to_string(),
-                                None,
-                            ));
+                            let mut buf = String::new();
+                            let _ = write!(buf, "Date: {}", trimmed);
+                            state
+                                .metadata_display
+                                .push((buf, "Model creation / export date".to_string()));
                         }
                     }
 
+                    state.cached_metadata = Some(meta);
+                }
+
+                if !state.metadata_display.is_empty() {
                     let available_width = ui.available_width();
                     let baseline_s = 10.0;
                     let baseline_font = egui::FontId::proportional(baseline_s);
                     let mut sum_widths = 0.0;
-                    for (text, _, _) in &metadata_items {
-                        let galley = ui.painter().layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
+                    for (text, _) in &state.metadata_display {
+                        let galley = ui.painter().layout_no_wrap(
+                            text.clone(),
+                            baseline_font.clone(),
+                            egui::Color32::WHITE,
+                        );
                         sum_widths += galley.rect.width();
                     }
                     let separator_text = " | ".to_string();
-                    let sep_galley = ui.painter().layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
-                    sum_widths += sep_galley.rect.width() * (metadata_items.len() - 1) as f32;
+                    let sep_galley = ui.painter().layout_no_wrap(
+                        separator_text,
+                        baseline_font.clone(),
+                        egui::Color32::WHITE,
+                    );
+                    sum_widths +=
+                        sep_galley.rect.width() * (state.metadata_display.len() - 1) as f32;
 
-                    let num_gaps = (metadata_items.len() * 2 - 2) as f32;
+                    let num_gaps = (state.metadata_display.len() * 2 - 2) as f32;
                     let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
 
                     let target_width = available_width - total_gap_width - 8.0;
@@ -828,7 +850,7 @@ pub fn draw_ui(
 
                     ui.horizontal(|ui| {
                         let mut first = true;
-                        for (text, tooltip, custom_color) in metadata_items {
+                        for (i, (text, tooltip)) in state.metadata_display.iter().enumerate() {
                             if !first {
                                 ui.label(
                                     egui::RichText::new("|")
@@ -838,19 +860,19 @@ pub fn draw_ui(
                             }
                             first = false;
 
-                            let color = custom_color.unwrap_or(COL_MUTED);
+                            let color = if i == 0 { accent_color } else { COL_MUTED };
                             let label = ui.label(
-                                egui::RichText::new(text)
+                                egui::RichText::new(text.as_str())
                                     .font(font_size.clone())
                                     .color(color),
                             );
-                            label.on_hover_text(tooltip);
+                            label.on_hover_text(tooltip.as_str());
                         }
                     });
                 }
-            });
-        }
-    );
+            }
+        });
+    });
 
     if state.drag_active {
         egui::Area::new(egui::Id::new("drop_overlay"))

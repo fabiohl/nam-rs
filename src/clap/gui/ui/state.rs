@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 //! Estado persistente da interface gráfica: `UiState`, `VuMeterSharedState`, `VuUniforms`.
 
+use crate::clap::plugin::NamModelMetadata;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -107,6 +108,16 @@ pub struct UiState {
     pub error_expiration: Option<Instant>,
     /// Mensagem curta/resumida do erro.
     pub error_msg: String,
+    /// Cache de strings da status bar (SR, Lat, DSP%, Cycles, Last N, RT Prio, Overloads, Flags).
+    pub status_strings: [String; 8],
+    /// Tooltips correspondentes de cada item da status bar.
+    pub status_tooltips: [&'static str; 8],
+    /// Cache dos metadados completos do modelo para detecção de mudanças.
+    pub cached_metadata: Option<NamModelMetadata>,
+    /// Cache de strings de exibição dos metadados (texto, tooltip).
+    pub metadata_display: Vec<(String, String)>,
+    /// Nome do modelo armazenado em cache para exibição.
+    pub model_display_name: String,
 }
 
 impl std::fmt::Debug for UiState {
@@ -140,6 +151,9 @@ impl std::fmt::Debug for UiState {
             .field("telem_load_pct", &self.telem_load_pct)
             .field("telem_cycle_ns", &self.telem_cycle_ns)
             .field("telem_budget_ns", &self.telem_budget_ns)
+            .field("error_expiration", &self.error_expiration)
+            .field("cached_metadata", &self.cached_metadata)
+            .field("model_display_name", &self.model_display_name)
             .finish()
     }
 }
@@ -173,6 +187,20 @@ impl Default for UiState {
             telem_budget_ns: 0,
             error_expiration: None,
             error_msg: String::new(),
+            status_strings: Default::default(),
+            status_tooltips: [
+                "Host DAW Sample Rate.\nThe neural model runs internally at 48 kHz. High quality resampling is automatically active if rates differ.",
+                "Latency introduced by the internal resampler to align host sample rate with neural model's native 48 kHz.\nBypassed (0 ms) when host sample rate is 48 kHz.",
+                "DSP Thread Load: portion of real-time audio time budget used.",
+                "Average CPU clock cycles consumed per real-time processing block",
+                "Number of audio samples processed in the last block",
+                "Real-time thread scheduling priority. Values > 0 indicate active RT thread scheduling",
+                "Number of real-time buffer deadline overruns (XRUNs) detected since start",
+                "Real-time engine diagnostic status flags bitmask",
+            ],
+            cached_metadata: None,
+            metadata_display: Vec::new(),
+            model_display_name: String::new(),
         }
     }
 }

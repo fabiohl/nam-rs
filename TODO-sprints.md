@@ -832,7 +832,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S8.T03 — Eliminar alocações por frame em `draw_ui` 💡
+#### Tarefa S8.T03 — Eliminar alocações por frame em `draw_ui` 💡 [DONE]
 
 - **Onde:** `src/clap/gui/ui.rs:394` (`Vec::with_capacity(num_segments + 1)` no knob), `src/clap/gui/ui.rs:1663-1726` (status bar: SR/Lat/DSP/Cycles/Last N/RT Prio/Overloads/Flags via `format!`), `src/clap/gui/ui.rs:1803-1859` (metadata: Model/Author/Gear/Tone via `format!` + `join`).
 - **Problema:** `Vec::with_capacity(...)`, `format!`, `.join(...)` em paths de draw — em status bar, ~8 `format!` por frame × 30 FPS ≈ 240 alocações/s; em metadata, `Vec<String>` + `join` cada repaint.

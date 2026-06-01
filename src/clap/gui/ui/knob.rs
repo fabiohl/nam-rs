@@ -133,17 +133,21 @@ pub fn knob_widget(
 
     let num_segments = 48;
     let arc_radius = radius;
-    let mut points = Vec::with_capacity(num_segments + 1);
+    const MAX_ARC_POINTS: usize = 49;
+    let mut points_buf = [egui::pos2(0.0, 0.0); MAX_ARC_POINTS];
+    let mut point_count = 0;
     for i in 0..=num_segments {
         let f = i as f32 / num_segments as f32;
         if f <= frac {
             let a = angle_start + f * (angle_end - angle_start) - std::f32::consts::FRAC_PI_2;
-            points.push(center + egui::vec2(a.cos() * arc_radius, a.sin() * arc_radius));
+            points_buf[point_count] =
+                center + egui::vec2(a.cos() * arc_radius, a.sin() * arc_radius);
+            point_count += 1;
         }
     }
-    if points.len() > 1 {
+    if point_count > 1 {
         painter.add(egui::Shape::line(
-            points.clone(),
+            points_buf[..point_count].to_vec(),
             egui::Stroke::new(3.5, active_arc_color),
         ));
         if response.dragged() {
@@ -154,7 +158,7 @@ pub fn knob_widget(
                 60,
             );
             painter.add(egui::Shape::line(
-                points,
+                points_buf[..point_count].to_vec(),
                 egui::Stroke::new(7.0, glow_color),
             ));
         }
