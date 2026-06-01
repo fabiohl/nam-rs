@@ -1043,7 +1043,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 
 ### Sprint S11 — State, params e remote controls
 
-#### Tarefa S11.T01 — Versionar `NamPluginParams` state (com migração v0 → v1) 🔥
+#### Tarefa S11.T01 — Versionar `NamPluginParams` state (com migração v0 → v1) 🔥 [DONE]
 
 - **Onde:** `src/clap/extensions/state.rs:45-77`.
 - **Problema:** Sem `version` no payload de save/load. Qualquer adição de campo futuro quebra todos os projetos salvos. **Adicionalmente**, projetos existentes salvos pelo CLAP v1.5.x atual contêm apenas o payload `NamPluginParams` JSON puro — sem migração explícita, a release com versionamento quebraria todos eles.

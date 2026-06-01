@@ -10,6 +10,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+const GATE_THRESHOLD_DB_DEFAULT: f32 = -70.0;
+
 /// Parâmetros globais de processamento do plugin/aplicativo.
 ///
 /// Esta estrutura encapsula todos os controles disponíveis para o usuário,
@@ -17,16 +19,25 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamPluginParams {
     /// Ganho de entrada em decibéis (dB). Padrão: 0.0.
+    #[serde(default)]
     pub input_gain_db: f32,
     /// Ganho de saída em decibéis (dB). Padrão: 0.0.
+    #[serde(default)]
     pub output_gain_db: f32,
     /// Threshold do Noise Gate em decibéis (dB). Padrão: -70.0.
     /// Este valor mapeia para o `threshold_open_db` do motor de gate.
+    #[serde(default = "default_gate_threshold_db")]
     pub gate_threshold_db: f32,
     /// Caminho para o modelo `.nam` ou `.namb` carregado.
+    #[serde(default)]
     pub model_path: Option<PathBuf>,
     /// Estado de Bypass (se `true`, o áudio passa sem processamento neural).
+    #[serde(default)]
     pub bypass: bool,
+}
+
+fn default_gate_threshold_db() -> f32 {
+    GATE_THRESHOLD_DB_DEFAULT
 }
 
 impl Default for NamPluginParams {
@@ -34,7 +45,7 @@ impl Default for NamPluginParams {
         Self {
             input_gain_db: 0.0,
             output_gain_db: 0.0,
-            gate_threshold_db: -70.0,
+            gate_threshold_db: GATE_THRESHOLD_DB_DEFAULT,
             model_path: None,
             bypass: false,
         }
