@@ -22,19 +22,36 @@ pub struct GateParams {
     pub hold_frames: usize,
     /// Número de frames (amostras) para realizar o fade-in/fade-out (suavização).
     pub fade_frames: usize,
+    /// Pré-computado: `1.0 / fade_frames as f32` para evitar divisão no hotpath.
+    pub inv_fade_frames: f32,
     /// Tolerância absoluta entre canais L/R para detecção de sinal Mono.
     pub mono_epsilon: f32,
 }
 
+impl GateParams {
+    /// Cria novos parâmetros de gate computando `inv_fade_frames = 1.0 / fade_frames`.
+    pub fn new(
+        threshold_open_db: f32,
+        threshold_close_db: f32,
+        hold_frames: usize,
+        fade_frames: usize,
+        mono_epsilon: f32,
+    ) -> Self {
+        let div = fade_frames.max(1) as f32;
+        Self {
+            threshold_open_db,
+            threshold_close_db,
+            hold_frames,
+            fade_frames,
+            inv_fade_frames: 1.0 / div,
+            mono_epsilon,
+        }
+    }
+}
+
 impl Default for GateParams {
     fn default() -> Self {
-        Self {
-            threshold_open_db: -70.0,
-            threshold_close_db: -80.0,
-            hold_frames: 2048, // ~42ms @ 48kHz
-            fade_frames: 256,  // ~5ms @ 48kHz
-            mono_epsilon: 1e-4,
-        }
+        Self::new(-70.0, -80.0, 2048, 256, 1e-4)
     }
 }
 
@@ -141,8 +158,7 @@ impl DynamicHysteresis {
 
                     if self.fade_counter + n_samples < params.fade_frames {
                         self.fade_counter += n_samples;
-                        self.current_multiplier =
-                            self.fade_counter as f32 / params.fade_frames as f32;
+                        self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
                         self.ramp_samples = n_samples;
                     } else {
                         // O som abriu tão rápido que já completou o processo.
@@ -155,7 +171,7 @@ impl DynamicHysteresis {
                 } else if self.fade_counter > n_samples {
                     // Continua fechando gradualmente.
                     self.fade_counter -= n_samples;
-                    self.current_multiplier = self.fade_counter as f32 / params.fade_frames as f32;
+                    self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
                     self.ramp_samples = n_samples;
                 } else {
                     // Terminou de fechar. Agora o som está em silêncio total.
@@ -175,8 +191,7 @@ impl DynamicHysteresis {
 
                     if self.fade_counter + n_samples < params.fade_frames {
                         self.fade_counter += n_samples;
-                        self.current_multiplier =
-                            self.fade_counter as f32 / params.fade_frames as f32;
+                        self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
                         self.ramp_samples = n_samples;
                     } else {
                         // Abriu totalmente em um único passo.
@@ -200,8 +215,7 @@ impl DynamicHysteresis {
 
                     if self.fade_counter > n_samples {
                         self.fade_counter -= n_samples;
-                        self.current_multiplier =
-                            self.fade_counter as f32 / params.fade_frames as f32;
+                        self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
                         self.ramp_samples = n_samples;
                     } else {
                         // Já silenciou totalmente.
@@ -213,7 +227,7 @@ impl DynamicHysteresis {
                 } else if self.fade_counter + n_samples < params.fade_frames {
                     // Continua abrindo gradualmente.
                     self.fade_counter += n_samples;
-                    self.current_multiplier = self.fade_counter as f32 / params.fade_frames as f32;
+                    self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
                     self.ramp_samples = n_samples;
                 } else {
                     // Terminou de abrir. O som agora passa totalmente.

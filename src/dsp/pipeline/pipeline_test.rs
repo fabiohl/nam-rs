@@ -246,11 +246,7 @@ mod tests {
         let mut model_out_r = [0.0; MAX_RESAMP_BUF];
 
         // Configuração do portão de ruído (Gate).
-        let gate_params = GateParams {
-            hold_frames: 0,
-            fade_frames: 0,
-            ..Default::default()
-        };
+        let gate_params = GateParams::new(-70.0, -80.0, 0, 0, 1e-4);
         let mut silence_hysteresis = DynamicHysteresis::new();
         // Força o fechamento do portão manualmente para o teste.
         // Simulamos que o som está muito baixo (0.0) para que o portão se feche.
@@ -356,11 +352,7 @@ mod tests {
         let mut model_out_r = [0.0; MAX_RESAMP_BUF];
 
         // Configuramos o FadeOut para durar 100 quadros de som.
-        let gate_params = GateParams {
-            hold_frames: 0,
-            fade_frames: 100,
-            ..Default::default()
-        };
+        let gate_params = GateParams::new(-70.0, -80.0, 0, 100, 1e-4);
         let mut silence_hysteresis = DynamicHysteresis::new();
         // Primeiro abrimos o som (1.0) e depois injetamos silêncio para iniciar o FadeOut.
         silence_hysteresis.update(1.0, 0.1, 0.0001, &gate_params, 100);

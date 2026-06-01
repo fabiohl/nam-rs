@@ -530,7 +530,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Benchmark `bench_record` reduz em ≥40%.
 - **Especialista:** `implementador`.
 
-#### Tarefa S6.T02 — Pré-calcular `inv_fade_frames` no Gate ⚠️
+#### Tarefa S6.T02 — Pré-calcular `inv_fade_frames` no Gate ⚠️ [DONE]
 
 - **Onde:** `src/dsp/gate.rs:158, 176, 204, 213, 216, 270, 324`.
 - **Problema:** Divisão `f32` (`fade_counter / fade_frames`) repetida no hotpath, ~3× mais cara que multiplicação.

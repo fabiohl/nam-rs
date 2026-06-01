@@ -26,13 +26,7 @@ mod tests {
     #[test]
     fn test_hysteresis_basic_transitions() {
         let mut dh = DynamicHysteresis::new();
-        let params = GateParams {
-            threshold_open_db: -10.0,
-            threshold_close_db: -20.0,
-            hold_frames: 10,
-            fade_frames: 10,
-            mono_epsilon: 1e-4,
-        };
+        let params = GateParams::new(-10.0, -20.0, 10, 10, 1e-4);
         // Usamos valores simples para o teste: 1.0 é "alto", 0.1 é "silêncio".
         let th_open = 1.0;
         let th_close = 0.5;
@@ -94,11 +88,7 @@ mod tests {
     #[test]
     fn test_hysteresis_interrupted_fade() {
         let mut dh = DynamicHysteresis::new();
-        let params = GateParams {
-            hold_frames: 10,
-            fade_frames: 10,
-            ..Default::default()
-        };
+        let params = GateParams::new(-70.0, -80.0, 10, 10, 1e-4);
         let th_open = 1.0;
         let th_close = 0.5;
 
@@ -129,11 +119,7 @@ mod tests {
     /// Verifica se a suavização do volume (rampa de ganho) está sendo aplicada corretamente no áudio.
     #[test]
     fn test_hysteresis_apply_gain_ramp() {
-        let params = GateParams {
-            hold_frames: 2048,
-            fade_frames: 100,
-            ..Default::default()
-        };
+        let params = GateParams::new(-70.0, -80.0, 2048, 100, 1e-4);
         let mut buffer = [1.0f32; 10];
 
         let mut dh = DynamicHysteresis::new();
@@ -185,11 +171,7 @@ mod tests {
     #[test]
     fn test_sub_block_granularity() {
         let mut dh = DynamicHysteresis::new();
-        let params = GateParams {
-            hold_frames: 2048,
-            fade_frames: 256,
-            ..Default::default()
-        };
+        let params = GateParams::new(-70.0, -80.0, 2048, 256, 1e-4);
         let th_open = 1.0;
         let th_close = 0.5;
 
@@ -254,11 +236,7 @@ mod tests {
     #[test]
     fn test_unit_block_processing() {
         let mut dh = DynamicHysteresis::new();
-        let params = GateParams {
-            hold_frames: 2,
-            fade_frames: 2,
-            ..Default::default()
-        };
+        let params = GateParams::new(-70.0, -80.0, 2, 2, 1e-4);
         let th_open = 1.0;
         let th_close = 0.5;
 
