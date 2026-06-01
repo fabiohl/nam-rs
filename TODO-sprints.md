@@ -921,7 +921,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T04 — Quebrar `src/models/wavenet/conv1d_dyn.rs` (946 LoC) ⚠️
+#### Tarefa S10.T04 — Quebrar `src/models/wavenet/conv1d_dyn.rs` (946 LoC) [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs`.
 - **Problema:** Duplicação massiva entre `process_single_frame`, `process_single_frame_bf16`, `process_dual_frame`, `process_dual_frame_bf16`.

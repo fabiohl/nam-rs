@@ -31,7 +31,7 @@ pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
 /// Esta trait é uma ponte que permite ao NAM-rs usar exatamente o mesmo código
 /// para dois tipos de números: decimais comuns (f32) e números compactos (u16/BF16).
 /// Isso evita duplicar lógica complexa e facilita a manutenção.
-trait ConvInput: Copy + Default {
+pub(crate) trait ConvInput: Copy + Default {
     /// Versão 4x: Calcula 4 canais ao mesmo tempo.
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
         weights: &[[u16; 4]],
