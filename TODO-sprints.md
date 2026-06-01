@@ -501,7 +501,7 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 
 ---
 
-## Épico 4 — Otimização Hotpath (SIMD/ILP/cache/branchless)
+## Épico 4 — Otimização Hotpath (SIMD/ILP/cache/branchless) [DONE]
 
 Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, reduzindo divisões, branches e cadeias de dependência longas.
 
@@ -804,10 +804,10 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 > Nota do PO: Sempre assegure ótima cobertura de docsys e comentários rust inline.
 
-#### Tarefa S8.T01 — Quebrar `src/clap/gui/ui.rs` (2004 LoC) em módulos 🔥
+#### Tarefa S8.T01 — Quebrar `src/clap/gui/ui.rs` (2029 LoC) em módulos 🔥
 
 - **Onde:** `src/clap/gui/ui.rs` → `src/clap/gui/ui/`.
-- **Problema:** Monolito de 2004 LoC; função `draw_ui` com 930 linhas. Inviável para revisão e manutenção.
+- **Problema:** Monolito de 2029 LoC (cresceu de 2004 desde a auditoria original); função `draw_ui` em `src/clap/gui/ui.rs:1072` com ~930 linhas. Inviável para revisão e manutenção.
 - **Solução técnica:** dividir em 9 arquivos (~150-400 LoC cada):
   - `ui/mod.rs` — `pub fn draw_ui` orquestrador.
   - `ui/state.rs` — `UiState`, `VuUniforms`, `VuMeterSharedState`.
@@ -821,7 +821,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC; testes existentes passam.
 - **Especialista:** `implementador`.
 
-#### Tarefa S8.T02 — Quebrar `src/clap/gui/window.rs` (655 LoC) 💡
+#### Tarefa S8.T02 — Quebrar `src/clap/gui/window.rs` (689 LoC) 💡
 
 - **Onde:** `src/clap/gui/window.rs` → `src/clap/gui/window/`.
 - **Solução técnica:**
@@ -834,18 +834,19 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 #### Tarefa S8.T03 — Eliminar alocações por frame em `draw_ui` 💡
 
-- **Onde:** `src/clap/gui/ui.rs:392, 1774, 1812-1822`.
-- **Problema:** `Vec::with_capacity(...)`, `format!`, `join` em paths de draw, ~240 strings/s em status bar.
+- **Onde:** `src/clap/gui/ui.rs:394` (`Vec::with_capacity(num_segments + 1)` no knob), `src/clap/gui/ui.rs:1663-1726` (status bar: SR/Lat/DSP/Cycles/Last N/RT Prio/Overloads/Flags via `format!`), `src/clap/gui/ui.rs:1803-1859` (metadata: Model/Author/Gear/Tone via `format!` + `join`).
+- **Problema:** `Vec::with_capacity(...)`, `format!`, `.join(...)` em paths de draw — em status bar, ~8 `format!` por frame × 30 FPS ≈ 240 alocações/s; em metadata, `Vec<String>` + `join` cada repaint.
 - **Solução técnica:**
-  1. `SmallVec<[Pos2; 49]>` para pontos do knob.
-  2. String pooling: caches em `UiState` para tooltips (`Vec<String>` reutilizado).
+  1. `SmallVec<[Pos2; 49]>` para pontos do knob (ou buffer pré-alocado em `UiState`).
+  2. String pooling: caches em `UiState` para tooltips e linhas da status bar (`Vec<String>` reutilizado, `clear()` + `write!` por frame).
   3. `write!()` em buffer thread-local em vez de `format!`.
+  4. Pré-computar strings de metadata em `UiState` quando o modelo carrega (não a cada frame).
 - **Critérios de aceitação:** Memory profiling mostra zero new allocations em 1s de draw idle.
 - **Especialista:** `implementador`.
 
 ### Sprint S9 — Refatoração do PipeWire host
 
-#### Tarefa S9.T01 — Quebrar `src/standalone/pw_host.rs` (1000 LoC) 🔥
+#### Tarefa S9.T01 — Quebrar `src/standalone/pw_host.rs` (1018 LoC) 🔥
 
 - **Onde:** `src/standalone/pw_host.rs` → `src/standalone/pw_host/`.
 - **Solução técnica:**
@@ -859,7 +860,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 #### Tarefa S9.T02 — Tratar hot-plug & resample resync ⚠️
 
-- **Onde:** `src/standalone/pw_host.rs:484, 499-501, 866-904`.
+- **Onde:** `src/standalone/pw_host.rs:490` (`detect_hardware_sink`), `src/standalone/pw_host.rs:505-507` (set `node.target`), `src/standalone/pw_host.rs:882` (`sync_rate` fn).
 - **Problema:** `hardware_target` capturado uma vez; mudança de sample rate processa frames com resampler antigo (janela de dropout).
 - **Solução técnica:**
   1. Setar `node.target = ""` deixando WirePlumber rotear dinamicamente.
@@ -867,7 +868,9 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Desconectar hardware durante play sem crash; trocar SR sem dropouts inesperados.
 - **Especialista:** `implementador`.
 
-#### Tarefa S9.T03 — Quebrar `src/standalone/rt_setup.rs` (685 LoC) ⚠️
+#### Tarefa S9.T03 — Quebrar `src/standalone/rt_setup.rs` (693 LoC) ⚠️
+
+> **Nota de sequenciamento:** executar **antes** de S16.T01 (SCHED_DEADLINE) e S16.T03 (PREEMPT_RT detection), que adicionam código novo a este arquivo. Quebrar primeiro evita merge-conflicts massivos.
 
 - **Onde:** `src/standalone/rt_setup.rs` → `src/standalone/rt_setup/`.
 - **Solução técnica:**
@@ -882,7 +885,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 ### Sprint S10 — Refatoração de plugin/processor e pipeline
 
-#### Tarefa S10.T01 — Quebrar `src/clap/plugin.rs` (622 LoC) 💡
+#### Tarefa S10.T01 — Quebrar `src/clap/plugin.rs` (645 LoC) 💡
 
 - **Onde:** `src/clap/plugin.rs` → `src/clap/plugin/`.
 - **Solução técnica:**
@@ -892,7 +895,9 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T02 — Quebrar `src/clap/processor.rs` (724 LoC) 💡
+#### Tarefa S10.T02 — Quebrar `src/clap/processor.rs` (788 LoC) 💡
+
+> **Nota de sequenciamento:** o arquivo cresceu de 724 → 788 LoC (S12 adicionou gestures, hot-paths). Executar **antes** de S12.T02 (bitmap `AtomicU32`) e S12.T03 (mover `mono_hyst`/`active_model_r` para campos) — a refatoração do `processor/` torna essas migrações triviais.
 
 - **Onde:** `src/clap/processor.rs` → `src/clap/processor/`.
 - **Solução técnica:**
@@ -902,10 +907,11 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T03 — Quebrar `src/dsp/pipeline.rs` (663 LoC) 💡
+#### Tarefa S10.T03 — Quebrar `src/dsp/pipeline.rs` (793 LoC) 💡
 
 - **Onde:** `src/dsp/pipeline.rs` → `src/dsp/pipeline/`.
-- **Solução técnica:** já há diretório `pipeline/` com testes; mover prod:
+- **Problema:** Arquivo cresceu de 663 → 793 LoC (+20%); `pipeline.rs` já é o segundo arquivo `dsp/` mais alto. Bloqueador implícito para S18.T01 (hot-swap de modelo com crossfade) que precisa adicionar lógica de double-slot na RT thread.
+- **Solução técnica:** já há diretório `pipeline/` em `src/dsp/pipeline/` com `pipeline_block_test.rs`, `pipeline_test.rs`, `test_util.rs` — mover produção mantendo paths de teste:
   - `pipeline/mod.rs` — re-exports + entry-points.
   - `pipeline/bridge.rs` — `DspBridge`, `BridgeBuffer`, `BridgeRef*` (~100 LoC).
   - `pipeline/context.rs` — `DspPipelineContext`, `DspBuffers` (~60 LoC).
@@ -915,7 +921,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum módulo > 500 LoC.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T04 — Quebrar `src/models/wavenet/conv1d_dyn.rs` (867 LoC) ⚠️
+#### Tarefa S10.T04 — Quebrar `src/models/wavenet/conv1d_dyn.rs` (946 LoC) ⚠️
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs`.
 - **Problema:** Duplicação massiva entre `process_single_frame`, `process_single_frame_bf16`, `process_dual_frame`, `process_dual_frame_bf16`.
@@ -927,13 +933,92 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 #### Tarefa S10.T05 — Refatorar `Gate::update` (125 LoC) em estados ⚠️
 
-- **Onde:** `src/dsp/gate.rs:103-228`.
-- **Problema:** Função única de 125 linhas mistura 4 estados FSM.
+- **Onde:** `src/dsp/gate.rs:120-242` (declaração `pub fn update` em :120).
+- **Problema:** Função única de ~123 linhas mistura 4 estados FSM (`Open`, `FadingOut`, `Closed`, `FadingIn`).
 - **Solução técnica:**
   1. Extrair `update_open`, `update_fading_out`, `update_closed`, `update_fading_in`.
   2. Renomear `GateState::Closed` se contexto for ambíguo (uso em `process_mono` em `pipeline.rs:271`).
 - **Critérios de aceitação:** Cada método < 50 LoC; cobertura de teste mantida.
 - **Especialista:** `implementador`.
+
+### Sprint S10b — Refatoração de math / loader / modelos
+
+> Sprint **acrescentada** na revisão de 2026-06-01: identificados 5 hotspots > 600 LoC em `src/math/`, `src/loader/` e `src/models/` que não constavam da auditoria original (auditoria focou em `clap/`, `standalone/`, `dsp/pipeline`). Estes módulos são **pré-requisito lógico** para os Épicos 9 (Quantização — S15) e 13 (AMX/NEON — S23/S24): adicionar kernels INT8/AMX em arquivos já monolíticos compromete revisão e merge.
+
+#### Tarefa S10b.T01 — Quebrar `src/math/common/avx512_impl.rs` (1141 LoC) ⚠️
+
+- **Onde:** `src/math/common/avx512_impl.rs` → `src/math/common/avx512/`.
+- **Problema:** Maior arquivo de math (1141 LoC), agrega kernels heterogêneos: GEMV, ativações Padé (tanh/sigmoid de S7.T09), conversões BF16, helpers de redução. Adicionar AMX (S23.T02) ou INT8 VNNI (S15.T01) sem split torna o arquivo > 1800 LoC.
+- **Solução técnica:** dividir por família funcional, mantendo `#[target_feature(enable = "avx512f,...")]` por kernel:
+  - `avx512/mod.rs` — re-exports + impl do trait `SimdMath`.
+  - `avx512/gemv.rs` — `gemv_*`, `gemv_add_*`.
+  - `avx512/activations.rs` — `simd_tanh_avx512`, `simd_sigmoid_avx512` (Padé).
+  - `avx512/bf16.rs` — conversões FP32↔BF16, `dpbf16ps` wrappers.
+  - `avx512/reduce.rs` — `horizontal_sum`, `hmax`, etc.
+- **Critérios de aceitação:** Nenhum submódulo > 500 LoC; `cargo bench inference_bench` sem regressão; `S14.T05` (headers SIMD documentados) facilmente endereçável depois.
+- **Especialista:** `implementador` + revisão `pesquisador-inovador`.
+
+#### Tarefa S10b.T02 — Quebrar `src/math/gemm/dot_4x.rs` (930 LoC) ⚠️
+
+- **Onde:** `src/math/gemm/dot_4x.rs` → `src/math/gemm/dot_4x/`.
+- **Problema:** 930 LoC concentrando variantes de `DotProduct4x*` para AVX2, AVX-512, AVX-512 VNNI BF16 (S7.R02), escalar. Co-localização dificulta benchmarking diferencial e bloqueia adição limpa de kernels AMX (S23.T02) e NEON SVE2 (S24.T01).
+- **Solução técnica:**
+  - `dot_4x/mod.rs` — trait `DotProduct4x` + dispatcher.
+  - `dot_4x/scalar.rs` — implementação escalar (referência).
+  - `dot_4x/avx2.rs` — `#[target_feature(enable = "avx2,fma")]`.
+  - `dot_4x/avx512.rs` — `#[target_feature(enable = "avx512f")]`.
+  - `dot_4x/avx512_bf16.rs` — VNNI BF16 (`vdpbf16ps`).
+- **Critérios de aceitação:** Cada submódulo < 350 LoC; benchmarks `DotProduct_*` sem regressão.
+- **Especialista:** `implementador`.
+
+#### Tarefa S10b.T03 — Quebrar `src/math/dsp/stereo.rs` (779 LoC) 💡
+
+- **Onde:** `src/math/dsp/stereo.rs` → `src/math/dsp/stereo/`.
+- **Problema:** Concentra helpers de stereo, gain, mono-blend, soft-clip e ramp em um único arquivo. Cresceu com S7.R02/R03 e tende a continuar crescendo com S18.T01 (crossfade) e S19.T02 (auto LUFS).
+- **Solução técnica:**
+  - `stereo/mod.rs` — re-exports.
+  - `stereo/gain.rs` — `apply_gain_*`, ramps.
+  - `stereo/blend.rs` — mono/stereo blend, mix.
+  - `stereo/simd.rs` — paths vetorizados específicos.
+- **Critérios de aceitação:** Nenhum submódulo > 400 LoC.
+- **Especialista:** `implementador`.
+
+#### Tarefa S10b.T04 — Quebrar `src/loader/dispatcher/wavenet.rs` (701 LoC) 💡
+
+- **Onde:** `src/loader/dispatcher/wavenet.rs` → `src/loader/dispatcher/wavenet/`.
+- **Problema:** 701 LoC para o dispatcher WaveNet (Standard/Lite/Feather/Nano + dinâmico). Adicionar variantes (S13.T06 adiciona `1×40`/`2×24` para LSTM — padrão análogo para WaveNet virá) ou layouts (`SmoothQuantInt8` S15.T01, `AmxTile16x64Bf16` S23.T02) sem split duplica o problema.
+- **Solução técnica:**
+  - `wavenet/mod.rs` — `dispatch_wavenet` entry-point.
+  - `wavenet/standard.rs`, `wavenet/lite.rs`, `wavenet/feather.rs`, `wavenet/nano.rs` — instanciação estática por topologia.
+  - `wavenet/dynamic.rs` — fallback `WaveNetDynModel`.
+  - `wavenet/layout.rs` — helpers comuns de transposição/padding.
+- **Critérios de aceitação:** Nenhum submódulo > 250 LoC; `dispatcher_test.rs` continua verde.
+- **Especialista:** `implementador`.
+
+#### Tarefa S10b.T05 — Quebrar `src/models/lstm/layer.rs` (673 LoC) e `src/models/wavenet/conv1d.rs` (691 LoC) 💡
+
+- **Onde:** `src/models/lstm/layer.rs` → `src/models/lstm/layer/`; `src/models/wavenet/conv1d.rs` → `src/models/wavenet/conv1d/`.
+- **Problema:** Ambos misturam definição de struct, `process_sample_scalar`, paths SIMD (com `is_bf16: bool` injetado em S7.R02 — vide observação 1 do relatório Épico 4 em :791) e estado interno. Refactoring é pré-requisito para mover `is_bf16` para field (eliminando regressão escalar de +1.74% identificada em S7).
+- **Solução técnica (LSTM):**
+  - `layer/mod.rs` — `LstmLayer` struct + ctor.
+  - `layer/scalar.rs` — `process_sample_scalar`.
+  - `layer/simd.rs` — paths fused FMA.
+- **Solução técnica (Conv1D estático):**
+  - `conv1d/mod.rs` — `Conv1D<K, IN, OUT>` const-generic struct.
+  - `conv1d/scalar.rs`, `conv1d/simd.rs`.
+- **Critérios de aceitação:** Nenhum submódulo > 400 LoC; `is_bf16` migrado para field da struct (elimina regressão escalar identificada em S7); benchmarks LSTM/WaveNet sem regressão.
+- **Especialista:** `implementador`.
+
+#### Tarefa S10b.T06 — Avaliar (sem refatorar agressivamente) arquivos 500-620 LoC 💡
+
+- **Onde:** `src/math/gemm/gemv.rs` (641), `src/math/common/scalar_ref.rs` (617), `src/loader/nam_json.rs` (578), `src/models/wavenet/model_dyn.rs` (577), `src/math/gemm/gemm_batch.rs` (528), `src/models/wavenet/model.rs` (518), `src/common/diagnostics.rs` (502).
+- **Problema:** Arquivos marginalmente acima do limite. Refatoração compulsória pode hurt coesão; **gate por coesão semântica**.
+- **Solução técnica:** Para cada arquivo, decidir entre:
+  1. **Manter:** se single-purpose e coeso (provável: `gemv.rs`, `scalar_ref.rs`, `gemm_batch.rs`, `model.rs` — kernels matemáticos coesos).
+  2. **Split leve:** se mistura responsabilidades (candidatos: `nam_json.rs` → parse/build/validate; `model_dyn.rs` → struct/inference/state; `diagnostics.rs` → coletores/renderers).
+  3. Documentar decisão em `docs/architecture.md` (entry de S14.T04).
+- **Critérios de aceitação:** Decisão registrada por arquivo; splits aplicados apenas onde aumentam manutenibilidade.
+- **Especialista:** `revisor-auditor` (decisão) + `implementador` (execução).
 
 ---
 
@@ -1019,8 +1104,9 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 
 #### Tarefa S12.T03 — Mover `mono_hyst`, `active_model_r` para campos de `NamClapProcessor` 💡
 
-- **Onde:** `src/clap/processor.rs:550-551`.
+- **Onde:** `src/clap/processor.rs:602-603` (declarações `let mut active_model_r` / `let mut mono_hyst`).
 - **Problema:** Re-inicializados a cada iter do port_pair. Aceitável agora, mas se `DynamicHysteresis::new()` alocar internamente, vira issue RT.
+- **Dependência:** executar **após** S10.T02 (`processor.rs` split) — o destino natural é o módulo `processor/dsp.rs`, onde a struct ganhará fields persistentes.
 - **Solução técnica:** Migrar para fields persistentes.
 - **Critérios de aceitação:** Heap audit confirma zero allocs no `process()`.
 - **Especialista:** `implementador`.
@@ -1488,6 +1574,168 @@ Objetivo: capturar empiricamente a qualidade do engine via differential fuzzing 
 - **Critérios de aceitação:** Bot ativo em PRs; histórico de benches em branch dedicado.
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
+
+### Sprint S21.D — Suporte ao Usuário & Diagnóstico de Campo (Observability sem regressão) ✨⚠️
+
+> **Contexto e justificativa:** A skill `diagnostico` (vide `.agents/workflows/diagnostico.md`) espera receber um "bloco de suporte" colado pelo usuário contendo código de erro, mnemônico, parâmetros contextuais e info de sistema. Hoje o `Diagnostic::support_block()` (`src/common/diagnostics.rs:385`) só é gerado em **paths de erro** (`emit`/`emit_warning`). Cenários frequentes ficam descobertos:
+>
+> - Usuário relata "som baixo" / "dropouts" / "GUI travada" — sem erro tipado, nada para colar.
+> - Usuário em hospedeiro CLAP (Bitwig/Reaper/FL Studio) não tem stderr acessível.
+> - Crashes em hosts C++ (Bitwig) podem perder o `log::error!` antes do abort.
+>
+> Esta sprint é **inserida** entre S21 (validação) e S22 (compiler-grade opt) por dependência lógica: HDR Histograms (S21.T03) alimentam o bundle com percentis, e nenhuma tarefa de S22+ depende desta sprint.
+>
+> **Princípios invariantes** (todas as tarefas):
+>
+> - **Zero hotpath cost:** coleta exclusivamente via `load(Relaxed)` em atomics já existentes. Nenhum novo flag/counter no `process()`. Bundle gerado on-demand no main thread.
+> - **Zero alloc em RT:** toda I/O e formatação no main thread. Panic hook só roda fora do hotpath (após unwind iniciado).
+> - **Segurança:** redação default de paths absolutos (`$HOME` → `~`); nunca embarcar conteúdo de pesos/áudio; opt-in `--diagnose-full` para incluir paths completos.
+> - **Forward-compat:** o formato textual do bundle preserva contrato consumido pela skill `diagnostico` (Fase 1.1 do workflow). Novos campos são **anexados** em linhas próprias; parsers antigos da IA ignoram silenciosamente.
+
+#### Tarefa S21.D.T01 — Refatorar `support_block()` para `DiagnosticBundle` desacoplado de erro 💡
+
+- **Onde:** `src/common/diagnostics.rs:385-429` (atual `support_block` é método privado de `Diagnostic`).
+- **Problema:** `support_block()` é privado e exige um `NamErrorCode` para ser construído. Não há API pública para "gerar bundle em estado nominal".
+- **Solução técnica:**
+  1. Extrair `pub struct DiagnosticBundle { system: SystemInfo, runtime: RuntimeSnapshot, error: Option<ErrorContext> }` em `src/common/diagnostics.rs`.
+  2. `impl DiagnosticBundle { pub fn capture() -> Self; pub fn capture_with_error(code, params) -> Self; pub fn render(&self) -> String; }`.
+  3. `RuntimeSnapshot` (vazio nesta tarefa — preenchido em S21.D.T04) — placeholder com `Default`.
+  4. Refatorar `Diagnostic::support_block` para delegar ao novo `DiagnosticBundle::capture_with_error(...).render()`.
+  5. Preservar o cabeçalho textual exato (`──── NAM-rs Diagnostic ...`) para retro-compat com skill `diagnostico`.
+- **Critérios de aceitação:** `Diagnostic::emit` produz string byte-idêntica à anterior em paths de erro existentes. Novo `DiagnosticBundle::capture().render()` retorna bloco sem campo de erro.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
+
+#### Tarefa S21.D.T02 — Comando CLI `--diagnose` no standalone ⚠️
+
+- **Onde:** `src/main.rs::parse_args`, `src/main.rs::cli_loop` (comando interativo `:diag`).
+- **Problema:** Usuário do standalone PipeWire não tem como gerar bundle em estado nominal.
+- **Solução técnica:**
+  1. Flag CLI `nam-rs --diagnose` — imprime bundle imediatamente no stdout e sai com código 0, sem inicializar áudio.
+  2. Comando interativo `:diag` (e alias `:support`) — chama `DiagnosticBundle::capture().render()` enquanto sessão está rodando, incluindo `RuntimeSnapshot` real (modelo carregado, SR efetivo, contadores).
+  3. `:diag --full` (interativo) ou `--diagnose-full` (flag CLI) — desabilita redação de paths (`$HOME` permanece).
+  4. Adicionar entrada em `--help` documentando ambos.
+- **Critérios de aceitação:** `nam-rs --diagnose` imprime bundle em <100ms; `:diag` em sessão ativa inclui SR e modelo atual.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
+
+#### Tarefa S21.D.T03 — Botão "Copy Diagnostic" na GUI do CLAP ⚠️
+
+- **Onde:** `src/clap/gui/ui.rs` (status bar / nova zona "About"); após refactor de S8.T01 alvo é `src/clap/gui/ui/status_bar.rs` ou similar.
+- **Problema:** Usuário do plugin em DAW não tem acesso ao stderr do host. Sem botão na GUI, impossível obter bundle em hosts C++.
+- **Dependência:** **após S8.T01** (split de `ui.rs` em módulos) — caso contrário a alocação fica no monolito que será dividido. Se S8.T01 atrasar, fazer placeholder em `ui.rs:1663-1726` (status bar) e migrar depois.
+- **Solução técnica:**
+  1. Botão pequeno na status bar (ou ícone "ℹ" abrindo modal "About / Diagnostic").
+  2. Click → no **main thread** chamar `DiagnosticBundle::capture().render()` e:
+     - (a) Copiar para clipboard via `arboard` (já é dependência leve — verificar; senão usar `egui::Context::output_mut(|o| o.copied_text = ...)`).
+     - (b) Persistir cópia em `~/.cache/nam-rs/diagnostic-<unix_ts>.txt` (criar dir se necessário, `0o700` permissão).
+  3. Toast/feedback visual ("Diagnostic copiado · arquivo em ~/.cache/nam-rs/").
+  4. Botão "Open folder" abre o diretório via `xdg-open` (Linux).
+  5. **Sem nova alocação em RT:** toda lógica em GUI thread (já fora do path RT).
+- **Critérios de aceitação:**
+  - Em Bitwig/Reaper: click no botão coloca bloco no clipboard pronto para colar em chat com dev.
+  - Arquivo `~/.cache/nam-rs/diagnostic-*.txt` criado com permissão 0o600.
+  - Teste smoke: heap-audit não dispara (alocação ocorre em GUI thread).
+- **Especialista:** `implementador`.
+- **Esforço:** 1 dia.
+
+#### Tarefa S21.D.T04 — `RuntimeSnapshot` lock-free com estado RT-safe ⚠️
+
+- **Onde:** `src/common/diagnostics.rs` (novo `RuntimeSnapshot`); consumidores em `src/clap/processor.rs`, `src/standalone/pw_host.rs`, `src/dsp/telemetry.rs`.
+- **Problema:** Bundle atual só tem versão + arch + features estáticos. Falta o **estado dinâmico** crítico para diagnóstico: modelo carregado (arquitetura/CH/RF/path basename), SR efetivo, buffer size, contadores de xrun/drain, RT prio aplicada, scheduler ativo (FIFO/DEADLINE — S16.T01), percentis de latência (HDR — S21.T03), histórico recente de RT_STATUS flags.
+- **Solução técnica:**
+  1. Definir struct `RuntimeSnapshot` com campos:
+     - `model: Option<ModelInfo { arch_label, channels, receptive_field, weights_layout, path_basename }>`
+     - `audio: AudioInfo { sample_rate, buffer_size, channel_count, host_name (CLAP) }`
+     - `rt: RtInfo { thread_priority, scheduler ("FIFO"/"DEADLINE"/"OTHER"), cpu_pinned, huge_pages_active }`
+     - `telemetry: TelemetrySnapshot { p50_us, p99_us, p999_us, max_us, total_blocks, xruns, drains }`
+     - `flags_seen: u64` (OR acumulado de RT_STATUS_* já vistos — main thread o mantém em `on_main_thread`)
+  2. Coleta via `load(Relaxed)` em atomics já existentes (`AtomicU32`/`AtomicU64` em `telemetry.rs`, `spsc.rs`). Nenhum novo atomic no hotpath.
+  3. `RuntimeSnapshot::capture(processor_or_host: &impl HasRuntimeSnapshot)` — trait com 1 método para CLAP processor e standalone host.
+  4. `flags_seen` atualizado **no drain existente** (`on_main_thread` em CLAP, decimação 1-em-16 em standalone — vide S6.T05); zero custo extra.
+  5. Renderização preserva contrato textual: cada campo em linha `chave=valor` (parser-friendly).
+- **Critérios de aceitação:**
+  - `cargo test --features heap-audit` confirma zero alloc em RT durante captura (toda alloc ocorre no main).
+  - Bundle gerado em sessão ativa contém pelo menos: `model.arch`, `audio.sr`, `rt.prio`, `telemetry.p99`, `flags_seen` (hex).
+  - Captura completa < 1ms.
+- **Especialista:** `implementador` + revisão `revisor-auditor`.
+- **Esforço:** 1.5 dia.
+
+#### Tarefa S21.D.T05 — Panic hook persiste `DiagnosticBundle` antes do abort 🔥
+
+- **Onde:** `src/main.rs::main` (standalone); `src/clap/plugin.rs` (init do plugin, `DefaultPluginFactory`); novo `src/common/panic_hook.rs`.
+- **Problema:** Em hosts C++ (Bitwig, FL Studio), um panic Rust pode terminar o processo sem flush de `log::error!` — bundle perdido. Adicionalmente, a auditoria do Épico 1 (`window.rs`) eliminou panics em callbacks FFI, mas **qualquer panic residual fora do callback** ainda perde info.
+- **Solução técnica:**
+  1. `pub fn install_panic_hook(component: &'static str)` em `src/common/panic_hook.rs`:
+     - Captura `std::panic::PanicHookInfo` (location, message).
+     - Tenta `DiagnosticBundle::capture()` (best-effort — pode falhar se runtime estado corrompido; tratar com `catch_unwind`).
+     - Persiste em `~/.cache/nam-rs/crash-<unix_ts>-<component>.txt` (atomicamente: write+rename).
+     - Encadeia o hook anterior (não substitui — usa `take_hook` + chain).
+  2. Standalone chama `install_panic_hook("standalone")` no início do `main`.
+  3. CLAP chama em `DefaultPluginFactory::new` (uma vez por processo; idempotente via `OnceLock`).
+  4. **Não chamar dentro de threads RT** — o hook executa onde o panic ocorreu, e a coleta inclui I/O. Para tasks RT, o panic já é convertido em `set_flag(RT_STATUS_*)` em S2.T01 — hook só é útil para panics fora de `process()`.
+- **Critérios de aceitação:**
+  - Standalone: `kill -SEGV` durante sessão NÃO dispara o hook (SIGSEGV não passa pelo Rust panic). Panic intencional (`panic!()` em CLI test) cria arquivo `~/.cache/nam-rs/crash-*.txt`.
+  - CLAP: panic em GUI thread (não-RT) cria arquivo idem.
+  - **Não** ativar para panic durante destruição do host (race com cleanup) — gated por `OnceLock<bool>` indicando "shutdown em progresso".
+- **Especialista:** `implementador` + revisão `revisor-auditor`.
+- **Esforço:** 1 dia.
+
+#### Tarefa S21.D.T06 — Sanitização e política de redação 💡
+
+- **Onde:** `src/common/diagnostics.rs` (renderização).
+- **Problema:** Bundle atual já redige pouco. Paths absolutos podem expor `/home/<user>/...` em logs públicos.
+- **Solução técnica:**
+  1. Helper `fn redact_path(p: &Path) -> String` substitui prefixo `$HOME` por `~` e `$XDG_RUNTIME_DIR` por `$XDG_RUNTIME_DIR`. Em `--diagnose-full`, retorna path bruto.
+  2. `ModelInfo.path_basename` (não path completo) é o default; full path apenas em `--diagnose-full`.
+  3. Nunca incluir: conteúdo de pesos, magnitudes de áudio, nomes de usuário/host (já não inclui).
+  4. Documentar política em comentário do struct + em `docs/troubleshooting.md` (S21.D.T07).
+- **Critérios de aceitação:**
+  - Cobertura de redação consolidada em `tests/diagnostic_bundle.rs` (S21.D.T08, caso 3): bundle default não contém substring do `$HOME` real.
+  - `--diagnose-full` inclui paths absolutos quando explicitamente solicitado.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
+
+#### Tarefa S21.D.T07 — Documentação `docs/troubleshooting.md` 💡
+
+- **Onde:** novo `docs/troubleshooting.md`; link em `README.md`.
+- **Problema:** Usuário não sabe como gerar/onde encontrar o bundle.
+- **Solução técnica:**
+  1. Seção "Como obter informações de suporte":
+     - Standalone: `nam-rs --diagnose` ou `:diag` no shell interativo.
+     - CLAP: botão "Copy Diagnostic" / ícone ℹ na GUI.
+     - Crash: arquivos em `~/.cache/nam-rs/crash-*.txt`.
+  2. Seção "O que está incluído (e o que NÃO está)" — política de redação (S21.D.T06).
+  3. Seção "Como reportar":
+     - Cole o bloco em issue do GitHub.
+     - **Para suporte automatizado:** cole no chat acionando a skill `diagnostico` (referência ao workflow `.agents/workflows/diagnostico.md`).
+  4. Screenshots/exemplos de bundle redigido.
+  5. Atualizar `README.md` com link "Reportando problemas" → `docs/troubleshooting.md`.
+- **Critérios de aceitação:** Doc revisto pela skill `documentador`; cobre os 3 cenários (standalone, CLAP, crash).
+- **Especialista:** `documentador`.
+- **Esforço:** 0.5 dia.
+
+#### Tarefa S21.D.T08 — Testes de integração do pipeline de diagnóstico ⚠️
+
+- **Onde:** `tests/diagnostic_bundle.rs` (novo).
+- **Problema:** Sem testes, regressões silenciosas no formato podem quebrar o consumo pela skill `diagnostico`.
+- **Solução técnica:**
+  1. Teste 1: `DiagnosticBundle::capture()` em ambiente mínimo (sem áudio ativo) — bundle válido e parseável.
+  2. Teste 2: Bundle contém todos os campos obrigatórios do contrato com a skill `diagnostico` (Fase 1.1): código de erro (quando aplicável), mnemônico, arch, os, kernel, features, timestamp.
+  3. Teste 3: `--diagnose-full` muda a redação; default redige `$HOME`.
+  4. Teste 4: Round-trip — parse de regex simples do bundle gerado retorna campos esperados (smoke test de retro-compat).
+  5. Teste 5 (feature-gated `heap-audit`): captura em estado ativo simulado não aloca em RT thread.
+- **Critérios de aceitação:** 5 testes verdes; `cargo test diagnostic_bundle` < 1s.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
+
+> **Ordem recomendada de execução desta sprint:**
+>
+> 1. S21.D.T01 (refactor base) → 2. S21.D.T04 (`RuntimeSnapshot` — destrava conteúdo rico) → 3. S21.D.T06 (redação — antes de qualquer UI) → 4. S21.D.T02 (CLI) ‖ S21.D.T03 (GUI CLAP) em paralelo → 5. S21.D.T05 (panic hook) → 6. S21.D.T08 (testes) → 7. S21.D.T07 (docs).
+>
+> **Esforço total estimado:** ~6 dias (1 dev solo) ou ~3 dias com paralelização CLI/GUI.
+>
+> **Validação RT-zero-cost:** após implementação, rodar `cargo bench inference_bench` com e sem `--diagnose-full`; delta deve ser < 0.5% (dentro do ruído). Confirmar via `cargo test --features heap-audit` que captura **fora** de erro não aloca em RT.
 
 ### Sprint S22 — Compiler-Grade Optimization (PGO + BOLT)
 
