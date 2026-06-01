@@ -31,9 +31,9 @@ pub mod model_dyn;
 // =============================================================================
 
 pub use layer::LstmLayer;
+pub use model_dyn::{LstmDynLayer, LstmDynModel};
 pub use model1::LstmModel1;
 pub use model2::LstmModel2;
-pub use model_dyn::{LstmDynLayer, LstmDynModel};
 
 // =============================================================================
 // Type Aliases — Perfis LSTM NAM Comuns

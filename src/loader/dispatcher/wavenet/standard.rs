@@ -122,17 +122,15 @@ pub(crate) fn build_wavenet_array<
         alloc_num,
     } = config;
 
-    let rechannel =
-        layout::read_dense_weights_typed::<DenseLayer<IN, CH>>(cursor, IN, CH, false)?;
+    let rechannel = layout::read_dense_weights_typed::<DenseLayer<IN, CH>>(cursor, IN, CH, false)?;
 
     let mut layers = Vec::with_capacity(dilations.len());
     let mut states = Vec::with_capacity(dilations.len());
 
     for &dilation in dilations {
-        let conv1d =
-            layout::read_conv1d_weights_typed::<crate::models::wavenet::Conv1d<CH, CH, K>>(
-                cursor, CH, CH, K, dilation, true,
-            )?;
+        let conv1d = layout::read_conv1d_weights_typed::<crate::models::wavenet::Conv1d<CH, CH, K>>(
+            cursor, CH, CH, K, dilation, true,
+        )?;
 
         let input_mixin =
             layout::read_dense_weights_typed::<DenseLayer<COND, CH>>(cursor, COND, CH, false)?;

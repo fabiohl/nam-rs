@@ -718,7 +718,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   - `fused_add_gemv_avx2` e `gemv_overwrite_avx2`: 4 acumuladores YMM (loop interno passo 4), prefetch em `in_frame`.
   - `gemv_overwrite_avx512_small` e `fused_add_gemv_avx512_small`: 8 acumuladores ZMM (loop interno passo 8), prefetch.
   - `gemv_overwrite_avx512` e `fused_add_gemv_avx512`: 8 acumuladores ZMM (loop interno passo 8), prefetch.
-  Redução via árvore de 3 níveis (`((a0+a1)+(a2+a3))+((a4+a5)+(a6+a7))`). 244 testes passam sem regressão.
+    Redução via árvore de 3 níveis (`((a0+a1)+(a2+a3))+((a4+a5)+(a6+a7))`). 244 testes passam sem regressão.
 
 #### Tarefa S7.T07 — Corrigir `gemv_4gate.rs` BF16 (paridade numérica) 🔥 [DONE]
 
@@ -1016,16 +1016,24 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Nenhum submódulo > 400 LoC; `is_bf16` migrado para field da struct (elimina regressão escalar identificada em S7); benchmarks LSTM/WaveNet sem regressão.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10b.T06 — Avaliar (sem refatorar agressivamente) arquivos 500-620 LoC 💡
+#### Tarefa S10b.T06 — Avaliar (sem refatorar agressivamente) arquivos 500-620 LoC 💡 [DONE]
 
-- **Onde:** `src/math/gemm/gemv.rs` (641), `src/math/common/scalar_ref.rs` (617), `src/loader/nam_json.rs` (578), `src/models/wavenet/model_dyn.rs` (577), `src/math/gemm/gemm_batch.rs` (528), `src/models/wavenet/model.rs` (518), `src/common/diagnostics.rs` (502).
-- **Problema:** Arquivos marginalmente acima do limite. Refatoração compulsória pode hurt coesão; **gate por coesão semântica**.
-- **Solução técnica:** Para cada arquivo, decidir entre:
-  1. **Manter:** se single-purpose e coeso (provável: `gemv.rs`, `scalar_ref.rs`, `gemm_batch.rs`, `model.rs` — kernels matemáticos coesos).
-  2. **Split leve:** se mistura responsabilidades (candidatos: `nam_json.rs` → parse/build/validate; `model_dyn.rs` → struct/inference/state; `diagnostics.rs` → coletores/renderers).
-  3. Documentar decisão em `docs/architecture.md` (entry de S14.T04).
-- **Critérios de aceitação:** Decisão registrada por arquivo; splits aplicados apenas onde aumentam manutenibilidade.
-- **Especialista:** `revisor-auditor` (decisão) + `implementador` (execução).
+- **Decisões registradas:**
+
+| Arquivo                                      | LoC                | Decisão     | Justificativa                                                                    |
+| -------------------------------------------- | ------------------ | ----------- | -------------------------------------------------------------------------------- |
+| `src/math/gemm/gemv.rs`                      | 641                | **MANTIDO** | Kernels GEMV puros (AVX2 + AVX-512), altamente coesos                            |
+| `src/math/common/scalar_ref.rs`              | 617                | **MANTIDO** | Oráculos escalares de referência — única responsabilidade                        |
+| `src/loader/nam_json.rs` → `nam_json/`       | 578 → 413+28+82+35 | **SPLIT**   | `data.rs` (structs/visitors), `parse.rs` (entry point), `topology.rs` (detecção) |
+| `src/models/wavenet/model_dyn.rs`            | 577                | **MANTIDO** | Hierarquia dinâmica acoplada (model→array→layer→dense)                           |
+| `src/math/gemm/gemm_batch.rs`                | 528                | **MANTIDO** | Kernels GEMM batch puros, coesos                                                 |
+| `src/models/wavenet/model.rs`                | 518                | **MANTIDO** | Hierarquia estática acoplada, mesmo padrão do model_dyn                          |
+| `src/common/diagnostics.rs` → `diagnostics/` | 502 → 95+77+127+21 | **SPLIT**   | `error_codes.rs`, `system_info.rs`, `diagnostic.rs`                              |
+
+- **Splits aplicados:**
+  - `nam_json/`: `data.rs:454`, `parse.rs:13`, `topology.rs:116`, `mod.rs:19` — todos < 500 LoC.
+  - `diagnostics/`: `error_codes.rs:129`, `system_info.rs:113`, `diagnostic.rs:165`, `mod.rs:28` — todos < 250 LoC.
+- **Testes:** 188/188 passando, sem regressão.
 
 ---
 

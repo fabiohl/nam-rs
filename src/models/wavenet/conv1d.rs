@@ -372,5 +372,4 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
     }
-
 }

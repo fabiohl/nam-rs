@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Parser para o formato .nam (JSON)
+//! Estruturas de dados e validação para o formato `.nam` (JSON).
 //!
-//! Realiza o carregamento dos tensores e metadados fora do caminho RT.
+//! Contém as structs que modelam o arquivo de modelo neural, os erros tipados
+//! do parser e os visitors customizados de serde para validação de limites.
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -75,7 +76,6 @@ impl std::fmt::Display for JsonError {
 
 impl std::error::Error for JsonError {}
 
-/// Converte `serde_json::Error` para `JsonError::Serde`.
 impl From<serde_json::Error> for JsonError {
     fn from(e: serde_json::Error) -> Self {
         JsonError::Serde(e.to_string())
@@ -328,13 +328,13 @@ impl<'de> serde::de::Visitor<'de> for TrainingOptionVisitor {
 }
 
 /// Custom deserializer para `metadata.training` com limites de profundidade e tamanho.
-/// Usa `deserialize_option` para retornar corretamente `None` quando o campo é null.
 fn deserialize_training<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
 where
     D: Deserializer<'de>,
 {
     deserializer.deserialize_option(TrainingOptionVisitor)
 }
+
 /// Estrutura que representa uma data e hora associada aos metadados do modelo.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct NamDate {
@@ -353,7 +353,6 @@ pub struct NamDate {
 }
 
 /// Metadados opcionais contidos no fim do formato `.nam`.
-/// Fonte: https://neural-amp-modeler.readthedocs.io/en/latest/model-file.html
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct NamMetadata {
     /// Data de autoria ou exportação do modelo.
@@ -453,126 +452,3 @@ pub struct NamModelData {
     #[serde(skip)]
     pub weights_layout: WeightsLayout,
 }
-
-/// Realiza o parsing de uma string de versão no formato SemVer mínimo.
-/// Suporta sufixos de pré-lançamento ou metadados e prefixo 'v' ou 'V'.
-/// Retorna `Some((major, minor, patch))` ou `None` em caso de falha de parsing.
-fn parse_semver(version: &str) -> Option<(u16, u16, u16)> {
-    let clean = version.trim().trim_start_matches(['v', 'V']);
-    let clean = clean.split('-').next()?.split('+').next()?;
-    let mut parts = clean.split('.');
-    let major = parts.next()?.trim().parse::<u16>().ok()?;
-    let minor = parts.next().unwrap_or("0").trim().parse::<u16>().ok()?;
-    let patch = parts.next().unwrap_or("0").trim().parse::<u16>().ok()?;
-    Some((major, minor, patch))
-}
-
-impl NamModelData {
-    /// Detecta se o modelo utiliza a arquitetura WaveNet A2.
-    ///
-    /// Um modelo é considerado A2 se a arquitetura for "WaveNet" e:
-    /// 1. A versão declarada for >= 0.6.0.
-    /// 2. Utilizar funções de ativação diferentes de "Tanh".
-    pub fn is_wavenet_a2(&self) -> bool {
-        if self.architecture != "WaveNet" {
-            return false;
-        }
-
-        // Versão >= 0.6.0 introduziu A2
-        if let Some(ref v) = self.version
-            && let Some(ver) = parse_semver(v)
-            && ver >= (0, 6, 0)
-        {
-            return true;
-        }
-
-        // Ativações customizadas são marca registrada do A2
-        for layer in &self.config.layers {
-            if let Some(ref act) = layer.activation
-                && act != "Tanh"
-            {
-                return true;
-            }
-        }
-
-        false
-    }
-}
-
-/// As Topologias fechadas e suportadas dentro da modelagem WaveNet nativa.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NamWavenetTopology {
-    /// Canais: 16 (Standard)
-    Standard,
-    /// Canais: 12 (Lite)
-    Lite,
-    /// Canais: 8 (Feather)
-    Feather,
-    /// Canais: 4 (Nano)
-    Nano,
-}
-
-static STD_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-static LITE_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64];
-static LITE_DILATIONS_2: &[usize] = &[128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
-
-/// Desserialização universal bruta da string do JSON via `serde_json`.
-/// Retorna `JsonError` tipado para falhas de tamanho ou parse.
-pub fn parse_nam_json(json_str: &str) -> Result<NamModelData, JsonError> {
-    let data: NamModelData = serde_json::from_str(json_str)?;
-    Ok(data)
-}
-
-/// Baseando-se no NeuralModel.cpp (`L:155-218`), verifica a identidade estática da topologia WaveNet.
-pub fn get_wavenet_topology(data: &NamModelData) -> Option<NamWavenetTopology> {
-    if data.architecture != "WaveNet" || data.config.layers.len() != 2 {
-        return None;
-    }
-
-    let l0 = &data.config.layers[0];
-    let l1 = &data.config.layers[1];
-
-    let l0_gated = l0.gated.unwrap_or(false);
-    let l1_gated = l1.gated.unwrap_or(false);
-    let l0_head_bias = l0.head_bias.unwrap_or(false);
-    let l1_head_bias = l1.head_bias.unwrap_or(false);
-
-    if l0_gated || l1_gated || l0_head_bias || !l1_head_bias {
-        return None;
-    }
-
-    let channels = l0.channels?;
-    let dils_0 = l0.dilations.as_deref()?;
-    let dils_1 = l1.dilations.as_deref()?;
-
-    match channels {
-        16 if dils_0 == STD_DILATIONS && dils_1 == STD_DILATIONS => {
-            Some(NamWavenetTopology::Standard)
-        }
-        12 if dils_0 == LITE_DILATIONS && dils_1 == LITE_DILATIONS_2 => {
-            Some(NamWavenetTopology::Lite)
-        }
-        8 if dils_0 == LITE_DILATIONS && dils_1 == LITE_DILATIONS_2 => {
-            Some(NamWavenetTopology::Feather)
-        }
-        4 if dils_0 == LITE_DILATIONS && dils_1 == LITE_DILATIONS_2 => {
-            Some(NamWavenetTopology::Nano)
-        }
-        _ => None,
-    }
-}
-
-/// Verifica e retorna a geometria do LSTM (num_layers, hidden_size).
-pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
-    if data.architecture != "LSTM" {
-        return None;
-    }
-
-    let num_layers = data.config.num_layers?;
-    let hidden_size = data.config.hidden_size?;
-    Some((num_layers, hidden_size))
-}
-
-#[cfg(test)]
-#[path = "nam_json_test.rs"]
-mod nam_json_test;

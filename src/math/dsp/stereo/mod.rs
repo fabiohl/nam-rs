@@ -15,11 +15,11 @@ mod energy;
 mod max_diff;
 
 pub use convolution_avx2::{convolve_mono_avx2, convolve_stereo_avx2, convolve_stereo_dual_avx2};
-pub use convolution_avx512::{convolve_mono_avx512, convolve_stereo_avx512, convolve_stereo_dual_avx512};
+pub use convolution_avx512::{
+    convolve_mono_avx512, convolve_stereo_avx512, convolve_stereo_dual_avx512,
+};
 pub use energy::{
-    compute_energy_avx2,
-    compute_energy_avx512,
-    compute_energy_stereo_avx2,
+    compute_energy_avx2, compute_energy_avx512, compute_energy_stereo_avx2,
     compute_energy_stereo_avx512,
 };
 pub use max_diff::{compute_max_diff_avx2, compute_max_diff_avx512};

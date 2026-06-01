@@ -6,13 +6,13 @@ use crate::models::DynamicModel;
 use anyhow::bail;
 use log::info;
 
-mod traits;
-pub(crate) mod layout;
-pub(crate) mod standard;
-pub(crate) mod lite;
-pub(crate) mod feather;
-pub(crate) mod nano;
 pub(crate) mod dynamic;
+pub(crate) mod feather;
+pub(crate) mod layout;
+pub(crate) mod lite;
+pub(crate) mod nano;
+pub(crate) mod standard;
+mod traits;
 
 pub use dynamic::build_wavenet_dynamic;
 pub use layout::transpose_conv1d_interleaved_4wide;

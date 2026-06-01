@@ -364,5 +364,3 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> Default
         Self::new()
     }
 }
-
-

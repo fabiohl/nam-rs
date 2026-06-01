@@ -6,8 +6,8 @@
 //! Extensão do `Conv1d` com métodos que processam dois frames simultaneamente
 //! (Temporal Tiling), maximizando a reutilização de pesos nos registradores.
 
-use crate::math::common::SimdMath;
 use super::conv1d::{Conv1d, ConvInput};
+use crate::math::common::SimdMath;
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Variante fundida que processa dois frames simultaneamente, adicionando vetores Mixin (condicionamento) diretamente nos acumuladores.

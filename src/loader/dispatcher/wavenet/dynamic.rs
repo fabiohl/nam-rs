@@ -6,9 +6,9 @@ use super::layout;
 use crate::loader::nam_json::NamModelData;
 use crate::math::common::AlignedVec;
 use crate::models::DynamicModel;
+use crate::models::wavenet::WaveNetLayerState;
 use crate::models::wavenet::{Conv1dDyn, DenseLayerDyn, MAX_KERNEL, WAVENET_MAX_NUM_FRAMES};
 use crate::models::wavenet::{WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn};
-use crate::models::wavenet::WaveNetLayerState;
 use anyhow::{Context, bail};
 use log::info;
 
@@ -135,8 +135,7 @@ pub(crate) fn build_wavenet_array_dyn(
         );
     }
 
-    let rechannel =
-        layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, in_size, ch, false)?;
+    let rechannel = layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, in_size, ch, false)?;
 
     let mut layers = Vec::with_capacity(dilations.len());
     let mut states = Vec::with_capacity(dilations.len());
@@ -149,14 +148,17 @@ pub(crate) fn build_wavenet_array_dyn(
                 MAX_KERNEL
             );
         }
-        let conv1d =
-            layout::read_conv1d_weights_typed::<Conv1dDyn>(
-                cursor, ch, conv_out_ch, k, dilation, true,
-            )?;
+        let conv1d = layout::read_conv1d_weights_typed::<Conv1dDyn>(
+            cursor,
+            ch,
+            conv_out_ch,
+            k,
+            dilation,
+            true,
+        )?;
         let input_mixin =
             layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, cond_size, ch, false)?;
-        let one_by_one =
-            layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, ch, ch, true)?;
+        let one_by_one = layout::read_dense_weights_typed::<DenseLayerDyn>(cursor, ch, ch, true)?;
 
         layers.push(WaveNetLayerDyn {
             conv1d,
