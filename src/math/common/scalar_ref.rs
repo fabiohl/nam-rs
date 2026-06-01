@@ -433,6 +433,32 @@ pub unsafe fn convolve_stereo_fallback(
     (sum_l, sum_r)
 }
 
+/// Convolução Estéreo Dupla (usada no Resampler).
+/// Realiza duas convoluções estéreo consecutivas reutilizando os loads das entradas.
+pub unsafe fn convolve_stereo_dual_fallback(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> ((f32, f32), (f32, f32)) {
+    let mut sum0_l = 0.0f32;
+    let mut sum0_r = 0.0f32;
+    let mut sum1_l = 0.0f32;
+    let mut sum1_r = 0.0f32;
+    for i in 0..taps {
+        let h0 = *coeffs0.add(i);
+        let h1 = *coeffs1.add(i);
+        let xl = *input_l.add(i);
+        let xr = *input_r.add(i);
+        sum0_l += h0 * xl;
+        sum0_r += h0 * xr;
+        sum1_l += h1 * xl;
+        sum1_r += h1 * xr;
+    }
+    ((sum0_l, sum0_r), (sum1_l, sum1_r))
+}
+
 /// Convolução Mono (usada no Resampler).
 pub unsafe fn convolve_mono_fallback(
     coeffs: *const f32,

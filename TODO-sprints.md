@@ -672,7 +672,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Assembly produzido por `cargo asm` confirma ausência de jmp para `panic_bounds_check`.
 - **Especialista:** `implementador` + `pesquisador-inovador`.
 
-#### Tarefa S7.T03 — `convolve_stereo_dual` para reutilizar loads em resampler ⚠️
+#### Tarefa S7.T03 — `convolve_stereo_dual` para reutilizar loads em resampler ⚠️ [DONE]
 
 - **Onde:** `src/dsp/resampler.rs:130-180`.
 - **Problema:** Cada saída executa **2× `convolve_stereo`** (taps das fases φ_idx e φ_next). Os loads de `x_l/x_r` poderiam ser compartilhados.

@@ -312,6 +312,20 @@ pub trait SimdMath {
         taps: usize,
     ) -> (f32, f32);
 
+    /// Convolução estéreo dupla (reutiliza loads de entrada).
+    /// Realiza o produto escalar entre dois bancos de coeficientes e dois buffers de entrada (L/R).
+    ///
+    /// # Safety
+    /// `coeffs0`, `coeffs1`, `input_l` e `input_r` devem ser ponteiros válidos para pelo menos `taps` elementos.
+    /// `coeffs0` e `coeffs1` devem estar alinhados conforme o registrador SIMD.
+    unsafe fn convolve_stereo_dual(
+        coeffs0: *const f32,
+        coeffs1: *const f32,
+        input_l: *const f32,
+        input_r: *const f32,
+        taps: usize,
+    ) -> ((f32, f32), (f32, f32));
+
     /// Convolução mono (usada no resampler).
     /// Realiza o produto escalar entre um banco de coeficientes e um buffer de entrada.
     ///

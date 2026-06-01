@@ -363,6 +363,21 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn convolve_stereo_dual(
+        coeffs0: *const f32,
+        coeffs1: *const f32,
+        input_l: *const f32,
+        input_r: *const f32,
+        taps: usize,
+    ) -> ((f32, f32), (f32, f32)) {
+        unsafe {
+            super::super::dsp::stereo::convolve_stereo_dual_avx2(
+                coeffs0, coeffs1, input_l, input_r, taps,
+            )
+        }
+    }
+
+    #[inline(always)]
     unsafe fn convolve_mono(
         coeffs: *const f32,
         input: *const f32,

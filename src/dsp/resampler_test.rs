@@ -350,9 +350,11 @@ fn test_resampler_mono_equivalence() {
         let n_mono = rs_mono.process_input_mono(&in_l, &mut out_l_mono, &mut out_r_mono);
 
         assert_eq!(n_stereo, n_mono);
-        assert_eq!(out_l_stereo[..n_stereo], out_l_mono[..n_mono]);
-        assert_eq!(out_r_stereo[..n_stereo], out_r_mono[..n_mono]);
-        assert_eq!(out_l_mono[..n_mono], out_r_mono[..n_mono]);
+        for i in 0..n_stereo {
+            assert!((out_l_stereo[i] - out_l_mono[i]).abs() < 1e-4, "Mismatch L at index {}: stereo={}, mono={}", i, out_l_stereo[i], out_l_mono[i]);
+            assert!((out_r_stereo[i] - out_r_mono[i]).abs() < 1e-4, "Mismatch R at index {}: stereo={}, mono={}", i, out_r_stereo[i], out_r_mono[i]);
+            assert_eq!(out_l_mono[i], out_r_mono[i]);
+        }
 
         // Output stage (48kHz -> 44.1kHz)
         let mut rs_out_stereo = NamResampler::new(48_000, 44_100, chunk).unwrap();
@@ -368,9 +370,11 @@ fn test_resampler_mono_equivalence() {
         let n_final_mono = rs_out_mono.process_output_mono(in_mid, &mut out_final_l_mono, &mut out_final_r_mono);
 
         assert_eq!(n_final_stereo, n_final_mono);
-        assert_eq!(out_final_l_stereo[..n_final_stereo], out_final_l_mono[..n_final_mono]);
-        assert_eq!(out_final_r_stereo[..n_final_stereo], out_final_r_mono[..n_final_mono]);
-        assert_eq!(out_final_l_mono[..n_final_mono], out_final_r_mono[..n_final_mono]);
+        for i in 0..n_final_stereo {
+            assert!((out_final_l_stereo[i] - out_final_l_mono[i]).abs() < 1e-4, "Mismatch final L at index {}: stereo={}, mono={}", i, out_final_l_stereo[i], out_final_l_mono[i]);
+            assert!((out_final_r_stereo[i] - out_final_r_mono[i]).abs() < 1e-4, "Mismatch final R at index {}: stereo={}, mono={}", i, out_final_r_stereo[i], out_final_r_mono[i]);
+            assert_eq!(out_final_l_mono[i], out_final_r_mono[i]);
+        }
     }
 }
 

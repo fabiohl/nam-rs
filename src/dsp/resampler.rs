@@ -173,8 +173,7 @@ impl ResamplerCore {
                 let x_r = self.state_r.window_ptr();
                 let taps = self.bank.taps_per_phase;
 
-                let (y0_l, y0_r) = M::convolve_stereo(c0, x_l, x_r, taps);
-                let (y1_l, y1_r) = M::convolve_stereo(c1, x_l, x_r, taps);
+                let ((y0_l, y0_r), (y1_l, y1_r)) = M::convolve_stereo_dual(c0, c1, x_l, x_r, taps);
                 (y0_l + frac * (y1_l - y0_l), y0_r + frac * (y1_r - y0_r))
             };
 

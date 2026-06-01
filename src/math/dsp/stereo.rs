@@ -250,6 +250,134 @@ pub unsafe fn convolve_stereo_avx2(
     }
 }
 
+/// Convolução Stereo Dual AVX2.
+/// Realiza duas convoluções estéreo (para dois conjuntos de coeficientes coeffs0 e coeffs1)
+/// sobre os mesmos buffers de entrada input_l e input_r.
+/// Carrega amostras de entrada uma única vez e aplica a ambos os conjuntos de coeficientes.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn convolve_stereo_dual_avx2(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> ((f32, f32), (f32, f32)) {
+    unsafe {
+        let mut sum0_l0 = _mm256_setzero_ps();
+        let mut sum0_r0 = _mm256_setzero_ps();
+        let mut sum0_l1 = _mm256_setzero_ps();
+        let mut sum0_r1 = _mm256_setzero_ps();
+
+        let mut sum1_l0 = _mm256_setzero_ps();
+        let mut sum1_r0 = _mm256_setzero_ps();
+        let mut sum1_l1 = _mm256_setzero_ps();
+        let mut sum1_r1 = _mm256_setzero_ps();
+
+        let mut i = 0;
+
+        while i + 16 <= taps {
+            let x0_l = _mm256_loadu_ps(input_l.add(i));
+            let x0_r = _mm256_loadu_ps(input_r.add(i));
+
+            let h0_0 = _mm256_load_ps(coeffs0.add(i));
+            sum0_l0 = _mm256_fmadd_ps(h0_0, x0_l, sum0_l0);
+            sum0_r0 = _mm256_fmadd_ps(h0_0, x0_r, sum0_r0);
+
+            let h1_0 = _mm256_load_ps(coeffs1.add(i));
+            sum1_l0 = _mm256_fmadd_ps(h1_0, x0_l, sum1_l0);
+            sum1_r0 = _mm256_fmadd_ps(h1_0, x0_r, sum1_r0);
+
+            let x1_l = _mm256_loadu_ps(input_l.add(i + 8));
+            let x1_r = _mm256_loadu_ps(input_r.add(i + 8));
+
+            let h0_1 = _mm256_load_ps(coeffs0.add(i + 8));
+            sum0_l1 = _mm256_fmadd_ps(h0_1, x1_l, sum0_l1);
+            sum0_r1 = _mm256_fmadd_ps(h0_1, x1_r, sum0_r1);
+
+            let h1_1 = _mm256_load_ps(coeffs1.add(i + 8));
+            sum1_l1 = _mm256_fmadd_ps(h1_1, x1_l, sum1_l1);
+            sum1_r1 = _mm256_fmadd_ps(h1_1, x1_r, sum1_r1);
+
+            i += 16;
+        }
+
+        while i + 8 <= taps {
+            let x_l = _mm256_loadu_ps(input_l.add(i));
+            let x_r = _mm256_loadu_ps(input_r.add(i));
+
+            let h0 = _mm256_load_ps(coeffs0.add(i));
+            sum0_l0 = _mm256_fmadd_ps(h0, x_l, sum0_l0);
+            sum0_r0 = _mm256_fmadd_ps(h0, x_r, sum0_r0);
+
+            let h1 = _mm256_load_ps(coeffs1.add(i));
+            sum1_l0 = _mm256_fmadd_ps(h1, x_l, sum1_l0);
+            sum1_r0 = _mm256_fmadd_ps(h1, x_r, sum1_r0);
+
+            i += 8;
+        }
+
+        // Combine accumulators
+        let sum0_l = _mm256_add_ps(sum0_l0, sum0_l1);
+        let sum0_r = _mm256_add_ps(sum0_r0, sum0_r1);
+        let sum1_l = _mm256_add_ps(sum1_l0, sum1_l1);
+        let sum1_r = _mm256_add_ps(sum1_r0, sum1_r1);
+
+        // Redução horizontal sum0_l
+        let hi128_0l = _mm256_extractf128_ps(sum0_l, 1);
+        let lo128_0l = _mm256_castps256_ps128(sum0_l);
+        let s128_0l = _mm_add_ps(lo128_0l, hi128_0l);
+        let shuf_0l = _mm_movehdup_ps(s128_0l);
+        let sums_0l = _mm_add_ps(s128_0l, shuf_0l);
+        let shuf2_0l = _mm_movehl_ps(sums_0l, sums_0l);
+        let r_0l = _mm_add_ss(sums_0l, shuf2_0l);
+        let mut out0_l = _mm_cvtss_f32(r_0l);
+
+        // Redução horizontal sum0_r
+        let hi128_0r = _mm256_extractf128_ps(sum0_r, 1);
+        let lo128_0r = _mm256_castps256_ps128(sum0_r);
+        let s128_0r = _mm_add_ps(lo128_0r, hi128_0r);
+        let shuf_0r = _mm_movehdup_ps(s128_0r);
+        let sums_0r = _mm_add_ps(s128_0r, shuf_0r);
+        let shuf2_0r = _mm_movehl_ps(sums_0r, sums_0r);
+        let r_0r = _mm_add_ss(sums_0r, shuf2_0r);
+        let mut out0_r = _mm_cvtss_f32(r_0r);
+
+        // Redução horizontal sum1_l
+        let hi128_1l = _mm256_extractf128_ps(sum1_l, 1);
+        let lo128_1l = _mm256_castps256_ps128(sum1_l);
+        let s128_1l = _mm_add_ps(lo128_1l, hi128_1l);
+        let shuf_1l = _mm_movehdup_ps(s128_1l);
+        let sums_1l = _mm_add_ps(s128_1l, shuf_1l);
+        let shuf2_1l = _mm_movehl_ps(sums_1l, sums_1l);
+        let r_1l = _mm_add_ss(sums_1l, shuf2_1l);
+        let mut out1_l = _mm_cvtss_f32(r_1l);
+
+        // Redução horizontal sum1_r
+        let hi128_1r = _mm256_extractf128_ps(sum1_r, 1);
+        let lo128_1r = _mm256_castps256_ps128(sum1_r);
+        let s128_1r = _mm_add_ps(lo128_1r, hi128_1r);
+        let shuf_1r = _mm_movehdup_ps(s128_1r);
+        let sums_1r = _mm_add_ps(s128_1r, shuf_1r);
+        let shuf2_1r = _mm_movehl_ps(sums_1r, sums_1r);
+        let r_1r = _mm_add_ss(sums_1r, shuf2_1r);
+        let mut out1_r = _mm_cvtss_f32(r_1r);
+
+        while i < taps {
+            let h0 = *coeffs0.add(i);
+            let h1 = *coeffs1.add(i);
+            let xl = *input_l.add(i);
+            let xr = *input_r.add(i);
+            out0_l += h0 * xl;
+            out0_r += h0 * xr;
+            out1_l += h1 * xl;
+            out1_r += h1 * xr;
+            i += 1;
+        }
+
+        ((out0_l, out0_r), (out1_l, out1_r))
+    }
+}
+
 /// Convolução Mono AVX2.
 /// Carrega coeficientes e aplica a um único canal.
 #[target_feature(enable = "avx2,fma")]
@@ -431,6 +559,64 @@ pub unsafe fn convolve_stereo_avx512(
         }
 
         (out_l, out_r)
+    }
+}
+
+/// Convolução Stereo Dual AVX-512.
+/// Realiza duas convoluções estéreo (para dois conjuntos de coeficientes coeffs0 e coeffs1)
+/// sobre os mesmos buffers de entrada input_l e input_r.
+/// Carrega amostras de entrada uma única vez e aplica a ambos os conjuntos de coeficientes.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn convolve_stereo_dual_avx512(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input_l: *const f32,
+    input_r: *const f32,
+    taps: usize,
+) -> ((f32, f32), (f32, f32)) {
+    unsafe {
+        let mut sum0_l = _mm512_setzero_ps();
+        let mut sum0_r = _mm512_setzero_ps();
+        let mut sum1_l = _mm512_setzero_ps();
+        let mut sum1_r = _mm512_setzero_ps();
+        let mut i = 0;
+
+        // Processa 16 amostras de áudio de uma vez!
+        while i + 16 <= taps {
+            let x_l = _mm512_loadu_ps(input_l.add(i));
+            let x_r = _mm512_loadu_ps(input_r.add(i));
+
+            let h0 = _mm512_load_ps(coeffs0.add(i));
+            sum0_l = _mm512_fmadd_ps(h0, x_l, sum0_l);
+            sum0_r = _mm512_fmadd_ps(h0, x_r, sum0_r);
+
+            let h1 = _mm512_load_ps(coeffs1.add(i));
+            sum1_l = _mm512_fmadd_ps(h1, x_l, sum1_l);
+            sum1_r = _mm512_fmadd_ps(h1, x_r, sum1_r);
+
+            i += 16;
+        }
+
+        // Soma os acumuladores para obter o resultado final de cada canal.
+        let mut out0_l = _mm512_reduce_add_ps(sum0_l);
+        let mut out0_r = _mm512_reduce_add_ps(sum0_r);
+        let mut out1_l = _mm512_reduce_add_ps(sum1_l);
+        let mut out1_r = _mm512_reduce_add_ps(sum1_r);
+
+        // Termina as amostras que sobraram.
+        while i < taps {
+            let h0 = *coeffs0.add(i);
+            let h1 = *coeffs1.add(i);
+            let xl = *input_l.add(i);
+            let xr = *input_r.add(i);
+            out0_l += h0 * xl;
+            out0_r += h0 * xr;
+            out1_l += h1 * xl;
+            out1_r += h1 * xr;
+            i += 1;
+        }
+
+        ((out0_l, out0_r), (out1_l, out1_r))
     }
 }
 
