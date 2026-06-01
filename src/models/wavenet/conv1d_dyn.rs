@@ -21,6 +21,7 @@ pub const MAX_KERNEL: usize = 16;
 
 /// Estrutura para convolução causal 1D com dimensões dinâmicas.
 #[derive(Clone)]
+#[repr(align(64))]
 pub struct Conv1dDyn {
     /// Pesos da convolução [OUT][KERNEL][IN] (quantizados u16).
     pub weights: AlignedVec<u16>,
@@ -40,6 +41,18 @@ pub struct Conv1dDyn {
     pub kernel: usize,
     /// Estratégia de prefetch pré-calculada.
     pub prefetch_fn: PrefetchFn,
+}
+
+#[cold]
+#[inline(never)]
+fn panic_weights_len(len: usize, expected: usize) -> ! {
+    panic!("weights length {} is less than expected {}", len, expected);
+}
+
+#[cold]
+#[inline(never)]
+fn panic_kernel_exceeds(kernel: usize) -> ! {
+    panic!("kernel {} excede MAX_KERNEL", kernel);
 }
 
 impl Conv1dDyn {
@@ -64,13 +77,15 @@ impl Conv1dDyn {
         // Para economizar energia da CPU, calculamos dois momentos do áudio (f0 e f1) ao mesmo tempo.
         // Isso aproveita melhor os dados que já estão 'quentes' no cache do processador.
         let num_blocks = self.num_blocks;
-        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
-
-        debug_assert!(
-            self.kernel <= MAX_KERNEL,
-            "kernel {} excede MAX_KERNEL",
-            self.kernel
-        );
+        if cfg!(debug_assertions) {
+            let expected = num_blocks * 4 * self.in_ch * self.kernel;
+            if self.weights.len() < expected {
+                panic_weights_len(self.weights.len(), expected);
+            }
+            if self.kernel > MAX_KERNEL {
+                panic_kernel_exceeds(self.kernel);
+            }
+        }
         // 'Tap Pointers': São como mãos que buscam amostras de áudio no passado.
         let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); MAX_KERNEL];
         let mut tap_ptrs_f1 = [core::ptr::null::<f32>(); MAX_KERNEL];
@@ -80,7 +95,7 @@ impl Conv1dDyn {
         // O WaveNet usa 'Dilatação' para olhar para trás no tempo.
         // Em vai de olhar apenas para o vizinho imediato, ele pula amostras para
         // conseguir 'ouvir' padrões de longa duração (como o ritmo de uma guitarra).
-        for k in 0..k_limit {
+        for (k, (tap_f0, tap_f1)) in tap_ptrs_f0.iter_mut().zip(tap_ptrs_f1.iter_mut()).enumerate().take(k_limit) {
             // Calculamos a distância exata no passado baseada na dilatação e no tamanho do kernel.
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_start_f0 = ((idx_f0 as isize) + offset) as usize * self.in_ch;
@@ -88,12 +103,12 @@ impl Conv1dDyn {
 
             unsafe {
                 // Guardamos o endereço de onde buscar esses sons antigos.
-                tap_ptrs_f0[k] = layer_buffer.as_ptr().add(in_start_f0);
-                tap_ptrs_f1[k] = layer_buffer.as_ptr().add(in_start_f1);
+                *tap_f0 = layer_buffer.as_ptr().add(in_start_f0);
+                *tap_f1 = layer_buffer.as_ptr().add(in_start_f1);
 
                 // Avisamos a CPU para buscar esses dados na RAM antecipadamente (Prefetch).
                 (self.prefetch_fn)(
-                    tap_ptrs_f0[k],
+                    *tap_f0,
                     self.dilation * self.in_ch,
                     k,
                     self.kernel,
@@ -364,12 +379,15 @@ impl Conv1dDyn {
         // Esta função é o 'estepe'. Ela entra em ação quando não podemos
         // processar em pares (como na última amostra de um bloco com tamanho ímpar).
         let num_blocks = self.num_blocks;
-        debug_assert!(
-            self.kernel <= MAX_KERNEL,
-            "kernel {} excede MAX_KERNEL",
-            self.kernel
-        );
-        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
+        if cfg!(debug_assertions) {
+            if self.kernel > MAX_KERNEL {
+                panic_kernel_exceeds(self.kernel);
+            }
+            let expected = num_blocks * 4 * self.in_ch * self.kernel;
+            if self.weights.len() < expected {
+                panic_weights_len(self.weights.len(), expected);
+            }
+        }
         let mut tap_ptrs = [core::ptr::null::<f32>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
 
@@ -506,28 +524,31 @@ impl Conv1dDyn {
         // em vez de 32 bits. Isso corta o uso de memória pela metade e permite que a CPU
         // processe o dobro de dados no mesmo tempo em hardwares compatíveis.
         let num_blocks = self.num_blocks;
-        debug_assert!(
-            self.kernel <= MAX_KERNEL,
-            "kernel {} excede MAX_KERNEL",
-            self.kernel
-        );
-        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
+        if cfg!(debug_assertions) {
+            if self.kernel > MAX_KERNEL {
+                panic_kernel_exceeds(self.kernel);
+            }
+            let expected = num_blocks * 4 * self.in_ch * self.kernel;
+            if self.weights.len() < expected {
+                panic_weights_len(self.weights.len(), expected);
+            }
+        }
 
         // Tap Pointers para f0 e f1 em BF16
         let mut tap_ptrs_f0 = [core::ptr::null::<u16>(); MAX_KERNEL];
         let mut tap_ptrs_f1 = [core::ptr::null::<u16>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
 
-        for k in 0..k_limit {
+        for (k, (tap_f0, tap_f1)) in tap_ptrs_f0.iter_mut().zip(tap_ptrs_f1.iter_mut()).enumerate().take(k_limit) {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_start_f0 = ((idx_f0 as isize) + offset) as usize * self.in_ch;
             let in_start_f1 = ((idx_f1 as isize) + offset) as usize * self.in_ch;
             unsafe {
-                tap_ptrs_f0[k] = layer_buffer.as_ptr().add(in_start_f0);
-                tap_ptrs_f1[k] = layer_buffer.as_ptr().add(in_start_f1);
+                *tap_f0 = layer_buffer.as_ptr().add(in_start_f0);
+                *tap_f1 = layer_buffer.as_ptr().add(in_start_f1);
 
                 (self.prefetch_fn)(
-                    tap_ptrs_f0[k] as *const f32,
+                    *tap_f0 as *const f32,
                     self.dilation * self.in_ch,
                     k,
                     self.kernel,
@@ -792,12 +813,15 @@ impl Conv1dDyn {
         // para processar amostras que sobraram de blocos ímpares, usando
         // a economia de memória do formato BF16.
         let num_blocks = self.num_blocks;
-        debug_assert!(
-            self.kernel <= MAX_KERNEL,
-            "kernel {} excede MAX_KERNEL",
-            self.kernel
-        );
-        debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
+        if cfg!(debug_assertions) {
+            if self.kernel > MAX_KERNEL {
+                panic_kernel_exceeds(self.kernel);
+            }
+            let expected = num_blocks * 4 * self.in_ch * self.kernel;
+            if self.weights.len() < expected {
+                panic_weights_len(self.weights.len(), expected);
+            }
+        }
         let mut tap_ptrs = [core::ptr::null::<u16>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
 

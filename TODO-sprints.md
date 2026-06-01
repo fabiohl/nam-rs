@@ -623,7 +623,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Esforço:** 20 min.
 - **Especialista:** `implementador`.
 
-#### Tarefa S7.R04 — Investigar e mitigar regressão residual em `Long_WaveNet_CH16_4096samp` ⚠️
+#### Tarefa S7.R04 — Investigar e mitigar regressão residual em `Long_WaveNet_CH16_4096samp` ⚠️ [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs` — hotpath dos 4 variantes de `process_*_frame*`.
 - **Problema:** Regressão de +1.2% em `Long_Run_WaveNet`. Após resolver S7.R01 (cache de `num_blocks`), esta regressão pode se auto-corrigir. Se persistir, a causa pode ser:
