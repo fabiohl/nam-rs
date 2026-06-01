@@ -1089,7 +1089,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Critérios de aceitação:** Teste de remote controls passa; revisão manual em DAW.
 - **Especialista:** `implementador`.
 
-#### Tarefa S11.T05 — Corrigir `text_to_value` de `PARAM_ACTIVE_MODEL` 💡
+#### Tarefa S11.T05 — Corrigir `text_to_value` de `PARAM_ACTIVE_MODEL` 💡 [DONE]
 
 - **Onde:** `src/clap/extensions/params.rs:187`.
 - **Problema:** Retorna `Some(0.0)` para READONLY — confunde hosts.

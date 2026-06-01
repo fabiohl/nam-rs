@@ -184,7 +184,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 "bypassed" | "1" | "true" | "on" => Some(1.0),
                 _ => None,
             },
-            PARAM_ACTIVE_MODEL => Some(0.0),
+            PARAM_ACTIVE_MODEL => None,
             _ => None,
         }
     }
