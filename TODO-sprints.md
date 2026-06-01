@@ -1071,7 +1071,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Critérios de aceitação:** Sem `Box::leak` no módulo state.
 - **Especialista:** `implementador`.
 
-#### Tarefa S11.T03 — Path relativo opcional em `model_path` 💡
+#### Tarefa S11.T03 — Path relativo opcional em `model_path` 💡 [DONE]
 
 - **Onde:** `src/common/params.rs:27`; `src/clap/extensions/state.rs`.
 - **Problema:** Path absoluto em projects quebra portabilidade entre máquinas/usuários.

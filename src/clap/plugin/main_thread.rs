@@ -190,6 +190,16 @@ impl<'a> NamClapMainThread<'a> {
 
         // 3. Atualiza o path nos parâmetros locais (espelhados)
         self.params.model_path = Some(path.to_path_buf());
+        self.params.model_basename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        if let Some(parent) = path.parent() {
+            let parent_buf = parent.to_path_buf();
+            if !self.params.model_search_paths.contains(&parent_buf) {
+                self.params.model_search_paths.push(parent_buf);
+            }
+        }
 
         // Extrai e atualiza os metadados do modelo para a GUI
         let metadata = model_pair.metadata.clone();

@@ -120,15 +120,63 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
 
         if let Some(path) = self.params.model_path.clone() {
             if path.exists() {
-                if let Err(e) = self.load_model(&path) {
+                if let Err(e) = self.load_model(&path)
+                    && let Some(log) = self.host.get_extension::<HostLog>()
+                {
+                    let msg = format!(
+                        "NAM-rs: Falha ao restaurar modelo salvo ({:?}): {}",
+                        path, e
+                    );
+                    if let Ok(c_msg) = CString::new(msg) {
+                        log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                    }
+                }
+                return Ok(());
+            }
+
+            // Fallback: path absoluto não existe, tenta busca portátil via basename
+            if let Some(ref basename) = self.params.model_basename {
+                let found = self
+                    .params
+                    .model_search_paths
+                    .clone()
+                    .into_iter()
+                    .find_map(|dir| {
+                        let candidate = dir.join(basename);
+                        if candidate.exists() {
+                            Some(candidate)
+                        } else {
+                            None
+                        }
+                    });
+                if let Some(new_path) = found {
                     if let Some(log) = self.host.get_extension::<HostLog>() {
                         let msg = format!(
-                            "NAM-rs: Falha ao restaurar modelo salvo ({:?}): {}",
-                            path, e
+                            "NAM-rs: Modelo não encontrado no path original ({:?}), usando fallback portátil: {:?}",
+                            path, new_path
+                        );
+                        if let Ok(c_msg) = CString::new(msg) {
+                            log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
+                        }
+                    }
+                    if let Err(e) = self.load_model(&new_path)
+                        && let Some(log) = self.host.get_extension::<HostLog>()
+                    {
+                        let msg = format!(
+                            "NAM-rs: Falha ao restaurar modelo via fallback ({:?}): {}",
+                            new_path, e
                         );
                         if let Ok(c_msg) = CString::new(msg) {
                             log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                         }
+                    }
+                } else if let Some(log) = self.host.get_extension::<HostLog>() {
+                    let msg = format!(
+                        "NAM-rs: Modelo salvo não encontrado no caminho: {:?} e basename {:?} não localizado nos search paths",
+                        path, basename
+                    );
+                    if let Ok(c_msg) = CString::new(msg) {
+                        log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                     }
                 }
             } else if let Some(log) = self.host.get_extension::<HostLog>() {
@@ -158,10 +206,10 @@ fn load_state(buffer: &[u8]) -> Result<NamPluginParams, PluginError> {
 
     // Se o buffer é um envelope v1+ (contém chave "version") que falhou parse,
     // não fazemos fallback v0 — propagamos erro como dados corrompidos
-    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(buffer) {
-        if value.get("version").is_some() {
-            return Err(PluginError::Error(Box::new(StateError::CorruptedEnvelope)));
-        }
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(buffer)
+        && value.get("version").is_some()
+    {
+        return Err(PluginError::Error(Box::new(StateError::CorruptedEnvelope)));
     }
 
     // Fallback: v0 legacy — NamPluginParams direto sem campo version
@@ -206,6 +254,8 @@ mod tests {
             output_gain_db: -3.0,
             gate_threshold_db: -40.0,
             model_path: Some(PathBuf::from("/tmp/test.nam")),
+            model_basename: None,
+            model_search_paths: Vec::new(),
             bypass: true,
         };
 
@@ -230,5 +280,59 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
         assert_eq!(parsed["version"], 1, "envelope deve conter version: 1");
         assert!(parsed["params"].is_object(), "envelope deve conter params");
+    }
+
+    #[test]
+    fn test_v0_legacy_load_new_fields_default() {
+        let v0_json = r#"{"input_gain_db": 3.0,"output_gain_db": -6.0,"gate_threshold_db": -50.0,"model_path": null,"bypass": false}"#;
+        let params = load_state(v0_json.as_bytes()).expect("v0 payload deve carregar");
+        assert_eq!(params.model_basename, None);
+        assert!(params.model_search_paths.is_empty());
+    }
+
+    #[test]
+    fn test_v1_round_trip_with_search_fields() {
+        let search_paths = vec![
+            std::path::PathBuf::from("/usr/share/nam-models"),
+            std::path::PathBuf::from("/home/user/models"),
+        ];
+        let original = NamPluginParams {
+            input_gain_db: 2.5,
+            output_gain_db: -3.0,
+            gate_threshold_db: -40.0,
+            model_path: Some(PathBuf::from("/tmp/test.nam")),
+            model_basename: Some("test.nam".to_string()),
+            model_search_paths: search_paths.clone(),
+            bypass: true,
+        };
+
+        let envelope = StateEnvelope {
+            version: CURRENT_STATE_VERSION,
+            params: original.clone(),
+        };
+        let json = serde_json::to_vec(&envelope).unwrap();
+
+        let restored = load_state(&json).expect("v1 payload deve carregar");
+        assert_eq!(
+            restored, original,
+            "round-trip v1 com search fields deve ser idempotente"
+        );
+    }
+
+    #[test]
+    fn test_v1_search_fields_serialization_format() {
+        let params = NamPluginParams {
+            model_basename: Some("tone.nam".to_string()),
+            model_search_paths: vec![PathBuf::from("/models")],
+            ..Default::default()
+        };
+        let envelope = StateEnvelope {
+            version: CURRENT_STATE_VERSION,
+            params,
+        };
+        let json = serde_json::to_vec(&envelope).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+        assert_eq!(parsed["params"]["model_basename"], "tone.nam");
+        assert_eq!(parsed["params"]["model_search_paths"][0], "/models");
     }
 }
