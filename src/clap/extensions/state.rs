@@ -21,6 +21,24 @@ use std::io::{Read, Write};
 
 const CURRENT_STATE_VERSION: u32 = 1;
 
+#[derive(Debug, thiserror::Error)]
+enum StateError {
+    #[error("Falha ao serializar estado: {0}")]
+    Serialize(#[source] serde_json::Error),
+
+    #[error("Falha ao escrever no stream de estado: {0}")]
+    WriteStream(#[source] std::io::Error),
+
+    #[error("Falha ao ler do stream de estado: {0}")]
+    ReadStream(#[source] std::io::Error),
+
+    #[error("Falha ao deserializar estado (envelope v1+ corrompido)")]
+    CorruptedEnvelope,
+
+    #[error("Falha ao deserializar estado (v0 legacy): {0}")]
+    Deserialize(#[source] serde_json::Error),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StateEnvelope {
     version: u32,
@@ -64,28 +82,21 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             version: CURRENT_STATE_VERSION,
             params: self.params.clone(),
         };
-        let serialized = serde_json::to_vec(&envelope).map_err(|e| {
-            PluginError::Message(Box::leak(
-                format!("Falha ao serializar estado: {}", e).into_boxed_str(),
-            ))
-        })?;
+        let serialized = serde_json::to_vec(&envelope)
+            .map_err(|e| PluginError::Error(Box::new(StateError::Serialize(e))))?;
 
-        output.write_all(&serialized).map_err(|e| {
-            PluginError::Message(Box::leak(
-                format!("Falha ao escrever no stream de estado: {}", e).into_boxed_str(),
-            ))
-        })?;
+        output
+            .write_all(&serialized)
+            .map_err(|e| PluginError::Error(Box::new(StateError::WriteStream(e))))?;
 
         Ok(())
     }
 
     fn load(&mut self, input: &mut InputStream) -> Result<(), PluginError> {
         let mut buffer = Vec::new();
-        input.read_to_end(&mut buffer).map_err(|e| {
-            PluginError::Message(Box::leak(
-                format!("Falha ao ler do stream de estado: {}", e).into_boxed_str(),
-            ))
-        })?;
+        input
+            .read_to_end(&mut buffer)
+            .map_err(|e| PluginError::Error(Box::new(StateError::ReadStream(e))))?;
 
         let new_params = load_state(&buffer)?;
 
@@ -149,20 +160,13 @@ fn load_state(buffer: &[u8]) -> Result<NamPluginParams, PluginError> {
     // não fazemos fallback v0 — propagamos erro como dados corrompidos
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(buffer) {
         if value.get("version").is_some() {
-            return Err(PluginError::Message(Box::leak(
-                "Falha ao deserializar estado (envelope v1+ corrompido)"
-                    .to_string()
-                    .into_boxed_str(),
-            )));
+            return Err(PluginError::Error(Box::new(StateError::CorruptedEnvelope)));
         }
     }
 
     // Fallback: v0 legacy — NamPluginParams direto sem campo version
-    let params: NamPluginParams = serde_json::from_slice(buffer).map_err(|e| {
-        PluginError::Message(Box::leak(
-            format!("Falha ao deserializar estado (v0 legacy): {}", e).into_boxed_str(),
-        ))
-    })?;
+    let params: NamPluginParams = serde_json::from_slice(buffer)
+        .map_err(|e| PluginError::Error(Box::new(StateError::Deserialize(e))))?;
 
     Ok(migrate(0, params))
 }

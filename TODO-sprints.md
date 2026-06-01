@@ -1061,7 +1061,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
   - Testes explícitos em `tests/clap_state_migration.rs` cobrindo os 3 cenários.
 - **Especialista:** `implementador`.
 
-#### Tarefa S11.T02 — Substituir `Box::leak` em `state.rs` por erros tipados ⚠️
+#### Tarefa S11.T02 — Substituir `Box::leak` em `state.rs` por erros tipados ⚠️ [DONE]
 
 - **Onde:** `src/clap/extensions/state.rs:46-77`.
 - **Problema:** Leak intencional de strings em paths de erro. Acumula em hosts com muitos save/load (Bitwig auto-save).
