@@ -195,6 +195,84 @@ impl ResamplerCore {
 
         out_idx
     }
+
+    /// Processa um bloco mono. RT-safe: zero alocações.
+    ///
+    /// Retorna o número de amostras escritas em `out_l` / `out_r`.
+    fn process_internal_mono<M: SimdMath>(
+        &mut self,
+        in_l: &[f32],
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+    ) -> usize {
+        let n_in = in_l.len();
+        let n_out_max = out_l.len().min(out_r.len());
+        let mut in_idx = 0usize;
+        let mut out_idx = 0usize;
+
+        while out_idx < n_out_max {
+            // Consumir amostras de entrada conforme o acumulador de fase avança
+            while self.phase_accum >= NUM_PHASES as f64 {
+                if in_idx >= n_in {
+                    return out_idx;
+                }
+                self.state_l.push(in_l[in_idx]);
+                self.phase_accum -= NUM_PHASES as f64;
+                // Em debug: verifica invariante de não-underflow.
+                #[cfg(debug_assertions)]
+                {
+                    debug_assert!(self.phase_accum >= -1e-12);
+                    self.phase_accum = self.phase_accum.max(0.0);
+                }
+                in_idx += 1;
+            }
+
+            // Determina a fase e o fator de interpolação fracionário
+            let phase_f = self.phase_accum;
+            let phase_idx = phase_f as usize;
+            let frac = (phase_f - phase_idx as f64) as f32;
+
+            // Fase seguinte (com wrap)
+            let phase_next = if phase_idx + 1 >= NUM_PHASES {
+                0
+            } else {
+                phase_idx + 1
+            };
+
+            // Convolução SIMD + interpolação linear entre fases adjacentes
+            let y_l = unsafe {
+                let c0 = self.bank.phase_ptr(phase_idx);
+                let c1 = self.bank.phase_ptr(phase_next);
+                let x_l = self.state_l.window_ptr();
+                let taps = self.bank.taps_per_phase;
+
+                let y0_l = M::convolve_mono(c0, x_l, taps);
+                let y1_l = M::convolve_mono(c1, x_l, taps);
+                y0_l + frac * (y1_l - y0_l)
+            };
+
+            out_l[out_idx] = y_l;
+            out_r[out_idx] = y_l;
+            out_idx += 1;
+
+            self.phase_accum += self.phase_step;
+        }
+
+        // Consumir amostras de entrada restantes (manter state atualizado)
+        while self.phase_accum >= NUM_PHASES as f64 && in_idx < n_in {
+            self.state_l.push(in_l[in_idx]);
+            self.phase_accum -= NUM_PHASES as f64;
+            // Em debug: verifica invariante de não-underflow.
+            #[cfg(debug_assertions)]
+            {
+                debug_assert!(self.phase_accum >= -1e-12);
+                self.phase_accum = self.phase_accum.max(0.0);
+            }
+            in_idx += 1;
+        }
+
+        out_idx
+    }
 }
 
 /// Wrapper RT-safe para resampling bidirecional FIR Sinc Polifásico de Fase Mínima.
@@ -344,6 +422,50 @@ impl NamResampler {
             return n;
         };
         dispatch_simd!(core, process_internal, (in_l), (in_r), (out_l), (out_r))
+    }
+
+    /// **Resampling de entrada mono** (input path): `pw_rate → nam_rate`.
+    ///
+    /// RT-safe: zero alocações. Em bypass, copia diretamente.
+    ///
+    /// # Retorno
+    /// Número de amostras escritas em `out_l` / `out_r`.
+    #[allow(unused_parens)]
+    pub fn process_input_mono(
+        &mut self,
+        in_l: &[f32],
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+    ) -> usize {
+        let Some(ref mut core) = self.inner else {
+            let n = in_l.len().min(out_l.len()).min(out_r.len());
+            out_l[..n].copy_from_slice(&in_l[..n]);
+            out_r[..n].copy_from_slice(&in_l[..n]);
+            return n;
+        };
+        dispatch_simd!(core, process_internal_mono, (in_l), (out_l), (out_r))
+    }
+
+    /// **Resampling de saída mono** (output path): `nam_rate → pw_rate`.
+    ///
+    /// RT-safe: zero alocações. Em bypass, copia diretamente.
+    ///
+    /// # Retorno
+    /// Número de amostras escritas em `out_l` / `out_r`.
+    #[allow(unused_parens)]
+    pub fn process_output_mono(
+        &mut self,
+        in_l: &[f32],
+        out_l: &mut [f32],
+        out_r: &mut [f32],
+    ) -> usize {
+        let Some(ref mut core) = self.outer else {
+            let n = in_l.len().min(out_l.len()).min(out_r.len());
+            out_l[..n].copy_from_slice(&in_l[..n]);
+            out_r[..n].copy_from_slice(&in_l[..n]);
+            return n;
+        };
+        dispatch_simd!(core, process_internal_mono, (in_l), (out_l), (out_r))
     }
 }
 

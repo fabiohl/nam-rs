@@ -157,6 +157,21 @@ pub unsafe fn convolve_stereo(
     crate::math::common::dispatch_simd!(convolve_stereo(coeffs, input_l, input_r, taps))
 }
 
+/// Convolução mono (usada no resampler) via despacho SIMD.
+/// Realiza o produto escalar entre um banco de coeficientes e um buffer de entrada.
+///
+/// # Safety
+/// `coeffs` e `input` devem ser ponteiros válidos para pelo menos `taps` elementos.
+/// `coeffs` deve estar alinhado conforme o registrador SIMD.
+pub unsafe fn convolve_mono(
+    coeffs: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> f32 {
+    crate::math::common::dispatch_simd!(convolve_mono(coeffs, input, taps))
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 // Kernels AVX2
 // ═══════════════════════════════════════════════════════════════
@@ -234,6 +249,60 @@ pub unsafe fn convolve_stereo_avx2(
         (out_l, out_r)
     }
 }
+
+/// Convolução Mono AVX2.
+/// Carrega coeficientes e aplica a um único canal.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn convolve_mono_avx2(
+    coeffs: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> f32 {
+    unsafe {
+        let mut sum0 = _mm256_setzero_ps();
+        let mut sum1 = _mm256_setzero_ps();
+        let mut i = 0;
+
+        while i + 16 <= taps {
+            let h0 = _mm256_load_ps(coeffs.add(i));
+            let x0 = _mm256_loadu_ps(input.add(i));
+            sum0 = _mm256_fmadd_ps(h0, x0, sum0);
+
+            let h1 = _mm256_load_ps(coeffs.add(i + 8));
+            let x1 = _mm256_loadu_ps(input.add(i + 8));
+            sum1 = _mm256_fmadd_ps(h1, x1, sum1);
+
+            i += 16;
+        }
+
+        while i + 8 <= taps {
+            let h = _mm256_load_ps(coeffs.add(i));
+            let x = _mm256_loadu_ps(input.add(i));
+            sum0 = _mm256_fmadd_ps(h, x, sum0);
+            i += 8;
+        }
+
+        // Redução horizontal
+        let sum = _mm256_add_ps(sum0, sum1);
+        let hi128 = _mm256_extractf128_ps(sum, 1);
+        let lo128 = _mm256_castps256_ps128(sum);
+        let s128 = _mm_add_ps(lo128, hi128);
+        let shuf = _mm_movehdup_ps(s128);
+        let sums = _mm_add_ps(s128, shuf);
+        let shuf2 = _mm_movehl_ps(sums, sums);
+        let r = _mm_add_ss(sums, shuf2);
+        let mut out = _mm_cvtss_f32(r);
+
+        while i < taps {
+            let h = *coeffs.add(i);
+            out += h * *input.add(i);
+            i += 1;
+        }
+
+        out
+    }
+}
+
 
 /// Calcula o máximo da energia entre dois canais (Mean Square) via AVX2.
 /// Funde as duas passagens em uma para economizar banda de memória.
@@ -364,6 +433,45 @@ pub unsafe fn convolve_stereo_avx512(
         (out_l, out_r)
     }
 }
+
+/// Convolução Mono AVX-512.
+/// Carrega coeficientes e aplica a um único canal.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn convolve_mono_avx512(
+    coeffs: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> f32 {
+    unsafe {
+        let mut sum0 = _mm512_setzero_ps();
+        let mut sum1 = _mm512_setzero_ps();
+        let mut i = 0;
+
+        while i + 32 <= taps {
+            let h0 = _mm512_load_ps(coeffs.add(i));
+            let x0 = _mm512_loadu_ps(input.add(i));
+            sum0 = _mm512_fmadd_ps(h0, x0, sum0);
+
+            let h1 = _mm512_load_ps(coeffs.add(i + 16));
+            let x1 = _mm512_loadu_ps(input.add(i + 16));
+            sum1 = _mm512_fmadd_ps(h1, x1, sum1);
+
+            i += 32;
+        }
+
+        let sum = _mm512_add_ps(sum0, sum1);
+        let mut out = _mm512_reduce_add_ps(sum);
+
+        while i < taps {
+            let h = *coeffs.add(i);
+            out += h * *input.add(i);
+            i += 1;
+        }
+
+        out
+    }
+}
+
 
 /// Calcula o máximo da energia entre dois canais (Mean Square) via AVX-512.
 /// Funde as duas passagens em uma para economizar banda de memória.

@@ -480,16 +480,20 @@ pub(crate) fn run_inference(
         // CAMINHO B: Ajuste de Qualidade ligado (Resampler Ativo).
 
         // 1. Traduz o som para a frequência que o "Cérebro" neural entende (geralmente 48kHz).
-        let n_48k = ctx.resampler.process_input(
-            &samples_l[..n],
-            if *ctx.process_mono {
-                &samples_l[..n]
-            } else {
-                &samples_r[..n]
-            },
-            &mut resamp_mid_l[..MAX_RESAMP_BUF],
-            &mut resamp_mid_r[..MAX_RESAMP_BUF],
-        );
+        let n_48k = if *ctx.process_mono {
+            ctx.resampler.process_input_mono(
+                &samples_l[..n],
+                &mut resamp_mid_l[..MAX_RESAMP_BUF],
+                &mut resamp_mid_r[..MAX_RESAMP_BUF],
+            )
+        } else {
+            ctx.resampler.process_input(
+                &samples_l[..n],
+                &samples_r[..n],
+                &mut resamp_mid_l[..MAX_RESAMP_BUF],
+                &mut resamp_mid_r[..MAX_RESAMP_BUF],
+            )
+        };
 
         let model_in_l = &resamp_mid_l[..n_48k];
         let model_in_r = &resamp_mid_r[..n_48k];
@@ -513,12 +517,20 @@ pub(crate) fn run_inference(
         }
 
         // 3. Traduz o som de volta para a frequência original da sua placa de som.
-        ctx.resampler.process_output(
-            m_out_l,
-            m_out_r,
-            &mut resamp_out_l[..MAX_RESAMP_BUF],
-            &mut resamp_out_r[..MAX_RESAMP_BUF],
-        )
+        if *ctx.process_mono {
+            ctx.resampler.process_output_mono(
+                m_out_l,
+                &mut resamp_out_l[..MAX_RESAMP_BUF],
+                &mut resamp_out_r[..MAX_RESAMP_BUF],
+            )
+        } else {
+            ctx.resampler.process_output(
+                m_out_l,
+                m_out_r,
+                &mut resamp_out_l[..MAX_RESAMP_BUF],
+                &mut resamp_out_r[..MAX_RESAMP_BUF],
+            )
+        }
     }
 }
 

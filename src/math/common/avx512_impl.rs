@@ -324,6 +324,15 @@ impl SimdMath for Avx512Math {
         unsafe { super::super::dsp::stereo::convolve_stereo_avx512(coeffs, input_l, input_r, taps) }
     }
 
+    #[inline(always)]
+    unsafe fn convolve_mono(
+        coeffs: *const f32,
+        input: *const f32,
+        taps: usize,
+    ) -> f32 {
+        unsafe { super::super::dsp::stereo::convolve_mono_avx512(coeffs, input, taps) }
+    }
+
     // Controle de ganho (volume) e detecção de "clipping" (quando o som distorce por ficar alto demais).
     #[inline(always)]
     unsafe fn apply_gain_and_detect_clipping_stereo(
@@ -676,6 +685,15 @@ impl SimdMath for Avx512VnniMath {
     ) -> (f32, f32) {
         unsafe { Avx512Math::convolve_stereo(coeffs, input_l, input_r, taps) }
     }
+
+    #[inline(always)]
+    unsafe fn convolve_mono(
+        coeffs: *const f32,
+        input: *const f32,
+        taps: usize,
+    ) -> f32 {
+        unsafe { Avx512Math::convolve_mono(coeffs, input, taps) }
+    }
     #[inline(always)]
     unsafe fn apply_gain_and_detect_clipping_stereo(
         left: &mut [f32],
@@ -1005,6 +1023,15 @@ impl SimdMath for Avx512VnniBf16Math {
         taps: usize,
     ) -> (f32, f32) {
         unsafe { Avx512Math::convolve_stereo(coeffs, input_l, input_r, taps) }
+    }
+
+    #[inline(always)]
+    unsafe fn convolve_mono(
+        coeffs: *const f32,
+        input: *const f32,
+        taps: usize,
+    ) -> f32 {
+        unsafe { Avx512Math::convolve_mono(coeffs, input, taps) }
     }
     #[inline(always)]
     unsafe fn apply_gain_and_detect_clipping_stereo(

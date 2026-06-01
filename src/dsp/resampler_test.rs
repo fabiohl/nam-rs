@@ -303,3 +303,74 @@ fn test_latency_calculation() {
     // 4. Zero rate: deve retornar 0 (guardrail)
     assert_eq!(rs_44.latency_samples(0), 0);
 }
+
+#[test]
+fn test_resampler_mono_equivalence() {
+    // 1. Teste de Equivalência em modo Bypass (48kHz -> 48kHz)
+    {
+        let mut rs = NamResampler::new(48_000, 48_000, 256).unwrap();
+        assert!(rs.is_bypass());
+
+        let in_l = [1.0f32, 2.0, 3.0, 4.0, 5.0];
+        let mut out_l_stereo = [0.0f32; 5];
+        let mut out_r_stereo = [0.0f32; 5];
+        let mut out_l_mono = [0.0f32; 5];
+        let mut out_r_mono = [0.0f32; 5];
+
+        let n_stereo = rs.process_input(&in_l, &in_l, &mut out_l_stereo, &mut out_r_stereo);
+        let n_mono = rs.process_input_mono(&in_l, &mut out_l_mono, &mut out_r_mono);
+
+        assert_eq!(n_stereo, n_mono);
+        assert_eq!(out_l_stereo, out_l_mono);
+        assert_eq!(out_r_stereo, out_r_mono);
+        assert_eq!(out_l_mono, out_r_mono);
+
+        // Mesma coisa para process_output
+        let n_out_stereo = rs.process_output(&in_l, &in_l, &mut out_l_stereo, &mut out_r_stereo);
+        let n_out_mono = rs.process_output_mono(&in_l, &mut out_l_mono, &mut out_r_mono);
+
+        assert_eq!(n_out_stereo, n_out_mono);
+        assert_eq!(out_l_stereo, out_l_mono);
+        assert_eq!(out_r_stereo, out_r_mono);
+    }
+
+    // 2. Teste de Equivalência em modo ativo (44.1kHz -> 48kHz)
+    {
+        let chunk = 256;
+        let mut rs_stereo = NamResampler::new(44_100, 48_000, chunk).unwrap();
+        let mut rs_mono = NamResampler::new(44_100, 48_000, chunk).unwrap();
+
+        let in_l: Vec<f32> = (0..chunk).map(|i| (i as f32 * 0.05).sin()).collect();
+        let mut out_l_stereo = vec![0.0f32; chunk * 2];
+        let mut out_r_stereo = vec![0.0f32; chunk * 2];
+        let mut out_l_mono = vec![0.0f32; chunk * 2];
+        let mut out_r_mono = vec![0.0f32; chunk * 2];
+
+        let n_stereo = rs_stereo.process_input(&in_l, &in_l, &mut out_l_stereo, &mut out_r_stereo);
+        let n_mono = rs_mono.process_input_mono(&in_l, &mut out_l_mono, &mut out_r_mono);
+
+        assert_eq!(n_stereo, n_mono);
+        assert_eq!(out_l_stereo[..n_stereo], out_l_mono[..n_mono]);
+        assert_eq!(out_r_stereo[..n_stereo], out_r_mono[..n_mono]);
+        assert_eq!(out_l_mono[..n_mono], out_r_mono[..n_mono]);
+
+        // Output stage (48kHz -> 44.1kHz)
+        let mut rs_out_stereo = NamResampler::new(48_000, 44_100, chunk).unwrap();
+        let mut rs_out_mono = NamResampler::new(48_000, 44_100, chunk).unwrap();
+
+        let in_mid = &out_l_stereo[..n_stereo];
+        let mut out_final_l_stereo = vec![0.0f32; chunk * 2];
+        let mut out_final_r_stereo = vec![0.0f32; chunk * 2];
+        let mut out_final_l_mono = vec![0.0f32; chunk * 2];
+        let mut out_final_r_mono = vec![0.0f32; chunk * 2];
+
+        let n_final_stereo = rs_out_stereo.process_output(in_mid, in_mid, &mut out_final_l_stereo, &mut out_final_r_stereo);
+        let n_final_mono = rs_out_mono.process_output_mono(in_mid, &mut out_final_l_mono, &mut out_final_r_mono);
+
+        assert_eq!(n_final_stereo, n_final_mono);
+        assert_eq!(out_final_l_stereo[..n_final_stereo], out_final_l_mono[..n_final_mono]);
+        assert_eq!(out_final_r_stereo[..n_final_stereo], out_final_r_mono[..n_final_mono]);
+        assert_eq!(out_final_l_mono[..n_final_mono], out_final_r_mono[..n_final_mono]);
+    }
+}
+

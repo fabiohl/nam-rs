@@ -363,6 +363,15 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn convolve_mono(
+        coeffs: *const f32,
+        input: *const f32,
+        taps: usize,
+    ) -> f32 {
+        unsafe { super::super::dsp::stereo::convolve_mono_avx2(coeffs, input, taps) }
+    }
+
+    #[inline(always)]
     unsafe fn apply_gain_and_detect_clipping_stereo(
         left: &mut [f32],
         right: &mut [f32],

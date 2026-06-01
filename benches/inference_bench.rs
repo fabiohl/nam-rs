@@ -363,9 +363,19 @@ fn bench_resampler_44100_to_48000_256samp(c: &mut Criterion) {
             rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
+    group.bench_function("process_input_mono", |b| {
+        b.iter(|| {
+            rs.process_input_mono(&in_l, &mut out_l, &mut out_r);
+        });
+    });
     group.bench_function("process_output", |b| {
         b.iter(|| {
             rs.process_output(&in_l, &in_r, &mut out_l, &mut out_r);
+        });
+    });
+    group.bench_function("process_output_mono", |b| {
+        b.iter(|| {
+            rs.process_output_mono(&in_l, &mut out_l, &mut out_r);
         });
     });
     group.finish();
@@ -387,9 +397,19 @@ fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
             rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
+    group.bench_function("process_input_mono", |b| {
+        b.iter(|| {
+            rs.process_input_mono(&in_l, &mut out_l, &mut out_r);
+        });
+    });
     group.bench_function("process_output", |b| {
         b.iter(|| {
             rs.process_output(&in_l, &in_r, &mut out_l, &mut out_r);
+        });
+    });
+    group.bench_function("process_output_mono", |b| {
+        b.iter(|| {
+            rs.process_output_mono(&in_l, &mut out_l, &mut out_r);
         });
     });
     group.finish();

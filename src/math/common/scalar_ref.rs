@@ -433,6 +433,19 @@ pub unsafe fn convolve_stereo_fallback(
     (sum_l, sum_r)
 }
 
+/// Convolução Mono (usada no Resampler).
+pub unsafe fn convolve_mono_fallback(
+    coeffs: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> f32 {
+    let mut sum = 0.0f32;
+    for i in 0..taps {
+        sum += *coeffs.add(i) * *input.add(i);
+    }
+    sum
+}
+
 /// Fallback escalar para os 4 portões da LSTM.
 /// Cada portão controla um aspecto diferente: entrada, esquecimento, conteúdo e saída.
 /// Usado diretamente por `avx512.rs` e `avx2.rs` para operações não-vetorizadas.

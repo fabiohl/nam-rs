@@ -100,6 +100,8 @@ pub struct SimdMathConfig {
     pub apply_ramp_stereo: unsafe fn(&mut [f32], &mut [f32], f32, f32),
     /// Convolução estéreo (usada no resampler).
     pub convolve_stereo: unsafe fn(*const f32, *const f32, *const f32, usize) -> (f32, f32),
+    /// Convolução mono (usada no resampler).
+    pub convolve_mono: unsafe fn(*const f32, *const f32, usize) -> f32,
     /// Calcula o máximo da energia entre dois canais.
     pub compute_energy_stereo: unsafe fn(&[f32], &[f32]) -> f32,
     /// Calcula a energia de um bloco.
@@ -159,6 +161,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp: Avx512VnniBf16Math::apply_ramp,
                 apply_ramp_stereo: Avx512VnniBf16Math::apply_ramp_stereo,
                 convolve_stereo: Avx512VnniBf16Math::convolve_stereo,
+                convolve_mono: Avx512VnniBf16Math::convolve_mono,
                 compute_energy_stereo: Avx512VnniBf16Math::compute_energy_stereo,
                 compute_energy: Avx512VnniBf16Math::compute_energy,
                 compute_max_diff: Avx512VnniBf16Math::compute_max_diff,
@@ -186,6 +189,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp: Avx512VnniMath::apply_ramp,
                 apply_ramp_stereo: Avx512VnniMath::apply_ramp_stereo,
                 convolve_stereo: Avx512VnniMath::convolve_stereo,
+                convolve_mono: Avx512VnniMath::convolve_mono,
                 compute_energy_stereo: Avx512VnniMath::compute_energy_stereo,
                 compute_energy: Avx512VnniMath::compute_energy,
                 compute_max_diff: Avx512VnniMath::compute_max_diff,
@@ -213,6 +217,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp: Avx512Math::apply_ramp,
                 apply_ramp_stereo: Avx512Math::apply_ramp_stereo,
                 convolve_stereo: Avx512Math::convolve_stereo,
+                convolve_mono: Avx512Math::convolve_mono,
                 compute_energy_stereo: Avx512Math::compute_energy_stereo,
                 compute_energy: Avx512Math::compute_energy,
                 compute_max_diff: Avx512Math::compute_max_diff,
@@ -240,6 +245,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp: Avx2VnniMath::apply_ramp,
                 apply_ramp_stereo: Avx2VnniMath::apply_ramp_stereo,
                 convolve_stereo: Avx2VnniMath::convolve_stereo,
+                convolve_mono: Avx2VnniMath::convolve_mono,
                 compute_energy_stereo: Avx2VnniMath::compute_energy_stereo,
                 compute_energy: Avx2VnniMath::compute_energy,
                 compute_max_diff: Avx2VnniMath::compute_max_diff,
@@ -268,6 +274,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 apply_ramp: Avx2Math::apply_ramp,
                 apply_ramp_stereo: Avx2Math::apply_ramp_stereo,
                 convolve_stereo: Avx2Math::convolve_stereo,
+                convolve_mono: Avx2Math::convolve_mono,
                 compute_energy_stereo: Avx2Math::compute_energy_stereo,
                 compute_energy: Avx2Math::compute_energy,
                 compute_max_diff: Avx2Math::compute_max_diff,

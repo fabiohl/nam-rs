@@ -283,3 +283,25 @@ fn test_compute_max_diff_parity() {
         assert!((res_avx512 - expected).abs() < 1e-6);
     }
 }
+
+#[test]
+fn test_convolve_mono_parity() {
+    let coeffs: Vec<f32> = (0..32).map(|i| i as f32 * 0.01).collect();
+    let input: Vec<f32> = (0..32).map(|i| (32 - i) as f32 * 0.05).collect();
+
+    let expected = unsafe {
+        crate::math::common::convolve_mono_fallback(coeffs.as_ptr(), input.as_ptr(), 32)
+    };
+
+    let res_avx2 = unsafe {
+        Avx2Math::convolve_mono(coeffs.as_ptr(), input.as_ptr(), 32)
+    };
+    assert!((res_avx2 - expected).abs() < 1e-6);
+
+    if is_x86_feature_detected!("avx512f") {
+        let res_avx512 = unsafe {
+            Avx512Math::convolve_mono(coeffs.as_ptr(), input.as_ptr(), 32)
+        };
+        assert!((res_avx512 - expected).abs() < 1e-6);
+    }
+}
