@@ -846,7 +846,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 ### Sprint S9 — Refatoração do PipeWire host
 
-#### Tarefa S9.T01 — Quebrar `src/standalone/pw_host.rs` (1018 LoC) 🔥
+#### Tarefa S9.T01 — Quebrar `src/standalone/pw_host.rs` (1018 LoC) 🔥 [DONE]
 
 - **Onde:** `src/standalone/pw_host.rs` → `src/standalone/pw_host/`.
 - **Solução técnica:**
