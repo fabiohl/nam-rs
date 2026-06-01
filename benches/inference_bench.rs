@@ -532,8 +532,8 @@ fn bench_wavenet_long_run(c: &mut Criterion) {
     let input = generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_WaveNet");
-    // Execução prolongada (30 segundos) para garantir convergência estatística
-    group.measurement_time(std::time::Duration::from_secs(30));
+    // Execução prolongada (35 segundos) para garantir convergência estatística e evitar avisos de tempo limite
+    group.measurement_time(std::time::Duration::from_secs(35));
     group.sample_size(100);
     group.bench_function("Long_WaveNet_Standard_CH16_4096samp", |b| {
         b.iter(|| {
@@ -552,7 +552,7 @@ fn bench_lstm_long_run(c: &mut Criterion) {
     let input = generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_LSTM");
-    group.measurement_time(std::time::Duration::from_secs(30));
+    group.measurement_time(std::time::Duration::from_secs(35));
     group.sample_size(100);
     group.bench_function("Long_LSTM_2x16_4096samp", |b| {
         b.iter(|| {
@@ -572,7 +572,7 @@ fn bench_resampler_long_run(c: &mut Criterion) {
     let mut out_l = vec![0.0f32; size * 2];
     let mut out_r = vec![0.0f32; size * 2];
     let mut group = c.benchmark_group("Long_Run_Resampler");
-    group.measurement_time(std::time::Duration::from_secs(30));
+    group.measurement_time(std::time::Duration::from_secs(35));
     group.sample_size(100);
     group.bench_function("Long_Resampler_44100_to_48000_4096samp", |b| {
         b.iter(|| {

@@ -796,7 +796,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 
 ---
 
-## Épico 5 — Refatoração Arquitetural
+## Épico 5 — Refatoração Arquitetural [DONE]
 
 Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão e reduzir custo de manutenção.
 
@@ -1131,6 +1131,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 ## Épico 7 — Testes, Fuzzing e Validação Cruzada
 
 Objetivo: blindar contra regressões e estabelecer baseline empírico de paridade vs C++.
+Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
 
 ### Sprint S13 — Cobertura de testes & cross-impl validation
 
@@ -1144,6 +1145,7 @@ Objetivo: blindar contra regressões e estabelecer baseline empírico de paridad
   3. Test runner em `tests/cpp_parity.rs` carrega cada modelo, processa o mesmo input e compara MSE < 1e-4.
 - **Critérios de aceitação:** Todos os modelos referência (WaveNet Standard, Lite, Feather, Nano; LSTM 1×{8,12,16,24}, 2×{8,12,16}) batem com C++.
 - **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
+- A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
 
 #### Tarefa S13.T02 — Round-trip encode→decode em NAMB v2 ⚠️
 
