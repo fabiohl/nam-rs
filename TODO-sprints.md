@@ -562,7 +562,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Latência média de `process()` reduz ≥1µs em modelos pequenos.
 - **Especialista:** `implementador`.
 
-#### Tarefa S6.T05 — Decimar telemetria do CLAP processor ⚠️
+#### Tarefa S6.T05 — Decimar telemetria do CLAP processor ⚠️ [DONE]
 
 - **Onde:** `src/clap/processor.rs:691-701`.
 - **Problema:** `latency_hist.record()` chamado a cada `process()`. Em hosts com buffer pequeno (32 spl @ 96k = ~333µs), telemetria é dominante.

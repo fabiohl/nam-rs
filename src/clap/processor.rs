@@ -81,6 +81,10 @@ pub struct NamClapProcessor<'a> {
     cached_threshold_open_sq: f32,
     cached_threshold_close_sq: f32,
     gate_dirty: bool,
+    /// Decimação de telemetria: 1-em-16. Contador de ciclos desde a última medição.
+    /// ALGORITMO COMPARTILHADO: Mesma estratégia de decimação de `src/standalone/pw_host.rs` (frame_count & 0xF).
+    /// Toda alteração na lógica de decimação aqui deve ser refletida em pw_host.rs, e vice-versa.
+    cycles_since_telemetry: u32,
     /// Handle do host para chamadas na thread de áudio.
     host: HostAudioProcessorHandle<'a>,
 }
@@ -220,6 +224,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             cached_threshold_open_sq: 0.0,
             cached_threshold_close_sq: 0.0,
             gate_dirty: true,
+            cycles_since_telemetry: 0,
             host,
         })
     }
@@ -730,20 +735,28 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             }
         }
 
-        let elapsed_nanos = start_time.elapsed().as_nanos() as u64;
-        self.rt_status
-            .dsp_cycle_time
-            .store(elapsed_nanos, Ordering::Relaxed);
-        self.rt_status.latency_hist.record(elapsed_nanos);
+        // Decimação de Telemetria: Economiza ciclos medindo apenas 1 de cada 16 quadros.
+        // ALGORITMO COMPARTILHADO: Mesma lógica de decimação de src/standalone/pw_host.rs (linha ~978).
+        // Toda alteração aqui deve ensejar revisão também em pw_host.rs.
+        let should_measure = self.cycles_since_telemetry & 0xF == 0;
+        self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
 
-        // Se o processamento excedeu 85% do tempo limite (budget) do bloco, incrementa dsp_overloads
-        let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
-        let last_n_samples = self.rt_status.last_n_samples.load(Ordering::Relaxed);
-        if sample_rate > 0 && last_n_samples > 0 {
-            let budget_ns = (last_n_samples as u64 * 1_000_000_000) / sample_rate as u64;
-            let threshold_ns = (budget_ns * 85) / 100;
-            if elapsed_nanos > threshold_ns {
-                self.rt_status.dsp_overloads.fetch_add(1, Ordering::Relaxed);
+        if should_measure {
+            let elapsed_nanos = start_time.elapsed().as_nanos() as u64;
+            self.rt_status
+                .dsp_cycle_time
+                .store(elapsed_nanos, Ordering::Relaxed);
+            self.rt_status.latency_hist.record(elapsed_nanos);
+
+            // Se o processamento excedeu 85% do tempo limite (budget) do bloco, incrementa dsp_overloads
+            let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+            let last_n_samples = self.rt_status.last_n_samples.load(Ordering::Relaxed);
+            if sample_rate > 0 && last_n_samples > 0 {
+                let budget_ns = (last_n_samples as u64 * 1_000_000_000) / sample_rate as u64;
+                let threshold_ns = (budget_ns * 85) / 100;
+                if elapsed_nanos > threshold_ns {
+                    self.rt_status.dsp_overloads.fetch_add(1, Ordering::Relaxed);
+                }
             }
         }
 

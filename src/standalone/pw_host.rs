@@ -975,6 +975,8 @@ fn process_dsp_buffer(
                     };
 
                     // 6. Decimação de Telemetria: Economiza ciclos só medindo tempo em 1 de cada 16 quadros.
+                    // ALGORITMO COMPARTILHADO: Mesma lógica de decimação de `src/clap/processor.rs` (cycles_since_telemetry).
+                    // Toda alteração aqui deve ensejar revisão também em processor.rs (NamClapProcessor).
                     let should_measure = (*frame_count & 0xF) == 0;
                     *frame_count = frame_count.wrapping_add(1);
 
