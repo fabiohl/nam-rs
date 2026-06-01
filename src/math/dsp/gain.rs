@@ -50,6 +50,37 @@ pub unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32,
     crate::math::common::dispatch_simd!(apply_ramp_stereo(left, right, start, step))
 }
 
+/// Aplica rampa linear de ganho em um buffer mono via despacho SIMD.
+///
+/// # Safety
+/// O buffer deve ser válido.
+pub unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
+    crate::math::common::dispatch_simd!(apply_ramp(data, start, step))
+}
+
+/// Aplica o multiplicador linear de ganho sobre o buffer (safe wrapper).
+///
+/// Aborta rápido se `gain_linear` ~= 1.0 (fast-path bypass).
+/// Direciona para o backend SIMD via v-table.
+pub fn apply_gain_simd(buffer: &mut [f32], gain_linear: f32) {
+    if (gain_linear - 1.0).abs() < 1e-6 {
+        return;
+    }
+    unsafe { apply_gain(buffer, gain_linear) };
+}
+
+/// Aplica uma rampa linear de ganho sobre o buffer (safe wrapper).
+///
+/// Se o incremento for desprezível, aplica ganho constante.
+/// Direciona para o backend SIMD via v-table.
+pub fn apply_ramp_simd(buffer: &mut [f32], start: f32, step: f32) {
+    if step.abs() < 1e-9 {
+        apply_gain_simd(buffer, start);
+        return;
+    }
+    unsafe { apply_ramp(buffer, start, step) };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // Kernels AVX2
 // ═══════════════════════════════════════════════════════════════
@@ -172,6 +203,36 @@ pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start:
         *left.get_unchecked_mut(i) *= g;
         *right.get_unchecked_mut(i) *= g;
         g += step;
+        i += 1;
+    }
+}
+
+/// Aplica rampa linear de ganho em um buffer mono via AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {
+    let len = buffer.len();
+    let mut i = 0;
+    let mut current_ramp = _mm256_set_ps(
+        start + 7.0 * step,
+        start + 6.0 * step,
+        start + 5.0 * step,
+        start + 4.0 * step,
+        start + 3.0 * step,
+        start + 2.0 * step,
+        start + 1.0 * step,
+        start,
+    );
+    let v_step_8 = _mm256_set1_ps(8.0 * step);
+    while i + 8 <= len {
+        let ptr = buffer.as_mut_ptr().add(i);
+        _mm256_storeu_ps(ptr, _mm256_mul_ps(_mm256_loadu_ps(ptr), current_ramp));
+        current_ramp = _mm256_add_ps(current_ramp, v_step_8);
+        i += 8;
+    }
+    let mut m = start + (i as f32) * step;
+    while i < len {
+        *buffer.get_unchecked_mut(i) *= m;
+        m += step;
         i += 1;
     }
 }
@@ -315,3 +376,45 @@ pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], star
         i += 1;
     }
 }
+
+/// Aplica rampa linear de ganho em um buffer mono via AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn apply_ramp_avx512(buffer: &mut [f32], start: f32, step: f32) {
+    let len = buffer.len();
+    let mut i = 0;
+    let mut current_ramp = _mm512_set_ps(
+        start + 15.0 * step,
+        start + 14.0 * step,
+        start + 13.0 * step,
+        start + 12.0 * step,
+        start + 11.0 * step,
+        start + 10.0 * step,
+        start + 9.0 * step,
+        start + 8.0 * step,
+        start + 7.0 * step,
+        start + 6.0 * step,
+        start + 5.0 * step,
+        start + 4.0 * step,
+        start + 3.0 * step,
+        start + 2.0 * step,
+        start + 1.0 * step,
+        start,
+    );
+    let v_step_16 = _mm512_set1_ps(16.0 * step);
+    while i + 16 <= len {
+        let ptr = buffer.as_mut_ptr().add(i);
+        _mm512_storeu_ps(ptr, _mm512_mul_ps(_mm512_loadu_ps(ptr), current_ramp));
+        current_ramp = _mm512_add_ps(current_ramp, v_step_16);
+        i += 16;
+    }
+    let mut m = start + (i as f32) * step;
+    while i < len {
+        *buffer.get_unchecked_mut(i) *= m;
+        m += step;
+        i += 1;
+    }
+}
+
+#[cfg(test)]
+#[path = "gain_test.rs"]
+mod gain_test;

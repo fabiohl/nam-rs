@@ -252,7 +252,7 @@ impl DynamicHysteresis {
                 buffer.fill(0.0);
             } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
                 // Aplica um volume constante (ex: 50%).
-                crate::dsp::gain::apply_gain_simd(buffer, self.current_multiplier);
+                crate::math::dsp::gain::apply_gain_simd(buffer, self.current_multiplier);
             }
             // Se o volume for 1.0 (100%), não precisamos fazer nada.
             return;
@@ -264,14 +264,14 @@ impl DynamicHysteresis {
         if self.ramp_samples >= n_samples {
             // A mudança suave de volume vai durar o bloco inteiro.
             if (start_mult - end_mult).abs() < 1e-6 {
-                crate::dsp::gain::apply_gain_simd(buffer, end_mult);
+                crate::math::dsp::gain::apply_gain_simd(buffer, end_mult);
             } else {
                 // Calcula o "degrau" de volume para cada amostra de som.
                 // NOTA: Se n_samples = 1, step = (end - start) / 1.0.
                 // O valor resultante será aplicado à única amostra, o que é o comportamento
                 // esperado para mudanças instantâneas (sample-accurate) no CLAP.
                 let step = (end_mult - start_mult) / (n_samples as f32);
-                crate::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
+                crate::math::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
             }
         } else {
             // Caso especial: a mudança de volume termina antes do fim do bloco.
@@ -279,17 +279,17 @@ impl DynamicHysteresis {
             let (ramp_part, const_part) = buffer.split_at_mut(self.ramp_samples);
 
             if (start_mult - end_mult).abs() < 1e-6 {
-                crate::dsp::gain::apply_gain_simd(ramp_part, end_mult);
+                crate::math::dsp::gain::apply_gain_simd(ramp_part, end_mult);
             } else {
                 let step = (end_mult - start_mult) / (self.ramp_samples as f32);
-                crate::dsp::gain::apply_ramp_simd(ramp_part, start_mult, step);
+                crate::math::dsp::gain::apply_ramp_simd(ramp_part, start_mult, step);
             }
 
             // Preenche o restante do bloco com o volume final estabilizado.
             if end_mult == 0.0 {
                 const_part.fill(0.0);
             } else if (end_mult - 1.0).abs() > 1e-6 {
-                crate::dsp::gain::apply_gain_simd(const_part, end_mult);
+                crate::math::dsp::gain::apply_gain_simd(const_part, end_mult);
             }
         }
     }

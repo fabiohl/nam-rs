@@ -346,6 +346,11 @@ impl SimdMath for Avx512Math {
         unsafe { super::super::dsp::gain::apply_gain_avx512(data, gain) }
     }
 
+    #[inline(always)]
+    unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
+        unsafe { super::super::dsp::gain::apply_ramp_avx512(data, start, step) }
+    }
+
     // Head Sum: Uma operação final usada no modelo WaveNet para gerar o som.
     #[inline(always)]
     unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
@@ -691,6 +696,11 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[inline(always)]
+    unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
+        super::super::dsp::gain::apply_ramp_avx512(data, start, step)
+    }
+
+    #[inline(always)]
     unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
         head1: &[f32],
         head2: &[f32],
@@ -1013,6 +1023,11 @@ impl SimdMath for Avx512VnniBf16Math {
     #[inline(always)]
     unsafe fn apply_gain(data: &mut [f32], gain: f32) {
         super::super::dsp::gain::apply_gain_avx512(data, gain)
+    }
+
+    #[inline(always)]
+    unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
+        Avx512Math::apply_ramp(data, start, step)
     }
 
     #[inline(always)]

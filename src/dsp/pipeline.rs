@@ -417,11 +417,11 @@ pub(crate) fn apply_input_stage(
 
     // 3. AJUSTE DE VOLUME DE ENTRADA (GAIN)
     // Aplica o ganho (volume) inicial definido pelo usuário.
-    crate::dsp::gain::apply_gain_simd(&mut samples_l[..n_samples], ctx.input_gain_mult);
+    crate::math::dsp::gain::apply_gain_simd(&mut samples_l[..n_samples], ctx.input_gain_mult);
 
     // Só ajustamos o lado direito se o som NÃO for mono (para economizar processamento).
     if !*ctx.process_mono {
-        crate::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], ctx.input_gain_mult);
+        crate::math::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], ctx.input_gain_mult);
     }
 
     ctx.silence_hysteresis.state()

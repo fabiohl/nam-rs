@@ -335,6 +335,12 @@ pub trait SimdMath {
     /// O buffer deve ser válido.
     unsafe fn apply_gain(data: &mut [f32], gain: f32);
 
+    /// Aplica rampa linear de ganho em um buffer mono.
+    ///
+    /// # Safety
+    /// O buffer deve ser válido.
+    unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32);
+
     /// Aplica rampa linear de ganho em estéreo.
     ///
     /// # Safety

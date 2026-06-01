@@ -94,6 +94,8 @@ pub struct SimdMathConfig {
     pub apply_gain_stereo: unsafe fn(&mut [f32], &mut [f32], f32),
     /// Aplica ganho constante em um buffer mono.
     pub apply_gain: unsafe fn(&mut [f32], f32),
+    /// Aplica rampa linear de ganho em um buffer mono.
+    pub apply_ramp: unsafe fn(&mut [f32], f32, f32),
     /// Aplica rampa linear de ganho em estéreo.
     pub apply_ramp_stereo: unsafe fn(&mut [f32], &mut [f32], f32, f32),
     /// Convolução estéreo (usada no resampler).
@@ -154,6 +156,7 @@ fn detect_best_simd() -> SimdMathConfig {
                     Avx512VnniBf16Math::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx512VnniBf16Math::apply_gain_stereo,
                 apply_gain: Avx512VnniBf16Math::apply_gain,
+                apply_ramp: Avx512VnniBf16Math::apply_ramp,
                 apply_ramp_stereo: Avx512VnniBf16Math::apply_ramp_stereo,
                 convolve_stereo: Avx512VnniBf16Math::convolve_stereo,
                 compute_energy_stereo: Avx512VnniBf16Math::compute_energy_stereo,
@@ -180,6 +183,7 @@ fn detect_best_simd() -> SimdMathConfig {
                     Avx512VnniMath::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx512VnniMath::apply_gain_stereo,
                 apply_gain: Avx512VnniMath::apply_gain,
+                apply_ramp: Avx512VnniMath::apply_ramp,
                 apply_ramp_stereo: Avx512VnniMath::apply_ramp_stereo,
                 convolve_stereo: Avx512VnniMath::convolve_stereo,
                 compute_energy_stereo: Avx512VnniMath::compute_energy_stereo,
@@ -206,6 +210,7 @@ fn detect_best_simd() -> SimdMathConfig {
                     Avx512Math::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx512Math::apply_gain_stereo,
                 apply_gain: Avx512Math::apply_gain,
+                apply_ramp: Avx512Math::apply_ramp,
                 apply_ramp_stereo: Avx512Math::apply_ramp_stereo,
                 convolve_stereo: Avx512Math::convolve_stereo,
                 compute_energy_stereo: Avx512Math::compute_energy_stereo,
@@ -232,6 +237,7 @@ fn detect_best_simd() -> SimdMathConfig {
                     Avx2VnniMath::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx2VnniMath::apply_gain_stereo,
                 apply_gain: Avx2VnniMath::apply_gain,
+                apply_ramp: Avx2VnniMath::apply_ramp,
                 apply_ramp_stereo: Avx2VnniMath::apply_ramp_stereo,
                 convolve_stereo: Avx2VnniMath::convolve_stereo,
                 compute_energy_stereo: Avx2VnniMath::compute_energy_stereo,
@@ -259,6 +265,7 @@ fn detect_best_simd() -> SimdMathConfig {
                     Avx2Math::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx2Math::apply_gain_stereo,
                 apply_gain: Avx2Math::apply_gain,
+                apply_ramp: Avx2Math::apply_ramp,
                 apply_ramp_stereo: Avx2Math::apply_ramp_stereo,
                 convolve_stereo: Avx2Math::convolve_stereo,
                 compute_energy_stereo: Avx2Math::compute_energy_stereo,

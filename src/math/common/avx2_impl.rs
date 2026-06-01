@@ -384,6 +384,11 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
+        unsafe { super::super::dsp::gain::apply_ramp_avx2(data, start, step) }
+    }
+
+    #[inline(always)]
     unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
         head1: &[f32],
         head2: &[f32],
