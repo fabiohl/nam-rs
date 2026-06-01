@@ -945,7 +945,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 
 > Sprint **acrescentada** na revisão de 2026-06-01: identificados 5 hotspots > 600 LoC em `src/math/`, `src/loader/` e `src/models/` que não constavam da auditoria original (auditoria focou em `clap/`, `standalone/`, `dsp/pipeline`). Estes módulos são **pré-requisito lógico** para os Épicos 9 (Quantização — S15) e 13 (AMX/NEON — S23/S24): adicionar kernels INT8/AMX em arquivos já monolíticos compromete revisão e merge.
 
-#### Tarefa S10b.T01 — Quebrar `src/math/common/avx512_impl.rs` (1141 LoC) ⚠️
+#### Tarefa S10b.T01 — Quebrar `src/math/common/avx512_impl.rs` (1141 LoC) ⚠️ [DONE]
 
 - **Onde:** `src/math/common/avx512_impl.rs` → `src/math/common/avx512/`.
 - **Problema:** Maior arquivo de math (1141 LoC), agrega kernels heterogêneos: GEMV, ativações Padé (tanh/sigmoid de S7.T09), conversões BF16, helpers de redução. Adicionar AMX (S23.T02) ou INT8 VNNI (S15.T01) sem split torna o arquivo > 1800 LoC.

@@ -9,13 +9,13 @@
 //! # Componentes
 //! - `traits`: A trait `SimdMath` que define a interface de todos os kernels.
 //! - `dispatch`: Mecanismo de seleção dinâmica de arquitetura (AVX2, AVX-512, etc.).
-//! - `avx2_impl` / `avx512_impl`: Implementações concretas dos kernels para x86-64.
+//! - `avx2_impl` / `avx512`: Implementações concretas dos kernels para x86-64.
 //! - `scalar_ref`: Implementações de fallback para compatibilidade e testes.
 //! - `aligned`: Estruturas para garantir alinhamento de memória (RT-Safety).
 
 pub mod aligned;
 pub mod avx2_impl;
-pub mod avx512_impl;
+pub mod avx512;
 pub mod dispatch;
 pub mod ops;
 pub mod scalar_ref;
@@ -27,7 +27,7 @@ pub mod utility;
 
 pub use aligned::AlignedVec;
 pub use avx2_impl::{Avx2Math, Avx2VnniMath};
-pub use avx512_impl::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
+pub use avx512::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
 pub use ops::*;
 pub use scalar_ref::*;
