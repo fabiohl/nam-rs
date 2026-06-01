@@ -595,7 +595,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Esforço:** 30 min.
 - **Especialista:** `implementador`.
 
-#### Tarefa S7.R02 — Hoistar `is_bf16` para fora do loop em `process_sample_scalar` e `process_scalar` 🔥
+#### Tarefa S7.R02 — Hoistar `is_bf16` para fora do loop em `process_sample_scalar` e `process_scalar` 🔥 [DONE]
 
 - **Onde:** `src/models/lstm/layer.rs:379` (`process_sample_scalar`); `:529` (`LstmModel1::process_scalar`); `:642` (`LstmModel2::process_scalar`).
 - **Problema:** `SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16` é avaliado **por amostra** — para um modelo LSTM 2×16 processando 2048 amostras de prewarm, isso representa 2048 leituras atômicas de `LazyLock`. A `LazyLock` é segura, mas tem custo de barreira de memória `Acquire` por chamada. O resultado nunca muda durante a vida do processo. Regressão de +5.2% em `Prewarm_LSTM_2x16`.

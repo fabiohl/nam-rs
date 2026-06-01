@@ -375,9 +375,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// Esta é a versão 'manual' e lenta, usada apenas como referência para garantir
     /// que as versões ultra-rápidas acima não tenham erros matemáticos.
     #[inline(always)]
-    pub fn process_sample_scalar(&mut self, input: &[f32]) {
-        let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
-            == crate::math::common::InstructionSet::Avx512VnniBf16;
+    pub fn process_sample_scalar(&mut self, input: &[f32], is_bf16: bool) {
         let ih = I + H;
         let h = H;
         self.state[..I].copy_from_slice(&input[..I]);
@@ -529,7 +527,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
             == crate::math::common::InstructionSet::Avx512VnniBf16;
         for i in 0..input.len() {
-            self.layer.process_sample_scalar(&[input[i]]);
+            self.layer.process_sample_scalar(&[input[i]], is_bf16);
             let hidden = self.layer.get_hidden_state();
             let mut dot = 0.0;
             for (j, &h_val) in hidden.iter().enumerate().take(H) {
@@ -642,9 +640,9 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
             == crate::math::common::InstructionSet::Avx512VnniBf16;
         for i in 0..input.len() {
-            self.layer1.process_sample_scalar(&[input[i]]);
+            self.layer1.process_sample_scalar(&[input[i]], is_bf16);
             self.layer2
-                .process_sample_scalar(self.layer1.get_hidden_state());
+                .process_sample_scalar(self.layer1.get_hidden_state(), is_bf16);
             let hidden2 = self.layer2.get_hidden_state();
             let mut dot = 0.0;
             for (j, &h_val) in hidden2.iter().enumerate().take(H) {
