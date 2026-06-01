@@ -49,6 +49,10 @@ proptest = "1.11.0"
 name = "inference_bench"
 harness = false
 
+[[bench]]
+name = "dot_4x_bench"
+harness = false
+
 [features]
 default = ["standalone"]
 standalone = ["dep:pipewire"]

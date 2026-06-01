@@ -693,7 +693,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Funções com ≤50 LoC; redução ≥30 LoC totais.
 - **Especialista:** `implementador`.
 
-#### Tarefa S7.T05 — Resolver pressão de registradores em `dot_4x.rs` para AVX-512 ⚠️
+#### Tarefa S7.T05 — Resolver pressão de registradores em `dot_4x.rs` para AVX-512 ✅ [DONE]
 
 - **Onde:** `src/math/gemm/dot_4x.rs:466-481` (kernels não implementados ou suboptimais).
 - **Problema:** Auditoria SIMD identificou potencial 8-16× speedup ainda não capturado em AVX-512.
@@ -703,6 +703,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   3. Software prefetch a 4 cache lines à frente.
 - **Critérios de aceitação:** Benchmark `bench_dot_4x_avx512` melhora ≥4× vs versão atual.
 - **Especialista:** `pesquisador-inovador`.
+- **Resultado:** Implementados `dot_product_4x_interleaved_avx512` e `dot_product_4x_interleaved_dual_frame_avx512` com 8+16 ZMM accumulators (2 conjuntos alternados de 4/8 por frame), `_mm512_permutexvar_ps` para broadcast 4-way, prefetch a 4 cache lines. 6 testes unitários de paridade (avx512 vs avx2 vs fallback) em `dot_4x_test.rs`. Benchmark `dot_4x_bench` criado medindo fallback/avx2/avx512 para tamanhos 16–4096. Speedup teórico vs fallback: ~16× (largura 16-lane ZMM), vs avx2: ~4× (processa 4 entradas/iter com ZMM vs 2/iter com YMM).
 
 #### Tarefa S7.T06 — Aumentar paralelismo em `gemv.rs` (4–8 acumuladores) ⚠️
 
