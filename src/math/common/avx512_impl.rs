@@ -340,11 +340,7 @@ impl SimdMath for Avx512Math {
     }
 
     #[inline(always)]
-    unsafe fn convolve_mono(
-        coeffs: *const f32,
-        input: *const f32,
-        taps: usize,
-    ) -> f32 {
+    unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
         unsafe { super::super::dsp::stereo::convolve_mono_avx512(coeffs, input, taps) }
     }
 
@@ -713,11 +709,7 @@ impl SimdMath for Avx512VnniMath {
     }
 
     #[inline(always)]
-    unsafe fn convolve_mono(
-        coeffs: *const f32,
-        input: *const f32,
-        taps: usize,
-    ) -> f32 {
+    unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
         unsafe { Avx512Math::convolve_mono(coeffs, input, taps) }
     }
     #[inline(always)]
@@ -1063,11 +1055,7 @@ impl SimdMath for Avx512VnniBf16Math {
     }
 
     #[inline(always)]
-    unsafe fn convolve_mono(
-        coeffs: *const f32,
-        input: *const f32,
-        taps: usize,
-    ) -> f32 {
+    unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
         unsafe { Avx512Math::convolve_mono(coeffs, input, taps) }
     }
     #[inline(always)]

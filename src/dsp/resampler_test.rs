@@ -351,8 +351,20 @@ fn test_resampler_mono_equivalence() {
 
         assert_eq!(n_stereo, n_mono);
         for i in 0..n_stereo {
-            assert!((out_l_stereo[i] - out_l_mono[i]).abs() < 1e-4, "Mismatch L at index {}: stereo={}, mono={}", i, out_l_stereo[i], out_l_mono[i]);
-            assert!((out_r_stereo[i] - out_r_mono[i]).abs() < 1e-4, "Mismatch R at index {}: stereo={}, mono={}", i, out_r_stereo[i], out_r_mono[i]);
+            assert!(
+                (out_l_stereo[i] - out_l_mono[i]).abs() < 1e-4,
+                "Mismatch L at index {}: stereo={}, mono={}",
+                i,
+                out_l_stereo[i],
+                out_l_mono[i]
+            );
+            assert!(
+                (out_r_stereo[i] - out_r_mono[i]).abs() < 1e-4,
+                "Mismatch R at index {}: stereo={}, mono={}",
+                i,
+                out_r_stereo[i],
+                out_r_mono[i]
+            );
             assert_eq!(out_l_mono[i], out_r_mono[i]);
         }
 
@@ -366,15 +378,32 @@ fn test_resampler_mono_equivalence() {
         let mut out_final_l_mono = vec![0.0f32; chunk * 2];
         let mut out_final_r_mono = vec![0.0f32; chunk * 2];
 
-        let n_final_stereo = rs_out_stereo.process_output(in_mid, in_mid, &mut out_final_l_stereo, &mut out_final_r_stereo);
-        let n_final_mono = rs_out_mono.process_output_mono(in_mid, &mut out_final_l_mono, &mut out_final_r_mono);
+        let n_final_stereo = rs_out_stereo.process_output(
+            in_mid,
+            in_mid,
+            &mut out_final_l_stereo,
+            &mut out_final_r_stereo,
+        );
+        let n_final_mono =
+            rs_out_mono.process_output_mono(in_mid, &mut out_final_l_mono, &mut out_final_r_mono);
 
         assert_eq!(n_final_stereo, n_final_mono);
         for i in 0..n_final_stereo {
-            assert!((out_final_l_stereo[i] - out_final_l_mono[i]).abs() < 1e-4, "Mismatch final L at index {}: stereo={}, mono={}", i, out_final_l_stereo[i], out_final_l_mono[i]);
-            assert!((out_final_r_stereo[i] - out_final_r_mono[i]).abs() < 1e-4, "Mismatch final R at index {}: stereo={}, mono={}", i, out_final_r_stereo[i], out_final_r_mono[i]);
+            assert!(
+                (out_final_l_stereo[i] - out_final_l_mono[i]).abs() < 1e-4,
+                "Mismatch final L at index {}: stereo={}, mono={}",
+                i,
+                out_final_l_stereo[i],
+                out_final_l_mono[i]
+            );
+            assert!(
+                (out_final_r_stereo[i] - out_final_r_mono[i]).abs() < 1e-4,
+                "Mismatch final R at index {}: stereo={}, mono={}",
+                i,
+                out_final_r_stereo[i],
+                out_final_r_mono[i]
+            );
             assert_eq!(out_final_l_mono[i], out_final_r_mono[i]);
         }
     }
 }
-

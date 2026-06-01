@@ -163,14 +163,9 @@ pub unsafe fn convolve_stereo(
 /// # Safety
 /// `coeffs` e `input` devem ser ponteiros válidos para pelo menos `taps` elementos.
 /// `coeffs` deve estar alinhado conforme o registrador SIMD.
-pub unsafe fn convolve_mono(
-    coeffs: *const f32,
-    input: *const f32,
-    taps: usize,
-) -> f32 {
+pub unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     crate::math::common::dispatch_simd!(convolve_mono(coeffs, input, taps))
 }
-
 
 // ═══════════════════════════════════════════════════════════════
 // Kernels AVX2
@@ -381,11 +376,7 @@ pub unsafe fn convolve_stereo_dual_avx2(
 /// Convolução Mono AVX2.
 /// Carrega coeficientes e aplica a um único canal.
 #[target_feature(enable = "avx2,fma")]
-pub unsafe fn convolve_mono_avx2(
-    coeffs: *const f32,
-    input: *const f32,
-    taps: usize,
-) -> f32 {
+pub unsafe fn convolve_mono_avx2(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     unsafe {
         let mut sum0 = _mm256_setzero_ps();
         let mut sum1 = _mm256_setzero_ps();
@@ -430,7 +421,6 @@ pub unsafe fn convolve_mono_avx2(
         out
     }
 }
-
 
 /// Calcula o máximo da energia entre dois canais (Mean Square) via AVX2.
 /// Funde as duas passagens em uma para economizar banda de memória.
@@ -623,11 +613,7 @@ pub unsafe fn convolve_stereo_dual_avx512(
 /// Convolução Mono AVX-512.
 /// Carrega coeficientes e aplica a um único canal.
 #[target_feature(enable = "avx512f")]
-pub unsafe fn convolve_mono_avx512(
-    coeffs: *const f32,
-    input: *const f32,
-    taps: usize,
-) -> f32 {
+pub unsafe fn convolve_mono_avx512(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     unsafe {
         let mut sum0 = _mm512_setzero_ps();
         let mut sum1 = _mm512_setzero_ps();
@@ -657,7 +643,6 @@ pub unsafe fn convolve_mono_avx512(
         out
     }
 }
-
 
 /// Calcula o máximo da energia entre dois canais (Mean Square) via AVX-512.
 /// Funde as duas passagens em uma para economizar banda de memória.

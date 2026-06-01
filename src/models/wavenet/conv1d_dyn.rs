@@ -95,7 +95,12 @@ impl Conv1dDyn {
         // O WaveNet usa 'Dilatação' para olhar para trás no tempo.
         // Em vai de olhar apenas para o vizinho imediato, ele pula amostras para
         // conseguir 'ouvir' padrões de longa duração (como o ritmo de uma guitarra).
-        for (k, (tap_f0, tap_f1)) in tap_ptrs_f0.iter_mut().zip(tap_ptrs_f1.iter_mut()).enumerate().take(k_limit) {
+        for (k, (tap_f0, tap_f1)) in tap_ptrs_f0
+            .iter_mut()
+            .zip(tap_ptrs_f1.iter_mut())
+            .enumerate()
+            .take(k_limit)
+        {
             // Calculamos a distância exata no passado baseada na dilatação e no tamanho do kernel.
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_start_f0 = ((idx_f0 as isize) + offset) as usize * self.in_ch;
@@ -539,7 +544,12 @@ impl Conv1dDyn {
         let mut tap_ptrs_f1 = [core::ptr::null::<u16>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
 
-        for (k, (tap_f0, tap_f1)) in tap_ptrs_f0.iter_mut().zip(tap_ptrs_f1.iter_mut()).enumerate().take(k_limit) {
+        for (k, (tap_f0, tap_f1)) in tap_ptrs_f0
+            .iter_mut()
+            .zip(tap_ptrs_f1.iter_mut())
+            .enumerate()
+            .take(k_limit)
+        {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (self.kernel as isize));
             let in_start_f0 = ((idx_f0 as isize) + offset) as usize * self.in_ch;
             let in_start_f1 = ((idx_f1 as isize) + offset) as usize * self.in_ch;

@@ -460,11 +460,7 @@ pub unsafe fn convolve_stereo_dual_fallback(
 }
 
 /// Convolução Mono (usada no Resampler).
-pub unsafe fn convolve_mono_fallback(
-    coeffs: *const f32,
-    input: *const f32,
-    taps: usize,
-) -> f32 {
+pub unsafe fn convolve_mono_fallback(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     let mut sum = 0.0f32;
     for i in 0..taps {
         sum += *coeffs.add(i) * *input.add(i);

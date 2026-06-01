@@ -428,6 +428,36 @@ pub(crate) fn apply_input_stage(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// Helper unificado para processamento mono/stereo de modelos neurais.
+///
+/// Processa o modelo do canal L (_always_) e decide se o canal R é cópia mono
+/// ou processamento independente via modelo R ativo.
+#[inline(always)]
+fn run_stereo_or_mono(
+    active_model_l: &mut Option<Box<DynamicModel>>,
+    active_model_r: &mut Option<Box<DynamicModel>>,
+    model_in_l: &[f32],
+    model_in_r: &[f32],
+    m_out_l: &mut [f32],
+    m_out_r: &mut [f32],
+    process_mono: bool,
+) {
+    if let Some(model_l) = active_model_l {
+        model_l.process(model_in_l, m_out_l);
+    } else {
+        m_out_l.copy_from_slice(model_in_l);
+    }
+
+    if process_mono {
+        m_out_r.copy_from_slice(m_out_l);
+    } else if let Some(model_r) = active_model_r {
+        model_r.process(model_in_r, m_out_r);
+    } else {
+        m_out_r.copy_from_slice(model_in_r);
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Estágio 2: Inferência Neural e Resampling.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
@@ -457,23 +487,15 @@ pub(crate) fn run_inference(
         let m_out_l = &mut resamp_out_l[..n];
         let m_out_r = &mut resamp_out_r[..n];
 
-        // Processa o som através do "Cérebro" (Modelo Neural) do lado esquerdo.
-        if let Some(model_l) = ctx.active_model_l {
-            model_l.process(model_in_l, m_out_l);
-        } else {
-            m_out_l.copy_from_slice(model_in_l);
-        }
-
-        // No modo mono, apenas copiamos o resultado do lado esquerdo para o direito.
-        if *ctx.process_mono {
-            m_out_r.copy_from_slice(m_out_l);
-        } else if let Some(model_r) = ctx.active_model_r {
-            // Se for estéreo, processamos o lado direito de forma independente.
-            model_r.process(model_in_r, m_out_r);
-        } else {
-            // Caminho Limpo para o lado direito.
-            m_out_r.copy_from_slice(model_in_r);
-        }
+        run_stereo_or_mono(
+            ctx.active_model_l,
+            ctx.active_model_r,
+            model_in_l,
+            model_in_r,
+            m_out_l,
+            m_out_r,
+            *ctx.process_mono,
+        );
 
         n
     } else {
@@ -500,21 +522,16 @@ pub(crate) fn run_inference(
         let m_out_l = &mut model_out_l[..n_48k];
         let m_out_r = &mut model_out_r[..n_48k];
 
-        // 2. Aplica a simulação do amplificador (Modelo Neural) lado esquerdo.
-        if let Some(model_l) = ctx.active_model_l {
-            model_l.process(model_in_l, m_out_l);
-        } else {
-            m_out_l.copy_from_slice(model_in_l);
-        }
-
-        // Processa o lado direito (Stereo ou cópia do Mono).
-        if *ctx.process_mono {
-            m_out_r.copy_from_slice(m_out_l);
-        } else if let Some(model_r) = ctx.active_model_r {
-            model_r.process(model_in_r, m_out_r);
-        } else {
-            m_out_r.copy_from_slice(model_in_r);
-        }
+        // 2. Aplica a simulação do amplificador (Modelo Neural).
+        run_stereo_or_mono(
+            ctx.active_model_l,
+            ctx.active_model_r,
+            model_in_l,
+            model_in_r,
+            m_out_l,
+            m_out_r,
+            *ctx.process_mono,
+        );
 
         // 3. Traduz o som de volta para a frequência original da sua placa de som.
         if *ctx.process_mono {

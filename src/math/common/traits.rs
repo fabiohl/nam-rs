@@ -332,11 +332,7 @@ pub trait SimdMath {
     /// # Safety
     /// `coeffs` e `input` devem ser ponteiros válidos para pelo menos `taps` elementos.
     /// `coeffs` deve estar alinhado conforme o registrador SIMD.
-    unsafe fn convolve_mono(
-        coeffs: *const f32,
-        input: *const f32,
-        taps: usize,
-    ) -> f32;
+    unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32;
 
     /// Aplica ganho e detecta clipping em estéreo em uma única passagem.
     /// Retorna `true` se qualquer amostra resultante possuir `|x| > 1.0`.

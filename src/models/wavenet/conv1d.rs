@@ -233,7 +233,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Carrega os 4 acumuladores temporários a partir do frame de saída atual.
             unsafe {
                 r0 = *out_frame.get_unchecked(out_c);
-                if OUT % 4 == 0 || out_c + 3 < OUT {
+                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
                     r1 = *out_frame.get_unchecked(out_c + 1);
                     r2 = *out_frame.get_unchecked(out_c + 2);
                     r3 = *out_frame.get_unchecked(out_c + 3);
@@ -276,7 +276,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             // Grava de volta os 4 acumuladores processados no buffer de saída in-place.
             unsafe {
                 *out_frame.get_unchecked_mut(out_c) = r0;
-                if OUT % 4 == 0 || out_c + 3 < OUT {
+                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
                     *out_frame.get_unchecked_mut(out_c + 1) = r1;
                     *out_frame.get_unchecked_mut(out_c + 2) = r2;
                     *out_frame.get_unchecked_mut(out_c + 3) = r3;
@@ -520,7 +520,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 // Carregamos o que já calculamos até agora (bias + mixin).
                 r0_f0 = *out_frame_f0.get_unchecked(out_c);
                 r0_f1 = *out_frame_f1.get_unchecked(out_c);
-                if OUT % 4 == 0 || out_c + 3 < OUT {
+                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
                     r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
                     r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
                     r3_f0 = *out_frame_f0.get_unchecked(out_c + 3);
@@ -595,7 +595,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 // Devolvemos o resultado final para o buffer de saída.
                 *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
                 *out_frame_f1.get_unchecked_mut(out_c) = r0_f1;
-                if OUT % 4 == 0 || out_c + 3 < OUT {
+                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
                     *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
                     *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
                     *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;

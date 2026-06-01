@@ -683,7 +683,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Throughput de resampling ≥15% maior.
 - **Especialista:** `pesquisador-inovador`.
 
-#### Tarefa S7.T04 — Refatorar duplicação massiva em `pipeline.rs` mono/stereo paths ⚠️
+#### Tarefa S7.T04 — Refatorar duplicação massiva em `pipeline.rs` mono/stereo paths ⚠️ [DONE]
 
 - **Onde:** `src/dsp/pipeline.rs:317-321, 339-348, 372-377, 356-365` (4 blocos quase idênticos).
 - **Problema:** Padrão `if let Some(model_l) ... else copy_from_slice` duplicado 4× com pequena variação de mono/stereo.
