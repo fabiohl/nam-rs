@@ -1081,7 +1081,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Critérios de aceitação:** Projeto salvo em Linux abre em Linux com path diferente sem erros.
 - **Especialista:** `implementador`.
 
-#### Tarefa S11.T04 — Remover `PARAM_ACTIVE_MODEL` da página Remote Controls 💡
+#### Tarefa S11.T04 — Remover `PARAM_ACTIVE_MODEL` da página Remote Controls 💡 [DONE]
 
 - **Onde:** `src/clap/extensions/remote_controls.rs:28`.
 - **Problema:** Inclui param READONLY em página de "Main" — knob inerte para usuários MIDI.
