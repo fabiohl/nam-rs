@@ -774,6 +774,25 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 > **Impacto downstream:** S7.T09 (Padé activations) é pré-requisito direto para NEON/ARM ports em Épico 9 (`T9.NEON-02`). S7.T05-T06 (dot_4x/gemv multi-acumulador) estabelecem o padrão SIMD a ser replicado em NEON e SVE2.
 >
 > **Conclusão:** Sprint S7 cumpre todos os objetivos micro e macro. Hotpath de pipeline e resampler otimizado. SIMD AVX-512 em produção. Baseline sólida para Épicos 5 (refatoração), 6 (CLAP), 7 (testes), 8 (docs) e 9 (ARM/NEON).
+>
+> **Auditoria do Épico 4 (2026-06-01):**
+>
+> Auditoria completa de todas as 18 tarefas do Épico 4 (S6.T01–T05, S7.R01–R04, S7.T01–T09). Todas passaram nos critérios de aceitação. Validação cruzada com `long-bench.log`, `soak-test.log` (7/7 passed), `debug-validation.json` e `release-validation.json` (0 falhas CLAP em ambas as builds).
+>
+> **Resultados de performance chave:**
+>
+> - `DotProduct_AVX2_256elem`: **−6.45%** (regressão +6.3% dos Épicos 2–3 revertida e superada)
+> - `Prewarm_LSTM_2x16`: **−4.01%** (regressão +5.2% revertida e superada)
+> - `Prewarm_WaveNet_Standard`: **−0.77%** (regressão +2.4% recuperada)
+> - `LSTM_1x8_SIMD_Fused_T3`: **−13.5%** (ganho expressivo das activations Padé S7.T09)
+>
+> **Observações para sprints futuras:**
+>
+> 1. **Regressão cosmética `LSTM_2x16_Comparison/Scalar_Baseline` (+1.74%):** Path escalar não-produtivo. Causa: parâmetro `is_bf16: bool` adicional injetado pelo S7.R02 em `process_sample_scalar`. Se desejável neutralizar, mover `is_bf16` para campo da struct `LstmLayer` (evita overhead de argumento no scalar path). Monitorar em S13 (cross-validation).
+> 2. **`Resampler_96000_to_48000/process_output` (+1.23%):** Marginal e dentro do ruído térmico. Monitorar nas próximas sprints; se persistir > 2% em 3 runs consecutivos, investigar cache alignment do `DelayLine` state em `resampler.rs`.
+> 3. **Padé activations (S7.T09) → NEON/ARM (S24.T02):** Constantes em `src/math/constants.rs` são portáveis. Kernels `simd_tanh_avx2` / `simd_sigmoid_avx2` servem de template direto para NEON ports (`vfmaq_f32`, `vrecpeq_f32` + Newton-Raphson).
+>
+> **Conclusão:** Épico 4 aprovado sem pendências. Todas as regressões dos Épicos 2–3 foram eliminadas. Baseline de performance consolidada para os Épicos 5–9.
 
 ---
 
@@ -1597,7 +1616,7 @@ Objetivo: expandir nam-rs e aproveitar microarquitetura de hardware específica 
   1. **NEON baseline:** trait `NeonMath` com kernels:
      - `gemv` usando `vfmaq_f32` (4-lane FMA) com 4 acumuladores.
      - `dot_product_4x` com layout interleaved-4 (já compatível com encoder atual).
-     - `tanh/sigmoid` via Padé (S7.T09) — NEON ports diretos.
+     - `tanh/sigmoid` via Padé (S7.T09) — NEON ports diretos. **Nota (Auditoria Épico 4):** Constantes Padé [5,4] já estão centralizadas em `src/math/constants.rs` e são portáveis. Usar `vrecpeq_f32` + Newton-Raphson refinement para o recíproco (análogo ao `_mm256_rcp_ps` + `fnmadd` do AVX2).
      - Conversão F16↔F32 via `vcvt_f16_f32` (ARMv8.2-A FP16).
   2. **SVE2 advanced:** trait `Sve2Math` para Neoverse-V1+/V2 (Ampere, Graviton 4):
      - Vectores de comprimento variável (128–2048 bits, runtime via `svcntw`).
