@@ -51,6 +51,11 @@ pub struct NamClapProcessor<'a> {
 
     /// Histerese para detecção de silêncio absoluto.
     silence_hyst: DynamicHysteresis,
+    /// Modelo ativo para o canal direito (None = processa como mono ou bypass).
+    active_model_r: Option<Box<DynamicModel>>,
+    /// Histerese para detecção de sinal mono. Campo persistente para evitar
+    /// re-inicialização a cada iteração do port_pair.
+    mono_hyst: DynamicHysteresis,
     /// Flag indicando se estamos processando em mono (para otimização).
     process_mono: bool,
 
@@ -185,6 +190,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         );
 
         let silence_hyst = DynamicHysteresis::new();
+        let mono_hyst = DynamicHysteresis::new();
 
         // 4. Inicialização de Smoothers (Sample-Accurate)
         // Começamos em 1.0 (ganho unitário) para evitar silêncio no primeiro bloco.
@@ -213,6 +219,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             buf_out_l,
             buf_out_r,
             silence_hyst,
+            active_model_r: None,
+            mono_hyst,
             process_mono: true,
             rt_status: Arc::clone(&shared.rt_status),
             shared,

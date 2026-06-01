@@ -1117,7 +1117,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Critérios de aceitação:** Smoke test de gestures (begin/end + value change) ok.
 - **Especialista:** `implementador`.
 
-#### Tarefa S12.T03 — Mover `mono_hyst`, `active_model_r` para campos de `NamClapProcessor` 💡
+#### Tarefa S12.T03 — Mover `mono_hyst`, `active_model_r` para campos de `NamClapProcessor` 💡 [DONE]
 
 - **Onde:** `src/clap/processor.rs:602-603` (declarações `let mut active_model_r` / `let mut mono_hyst`).
 - **Problema:** Re-inicializados a cada iter do port_pair. Aceitável agora, mas se `DynamicHysteresis::new()` alocar internamente, vira issue RT.

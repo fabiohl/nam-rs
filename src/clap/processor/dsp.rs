@@ -5,12 +5,11 @@
 //! resampling, ganho de saída, picos e telemetria.
 
 use super::NamClapProcessor;
-use crate::dsp::gate::{DynamicHysteresis, GateParams, GateState};
+use crate::dsp::gate::{GateParams, GateState};
 use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
 };
 use crate::math::dsp::gain_lut::get_gain_lut;
-use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use minstant::Instant;
 use std::sync::atomic::Ordering;
@@ -197,18 +196,15 @@ impl<'a> NamClapProcessor<'a> {
                 ..Default::default()
             };
 
-            let mut active_model_r: Option<Box<DynamicModel>> = None;
-            let mut mono_hyst = DynamicHysteresis::new();
-
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
-                active_model_r: &mut active_model_r,
+                active_model_r: &mut self.active_model_r,
                 input_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
                 output_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
                 gate_params: &gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
-                mono_hysteresis: &mut mono_hyst,
+                mono_hysteresis: &mut self.mono_hyst,
                 threshold_open_sq: self.cached_threshold_open_sq,
                 threshold_close_sq: self.cached_threshold_close_sq,
                 process_mono: &mut self.process_mono,
