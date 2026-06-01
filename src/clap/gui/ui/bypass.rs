@@ -14,14 +14,19 @@ pub fn handle_bypass(
     ui: &mut egui::Ui,
     id: egui::Id,
     atomic_val: &std::sync::atomic::AtomicU32,
-    changed_flag: &std::sync::atomic::AtomicBool,
-    begin_flag: &std::sync::atomic::AtomicBool,
-    end_flag: &std::sync::atomic::AtomicBool,
+    gesture_flags: &std::sync::atomic::AtomicU32,
+    param_index: usize,
     accent_color: egui::Color32,
     host: &HostSharedHandle,
     indication: u8,
     indication_color: egui::Color32,
 ) {
+    const GESTURE_BITS_PER_PARAM: u32 = 3;
+    const GESTURE_CHANGED_SHIFT: u32 = 0;
+    const GESTURE_BEGIN_SHIFT: u32 = 1;
+    const GESTURE_END_SHIFT: u32 = 2;
+
+    let offset = param_index as u32 * GESTURE_BITS_PER_PARAM;
     let current_bypass = atomic_val.load(Ordering::Relaxed) != 0;
     let button_size = egui::vec2(32.0, 56.0);
 
@@ -50,10 +55,10 @@ pub fn handle_bypass(
 
     if toggle_bypass {
         let new_bypass = !current_bypass;
-        begin_flag.store(true, Ordering::Relaxed);
+        gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
         atomic_val.store(if new_bypass { 1 } else { 0 }, Ordering::Relaxed);
-        changed_flag.store(true, Ordering::Relaxed);
-        end_flag.store(true, Ordering::Relaxed);
+        gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
+        gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);
         if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
             params_ext.request_flush(host);
         }

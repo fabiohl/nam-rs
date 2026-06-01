@@ -1107,7 +1107,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Critérios de aceitação:** Plugin troca latência sem reinicialização em hosts testados.
 - **Especialista:** `implementador`.
 
-#### Tarefa S12.T02 — Empacotar `gesture_*` flags em `AtomicU32` ⚠️
+#### Tarefa S12.T02 — Empacotar `gesture_*` flags em `AtomicU32` ✅ [DONE]
 
 - **Onde:** `src/clap/plugin.rs:127-152`.
 - **Problema:** 12 `AtomicBool` desperdiçam 12 cache lines potenciais (com alinhamento). Bitmap único é mais eficiente.

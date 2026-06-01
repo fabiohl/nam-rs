@@ -212,9 +212,8 @@ pub fn handle_knob(
     range: std::ops::RangeInclusive<f32>,
     default_value: f32,
     atomic_val: &std::sync::atomic::AtomicU32,
-    changed_flag: &std::sync::atomic::AtomicBool,
-    begin_flag: &std::sync::atomic::AtomicBool,
-    end_flag: &std::sync::atomic::AtomicBool,
+    gesture_flags: &std::sync::atomic::AtomicU32,
+    param_index: usize,
     color: egui::Color32,
     accent_color: egui::Color32,
     host: &HostSharedHandle,
@@ -223,6 +222,13 @@ pub fn handle_knob(
     indication_color: egui::Color32,
     tooltip_suffix: &str,
 ) {
+    const GESTURE_BITS_PER_PARAM: u32 = 3;
+    const GESTURE_CHANGED_SHIFT: u32 = 0;
+    const GESTURE_BEGIN_SHIFT: u32 = 1;
+    const GESTURE_END_SHIFT: u32 = 2;
+
+    let offset = param_index as u32 * GESTURE_BITS_PER_PARAM;
+
     ui.vertical(|ui| {
         let current_val = f32::from_bits(atomic_val.load(Ordering::Relaxed));
 
@@ -252,7 +258,7 @@ pub fn handle_knob(
             .inner;
 
         if response.drag_started() {
-            begin_flag.store(true, Ordering::Relaxed);
+            gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
             if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
                 params_ext.request_flush(host);
             }
@@ -268,12 +274,12 @@ pub fn handle_knob(
         if final_val != current_val {
             let is_discrete = !response.dragged();
             if is_discrete {
-                begin_flag.store(true, Ordering::Relaxed);
+                gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
             }
             atomic_val.store(final_val.to_bits(), Ordering::Relaxed);
-            changed_flag.store(true, Ordering::Relaxed);
+            gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
             if is_discrete {
-                end_flag.store(true, Ordering::Relaxed);
+                gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);
             }
             if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
                 params_ext.request_flush(host);
@@ -281,7 +287,7 @@ pub fn handle_knob(
         }
 
         if response.drag_stopped() {
-            end_flag.store(true, Ordering::Relaxed);
+            gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);
             if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
                 params_ext.request_flush(host);
             }

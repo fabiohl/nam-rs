@@ -94,18 +94,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             ],
             model_load_counter: AtomicU32::new(0),
             alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-            gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
-            gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
-            gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
-            gui_output_gain_changed: std::sync::atomic::AtomicBool::new(false),
-            gesture_begin_output_gain: std::sync::atomic::AtomicBool::new(false),
-            gesture_end_output_gain: std::sync::atomic::AtomicBool::new(false),
-            gui_gate_thresh_changed: std::sync::atomic::AtomicBool::new(false),
-            gesture_begin_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-            gesture_end_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-            gui_bypass_changed: std::sync::atomic::AtomicBool::new(false),
-            gesture_begin_bypass: std::sync::atomic::AtomicBool::new(false),
-            gesture_end_bypass: std::sync::atomic::AtomicBool::new(false),
+            gesture_flags: AtomicU32::new(0),
         })
     }
 

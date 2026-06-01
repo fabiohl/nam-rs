@@ -114,34 +114,12 @@ pub struct NamClapShared {
     /// Fence de vida útil: true enquanto o plugin existe. Verificado pela thread do File Picker.
     pub alive_fence: Arc<std::sync::atomic::AtomicBool>,
 
-    // Flags de controle de modificação por parâmetro (GUI -> Host/Processor)
-    /// Indica que o ganho de entrada foi alterado pela GUI.
-    pub gui_input_gain_changed: std::sync::atomic::AtomicBool,
-    /// Indica o início de um gesto de alteração do ganho de entrada.
-    pub gesture_begin_input_gain: std::sync::atomic::AtomicBool,
-    /// Indica o término de um gesto de alteração do ganho de entrada.
-    pub gesture_end_input_gain: std::sync::atomic::AtomicBool,
-
-    /// Indica que o ganho de saída foi alterado pela GUI.
-    pub gui_output_gain_changed: std::sync::atomic::AtomicBool,
-    /// Indica o início de um gesto de alteração do ganho de saída.
-    pub gesture_begin_output_gain: std::sync::atomic::AtomicBool,
-    /// Indica o término de um gesto de alteração do ganho de saída.
-    pub gesture_end_output_gain: std::sync::atomic::AtomicBool,
-
-    /// Indica que o threshold do noise gate foi alterado pela GUI.
-    pub gui_gate_thresh_changed: std::sync::atomic::AtomicBool,
-    /// Indica o início de um gesto de alteração do noise gate threshold.
-    pub gesture_begin_gate_thresh: std::sync::atomic::AtomicBool,
-    /// Indica o término de um gesto de alteração do noise gate threshold.
-    pub gesture_end_gate_thresh: std::sync::atomic::AtomicBool,
-
-    /// Indica que o bypass foi alterado pela GUI.
-    pub gui_bypass_changed: std::sync::atomic::AtomicBool,
-    /// Indica o início de um gesto de alteração do bypass.
-    pub gesture_begin_bypass: std::sync::atomic::AtomicBool,
-    /// Indica o término de um gesto de alteração do bypass.
-    pub gesture_end_bypass: std::sync::atomic::AtomicBool,
+    /// Bitmap de flags de gesto e modificação por parâmetro (GUI -> Host/Processor).
+    /// Layout: para cada parâmetro (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
+    ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
+    ///   bit (param_index * 3 + 1) = Gesture Begin
+    ///   bit (param_index * 3 + 2) = Gesture End
+    pub gesture_flags: AtomicU32,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
@@ -153,6 +131,35 @@ impl Drop for NamClapShared {
 }
 
 impl NamClapShared {
+    /// Bitmask do parâmetro no campo `gesture_flags`.
+    /// 3 flags por parâmetro: Changed, GestureBegin, GestureEnd.
+    const GESTURE_CHANGED_SHIFT: u32 = 0;
+    const GESTURE_BEGIN_SHIFT: u32 = 1;
+    const GESTURE_END_SHIFT: u32 = 2;
+    const GESTURE_BITS_PER_PARAM: u32 = 3;
+
+    /// Mapeia um CLAP param_id (0..3) para índice interno 0..3.
+    const fn param_index(param_id: u32) -> usize {
+        param_id as usize
+    }
+
+    /// Seta uma flag de gesto para o parâmetro (store = true).
+    pub fn set_gesture(&self, param_index: usize, flag_shift: u32) {
+        let bit = 1u32 << (param_index as u32 * Self::GESTURE_BITS_PER_PARAM + flag_shift);
+        self.gesture_flags.fetch_or(bit, Ordering::Relaxed);
+    }
+
+    /// Lê e limpa uma flag de gesto (swap to false), retorna o valor anterior.
+    pub fn take_gesture(&self, param_index: usize, flag_shift: u32) -> bool {
+        let bit = 1u32 << (param_index as u32 * Self::GESTURE_BITS_PER_PARAM + flag_shift);
+        (self.gesture_flags.fetch_and(!bit, Ordering::Relaxed) & bit) != 0
+    }
+
+    /// Zera todas as flags de gesto.
+    pub fn clear_gestures(&self) {
+        self.gesture_flags.store(0, Ordering::Relaxed);
+    }
+
     /// Descarrega os gestos e atualizações de parâmetros iniciados pela GUI
     /// na fila de eventos de saída do host.
     pub fn write_gui_events(&self, output: &mut OutputEvents) {
@@ -163,60 +170,34 @@ impl NamClapShared {
             ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
         };
 
-        let mut handle_param =
-            |param_id: u32,
-             changed_flag: &std::sync::atomic::AtomicBool,
-             begin_flag: &std::sync::atomic::AtomicBool,
-             end_flag: &std::sync::atomic::AtomicBool,
-             value_atomic: &std::sync::atomic::AtomicU32| {
-                if begin_flag.swap(false, Ordering::Relaxed) {
-                    let ev = ParamGestureBeginEvent::new(0, ClapId::new(param_id));
-                    let _ = output.try_push(ev);
-                }
-                if changed_flag.swap(false, Ordering::Relaxed) {
-                    let val = f32::from_bits(value_atomic.load(Ordering::Relaxed)) as f64;
-                    let ev = ParamValueEvent::new(
-                        0,
-                        ClapId::new(param_id),
-                        clack_plugin::events::Pckn::new(0u8, 0u8, 0u8, 0u8),
-                        val,
-                        clack_plugin::utils::Cookie::empty(),
-                    );
-                    let _ = output.try_push(ev);
-                }
-                if end_flag.swap(false, Ordering::Relaxed) {
-                    let ev = ParamGestureEndEvent::new(0, ClapId::new(param_id));
-                    let _ = output.try_push(ev);
-                }
-            };
+        let params: [(u32, u32, &AtomicU32); 4] = [
+            (PARAM_INPUT_GAIN, Self::param_index(PARAM_INPUT_GAIN) as u32, &self.param_input_gain),
+            (PARAM_OUTPUT_GAIN, Self::param_index(PARAM_OUTPUT_GAIN) as u32, &self.param_output_gain),
+            (PARAM_GATE_THRESH, Self::param_index(PARAM_GATE_THRESH) as u32, &self.param_gate_thresh),
+            (PARAM_BYPASS, Self::param_index(PARAM_BYPASS) as u32, &self.param_bypass),
+        ];
 
-        handle_param(
-            PARAM_INPUT_GAIN,
-            &self.gui_input_gain_changed,
-            &self.gesture_begin_input_gain,
-            &self.gesture_end_input_gain,
-            &self.param_input_gain,
-        );
-        handle_param(
-            PARAM_OUTPUT_GAIN,
-            &self.gui_output_gain_changed,
-            &self.gesture_begin_output_gain,
-            &self.gesture_end_output_gain,
-            &self.param_output_gain,
-        );
-        handle_param(
-            PARAM_GATE_THRESH,
-            &self.gui_gate_thresh_changed,
-            &self.gesture_begin_gate_thresh,
-            &self.gesture_end_gate_thresh,
-            &self.param_gate_thresh,
-        );
-        handle_param(
-            PARAM_BYPASS,
-            &self.gui_bypass_changed,
-            &self.gesture_begin_bypass,
-            &self.gesture_end_bypass,
-            &self.param_bypass,
-        );
+        for (param_id, param_idx, value_atomic) in &params {
+            let pi = *param_idx as usize;
+            if self.take_gesture(pi, Self::GESTURE_BEGIN_SHIFT) {
+                let ev = ParamGestureBeginEvent::new(0, ClapId::new(*param_id));
+                let _ = output.try_push(ev);
+            }
+            if self.take_gesture(pi, Self::GESTURE_CHANGED_SHIFT) {
+                let val = f32::from_bits(value_atomic.load(Ordering::Relaxed)) as f64;
+                let ev = ParamValueEvent::new(
+                    0,
+                    ClapId::new(*param_id),
+                    clack_plugin::events::Pckn::new(0u8, 0u8, 0u8, 0u8),
+                    val,
+                    clack_plugin::utils::Cookie::empty(),
+                );
+                let _ = output.try_push(ev);
+            }
+            if self.take_gesture(pi, Self::GESTURE_END_SHIFT) {
+                let ev = ParamGestureEndEvent::new(0, ClapId::new(*param_id));
+                let _ = output.try_push(ev);
+            }
+        }
     }
 }

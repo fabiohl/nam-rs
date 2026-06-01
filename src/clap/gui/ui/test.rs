@@ -53,18 +53,7 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
             std::sync::atomic::AtomicU32::new(0),
         ],
         model_load_counter: AtomicU32::new(0),
-        gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
-        gui_output_gain_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_output_gain: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_output_gain: std::sync::atomic::AtomicBool::new(false),
-        gui_gate_thresh_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-        gui_bypass_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_bypass: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_bypass: std::sync::atomic::AtomicBool::new(false),
+        gesture_flags: AtomicU32::new(0),
     }
 }
 
@@ -361,11 +350,16 @@ fn test_bypass_keyboard_trigger() {
     let ctx = egui::Context::default();
     let id = egui::Id::new("test_bypass");
     let atomic_val = std::sync::atomic::AtomicU32::new(0); // initial: bypass off
-    let changed = std::sync::atomic::AtomicBool::new(false);
-    let begin = std::sync::atomic::AtomicBool::new(false);
-    let end = std::sync::atomic::AtomicBool::new(false);
+    let gesture_flags = std::sync::atomic::AtomicU32::new(0);
     let dummy = 42i32;
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
+
+    const BYPASS_INDEX: usize = 3; // PARAM_BYPASS = 3
+    const BITS_PER_PARAM: u32 = 3;
+    const CHANGED_SHIFT: u32 = 0;
+    const BEGIN_SHIFT: u32 = 1;
+    const END_SHIFT: u32 = 2;
+    let offset = BYPASS_INDEX as u32 * BITS_PER_PARAM;
 
     // Frame 1: Render and request focus
     let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -374,9 +368,8 @@ fn test_bypass_keyboard_trigger() {
                 ui,
                 id,
                 &atomic_val,
-                &changed,
-                &begin,
-                &end,
+                &gesture_flags,
+                BYPASS_INDEX,
                 egui::Color32::GREEN,
                 &host,
                 0,
@@ -401,9 +394,8 @@ fn test_bypass_keyboard_trigger() {
                 ui,
                 id,
                 &atomic_val,
-                &changed,
-                &begin,
-                &end,
+                &gesture_flags,
+                BYPASS_INDEX,
                 egui::Color32::GREEN,
                 &host,
                 0,
@@ -412,9 +404,11 @@ fn test_bypass_keyboard_trigger() {
         });
     });
     assert_eq!(atomic_val.load(Ordering::Relaxed), 1); // Should be Bypassed (1)
-    assert!(changed.load(Ordering::Relaxed));
-    assert!(begin.load(Ordering::Relaxed));
-    assert!(end.load(Ordering::Relaxed));
+
+    let flags = gesture_flags.load(Ordering::Relaxed);
+    assert!(flags & (1 << (offset + CHANGED_SHIFT)) != 0);
+    assert!(flags & (1 << (offset + BEGIN_SHIFT)) != 0);
+    assert!(flags & (1 << (offset + END_SHIFT)) != 0);
 }
 
 #[test]

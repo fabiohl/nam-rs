@@ -56,29 +56,22 @@ fn test_gui_gestures_and_parameter_flow() {
             std::sync::atomic::AtomicU32::new(0),
         ],
         model_load_counter: AtomicU32::new(0),
-        gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
-        gui_output_gain_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_output_gain: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_output_gain: std::sync::atomic::AtomicBool::new(false),
-        gui_gate_thresh_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-        gui_bypass_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_bypass: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_bypass: std::sync::atomic::AtomicBool::new(false),
+        gesture_flags: AtomicU32::new(0),
     };
 
     // Simula início de gesto, mudança de valor e término de gesto do ganho de entrada
-    shared
-        .gesture_begin_input_gain
-        .store(true, Ordering::Relaxed);
-    shared.gui_input_gain_changed.store(true, Ordering::Relaxed);
+    let input_idx = PARAM_INPUT_GAIN as usize;
+    const BITS_PER_PARAM: u32 = 3;
+    const CHANGED_SHIFT: u32 = 0;
+    const BEGIN_SHIFT: u32 = 1;
+    const END_SHIFT: u32 = 2;
+    let offset = input_idx as u32 * BITS_PER_PARAM;
+    shared.gesture_flags.fetch_or(1 << (offset + BEGIN_SHIFT), Ordering::Relaxed);
+    shared.gesture_flags.fetch_or(1 << (offset + CHANGED_SHIFT), Ordering::Relaxed);
     shared
         .param_input_gain
         .store(1.5f32.to_bits(), Ordering::Relaxed);
-    shared.gesture_end_input_gain.store(true, Ordering::Relaxed);
+    shared.gesture_flags.fetch_or(1 << (offset + END_SHIFT), Ordering::Relaxed);
 
     let mut output_events_buffer = EventBuffer::new();
     {
@@ -113,9 +106,10 @@ fn test_gui_gestures_and_parameter_flow() {
     assert!(end_received, "Deveria receber ParamGestureEndEvent");
 
     // Verifica que as flags foram limpas
-    assert!(!shared.gesture_begin_input_gain.load(Ordering::Relaxed));
-    assert!(!shared.gui_input_gain_changed.load(Ordering::Relaxed));
-    assert!(!shared.gesture_end_input_gain.load(Ordering::Relaxed));
+    let flags = shared.gesture_flags.load(Ordering::Relaxed);
+    assert_eq!(flags & (1 << (offset + BEGIN_SHIFT)), 0, "begin flag should be cleared");
+    assert_eq!(flags & (1 << (offset + CHANGED_SHIFT)), 0, "changed flag should be cleared");
+    assert_eq!(flags & (1 << (offset + END_SHIFT)), 0, "end flag should be cleared");
 }
 
 #[test]
@@ -164,18 +158,7 @@ fn test_file_picker_alive_fence_and_timeout() {
             std::sync::atomic::AtomicU32::new(0),
         ],
         model_load_counter: AtomicU32::new(0),
-        gui_input_gain_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_input_gain: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_input_gain: std::sync::atomic::AtomicBool::new(false),
-        gui_output_gain_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_output_gain: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_output_gain: std::sync::atomic::AtomicBool::new(false),
-        gui_gate_thresh_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_gate_thresh: std::sync::atomic::AtomicBool::new(false),
-        gui_bypass_changed: std::sync::atomic::AtomicBool::new(false),
-        gesture_begin_bypass: std::sync::atomic::AtomicBool::new(false),
-        gesture_end_bypass: std::sync::atomic::AtomicBool::new(false),
+        gesture_flags: AtomicU32::new(0),
     });
 
     // 1. Caso de Sucesso: alive_fence é true e recebemos o caminho antes do timeout
