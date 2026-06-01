@@ -868,7 +868,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Desconectar hardware durante play sem crash; trocar SR sem dropouts inesperados.
 - **Especialista:** `implementador`.
 
-#### Tarefa S9.T03 — Quebrar `src/standalone/rt_setup.rs` (693 LoC) ⚠️
+#### Tarefa S9.T03 — Quebrar `src/standalone/rt_setup.rs` (693 LoC) ⚠️ [DONE]
 
 > **Nota de sequenciamento:** executar **antes** de S16.T01 (SCHED_DEADLINE) e S16.T03 (PREEMPT_RT detection), que adicionam código novo a este arquivo. Quebrar primeiro evita merge-conflicts massivos.
 
