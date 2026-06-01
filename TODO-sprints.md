@@ -971,16 +971,23 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Cada submódulo < 350 LoC; benchmarks `DotProduct_*` sem regressão.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10b.T03 — Quebrar `src/math/dsp/stereo.rs` (779 LoC) 💡
+#### Tarefa S10b.T03 — Quebrar `src/math/dsp/stereo.rs` (779 LoC) ✅ [DONE]
 
 - **Onde:** `src/math/dsp/stereo.rs` → `src/math/dsp/stereo/`.
 - **Problema:** Concentra helpers de stereo, gain, mono-blend, soft-clip e ramp em um único arquivo. Cresceu com S7.R02/R03 e tende a continuar crescendo com S18.T01 (crossfade) e S19.T02 (auto LUFS).
 - **Solução técnica:**
-  - `stereo/mod.rs` — re-exports.
+  - `stereo/mod.rs` — re-exports + dispatch wrappers (66 LoC).
   - `stereo/gain.rs` — `apply_gain_*`, ramps.
   - `stereo/blend.rs` — mono/stereo blend, mix.
   - `stereo/simd.rs` — paths vetorizados específicos.
 - **Critérios de aceitação:** Nenhum submódulo > 400 LoC.
+- **Realizado (2026-06-01):** O conteúdo real do arquivo era de kernels SIMD de energy/medição, max_diff e convolução (não gain/blend — estes já estavam em `gain.rs` separado). Split adaptado:
+  - `stereo/mod.rs` — re-exports + dispatch wrappers (66 LoC).
+  - `stereo/energy.rs` — `compute_energy_*`, `compute_energy_stereo_*` (AVX2, AVX-512, scalar cold) (229 LoC).
+  - `stereo/max_diff.rs` — `compute_max_diff_*` (AVX2, AVX-512, scalar cold) (109 LoC).
+  - `stereo/convolution_avx2.rs` — `convolve_stereo_avx2`, `convolve_stereo_dual_avx2`, `convolve_mono_avx2` (255 LoC).
+  - `stereo/convolution_avx512.rs` — `convolve_stereo_avx512`, `convolve_stereo_dual_avx512`, `convolve_mono_avx512` (141 LoC).
+  - Todos os testes passam (188 unit + integração).
 - **Especialista:** `implementador`.
 
 #### Tarefa S10b.T04 — Quebrar `src/loader/dispatcher/wavenet.rs` (701 LoC) 💡
