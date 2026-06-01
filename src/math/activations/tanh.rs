@@ -2,172 +2,143 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Kernels de ativação Tanh (Tangente Hiperbólica) otimizados.
+//!
+//! Utiliza o aproximante racional de Padé [5,4] branchless:
+//! `tanh(x) ≈ x · (x⁴ + 105·x² + 945) / (15·x⁴ + 420·x² + 945)`
+//! com clamp de entrada em `|x| < 4` e saída saturada em `[-1, 1]`.
+//! Referência: VDT library (CERN), Mineiro & Vorlicek (2016).
 
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
-/// Aproximação vetorial de `tanh(x)` iterando um polinômio de grau 7 usando AVX2.
+/// Aproximação vetorial branchless de `tanh(x)` usando Padé [5,4] (AVX2).
 ///
 /// # Safety
 /// O chamador deve garantir suporte a AVX2 e FMA.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
-    // Coeficientes do polinômio Minimax de grau 7
-    let c0 = _mm256_set1_ps(TANH_C0);
-    let c1 = _mm256_set1_ps(TANH_C1);
-    let c2 = _mm256_set1_ps(TANH_C2);
+    let clamp_lo = _mm256_set1_ps(-PADE_TANH_CLAMP);
+    let clamp_hi = _mm256_set1_ps(PADE_TANH_CLAMP);
+    let num_a = _mm256_set1_ps(PADE_TANH_NUM_A);
+    let num_b = _mm256_set1_ps(PADE_TANH_NUM_B);
+    let den_c4 = _mm256_set1_ps(PADE_TANH_DEN_C4);
+    let den_c2 = _mm256_set1_ps(PADE_TANH_DEN_C2);
+    let den_a = _mm256_set1_ps(PADE_TANH_DEN_A);
+    let two = _mm256_set1_ps(2.0);
     let one = _mm256_set1_ps(1.0);
-    let min_limit = _mm256_set1_ps(-TANH_CLAMP_LIMIT);
-    let max_limit = _mm256_set1_ps(TANH_CLAMP_LIMIT);
+    let neg_one = _mm256_set1_ps(-1.0);
 
-    // Clamp de saturação para evitar overflow no cálculo de p(x)^2
-    let x = _mm256_max_ps(min_limit, _mm256_min_ps(max_limit, x));
-
-    // x_sq = x * x
+    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
     let x_sq = _mm256_mul_ps(x, x);
     let x_sq_sq = _mm256_mul_ps(x_sq, x_sq);
 
-    let y_3_5 = _mm256_fmadd_ps(c1, x_sq, c0);
-    let y_3_5_7 = _mm256_fmadd_ps(c2, x_sq_sq, y_3_5);
-    let y_full = _mm256_fmadd_ps(y_3_5_7, x_sq, one);
+    // num = x * (x_sq_sq + 105*x_sq + 945)
+    let num = _mm256_mul_ps(x, _mm256_add_ps(
+        _mm256_fmadd_ps(num_a, x_sq, x_sq_sq),
+        num_b,
+    ));
 
-    // p(x) = x * y_full
-    let p_x = _mm256_mul_ps(x, y_full);
+    // den = 15*x_sq_sq + 420*x_sq + 945
+    let den = _mm256_fmadd_ps(den_c4, x_sq_sq,
+        _mm256_fmadd_ps(den_c2, x_sq, den_a));
 
-    // Evaluando rsqrt(p(x)^2 + 1)
-    let p_x_sq = _mm256_mul_ps(p_x, p_x);
-    let radicand = _mm256_add_ps(p_x_sq, one);
+    let mut rden = _mm256_rcp_ps(den);
+    rden = _mm256_mul_ps(rden, _mm256_fnmadd_ps(den, rden, two));
 
-    // Instrução HW nativa de rsqrt
-    let mut rr = _mm256_rsqrt_ps(radicand);
-
-    // Refinamento de Newton-Raphson duplo
-    let three = _mm256_set1_ps(3.0);
-    let half = _mm256_set1_ps(0.5);
-
-    // 1ª iteração NR
-    let rr_sq = _mm256_mul_ps(rr, rr);
-    let diff = _mm256_fnmadd_ps(radicand, rr_sq, three);
-    rr = _mm256_mul_ps(_mm256_mul_ps(rr, half), diff);
-
-    // 2ª iteração NR
-    let rr_sq = _mm256_mul_ps(rr, rr);
-    let diff = _mm256_fnmadd_ps(radicand, rr_sq, three);
-    rr = _mm256_mul_ps(_mm256_mul_ps(rr, half), diff);
-
-    _mm256_mul_ps(p_x, rr)
+    let result = _mm256_mul_ps(num, rden);
+    _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
 }
 
-/// Aproximação vetorial de `tanh(x)` (Dual, 16 floats).
+/// Aproximação vetorial de `tanh(x)` (Dual, 16 floats) usando Padé [5,4].
 ///
 /// # Safety
 /// O chamador deve garantir suporte a AVX2 e FMA.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
-    let c0 = _mm256_set1_ps(TANH_C0);
-    let c1 = _mm256_set1_ps(TANH_C1);
-    let c2 = _mm256_set1_ps(TANH_C2);
+    let clamp_lo = _mm256_set1_ps(-PADE_TANH_CLAMP);
+    let clamp_hi = _mm256_set1_ps(PADE_TANH_CLAMP);
+    let num_a = _mm256_set1_ps(PADE_TANH_NUM_A);
+    let num_b = _mm256_set1_ps(PADE_TANH_NUM_B);
+    let den_c4 = _mm256_set1_ps(PADE_TANH_DEN_C4);
+    let den_c2 = _mm256_set1_ps(PADE_TANH_DEN_C2);
+    let den_a = _mm256_set1_ps(PADE_TANH_DEN_A);
+    let two = _mm256_set1_ps(2.0);
     let one = _mm256_set1_ps(1.0);
-    let min_limit = _mm256_set1_ps(-TANH_CLAMP_LIMIT);
-    let max_limit = _mm256_set1_ps(TANH_CLAMP_LIMIT);
+    let neg_one = _mm256_set1_ps(-1.0);
 
-    let x1 = _mm256_max_ps(min_limit, _mm256_min_ps(max_limit, x1));
-    let x2 = _mm256_max_ps(min_limit, _mm256_min_ps(max_limit, x2));
+    let x1 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x1));
+    let x2 = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x2));
 
     let x_sq1 = _mm256_mul_ps(x1, x1);
     let x_sq2 = _mm256_mul_ps(x2, x2);
     let x_sq_sq1 = _mm256_mul_ps(x_sq1, x_sq1);
     let x_sq_sq2 = _mm256_mul_ps(x_sq2, x_sq2);
 
-    let y_3_5_1 = _mm256_fmadd_ps(c1, x_sq1, c0);
-    let y_3_5_2 = _mm256_fmadd_ps(c1, x_sq2, c0);
-    let y_3_5_7_1 = _mm256_fmadd_ps(c2, x_sq_sq1, y_3_5_1);
-    let y_3_5_7_2 = _mm256_fmadd_ps(c2, x_sq_sq2, y_3_5_2);
-    let y_full1 = _mm256_fmadd_ps(y_3_5_7_1, x_sq1, one);
-    let y_full2 = _mm256_fmadd_ps(y_3_5_7_2, x_sq2, one);
+    let num1 = _mm256_mul_ps(x1, _mm256_add_ps(
+        _mm256_fmadd_ps(num_a, x_sq1, x_sq_sq1),
+        num_b,
+    ));
+    let num2 = _mm256_mul_ps(x2, _mm256_add_ps(
+        _mm256_fmadd_ps(num_a, x_sq2, x_sq_sq2),
+        num_b,
+    ));
 
-    let p_x1 = _mm256_mul_ps(x1, y_full1);
-    let p_x2 = _mm256_mul_ps(x2, y_full2);
+    let den1 = _mm256_fmadd_ps(den_c4, x_sq_sq1,
+        _mm256_fmadd_ps(den_c2, x_sq1, den_a));
+    let den2 = _mm256_fmadd_ps(den_c4, x_sq_sq2,
+        _mm256_fmadd_ps(den_c2, x_sq2, den_a));
 
-    let p_x_sq1 = _mm256_mul_ps(p_x1, p_x1);
-    let p_x_sq2 = _mm256_mul_ps(p_x2, p_x2);
-    let radicand1 = _mm256_add_ps(p_x_sq1, one);
-    let radicand2 = _mm256_add_ps(p_x_sq2, one);
+    let mut rden1 = _mm256_rcp_ps(den1);
+    let mut rden2 = _mm256_rcp_ps(den2);
 
-    let mut rr1 = _mm256_rsqrt_ps(radicand1);
-    let mut rr2 = _mm256_rsqrt_ps(radicand2);
+    rden1 = _mm256_mul_ps(rden1, _mm256_fnmadd_ps(den1, rden1, two));
+    rden2 = _mm256_mul_ps(rden2, _mm256_fnmadd_ps(den2, rden2, two));
 
-    let three = _mm256_set1_ps(3.0);
-    let half = _mm256_set1_ps(0.5);
-
-    // 1ª iteração NR
-    let rr_sq1 = _mm256_mul_ps(rr1, rr1);
-    let rr_sq2 = _mm256_mul_ps(rr2, rr2);
-    let diff1 = _mm256_fnmadd_ps(radicand1, rr_sq1, three);
-    let diff2 = _mm256_fnmadd_ps(radicand2, rr_sq2, three);
-    rr1 = _mm256_mul_ps(_mm256_mul_ps(rr1, half), diff1);
-    rr2 = _mm256_mul_ps(_mm256_mul_ps(rr2, half), diff2);
-
-    // 2ª iteração NR
-    let rr_sq1 = _mm256_mul_ps(rr1, rr1);
-    let rr_sq2 = _mm256_mul_ps(rr2, rr2);
-    let diff1 = _mm256_fnmadd_ps(radicand1, rr_sq1, three);
-    let diff2 = _mm256_fnmadd_ps(radicand2, rr_sq2, three);
-    rr1 = _mm256_mul_ps(_mm256_mul_ps(rr1, half), diff1);
-    rr2 = _mm256_mul_ps(_mm256_mul_ps(rr2, half), diff2);
-
-    (_mm256_mul_ps(p_x1, rr1), _mm256_mul_ps(p_x2, rr2))
+    let r1 = _mm256_mul_ps(num1, rden1);
+    let r2 = _mm256_mul_ps(num2, rden2);
+    (
+        _mm256_max_ps(neg_one, _mm256_min_ps(one, r1)),
+        _mm256_max_ps(neg_one, _mm256_min_ps(one, r2)),
+    )
 }
 
-/// Aproximação vetorial de `tanh(x)` usando AVX-512.
+/// Aproximação vetorial branchless de `tanh(x)` usando Padé [5,4] (AVX-512).
 ///
 /// # Safety
-/// O chamador deve garantir que a CPU suporte instruções AVX-512 (F e VL).
+/// O chamador deve garantir suporte a AVX-512F e AVX-512VL.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
-    // Coeficientes do polinômio Minimax de grau 7
-    let c0 = _mm512_set1_ps(TANH_C0);
-    let c1 = _mm512_set1_ps(TANH_C1);
-    let c2 = _mm512_set1_ps(TANH_C2);
+    let clamp_lo = _mm512_set1_ps(-PADE_TANH_CLAMP);
+    let clamp_hi = _mm512_set1_ps(PADE_TANH_CLAMP);
+    let num_a = _mm512_set1_ps(PADE_TANH_NUM_A);
+    let num_b = _mm512_set1_ps(PADE_TANH_NUM_B);
+    let den_c4 = _mm512_set1_ps(PADE_TANH_DEN_C4);
+    let den_c2 = _mm512_set1_ps(PADE_TANH_DEN_C2);
+    let den_a = _mm512_set1_ps(PADE_TANH_DEN_A);
+    let two = _mm512_set1_ps(2.0);
     let one = _mm512_set1_ps(1.0);
-    let min_limit = _mm512_set1_ps(-TANH_CLAMP_LIMIT);
-    let max_limit = _mm512_set1_ps(TANH_CLAMP_LIMIT);
+    let neg_one = _mm512_set1_ps(-1.0);
 
-    // Clamp de saturação
-    let x = _mm512_max_ps(min_limit, _mm512_min_ps(max_limit, x));
-
-    // x_sq = x * x
+    let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
     let x_sq = _mm512_mul_ps(x, x);
     let x_sq_sq = _mm512_mul_ps(x_sq, x_sq);
 
-    let y_3_5 = _mm512_fmadd_ps(c1, x_sq, c0);
-    let y_3_5_7 = _mm512_fmadd_ps(c2, x_sq_sq, y_3_5);
-    let y_full = _mm512_fmadd_ps(y_3_5_7, x_sq, one);
+    let num = _mm512_mul_ps(x, _mm512_add_ps(
+        _mm512_fmadd_ps(num_a, x_sq, x_sq_sq),
+        num_b,
+    ));
 
-    let p_x = _mm512_mul_ps(x, y_full);
+    let den = _mm512_fmadd_ps(den_c4, x_sq_sq,
+        _mm512_fmadd_ps(den_c2, x_sq, den_a));
 
-    let p_x_sq = _mm512_mul_ps(p_x, p_x);
-    let radicand = _mm512_add_ps(p_x_sq, one);
+    let mut rden = _mm512_rcp14_ps(den);
+    rden = _mm512_mul_ps(rden, _mm512_fnmadd_ps(den, rden, two));
 
-    let mut rr = _mm512_rsqrt14_ps(radicand);
-
-    let three = _mm512_set1_ps(3.0);
-    let half = _mm512_set1_ps(0.5);
-
-    // 1ª iteração NR
-    let rr_sq = _mm512_mul_ps(rr, rr);
-    let diff = _mm512_fnmadd_ps(radicand, rr_sq, three);
-    rr = _mm512_mul_ps(_mm512_mul_ps(rr, half), diff);
-
-    // 2ª iteração NR
-    let rr_sq = _mm512_mul_ps(rr, rr);
-    let diff = _mm512_fnmadd_ps(radicand, rr_sq, three);
-    rr = _mm512_mul_ps(_mm512_mul_ps(rr, half), diff);
-
-    _mm512_mul_ps(p_x, rr)
+    let result = _mm512_mul_ps(num, rden);
+    _mm512_max_ps(neg_one, _mm512_min_ps(one, result))
 }
 
 /// Aplica a ativação Tanh a um slice de f32 usando otimização AVX2.

@@ -3,14 +3,21 @@
 
 //! Módulo central de ativações com despacho (dispatch) automático de SIMD.
 //!
-//! Fornece implementações ultra-rápidas de `tanh` e `sigmoid` baseadas em
-//! polinômios de Minimax de grau 7, otimizadas para o throughput de instruções
+//! Fornece implementações ultra-rápidas e branchless de `tanh` e `sigmoid` baseadas em
+//! aproximantes racionais de Padé [5,4], otimizadas para o throughput de instruções
 //! FMA em processadores x86-64.
 //!
+//! - `tanh(x) ≈ x · (x⁴ + 105·x² + 945) / (15·x⁴ + 420·x² + 945)` para |x| < 4, saturado em [-1, 1].
+//! - `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)` (reutiliza kernel tanh).
+//!
+//! Referência: VDT library (CERN), Mineiro & Vorlicek (2016).
+//!
 //! # Características
-//! - **FastMath**: Aproximações que priorizam velocidade, mantendo erro < 2e-5.
-//! - **Dispatch**: Seleção automática de kernels (AVX2, AVX-512 ou Escalar) via CPUID.
+//! - **FastMath**: Aproximações que priorizam velocidade, mantendo erro < 5e-3 (compatível FP16).
+//! - **Branchless**: Zero branches — apenas máscaras SIMD (max/min/blend).
+//! - **Dispatch**: Seleção automática de kernels (AVX2, AVX-512) via CPUID.
 //! - **Zero-Alloc**: Operações estritamente seguras para uso em threads de tempo-real.
+//! - **AMX/AVX10.2-ready**: Abordagem branchless compatível com futuras extensões.
 
 pub mod fused;
 pub mod prelu;

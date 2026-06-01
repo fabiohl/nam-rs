@@ -19,38 +19,17 @@ pub const GAIN_DB_STEP: f32 = GAIN_DB_RANGE / (GAIN_LUT_SIZE as f32 - 1.0);
 /// Inverso do passo de ganho (otimização para evitar divisões no hot-path).
 pub const INV_GAIN_DB_STEP: f32 = 1.0 / GAIN_DB_STEP;
 
-// --- Limites de Clamp para Ativações ---
+// --- Coeficientes Padé para Tanh (Rational [5,4]) ---
 
-/// Limite de segurança para evitar overflow no polinômio de tanh (evita NaN).
-pub const TANH_CLAMP_LIMIT: f32 = 15.0;
-/// Limite de segurança para evitar overflow no polinômio de sigmoid.
-pub const SIGMOID_CLAMP_LIMIT: f32 = 12.0;
-
-// --- Coeficientes Tanh (Minimax Grau 7) ---
-
-/// Coeficiente de grau 0 para o polinômio Minimax de tanh.
-pub const TANH_C0: f32 = 0.166_814_34;
-/// Coeficiente de grau 1 para o polinômio Minimax de tanh.
-pub const TANH_C1: f32 = 0.008_153_17;
-/// Coeficiente de grau 2 para o polinômio Minimax de tanh.
-pub const TANH_C2: f32 = 0.000_246_32;
-
-// --- Coeficientes Sigmoid/Exp (Minimax Grau 6) ---
-
-/// Logaritmo de 2 na base e (usado para escalonamento de expoente).
-pub const EXP_LOG2E: f32 = 1.442_695_1;
-/// Parte alta de ln(2) para precisão estendida.
-pub const EXP_LN2_HI: f32 = -0.693_145_75;
-/// Parte baixa de ln(2) para precisão estendida.
-pub const EXP_LN2_LO: f32 = -0.000_001_428_606_8;
-
-/// Coeficiente de grau 6 para o polinômio de Exp.
-pub const EXP_C6: f32 = 0.001_388_888_9;
-/// Coeficiente de grau 5 para o polinômio de Exp.
-pub const EXP_C5: f32 = 0.008_333_333;
-/// Coeficiente de grau 4 para o polinômio de Exp.
-pub const EXP_C4: f32 = 0.041_666_668;
-/// Coeficiente de grau 3 para o polinômio de Exp.
-pub const EXP_C3: f32 = 0.166_666_67;
-/// Coeficiente de grau 2 para o polinômio de Exp.
-pub const EXP_C2: f32 = 0.5;
+/// Numerador constante: x⁴ + 105·x² + 945.
+pub const PADE_TANH_NUM_A: f32 = 105.0;
+/// Numerador constante.
+pub const PADE_TANH_NUM_B: f32 = 945.0;
+/// Denominador coeficiente x⁴: 15.
+pub const PADE_TANH_DEN_C4: f32 = 15.0;
+/// Denominador coeficiente x²: 420.
+pub const PADE_TANH_DEN_C2: f32 = 420.0;
+/// Denominador constante.
+pub const PADE_TANH_DEN_A: f32 = 945.0;
+/// Limite de clamp para o domínio do Padé tanh (|x| < 4).
+pub const PADE_TANH_CLAMP: f32 = 4.0;

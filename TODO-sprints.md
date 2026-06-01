@@ -741,7 +741,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Critérios de aceitação:** Diferença vs `ScalarRefMath` < 1e-5 em 10k inputs.
 - **Especialista:** `pesquisador-inovador`.
 
-#### Tarefa S7.T09 — Substituir activations LUT por polinômios Padé branchless ✨⚠️
+#### Tarefa S7.T09 — Substituir activations LUT por polinômios Padé branchless ✨⚠️ [DONE]
 
 - **Onde:** `src/math/activations/tanh.rs:15-200`, `sigmoid.rs:18-280`.
 - **Problema/Oportunidade:** Aproximações atuais usam polinômio grau-7 iterado (~15 FMAs por activation). Padé approximant **(p/q polinomial ratio)** atinge precisão equivalente em ~7 FMAs com **zero branches**. Para LSTM 1×16 com 4 activations por amostra a 48 kHz, ganho cumulativo significativo. Referência: VDT library (CERN), Mineiro & Vorlicek (2016).

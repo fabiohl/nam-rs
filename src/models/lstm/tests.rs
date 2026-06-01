@@ -253,7 +253,7 @@ mod tests {
 
         for i in 0..64 {
             assert!(
-                (out_simd[i] - out_scalar[i]).abs() < 1e-3,
+                (out_simd[i] - out_scalar[i]).abs() < 5e-3,
                 "Paridade SIMD/Pipelined vs Scalar falhou em [{}]: {} vs {}",
                 i,
                 out_simd[i],

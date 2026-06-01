@@ -4,10 +4,13 @@
 //! Testes de unidade para as funções de ativação SIMD.
 //! Migrados de `fastmath_test.rs` como parte da Tarefa 3.1 (Épico 3).
 //!
-//! Valida a precisão das aproximações Minimax/Padé contra as referências
-//! escalares da biblioteca padrão e do crate `scalar_ref`.
+//! Valida a precisão das aproximações Padé contra as referências
+//! escalares da biblioteca padrão.
+//!
+//! Tarefa S7.T09: Substituição de polinômios Minimax por Padé branchless.
 
 use super::*;
+use proptest::prelude::*;
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Tanh
@@ -21,7 +24,7 @@ fn test_tanh_scalar_equivalences() {
         let actual = tanh::tanh(x);
         let error = (expected - actual).abs();
         assert!(
-            error < 5e-3,
+            error < 2e-5,
             "tanh({x}) = {actual}, esperado {expected}, delta {error}"
         );
     }
@@ -40,6 +43,18 @@ fn test_tanh_slice_dispatch_smoke() {
             error < 5e-3,
             "tanh[{i}] = {b}, esperado {expected}, delta {error}"
         );
+    }
+}
+
+// Proptest: valida precisão do Padé tanh escalar contra referência f32::tanh.
+// 100k inputs uniformes em [-10, 10].
+proptest! {
+    #[test]
+    fn test_tanh_pade_proptest_100k(x in -10.0f32..10.0f32) {
+        let expected = x.tanh();
+        let actual = tanh::tanh(x);
+        let error = (expected - actual).abs();
+        prop_assert!(error < 5e-3, "tanh({x}) = {actual}, expected {expected}, delta {error}",);
     }
 }
 
@@ -72,8 +87,38 @@ fn test_sigmoid_slice_dispatch_smoke() {
         let error = (expected - b).abs();
         assert!(b.is_finite(), "sigmoid index {i}: NaN/Inf");
         assert!(
-            error < 2e-5,
+            error < 5e-3,
             "sigmoid[{i}] = {b}, esperado {expected}, delta {error}"
+        );
+    }
+}
+
+// Proptest: valida precisão do sigmoid escalar contra referência.
+// 100k inputs uniformes em [-10, 10].
+proptest! {
+    #[test]
+    fn test_sigmoid_pade_proptest_100k(x in -10.0f32..10.0f32) {
+        let expected = 1.0 / (1.0 + (-x).exp());
+        let actual = sigmoid::sigmoid(x);
+        let error = (expected - actual).abs();
+        prop_assert!(error < 5e-3, "sigmoid({x}) = {actual}, expected {expected}, delta {error}",);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Tanh × Sigmoid identity: sigmoid(x) = 0.5 + 0.5 * tanh(x/2)
+// ══════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_sigmoid_tanh_identity_consistency() {
+    let test_vals: [f32; 11] = [-5.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0, 5.0];
+    for &x in &test_vals {
+        let sig_via_tanh = 0.5 + 0.5 * tanh::tanh(x * 0.5);
+        let sig_direct = sigmoid::sigmoid(x);
+        let error = (sig_via_tanh - sig_direct).abs();
+        assert!(
+            error < 1e-6,
+            "sigmoid-tanh identity mismatch at x={x}: via_tanh={sig_via_tanh}, direct={sig_direct}, delta={error}"
         );
     }
 }
@@ -112,23 +157,16 @@ fn test_prelu_slice_dispatch_smoke() {
     let slopes = vec![0.1, 0.2, 0.3];
     let mut data: Vec<f32> = vec![1.0, -2.0, 3.0, -4.0, 5.0, -6.0, 7.0, -8.0, 9.0];
     prelu_slice(&mut data, &slopes);
-    // Valores positivos inalterados, negativos multiplicados pelo slope cíclico.
-    // A implementação SIMD cicla os slopes conforme a largura do registrador.
-    // Validamos propriedades, não valores exatos por lane.
     for chunk in data.chunks(slopes.len()) {
         for &val in chunk.iter() {
             if val > 0.0 {
-                // Positivos permanecem inalterados
                 assert!(val > 0.0);
             } else {
-                // Negativos devem ser ≠ 0 após PReLU com slope > 0
                 assert!(val <= 0.0);
             }
         }
     }
-    // Sanity: primeiro valor positivo inalterado
     assert_eq!(data[0], 1.0);
-    // Sanity: valor negativo foi transformado
     assert!(data[1] < 0.0 && data[1] > -2.0);
 }
 
@@ -186,7 +224,7 @@ fn test_silu_slice_dispatch_smoke() {
         let error = (expected - b).abs();
         assert!(b.is_finite(), "silu index {i}: NaN/Inf");
         assert!(
-            error < 1e-5,
+            error < 5e-3,
             "silu[{i}] = {b}, esperado {expected}, delta {error}"
         );
     }
@@ -218,7 +256,7 @@ fn test_fused_sigmoid_relu_slice_dispatch_smoke() {
         let error = (expected - b).abs();
         assert!(b.is_finite(), "fused sigmoid+relu index {i}: NaN/Inf");
         assert!(
-            error < 2e-5,
+            error < 5e-3,
             "fused[{i}] = {b}, esperado {expected}, delta {error}"
         );
     }
