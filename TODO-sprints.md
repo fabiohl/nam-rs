@@ -517,6 +517,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 > | `Long_WaveNet_CH16_4096samp` | +1.2%     | `div_ceil` + padding zero no encoder interleaved              |
 >
 > Prioridade de recuperação: **Sprint S7.R** (tarefas S7.R01–R04, estimativa total: ~2h) → S6 (telemetria/gate) → S7 restante.
+>
+> **Status pós-S6 (2026-05-31):**
+> 2 de 4 regressões recuperadas por S6: `DotProduct_AVX2_256elem` (S6.T01 ↔ eliminação CAS-loop) e `Prewarm_LSTM_2x16` (S6.T02 ↔ eliminação divisões). Restam `Prewarm_WaveNet_Standard` (+1.6%) necessitando S7.R03 e `Long_WaveNet_CH16_4096samp` necessitando S7.R01.
 
 ### Sprint S6 — Telemetria & Gain hotpath
 
@@ -571,6 +574,8 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   2. Decimar 1-em-16 (igual ao standalone — `pw_host.rs:962`).
 - **Critérios de aceitação:** Overhead de telemetria fica abaixo de 1% nas medidas.
 - **Especialista:** `implementador`.
+
+> **Auditoria S6 concluída (2026-05-31):** Todas as 5 tarefas implementadas e verificadas. `src/dsp/gain.rs` removido (S6.T03), `fetch_add` em `AtomicU64` (S6.T01), divisões eliminadas no gate (S6.T02), cache de thresholds no CLAP e standalone alinhados (S6.T04), decimação 1-em-16 no CLAP e standalone alinhados (S6.T05). Resultado: 2 das 4 regressões recuperadas (DotProduct + Prewarm_LSTM). Restam Prewarm_WaveNet (+1.6% → S7.R03) e Long_WaveNet (→ S7.R01).
 
 ### Sprint S7.R — Recuperação de Performance (Regressões pós-Épicos 2–3) 🔥
 
