@@ -990,7 +990,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
   - Todos os testes passam (188 unit + integração).
 - **Especialista:** `implementador`.
 
-#### Tarefa S10b.T04 — Quebrar `src/loader/dispatcher/wavenet.rs` (701 LoC) 💡
+#### Tarefa S10b.T04 — Quebrar `src/loader/dispatcher/wavenet.rs` (701 LoC) [DONE]
 
 - **Onde:** `src/loader/dispatcher/wavenet.rs` → `src/loader/dispatcher/wavenet/`.
 - **Problema:** 701 LoC para o dispatcher WaveNet (Standard/Lite/Feather/Nano + dinâmico). Adicionar variantes (S13.T06 adiciona `1×40`/`2×24` para LSTM — padrão análogo para WaveNet virá) ou layouts (`SmoothQuantInt8` S15.T01, `AmxTile16x64Bf16` S23.T02) sem split duplica o problema.
