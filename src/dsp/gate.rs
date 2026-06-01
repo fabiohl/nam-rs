@@ -125,119 +125,128 @@ impl DynamicHysteresis {
         params: &GateParams,
         n_samples: usize,
     ) {
-        // Guarda o volume que tínhamos no início deste bloco para fazer a suavização depois.
         self.ramp_start_multiplier = self.current_multiplier;
-
         match self.state {
-            // ESTADO: ABERTO (O som está passando livremente)
-            GateState::Open => {
-                if value < threshold_close {
-                    // O som ficou baixo. Começamos a contar o tempo de espera (hold).
-                    self.hold_counter += n_samples;
-                    if self.hold_counter >= params.hold_frames {
-                        // O tempo de espera acabou. Vamos começar a fechar o som suavemente.
-                        self.state = GateState::FadingOut;
-                        self.fade_counter = params.fade_frames;
-                        self.ramp_samples = 0;
-                    } else {
-                        self.ramp_samples = 0;
-                    }
-                } else {
-                    // O som continua alto. Zeramos o contador de espera.
-                    self.hold_counter = 0;
-                    self.ramp_samples = 0;
-                }
-            }
-            // ESTADO: FECHANDO SUAVEMENTE (O volume está diminuindo aos poucos)
+            GateState::Open => self.update_open(value, threshold_close, params, n_samples),
             GateState::FadingOut => {
-                if value >= threshold_open {
-                    // O som voltou a ficar alto de repente!
-                    // Interrompemos o fechamento e começamos a abrir de novo.
-                    self.state = GateState::FadingIn;
-                    self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
-
-                    if self.fade_counter + n_samples < params.fade_frames {
-                        self.fade_counter += n_samples;
-                        self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
-                        self.ramp_samples = n_samples;
-                    } else {
-                        // O som abriu tão rápido que já completou o processo.
-                        self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
-                        self.state = GateState::Open;
-                        self.current_multiplier = 1.0;
-                        self.fade_counter = params.fade_frames;
-                        self.hold_counter = 0;
-                    }
-                } else if self.fade_counter > n_samples {
-                    // Continua fechando gradualmente.
-                    self.fade_counter -= n_samples;
-                    self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
-                    self.ramp_samples = n_samples;
-                } else {
-                    // Terminou de fechar. Agora o som está em silêncio total.
-                    self.ramp_samples = self.fade_counter;
-                    self.state = GateState::Closed;
-                    self.current_multiplier = 0.0;
-                    self.fade_counter = 0;
-                }
+                self.update_fading_out(value, threshold_open, params, n_samples)
             }
-            // ESTADO: FECHADO (Silêncio total, o ruído foi cortado)
-            GateState::Closed => {
-                if value >= threshold_open {
-                    // O volume subiu! Vamos começar a abrir o som suavemente.
-                    self.state = GateState::FadingIn;
-                    self.fade_counter = 0;
-                    self.hold_counter = 0;
+            GateState::Closed => self.update_closed(value, threshold_open, params, n_samples),
+            GateState::FadingIn => self.update_fading_in(value, threshold_close, params, n_samples),
+        }
+    }
 
-                    if self.fade_counter + n_samples < params.fade_frames {
-                        self.fade_counter += n_samples;
-                        self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
-                        self.ramp_samples = n_samples;
-                    } else {
-                        // Abriu totalmente em um único passo.
-                        self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
-                        self.state = GateState::Open;
-                        self.current_multiplier = 1.0;
-                        self.fade_counter = params.fade_frames;
-                    }
-                } else {
-                    // Continua em silêncio.
-                    self.ramp_samples = 0;
-                }
+    fn update_open(
+        &mut self,
+        value: f32,
+        threshold_close: f32,
+        params: &GateParams,
+        n_samples: usize,
+    ) {
+        if value < threshold_close {
+            self.hold_counter += n_samples;
+            if self.hold_counter >= params.hold_frames {
+                self.state = GateState::FadingOut;
+                self.fade_counter = params.fade_frames;
+                self.ramp_samples = 0;
+            } else {
+                self.ramp_samples = 0;
             }
-            // ESTADO: ABRINDO SUAVEMENTE (O volume está aumentando aos poucos)
-            GateState::FadingIn => {
-                if value < threshold_close {
-                    // O som ficou baixo de novo enquanto ainda estávamos abrindo.
-                    // Voltamos a fechar imediatamente.
-                    self.state = GateState::FadingOut;
-                    self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
+        } else {
+            self.hold_counter = 0;
+            self.ramp_samples = 0;
+        }
+    }
 
-                    if self.fade_counter > n_samples {
-                        self.fade_counter -= n_samples;
-                        self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
-                        self.ramp_samples = n_samples;
-                    } else {
-                        // Já silenciou totalmente.
-                        self.ramp_samples = self.fade_counter;
-                        self.state = GateState::Closed;
-                        self.current_multiplier = 0.0;
-                        self.fade_counter = 0;
-                    }
-                } else if self.fade_counter + n_samples < params.fade_frames {
-                    // Continua abrindo gradualmente.
-                    self.fade_counter += n_samples;
-                    self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
-                    self.ramp_samples = n_samples;
-                } else {
-                    // Terminou de abrir. O som agora passa totalmente.
-                    self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
-                    self.state = GateState::Open;
-                    self.current_multiplier = 1.0;
-                    self.fade_counter = params.fade_frames;
-                    self.hold_counter = 0;
-                }
+    fn update_fading_out(
+        &mut self,
+        value: f32,
+        threshold_open: f32,
+        params: &GateParams,
+        n_samples: usize,
+    ) {
+        if value >= threshold_open {
+            self.state = GateState::FadingIn;
+            self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
+            if self.fade_counter + n_samples < params.fade_frames {
+                self.fade_counter += n_samples;
+                self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
+                self.ramp_samples = n_samples;
+            } else {
+                self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+                self.state = GateState::Open;
+                self.current_multiplier = 1.0;
+                self.fade_counter = params.fade_frames;
+                self.hold_counter = 0;
             }
+        } else if self.fade_counter > n_samples {
+            self.fade_counter -= n_samples;
+            self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
+            self.ramp_samples = n_samples;
+        } else {
+            self.ramp_samples = self.fade_counter;
+            self.state = GateState::Closed;
+            self.current_multiplier = 0.0;
+            self.fade_counter = 0;
+        }
+    }
+
+    fn update_closed(
+        &mut self,
+        value: f32,
+        threshold_open: f32,
+        params: &GateParams,
+        n_samples: usize,
+    ) {
+        if value >= threshold_open {
+            self.state = GateState::FadingIn;
+            self.fade_counter = 0;
+            self.hold_counter = 0;
+            if n_samples < params.fade_frames {
+                self.fade_counter += n_samples;
+                self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
+                self.ramp_samples = n_samples;
+            } else {
+                self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+                self.state = GateState::Open;
+                self.current_multiplier = 1.0;
+                self.fade_counter = params.fade_frames;
+            }
+        } else {
+            self.ramp_samples = 0;
+        }
+    }
+
+    fn update_fading_in(
+        &mut self,
+        value: f32,
+        threshold_close: f32,
+        params: &GateParams,
+        n_samples: usize,
+    ) {
+        if value < threshold_close {
+            self.state = GateState::FadingOut;
+            self.fade_counter = params.fade_frames.saturating_sub(self.fade_counter);
+            if self.fade_counter > n_samples {
+                self.fade_counter -= n_samples;
+                self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
+                self.ramp_samples = n_samples;
+            } else {
+                self.ramp_samples = self.fade_counter;
+                self.state = GateState::Closed;
+                self.current_multiplier = 0.0;
+                self.fade_counter = 0;
+            }
+        } else if self.fade_counter + n_samples < params.fade_frames {
+            self.fade_counter += n_samples;
+            self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
+            self.ramp_samples = n_samples;
+        } else {
+            self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+            self.state = GateState::Open;
+            self.current_multiplier = 1.0;
+            self.fade_counter = params.fade_frames;
+            self.hold_counter = 0;
         }
     }
 

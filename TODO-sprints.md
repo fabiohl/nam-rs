@@ -931,7 +931,7 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Critérios de aceitação:** Arquivo < 500 LoC; testes passam.
 - **Especialista:** `implementador`.
 
-#### Tarefa S10.T05 — Refatorar `Gate::update` (125 LoC) em estados ⚠️
+#### Tarefa S10.T05 — Refatorar `Gate::update` (125 LoC) em estados [DONE]
 
 - **Onde:** `src/dsp/gate.rs:120-242` (declaração `pub fn update` em :120).
 - **Problema:** Função única de ~123 linhas mistura 4 estados FSM (`Open`, `FadingOut`, `Closed`, `FadingIn`).
