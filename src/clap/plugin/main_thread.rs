@@ -21,7 +21,7 @@ pub struct NamClapMainThread<'a> {
     pub(crate) shared: &'a NamClapShared,
     /// Parâmetros atuais conhecidos pela main thread (espelho dos params da audio thread).
     pub params: NamPluginParams,
-    /// Handle do host para notificações (request_restart, latency_changed, etc.).
+    /// Handle do host para notificações (latency_changed, state, etc.).
     pub host: HostMainThreadHandle<'a>,
     /// Snapshot do sistema para emissão de diagnósticos.
     pub sys: SystemSnapshot,
@@ -154,7 +154,6 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             {
                 latency_ext.changed(&mut self.host);
             }
-            self.host.request_restart();
         }
     }
 }

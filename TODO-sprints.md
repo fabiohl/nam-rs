@@ -1099,7 +1099,7 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 
 ### Sprint S12 — Lifecycle e telemetria do plugin
 
-#### Tarefa S12.T01 — Eliminar `request_restart()` redundante 💡
+#### Tarefa S12.T01 — Eliminar `request_restart()` redundante 💡 [DONE]
 
 - **Onde:** `src/clap/plugin.rs:345-347`.
 - **Problema:** Após `latency_ext.changed()`, chamar `request_restart()` é redundante e pode causar dropouts ou comportamento inesperado em FL Studio.
