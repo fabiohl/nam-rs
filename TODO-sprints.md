@@ -609,7 +609,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Esforço:** 45 min.
 - **Especialista:** `implementador`.
 
-#### Tarefa S7.R03 — Eliminar `checked_sub` do loop de backfill de prewarm WaveNet 🔥
+#### Tarefa S7.R03 — Eliminar `checked_sub` do loop de backfill de prewarm WaveNet 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/model.rs:272` (loop `for offset in 1..=receptive_field_size`).
 - **Problema:** O `checked_sub` introduz uma ramificação condicional + `Option` unwrap dentro de um loop tight de `O(RF)` iterações onde `RF` pode chegar a 2046 (WaveNet Standard). O `log::error!` dentro do branch `None` bloqueia o LLVM de otimizar o loop (presença de side effects). O `debug_assert!` acima (linha 266) já garante a invariante em debug; em release a proteção real vem do construtor `WaveNetLayerState::new` que valida `buffer_start >= receptive_field_size`. Regressão de +2.4% em `Prewarm_WaveNet_Standard`.

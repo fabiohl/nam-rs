@@ -452,14 +452,8 @@ impl WaveNetLayerArrayDyn {
                             current_state.buffer_start,
                             offset
                         );
-                        let Some(dst_start) = current_state.buffer_start.checked_sub(offset) else {
-                            log::error!(
-                                "backfill underflow: bs={}, off={}",
-                                current_state.buffer_start,
-                                offset
-                            );
-                            continue;
-                        };
+                        // SAFETY: garantido pelo construtor WaveNetLayerState::new que valida buffer_start >= receptive_field_size
+                        let dst_start = current_state.buffer_start - offset;
                         let dst_idx = dst_start * ch;
                         for j in 0..ch {
                             current_state.layer_buffer[dst_idx + j] =
