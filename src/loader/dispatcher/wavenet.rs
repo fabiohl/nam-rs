@@ -398,6 +398,7 @@ impl ConvWeightsOutput for Conv1dDyn {
             dilation,
             in_ch,
             out_ch,
+            num_blocks: out_ch.div_ceil(4),
             kernel: k_size,
             prefetch_fn,
         }

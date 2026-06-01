@@ -581,7 +581,7 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 
 > **Contexto:** Esta sprint foi criada retroativamente para recuperar as 4 regressões de performance introduzidas pelos guardrails de soundness dos Épicos 2–3. Cada tarefa tem análise de causa raiz e estratégia de recuperação zero-risco (sem abrir mão das garantias de correção). Execute antes das tarefas S7.T01+ para restaurar a baseline.
 
-#### Tarefa S7.R01 — Pré-calcular `num_blocks` e eliminar `div_ceil` por frame em `Conv1dDyn` 🔥
+#### Tarefa S7.R01 — Pré-calcular `num_blocks` e eliminar `div_ceil` por frame em `Conv1dDyn` 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs:64, 364, 506, 792`.
 - **Problema:** `num_blocks = self.out_ch.div_ceil(4)` é recalculado em **cada chamada** às 4 variantes de `process_dual_frame`, `process_single_frame` e suas contrapartes BF16. Para um modelo WaveNet Standard (CH=16, 20 layers, 4096 amostras), isso representa ~80k divisões desnecessárias por bloco de áudio. A regressão de +6.3% no benchmark `DotProduct_AVX2_256elem` é atribuída principalmente a este padrão.

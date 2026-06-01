@@ -685,6 +685,7 @@ fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
         dilation: 1,
         in_ch,
         out_ch,
+        num_blocks,
         kernel: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     }
@@ -868,6 +869,7 @@ fn test_wavenet_layer_array_dyn_block_size_gated() {
         dilation: 1,
         in_ch: ch,
         out_ch: 2 * ch,
+        num_blocks: (2 * ch).div_ceil(4),
         kernel: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
@@ -958,6 +960,7 @@ fn test_conv1d_dyn_padding_non_multiple_of_4() {
         dilation,
         in_ch,
         out_ch,
+        num_blocks: out_ch.div_ceil(4),
         kernel,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
@@ -1002,6 +1005,7 @@ fn test_conv1d_dyn_large_kernel_no_segfault() {
         dilation,
         in_ch,
         out_ch,
+        num_blocks: out_ch.div_ceil(4),
         kernel,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };

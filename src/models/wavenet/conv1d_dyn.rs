@@ -34,6 +34,8 @@ pub struct Conv1dDyn {
     pub in_ch: usize,
     /// Quantidade de canais de saída.
     pub out_ch: usize,
+    /// Quantidade de blocos de 4 canais.
+    pub num_blocks: usize,
     /// Tamanho físico do kernel.
     pub kernel: usize,
     /// Estratégia de prefetch pré-calculada.
@@ -61,7 +63,7 @@ impl Conv1dDyn {
         // --- Processamento em Par (Dual Frame) ---
         // Para economizar energia da CPU, calculamos dois momentos do áudio (f0 e f1) ao mesmo tempo.
         // Isso aproveita melhor os dados que já estão 'quentes' no cache do processador.
-        let num_blocks = self.out_ch.div_ceil(4);
+        let num_blocks = self.num_blocks;
         debug_assert!(self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel);
 
         debug_assert!(
@@ -361,7 +363,7 @@ impl Conv1dDyn {
         // --- Modo de Frame Único ---
         // Esta função é o 'estepe'. Ela entra em ação quando não podemos
         // processar em pares (como na última amostra de um bloco com tamanho ímpar).
-        let num_blocks = self.out_ch.div_ceil(4);
+        let num_blocks = self.num_blocks;
         debug_assert!(
             self.kernel <= MAX_KERNEL,
             "kernel {} excede MAX_KERNEL",
@@ -503,7 +505,7 @@ impl Conv1dDyn {
         // Esta é a versão 'turbinada' do processamento. Usamos números de 16 bits (BF16)
         // em vez de 32 bits. Isso corta o uso de memória pela metade e permite que a CPU
         // processe o dobro de dados no mesmo tempo em hardwares compatíveis.
-        let num_blocks = self.out_ch.div_ceil(4);
+        let num_blocks = self.num_blocks;
         debug_assert!(
             self.kernel <= MAX_KERNEL,
             "kernel {} excede MAX_KERNEL",
@@ -789,7 +791,7 @@ impl Conv1dDyn {
         // Este é o 'plano B' do caminho de alta performance. Ele entra em ação
         // para processar amostras que sobraram de blocos ímpares, usando
         // a economia de memória do formato BF16.
-        let num_blocks = self.out_ch.div_ceil(4);
+        let num_blocks = self.num_blocks;
         debug_assert!(
             self.kernel <= MAX_KERNEL,
             "kernel {} excede MAX_KERNEL",
