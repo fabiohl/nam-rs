@@ -207,17 +207,17 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 
 ### Camadas Ativas
 
-| Camada                        | Local                                                    | Força como Ground Truth         | O que captura                                                                                           |
-|:----------------------------- |:-------------------------------------------------------- |:------------------------------- |:------------------------------------------------------------------------------------------------------- |
-| **Golden Vectors**            | `tests/nam_infer_test.rs`, `tests/cpp_parity.rs`              | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência canônica (NeuralAmpModelerCore). |
-| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
-| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
-| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato     | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
-| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                            | ✅ Especificação de Layout      | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.          |
-| **Integração PipeWire**       | `tests/pw_integration_test.rs`                           | —                               | Inicialização do host PipeWire, processamento de buffers e teardown seguro.                             |
-| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                                | —                               | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                              |
-| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                               | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
-| **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
+| Camada                        | Local                                            | Força como Ground Truth         | O que captura                                                                                                   |
+|:----------------------------- |:------------------------------------------------ |:------------------------------- |:--------------------------------------------------------------------------------------------------------------- |
+| **Golden Vectors**            | `tests/nam_infer_test.rs`, `tests/cpp_parity.rs` | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência canônica (NeuralAmpModelerCore). |
+| **PropTests (aleatórios)**    | `tests/proptest_math.rs`                         | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                             |
+| **Testes Unitários de Bit**   | `src/math/common/tests.rs`                       | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                         |
+| **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                      | ✅ Especificação de Formato     | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.                 |
+| **Validação NAMB v2**         | `tests/namb_v2_validation.rs`                    | ✅ Especificação de Layout      | Valida a corretude do layout pré-transposto (Gate-Major/Interleaved) vs carregamento clássico.                  |
+| **Integração PipeWire**       | `tests/pw_integration_test.rs`                   | —                               | Inicialização do host PipeWire, processamento de buffers e teardown seguro.                                     |
+| **Zero-Allocation Guard**     | `tests/nam_infer_test.rs`                        | —                               | Garante que o hot-path não aloca heap via `CountingAllocator` (RT-Safety).                                      |
+| **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                      | —                               | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.                     |
+| **Soak Test (Endurance)**     | `tests/soak_test.rs`                             | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh`         |
 
 ### Decisão de Arquitetura: Remoção dos Parity Tests com Inputs Fixos e Goldens Autorreferenciais
 

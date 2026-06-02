@@ -612,8 +612,8 @@ fn test_golden_vectors_lstm_2x8() {
 
     let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo LSTM 2x8");
     let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir LSTM 2x8 para golden test");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher falhou ao construir LSTM 2x8 para golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -702,8 +702,8 @@ fn test_golden_vectors_wavenet_nano() {
 /// - MSE < 1e-3, SNR ≥ 22 dB
 #[test]
 fn test_golden_vectors_namcore_lstm_1x3() {
-    let golden_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_namcore_lstm_1x3.bin");
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_namcore_lstm_1x3.bin");
 
     if !golden_path.exists() {
         eprintln!(
@@ -744,8 +744,8 @@ fn test_golden_vectors_namcore_lstm_1x3() {
 /// - MSE < 5e-2, SNR ≥ 9 dB
 #[test]
 fn test_golden_vectors_namcore_wn_micro() {
-    let golden_path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_namcore_wn_micro.bin");
+    let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_namcore_wn_micro.bin");
 
     if !golden_path.exists() {
         eprintln!(

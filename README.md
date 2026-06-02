@@ -56,15 +56,23 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 ### Prerequisites
 
 * A relatively recent Linux Kernel and PipeWire audio server. Development and testing are performed on Ubuntu 25.10 and 26.04.
+
 * An `x86-64-v3` processor with AVX2 and FMA support (Intel ≥ Haswell 2013, AMD ≥ Excavator 2015). CPUs from 2019 onwards are highly recommended for NAM neural networks.
+
 * A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 was used during most of the development.
+
 * Development packages:
-  `sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
+  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
+
 * Cargo utilities (required for QA):
+
   * `cargo install cargo-edit`
   * `cargo install --git https://github.com/free-audio/clap-validator.git`
+
 * To ensure the engine runs flawlessly under realistic NAM models (especially "Lite" and "Standard"), it is crucial to grant advanced SCHED policies to the binary. Add your user to the system's `audio` group and edit your limits:
+
   1. `sudo usermod -aG audio $USER`
+
   2. Create or edit the limits file (e.g., `sudo nano /etc/security/limits.d/audio.conf`):
 
      ```text
@@ -73,7 +81,9 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
      ```
 
 * Create a *udev* rule to allow the `audio` group to lock CPU wake latency (C-states):
+
   1. `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`
+
   2. Reload rules or reboot: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 
      ```text
@@ -81,7 +91,9 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
      ```
 
 * Setting your CPU scaling governor (`intel_pstate` or `amd_pstate`) to **Performance** is also highly recommended:
+
   * Modern desktops (such as GNOME on Ubuntu/Fedora or KDE Plasma) manage this natively via `power-profiles-daemon`.
+
   * If you prefer `tlp`, you can edit `/etc/tlp.conf`:
 
     ```text

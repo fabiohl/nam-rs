@@ -6,6 +6,8 @@
 //! Centraliza funções de geração de sinais, métricas de erro e validação DSP
 //! para evitar duplicação entre os arquivos de teste de integração.
 
+#![allow(dead_code)]
+
 pub mod wav;
 
 use std::fs;
@@ -82,7 +84,7 @@ pub fn generate_stress_signal() -> Vec<f32> {
             let impulse = if i == n / 4 { 0.9 } else { 0.0 };
 
             let sample = env * (guitar + chirp) + impulse;
-            (sample.max(-1.0)).min(1.0) as f32
+            sample.clamp(-1.0, 1.0) as f32
         })
         .collect()
 }
@@ -213,15 +215,17 @@ pub fn report_dsp_fidelity(
     };
 
     println!();
+    println!("[NeuralAmpModelerCore × NAM-rs — {label}]");
     println!(
-        "[NeuralAmpModelerCore × NAM-rs — {label}]"
+        "  MSE     = {mse:.2e}      (threshold < {mse_limit:.1e})  {}",
+        if mse < mse_limit { "✓" } else { "✗" }
     );
-    println!("  MSE     = {mse:.2e}      (threshold < {mse_limit:.1e})  {}",
-        if mse < mse_limit { "✓" } else { "✗" });
     println!("  MAE     = {mae:.2e}");
     if snr.is_finite() {
-        println!("  SNR     = {snr:.1} dB       (threshold ≥ {min_snr_db:.1} dB)   {}",
-            if snr >= min_snr_db { "✓" } else { "✗" });
+        println!(
+            "  SNR     = {snr:.1} dB       (threshold ≥ {min_snr_db:.1} dB)   {}",
+            if snr >= min_snr_db { "✓" } else { "✗" }
+        );
     } else {
         println!("  SNR     = ∞ dB");
     }

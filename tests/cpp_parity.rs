@@ -54,7 +54,7 @@ fn render_bin() -> PathBuf {
         if let Ok(entries) = std::fs::read_dir(&build_root) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.file_name().map_or(false, |n| n == "render") && path.is_file() {
+                if path.file_name().is_some_and(|n| n == "render") && path.is_file() {
                     return path;
                 }
                 if path.is_dir() {
@@ -80,7 +80,9 @@ fn ensure_render_compiled() -> bool {
 
     if !nam_core.exists() {
         eprintln!("NeuralAmpModelerCore não encontrado em {nam_core:?}");
-        eprintln!("Execute: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}");
+        eprintln!(
+            "Execute: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}"
+        );
         return false;
     }
 
@@ -92,10 +94,8 @@ fn ensure_render_compiled() -> bool {
                 .args(["submodule", "update", "--init", sub])
                 .current_dir(&nam_core)
                 .status();
-            if let Ok(s) = status {
-                if !s.success() {
-                    eprintln!("WARN: falha ao inicializar submódulo {sub}");
-                }
+            if status.is_ok_and(|s| !s.success()) {
+                eprintln!("WARN: falha ao inicializar submódulo {sub}");
             }
         }
     }
@@ -125,7 +125,13 @@ fn ensure_render_compiled() -> bool {
     }
 
     let build_status = Command::new("cmake")
-        .args(["--build", build_dir.to_str().unwrap(), "--target", "render", "-j"])
+        .args([
+            "--build",
+            build_dir.to_str().unwrap(),
+            "--target",
+            "render",
+            "-j",
+        ])
         .status();
 
     match build_status {
@@ -181,7 +187,10 @@ fn run_render_comparison(
     match status {
         Ok(s) if s.success() => {}
         Ok(s) => {
-            eprintln!("SKIP: {label} — render retornou código {}", s.code().unwrap_or(-1));
+            eprintln!(
+                "SKIP: {label} — render retornou código {}",
+                s.code().unwrap_or(-1)
+            );
             return;
         }
         Err(e) => {
@@ -201,7 +210,12 @@ fn run_render_comparison(
 
     model.prewarm(2048);
     let mut rust_output = vec![0.0f32; stress_signal.len()];
-    process_in_blocks(&mut model, &stress_signal, &mut rust_output, GOLDEN_BLOCK_SIZE);
+    process_in_blocks(
+        &mut model,
+        &stress_signal,
+        &mut rust_output,
+        GOLDEN_BLOCK_SIZE,
+    );
 
     // Trunca para o mínimo dos dois (evita mismatch se render produz menos)
     let min_len = cpp_output.len().min(rust_output.len());
@@ -272,11 +286,5 @@ fn live_cross_validation_lstm_1x16() {
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_2x8() {
-    run_render_comparison(
-        "BossLSTM-2x8.nam",
-        "lstm_2x8",
-        "Live LSTM 2×8",
-        1e-3,
-        18.0,
-    );
+    run_render_comparison("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8", 1e-3, 18.0);
 }

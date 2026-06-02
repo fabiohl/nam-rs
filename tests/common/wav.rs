@@ -6,6 +6,8 @@
 //! Formato fixo: 1 canal, 32-bit IEEE float, little-endian.
 //! Sem crate externo — apenas `std::fs` e `std::io`.
 
+#![allow(dead_code)]
+
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -90,12 +92,8 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
     let mut data_size: u32 = 0;
     while pos + 8 <= data.len() {
         let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes([
-            data[pos + 4],
-            data[pos + 5],
-            data[pos + 6],
-            data[pos + 7],
-        ]);
+        let chunk_size =
+            u32::from_le_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]);
         if chunk_id == b"data" {
             data_size = chunk_size;
             pos += 8;

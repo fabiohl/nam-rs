@@ -16,7 +16,7 @@ repomix-*.xml
 *.json
 
 # Espelho dos projetos de referência no GitHub
-#/github.com/
+/github.com/
 
 # Ignorar artefatos do Rust
 #Cargo.lock

@@ -1,6 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-
 # Dependências do Projeto NAM-rs
 
 Esta documentação lista e detalha contextualmente as dependências de sistema operacional e de software englobadas no `Cargo.toml`. O objetivo principal é justificar a necessidade destas abstrações frente às rígidas regras de arquitetura e performance (em detrimento de libs mais ricas ou bloated).
@@ -92,14 +91,14 @@ NeuralAmpModelerCore, os seguintes pacotes são necessários:
 sudo apt install cmake g++ python3
 ```
 
-- **cmake** (≥ 3.10): Build system do NeuralAmpModelerCore.
-- **g++** (ou `clang++`, C++20): Compilador C++ para o tool `render`.
-- **python3**: Geração do WAV de teste (sinal de stress).
+* **cmake** (≥ 3.10): Build system do NeuralAmpModelerCore.
+* **g++** (ou `clang++`, C++20): Compilador C++ para o tool `render`.
+* **python3**: Geração do WAV de teste (sinal de stress).
 
 > [!NOTE]
 > Estas dependências são **opcionais**. Os golden vectors são pré-commitados no
 > repositório e os testes de validação rodam sem C++ no `cargo test` normal.
 > O C++ é necessário apenas para:
 >
-> - Regenerar goldens: `./tests/fixtures/golden_gen_build.sh`
-> - Validação cruzada ao vivo: `./utils/tests-long.sh`
+> * Regenerar goldens: `./tests/fixtures/golden_gen_build.sh`
+> * Validação cruzada ao vivo: `./utils/tests-long.sh`

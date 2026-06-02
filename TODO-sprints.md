@@ -1153,9 +1153,9 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 Objetivo: blindar contra regressões e estabelecer baseline empírico de paridade vs C++.
 Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
 
-### Sprint S13 — Cobertura de testes & cross-impl validation
+### Sprint S13a — Cobertura de testes & cross-impl validation
 
-#### Tarefa S13.T01 — Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore 🔥
+#### Tarefa S13a.T01 — Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore 🔥 [DONE]
 
 - **Onde:** `tests/cpp_parity.rs` (novo); `tests/fixtures/golden_gen_build.sh` (reescrito); `tests/common/wav.rs` (novo); `tests/common/mod.rs` (atualizado); `tests/nam_infer_test.rs` (atualizado).
 - **Problema:** Fonte de verdade fragmentada em 3 camadas desalinhadas:
@@ -1182,7 +1182,30 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Nota do PO 1:** A Camada 2 (validação ao vivo com compilação C++) deve ser acionável apenas a partir do `utils/tests-long.sh`. A Camada 1 (goldens pré-commitados) roda no `cargo test` normal — rápido e sem dependência de C++.
 - **Nota do PO 2:** A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
 
-#### Tarefa S13.T02 — Round-trip encode→decode em NAMB v2 ⚠️
+#### Tarefa S13a.T02 — Revisão de precisão FastMath e prototipação de estratégias de ganho 💡
+
+- **Onde:** `src/math/fast_tanh.rs`, `src/math/fast_sigmoid.rs`, `src/math/common/ops.rs`; benchmarks em `benches/`.
+- **Contexto:** A cross-validation S13a.T01 estabeleceu baseline empírico de precisão NAM-rs ↔ NeuralAmpModelerCore com 5 métricas (MSE, MAE, SNR, PSNR, bits equiv.) para 7 modelos. Os resultados mostram:
+  - **Melhor caso:** LSTM 1×3 — SNR=59 dB, 9.80 bits equiv. (praticamente idêntico ao C++)
+  - **Pior caso:** WaveNet Standard — SNR=9.5 dB, 1.59 bits equiv. (divergência acumulada por ~20k ativações tanh/sigmoid por frame)
+  - A divergência é dominada pela aproximação Padé `fast_tanh` (~20 ns vs ~60 ns do `std::tanh`, mas erro ~2e-5 por chamada) e pela compressão F16/BF16 dos pesos.
+- **Objetivo:** Investigar e prototipar estratégias para melhorar a precisão com custo computacional mínimo, usando os dados de S13a.T01 como baseline comparativo.
+- **Estratégias a explorar:**
+  1. **Padé de ordem superior (4,3) ou (5,4):** Ganhar 1-2 bits de precisão por chamada, com custo de 2-4 ns extras.
+  2. **Minimax polynomial fit:** Gerado via Sollya/Lolremez para o intervalo real de ativação [-4,4] — pode ser mais preciso que Padé para o mesmo grau.
+  3. **Compensação de erro estocástico (Kahan summation):** Nos acumuladores de convolução WaveNet, aplicar Kahan/pairwise summation para reduzir drift sem custo SIMD adicional significativo.
+  4. **Mixed-precision seletiva:** Manter F16 para layers iniciais (menos sensíveis) e F32 para layers finais (mais impacto no output).
+  5. **Calibração adaptativa de threshold por topologia:** Ajustar thresholds de MSE/SNR por número de layers e ativações, em vez de um threshold fixo por família (WaveNet/LSTM).
+- **Entregável:** Relatório benchmark comparativo (tabela: estratégia × modelo × latência × precisão) e PR com a(s) estratégia(s) vencedora(s).
+- **Critérios de aceitação:**
+  - Ao menos uma estratégia que melhore o SNR do WaveNet Standard em ≥ 3 dB sem regressão de latência > 10%.
+  - Todos os golden tests S13a.T01 continuam passando (thresholds recalibrados se necessário).
+- **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Nota do PO:** Esta tarefa depende diretamente dos dados produzidos por S13a.T01. As métricas de precisão são exibidas com `cargo test test_golden_vectors -- --nocapture` e `cargo test --test cpp_parity -- --ignored --nocapture`.
+
+### Sprint S13 — Cobertura de testes
+
+#### Tarefa S13.T01 — Round-trip encode→decode em NAMB v2 ⚠️
 
 - **Onde:** `tests/namb_v2_roundtrip.rs` (novo).
 - **Problema:** Bugs Sprint S3.T03 só foram identificados por leitura manual.
@@ -1192,7 +1215,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Critérios de aceitação:** Round-trip passa para 11 topologias (7 LSTM + 4 WaveNet).
 - **Especialista:** `implementador`.
 
-#### Tarefa S13.T03 — Property-based testing em parsers 💡
+#### Tarefa S13.T02 — Property-based testing em parsers 💡
 
 - **Onde:** `tests/proptest_parsers.rs` (estender).
 - **Solução técnica:**
@@ -1202,7 +1225,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Especialista:** `implementador`.
 - **Nota do PO:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
 
-#### Tarefa S13.T04 — Stress test multi-instância CLAP ⚠️
+#### Tarefa S13.T03 — Stress test multi-instância CLAP ⚠️
 
 - **Onde:** `tests/clap_multi_instance.rs` (novo).
 - **Problema:** `ONCE_PRIO` global pode causar comportamento errático em hosts com 10+ instâncias.
@@ -1213,7 +1236,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Especialista:** `implementador`.
 - **Nota do PO:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
 
-#### Tarefa S13.T05 — Teste de prewarm edge (RF grande) ⚠️
+#### Tarefa S13.T04 — Teste de prewarm edge (RF grande) ⚠️
 
 - **Onde:** `tests/wavenet_prewarm_edge.rs` (novo).
 - **Solução técnica:**
@@ -1223,7 +1246,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Critérios de aceitação:** Sem `debug_assert!` quebrado; saída plausível.
 - **Especialista:** `implementador`.
 
-#### Tarefa S13.T06 — Adicionar variantes LSTM ao catálogo (1×40, 2×24) 💡
+#### Tarefa S13.T05 — Adicionar variantes LSTM ao catálogo (1×40, 2×24) 💡
 
 - **Onde:** `src/models/lstm/mod.rs` (enum `DynamicModel`); `src/loader/dispatcher/lstm.rs` (match de dispatch estático, região ~linha 17-46 pós-refatoração).
 - **Problema:** Modelos `LSTM 1×40` (tone matching) e `2×24` (deeper) caem em fallback dinâmico, perdendo performance.
