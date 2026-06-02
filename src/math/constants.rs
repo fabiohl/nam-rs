@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+#![allow(clippy::excessive_precision)]
+
 //! Mathematical constants, Minimax polynomial coefficients, and LUT parameters.
 //! Centralized to ensure consistency across scalar, AVX2, and AVX-512 implementations.
 
@@ -33,3 +35,27 @@ pub const PADE_TANH_DEN_C2: f32 = 420.0;
 pub const PADE_TANH_DEN_A: f32 = 945.0;
 /// Clamp limit for the Padé tanh domain (|x| < 4).
 pub const PADE_TANH_CLAMP: f32 = 4.0;
+
+// --- Minimax Polynomial Coefficients for Direct Sigmoid (Degree 17, 9 odd terms) ---
+// Optimized for the interval [-8, 8] via Lawson's weighted minimax algorithm.
+// Max absolute error: ~4.09e-4 vs f32::exp native sigmoid.
+/// Input clamp for the direct sigmoid polynomial domain (|x| < 8).
+pub const SIGMOID_MINIMAX_CLAMP: f32 = 8.0;
+/// Minimax coefficient for x^1 term.
+pub const SIGMOID_MINIMAX_C0: f32 = 2.4885319190e-01;
+/// Minimax coefficient for x^3 term.
+pub const SIGMOID_MINIMAX_C1: f32 = -1.9318685012e-02;
+/// Minimax coefficient for x^5 term.
+pub const SIGMOID_MINIMAX_C2: f32 = 1.4623214305e-03;
+/// Minimax coefficient for x^7 term.
+pub const SIGMOID_MINIMAX_C3: f32 = -7.9953400187e-05;
+/// Minimax coefficient for x^9 term.
+pub const SIGMOID_MINIMAX_C4: f32 = 2.9140652422e-06;
+/// Minimax coefficient for x^11 term.
+pub const SIGMOID_MINIMAX_C5: f32 = -6.8000246432e-08;
+/// Minimax coefficient for x^13 term.
+pub const SIGMOID_MINIMAX_C6: f32 = 9.6897239158e-10;
+/// Minimax coefficient for x^15 term.
+pub const SIGMOID_MINIMAX_C7: f32 = -7.6498626314e-12;
+/// Minimax coefficient for x^17 term.
+pub const SIGMOID_MINIMAX_C8: f32 = 2.5585471676e-14;

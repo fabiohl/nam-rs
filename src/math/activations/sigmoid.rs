@@ -3,53 +3,100 @@
 
 //! Optimized Sigmoid (Logistic) activation kernels.
 //!
-//! Reuses the exact identity `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)`,
-//! delegating to the Padé [5,4] tanh kernel for zero branches and ~6 FMAs.
+//! Uses a direct degree-17 minimax polynomial (9 odd terms) optimised
+//! for the interval [-8, 8], computed via Lawson's weighted minimax
+//! algorithm.  Max absolute error: ~4.09e-4 vs `f32::exp` reference.
+//!
+//! This eliminates the previous dependence on the `tanh(x/2)` identity
+//! and its associated rescaling and error propagation.
 
-use super::tanh::{simd_tanh_avx2, simd_tanh_avx512, simd_tanh_dual_avx2};
+use crate::math::constants::*;
 use core::arch::x86_64::*;
 
-/// Branchless approximation of `sigmoid(x)` via tanh identity (AVX2).
+/// Direct minimax polynomial approximation of `sigmoid(x)` (AVX2).
 ///
 /// # Safety
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
+    let clamp_lo = _mm256_set1_ps(-SIGMOID_MINIMAX_CLAMP);
+    let clamp_hi = _mm256_set1_ps(SIGMOID_MINIMAX_CLAMP);
+    let c0 = _mm256_set1_ps(SIGMOID_MINIMAX_C0);
+    let c1 = _mm256_set1_ps(SIGMOID_MINIMAX_C1);
+    let c2 = _mm256_set1_ps(SIGMOID_MINIMAX_C2);
+    let c3 = _mm256_set1_ps(SIGMOID_MINIMAX_C3);
+    let c4 = _mm256_set1_ps(SIGMOID_MINIMAX_C4);
+    let c5 = _mm256_set1_ps(SIGMOID_MINIMAX_C5);
+    let c6 = _mm256_set1_ps(SIGMOID_MINIMAX_C6);
+    let c7 = _mm256_set1_ps(SIGMOID_MINIMAX_C7);
+    let c8 = _mm256_set1_ps(SIGMOID_MINIMAX_C8);
     let half = _mm256_set1_ps(0.5);
-    let x_half = _mm256_mul_ps(x, half);
-    let t = unsafe { simd_tanh_avx2(x_half) };
-    _mm256_fmadd_ps(half, t, half)
+    let zero = _mm256_set1_ps(0.0);
+    let one = _mm256_set1_ps(1.0);
+
+    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
+    let x2 = _mm256_mul_ps(x, x);
+
+    let p = _mm256_fmadd_ps(c8, x2, c7);
+    let p = _mm256_fmadd_ps(p, x2, c6);
+    let p = _mm256_fmadd_ps(p, x2, c5);
+    let p = _mm256_fmadd_ps(p, x2, c4);
+    let p = _mm256_fmadd_ps(p, x2, c3);
+    let p = _mm256_fmadd_ps(p, x2, c2);
+    let p = _mm256_fmadd_ps(p, x2, c1);
+    let p = _mm256_fmadd_ps(p, x2, c0);
+
+    let result = _mm256_fmadd_ps(x, p, half);
+    _mm256_max_ps(zero, _mm256_min_ps(one, result))
 }
 
-/// Branchless approximation of `sigmoid(x)` (Dual, 16 floats) via tanh identity.
+/// Direct minimax polynomial approximation of `sigmoid(x)` (Dual, 16 floats).
 ///
 /// # Safety
 /// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
-    let half = _mm256_set1_ps(0.5);
-    let x_half1 = _mm256_mul_ps(x1, half);
-    let x_half2 = _mm256_mul_ps(x2, half);
-    let (t1, t2) = unsafe { simd_tanh_dual_avx2(x_half1, x_half2) };
-    (
-        _mm256_fmadd_ps(half, t1, half),
-        _mm256_fmadd_ps(half, t2, half),
-    )
+    unsafe { (simd_sigmoid_avx2(x1), simd_sigmoid_avx2(x2)) }
 }
 
-/// Branchless approximation of `sigmoid(x)` via tanh identity (AVX-512).
+/// Direct minimax polynomial approximation of `sigmoid(x)` (AVX-512).
 ///
 /// # Safety
 /// The caller must guarantee AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
+    let clamp_lo = _mm512_set1_ps(-SIGMOID_MINIMAX_CLAMP);
+    let clamp_hi = _mm512_set1_ps(SIGMOID_MINIMAX_CLAMP);
+    let c0 = _mm512_set1_ps(SIGMOID_MINIMAX_C0);
+    let c1 = _mm512_set1_ps(SIGMOID_MINIMAX_C1);
+    let c2 = _mm512_set1_ps(SIGMOID_MINIMAX_C2);
+    let c3 = _mm512_set1_ps(SIGMOID_MINIMAX_C3);
+    let c4 = _mm512_set1_ps(SIGMOID_MINIMAX_C4);
+    let c5 = _mm512_set1_ps(SIGMOID_MINIMAX_C5);
+    let c6 = _mm512_set1_ps(SIGMOID_MINIMAX_C6);
+    let c7 = _mm512_set1_ps(SIGMOID_MINIMAX_C7);
+    let c8 = _mm512_set1_ps(SIGMOID_MINIMAX_C8);
     let half = _mm512_set1_ps(0.5);
-    let x_half = _mm512_mul_ps(x, half);
-    let t = unsafe { simd_tanh_avx512(x_half) };
-    _mm512_fmadd_ps(half, t, half)
+    let zero = _mm512_set1_ps(0.0);
+    let one = _mm512_set1_ps(1.0);
+
+    let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
+    let x2 = _mm512_mul_ps(x, x);
+
+    let p = _mm512_fmadd_ps(c8, x2, c7);
+    let p = _mm512_fmadd_ps(p, x2, c6);
+    let p = _mm512_fmadd_ps(p, x2, c5);
+    let p = _mm512_fmadd_ps(p, x2, c4);
+    let p = _mm512_fmadd_ps(p, x2, c3);
+    let p = _mm512_fmadd_ps(p, x2, c2);
+    let p = _mm512_fmadd_ps(p, x2, c1);
+    let p = _mm512_fmadd_ps(p, x2, c0);
+
+    let result = _mm512_fmadd_ps(x, p, half);
+    _mm512_max_ps(zero, _mm512_min_ps(one, result))
 }
 
 /// Applies Sigmoid activation to a slice of f32 using AVX2 optimization.

@@ -106,19 +106,23 @@ proptest! {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Tanh × Sigmoid identity: sigmoid(x) = 0.5 + 0.5 * tanh(x/2)
+// Sigmoid direct minimax verification
 // ══════════════════════════════════════════════════════════════════════════════
+// Sigmoid now uses a direct degree-17 minimax polynomial (E8.T01),
+// independent of the tanh(x/2) identity.  This test validates the
+// direct approximation against the f32::exp reference.
 
 #[test]
-fn test_sigmoid_tanh_identity_consistency() {
-    let test_vals: [f32; 11] = [-5.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.5, 1.0, 2.0, 3.0, 5.0];
+fn test_sigmoid_direct_minimax_boundary() {
+    // Critical saturation points where the minimax polynomial is most challenged.
+    let test_vals: [f32; 9] = [-8.0, -6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0, 8.0];
     for &x in &test_vals {
-        let sig_via_tanh = 0.5 + 0.5 * tanh::tanh(x * 0.5);
-        let sig_direct = sigmoid::sigmoid(x);
-        let error = (sig_via_tanh - sig_direct).abs();
+        let expected = 1.0 / (1.0 + (-x).exp());
+        let actual = sigmoid::sigmoid(x);
+        let error = (expected - actual).abs();
         assert!(
-            error < 1e-6,
-            "sigmoid-tanh identity mismatch at x={x}: via_tanh={sig_via_tanh}, direct={sig_direct}, delta={error}"
+            error < 5e-4,
+            "sigmoid({x}) = {actual}, expected {expected}, delta {error} (max allowed 5e-4)"
         );
     }
 }

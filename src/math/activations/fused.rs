@@ -2,6 +2,8 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Fused activation kernels for performance (e.g.: Sigmoid + ReLU, LSTM Gates).
+//!
+//! Sigmoid now uses a direct degree-17 minimax polynomial independent of tanh.
 
 use super::relu::{simd_relu_avx2, simd_relu_avx512, simd_relu_dual_avx2};
 use super::sigmoid::{simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2};
@@ -30,6 +32,7 @@ pub unsafe fn simd_fused_sigmoid_relu_dual_avx2(x1: __m256, x2: __m256) -> (__m2
 
 /// Applies Tanh on x1 and Sigmoid on x2 (Dual).
 /// Used in Gated Activation blocks (e.g.: Wavenet).
+/// Sigmoid is computed via direct minimax polynomial, independent of tanh.
 ///
 /// # Safety
 /// Requires AVX2 and FMA support.

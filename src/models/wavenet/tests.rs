@@ -769,9 +769,11 @@ fn test_gated_layer_dyn_process() {
     // The original WaveNet math defines: activation = tanh(W_f * x) * sigmoid(W_g * x)
     // Where 'f' is the filter and 'g' is the gate. Since our weights are 1.0:
     // activation = tanh(x) * sigmoid(x)
-    let expected_activation = x.tanh() * (0.5 * (1.0 + (0.5 * x).tanh())); // approximate/standard sigmoid(x)
+    // Both tanh (Padé [5,4]) and sigmoid (direct minimax polynomial, E8.T01) are
+    // approximations; tolerance accounts for cumulative error (~4e-4 from sigmoid).
+    let expected_activation = x.tanh() * (1.0 / (1.0 + (-x).exp()));
 
-    let eps = 1e-5f32;
+    let eps = 5e-4f32;
     // 'head_input' receives the activation result (skip connection).
     assert!(
         (head_input[0] - expected_activation).abs() < eps,

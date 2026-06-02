@@ -5,6 +5,37 @@
 
 use core::arch::x86_64::*;
 
+/// Scalar direct minimax sigmoid (degree 17, 9 odd terms).
+/// Mirrors the SIMD kernel in `src/math/activations/sigmoid.rs` for parity tests.
+#[inline]
+#[allow(clippy::excessive_precision)]
+fn scalar_minimax_sigmoid(x: f32) -> f32 {
+    let c0 = 2.4885319190e-01_f32;
+    let c1 = -1.9318685012e-02_f32;
+    let c2 = 1.4623214305e-03_f32;
+    let c3 = -7.9953400187e-05_f32;
+    let c4 = 2.9140652422e-06_f32;
+    let c5 = -6.8000246432e-08_f32;
+    let c6 = 9.6897239158e-10_f32;
+    let c7 = -7.6498626314e-12_f32;
+    let c8 = 2.5585471676e-14_f32;
+
+    let x_clamped = x.clamp(-8.0, 8.0);
+    let x2 = x_clamped * x_clamped;
+
+    let p = c8.mul_add(x2, c7);
+    let p = p.mul_add(x2, c6);
+    let p = p.mul_add(x2, c5);
+    let p = p.mul_add(x2, c4);
+    let p = p.mul_add(x2, c3);
+    let p = p.mul_add(x2, c2);
+    let p = p.mul_add(x2, c1);
+    let p = p.mul_add(x2, c0);
+
+    let result = x_clamped.mul_add(p, 0.5);
+    result.clamp(0.0, 1.0)
+}
+
 /// An individual LSTM model layer optimized for SIMD.
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
     /// Layer weights in Gate-Major layout.
@@ -326,10 +357,10 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             let cs = self.cell_state[j];
 
             // Activation functions (Sigmoid and Tanh) that shape the signal.
-            let f = 0.5 * (1.0 + (gf * 0.5).tanh());
-            let i = 0.5 * (1.0 + (gi * 0.5).tanh());
+            let f = scalar_minimax_sigmoid(gf);
+            let i = scalar_minimax_sigmoid(gi);
             let g = gg.tanh();
-            let o = 0.5 * (1.0 + (go * 0.5).tanh());
+            let o = scalar_minimax_sigmoid(go);
 
             let new_cs = f * cs + i * g;
             let h_val = o * new_cs.tanh();

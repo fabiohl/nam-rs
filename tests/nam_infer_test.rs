@@ -438,9 +438,7 @@ fn test_auto_consistency_lstm() {
     let path = model_path("BossLSTM-1x16.nam");
 
     if !path.exists() {
-        eprintln!(
-            "SKIP: BossLSTM-1x16.nam not found at {path:?}. Skipping LSTM self-consistency."
-        );
+        eprintln!("SKIP: BossLSTM-1x16.nam not found at {path:?}. Skipping LSTM self-consistency.");
         return;
     }
 
@@ -682,8 +680,8 @@ fn test_golden_vectors_wavenet_nano() {
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Nano model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build WaveNet Nano for golden test");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build WaveNet Nano for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -724,8 +722,8 @@ fn test_golden_vectors_namcore_lstm_1x3() {
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read NAMCore LSTM model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build NAMCore LSTM for golden test");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build NAMCore LSTM for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -766,8 +764,8 @@ fn test_golden_vectors_namcore_wn_micro() {
 
     let json_data = fs::read_to_string(&nam_path).expect("Failed to read NAMCore WN model");
     let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build NAMCore WN for golden test");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build NAMCore WN for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -829,9 +827,7 @@ fn test_end_to_end_spsc_pipeline() {
         _ => panic!("Received payload is not LoadModel in E2E"),
     };
 
-    let model = active_model
-        .as_mut()
-        .expect("Null model after SPSC drain");
+    let model = active_model.as_mut().expect("Null model after SPSC drain");
     model.prewarm(2048);
 
     // 4. Process 440 Hz sine signal (64 samples, 1 block)
@@ -1071,9 +1067,7 @@ fn test_wavenet_stability_feather() {
     let path = model_path("BossWN-feather.nam");
 
     if !path.exists() {
-        eprintln!(
-            "SKIP: BossWN-feather.nam not found at {path:?}. Skipping Feather stability."
-        );
+        eprintln!("SKIP: BossWN-feather.nam not found at {path:?}. Skipping Feather stability.");
         return;
     }
 
@@ -1134,9 +1128,7 @@ fn test_lstm_stability_2x8() {
     let path = model_path("BossLSTM-2x8.nam");
 
     if !path.exists() {
-        eprintln!(
-            "SKIP: BossLSTM-2x8.nam not found at {path:?}. Skipping LSTM 2x8 stability."
-        );
+        eprintln!("SKIP: BossLSTM-2x8.nam not found at {path:?}. Skipping LSTM 2x8 stability.");
         return;
     }
 
@@ -1314,8 +1306,7 @@ fn test_denormal_stability_silence() {
         let json_data =
             fs::read_to_string(&lstm_path).expect("Failed to read LSTM model for denormal test");
         let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-        let mut model =
-            build_model(&model_data).expect("Dispatcher failed for denormal test LSTM");
+        let mut model = build_model(&model_data).expect("Dispatcher failed for denormal test LSTM");
 
         model.prewarm(2048);
 
@@ -1738,7 +1729,11 @@ fn test_wavenet_variable_block_sizes() {
 
         let mut tot_energy = 0.0f64;
         for &s in &output {
-            assert!(s.is_finite(), "Block size {} produced non-finite output", bs);
+            assert!(
+                s.is_finite(),
+                "Block size {} produced non-finite output",
+                bs
+            );
             tot_energy += (s as f64) * (s as f64);
         }
         let rms = (tot_energy / 512.0).sqrt();
@@ -1939,8 +1934,8 @@ fn test_community_models_inference() {
         );
 
         // 3. Dispatcher and Model Construction Validation
-        let mut model = build_model(&model_data)
-            .expect("Dispatcher failed to build community model");
+        let mut model =
+            build_model(&model_data).expect("Dispatcher failed to build community model");
 
         // 4. Filter/delay warm-up
         model.prewarm(2048);
@@ -2036,13 +2031,11 @@ fn test_accept_a2_activation_with_fallback() {
         "weights": [0.0, 0.0, 0.0]
     }"#;
 
-    let model_data =
-        parse_nam_json(synthetic_json).expect("Failed to parse synthetic JSON");
+    let model_data = parse_nam_json(synthetic_json).expect("Failed to parse synthetic JSON");
 
     // The dispatcher must NO LONGER fail, but instead return WavenetA2 variant via fallback
-    let model = build_model(&model_data).expect(
-        "Dispatcher failed to load model with ReLU (should have fallen back to A2)",
-    );
+    let model = build_model(&model_data)
+        .expect("Dispatcher failed to load model with ReLU (should have fallen back to A2)");
 
     assert!(
         matches!(*model, nam_rs::models::DynamicModel::WavenetA2(_)),

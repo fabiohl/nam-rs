@@ -113,8 +113,8 @@ proptest! {
 
                 assert!(actual.is_finite(), "Sigmoid produced unwanted NaN/Inf!");
 
-                // The 5e-3 threshold reflects the precision of the Padé [5,4] approximation
-                // using the branchless tanh(x/2) identity. Errors at this magnitude are
+                // The 5e-3 threshold reflects the precision of the direct degree-17
+                // minimax polynomial (E8.T01). Errors at this magnitude are
                 // negligible for dynamics control and gating modulation.
             assert!(
                 error <= 5e-3,

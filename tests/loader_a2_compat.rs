@@ -49,9 +49,8 @@ fn test_forward_compatibility_wavenet_a2() {
     );
 
     // The dispatcher should accept the model and return the placeholder variant
-    let mut model = build_model(&model_data).expect(
-        "The dispatcher should have fallen back to the A2 placeholder instead of failing",
-    );
+    let mut model = build_model(&model_data)
+        .expect("The dispatcher should have fallen back to the A2 placeholder instead of failing");
 
     // Explicitly verify that the returned variant is the Placeholder
     match *model {
@@ -90,8 +89,8 @@ fn test_regression_a1_wavenet_standard() {
     let json_data = fs::read_to_string(&path).expect("Failed to read JSON file");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
 
-    let mut model = build_model(&model_data)
-        .expect("Dispatcher failed to build WaveNet A1 Standard model");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build WaveNet A1 Standard model");
 
     // Fill delay buffers
     model.prewarm(2048);
@@ -122,8 +121,7 @@ fn test_regression_a1_lstm() {
     let json_data = fs::read_to_string(&path).expect("Failed to read JSON file");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
 
-    let mut model =
-        build_model(&model_data).expect("Dispatcher failed to build LSTM A1 model");
+    let mut model = build_model(&model_data).expect("Dispatcher failed to build LSTM A1 model");
 
     model.prewarm(2048);
 

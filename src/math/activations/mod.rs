@@ -3,14 +3,13 @@
 
 //! Central activations module with automatic SIMD dispatch.
 //!
-//! Provides ultra-fast and branchless implementations of `tanh` and `sigmoid` based on
-//! Padé [5,4] rational approximants, optimized for FMA instruction throughput
-//! on x86-64 processors.
+//! Provides ultra-fast and branchless implementations of `tanh` and `sigmoid`.
+//! - `tanh(x)` uses Padé [5,4] rational approximant for |x| < 4, saturated to [-1, 1].
+//! - `sigmoid(x)` uses a direct degree-17 minimax polynomial (9 odd terms) for |x| < 8,
+//!   saturated to [0, 1].  Max error ~4.09e-4 vs `f32::exp` reference.
 //!
-//! - `tanh(x) ≈ x · (x⁴ + 105·x² + 945) / (15·x⁴ + 420·x² + 945)` for |x| < 4, saturated to [-1, 1].
-//! - `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)` (reuses tanh kernel).
-//!
-//! Reference: VDT library (CERN), Mineiro & Vorlicek (2016).
+//! Reference for tanh: VDT library (CERN), Mineiro & Vorlicek (2016).
+//! Sigmoid coefficients: Lawson-weighted minimax on [-8, 8].
 //!
 //! # Features
 //! - **FastMath**: Approximations that prioritize speed while keeping error < 5e-3 (FP16-compatible).
