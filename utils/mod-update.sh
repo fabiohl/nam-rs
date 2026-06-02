@@ -4,6 +4,6 @@
 
 set -xeuo pipefail
 
-echo "Updates no cargo do nam-rs"
+echo "Cargo dependency updates for nam-rs"
 cargo upgrade --verbose
 cargo update --verbose

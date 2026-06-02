@@ -26,6 +26,6 @@ pub const GUI_HEIGHT: u32 = 275;
 pub(crate) unsafe fn extend_host_lifetime<'a>(
     h: clack_plugin::host::HostSharedHandle<'a>,
 ) -> clack_plugin::host::HostSharedHandle<'static> {
-    // SAFETY: O chamador garante a validade do host ao longo do tempo de vida estendido.
+    // SAFETY: The caller guarantees host validity for the extended lifetime.
     unsafe { std::mem::transmute(h) }
 }

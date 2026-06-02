@@ -1,32 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Testes de Integração para validação das topologias e inferência neural.
+//! Integration Tests for topology validation and neural inference.
 //!
-//! # Objetivo
-//! Replicar o ModelTest.cpp da implementação C++ original:
-//! Injetar um bloco contínuo de ondas iterativas (ex: senoidal) no pipeline Lock-Free de Inferência,
-//! calculando estabilidade computacional temporal e limitando Erros Numéricos (NaN, Infinito),
-//! provando que o compilador Rust / auto-vetorização (Const Generics e FMA/AVX2) não introduzem crashes no DSP de longa duração.
+//! # Objective
+//! Replicate ModelTest.cpp from the original C++ implementation:
+//! Inject a continuous block of iterative waves (e.g., sinusoidal) into the Lock-Free Inference pipeline,
+//! calculating computational temporal stability and limiting Numerical Errors (NaN, Infinity),
+//! proving that the Rust compiler / auto-vectorization (Const Generics and FMA/AVX2) do not introduce crashes in long-duration DSP.
 //!
-//! # Validação Numérica Cross-Reference
+//! # Cross-Reference Numerical Validation
 //!
-//! Testes de auto-consistência verificam o determinismo absoluto do motor Rust:
-//! mesmo modelo + mesmo input → MSE = 0.0 (bitwise identical).
+//! Self-consistency tests verify the absolute determinism of the Rust engine:
+//! same model + same input → MSE = 0.0 (bitwise identical).
 //!
-//! Testes de golden vectors comparam a saída do motor Rust contra referência C++
-//! (NeuralAmpModelerCore — Steven Atkinson) gravada em `tests/fixtures/*.bin`.
+//! Golden vector tests compare the Rust engine output against the C++ reference
+//! (NeuralAmpModelerCore — Steven Atkinson) recorded in `tests/fixtures/*.bin`.
 //!
-//! ## Formato `.golden.bin`
+//! ## `.golden.bin` Format
 //! ```text
 //! [u32 num_samples LE]
-//! [f32×N input samples LE]       — stress signal (2048 amostras @ 48 kHz)
-//! [f32×N expected output LE]     — output do C++ NeuralAmpModelerCore (render tool)
+//! [f32×N input samples LE]       — stress signal (2048 samples @ 48 kHz)
+//! [f32×N expected output LE]     — output from C++ NeuralAmpModelerCore (render tool)
 //! ```
 //!
-//! ## Regeneração dos golden vectors
-//! Execute `tests/fixtures/golden_gen_build.sh` com o NeuralAmpModelerCore.
-//! Os arquivos `.golden.bin` resultantes devem ser commitados em `tests/fixtures/`.
+//! ## Regenerating golden vectors
+//! Run `tests/fixtures/golden_gen_build.sh` with NeuralAmpModelerCore.
+//! The resulting `.golden.bin` files should be committed in `tests/fixtures/`.
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
@@ -45,10 +45,10 @@ mod common;
 use common::*;
 
 // =============================================================================
-// Counting Allocator para Verificação Zero-Allocation
+// Counting Allocator for Zero-Allocation Verification
 // =============================================================================
-// Conta malloc/free durante um intervalo. Ativo apenas quando #[cfg(test)].
-// Usado nos testes `test_zero_alloc_process_*` para provar que o hot-path é livre de alocações.
+// Counts malloc/free during an interval. Active only when #[cfg(test)].
+// Used in `test_zero_alloc_process_*` tests to prove the hot-path is allocation-free.
 
 #[cfg(not(feature = "heap-audit"))]
 static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -76,7 +76,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
-// Guard para habilitar/desabilitar a contagem de forma segura (mesmo em pânicos).
+// Guard to safely enable/disable counting (even in panics).
 struct TrackingGuard {
     #[cfg(feature = "heap-audit")]
     _inner: nam_rs::clap::heap_audit::TrackingGuard,
@@ -102,7 +102,7 @@ impl TrackingGuard {
 
 impl Drop for TrackingGuard {
     fn drop(&mut self) {
-        // Desabilita o tracking ao sair do escopo
+        // Disable tracking when going out of scope
         #[cfg(not(feature = "heap-audit"))]
         {
             TRACKING_THREAD.store(0, Ordering::Relaxed);
@@ -121,14 +121,14 @@ fn get_alloc_count() -> usize {
     }
 }
 
-// WaveNetModel<CH=16, K=3, HEAD=8>: CH=16 canais, HEAD=8 (head_size da layer 0 = canais da Array2).
+// WaveNetModel<CH=16, K=3, HEAD=8>: CH=16 channels, HEAD=8 (layer 0 head_size = Array2 channels).
 type WaveNetStandard = wavenet::WaveNetModel<16, 3, 8>;
 
 // =============================================================================
-// Helpers — Construção de Modelos Sintéticos para Testes Unitários de Topologia
+// Helpers — Synthetic Model Construction for Topology Unit Tests
 // =============================================================================
 
-/// Helper para simular a criação de uma `WaveNetLayer` limpa para a Array1 (CH=16).
+/// Helper to simulate creation of a clean `WaveNetLayer` for Array1 (CH=16).
 fn make_wavenet_layer(
     dilation: usize,
     _has_bias: bool,
@@ -159,7 +159,7 @@ fn make_wavenet_layer(
     }
 }
 
-/// Helper para simular a criação de uma `WaveNetLayer` para a Array2 (CH=8, =HEAD da Array1).
+/// Helper to simulate creation of a `WaveNetLayer` for Array2 (CH=8, =HEAD of Array1).
 fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     wavenet::WaveNetLayer {
         conv1d: wavenet::Conv1d {
@@ -186,23 +186,23 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
     }
 }
 
-/// Helper para construir uma rede `WaveNetStandard` sintética.
+/// Helper to build a synthetic `WaveNetStandard` network.
 ///
 /// `WaveNetModel<16, 3, 8>`: Array1 CH=16, Array2 CH=8(=HEAD), HEAD2=1.
-/// Nota: o type alias abaixo passou a usar HEAD=8 (head_size real do BossWN-standard).
+/// Note: the type alias below now uses HEAD=8 (real head_size of BossWN-standard).
 ///
-/// # Alinhamento com o construtor de produção (`build_wavenet_array`)
+/// # Alignment with the production constructor (`build_wavenet_array`)
 ///
-/// Cada `WaveNetLayerState` recebe `receptive_field_size = (K-1) * dilation`
-/// da sua camada específica — espelhando fielmente `build_wavenet_array` (L274).
-/// O `receptive_field_size` global é a soma de todos os RFs individuais (2046).
+/// Each `WaveNetLayerState` receives `receptive_field_size = (K-1) * dilation`
+/// from its specific layer — faithfully mirroring `build_wavenet_array` (L274).
+/// The global `receptive_field_size` is the sum of all individual RFs (2046).
 fn build_synthetic_wavenet_standard() -> WaveNetStandard {
     const K: usize = 3;
     let dilations_1: [usize; 10] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let dilations_2: [usize; 10] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-    // RF total = soma dos RFs por camada: Σ (K-1)*d
-    // Para dilations = [1,2,4,8,16,32,64,128,256,512]: soma = 1023 × 2 = 2046
+    // Total RF = sum of RFs per layer: Σ (K-1)*d
+    // For dilations = [1,2,4,8,16,32,64,128,256,512]: sum = 1023 × 2 = 2046
     let rf1: usize = dilations_1.iter().map(|&d| (K - 1) * d).sum();
     let rf2: usize = dilations_2.iter().map(|&d| (K - 1) * d).sum();
     let final_rf = rf1.max(rf2);
@@ -211,7 +211,7 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         .iter()
         .map(|&d| make_wavenet_layer(d, false, 16))
         .collect();
-    // RF por-camada: (K-1)*d — espelha build_wavenet_array L274
+    // Per-layer RF: (K-1)*d — mirrors build_wavenet_array L274
     let states_1: Vec<wavenet::WaveNetLayerState> = dilations_1
         .iter()
         .enumerate()
@@ -250,12 +250,12 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         .iter()
         .map(|&d| make_wavenet_layer_a2(d))
         .collect();
-    // RF por-camada: (K-1)*d (CH=8)
+    // Per-layer RF: (K-1)*d (CH=8)
     let states_2: Vec<wavenet::WaveNetLayerState> = dilations_2
         .iter()
         .enumerate()
         .map(|(i, &d)| {
-            // alloc_num continua de onde array1 parou — espelha o alloc_num global do dispatcher
+            // alloc_num continues from where array1 stopped — mirrors the dispatcher's global alloc_num
             wavenet::WaveNetLayerState::new(8, (K - 1) * d, dilations_1.len() + i)
                 .expect("Failed to create WaveNetLayerState")
         })
@@ -293,48 +293,48 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
     }
 }
 
-/// Teste 1: Auditoria da capacidade de Leitura do Loader e Validação Geometria
+/// Test 1: Audit of Loader Read Capacity and Geometry Validation
 #[test]
 fn test_wavenet_model_json_parsing() {
     let path = model_path("BossWN-standard.nam");
 
     if !path.exists() {
-        eprintln!("SKIP: Modelo de teste WaveNet não encontrado em {path:?}. Ignorando parsing.");
+        eprintln!("SKIP: WaveNet test model not found at {path:?}. Skipping parsing.");
         return;
     }
 
-    let json_data = fs::read_to_string(path).expect("Falha ao ler o arquivo JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser_nam_json");
+    let json_data = fs::read_to_string(path).expect("Failed to read JSON file");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser_nam_json");
 
-    assert_eq!(model_data.architecture, "WaveNet", "Deve detectar WaveNet");
+    assert_eq!(model_data.architecture, "WaveNet", "Should detect WaveNet");
     let topo = get_wavenet_topology(&model_data);
     assert_eq!(
         topo,
         Some(NamWavenetTopology::Standard),
-        "O modelo BossWN-standard deve ser reconhecido como Standard Wavenet"
+        "The BossWN-standard model should be recognized as Standard Wavenet"
     );
 
-    // Valida propriedades de metadata para o BossWN-standard match
+    // Validate metadata properties for BossWN-standard match
     assert!(model_data.metadata.is_some());
     let metadata = model_data.metadata.unwrap();
     assert!(metadata.loudness.is_some());
 }
 
-/// Teste 2: Executa Múltiplos Blocos de Senoide pelo Core WaveNet e calcula o RMS/Erro (Sanity)
+/// Test 2: Run Multiple Sine Wave Blocks through the WaveNet Core and compute RMS/Error (Sanity)
 ///
-/// Adicionada verificação de magnitude RMS ≤ 10.0 para detectar divergência.
-/// Em debug, usa blocos reduzidos (512) para velocidade de CI.
+/// Added RMS magnitude check ≤ 10.0 to detect divergence.
+/// In debug, uses reduced blocks (512) for CI speed.
 #[test]
 fn test_wavenet_computational_stability() {
     let mut model = build_synthetic_wavenet_standard();
 
-    // Estabilização da matemática com blocos silenciosos de transiente
+    // Math stabilization with silent transient blocks
     model.prewarm();
 
     let mut in_data = [0.0f32; TEST_BLOCK_SIZE];
     let mut out_data = [0.0f32; TEST_BLOCK_SIZE];
 
-    // Em debug, reduz blocos para CI mais rápido; release usa valor completo.
+    // In debug, reduce blocks for faster CI; release uses full value.
     let num_blocks = if cfg!(debug_assertions) {
         512
     } else {
@@ -345,7 +345,7 @@ fn test_wavenet_computational_stability() {
     let mut pos: u64 = 0;
 
     for _ in 0..num_blocks {
-        // Gerador senoidal controlado como em `ModelTest.cpp`
+        // Controlled sine generator as in `ModelTest.cpp`
         for item in in_data.iter_mut().take(TEST_BLOCK_SIZE) {
             *item = ((pos as f32) * 0.01).sin();
             pos += 1;
@@ -356,7 +356,7 @@ fn test_wavenet_computational_stability() {
         for &out_val in out_data.iter().take(TEST_BLOCK_SIZE) {
             assert!(
                 out_val.is_finite(),
-                "Crash computacional detectado: FPU gerou float não finito. Falha de auditoria."
+                "Computational crash detected: FPU produced non-finite float. Audit failure."
             );
             tot_energy += (out_val as f64) * (out_val as f64);
         }
@@ -364,48 +364,48 @@ fn test_wavenet_computational_stability() {
 
     let rms = (tot_energy / ((TEST_BLOCK_SIZE * num_blocks) as f64)).sqrt();
     println!(
-        "[Auditoria de Integridade WaveNet] RMS sobre onda senoidal processada: {}",
+        "[WaveNet Integrity Audit] RMS over processed sine wave: {}",
         rms
     );
 
-    // T-7: Verificação de magnitude razoável — RMS deve ser ≤ 10.0 para modelo sintético.
-    // Um RMS > 10.0 indicaria divergência numérica da rede ou erro de inicialização.
+    // T-7: Reasonable magnitude check — RMS should be ≤ 10.0 for synthetic model.
+    // An RMS > 10.0 would indicate numerical divergence of the network or initialization error.
     assert!(
         rms <= 10.0,
-        "WaveNet RMS {rms:.4} excede magnitude razoável (10.0). Possível divergência numérica."
+        "WaveNet RMS {rms:.4} exceeds reasonable magnitude (10.0). Possible numerical divergence."
     );
 }
 
 // =============================================================================
-// Testes de Auto-Consistência (Determinismo Rust-Only)
+// Self-Consistency Tests (Rust-Only Determinism)
 // =============================================================================
 
-/// Teste 5: Auto-consistência WaveNet — determinismo absoluto.
+/// Test 5: WaveNet self-consistency — absolute determinism.
 ///
-/// Carrega `BossWN-standard.nam` duas vezes, constrói dois `DynamicModel` idênticos,
-/// executa prewarm e processa o mesmo sinal senoidal 440 Hz (512 amostras).
-/// O MSE entre as duas saídas deve ser exatamente 0.0 (bitwise identical).
+/// Loads `BossWN-standard.nam` twice, builds two identical `DynamicModel`s,
+/// runs prewarm and processes the same 440 Hz sine signal (512 samples).
+/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
 ///
-/// Este teste não depende de golden vectors C++ e valida que o motor Rust
-/// é determinístico em execuções independentes com os mesmos pesos e inputs.
+/// This test does not depend on C++ golden vectors and validates that the Rust engine
+/// is deterministic across independent runs with the same weights and inputs.
 #[test]
 fn test_auto_consistency_wavenet() {
     let path = model_path("BossWN-standard.nam");
 
     if !path.exists() {
         eprintln!(
-            "SKIP: BossWN-standard.nam não encontrado em {path:?}. Ignorando auto-consistência WaveNet."
+            "SKIP: BossWN-standard.nam not found at {path:?}. Skipping WaveNet self-consistency."
         );
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
     let mut model_a =
-        build_model(&model_data).expect("Dispatcher falhou (model_a) para auto-consistência");
+        build_model(&model_data).expect("Dispatcher failed (model_a) for self-consistency");
     let mut model_b =
-        build_model(&model_data).expect("Dispatcher falhou (model_b) para auto-consistência");
+        build_model(&model_data).expect("Dispatcher failed (model_b) for self-consistency");
 
     model_a.prewarm(2048);
     model_b.prewarm(2048);
@@ -420,37 +420,37 @@ fn test_auto_consistency_wavenet() {
     let mse = compute_mse(&out_a, &out_b);
     let mae = compute_max_abs_error(&out_a, &out_b);
 
-    println!("[Auto-Consistência WaveNet] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+    println!("[WaveNet Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
         mse == 0.0,
-        "Motor Rust WaveNet não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+        "Rust WaveNet engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }
 
-/// Teste 6: Auto-consistência LSTM — determinismo absoluto.
+/// Test 6: LSTM self-consistency — absolute determinism.
 ///
-/// Carrega `BossLSTM-1x16.nam` duas vezes, constrói dois `DynamicModel` idênticos,
-/// executa prewarm e processa o mesmo sinal senoidal 440 Hz (512 amostras).
-/// O MSE entre as duas saídas deve ser exatamente 0.0 (bitwise identical).
+/// Loads `BossLSTM-1x16.nam` twice, builds two identical `DynamicModel`s,
+/// runs prewarm and processes the same 440 Hz sine signal (512 samples).
+/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
 #[test]
 fn test_auto_consistency_lstm() {
     let path = model_path("BossLSTM-1x16.nam");
 
     if !path.exists() {
         eprintln!(
-            "SKIP: BossLSTM-1x16.nam não encontrado em {path:?}. Ignorando auto-consistência LSTM."
+            "SKIP: BossLSTM-1x16.nam not found at {path:?}. Skipping LSTM self-consistency."
         );
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&path).expect("Failed to read LSTM model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
     let mut model_a =
-        build_model(&model_data).expect("Dispatcher falhou (model_a) para auto-consistência LSTM");
+        build_model(&model_data).expect("Dispatcher failed (model_a) for LSTM self-consistency");
     let mut model_b =
-        build_model(&model_data).expect("Dispatcher falhou (model_b) para auto-consistência LSTM");
+        build_model(&model_data).expect("Dispatcher failed (model_b) for LSTM self-consistency");
 
     model_a.prewarm(2048);
     model_b.prewarm(2048);
@@ -465,34 +465,34 @@ fn test_auto_consistency_lstm() {
     let mse = compute_mse(&out_a, &out_b);
     let mae = compute_max_abs_error(&out_a, &out_b);
 
-    println!("[Auto-Consistência LSTM] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+    println!("[LSTM Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
         mse == 0.0,
-        "Motor Rust LSTM não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+        "Rust LSTM engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }
 
 // =============================================================================
-// Testes de Golden Vectors (Cross-Reference C++ ↔ Rust)
+// Golden Vector Tests (Cross-Reference C++ ↔ Rust)
 // =============================================================================
 
-/// Teste 7: Golden Vectors WaveNet — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 7: Golden Vectors WaveNet — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Lê `tests/fixtures/golden_wavenet_standard.bin`, constrói o `DynamicModel`
-/// a partir de `BossWN-standard.nam`, executa prewarm + processamento,
-/// e compara a saída contra a referência C++ (NeuralAmpModelerCore).
+/// Reads `tests/fixtures/golden_wavenet_standard.bin`, builds the `DynamicModel`
+/// from `BossWN-standard.nam`, runs prewarm + processing,
+/// and compares the output against the C++ reference (NeuralAmpModelerCore).
 ///
-/// **Métricas de precisão expandidas** (MSE, MAE, SNR, PSNR, bits equiv.)
-/// calculadas em single-pass fusion — ver `report_dsp_fidelity` em `tests/common/mod.rs`.
+/// **Expanded precision metrics** (MSE, MAE, SNR, PSNR, bits equiv.)
+/// computed in single-pass fusion — see `report_dsp_fidelity` in `tests/common/mod.rs`.
 ///
 /// ## Thresholds
 /// - MSE < 5e-2, SNR ≥ 9 dB
-/// - Divergência dominada exclusivamente pela FastMath Padé vs `std::tanh` nativo.
-/// - Sinal de stress: 2048 amostras (chirp + harmônicos guitarra + impulso + fade-to-silence).
+/// - Divergence dominated exclusively by FastMath Padé vs native `std::tanh`.
+/// - Stress signal: 2048 samples (chirp + guitar harmonics + impulse + fade-to-silence).
 ///
-/// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
-/// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
+/// If the golden file does not exist, the test prints SKIP and returns.
+/// Run `tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
 fn test_golden_vectors_wavenet() {
     let golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -500,49 +500,49 @@ fn test_golden_vectors_wavenet() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_wavenet_standard.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_wavenet_standard.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_standard.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_standard.bin");
 
-    // Carregar e construir o modelo
+    // Load and build the model
     let nam_path = model_path("BossWN-standard.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: BossWN-standard.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model =
-        build_model(&model_data).expect("Dispatcher falhou ao construir WaveNet para golden test");
+        build_model(&model_data).expect("Dispatcher failed to build WaveNet for golden test");
 
-    // Prewarm + Processamento
+    // Prewarm + Processing
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Validação 5 métricas — single-pass fusion
+    // 5-metric validation — single-pass fusion
     report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-standard");
 }
 
-/// Teste 8: Golden Vectors LSTM 1×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 8: Golden Vectors LSTM 1×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Lê `tests/fixtures/golden_lstm_1x16.bin`, constrói o `DynamicModel`
-/// a partir de `BossLSTM-1x16.nam`, executa prewarm + processamento,
-/// e compara a saída contra a referência C++ (NeuralAmpModelerCore).
+/// Reads `tests/fixtures/golden_lstm_1x16.bin`, builds the `DynamicModel`
+/// from `BossLSTM-1x16.nam`, runs prewarm + processing,
+/// and compares the output against the C++ reference (NeuralAmpModelerCore).
 ///
 /// ## Thresholds
 /// - MSE < 3e-3, SNR ≥ 15 dB
-/// - LSTM converge melhor que WaveNet (sem acumulação FastMath Padé entre camadas).
-/// - Sinal de stress: 2048 amostras (multi-componente).
+/// - LSTM converges better than WaveNet (no FastMath Padé accumulation between layers).
+/// - Stress signal: 2048 samples (multi-component).
 ///
-/// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
-/// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
+/// If the golden file does not exist, the test prints SKIP and returns.
+/// Run `tests/fixtures/golden_gen_build.sh` to regenerate the golden vectors.
 #[test]
 fn test_golden_vectors_lstm_1x16() {
     let golden_path =
@@ -550,44 +550,44 @@ fn test_golden_vectors_lstm_1x16() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_lstm_1x16.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_lstm_1x16.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_lstm_1x16.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_1x16.bin");
 
-    // Carregar e construir o modelo
+    // Load and build the model
     let nam_path = model_path("BossLSTM-1x16.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: BossLSTM-1x16.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo LSTM");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model =
-        build_model(&model_data).expect("Dispatcher falhou ao construir LSTM para golden test");
+        build_model(&model_data).expect("Dispatcher failed to build LSTM for golden test");
 
-    // Prewarm + Processamento
+    // Prewarm + Processing
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Validação 5 métricas — single-pass fusion
+    // 5-metric validation — single-pass fusion
     report_dsp_fidelity(&expected, &output, 3e-3, 15.0, "BossLSTM-1x16");
 }
 
-/// Teste 8b: Golden Vectors LSTM 2×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 8b: Golden Vectors LSTM 2×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Lê `tests/fixtures/golden_lstm_2x8.bin`, constrói o `DynamicModel`
-/// a partir de `BossLSTM-2x8.nam`. Exercita LSTM de 2 camadas.
+/// Reads `tests/fixtures/golden_lstm_2x8.bin`, builds the `DynamicModel`
+/// from `BossLSTM-2x8.nam`. Exercises 2-layer LSTM.
 ///
 /// ## Thresholds
 /// - MSE < 1e-3, SNR ≥ 18 dB
-/// - Sinal de stress: 2048 amostras (multi-componente).
+/// - Stress signal: 2048 samples (multi-component).
 #[test]
 fn test_golden_vectors_lstm_2x8() {
     let golden_path =
@@ -595,25 +595,25 @@ fn test_golden_vectors_lstm_2x8() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_lstm_2x8.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_lstm_2x8.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_lstm_2x8.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_lstm_2x8.bin");
 
     let nam_path = model_path("BossLSTM-2x8.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: BossLSTM-2x8.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: BossLSTM-2x8.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo LSTM 2x8");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read LSTM 2x8 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model =
-        build_model(&model_data).expect("Dispatcher falhou ao construir LSTM 2x8 para golden test");
+        build_model(&model_data).expect("Dispatcher failed to build LSTM 2x8 for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -622,7 +622,7 @@ fn test_golden_vectors_lstm_2x8() {
     report_dsp_fidelity(&expected, &output, 1e-3, 18.0, "BossLSTM-2x8");
 }
 
-/// Teste 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
 fn test_golden_vectors_wavenet_feather() {
     let golden_path =
@@ -630,25 +630,25 @@ fn test_golden_vectors_wavenet_feather() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_wavenet_feather.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_wavenet_feather.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_feather.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_feather.bin");
 
     let nam_path = model_path("BossWN-feather.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-feather.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: BossWN-feather.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo WaveNet Feather");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Feather model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir WaveNet Feather para golden test");
+        .expect("Dispatcher failed to build WaveNet Feather for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -657,7 +657,7 @@ fn test_golden_vectors_wavenet_feather() {
     report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-feather");
 }
 
-/// Teste 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
 fn test_golden_vectors_wavenet_nano() {
     let golden_path =
@@ -665,25 +665,25 @@ fn test_golden_vectors_wavenet_nano() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_wavenet_nano.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_wavenet_nano.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_nano.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_wavenet_nano.bin");
 
     let nam_path = model_path("BossWN-nano.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: BossWN-nano.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: BossWN-nano.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo WaveNet Nano");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet Nano model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir WaveNet Nano para golden test");
+        .expect("Dispatcher failed to build WaveNet Nano for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -692,11 +692,11 @@ fn test_golden_vectors_wavenet_nano() {
     report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-nano");
 }
 
-/// Teste 8e: Golden Vectors NAMCore LSTM 1×3 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 8e: Golden Vectors NAMCore LSTM 1×3 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Modelo `lstm.nam` do diretório `example_models/` do NeuralAmpModelerCore.
-/// LSTM com H=3, 70 pesos — exercita topologia abaixo de qualquer perfil estático,
-/// forçando o despacho dinâmico/fallback do NAM-rs.
+/// `lstm.nam` model from the `example_models/` directory of NeuralAmpModelerCore.
+/// LSTM with H=3, 70 weights — exercises a topology below any static profile,
+/// forcing dynamic dispatch/fallback in NAM-rs.
 ///
 /// ## Thresholds
 /// - MSE < 1e-3, SNR ≥ 22 dB
@@ -707,25 +707,25 @@ fn test_golden_vectors_namcore_lstm_1x3() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_namcore_lstm_1x3.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_namcore_lstm_1x3.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_namcore_lstm_1x3.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_namcore_lstm_1x3.bin");
 
     let nam_path = model_path("lstm.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: lstm.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: lstm.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo NAMCore LSTM");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read NAMCore LSTM model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir NAMCore LSTM para golden test");
+        .expect("Dispatcher failed to build NAMCore LSTM for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -734,11 +734,11 @@ fn test_golden_vectors_namcore_lstm_1x3() {
     report_dsp_fidelity(&expected, &output, 1e-3, 22.0, "NAMCore-LSTM-1x3");
 }
 
-/// Teste 8f: Golden Vectors NAMCore WaveNet Micro — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+/// Test 8f: Golden Vectors NAMCore WaveNet Micro — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Modelo `wavenet.nam` do diretório `example_models/` do NeuralAmpModelerCore.
-/// WaveNet com CH=3/2, K=3, HEAD=2/1, 3 camadas — topologia abaixo de qualquer
-/// perfil estático, forçando fallback dinâmico.
+/// `wavenet.nam` model from the `example_models/` directory of NeuralAmpModelerCore.
+/// WaveNet with CH=3/2, K=3, HEAD=2/1, 3 layers — topology below any
+/// static profile, forcing dynamic fallback.
 ///
 /// ## Thresholds
 /// - MSE < 5e-2, SNR ≥ 9 dB
@@ -749,25 +749,25 @@ fn test_golden_vectors_namcore_wn_micro() {
 
     if !golden_path.exists() {
         eprintln!(
-            "SKIP: golden_namcore_wn_micro.bin não encontrado em {golden_path:?}. \
-             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+            "SKIP: golden_namcore_wn_micro.bin not found at {golden_path:?}. \
+             Run tests/fixtures/golden_gen_build.sh to generate the golden vectors."
         );
         return;
     }
 
     let (input, expected) =
-        read_golden_bin(&golden_path).expect("Falha ao ler golden_namcore_wn_micro.bin");
+        read_golden_bin(&golden_path).expect("Failed to read golden_namcore_wn_micro.bin");
 
     let nam_path = model_path("wavenet.nam");
     if !nam_path.exists() {
-        eprintln!("SKIP: wavenet.nam não encontrado. Golden test impossível.");
+        eprintln!("SKIP: wavenet.nam not found. Golden test impossible.");
         return;
     }
 
-    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo NAMCore WN");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read NAMCore WN model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     let mut model = build_model(&model_data)
-        .expect("Dispatcher falhou ao construir NAMCore WN para golden test");
+        .expect("Dispatcher failed to build NAMCore WN for golden test");
 
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
@@ -777,35 +777,35 @@ fn test_golden_vectors_namcore_wn_micro() {
 }
 
 // =============================================================================
-// Teste End-to-End SPSC Pipeline (T-2)
+// End-to-End SPSC Pipeline Test (T-2)
 // =============================================================================
 
-/// Teste 9: Pipeline End-to-End CLI→SPSC→DSP sem PipeWire.
+/// Test 9: End-to-End Pipeline CLI→SPSC→DSP without PipeWire.
 ///
-/// Valida a cadeia completa de comunicação lock-free que seria usada em produção:
-/// 1. Parseia `BossWN-standard.nam` e constrói `DynamicModel` via dispatcher
-/// 2. Envia o modelo pela fila SPSC (`rtrb::RingBuffer`) como `ParamPayload::LoadModel`
-/// 3. No lado consumidor (thread DSP simulada), drena o modelo e executa inferência
-/// 4. Verifica que a saída é finita e com magnitude razoável
+/// Validates the full lock-free communication chain that would be used in production:
+/// 1. Parses `BossWN-standard.nam` and builds `DynamicModel` via dispatcher
+/// 2. Sends the model through the SPSC queue (`rtrb::RingBuffer`) as `ParamPayload::LoadModel`
+/// 3. On the consumer side (simulated DSP thread), drains the model and runs inference
+/// 4. Verifies that the output is finite and of reasonable magnitude
 ///
-/// Este teste não requer um daemon PipeWire ativo — exercita exclusivamente
-/// a mecânica SPSC + inferência, cobrindo a lacuna entre os testes de unidade
-/// do dispatcher e os testes de unidade do SPSC.
+/// This test does not require an active PipeWire daemon — it exercises exclusively
+/// the SPSC + inference mechanics, covering the gap between the dispatcher
+/// unit tests and the SPSC unit tests.
 #[test]
 fn test_end_to_end_spsc_pipeline() {
     let path = model_path("BossWN-standard.nam");
 
     if !path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam não encontrado em {path:?}. Ignorando pipeline E2E.");
+        eprintln!("SKIP: BossWN-standard.nam not found at {path:?}. Skipping E2E pipeline.");
         return;
     }
 
-    // 1. Parse + Dispatch (simula thread CLI)
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet para E2E");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON para E2E");
-    let boxed = build_model(&model_data).expect("Dispatcher falhou no pipeline E2E");
+    // 1. Parse + Dispatch (simulates CLI thread)
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet model for E2E");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser for E2E");
+    let boxed = build_model(&model_data).expect("Dispatcher failed in E2E pipeline");
 
-    // 2. Cria canal SPSC e envia o modelo como a CLI faria
+    // 2. Create SPSC channel and send the model as the CLI would
     let (mut producer, mut consumer) =
         rtrb::RingBuffer::<nam_rs::common::spsc::ParamPayload>::new(8);
 
@@ -817,51 +817,51 @@ fn test_end_to_end_spsc_pipeline() {
             output_mult_adj: 1.0,
             sample_rate: 48000,
         })
-        .expect("Falha ao enviar modelo via SPSC no E2E");
+        .expect("Failed to send model via SPSC in E2E");
 
-    // 3. Lado consumidor (simula callback DSP) — drena e executa inferência
+    // 3. Consumer side (simulates DSP callback) — drains and runs inference
     let received = consumer
         .pop()
-        .expect("Falha ao receber modelo via SPSC no E2E");
+        .expect("Failed to receive model via SPSC in E2E");
 
     let mut active_model = match received {
         nam_rs::spsc::ParamPayload::LoadModel { model_l, .. } => model_l,
-        _ => panic!("Payload recebido não é LoadModel no E2E"),
+        _ => panic!("Received payload is not LoadModel in E2E"),
     };
 
     let model = active_model
         .as_mut()
-        .expect("Modelo nulo após drainagem SPSC");
+        .expect("Null model after SPSC drain");
     model.prewarm(2048);
 
-    // 4. Processa sinal senoidal 440 Hz (64 amostras, 1 bloco)
+    // 4. Process 440 Hz sine signal (64 samples, 1 block)
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
-    // 5. Validação: finitude e magnitude razoável
+    // 5. Validation: finiteness and reasonable magnitude
     for (i, &s) in output.iter().enumerate() {
-        assert!(s.is_finite(), "[E2E] Sample não finita no índice {i}: {s}");
+        assert!(s.is_finite(), "[E2E] Non-finite sample at index {i}: {s}");
         assert!(
             s.abs() < 100.0,
-            "[E2E] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+            "[E2E] Excessive magnitude at index {i}: {s} (limit 100.0)"
         );
     }
 
-    println!("Pipeline E2E OK — CLI→SPSC→DSP validado sem PipeWire (64 amostras processadas).");
+    println!("E2E Pipeline OK — CLI→SPSC→DSP validated without PipeWire (64 samples processed).");
 }
 
 // =============================================================================
-// Testes de Paridade Numérica: Dinâmico ↔ Estático (T-1)
+// Numerical Parity Tests: Dynamic ↔ Static (T-1)
 // =============================================================================
 
-/// Teste 10: Paridade LSTM — estático 1×16 vs dinâmico 1×16.
+/// Test 10: LSTM parity — static 1×16 vs dynamic 1×16.
 ///
-/// Carrega `BossLSTM-1x16.nam`, constrói um `DynamicModel` pelo dispatcher normal
-/// (que matcheia o perfil estático `Lstm1x16`) e outro forçando o builder dinâmico
-/// (`build_lstm_dynamic`). Ambos recebem prewarm idêntico e processam a mesma
-/// senoidal 440 Hz. O MSE entre as saídas deve ser exatamente 0.0 (bitwise identical),
-/// pois os pesos, layout de memória e algoritmo LSTM são equivalentes.
+/// Loads `BossLSTM-1x16.nam`, builds a `DynamicModel` via the normal dispatcher
+/// (which matches the static `Lstm1x16` profile) and another forcing the dynamic builder
+/// (`build_lstm_dynamic`). Both receive identical prewarm and process the same
+/// 440 Hz sine wave. The MSE between the outputs must be exactly 0.0 (bitwise identical),
+/// since the weights, memory layout, and LSTM algorithm are equivalent.
 #[test]
 fn test_parity_lstm_static_vs_dynamic() {
     use nam_rs::loader::dispatcher::build_lstm_dynamic;
@@ -869,20 +869,20 @@ fn test_parity_lstm_static_vs_dynamic() {
     let path = model_path("BossLSTM-1x16.nam");
 
     if !path.exists() {
-        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado em {path:?}. Ignorando paridade LSTM.");
+        eprintln!("SKIP: BossLSTM-1x16.nam not found at {path:?}. Skipping LSTM parity.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&path).expect("Failed to read LSTM model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-    // Estático: dispatcher matcheia 1×16 → Lstm1x16 const-generic
+    // Static: dispatcher matches 1×16 → Lstm1x16 const-generic
     let mut model_static =
-        build_model(&model_data).expect("Dispatcher falhou (estático) para paridade LSTM");
+        build_model(&model_data).expect("Dispatcher failed (static) for LSTM parity");
 
-    // Dinâmico: forçar fallback dinâmico explicitamente
+    // Dynamic: force dynamic fallback explicitly
     let mut model_dynamic =
-        build_lstm_dynamic(&model_data, 1, 16).expect("Builder dinâmico falhou para paridade LSTM");
+        build_lstm_dynamic(&model_data, 1, 16).expect("Dynamic builder failed for LSTM parity");
 
     model_static.prewarm(2048);
     model_dynamic.prewarm(2048);
@@ -907,24 +907,24 @@ fn test_parity_lstm_static_vs_dynamic() {
     let mse = compute_mse(&out_static, &out_dynamic);
     let mae = compute_max_abs_error(&out_static, &out_dynamic);
 
-    println!("[Paridade LSTM 1×16] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+    println!("[LSTM 1×16 Parity] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
         mse <= 1e-7,
-        "LSTM estático vs dinâmico — divergência numérica! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+        "LSTM static vs dynamic — numerical divergence! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }
 
-/// Teste 11: Paridade WaveNet — estático Nano vs dinâmico Nano.
+/// Test 11: WaveNet parity — static Nano vs dynamic Nano.
 ///
-/// Carrega `BossWN-nano.nam` (CH=4, K=3, HEAD=2 → perfil Nano), constrói um
-/// `DynamicModel` pelo dispatcher normal (que matcheia a topologia estática Nano)
-/// e outro forçando o builder dinâmico (`build_wavenet_dynamic`).
-/// Ambos processam a mesma senoidal 440 Hz após prewarm.
+/// Loads `BossWN-nano.nam` (CH=4, K=3, HEAD=2 → Nano profile), builds a
+/// `DynamicModel` via the normal dispatcher (which matches the static Nano topology)
+/// and another forcing the dynamic builder (`build_wavenet_dynamic`).
+/// Both process the same 440 Hz sine wave after prewarm.
 ///
-/// **Critério:** MSE = 0.0 (bitwise identical).
-/// A equivalência é garantida pois os dois caminhos lêem os pesos na mesma
-/// ordem (WeightCursor forward-only) e aplicam a mesma transposição Conv1d.
+/// **Criterion:** MSE = 0.0 (bitwise identical).
+/// Equivalence is guaranteed because both paths read weights in the same
+/// order (WeightCursor forward-only) and apply the same Conv1d transposition.
 #[test]
 fn test_parity_wavenet_static_vs_dynamic() {
     use nam_rs::loader::dispatcher::build_wavenet_dynamic;
@@ -932,20 +932,20 @@ fn test_parity_wavenet_static_vs_dynamic() {
     let path = model_path("BossWN-nano.nam");
 
     if !path.exists() {
-        eprintln!("SKIP: BossWN-nano.nam não encontrado em {path:?}. Ignorando paridade WaveNet.");
+        eprintln!("SKIP: BossWN-nano.nam not found at {path:?}. Skipping WaveNet parity.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet Nano");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet Nano model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-    // Estático: dispatcher matcheia Nano → WaveNetModel<4, 3, 2>
+    // Static: dispatcher matches Nano → WaveNetModel<4, 3, 2>
     let mut model_static =
-        build_model(&model_data).expect("Dispatcher falhou (estático) para paridade WaveNet");
+        build_model(&model_data).expect("Dispatcher failed (static) for WaveNet parity");
 
-    // Dinâmico: forçar fallback dinâmico explicitamente
+    // Dynamic: force dynamic fallback explicitly
     let mut model_dynamic =
-        build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou para paridade WaveNet");
+        build_wavenet_dynamic(&model_data).expect("Dynamic builder failed for WaveNet parity");
 
     model_static.prewarm(2048);
     model_dynamic.prewarm(2048);
@@ -972,40 +972,40 @@ fn test_parity_wavenet_static_vs_dynamic() {
 
     println!("[DEBUG] static={:?}", &out_static[0..5]);
     println!("[DEBUG] dynamic={:?}", &out_dynamic[0..5]);
-    println!("[Paridade WaveNet Nano] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+    println!("[WaveNet Nano Parity] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
         mse <= 1e-7,
-        "WaveNet estático vs dinâmico — divergência numérica! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+        "WaveNet static vs dynamic — numerical divergence! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }
 
 // =============================================================================
-// Teste E2E Parser NAMB → Dispatcher (T-2)
+// NAMB Parser → Dispatcher E2E Test (T-2)
 // =============================================================================
 
-/// Teste 12: NAMB roundtrip — parser binário → dispatcher → inferência.
+/// Test 12: NAMB roundtrip — binary parser → dispatcher → inference.
 ///
-/// Constrói um buffer `.namb` sintético válido (via `build_valid_namb()`), parseia
-/// com `parse_namb()`, despacha ao `build_model()` e executa prewarm + processamento.
-/// Verifica que a saída é finita e que a cadeia completa `.namb → NamModelData → DynamicModel`
-/// é funcional de ponta a ponta.
+/// Builds a valid synthetic `.namb` buffer (via `build_valid_namb()`), parses
+/// with `parse_namb()`, dispatches to `build_model()` and runs prewarm + processing.
+/// Verifies that the output is finite and that the complete `.namb → NamModelData → DynamicModel`
+/// chain is functional end-to-end.
 ///
-/// O NAMB sintético transporta pesos zerados (0.01) que formam um modelo degradado
-/// mas numericamente estável — o objetivo não é validar a qualidade tonal, mas sim
-/// a integridade da cadeia de desserialização binária.
+/// The synthetic NAMB carries zeroed-out weights (0.01) that form a degraded but
+/// numerically stable model — the goal is not to validate tonal quality, but rather
+/// the integrity of the binary deserialization chain.
 #[test]
 fn test_namb_roundtrip_dispatcher_e2e() {
     use nam_rs::loader::namb::parse_namb;
 
-    // Calcular o número correto de pesos para WaveNet Standard (CH=16, K=3, HEAD=8)
+    // Compute the correct number of weights for WaveNet Standard (CH=16, K=3, HEAD=8)
     // Array1: rechannel(16) + 10×(conv(768+16)+mixin(16)+o2o(256+16)) + head(128) = 10864
     // Array2: rechannel(128) + 10×(conv(192+8)+mixin(8)+o2o(64+8)) + head(8+1) = 2937
     // head_scale: 1 → Total: 13802
     let total_weights = 13802;
     let weights: Vec<f32> = vec![0.01; total_weights];
 
-    // Construir buffer NAMB binário com CRC32 válida
+    // Build NAMB binary buffer with valid CRC32
     let weights_offset: usize = 80;
     let total_size = weights_offset + weights.len() * 4;
     let mut namb_data = vec![0u8; total_size];
@@ -1014,72 +1014,72 @@ fn test_namb_roundtrip_dispatcher_e2e() {
     namb_data[0..4].copy_from_slice(&0x4E414D42u32.to_le_bytes());
     // Version = 1
     namb_data[4..6].copy_from_slice(&1u16.to_le_bytes());
-    // Offset de pesos
+    // Weights offset
     namb_data[12..16].copy_from_slice(&(weights_offset as u32).to_le_bytes());
     // Version String @32
     namb_data[32..37].copy_from_slice(b"0.9.0");
-    // Frequência = 48000.0
+    // Sample rate = 48000.0
     namb_data[64..68].copy_from_slice(&48000.0f32.to_le_bytes());
     // Input DBU = 0.0
     namb_data[68..72].copy_from_slice(&0.0f32.to_le_bytes());
     // Output DBU = 0.0
     namb_data[72..76].copy_from_slice(&0.0f32.to_le_bytes());
 
-    // Pesos
+    // Weights
     for (i, float_val) in weights.iter().enumerate() {
         let off = weights_offset + i * 4;
         namb_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
     }
 
-    // CRC32 sobre bloco de pesos
+    // CRC32 over weights block
     let crc = nam_rs::loader::namb::crc32_ieee(&namb_data[weights_offset..]);
     namb_data[24..28].copy_from_slice(&crc.to_le_bytes());
 
     // 1. Parse NAMB
-    let model_data = parse_namb(&namb_data).expect("Falha no parse_namb para E2E NAMB");
+    let model_data = parse_namb(&namb_data).expect("Failed in parse_namb for E2E NAMB");
     assert_eq!(model_data.architecture, "WaveNet");
     assert_eq!(model_data.weights.len(), total_weights);
 
-    // 2. Dispatcher: construir DynamicModel
-    let mut model = build_model(&model_data).expect("Dispatcher falhou no E2E NAMB");
+    // 2. Dispatcher: build DynamicModel
+    let mut model = build_model(&model_data).expect("Dispatcher failed in E2E NAMB");
 
-    // 3. Prewarm e processamento
+    // 3. Prewarm and processing
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
     model.process(&input, &mut output);
 
-    // 4. Validação: finitude
+    // 4. Validation: finiteness
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
-            "[E2E NAMB] Sample não finita no índice {i}: {s}"
+            "[E2E NAMB] Non-finite sample at index {i}: {s}"
         );
     }
 
-    println!("NAMB E2E OK — parse_namb→build_model→prewarm→process validado (64 amostras).");
+    println!("NAMB E2E OK — parse_namb→build_model→prewarm→process validated (64 samples).");
 }
 
 // =============================================================================
-// Expansão da Cobertura de Testes (Feather, Nano, LSTM 2x8)
+// Test Coverage Expansion (Feather, Nano, LSTM 2x8)
 // =============================================================================
 
-/// Teste 13: Estabilidade WaveNet Feather
+/// Test 13: WaveNet Feather Stability
 #[test]
 fn test_wavenet_stability_feather() {
     let path = model_path("BossWN-feather.nam");
 
     if !path.exists() {
         eprintln!(
-            "SKIP: BossWN-feather.nam não encontrado em {path:?}. Ignorando estabilidade Feather."
+            "SKIP: BossWN-feather.nam not found at {path:?}. Skipping Feather stability."
         );
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet Feather");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou no Feather");
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet Feather model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for Feather");
 
     model.prewarm(2048);
 
@@ -1090,28 +1090,28 @@ fn test_wavenet_stability_feather() {
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
-            "[Feather] Sample não finita no índice {i}: {s}"
+            "[Feather] Non-finite sample at index {i}: {s}"
         );
         assert!(
             s.abs() < 100.0,
-            "[Feather] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+            "[Feather] Excessive magnitude at index {i}: {s} (limit 100.0)"
         );
     }
 }
 
-/// Estabilidade WaveNet Nano
+/// WaveNet Nano Stability
 #[test]
 fn test_wavenet_stability_nano() {
     let path = model_path("BossWN-nano.nam");
 
     if !path.exists() {
-        eprintln!("SKIP: BossWN-nano.nam não encontrado em {path:?}. Ignorando estabilidade Nano.");
+        eprintln!("SKIP: BossWN-nano.nam not found at {path:?}. Skipping Nano stability.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet Nano");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou no Nano");
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet Nano model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for Nano");
 
     model.prewarm(2048);
 
@@ -1120,29 +1120,29 @@ fn test_wavenet_stability_nano() {
     model.process(&input, &mut output);
 
     for (i, &s) in output.iter().enumerate() {
-        assert!(s.is_finite(), "[Nano] Sample não finita no índice {i}: {s}");
+        assert!(s.is_finite(), "[Nano] Non-finite sample at index {i}: {s}");
         assert!(
             s.abs() < 100.0,
-            "[Nano] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+            "[Nano] Excessive magnitude at index {i}: {s} (limit 100.0)"
         );
     }
 }
 
-/// Teste 15: Estabilidade LSTM 2x8
+/// Test 15: LSTM 2x8 Stability
 #[test]
 fn test_lstm_stability_2x8() {
     let path = model_path("BossLSTM-2x8.nam");
 
     if !path.exists() {
         eprintln!(
-            "SKIP: BossLSTM-2x8.nam não encontrado em {path:?}. Ignorando estabilidade LSTM 2x8."
+            "SKIP: BossLSTM-2x8.nam not found at {path:?}. Skipping LSTM 2x8 stability."
         );
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM 2x8");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou no LSTM 2x8");
+    let json_data = fs::read_to_string(&path).expect("Failed to read LSTM 2x8 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for LSTM 2x8");
 
     model.prewarm(2048);
 
@@ -1153,34 +1153,34 @@ fn test_lstm_stability_2x8() {
     for (i, &s) in output.iter().enumerate() {
         assert!(
             s.is_finite(),
-            "[LSTM 2x8] Sample não finita no índice {i}: {s}"
+            "[LSTM 2x8] Non-finite sample at index {i}: {s}"
         );
         assert!(
             s.abs() < 100.0,
-            "[LSTM 2x8] Magnitude excessiva no índice {i}: {s} (limite 100.0)"
+            "[LSTM 2x8] Excessive magnitude at index {i}: {s} (limit 100.0)"
         );
     }
 }
 
-/// Teste 16: Auto-consistência LSTM 2x8 — determinismo absoluto.
+/// Test 16: LSTM 2x8 self-consistency — absolute determinism.
 #[test]
 fn test_auto_consistency_lstm_2x8() {
     let path = model_path("BossLSTM-2x8.nam");
 
     if !path.exists() {
         eprintln!(
-            "SKIP: BossLSTM-2x8.nam não encontrado em {path:?}. Ignorando auto-consistência LSTM 2x8."
+            "SKIP: BossLSTM-2x8.nam not found at {path:?}. Skipping LSTM 2x8 self-consistency."
         );
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler modelo LSTM 2x8");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = fs::read_to_string(&path).expect("Failed to read LSTM 2x8 model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
     let mut model_a = build_model(&model_data)
-        .expect("Dispatcher falhou (model_a) para auto-consistência LSTM 2x8");
+        .expect("Dispatcher failed (model_a) for LSTM 2x8 self-consistency");
     let mut model_b = build_model(&model_data)
-        .expect("Dispatcher falhou (model_b) para auto-consistência LSTM 2x8");
+        .expect("Dispatcher failed (model_b) for LSTM 2x8 self-consistency");
 
     model_a.prewarm(2048);
     model_b.prewarm(2048);
@@ -1195,33 +1195,33 @@ fn test_auto_consistency_lstm_2x8() {
     let mse = compute_mse(&out_a, &out_b);
     let mae = compute_max_abs_error(&out_a, &out_b);
 
-    println!("[Auto-Consistência LSTM 2x8] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+    println!("[LSTM 2x8 Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
 
     assert!(
         mse == 0.0,
-        "Motor Rust LSTM 2x8 não-determinístico! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+        "Rust LSTM 2x8 engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
     );
 }
 
 // =============================================================================
-// Teste de Estabilidade sob Silêncio Prolongado (Denormals)
+// Prolonged Silence Stability Test (Denormals)
 // =============================================================================
 
-/// Teste 17: Estabilidade sob silêncio prolongado — validação de denormals.
+/// Test 17: Stability under prolonged silence — denormal validation.
 ///
-/// Carrega `BossWN-standard.nam` e `BossLSTM-1x16.nam`, executa prewarm e
-/// processa 4096 blocos (≈5.5s) de **silêncio total** (input = zeros).
+/// Loads `BossWN-standard.nam` and `BossLSTM-1x16.nam`, runs prewarm and
+/// processes 4096 blocks (≈5.5s) of **total silence** (input = zeros).
 ///
-/// Valida que:
-/// - Todas as saídas são finitas.
-/// - Output estabilizza (magnitude < 1.0 após convergência — modelos reais
-///   podem ter DC offset residual devido a biases da rede neural).
-/// - Nenhum valor subnormal detectável na saída (todos zero ou normais finitos).
-/// - Tempo de processamento por bloco (medido via `Instant::now()`) não excede 500μs.
+/// Validates that:
+/// - All outputs are finite.
+/// - Output stabilizes (magnitude < 1.0 after convergence — real models
+///   may have residual DC offset due to neural network biases).
+/// - No detectable subnormal values in the output (all zero or finite normals).
+/// - Per-block processing time (measured via `Instant::now()`) does not exceed 500μs.
 ///
-/// Este teste exercita o caminho de decaimento exponencial nos estados internos
-/// do WaveNet (buffers convolucionais) e LSTM (cell/hidden states), que sem
-/// DAZ/FTZ convergem para denormals e causam penalidade de micro-código na FPU.
+/// This test exercises the exponential decay path in the internal states
+/// of WaveNet (convolution buffers) and LSTM (cell/hidden states), which without
+/// DAZ/FTZ converge to denormals and cause microcode penalty in the FPU.
 #[test]
 fn test_denormal_stability_silence() {
     #[cfg(debug_assertions)]
@@ -1238,13 +1238,13 @@ fn test_denormal_stability_silence() {
     // --- WaveNet Standard ---
     let wn_path = model_path("BossWN-standard.nam");
     if !wn_path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam não encontrado. Ignorando denormal silence WaveNet.");
+        eprintln!("SKIP: BossWN-standard.nam not found. Skipping denormal silence WaveNet.");
     } else {
         let json_data =
-            fs::read_to_string(&wn_path).expect("Falha ao ler modelo WaveNet para denormal test");
-        let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+            fs::read_to_string(&wn_path).expect("Failed to read WaveNet model for denormal test");
+        let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
         let mut model =
-            build_model(&model_data).expect("Dispatcher falhou para denormal test WaveNet");
+            build_model(&model_data).expect("Dispatcher failed for denormal test WaveNet");
 
         model.prewarm(2048);
 
@@ -1261,47 +1261,47 @@ fn test_denormal_stability_silence() {
                 max_block_time_us = elapsed;
             }
 
-            // Validar finitude em todos os blocos
+            // Validate finiteness across all blocks
             for (i, &s) in output.iter().enumerate() {
                 assert!(
                     s.is_finite(),
-                    "[Denormal WaveNet] Sample não finita no bloco {block_idx}, índice {i}: {s}"
+                    "[Denormal WaveNet] Non-finite sample in block {block_idx}, index {i}: {s}"
                 );
             }
         }
 
-        // Validar estabilidade: output após silêncio prolongado deve ser estável
-        // (magnitude < 1.0). Modelos reais mantêm DC offset residual (~6e-3)
-        // devido a biases internos da rede neural — isso é correto.
+        // Validate stability: output after prolonged silence should be stable
+        // (magnitude < 1.0). Real models maintain residual DC offset (~6e-3)
+        // due to internal neural network biases — this is correct.
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.abs() < 1.0,
-                "[Denormal WaveNet] Após {SILENCE_BLOCKS} blocos de silêncio, \
-                 output[{i}]={s} divergiu (limiar 1.0)"
+                "[Denormal WaveNet] After {SILENCE_BLOCKS} silence blocks, \
+                 output[{i}]={s} diverged (threshold 1.0)"
             );
         }
 
-        // Nenhum valor subnormal na saída
+        // No subnormal values in the output
         for &s in output.iter() {
             assert!(
                 s == 0.0 || s.is_normal(),
-                "[Denormal WaveNet] Valor subnormal detectado na saída: {s} (bits: 0x{:08X})",
+                "[Denormal WaveNet] Subnormal value detected in output: {s} (bits: 0x{:08X})",
                 s.to_bits()
             );
         }
 
         println!(
-            "WaveNet denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
+            "WaveNet denormal OK — {SILENCE_BLOCKS} silence blocks, \
              max_block_time={max_block_time_us}μs, output[0]={:.6e}",
             output[0]
         );
 
-        // Validação de timing (relaxed em debug por ser ~10x mais lento)
+        // Timing validation (relaxed in debug as it is ~10x slower)
         if !cfg!(debug_assertions) {
             assert!(
                 max_block_time_us < MAX_BLOCK_TIME_US,
-                "[Denormal WaveNet] Bloco mais lento={max_block_time_us}μs excede {MAX_BLOCK_TIME_US}μs — \
-                 possível penalidade por denormals"
+                "[Denormal WaveNet] Slowest block={max_block_time_us}μs exceeds {MAX_BLOCK_TIME_US}μs — \
+                 possible denormal penalty"
             );
         }
     }
@@ -1309,13 +1309,13 @@ fn test_denormal_stability_silence() {
     // --- LSTM 1×16 ---
     let lstm_path = model_path("BossLSTM-1x16.nam");
     if !lstm_path.exists() {
-        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado. Ignorando denormal silence LSTM.");
+        eprintln!("SKIP: BossLSTM-1x16.nam not found. Skipping denormal silence LSTM.");
     } else {
         let json_data =
-            fs::read_to_string(&lstm_path).expect("Falha ao ler modelo LSTM para denormal test");
-        let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+            fs::read_to_string(&lstm_path).expect("Failed to read LSTM model for denormal test");
+        let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
         let mut model =
-            build_model(&model_data).expect("Dispatcher falhou para denormal test LSTM");
+            build_model(&model_data).expect("Dispatcher failed for denormal test LSTM");
 
         model.prewarm(2048);
 
@@ -1335,34 +1335,34 @@ fn test_denormal_stability_silence() {
             for (i, &s) in output.iter().enumerate() {
                 assert!(
                     s.is_finite(),
-                    "[Denormal LSTM] Sample não finita no bloco {block_idx}, índice {i}: {s}"
+                    "[Denormal LSTM] Non-finite sample in block {block_idx}, index {i}: {s}"
                 );
             }
         }
 
-        // Validar estabilidade: output < 1.0 (sem divergência numérica)
+        // Validate stability: output < 1.0 (no numerical divergence)
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.abs() < 1.0,
-                "[Denormal LSTM] Após {SILENCE_BLOCKS} blocos de silêncio, \
-                 output[{i}]={s} divergiu (limiar 1.0)"
+                "[Denormal LSTM] After {SILENCE_BLOCKS} silence blocks, \
+                 output[{i}]={s} diverged (threshold 1.0)"
             );
         }
 
-        // Validar que nenhum valor subnormal aparece na saída
+        // Validate that no subnormal value appears in the output
         for &s in output.iter() {
-            // Um float f32 subnormal tem expoente = 0 e mantissa != 0
-            // Verificamos que todos os valores são zero ou normais finitos
+            // A subnormal f32 float has exponent = 0 and mantissa != 0
+            // We verify that all values are zero or finite normals
             assert!(
                 s == 0.0 || s.is_normal(),
-                "[Denormal LSTM] Valor subnormal detectado na saída após silêncio: {s} \
+                "[Denormal LSTM] Subnormal value detected in output after silence: {s} \
                  (bits: 0x{:08X})",
                 s.to_bits()
             );
         }
 
         println!(
-            "LSTM denormal OK — {SILENCE_BLOCKS} blocos silêncio, \
+            "LSTM denormal OK — {SILENCE_BLOCKS} silence blocks, \
              max_block_time={max_block_time_us}μs, output[0]={:.6e}",
             output[0]
         );
@@ -1370,37 +1370,37 @@ fn test_denormal_stability_silence() {
         if !cfg!(debug_assertions) {
             assert!(
                 max_block_time_us < MAX_BLOCK_TIME_US,
-                "[Denormal LSTM] Bloco mais lento={max_block_time_us}μs excede {MAX_BLOCK_TIME_US}μs — \
-                 possível penalidade por denormals"
+                "[Denormal LSTM] Slowest block={max_block_time_us}μs exceeds {MAX_BLOCK_TIME_US}μs — \
+                 possible denormal penalty"
             );
         }
     }
 }
 
 // =============================================================================
-// Teste de Hot-Swap Rápido via SPSC (T-6)
+// Rapid Hot-Swap via SPSC Test (T-6)
 // =============================================================================
 
-/// Teste 18: Hot-swap rápido via SPSC — troca sequencial de 3 modelos.
+/// Test 18: Rapid hot-swap via SPSC — sequential swap of 3 models.
 ///
-/// Simula o cenário de um utilizador que troca rapidamente entre 3 modelos
-/// diferentes via CLI (`model <path>`). A cadeia SPSC deve manter a integridade
-/// de ownership (sem leak, sem double-free) e cada modelo deve produzir inferência
-/// estável após prewarm.
+/// Simulates the scenario of a user rapidly switching between 3 different
+/// models via CLI (`model <path>`). The SPSC chain must maintain ownership
+/// integrity (no leak, no double-free) and each model must produce stable
+/// inference after prewarm.
 ///
-/// Modelos usados:
+/// Models used:
 /// 1. WaveNet Standard (`BossWN-standard.nam`)
 /// 2. LSTM 1×16 (`BossLSTM-1x16.nam`)
 /// 3. WaveNet Feather (`BossWN-feather.nam`)
 ///
-/// Procedimento:
-/// 1. Push dos 3 modelos sequencialmente na fila SPSC (simula CLI)
-/// 2. Pop sequencial, substituindo o modelo ativo a cada iteração
-/// 3. Para cada modelo: prewarm + process de 64 amostras senoidais
-/// 4. Verificar finitude e magnitude razoável das saídas
+/// Procedure:
+/// 1. Push the 3 models sequentially into the SPSC queue (simulates CLI)
+/// 2. Pop sequentially, replacing the active model each iteration
+/// 3. For each model: prewarm + process 64 sinusoidal samples
+/// 4. Verify finiteness and reasonable magnitude of outputs
 ///
-/// O modelo anterior é descartado (dropped) quando substituído — validando
-/// que o ownership transfer via `Box<DynamicModel>` funciona sem leak.
+/// The previous model is discarded (dropped) when replaced — validating
+/// that ownership transfer via `Box<DynamicModel>` works without leak.
 #[test]
 fn test_rapid_hot_swap_spsc() {
     let models_to_load = [
@@ -1409,30 +1409,30 @@ fn test_rapid_hot_swap_spsc() {
         ("BossWN-feather.nam", "WaveNet Feather"),
     ];
 
-    // Verificar disponibilidade de todos os fixtures
+    // Verify availability of all fixtures
     for (filename, label) in &models_to_load {
         let p = model_path(filename);
         if !p.exists() {
             eprintln!(
-                "SKIP: {filename} não encontrado em {p:?}. Ignorando hot-swap SPSC test ({label})."
+                "SKIP: {filename} not found at {p:?}. Skipping hot-swap SPSC test ({label})."
             );
             return;
         }
     }
 
-    // Criar canal SPSC com capacidade para 4 (cabe todos os 3 modelos)
+    // Create SPSC channel with capacity 4 (fits all 3 models)
     let (mut producer, mut consumer) =
         rtrb::RingBuffer::<nam_rs::common::spsc::ParamPayload>::new(4);
 
-    // 1. Push dos 3 modelos sequencialmente (simula thread CLI fazendo 3 trocas)
+    // 1. Push the 3 models sequentially (simulates CLI thread doing 3 swaps)
     for (filename, label) in &models_to_load {
         let p = model_path(filename);
         let json_data = fs::read_to_string(&p)
-            .unwrap_or_else(|e| panic!("Falha ao ler {filename} para hot-swap: {e}"));
+            .unwrap_or_else(|e| panic!("Failed to read {filename} for hot-swap: {e}"));
         let model_data = parse_nam_json(&json_data)
-            .unwrap_or_else(|e| panic!("Falha no JSON de {filename}: {e}"));
+            .unwrap_or_else(|e| panic!("Failed in JSON for {filename}: {e}"));
         let boxed = build_model(&model_data)
-            .unwrap_or_else(|e| panic!("Dispatcher falhou em {label}: {e}"));
+            .unwrap_or_else(|e| panic!("Dispatcher failed for {label}: {e}"));
 
         producer
             .push(nam_rs::common::spsc::ParamPayload::LoadModel {
@@ -1442,30 +1442,30 @@ fn test_rapid_hot_swap_spsc() {
                 output_mult_adj: 1.0,
                 sample_rate: 48000,
             })
-            .unwrap_or_else(|_| panic!("SPSC push falhou para {label} — buffer cheio"));
+            .unwrap_or_else(|_| panic!("SPSC push failed for {label} — buffer full"));
     }
 
-    // 2. Pop e processamento sequencial (simula thread DSP recebendo trocas)
+    // 2. Pop and sequential processing (simulates DSP thread receiving swaps)
     let input = generate_sine_440hz(64);
     let mut active_model: Option<Box<nam_rs::models::DynamicModel>> = None;
 
     for (idx, (_filename, label)) in models_to_load.iter().enumerate() {
         let received = consumer
             .pop()
-            .unwrap_or_else(|_| panic!("SPSC pop falhou para {label}"));
+            .unwrap_or_else(|_| panic!("SPSC pop failed for {label}"));
 
-        // Substituir o modelo ativo — o anterior é dropped aqui
+        // Replace the active model — the previous one is dropped here
         let new_model = match received {
             nam_rs::common::spsc::ParamPayload::LoadModel { model_l, .. } => model_l,
-            _ => panic!("Payload #{idx} não é LoadModel"),
+            _ => panic!("Payload #{idx} is not LoadModel"),
         };
 
-        // Drop explícito do modelo anterior antes de atribuir novo
-        // (valida ownership transfer — sem leak)
+        // Explicit drop of previous model before assigning new one
+        // (validates ownership transfer — no leak)
         drop(active_model.take());
         active_model = new_model;
 
-        let model = active_model.as_mut().expect("Modelo nulo após pop SPSC");
+        let model = active_model.as_mut().expect("Null model after SPSC pop");
 
         // 3. Prewarm + process
         model.prewarm(2048);
@@ -1473,47 +1473,47 @@ fn test_rapid_hot_swap_spsc() {
         let mut output = vec![0.0f32; 64];
         model.process(&input, &mut output);
 
-        // 4. Validação: finitude e magnitude razoável
+        // 4. Validation: finiteness and reasonable magnitude
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
-                "[Hot-Swap #{idx} {label}] Sample não finita no índice {i}: {s}"
+                "[Hot-Swap #{idx} {label}] Non-finite sample at index {i}: {s}"
             );
             assert!(
                 s.abs() < 100.0,
-                "[Hot-Swap #{idx} {label}] Magnitude excessiva no índice {i}: {s}"
+                "[Hot-Swap #{idx} {label}] Excessive magnitude at index {i}: {s}"
             );
         }
     }
 
-    // Verificar que o canal SPSC está vazio (todos os payloads consumidos)
+    // Verify that the SPSC channel is empty (all payloads consumed)
     assert!(
         consumer.pop().is_err(),
-        "SPSC deve estar vazio após consumir todos os 3 modelos"
+        "SPSC should be empty after consuming all 3 models"
     );
 
     println!(
-        "Hot-Swap SPSC OK — 3 modelos trocados sequencialmente, \
-         ownership transfer validada sem leak."
+        "Hot-Swap SPSC OK — 3 models swapped sequentially, \
+         ownership transfer validated without leak."
     );
 }
 
 // =============================================================================
-// Testes de Zero-Allocation no Hot Path (Counting Allocator)
+// Zero-Allocation Hot Path Tests (Counting Allocator)
 // =============================================================================
 
-/// Teste de Verificação de Zero-Allocation para WaveNet Estático
+/// Zero-Allocation Verification Test for Static WaveNet
 #[test]
 fn test_zero_alloc_process_wavenet() {
     let path = model_path("BossWN-standard.nam");
     if !path.exists() {
-        eprintln!("SKIP: Modelo WaveNet não encontrado para teste zero-alloc.");
+        eprintln!("SKIP: WaveNet model not found for zero-alloc test.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
-    let mut model = build_model(&model_data).expect("Falha ao construir modelo");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
+    let mut model = build_model(&model_data).expect("Failed to build model");
 
     model.prewarm(2048);
 
@@ -1528,22 +1528,22 @@ fn test_zero_alloc_process_wavenet() {
     assert_eq!(
         get_alloc_count(),
         0,
-        "Alocações detectadas no hot path WaveNet Estático!"
+        "Allocations detected in Static WaveNet hot path!"
     );
 }
 
-/// Teste de Verificação de Zero-Allocation para LSTM
+/// Zero-Allocation Verification Test for LSTM
 #[test]
 fn test_zero_alloc_process_lstm() {
     let path = model_path("BossLSTM-1x16.nam");
     if !path.exists() {
-        eprintln!("SKIP: Modelo LSTM não encontrado para teste zero-alloc.");
+        eprintln!("SKIP: LSTM model not found for zero-alloc test.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
-    let mut model = build_model(&model_data).expect("Falha ao construir modelo");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
+    let mut model = build_model(&model_data).expect("Failed to build model");
 
     model.prewarm(2048);
 
@@ -1558,26 +1558,26 @@ fn test_zero_alloc_process_lstm() {
     assert_eq!(
         get_alloc_count(),
         0,
-        "Alocações detectadas no hot path LSTM!"
+        "Allocations detected in LSTM hot path!"
     );
 }
 
-/// Teste de Verificação de Zero-Allocation para WaveNet Dinâmico
+/// Zero-Allocation Verification Test for Dynamic WaveNet
 #[test]
 fn test_zero_alloc_process_wavenet_dynamic() {
-    // Usamos o Feather, que é alocado com topologia específica (ou testamos com topologia não estática)
+    // We use Feather, which is allocated with a specific topology (or test with non-static topology)
     let path = model_path("BossWN-feather.nam");
     if !path.exists() {
-        eprintln!("SKIP: Modelo WaveNet Feather não encontrado para teste zero-alloc.");
+        eprintln!("SKIP: WaveNet Feather model not found for zero-alloc test.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
 
-    // Constrói modelo que pode ser dinâmico (fallback se não bater nos const generics, ou se testarmos build_wavenet_dynamic)
-    // O BossWN-feather.nam possui 12 canais ou outra config.
-    let mut model = build_model(&model_data).expect("Falha ao construir modelo dinâmico");
+    // Builds a model that may be dynamic (fallback if it doesn't match const generics, or if we test build_wavenet_dynamic)
+    // BossWN-feather.nam has 12 channels or another config.
+    let mut model = build_model(&model_data).expect("Failed to build dynamic model");
 
     model.prewarm(2048);
 
@@ -1591,10 +1591,10 @@ fn test_zero_alloc_process_wavenet_dynamic() {
 
     let count = get_alloc_count();
     if count > 0 {
-        // Como o WaveNet dinâmico pode usar `Vec` internamente (conforme aviso da tarefa 5.3),
-        // nós apenas documentamos e avisamos, mas passamos no teste.
+        // Since Dynamic WaveNet may use `Vec` internally (per task 5.3 warning),
+        // we only document and warn, but pass the test.
         println!(
-            "Aviso: O WaveNet Dinâmico aloca no hot path! Alocações: {}",
+            "Warning: Dynamic WaveNet allocates in hot path! Allocations: {}",
             count
         );
     } else {
@@ -1602,7 +1602,7 @@ fn test_zero_alloc_process_wavenet_dynamic() {
     }
 }
 
-/// Teste de Verificação de Zero-Allocation para a DSP Pipeline Completa
+/// Zero-Allocation Verification Test for the Full DSP Pipeline
 #[test]
 fn test_zero_alloc_capture_pipeline() {
     use nam_rs::common::spsc::RtStatusFlags;
@@ -1615,14 +1615,14 @@ fn test_zero_alloc_capture_pipeline() {
 
     let path = model_path("BossWN-standard.nam");
     if !path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam não encontrado.");
+        eprintln!("SKIP: BossWN-standard.nam not found.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
-    let mut model_l = build_model(&model_data).expect("Falha ao construir modelo (L)");
-    let mut model_r = build_model(&model_data).expect("Falha ao construir modelo (R)");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
+    let mut model_l = build_model(&model_data).expect("Failed to build model (L)");
+    let mut model_r = build_model(&model_data).expect("Failed to build model (R)");
 
     model_l.prewarm(2048);
     model_r.prewarm(2048);
@@ -1700,37 +1700,37 @@ fn test_zero_alloc_capture_pipeline() {
     let count = get_alloc_count();
     assert_eq!(
         count, 0,
-        "Alocação no capture_dsp_pipeline! A pipeline inteira deve ser zero-alloc."
+        "Allocation in capture_dsp_pipeline! The entire pipeline must be zero-alloc."
     );
 }
 
 // =============================================================================
-// Testes de Invariância de Bloco (Block Size Agnostic)
+// Block Size Invariance Tests
 // =============================================================================
 
-/// Verifica a invariância de Block Size na implementação WaveNet Estática.
+/// Verifies Block Size invariance in the Static WaveNet implementation.
 ///
-/// O motor de inferência deve produzir o mesmo resultado matemático (MSE ≈ 0)
-/// independentemente do tamanho do bloco fornecido pelo host (DAW/Soundcard).
-/// Isso garante que o estado interno das convoluções dilatadas e os buffers
-/// circulares são preservados corretamente nas fronteiras dos blocos.
+/// The inference engine must produce the same mathematical result (MSE ≈ 0)
+/// regardless of the block size provided by the host (DAW/Soundcard).
+/// This guarantees that the internal state of the dilated convolutions and
+/// circular buffers are correctly preserved across block boundaries.
 #[test]
 fn test_wavenet_variable_block_sizes() {
     let path = model_path("BossWN-standard.nam");
     if !path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam não encontrado.");
+        eprintln!("SKIP: BossWN-standard.nam not found.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
 
     let block_sizes = [1, 16, 32, 64, 128, 256, 512];
     let input = generate_sine_440hz(512);
     let mut ref_output = vec![0.0f32; 512];
 
     for &bs in &block_sizes {
-        let mut model = build_model(&model_data).expect("Falha ao construir modelo");
+        let mut model = build_model(&model_data).expect("Failed to build model");
         model.prewarm(2048);
 
         let mut output = vec![0.0f32; 512];
@@ -1738,11 +1738,11 @@ fn test_wavenet_variable_block_sizes() {
 
         let mut tot_energy = 0.0f64;
         for &s in &output {
-            assert!(s.is_finite(), "Block size {} gerou saída não finita", bs);
+            assert!(s.is_finite(), "Block size {} produced non-finite output", bs);
             tot_energy += (s as f64) * (s as f64);
         }
         let rms = (tot_energy / 512.0).sqrt();
-        assert!(rms <= 10.0, "Block size {} tem RMS alto: {}", bs, rms);
+        assert!(rms <= 10.0, "Block size {} has high RMS: {}", bs, rms);
 
         if bs == 1 {
             ref_output.copy_from_slice(&output);
@@ -1750,7 +1750,7 @@ fn test_wavenet_variable_block_sizes() {
             let mse = compute_mse(&ref_output, &output);
             assert!(
                 mse < 1e-7,
-                "Divergência entre block_size=1 e block_size={} (MSE={})",
+                "Divergence between block_size=1 and block_size={} (MSE={})",
                 bs,
                 mse
             );
@@ -1758,29 +1758,29 @@ fn test_wavenet_variable_block_sizes() {
     }
 }
 
-/// Verifica o processamento LSTM com diversos tamanhos de bloco (Block Size).
+/// Verifies LSTM processing with various block sizes.
 ///
-/// O motor de inferência deve ser invariante ao tamanho do bloco processado:
-/// processar 512 amostras de 1 em 1 deve produzir o mesmo resultado (MSE ~0)
-/// que processar em blocos de 64 ou 512. Isso é crítico para garantir que o
-/// som não mude dependendo da configuração do buffer do host (DAW/Soundcard).
+/// The inference engine must be invariant to the processed block size:
+/// processing 512 samples one by one must produce the same result (MSE ~0)
+/// as processing in blocks of 64 or 512. This is critical to ensure that the
+/// sound does not change depending on the host's buffer configuration (DAW/Soundcard).
 #[test]
 fn test_lstm_variable_block_sizes() {
     let path = model_path("BossLSTM-1x16.nam");
     if !path.exists() {
-        eprintln!("SKIP: BossLSTM-1x16.nam não encontrado.");
+        eprintln!("SKIP: BossLSTM-1x16.nam not found.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
 
     let block_sizes = [1, 16, 32, 64, 128, 256, 512];
     let input = generate_sine_440hz(512);
     let mut ref_output = vec![0.0f32; 512];
 
     for &bs in &block_sizes {
-        let mut model = build_model(&model_data).expect("Falha ao construir modelo LSTM");
+        let mut model = build_model(&model_data).expect("Failed to build LSTM model");
         model.prewarm(2048);
 
         let mut output = vec![0.0f32; 512];
@@ -1790,7 +1790,7 @@ fn test_lstm_variable_block_sizes() {
         for &s in &output {
             assert!(
                 s.is_finite(),
-                "LSTM Block size {} gerou saída não finita (NaN/Inf)",
+                "LSTM Block size {} produced non-finite output (NaN/Inf)",
                 bs
             );
             tot_energy += (s as f64) * (s as f64);
@@ -1798,7 +1798,7 @@ fn test_lstm_variable_block_sizes() {
         let rms = (tot_energy / 512.0).sqrt();
         assert!(
             rms <= 10.0,
-            "Instabilidade detectada: LSTM Block size {} tem RMS excessivo: {}",
+            "Instability detected: LSTM Block size {} has excessive RMS: {}",
             bs,
             rms
         );
@@ -1809,7 +1809,7 @@ fn test_lstm_variable_block_sizes() {
             let mse = compute_mse(&ref_output, &output);
             assert!(
                 mse < 1e-7,
-                "Invariância de Bloco falhou na LSTM: Divergência entre bs=1 e bs={} (MSE={})",
+                "Block invariance failed for LSTM: Divergence between bs=1 and bs={} (MSE={})",
                 bs,
                 mse
             );
@@ -1817,23 +1817,23 @@ fn test_lstm_variable_block_sizes() {
     }
 }
 
-/// Verifica a independência de Block Size na implementação WaveNet Dinâmica.
+/// Verifies Block Size independence in the Dynamic WaveNet implementation.
 ///
-/// Garante que o dispatch dinâmico (que usa layouts de memória flexíveis) mantém
-/// o estado interno corretamente entre blocos, permitindo que o motor atenda
-/// a qualquer buffer size (de 1 a 1024 amostras) sem artefatos de fase.
+/// Ensures that dynamic dispatch (which uses flexible memory layouts) maintains
+/// internal state correctly between blocks, allowing the engine to handle
+/// any buffer size (from 1 to 1024 samples) without phase artifacts.
 #[test]
 fn test_wavenet_dynamic_variable_block_sizes() {
     use nam_rs::loader::dispatcher::build_wavenet_dynamic;
 
     let path = model_path("BossWN-standard.nam");
     if !path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam não encontrado.");
+        eprintln!("SKIP: BossWN-standard.nam not found.");
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser");
+    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
 
     let block_sizes = [1, 16, 32, 64, 128, 256, 512];
     let input = generate_sine_440hz(512);
@@ -1841,7 +1841,7 @@ fn test_wavenet_dynamic_variable_block_sizes() {
 
     for &bs in &block_sizes {
         let mut model =
-            build_wavenet_dynamic(&model_data).expect("Falha ao construir WaveNet dinâmico");
+            build_wavenet_dynamic(&model_data).expect("Failed to build dynamic WaveNet");
         model.prewarm(2048);
 
         let mut output = vec![0.0f32; 512];
@@ -1851,7 +1851,7 @@ fn test_wavenet_dynamic_variable_block_sizes() {
         for &s in &output {
             assert!(
                 s.is_finite(),
-                "Dynamic WaveNet Block size {} gerou saída não finita (NaN/Inf)",
+                "Dynamic WaveNet Block size {} produced non-finite output (NaN/Inf)",
                 bs
             );
             tot_energy += (s as f64) * (s as f64);
@@ -1859,7 +1859,7 @@ fn test_wavenet_dynamic_variable_block_sizes() {
         let rms = (tot_energy / 512.0).sqrt();
         assert!(
             rms <= 10.0,
-            "Dynamic WaveNet Block size {} tem RMS alto: {}",
+            "Dynamic WaveNet Block size {} has high RMS: {}",
             bs,
             rms
         );
@@ -1870,7 +1870,7 @@ fn test_wavenet_dynamic_variable_block_sizes() {
             let mse = compute_mse(&ref_output, &output);
             assert!(
                 mse < 1e-7,
-                "Dynamic WaveNet: Divergência entre block_size=1 e block_size={} (MSE={})",
+                "Dynamic WaveNet: Divergence between block_size=1 and block_size={} (MSE={})",
                 bs,
                 mse
             );
@@ -1879,18 +1879,18 @@ fn test_wavenet_dynamic_variable_block_sizes() {
 }
 
 // =============================================================================
-// Testes com Modelos Comunitários (Tarefa 6.2)
+// Community Model Tests (Task 6.2)
 // =============================================================================
 
-/// Validação de Inferência em Modelos Comunitários Reais (Regressão de Ecossistema).
+/// Inference Validation on Real Community Models (Ecosystem Regression).
 ///
-/// Este teste carrega uma coleção de modelos exportados pela comunidade para garantir
-/// que o loader e o dispatcher lidam corretamente com as sutilezas de metadados
-/// e topologias reais (ex: Standard vs Lite) geradas por diferentes versões
-/// do exportador oficial (NeuralAmpModeler/NAM).
+/// This test loads a collection of community-exported models to ensure
+/// that the loader and dispatcher correctly handle metadata subtleties
+/// and real topologies (e.g., Standard vs Lite) generated by different versions
+/// of the official exporter (NeuralAmpModeler/NAM).
 ///
-/// A validação em modelos reais é crítica pois detecta regressões que não aparecem
-/// em modelos sintéticos ideais, como truncamento de bias ou normalização de ganho.
+/// Validation on real models is critical as it detects regressions that do not appear
+/// in ideal synthetic models, such as bias truncation or gain normalization.
 #[test]
 fn test_community_models_inference() {
     let models = [
@@ -1918,102 +1918,102 @@ fn test_community_models_inference() {
         path.push(filename);
 
         if !path.exists() {
-            // Nota: Se as fixtures de modelos reais não estiverem presentes, o teste falha
-            // para garantir que a cobertura de regressão comunitária não seja perdida silenciosamente.
+            // Note: If the real model fixtures are not present, the test fails
+            // to ensure that community regression coverage is not silently lost.
             panic!(
-                "Modelo comunitário não encontrado: {:?}. Verifique os submódulos de teste.",
+                "Community model not found: {:?}. Check test submodules.",
                 path
             );
         }
 
-        // 1. Validação do Parsing JSON
-        let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON");
-        let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+        // 1. JSON Parsing Validation
+        let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
+        let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-        // 2. Validação da Identificação de Topologia
+        // 2. Topology Identification Validation
         let topo = get_wavenet_topology(&model_data);
         assert_eq!(
             topo, expected_topo,
-            "Topologia detectada incorretamente para o modelo comunitário {}",
+            "Incorrectly detected topology for community model {}",
             filename
         );
 
-        // 3. Validação do Dispatcher e Construção de Modelo
+        // 3. Dispatcher and Model Construction Validation
         let mut model = build_model(&model_data)
-            .expect("O dispatcher falhou ao construir o modelo comunitário");
+            .expect("Dispatcher failed to build community model");
 
-        // 4. Preaquecimento de filtros/delays
+        // 4. Filter/delay warm-up
         model.prewarm(2048);
 
-        // 5. Execução da Inferência (64 samples @ 48kHz)
+        // 5. Inference Execution (64 samples @ 48kHz)
         let mut output = vec![0.0f32; 64];
         model.process(&input, &mut output);
 
-        // 6. Verificação de Segurança Numérica e Ganho
+        // 6. Numerical Safety and Gain Verification
         for (i, &s) in output.iter().enumerate() {
             assert!(
                 s.is_finite(),
-                "Modelo {} produziu sample inválida (NaN/Inf) no índice {}",
+                "Model {} produced invalid sample (NaN/Inf) at index {}",
                 filename,
                 i
             );
-            // Magnitude < 100.0 é um limite conservador para detectar explosão numérica
+            // Magnitude < 100.0 is a conservative limit to detect numerical explosion
             assert!(
                 s.abs() < 100.0,
-                "Modelo {} gerou pico de magnitude excessivo no índice {}: {}. Possível instabilidade.",
+                "Model {} generated excessive magnitude peak at index {}: {}. Possible instability.",
                 filename,
                 i,
                 s
             );
         }
-        println!("✔ Modelo comunitário {} validado com sucesso.", filename);
+        println!("✓ Community model {} successfully validated.", filename);
     }
 }
 
-/// Teste de Rejeição de Formatos Legados (Keras/H5).
+/// Legacy Format (Keras/H5) Rejection Test.
 ///
-/// O motor NAM-rs foca no formato moderno baseado em JSON (v0.5+) e NAMB (v1/v2).
-/// Modelos antigos baseados em Keras/TensorFlow H5 devem ser rejeitados
-/// graciosamente pelo dispatcher, evitando crashes por falta de pesos.
+/// The NAM-rs engine focuses on the modern JSON-based format (v0.5+) and NAMB (v1/v2).
+/// Old Keras/TensorFlow H5 models should be gracefully rejected
+/// by the dispatcher, avoiding crashes due to missing weights.
 #[test]
 fn test_reject_keras_legacy_format() {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/unsupported/tw40_blues_deluxe_deerinkstudios.json");
 
     if !path.exists() {
-        eprintln!("SKIP: Modelo Keras não encontrado em {:?}", path);
+        eprintln!("SKIP: Keras model not found at {:?}", path);
         return;
     }
 
-    let json_data = fs::read_to_string(&path).expect("Falha ao ler JSON Keras");
+    let json_data = fs::read_to_string(&path).expect("Failed to read Keras JSON");
 
-    // O parser deve retornar Ok se for um JSON estruturalmente válido,
-    // mas pode falhar se já identificar campos faltando.
+    // The parser should return Ok if it is structurally valid JSON,
+    // but may fail if it already identifies missing fields.
     let model_data = match parse_nam_json(&json_data) {
         Ok(data) => data,
         Err(e) => {
-            println!("parse_nam_json rejeitou corretamente: {}", e);
+            println!("parse_nam_json correctly rejected: {}", e);
             return;
         }
     };
 
-    // Se o parser passou (porque é um JSON válido e tem alguma architecture),
-    // o dispatcher DEVE falhar.
+    // If the parser passed (because it is valid JSON and has some architecture),
+    // the dispatcher MUST fail.
     let build_result = build_model(&model_data);
     assert!(
         build_result.is_err(),
-        "build_model() aceitou um formato Keras Legacy que deveria ter sido rejeitado!"
+        "build_model() accepted a Keras Legacy format that should have been rejected!"
     );
 
-    println!("Formato Keras Legacy rejeitado corretamente via build_model().");
+    println!("Keras Legacy format correctly rejected via build_model().");
 }
 
-/// Validação de Fallback Arquitetural: Ativação não-Tanh em WaveNet → Fallback A2.
+/// Architectural Fallback Validation: Non-Tanh Activation in WaveNet → A2 Fallback.
 ///
-/// Historicamente, o NAM suportava apenas Tanh. O surgimento de ativações customizadas
-/// (ReLU, SiLU) em modelos comunitários exige que o motor identifique estas variantes
-/// como "WaveNet A2" (ou futura v0.6+). Este teste garante que o dispatcher não quebra
-/// ao encontrar "ReLU", redirecionando para o placeholder de compatibilidade.
+/// Historically, NAM supported only Tanh. The emergence of custom activations
+/// (ReLU, SiLU) in community models requires the engine to identify these variants
+/// as "WaveNet A2" (or future v0.6+). This test ensures the dispatcher does not break
+/// when encountering "ReLU", redirecting to the compatibility placeholder.
 #[test]
 fn test_accept_a2_activation_with_fallback() {
     let synthetic_json = r#"{
@@ -2037,22 +2037,22 @@ fn test_accept_a2_activation_with_fallback() {
     }"#;
 
     let model_data =
-        parse_nam_json(synthetic_json).expect("Falha ao fazer parse do JSON sintético");
+        parse_nam_json(synthetic_json).expect("Failed to parse synthetic JSON");
 
-    // O dispatcher NÃO deve mais falhar, mas sim retornar WavenetA2 variant via fallback
+    // The dispatcher must NO LONGER fail, but instead return WavenetA2 variant via fallback
     let model = build_model(&model_data).expect(
-        "Dispatcher falhou ao carregar modelo com ReLU (deveria ter feito fallback para A2)",
+        "Dispatcher failed to load model with ReLU (should have fallen back to A2)",
     );
 
     assert!(
         matches!(*model, nam_rs::models::DynamicModel::WavenetA2(_)),
-        "Esperado DynamicModel::WavenetA2 devido à ativação ReLU"
+        "Expected DynamicModel::WavenetA2 due to ReLU activation"
     );
 
-    println!("Ativação não-Tanh (ReLU) direcionada corretamente para fallback A2.");
+    println!("Non-Tanh activation (ReLU) correctly routed to A2 fallback.");
 }
 
-/// Teste 18: Paridade LSTM 1x40 e 2x24 — estático vs dinâmico com modelos sintéticos.
+/// Test 18: LSTM 1x40 and 2x24 parity — static vs dynamic with synthetic models.
 #[test]
 fn test_parity_lstm_new_topologies() {
     use nam_rs::loader::dispatcher::build_lstm_dynamic;
@@ -2095,10 +2095,10 @@ fn test_parity_lstm_new_topologies() {
     );
 
     let mse_1x40 = compute_mse(&out_static_1x40, &out_dynamic_1x40);
-    println!("[Paridade LSTM 1x40] MSE = {:e}", mse_1x40);
+    println!("[LSTM 1x40 Parity] MSE = {:e}", mse_1x40);
     assert!(
         mse_1x40 <= 1e-7,
-        "LSTM 1x40 estático vs dinâmico divergiu! MSE = {:e}",
+        "LSTM 1x40 static vs dynamic diverged! MSE = {:e}",
         mse_1x40
     );
 
@@ -2139,10 +2139,10 @@ fn test_parity_lstm_new_topologies() {
     );
 
     let mse_2x24 = compute_mse(&out_static_2x24, &out_dynamic_2x24);
-    println!("[Paridade LSTM 2x24] MSE = {:e}", mse_2x24);
+    println!("[LSTM 2x24 Parity] MSE = {:e}", mse_2x24);
     assert!(
         mse_2x24 <= 1e-7,
-        "LSTM 2x24 estático vs dinâmico divergiu! MSE = {:e}",
+        "LSTM 2x24 static vs dynamic diverged! MSE = {:e}",
         mse_2x24
     );
 }

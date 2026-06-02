@@ -42,8 +42,8 @@ proptest! {
             60000.0
         };
 
-        // Força todos os pesos e bias para os limites extremos (+scale / -scale)
-        // para garantir saturação total conforme os critérios de aceitação.
+        // Force all weights and biases to extreme values (+scale / -scale)
+        // to guarantee full saturation according to acceptance criteria.
         let scaled_weights: Vec<f32> = weights.iter().map(|&w| if w >= 0.0 { scale } else { -scale }).collect();
         let scaled_bias: Vec<f32> = bias.iter().map(|&b| if b >= 0.0 { scale } else { -scale }).collect();
         let scaled_head_weights: Vec<f32> = head_weights.iter().map(|&w| if w >= 0.0 { scale } else { -scale }).collect();
@@ -91,7 +91,7 @@ proptest! {
             let rel_diff = diff / max_val;
             assert!(
                 rel_diff < 5.0e-3 || (out_simd[i].is_nan() && out_scalar[i].is_nan()) || (out_simd[i].is_infinite() && out_scalar[i].is_infinite()),
-                "LSTM Parity falhou no index {}: SIMD={}, Scalar={}, Delta={}, Relative Delta={}",
+                "LSTM Parity failed at index {}: SIMD={}, Scalar={}, Delta={}, Relative Delta={}",
                 i,
                 out_simd[i],
                 out_scalar[i],

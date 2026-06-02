@@ -26,12 +26,12 @@ fn test_clap_lifecycle() {
     let path = if let Ok(custom_path) = env::var("CLAP_PLUGIN_PATH") {
         PathBuf::from(custom_path)
     } else {
-        // Tenta carregar do local padrão de instalação do script build-clap.sh
+        // Try to load from the default install location used by build-clap.sh
         let mut p = PathBuf::from(env::var("HOME").expect("HOME env var not set"));
         p.push(".clap/nam-rs.clap");
 
         if !p.exists() {
-            // Fallback para o diretório de build se não estiver instalado no HOME
+            // Fallback to the build directory if not installed under HOME
             let current_dir = env::current_dir().expect("Failed to get current dir");
             p = current_dir.join("target/release/libnam_rs.so");
             if !p.exists() {
@@ -57,7 +57,7 @@ fn test_clap_lifecycle() {
         );
     }
 
-    // SAFETY: Carregar um plugin CLAP é inerentemente inseguro pois executa código de uma biblioteca dinâmica.
+    // SAFETY: Loading a CLAP plugin is inherently unsafe because it executes code from a dynamic library.
     let entry = unsafe { PluginEntry::load(&path).expect("Failed to load plugin entry") };
     let host_info = HostInfo::new(
         "NAM-rs Test Host",
@@ -90,7 +90,7 @@ fn test_clap_lifecycle() {
         .start_processing()
         .expect("Failed to start processing");
 
-    // Preparação de buffers de áudio (silêncio)
+    // Prepare audio buffers (silence)
     let mut input_audio_buffers = [[0.0f32; 512]; 2];
     let mut output_audio_buffers = [[0.0f32; 512]; 2];
 
@@ -99,7 +99,7 @@ fn test_clap_lifecycle() {
 
     let mut output_events_buffer = EventBuffer::with_capacity(10);
 
-    // Simula 4 blocos de processamento
+    // Simulate 4 processing blocks
     for _ in 0..4 {
         let input_events = InputEvents::empty();
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
@@ -129,7 +129,7 @@ fn test_clap_lifecycle() {
             )
             .expect("Process failed");
 
-        // O plugin deve retornar Continue ou Sleep (atualmente implementado como Continue para o bypass)
+        // Plugin must return Continue or Sleep (currently implemented as Continue for bypass)
         assert!(
             status == ProcessStatus::Continue || status == ProcessStatus::Sleep,
             "Unexpected process status: {:?}",

@@ -9,8 +9,8 @@ use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee, parse_namb};
 use proptest::prelude::*;
 use std::fs;
 
-// Fuzz 1: Envia bytes totalmente arbitrários para o parser JSON.
-// Garante que o parser lida com dados que não são UTF-8 válido sem entrar em pânico.
+// Fuzz 1: Sends fully arbitrary bytes to the JSON parser.
+// Ensures the parser handles data that is not valid UTF-8 without panicking.
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
@@ -20,20 +20,20 @@ proptest! {
     #[ignore]
     fn prop_fuzz_nam_json_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
         let json_str = String::from_utf8_lossy(&bytes);
-        // O objetivo aqui é apenas garantir a ausência de pânicos (segurança de memória).
+        // The goal here is only to ensure absence of panics (memory safety).
         let _ = parse_nam_json(&json_str);
     }
 }
 
-/// Estratégia: Gera um JSON "quase válido".
-/// Contém campos obrigatórios mas com tipos de dados misturados ou estruturas corrompidas.
-/// Testa se o parser rejeita corretamente dados semanticamente inválidos.
+/// Strategy: Generates a "near-valid" JSON.
+/// Contains required fields but with mixed data types or corrupted structures.
+/// Tests whether the parser correctly rejects semantically invalid data.
 fn near_valid_json_strategy() -> impl Strategy<Value = String> {
     (
-        any::<Option<String>>(),                     // versão (opcional)
-        any::<String>(),                             // arquitetura (string arbitrária)
-        prop::collection::vec(any::<f32>(), 0..100), // pesos (quantidade arbitrária)
-        any::<bool>(),                               // flag para decidir se corrompe o JSON
+        any::<Option<String>>(),                     // version (optional)
+        any::<String>(),                             // architecture (arbitrary string)
+        prop::collection::vec(any::<f32>(), 0..100), // weights (arbitrary amount)
+        any::<bool>(),                               // flag to decide whether to corrupt the JSON
     )
         .prop_map(|(ver, arch, weights, scramble)| {
             let mut json = serde_json::json!({
@@ -51,7 +51,7 @@ fn near_valid_json_strategy() -> impl Strategy<Value = String> {
             }
 
             if scramble {
-                // Força erro de tipo: transforma string em número e objeto em array
+                // Forces type error: transforms string into number and object into array
                 json["architecture"] = serde_json::Value::Number(123.into());
                 json["config"] = serde_json::Value::Array(vec![]);
             }
@@ -73,8 +73,8 @@ proptest! {
     }
 }
 
-// Fuzz 3: Truncamento de JSONs válidos.
-// Simula um download incompleto ou arquivo corrompido em disco.
+// Fuzz 3: Truncation of valid JSONs.
+// Simulates an incomplete download or corrupted file on disk.
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
@@ -83,7 +83,7 @@ proptest! {
     #[test]
     #[ignore]
     fn prop_fuzz_nam_json_truncated(cut_idx in 0usize..400_000) {
-        // Usa uma fixture real como base para o truncamento
+        // Uses a real fixture as the base for truncation
         let fixture_content = fs::read_to_string("tests/nam_files/EVH-5150-Lite.nam")
             .unwrap_or_else(|_| "{}".to_string());
 
@@ -92,8 +92,8 @@ proptest! {
             idx = fixture_content.len();
         }
 
-        // Truncamos em bytes brutos e convertemos lossy para UTF-8
-        // para não quebrar caracteres multi-byte.
+        // We truncate raw bytes and convert lossy to UTF-8
+        // so as not to break multi-byte characters.
         let bytes = fixture_content.as_bytes();
         let truncated = &bytes[0..idx];
         let json_str = String::from_utf8_lossy(truncated);
@@ -102,8 +102,8 @@ proptest! {
     }
 }
 
-/// Estratégia: Gera JSONs com valores numéricos extremos ou inválidos (NaN/Inf).
-/// Testa a resiliência do sistema contra instabilidades matemáticas oriundas do arquivo de pesos.
+/// Strategy: Generates JSONs with extreme or invalid numeric values (NaN/Inf).
+/// Tests the system's resilience against mathematical instabilities originating from the weights file.
 fn weight_overflow_strategy() -> impl Strategy<Value = String> {
     prop::collection::vec(
         prop_oneof![
@@ -117,7 +117,7 @@ fn weight_overflow_strategy() -> impl Strategy<Value = String> {
         ],
         0..200
     ).prop_map(|weights| {
-        // Constrói uma topologia WaveNet válida, mas populada com "lixo" numérico.
+        // Builds a valid WaveNet topology, but populated with numeric "garbage".
         let json = serde_json::json!({
             "version": "0.5.4",
             "architecture": "WaveNet",
@@ -161,8 +161,8 @@ proptest! {
     }
 }
 
-// Fuzz 5: Bytes arbitrários no parser binário (NAMB).
-// O parser NAMB deve ser extremamente resiliente a arquivos binários malformados.
+// Fuzz 5: Arbitrary bytes in the binary parser (NAMB).
+// The NAMB parser must be extremely resilient to malformed binary files.
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
@@ -175,8 +175,8 @@ proptest! {
     }
 }
 
-// Estratégia: Gera um arquivo NAMB sintético válido.
-// Permite corromper campos específicos (Magic, CRC, Offsets) nos testes abaixo.
+// Strategy: Generates a valid synthetic NAMB file.
+// Allows corrupting specific fields (Magic, CRC, Offsets) in the tests below.
 prop_compose! {
     fn valid_namb_strategy()(weights in prop::collection::vec(any::<f32>(), 0..200)) -> Vec<u8> {
         let weights_offset: usize = 80;
@@ -185,24 +185,24 @@ prop_compose! {
 
         // Header: Magic 'NAMB'
         sim_data[0..4].copy_from_slice(&0x4E414D42u32.to_le_bytes());
-        // Versão: 1
+        // Version: 1
         sim_data[4..6].copy_from_slice(&1u16.to_le_bytes());
-        // Offset dos pesos
+        // Weights offset
         sim_data[12..16].copy_from_slice(&(weights_offset as u32).to_le_bytes());
-        // Metadados curtos
+        // Short metadata
         sim_data[32..37].copy_from_slice(b"1.0.0");
         // DSP Params
         sim_data[64..68].copy_from_slice(&48000.0f32.to_le_bytes());
         sim_data[68..72].copy_from_slice(&12.0f32.to_le_bytes());
         sim_data[72..76].copy_from_slice(&(-6.0f32).to_le_bytes());
 
-        // Escrita dos pesos em Little Endian
+        // Write weights in Little Endian
         for (i, float_val) in weights.iter().enumerate() {
             let off = weights_offset + i * 4;
             sim_data[off..off + 4].copy_from_slice(&float_val.to_le_bytes());
         }
 
-        // Cálculo do CRC32 IEEE real para garantir que o arquivo comece válido
+        // Compute actual CRC32 IEEE to ensure the file starts valid
         let crc = nam_rs::loader::namb::crc32_ieee(&sim_data[weights_offset..]);
         sim_data[24..28].copy_from_slice(&crc.to_le_bytes());
 
@@ -216,7 +216,7 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
 
-    // Testa rejeição de arquivos com 'Magic Bytes' inválidos.
+    // Tests rejection of files with invalid 'Magic Bytes'.
     #[test]
     #[ignore]
     fn prop_fuzz_namb_bad_magic(mut namb in valid_namb_strategy(), bad_magic in any::<u32>()) {
@@ -224,43 +224,43 @@ proptest! {
         let bad_bytes = bad_magic.to_le_bytes();
         prop_assume!(&bad_bytes != b"NAMB" && &bad_bytes != b"BMAN");
         namb[0..4].copy_from_slice(&bad_bytes);
-        assert!(parse_namb(&namb).is_err(), "Parser aceitou Magic Byte inválido!");
+        assert!(parse_namb(&namb).is_err(), "Parser accepted invalid Magic Byte!");
     }
 
-    // Testa integridade via CRC. Alterar 1 bit deve causar erro de parsing.
+    // Tests integrity via CRC. Flipping 1 bit should cause a parsing error.
     #[test]
     #[ignore]
     fn prop_fuzz_namb_bad_crc(mut namb in valid_namb_strategy(), bit_flip in 0..32usize) {
         let byte_idx = 24 + (bit_flip / 8);
         let bit_idx = bit_flip % 8;
         namb[byte_idx] ^= 1 << bit_idx;
-        assert!(parse_namb(&namb).is_err(), "Parser aceitou arquivo com CRC corrompido!");
+        assert!(parse_namb(&namb).is_err(), "Parser accepted file with corrupted CRC!");
     }
 
-    // Testa resiliência a arquivos truncados prematuramente.
+    // Tests resilience to prematurely truncated files.
     #[test]
     #[ignore]
     fn prop_fuzz_namb_truncated(namb in valid_namb_strategy(), truncate_idx in any::<usize>()) {
         let idx = std::cmp::min(truncate_idx, namb.len().saturating_sub(1));
         let truncated = &namb[0..idx];
-        assert!(parse_namb(truncated).is_err(), "Parser aceitou arquivo binário truncado!");
+        assert!(parse_namb(truncated).is_err(), "Parser accepted truncated binary file!");
     }
 
-    // Testa ataques de offset fora dos limites (Oversized Offset).
+    // Tests out-of-bounds offset attacks (Oversized Offset).
     #[test]
     #[ignore]
     fn prop_fuzz_namb_oversized_offset(mut namb in valid_namb_strategy(), offset_add in 1..10000u32) {
         let new_offset = namb.len() as u32 + offset_add;
         namb[12..16].copy_from_slice(&new_offset.to_le_bytes());
-        assert!(parse_namb(&namb).is_err(), "Parser aceitou offset de pesos fora do arquivo!");
+        assert!(parse_namb(&namb).is_err(), "Parser accepted out-of-bounds weights offset!");
     }
 }
 
 // ---------------------------------------------------------------------------
-// S13.T02 — Shrinking strategy para NamModelData (via strategy functions)
+// S13.T02 — Shrinking strategy for NamModelData (via strategy functions)
 // ---------------------------------------------------------------------------
 
-/// Estratégia para `NamLayerConfig` com encolhimento.
+/// Strategy for `NamLayerConfig` with shrinking.
 fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
     let channels_s = prop_oneof![
         Just(8usize),
@@ -326,7 +326,7 @@ fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
         )
 }
 
-/// Estratégia para `NamConfig` com encolhimento.
+/// Strategy for `NamConfig` with shrinking.
 fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
     (
         prop::collection::vec(arbitrary_layer_config(), 1..6),
@@ -346,7 +346,7 @@ fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
         )
 }
 
-/// Estratégia para `NamDate` com encolhimento.
+/// Strategy for `NamDate` with shrinking.
 fn arbitrary_nam_date() -> impl Strategy<Value = NamDate> {
     (
         any::<Option<i32>>(),
@@ -366,7 +366,7 @@ fn arbitrary_nam_date() -> impl Strategy<Value = NamDate> {
         })
 }
 
-/// Estratégia para `NamMetadata` com encolhimento.
+/// Strategy for `NamMetadata` with shrinking.
 fn arbitrary_nam_metadata() -> impl Strategy<Value = NamMetadata> {
     (
         arbitrary_nam_date().prop_map(Some),
@@ -419,11 +419,11 @@ fn arbitrary_nam_metadata() -> impl Strategy<Value = NamMetadata> {
         )
 }
 
-/// Estratégia de encolhimento para `NamModelData`.
+/// Shrinking strategy for `NamModelData`.
 ///
-/// Gera modelos sintéticos (WaveNet ou LSTM) com pesos, metadados e configuração
-/// aleatórios. O encolhimento do proptest reduz automaticamente o modelo ao
-/// menor contra-exemplo quando uma asserção falha.
+/// Generates synthetic models (WaveNet or LSTM) with random weights, metadata,
+/// and configuration. Proptest shrinking automatically reduces the model to the
+/// smallest counter-example when an assertion fails.
 pub fn arbitrary_nam_model_data() -> impl Strategy<Value = NamModelData> {
     let arch = prop_oneof![Just("WaveNet".to_string()), Just("LSTM".to_string()),];
 
@@ -458,17 +458,17 @@ pub fn arbitrary_nam_model_data() -> impl Strategy<Value = NamModelData> {
 }
 
 // ---------------------------------------------------------------------------
-// S13.T02 — 100k iterações: header NAMB válido + corpo aleatório
+// S13.T02 — 100k iterations: valid NAMB header + random body
 // ---------------------------------------------------------------------------
 
-/// Gera um byte-array com cabeçalho NAMB v2 sintaticamente válido
-/// (magic, version, flags, offset, crc) seguido de um corpo de pesos
-/// completamente aleatório.
+/// Generates a byte-array with a syntactically valid NAMB v2 header
+/// (magic, version, flags, offset, crc) followed by a completely random
+/// weights body.
 fn arbitrary_namb_bytes_strategy() -> impl Strategy<Value = Vec<u8>> {
     const HEADER_SIZE: usize = 80;
 
     (
-        any::<u32>(),      // sample_rate (reinterpretado como bytes)
+        any::<u32>(),      // sample_rate (reinterpreted as bytes)
         any::<u32>(),      // input_level_dbu
         any::<u32>(),      // output_level_dbu
         any::<[u8; 32]>(), // version_str
@@ -524,11 +524,11 @@ proptest! {
         .. ProptestConfig::with_cases(100_000)
     })]
 
-    /// Fuzz 6: Cabeçalho NAMB v2 válido + corpo de pesos completamente aleatório.
+    /// Fuzz 6: Valid NAMB v2 header + completely random weights body.
     ///
-    /// Garante que o parser nunca entra em pânico com 100k combinações de corpo
-    /// arbitrário, mesmo quando o header está sintaticamente correto.
-    /// — Acionado exclusivamente via `utils/tests-long.sh`.
+    /// Ensures the parser never panics with 100k combinations of arbitrary
+    /// body, even when the header is syntactically correct.
+    /// — Triggered exclusively via `utils/tests-long.sh`.
     #[test]
     #[ignore]
     fn prop_fuzz_namb_arbitrary_valid_header(bytes in arbitrary_namb_bytes_strategy()) {

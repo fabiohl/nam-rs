@@ -19,7 +19,7 @@ use nam_rs::models::wavenet::{
 };
 
 // =============================================================================
-// Helper: constrói um WaveNetModel<4, 3, 2> com RF~=2046 (10 layers)
+// Helper: builds a WaveNetModel<4, 3, 2> with RF~=2046 (10 layers)
 // =============================================================================
 
 fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
@@ -175,10 +175,10 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
 }
 
 // =============================================================================
-// Testes
+// Tests
 // =============================================================================
 
-/// Stress test: prewarm com RF=2046 não deve causar underflow, segfault ou NaN.
+/// Stress test: prewarm with RF=2046 must not cause underflow, segfault, or NaN.
 #[test]
 fn test_prewarm_large_rf_no_undeflow() {
     let mut model = build_large_rf_wavenet();
@@ -290,7 +290,7 @@ fn test_prewarm_large_rf_multiblock() {
     }
 }
 
-/// RF=0 edge case: modelo sem camadas dilatação (RF=0) — prewarm deve ser no-op.
+/// RF=0 edge case: model with no dilation layers (RF=0) — prewarm should be a no-op.
 #[test]
 fn test_prewarm_zero_rf() {
     let is_bf16 = SimdMathConfig::get().instruction_set
@@ -405,7 +405,7 @@ fn test_prewarm_zero_rf() {
 }
 
 // =============================================================================
-// Helper: constrói um WaveNetModel<4, 5, 2> com K=5 e dilatação máxima 512
+// Helper: builds a WaveNetModel<4, 5, 2> with K=5 and max dilation 512
 // =============================================================================
 
 fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
@@ -561,11 +561,11 @@ fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
 }
 
 // =============================================================================
-// Testes K=5 (Kernel Size 5) — Edge: large RF, non-standard kernel
+// Tests K=5 (Kernel Size 5) — Edge: large RF, non-standard kernel
 // =============================================================================
 
-/// Stress test: prewarm com K=5, dilation=512 e RF grande (4092) não deve causar
-/// underflow, segfault ou NaN.
+/// Stress test: prewarm with K=5, dilation=512 and large RF (4092) must not cause
+/// underflow, segfault, or NaN.
 #[test]
 fn test_prewarm_k5_large_rf_no_undeflow() {
     let mut model = build_k5_large_rf_wavenet();
@@ -592,8 +592,8 @@ fn test_prewarm_k5_large_rf_no_undeflow() {
     }
 }
 
-/// Testa prewarm via trait NamModel::prewarm(num_samples=2048) com modelo K=5.
-/// WaveNet ignora num_samples internamente, mas o dispatch do DynamicModel passa.
+/// Tests prewarm via trait NamModel::prewarm(num_samples=2048) with K=5 model.
+/// WaveNet ignores num_samples internally, but DynamicModel dispatch passes it through.
 #[test]
 fn test_prewarm_k5_large_rf_trait_num_samples() {
     use nam_rs::models::NamModel;
@@ -615,7 +615,7 @@ fn test_prewarm_k5_large_rf_trait_num_samples() {
     }
 }
 
-/// K=5 determinismo: dois modelos idênticos produzem a mesma saída após prewarm.
+/// K=5 determinism: two identical models produce the same output after prewarm.
 #[test]
 fn test_prewarm_k5_large_rf_deterministic() {
     let mut model_a = build_k5_large_rf_wavenet();
@@ -667,7 +667,7 @@ fn test_prewarm_k5_large_rf_deterministic() {
     }
 }
 
-/// K=5 multibloco: processa múltiplos blocos após prewarm para garantir estabilidade.
+/// K=5 multiblock: processes multiple blocks after prewarm to ensure stability.
 #[test]
 fn test_prewarm_k5_large_rf_multiblock() {
     let mut model = build_k5_large_rf_wavenet();

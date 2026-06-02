@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Helpers minimalistas para WAV mono float32 IEEE.
+//! Minimalist helpers for IEEE float32 mono WAV.
 //!
-//! Formato fixo: 1 canal, 32-bit IEEE float, little-endian.
-//! Sem crate externo — apenas `std::fs` e `std::io`.
+//! Fixed format: 1 channel, 32-bit IEEE float, little-endian.
+//! No external crate — just `std::fs` and `std::io`.
 
 #![allow(dead_code)]
 
@@ -57,7 +57,7 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
     if data.len() < WAV_HEADER_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("Arquivo WAV muito pequeno: {} bytes", data.len()),
+            format!("WAV file too small: {} bytes", data.len()),
         ));
     }
 
@@ -65,7 +65,7 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
     if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Header RIFF/WAVE inválido",
+            "Invalid RIFF/WAVE header",
         ));
     }
 
@@ -77,13 +77,13 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
     if audio_format != AUDIO_FORMAT_IEEE_FLOAT {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("Formato de áudio não é float32 IEEE: {}", audio_format),
+            format!("Audio format is not IEEE float32: {}", audio_format),
         ));
     }
     if num_channels != 1 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("WAV não é mono (canais={})", num_channels),
+            format!("WAV is not mono (channels={})", num_channels),
         ));
     }
 
@@ -104,7 +104,7 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
     if data_size == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "Chunk 'data' não encontrado no WAV",
+            "'data' chunk not found in WAV",
         ));
     }
 

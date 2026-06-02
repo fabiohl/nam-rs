@@ -3,21 +3,21 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# Regressões do Proptest
+# Proptest Regressions
 
-Este diretório contém os arquivos de persistência de falha (failure persistence seeds) do framework `proptest`.
+This directory contains the failure persistence seed files from the `proptest` framework.
 
-## Finalidade e Funcionamento
+## Purpose and How It Works
 
-Quando um teste baseado em propriedades (Property-Based Testing) falha, o `proptest` gera e salva uma semente (seed) contendo a entrada exata que causou o pânico ou a quebra de asserção.
+When a property-based test fails, `proptest` generates and saves a seed containing the exact input that caused the panic or assertion failure.
 
-Nosso projeto está configurado para salvar essas regressões em `tests/proptest-regressions/` de forma organizada (via `FileFailurePersistence::SourceParallel`), evitando poluir a raiz do repositório.
+Our project is configured to save these regressions in `tests/proptest-regressions/` in an organized manner (via `FileFailurePersistence::SourceParallel`), avoiding clutter at the repository root.
 
-## Importância do Versionamento
+## Importance of Version Control
 
-Manter estas sementes de falha rastreadas no controle de versão (Git) é uma **boa prática recomendada pelo `proptest`** por dois motivos principais:
+Tracking these failure seeds in version control (Git) is a **best practice recommended by `proptest`** for two main reasons:
 
-1. **Repetibilidade no CI:** Garante que a integração contínua (CI) e outros desenvolvedores reexecutem imediatamente os casos de teste específicos que falharam no passado, prevenindo que bugs corrigidos reapareçam (regressão).
-2. **Determinismo:** Testes com entradas aleatórias podem ser difíceis de reproduzir sem a semente exata da falha. O arquivo de persistência remove essa aleatoriedade para os erros conhecidos.
+1. **Repeatability in CI:** Ensures that continuous integration (CI) and other developers immediately re-run the specific test cases that failed in the past, preventing fixed bugs from reappearing (regression).
+2. **Determinism:** Tests with random inputs can be hard to reproduce without the exact failure seed. The persistence file removes that randomness for known errors.
 
-Se um teste que anteriormente falhava agora passa de forma consistente e a correção foi consolidada, o arquivo correspondente continuará servindo de base permanente para atestar a estabilidade daquela lógica.
+If a test that previously failed now passes consistently and the fix has been consolidated, the corresponding file will continue to serve as a permanent baseline to attest the stability of that logic.

@@ -5,22 +5,22 @@ use nam_rs::loader::dispatcher::{build_model, build_wavenet_dynamic};
 use nam_rs::loader::nam_json::{NamConfig, NamModelData};
 use nam_rs::models::NamModel;
 
-/// Gera um sinal senoidal para ser usado como entrada de teste.
-/// A previsibilidade do sinal senoidal ajuda a diagnosticar drifts numéricos.
+/// Generates a sine wave signal to be used as test input.
+/// The predictability of a sine wave helps diagnose numerical drift.
 fn generate_sine(freq: f32, sr: f32, len: usize) -> Vec<f32> {
     (0..len)
         .map(|i| (2.0 * std::f32::consts::PI * freq * i as f32 / sr).sin())
         .collect()
 }
 
-/// Calcula o Erro Quadrático Médio (MSE) entre dois sinais.
-/// Utilizado para validar a paridade numérica entre diferentes implementações
-/// do mesmo algoritmo (ex: Escalar vs SIMD ou Estático vs Dinâmico).
+/// Computes the Mean Squared Error (MSE) between two signals.
+/// Used to validate numerical parity between different implementations
+/// of the same algorithm (e.g. Scalar vs SIMD or Static vs Dynamic).
 fn calculate_mse(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(
         a.len(),
         b.len(),
-        "Os buffers de áudio devem ter o mesmo tamanho para comparação"
+        "Audio buffers must have the same size for comparison"
     );
     let sum: f32 = a
         .iter()
@@ -30,17 +30,17 @@ fn calculate_mse(a: &[f32], b: &[f32]) -> f32 {
     sum / a.len() as f32
 }
 
-/// Testa se a implementação WaveNet Dinâmica (usada como fallback) produz
-/// resultados numericamente equivalentes à implementação Estática (otimizada).
-/// A tolerância de erro (1e-10) garante que diferenças de acumulação de
-/// ponto flutuante sejam mínimas.
+/// Tests whether the Dynamic WaveNet implementation (used as fallback) produces
+/// numerically equivalent results to the Static (optimized) implementation.
+/// The error tolerance (1e-10) ensures that floating-point accumulation
+/// differences are minimal.
 #[test]
 fn test_wavenet_dynamic_parity() {
-    // Definimos uma topologia reduzida (3 dilatações por bloco) para manter o teste rápido.
-    // O objetivo é testar a lógica de despacho e o loop de convolução, não a carga bruta.
+    // Define a reduced topology (3 dilations per block) to keep the test fast.
+    // The goal is to test the dispatch logic and convolution loop, not raw throughput.
     let dils_short = vec![1, 2, 4];
 
-    // Camada 1: Rechannel de 1 para 8 canais
+    // Layer 1: Rechannel from 1 to 8 channels
     let layer_s1 = nam_rs::loader::nam_json::NamLayerConfig {
         input_size: Some(1),
         condition_size: Some(1),
@@ -53,7 +53,7 @@ fn test_wavenet_dynamic_parity() {
         head_bias: Some(false),
     };
 
-    // Camada 2: Processamento de 8 para 4 canais
+    // Layer 2: Process from 8 to 4 channels
     let layer_s2 = nam_rs::loader::nam_json::NamLayerConfig {
         input_size: Some(8),
         condition_size: Some(1),
@@ -66,8 +66,8 @@ fn test_wavenet_dynamic_parity() {
         head_bias: Some(true),
     };
 
-    // O cálculo de pesos deve ser exato para evitar falhas no dispatcher.
-    // Detalhamento dos pesos (bias + kernel + linear):
+    // Weight calculation must be exact to avoid dispatcher failures.
+    // Weight breakdown (bias + kernel + linear):
     // Array 1: rechannel (8) + layers (3 * (8*3*8 + 8 + 8 + 64 + 8) = 840) + head (32) = 880
     // Array 2: rechannel (32) + layers (3 * (4*3*4 + 4 + 4 + 16 + 4) = 228) + head (5) = 265
     // Scale: 1 -> Total = 1146
@@ -89,11 +89,11 @@ fn test_wavenet_dynamic_parity() {
         metadata: None,
     };
 
-    // Instancia ambos os motores de inferência
-    let mut model_static = build_model(&data).expect("Falha ao construir modelo estático");
-    let mut model_dyn = build_wavenet_dynamic(&data).expect("Falha ao construir modelo dinâmico");
+    // Instantiate both inference engines
+    let mut model_static = build_model(&data).expect("Failed to build static model");
+    let mut model_dyn = build_wavenet_dynamic(&data).expect("Failed to build dynamic model");
 
-    // Preaquecimento é necessário para estabilizar estados internos (delays)
+    // Prewarm is necessary to stabilize internal states (delays)
     model_static.prewarm(1024);
     model_dyn.prewarm(1024);
 
@@ -101,16 +101,16 @@ fn test_wavenet_dynamic_parity() {
     let mut out_static = vec![0.0f32; 128];
     let mut out_dyn = vec![0.0f32; 128];
 
-    // Execução paralela dos modelos
+    // Parallel execution of the models
     model_static.process(&input, &mut out_static);
     model_dyn.process(&input, &mut out_dyn);
 
-    // Validação de paridade
+    // Parity validation
     let mse = calculate_mse(&out_static, &out_dyn);
     println!("MSE Static vs Dynamic: {}", mse);
     assert!(
         mse < 1e-10,
-        "Paridade numérica WaveNet falhou: MSE={} (Implementação Dinâmica divergiu da Estática)",
+        "WaveNet numerical parity failed: MSE={} (Dynamic implementation diverged from Static)",
         mse
     );
 }

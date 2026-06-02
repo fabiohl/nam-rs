@@ -1,36 +1,36 @@
 ---
 name: documentador
-description: Especialista em documentação técnica e arquitetural. Garante que o conhecimento do projeto (arquitetura e requisitos) esteja sempre sincronizado com a implementação.
+description: Technical and architectural documentation specialist. Ensures project knowledge (architecture and requirements) is always synchronized with the implementation.
 ---
 
 # Skill: Documentador
 
 ## When to use this skill
 
-* Deve ser ativada ao receber solicitações expressas para documentar o sistema.
-* Use esta skill ao final de cada ciclo de desenvolvimento ou quando houver necessidade de manter a "fonte da verdade" do projeto atualizada.
+* Must be activated upon receiving explicit requests to document the system.
+* Use this skill at the end of each development cycle or when there is a need to keep the project's "source of truth" up to date.
 
 ## Instructions
 
-* A documentação deve ser coerente com a realidade atual do código-fonte
-* É fácil de entender, enxuta, concisa e direta ao assunto.
-* Lembre-se que a melhor documentação é um código-fonte bem legível.
-* Já a documentação não permite o código "viajar na maionese".
+* Documentation must be coherent with the current reality of the source code
+* It is easy to understand, lean, concise, and straight to the point.
+* Remember that the best documentation is well-readable source code.
+* Documentation should not allow code to "go off the rails".
 
-## Hierarquia de Documentos
+## Document Hierarchy
 
-1. **`docs/architecture.md`** — Bíblia de arquitetura e fonte primária de verdade.
-2. **`README.md`** — Visão geral, instalação e uso.
-3. **`.agents/`** — Definições de IA. Devem ser atualizadas se houver mudança nos padrões de implementação.
+1. **`docs/architecture.md`** — Architecture bible and primary source of truth.
+2. **`README.md`** — Overview, installation, and usage.
+3. **`.agents/`** — AI definitions. Should be updated if there are changes in implementation patterns.
 
-## Princípios de Documentação
+## Documentation Principles
 
-* **Guia, não substituto**: A documentação justifica o *porquê* das decisões e orienta o uso de patterns. Detalhes de implementação pertencem ao código.
-* **Rastreabilidade**: Sempre aponte para o arquivo ou função no código-fonte (ex: "Veja `src/diagnostics.rs`").
-* **DRY (Don't Repeat Your Code)**: Nunca duplique código verbatim na documentação. Explique o conceito e referencie o arquivo.
-* **Sincronia**: Mantenha o catálogo de erros `Exxxx` sincronizado entre `docs/architecture.md` e o enum `NamErrorCode`.
+* **Guide, not substitute**: Documentation justifies the *why* of decisions and guides pattern usage. Implementation details belong in the code.
+* **Traceability**: Always point to the file or function in the source code (e.g., "See `src/diagnostics.rs`").
+* **DRY (Don't Repeat Your Code)**: Never duplicate code verbatim in documentation. Explain the concept and reference the file.
+* **Synchronization**: Keep the `Exxxx` error catalog synchronized between `docs/architecture.md` and the `NamErrorCode` enum.
 
-## Boas Práticas
+## Best Practices
 
-* Justifique decisões críticas (ex: por que `SCHED_FIFO`? por que `#[repr(align(128))]`?) para evitar regressões por desconhecimento do histórico.
-* Guie-se pelas rules em `.agents/rules/`.
+* Justify critical decisions (e.g., why `SCHED_FIFO`? why `#[repr(align(128))]`?) to prevent regressions due to lack of historical context.
+* Follow the rules in `.agents/rules/`.

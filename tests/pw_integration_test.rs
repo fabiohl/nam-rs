@@ -3,12 +3,12 @@
 
 #![cfg(feature = "standalone")]
 
-//! Teste de Integração (End-to-End) para a Pipeline do PipeWire
+//! PipeWire Pipeline Integration (End-to-End) Test
 //!
-//! Este teste garante o correto inicializador do contexto do PipeWire Core.
-//! Nota: Falhará propositalmente sem ser ignorado caso PipeWire não esteja presente,
-//! a menos que seja mockado. O ambiente CI (ex: GitHub Actions) precisa do daemon PipeWire
-//! ou de um ambiente de testes com suporte a PipeWire.
+//! This test ensures the correct initialization of the PipeWire Core context.
+//! Note: It will intentionally fail without being ignored if PipeWire is not present,
+//! unless it is mocked. The CI environment (e.g. GitHub Actions) needs the PipeWire daemon
+//! or a test environment with PipeWire support.
 
 use minstant::Anchor;
 use nam_rs::common::diagnostics::SystemSnapshot;
@@ -20,44 +20,44 @@ use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
-/// Testa a inicialização e a comunicação básica da pipeline PipeWire.
+/// Tests the basic initialization and communication of the PipeWire pipeline.
 ///
-/// Este teste simula o ciclo de vida completo do motor:
-/// 1. Criação de RingBuffers SPSC (Single-Producer Single-Consumer) para comandos e telemetria.
-/// 2. Spawning da thread de áudio (host).
-/// 3. Envio de parâmetros de ganho via canal de controle.
-/// 4. Desligamento sinalizado via flag atômica.
+/// This test simulates the full lifecycle of the engine:
+/// 1. Creation of SPSC (Single-Producer Single-Consumer) RingBuffers for commands and telemetry.
+/// 2. Spawning the audio thread (host).
+/// 3. Sending gain parameters via the control channel.
+/// 4. Shutdown signaled via atomic flag.
 #[test]
 fn test_pipewire_integration() {
-    // Inicializa a biblioteca nativa. Em ambientes sem libpipewire instalada, isso causará pânico.
+    // Initializes the native library. In environments without libpipewire installed, this will panic.
     pipewire::init();
 
-    println!("✔ PipeWire Inicializado com sucesso.");
+    println!("✔ PipeWire initialized successfully.");
 
-    // RingBuffers para comunicação Thread-Safe sem Locks:
-    // param: Comandos da UI -> DSP
+    // RingBuffers for Lock-Free Thread-Safe communication:
+    // param: UI -> DSP commands
     let (mut param_prod, param_cons) = RingBuffer::new(4);
-    // gc: Garbage Collection de recursos DSP (Thread DSP -> Background)
+    // gc: Garbage Collection of DSP resources (DSP Thread -> Background)
     let (gc_prod, gc_cons) = RingBuffer::new(4);
-    // res: Respostas/Telemetria (DSP -> UI)
+    // res: Responses/Telemetry (DSP -> UI)
     let (res_prod, res_cons) = RingBuffer::new(2);
 
-    // Buffer de fallback para overflow de GC
+    // Fallback buffer for GC overflow
     let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new(64));
 
-    // Flags de status compartilhado (xruns, cpu load, etc)
+    // Shared status flags (xruns, cpu load, etc.)
     let rt_status = Arc::new(RtStatusFlags::default());
 
     let rt_clone = rt_status.clone();
     let gc_overflow_clone = gc_overflow.clone();
-    // Captura metadados do sistema para diagnóstico inicial
+    // Captures system metadata for initial diagnostics
     let sys = SystemSnapshot::capture();
-    // Sincroniza o relógio TSC para medições de nanosegundos de baixa latência
+    // Synchronizes the TSC clock for low-latency nanosecond measurements
     let anchor = Anchor::new();
 
-    // Inicia a Thread de Áudio
+    // Starts the Audio Thread
     let pw_thread = thread::spawn(move || {
-        // run_pipewire_host é o loop principal que interage com o daemon do sistema.
+        // run_pipewire_host is the main loop that interacts with the system daemon.
         run_pipewire_host(
             param_cons,
             gc_prod,
@@ -66,7 +66,7 @@ fn test_pipewire_integration() {
             res_prod,
             rt_clone,
             nam_rs::standalone::pw_host::PipewireHostConfig {
-                buffer_size: 0, // 0 = Usar padrão do sistema (PipeWire quantum)
+                buffer_size: 0, // 0 = Use system default (PipeWire quantum)
                 sys,
                 tsc_anchor: anchor,
             },
@@ -74,30 +74,30 @@ fn test_pipewire_integration() {
         )
     });
 
-    // Simulação de interação do usuário: ajuste de ganhos de entrada/saída
+    // Simulates user interaction: input/output gain adjustment
     thread::sleep(Duration::from_millis(50));
     let _ = param_prod.push(nam_rs::common::spsc::ParamPayload::InputGain(2.5));
     let _ = param_prod.push(nam_rs::common::spsc::ParamPayload::OutputGain(-1.0));
 
-    // Sinaliza o desligamento da pipeline.
-    // O motor monitora esta flag a cada iteração do loop de áudio.
+    // Signals pipeline shutdown.
+    // The engine monitors this flag on every audio loop iteration.
     thread::sleep(Duration::from_millis(150));
     spsc::SHUTDOWN.store(true, Ordering::Relaxed);
 
-    // Aguarda a finalização da thread de áudio e valida o resultado
+    // Waits for the audio thread to finish and validates the result
     match pw_thread.join() {
         Ok(result) => {
             if let Err(e) = result {
-                // Erro de Daemon Ausente (ex: no CI) é reportado mas não quebra o teste
+                // Missing daemon error (e.g. in CI) is reported but does not break the test
                 eprintln!(
-                    "O host PipeWire encerrou com erro esperado (possível ausência de daemon): {e}"
+                    "PipeWire host exited with expected error (possible daemon absence): {e}"
                 );
             } else {
-                println!("Pipeline host executado e finalizado graciosamente.");
+                println!("Pipeline host ran and shut down gracefully.");
             }
         }
-        Err(_) => panic!("A Thread de PipeWire sofreu um pânico fatal (Panic)!"),
+        Err(_) => panic!("The PipeWire thread suffered a fatal panic!"),
     }
 
-    println!("Teste de integração concluído.")
+    println!("Integration test completed.")
 }

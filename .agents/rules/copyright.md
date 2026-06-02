@@ -1,18 +1,18 @@
 ---
 trigger: glob
-description: Diretriz obrigatória para inclusão de aviso de Copyright nos arquivos de código.
+description: Mandatory guideline for including Copyright notices in source code files.
 globs: **/*
 ---
 
-# Aviso de Copyright e Licenciamento
+# Copyright and Licensing Notice
 
-* **Obrigatoriedade**: Em todo arquivo de código (novo ou modificado), você deve **sempre assegurar a presença**, em seu cabeçalho, do comentário com o identificador SPDX e o aviso de copyright.
-* **Texto Padrão**: Utilize obrigatoriamente o seguinte modelo de texto (adaptando como bloco ou linhas de comentário para a linguagem do arquivo correspondente):
+* **Requirement**: In every source code file (new or modified), you must **always ensure the presence**, in its header, of the SPDX identifier comment and copyright notice.
+* **Standard Text**: Always use the following text template (adapting as block or line comments for the corresponding file language):
 
   ``` text
   SPDX-License-Identifier: Apache-2.0
   Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
   ```
 
-* **Boas Práticas e Posicionamento**: Sempre coloque o aviso de forma fluida e profissional no topo do arquivo. Em arquivos de script que contenham *shebang/hashbang* (ex.: `#!/bin/bash`), aloque o bloco de copyright imediatamente abaixo do mesmo. Tenha zelo para que o formato do comentário não quebre a sintaxe do arquivo de código em vigência. Atentar para que o ano 2026 seja substituído pelo ano correspondente (se for o caso), porém apenas nos arquivos que estiverem sendo editados.
-* **Arquivos Não Aplicáveis**: `Cargo.lock`, arquivos temporários, arquivos binários e recursos de imagem gerados automaticamente não precisam de cabeçalho.
+* **Best Practices and Placement**: Always place the notice fluidly and professionally at the top of the file. In script files containing a *shebang/hashbang* (e.g., `#!/bin/bash`), place the copyright block immediately below it. Ensure that the comment format does not break the syntax of the current source file. Note that the year 2026 should be replaced with the corresponding year (if applicable), but only in files being edited.
+* **Non-applicable Files**: `Cargo.lock`, temporary files, binary files, and auto-generated image assets do not need the header.

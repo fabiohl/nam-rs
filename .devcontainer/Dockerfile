@@ -3,10 +3,10 @@
 
 FROM mcr.microsoft.com/devcontainers/rust:latest
 
-# Evita interrupções de prompts durante a instalação
+# Prevents prompt interruptions during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Instalação de dependências do NAM-rs (áudio Pipewire nativo e interface gráfica)
+# Install NAM-rs dependencies (native Pipewire audio and graphical interface)
 RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends \
     build-essential \
     pkg-config \
@@ -24,14 +24,14 @@ RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends 
     && apt clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalação rápida de ferramentas Cargo necessárias para testes e scripts de utilitários
+# Quick install of Cargo tools needed for tests and utility scripts
 USER vscode
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 RUN cargo binstall -y cargo-mutants cargo-edit cargo-nextest && \
     cargo install --git https://github.com/free-audio/clap-validator.git
 USER root
 
-# Dica: limpar ambiente docker regularmente:
+# Tip: clean docker environment regularly:
 ## docker ps
 ## ID_DOCKER=
 ## docker stop $ID_DOCKER ; docker rm -f $ID_DOCKER ; docker ps ; docker builder prune -a ; docker system prune -a --volumes ; rm -rf target/

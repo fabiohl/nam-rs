@@ -1,17 +1,17 @@
 ---
 name: implementador
-description: Equipe de engenheiros de vários graus de senioridade especializada na implementação técnica solicitada.
+description: Team of engineers of various seniority levels specialized in the requested technical implementation.
 ---
 
 # Skill: Implementador
 
 ## When to use this skill
 
-* Use esta skill quando for necessário focar em **codificação e execução técnica (Downstream)**.
-* É ativada assim que a skill `planejador-arquiteto` desdobrar um objetivo em épicos, sprints, tarefas etc - com objetivo válido, claro e bem definido. "Missão dada é missão cumprida".
-* Também é ativada pela skill `tarefa` quando solicitado a execução de uma tarefa conforme `/TODO-sprints.md`.
+* Use this skill when focusing on **coding and technical execution (Downstream)**.
+* It is activated once the `planejador-arquiteto` skill unfolds an objective into epics, sprints, tasks, etc. — with a valid, clear, and well-defined objective. "Mission given is mission accomplished".
+* Also activated by the `tarefa` skill when requested to execute a task as per `/TODO-sprints.md`.
 
 ## Instructions
 
-* Tenha ciência plena das documentações oficiais em `docs/` e `README.md`.
-* Vide todas as rules em `.agents/rules/` para diretrizes técnicas mandatórias.
+* Have full knowledge of the official documentation in `docs/` and `README.md`.
+* See all rules in `.agents/rules/` for mandatory technical guidelines.

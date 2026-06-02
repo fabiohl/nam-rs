@@ -1,32 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Benchmarks formais de latência de inferência para o motor NAM-rs.
+//! Formal inference latency benchmarks for the NAM-rs engine.
 //!
-//! Mede o tempo de processamento de 1 bloco DSP (64 amostras a 48 kHz = deadline
-//! de 1.33 ms) para redes neurais WaveNet e LSTM, além dos kernels FastMath
-//! que compõem as funções de ativação SIMD.
+//! Measures the processing time of 1 DSP block (64 samples at 48 kHz = 1.33 ms
+//! deadline) for WaveNet and LSTM neural networks, plus FastMath kernels
+//! that comprise the SIMD activation functions.
 //!
-//! ## Benchmarks disponíveis
+//! ## Available benchmarks
 //!
-//! | ID                                      | Descrição                               | Contexto prático                         |
+//! | ID                                      | Description                             | Practical context                        |
 //! | --------------------------------------- | --------------------------------------- | ---------------------------------------- |
-//! | `WaveNet_Standard_CH16_64samp_48kHz`    | Inferência WaveNet Standard completa    | Modelo ~284 KB, 10+10 layers dilatadas   |
-//! | `LSTM_2x16_64samp_48kHz`                | Inferência LSTM 2 camadas × 16 hidden   | Rede recorrente mais pesada suportada    |
-//! | `FastMath_tanh_AVX2_256elem`            | Ativação tanh Padé×rsqrt sobre 256 f32  | Kernel chamado N×layers/bloco no WaveNet |
-//! | `FastMath_sigmoid_AVX2_256elem`         | Ativação sigmoid derivada de tanh       | Kernel chamado N×gates/bloco no LSTM     |
-//! | `WaveNet_Dynamic_Standard_64samp_48kHz` | Inferência WaveNet Dynamic (fallback)   | Mede overhead do path sem const generics |
-//! | `LSTM_Dynamic_1x16_64samp_48kHz`        | Inferência LSTM Dynamic 1×16 (fallback) | Mede overhead do path sem const generics |
+//! | `WaveNet_Standard_CH16_64samp_48kHz`    | Complete WaveNet Standard inference     | ~284 KB model, 10+10 dilated layers      |
+//! | `LSTM_2x16_64samp_48kHz`                | LSTM 2 layers × 16 hidden inference     | Heaviest supported recurrent network     |
+//! | `FastMath_tanh_AVX2_256elem`            | Padé×rsqrt tanh activation over 256 f32 | Kernel called N×layers/block in WaveNet  |
+//! | `FastMath_sigmoid_AVX2_256elem`         | Sigmoid activation derived from tanh    | Kernel called N×gates/block in LSTM      |
+//! | `WaveNet_Dynamic_Standard_64samp_48kHz` | WaveNet Dynamic inference (fallback)    | Measures overhead of path without const generics |
+//! | `LSTM_Dynamic_1x16_64samp_48kHz`        | LSTM Dynamic 1×16 inference (fallback)  | Measures overhead of path without const generics |
 //!
-//! ## Interpretação dos resultados
+//! ## Interpreting the results
 //!
-//! - O deadline de tempo-real a 48 kHz com buffer de 64 amostras é **1.33 ms**.
-//! - Se qualquer benchmark de inferência exceder este deadline, o engine causará
-//!   xruns (buffer underruns) em produção com esse tamanho de buffer.
-//! - Os kernels FastMath são sub-componentes chamados centenas de vezes por bloco;
-//!   seu tempo total contribui para a latência da inferência completa.
+//! - The real-time deadline at 48 kHz with a 64-sample buffer is **1.33 ms**.
+//! - If any inference benchmark exceeds this deadline, the engine will cause
+//!   xruns (buffer underruns) in production with this buffer size.
+//! - FastMath kernels are sub-components called hundreds of times per block;
+//!   their total time contributes to the full inference latency.
 //!
-//! ## Execução
+//! ## Running
 //!
 //! ```sh
 //! cargo bench --bench inference_bench
@@ -37,18 +37,18 @@ use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::models::NamModel;
 
-/// Gera sinal senoidal determinístico de 440 Hz a uma taxa de amostragem de 48 kHz.
-/// Utilizado como entrada estável para garantir que a carga de processamento seja
-/// consistente entre as iterações do benchmark, evitando flutuações por sinais aleatórios.
+/// Generates a deterministic 440 Hz sinusoidal signal at a 48 kHz sample rate.
+/// Used as a stable input to ensure processing load is consistent across
+/// benchmark iterations, avoiding fluctuations from random signals.
 fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
     (0..num_samples)
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
         .collect()
 }
 
-/// Cria uma estrutura `NamModelData` sintética configurada como uma rede LSTM.
-/// Permite testar diferentes topologias (camadas e tamanho oculto) sem depender
-/// de arquivos externos, facilitando a validação de performance bruta do motor de inferência.
+/// Creates a synthetic `NamModelData` struct configured as an LSTM network.
+/// Allows testing different topologies (layers and hidden size) without depending
+/// on external files, easing raw performance validation of the inference engine.
 fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -> NamModelData {
     NamModelData {
         version: Some("0.5.4".to_string()),
@@ -60,8 +60,8 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
             num_layers: Some(num_layers),
             hidden_size: Some(hidden_size),
         },
-        // Pesos inicializados com valor pequeno (0.01) para evitar saturação/infinitos
-        // prematuros durante execuções repetitivas de benchmark.
+        // Weights initialized with a small value (0.01) to avoid premature saturation/infs
+        // during repeated benchmark runs.
         weights: vec![0.01; total_weights],
         weights_layout: nam_rs::loader::nam_json::WeightsLayout::Original,
         sample_rate: Some(48000.0),
@@ -69,26 +69,26 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
     }
 }
 
-/// Mede o tempo de processamento de um modelo WaveNet real ("Standard").
-/// Este benchmark é o mais representativo para o uso comum em guitarras,
-/// testando a eficácia das convoluções dilatadas e kernels SIMD otimizados.
+/// Measures the processing time of a real WaveNet model ("Standard").
+/// This benchmark is the most representative for common guitar use,
+/// testing the effectiveness of dilated convolutions and optimized SIMD kernels.
 fn bench_wavenet_standard_process(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
 
-    // Ignora silenciosamente se o modelo de fixture não estiver presente
+    // Silently ignores if the fixture model is not present
     if !path.exists() {
         return;
     }
 
-    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
 
-    // O dispatcher escolhe a implementação mais rápida (estática vs dinâmica)
-    let mut model = build_model(&model_data).expect("Dispatcher falhou para benchmark");
+    // The dispatcher picks the fastest implementation (static vs dynamic)
+    let mut model = build_model(&model_data).expect("Dispatcher failed for benchmark");
 
-    // O prewarm é CRÍTICO para preencher buffers de estado e evitar que a alocação
-    // inicial de recursos dentro do modelo influencie na média do benchmark.
+    // Prewarm is CRITICAL to populate state buffers and prevent initial resource
+    // allocation inside the model from skewing the benchmark average.
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
@@ -96,18 +96,18 @@ fn bench_wavenet_standard_process(c: &mut Criterion) {
 
     c.bench_function("WaveNet_Standard_CH16_64samp_48kHz", |b| {
         b.iter(|| {
-            // Executa a inferência de um bloco completo (64 amostras)
+            // Runs inference on a full block (64 samples)
             model.process(&input, &mut output);
         });
     });
 }
 
-/// Mede o tempo de processamento de uma rede recorrente LSTM 2x16.
-/// As LSTMs são conhecidas por sua alta carga computacional sequencial,
-/// sendo o teste de estresse ideal para verificar a latência de loops de feedback.
+/// Measures the processing time of a 2x16 LSTM recurrent network.
+/// LSTMs are known for their high sequential computational load,
+/// making them the ideal stress test to verify feedback loop latency.
 fn bench_lstm_2x16_process(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
-    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
@@ -115,19 +115,19 @@ fn bench_lstm_2x16_process(c: &mut Criterion) {
 
     c.bench_function("LSTM_2x16_64samp_48kHz", |b| {
         b.iter(|| {
-            // Processamento LSTM tende a ser mais pesado que WaveNet para blocos pequenos
+            // LSTM processing tends to be heavier than WaveNet for small blocks
             model.process(&input, &mut output);
         });
     });
 }
 
-/// Compara a performance entre a implementação Escalar (baseline) e SIMD para LSTM 1x8.
-/// Este benchmark valida o ganho de performance obtido com o "T3: Fused Gates",
-/// onde as 4 portas da LSTM são calculadas simultaneamente em registradores AVX2.
+/// Compares performance between Scalar (baseline) and SIMD implementations for LSTM 1x8.
+/// This benchmark validates the performance gain achieved with "T3: Fused Gates",
+/// where the 4 LSTM gates are computed simultaneously in AVX2 registers.
 fn bench_lstm_1x8_comparison(c: &mut Criterion) {
     let data = make_lstm_data(1, 8, 345);
-    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 1x8 benchmark");
-    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 1x8 benchmark");
+    let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 1x8 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 1x8 benchmark");
     model_simd.prewarm(1024);
     model_scalar.prewarm(1024);
 
@@ -136,29 +136,29 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("LSTM_1x8_Comparison");
 
-    // Caminho otimizado (SIMD / Auto-vectorized)
+    // Optimized path (SIMD / Auto-vectorized)
     group.bench_function("SIMD_Fused_T3", |b| {
         b.iter(|| {
             model_simd.process(&input, &mut output);
         });
     });
 
-    // Caminho escalar explícito para medir o "speedup" teórico
+    // Explicit scalar path to measure theoretical speedup
     #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
         nam_rs::models::DynamicModel::Lstm1x8(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
-        _ => panic!("Modelo não é Lstm1x8"),
+        _ => panic!("Model is not Lstm1x8"),
     });
     group.finish();
 }
 
-/// Benchmark Comparativo (T15): LSTM 2x16 Escalar vs SIMD (Gates Fundidos T3).
+/// Comparative Benchmark (T15): LSTM 2x16 Scalar vs SIMD (Fused Gates T3).
 fn bench_lstm_2x16_comparison(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
-    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 2x16 benchmark");
-    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 2x16 benchmark");
+    let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 2x16 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 2x16 benchmark");
     model_simd.prewarm(1024);
     model_scalar.prewarm(1024);
 
@@ -177,32 +177,32 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
         nam_rs::models::DynamicModel::Lstm2x16(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
-        _ => panic!("Modelo não é Lstm2x16"),
+        _ => panic!("Model is not Lstm2x16"),
     });
     group.finish();
 }
 
-/// Mede a performance do kernel de ativação `tanh` otimizado para AVX2.
-/// Este kernel utiliza aproximações de Padé e instruções rsqrt para maximizar
-/// o throughput em detrimento de uma precisão sub-amostral irrelevante para áudio.
+/// Measures the performance of the AVX2-optimized `tanh` activation kernel.
+/// This kernel uses Padé approximations and rsqrt instructions to maximize
+/// throughput at the expense of sub-sample precision irrelevant to audio.
 fn bench_tanh_slice_256(c: &mut Criterion) {
-    // Range de entrada cobrindo a parte linear e de saturação da tanh
+    // Input range covering the linear and saturation regions of tanh
     let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
     c.bench_function("FastMath_tanh_AVX2_256elem", |b| {
         let mut buf = base.clone();
         b.iter(|| {
-            // Copiamos os dados originais para garantir que o kernel processe
-            // sempre os mesmos valores, simulando a carga real de uma camada neural.
+            // Copy original data to ensure the kernel always processes the same
+            // values, simulating the actual load of a neural layer.
             buf.copy_from_slice(&base);
             unsafe { nam_rs::math::activations::tanh_slice_avx2(&mut buf) };
         });
     });
 }
 
-/// Mede a performance do kernel de ativação `sigmoid` otimizado para AVX2.
-/// Essencial para modelos LSTM, este kernel converte a tanh aproximada em uma
-/// função logística (0 a 1) para controlar as portas de memória.
+/// Measures the performance of the AVX2-optimized `sigmoid` activation kernel.
+/// Essential for LSTM models, this kernel converts the approximate tanh into a
+/// logistic function (0 to 1) to control memory gates.
 fn bench_sigmoid_slice_256(c: &mut Criterion) {
     let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
 
@@ -215,10 +215,10 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
-/// Mede o overhead da implementação "Dynamic" da WaveNet.
-/// Enquanto a versão standard usa const generics para tamanhos fixos, a dynamic
-/// permite carregar qualquer configuração de camadas em tempo de execução,
-/// servindo como fallback para modelos não-padrão.
+/// Measures the overhead of the WaveNet "Dynamic" implementation.
+/// While the standard version uses const generics for fixed sizes, the dynamic
+/// version allows loading any layer configuration at runtime,
+/// serving as a fallback for non-standard models.
 fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
     use nam_rs::loader::dispatcher::build_wavenet_dynamic;
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -226,23 +226,23 @@ fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
     if !path.exists() {
         return;
     }
-    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_wavenet_dynamic(&model_data).expect("Builder dinâmico falhou");
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_wavenet_dynamic(&model_data).expect("Dynamic builder failed");
     model.prewarm(2048);
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
     c.bench_function("WaveNet_Dynamic_Standard_64samp_48kHz", |b| {
         b.iter(|| {
-            // Espera-se uma latência ligeiramente superior à versão estática
+            // Expected to have slightly higher latency than the static version
             model.process(&input, &mut output);
         });
     });
 }
 
-/// Mede a performance da LSTM Dinâmica 1x16.
-/// Útil para validar o motor em cenários de treinamento customizado com
-/// dimensões de hidden state fora dos padrões 8, 16 ou 32.
+/// Measures the performance of the 1x16 Dynamic LSTM.
+/// Useful for validating the engine in custom training scenarios with
+/// hidden state dimensions outside the standard 8, 16, or 32.
 fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
     use nam_rs::loader::dispatcher::build_lstm_dynamic;
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -250,9 +250,9 @@ fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
     if !path.exists() {
         return;
     }
-    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo LSTM");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_lstm_dynamic(&model_data, 1, 16).expect("Builder dinâmico falhou");
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read LSTM model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_lstm_dynamic(&model_data, 1, 16).expect("Dynamic builder failed");
     model.prewarm(2048);
     let input = generate_sine_440hz(64);
     let mut output = vec![0.0f32; 64];
@@ -263,21 +263,21 @@ fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
     });
 }
 
-/// Avalia como o WaveNet escala com diferentes tamanhos de buffer DSP.
-/// Buffers maiores permitem melhor aproveitamento do cache e prefetching,
-/// mas aumentam a latência total percebida pelo músico.
+/// Evaluates how WaveNet scales with different DSP buffer sizes.
+/// Larger buffers allow better cache utilization and prefetching,
+/// but increase the total latency perceived by the musician.
 fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
     if !path.exists() {
         return;
     }
-    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou");
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
     model.prewarm(2048);
 
-    // Testa buffers de 32 a 512 amostras
+    // Tests buffers from 32 to 512 samples
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
         let mut output = vec![0.0f32; size];
@@ -289,12 +289,12 @@ fn bench_wavenet_standard_block_sizes(c: &mut Criterion) {
     }
 }
 
-/// Avalia o escalonamento da LSTM com diferentes tamanhos de buffer.
-/// Diferente da WaveNet, a LSTM é puramente sequencial (amostra por amostra),
-/// então o overhead por amostra tende a ser mais constante, independente do bloco.
+/// Evaluates LSTM scaling with different buffer sizes.
+/// Unlike WaveNet, the LSTM is purely sequential (sample by sample),
+/// so per-sample overhead tends to be more constant regardless of block size.
 fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
-    let mut model = build_model(&data).expect("Dispatcher falhou");
+    let mut model = build_model(&data).expect("Dispatcher failed");
     model.prewarm(2048);
     for &size in &[32, 128, 256, 512] {
         let input = generate_sine_440hz(size);
@@ -307,9 +307,9 @@ fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
     }
 }
 
-/// Mede o throughput do produto escalar AVX2 com pesos em f16 (Half Precision).
-/// Esta técnica reduz o uso de largura de banda de memória em 50% e melhora
-/// a localidade do cache L1, crucial para as camadas densas da WaveNet.
+/// Measures the throughput of the AVX2 dot product with f16 (Half Precision) weights.
+/// This technique reduces memory bandwidth usage by 50% and improves
+/// L1 cache locality, crucial for WaveNet dense layers.
 fn bench_dot_product_avx2_256(c: &mut Criterion) {
     let vec_a: Vec<f32> = (0..256).map(|i| (i as f32) * 0.1).collect();
     let vec_b: Vec<u16> = (0..256)
@@ -318,8 +318,8 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
 
     c.bench_function("DotProduct_AVX2_256elem", |b| {
         b.iter(|| unsafe {
-            // O uso de black_box evita que o compilador otimize o loop inteiro,
-            // garantindo que o cálculo matemático seja realmente executado.
+            // black_box prevents the compiler from optimizing away the entire loop,
+            // ensuring the math computation is actually executed.
             nam_rs::math::gemm::dot::dot_product_avx2(
                 std::hint::black_box(&vec_a),
                 std::hint::black_box(&vec_b),
@@ -328,8 +328,8 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
     });
 }
 
-/// Versão do produto escalar para vetores pequenos (64 elementos).
-/// Representa o tamanho típico das camadas intermediárias em modelos leves.
+/// Dot product version for small vectors (64 elements).
+/// Represents the typical intermediate layer size in lightweight models.
 fn bench_dot_product_avx2_64(c: &mut Criterion) {
     let vec_a: Vec<f32> = (0..64).map(|i| (i as f32) * 0.1).collect();
     let vec_b: Vec<u16> = (0..64)
@@ -345,10 +345,10 @@ fn bench_dot_product_avx2_64(c: &mut Criterion) {
     });
 }
 
-/// Mede o custo do resampler ao converter de 44.1 kHz para 48 kHz.
-/// O resampler é um dos componentes mais sensíveis, pois envolve filtragem FIR.
-/// `process_input` e `process_output` são medidos separadamente para identificar
-/// gargalos na entrada (bufferização) vs saída (interpolação).
+/// Measures the resampler cost when converting from 44.1 kHz to 48 kHz.
+/// The resampler is one of the most sensitive components, as it involves FIR filtering.
+/// `process_input` and `process_output` are measured separately to identify
+/// bottlenecks in input (buffering) vs output (interpolation).
 fn bench_resampler_44100_to_48000_256samp(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
     let size = 256;
@@ -381,8 +381,8 @@ fn bench_resampler_44100_to_48000_256samp(c: &mut Criterion) {
     group.finish();
 }
 
-/// Mede a conversão de 96 kHz para 48 kHz (downsampling).
-/// Geralmente mais leve que o upsampling, mas ainda exige filtragem anti-aliasing.
+/// Measures 96 kHz to 48 kHz conversion (downsampling).
+/// Generally lighter than upsampling, but still requires anti-aliasing filtering.
 fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
     let size = 256;
@@ -415,10 +415,10 @@ fn bench_resampler_96000_to_48000_256samp(c: &mut Criterion) {
     group.finish();
 }
 
-/// Mede a performance da função `record` do histograma de latência.
-/// Simula 64 chamadas (equivalente a processar 1 segundo de áudio a 48 kHz
-/// com buffer de 64 amostras, ou ~750 callbacks). O benchmark valida que
-/// `fetch_add` é significativamente mais rápido que `fetch_update` (CAS-loop).
+/// Measures the performance of the latency histogram `record` function.
+/// Simulates 64 calls (equivalent to processing 1 second of audio at 48 kHz
+/// with a 64-sample buffer, or about 750 callbacks). The benchmark validates that
+/// `fetch_add` is significantly faster than `fetch_update` (CAS-loop).
 fn bench_record(c: &mut Criterion) {
     use nam_rs::dsp::telemetry::LatencyHistogram;
     let hist = LatencyHistogram::new();
@@ -433,8 +433,8 @@ fn bench_record(c: &mut Criterion) {
     });
 }
 
-/// Mede o overhead do resampler quando as taxas de amostragem são iguais.
-/// Serve para validar se o caminho de "bypass" é eficiente.
+/// Measures the resampler overhead when sample rates are equal.
+/// Serves to validate that the "bypass" path is efficient.
 fn bench_resampler_48000_bypass(c: &mut Criterion) {
     use nam_rs::dsp::resampler::NamResampler;
     let size = 256;
@@ -450,9 +450,9 @@ fn bench_resampler_48000_bypass(c: &mut Criterion) {
     });
 }
 
-/// Benchmarks para processadores que suportam AVX-512 (ex: AMD Zen 4, Intel Ice Lake+).
-/// O AVX-512 permite processar 16 floats simultaneamente (512 bits), teoricamente
-/// dobrando o throughput em relação ao AVX2.
+/// Benchmarks for processors that support AVX-512 (e.g. AMD Zen 4, Intel Ice Lake+).
+/// AVX-512 allows processing 16 floats simultaneously (512 bits), theoretically
+/// doubling throughput compared to AVX2.
 fn bench_tanh_avx512_256elem(c: &mut Criterion) {
     if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
         let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
@@ -479,20 +479,20 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
     }
 }
 
-/// Mede o tempo gasto na função `prewarm`.
-/// Embora o prewarm ocorra fora da thread de áudio, ele deve ser rápido o suficiente
-/// para que a troca de modelos durante uma performance ao vivo seja imperceptível.
+/// Measures the time spent in the `prewarm` function.
+/// Although prewarm runs outside the audio thread, it must be fast enough
+/// so that model switching during a live performance is imperceptible.
 fn bench_prewarm_wavenet_standard(c: &mut Criterion) {
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models/BossWN-standard.nam");
     if !path.exists() {
         return;
     }
-    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
     c.bench_function("Prewarm_WaveNet_Standard_2048samp", |b| {
         b.iter_with_setup(
-            || build_model(&model_data).expect("Dispatcher falhou"),
+            || build_model(&model_data).expect("Dispatcher failed"),
             |mut model| {
                 model.prewarm(std::hint::black_box(2048));
             },
@@ -504,7 +504,7 @@ fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
     c.bench_function("Prewarm_LSTM_2x16_2048samp", |b| {
         b.iter_with_setup(
-            || build_model(&data).expect("Dispatcher falhou"),
+            || build_model(&data).expect("Dispatcher failed"),
             |mut model| {
                 model.prewarm(std::hint::black_box(2048));
             },
@@ -513,9 +513,9 @@ fn bench_prewarm_lstm_2x16(c: &mut Criterion) {
 }
 
 // --- Long Benchmarks (Soak Testing) ---
-// Estes benchmarks só são executados se a feature "long_bench" estiver ativa.
-// Destinam-se a validar a estabilidade térmica da CPU e detectar variações
-// de performance ao longo do tempo (jitters, throttling).
+// These benchmarks only run if the "long_bench" feature is enabled.
+// They are intended to validate CPU thermal stability and detect performance
+// variations over time (jitters, throttling).
 
 #[cfg(feature = "long_bench")]
 fn bench_wavenet_long_run(c: &mut Criterion) {
@@ -524,15 +524,15 @@ fn bench_wavenet_long_run(c: &mut Criterion) {
     if !path.exists() {
         return;
     }
-    let json_data = std::fs::read_to_string(&path).expect("Falha ao ler modelo WaveNet");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou");
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
     let input = generate_sine_440hz(size);
     let mut output = vec![0.0f32; size];
     let mut group = c.benchmark_group("Long_Run_WaveNet");
-    // Execução prolongada (35 segundos) para garantir convergência estatística e evitar avisos de tempo limite
+    // Extended run (35 seconds) to ensure statistical convergence and avoid timeout warnings
     group.measurement_time(std::time::Duration::from_secs(35));
     group.sample_size(100);
     group.bench_function("Long_WaveNet_Standard_CH16_4096samp", |b| {
@@ -546,7 +546,7 @@ fn bench_wavenet_long_run(c: &mut Criterion) {
 #[cfg(feature = "long_bench")]
 fn bench_lstm_long_run(c: &mut Criterion) {
     let data = make_lstm_data(2, 16, 3345);
-    let mut model = build_model(&data).expect("Dispatcher falhou");
+    let mut model = build_model(&data).expect("Dispatcher failed");
     model.prewarm(4096);
     let size = 4096;
     let input = generate_sine_440hz(size);
@@ -576,8 +576,8 @@ fn bench_resampler_long_run(c: &mut Criterion) {
     group.sample_size(100);
     group.bench_function("Long_Resampler_44100_to_48000_4096samp", |b| {
         b.iter(|| {
-            // Validar se o resampler mantém estabilidade e não acumula erros de fase
-            // ou latência variável durante longos períodos.
+            // Validate that the resampler maintains stability and does not accumulate
+            // phase errors or variable latency over long periods.
             rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
         });
     });
@@ -586,7 +586,7 @@ fn bench_resampler_long_run(c: &mut Criterion) {
 
 fn bench_lstm_1x40_process(c: &mut Criterion) {
     let data = make_lstm_data(1, 40, 6841);
-    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
@@ -601,7 +601,7 @@ fn bench_lstm_1x40_process(c: &mut Criterion) {
 
 fn bench_lstm_2x24_process(c: &mut Criterion) {
     let data = make_lstm_data(2, 24, 7321);
-    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    let mut model = build_model(&data).expect("Dispatcher failed for LSTM benchmark");
     model.prewarm(2048);
 
     let input = generate_sine_440hz(64);
@@ -616,8 +616,8 @@ fn bench_lstm_2x24_process(c: &mut Criterion) {
 
 fn bench_lstm_1x40_comparison(c: &mut Criterion) {
     let data = make_lstm_data(1, 40, 6841);
-    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 1x40 benchmark");
-    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 1x40 benchmark");
+    let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 1x40 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 1x40 benchmark");
     model_simd.prewarm(1024);
     model_scalar.prewarm(1024);
 
@@ -636,15 +636,15 @@ fn bench_lstm_1x40_comparison(c: &mut Criterion) {
         nam_rs::models::DynamicModel::Lstm1x40(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
-        _ => panic!("Modelo não é Lstm1x40"),
+        _ => panic!("Model is not Lstm1x40"),
     });
     group.finish();
 }
 
 fn bench_lstm_2x24_comparison(c: &mut Criterion) {
     let data = make_lstm_data(2, 24, 7321);
-    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 2x24 benchmark");
-    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 2x24 benchmark");
+    let mut model_simd = build_model(&data).expect("Dispatcher failed for LSTM 2x24 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher failed for LSTM 2x24 benchmark");
     model_simd.prewarm(1024);
     model_scalar.prewarm(1024);
 
@@ -663,15 +663,15 @@ fn bench_lstm_2x24_comparison(c: &mut Criterion) {
         nam_rs::models::DynamicModel::Lstm2x24(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
-        _ => panic!("Modelo não é Lstm2x24"),
+        _ => panic!("Model is not Lstm2x24"),
     });
     group.finish();
 }
 
-// Definição do grupo principal de benchmarks (latência de inferência e kernels DSP)
+// Main benchmark group definition (inference latency and DSP kernels)
 criterion_group!(
     name = benches;
-    // sample_size(50) é um equilíbrio entre precisão estatística e tempo de execução total.
+    // sample_size(50) is a balance between statistical accuracy and total runtime.
     config = Criterion::default().sample_size(50);
     targets = bench_wavenet_standard_process,
     bench_wavenet_standard_block_sizes,
@@ -699,7 +699,7 @@ criterion_group!(
     bench_prewarm_lstm_2x16
 );
 
-// Definição do grupo de benchmarks de longa duração (Soak Tests)
+// Long-running benchmark group definition (Soak Tests)
 #[cfg(feature = "long_bench")]
 criterion_group!(
     name = long_benches;
@@ -707,7 +707,7 @@ criterion_group!(
     targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run
 );
 
-// Ponto de entrada condicional dependendo da ativação de features de estresse
+// Conditional entry point depending on stress feature activation
 #[cfg(not(feature = "long_bench"))]
 criterion_main!(benches);
 

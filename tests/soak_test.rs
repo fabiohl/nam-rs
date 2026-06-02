@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Suíte de Estabilidade Numérica (Soak Test) para o NAM-rs.
+//! Numerical Stability Suite (Soak Test) for NAM-rs.
 //!
-//! Estes testes são projetados para rodar por milhões de iterações, verificando
-//! drift numérico, estabilidade de filtros, ausência de NaNs/Infs e integridade
-//! de buffers circulares em execuções de longa duração.
+//! These tests are designed to run for millions of iterations, checking
+//! numerical drift, filter stability, absence of NaNs/Infs, and circular
+//! buffer integrity under long-duration execution.
 //!
-//! Execução: `cargo test --release -- --ignored --nocapture`
+//! Execution: `cargo test --release -- --ignored --nocapture`
 
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
@@ -18,11 +18,11 @@ use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use std::time::Instant;
 
-/// PRNG Determinístico simples (Linear Congruential Generator - LCG).
+/// Simple deterministic PRNG (Linear Congruential Generator - LCG).
 ///
-/// Implementado manualmente para manter o projeto livre de dependências de crates
-/// de rand apenas para testes. O objetivo é fornecer um fluxo de ruído
-/// reprodutível para diagnósticos de falhas em soak tests.
+/// Implemented manually to keep the project free of rand crate dependencies
+/// used only for tests. The goal is to provide a reproducible noise stream
+/// for diagnosing failures in soak tests.
 struct SimplePcg {
     state: u64,
 }
@@ -32,27 +32,27 @@ impl SimplePcg {
         Self { state: seed }
     }
 
-    /// Gera o próximo f32 no intervalo [-1.0, 1.0].
+    /// Generates the next f32 in the range [-1.0, 1.0].
     fn next_f32(&mut self) -> f32 {
-        // Variante simplificada do PCG-XSH-RR para 32-bit output.
+        // Simplified variant of PCG-XSH-RR for 32-bit output.
         let old_state = self.state;
         self.state = old_state.wrapping_mul(6364136223846793005).wrapping_add(1);
         let xorshifted = (((old_state >> 18) ^ old_state) >> 27) as u32;
         let rot = (old_state >> 59) as u32;
         let res = (xorshifted >> rot) | (xorshifted << ((!rot).wrapping_add(1) & 31));
-        // Normalização para o range de áudio flutuante
+        // Normalization to the floating-point audio range
         (res as f32 / u32::MAX as f32) * 2.0 - 1.0
     }
 }
 
-/// Helper para construir um modelo WaveNetModel<16, 3, 8> sintético para soak test.
+/// Helper to build a synthetic WaveNetModel<16, 3, 8> for soak testing.
 ///
-/// Este modelo simula a topologia "Standard" (Array1 + Array2) com 10 milhões de parâmetros
-/// implícitos via pesos constantes. A inicialização com valores pequenos (0.01) garante
-/// que o áudio não exploda imediatamente, permitindo que a FPU processe valores reais
-/// em todas as camadas por milhões de iterações.
+/// This model simulates the "Standard" topology (Array1 + Array2) with 10 million implicit
+/// parameters via constant weights. Initialization with small values (0.01) ensures
+/// that the audio does not explode immediately, allowing the FPU to process real values
+/// across all layers for millions of iterations.
 fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
-    // Camada interna da Array1: CH=16, K=3
+    // Inner layer of Array1: CH=16, K=3
     let make_layer = |dilation: usize| -> WaveNetLayer<1, 16, 3> {
         WaveNetLayer {
             conv1d: Conv1d {
@@ -63,8 +63,8 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 bias: AlignedVec::from_vec(vec![0.001; 16]),
                 do_bias: true,
                 dilation,
-                // A estratégia de prefetch muda para dilatações grandes para testar
-                // o cache-miss handling do motor.
+                // Prefetch strategy switches for larger dilations to test
+                // the engine's cache-miss handling.
                 prefetch_fn: if dilation >= 128 {
                     nam_rs::math::common::prefetch_strategy_2stage
                 } else {
@@ -84,7 +84,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         }
     };
 
-    // Dilatações padrão do modelo Standard (RF total = 2046 amostras)
+    // Default dilations for the Standard model (total RF = 2046 samples)
     let dilations = [1, 2, 4, 8, 16, 32, 64, 128];
     let rf = 128 * (3 - 1);
 
@@ -93,7 +93,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         .map(|i| WaveNetLayerState::new(16, rf, i).expect("Failed to create WaveNetLayerState"))
         .collect();
 
-    // Array 1: Responsável pela extração de features temporais profundas
+    // Array 1: Responsible for extracting deep temporal features
     let array1 = WaveNetLayerArray::<1, 1, 16, 3, 8> {
         layers: layers_1,
         states: states_1,
@@ -118,7 +118,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         condition_init: false,
     };
 
-    // Array 2: Refinamento espectral final (CH=8, K=3)
+    // Array 2: Final spectral refinement (CH=8, K=3)
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 8, 3> {
         WaveNetLayer {
             conv1d: Conv1d {
@@ -180,13 +180,13 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
     }
 }
 
-/// Soak Test: Processamento de Silêncio Infinito via WaveNet.
+/// Soak Test: Infinite Silence Processing via WaveNet.
 ///
-/// O objetivo é verificar se o acúmulo de erros em modelos com realimentação (se houver)
-/// ou a instabilidade de precisão f16 nos kernels SIMD causa NaNs ou "estouros"
-/// de áudio após milhões de iterações.
+/// The goal is to verify whether error accumulation in feedback models (if any)
+/// or f16 precision instability in SIMD kernels causes NaNs or audio
+/// "blow-ups" after millions of iterations.
 #[test]
-#[ignore] // Rodar manualmente via --ignored
+#[ignore] // Run manually via --ignored
 fn test_wavenet_silence_soak() {
     let mut model = build_soak_wavenet();
     let input = vec![0.0f32; 64];
@@ -198,23 +198,23 @@ fn test_wavenet_silence_soak() {
 
     let start = Instant::now();
     while processed < num_frames {
-        // black_box impede o compilador de perceber que a entrada é sempre zero
-        // e otimizar todo o loop de inferência para um no-op.
+        // black_box prevents the compiler from noticing that the input is always zero
+        // and optimizing the entire inference loop into a no-op.
         model.process(
             std::hint::black_box(&input),
             std::hint::black_box(&mut output),
         );
         for &v in &output {
-            // Verificação de integridade numérica básica (Segurança RT)
+            // Basic numerical integrity check (RT Safety)
             assert!(
                 v.is_finite(),
-                "Instabilidade Numérica (NaN/Inf) após {} frames",
+                "Numerical Instability (NaN/Inf) after {} frames",
                 processed
             );
-            // Garante que o modelo não está ganhando energia do nada (divergência)
+            // Ensures the model is not gaining energy out of nowhere (divergence)
             assert!(
                 (-2.0..=2.0).contains(&v),
-                "Output divergiu excessivamente: {} após {} frames",
+                "Output diverged excessively: {} after {} frames",
                 v,
                 processed
             );
@@ -226,18 +226,18 @@ fn test_wavenet_silence_soak() {
     let duration = start.elapsed();
 
     println!("--- WaveNet Silence Soak ---");
-    println!("Duração: {:?}", duration);
-    println!("Frames processados: {}", processed);
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
     println!("Min output: {}", min_val);
     println!("Max output: {}", max_val);
 }
 
-/// Soak Test: Processamento de Ruído Branco via WaveNet.
+/// Soak Test: White Noise Processing via WaveNet.
 ///
-/// Diferente do silêncio, o ruído branco excita todos os coeficientes dos filtros
-/// e todas as ramificações de ativação (Tanh) simultaneamente. Isso é vital
-/// para detectar "overflows" numéricos em camadas profundas que só ocorrem
-/// sob alta energia de sinal.
+/// Unlike silence, white noise excites all filter coefficients
+/// and all activation branches (Tanh) simultaneously. This is vital
+/// for detecting numerical overflows in deep layers that only occur
+/// under high signal energy.
 #[test]
 #[ignore]
 fn test_wavenet_noise_soak() {
@@ -262,7 +262,7 @@ fn test_wavenet_noise_soak() {
         for &v in &output {
             assert!(
                 v.is_finite(),
-                "NaN/Inf detectado sob ruído após {} frames",
+                "NaN/Inf detected under noise after {} frames",
                 processed
             );
             min_val = min_val.min(v);
@@ -273,16 +273,16 @@ fn test_wavenet_noise_soak() {
     let duration = start.elapsed();
 
     println!("--- WaveNet Noise Soak ---");
-    println!("Duração: {:?}", duration);
-    println!("Frames processados: {}", processed);
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
     println!("Min output: {}", min_val);
     println!("Max output: {}", max_val);
 }
 
-/// Soak Test: Estabilidade de estado da LSTM sob silêncio.
+/// Soak Test: LSTM state stability under silence.
 ///
-/// LSTMs possuem estados recorrentes (cell state) que podem acumular erros residuais.
-/// Este teste monitora a sanidade do estado interno por milhões de iterações.
+/// LSTMs have recurrent states (cell state) that can accumulate residual errors.
+/// This test monitors internal state sanity over millions of iterations.
 #[test]
 #[ignore]
 fn test_lstm_silence_soak() {
@@ -301,16 +301,16 @@ fn test_lstm_silence_soak() {
         for &v in &output {
             assert!(
                 v.is_finite(),
-                "NaN/Inf detectado na saída LSTM após {} frames",
+                "NaN/Inf detected in LSTM output after {} frames",
                 processed
             );
         }
-        // Verifica divergência dos estados internos da arquitetura de 2 camadas
+        // Checks divergence of internal states in the 2-layer architecture
         for &v in &model.layer1.cell_state {
-            assert!(v.is_finite(), "Estado interno da Camada 1 LSTM corrompido");
+            assert!(v.is_finite(), "Layer 1 LSTM internal state corrupted");
         }
         for &v in &model.layer2.cell_state {
-            assert!(v.is_finite(), "Estado interno da Camada 2 LSTM corrompido");
+            assert!(v.is_finite(), "Layer 2 LSTM internal state corrupted");
         }
 
         processed += 64;
@@ -318,15 +318,15 @@ fn test_lstm_silence_soak() {
     let duration = start.elapsed();
 
     println!("--- LSTM Silence Soak ---");
-    println!("Duração: {:?}", duration);
-    println!("Frames processados: {}", processed);
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
 }
 
-/// Soak Test: Resistência da LSTM sob entrada estocástica.
+/// Soak Test: LSTM resilience under stochastic input.
 ///
-/// Sinais aleatórios forçam o esquecimento e a atualização constante das portas
-/// (Gates) da LSTM. Este teste garante que a lógica de "Forget/Input/Output"
-/// não causa deriva infinita sob condições de estresse de sinal.
+/// Random signals force constant forgetting and updating of the LSTM
+/// gates. This test ensures that the "Forget/Input/Output" logic
+/// does not cause infinite drift under signal stress conditions.
 #[test]
 #[ignore]
 fn test_lstm_noise_soak() {
@@ -349,7 +349,7 @@ fn test_lstm_noise_soak() {
         for &v in &output {
             assert!(
                 v.is_finite(),
-                "LSTM divergiu sob ruído após {} frames",
+                "LSTM diverged under noise after {} frames",
                 processed
             );
         }
@@ -358,22 +358,22 @@ fn test_lstm_noise_soak() {
     let duration = start.elapsed();
 
     println!("--- LSTM Noise Soak ---");
-    println!("Duração: {:?}", duration);
-    println!("Frames processados: {}", processed);
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
 }
 
-/// Soak Test: Estabilidade do Resampler em conversões assíncronas de longa duração.
+/// Soak Test: Resampler stability under long-duration asynchronous conversions.
 ///
-/// O resampler usa interpolação polinomial e acúmulo de fase. Pequenos erros de
-/// arredondamento no incremento de fase podem se acumular em milhões de amostras,
-/// causando "clicks" ou NaNs. Este teste valida cenários de Upsampling e Downsampling.
+/// The resampler uses polynomial interpolation and phase accumulation. Small rounding
+/// errors in the phase increment can accumulate over millions of samples,
+/// causing "clicks" or NaNs. This test validates Upsampling and Downsampling scenarios.
 #[test]
 #[ignore]
 fn test_resampler_drift_soak() {
-    // Cenário 1: Upsampling (22050 -> 48000)
+    // Scenario 1: Upsampling (22050 -> 48000)
     let mut resampler = NamResampler::new(22050, 48000, 64).unwrap();
     let mut pcg = SimplePcg::new(777);
-    let num_samples = 50_000_000; // 50 milhões de amostras (~17 minutos a 48kHz)
+    let num_samples = 50_000_000; // 50 million samples (~17 minutes at 48kHz)
     let mut processed_in = 0;
     let mut processed_out = 0;
 
@@ -398,17 +398,17 @@ fn test_resampler_drift_soak() {
         processed_out += n;
 
         for i in 0..n {
-            assert!(out_l[i].is_finite(), "NaN no Resampler Out L (Upsampling)");
-            assert!(out_r[i].is_finite(), "NaN no Resampler Out R (Upsampling)");
+            assert!(out_l[i].is_finite(), "NaN in Resampler Out L (Upsampling)");
+            assert!(out_r[i].is_finite(), "NaN in Resampler Out R (Upsampling)");
         }
     }
     let duration = start.elapsed();
 
     println!("--- Resampler Drift Soak (22050->48000) ---");
-    println!("Duração: {:?}", duration);
-    println!("Amostras In: {}, Out: {}", processed_in, processed_out);
+    println!("Duration: {:?}", duration);
+    println!("Samples In: {}, Out: {}", processed_in, processed_out);
 
-    // Cenário 2: Downsampling (96000 -> 48000)
+    // Scenario 2: Downsampling (96000 -> 48000)
     let mut resampler = NamResampler::new(96000, 48000, 64).unwrap();
     processed_in = 0;
     processed_out = 0;
@@ -429,29 +429,29 @@ fn test_resampler_drift_soak() {
         for i in 0..n {
             assert!(
                 out_l[i].is_finite(),
-                "NaN no Resampler Out L (Downsampling)"
+                "NaN in Resampler Out L (Downsampling)"
             );
             assert!(
                 out_r[i].is_finite(),
-                "NaN no Resampler Out R (Downsampling)"
+                "NaN in Resampler Out R (Downsampling)"
             );
         }
     }
     println!("--- Resampler Drift Soak (96000->48000) ---");
-    println!("Duração: {:?}", start.elapsed());
-    println!("Amostras In: {}, Out: {}", processed_in, processed_out);
+    println!("Duration: {:?}", start.elapsed());
+    println!("Samples In: {}, Out: {}", processed_in, processed_out);
 }
 
-/// Soak Test: Integridade da memória do MirroredBuffer.
+/// Soak Test: MirroredBuffer memory integrity.
 ///
-/// O MirroredBuffer usa mmap para espelhar a memória, permitindo acessos lineares
-/// contínuos que cruzam a borda do buffer. Este teste verifica se o espelhamento
-/// permanece consistente após bilhões de escritas.
+/// MirroredBuffer uses mmap to mirror memory, enabling continuous linear
+/// accesses that cross the buffer boundary. This test verifies that mirroring
+/// remains consistent after billions of writes.
 #[test]
 #[ignore]
 #[cfg(target_os = "linux")]
 fn test_mirror_buf_long_run() {
-    let mut buf = MirroredBuffer::<f32>::new(1024 * 1024).expect("Failed to create MirroredBuffer"); // 1M elementos
+    let mut buf = MirroredBuffer::<f32>::new(1024 * 1024).expect("Failed to create MirroredBuffer"); // 1M elements
     let size = buf.size();
     let num_cycles = 100_000_000;
     let mut pos = 0;
@@ -459,20 +459,20 @@ fn test_mirror_buf_long_run() {
 
     let start = Instant::now();
     for i in 0..(num_cycles / chunk) {
-        // Simula escrita e avanço no buffer espelhado
+        // Simulates write and advance in the mirrored buffer
         for j in 0..chunk {
             std::hint::black_box(&mut buf)[pos + j] = std::hint::black_box((i * chunk + j) as f32);
         }
 
-        // Verifica integridade na fronteira: o valor escrito no final
-        // deve aparecer identicamente no início (espelhamento mmap).
+        // Checks integrity at the boundary: the value written at the end
+        // must appear identically at the beginning (mmap mirroring).
         if pos + chunk >= size {
             let offset = (pos + chunk) - size;
             for j in 0..offset {
                 assert_eq!(
                     buf[j],
                     buf[size + j],
-                    "Falha crítica de espelhamento de memória no MirroredBuffer no índice {}",
+                    "Critical memory mirroring failure in MirroredBuffer at index {}",
                     j
                 );
             }
@@ -486,31 +486,31 @@ fn test_mirror_buf_long_run() {
     let duration = start.elapsed();
 
     println!("--- MirroredBuffer Long Run ---");
-    println!("Duração: {:?}", duration);
-    println!("Ciclos (amostras): {}", num_cycles);
+    println!("Duration: {:?}", duration);
+    println!("Cycles (samples): {}", num_cycles);
 }
 
-/// Soak Test: Resistência da Máquina de Estados (FSM) do Noise Gate.
+/// Soak Test: Noise Gate State Machine (FSM) endurance.
 ///
-/// Este teste força alternâncias rápidas entre os estados de `Open`, `Hold` e `Release`
-/// usando um sinal binário estocástico. O objetivo é garantir que o multiplicador
-/// de ganho nunca saia do intervalo [0, 1] e que a FSM não trave em estados
-/// inválidos após milhões de transições.
+/// This test forces rapid alternations between the `Open`, `Hold`, and `Release` states
+/// using a stochastic binary signal. The goal is to ensure that the gain
+/// multiplier never leaves the [0, 1] range and that the FSM does not lock up
+/// in invalid states after millions of transitions.
 #[test]
 #[ignore]
 fn test_gate_fsm_endurance() {
     let mut gate = DynamicHysteresis::new();
     let params = GateParams::default();
     let mut pcg = SimplePcg::new(999);
-    let num_alternations = 10_000_000; // 10 milhões de ciclos de transição
+    let num_alternations = 10_000_000; // 10 million transition cycles
 
-    // Thresholds típicos de uso real (-60dB e -80dB)
+    // Typical real-world thresholds (-60dB and -80dB)
     let threshold_open = -60.0f32.powf(10.0 / 20.0);
     let threshold_close = -80.0f32.powf(10.0 / 20.0);
 
     let start = Instant::now();
     for _ in 0..num_alternations {
-        // Alterna agressivamente entre sinal pleno (1.0) e silêncio (0.0)
+        // Aggressively alternates between full signal (1.0) and silence (0.0)
         let val = if pcg.next_f32() > 0.0 { 1.0 } else { 0.0 };
         gate.update(
             std::hint::black_box(val),
@@ -520,17 +520,17 @@ fn test_gate_fsm_endurance() {
             64,
         );
 
-        // O multiplicador de ganho do gate deve ser estritamente comportado [0.0, 1.0]
+        // The gate's gain multiplier must be strictly well-behaved [0.0, 1.0]
         let m = std::hint::black_box(gate.multiplier());
         assert!(
             (0.0..=1.0).contains(&m),
-            "Multiplicador do Gate divergiu: {} fora de [0, 1]",
+            "Gate multiplier diverged: {} outside [0, 1]",
             m
         );
     }
     let duration = start.elapsed();
 
     println!("--- Gate FSM Endurance ---");
-    println!("Duração: {:?}", duration);
-    println!("Alternâncias: {}", num_alternations);
+    println!("Duration: {:?}", duration);
+    println!("Alternations: {}", num_alternations);
 }

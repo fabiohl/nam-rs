@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Testes de validação cruzada ao vivo NAM-rs ↔ NeuralAmpModelerCore (Camada 2).
+//! Live cross-validation tests NAM-rs ↔ NeuralAmpModelerCore (Layer 2).
 //!
-//! ## Quando roda
-//! - `utils/tests-long.sh` (suite completa lenta)
+//! ## When it runs
+//! - `utils/tests-long.sh` (full slow suite)
 //! - `cargo test --test cpp_parity -- --ignored --nocapture`
 //!
 //! ## Pipeline
-//! 1. Compila `render` tool do NeuralAmpModelerCore on-demand (idempotente, cached)
-//! 2. Gera WAV stress signal via `generate_stress_signal()`
-//! 3. Escreve WAV, executa render via `std::process::Command`
-//! 4. Lê WAV output, compara C++ vs Rust com `report_dsp_fidelity()`
+//! 1. Compiles the `render` tool from NeuralAmpModelerCore on-demand (idempotent, cached)
+//! 2. Generates WAV stress signal via `generate_stress_signal()`
+//! 3. Writes WAV, executes render via `std::process::Command`
+//! 4. Reads WAV output, compares C++ vs Rust with `report_dsp_fidelity()`
 //!
-//! Testes são `#[ignore]` no CI normal — requer C++ toolchain instalada.
+//! Tests are `#[ignore]` in normal CI — requires C++ toolchain installed.
 //!
-//! ## Thresholds de Paridade
+//! ## Parity Thresholds
 //!
-//! | Modelo           | MSE       | SNR      |
+//! | Model            | MSE       | SNR      |
 //! | ---------------- |:---------:|:--------:|
 //! | WaveNet Standard | < 5e-2    | ≥ 9 dB   |
 //! | WaveNet Feather  | < 5e-2    | ≥ 9 dB   |
@@ -79,9 +79,9 @@ fn ensure_render_compiled() -> bool {
     let nam_core = project_root.join(NAM_CORE_DIR);
 
     if !nam_core.exists() {
-        eprintln!("NeuralAmpModelerCore não encontrado em {nam_core:?}");
+        eprintln!("NeuralAmpModelerCore not found at {nam_core:?}");
         eprintln!(
-            "Execute: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}"
+            "Run: git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git {NAM_CORE_DIR}"
         );
         return false;
     }
@@ -95,7 +95,7 @@ fn ensure_render_compiled() -> bool {
                 .current_dir(&nam_core)
                 .status();
             if status.is_ok_and(|s| !s.success()) {
-                eprintln!("WARN: falha ao inicializar submódulo {sub}");
+                eprintln!("WARN: failed to initialize submodule {sub}");
             }
         }
     }
@@ -103,7 +103,7 @@ fn ensure_render_compiled() -> bool {
     let build_dir = project_root.join(BUILD_DIR);
     fs::create_dir_all(&build_dir).ok();
 
-    eprintln!("Compilando render tool (NeuralAmpModelerCore)...");
+    eprintln!("Compiling render tool (NeuralAmpModelerCore)...");
 
     let cmake_status = Command::new("cmake")
         .args([
@@ -119,7 +119,7 @@ fn ensure_render_compiled() -> bool {
     match cmake_status {
         Ok(s) if s.success() => {}
         _ => {
-            eprintln!("CMake falhou — dependências C++ podem estar ausentes.");
+            eprintln!("CMake failed — C++ dependencies may be missing.");
             return false;
         }
     }
@@ -137,7 +137,7 @@ fn ensure_render_compiled() -> bool {
     match build_status {
         Ok(s) if s.success() => {}
         _ => {
-            eprintln!("Build do render falhou.");
+            eprintln!("Render build failed.");
             return false;
         }
     }
@@ -153,13 +153,13 @@ fn run_render_comparison(
     min_snr_db: f64,
 ) {
     if !ensure_render_compiled() {
-        eprintln!("SKIP: {label} — render tool não disponível.");
+        eprintln!("SKIP: {label} — render tool not available.");
         return;
     }
 
     let model_path = model_path(model_filename);
     if !model_path.exists() {
-        eprintln!("SKIP: {label} — {model_filename} não encontrado.");
+        eprintln!("SKIP: {label} — {model_filename} not found.");
         return;
     }
 
@@ -169,14 +169,14 @@ fn run_render_comparison(
 
     let stress_wav = temp_dir.join("stress_live.wav");
 
-    // Gera sinal de stress e escreve WAV
+    // Generate stress signal and write WAV
     let stress_signal = generate_stress_signal();
     common::wav::write_wav_f32(&stress_wav, &stress_signal, STRESS_SAMPLE_RATE)
-        .expect("Falha ao escrever WAV stress");
+        .expect("Failed to write stress WAV");
 
     let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
 
-    // Executa render tool
+    // Execute render tool
     let bin = render_bin();
     let status = Command::new(&bin)
         .arg(model_path.to_str().unwrap())
@@ -188,25 +188,25 @@ fn run_render_comparison(
         Ok(s) if s.success() => {}
         Ok(s) => {
             eprintln!(
-                "SKIP: {label} — render retornou código {}",
+                "SKIP: {label} — render returned exit code {}",
                 s.code().unwrap_or(-1)
             );
             return;
         }
         Err(e) => {
-            eprintln!("SKIP: {label} — falha ao executar render: {e}");
+            eprintln!("SKIP: {label} — failed to execute render: {e}");
             return;
         }
     }
 
-    // Lê output WAV do render
+    // Read render WAV output
     let (cpp_output, _sr) =
-        common::wav::read_wav_f32(&output_wav).expect("Falha ao ler WAV output do render");
+        common::wav::read_wav_f32(&output_wav).expect("Failed to read render WAV output");
 
-    // Inferência Rust
-    let json_data = fs::read_to_string(&model_path).expect("Falha ao ler modelo");
-    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
-    let mut model = build_model(&model_data).expect("Dispatcher falhou");
+    // Rust inference
+    let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
+    let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
 
     model.prewarm(2048);
     let mut rust_output = vec![0.0f32; stress_signal.len()];
@@ -217,7 +217,7 @@ fn run_render_comparison(
         GOLDEN_BLOCK_SIZE,
     );
 
-    // Trunca para o mínimo dos dois (evita mismatch se render produz menos)
+    // Truncate to the minimum of the two (avoids mismatch if render produces fewer)
     let min_len = cpp_output.len().min(rust_output.len());
     report_dsp_fidelity(
         &cpp_output[..min_len],
@@ -227,12 +227,12 @@ fn run_render_comparison(
         label,
     );
 
-    // Limpeza
+    // Cleanup
     fs::remove_file(&output_wav).ok();
 }
 
 // =============================================================================
-// Tests — #[ignore] (requerem C++ toolchain)
+// Tests — #[ignore] (require C++ toolchain)
 // =============================================================================
 
 #[test]

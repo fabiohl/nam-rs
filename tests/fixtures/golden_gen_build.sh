@@ -2,23 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-# golden_gen_build.sh — Compila o render tool do NeuralAmpModelerCore e gera os golden vectors
+# golden_gen_build.sh — Builds the NeuralAmpModelerCore render tool and generates golden vectors
 #
-# Pré-requisitos:
-#   - cmake >= 3.10, g++ ou clang++ com C++20
-#   - python3 (para geração do WAV de stress)
-#   - git (para clonagem do NeuralAmpModelerCore se necessário)
+# Prerequisites:
+#   - cmake >= 3.10, g++ or clang++ with C++20
+#   - python3 (to generate the stress WAV signal)
+#   - git (to clone NeuralAmpModelerCore if needed)
 #
-# Uso:
+# Usage:
 #   ./tests/fixtures/golden_gen_build.sh
 #
-# Saída (tests/fixtures/):
+# Output (tests/fixtures/):
 #   golden_wavenet_standard.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
 #   golden_lstm_1x16.bin, golden_lstm_2x8.bin
 #   golden_namcore_lstm_1x3.bin, golden_namcore_wn_micro.bin
 #
-# Estes arquivos devem ser commitados para que os testes Rust de golden vectors
-# executem sem recompilação C++.
+# These files must be committed so that the Rust golden vector tests
+# run without C++ recompilation.
 
 set -euo pipefail
 
@@ -30,18 +30,18 @@ MODELS_DIR="$SCRIPT_DIR/models"
 FIXTURES_DIR="$SCRIPT_DIR"
 
 # =============================================================================
-# Verificação de pré-requisitos
+# Prerequisite checks
 # =============================================================================
 echo "=== Golden Vector Generator (NeuralAmpModelerCore) ==="
 
 for cmd in cmake python3; do
     if ! command -v "$cmd" &>/dev/null; then
-        echo "ERRO: '$cmd' não encontrado. Instale: sudo apt install cmake python3"
+        echo "ERROR: '$cmd' not found. Install with: sudo apt install cmake python3"
         exit 1
     fi
 done
 
-# Verifica compilador C++20
+# Check C++20 compiler
 CXX="${CXX:-}"
 if [ -z "$CXX" ]; then
     if command -v g++ &>/dev/null; then
@@ -49,43 +49,43 @@ if [ -z "$CXX" ]; then
     elif command -v clang++ &>/dev/null; then
         CXX=clang++
     else
-        echo "ERRO: Compilador C++ não encontrado. Instale g++ ou clang++."
+        echo "ERROR: C++ compiler not found. Install g++ or clang++."
         exit 1
     fi
 fi
-echo "  Compilador C++: $CXX"
+echo "  C++ Compiler: $CXX"
 
 # =============================================================================
-# Clone/atualiza NeuralAmpModelerCore
+# Clone/update NeuralAmpModelerCore
 # =============================================================================
 echo ""
-echo "[1/5] Inicializando NeuralAmpModelerCore..."
+echo "[1/5] Setting up NeuralAmpModelerCore..."
 if [ ! -d "$NAM_CORE_DIR" ]; then
     git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$NAM_CORE_DIR"
 else
-    echo "  NeuralAmpModelerCore já existe em $NAM_CORE_DIR"
+    echo "  NeuralAmpModelerCore already exists at $NAM_CORE_DIR"
 fi
 
-# Inicializa submodules
+# Initialize submodules
 for sub in eigen AudioDSPTools; do
     sub_path="$NAM_CORE_DIR/Dependencies/$sub"
     if [ -d "$sub_path" ] && [ -z "$(ls -A "$sub_path" 2>/dev/null)" ]; then
-        echo "  Inicializando submódulo $sub..."
+        echo "  Initializing submodule $sub..."
         (cd "$NAM_CORE_DIR" && git submodule update --init "Dependencies/$sub")
     fi
 done
 
 # =============================================================================
-# Compila render tool
+# Build render tool
 # =============================================================================
 echo ""
-echo "[2/5] Compilando render tool..."
+echo "[2/5] Building render tool..."
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
 
 if [ -f "$RENDER_BIN" ]; then
-    echo "  Render binário já existe: $RENDER_BIN"
+    echo "  Render binary already exists: $RENDER_BIN"
 else
     mkdir -p "$BUILD_DIR"
     cmake -S "$NAM_CORE_DIR" -B "$BUILD_DIR" \
@@ -96,11 +96,11 @@ else
     cmake --build "$BUILD_DIR" --target render -j"$(nproc)" 2>&1 | tail -5
 
     if [ ! -f "$RENDER_BIN" ]; then
-        # Tenta achar o binário em outro local
+        # Try to find the binary elsewhere
         RENDER_BIN=$(find "$BUILD_DIR" -name render -type f -executable | head -1)
         if [ -z "$RENDER_BIN" ]; then
-            echo "ERRO: Falha ao compilar render tool."
-            echo "Verifique se CMake e compilador C++20 estão funcionando."
+            echo "ERROR: Failed to build render tool."
+            echo "Check that CMake and the C++20 compiler are working."
             exit 1
         fi
     fi
@@ -108,10 +108,10 @@ fi
 echo "  Render: $RENDER_BIN"
 
 # =============================================================================
-# Gera WAV stress signal via Python
+# Generate stress WAV signal via Python
 # =============================================================================
 echo ""
-echo "[3/5] Gerando sinal de stress..."
+echo "[3/5] Generating stress signal..."
 
 STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
 
@@ -137,7 +137,7 @@ for i in range(N):
     else:
         env = 1.0
 
-    # Guitarr harmonics (Low-E: 82.41 Hz)
+    # Guitar harmonics (Low-E: 82.41 Hz)
     guitar = (0.40 * math.sin(2 * PI * 82.41 * t)
             + 0.25 * math.sin(2 * PI * 164.81 * t)
             + 0.15 * math.sin(2 * PI * 329.63 * t)
@@ -155,7 +155,7 @@ for i in range(N):
     sample = max(-1.0, min(1.0, sample))
     samples.append(sample)
 
-# Escreve WAV header + f32 LE samples
+# Write WAV header + f32 LE samples
 num_samples = len(samples)
 data_size = num_samples * 4
 file_size = 44 + data_size
@@ -177,16 +177,16 @@ with open('$STRESS_WAV', 'wb') as f:
     for s in samples:
         f.write(struct.pack('<f', s))
 
-print(f'  Stress signal: {num_samples} amostras, {file_size} bytes')
+print(f'  Stress signal: {num_samples} samples, {file_size} bytes')
 " 2>&1
 
 # =============================================================================
-# Executa render para cada modelo → WAV output → .golden.bin
+# Run render for each model → WAV output → .golden.bin
 # =============================================================================
 echo ""
-echo "[4/5] Executando render para cada modelo..."
+echo "[4/5] Running render for each model..."
 
-# Modelos: (arquivo .nam, nome do golden, label)
+# Models: (.nam file, golden name, label)
 MODELS=(
     "BossWN-standard.nam:golden_wavenet_standard:WaveNet Standard"
     "BossWN-feather.nam:golden_wavenet_feather:WaveNet Feather"
@@ -207,30 +207,30 @@ for entry in "${MODELS[@]}"; do
     GOLDEN_BIN="$FIXTURES_DIR/${golden_name}.bin"
 
     if [ ! -f "$MODEL_PATH" ]; then
-        echo "  SKIP: $nam_file não encontrado em $MODELS_DIR"
+        echo "  SKIP: $nam_file not found at $MODELS_DIR"
         continue
     fi
 
-    echo "  Processando $label ($nam_file)..."
+    echo "  Processing $label ($nam_file)..."
 
     "$RENDER_BIN" "$MODEL_PATH" "$STRESS_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
 
     if [ ! -f "$OUTPUT_WAV" ]; then
-        echo "  ERRO: Render falhou para $label"
+        echo "  ERROR: Render failed for $label"
         continue
     fi
 
-    # Converte WAV output → formato .golden.bin
-    # Formato: [u32 N] [f32×N input] [f32×N output]
+    # Convert WAV output → .golden.bin format
+    # Format: [u32 N] [f32×N input] [f32×N output]
     python3 -c "
 import struct, sys
 
-# Lê input do stress WAV
+# Read input from stress WAV
 with open('$STRESS_WAV', 'rb') as f:
     f.seek(44)
     inp = f.read()
 
-# Lê output do render WAV
+# Read output from render WAV
 with open('$OUTPUT_WAV', 'rb') as f:
     f.seek(44)
     out = f.read()
@@ -238,9 +238,9 @@ with open('$OUTPUT_WAV', 'rb') as f:
 n_bytes = min(len(inp), len(out))
 n_samples = n_bytes // 4
 
-# Valida que o header de data começa no offset 44
+# Validate that data header starts at offset 44
 if len(inp) < 44*2 or len(out) < 44*2:
-    print(f'  WARN: arquivos WAV muito pequenos', file=sys.stderr)
+    print(f'  WARN: WAV files too small', file=sys.stderr)
     sys.exit(1)
 
 with open('$GOLDEN_BIN', 'wb') as f:
@@ -249,24 +249,24 @@ with open('$GOLDEN_BIN', 'wb') as f:
     f.write(out[:n_bytes])
 
 file_size = 4 + 2 * n_bytes
-print('  -> $golden_name.bin: {} amostras, {} bytes'.format(n_samples, file_size))
+print('  -> $golden_name.bin: {} samples, {} bytes'.format(n_samples, file_size))
 " 2>&1
 
 done
 
 # =============================================================================
-# Limpeza
+# Cleanup
 # =============================================================================
 echo ""
-echo "[5/5] Limpando arquivos temporários..."
+echo "[5/5] Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
 echo ""
-echo "=== Golden vectors gerados com sucesso ==="
-echo "  Arquivos em $FIXTURES_DIR/:"
+echo "=== Golden vectors generated successfully ==="
+echo "  Files at $FIXTURES_DIR/:"
 for entry in "${MODELS[@]}"; do
     IFS=':' read -r _ golden_name _ <<< "$entry"
     [ -f "$FIXTURES_DIR/${golden_name}.bin" ] && echo "    ${golden_name}.bin"
 done
 echo ""
-echo "Commite estes arquivos para que os testes Rust de golden vectors funcionem."
+echo "Commit these files so that the Rust golden vector tests work."

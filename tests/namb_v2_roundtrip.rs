@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Teste de integração para verificar o round-trip encode→decode de layouts `.namb` v2.
+//! Integration test to verify the encode→decode round-trip of `.namb` v2 layouts.
 //!
-//! Cobre 11 topologias (7 LSTM + 4 WaveNet) nos layouts:
-//! - `Original` — sem transposição, bit-a-bit idêntico
-//! - `GateMajorLstm` — pesos LSTM pré-transpostos [Gate][IH][H]
-//! - `Interleaved4WaveNet` — pesos WaveNet entrelaçados 4-wide
+//! Covers 11 topologies (7 LSTM + 4 WaveNet) across layouts:
+//! - `Original` — no transposition, bit-exact identical
+//! - `GateMajorLstm` — LSTM weights pre-transposed [Gate][IH][H]
+//! - `Interleaved4WaveNet` — WaveNet weights interleaved 4-wide
 
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{
@@ -19,7 +19,7 @@ use std::fs;
 use std::path::PathBuf;
 
 // =============================================================================
-// Helpers compartilhados
+// Shared helpers
 // =============================================================================
 
 fn model_path(filename: &str) -> PathBuf {
@@ -49,7 +49,7 @@ fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
 }
 
 // =============================================================================
-// LSTM — Synthetic model builder (pré-existente)
+// LSTM — Synthetic model builder (pre-existing)
 // =============================================================================
 
 fn make_synthetic_lstm(num_layers: usize, hidden_size: usize) -> NamModelData {
@@ -104,10 +104,10 @@ fn make_synthetic_lstm(num_layers: usize, hidden_size: usize) -> NamModelData {
 }
 
 // =============================================================================
-// LSTM — Computação de pesos GateMajor esperados (verificação independente)
+// LSTM — Expected GateMajor weight computation (independent verification)
 // =============================================================================
 
-/// Espelha `transpose_lstm_gate_major` do encoder para verificação bit-a-bit.
+/// Mirrors `transpose_lstm_gate_major` from the encoder for bit-exact verification.
 fn expected_gate_major_weights(data: &NamModelData) -> Vec<f32> {
     let hidden_size = data.config.hidden_size.unwrap();
     let num_layers = data.config.num_layers.unwrap_or(1);
@@ -156,14 +156,14 @@ fn expected_gate_major_weights(data: &NamModelData) -> Vec<f32> {
 }
 
 // =============================================================================
-// WaveNet — Helpers e synthetic model builder
+// WaveNet — Helpers and synthetic model builder
 // =============================================================================
 
 static STD_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 static LITE_DILATIONS_0: &[usize] = &[1, 2, 4, 8, 16, 32, 64];
 static LITE_DILATIONS_1: &[usize] = &[128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-/// Configuração de cada topologia WaveNet suportada.
+/// Configuration for each supported WaveNet topology.
 struct WavenetTopoCfg {
     channels: usize,
     head: usize,
@@ -205,16 +205,16 @@ fn wavenet_topologies() -> Vec<WavenetTopoCfg> {
     ]
 }
 
-/// Constrói um `NamModelData` sintético WaveNet com pesos determinísticos.
+/// Builds a synthetic WaveNet `NamModelData` with deterministic weights.
 ///
-/// Layout de pesos (Original / JSON):
+/// Weight layout (Original / JSON):
 /// ```text
 /// [array1.rechannel[CH*1]]
-///   para cada dilatação: [conv1d[CH*CH*K][bias[CH]][mixin[CH*1]][1x1[CH*CH]][1x1_bias[CH]]
+///   for each dilation: [conv1d[CH*CH*K]][bias[CH]][mixin[CH*1]][1x1[CH*CH]][1x1_bias[CH]]
 /// [array1.head_rechannel[HEAD*CH]]
 ///
 /// [array2.rechannel[HEAD*CH]]       (IN=CH_array1, CH=HEAD)
-///   para cada dilatação: [conv1d[HEAD*HEAD*K][bias[HEAD]][mixin[HEAD*1]][1x1[HEAD*HEAD]][1x1_bias[HEAD]]
+///   for each dilation: [conv1d[HEAD*HEAD*K]][bias[HEAD]][mixin[HEAD*1]][1x1[HEAD*HEAD]][1x1_bias[HEAD]]
 /// [array2.head_rechannel[1*HEAD]][head_bias[1]]
 /// [head_scale[1]]
 /// ```
@@ -302,14 +302,14 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
 }
 
 // =============================================================================
-// WaveNet — Computação de pesos Interleaved4 esperados (verificação independente)
+// WaveNet — Expected Interleaved4 weight computation (independent verification)
 // =============================================================================
 
 fn ceil_div(a: usize, b: usize) -> usize {
     a.div_ceil(b)
 }
 
-/// Espelha `transpose_wavenet_interleaved4` do encoder para verificação bit-a-bit.
+/// Mirrors `transpose_wavenet_interleaved4` from the encoder for bit-exact verification.
 fn expected_interleaved4_weights(data: &NamModelData) -> Vec<f32> {
     let mut cursor = 0;
     let mut out = Vec::with_capacity(data.weights.len());
@@ -334,7 +334,7 @@ fn expected_interleaved4_weights(data: &NamModelData) -> Vec<f32> {
         }
         cursor += size;
 
-        // 2. Camadas de convolução
+        // 2. Convolution layers
         for _ in 0..dilations.len() {
             // Conv1D: [OUT][IN][K] -> interleaved 4-wide
             let size = conv_out_ch * ch * k;
@@ -385,7 +385,7 @@ fn expected_interleaved4_weights(data: &NamModelData) -> Vec<f32> {
             cursor += ch;
         }
 
-        // 3. Head Rechannel: [OUT][IN] -> [IN][OUT]
+        // 3. Head Rechannel
         let size = head_ch * ch;
         let raw = &data.weights[cursor..cursor + size];
         for in_c in 0..ch {
@@ -411,10 +411,10 @@ fn expected_interleaved4_weights(data: &NamModelData) -> Vec<f32> {
 }
 
 // =============================================================================
-// Testes — Round-trip Original (LSTM + WaveNet)
+// Tests — Original Round-trip (LSTM + WaveNet)
 // =============================================================================
 
-/// Round-trip Original: encode sem transposição → decode → pesos idênticos.
+/// Original round-trip: encode without transposition → decode → identical weights.
 fn test_original_roundtrip(data: &NamModelData) {
     let namb = encode_namb(data, 2, WeightsLayout::Original).unwrap();
     let decoded = parse_namb(&namb).unwrap();
@@ -422,16 +422,16 @@ fn test_original_roundtrip(data: &NamModelData) {
     assert_eq!(
         decoded.weights_layout,
         WeightsLayout::Original,
-        "Layout deve ser Original após round-trip"
+        "Layout must be Original after round-trip"
     );
     assert_eq!(
         decoded.weights.len(),
         data.weights.len(),
-        "Número de pesos deve ser preservado"
+        "Weight count must be preserved"
     );
     assert!(
         decoded.weights == data.weights,
-        "Pesos devem ser bit-a-bit idênticos no round-trip Original"
+        "Weights must be bit-exact identical in Original round-trip"
     );
 }
 
@@ -463,7 +463,7 @@ fn test_wavenet_original_roundtrip() {
 }
 
 // =============================================================================
-// Testes — Round-trip GateMajorLstm com verificação bit-a-bit dos pesos
+// Tests — GateMajorLstm Round-trip with bit-exact weight verification
 // =============================================================================
 
 #[test]
@@ -487,15 +487,15 @@ fn test_lstm_gate_major_roundtrip() {
         let decoded = parse_namb(&namb).unwrap();
         assert_eq!(decoded.weights_layout, WeightsLayout::GateMajorLstm);
 
-        // 2. Verificação bit-a-bit dos pesos transpostos
+        // 2. Bit-exact verification of transposed weights
         let expected = expected_gate_major_weights(&orig_data);
         assert_eq!(
             decoded.weights, expected,
-            "Pesos GateMajor devem ser bit-a-bit idênticos ao esperado para LSTM {}x{}",
+            "GateMajor weights must be bit-exact identical to expected for LSTM {}x{}",
             num_layers, hidden_size
         );
 
-        // 3. Inferência (sanity check)
+        // 3. Inference (sanity check)
         let mut model_orig = build_model(&orig_data).unwrap();
         model_orig.prewarm(1024);
         let mut model_v2 = build_model(&decoded).unwrap();
@@ -510,7 +510,7 @@ fn test_lstm_gate_major_roundtrip() {
         let mse = compute_mse(&out_orig, &out_v2);
         assert!(
             mse < 1e-12,
-            "Divergência LSTM {}x{} GateMajor! MSE = {:e}",
+            "LSTM {}x{} GateMajor divergence! MSE = {:e}",
             num_layers,
             hidden_size,
             mse
@@ -519,7 +519,7 @@ fn test_lstm_gate_major_roundtrip() {
 }
 
 // =============================================================================
-// Testes — Round-trip Interleaved4WaveNet com verificação bit-a-bit
+// Tests — Interleaved4WaveNet Round-trip with bit-exact verification
 // =============================================================================
 
 #[test]
@@ -532,21 +532,21 @@ fn test_wavenet_interleaved4_roundtrip() {
         let decoded = parse_namb(&namb).unwrap();
         assert_eq!(decoded.weights_layout, WeightsLayout::Interleaved4WaveNet);
 
-        // 2. Verificação bit-a-bit dos pesos transpostos
+        // 2. Bit-exact verification of transposed weights
         let expected = expected_interleaved4_weights(&orig_data);
         assert_eq!(
             decoded.weights, expected,
-            "Pesos Interleaved4 devem ser bit-a-bit idênticos ao esperado para WaveNet {:?}",
+            "Interleaved4 weights must be bit-exact identical to expected for WaveNet {:?}",
             cfg.topology
         );
         assert_eq!(
             decoded.weights.len(),
             expected.len(),
-            "Tamanho dos pesos preservado para WaveNet {:?}",
+            "Weight count preserved for WaveNet {:?}",
             cfg.topology
         );
 
-        // 3. Inferência (sanity check)
+        // 3. Inference (sanity check)
         let mut model_orig = build_model(&orig_data).unwrap();
         model_orig.prewarm(2048);
         let mut model_v2 = build_model(&decoded).unwrap();
@@ -561,7 +561,7 @@ fn test_wavenet_interleaved4_roundtrip() {
         let mse = compute_mse(&out_orig, &out_v2);
         assert!(
             mse < 1e-10,
-            "Divergência WaveNet {:?} Interleaved4! MSE = {:e}",
+            "WaveNet {:?} Interleaved4 divergence! MSE = {:e}",
             cfg.topology,
             mse
         );
@@ -569,7 +569,7 @@ fn test_wavenet_interleaved4_roundtrip() {
 }
 
 // =============================================================================
-// Teste com modelo real (pré-existente, preservado)
+// Test with real model (pre-existing, preserved)
 // =============================================================================
 
 #[test]
@@ -604,7 +604,7 @@ fn test_real_lstm_2x8_roundtrip() {
     println!("[BossLSTM-2x8 v2 Parity] MSE: {:.2e}", mse);
     assert!(
         mse < 1e-12,
-        "Divergência no modelo real BossLSTM-2x8! MSE={:e}",
+        "Real model BossLSTM-2x8 divergence! MSE={:e}",
         mse
     );
 }

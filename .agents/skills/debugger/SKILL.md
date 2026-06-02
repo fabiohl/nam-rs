@@ -1,32 +1,32 @@
 ---
 name: debugger
-description: Acionado quando algo não funciona como esperado. Atua como um painel multi-disciplinar de analistas e engenheiros seniores capazes de resolver os problemas mais difíceis.
+description: Triggered when something doesn't work as expected. Acts as a multi-disciplinary panel of senior analysts and engineers capable of solving the hardest problems.
 ---
 
 # Skill: Debugger
 
 ## When to use this skill
 
-Use sob erro ativo, crash, comportamento não-linear de DSP, áudio truncado, xruns do PipeWire ou degradação nos cálculos de inferência neural em tempo real.
+Use under active error, crash, non-linear DSP behavior, truncated audio, PipeWire xruns, or degradation in neural inference calculations in real-time.
 
-Também é acionada pelo workflow `diagnostico` quando o usuário cola um bloco de suporte.
+Also triggered by the `diagnostico` workflow when the user pastes a support block.
 
 ## Instructions
 
-### Referências Primárias
+### Primary References
 
-* Códigos de erro `Exxxx` e formato do bloco de suporte: `src/diagnostics.rs` (`NamErrorCode`, `emit_diagnostic()`).
-* Diretrizes RT-safe e DSP: `.agents/rules/rust.md`.
-* Arquitetura geral: `docs/architecture.md`.
+* Error codes `Exxxx` and support block format: `src/diagnostics.rs` (`NamErrorCode`, `emit_diagnostic()`).
+* RT-safe and DSP guidelines: `.agents/rules/rust.md`.
+* General architecture: `docs/architecture.md`.
 
-### Diagnóstico por Evidências
+### Evidence-Based Diagnosis
 
-* **Xruns / clicks**: Verifique se `process()` respeita o budget de tempo (sem `Vec`, `Box`, `println!` ou locks).
-* **Degradação numérica**: Valide multiplicadores de ganho e metadados de resampling vs taxas de amostragem do host.
-* **Deadlock / contenção**: Inspecione uso de `rtrb` — sem primitivas bloqueantes no caminho RT.
+* **Xruns / clicks**: Check if `process()` respects the time budget (no `Vec`, `Box`, `println!`, or locks).
+* **Numerical degradation**: Validate gain multipliers and resampling metadata vs host sample rates.
+* **Deadlock / contention**: Inspect `rtrb` usage — no blocking primitives on the RT path.
 
-### Intervenção Cirúrgica
+### Surgical Intervention
 
-* Mantenha `#[repr(align(128))]` em estruturas compartilhadas via SPSC.
-* Após fix, remova **toda** linha de log, `dbg!()` ou `eprintln!` inserida para depuração no callback RT.
-* Se o fix introduzir novos pontos de falha fora do RT, use o sistema `NamDiagnostic` para emitir erros estruturados.
+* Maintain `#[repr(align(128))]` on structures shared via SPSC.
+* After fix, remove **all** logging lines, `dbg!()`, or `eprintln!` inserted for debugging in the RT callback.
+* If the fix introduces new failure points outside RT, use the `NamDiagnostic` system to emit structured errors.

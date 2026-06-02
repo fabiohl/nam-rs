@@ -26,7 +26,7 @@ fn create_plugin_instance() -> PluginInstance<TestHost> {
         PluginEntry::load_from_clack::<clack_plugin::entry::SinglePluginEntry<NamClapPlugin>>(
             c"/test",
         )
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
     let host_info = HostInfo::new(
         "NAM-rs-Test",
@@ -34,7 +34,7 @@ fn create_plugin_instance() -> PluginInstance<TestHost> {
         "https://github.com/fabiohl/nam-rs",
         "0.1.0",
     )
-    .expect("Falha ao criar HostInfo");
+    .expect("Failed to create HostInfo");
 
     PluginInstance::<TestHost>::new(
         |_| TestHostShared,
@@ -43,7 +43,7 @@ fn create_plugin_instance() -> PluginInstance<TestHost> {
         c"br.eti.fabiolima.nam-rs",
         &host_info,
     )
-    .expect("Falha ao instanciar plugin")
+    .expect("Failed to instantiate plugin")
 }
 
 #[test]
@@ -54,24 +54,24 @@ fn test_integration_v0_legacy_load() {
         .get_extension::<PluginState>()
         .expect("PluginState extension not found");
 
-    // Payload v0 sem envelope (JSON puro de NamPluginParams)
+    // Payload v0 without envelope (raw JSON of NamPluginParams)
     let v0_json = r#"{"input_gain_db": 3.0,"output_gain_db": -6.0,"gate_threshold_db": -50.0,"model_path": null,"bypass": true}"#;
 
     {
         let mut handle = instance.plugin_handle();
         state_ext
             .load(&mut handle, &mut v0_json.as_bytes())
-            .expect("Falha ao carregar estado v0");
+            .expect("Failed to load v0 state");
     }
 
-    // Verifica que o estado interno na main thread foi devidamente atualizado e migrado
+    // Verify that internal state on the main thread was properly updated and migrated
     let raw_plugin_ptr = instance.plugin_handle().as_raw_ptr();
     let shared_ptr = unsafe {
         clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
             raw_plugin_ptr,
             |wrapper| Ok(wrapper.shared() as *const nam_rs::clap::plugin::NamClapShared),
         )
-        .expect("Falha ao obter wrapper do plugin")
+        .expect("Failed to obtain plugin wrapper")
     };
     let shared = unsafe { &*shared_ptr };
 
@@ -115,14 +115,14 @@ fn test_integration_v1_round_trip() {
         .get_extension::<PluginState>()
         .expect("PluginState extension not found");
 
-    // 1. Modificar valores atômicos do plugin simulando ação do usuário
+    // 1. Modify atomic values on the plugin simulating user action
     let raw_plugin_ptr = instance.plugin_handle().as_raw_ptr();
     let shared_ptr = unsafe {
         clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
             raw_plugin_ptr,
             |wrapper| Ok(wrapper.shared() as *const nam_rs::clap::plugin::NamClapShared),
         )
-        .expect("Falha ao obter wrapper do plugin")
+        .expect("Failed to obtain plugin wrapper")
     };
     let shared = unsafe { &*shared_ptr };
 
@@ -139,16 +139,16 @@ fn test_integration_v1_round_trip() {
         .param_bypass
         .store(0, std::sync::atomic::Ordering::Relaxed);
 
-    // 2. Salvar estado
+    // 2. Save state
     let mut output_buf = Vec::new();
     {
         let mut handle = instance.plugin_handle();
         state_ext
             .save(&mut handle, &mut output_buf)
-            .expect("Falha ao salvar estado");
+            .expect("Failed to save state");
     }
 
-    // 3. Resetar valores atômicos no plugin
+    // 3. Reset atomic values in the plugin
     shared
         .param_input_gain
         .store(0.0f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
@@ -162,15 +162,15 @@ fn test_integration_v1_round_trip() {
         .param_bypass
         .store(1, std::sync::atomic::Ordering::Relaxed);
 
-    // 4. Carregar estado salvo
+    // 4. Load saved state
     {
         let mut handle = instance.plugin_handle();
         state_ext
             .load(&mut handle, &mut output_buf.as_slice())
-            .expect("Falha ao carregar estado salvo");
+            .expect("Failed to load saved state");
     }
 
-    // 5. Verificar que valores foram devidamente restaurados
+    // 5. Verify that values were properly restored
     assert_eq!(
         f32::from_bits(
             shared
@@ -211,7 +211,7 @@ fn test_integration_forward_v1_to_v2() {
         .get_extension::<PluginState>()
         .expect("PluginState extension not found");
 
-    // Payload com versão futura (version: 2) e parâmetros adicionais hipotéticos
+    // Payload with future version (version: 2) and hypothetical additional parameters
     let v2_json = r#"{
         "version": 2,
         "params": {
@@ -226,12 +226,12 @@ fn test_integration_forward_v1_to_v2() {
         }
     }"#;
 
-    // Deve carregar com sucesso aplicando a migração (ou ignorando campos desconhecidos) sem panics
+    // Should load successfully applying the migration (or ignoring unknown fields) without panics
     {
         let mut handle = instance.plugin_handle();
         state_ext
             .load(&mut handle, &mut v2_json.as_bytes())
-            .expect("Falha ao processar envelope futuro v2");
+            .expect("Failed to process future v2 envelope");
     }
 
     let raw_plugin_ptr = instance.plugin_handle().as_raw_ptr();
@@ -240,7 +240,7 @@ fn test_integration_forward_v1_to_v2() {
             raw_plugin_ptr,
             |wrapper| Ok(wrapper.shared() as *const nam_rs::clap::plugin::NamClapShared),
         )
-        .expect("Falha ao obter wrapper do plugin")
+        .expect("Failed to obtain plugin wrapper")
     };
     let shared = unsafe { &*shared_ptr };
 

@@ -1,54 +1,54 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# Roteiro-Mestre de Testes Funcionais (por humanos) — NAM-rs (Plugin CLAP)
+# Master Roadmap of Functional Tests (by humans) — NAM-rs (CLAP Plugin)
 
-**Público:** Especialistas UI/UX e usuários finais.
-**DAWs focais:** Bitwig Studio 6+ e Fender Studio Pro 8+ (Linux, Flatpak).
-**Preparação:** `~/.clap/nam-rs.clap` instalado (build Release), ≥2 modelos `.nam` disponíveis (sendo 1 deles um arquivo bogus/inválido), DI de guitarra ou gerador de sinal na trilha, `pw-top` aberto para vigiar XRUNs. (Recomendado: Buffer inicial de 128 samples @ 48 kHz).
-
----
-
-## Bloco 1 — Primeira Sessão (Quick Wins, ~10 min)
-
-Objetivo: primeira impressão — layout, carregamento, som, controles básicos.
-
-### 1.1 Layout e identidade
-
-- [ ] Abrir GUI do NAM-rs → janela fixa **600×275 px** (sem decoração de host).
-- [ ] Zona 1 (esquerda): logo `"NAM-rs⚡"` turquesa, subtítulo `"Neural Amp Modeler"`, versão + badge SIMD, botão `[📂 Load Model]`, caixa de modelo com fundo escuro.
-- [ ] Zona 2 (centro): 3 knobs — **INPUT** (70px, turquesa), **OUTPUT** (70px, turquesa), **GATE** (42px, âmbar).
-- [ ] Zona 3 (direita): medidor VU **adaptativo** — 1 barra centralizada (sem label) de 16px (mono).
-- [ ] Zona 4 (extrema direita): toggle **BYPASS** com LED e label `"ACTIVE"`/`"BYPASSED"`.
-- [ ] Zona 5 (footer): status bar com telemetria RT (sample rate, latência, DSP load, CPU cycles, last N samples, RT priority, overruns/overloads, flags) e linha inferior com metadados do modelo (se carregado).
-- [ ] 3 separadores verticais finos visíveis entre as zonas 1–4.
-
-### 1.2 Primeiro carregamento e som
-
-- [ ] `[📂 Load Model]` → picker do sistema abre sem travar DAW.
-- [ ] Selecionar modelo `.nam` → animação `"Loading"` → `"Loading."` → `"Loading.."` → `"Loading..."` → nome do modelo. Áudio processado audível imediatamente.
-- [ ] Cancelar picker → volta ao estado anterior, botão segue clicável.
-- [ ] Arrastar knob INPUT → volume muda sem estalos (zipper noise). Arco turquesa acompanha fluido.
-- [ ] Bypass ON → LED cinza, label `"BYPASSED"`, áudio = sinal limpo (dry). Bypass OFF → volta processamento sem estalo.
-
-✅ **PASS rápido:** GUI bonita, carrega modelo, faz som, knobs e bypass funcionam.
+**Audience:** UI/UX specialists and end users.
+**Target DAWs:** Bitwig Studio 6+ and Fender Studio Pro 8+ (Linux, Flatpak).
+**Preparation:** `~/.clap/nam-rs.clap` installed (Release build), ≥2 `.nam` models available (one of them being a bogus/invalid file), Guitar DI or signal generator on the track, `pw-top` open to monitor XRUNs. (Recommended: Initial buffer of 128 samples @ 48 kHz).
 
 ---
 
-## Bloco 2 — Validação por Funcionalidade
+## Block 1 — First Session (Quick Wins, ~10 min)
 
-Cada seção testável após mexer na feature correspondente. Autocontida, ~5–15 min cada.
+Objective: first impression — layout, loading, sound, basic controls.
+
+### 1.1 Layout and identity
+
+- [ ] Open NAM-rs GUI → fixed window **600×275 px** (no host decoration).
+- [ ] Zone 1 (left): turquoise logo `"NAM-rs⚡"`, subtitle `"Neural Amp Modeler"`, version + SIMD badge, `[📂 Load Model]` button, model box with dark background.
+- [ ] Zone 2 (center): 3 knobs — **INPUT** (70px, turquoise), **OUTPUT** (70px, turquoise), **GATE** (42px, amber).
+- [ ] Zone 3 (right): **adaptive** VU meter — 1 centered bar (no label) 16px wide (mono).
+- [ ] Zone 4 (far right): **BYPASS** toggle with LED and `"ACTIVE"`/`"BYPASSED"` label.
+- [ ] Zone 5 (footer): status bar with RT telemetry (sample rate, latency, DSP load, CPU cycles, last N samples, RT priority, overruns/overloads, flags) and bottom line with model metadata (if loaded).
+- [ ] 3 thin vertical separators visible between zones 1–4.
+
+### 1.2 First load and sound
+
+- [ ] `[📂 Load Model]` → system picker opens without freezing the DAW.
+- [ ] Select `.nam` model → `"Loading"` → `"Loading."` → `"Loading.."` → `"Loading..."` animation → model name. Processed audio audible immediately.
+- [ ] Cancel picker → returns to previous state, button remains clickable.
+- [ ] Drag INPUT knob → volume changes without clicks (zipper noise). Turquoise arc follows smoothly.
+- [ ] Bypass ON → gray LED, `"BYPASSED"` label, audio = clean signal (dry). Bypass OFF → processing resumes without click.
+
+✅ **Quick PASS:** nice GUI, loads model, makes sound, knobs and bypass work.
+
+---
+
+## Block 2 — Validation by Feature
+
+Each section testable after touching the corresponding feature. Self-contained, ~5–15 min each.
 
 ---
 
 ### 2A — File Picker & Thread Safety
 
-- [ ] Picker aberto → DAW responsiva (arraste janela, mova faders de outra trilha). Playback não para.
-- [ ] Carregar modelo diferente por cima → nome atualiza, áudio muda sem parar playback.
-- [ ] Arquivo inválido (`invalid.nam`) → `"⚠ Load failed"` vermelho por ~3s, depois volta ao estado anterior. Sem crash.
-- [ ] Arquivo `.nam` de 0 bytes → mesmo tratamento de erro.
-- [ ] Modelo inválido com modelo válido já carregado → modelo anterior preservado, áudio não interrompe.
-- [ ] (Fender Studio Pro) Confirmar que não trava apesar de GUI limitada — parâmetros genéricos do host funcionam.
+- [ ] Picker open → DAW responsive (drag window, move faders on another track). Playback does not stop.
+- [ ] Load a different model on top → name updates, audio changes without stopping playback.
+- [ ] Invalid file (`invalid.nam`) → red `"⚠ Load failed"` for ~3s, then returns to previous state. No crash.
+- [ ] 0-byte `.nam` file → same error handling.
+- [ ] Invalid model with valid model already loaded → previous model preserved, audio not interrupted.
+- [ ] (Fender Studio Pro) Confirm no freeze despite limited GUI — generic host parameters work.
 
 ---
 
@@ -56,72 +56,72 @@ Cada seção testável após mexer na feature correspondente. Autocontida, ~5–
 
 | Knob       | Range                   | Default    |
 | ---------- | ----------------------- | ---------- |
-| **INPUT**  | −96.0 a +30.0 dB        | 0.0 dB     |
-| **OUTPUT** | −96.0 a +30.0 dB        | 0.0 dB     |
-| **GATE**   | −90.0 a −40.0 dB        | −70.0 dB   |
+| **INPUT**  | −96.0 to +30.0 dB       | 0.0 dB     |
+| **OUTPUT** | −96.0 to +30.0 dB       | 0.0 dB     |
+| **GATE**   | −90.0 to −40.0 dB       | −70.0 dB   |
 
-- [ ] Arrastar cada knob até extremos → tooltip (hover) mostra valor correto, limites respeitados.
-- [ ] Hover sobre knob → tooltip com 2 casas decimais (ex: `"3.50 dB"`). INPUT/OUTPUT: `"X.XX dB"`. GATE: `"X.XX dB (Threshold)"`.
-- [ ] **Ctrl+Drag (fine-tune):** mesma distância de arraste = ~10× menos variação. Ctrl+scroll também 10× mais lento.
-- [ ] **Double-click** no knob → reseta ao default imediatamente (INPUT/OUTPUT → 0.0, GATE → −70.0).
-- [ ] Durante arraste → glow (halo semitransparente) visível no arco. Desaparece ao soltar.
-- [ ] Bypass toggle: LED + label alternam instantaneamente. Áudio dry/processed sem estalo.
-
----
-
-### 2C — Medição VU, Peak Hold & Clipping (Mono)
-
-> **Comportamento mono do plugin:** O plugin CLAP opera estritamente em mono (1 canal). Consequentemente, a Zona 3 exibe sempre um único medidor centralizado sem label, independentemente de ser inserido em trilha mono ou estéreo da DAW (onde o roteamento/processamento estéreo é gerenciado pelo host).
-
-- [ ] Inserir NAM-rs na DAW → Zona 3 exibe **1 medidor centralizado sem label** (16px de largura) em uma zona de ~76px.
-- [ ] Alimentar com sinal dinâmico → barra VU única com gradiente tricolor: verde (−60 a −12 dB) → amarelo (−12 a −3 dB) → vermelho (−3 a +6 dB).
-- [ ] Transientes rápidos (pick attack) → barra responde sem atraso visual (~33 fps).
-- [ ] Provocar pico e parar sinal → marca de peak hold permanece ~2s, depois decai suavemente.
-- [ ] Saturar saída (>0 dBFS) → LED vermelho no topo do medidor único **persiste**. Clique no LED ou na barra → reseta.
+- [ ] Drag each knob to extremes → tooltip (hover) shows correct value, limits respected.
+- [ ] Hover over knob → tooltip with 2 decimal places (e.g.: `"3.50 dB"`). INPUT/OUTPUT: `"X.XX dB"`. GATE: `"X.XX dB (Threshold)"`.
+- [ ] **Ctrl+Drag (fine-tune):** same drag distance = ~10× less variation. Ctrl+scroll also 10× slower.
+- [ ] **Double-click** on knob → resets to default immediately (INPUT/OUTPUT → 0.0, GATE → −70.0).
+- [ ] While dragging → glow (semi-transparent halo) visible on the arc. Disappears on release.
+- [ ] Bypass toggle: LED + label toggle instantly. Dry/processed audio without click.
 
 ---
 
-### 2D — Automação & Remote Controls
+### 2C — VU Metering, Peak Hold & Clipping (Mono)
 
-> **Host primário:** Bitwig Studio.
+> **Plugin mono behavior:** The CLAP plugin operates strictly in mono (1 channel). Consequently, Zone 3 always displays a single centered meter without a label, regardless of whether it is inserted on a mono or stereo DAW track (where stereo routing/processing is managed by the host).
 
-- [ ] Trilha em modo Write/Latch → arrastar knob INPUT na GUI por ~3s → parar. Grid de automação mostra curva suave, sem saltos, com pontos de ancoragem no início/fim.
-- [ ] Repetir para OUTPUT, GATE e BYPASS.
-- [ ] Desenhar rampa de automação manual para `output_gain_db` → playback: knob OUTPUT na GUI move suave, áudio acompanha sem zipper noise.
-- [ ] Device Panel do Bitwig → 2 páginas: **"Main"** (INPUT, OUTPUT, BYPASS) e **"Gate"** (GATE). Sincronia bidirecional: GUI ↔ Device Panel.
-- [ ] (Fender Studio Pro) Mover parâmetros no mixer do host → GUI reflete. Mover na GUI → host reflete.
-
----
-
-### 2E — Accent Color Dinâmico
-
-> **Host:** Bitwig Studio (requer `track_info`).
-
-- [ ] Cor da trilha alterada para vermelho → knobs INPUT/OUTPUT + LED bypass mudam para vermelho em <100ms. Medidores VU **não** mudam.
-- [ ] Mudar para azul, verde → acompanha.
-- [ ] Remover cor da trilha → volta ao turquesa padrão (`#00D4AA`).
-- [ ] (Fender Studio Pro) Sem `track_info` → mantém turquesa, sem erros.
+- [ ] Insert NAM-rs in the DAW → Zone 3 displays **1 centered meter without a label** (16px wide) in an ~76px zone.
+- [ ] Feed with dynamic signal → single VU bar with tricolor gradient: green (−60 to −12 dB) → yellow (−12 to −3 dB) → red (−3 to +6 dB).
+- [ ] Fast transients (pick attack) → bar responds without visual delay (~33 fps).
+- [ ] Cause a peak and stop signal → peak hold mark stays ~2s, then decays smoothly.
+- [ ] Saturate output (>0 dBFS) → red LED at the top of the single meter **persists**. Click on the LED or bar → resets.
 
 ---
 
-### 2F — Persistência (Save/Reload)
+### 2D — Automation & Remote Controls
 
-- [ ] Ajustar INPUT=+3.5, OUTPUT=−6.0, GATE=−55.0, modelo carregado.
-- [ ] Salvar projeto → fechar DAW completamente → reabrir → carregar projeto.
-- [ ] Todos os parâmetros preservados nos valores exatos. Modelo recarregado (nome visível). Áudio idêntico.
-- [ ] Repetir no Fender Studio Pro.
-- [ ] Mover arquivo do modelo de lugar → reabrir projeto → `"No model loaded"` sem crash.
+> **Primary host:** Bitwig Studio.
+
+- [ ] Track in Write/Latch mode → drag INPUT knob in the GUI for ~3s → stop. Automation grid shows smooth curve, no jumps, with anchor points at start/end.
+- [ ] Repeat for OUTPUT, GATE, and BYPASS.
+- [ ] Draw manual automation ramp for `output_gain_db` → playback: OUTPUT knob in GUI moves smoothly, audio follows without zipper noise.
+- [ ] Bitwig Device Panel → 2 pages: **"Main"** (INPUT, OUTPUT, BYPASS) and **"Gate"** (GATE). Bidirectional sync: GUI ↔ Device Panel.
+- [ ] (Fender Studio Pro) Move parameters in the host mixer → GUI reflects. Move in GUI → host reflects.
+
+---
+
+### 2E — Dynamic Accent Color
+
+> **Host:** Bitwig Studio (requires `track_info`).
+
+- [ ] Track color changed to red → INPUT/OUTPUT knobs + bypass LED change to red in <100ms. VU meters do **not** change.
+- [ ] Change to blue, green → follows.
+- [ ] Remove track color → returns to default turquoise (`#00D4AA`).
+- [ ] (Fender Studio Pro) Without `track_info` → stays turquoise, no errors.
+
+---
+
+### 2F — Persistence (Save/Reload)
+
+- [ ] Set INPUT=+3.5, OUTPUT=−6.0, GATE=−55.0, model loaded.
+- [ ] Save project → close DAW completely → reopen → load project.
+- [ ] All parameters preserved at exact values. Model reloaded (name visible). Audio identical.
+- [ ] Repeat in Fender Studio Pro.
+- [ ] Move model file from its location → reopen project → `"No model loaded"` without crash.
 
 ---
 
 ### 2G — Drag & Drop + DSP Load Meter
 
-> ⚠️ **Nota sobre o Linux (X11):** O suporte a Drag & Drop (arrastar e soltar arquivos sobre o plugin) está atualmente **indisponível no Linux** devido a limitações da biblioteca de janela `baseview` (backend X11), que não implementa o protocolo XDND. Há uma Pull Request aberta ([RustAudio/baseview PR #187](https://github.com/RustAudio/baseview/pull/187)) aguardando aceite para integrar essa funcionalidade no futuro. Por enquanto, utilize o botão `[📂 Load Model]` no Linux. O comportamento de arrastar e soltar abaixo deve ser testado apenas em plataformas suportadas (ex: Windows).
+> ⚠️ **Note about Linux (X11):** Drag & Drop support (dragging and dropping files onto the plugin) is currently **unavailable on Linux** due to limitations of the `baseview` windowing library (X11 backend), which does not implement the XDND protocol. There is an open Pull Request ([RustAudio/baseview PR #187](https://github.com/RustAudio/baseview/pull/187)) awaiting acceptance to integrate this functionality in the future. For now, use the `[📂 Load Model]` button on Linux. The drag & drop behavior below should be tested only on supported platforms (e.g.: Windows).
 
-- [ ] Arrastar `.nam` do file manager sobre o plugin → overlay `"Drop NAM Model Here ⬇️"` aparece. Soltar → carrega modelo. (Apenas Windows).
-- [ ] Arrastar `.wav` → overlay aparece mas ignora ao soltar. (Apenas Windows).
-- [ ] Status bar: indicador `"DSP: XX.X%"` presente na telemetria (verde <50%, âmbar 50-80%, vermelho >80%).
-- [ ] Hover no DSP Load → tooltip descreve a porcentagem de uso do tempo real.
+- [ ] Drag `.nam` from file manager onto plugin → overlay `"Drop NAM Model Here ⬇️"` appears. Drop → loads model. (Windows only).
+- [ ] Drag `.wav` → overlay appears but ignored on drop. (Windows only).
+- [ ] Status bar: `"DSP: XX.X%"` indicator present in telemetry (green <50%, amber 50-80%, red >80%).
+- [ ] Hover on DSP Load → tooltip describes real-time usage percentage.
 
 ---
 
@@ -129,125 +129,125 @@ Cada seção testável após mexer na feature correspondente. Autocontida, ~5–
 
 > **Host:** Bitwig Studio.
 
-- [ ] MIDI Learn no knob INPUT → halo pontilhado com 6 dots azuis (`#5e81ac`) ao redor do knob.
-- [ ] Playback de automação em `output_gain_db` → arco do OUTPUT pulsa suavemente (alpha 0.3→1.0, ciclo ~1s).
-- [ ] Override manual (mover knob na GUI) durante automação ativa → arco fica âmbar (`#F5A623`) temporariamente. Volta ao normal ao soltar.
+- [ ] MIDI Learn on INPUT knob → dotted halo with 6 blue dots (`#5e81ac`) around the knob.
+- [ ] Automation playback on `output_gain_db` → OUTPUT arc pulses smoothly (alpha 0.3→1.0, ~1s cycle).
+- [ ] Manual override (move knob in GUI) during active automation → arc turns amber (`#F5A623`) temporarily. Returns to normal on release.
 
 ---
 
-### 2I — Acessibilidade (Teclado)
+### 2I — Accessibility (Keyboard)
 
-- [ ] Tab → foco cicla: INPUT → OUTPUT → GATE → BYPASS → Load Model → INPUT. Focus ring visível.
-- [ ] Shift+Tab → ordem inversa.
-- [ ] Knob focado: ↑/→ = +1.0 dB, ↓/← = −1.0 dB. Ctrl+↑ = +0.1 dB, Ctrl+↓ = −0.1 dB. Limites respeitados.
-- [ ] Load Model focado → Space/Enter abre picker.
-- [ ] BYPASS focado → Space/Enter alterna bypass.
-- [ ] Contraste de texto OK: `COL_MUTED` legível sobre `COL_PANEL`, `COL_TEXT` legível sobre `COL_BG`.
+- [ ] Tab → focus cycles: INPUT → OUTPUT → GATE → BYPASS → Load Model → INPUT. Focus ring visible.
+- [ ] Shift+Tab → reverse order.
+- [ ] Focused knob: ↑/→ = +1.0 dB, ↓/← = −1.0 dB. Ctrl+↑ = +0.1 dB, Ctrl+↓ = −0.1 dB. Limits respected.
+- [ ] Load Model focused → Space/Enter opens picker.
+- [ ] BYPASS focused → Space/Enter toggles bypass.
+- [ ] Text contrast OK: `COL_MUTED` readable on `COL_PANEL`, `COL_TEXT` readable on `COL_BG`.
 
 ---
 
-### 2J — Modulação LFO em Tempo Real
+### 2J — Real-Time LFO Modulation
 
 > **Host:** Bitwig Studio.
 
-- [ ] LFO em `input_gain_db` a 1–5 Hz, ±6 dB → arco oscila suave, áudio sem zipper noise.
-- [ ] LFO a 20 Hz → áudio modula como tremolo rápido sem artefatos ou picos de CPU.
+- [ ] LFO on `input_gain_db` at 1–5 Hz, ±6 dB → arc oscillates smoothly, audio without zipper noise.
+- [ ] LFO at 20 Hz → audio modulates like a fast tremolo without artifacts or CPU spikes.
 
 ---
 
-### 2K — Compensação Dinâmica de Latência
+### 2K — Dynamic Latency Compensation
 
-- [ ] Mudar sample rate do projeto (44.1→96 kHz) → status bar atualiza (`"96kHz"`), latência atualiza. Bitwig recalcula PDC sem dessincronia.
-- [ ] Toggle bypass ou trocar modelo com resampling diferente → latência reportada muda, Bitwig atualiza PDC imediatamente.
-
----
-
-## Bloco 3 — Estresse & Pedantaria
-
-Executar **após** Blocos 1 e 2 passarem. Buffer de 128 samples @ 48 kHz.
+- [ ] Change project sample rate (44.1→96 kHz) → status bar updates (`"96kHz"`), latency updates. Bitwig recalculates PDC without desync.
+- [ ] Toggle bypass or switch model with different resampling → reported latency changes, Bitwig updates PDC immediately.
 
 ---
 
-### 3.1 Spam de Interface
+## Block 3 — Stress & Pedantry
 
-- [ ] Alternar bypass 20+ vezes consecutivas via GUI. Sem crash, sem artefato.
-- [ ] Abrir/fechar GUI 20+ vezes em <30s com playback ativo.
-- [ ] (Bitwig) Alternar modos de hosting (*Together*, *Individually*, *Individually strict*) e repetir spam.
+Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
 
 ---
 
-### 3.2 Carga Rápida Concorrente
+### 3.1 Interface Spam
 
-- [ ] Carregar 10 modelos diferentes em <1 minuto, com áudio rodando.
-- [ ] Memória RSS estável (crescimento <2 MB após 10 reloads). Sem leak visível.
-
----
-
-### 3.3 Modulação Extrema
-
-- [ ] (Bitwig) LFO a 20–100 Hz modulando `input_gain_db` por ≥5 min com buffer 128 samples. Zero zipper noise, zero XRUNs.
-- [ ] (Fender) Envelopes/LFOs de canal modulando parâmetros por ≥5 min.
+- [ ] Toggle bypass 20+ consecutive times via GUI. No crash, no artifact.
+- [ ] Open/close GUI 20+ times in <30s with active playback.
+- [ ] (Bitwig) Switch hosting modes (*Together*, *Individually*, *Individually strict*) and repeat spam.
 
 ---
 
-### 3.4 Gate FSM em Silêncio
+### 3.2 Concurrent Fast Load
 
-- [ ] Parar playback por 10s → saída = silêncio limpo (sem ruído residual, sem denormals).
-- [ ] Retomar playback → áudio volta sem estalo, sem perda de transiente.
-
----
-
-### 3.5 Multi-Instância
-
-- [ ] Com 2 instâncias processando, adicionar 3ª durante playback → as 2 primeiras não sofrem interrupção.
-- [ ] Deletar 3ª instância durante playback → as 2 restantes continuam.
-- [ ] Abrir File Picker em 2 instâncias simultaneamente → ambos funcionam independentemente.
-- [ ] Fechar GUI de uma instância, manter outra aberta → áudio de ambas segue normal. Reabrir GUI → estado preservado.
-- [ ] 3 instâncias: bypass na 1ª, ativa na 2ª, carregar modelo na 3ª → cada uma independente.
+- [ ] Load 10 different models in <1 minute, with audio running.
+- [ ] Stable RSS memory (growth <2 MB after 10 reloads). No visible leak.
 
 ---
 
-### 3.6 Endurance 1 Hora
+### 3.3 Extreme Modulation
 
-- [ ] Projeto com 4 instâncias (2× WaveNet + 2× LSTM), 2 LFOs cada, playback contínuo por **60 min**.
-- [ ] Monitorar a cada 30s: RSS, file descriptors, threads, XRUNs.
-- [ ] **Aceite:** zero crashes, RSS estabiliza (variação <5 MB após warmup), zero vazamento de FDs/threads, zero XRUNs.
-
----
-
-### 3.7 Null Test de Bypass
-
-- [ ] Trilha extra: NAM-rs em bypass + sinal idêntico em paralelo com fase invertida + ADC ativo.
-- [ ] Resultado = silêncio absoluto (<−120 dBFS). Bypass é bit-transparente.
+- [ ] (Bitwig) LFO at 20–100 Hz modulating `input_gain_db` for ≥5 min with 128 sample buffer. Zero zipper noise, zero XRUNs.
+- [ ] (Fender) Channel envelopes/LFOs modulating parameters for ≥5 min.
 
 ---
 
-### 3.8 Determinismo de Bounce Offline
+### 3.4 Gate FSM in Silence
 
-- [ ] Com processamento ativo, bounce offline 2 vezes consecutivas.
-- [ ] Arquivos WAV idênticos bit-a-bit (`cmp`). **Usar bounce offline, não tempo-real.**
-
----
-
-## Critérios de Release
-
-- [ ] Zero crashes, panics ou congelamentos em qualquer operação.
-- [ ] Zero XRUNs registrados no `pw-top` durante toda a sessão.
-- [ ] Zero zipper noise audível em knobs, automação ou modulação.
-- [ ] Renderização visual estável a ~33 fps, sem flicker ou artefatos.
-- [ ] Fluxo completo: instanciar → carregar → ajustar → salvar → fechar → reabrir → estado preservado.
+- [ ] Stop playback for 10s → output = clean silence (no residual noise, no denormals).
+- [ ] Resume playback → audio returns without click, no transient loss.
 
 ---
 
-## Template de Bug Report
+### 3.5 Multi-Instance
+
+- [ ] With 2 instances processing, add a 3rd during playback → the first 2 are not interrupted.
+- [ ] Delete 3rd instance during playback → the remaining 2 continue.
+- [ ] Open File Picker in 2 instances simultaneously → both work independently.
+- [ ] Close GUI of one instance, keep another open → audio of both continues normally. Reopen GUI → state preserved.
+- [ ] 3 instances: bypass on 1st, active on 2nd, load model on 3rd → each independent.
+
+---
+
+### 3.6 Endurance 1 Hour
+
+- [ ] Project with 4 instances (2× WaveNet + 2× LSTM), 2 LFOs each, continuous playback for **60 min**.
+- [ ] Monitor every 30s: RSS, file descriptors, threads, XRUNs.
+- [ ] **Acceptance:** zero crashes, RSS stabilizes (variation <5 MB after warmup), zero FD/thread leaks, zero XRUNs.
+
+---
+
+### 3.7 Bypass Null Test
+
+- [ ] Extra track: NAM-rs in bypass + identical signal in parallel with inverted phase + active ADC.
+- [ ] Result = absolute silence (<−120 dBFS). Bypass is bit-transparent.
+
+---
+
+### 3.8 Offline Bounce Determinism
+
+- [ ] With active processing, offline bounce 2 consecutive times.
+- [ ] WAV files identical bit-by-bit (`cmp`). **Use offline bounce, not real-time.**
+
+---
+
+## Release Criteria
+
+- [ ] Zero crashes, panics, or freezes in any operation.
+- [ ] Zero XRUNs recorded in `pw-top` during the entire session.
+- [ ] Zero audible zipper noise on knobs, automation, or modulation.
+- [ ] Stable visual rendering at ~33 fps, no flicker or artifacts.
+- [ ] Full workflow: instantiate → load → adjust → save → close → reopen → state preserved.
+
+---
+
+## Bug Report Template
 
 ```text
-**Teste:** <ID, ex: 2C.4>
-**OS/Kernel:** <ex: Ubuntu 24.04, Linux 6.8-lowlatency>
-**DAW:** <nome e versão, ex: Bitwig Studio 6.0.6 Flatpak>
-**Modelo:** <arquivo .nam, ex: jcm800.nam>
-**Buffer/Sample Rate:** <ex: 128 samples @ 48 kHz>
-**Esperado:** <comportamento descrito no roteiro>
-**Observado:** <o que realmente aconteceu>
-**Anexos:** screenshot/vídeo da GUI, log da DAW, XRUNs do pw-top, telemetria RT da status bar.
+**Test:** <ID, e.g.: 2C.4>
+**OS/Kernel:** <e.g.: Ubuntu 24.04, Linux 6.8-lowlatency>
+**DAW:** <name and version, e.g.: Bitwig Studio 6.0.6 Flatpak>
+**Model:** <.nam file, e.g.: jcm800.nam>
+**Buffer/Sample Rate:** <e.g.: 128 samples @ 48 kHz>
+**Expected:** <behavior described in the roadmap>
+**Observed:** <what actually happened>
+**Attachments:** GUI screenshot/video, DAW log, XRUNs from pw-top, RT telemetry from status bar.
 ```

@@ -1,22 +1,22 @@
 ---
 name: revisor-auditor
-description: Painel de auditores, arquitetos, caçadores de bugs, cientistas, engenheiros sêniors e especialistas em diversas disciplinas associadas ao projeto nam-rs (Rust, Linux Low Latency, Pipewire, CLAP, DSP e redes neurais, etc).
+description: Panel of auditors, architects, bug hunters, scientists, senior engineers, and specialists in various disciplines associated with the nam-rs project (Rust, Linux Low Latency, Pipewire, CLAP, DSP, and neural networks, etc).
 ---
 
 # Skill: Revisor Auditor
 
 ## When to use this skill
 
-Use esta skill para revisar geral o projeto em busca de melhorias.
+Use this skill for a general project review in search of improvements.
 
 ## Instructions
 
-* Analise profundamente todo o código em busca de oportunidades de melhorias. Exemplos (não exaustivos):
-  * Bugs de aderência arquitetural, funcionalidade, segurança, performance, baixa latência, etc.
-  * Inspecionar e diagnosticar estrita aderência arquitetural e correta compatibilidade com a implementação de referência [Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore).
-  * Códigos que podem ficar inline ou fora do hotpath;
-  * Arquivos e funções com tamanho e organização lógica;
-  * Revisão criteriosa do "budget de ciclos de código" atrás de mais otimizações para instruções modernas de cpu, mais resultados, por menos ciclos de clock, etc.
-  * Cobertura integral de bons comentários de código fonte;
-  * Documentação (skill `documentador`) exemplar.
-* Acione a skill `planejador-arquiteto` para transformar as ideias levantadas em sprints e tarefas técnicas granulares, muitíssimo bem escritas e detalhadas, em `TODO-sprints.md` (pt-BR).
+* Deeply analyze all code in search of improvement opportunities. Examples (non-exhaustive):
+  * Bugs in architectural adherence, functionality, security, performance, low latency, etc.
+  * Inspect and diagnose strict architectural adherence and correct compatibility with the [Neural Amp Modeler Core](https://github.com/sdatkinson/NeuralAmpModelerCore) reference implementation.
+  * Code that can be made inline or moved out of the hot-path;
+  * Files and functions with size and logical organization;
+  * Careful review of the "code cycle budget" looking for more optimizations for modern CPU instructions, more results, for fewer clock cycles, etc.
+  * Comprehensive coverage of good source code comments;
+  * Exemplary documentation (skill `documentador`).
+* Trigger the `planejador-arquiteto` skill to transform the raised ideas into granular, very well-written and detailed sprints and technical tasks, in `TODO-sprints.md` (pt-BR).

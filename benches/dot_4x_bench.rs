@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Benchmarks para kernels dot_product_4x (AVX2 e AVX-512).
+//! Benchmarks for dot_product_4x kernels (AVX2 and AVX-512).
 //!
-//! Mede throughput de dot product interleaved 4x para tamanhos de estado
-//! representativos de topologias LSTM e WaveNet.
+//! Measures throughput of interleaved 4x dot product for state sizes
+//! representative of LSTM and WaveNet topologies.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::math::common::scalar_ref;

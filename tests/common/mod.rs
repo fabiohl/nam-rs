@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo de helpers compartilhados entre os testes de integração do NAM-rs.
+//! Shared helper module for NAM-rs integration tests.
 //!
-//! Centraliza funções de geração de sinais, métricas de erro e validação DSP
-//! para evitar duplicação entre os arquivos de teste de integração.
+//! Centralizes signal generation functions, error metrics, and DSP validation
+//! to avoid duplication across integration test files.
 
 #![allow(dead_code)]
 
@@ -16,37 +16,37 @@ use std::path::{Path, PathBuf};
 use nam_rs::models::NamModel;
 
 // =============================================================================
-// Constantes
+// Constants
 // =============================================================================
 
-/// Número de amostras para testes de golden vectors e auto-consistência.
+/// Number of samples for golden vector and self-consistency tests.
 pub const GOLDEN_NUM_SAMPLES: usize = 2048;
 
-/// Tamanho de bloco para processamento nos testes de validação numérica.
+/// Block size for processing in numerical validation tests.
 pub const GOLDEN_BLOCK_SIZE: usize = 64;
 
-/// Bloco padrão para testes de estabilidade computacional.
+/// Default block size for computational stability tests.
 pub const TEST_BLOCK_SIZE: usize = 64;
 
-/// Número de blocos para testes de estabilidade (~5.4 segundos a 48kHz).
+/// Number of blocks for stability tests (~5.4 seconds at 48kHz).
 pub const TEST_NUM_BLOCKS: usize = 4096;
 
-/// Sample rate padrão usada nos golden vectors (48 kHz).
+/// Default sample rate used in golden vectors (48 kHz).
 pub const STRESS_SAMPLE_RATE: u32 = 48000;
 
 // =============================================================================
-// Geração de Sinais
+// Signal Generation
 // =============================================================================
 
-/// Gera o sinal de stress multi-componente determinístico (2048 amostras @ 48 kHz).
+/// Generates the deterministic multi-component stress signal (2048 samples @ 48 kHz).
 ///
-/// Componentes:
-/// - Harmônicos de guitarra Low-E (82/165/330/659 Hz)
-/// - Chirp linear 220 Hz → 3520 Hz
-/// - Impulso transiente (+0.9) a 25%
-/// - Envelope attack–sustain–release com fade-to-silence
+/// Components:
+/// - Low-E guitar harmonics (82/165/330/659 Hz)
+/// - Linear chirp 220 Hz → 3520 Hz
+/// - Transient impulse (+0.9) at 25%
+/// - Attack–sustain–release envelope with fade-to-silence
 ///
-/// Totalmente determinístico: mesmos resultados bit-a-bit em Python e Rust.
+/// Fully deterministic: bit-for-bit identical results in Python and Rust.
 pub fn generate_stress_signal() -> Vec<f32> {
     let n = GOLDEN_NUM_SAMPLES;
     let sr = STRESS_SAMPLE_RATE as f64;
@@ -67,20 +67,20 @@ pub fn generate_stress_signal() -> Vec<f32> {
                 1.0
             };
 
-            // Harmônicos de guitarra (Low-E: 82.41 Hz)
+            // Low-E guitar harmonics (82.41 Hz)
             let guitar = 0.40 * (2.0 * std::f64::consts::PI * 82.41 * t).sin()
                 + 0.25 * (2.0 * std::f64::consts::PI * 164.81 * t).sin()
                 + 0.15 * (2.0 * std::f64::consts::PI * 329.63 * t).sin()
                 + 0.08 * (2.0 * std::f64::consts::PI * 659.25 * t).sin();
 
-            // Chirp linear 220 Hz → 3520 Hz
+            // Linear chirp 220 Hz → 3520 Hz
             let f0: f64 = 220.0;
             let f1: f64 = 3520.0;
             let chirp_phase =
                 2.0 * std::f64::consts::PI * (f0 * t + (f1 - f0) * t * t / (2.0 * t_total));
             let chirp = 0.30 * chirp_phase.sin();
 
-            // Impulso transiente a 25%
+            // Transient impulse at 25%
             let impulse = if i == n / 4 { 0.9 } else { 0.0 };
 
             let sample = env * (guitar + chirp) + impulse;
@@ -89,10 +89,10 @@ pub fn generate_stress_signal() -> Vec<f32> {
         .collect()
 }
 
-/// Gera sinal senoidal determinístico de 440 Hz a 48 kHz (legacy).
+/// Generates a deterministic 440 Hz sine wave signal at 48 kHz (legacy).
 ///
-/// Mantido para retrocompatibilidade com testes de auto-consistência,
-/// paridade estático/dinâmico e zero-alloc — estes não dependem do sinal de stress.
+/// Kept for backward compatibility with self-consistency tests,
+/// static/dynamic parity, and zero-alloc — these do not depend on the stress signal.
 pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
     (0..num_samples)
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
@@ -100,14 +100,14 @@ pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
 }
 
 // =============================================================================
-// Métricas de Erro (aritmética f64 para preservar precisão)
+// Error Metrics (f64 arithmetic to preserve precision)
 // =============================================================================
 
-/// Calcula o Mean Squared Error (MSE) entre dois vetores de amostras.
+/// Computes the Mean Squared Error (MSE) between two sample vectors.
 ///
-/// Usa aritmética `f64` internamente para evitar perda de precisão no acumulador.
+/// Uses `f64` arithmetic internally to avoid precision loss in the accumulator.
 pub fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
-    assert_eq!(a.len(), b.len(), "Vetores de tamanhos diferentes para MSE");
+    assert_eq!(a.len(), b.len(), "Vectors of different sizes for MSE");
     let n = a.len();
     if n == 0 {
         return 0.0;
@@ -123,12 +123,12 @@ pub fn compute_mse(a: &[f32], b: &[f32]) -> f64 {
     sum / (n as f64)
 }
 
-/// Calcula o Max Absolute Error (MAE / L∞) entre dois vetores.
+/// Computes the Max Absolute Error (MAE / L∞) between two vectors.
 pub fn compute_max_abs_error(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(
         a.len(),
         b.len(),
-        "Vetores de tamanhos diferentes para MaxAbsError"
+        "Vectors of different sizes for MaxAbsError"
     );
     a.iter()
         .zip(b.iter())
@@ -137,23 +137,23 @@ pub fn compute_max_abs_error(a: &[f32], b: &[f32]) -> f64 {
 }
 
 // =============================================================================
-// Validação DSP — 5 métricas em single-pass
+// DSP Validation — 5 metrics in single-pass
 // =============================================================================
 
-/// Valida fidelidade DSP em single-pass, calculando MSE, MAE, SNR, PSNR e bits
-/// equivalentes simultaneamente numa única iteração sobre o buffer.
+/// Validates DSP fidelity in a single pass, computing MSE, MAE, SNR, PSNR, and
+/// equivalent bits simultaneously in a single iteration over the buffer.
 ///
-/// As 5 métricas derivam dos mesmos acumuladores (`signal_power`, `noise_power`,
-/// `max_abs_diff`, `peak_ref`) — zero overhead adicional.
+/// The 5 metrics derive from the same accumulators (`signal_power`, `noise_power`,
+/// `max_abs_diff`, `peak_ref`) — zero additional overhead.
 ///
-/// # Parâmetros
-/// - `reference` — vetor de saída de referência (NeuralAmpModelerCore C++)
-/// - `test`      — vetor de saída do motor Rust a ser validado
-/// - `mse_limit` — threshold máximo permitido de MSE
-/// - `min_snr_db` — SNR mínimo em dB que deve ser atingido
-/// - `label`     — rótulo para identificação nas mensagens de diagnóstico
+/// # Parameters
+/// - `reference` — reference output vector (NeuralAmpModelerCore C++)
+/// - `test`      — Rust engine output vector to be validated
+/// - `mse_limit` — maximum allowed MSE threshold
+/// - `min_snr_db` — minimum SNR in dB that must be achieved
+/// - `label`     — label for identification in diagnostic messages
 ///
-/// # Formato de output
+/// # Output format
 /// ```text
 /// [NeuralAmpModelerCore × NAM-rs — label]
 ///   MSE     = 3.21e-02      (threshold < 5.0e-02)  ✓
@@ -174,7 +174,7 @@ pub fn report_dsp_fidelity(
     assert_eq!(
         reference.len(),
         test.len(),
-        "[{label}] Vetores de tamanhos diferentes para report_dsp_fidelity"
+        "[{label}] Vectors of different sizes for report_dsp_fidelity"
     );
     let n = reference.len() as f64;
     let mut signal_power = 0.0f64;
@@ -243,24 +243,24 @@ pub fn report_dsp_fidelity(
 
     assert!(
         mse < mse_limit,
-        "[{label}] MSE={mse:.6e} excede limiar {mse_limit:.1e} (MAE={mae:.6e}, SNR={snr:.1} dB)"
+        "[{label}] MSE={mse:.6e} exceeds threshold {mse_limit:.1e} (MAE={mae:.6e}, SNR={snr:.1} dB)"
     );
     assert!(
         snr >= min_snr_db,
-        "[{label}] SNR={snr:.1} dB abaixo do mínimo {min_snr_db:.1} dB (MSE={mse:.6e}, MAE={mae:.6e})"
+        "[{label}] SNR={snr:.1} dB below minimum {min_snr_db:.1} dB (MSE={mse:.6e}, MAE={mae:.6e})"
     );
 }
 
 // =============================================================================
-// Helpers de I/O
+// I/O Helpers
 // =============================================================================
 
-/// Lê um arquivo `.golden.bin` no formato binário especificado.
+/// Reads a `.golden.bin` file in the specified binary format.
 ///
-/// Retorna `Some((input, expected_output))` ou `None` se o arquivo não existir
-/// ou estiver malformado.
+/// Returns `Some((input, expected_output))` or `None` if the file does not exist
+/// or is malformed.
 ///
-/// ## Formato
+/// ## Format
 /// ```text
 /// [u32 num_samples LE]
 /// [f32×N input samples LE]
@@ -269,10 +269,10 @@ pub fn report_dsp_fidelity(
 pub fn read_golden_bin(path: &Path) -> Option<(Vec<f32>, Vec<f32>)> {
     let data = fs::read(path).ok()?;
 
-    // Mínimo: 4 bytes (u32) + pelo menos 4 bytes de input + 4 bytes de output
+    // Minimum: 4 bytes (u32) + at least 4 bytes of input + 4 bytes of output
     if data.len() < 12 {
         eprintln!(
-            "WARN: arquivo golden {path:?} muito pequeno ({} bytes)",
+            "WARN: golden file {path:?} too small ({} bytes)",
             data.len()
         );
         return None;
@@ -283,7 +283,7 @@ pub fn read_golden_bin(path: &Path) -> Option<(Vec<f32>, Vec<f32>)> {
     let expected_size = 4 + num_samples * 4 * 2; // u32 + N*f32 input + N*f32 output
     if data.len() < expected_size {
         eprintln!(
-            "WARN: golden {path:?} declara {num_samples} amostras mas tem {} bytes (esperados {expected_size})",
+            "WARN: golden {path:?} declares {num_samples} samples but has {} bytes (expected {expected_size})",
             data.len()
         );
         return None;
@@ -319,7 +319,7 @@ pub fn read_golden_bin(path: &Path) -> Option<(Vec<f32>, Vec<f32>)> {
     Some((input, output))
 }
 
-/// Resolve o caminho para um modelo de teste em `tests/fixtures/models/`.
+/// Resolves the path to a test model in `tests/fixtures/models/`.
 pub fn model_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models");
@@ -327,7 +327,7 @@ pub fn model_path(filename: &str) -> PathBuf {
     path
 }
 
-/// Processa um bloco de input pelo modelo em chunks de `block_size`.
+/// Processes an input block through the model in chunks of `block_size`.
 pub fn process_in_blocks(
     model: &mut nam_rs::models::DynamicModel,
     input: &[f32],
