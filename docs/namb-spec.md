@@ -415,11 +415,11 @@ são rejeitados com `NamErrorCode::ModelTooLarge` (E1304).
 
 - Decoder NAMB: `src/loader/namb.rs`
 - Encoder NAMB: `src/loader/namb_encoder.rs`
-- Definicação de layouts: `src/loader/nam_json.rs` (`WeightsLayout`)
+- Definição de layouts: `src/loader/nam_json/data.rs` (`WeightsLayout`)
 - Decoder LSTM: `src/loader/dispatcher/lstm.rs`
-- Decoder WaveNet: `src/loader/dispatcher/wavenet.rs`
+- Decoder WaveNet: `src/loader/dispatcher/wavenet/mod.rs`
 - Mapeamento de erros: `src/loader/mod.rs`
-- Códigos de erro: `src/common/diagnostics.rs` (`NamErrorCode`)
+- Códigos de erro: `src/common/diagnostics/error_codes.rs` (`NamErrorCode`)
 - Testes round-trip: `tests/namb_v2_roundtrip.rs`, `tests/namb_v2_validation.rs`
 - Arquitetura: `docs/architecture.md`
 - Planejamento: `TODO-sprints.md` (S3.T03, S3.T04, S5.T02, S5.T03)

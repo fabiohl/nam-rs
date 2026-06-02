@@ -1350,18 +1350,18 @@ Objetivo: assegurar que cada decisão e cada subsistema crítico têm documenta�
 
 ### Sprint S14 — Documentação técnica & comentários
 
-#### Tarefa S14.T01 — (Referência cruzada) Especificação formal do formato NAMB 💡
+#### Tarefa S14.T01 — (Referência cruzada) Especificação formal do formato NAMB 💡 [DONE]
 
 - **Status:** **Entrega real consolidada em S5.T07** (Épico 3, Sprint S5). Esta entrada permanece apenas para sinalizar que o trabalho está mapeado no Épico de documentação técnica.
 - **Validação esperada na conclusão do S14:** Confirmar com `documentador` que `docs/namb-spec.md` está completo e atualizado refletindo as mudanças dos Sprints S3 e S5 (CRC flag, padding Interleaved-4, erros tipados).
 - **Especialista:** `documentador` (revisão apenas).
 
-#### Tarefa S14.T02 — Padronizar idioma de docstrings (pt-BR) ⚠️
+#### Tarefa S14.T02 — Padronizar idioma de docstrings (en-US) ⚠️
 
 - **Onde:** Todo `src/`.
 - **Problema:** Mistura pt-BR e en-US em docstrings, mensagens, comentários. README do projeto especifica pt-BR para devs.
-- **Solução técnica:** Pass de revisão (`documentador`) garantindo pt-BR em `///`, `//`, `//!`. Mensagens de erro user-facing podem ficar em inglês se justificado.
-- **Critérios de aceitação:** Coverage > 90% pt-BR.
+- **Solução técnica:** Pass de revisão (`documentador`) garantindo inglês internacional em `///`, `//`, `//!`. Mensagens de erro user-facing podem ficar em inglês se justificado.
+- **Critérios de aceitação:** Coverage > 90% inglês internacional.
 - **Especialista:** `documentador`.
 
 #### Tarefa S14.T03 — Adicionar `# Safety` faltantes em `unsafe { ... }` 💡
