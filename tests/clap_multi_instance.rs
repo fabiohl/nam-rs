@@ -35,14 +35,8 @@ fn process_block(
     let input_events = InputEvents::empty();
     let mut output_events = OutputEvents::from_buffer(events_buf);
 
-    let mut input_audio_buffers = [
-        input_audio_buf[0],
-        input_audio_buf[1],
-    ];
-    let mut output_audio_buffers = [
-        output_audio_buf[0],
-        output_audio_buf[1],
-    ];
+    let mut input_audio_buffers = [input_audio_buf[0], input_audio_buf[1]];
+    let mut output_audio_buffers = [output_audio_buf[0], output_audio_buf[1]];
 
     let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
         latency: 0,
@@ -158,8 +152,7 @@ fn test_multi_instance_rt_priority() {
         let shared = unsafe { &**shared_ptr };
         let priority = shared.rt_status.rt_priority.load(Ordering::Relaxed);
         assert_ne!(
-            priority,
-            -1,
+            priority, -1,
             "Instance {}: rt_priority is still at sentinel value (-1). \
              Each instance must independently detect its thread priority.",
             i

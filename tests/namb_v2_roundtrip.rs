@@ -161,9 +161,7 @@ fn expected_gate_major_weights(data: &NamModelData) -> Vec<f32> {
 
 static STD_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 static LITE_DILATIONS_0: &[usize] = &[1, 2, 4, 8, 16, 32, 64];
-static LITE_DILATIONS_1: &[usize] = &[
-    128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512,
-];
+static LITE_DILATIONS_1: &[usize] = &[128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
 /// Configuração de cada topologia WaveNet suportada.
 struct WavenetTopoCfg {
@@ -236,12 +234,12 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
     };
 
     // ---- Array 1 ----
-    push_seq(ch * 1); // rechannel
+    push_seq(ch); // rechannel
 
     for _ in 0..cfg.dilations_0.len() {
         push_seq(ch * ch * K); // conv1d
         push_seq(ch); // bias
-        push_seq(ch * 1); // mixin
+        push_seq(ch); // mixin
         push_seq(ch * ch); // 1x1
         push_seq(ch); // 1x1 bias
     }
@@ -254,12 +252,12 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
     for _ in 0..cfg.dilations_1.len() {
         push_seq(head * head * K); // conv1d
         push_seq(head); // bias
-        push_seq(head * 1); // mixin
+        push_seq(head); // mixin
         push_seq(head * head); // 1x1
         push_seq(head); // 1x1 bias
     }
 
-    push_seq(1 * head); // head_rechannel (has_head_bias=true, weights)
+    push_seq(head); // head_rechannel (has_head_bias=true, weights)
     weights.push(0.04); // head_bias
     weights.push(0.06); // head_scale
 
@@ -308,7 +306,7 @@ fn make_synthetic_wavenet(cfg: &WavenetTopoCfg) -> NamModelData {
 // =============================================================================
 
 fn ceil_div(a: usize, b: usize) -> usize {
-    (a + b - 1) / b
+    a.div_ceil(b)
 }
 
 /// Espelha `transpose_wavenet_interleaved4` do encoder para verificação bit-a-bit.

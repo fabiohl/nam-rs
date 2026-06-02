@@ -196,7 +196,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 };
 
                 if text_str == current_name {
-                    Some(self.shared.model_load_counter.load(std::sync::atomic::Ordering::Relaxed) as f64)
+                    Some(
+                        self.shared
+                            .model_load_counter
+                            .load(std::sync::atomic::Ordering::Relaxed)
+                            as f64,
+                    )
                 } else if let Ok(val) = text_str.parse::<f64>() {
                     Some(val)
                 } else {

@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use nam_rs::loader::nam_json::{
-    get_wavenet_topology, parse_nam_json, NamConfig, NamDate, NamLayerConfig, NamMetadata,
-    NamModelData, WeightsLayout,
+    NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
+    get_wavenet_topology, parse_nam_json,
 };
-use nam_rs::loader::namb::{crc32_ieee, parse_namb, FLAG_HAS_CRC32};
+use nam_rs::loader::namb::{FLAG_HAS_CRC32, crc32_ieee, parse_namb};
 use proptest::prelude::*;
 use std::fs;
 
@@ -284,8 +284,11 @@ fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
         Just(512),
         any::<usize>(),
     ];
-    let activation_s =
-        prop_oneof![Just("Tanh".to_string()), Just("ReLU".to_string()), any::<String>()];
+    let activation_s = prop_oneof![
+        Just("Tanh".to_string()),
+        Just("ReLU".to_string()),
+        any::<String>()
+    ];
 
     (
         any::<Option<usize>>(),
@@ -332,13 +335,15 @@ fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
         any::<Option<usize>>(),
         any::<Option<usize>>(),
     )
-        .prop_map(|(layers, head, head_scale, num_layers, hidden_size)| NamConfig {
-            layers,
-            head,
-            head_scale,
-            num_layers,
-            hidden_size,
-        })
+        .prop_map(
+            |(layers, head, head_scale, num_layers, hidden_size)| NamConfig {
+                layers,
+                head,
+                head_scale,
+                num_layers,
+                hidden_size,
+            },
+        )
 }
 
 /// Estratégia para `NamDate` com encolhimento.
@@ -420,10 +425,7 @@ fn arbitrary_nam_metadata() -> impl Strategy<Value = NamMetadata> {
 /// aleatórios. O encolhimento do proptest reduz automaticamente o modelo ao
 /// menor contra-exemplo quando uma asserção falha.
 pub fn arbitrary_nam_model_data() -> impl Strategy<Value = NamModelData> {
-    let arch = prop_oneof![
-        Just("WaveNet".to_string()),
-        Just("LSTM".to_string()),
-    ];
+    let arch = prop_oneof![Just("WaveNet".to_string()), Just("LSTM".to_string()),];
 
     let layout = prop_oneof![
         Just(WeightsLayout::Original),
@@ -466,11 +468,11 @@ fn arbitrary_namb_bytes_strategy() -> impl Strategy<Value = Vec<u8>> {
     const HEADER_SIZE: usize = 80;
 
     (
-        any::<u32>(),            // sample_rate (reinterpretado como bytes)
-        any::<u32>(),            // input_level_dbu
-        any::<u32>(),            // output_level_dbu
-        any::<[u8; 32]>(),       // version_str
-        any::<u8>(),             // layout_type
+        any::<u32>(),      // sample_rate (reinterpretado como bytes)
+        any::<u32>(),      // input_level_dbu
+        any::<u32>(),      // output_level_dbu
+        any::<[u8; 32]>(), // version_str
+        any::<u8>(),       // layout_type
         prop::collection::vec(any::<u8>(), 0..16384),
     )
         .prop_map(
