@@ -6,12 +6,25 @@ set -xeuo pipefail
 
 echo "🔥 Iniciando testes de estresse de longa duração..."
 echo "⚠️ Esta operação é intensiva e pode durar vários minutos!"
+echo "⚠️ Tem demorado por volta de 20 minutos (considerando diretório target/ devidamente povoado)"
 date
 
 echo "==================================================="
 echo "🧪 Executando Soak Tests (Estabilidade Numérica)..."
-time cargo test
-time cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 2>&1 | tee soak-test.log
+cargo test
+cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 2>&1 | tee soak-test.log
+
+echo "==================================================================="
+echo "🧪 Executando Property-Based e Parity Tests em Release..."
+time cargo test --release --test proptest_parsers -- --ignored 2>&1 | tee proptest-parsers.log
+time cargo test --release --test proptest_math -- --ignored 2>&1 | tee proptest-math.log
+time cargo test --release --test lstm_gate_bf16_parity -- --ignored 2>&1 | tee lstm-gate-bf16-parity.log
+time cargo test --release --test lstm_scalar_bf16_parity -- --ignored 2>&1 | tee lstm-scalar-bf16-parity.log
+time cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored 2>&1 | tee pipeline-block-proptest.log
+
+echo "==================================================================="
+echo "🌐 Executando Cross-Validation NAM-rs ↔ NeuralAmpModelerCore..."
+cargo test --test cpp_parity -- --ignored --nocapture 2>&1 | tee cpp-parity.log
 
 echo "===================================================================="
 echo "🛡️ Executando validação de conformidade CLAP com Heap Alloc Audit..."
@@ -38,14 +51,9 @@ jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | len
 
 echo "=============================================="
 echo "📊 Executando Long Benchmarks (Performance)..."
-time cargo bench
-time cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | tee long-bench.log
+cargo bench
+cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | tee long-bench.log
 
-echo "==================================================================="
-echo "🌐 Executando Cross-Validation NAM-rs ↔ NeuralAmpModelerCore..."
-cargo test --test cpp_parity -- --ignored --nocapture 2>&1 | tee cpp-parity.log
-
-echo -e "\n==================================="
+echo "==================================="
 echo "✅ Auditoria concluída com sucesso!"
-echo "📄 Logs: soak-test.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json"
-date
+echo "📄 Logs: soak-test.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log"

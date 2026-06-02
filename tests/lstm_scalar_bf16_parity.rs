@@ -31,6 +31,7 @@ proptest! {
     })]
 
     #[test]
+    #[ignore]
     fn test_lstm_scalar_vs_simd_parity((inputs, weights, bias, head_weights, head_bias) in lstm_parity_strategy()) {
         let is_bf16 = nam_rs::math::common::SimdMathConfig::get().instruction_set
             == nam_rs::math::common::InstructionSet::Avx512VnniBf16;

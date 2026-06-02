@@ -209,6 +209,7 @@ mod block_tests {
             .. ProptestConfig::with_cases(500)
         })]
         #[test]
+        #[ignore]
         fn test_random_block_sizes_proptest(size in 1..8192usize) {
             run_block_size_test(Some("BossWN-nano.nam"), size);
         }

@@ -56,6 +56,7 @@ proptest! {
     /// Valida a precisão da aproximação de Tangente Hiperbólica via AVX2.
     /// Utiliza aproximações Minimax/Padé que priorizam throughput em vez de precisão de 64-bit.
     #[test]
+    #[ignore]
     fn prop_simd_tanh_avx2_rmse(input in avx2_input_array()) {
         // Carregamento não-alinhado seguro para buffers genéricos
         let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
@@ -93,6 +94,7 @@ proptest! {
     /// aproximação da função logística não apresente instabilidades ou erros
     /// grosseiros que afetariam o ganho dos gates (onde a sigmoid é comum).
     #[test]
+    #[ignore]
     fn prop_simd_sigmoid_avx2_rmse(input in avx2_input_array()) {
         // Carregamento de 8 floats (256-bit YMM register)
         let vector = unsafe { _mm256_loadu_ps(input.as_ptr()) };
@@ -128,6 +130,7 @@ proptest! {
     /// Valida o produto escalar AVX2 com pesos em `f16` (F16C).
     /// Compara contra uma implementação escalar em `f64` (Ground Truth).
     #[test]
+    #[ignore]
     fn prop_dot_product_avx2_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
         // Conversão de pesos f32 -> f16 (bits u16)
         let vec_b_u16: Vec<u16> = vec_b.iter().map(|&v| half::f16::from_f32(v).to_bits()).collect();
@@ -155,6 +158,7 @@ proptest! {
 
     /// Valida o produto escalar AVX-512 (quando disponível no hardware).
     #[test]
+    #[ignore]
     fn prop_dot_product_avx512_vs_scalar((vec_a, vec_b) in vec_pair_strategy()) {
         // Verificação obrigatória em runtime para evitar SIGILL em CPUs antigas
         if std::is_x86_feature_detected!("avx512f") {

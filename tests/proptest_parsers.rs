@@ -14,6 +14,7 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
     #[test]
+    #[ignore]
     fn prop_fuzz_nam_json_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
         let json_str = String::from_utf8_lossy(&bytes);
         // O objetivo aqui é apenas garantir a ausência de pânicos (segurança de memória).
@@ -63,6 +64,7 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
     #[test]
+    #[ignore]
     fn prop_fuzz_nam_json_near_valid(json_str in near_valid_json_strategy()) {
         let _ = parse_nam_json(&json_str);
     }
@@ -76,6 +78,7 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
     #[test]
+    #[ignore]
     fn prop_fuzz_nam_json_truncated(cut_idx in 0usize..400_000) {
         // Usa uma fixture real como base para o truncamento
         let fixture_content = fs::read_to_string("tests/nam_files/EVH-5150-Lite.nam")
@@ -146,6 +149,7 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
     #[test]
+    #[ignore]
     fn prop_fuzz_nam_json_weight_overflow(json_str in weight_overflow_strategy()) {
         if let Ok(parsed) = parse_nam_json(&json_str) {
             // Just ensure accessing topology doesn't crash
@@ -162,6 +166,7 @@ proptest! {
         .. ProptestConfig::with_cases(5_000)
     })]
     #[test]
+    #[ignore]
     fn prop_fuzz_namb_arbitrary_bytes(bytes in prop::collection::vec(any::<u8>(), 0..8192)) {
         let _ = parse_namb(&bytes);
     }
@@ -210,6 +215,7 @@ proptest! {
 
     // Testa rejeição de arquivos com 'Magic Bytes' inválidos.
     #[test]
+    #[ignore]
     fn prop_fuzz_namb_bad_magic(mut namb in valid_namb_strategy(), bad_magic in any::<u32>()) {
         prop_assume!(bad_magic != 0x4E414D42);
         let bad_bytes = bad_magic.to_le_bytes();
@@ -220,6 +226,7 @@ proptest! {
 
     // Testa integridade via CRC. Alterar 1 bit deve causar erro de parsing.
     #[test]
+    #[ignore]
     fn prop_fuzz_namb_bad_crc(mut namb in valid_namb_strategy(), bit_flip in 0..32usize) {
         let byte_idx = 24 + (bit_flip / 8);
         let bit_idx = bit_flip % 8;
@@ -229,6 +236,7 @@ proptest! {
 
     // Testa resiliência a arquivos truncados prematuramente.
     #[test]
+    #[ignore]
     fn prop_fuzz_namb_truncated(namb in valid_namb_strategy(), truncate_idx in any::<usize>()) {
         let idx = std::cmp::min(truncate_idx, namb.len().saturating_sub(1));
         let truncated = &namb[0..idx];
@@ -237,6 +245,7 @@ proptest! {
 
     // Testa ataques de offset fora dos limites (Oversized Offset).
     #[test]
+    #[ignore]
     fn prop_fuzz_namb_oversized_offset(mut namb in valid_namb_strategy(), offset_add in 1..10000u32) {
         let new_offset = namb.len() as u32 + offset_add;
         namb[12..16].copy_from_slice(&new_offset.to_le_bytes());

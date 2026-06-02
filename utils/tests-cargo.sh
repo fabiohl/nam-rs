@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+# Este script inteiro vem demorando 35-40 segundos pra completar (considerando diretório target/ devidamente povoado)
 set -xeuo pipefail
 
-# 1. Executa a bateria de testes de unidade e integridade padrão do crate (em debug)
+# 1. Executa a bateria de testes de unidade e integridade padrão do crate [Costuma demorar uns 25 segundos]
 cargo test
 
 # 2. Compilação do plugin CLAP especificamente para testes (em debug com heap-audit)
