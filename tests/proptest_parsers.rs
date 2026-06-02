@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use nam_rs::loader::nam_json::{get_wavenet_topology, parse_nam_json};
-use nam_rs::loader::namb::parse_namb;
+use nam_rs::loader::nam_json::{
+    get_wavenet_topology, parse_nam_json, NamConfig, NamDate, NamLayerConfig, NamMetadata,
+    NamModelData, WeightsLayout,
+};
+use nam_rs::loader::namb::{crc32_ieee, parse_namb, FLAG_HAS_CRC32};
 use proptest::prelude::*;
 use std::fs;
 
@@ -250,5 +253,283 @@ proptest! {
         let new_offset = namb.len() as u32 + offset_add;
         namb[12..16].copy_from_slice(&new_offset.to_le_bytes());
         assert!(parse_namb(&namb).is_err(), "Parser aceitou offset de pesos fora do arquivo!");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// S13.T02 — Shrinking strategy para NamModelData (via strategy functions)
+// ---------------------------------------------------------------------------
+
+/// Estratégia para `NamLayerConfig` com encolhimento.
+fn arbitrary_layer_config() -> impl Strategy<Value = NamLayerConfig> {
+    let channels_s = prop_oneof![
+        Just(8usize),
+        Just(12),
+        Just(16),
+        Just(20),
+        Just(24),
+        any::<usize>(),
+    ];
+    let kernel_s = prop_oneof![Just(1usize), Just(2), Just(3), any::<usize>()];
+    let dilation_s = prop_oneof![
+        Just(1usize),
+        Just(2),
+        Just(4),
+        Just(8),
+        Just(16),
+        Just(32),
+        Just(64),
+        Just(128),
+        Just(256),
+        Just(512),
+        any::<usize>(),
+    ];
+    let activation_s =
+        prop_oneof![Just("Tanh".to_string()), Just("ReLU".to_string()), any::<String>()];
+
+    (
+        any::<Option<usize>>(),
+        any::<Option<usize>>(),
+        any::<Option<usize>>(),
+        channels_s,
+        kernel_s,
+        prop::collection::vec(dilation_s, 1..20),
+        activation_s,
+        any::<bool>(),
+        any::<bool>(),
+    )
+        .prop_map(
+            |(
+                input_size,
+                condition_size,
+                head_size,
+                channels,
+                kernel_size,
+                dilations,
+                activation,
+                gated,
+                head_bias,
+            )| NamLayerConfig {
+                input_size,
+                condition_size,
+                head_size,
+                channels: Some(channels),
+                kernel_size: Some(kernel_size),
+                dilations: Some(dilations),
+                activation: Some(activation),
+                gated: Some(gated),
+                head_bias: Some(head_bias),
+            },
+        )
+}
+
+/// Estratégia para `NamConfig` com encolhimento.
+fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
+    (
+        prop::collection::vec(arbitrary_layer_config(), 1..6),
+        any::<Option<Option<String>>>(),
+        prop_oneof![Just(Some(0.02f32)), any::<Option<f32>>()],
+        any::<Option<usize>>(),
+        any::<Option<usize>>(),
+    )
+        .prop_map(|(layers, head, head_scale, num_layers, hidden_size)| NamConfig {
+            layers,
+            head,
+            head_scale,
+            num_layers,
+            hidden_size,
+        })
+}
+
+/// Estratégia para `NamDate` com encolhimento.
+fn arbitrary_nam_date() -> impl Strategy<Value = NamDate> {
+    (
+        any::<Option<i32>>(),
+        any::<Option<i32>>(),
+        any::<Option<i32>>(),
+        any::<Option<i32>>(),
+        any::<Option<i32>>(),
+        any::<Option<i32>>(),
+    )
+        .prop_map(|(year, month, day, hour, minute, second)| NamDate {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        })
+}
+
+/// Estratégia para `NamMetadata` com encolhimento.
+fn arbitrary_nam_metadata() -> impl Strategy<Value = NamMetadata> {
+    (
+        arbitrary_nam_date().prop_map(Some),
+        any::<Option<String>>(),
+        any::<Option<String>>(),
+        any::<Option<String>>(),
+        any::<Option<String>>(),
+        any::<Option<String>>(),
+        any::<Option<String>>(),
+        any::<Option<bool>>(), // training presence flag
+        any::<Option<f32>>(),
+        any::<Option<f32>>(),
+        any::<Option<f32>>(),
+    )
+        .prop_map(
+            |(
+                date,
+                name,
+                modeled_by,
+                gear_make,
+                gear_model,
+                gear_type,
+                tone_type,
+                training_has,
+                input_level_dbu,
+                output_level_dbu,
+                loudness,
+            )| {
+                let training = training_has.and_then(|has| {
+                    if has {
+                        Some(serde_json::json!({"epochs": 100, "lr": 0.001}))
+                    } else {
+                        None
+                    }
+                });
+                NamMetadata {
+                    date,
+                    name,
+                    modeled_by,
+                    gear_make,
+                    gear_model,
+                    gear_type,
+                    tone_type,
+                    training,
+                    input_level_dbu,
+                    output_level_dbu,
+                    loudness,
+                }
+            },
+        )
+}
+
+/// Estratégia de encolhimento para `NamModelData`.
+///
+/// Gera modelos sintéticos (WaveNet ou LSTM) com pesos, metadados e configuração
+/// aleatórios. O encolhimento do proptest reduz automaticamente o modelo ao
+/// menor contra-exemplo quando uma asserção falha.
+pub fn arbitrary_nam_model_data() -> impl Strategy<Value = NamModelData> {
+    let arch = prop_oneof![
+        Just("WaveNet".to_string()),
+        Just("LSTM".to_string()),
+    ];
+
+    let layout = prop_oneof![
+        Just(WeightsLayout::Original),
+        Just(WeightsLayout::GateMajorLstm),
+        Just(WeightsLayout::Interleaved4WaveNet),
+    ];
+
+    (
+        any::<Option<String>>(),
+        arch,
+        arbitrary_nam_config(),
+        prop::collection::vec(any::<f32>(), 0..500),
+        any::<Option<f32>>(),
+        arbitrary_nam_metadata().prop_map(Some),
+        layout,
+    )
+        .prop_map(
+            |(version, architecture, config, weights, sample_rate, metadata, weights_layout)| {
+                NamModelData {
+                    version,
+                    architecture,
+                    config,
+                    weights,
+                    sample_rate,
+                    metadata,
+                    weights_layout,
+                }
+            },
+        )
+}
+
+// ---------------------------------------------------------------------------
+// S13.T02 — 100k iterações: header NAMB válido + corpo aleatório
+// ---------------------------------------------------------------------------
+
+/// Gera um byte-array com cabeçalho NAMB v2 sintaticamente válido
+/// (magic, version, flags, offset, crc) seguido de um corpo de pesos
+/// completamente aleatório.
+fn arbitrary_namb_bytes_strategy() -> impl Strategy<Value = Vec<u8>> {
+    const HEADER_SIZE: usize = 80;
+
+    (
+        any::<u32>(),            // sample_rate (reinterpretado como bytes)
+        any::<u32>(),            // input_level_dbu
+        any::<u32>(),            // output_level_dbu
+        any::<[u8; 32]>(),       // version_str
+        any::<u8>(),             // layout_type
+        prop::collection::vec(any::<u8>(), 0..16384),
+    )
+        .prop_map(
+            |(
+                sample_rate_raw,
+                input_level_raw,
+                output_level_raw,
+                version_str,
+                layout_type,
+                body,
+            )| {
+                let offset = HEADER_SIZE;
+                let total_len = offset + body.len();
+                let mut data = vec![0u8; total_len];
+
+                // Magic 'NAMB'
+                data[0..4].copy_from_slice(&0x4E414D42u32.to_le_bytes());
+                // Version 2
+                data[4..6].copy_from_slice(&2u16.to_le_bytes());
+                // Layout type (0=Original, 1=GateMajorLstm, 2=Interleaved4WaveNet)
+                data[6] = layout_type % 3;
+                // Flags: FLAG_HAS_CRC32 set
+                data[7] = FLAG_HAS_CRC32;
+                // Weights offset = 80 (header only, no JSON)
+                data[12..16].copy_from_slice(&(offset as u32).to_le_bytes());
+                // CRC32 computed from the body
+                let crc = crc32_ieee(&body);
+                data[24..28].copy_from_slice(&crc.to_le_bytes());
+                // Version string
+                data[32..64].copy_from_slice(&version_str);
+                // Sample rate
+                data[64..68].copy_from_slice(&sample_rate_raw.to_le_bytes());
+                // Input level dBu
+                data[68..72].copy_from_slice(&input_level_raw.to_le_bytes());
+                // Output level dBu
+                data[72..76].copy_from_slice(&output_level_raw.to_le_bytes());
+
+                // Copy body into weights section
+                data[offset..].copy_from_slice(&body);
+
+                data
+            },
+        )
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Off)),
+        .. ProptestConfig::with_cases(100_000)
+    })]
+
+    /// Fuzz 6: Cabeçalho NAMB v2 válido + corpo de pesos completamente aleatório.
+    ///
+    /// Garante que o parser nunca entra em pânico com 100k combinações de corpo
+    /// arbitrário, mesmo quando o header está sintaticamente correto.
+    /// — Acionado exclusivamente via `utils/tests-long.sh`.
+    #[test]
+    #[ignore]
+    fn prop_fuzz_namb_arbitrary_valid_header(bytes in arbitrary_namb_bytes_strategy()) {
+        let _ = parse_namb(&bytes);
     }
 }

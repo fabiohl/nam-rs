@@ -1179,7 +1179,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Critérios de aceitação:** Round-trip passa para 11 topologias (7 LSTM + 4 WaveNet).
 - **Especialista:** `implementador`.
 
-#### Tarefa S13.T02 — Property-based testing em parsers 💡
+#### Tarefa S13.T02 — Property-based testing em parsers 💡 [DONE]
 
 - **Onde:** `tests/proptest_parsers.rs` (estender).
 - **Solução técnica:**
