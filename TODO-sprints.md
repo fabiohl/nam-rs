@@ -1200,7 +1200,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Especialista:** `implementador`.
 - **Nota do PO:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
 
-#### Tarefa S13.T04 — Teste de prewarm edge (RF grande) ⚠️
+#### Tarefa S13.T04 — Teste de prewarm edge (RF grande) ⚠️ [DONE]
 
 - **Onde:** `tests/wavenet_prewarm_edge.rs` (novo).
 - **Solução técnica:**
