@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Utilitário para exportação de modelos no formato binário `.namb` v2.
+//! Utility for exporting models in the `.namb` v2 binary format.
 //!
-//! Permite converter modelos JSON ou modelos em memória para o formato
-//! binário otimizado com pesos pré-transpostos.
+//! Allows converting JSON models or in-memory models to the optimized
+//! binary format with pre-transposed weights.
 
 use super::nam_json::{NamModelData, WeightsLayout};
 use super::namb::{FLAG_HAS_CRC32, NambHeader, crc32_ieee};
 use anyhow::{Context, Result};
 use std::io::Write;
 
-/// Codifica um `NamModelData` para o formato binário `.namb`.
+/// Encodes a `NamModelData` into the `.namb` binary format.
 pub fn encode_namb(
     data: &NamModelData,
     version: u16,
@@ -19,7 +19,7 @@ pub fn encode_namb(
 ) -> Result<Vec<u8>> {
     let mut buffer = Vec::new();
 
-    // 1. Prepara os pesos transpostos
+    // 1. Prepares the transposed weights
     let transposed_weights = if target_layout != WeightsLayout::Original {
         transpose_weights(data, target_layout)?
     } else {
@@ -31,7 +31,7 @@ pub fn encode_namb(
         .flat_map(|&f| f.to_le_bytes().to_vec())
         .collect();
 
-    // 2. Prepara o JSON de metadados
+    // 2. Prepares the metadata JSON
     let mut metadata_only = data.clone();
     metadata_only.weights = Vec::new();
     let json_str = serde_json::to_string(&metadata_only)?;
@@ -39,7 +39,7 @@ pub fn encode_namb(
 
     let header_flags = if version >= 2 { FLAG_HAS_CRC32 } else { 0 };
 
-    // 3. Constrói o Header
+    // 3. Builds the Header
     let mut header = NambHeader {
         magic: 0x4E414D42,
         version,
@@ -70,7 +70,7 @@ pub fn encode_namb(
     let copy_len = ver_bytes.len().min(32);
     header.version_str[..copy_len].copy_from_slice(&ver_bytes[..copy_len]);
 
-    // 4. Escreve tudo no buffer
+    // 4. Writes everything into the buffer
     let header_bytes = unsafe {
         std::slice::from_raw_parts(
             (&header as *const NambHeader) as *const u8,
@@ -85,53 +85,56 @@ pub fn encode_namb(
     Ok(buffer)
 }
 
-/// Reorganiza os "pesos" para que o processador consiga
-/// lê-los de forma mais eficiente durante a execução do áudio.
+/// Rearranges the "weights" so that the processor can
+/// read them more efficiently during audio execution.
 fn transpose_weights(data: &NamModelData, layout: WeightsLayout) -> Result<Vec<f32>> {
     match layout {
-        // Para LSTM, usamos uma organização onde as "portas" lógicas ficam agrupadas.
+        // For LSTM, we use an organization where the logical "gates" are grouped.
         WeightsLayout::GateMajorLstm => transpose_lstm_gate_major(data),
-        // Para WaveNet, intercalamos os dados para facilitar cálculos em lote (SIMD).
+        // For WaveNet, we interleave the data to facilitate batch calculations (SIMD).
         WeightsLayout::Interleaved4WaveNet => transpose_wavenet_interleaved4(data),
-        // Caso padrão: apenas copia os pesos originais sem alterações.
+        // Default case: simply copies the original weights without changes.
         _ => Ok(data.weights.clone()),
     }
 }
 
-/// Especializado em LSTM: reorganiza os dados para otimizar operações de matriz.
+/// Specialized for LSTM: rearranges the data to optimize matrix operations.
 fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
     if data.architecture != "LSTM" {
-        anyhow::bail!("Layout GateMajorLstm requer arquitetura LSTM");
+        anyhow::bail!("Layout GateMajorLstm requires LSTM architecture");
     }
 
-    // Tamanho da memória interna (hidden) e quantidade de camadas do modelo.
-    let hidden_size = data.config.hidden_size.context("LSTM sem hidden_size")?;
+    // Internal memory size (hidden) and number of model layers.
+    let hidden_size = data
+        .config
+        .hidden_size
+        .context("LSTM without hidden_size")?;
     let num_layers = data.config.num_layers.unwrap_or(1);
 
-    let mut cursor = 0; // "Marcador de página" para sabermos onde estamos nos dados originais.
+    let mut cursor = 0; // "Bookmark" to know where we are in the original data.
     let mut out_weights = Vec::with_capacity(data.weights.len());
 
     let mut current_input_size = 1;
     for l in 0..num_layers {
         let ih = current_input_size + hidden_size;
         let h = hidden_size;
-        let layer_size = 4 * h * ih; // Cada camada LSTM possui 4 "portas" principais.
+        let layer_size = 4 * h * ih; // Each LSTM layer has 4 main "gates".
 
         if cursor + layer_size > data.weights.len() {
-            anyhow::bail!("Pesos insuficientes para LSTM na camada {l}");
+            anyhow::bail!("Insufficient weights for LSTM at layer {l}");
         }
 
         let raw = &data.weights[cursor..cursor + layer_size];
         let mut transposed = vec![0.0f32; layer_size];
 
-        // Loop triplo: reorganizamos as linhas e colunas dos dados (transposição).
-        // Isso permite que o programa faça cálculos matemáticos muito mais rápidos.
+        // Triple loop: we rearrange the rows and columns of the data (transposition).
+        // This allows the program to perform mathematical calculations much faster.
         for k in 0..4 {
-            // Percorre as 4 portas do LSTM
+            // Iterates over the 4 LSTM gates
             for i in 0..h {
                 for j in 0..ih {
                     let val = raw[k * h * ih + i * ih + j];
-                    // Trocamos a ordem de leitura para o formato que o "motor" espera.
+                    // We swap the reading order to the format the "engine" expects.
                     transposed[k * h * ih + j * h + i] = val;
                 }
             }
@@ -139,19 +142,19 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
         out_weights.extend(transposed);
         cursor += layer_size;
 
-        // Processamento dos Bias (valores de ajuste/calibração de cada neurônio).
+        // Bias processing (adjustment/calibration values for each neuron).
         let bias_size = 4 * h;
         if cursor + bias_size > data.weights.len() {
-            anyhow::bail!("Bias insuficiente para LSTM na camada {l}");
+            anyhow::bail!("Insufficient bias for LSTM at layer {l}");
         }
         out_weights.extend_from_slice(&data.weights[cursor..cursor + bias_size]);
         cursor += bias_size;
 
-        // Processamento dos estados iniciais da camada (hidden_init e cell_init).
-        // Isso é necessário para manter a paridade com a ordem que o decodificador espera.
+        // Processing of the layer's initial states (hidden_init and cell_init).
+        // This is necessary to maintain parity with the order the decoder expects.
         let state_size = 2 * h; // hidden_init (h) + cell_init (h)
         if cursor + state_size > data.weights.len() {
-            anyhow::bail!("Estados iniciais insuficientes para LSTM na camada {l}");
+            anyhow::bail!("Insufficient initial states for LSTM at layer {l}");
         }
         out_weights.extend_from_slice(&data.weights[cursor..cursor + state_size]);
         cursor += state_size;
@@ -159,8 +162,8 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
         current_input_size = hidden_size;
     }
 
-    // Caso existam pesos extras no final do arquivo (como a camada de saída),
-    // nós os adicionamos sem alteração (head_weights e head_bias).
+    // If there are extra weights at the end of the file (such as the output layer),
+    // we add them without modification (head_weights and head_bias).
     if cursor < data.weights.len() {
         out_weights.extend_from_slice(&data.weights[cursor..]);
     }
@@ -168,18 +171,18 @@ fn transpose_lstm_gate_major(data: &NamModelData) -> Result<Vec<f32>> {
     Ok(out_weights)
 }
 
-/// Especializado em WaveNet: reorganiza os dados para que o processador possa
-/// processar 4 canais simultaneamente (técnica chamada SIMD Interleaved).
+/// Specialized for WaveNet: rearranges the data so that the processor can
+/// process 4 channels simultaneously (technique called SIMD Interleaved).
 fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
     if data.architecture != "WaveNet" {
-        anyhow::bail!("Layout Interleaved4WaveNet requer arquitetura WaveNet");
+        anyhow::bail!("Layout Interleaved4WaveNet requires WaveNet architecture");
     }
 
     let mut cursor = 0;
     let mut out_weights = Vec::with_capacity(data.weights.len());
 
     for (li, layer_cfg) in data.config.layers.iter().enumerate() {
-        // Extraímos as configurações de tamanho do "cérebro" para cada camada.
+        // We extract the "brain" size configurations for each layer.
         let in_ch = layer_cfg.input_size.unwrap_or(1);
         let ch = layer_cfg.channels.unwrap_or(16);
         let cond_ch = layer_cfg.condition_size.unwrap_or(1);
@@ -188,12 +191,12 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         let dilations = layer_cfg
             .dilations
             .as_ref()
-            .context("WaveNet sem dilatações")?;
+            .context("WaveNet without dilations")?;
         let gated = layer_cfg.gated.unwrap_or(false);
         let conv_out_ch = if gated { 2 * ch } else { ch };
 
-        // 1. Rechannel: Ajusta a entrada para o número de canais internos.
-        // Transpõe [Canais de Saída][Canais de Entrada] -> [Entrada][Saída].
+        // 1. Rechannel: Adjusts the input to the number of internal channels.
+        // Transposes [Output Channels][Input Channels] -> [Input][Output].
         let size = ch * in_ch;
         ensure_capacity(
             &data.weights,
@@ -209,11 +212,11 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         }
         cursor += size;
 
-        // 2. Camadas de Convolução (os "filtros" que moldam o som).
+        // 2. Convolution Layers (the "filters" that shape the sound).
         for (di, _) in dilations.iter().enumerate() {
-            // Conv1D: Reorganizamos para o formato "Interleaved 4".
-            // Isso agrupa os dados em blocos de 4, permitindo que processadores modernos
-            // façam 4 cálculos no tempo de 1.
+            // Conv1D: We rearrange to the "Interleaved 4" format.
+            // This groups data into blocks of 4, allowing modern processors
+            // to perform 4 calculations in the time of 1.
             let size = conv_out_ch * ch * k;
             ensure_capacity(
                 &data.weights,
@@ -239,7 +242,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             }
             cursor += size;
 
-            // Bias: Valores de ajuste fino para os filtros de convolução.
+            // Bias: Fine-tuning values for the convolution filters.
             ensure_capacity(
                 &data.weights,
                 cursor,
@@ -249,7 +252,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             out_weights.extend_from_slice(&data.weights[cursor..cursor + conv_out_ch]);
             cursor += conv_out_ch;
 
-            // Input Mixin: Combina o sinal de áudio com controles externos (se houver).
+            // Input Mixin: Combines the audio signal with external controls (if any).
             let size = ch * cond_ch;
             ensure_capacity(
                 &data.weights,
@@ -265,7 +268,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             }
             cursor += size;
 
-            // 1x1: Camada de ajuste interno que mistura os canais processados.
+            // 1x1: Internal adjustment layer that mixes the processed channels.
             let size = ch * ch;
             ensure_capacity(
                 &data.weights,
@@ -281,7 +284,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             }
             cursor += size;
 
-            // 1x1 Bias: Ajuste fino para a mistura de canais.
+            // 1x1 Bias: Fine-tuning for the channel mixing.
             ensure_capacity(
                 &data.weights,
                 cursor,
@@ -292,7 +295,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
             cursor += ch;
         }
 
-        // 3. Head Rechannel: Prepara o sinal final para sair da camada WaveNet.
+        // 3. Head Rechannel: Prepares the final signal to exit the WaveNet layer.
         let size = head_ch * ch;
         ensure_capacity(
             &data.weights,
@@ -308,7 +311,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         }
         cursor += size;
 
-        // Head Rechannel Bias: Ajuste final de saída.
+        // Head Rechannel Bias: Final output adjustment.
         if layer_cfg.head_bias.unwrap_or(false) {
             ensure_capacity(
                 &data.weights,
@@ -321,7 +324,7 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
         }
     }
 
-    // Caso existam pesos extras (como escala final), adicionamos ao final.
+    // If there are extra weights (such as final scale), we add them at the end.
     if cursor < data.weights.len() {
         out_weights.extend_from_slice(&data.weights[cursor..]);
     }
@@ -329,12 +332,12 @@ fn transpose_wavenet_interleaved4(data: &NamModelData) -> Result<Vec<f32>> {
     Ok(out_weights)
 }
 
-/// Função de segurança: garante que não tentaremos ler dados além do que existe no arquivo.
-/// Se o modelo estiver corrompido ou incompleto, o programa avisa em vez de travar.
+/// Safety function: ensures we won't try to read data beyond what exists in the file.
+/// If the model is corrupted or incomplete, the program warns instead of crashing.
 fn ensure_capacity(weights: &[f32], cursor: usize, needed: usize, label: String) -> Result<()> {
     if cursor + needed > weights.len() {
         anyhow::bail!(
-            "Pesos insuficientes para {}: necessita de index {}..{}, mas comprimento total é {}",
+            "Insufficient weights for {}: needs index {}..{}, but total length is {}",
             label,
             cursor,
             cursor + needed,

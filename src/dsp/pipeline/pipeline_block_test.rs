@@ -16,7 +16,7 @@ mod block_tests {
     use std::path::PathBuf;
     use std::sync::atomic::Ordering;
 
-    /// Helper para resolver o caminho dos modelos de teste.
+    /// Helper to resolve the path for test models.
     fn get_test_model_path(name: &str) -> PathBuf {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("tests/fixtures/models");
@@ -24,52 +24,52 @@ mod block_tests {
         path
     }
 
-    /// Helper para carregar um modelo NAM para testes.
+    /// Helper to load a NAM model for testing.
     fn load_test_model(name: &str) -> Box<DynamicModel> {
         let path = get_test_model_path(name);
-        let json_data = fs::read_to_string(path).expect("Falha ao ler arquivo do modelo");
-        let model_data = parse_nam_json(&json_data).expect("Falha ao processar JSON do modelo");
-        build_model(&model_data).expect("Falha ao construir modelo")
+        let json_data = fs::read_to_string(path).expect("Failed to read model file");
+        let model_data = parse_nam_json(&json_data).expect("Failed to process model JSON");
+        build_model(&model_data).expect("Failed to build model")
     }
 
-    /// Executor principal do teste de pipeline com block size variável.
+    /// Main test executor for pipeline with variable block size.
     fn run_block_size_test(model_name: Option<&str>, block_size: usize) {
         run_block_size_test_with_iterations(model_name, block_size, 1);
     }
 
-    /// Executor principal do teste de pipeline com block size variável e múltiplas iterações.
+    /// Main test executor for pipeline with variable block size and multiple iterations.
     fn run_block_size_test_with_iterations(
         model_name: Option<&str>,
         block_size: usize,
         iterations: usize,
     ) {
-        // Se o tamanho do bloco for 0, não faz sentido testar.
+        // If the block size is 0, there's no point testing.
         if block_size == 0 {
             return;
         }
-        // Se exceder o limite do bridge, limitamos para o teste não dar panic por overflow de buffer fixo.
+        // If it exceeds the bridge limit, cap it so the test doesn't panic on fixed buffer overflow.
         let n = block_size.min(MAX_BRIDGE_BUF);
 
-        // Carrega o modelo de simulação de amplificador (LSTM ou WaveNet) se um nome foi fornecido.
+        // Loads the amplifier simulation model (LSTM or WaveNet) if a name was provided.
         let mut model = model_name.map(load_test_model);
         if let Some(ref mut m) = model {
-            // O "prewarm" prepara o estado interno do modelo para processar áudio imediatamente,
-            // evitando estalos ou silêncio nas primeiras amostras.
+            // "Prewarm" prepares the model's internal state to process audio immediately,
+            // avoiding pops or silence in the first samples.
             m.prewarm(2048);
         }
 
-        // Inicializa o reamostrador (Resampler). Aqui usamos 48kHz -> 48kHz (bypass)
-        // apenas para testar a infraestrutura de bufferização do resampler com tamanhos de bloco estranhos.
+        // Initializes the Resampler. Here we use 48kHz -> 48kHz (bypass)
+        // only to test the resampler buffering infrastructure with odd block sizes.
         let mut resampler = NamResampler::new(48000, 48000, n).unwrap();
 
-        // Flags de status em tempo real (indicam se houve clipping ou outros problemas).
+        // Real-time status flags (indicate whether clipping or other issues occurred).
         let rt_status = RtStatusFlags::default();
 
-        // O DspBridge é a nossa "ponte" de memória. Ele armazena o áudio processado para ser
-        // lido por outra thread (como a interface gráfica ou o gravador).
-        // Usamos Box para garantir que ele tenha um endereço de memória fixo (heap).
+        // The DspBridge is our memory "bridge". It stores processed audio for
+        // another thread (such as the GUI or recorder) to read.
+        // We use Box to guarantee a fixed memory address (heap).
         let mut bridge = Box::new(DspBridge {
-            // Criamos dois buffers para técnica de "Double Buffering" (evita que quem lê atrapalhe quem escreve).
+            // We create two buffers for the "Double Buffering" technique (prevents readers from disrupting writers).
             buffers: [
                 BridgeBuffer {
                     buf_l: [0.0; MAX_BRIDGE_BUF],
@@ -82,14 +82,14 @@ mod block_tests {
                     n_samples: 0,
                 },
             ],
-            // Contadores atômicos para sincronização segura entre threads sem usar travas (locks).
+            // Atomic counters for safe synchronization between threads without locks.
             active_read_idx: std::sync::atomic::AtomicUsize::new(0),
             generation: std::sync::atomic::AtomicU64::new(0),
             consumed_gen: std::sync::atomic::AtomicU64::new(0),
             dropped_frames: std::sync::atomic::AtomicU32::new(0),
         });
 
-        // Alocamos buffers intermediários necessários para as etapas de processamento.
+        // We allocate intermediate buffers needed for the processing stages.
         let mut resamp_mid_l = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_mid_r = vec![0.0; MAX_RESAMP_BUF];
         let mut resamp_out_l = vec![0.0; MAX_RESAMP_BUF];
@@ -97,21 +97,21 @@ mod block_tests {
         let mut model_out_l = [0.0; MAX_RESAMP_BUF];
         let mut model_out_r = [0.0; MAX_RESAMP_BUF];
 
-        // Configuração do Noise Gate (supressor de ruído).
+        // Noise Gate configuration (noise suppressor).
         let gate_params = GateParams::default();
-        // Histerese controla a suavidade da abertura e fechamento do som para evitar "pipocos".
+        // Hysteresis controls the smoothness of sound opening and closing to avoid "pops".
         let mut silence_hysteresis = DynamicHysteresis::new();
         let mut mono_hysteresis = DynamicHysteresis::new();
         let mut process_mono = false;
 
-        // Criamos amostras de teste (um sinal constante de 0.1) para processar.
+        // We create test samples (a constant 0.1 signal) to process.
         let mut samples_l = vec![0.1; n];
         let mut samples_r = vec![0.1; n];
 
         let _guard = TrackingGuard::new();
 
         for _ in 0..iterations {
-            // O Contexto (ctx) agrupa todas as ferramentas que o pipeline precisa para trabalhar.
+            // The Context (ctx) groups all the tools the pipeline needs to work.
             let ctx = DspPipelineContext {
                 resampler: &mut resampler,
                 active_model_l: &mut model,
@@ -125,7 +125,7 @@ mod block_tests {
                 threshold_close_sq: 0.0,
                 process_mono: &mut process_mono,
                 rt_status: &rt_status,
-                // BridgeRef é um ponteiro seguro para a ponte de áudio.
+                // BridgeRef is a safe pointer to the audio bridge.
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
                 },
@@ -140,30 +140,34 @@ mod block_tests {
                 model_out_r: &mut model_out_r,
             };
 
-            // Executamos o pipeline principal que orquestra todo o DSP do NAM-rs.
+            // We run the main pipeline that orchestrates all NAM-rs DSP.
             capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
         }
 
-        // Verificamos quantas alocações ocorreram durante o processamento.
+        // We check how many allocations occurred during processing.
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
-        // Removemos a vigia.
+        // We remove the watchdog.
         drop(_guard);
 
-        assert_eq!(allocs, 0, "Alocação detectada em {} iterações", iterations);
+        assert_eq!(
+            allocs, 0,
+            "Allocation detected in {} iterations",
+            iterations
+        );
 
         let read_idx = bridge.active_read_idx.load(Ordering::Acquire);
         let out_buf = &bridge.buffers[read_idx];
         assert_eq!(out_buf.n_samples as usize, n);
 
-        // Verificação de sanidade matemática: o áudio não pode "explodir" (virar NaN ou Infinito).
+        // Mathematical sanity check: audio must not "blow up" (become NaN or Infinity).
         for i in 0..n {
             assert!(out_buf.buf_l[i].is_finite());
             assert!(out_buf.buf_r[i].is_finite());
         }
     }
 
-    /// TESTE: Tamanhos de bloco não-convencionais para modelos LSTM.
-    /// Hosts como Bitwig Studio podem enviar blocos de qualquer tamanho (ex: 7 ou 17 samples).
+    /// TEST: Unconventional block sizes for LSTM models.
+    /// Hosts like Bitwig Studio can send blocks of any size (e.g. 7 or 17 samples).
     #[test]
     fn test_unconventional_block_sizes_lstm() {
         let sizes = [1, 3, 7, 8, 9, 17, 33, 53, 64, 128, 256, 512];
@@ -172,7 +176,7 @@ mod block_tests {
         }
     }
 
-    /// TESTE: Tamanhos de bloco não-convencionais para modelos WaveNet.
+    /// TEST: Unconventional block sizes for WaveNet models.
     #[test]
     fn test_unconventional_block_sizes_wavenet() {
         let sizes = [1, 3, 7, 8, 9, 17, 33, 53, 64, 128, 256, 512];
@@ -181,28 +185,28 @@ mod block_tests {
         }
     }
 
-    /// TESTE: Casos de borda (extremos).
+    /// TEST: Edge cases (extremes).
     #[test]
     fn test_zero_alloc_edge_cases() {
-        // n_samples = 1 (mínimo possível)
+        // n_samples = 1 (minimum possible)
         run_block_size_test(Some("BossWN-nano.nam"), 1);
-        // n_samples = MAX_BRIDGE_BUF (máximo suportado pelo nosso buffer interno)
+        // n_samples = MAX_BRIDGE_BUF (maximum supported by our internal buffer)
         run_block_size_test(Some("BossWN-nano.nam"), MAX_BRIDGE_BUF);
     }
 
-    /// TESTE: Estresse de Zero-Alocação para casos de borda (Tarefa 3.2.3).
-    /// Valida que blocos de 1 sample e blocos de tamanho máximo não alocam no hot-path sob estresse.
+    /// TEST: Zero-Allocation Stress for edge cases (Task 3.2.3).
+    /// Validates that 1-sample blocks and max-size blocks do not allocate on the hot-path under stress.
     #[test]
     fn test_zero_alloc_stress_edge_cases() {
-        // 1. Cenário: n_frames = 1 (1000 invocações consecutivas)
+        // 1. Scenario: n_frames = 1 (1000 consecutive invocations)
         run_block_size_test_with_iterations(Some("BossWN-nano.nam"), 1, 1000);
-        // 2. Cenário: n_frames = MAX_BRIDGE_BUF (100 invocações)
+        // 2. Scenario: n_frames = MAX_BRIDGE_BUF (100 invocations)
         run_block_size_test_with_iterations(Some("BossWN-nano.nam"), MAX_BRIDGE_BUF, 100);
     }
 
     // Property-Based Testing (Proptest):
-    // Em vez de escolhermos os números, deixamos o computador gerar 500 tamanhos
-    // aleatórios entre 1 e 8192 para tentar quebrar o nosso código.
+    // Instead of choosing the numbers ourselves, we let the computer generate 500 random
+    // sizes between 1 and 8192 to try to break our code.
     proptest! {
         #![proptest_config(ProptestConfig {
             failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::SourceParallel("tests/proptest-regressions"))),

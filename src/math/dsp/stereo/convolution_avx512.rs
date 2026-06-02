@@ -9,8 +9,8 @@
 
 use core::arch::x86_64::*;
 
-/// Convolução Stereo: Aplica um filtro (coeficientes) em dois canais de áudio ao mesmo tempo.
-/// É como passar o som por um equalizador ou simular uma sala (reverb).
+/// Stereo Convolution: Applies a filter (coefficients) to two audio channels at the same time.
+/// It's like passing sound through an equalizer or simulating a room (reverb).
 #[target_feature(enable = "avx512f")]
 pub unsafe fn convolve_stereo_avx512(
     coeffs: *const f32,
@@ -55,10 +55,10 @@ pub unsafe fn convolve_stereo_avx512(
     (out_l, out_r)
 }
 
-/// Convolução Stereo Dual AVX-512.
-/// Realiza duas convoluções estéreo (para dois conjuntos de coeficientes coeffs0 e coeffs1)
-/// sobre os mesmos buffers de entrada input_l e input_r.
-/// Carrega amostras de entrada uma única vez e aplica a ambos os conjuntos de coeficientes.
+/// Stereo Dual Convolution AVX-512.
+/// Performs two stereo convolutions (for two coefficient sets coeffs0 and coeffs1)
+/// over the same input buffers input_l and input_r.
+/// Loads input samples once and applies them to both coefficient sets.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn convolve_stereo_dual_avx512(
     coeffs0: *const f32,
@@ -108,8 +108,8 @@ pub unsafe fn convolve_stereo_dual_avx512(
     ((out0_l, out0_r), (out1_l, out1_r))
 }
 
-/// Convolução Mono AVX-512.
-/// Carrega coeficientes e aplica a um único canal.
+/// Mono Convolution AVX-512.
+/// Loads coefficients and applies them to a single channel.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn convolve_mono_avx512(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     let mut sum0 = _mm512_setzero_ps();

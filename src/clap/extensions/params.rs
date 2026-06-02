@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão de parâmetros CLAP para o NAM-rs.
+//! Implementation of the CLAP parameters extension for NAM-rs.
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::clap::processor::NamClapProcessor;
@@ -14,16 +14,16 @@ use clack_plugin::events::event_types::ParamValueEvent;
 use clack_plugin::prelude::{ClapId, InputEvents, OutputEvents};
 use std::ffi::CStr;
 
-/// Constantes de ID para os parâmetros CLAP.
-/// ID do parâmetro de ganho de entrada.
+/// Constants for CLAP parameter IDs.
+/// Input gain parameter ID.
 pub const PARAM_INPUT_GAIN: u32 = 0;
-/// ID do parâmetro de ganho de saída.
+/// Output gain parameter ID.
 pub const PARAM_OUTPUT_GAIN: u32 = 1;
-/// ID do parâmetro de threshold do noise gate.
+/// Noise gate threshold parameter ID.
 pub const PARAM_GATE_THRESH: u32 = 2;
-/// ID do parâmetro de bypass do plugin.
+/// Plugin bypass parameter ID.
 pub const PARAM_BYPASS: u32 = 3;
-/// ID do parâmetro do nome do modelo carregado (somente leitura).
+/// Loaded model name parameter ID (read-only).
 pub const PARAM_ACTIVE_MODEL: u32 = 4;
 
 impl PluginMainThreadParams for NamClapMainThread<'_> {
@@ -212,13 +212,13 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
         }
     }
 
-    /// Processa eventos de parâmetros recebidos do host enquanto o processamento está inativo.
+    /// Processes parameter events received from the host while processing is inactive.
     ///
-    /// Este método é chamado pela Main Thread quando não há `AudioProcessor` ativo.
-    /// Atualiza tanto os parâmetros locais quanto os atômicos compartilhados, e
-    /// envia o snapshot atualizado para a Audio Thread via canal SPSC.
+    /// This method is called by the Main Thread when no `AudioProcessor` is active.
+    /// Updates both local parameters and shared atomics, and
+    /// sends the updated snapshot to the Audio Thread via the SPSC channel.
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
-        // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
+        // Send any pending parameter/gesture updates originating from the GUI to the host.
         self.shared.write_gui_events(output);
 
         for event in input {
@@ -260,7 +260,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 _ => continue,
             }
 
-            // Sincroniza com a thread RT (apenas se for chamado na main thread offline, mas não faz mal)
+            // Sync with the RT thread (only if called on the offline main thread, but harmless)
             let _ = self
                 .param_tx
                 .push(ClapParamPayload::Params(self.params.clone()));
@@ -268,27 +268,27 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
     }
 }
 
-/// Implementação de `PluginAudioProcessorParams` para a Audio Thread.
+/// Implementation of `PluginAudioProcessorParams` for the Audio Thread.
 ///
-/// # Design: Duplicação Intencional
+/// # Design: Intentional Duplication
 ///
-/// O parsing de eventos de parâmetros aqui é estruturalmente idêntico ao de
-/// `PluginMainThreadParams::flush()` acima. Esta duplicação é **intencional**:
+/// The parameter event parsing here is structurally identical to the one in
+/// `PluginMainThreadParams::flush()` above. This duplication is **intentional**:
 ///
-/// - **Main Thread flush()**: Atualiza `self.params` + atômicos + envia snapshot via SPSC
-///   (necessário porque a Audio Thread pode não estar ativa).
-/// - **Audio Thread flush()**: Atualiza `self.params` + atômicos + sincroniza parâmetros
-///   vindos da GUI via leitura direta dos atômicos (sem SPSC, pois já estamos na Audio Thread).
+/// - **Main Thread flush()**: Updates `self.params` + atomics + sends snapshot via SPSC
+///   (necessary because the Audio Thread may not be active).
+/// - **Audio Thread flush()**: Updates `self.params` + atomics + syncs parameters
+///   coming from the GUI via direct atomic reads (no SPSC, since we're already on the Audio Thread).
 ///
-/// Extrair uma helper comum seria possível mas adicionaria indireção desnecessária
-/// e complicaria os lifetimes do `self` mutável em cada contexto.
+/// Extracting a common helper would be possible but would add unnecessary indirection
+/// and complicate the `self` mutable lifetimes in each context.
 impl PluginAudioProcessorParams for NamClapProcessor<'_> {
-    /// Processa eventos de parâmetros na Audio Thread quando `process()` não está sendo chamado.
+    /// Processes parameter events on the Audio Thread when `process()` is not being called.
     ///
-    /// Além de aplicar eventos do host, este método também sincroniza parâmetros
-    /// que foram alterados pela GUI diretamente nos atômicos compartilhados.
+    /// In addition to applying host events, this method also syncs parameters
+    /// that were changed by the GUI directly in the shared atomics.
     fn flush(&mut self, input: &InputEvents, output: &mut OutputEvents) {
-        // Envia quaisquer atualizações de parâmetros/gestos pendentes originados da GUI para o host.
+        // Send any pending parameter/gesture updates originating from the GUI to the host.
         self.shared.write_gui_events(output);
 
         for event in input {
@@ -331,11 +331,11 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             }
         }
 
-        // ── Sincronização GUI → Audio Thread ───────────────────────────────────
-        // A GUI escreve diretamente nos atômicos de `NamClapShared` (ex: `param_input_gain`).
-        // O host pode não ecoar essas mudanças como eventos de entrada neste ciclo.
-        // Aqui, lemos os atômicos e atualizamos `self.params` se houver divergência.
-        // Isso garante que o próximo `process()` use valores atualizados.
+        // ── GUI → Audio Thread Synchronization ───────────────────────────────────
+        // The GUI writes directly to `NamClapShared` atomics (e.g., `param_input_gain`).
+        // The host may not echo these changes as input events in this cycle.
+        // Here, we read the atomics and update `self.params` if there is any divergence.
+        // This ensures that the next `process()` call uses updated values.
         let shared_in_db = f32::from_bits(
             self.shared
                 .param_input_gain

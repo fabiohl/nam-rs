@@ -9,8 +9,8 @@
 
 use core::arch::x86_64::*;
 
-/// Convolução Stereo Interleaved AVX2.
-/// Carrega coeficientes uma única vez e aplica a ambos os canais.
+/// Stereo Interleaved Convolution AVX2.
+/// Loads coefficients once and applies them to both channels.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn convolve_stereo_avx2(
     coeffs: *const f32,
@@ -49,7 +49,7 @@ pub unsafe fn convolve_stereo_avx2(
         i += 8;
     }
 
-    // Redução horizontal L
+    // Horizontal reduction L
     let sum_l = _mm256_add_ps(sum_l0, sum_l1);
     let hi128_l = _mm256_extractf128_ps(sum_l, 1);
     let lo128_l = _mm256_castps256_ps128(sum_l);
@@ -60,7 +60,7 @@ pub unsafe fn convolve_stereo_avx2(
     let r_l = _mm_add_ss(sums_l, shuf2_l);
     let mut out_l = _mm_cvtss_f32(r_l);
 
-    // Redução horizontal R
+    // Horizontal reduction R
     let sum_r = _mm256_add_ps(sum_r0, sum_r1);
     let hi128_r = _mm256_extractf128_ps(sum_r, 1);
     let lo128_r = _mm256_castps256_ps128(sum_r);
@@ -81,10 +81,10 @@ pub unsafe fn convolve_stereo_avx2(
     (out_l, out_r)
 }
 
-/// Convolução Stereo Dual AVX2.
-/// Realiza duas convoluções estéreo (para dois conjuntos de coeficientes coeffs0 e coeffs1)
-/// sobre os mesmos buffers de entrada input_l e input_r.
-/// Carrega amostras de entrada uma única vez e aplica a ambos os conjuntos de coeficientes.
+/// Stereo Dual Convolution AVX2.
+/// Performs two stereo convolutions (for two coefficient sets coeffs0 and coeffs1)
+/// over the same input buffers input_l and input_r.
+/// Loads input samples once and applies them to both coefficient sets.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn convolve_stereo_dual_avx2(
     coeffs0: *const f32,
@@ -152,7 +152,7 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let sum1_l = _mm256_add_ps(sum1_l0, sum1_l1);
     let sum1_r = _mm256_add_ps(sum1_r0, sum1_r1);
 
-    // Redução horizontal sum0_l
+    // Horizontal reduction sum0_l
     let hi128_0l = _mm256_extractf128_ps(sum0_l, 1);
     let lo128_0l = _mm256_castps256_ps128(sum0_l);
     let s128_0l = _mm_add_ps(lo128_0l, hi128_0l);
@@ -162,7 +162,7 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let r_0l = _mm_add_ss(sums_0l, shuf2_0l);
     let mut out0_l = _mm_cvtss_f32(r_0l);
 
-    // Redução horizontal sum0_r
+    // Horizontal reduction sum0_r
     let hi128_0r = _mm256_extractf128_ps(sum0_r, 1);
     let lo128_0r = _mm256_castps256_ps128(sum0_r);
     let s128_0r = _mm_add_ps(lo128_0r, hi128_0r);
@@ -172,7 +172,7 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let r_0r = _mm_add_ss(sums_0r, shuf2_0r);
     let mut out0_r = _mm_cvtss_f32(r_0r);
 
-    // Redução horizontal sum1_l
+    // Horizontal reduction sum1_l
     let hi128_1l = _mm256_extractf128_ps(sum1_l, 1);
     let lo128_1l = _mm256_castps256_ps128(sum1_l);
     let s128_1l = _mm_add_ps(lo128_1l, hi128_1l);
@@ -182,7 +182,7 @@ pub unsafe fn convolve_stereo_dual_avx2(
     let r_1l = _mm_add_ss(sums_1l, shuf2_1l);
     let mut out1_l = _mm_cvtss_f32(r_1l);
 
-    // Redução horizontal sum1_r
+    // Horizontal reduction sum1_r
     let hi128_1r = _mm256_extractf128_ps(sum1_r, 1);
     let lo128_1r = _mm256_castps256_ps128(sum1_r);
     let s128_1r = _mm_add_ps(lo128_1r, hi128_1r);
@@ -207,8 +207,8 @@ pub unsafe fn convolve_stereo_dual_avx2(
     ((out0_l, out0_r), (out1_l, out1_r))
 }
 
-/// Convolução Mono AVX2.
-/// Carrega coeficientes e aplica a um único canal.
+/// Mono Convolution AVX2.
+/// Loads coefficients and applies them to a single channel.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn convolve_mono_avx2(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     let mut sum0 = _mm256_setzero_ps();
@@ -234,7 +234,7 @@ pub unsafe fn convolve_mono_avx2(coeffs: *const f32, input: *const f32, taps: us
         i += 8;
     }
 
-    // Redução horizontal
+    // Horizontal reduction
     let sum = _mm256_add_ps(sum0, sum1);
     let hi128 = _mm256_extractf128_ps(sum, 1);
     let lo128 = _mm256_castps256_ps128(sum);

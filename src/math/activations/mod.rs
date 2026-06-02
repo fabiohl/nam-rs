@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo central de ativações com despacho (dispatch) automático de SIMD.
+//! Central activations module with automatic SIMD dispatch.
 //!
-//! Fornece implementações ultra-rápidas e branchless de `tanh` e `sigmoid` baseadas em
-//! aproximantes racionais de Padé [5,4], otimizadas para o throughput de instruções
-//! FMA em processadores x86-64.
+//! Provides ultra-fast and branchless implementations of `tanh` and `sigmoid` based on
+//! Padé [5,4] rational approximants, optimized for FMA instruction throughput
+//! on x86-64 processors.
 //!
-//! - `tanh(x) ≈ x · (x⁴ + 105·x² + 945) / (15·x⁴ + 420·x² + 945)` para |x| < 4, saturado em [-1, 1].
-//! - `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)` (reutiliza kernel tanh).
+//! - `tanh(x) ≈ x · (x⁴ + 105·x² + 945) / (15·x⁴ + 420·x² + 945)` for |x| < 4, saturated to [-1, 1].
+//! - `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)` (reuses tanh kernel).
 //!
-//! Referência: VDT library (CERN), Mineiro & Vorlicek (2016).
+//! Reference: VDT library (CERN), Mineiro & Vorlicek (2016).
 //!
-//! # Características
-//! - **FastMath**: Aproximações que priorizam velocidade, mantendo erro < 5e-3 (compatível FP16).
-//! - **Branchless**: Zero branches — apenas máscaras SIMD (max/min/blend).
-//! - **Dispatch**: Seleção automática de kernels (AVX2, AVX-512) via CPUID.
-//! - **Zero-Alloc**: Operações estritamente seguras para uso em threads de tempo-real.
-//! - **AMX/AVX10.2-ready**: Abordagem branchless compatível com futuras extensões.
+//! # Features
+//! - **FastMath**: Approximations that prioritize speed while keeping error < 5e-3 (FP16-compatible).
+//! - **Branchless**: Zero branches — only SIMD masks (max/min/blend).
+//! - **Dispatch**: Automatic kernel selection (AVX2, AVX-512) via CPUID.
+//! - **Zero-Alloc**: Operations strictly safe for use in real-time threads.
+//! - **AMX/AVX10.2-ready**: Branchless approach compatible with future extensions.
 
 pub mod fused;
 pub mod prelu;
@@ -40,7 +40,7 @@ pub use tanh::*;
 
 use crate::math::common::{InstructionSet, SIMD_MATH};
 
-/// Aplica a ativação Tanh a um slice de f32 com despacho automático para a melhor implementação SIMD.
+/// Applies Tanh activation to a slice of f32 with automatic dispatch to the best SIMD implementation.
 #[inline(always)]
 pub fn tanh_slice(data: &mut [f32]) {
     match SIMD_MATH.instruction_set {
@@ -53,7 +53,7 @@ pub fn tanh_slice(data: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação Sigmoid a um slice de f32 com despacho automático.
+/// Applies Sigmoid activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn sigmoid_slice(data: &mut [f32]) {
     match SIMD_MATH.instruction_set {
@@ -66,7 +66,7 @@ pub fn sigmoid_slice(data: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação ReLU a um slice de f32 com despacho automático.
+/// Applies ReLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn relu_slice(data: &mut [f32]) {
     match SIMD_MATH.instruction_set {
@@ -79,7 +79,7 @@ pub fn relu_slice(data: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação PReLU a um slice de f32 com despacho automático.
+/// Applies PReLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn prelu_slice(data: &mut [f32], slopes: &[f32]) {
     match SIMD_MATH.instruction_set {
@@ -92,7 +92,7 @@ pub fn prelu_slice(data: &mut [f32], slopes: &[f32]) {
     }
 }
 
-/// Aplica a ativação Softsign a um slice de f32 com despacho automático.
+/// Applies Softsign activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn softsign_slice(data: &mut [f32]) {
     match SIMD_MATH.instruction_set {
@@ -105,7 +105,7 @@ pub fn softsign_slice(data: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação SiLU a um slice de f32 com despacho automático.
+/// Applies SiLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn silu_slice(data: &mut [f32]) {
     match SIMD_MATH.instruction_set {

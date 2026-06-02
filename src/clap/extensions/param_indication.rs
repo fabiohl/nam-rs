@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão `clap_plugin_param_indication` para o NAM-rs.
+//! Implementation of the `clap_plugin_param_indication` extension for NAM-rs.
 
 use crate::clap::plugin::NamClapMainThread;
 use clack_common::utils::{ClapId, Color};
@@ -11,18 +11,18 @@ use clack_extensions::param_indication::{
 use std::ffi::CStr;
 use std::sync::atomic::Ordering;
 
-/// Indica que o parâmetro possui mapeamento ativo.
+/// Indicates that the parameter has active mapping.
 pub const INDICATION_MAPPED: u8 = 1 << 0;
-/// Indica que o parâmetro está sendo automatizado.
+/// Indicates that the parameter is being automated.
 pub const INDICATION_AUTOMATING: u8 = 1 << 1;
-/// Indica que o parâmetro possui um override de automação ativo.
+/// Indicates that the parameter has an active automation override.
 pub const INDICATION_OVERRIDING: u8 = 1 << 2;
 
 impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
-    /// Informa ao plugin que um parâmetro possui (ou não) mapeamento ativo no host.
+    /// Notifies the plugin that a parameter has (or does not have) active mapping in the host.
     ///
-    /// Atualiza o bit `INDICATION_MAPPED` e armazena a cor ARGB empacotada
-    /// nos atômicos compartilhados para leitura pela GUI thread.
+    /// Updates the `INDICATION_MAPPED` bit and stores the packed ARGB color
+    /// in shared atomics for reading by the GUI thread.
     fn set_mapping(
         &mut self,
         param_id: ClapId,
@@ -51,11 +51,11 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
         }
     }
 
-    /// Informa ao plugin o estado de automação de um parâmetro (None/Present/Playing/Recording/Overriding).
+    /// Notifies the plugin of the automation state of a parameter (None/Present/Playing/Recording/Overriding).
     ///
-    /// Atualiza os bits `INDICATION_AUTOMATING` e `INDICATION_OVERRIDING`,
-    /// garantindo exclusão mútua entre os dois estados. A cor fornecida pelo host
-    /// é armazenada para uso pela GUI na renderização dos halos de automação.
+    /// Updates the `INDICATION_AUTOMATING` and `INDICATION_OVERRIDING` bits,
+    /// ensuring mutual exclusion between both states. The color provided by the host
+    /// is stored for use by the GUI when rendering automation halos.
     fn set_automation(
         &mut self,
         param_id: ClapId,
@@ -98,7 +98,7 @@ impl<'a> PluginParamIndicationImpl for NamClapMainThread<'a> {
     }
 }
 
-/// Tipo marcador para registro da extensão.
+/// Marker type for extension registration.
 pub type NamPluginParamIndication = PluginParamIndication;
 
 #[cfg(test)]
@@ -138,13 +138,13 @@ mod tests {
         assert_eq!(val.load(Ordering::Relaxed) & INDICATION_AUTOMATING, 0);
     }
 
-    /// Verifica que quando ambos AUTOMATING e OVERRIDING estão setados,
-    /// o estado `None` ou `Present` limpa ambos corretamente.
+    /// Verify that when both AUTOMATING and OVERRIDING are set,
+    /// the `None` or `Present` state correctly clears both.
     #[test]
     fn test_param_indication_none_clears_both_bits() {
         let val = AtomicU8::new(0);
 
-        // Setar ambos bits simultaneamente
+        // Set both bits simultaneously
         val.fetch_or(
             INDICATION_AUTOMATING | INDICATION_OVERRIDING,
             Ordering::Relaxed,
@@ -152,28 +152,28 @@ mod tests {
         assert_eq!(
             val.load(Ordering::Relaxed) & (INDICATION_AUTOMATING | INDICATION_OVERRIDING),
             INDICATION_AUTOMATING | INDICATION_OVERRIDING,
-            "ambos bits devem estar setados antes do teste"
+            "both bits should be set before the test"
         );
 
-        // Simular o efeito de ParamIndicationAutomation::None (limpa ambos)
+        // Simulate the effect of ParamIndicationAutomation::None (clears both)
         val.fetch_and(
             !(INDICATION_AUTOMATING | INDICATION_OVERRIDING),
             Ordering::Relaxed,
         );
 
-        // Ambos devem estar zerados
+        // Both should be zeroed
         assert_eq!(
             val.load(Ordering::Relaxed) & INDICATION_AUTOMATING,
             0,
-            "AUTOMATING deve ser zerado"
+            "AUTOMATING should be zeroed"
         );
         assert_eq!(
             val.load(Ordering::Relaxed) & INDICATION_OVERRIDING,
             0,
-            "OVERRIDING deve ser zerado"
+            "OVERRIDING should be zeroed"
         );
 
-        // MAPPED não deve ser afetado
+        // MAPPED should not be affected
         val.fetch_or(INDICATION_MAPPED, Ordering::Relaxed);
         val.fetch_and(
             !(INDICATION_AUTOMATING | INDICATION_OVERRIDING),
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(
             val.load(Ordering::Relaxed) & INDICATION_MAPPED,
             INDICATION_MAPPED,
-            "MAPPED não deve ser afetado pela limpeza de automação"
+            "MAPPED should not be affected by automation clearing"
         );
     }
 }

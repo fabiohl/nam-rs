@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Sistema de despacho dinâmico para kernels SIMD.
+//! Dynamic dispatch system for SIMD kernels.
 
 use super::traits::SimdMath;
 use crate::math::common::{Avx2Math, Avx2VnniMath, Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
 use std::sync::LazyLock;
 
-/// Enumera os conjuntos de instruções suportados.
+/// Enumerates the supported instruction sets.
 ///
-/// Nota: Não existe variante `Fallback` escalar neste enum. O projeto tem como alvo
-/// mandatório a microarquitetura x86-64-v3 (AVX2+FMA). Se AVX2 não for detectado,
-/// `detect_best_simd()` entra em pânico no boot (fail-fast).
+/// Note: There is no scalar `Fallback` variant in this enum. The project targets
+/// x86-64-v3 (AVX2+FMA) as mandatory. If AVX2 is not detected,
+/// `detect_best_simd()` panics at boot (fail-fast).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
 pub enum InstructionSet {
     /// AVX2 + FMA (x86-64-v3).
@@ -27,120 +27,120 @@ pub enum InstructionSet {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// DESIGN DEBT: Coexistência de dois mecanismos de dispatch
+// DESIGN DEBT: Coexistence of two dispatch mechanisms
 // ══════════════════════════════════════════════════════════════════════════════
 //
-// O projeto NAM-rs usa DOIS mecanismos independentes para despacho SIMD:
+// The NAM-rs project uses TWO independent mechanisms for SIMD dispatch:
 //
-// 1. Trait genérica `SimdMath` (definida em `common/traits.rs`)
-//    - Despacho estático (monomorphization) via `dispatch_simd!` Modos 1 e 2
-//    - Usado por: WaveNet (`wavenet.rs`, `wavenet_dyn.rs`), LSTM (`lstm_dyn.rs`),
+// 1. Generic trait `SimdMath` (defined in `common/traits.rs`)
+//    - Static dispatch (monomorphization) via `dispatch_simd!` Modes 1 and 2
+//    - Used by: WaveNet (`wavenet.rs`, `wavenet_dyn.rs`), LSTM (`lstm_dyn.rs`),
 //      DSP (`gate.rs`, `resampler.rs`)
-//    - Exemplo: `self.process::<Avx2Math>(args)` → monomorphized em tempo de compilação
-//    - Vantagem: zero overhead de v-table, inline agressivo
-//    - Desvantagem: gera código duplicado para cada ISA (Avx2, Avx512, Avx512Vnni...)
+//    - Example: `self.process::<Avx2Math>(args)` → monomorphized at compile time
+//    - Advantage: zero v-table overhead, aggressive inlining
+//    - Disadvantage: generates duplicate code for each ISA (Avx2, Avx512, Avx512Vnni...)
 //
-// 2. V-table `SimdMathConfig` (esta struct)
-//    - Despacho dinâmico via ponteiros de função
-//    - Usado por: operações DSP no pipeline (`dsp/pipeline.rs`, `dsp/gain.rs`),
-//      standalone host (`standalone/rt_setup.rs`), `dispatch_simd!` Modo 3
-//    - Exemplo: `(SIMD_MATH.apply_gain)(data, gain)` → chamada indireta via ponteiro
-//    - Vantagem: código único, sem duplicação
-//    - Desvantagem: impede inline, custo de indireção (~1-2 ciclos)
+// 2. V-table `SimdMathConfig` (this struct)
+//    - Dynamic dispatch via function pointers
+//    - Used by: DSP operations in the pipeline (`dsp/pipeline.rs`, `dsp/gain.rs`),
+//      standalone host (`standalone/rt_setup.rs`), `dispatch_simd!` Mode 3
+//    - Example: `(SIMD_MATH.apply_gain)(data, gain)` → indirect call via pointer
+//    - Advantage: single code path, no duplication
+//    - Disadvantage: prevents inlining, indirection cost (~1-2 cycles)
 //
-// Consumidores por mecanismo:
-//   Mecanismo 1 (trait):  wavenet.rs, wavenet_dyn.rs, lstm_dyn.rs, gate.rs, resampler.rs
-//   Mecanismo 2 (v-table): pipeline.rs, rt_setup.rs, cli.rs, ops.rs (compute_energy_stereo)
-//   Ambos (híbrido):      lstm.rs (usa dispatch_simd! Modo 2 para gemv_4gate,
-//                          mas também chama simd_tanh/simd_sigmoid diretamente)
+// Consumers by mechanism:
+//   Mechanism 1 (trait):  wavenet.rs, wavenet_dyn.rs, lstm_dyn.rs, gate.rs, resampler.rs
+//   Mechanism 2 (v-table): pipeline.rs, rt_setup.rs, cli.rs, ops.rs (compute_energy_stereo)
+//   Both (hybrid):        lstm.rs (uses dispatch_simd! Mode 2 for gemv_4gate,
+//                          but also calls simd_tanh/simd_sigmoid directly)
 //
-// Plano de unificação (futuro):
-//   - Mover TODOS os consumidores para a trait `SimdMath` (Mecanismo 1)
-//   - Substituir v-table `SimdMathConfig` por um único despacho baseado na trait
-//   - Remover ponteiros de função da struct `SimdMathConfig`
-//   - Manter `InstructionSet` para consultas de capabilities (ex: `is_avx512`)
-//   - Isso eliminará ~50 linhas de boilerplate em `detect_best_simd()`
+// Unification plan (future):
+//   - Move ALL consumers to the `SimdMath` trait (Mechanism 1)
+//   - Replace v-table `SimdMathConfig` with a single trait-based dispatch
+//   - Remove function pointers from the `SimdMathConfig` struct
+//   - Keep `InstructionSet` for capability queries (e.g.: `is_avx512`)
+//   - This will eliminate ~50 lines of boilerplate in `detect_best_simd()`
 //
-// Data do debt: 2026-05-12 (refatoração Épicos 1-5)
-// Prioridade: Média (não afeta performance em caminhos quentes,
-//             que já usam Mecanismo 1 com monomorphization)
+// Debt date: 2026-05-12 (Epics 1-5 refactoring)
+// Priority: Medium (does not affect performance on hot paths,
+//             which already use Mechanism 1 with monomorphization)
 // ══════════════════════════════════════════════════════════════════════════════
-/// Tabela de despacho dinâmico (v-table) para operações SIMD.
+/// Dynamic dispatch table (v-table) for SIMD operations.
 #[derive(Clone, Copy)]
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub struct SimdMathConfig {
-    /// Conjunto de instruções ativo.
+    /// Active instruction set.
     pub instruction_set: InstructionSet,
-    /// Nome amigável do backend.
+    /// Friendly backend name.
     pub name: &'static str,
-    /// Se o backend é AVX-512.
+    /// Whether the backend is AVX-512.
     pub is_avx512: bool,
-    /// Kernel fundido de adição e GEMV.
+    /// Fused add + GEMV kernel.
     pub fused_add_gemv: unsafe fn(&[f32], &[u16], &[f32], &mut [f32], bool),
-    /// Kernel fundido de adição e GEMM em lote.
+    /// Fused add + batch GEMM kernel.
     pub fused_add_gemm_batch: unsafe fn(&[f32], &[u16], &[f32], &mut [f32], usize, bool),
-    /// Kernel fundido de GEMM residual em lote.
+    /// Fused residual batch GEMM kernel.
     pub fused_gemm_residual_batch:
         unsafe fn(&[f32], &[u16], &[f32], &[f32], &mut [f32], usize, bool),
-    /// Kernel de GEMV com sobrescrita.
+    /// GEMV kernel with overwrite.
     pub gemv_overwrite: unsafe fn(&[f32], &[u16], &[f32], &mut [f32], bool),
-    /// Kernel de acumulação de cabeça.
+    /// Head accumulation kernel.
     pub accumulate_head: unsafe fn(&mut [f32], &[f32]),
-    /// Soma horizontal de um buffer.
+    /// Horizontal sum of a buffer.
     pub horizontal_sum: unsafe fn(*const f32, usize) -> f32,
-    /// Aplica ganho e detecta clipping em estéreo.
+    /// Applies gain and detects clipping in stereo.
     pub apply_gain_and_detect_clipping_stereo: unsafe fn(&mut [f32], &mut [f32], f32) -> bool,
-    /// Aplica ganho constante em estéreo (sem detecção de clipping).
+    /// Applies constant gain in stereo (without clipping detection).
     pub apply_gain_stereo: unsafe fn(&mut [f32], &mut [f32], f32),
-    /// Aplica ganho constante em um buffer mono.
+    /// Applies constant gain to a mono buffer.
     pub apply_gain: unsafe fn(&mut [f32], f32),
-    /// Aplica rampa linear de ganho em um buffer mono.
+    /// Applies a linear gain ramp to a mono buffer.
     pub apply_ramp: unsafe fn(&mut [f32], f32, f32),
-    /// Aplica rampa linear de ganho em estéreo.
+    /// Applies a linear gain ramp in stereo.
     pub apply_ramp_stereo: unsafe fn(&mut [f32], &mut [f32], f32, f32),
-    /// Convolução estéreo (usada no resampler).
+    /// Stereo convolution (used in the resampler).
     pub convolve_stereo: unsafe fn(*const f32, *const f32, *const f32, usize) -> (f32, f32),
-    /// Convolução mono (usada no resampler).
+    /// Mono convolution (used in the resampler).
     pub convolve_mono: unsafe fn(*const f32, *const f32, usize) -> f32,
-    /// Calcula o máximo da energia entre dois canais.
+    /// Computes the maximum energy between two channels.
     pub compute_energy_stereo: unsafe fn(&[f32], &[f32]) -> f32,
-    /// Calcula a energia de um bloco.
+    /// Computes the energy of a block.
     pub compute_energy: unsafe fn(&[f32]) -> f32,
-    /// Calcula a diferença absoluta máxima entre dois blocos.
+    /// Computes the maximum absolute difference between two blocks.
     pub compute_max_diff: unsafe fn(&[f32], &[f32]) -> f32,
 }
 
 impl SimdMathConfig {
-    /// Retorna a configuração SIMD global ativa.
+    /// Returns the active global SIMD configuration.
     pub fn current() -> Self {
         *SIMD_MATH
     }
 
-    /// Alias para current().
+    /// Alias for current().
     pub fn get() -> Self {
         Self::current()
     }
 }
 
-/// Instância global da configuração SIMD, detectada no boot do sistema.
+/// Global SIMD configuration instance, detected at system boot.
 ///
-/// O uso de `LazyLock` garante que a CPU do usuário seja inspecionada apenas uma única vez,
-/// no momento em que a primeira operação matemática do DSP for invocada. Depois disso, a
-/// estrutura de configuração SIMD correspondente (com ponteiros de função de kernel otimizados)
-/// é gravada em cache na memória e acessada de forma imediata (sem custo de checagem em tempo real).
+/// Using `LazyLock` ensures the user's CPU is inspected only once,
+/// at the moment the first DSP mathematical operation is invoked. After that, the
+/// corresponding SIMD configuration struct (with optimized kernel function pointers)
+/// is cached in memory and accessed immediately (no real-time checking cost).
 pub static SIMD_MATH: LazyLock<SimdMathConfig> = LazyLock::new(detect_best_simd);
 
-/// Inspeciona os recursos de hardware da CPU em tempo de execução e retorna a melhor
-/// tabela de ponteiros de funções matemáticas (SIMD) compatível.
+/// Inspects the CPU hardware capabilities at runtime and returns the best
+/// compatible math function pointer table (SIMD).
 ///
-/// A detecção verifica os recursos de hardware suportados usando a macro do compilador `is_x86_feature_detected!`.
-/// Seguimos uma ordem de prioridade decrescente, escolhendo o conjunto de instruções mais avançado
-/// disponível no processador onde o software está rodando.
+/// Detection checks supported hardware features using the compiler macro `is_x86_feature_detected!`.
+/// We follow a descending priority order, choosing the most advanced instruction set
+/// available on the processor where the software is running.
 fn detect_best_simd() -> SimdMathConfig {
     #[cfg(target_arch = "x86_64")]
     {
-        // 1. AVX-512 com suporte a VNNI (Vector Neural Network Instructions) e BF16 (Bfloat16).
-        // Representa o topo da otimização para processadores Intel/AMD de última geração (ex: Xeon Cooper Lake/Sapphire Rapids, AMD EPYC Zen4).
+        // 1. AVX-512 with VNNI (Vector Neural Network Instructions) and BF16 (Bfloat16) support.
+        // Represents the pinnacle of optimization for latest-generation Intel/AMD processors (e.g.: Xeon Cooper Lake/Sapphire Rapids, AMD EPYC Zen4).
         if is_x86_feature_detected!("avx512bf16") && is_x86_feature_detected!("avx512vnni") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512VnniBf16,
@@ -167,8 +167,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx512VnniBf16Math::compute_max_diff,
             };
         }
-        // 2. AVX-512 apenas com suporte a VNNI.
-        // Processadores Intel Cascade Lake/Ice Lake e similares. Acelera multiplicação e acumulação de inteiros/floats.
+        // 2. AVX-512 with VNNI support only.
+        // Intel Cascade Lake/Ice Lake processors and similar. Accelerates integer/float multiplication and accumulation.
         if is_x86_feature_detected!("avx512vnni") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512Vnni,
@@ -195,8 +195,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx512VnniMath::compute_max_diff,
             };
         }
-        // 3. AVX-512 Foundation básico (512 bits).
-        // CPUs Intel Skylake-X/Zen4 comuns. Permite processar 16 floats de 32 bits em uma única instrução de CPU.
+        // 3. Basic AVX-512 Foundation (512-bit).
+        // Common Intel Skylake-X/Zen4 CPUs. Allows processing 16 32-bit floats in a single CPU instruction.
         if is_x86_feature_detected!("avx512f") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx512,
@@ -223,8 +223,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx512Math::compute_max_diff,
             };
         }
-        // 4. AVX2 com suporte a VNNI (AVX-VNNI).
-        // CPUs modernas que suportam aceleração de redes neurais VNNI sobre registradores YMM de 256 bits (ex: Intel Alder Lake).
+        // 4. AVX2 with VNNI support (AVX-VNNI).
+        // Modern CPUs that support VNNI neural network acceleration on 256-bit YMM registers (e.g.: Intel Alder Lake).
         if is_x86_feature_detected!("avxvnni") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx2Vnni,
@@ -251,9 +251,9 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_max_diff: Avx2VnniMath::compute_max_diff,
             };
         }
-        // 5. AVX2 com FMA (Floating-Point Multiply-Add) padrão de 256 bits.
-        // O mínimo absoluto exigido para rodar o NAM-rs (especificação x86-64-v3).
-        // Processadores Intel Haswell (2013) ou AMD Excavator (2015) em diante.
+        // 5. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
+        // The absolute minimum required to run NAM-rs (x86-64-v3 specification).
+        // Intel Haswell (2013) or AMD Excavator (2015) processors and newer.
         if is_x86_feature_detected!("avx2") {
             return SimdMathConfig {
                 instruction_set: InstructionSet::Avx2,
@@ -282,13 +282,13 @@ fn detect_best_simd() -> SimdMathConfig {
         }
     }
 
-    // Nenhum conjunto de instruções compatível foi detectado.
-    // O projeto exige x86-64-v3 (AVX2+FMA) como mínimo absoluto.
-    // Entrar em pânico aqui é intencional: é melhor falhar rápido no boot
-    // do que produzir áudio corrompido ou tráfego undefined-behavior no DSP.
+    // No compatible instruction set was detected.
+    // The project requires x86-64-v3 (AVX2+FMA) as the absolute minimum.
+    // Panicking here is intentional: it's better to fail fast at boot
+    // than to produce corrupted audio or invoke undefined behavior in the DSP.
     panic!(
-        "[NAM-rs] CPU incompatível: AVX2 não detectado.\n\
-         Este binário requer x86-64-v3 (AVX2 + FMA).\n\
-         Execute em um processador lançado após ~2013 (Intel Haswell / AMD Ryzen)."
+        "[NAM-rs] Incompatible CPU: AVX2 not detected.\n\
+         This binary requires x86-64-v3 (AVX2 + FMA).\n\
+         Run on a processor released after ~2013 (Intel Haswell / AMD Ryzen)."
     );
 }

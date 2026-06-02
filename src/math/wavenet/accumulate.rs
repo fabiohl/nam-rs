@@ -6,14 +6,14 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels de acúmulo e ativação para WaveNet — AVX2, AVX-512 e fallback escalar.
+//! Accumulation and activation kernels for WaveNet — AVX2, AVX-512 and scalar fallback.
 //!
-//! Extraídos de `simd/avx2.rs`, `simd/avx512.rs` e `common/scalar_ref.rs`
-//! durante a Tarefa 3.4.
+//! Extracted from `simd/avx2.rs`, `simd/avx512.rs` and `common/scalar_ref.rs`
+//! during Task 3.4.
 
 use core::arch::x86_64::*;
 
-/// Acumula src em dest usando AVX2.
+/// Accumulates src into dest using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
     let len = dest.len();
@@ -30,7 +30,7 @@ pub unsafe fn accumulate_head_avx2(dest: &mut [f32], src: &[f32]) {
     }
 }
 
-/// Aplica tanh in-place em block e acumula em head_input usando AVX2.
+/// Applies tanh in-place on block and accumulates into head_input using AVX2.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
     let len = block.len();
@@ -52,7 +52,7 @@ pub unsafe fn tanh_and_accumulate_block_avx2(head_input: &mut [f32], block: &mut
     }
 }
 
-/// Aplica gated activation (tanh * sigmoid) in-place em block e acumula em head_input usando AVX2.
+/// Applies gated activation (tanh * sigmoid) in-place on block and accumulates into head_input using AVX2.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn gated_activation_and_accumulate_block_avx2(
     head_input: &mut [f32],
@@ -91,9 +91,9 @@ pub unsafe fn gated_activation_and_accumulate_block_avx2(
     }
 }
 
-/// Aplica a ativação das "portas" (tanh * sigmoid) em blocos de áudio.
-/// Imagine que cada som passa por dois filtros: um que molda o timbre (tanh)
-/// e outro que controla a intensidade (sigmoid). O resultado é somado ao "head_input".
+/// Applies the "gate" activation (tanh * sigmoid) to audio blocks.
+/// Imagine each sound goes through two filters: one that shapes the timbre (tanh)
+/// and another that controls the intensity (sigmoid). The result is added to "head_input".
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gated_activation_and_accumulate_block_avx512(
     head_input: &mut [f32],
@@ -105,12 +105,12 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         let mut c = 0;
-        // Processa 16 canais de uma vez.
+        // Process 16 channels at a time.
         while c + 16 <= ch {
             let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
             let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
 
-            // Aplica as funções matemáticas complexas de forma ultra rápida.
+            // Apply the complex mathematical functions in a blazing-fast manner.
             let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx512(z1, z2);
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
@@ -123,7 +123,7 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
             );
             c += 16;
         }
-        // Sobrou algum canal? Faz um por um.
+        // Any leftover channels? Handle them one by one.
         while c < ch {
             let z1 = block[block_offset + c];
             let z2 = block[block_offset + ch + c];
@@ -135,53 +135,53 @@ pub unsafe fn gated_activation_and_accumulate_block_avx512(
     }
 }
 
-/// Acumulação da "Cabeça" (Head) da rede.
-/// Nas arquiteturas tipo WaveNet, as várias camadas (blocos) da rede contribuem
-/// para um resultado comum chamado "head". Esta função apenas soma essas contribuições.
+/// Accumulation of the network "Head".
+/// In WaveNet-like architectures, the various layers (blocks) of the network contribute
+/// to a common result called "head". This function simply sums those contributions.
 pub unsafe fn accumulate_head_fallback(dest: &mut [f32], src: &[f32]) {
     let len = core::cmp::min(dest.len(), src.len());
     for i in 0..len {
         unsafe {
-            // Soma o conteúdo de 'src' (origem) no 'dest' (destino).
+            // Sum the contents of 'src' into 'dest'.
             *dest.get_unchecked_mut(i) += *src.get_unchecked(i);
         }
     }
 }
 
-/// Aplica a ativação 'Tanh' e já acumula na saída principal.
-/// Tanh (Tangente Hiperbólica) é uma função que "esmaga" qualquer número para
-/// ficar entre -1.0 e 1.0. É muito comum em modelagem de amplificadores de guitarra.
+/// Applies the 'Tanh' activation and accumulates into the main output.
+/// Tanh (Hyperbolic Tangent) is a function that "squashes" any number to
+/// be between -1.0 and 1.0. It is very common in guitar amplifier modeling.
 pub unsafe fn tanh_and_accumulate_block_fallback(head_input: &mut [f32], block: &mut [f32]) {
     let len = head_input.len();
     for i in 0..len {
         let v = block[i];
-        let activated = v.tanh(); // Aplica o "esmagamento".
-        block[i] = activated; // Guarda o valor esmagado no bloco.
-        head_input[i] += activated; // Soma o mesmo valor no acumulador da "cabeça".
+        let activated = v.tanh(); // Apply the "squashing".
+        block[i] = activated; // Save the squashed value in the block.
+        head_input[i] += activated; // Add the same value to the "head" accumulator.
     }
 }
 
-/// Ativação Gated (Com "Portão") + Acumulação.
-/// Esta técnica usa dois sinais (z1 e z2):
-/// 1. z1 passa por um Tanh (contém a "informação").
-/// 2. z2 passa por um Sigmoid (serve como um "volume" ou "portão" para o z1).
+/// Gated Activation + Accumulation.
+/// This technique uses two signals (z1 and z2):
+/// 1. z1 goes through a Tanh (holds the "information").
+/// 2. z2 goes through a Sigmoid (acts as a "volume" or "gate" for z1).
 ///
-/// No final, multiplicamos os dois. É como se z2 decidisse quanto de z1 vai passar.
+/// At the end, we multiply the two. It's as if z2 decides how much of z1 will pass through.
 pub unsafe fn gated_activation_and_accumulate_block_fallback(
     head_input: &mut [f32],
     block: &mut [f32],
-    ch: usize, // Número de canais.
+    ch: usize, // Number of channels.
 ) {
     let num_frames = head_input.len() / ch;
     for f in 0..num_frames {
         let block_offset = f * 2 * ch;
         let head_offset = f * ch;
         for c in 0..ch {
-            // O bloco contém z1 e z2 um do lado do outro.
+            // The block contains z1 and z2 side by side.
             let z1 = block[block_offset + c];
             let z2 = block[block_offset + ch + c];
 
-            // Ativação complexa: tanh(z1) * sigmoid(z2).
+            // Complex activation: tanh(z1) * sigmoid(z2).
             let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
 
             block[block_offset + c] = activated;

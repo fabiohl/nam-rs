@@ -1,76 +1,76 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Carregador Binário para modelos `.namb`.
+//! Binary loader for `.namb` models.
 //!
-//! Realiza a análise e deserialização direta, determinística e lock-free
-//! a partir de um bloco binário para a estrutura `NamModelData`.
+//! Performs direct, deterministic, lock-free analysis and deserialization
+//! from a binary block into the `NamModelData` structure.
 
 use super::nam_json::{NamConfig, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout};
 use anyhow::Result;
 use log::info;
 
-/// Erro tipado para parsing de arquivos `.namb`.
+/// Typed error for `.namb` file parsing.
 ///
-/// Cada variante corresponde a uma falha específica de integridade ou
-/// formato do arquivo binário, permitindo diagnóstico preciso via
-/// `downcast_ref` no módulo `loader`.
+/// Each variant corresponds to a specific integrity or format failure
+/// of the binary file, enabling precise diagnosis via
+/// `downcast_ref` in the `loader` module.
 #[derive(Debug, thiserror::Error)]
 pub enum NambError {
-    /// Arquivo truncado: bytes insuficientes para o cabeçalho mínimo.
+    /// Truncated file: insufficient bytes for the minimum header.
     #[error("file truncated: got {got} bytes, need at least {need}")]
     Truncated {
-        /// Bytes disponíveis no arquivo.
+        /// Bytes available in the file.
         got: usize,
-        /// Bytes mínimos necessários.
+        /// Minimum bytes needed.
         need: usize,
     },
 
-    /// Número mágico inválido (não é 0x4E414D42).
+    /// Invalid magic number (not 0x4E414D42).
     #[error("invalid magic number: 0x{0:08X} (expected 0x4E414D42)")]
     InvalidMagic(u32),
 
-    /// Versão do formato `.namb` não suportada.
+    /// Unsupported `.namb` format version.
     #[error("unsupported .namb version: {0}")]
     InvalidVersion(u16),
 
-    /// Offset da seção de pesos além do tamanho do arquivo.
+    /// Weight section offset beyond file size.
     #[error("weights offset {offset} out of file bounds (file size: {file_len})")]
     WeightsOffsetOutOfBounds {
-        /// Offset declarado no cabeçalho.
+        /// Offset declared in the header.
         offset: usize,
-        /// Tamanho total do arquivo em bytes.
+        /// Total file size in bytes.
         file_len: usize,
     },
 
-    /// Offset da seção de pesos menor que o tamanho do cabeçalho.
+    /// Weight section offset smaller than the header size.
     #[error("invalid weights offset {offset} (smaller than header size {header_size})")]
     InvalidWeightsOffset {
-        /// Offset declarado no cabeçalho.
+        /// Offset declared in the header.
         offset: usize,
-        /// Tamanho esperado do cabeçalho.
+        /// Expected header size.
         header_size: usize,
     },
 
-    /// Checksum CRC32 da seção de pesos não confere.
+    /// CRC32 checksum of the weight section does not match.
     #[error("CRC32 mismatch: got 0x{got:08X}, expected 0x{expected:08X}")]
     CrcMismatch {
-        /// CRC calculado a partir dos dados.
+        /// CRC calculated from the data.
         got: u32,
-        /// CRC declarado no cabeçalho.
+        /// CRC declared in the header.
         expected: u32,
     },
 
-    /// CRC32 ausente em arquivo NAMB v2+ (flag FLAG_HAS_CRC32 não setado).
+    /// CRC32 missing in NAMB v2+ file (FLAG_HAS_CRC32 flag not set).
     #[error("CRC32 flag missing in NAMB v{version} file (FLAG_HAS_CRC32 not set)")]
     CrcMissing {
-        /// Versão do arquivo NAMB.
+        /// NAMB file version.
         version: u16,
     },
 }
 
-/// Calcula o CRC32 (IEEE 802.3) de um slice de bytes.
-/// Substitui a dependência externa `crc32fast` por uma versão leve em software.
+/// Computes the CRC32 (IEEE 802.3) of a byte slice.
+/// Replaces the external `crc32fast` dependency with a lightweight software version.
 pub fn crc32_ieee(data: &[u8]) -> u32 {
     let mut crc = 0xFFFFFFFFu32;
     for &byte in data {
@@ -94,45 +94,45 @@ fn check_crc(data: &[u8], weights_offset: usize, expected: u32) -> Result<(), Na
     Ok(())
 }
 
-/// Flag bitmask para o campo `flags` do header NAMB.
+/// Flag bitmask for the NAMB header `flags` field.
 pub const FLAG_HAS_CRC32: u8 = 0x01;
 
-/// Cabeçalho binário fixo do formato `.namb`.
+/// Fixed binary header of the `.namb` format.
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy)]
 pub struct NambHeader {
-    /// Número mágico `0x4E414D42` ("NAMB" em ASCII).
+    /// Magic number `0x4E414D42` ("NAMB" in ASCII).
     pub magic: u32,
-    /// Versão do formato (1 = legada, 2 = com layout pre-transposto).
+    /// Format version (1 = legacy, 2 = with pre-transposed layout).
     pub version: u16,
-    /// Layout dos pesos (apenas se version >= 2). Offset: 6.
+    /// Weight layout (only if version >= 2). Offset: 6.
     pub layout_type: u8,
-    /// Flags de feature (bit 0 = FLAG_HAS_CRC32). Offset: 7.
+    /// Feature flags (bit 0 = FLAG_HAS_CRC32). Offset: 7.
     pub flags: u8,
-    /// Reservado para expansão futura. Offset: 8.
+    /// Reserved for future expansion. Offset: 8.
     pub reserved_v2: [u8; 4],
-    /// Offset (em bytes) do início da seção de pesos em relação ao início do arquivo.
+    /// Offset (in bytes) from the beginning of the file to the start of the weight section.
     pub weights_offset: u32,
-    /// Reservado para expansão futura.
+    /// Reserved for future expansion.
     pub reserved1: [u32; 2],
-    /// Soma de verificação CRC32 do bloco de pesos (opcional).
+    /// CRC32 checksum of the weight block (optional).
     pub crc32: u32,
-    /// Reservado para expansão futura.
+    /// Reserved for future expansion.
     pub reserved2: u32,
-    /// String de versão informativa (Ex: "NAMB 2.0.0").
+    /// Informational version string (e.g. "NAMB 2.0.0").
     pub version_str: [u8; 32],
-    /// Frequência de amostragem padrão (Ex: 48000.0).
+    /// Default sample rate (e.g. 48000.0).
     pub sample_rate: f32,
-    /// Nível de entrada dBu padrão (Ex: 12.0).
+    /// Default input level dBu (e.g. 12.0).
     pub input_level_dbu: f32,
-    /// Nível de saída dBu padrão (Ex: 12.0).
+    /// Default output level dBu (e.g. 12.0).
     pub output_level_dbu: f32,
-    /// Reservado (tamanho total do header deve ser pelo menos 80 bytes).
+    /// Reserved (total header size must be at least 80 bytes).
     pub reserved3: [u32; 1],
 }
 
 impl NambHeader {
-    /// Valida se o cabeçalho possui o número mágico e versão suportada.
+    /// Validates whether the header has the magic number and a supported version.
     pub fn validate(&self) -> Result<(), NambError> {
         let magic = self.magic;
         let version = self.version;
@@ -145,7 +145,7 @@ impl NambHeader {
         Ok(())
     }
 
-    /// Retorna o layout dos pesos conforme a versão e o flag.
+    /// Returns the weight layout based on the version and the flag.
     pub fn get_layout(&self) -> WeightsLayout {
         let version = self.version;
         if version < 2 {
@@ -159,7 +159,7 @@ impl NambHeader {
     }
 }
 
-/// Carrega um modelo no formato binário `.namb`.
+/// Loads a model in the `.namb` binary format.
 pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     let header_size = std::mem::size_of::<NambHeader>();
     if data.len() < header_size {
@@ -170,12 +170,12 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         .into());
     }
 
-    // 1. Lê o cabeçalho (Header)
+    // 1. Reads the header
     let header = unsafe { &*data.as_ptr().cast::<NambHeader>() };
     header.validate()?;
 
-    // 2. Lê a seção de metadados JSON (opcional em .namb, mas comum)
-    // Se weights_offset > header_size, há um JSON entre eles.
+    // 2. Reads the JSON metadata section (optional in .namb, but common)
+    // If weights_offset > header_size, there is a JSON between them.
     let weights_offset = header.weights_offset as usize;
     if weights_offset > data.len() {
         return Err(NambError::WeightsOffsetOutOfBounds {
@@ -194,7 +194,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
 
     let mut model_data = if weights_offset > header_size {
         let json_bytes = &data[header_size..weights_offset];
-        // Truncar nulos se houver (o buffer NAMB costuma ser padded)
+        // Truncate nulls if present (the NAMB buffer is usually padded)
         let actual_json = if let Some(pos) = json_bytes.iter().position(|&b| b == 0) {
             &json_bytes[..pos]
         } else {
@@ -210,7 +210,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         make_fallback_model_data()
     };
 
-    // 3. Validação de Integridade (CRC32)
+    // 3. Integrity Validation (CRC32)
     let version = header.version;
     let crc32_header = header.crc32;
     if version >= 2 {
@@ -224,7 +224,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         log::warn!("CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check");
     }
 
-    // 4. Lê os pesos binários
+    // 4. Reads the binary weights
     let pesos_raw = &data[weights_offset..];
     let float_count = pesos_raw.len() / 4;
     let mut weights = Vec::with_capacity(float_count);
@@ -233,7 +233,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         weights.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
     }
 
-    // Popula metadados do header no NamModelData final
+    // Populates header metadata into the final NamModelData
     let sample_rate_header = header.sample_rate;
     let input_level_header = header.input_level_dbu;
     let output_level_header = header.output_level_dbu;
@@ -243,7 +243,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     model_data.sample_rate = Some(sample_rate_header);
     model_data.weights_layout = header.get_layout();
 
-    // Atualiza metadados se existirem
+    // Updates metadata if it exists
     if let Some(ref mut metadata) = model_data.metadata {
         metadata.input_level_dbu = Some(input_level_header);
         metadata.output_level_dbu = Some(output_level_header);
@@ -263,7 +263,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
         });
     }
 
-    // Se a versão for nula (fallback), pega do header string
+    // If the version is null (fallback), gets it from the header string
     if model_data.version.is_none() {
         let end_idx = header
             .version_str
@@ -282,12 +282,12 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     Ok(model_data)
 }
 
-/// Cria um conjunto de dados "de reserva" (fallback).
-/// Útil para arquivos .namb antigos que não descrevem sua própria estrutura.
+/// Creates a "fallback" dataset.
+/// Useful for old .namb files that do not describe their own structure.
 fn make_fallback_model_data() -> NamModelData {
     NamModelData {
         version: None,
-        architecture: "WaveNet".to_string(), // .namb legados são sempre WaveNet Standard
+        architecture: "WaveNet".to_string(), // legacy .namb files are always WaveNet Standard
         config: make_standard_wavenet_config(),
         weights: Vec::new(),
         sample_rate: None,
@@ -296,26 +296,26 @@ fn make_fallback_model_data() -> NamModelData {
     }
 }
 
-/// Define o "gabarito" padrão para o algoritmo WaveNet.
-/// É como definir o número de neurônios e conexões de um cérebro digital padrão.
+/// Defines the standard "template" for the WaveNet algorithm.
+/// It's like defining the number of neurons and connections of a standard digital brain.
 fn make_standard_wavenet_config() -> NamConfig {
-    // Dilatações: define o "alcance" da memória do algoritmo (essencial para capturar o timbre).
+    // Dilations: defines the "reach" of the algorithm's memory (essential for capturing timbre).
     let std_dilations = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-    // Primeira camada do processamento.
+    // First processing layer.
     let l0 = NamLayerConfig {
         input_size: Some(1),
         condition_size: Some(1),
         head_size: Some(8),
-        channels: Some(16),   // "Largura" do processamento interno.
-        kernel_size: Some(3), // Quantidade de amostras vizinhas analisadas de cada vez.
+        channels: Some(16),   // "Width" of the internal processing.
+        kernel_size: Some(3), // Number of neighboring samples analyzed at each step.
         dilations: Some(std_dilations.clone()),
         activation: Some("Tanh".to_string()),
         gated: Some(false),
         head_bias: Some(false),
     };
 
-    // Segunda camada (geralmente idêntica à primeira em modelos Standard).
+    // Second layer (usually identical to the first in Standard models).
     let l1 = NamLayerConfig {
         input_size: Some(1),
         condition_size: Some(1),
@@ -331,7 +331,7 @@ fn make_standard_wavenet_config() -> NamConfig {
     NamConfig {
         layers: vec![l0, l1],
         head: Some(None),
-        head_scale: Some(0.02), // Ajuste final de volume para garantir consistência.
+        head_scale: Some(0.02), // Final volume adjustment to ensure consistency.
         num_layers: None,
         hidden_size: None,
     }
@@ -341,15 +341,15 @@ fn make_standard_wavenet_config() -> NamConfig {
 mod tests {
     use super::*;
 
-    /// Constrói um arquivo .namb v1 (formato binário) em memória para fins de teste.
-    /// É como "fabricar" um arquivo de mentira para ver se o programa consegue ler.
+    /// Builds a .namb v1 file (binary format) in memory for testing purposes.
+    /// It's like "fabricating" a fake file to see if the program can read it.
     fn build_valid_namb_v1(w_floats: &[f32]) -> Vec<u8> {
         let header_size = std::mem::size_of::<NambHeader>();
         let mut data = vec![0u8; header_size + w_floats.len() * 4];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
-        // Preenchemos o "cabeçalho" (a etiqueta de identificação do arquivo).
-        header.magic = 0x4E414D42; // "NAMB" em código hexadecimal.
+        // We fill the "header" (the file's identification label).
+        header.magic = 0x4E414D42; // "NAMB" in hexadecimal code.
         header.version = 1;
         header.weights_offset = header_size as u32;
         header.sample_rate = 48000.0;
@@ -357,25 +357,25 @@ mod tests {
         header.output_level_dbu = -6.0;
         header.version_str[0..5].copy_from_slice(b"1.0.0");
 
-        // Converte os números decimais (pesos) em bytes brutos.
+        // Converts the decimal numbers (weights) into raw bytes.
         for (i, &f) in w_floats.iter().enumerate() {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
         }
 
-        // Gera um "lacre de segurança" (CRC32) para garantir que os dados não foram alterados.
+        // Generates a "security seal" (CRC32) to ensure the data has not been altered.
         header.crc32 = crc32_ieee(&data[header_size..]);
         data
     }
 
     #[test]
     fn test_parse_namb_v1() -> Result<()> {
-        // Testamos se o carregador consegue ler corretamente um arquivo v1 básico.
+        // Tests whether the loader can correctly read a basic v1 file.
         let w = [0.1f32, -0.5f32, 1.0f32];
         let data = build_valid_namb_v1(&w);
         let parsed = parse_namb(&data)?;
 
-        // Verificamos se os valores lidos são idênticos aos que gravamos.
+        // Checks whether the read values are identical to the ones we wrote.
         assert_eq!(parsed.weights, w);
         assert_eq!(parsed.weights_layout, WeightsLayout::Original);
         assert_eq!(parsed.sample_rate, Some(48000.0));
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn test_parse_namb_v2_gate_major() -> Result<()> {
-        // Testamos se o carregador reconhece o novo formato v2 (com layout otimizado).
+        // Tests whether the loader recognizes the new v2 format (with optimized layout).
         let header_size = std::mem::size_of::<NambHeader>();
         let w = [0.0f32; 4];
         let mut data = vec![0u8; header_size + w.len() * 4];
@@ -392,11 +392,11 @@ mod tests {
 
         header.magic = 0x4E414D42;
         header.version = 2;
-        header.layout_type = 1; // 1 indica "GateMajorLstm" (layout otimizado para LSTM)
+        header.layout_type = 1; // 1 indicates "GateMajorLstm" (layout optimized for LSTM)
         header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
 
-        // Escreve os pesos no buffer
+        // Writes the weights into the buffer
         for (i, &f) in w.iter().enumerate() {
             let offset = header_size + i * 4;
             data[offset..offset + 4].copy_from_slice(&f.to_le_bytes());
@@ -404,7 +404,7 @@ mod tests {
         header.crc32 = crc32_ieee(&data[header_size..]);
 
         let parsed = parse_namb(&data)?;
-        // Garantimos que o programa entendeu que este arquivo precisa de uma reorganização especial.
+        // Ensures the program understood that this file needs a special reorganization.
         assert_eq!(parsed.weights_layout, WeightsLayout::GateMajorLstm);
         Ok(())
     }
@@ -418,27 +418,27 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 2;
         header.layout_type = 1;
-        header.flags = 0; // FLAG_HAS_CRC32 NÃO setado
+        header.flags = 0; // FLAG_HAS_CRC32 NOT set
         header.weights_offset = header_size as u32;
         header.crc32 = 0xDEADBEEF;
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
             .downcast_ref::<NambError>()
-            .expect("Erro deveria ser NambError::CrcMissing");
+            .expect("Error should be NambError::CrcMissing");
         assert!(
             matches!(namb_err, NambError::CrcMissing { version: 2 }),
-            "Esperado CrcMissing, obtido: {:?}",
+            "Expected CrcMissing, got: {:?}",
             namb_err
         );
     }
 
     #[test]
     fn test_v2_crc32_zero_legitimate_passes() -> Result<()> {
-        // CRC32 de um slice vazio é 0 (propriedade do algoritmo IEEE 802.3).
-        // Com FLAG_HAS_CRC32 setado e crc32=0 legítimo, o parser deve aceitar.
+        // CRC32 of an empty slice is 0 (property of the IEEE 802.3 algorithm).
+        // With FLAG_HAS_CRC32 set and crc32=0 legitimate, the parser should accept.
         let header_size = std::mem::size_of::<NambHeader>();
-        let mut data = vec![0u8; header_size]; // Sem pesos → crc32_ieee(&[]) == 0
+        let mut data = vec![0u8; header_size]; // No weights → crc32_ieee(&[]) == 0
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
         header.magic = 0x4E414D42;
@@ -446,7 +446,7 @@ mod tests {
         header.layout_type = 1;
         header.flags = FLAG_HAS_CRC32;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0; // CRC32 legítimo para slice vazio
+        header.crc32 = 0; // Legitimate CRC32 for empty slice
 
         let parsed = parse_namb(&data)?;
         assert!(parsed.weights.is_empty());
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_v1_crc32_zero_warns_but_passes() -> Result<()> {
-        // v1 com crc==0 (sentinel) deve passar com warning, não bloquear.
+        // v1 with crc==0 (sentinel) should pass with warning, not block.
         let header_size = std::mem::size_of::<NambHeader>();
         let mut data = vec![0u8; header_size + 4]; // 1 float dummy
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
@@ -463,9 +463,9 @@ mod tests {
         header.magic = 0x4E414D42;
         header.version = 1;
         header.weights_offset = header_size as u32;
-        header.crc32 = 0; // Sentinel: CRC ausente em v1
+        header.crc32 = 0; // Sentinel: CRC absent in v1
 
-        // Escreve um peso dummy
+        // Writes a dummy weight
         let w = 0.5f32;
         data[header_size..header_size + 4].copy_from_slice(&w.to_le_bytes());
 
@@ -480,17 +480,17 @@ mod tests {
         let mut data = vec![0u8; header_size];
         let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
 
-        header.magic = 0x424D414E; // "BMAN" — não mais aceito (S5.T09)
+        header.magic = 0x424D414E; // "BMAN" — no longer accepted (S5.T09)
         header.version = 1;
         header.weights_offset = header_size as u32;
 
         let err = parse_namb(&data).unwrap_err();
         let namb_err = err
             .downcast_ref::<NambError>()
-            .expect("Erro deveria ser NambError::InvalidMagic");
+            .expect("Error should be NambError::InvalidMagic");
         assert!(
             matches!(namb_err, NambError::InvalidMagic(m) if *m == 0x424D414E),
-            "Esperado InvalidMagic(0x424D414E), obtido: {:?}",
+            "Expected InvalidMagic(0x424D414E), got: {:?}",
             namb_err
         );
     }

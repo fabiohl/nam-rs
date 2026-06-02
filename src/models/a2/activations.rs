@@ -1,116 +1,116 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo de funções de ativação para a arquitetura NAM A2.
+//! Activation functions module for the NAM A2 architecture.
 //!
-//! Este módulo fornece implementações de várias funções de ativação não-lineares
-//! utilizadas nos modelos Neural Amp Modeler, garantindo paridade com a
-//! implementação C++ original.
+//! This module provides implementations of various non-linear activation functions
+//! used in Neural Amp Modeler models, ensuring parity with the
+//! original C++ implementation.
 //!
-//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
-//! aguardando estabilização da implementação de referência.
+//! IMPORTANT: A2 architecture support is in "placeholder" stage
+//! pending stabilization of the reference implementation.
 
-/// Tipos de ativação suportados pelo NAM A2.
+/// Activation types supported by NAM A2.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivationType {
-    /// Tangente Hiperbólica (standard).
+    /// Hyperbolic Tangent (standard).
     Tanh,
-    /// Tangente Hiperbólica com saturação rígida em [-1, 1].
+    /// Hyperbolic Tangent with hard saturation within [-1, 1].
     HardTanh,
-    /// Aproximação racional rápida para Tanh.
+    /// Fast rational approximation for Tanh.
     FastTanh,
     /// Rectified Linear Unit: max(0, x).
     ReLU,
-    /// Leaky ReLU com inclinação negativa fixa.
+    /// Leaky ReLU with fixed negative slope.
     LeakyReLU {
-        /// Inclinação aplicada quando x < 0.
+        /// Slope applied when x < 0.
         negative_slope: f32,
     },
-    /// Parametric ReLU com inclinação negativa por canal ou global.
+    /// Parametric ReLU with per-channel or global negative slope.
     PReLU {
-        /// Vetor de inclinações para valores negativos.
+        /// Vector of slopes for negative values.
         negative_slopes: Vec<f32>,
     },
-    /// Função Sigmoide logística: 1 / (1 + exp(-x)).
+    /// Logistic Sigmoid function: 1 / (1 + exp(-x)).
     Sigmoid,
     /// Sigmoid Linear Unit: x * sigmoid(x).
     SiLU,
-    /// Versão eficiente da função Swish.
+    /// Efficient version of the Swish function.
     HardSwish,
-    /// HardTanh com inclinações configuráveis para as regiões de saturação.
+    /// HardTanh with configurable slopes for saturation regions.
     LeakyHardTanh {
-        /// Valor mínimo para saturação linear.
+        /// Minimum value for linear saturation.
         min_val: f32,
-        /// Valor máximo para saturação linear.
+        /// Maximum value for linear saturation.
         max_val: f32,
-        /// Inclinação aplicada abaixo de `min_val`.
+        /// Slope applied below `min_val`.
         min_slope: f32,
-        /// Inclinação aplicada acima de `max_val`.
+        /// Slope applied above `max_val`.
         max_slope: f32,
     },
     /// Softsign: x / (1 + |x|).
     Softsign,
 }
 
-/// Trait para aplicação de funções de ativação em buffers de áudio.
+/// Trait for applying activation functions on audio buffers.
 pub trait ActivationFn {
-    /// Aplica a função de ativação in-place no buffer fornecido.
+    /// Applies the activation function in-place on the provided buffer.
     fn apply(&self, data: &mut [f32]);
 }
 
 impl ActivationFn for ActivationType {
     fn apply(&self, data: &mut [f32]) {
         match self {
-            // Tanh (Tangente Hiperbólica): Curva suave em formato de 'S' que comprime
-            // qualquer valor de entrada para o intervalo [-1.0, 1.0].
+            // Tanh (Hyperbolic Tangent): Smooth S-shaped curve that compresses
+            // any input value to the range [-1.0, 1.0].
             Self::Tanh => {
                 crate::math::activations::tanh_slice(data);
             }
-            // HardTanh (Tangente Hiperbólica Rígida): Saturação brusca (ceifamento/clipping rígido).
-            // Limita os valores estritamente a no mínimo -1.0 e no máximo 1.0.
+            // HardTanh (Rigid Hyperbolic Tangent): Abrupt saturation (hard clipping/culling).
+            // Limits values strictly to a minimum of -1.0 and a maximum of 1.0.
             Self::HardTanh => {
                 for x in data.iter_mut() {
                     *x = x.clamp(-1.0, 1.0);
                 }
             }
-            // FastTanh: Uma aproximação matemática rápida da função Tanh nativa do processador.
-            // Utiliza um polinômio racional para evitar calcular exponenciais lentas.
+            // FastTanh: A fast mathematical approximation of the processor's native Tanh function.
+            // Uses a rational polynomial to avoid computing slow exponentials.
             Self::FastTanh => {
                 for x in data.iter_mut() {
                     *x = fast_tanh(*x);
                 }
             }
-            // ReLU (Rectified Linear Unit): Zera todos os valores negativos, deixando
-            // os valores positivos passarem sem qualquer alteração.
+            // ReLU (Rectified Linear Unit): Zeros all negative values, letting
+            // positive values pass through without any change.
             Self::ReLU => {
                 crate::math::activations::relu_slice(data);
             }
-            // LeakyReLU: Semelhante à ReLU, mas em vez de zerar totalmente os valores negativos,
-            // aplica um multiplicador pequeno (inclinação negativa fixa) mantendo uma fração do sinal.
+            // LeakyReLU: Similar to ReLU, but instead of completely zeroing negative values,
+            // applies a small multiplier (fixed negative slope) retaining a fraction of the signal.
             Self::LeakyReLU { negative_slope } => {
                 let slopes = [*negative_slope];
                 crate::math::activations::prelu_slice(data, &slopes);
             }
-            // PReLU (Parametric ReLU): Permite inclinações negativas ajustáveis e aprendidas pelo modelo.
-            // Os fatores multiplicadores podem variar por canal ou elemento.
+            // PReLU (Parametric ReLU): Allows adjustable negative slopes learned by the model.
+            // The multiplicative factors can vary per channel or element.
             Self::PReLU { negative_slopes } => {
                 if negative_slopes.is_empty() {
                     return;
                 }
                 crate::math::activations::prelu_slice(data, negative_slopes);
             }
-            // Sigmoid: Função logística que mapeia a entrada suavemente entre 0.0 e 1.0,
-            // muito usada para calcular fatores de portão (gates) de ligar/desligar sinal.
+            // Sigmoid: Logistic function that smoothly maps the input between 0.0 and 1.0,
+            // widely used to compute gating factors (gates) for switching signals on/off.
             Self::Sigmoid => {
                 crate::math::activations::sigmoid_slice(data);
             }
-            // SiLU (Sigmoid Linear Unit): Multiplica o valor de entrada pela sua própria ativação
-            // sigmoide. Também conhecida por Swish.
+            // SiLU (Sigmoid Linear Unit): Multiplies the input value by its own sigmoid
+            // activation. Also known as Swish.
             Self::SiLU => {
                 crate::math::activations::silu_slice(data);
             }
-            // HardSwish: Uma aproximação linear da função Swish/SiLU desenvolvida para ser
-            // computada de forma eficiente sem calcular funções exponenciais complexas.
+            // HardSwish: A linear approximation of the Swish/SiLU function designed to be
+            // computed efficiently without calculating complex exponential functions.
             Self::HardSwish => {
                 for x in data.iter_mut() {
                     let t = *x + 3.0;
@@ -118,8 +118,8 @@ impl ActivationFn for ActivationType {
                     *x *= clamped * (1.0 / 6.0);
                 }
             }
-            // LeakyHardTanh: Uma versão híbrida que atua como HardTanh, mas nas zonas de
-            // saturação (fora de min_val/max_val) o sinal continua crescendo com ganho atenuado.
+            // LeakyHardTanh: A hybrid version that acts like HardTanh, but in the saturation
+            // zones (outside min_val/max_val) the signal continues to grow with attenuated gain.
             Self::LeakyHardTanh {
                 min_val,
                 max_val,
@@ -134,8 +134,8 @@ impl ActivationFn for ActivationType {
                     }
                 }
             }
-            // Softsign: Curva suave simétrica parecida com a Tanh, dada pela fórmula x / (1 + |x|),
-            // sendo mais suave nas bordas e mais barata de calcular no processador.
+            // Softsign: Smooth symmetric curve similar to Tanh, given by the formula x / (1 + |x|),
+            // being smoother at the edges and cheaper to compute on the processor.
             Self::Softsign => {
                 crate::math::activations::softsign_slice(data);
             }
@@ -143,8 +143,8 @@ impl ActivationFn for ActivationType {
     }
 }
 
-/// Aproximação racional rápida para a função tanh.
-/// Paridade com `NAM/activations.h` L111-122.
+/// Fast rational approximation for the tanh function.
+/// Parity with `NAM/activations.h` L111-122.
 #[inline(always)]
 #[allow(clippy::excessive_precision)]
 fn fast_tanh(x: f32) -> f32 {
@@ -189,11 +189,11 @@ mod tests {
     fn test_activation_fast_tanh() {
         let mut data = [-5.0, -1.0, 0.0, 1.0, 5.0];
         ActivationType::FastTanh.apply(&mut data);
-        // Valores devem estar no domínio de saída de tanh: (-1, 1).
+        // Values should be within the tanh output domain: (-1, 1).
         for &v in data.iter() {
             assert!((-1.0..=1.0).contains(&v));
         }
-        // Paridade com tanh em 0: fast_tanh(0) = 0 exato.
+        // Parity with tanh at 0: fast_tanh(0) = 0 exactly.
         assert!((data[2] - 0.0).abs() < 1e-6);
     }
 
@@ -322,7 +322,7 @@ mod tests {
             negative_slopes: vec![],
         }
         .apply(&mut data);
-        // Com slopes vazio, deve operar como identidade (early return).
+        // With empty slopes, should operate as identity (early return).
         assert_eq!(data, [-1.0, 1.0]);
     }
 

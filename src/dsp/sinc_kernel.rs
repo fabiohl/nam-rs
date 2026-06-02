@@ -1,55 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Geração offline de kernels FIR Sinc com fase mínima para o resampler nativo.
+//! Offline generation of minimum-phase Sinc FIR kernels for the native resampler.
 //!
-//! Este módulo é invocado **exclusivamente** em `NamResampler::new()` — fora da thread RT.
-//! Toda alocação e computação pesada (FFT, cepstrum) ocorre aqui durante a inicialização.
+//! This module is invoked **exclusively** in `NamResampler::new()` — outside the RT thread.
+//! All allocation and heavy computation (FFT, cepstrum) occurs here during initialization.
 //!
-//! ## Pipeline de Geração
+//! ## Generation Pipeline
 //!
-//! 1. **Sinc Ideal + Janelamento Kaiser** — gera o protótipo FIR lowpass de fase linear.
-//! 2. **Transformação de Fase Mínima (Cepstrum Real)** — elimina pré-ringing concentrando
-//!    a energia no menor atraso possível, usando FFT em f64 para precisão numérica.
-//! 3. **Partição Polifásica** — decompõe o protótipo em `num_phases` sub-filtros,
-//!    cada um com taps alinhados a 64 bytes para convolução AVX2/AVX-512.
+//! 1. **Ideal Sinc + Kaiser Windowing** — generates the linear-phase FIR lowpass prototype.
+//! 2. **Minimum-Phase Transform (Real Cepstrum)** — eliminates pre-ringing by concentrating
+//!    energy into the shortest possible delay, using f64 FFT for numerical precision.
+//! 3. **Polyphase Partition** — decomposes the prototype into `num_phases` sub-filters,
+//!    each with taps aligned to 64 bytes for AVX2/AVX-512 convolution.
 
 use crate::math::common::AlignedVec;
 use rustfft::{FftPlanner, num_complex::Complex};
 
-/// Número de fases do banco polifásico sobreabundante.
+/// Number of phases in the overabundant polyphase bank.
 ///
-/// Controla a resolução fracionária do resampler. Com 256 fases,
-/// o erro de fase máximo entre sub-filtros adjacentes é < 0.4%,
-/// tornando a interpolação linear entre fases suficiente para
-/// SNR > 140 dB na conversão de taxa.
+/// Controls the fractional resolution of the resampler. With 256 phases,
+/// the maximum phase error between adjacent sub-filters is < 0.4%,
+/// making linear interpolation between phases sufficient for
+/// SNR > 140 dB in rate conversion.
 pub const NUM_PHASES: usize = 256;
 
-/// Número de taps por fase do banco polifásico.
+/// Number of taps per phase in the polyphase bank.
 ///
-/// Com 32 taps por fase e janela Kaiser (β=12), o filtro atinge
-/// rejeição de aliasing > 120 dB com banda de transição de ~3 kHz
-/// a 48 kHz. O valor é múltiplo de 8 para alinhamento AVX2.
+/// With 32 taps per phase and a Kaiser window (β=12), the filter achieves
+/// aliasing rejection > 120 dB with a transition band of ~3 kHz
+/// at 48 kHz. The value is a multiple of 8 for AVX2 alignment.
 pub const TAPS_PER_PHASE: usize = 32;
 
-/// Comprimento total do protótipo FIR = NUM_PHASES × TAPS_PER_PHASE.
+/// Total prototype FIR length = NUM_PHASES × TAPS_PER_PHASE.
 const PROTO_LEN: usize = NUM_PHASES * TAPS_PER_PHASE;
 
-/// Banco de filtros polifásico com coeficientes alinhados para SIMD.
+/// Polyphase filter bank with coefficients aligned for SIMD.
 ///
-/// Layout em memória: `coeffs[phase * TAPS_PER_PHASE .. (phase+1) * TAPS_PER_PHASE]`
-/// Cada fase é contígua e alinhada a 64 bytes para `_mm512_load_ps` / `_mm256_load_ps`.
+/// Memory layout: `coeffs[phase * TAPS_PER_PHASE .. (phase+1) * TAPS_PER_PHASE]`
+/// Each phase is contiguous and aligned to 64 bytes for `_mm512_load_ps` / `_mm256_load_ps`.
 pub struct PolyphaseBank {
-    /// Coeficientes f32 alinhados. Tamanho = `NUM_PHASES * TAPS_PER_PHASE`.
-    /// O alinhamento de 64 bytes do início do buffer garante que cada fase
-    // (128 bytes) também comece em um limite de 64 bytes.
+    /// Aligned f32 coefficients. Size = `NUM_PHASES * TAPS_PER_PHASE`.
+    /// The 64-byte alignment of the buffer start ensures that each 128-byte phase
+    /// also begins on a 64-byte boundary.
     coeffs: AlignedVec<f32>,
-    /// Taps por fase (sempre TAPS_PER_PHASE, já múltiplo de 8).
+    /// Taps per phase (always TAPS_PER_PHASE, already a multiple of 8).
     pub taps_per_phase: usize,
 }
 
 impl PolyphaseBank {
-    /// Retorna o ponteiro para o início dos coeficientes da fase `phase`.
+    /// Returns the pointer to the start of phase `phase` coefficients.
     ///
     /// # Safety
     /// `phase` deve ser < `NUM_PHASES`.
@@ -59,7 +59,7 @@ impl PolyphaseBank {
         unsafe { self.coeffs.as_ptr().add(phase * self.taps_per_phase) }
     }
 
-    /// Retorna o slice de coeficientes da fase `phase`.
+    /// Returns the coefficient slice for phase `phase`.
     #[inline]
     pub fn phase_coeffs(&self, phase: usize) -> &[f32] {
         debug_assert!(phase < NUM_PHASES);
@@ -68,39 +68,39 @@ impl PolyphaseBank {
     }
 }
 
-/// Gera o banco polifásico completo para conversão `from_rate → to_rate`.
+/// Generates the complete polyphase bank for conversion `from_rate → to_rate`.
 ///
-/// Pipeline: Sinc+Kaiser → Fase Mínima (Cepstrum) → Partição Polifásica.
+/// Pipeline: Sinc+Kaiser → Minimum Phase (Cepstrum) → Polyphase Partition.
 ///
-/// # Parâmetros
-/// - `from_rate`: taxa de amostragem de origem (Hz).
-/// - `to_rate`: taxa de amostragem de destino (Hz).
+/// # Parameters
+/// - `from_rate`: source sample rate (Hz).
+/// - `to_rate`: destination sample rate (Hz).
 ///
-/// # Retorno
-/// Banco polifásico pronto para convolução SIMD.
+/// # Returns
+/// Polyphase bank ready for SIMD convolution.
 pub fn generate_polyphase_bank(from_rate: u32, to_rate: u32) -> PolyphaseBank {
-    // 1. Gera protótipo Sinc + Kaiser em f64
+    // 1. Generate Sinc + Kaiser prototype in f64
     let cutoff_ratio = (from_rate.min(to_rate) as f64) / (from_rate.max(to_rate) as f64);
     let cutoff = 0.95 * cutoff_ratio;
     let proto_f64 = generate_sinc_kaiser(PROTO_LEN, cutoff, 12.0);
 
-    // 2. Transforma para fase mínima via cepstrum real
+    // 2. Transform to minimum phase via real cepstrum
     let min_phase = to_minimum_phase(&proto_f64);
 
-    // 3. Normaliza energia (ganho DC = 1.0 por fase)
+    // 3. Normalize energy (DC gain = 1.0 per phase)
     let proto_f32: Vec<f32> = min_phase.iter().map(|&x| x as f32).collect();
 
-    // 4. Particiona em NUM_PHASES sub-filtros
+    // 4. Partition into NUM_PHASES sub-filters
     partition_polyphase(&proto_f32)
 }
 
-/// Gera um kernel FIR Sinc com janelamento Kaiser.
+/// Generates a Sinc FIR kernel with Kaiser windowing.
 ///
-/// # Parâmetros
-/// - `length`: comprimento total do filtro (amostras).
-/// - `cutoff`: frequência de corte normalizada (0..1, relativa a Nyquist).
-/// - `beta`: parâmetro β da janela Kaiser (controla atenuação de stop-band).
-///   β=12 → ~120 dB de rejeição.
+/// # Parameters
+/// - `length`: total filter length (samples).
+/// - `cutoff`: normalized cutoff frequency (0..1, relative to Nyquist).
+/// - `beta`: Kaiser window β parameter (controls stop-band attenuation).
+///   β=12 → ~120 dB of rejection.
 fn generate_sinc_kaiser(length: usize, cutoff: f64, beta: f64) -> Vec<f64> {
     let half = (length - 1) as f64 / 2.0;
     let i0_beta = bessel_i0(beta);
@@ -109,7 +109,7 @@ fn generate_sinc_kaiser(length: usize, cutoff: f64, beta: f64) -> Vec<f64> {
     for i in 0..length {
         let n = i as f64 - half;
 
-        // Sinc normalizado
+        // Normalized Sinc
         let sinc = if n.abs() < 1e-10 {
             cutoff
         } else {
@@ -117,7 +117,7 @@ fn generate_sinc_kaiser(length: usize, cutoff: f64, beta: f64) -> Vec<f64> {
             x.sin() / (std::f64::consts::PI * n)
         };
 
-        // Janela Kaiser: I0(β × sqrt(1 - (2n/N-1)²)) / I0(β)
+        // Kaiser window: I0(β × sqrt(1 - (2n/N-1)²)) / I0(β)
         let ratio = n / half;
         let arg = beta * (1.0 - ratio * ratio).max(0.0).sqrt();
         let window = bessel_i0(arg) / i0_beta;
@@ -125,7 +125,7 @@ fn generate_sinc_kaiser(length: usize, cutoff: f64, beta: f64) -> Vec<f64> {
         kernel.push(sinc * window);
     }
 
-    // Normaliza para ganho DC unitário
+    // Normalize for unit DC gain
     let dc_sum: f64 = kernel.iter().sum();
     if dc_sum.abs() > 1e-15 {
         for k in &mut kernel {
@@ -136,9 +136,9 @@ fn generate_sinc_kaiser(length: usize, cutoff: f64, beta: f64) -> Vec<f64> {
     kernel
 }
 
-/// Função de Bessel modificada de primeira espécie, ordem zero — I₀(x).
+/// Modified Bessel function of the first kind, order zero — I₀(x).
 ///
-/// Expansão em série de Taylor com 20 termos (precisão > 1e-12 para β ≤ 25).
+/// Taylor series expansion with 20 terms (precision > 1e-12 for β ≤ 25).
 fn bessel_i0(x: f64) -> f64 {
     let mut sum = 1.0_f64;
     let mut term = 1.0_f64;
@@ -153,21 +153,21 @@ fn bessel_i0(x: f64) -> f64 {
     sum
 }
 
-/// Transforma um kernel FIR de fase linear para fase mínima via Cepstrum Real.
+/// Transforms a linear-phase FIR kernel to minimum phase via Real Cepstrum.
 ///
-/// ## Algoritmo (Oppenheim & Schafer, Discrete-Time Signal Processing)
+/// ## Algorithm (Oppenheim & Schafer, Discrete-Time Signal Processing)
 ///
-/// 1. Zero-pad kernel para `N_fft` (potência de 2, ≥ 4× comprimento original).
-/// 2. FFT → espectro complexo `H(k)`.
+/// 1. Zero-pad kernel to `N_fft` (power of 2, ≥ 4× original length).
+/// 2. FFT → complex spectrum `H(k)`.
 /// 3. Log-magnitude: `L(k) = ln(|H(k)| + ε)`.
-/// 4. IFFT de `L` → cepstrum real `c[n]`.
-/// 5. Truncamento causal: `c[0]` inalterado, `c[1..N/2-1] × 2`, `c[N/2+1..] = 0`.
-/// 6. FFT do cepstrum causal → `Ĉ(k)`.
-/// 7. Exponencial complexa: `H_min(k) = exp(Ĉ(k))`.
-/// 8. IFFT → `h_min[n]` (parte real), truncar para comprimento original.
+/// 4. IFFT of `L` → real cepstrum `c[n]`.
+/// 5. Causal truncation: `c[0]` unchanged, `c[1..N/2-1] × 2`, `c[N/2+1..] = 0`.
+/// 6. FFT of causal cepstrum → `Ĉ(k)`.
+/// 7. Complex exponential: `H_min(k) = exp(Ĉ(k))`.
+/// 8. IFFT → `h_min[n]` (real part), truncate to original length.
 ///
-/// Toda a computação é em f64 para estabilidade numérica no domínio logarítmico,
-/// conforme recomendado por r8brain-free-src (Vaneev).
+/// All computation is in f64 for numerical stability in the logarithmic domain,
+/// as recommended by r8brain-free-src (Vaneev).
 fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
     let n_proto = kernel.len();
     let n_fft = (4 * n_proto).next_power_of_two();
@@ -177,7 +177,7 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
     let fft_inv = planner.plan_fft_inverse(n_fft);
     let scale = 1.0 / n_fft as f64;
 
-    // Passo 1-2: Zero-pad + FFT
+    // Step 1-2: Zero-pad + FFT
     let mut buf: Vec<Complex<f64>> = kernel
         .iter()
         .map(|&x| Complex::new(x, 0.0))
@@ -185,20 +185,20 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
         .collect();
     fft_fwd.process(&mut buf);
 
-    // Passo 3: Log-magnitude (real-only complex)
+    // Step 3: Log-magnitude (real-only complex)
     let eps = 1e-10_f64;
     for c in &mut buf {
         *c = Complex::new((c.norm() + eps).ln(), 0.0);
     }
 
-    // Passo 4: IFFT → cepstrum real
+    // Step 4: IFFT → real cepstrum
     fft_inv.process(&mut buf);
     for c in &mut buf {
         *c *= scale;
     }
 
-    // Passo 5: Truncamento causal
-    // c[0] inalterado, c[1..N/2-1] *= 2, c[N/2] inalterado, c[N/2+1..] = 0
+    // Step 5: Causal truncation
+    // c[0] unchanged, c[1..N/2-1] *= 2, c[N/2] unchanged, c[N/2+1..] = 0
     let half = n_fft / 2;
     for c in &mut buf[1..half] {
         *c *= 2.0;
@@ -207,34 +207,34 @@ fn to_minimum_phase(kernel: &[f64]) -> Vec<f64> {
         *c = Complex::new(0.0, 0.0);
     }
 
-    // Passo 6: FFT do cepstrum causal
+    // Step 6: FFT of causal cepstrum
     fft_fwd.process(&mut buf);
 
-    // Passo 7: Exponencial complexa
+    // Step 7: Complex exponential
     for c in &mut buf {
         *c = c.exp();
     }
 
-    // Passo 8: IFFT → impulso de fase mínima
+    // Step 8: IFFT → minimum-phase impulse
     fft_inv.process(&mut buf);
 
-    // Retornar parte real, truncada ao comprimento original
+    // Return real part, truncated to original length
     buf[..n_proto].iter().map(|c| c.re * scale).collect()
 }
 
-/// Particiona o protótipo FIR em `NUM_PHASES` sub-filtros polifásicos.
+/// Partitions the FIR prototype into `NUM_PHASES` polyphase sub-filters.
 ///
-/// O coeficiente `proto[n]` vai para a fase `n % NUM_PHASES`, tap `n / NUM_PHASES`.
-/// Cada fase é zero-padded para `TAPS_PER_PHASE` (múltiplo de 8).
+/// Coefficient `proto[n]` goes to phase `n % NUM_PHASES`, tap `n / NUM_PHASES`.
+/// Each phase is zero-padded to `TAPS_PER_PHASE` (multiple of 8).
 fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
     let taps = TAPS_PER_PHASE;
     let total = NUM_PHASES * taps;
     let mut coeffs = AlignedVec::new(total, 0.0f32);
 
-    // Escala por NUM_PHASES para compensar a decomposição polifásica.
-    // No upsampling conceitual (inserção de L-1 zeros entre amostras),
-    // o filtro protótipo é aplicado à taxa L×fs. A partição polifásica
-    // divide o ganho total por L, exigindo compensação de ganho.
+    // Scale by NUM_PHASES to compensate for the polyphase decomposition.
+    // In conceptual upsampling (insertion of L-1 zeros between samples),
+    // the prototype filter is applied at L×fs rate. The polyphase partition
+    // divides the total gain by L, requiring gain compensation.
     let gain = NUM_PHASES as f32;
 
     for (n, &coeff) in proto.iter().enumerate() {

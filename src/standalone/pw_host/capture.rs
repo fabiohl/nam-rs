@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Configuração da capture stream (`Audio/Sink`) do PipeWire — Virtual Sink que
-//! recebe áudio dos apps, aplica a cadeia DSP e escreve no `DspBridge`.
+//! Configuration of the PipeWire capture stream (`Audio/Sink`) — Virtual Sink that
+//! receives audio from apps, applies the DSP chain and writes to `DspBridge`.
 
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags};
@@ -23,11 +23,11 @@ use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// Configura a capture stream (Virtual Sink) e seu listener RT.
+/// Configures the capture stream (Virtual Sink) and its RT listener.
 ///
-/// A closure `process()` captura todo o estado DSP por `move` e executa
-/// o pipeline completo: drenagem de resamplers, recepção de comandos,
-/// sincronização de rate, e processamento DSP via `capture_dsp_pipeline`.
+/// The `process()` closure captures all DSP state by `move` and executes
+/// the full pipeline: resampler draining, command reception,
+/// rate synchronization, and DSP processing via `capture_dsp_pipeline`.
 #[allow(clippy::too_many_arguments)]
 pub fn setup_capture_stream<'c>(
     core: &'c pw::core::Core,
@@ -73,7 +73,7 @@ pub fn setup_capture_stream<'c>(
             .param("initial_rate", 48_000_u32)
             .param("detail", &e)
             .emit_warning();
-        NamResampler::new(48_000, 48_000, 2048).expect("bypass não pode falhar")
+        NamResampler::new(48_000, 48_000, 2048).expect("bypass cannot fail")
     });
     let mut resampler = Box::new(resampler);
 

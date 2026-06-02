@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Bloco DSP propriamente dito: extração de canais, gate, inferência,
-//! resampling, ganho de saída, picos e telemetria.
+//! DSP block proper: channel extraction, gate, inference,
+//! resampling, output gain, peaks, and telemetry.
 
 use super::NamClapProcessor;
 use crate::dsp::gate::{GateParams, GateState};
@@ -15,8 +15,8 @@ use minstant::Instant;
 use std::sync::atomic::Ordering;
 
 impl<'a> NamClapProcessor<'a> {
-    /// Processa o bloco de áudio: extração de canais, bypass, gate,
-    /// inferência neural, resampling, ganho de saída, picos e telemetria.
+    /// Processes the audio block: channel extraction, bypass, gate,
+    /// neural inference, resampling, output gain, peaks, and telemetry.
     pub(super) fn process_dsp_audio(
         &mut self,
         audio: &mut Audio,
@@ -31,9 +31,9 @@ impl<'a> NamClapProcessor<'a> {
                 .last_n_samples
                 .store(n_samples as u32, Ordering::Relaxed);
 
-            // Bypass explícito: copia input → output sem processamento.
-            // Implementado aqui (não apenas delegado ao host) para conformidade
-            // com o flag IS_BYPASS declarado no parâmetro PARAM_BYPASS.
+            // Explicit bypass: copy input → output without processing.
+            // Implemented here (not merely delegated to the host) for compliance
+            // with the IS_BYPASS flag declared on the PARAM_BYPASS parameter.
             if self.params.bypass {
                 let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
                     continue;
@@ -117,8 +117,8 @@ impl<'a> NamClapProcessor<'a> {
             let pair_l = channel_iter.next();
             let pair_r = channel_iter.next();
 
-            // Como o plugin funciona estritamente em mono, definimos a contagem de canais como 1
-            // e process_mono como true. Não executamos nenhuma detecção de estéreo ativa.
+            // Since the plugin operates strictly in mono, we set the channel count to 1
+            // and process_mono to true. We do not run any active stereo detection.
             self.shared.active_channel_count.store(1, Ordering::Relaxed);
             self.process_mono = true;
 
@@ -147,8 +147,8 @@ impl<'a> NamClapProcessor<'a> {
                 self.buf_host_l[..n_samples].fill(0.0);
             }
 
-            // Copia o input do canal esquerdo para o direito para garantir que o pipeline DSP
-            // (que espera buffers válidos em ambos os lados L/R) processe o mesmo sinal mono.
+            // Copy the left channel input to the right channel to ensure the DSP pipeline
+            // (which expects valid buffers on both L/R sides) processes the same mono signal.
             self.buf_host_r[..n_samples].copy_from_slice(&self.buf_host_l[..n_samples]);
 
             if let Some(pair) = pair_r {
@@ -163,7 +163,7 @@ impl<'a> NamClapProcessor<'a> {
                 }
             }
 
-            // 2. Aplicação do Ganho de Entrada (Sample-Accurate Smoothing)
+            // 2. Input Gain Application (Sample-Accurate Smoothing)
             let mut input_has_clipped = false;
             for i in 0..n_samples {
                 let g = self.smoother_in.tick();
@@ -182,9 +182,9 @@ impl<'a> NamClapProcessor<'a> {
             let close_db = modulated_gate_db - 6.0;
 
             if self.gate_dirty {
-                // Pré-cálculo cold-path (equivalente a pw_host.rs:855-863).
-                // Ambos usam a mesma LUT db_to_linear + quadratura; mudanças
-                // aqui devem ensejar revisão no standalone.
+                // Cold-path pre-calculation (equivalent to pw_host.rs:855-863).
+                // Both use the same db_to_linear LUT + squaring; changes
+                // here must trigger a review in standalone.
                 self.cached_threshold_open_sq = lut.db_to_linear(modulated_gate_db).powi(2);
                 self.cached_threshold_close_sq = lut.db_to_linear(close_db).powi(2);
                 self.gate_dirty = false;
@@ -200,8 +200,8 @@ impl<'a> NamClapProcessor<'a> {
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
                 active_model_r: &mut self.active_model_r,
-                input_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
-                output_gain_mult: 1.0, // Aplicado manualmente via smoother abaixo
+                input_gain_mult: 1.0,  // Applied manually via smoother below
+                output_gain_mult: 1.0, // Applied manually via smoother below
                 gate_params: &gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
                 mono_hysteresis: &mut self.mono_hyst,
@@ -219,7 +219,7 @@ impl<'a> NamClapProcessor<'a> {
                 &mut ctx,
             );
 
-            // Reporta estado do gate via flags atômicas (RT-Safe logging)
+            // Report gate state via atomic flags (RT-Safe logging)
             match gate_state {
                 GateState::Closed => {
                     self.rt_status
@@ -251,7 +251,7 @@ impl<'a> NamClapProcessor<'a> {
                 continue;
             }
 
-            // Reporta falha de modelo se bypass estiver desligado mas nenhum modelo carregado
+            // Report model failure if bypass is off but no model is loaded
             if ctx.active_model_l.is_none() && !self.params.bypass {
                 self.rt_status
                     .set_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED);
@@ -277,12 +277,12 @@ impl<'a> NamClapProcessor<'a> {
                 &mut self.buf_out_l[..n_out],
                 &mut self.buf_out_r[..n_out],
                 n_out,
-                1.0, // Aplicado manualmente via smoother abaixo
+                1.0, // Applied manually via smoother below
                 ctx.silence_hysteresis,
                 ctx.rt_status,
             );
 
-            // 5. Aplicação do Ganho de Saída (Sample-Accurate Smoothing)
+            // 5. Output Gain Application (Sample-Accurate Smoothing)
             for i in 0..n_out {
                 let g = self.smoother_out.tick();
                 self.buf_out_l[i] *= g;
@@ -329,9 +329,9 @@ impl<'a> NamClapProcessor<'a> {
             }
         }
 
-        // Decimação de Telemetria: Economiza ciclos medindo apenas 1 de cada 16 quadros.
-        // ALGORITMO COMPARTILHADO: Mesma lógica de decimação de src/standalone/pw_host.rs (linha ~978).
-        // Toda alteração aqui deve ensejar revisão também em pw_host.rs.
+        // Telemetry Decimation: Saves cycles by measuring only 1 out of every 16 frames.
+        // SHARED ALGORITHM: Same decimation logic as src/standalone/pw_host.rs (line ~978).
+        // Any change here must also trigger a review in pw_host.rs.
         let should_measure = self.cycles_since_telemetry & 0xF == 0;
         self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
 
@@ -342,7 +342,7 @@ impl<'a> NamClapProcessor<'a> {
                 .store(elapsed_nanos, Ordering::Relaxed);
             self.rt_status.latency_hist.record(elapsed_nanos);
 
-            // Se o processamento excedeu 85% do tempo limite (budget) do bloco, incrementa dsp_overloads
+            // If processing exceeded 85% of the block time budget, increment dsp_overloads
             let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
             let last_n_samples = self.rt_status.last_n_samples.load(Ordering::Relaxed);
             if sample_rate > 0 && last_n_samples > 0 {

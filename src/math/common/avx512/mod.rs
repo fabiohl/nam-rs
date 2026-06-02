@@ -6,19 +6,19 @@
     clippy::too_many_arguments
 )]
 
-//! Implementações AVX-512 da trait `SimdMath`.
+//! AVX-512 implementations of the `SimdMath` trait.
 //!
-//! Contém `Avx512Math`, `Avx512VnniMath` e `Avx512VnniBf16Math`.
-//! `Avx512VnniMath` tem implementações reais (BF16 dot product nativo via `_mm512_dpbf16_ps`).
-//! Os métodos delegam para funções-kernel em `math::gemm`, `math::wavenet`,
-//! `math::lstm`, `math::dsp`, `math::common::ops` e `math::common::utility`.
+//! Contains `Avx512Math`, `Avx512VnniMath`, and `Avx512VnniBf16Math`.
+//! `Avx512VnniMath` has real implementations (native BF16 dot product via `_mm512_dpbf16_ps`).
+//! Methods delegate to kernel functions in `math::gemm`, `math::wavenet`,
+//! `math::lstm`, `math::dsp`, `math::common::ops`, and `math::common::utility`.
 //!
-//! # Submódulos
-//! - `gemv`: Kernels GEMV/GEMM, dot products e 4-gate LSTM.
-//! - `activations`: Funções de ativação (tanh/sigmoid), acúmulo e fusões LSTM.
-//! - `bf16`: Conversões FP32↔BF16 e wrappers `store_bf16`.
-//! - `reduce`: Soma horizontal, energia e max-diff.
-//! - `dsp`: Convolução, ganho, rampa e head-sum do WaveNet.
+//! # Submodules
+//! - `gemv`: GEMV/GEMM kernels, dot products, and 4-gate LSTM.
+//! - `activations`: Activation functions (tanh/sigmoid), accumulation, and LSTM fusions.
+//! - `bf16`: FP32↔BF16 conversions and `store_bf16` wrappers.
+//! - `reduce`: Horizontal sum, energy, and max-diff.
+//! - `dsp`: Convolution, gain, ramp, and WaveNet head-sum.
 
 mod activations;
 mod bf16;
@@ -30,18 +30,18 @@ use crate::math::common::scalar_ref::*;
 use crate::math::common::traits::SimdMath;
 use core::arch::x86_64::*;
 
-/// Implementação SIMD via AVX-512.
-/// Esta struct agrupa todas as funções matemáticas otimizadas para processadores que suportam AVX-512.
+/// SIMD implementation via AVX-512.
+/// This struct groups all mathematical functions optimized for processors that support AVX-512.
 pub struct Avx512Math;
 
-/// Implementação estática para AVX-512 com suporte a VNNI (Instruções Neurais de Vetor).
-/// É ainda mais rápido para calcular redes neurais em processadores Intel modernos (ex: Cascade Lake e mais novos),
-/// pois possui instruções especializadas para "moer" números de redes neurais com mais eficiência.
+/// Static implementation for AVX-512 with VNNI (Vector Neural Instructions) support.
+/// It is even faster for computing neural networks on modern Intel processors (e.g.: Cascade Lake and newer),
+/// as it has specialized instructions to "crunch" neural network numbers more efficiently.
 pub struct Avx512VnniMath;
 
-/// Implementação estática para AVX-512 com suporte a VNNI e BF16 (Brain Float 16).
-/// Esta é a "Ferrari" do processamento de áudio, disponível em CPUs Intel muito recentes (ex: Sapphire Rapids).
-/// O formato BF16 permite que o chip processe o dobro de números com quase a mesma precisão do f32 original.
+/// Static implementation for AVX-512 with VNNI and BF16 (Brain Float 16) support.
+/// This is the "Ferrari" of audio processing, available on very recent Intel CPUs (e.g.: Sapphire Rapids).
+/// The BF16 format allows the chip to process twice the numbers with almost the same precision as the original f32.
 pub struct Avx512VnniBf16Math;
 
 // ── Avx512Math ──

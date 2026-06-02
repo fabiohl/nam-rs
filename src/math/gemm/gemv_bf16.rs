@@ -6,17 +6,17 @@
     clippy::too_many_arguments
 )]
 
-//! Kernel GEMV BF16 — multiplicação de matriz por vetor com dados no formato BF16.
+//! GEMV BF16 kernel — matrix-vector multiplication with data in BF16 format.
 //!
-//! Usa `_mm512_dpbf16_ps` para processar 32 pares BF16 por instrução,
-//! com 8 acumuladores independentes para quebrar a cadeia de dependência FMA.
+//! Uses `_mm512_dpbf16_ps` to process 32 BF16 pairs per instruction,
+//! with 8 independent accumulators to break the FMA dependency chain.
 
 use core::arch::x86_64::*;
 
-/// GEMV BF16 AVX-512: Y = Bias + W * X, onde X e W estão no formato BF16.
+/// GEMV BF16 AVX-512: Y = Bias + W * X, where X and W are in BF16 format.
 ///
-/// Processa a projeção linear em blocos de 16 canais de saída, com 8 acumuladores
-/// ZMM independentes e passo 16 no loop interno (16 pares BF16 = 32 elementos).
+/// Processes the linear projection in blocks of 16 output channels, with 8 independent
+/// ZMM accumulators and step 16 in the inner loop (16 BF16 pairs = 32 elements).
 #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
 pub unsafe fn gemv_overwrite_bf16_avx512(
     in_frame: &[u16],
@@ -83,7 +83,7 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
         acc4 = _mm512_add_ps(acc4, acc6);
         acc0 = _mm512_add_ps(acc0, acc4);
 
-        // Processa pares restantes com _mm512_dpbf16_ps.
+        // Process remaining pairs with _mm512_dpbf16_ps.
         while in_c + 2 <= in_len {
             let v_in_raw = _mm256_set1_epi32(*(in_frame.as_ptr().add(in_c) as *const i32));
             let v_in = _mm512_broadcast_i32x8(v_in_raw);
@@ -102,7 +102,7 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
             in_c += 2;
         }
 
-        // Elemento ímpar restante: broadcast simples + FMA em f32.
+        // Remaining odd element: simple broadcast + f32 FMA.
         if in_c < in_len {
             let si = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
             let v_in = _mm512_set1_ps(si);
@@ -116,7 +116,7 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
         out_c += 16;
     }
 
-    // Resto de canais de saída via fallback escalar (já corrigido).
+    // Remaining output channels via scalar fallback (already corrected).
     while out_c < out_len {
         let mut sum = if do_bias {
             *bias.get_unchecked(out_c)
@@ -133,7 +133,7 @@ pub unsafe fn gemv_overwrite_bf16_avx512(
     }
 }
 
-/// Versão em batch da GEMV BF16 via AVX-512.
+/// Batch version of GEMV BF16 via AVX-512.
 #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
 pub unsafe fn gemv_overwrite_batch_bf16_avx512(
     in_frames: &[u16],

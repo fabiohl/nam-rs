@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo de carregamento do ecossistema NAM.
+//! Loading module for the NAM ecosystem.
 //!
-//! Contém os parsers dos formatos .nam (JSON) e .namb (Binário).
-//! Todo o processo de carga ocorre **fora** da thread RT para
-//! evitar qualquer alocação indesejada durante o processamento de áudio.
+//! Contains parsers for .nam (JSON) and .namb (binary) formats.
+//! The entire loading process occurs **outside** the RT thread to
+//! avoid any unwanted allocation during audio processing.
 
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 
@@ -17,32 +17,32 @@ pub mod nam_json;
 pub mod namb;
 pub mod namb_encoder;
 
-/// Nível de entrada padrão em dBu para modelos que não especificam metadados.
+/// Default input level in dBu for models that do not specify metadata.
 const DEFAULT_INPUT_LEVEL_DBU: f32 = 12.0;
-/// Loudness de referência padrão em dB para normalização.
+/// Default reference loudness in dB for normalization.
 const DEFAULT_LOUDNESS_DB: f32 = -18.0;
-/// Taxa de amostragem padrão de referência (NAM standard).
+/// Default reference sample rate (NAM standard).
 const DEFAULT_SAMPLE_RATE: f32 = 48000.0;
-/// Tamanho máximo de arquivo de modelo permitido (256 MiB).
+/// Maximum allowed model file size (256 MiB).
 const MAX_MODEL_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Par de modelos carregados com metadados de calibração.
+/// Pair of loaded models with calibration metadata.
 pub struct LoadedModelPair {
-    /// Modelo para o canal esquerdo.
+    /// Model for the left channel.
     pub model_l: Option<Box<DynamicModel>>,
-    /// Modelo para o canal direito.
+    /// Model for the right channel.
     pub model_r: Option<Box<DynamicModel>>,
-    /// Multiplicador de ajuste de ganho de entrada.
+    /// Input gain adjustment multiplier.
     pub input_mult_adj: f32,
-    /// Multiplicador de ajuste de ganho de saída.
+    /// Output gain adjustment multiplier.
     pub output_mult_adj: f32,
-    /// Taxa de amostragem nativa do modelo.
+    /// Native sample rate of the model.
     pub sample_rate: u32,
-    /// Arquitetura do modelo (ex: "LSTM", "WaveNet").
+    /// Model architecture (e.g. "LSTM", "WaveNet").
     pub architecture: String,
-    /// Topologia do modelo (ex: "Standard", "1x64").
+    /// Model topology (e.g. "Standard", "1x64").
     pub topology: String,
-    /// Metadados opcionais do modelo.
+    /// Optional model metadata.
     pub metadata: Option<crate::loader::nam_json::NamMetadata>,
 }
 
@@ -61,13 +61,13 @@ impl std::fmt::Debug for LoadedModelPair {
     }
 }
 
-/// Carrega e constrói um par de modelos (L+R) a partir de um arquivo.
+/// Loads and builds a pair of models (L+R) from a file.
 pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result<LoadedModelPair> {
     let path_str = path.to_string_lossy();
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let ext_lower = ext.to_lowercase();
 
-    // 1. Leitura e Parsing
+    // 1. Reading and Parsing
     let model_data = if ext_lower == "namb" {
         let len = std::fs::metadata(path)
             .map_err(|e| {
@@ -178,7 +178,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         return Err(anyhow::anyhow!("Unsupported file extension: {}", ext));
     };
 
-    // 2. Extração de Metadados e Calibração
+    // 2. Metadata and Calibration Extraction
     let meta = model_data.metadata.clone().unwrap_or_default();
     let in_level = meta.input_level_dbu.unwrap_or(DEFAULT_INPUT_LEVEL_DBU);
     let loudness = meta.loudness.unwrap_or(DEFAULT_LOUDNESS_DB);

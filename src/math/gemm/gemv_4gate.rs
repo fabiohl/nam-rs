@@ -6,15 +6,15 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels GEMV 4-Gate para LSTM — AVX2 e AVX-512 (incluindo BF16).
+//! GEMV 4-Gate kernels for LSTM — AVX2 and AVX-512 (including BF16).
 
 use core::arch::x86_64::*;
 
-/// Realiza a projeção linear para as 4 "portas" de uma célula LSTM de forma simultânea via AVX2.
+/// Performs the linear projection for the 4 "gates" of an LSTM cell simultaneously via AVX2.
 ///
-/// Em uma rede neural LSTM, cada passo exige o cálculo de 4 sub-resultados (portas). Esta
-/// função executa todos esses cálculos de uma só vez, garantindo que a atualização da
-/// "memória" da rede seja feita com o máximo de performance e o mínimo de latência.
+/// In an LSTM neural network, each step requires computing 4 sub-results (gates). This
+/// function executes all these computations at once, ensuring that the network's "memory"
+/// update is done with maximum performance and minimum latency.
 #[target_feature(enable = "avx2,fma,f16c")]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_avx2(
@@ -32,9 +32,9 @@ pub unsafe fn gemv_4gate_avx2(
 
     unsafe {
         let mut out_c = 0;
-        // Processa as 4 portas do LSTM em paralelo, 8 elementos por vez.
+        // Process the 4 LSTM gates in parallel, 8 elements at a time.
         while out_c + 8 <= out_len {
-            // Inicializa os acumuladores (baldes) com os valores de Bias de cada porta.
+            // Initialize accumulators (buckets) with the Bias values for each gate.
             let mut acc0 = if do_bias {
                 _mm256_loadu_ps(bias.as_ptr().add(out_c))
             } else {
@@ -56,13 +56,13 @@ pub unsafe fn gemv_4gate_avx2(
                 _mm256_setzero_ps()
             };
 
-            // Loop de Cálculo Principal:
+            // Main Computation Loop:
             for in_c in 0..in_len {
-                // Pega um único valor de entrada e o "espalha" para usar em todas as portas.
+                // Take a single input value and "broadcast" it to use across all gates.
                 let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
 
-                // Multiplica a entrada pelos pesos de cada uma das 4 portas (acc0 a acc3).
-                // Cada porta cuida de um aspecto diferente da "memória" do LSTM.
+                // Multiply the input by the weights for each of the 4 gates (acc0 to acc3).
+                // Each gate handles a different aspect of the LSTM "memory".
                 let wp0 = w0.as_ptr().add(in_c * out_len + out_c);
                 let vw0 = _mm256_cvtph_ps(_mm_loadu_si128(wp0 as *const __m128i));
                 acc0 = _mm256_fmadd_ps(vs, vw0, acc0);
@@ -80,7 +80,7 @@ pub unsafe fn gemv_4gate_avx2(
                 acc3 = _mm256_fmadd_ps(vs, vw3, acc3);
             }
 
-            // Salva os resultados finais de cada porta nos seus devidos lugares na memória.
+            // Save the final results of each gate to their proper places in memory.
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_len + out_c), acc1);
             _mm256_storeu_ps(out_frame.as_mut_ptr().add(2 * out_len + out_c), acc2);
@@ -88,12 +88,12 @@ pub unsafe fn gemv_4gate_avx2(
             out_c += 8;
         }
 
-        // Processamento de Cauda (Tail Loop):
-        // Executado quando a dimensão de saída (out_len) não é múltiplo perfeito do tamanho do vetor AVX2
-        // (8 floats). Sem este loop de limpeza escalar de fallback, tentar ler dados vetoriais causaria
-        // acessos de memória fora dos limites do array (Out-Of-Bounds / Segfault).
+        // Tail Loop Processing:
+        // Executed when the output dimension (out_len) is not a perfect multiple of the AVX2 vector
+        // size (8 floats). Without this scalar cleanup fallback loop, attempting to read vector data
+        // would cause out-of-bounds memory accesses (Out-Of-Bounds / Segfault).
         while out_c < out_len {
-            // Inicializa a soma de cada uma das 4 portas com o bias correspondente (se ativo).
+            // Initialize the sum for each of the 4 gates with the corresponding bias (if enabled).
             let mut sum0 = if do_bias { bias[out_c] } else { 0.0 };
             let mut sum1 = if do_bias { bias[out_len + out_c] } else { 0.0 };
             let mut sum2 = if do_bias {
@@ -107,11 +107,11 @@ pub unsafe fn gemv_4gate_avx2(
                 0.0
             };
 
-            // Executa o produto escalar clássico (fused multiply-accumulate) de forma escalar
+            // Executes the classic dot product (fused multiply-accumulate) in a scalar fashion
             for in_c in 0..in_len {
                 let s = *in_frame.get_unchecked(in_c);
-                // Converte os pesos representados em f16 (compactados como u16 de 16 bits) para f32
-                // em tempo de execução usando a biblioteca `half` antes de multiplicar.
+                // Converts the f16-compressed weights (packed as 16-bit u16) to f32
+                // at runtime using the `half` library before multiplying.
                 sum0 +=
                     s * half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32();
                 sum1 +=
@@ -122,7 +122,7 @@ pub unsafe fn gemv_4gate_avx2(
                     s * half::f16::from_bits(*w3.get_unchecked(in_c * out_len + out_c)).to_f32();
             }
 
-            // Grava os resultados de cada porta de forma contígua no tensor de saída.
+            // Write each gate's results contiguously into the output tensor.
             *out_frame.get_unchecked_mut(out_c) = sum0;
             *out_frame.get_unchecked_mut(out_len + out_c) = sum1;
             *out_frame.get_unchecked_mut(2 * out_len + out_c) = sum2;
@@ -132,9 +132,9 @@ pub unsafe fn gemv_4gate_avx2(
     }
 }
 
-/// Kernel GEMV 4-gate AVX-512 para LSTM.
-/// Portas (gates) em uma rede LSTM controlam o que deve ser lembrado e o que deve ser esquecido.
-/// Esta função processa as 4 portas principais de uma vez para ganhar muita velocidade.
+/// GEMV 4-gate kernel AVX-512 for LSTM.
+/// Gates in an LSTM network control what should be remembered and what should be forgotten.
+/// This function processes the 4 main gates at once for a major speed boost.
 #[target_feature(enable = "avx512f,avx512vl")]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_avx512(
@@ -152,7 +152,7 @@ pub unsafe fn gemv_4gate_avx512(
 
     let mut out_c = 0;
     while out_c + 16 <= out_len {
-        // Baldes para as 4 portas.
+        // Buckets for the 4 gates.
         let mut acc0 = if do_bias {
             _mm512_loadu_ps(bias.as_ptr().add(out_c))
         } else {
@@ -177,7 +177,7 @@ pub unsafe fn gemv_4gate_avx512(
         for in_c in 0..in_len {
             let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
 
-            // Carrega 16 pesos para cada uma das 4 portas.
+            // Load 16 weights for each of the 4 gates.
             let vw0 = _mm512_cvtph_ps(_mm256_loadu_si256(
                 w0.as_ptr().add(in_c * out_len + out_c) as *const __m256i
             ));
@@ -191,14 +191,14 @@ pub unsafe fn gemv_4gate_avx512(
                 w3.as_ptr().add(in_c * out_len + out_c) as *const __m256i
             ));
 
-            // Multiplica e soma em todos os 4 baldes ao mesmo tempo.
+            // Multiply and accumulate into all 4 buckets at the same time.
             acc0 = _mm512_fmadd_ps(vs, vw0, acc0);
             acc1 = _mm512_fmadd_ps(vs, vw1, acc1);
             acc2 = _mm512_fmadd_ps(vs, vw2, acc2);
             acc3 = _mm512_fmadd_ps(vs, vw3, acc3);
         }
 
-        // Salva os resultados.
+        // Save the results.
         _mm512_storeu_ps(out.as_mut_ptr().add(out_c), acc0);
         _mm512_storeu_ps(out.as_mut_ptr().add(out_c + out_len), acc1);
         _mm512_storeu_ps(out.as_mut_ptr().add(out_c + 2 * out_len), acc2);
@@ -206,8 +206,8 @@ pub unsafe fn gemv_4gate_avx512(
         out_c += 16;
     }
 
-    // Processamento de Cauda (Tail Loop) para AVX-512:
-    // Processa de forma puramente escalar os elementos restantes se a largura out_len não for divisível por 16.
+    // Tail Loop Processing for AVX-512:
+    // Processes the remaining elements purely in scalar fashion if the out_len width is not divisible by 16.
     while out_c < out_len {
         let mut s0 = if do_bias { bias[out_c] } else { 0.0 };
         let mut s1 = if do_bias { bias[out_c + out_len] } else { 0.0 };
@@ -223,7 +223,7 @@ pub unsafe fn gemv_4gate_avx512(
         };
         for in_c in 0..in_len {
             let si = *in_frame.get_unchecked(in_c);
-            // Os pesos estão no formato f16 compactado e são descompactados sob demanda para f32.
+            // Weights are in packed f16 format and are decompressed on demand to f32.
             s0 += si * half::f16::from_bits(*w0.get_unchecked(in_c * out_len + out_c)).to_f32();
             s1 += si * half::f16::from_bits(*w1.get_unchecked(in_c * out_len + out_c)).to_f32();
             s2 += si * half::f16::from_bits(*w2.get_unchecked(in_c * out_len + out_c)).to_f32();
@@ -237,8 +237,8 @@ pub unsafe fn gemv_4gate_avx512(
     }
 }
 
-/// Kernel GEMV 4-gate BF16 AVX-512 para LSTM.
-/// Esta versão usa o formato BF16 desde o início para ser ainda mais rápida.
+/// GEMV 4-gate BF16 kernel AVX-512 for LSTM.
+/// This version uses the BF16 format from the start to be even faster.
 #[target_feature(enable = "avx512f,avx512vl,avx512bf16")]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_bf16_avx512(
@@ -279,13 +279,13 @@ pub unsafe fn gemv_4gate_bf16_avx512(
 
         let mut in_c = 0;
         while in_c + 2 <= in_len {
-            // Carrega e faz o broadcast do par (in[i], in[i+1]) para todos os 16 slots.
+            // Load and broadcast the pair (in[i], in[i+1]) to all 16 slots.
             let v_in_raw = _mm256_set1_epi32(*(in_frame.as_ptr().add(in_c) as *const i32));
             let v_in = _mm512_broadcast_i32x8(v_in_raw);
 
-            // Constrói pares BF16 (w[i][j], w[i+1][j]) por canal j em cada
-            // lane de 32 bits via zero-extend → shift → OR, sem depender
-            // de unpack por lane (que trocaria canais 4-7 com 8-11).
+            // Build BF16 pairs (w[i][j], w[i+1][j]) per channel j in each
+            // 32-bit lane via zero-extend → shift → OR, without depending
+            // on per-lane unpacking (which would swap channels 4-7 with 8-11).
             macro_rules! bf16_pair {
                 ($w:ident) => {{
                     let lo = _mm256_loadu_si256(
@@ -306,7 +306,7 @@ pub unsafe fn gemv_4gate_bf16_avx512(
             let vw2 = bf16_pair!(w2);
             let vw3 = bf16_pair!(w3);
 
-            // Multiplica e acumula usando a instrução BF16 mágica.
+            // Multiply and accumulate using the magical BF16 instruction.
             acc0 = _mm512_dpbf16_ps(
                 acc0,
                 core::mem::transmute::<__m512, __m512bh>(_mm512_castsi512_ps(v_in)),
@@ -331,7 +331,7 @@ pub unsafe fn gemv_4gate_bf16_avx512(
             in_c += 2;
         }
 
-        // Resto manual se necessário.
+        // Manual remainder if needed.
         if in_c < in_len {
             let si = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
             let v_in = _mm512_set1_ps(si);
@@ -367,8 +367,8 @@ pub unsafe fn gemv_4gate_bf16_avx512(
         out_c += 16;
     }
 
-    // Processamento de Cauda (Tail Loop) para AVX-512 BF16:
-    // Processa os canais restantes de modo escalar, lidando com a representação BF16 na memória.
+    // Tail Loop Processing for AVX-512 BF16:
+    // Processes the remaining channels in scalar mode, handling the BF16 in-memory representation.
     while out_c < out_len {
         let mut s0 = if do_bias { bias[out_c] } else { 0.0 };
         let mut s1 = if do_bias { bias[out_c + out_len] } else { 0.0 };
@@ -383,9 +383,9 @@ pub unsafe fn gemv_4gate_bf16_avx512(
             0.0
         };
         for in_c in 0..in_len {
-            // Como a entrada e os pesos estão no formato BF16 (16 bits), para processar de forma
-            // escalar, deslocamos os bits 16 posições para a esquerda (<< 16) para convertê-los
-            // de volta para a representação normal f32 (IEEE 754) antes de realizar a multiplicação.
+            // Since the input and weights are in BF16 format (16 bits), to process in
+            // scalar fashion, we shift the bits 16 positions to the left (<< 16) to convert
+            // them back to the normal f32 representation (IEEE 754) before multiplying.
             let si = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
             s0 += si * f32::from_bits((*w0.get_unchecked(in_c * out_len + out_c) as u32) << 16);
             s1 += si * f32::from_bits((*w1.get_unchecked(in_c * out_len + out_c) as u32) << 16);

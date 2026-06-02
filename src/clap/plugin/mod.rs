@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Definição do plugin NAM-rs e seus componentes de ciclo de vida CLAP.
+//! NAM-rs plugin definition and its CLAP lifecycle components.
 
 mod shared;
 pub use shared::{ClapParamPayload, NamClapShared, NamClapSharedRef, NamModelMetadata};
@@ -19,7 +19,7 @@ use rtrb::RingBuffer;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// Plugin NAM-rs: ponto de entrada principal do ciclo de vida CLAP.
+/// NAM-rs plugin: main entry point for the CLAP lifecycle.
 pub struct NamClapPlugin;
 
 impl Plugin for NamClapPlugin {
@@ -51,7 +51,7 @@ impl DefaultPluginFactory for NamClapPlugin {
 
     fn new_shared(_host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
         let (param_tx, param_rx) = RingBuffer::new(8);
-        let (gc_tx, gc_rx) = RingBuffer::new(32); // Capacidade ampliada para o plugin
+        let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
 
         Ok(NamClapShared {
             param_tx: Mutex::new(Some(param_tx)),
@@ -102,7 +102,7 @@ impl DefaultPluginFactory for NamClapPlugin {
         mut host: HostMainThreadHandle<'a>,
         shared: &'a Self::Shared<'a>,
     ) -> Result<Self::MainThread<'a>, PluginError> {
-        // Consulta inicial da cor da track do host
+        // Initial track color query from the host
         if let Some(track_info_ext) =
             host.get_extension::<clack_extensions::track_info::HostTrackInfo>()
         {
@@ -121,7 +121,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             }
         }
 
-        // Extrai os canais exclusivos da Main Thread do estado compartilhado
+        // Extracts the Main Thread's exclusive channels from shared state
         let param_tx = shared
             .param_tx
             .lock()

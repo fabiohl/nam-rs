@@ -5,7 +5,7 @@ use crate::math::common::{AlignedVec, PrefetchFn};
 use crate::models::wavenet::{Conv1d, DenseLayer};
 use crate::models::wavenet::{Conv1dDyn, DenseLayerDyn};
 
-/// Tipo de saída para pesos de convolução, unificando `Conv1d<IN,OUT,K>` e `Conv1dDyn`.
+/// Output type for convolution weights, unifying `Conv1d<IN,OUT,K>` and `Conv1dDyn`.
 pub(crate) trait ConvWeightsOutput: Sized {
     #[allow(clippy::too_many_arguments)]
     fn from_parts(
@@ -68,7 +68,7 @@ impl ConvWeightsOutput for Conv1dDyn {
     }
 }
 
-/// Tipo de saída para pesos de camada densa, unificando `DenseLayer<IN,OUT>` e `DenseLayerDyn`.
+/// Output type for dense layer weights, unifying `DenseLayer<IN,OUT>` and `DenseLayerDyn`.
 pub(crate) trait DenseWeightsOutput: Sized {
     fn from_parts(
         weights: AlignedVec<u16>,

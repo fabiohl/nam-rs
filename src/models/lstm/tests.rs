@@ -5,8 +5,8 @@
 mod tests {
     use crate::models::lstm::{LstmModel1, LstmModel2};
 
-    // Verifica se os buffers internos (gates e state) são alocados com o tamanho
-    // correto baseado nos parâmetros de Const Generics.
+    // Verify that internal buffers (gates and state) are allocated with the correct
+    // size based on Const Generics parameters.
     #[test]
     fn test_lstm_model1_allocation() {
         let model: LstmModel1<8, 9, 32> = LstmModel1::new();
@@ -14,7 +14,7 @@ mod tests {
         assert_eq!(model.layer.state.len(), 9);
     }
 
-    // Verifica a alocação em um modelo de duas camadas (LstmModel2).
+    // Verify allocation in a two-layer model (LstmModel2).
     #[test]
     fn test_lstm_model2_allocation() {
         let model: LstmModel2<16, 17, 32, 64> = LstmModel2::new();
@@ -22,8 +22,8 @@ mod tests {
         assert_eq!(model.layer2.input_hidden_weights[0].len(), 32);
     }
 
-    // Teste de sanidade básica: processa alguns valores e garante que a saída
-    // não contém valores inválidos (NaN ou Infinito).
+    // Basic sanity test: process some values and ensure the output
+    // contains no invalid values (NaN or Infinity).
     #[test]
     fn test_lstm_model1_process_zeros() {
         {
@@ -34,13 +34,13 @@ mod tests {
             model.process(&input, &mut output);
 
             for (i, &v) in output.iter().enumerate() {
-                assert!(v.is_finite(), "LSTM1×8: saída [{}] é NaN/Inf: {}", i, v);
+                assert!(v.is_finite(), "LSTM1×8: output [{}] is NaN/Inf: {}", i, v);
             }
         }
     }
 
-    // Garante que o processamento é determinístico: a mesma entrada deve
-    // sempre produzir a mesma saída se o estado inicial for igual.
+    // Ensure processing is deterministic: the same input must
+    // always produce the same output if the initial state is equal.
     #[test]
     fn test_lstm_model2_process_deterministic() {
         {
@@ -57,7 +57,7 @@ mod tests {
             for i in 0..4 {
                 assert!(
                     (out_a[i] - out_b[i]).abs() < 1e-6,
-                    "LSTM2×8 não-determinístico em [{}]: {} vs {}",
+                    "LSTM2×8 non-deterministic at [{}]: {} vs {}",
                     i,
                     out_a[i],
                     out_b[i]
@@ -66,24 +66,24 @@ mod tests {
         }
     }
 
-    // Valida se o layout de memória das portas LSTM [I, F, C, O] segue a ordem
-    // esperada para que as otimizações SIMD funcionem corretamente.
+    // Validates whether the LSTM gate memory layout [I, F, C, O] follows the
+    // expected order so that SIMD optimizations work correctly.
     #[test]
     fn test_lstm_gate_order_consistency() {
-        // Valida que o layout [i|f|g|o] no offset [0, H, 2H, 3H] é respeitado.
+        // Validates that the [i|f|g|o] layout at offsets [0, H, 2H, 3H] is respected.
         let model: LstmModel1<8, 9, 32> = LstmModel1::new();
         assert_eq!(model.layer.gates.len(), 32); // 4 * H = 4 * 8 = 32
         assert_eq!(model.layer.input_hidden_weights.len(), 4); // Gates = 4
         assert_eq!(model.layer.input_hidden_weights[0].len(), 9); // IH = I + H = 1 + 8 = 9
     }
 
-    // Verifica se o estado interno (memória) da LSTM evolui conforme processamos dados.
-    // O estado oculto após 10 amostras deve ser diferente do estado após 1 amostra.
+    // Verify that the LSTM's internal state (memory) evolves as we process data.
+    // The hidden state after 10 samples should be different from the state after 1 sample.
     #[test]
     fn test_lstm_state_evolution() {
         let mut model: LstmModel1<8, 9, 32> = LstmModel1::new();
 
-        // Define alguns pesos para que o estado mude significativamente
+        // Set some weights so the state changes significantly
         for i in 0..32 {
             model.layer.bias[i] = 0.1;
         }
@@ -106,11 +106,11 @@ mod tests {
         }
         let hidden_10 = model.layer.get_hidden_state().to_vec();
 
-        // Verifica evolução (hidden states devem ser diferentes após múltiplas iterações)
+        // Verify evolution (hidden states should be different after multiple iterations)
         for i in 0..8 {
             assert!(
                 (hidden_1[i] - hidden_10[i]).abs() > 1e-4,
-                "Hidden state não evoluiu na posição {}: {} vs {}",
+                "Hidden state did not evolve at position {}: {} vs {}",
                 i,
                 hidden_1[i],
                 hidden_10[i]
@@ -118,14 +118,14 @@ mod tests {
         }
     }
 
-    // TESTE CRÍTICO: Garante que o resultado é o mesmo independentemente do tamanho
-    // do bloco processado (ex: processar 64 amostras de uma vez ou 64 vezes uma amostra).
-    // Isso é vital para garantir que o áudio não mude se o driver mudar o tamanho do buffer.
+    // CRITICAL TEST: Ensures the result is the same regardless of the processed
+    // block size (e.g., processing 64 samples at once or 64 times one sample).
+    // This is vital to ensure audio doesn't change if the driver changes the buffer size.
     #[test]
     fn test_lstm_variable_block_sizes() {
         let mut input = [0.0f32; 64];
         for (i, val) in input.iter_mut().enumerate() {
-            *val = ((i as f32) * 0.1).sin(); // Onda senoidal simples
+            *val = ((i as f32) * 0.1).sin(); // Simple sine wave
         }
 
         let block_sizes = [1, 8, 16, 32, 64];
@@ -134,7 +134,7 @@ mod tests {
         for (idx, &block_size) in block_sizes.iter().enumerate() {
             let mut model: LstmModel1<8, 9, 32> = LstmModel1::new();
 
-            // Atribui pesos determinísticos para testar output idêntico
+            // Assign deterministic weights to test identical output
             for i in 0..32 {
                 model.layer.bias[i] = 0.1;
             }
@@ -163,7 +163,7 @@ mod tests {
                 for i in 0..64 {
                     assert!(
                         (out[i] - reference_out[i]).abs() < 1e-6,
-                        "Mismatch no block_size {} no sample {}: {} vs {}",
+                        "Mismatch at block_size {} at sample {}: {} vs {}",
                         block_size,
                         i,
                         out[i],
@@ -174,13 +174,13 @@ mod tests {
         }
     }
 
-    // Verifica se as funções de reset e prewarm estão limpando os estados corretamente.
+    // Verify that reset and prewarm functions are clearing states correctly.
     #[test]
     fn test_lstm_reset_on_prewarm() {
         use crate::models::NamModel; // trait
         let mut model: LstmModel1<8, 9, 32> = LstmModel1::new();
 
-        // Define bias e pesos para garantir que o estado se desloque do zero
+        // Set bias and weights to ensure the state shifts away from zero
         for i in 0..32 {
             model.layer.bias[i] = 1.0;
         }
@@ -189,19 +189,19 @@ mod tests {
         let mut out = [0.0f32; 64];
         model.process(&input, &mut out);
 
-        // Altera artificialmente o estado da célula
+        // Artificially change the cell state
         model.layer.cell_state.fill(5.0);
         model.layer.state.fill(5.0);
 
-        // Verifica que o estado não está zerado
+        // Verify the state is not zeroed
         assert!(model.layer.cell_state[0] != 0.0);
         assert!(model.layer.state[0] != 0.0);
 
-        // Chama prewarm — internamente chama reset_states() e processa N zeros
+        // Calls prewarm — internally calls reset_states() and processes N zeros
         model.prewarm(0);
         model.prewarm(10);
 
-        // Verifica que reset_states() efetivamente zera hidden e cell states
+        // Verify that reset_states() effectively zeros hidden and cell states
         model.reset_states();
         for val in model.layer.cell_state.iter() {
             assert_eq!(*val, 0.0);
@@ -211,14 +211,14 @@ mod tests {
         }
     }
 
-    // TESTE DE PARIDADE: Garante que a versão pipelined (SIMD) produz o mesmo
-    // resultado que a versão sequencial (Scalar).
+    // PARITY TEST: Ensures the pipelined version (SIMD) produces the same
+    // result as the sequential version (Scalar).
     #[test]
     fn test_lstm_model2_pipelining_parity() {
         let mut model_simd: LstmModel2<8, 9, 17, 32> = LstmModel2::new();
         let mut model_scalar: LstmModel2<8, 9, 17, 32> = LstmModel2::new();
 
-        // Atribui pesos determinísticos
+        // Assign deterministic weights
         for i in 0..32 {
             model_simd.layer1.bias[i] = 0.1;
             model_scalar.layer1.bias[i] = 0.1;
@@ -254,7 +254,7 @@ mod tests {
         for i in 0..64 {
             assert!(
                 (out_simd[i] - out_scalar[i]).abs() < 5e-3,
-                "Paridade SIMD/Pipelined vs Scalar falhou em [{}]: {} vs {}",
+                "SIMD/Pipelined vs Scalar parity failed at [{}]: {} vs {}",
                 i,
                 out_simd[i],
                 out_scalar[i]

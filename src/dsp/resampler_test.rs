@@ -5,10 +5,10 @@ use super::*;
 
 #[test]
 fn test_bypass_48k() {
-    // Quando a taxa de entrada é igual à de saída (ex: 48kHz para 48kHz),
-    // o sistema entra em modo "Bypass" (atalho), apenas copiando o som sem processar.
-    let mut rs = NamResampler::new(48_000, 48_000, 256).expect("new falhou");
-    assert!(rs.is_bypass(), "48k deve ser bypass");
+    // When input rate equals output rate (e.g., 48kHz to 48kHz),
+    // the system enters "Bypass" mode (shortcut), just copying sound without processing.
+    let mut rs = NamResampler::new(48_000, 48_000, 256).expect("new failed");
+    assert!(rs.is_bypass(), "48k should be bypass");
 
     let input = [1.0f32, 2.0, 3.0, 4.0, 5.0];
     let input_r = [5.0f32, 4.0, 3.0, 2.0, 1.0];
@@ -17,8 +17,8 @@ fn test_bypass_48k() {
 
     let n = rs.process_input(&input, &input_r, &mut output, &mut output_r);
     assert_eq!(n, 5);
-    assert_eq!(output, input, "bypass deve copiar exatamente L");
-    assert_eq!(output_r, input_r, "bypass deve copiar exatamente R");
+    assert_eq!(output, input, "bypass must copy exactly L");
+    assert_eq!(output_r, input_r, "bypass must copy exactly R");
 
     let n2 = rs.process_output(&input, &input_r, &mut output, &mut output_r);
     assert_eq!(n2, 5);
@@ -28,10 +28,10 @@ fn test_bypass_48k() {
 
 #[test]
 fn test_downsample_96k_to_48k() {
-    // Teste de Redução (Downsampling): Passando de alta resolução (96kHz) para o padrão (48kHz).
-    // Esperamos que o número de amostras na saída seja aproximadamente metade do número na entrada.
+    // Downsampling Test: Going from high resolution (96kHz) to standard (48kHz).
+    // We expect the number of output samples to be approximately half the number of input samples.
     let chunk = 512usize;
-    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
+    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new failed");
     assert!(!rs.is_bypass());
 
     let input = vec![0.5f32; chunk];
@@ -43,16 +43,16 @@ fn test_downsample_96k_to_48k() {
     let expected_approx = chunk / 2;
     assert!(
         n >= expected_approx.saturating_sub(64) && n <= expected_approx + 64,
-        "96k→48k: esperado ~{expected_approx} amostras, obteve {n}"
+        "96k→48k: expected ~{expected_approx} samples, got {n}"
     );
 }
 
 #[test]
 fn test_upsample_44k_to_48k() {
-    // Teste de Aumento (Upsampling): Passando de qualidade de CD (44.1kHz) para o padrão de estúdio (48kHz).
-    // Aqui o número de amostras aumenta ligeiramente (proporção de aproximadamente 10% a mais).
+    // Upsampling Test: Going from CD quality (44.1kHz) to studio standard (48kHz).
+    // Here the number of samples increases slightly (approximately 10% more).
     let chunk = 441usize;
-    let mut rs = NamResampler::new(44_100, 48_000, chunk).expect("new falhou");
+    let mut rs = NamResampler::new(44_100, 48_000, chunk).expect("new failed");
     assert!(!rs.is_bypass());
 
     let input = vec![0.3f32; chunk];
@@ -64,16 +64,16 @@ fn test_upsample_44k_to_48k() {
     let expected_approx = (chunk as f64 * 48_000.0 / 44_100.0) as usize;
     assert!(
         n >= expected_approx.saturating_sub(64) && n <= expected_approx + 64,
-        "44.1k→48k: esperado ~{expected_approx} amostras, obteve {n}"
+        "44.1k→48k: expected ~{expected_approx} samples, got {n}"
     );
 }
 
 #[test]
 fn test_output_upsample_48k_to_96k() {
-    // Teste de Aumento na Saída: Quando o som interno do modelo (48kHz)
-    // precisa ser enviado para uma placa de som configurada em 96kHz.
+    // Output Upsampling Test: When the internal model sound (48kHz)
+    // needs to be sent to a sound card configured at 96kHz.
     let chunk = 256usize;
-    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
+    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new failed");
 
     let inner_out_size = chunk / 2;
     let input = vec![0.4f32; inner_out_size];
@@ -85,17 +85,17 @@ fn test_output_upsample_48k_to_96k() {
     let expected_approx = inner_out_size * 2;
     assert!(
         n >= expected_approx.saturating_sub(64) && n <= expected_approx + 64,
-        "48k→96k (output): esperado ~{expected_approx} amostras, obteve {n}"
+        "48k→96k (output): expected ~{expected_approx} samples, got {n}"
     );
 }
 
 #[test]
 fn test_roundtrip_96k() {
-    // Teste de "Ida e Volta" (Roundtrip): O teste mais rigoroso.
-    // Convertemos de 96kHz para 48kHz (ida) e depois voltamos para 96kHz (volta).
-    // Ao final desse "telefone sem fio", o som deve ser preservado e ter energia (não pode ficar mudo).
+    // "Roundtrip" Test: The most rigorous test.
+    // We convert from 96kHz to 48kHz (one way) and then back to 96kHz (return).
+    // At the end of this "phone game", the sound should be preserved and have energy (cannot be silent).
     let chunk = 1024usize;
-    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
+    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new failed");
 
     let n_total = chunk * 4;
     let input: Vec<f32> = (0..n_total)
@@ -130,15 +130,15 @@ fn test_roundtrip_96k() {
 
     assert!(
         total_mid > 0,
-        "process_input não produziu nenhuma amostra em {n_total} frames"
+        "process_input produced no samples across {n_total} frames"
     );
     assert!(
         total_out > 0,
-        "process_output não produziu nenhuma amostra (mid_total={total_mid})"
+        "process_output produced no samples (mid_total={total_mid})"
     );
     assert!(
         mid_energy_sum > 0.0,
-        "Energia intermediária (96→48) é zero (mid_total={total_mid})"
+        "Intermediate energy (96→48) is zero (mid_total={total_mid})"
     );
 
     let energy_in = input.iter().map(|x| x * x).sum::<f32>() / n_total as f32;
@@ -146,18 +146,18 @@ fn test_roundtrip_96k() {
 
     assert!(
         energy_out > energy_in * 0.05,
-        "Energia no roundtrip colapsou: in={energy_in:.4}, out={energy_out:.4}, \
+        "Roundtrip energy collapsed: in={energy_in:.4}, out={energy_out:.4}, \
          mid_samples={total_mid}, out_samples={total_out}, mid_energy={mid_energy_sum:.4}"
     );
 }
 
 #[test]
 fn test_impulse_response_input() {
-    // Teste de "Clique" (Impulso): Enviamos um único estalo digital (um valor 1.0)
-    // seguido de silêncio para ver como o filtro reage. É como bater em um sino
-    // e medir a vibração resultante: o som deve aparecer e sumir naturalmente.
+    // "Impulse" Test: We send a single digital click (a value of 1.0)
+    // followed by silence to see how the filter reacts. It's like striking a bell
+    // and measuring the resulting vibration: the sound should appear and fade naturally.
     let chunk = 512usize;
-    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
+    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new failed");
 
     let mut input = vec![0.0f32; chunk];
     input[0] = 1.0;
@@ -172,18 +172,18 @@ fn test_impulse_response_input() {
     let energy: f32 = output[..n].iter().map(|x| x * x).sum();
     assert!(
         energy > 0.0 && energy.is_finite(),
-        "Resposta ao impulso inválida: energy={energy}"
+        "Invalid impulse response: energy={energy}"
     );
     let peak = output[..n].iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-    assert!(peak <= 1.5, "Pico excessivo: {peak:.4}");
+    assert!(peak <= 1.5, "Excessive peak: {peak:.4}");
 }
 
 #[test]
 fn test_impulse_response_output() {
-    // Mesma lógica do teste anterior (teste do clique/sino), mas aplicado à saída.
-    // Verificamos se o sinal de saída mantém energia e não causa distorções bizarras.
+    // Same logic as the previous test (click/bell test), but applied to the output.
+    // We verify that the output signal maintains energy and causes no weird distortions.
     let chunk = 256usize;
-    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new falhou");
+    let mut rs = NamResampler::new(96_000, 48_000, chunk).expect("new failed");
 
     let inner_out_approx = chunk / 2;
     let mut input = vec![0.0f32; inner_out_approx];
@@ -199,18 +199,18 @@ fn test_impulse_response_output() {
     let energy: f32 = output[..n].iter().map(|x| x * x).sum();
     assert!(
         energy > 0.0 && energy.is_finite(),
-        "Resposta ao impulso (output) inválida: energy={energy}"
+        "Invalid impulse response (output): energy={energy}"
     );
     let peak = output[..n].iter().map(|x| x.abs()).fold(0.0f32, f32::max);
-    assert!(peak <= 4.0, "Pico excessivo (output): {peak:.4}");
+    assert!(peak <= 4.0, "Excessive peak (output): {peak:.4}");
 }
 
 #[test]
 fn test_phase_accum_underflow_guard() {
-    // Usamos ResamplerCore diretamente para testar a lógica interna
+    // We use ResamplerCore directly to test the internal logic
     let mut core = ResamplerCore::new(44100, 48000);
 
-    // Simula um drift negativo (underflow)
+    // Simulates a negative drift (underflow)
     core.phase_accum = -1e-15;
 
     let in_l = [0.0f32; 64];
@@ -218,19 +218,19 @@ fn test_phase_accum_underflow_guard() {
     let mut out_l = [0.0f32; 64];
     let mut out_r = [0.0f32; 64];
 
-    // O processamento deve ocorrer sem pânico (o 'as usize' do clamp 0.0 é seguro)
+    // Processing should occur without panic (the 'as usize' from 0.0 clamp is safe)
     let n = dispatch_simd!(core, process_internal, &in_l, &in_r, &mut out_l, &mut out_r);
     assert!(n > 0);
     assert!(
         core.phase_accum >= 0.0,
-        "Accumulator deve ter sido clampado para >= 0"
+        "Accumulator should have been clamped to >= 0"
     );
 }
 
 #[test]
 fn test_resampler_micro_soak() {
-    // Teste de "micro-estabilidade" para CI.
-    // Processa 1M de amostras para diversas taxas e verifica invariantes.
+    // "Micro-stability" test for CI.
+    // Processes 1M samples across various rates and checks invariants.
     let rate_pairs = [
         (44100, 48000),
         (48000, 44100),
@@ -253,25 +253,25 @@ fn test_resampler_micro_soak() {
         for _ in 0..n_iterations {
             let n = rs.process_input(&in_l, &in_r, &mut out_l, &mut out_r);
 
-            // Invariante básico: saída deve ser finita
+            // Basic invariant: output must be finite
             for i in 0..n {
                 assert!(out_l[i].is_finite());
                 assert!(out_r[i].is_finite());
             }
 
-            // Acessa o core interno para verificar o acumulador (via ResamplerCore)
+            // Access internal core to check accumulator (via ResamplerCore)
             if let Some(ref core) = rs.inner {
                 assert!(
                     core.phase_accum >= 0.0,
-                    "Underflow detectado em {}->{}",
+                    "Underflow detected in {}->{}",
                     from,
                     to
                 );
-                // O acumulador pode ser >= NUM_PHASES se o bloco de entrada terminou
-                // antes de consumir o necessário para a próxima amostra de saída.
+                // The accumulator may be >= NUM_PHASES if the input block finished
+                // before consuming what's needed for the next output sample.
                 assert!(
                     core.phase_accum < NUM_PHASES as f64 + core.phase_step * 2.0,
-                    "Overflow detectado em {}->{}",
+                    "Overflow detected in {}->{}",
                     from,
                     to
                 );
@@ -282,7 +282,7 @@ fn test_resampler_micro_soak() {
 
 #[test]
 fn test_latency_calculation() {
-    // 1. Bypass: latência deve ser 0
+    // 1. Bypass: latency should be 0
     let rs_48 = NamResampler::new(48_000, 48_000, 256).unwrap();
     assert_eq!(rs_48.latency_samples(48_000), 0);
 
@@ -300,13 +300,13 @@ fn test_latency_calculation() {
     let rs_96 = NamResampler::new(96_000, 48_000, 256).unwrap();
     assert_eq!(rs_96.latency_samples(96_000), 48);
 
-    // 4. Zero rate: deve retornar 0 (guardrail)
+    // 4. Zero rate: should return 0 (guardrail)
     assert_eq!(rs_44.latency_samples(0), 0);
 }
 
 #[test]
 fn test_resampler_mono_equivalence() {
-    // 1. Teste de Equivalência em modo Bypass (48kHz -> 48kHz)
+    // 1. Equivalence Test in Bypass mode (48kHz -> 48kHz)
     {
         let mut rs = NamResampler::new(48_000, 48_000, 256).unwrap();
         assert!(rs.is_bypass());
@@ -325,7 +325,7 @@ fn test_resampler_mono_equivalence() {
         assert_eq!(out_r_stereo, out_r_mono);
         assert_eq!(out_l_mono, out_r_mono);
 
-        // Mesma coisa para process_output
+        // Same thing for process_output
         let n_out_stereo = rs.process_output(&in_l, &in_l, &mut out_l_stereo, &mut out_r_stereo);
         let n_out_mono = rs.process_output_mono(&in_l, &mut out_l_mono, &mut out_r_mono);
 
@@ -334,7 +334,7 @@ fn test_resampler_mono_equivalence() {
         assert_eq!(out_r_stereo, out_r_mono);
     }
 
-    // 2. Teste de Equivalência em modo ativo (44.1kHz -> 48kHz)
+    // 2. Equivalence Test in active mode (44.1kHz -> 48kHz)
     {
         let chunk = 256;
         let mut rs_stereo = NamResampler::new(44_100, 48_000, chunk).unwrap();

@@ -5,8 +5,8 @@ use super::*;
 
 #[test]
 fn test_parse_feather_wavenet() {
-    // Simulamos um arquivo .nam (que é um texto no formato JSON)
-    // Esse arquivo contém a "receita" e o "cérebro" do equipamento modelado.
+    // We simulate a .nam file (which is text in JSON format)
+    // This file contains the "recipe" and the "brain" of the modeled equipment.
     let json_str = r#"{
         "version": "0.5.4",
         "architecture": "WaveNet",
@@ -37,21 +37,21 @@ fn test_parse_feather_wavenet() {
             "loudness": -18.0
         }
     }"#;
-    // Explicação dos campos acima:
-    // - "architecture": Define o tipo de algoritmo (WaveNet é o padrão NAM).
-    // - "weights": São os valores numéricos que definem o timbre específico.
-    // - "sample_rate": Frequência de som (ex: 48000Hz).
-    // - "metadata": Informações extras (quem criou, qual amp foi usado, etc).
+    // Explanation of the fields above:
+    // - "architecture": Defines the type of algorithm (WaveNet is the standard NAM).
+    // - "weights": These are the numerical values that define the specific timbre.
+    // - "sample_rate": Sound frequency (e.g. 48000Hz).
+    // - "metadata": Extra information (who created it, which amp was used, etc.).
 
-    // Tentamos transformar o texto acima em uma estrutura que o programa entende
+    // We try to transform the text above into a structure the program understands
     let parsed = parse_nam_json(json_str).expect("Failed to parse simulated NAM JSON");
 
-    // Verificamos se o programa "leu" corretamente as informações fundamentais
+    // We check if the program "read" the fundamental information correctly
     assert_eq!(parsed.architecture, "WaveNet");
     assert_eq!(parsed.weights.len(), 4);
     assert_eq!(parsed.sample_rate.unwrap(), 48000.0);
 
-    // Conferimos se os metadados (informações extras) foram preservados
+    // We check if the metadata (extra information) was preserved
     let meta = parsed.metadata.as_ref().unwrap();
     assert_eq!(meta.input_level_dbu.unwrap(), 12.0);
     assert_eq!(meta.output_level_dbu.unwrap(), 11.5);
@@ -61,16 +61,16 @@ fn test_parse_feather_wavenet() {
     assert_eq!(meta.modeled_by.as_deref(), Some("John Doe"));
     assert_eq!(meta.gear_make.as_deref(), Some("Fender"));
 
-    // A topologia define a "forma" do cérebro. Aqui testamos se ele reconhece
-    // o modelo como do tipo 'Feather' (uma versão leve e rápida).
+    // The topology defines the "shape" of the brain. Here we test if it recognizes
+    // the model as the 'Feather' type (a lightweight and fast version).
     let topo = get_wavenet_topology(&parsed);
     assert_eq!(topo, Some(NamWavenetTopology::Feather));
 }
 
 #[test]
 fn test_parse_lstm() {
-    // Outro tipo de arquitetura: LSTM (Long Short-Term Memory)
-    // Geralmente usada para modelar compressão e comportamentos dinâmicos.
+    // Another type of architecture: LSTM (Long Short-Term Memory)
+    // Usually used to model compression and dynamic behaviors.
     let json_str = r#"{
         "version": "0.5.4",
         "architecture": "LSTM",
@@ -85,12 +85,12 @@ fn test_parse_lstm() {
     let parsed = parse_nam_json(json_str).expect("Failed to parse LSTM NAM JSON");
     assert_eq!(parsed.architecture, "LSTM");
 
-    // Verifica se a estrutura do LSTM (camadas e tamanho) foi interpretada corretamente
+    // Checks whether the LSTM structure (layers and size) was interpreted correctly
     let topo = get_lstm_topology(&parsed);
     assert_eq!(topo, Some((2, 16)));
 }
 
-/// Helper: gera JSON mínimo de WaveNet com canais e dilatações fornecidos.
+/// Helper: generates minimal WaveNet JSON with provided channels and dilations.
 fn make_wavenet_json(channels: usize, dils_0: &[usize], dils_1: &[usize]) -> String {
     let d0: Vec<String> = dils_0.iter().map(|d| d.to_string()).collect();
     let d1: Vec<String> = dils_1.iter().map(|d| d.to_string()).collect();
@@ -121,8 +121,8 @@ fn make_wavenet_json(channels: usize, dils_0: &[usize], dils_1: &[usize]) -> Str
 
 #[test]
 fn test_topology_standard() {
-    // A topologia "Standard" é o cérebro digital completo.
-    // Oferece a fidelidade máxima, mas exige mais do processador.
+    // The "Standard" topology is the full digital brain.
+    // It offers maximum fidelity, but demands more from the processor.
     let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let json = make_wavenet_json(16, &std_d, &std_d);
     let parsed = parse_nam_json(&json).unwrap();
@@ -134,9 +134,9 @@ fn test_topology_standard() {
 
 #[test]
 fn test_topology_lite() {
-    // A topologia "Lite" é um meio-termo.
-    // Reduz um pouco a complexidade para rodar melhor em computadores mais simples
-    // mantendo uma excelente qualidade sonora.
+    // The "Lite" topology is a middle ground.
+    // It slightly reduces complexity to run better on simpler computers
+    // while maintaining excellent sound quality.
     let d0 = [1, 2, 4, 8, 16, 32, 64];
     let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let json = make_wavenet_json(12, &d0, &d1);
@@ -149,9 +149,9 @@ fn test_topology_lite() {
 
 #[test]
 fn test_topology_nano() {
-    // A topologia "Nano" é a mais leve de todas.
-    // É otimizada para performance extrema (latência mínima), ideal para situações
-    // onde o poder de processamento é muito limitado.
+    // The "Nano" topology is the lightest of all.
+    // It is optimized for extreme performance (minimum latency), ideal for situations
+    // where processing power is very limited.
     let d0 = [1, 2, 4, 8, 16, 32, 64];
     let d1 = [128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let json = make_wavenet_json(4, &d0, &d1);
@@ -164,34 +164,34 @@ fn test_topology_nano() {
 
 #[test]
 fn test_topology_invalid_channels() {
-    // Testamos aqui se o programa identifica corretamente quando alguém tenta
-    // carregar um modelo com um tamanho de "cérebro" que não suportamos.
+    // Here we test if the program correctly identifies when someone tries
+    // to load a model with a "brain" size we do not support.
     let std_d = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
     let json = make_wavenet_json(10, &std_d, &std_d);
     let parsed = parse_nam_json(&json).unwrap();
     assert_eq!(
         get_wavenet_topology(&parsed),
         None,
-        "Canais 10 não é uma topologia suportada"
+        "10 channels is not a supported topology"
     );
 }
 
 // =========================================================================
-// Testes de Rejeição de JSON Malformado
+// Malformed JSON Rejection Tests
 // =========================================================================
 
-/// JSON truncado no meio deve retornar `Err`.
+/// Truncated JSON in the middle should return `Err`.
 #[test]
 fn test_parse_truncated_json() {
     let truncated = r#"{"version": "0.5.4", "architecture": "WaveNet", "config": {"#;
     let result = parse_nam_json(truncated);
     assert!(
         result.is_err(),
-        "JSON truncado deve retornar Err, mas obteve Ok"
+        "Truncated JSON should return Err, but got Ok"
     );
 }
 
-/// JSON válido sem o campo obrigatório `"architecture"` deve retornar `Err`.
+/// Valid JSON without the required `"architecture"` field should return `Err`.
 #[test]
 fn test_parse_missing_architecture() {
     let json = r#"{
@@ -202,11 +202,11 @@ fn test_parse_missing_architecture() {
     let result = parse_nam_json(json);
     assert!(
         result.is_err(),
-        "JSON sem 'architecture' deve retornar Err, mas obteve Ok"
+        "JSON without 'architecture' should return Err, but got Ok"
     );
 }
 
-/// JSON válido sem o campo obrigatório `"weights"` deve retornar `Err`.
+/// Valid JSON without the required `"weights"` field should return `Err`.
 #[test]
 fn test_parse_missing_weights() {
     let json = r#"{
@@ -217,12 +217,12 @@ fn test_parse_missing_weights() {
     let result = parse_nam_json(json);
     assert!(
         result.is_err(),
-        "JSON sem 'weights' deve retornar Err, mas obteve Ok"
+        "JSON without 'weights' should return Err, but got Ok"
     );
 }
 
-/// `"weights": []` deve ser aceito pelo parser (array vazia é JSON válido).
-/// O dispatcher é responsável por rejeitar modelos com 0 pesos posteriormente.
+/// `"weights": []` should be accepted by the parser (empty array is valid JSON).
+/// The dispatcher is responsible for rejecting models with 0 weights later.
 #[test]
 fn test_parse_empty_weights() {
     let json = r#"{
@@ -234,13 +234,13 @@ fn test_parse_empty_weights() {
     let result = parse_nam_json(json);
     assert!(
         result.is_ok(),
-        "JSON com weights vazio deve ser aceito pelo parser (dispatcher rejeita depois)"
+        "JSON with empty weights should be accepted by the parser (dispatcher rejects later)"
     );
     let data = result.unwrap();
     assert_eq!(data.weights.len(), 0);
 }
 
-/// `"config": "not_an_object"` deve retornar `Err` (tipo incorreto).
+/// `"config": "not_an_object"` should return `Err` (incorrect type).
 #[test]
 fn test_parse_malformed_config() {
     let json = r#"{
@@ -252,16 +252,16 @@ fn test_parse_malformed_config() {
     let result = parse_nam_json(json);
     assert!(
         result.is_err(),
-        "JSON com config como string deve retornar Err, mas obteve Ok"
+        "JSON with config as string should return Err, but got Ok"
     );
 }
 
 // =========================================================================
-// Testes S5.T04 — Cap de tamanho em Vec<f32> weights e metadata.training
+// Size Cap Tests — Vec<f32> weights e metadata.training
 // =========================================================================
 
-/// JSON com campo desconhecido em `metadata` (ex.: `"creator_email"`)
-/// deve carregar normalmente, garantindo forward-compat com upstream.
+/// JSON with unknown field in `metadata` (e.g. `"creator_email"`)
+/// should load normally, ensuring forward-compat with upstream.
 #[test]
 fn test_forward_compat_unknown_field_in_metadata() {
     let json = r#"{
@@ -295,7 +295,7 @@ fn test_forward_compat_unknown_field_in_metadata() {
     let result = parse_nam_json(json);
     assert!(
         result.is_ok(),
-        "JSON com campo desconhecido em metadata deve carregar (forward-compat)"
+        "JSON with unknown field in metadata should load (forward-compat)"
     );
     let data = result.unwrap();
     assert_eq!(
@@ -304,10 +304,10 @@ fn test_forward_compat_unknown_field_in_metadata() {
     );
 }
 
-/// JSON com `metadata.training` com 20 níveis de aninhamento deve ser rejeitado.
+/// JSON with `metadata.training` with 20 nesting levels should be rejected.
 #[test]
 fn test_reject_deeply_nested_training() {
-    // Construir um JSON com training de profundidade 20
+    // Build a JSON with training depth 20
     let inner = r#"{"a":"#.repeat(20);
     let outer = "}".repeat(20);
     let training_json = format!(r#"{{"a":{}"x"{}"#, inner, outer);
@@ -328,11 +328,11 @@ fn test_reject_deeply_nested_training() {
     let result = parse_nam_json(&json);
     assert!(
         result.is_err(),
-        "JSON com training aninhado 20 níveis deve ser rejeitado"
+        "JSON with 20-level deep nested training should be rejected"
     );
 }
 
-/// JSON com `weights` pequeno deve carregar normalmente.
+/// JSON with small `weights` should load normally.
 #[test]
 fn test_weights_within_limit() {
     let count = 1000usize;
@@ -355,13 +355,13 @@ fn test_weights_within_limit() {
     let result = parse_nam_json(&json);
     assert!(
         result.is_ok(),
-        "JSON com {} weights deve carregar (dentro do limite)",
+        "JSON with {} weights should load (within limit)",
         count
     );
     assert_eq!(result.unwrap().weights.len(), count);
 }
 
-/// JSON com campo desconhecido no nível raiz de `NamConfig` deve ser ignorado.
+/// JSON with unknown field at the root level of `NamConfig` should be ignored.
 #[test]
 fn test_forward_compat_unknown_field_in_config() {
     let json = r#"{
@@ -377,11 +377,11 @@ fn test_forward_compat_unknown_field_in_config() {
     let result = parse_nam_json(json);
     assert!(
         result.is_ok(),
-        "JSON com campo desconhecido em config deve carregar (forward-compat)"
+        "JSON with unknown field in config should load (forward-compat)"
     );
 }
 
-/// JSON com campo desconhecido no nível raiz de `NamModelData` deve ser ignorado.
+/// JSON with unknown field at the root level of `NamModelData` should be ignored.
 #[test]
 fn test_forward_compat_unknown_field_at_root() {
     let json = r#"{
@@ -394,20 +394,20 @@ fn test_forward_compat_unknown_field_at_root() {
     let result = parse_nam_json(json);
     assert!(
         result.is_ok(),
-        "JSON com campo desconhecido na raiz deve carregar (forward-compat)"
+        "JSON with unknown field at root should load (forward-compat)"
     );
 }
 
-/// O cap de `weights` rejeita array que excede MAX_WEIGHTS floats.
-/// A rejeição rápida (<100ms) para JSONs de 200 MiB é feita pelo guard
-/// `MAX_MODEL_BYTES` em `mod.rs` (metadata check, O(1)).
-/// Este teste valida a defesa em profundidade: mesmo que o arquivo passe
-/// pelo guard de tamanho, o parser rejeita se houver floats demais.
+/// The `weights` cap rejects arrays that exceed MAX_WEIGHTS floats.
+/// The fast rejection (<100ms) for 200 MiB JSONs is done by the
+/// `MAX_MODEL_BYTES` guard in `mod.rs` (metadata check, O(1)).
+/// This test validates defense in depth: even if the file passes
+/// the size guard, the parser rejects if there are too many floats.
 #[test]
 fn test_weights_exceed_limit_fast_rejection() {
-    // MAX_WEIGHTS = 67,108,864 floats; testamos com um número pequeno
-    // que cabe no limite para validar o caminho de código do visitor.
-    let test_limit = 10_000; // Suficiente para provar o mecanismo sem alocar demais
+    // MAX_WEIGHTS = 67,108,864 floats; we test with a small number
+    // that fits within the limit to validate the visitor code path.
+    let test_limit = 10_000; // Sufficient to prove the mechanism without allocating too much
     use std::io::Write;
 
     let dir = std::env::temp_dir();
@@ -425,21 +425,18 @@ fn test_weights_exceed_limit_fast_rejection() {
     f.flush().unwrap();
     drop(f);
 
-    // Patch temporário: reduz MAX_WEIGHTS para forçar rejeição com JSON pequeno
-    // Como MAX_WEIGHTS é const, não podemos mudar em runtime.
-    // Em vez disso, demonstramos que o caminho de código do visitor funciona
-    // com um JSON que excede o limite real (MAX_WEIGHTS = 64Mi floats).
-    // O arquivo real teria ~130 MiB; o teste seria lento mas correto.
-    // Para CI, validamos com arquivo pequeno + verificação de mecanismo correto.
+    // Temporary patch: reduces MAX_WEIGHTS to force rejection with small JSON
+    // Since MAX_WEIGHTS is const, we cannot change it at runtime.
+    // Instead, we demonstrate that the visitor code path works
+    // with a JSON that exceeds the actual limit (MAX_WEIGHTS = 64Mi floats).
+    // The actual file would be ~130 MiB; the test would be slow but correct.
+    // For CI, we validate with a small file + correct mechanism verification.
     let content = std::fs::read_to_string(&path).unwrap();
     let result = parse_nam_json(&content);
     std::fs::remove_file(&path).ok();
 
-    // Com 10_000 floats, o arquivo está dentro do limite (MAX_WEIGHTS = 67M floats)
-    assert!(
-        result.is_ok(),
-        "10k weights devem carregar (dentro do limite)"
-    );
+    // With 10_000 floats, the file is within the limit (MAX_WEIGHTS = 67M floats)
+    assert!(result.is_ok(), "10k weights should load (within limit)");
     assert_eq!(result.unwrap().weights.len(), test_limit);
 }
 
@@ -474,14 +471,14 @@ fn test_is_wavenet_a2_versions() {
         weights_layout: WeightsLayout::Original,
     };
 
-    // Sem versão, deve retornar false se não houver ativação customizada
+    // Without version, should return false if no custom activation
     assert!(!model.is_wavenet_a2());
 
-    // Versão menor que 0.6.0
+    // Version lower than 0.6.0
     model.version = Some("0.5.4".to_string());
     assert!(!model.is_wavenet_a2());
 
-    // Versões >= 0.6.0
+    // Versions >= 0.6.0
     model.version = Some("0.6.0".to_string());
     assert!(model.is_wavenet_a2());
 
@@ -497,7 +494,7 @@ fn test_is_wavenet_a2_versions() {
     model.version = Some("2.0".to_string());
     assert!(model.is_wavenet_a2());
 
-    // Alternativa: Ativação customizada (mesmo com versão menor que 0.6.0)
+    // Alternative: Custom activation (even with version lower than 0.6.0)
     model.version = Some("0.5.4".to_string());
     model.config.layers = vec![NamLayerConfig {
         input_size: None,

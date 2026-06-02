@@ -2,89 +2,89 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 #[cfg(test)]
-/// Módulo de testes para o Noise Gate (redutor de ruído).
-/// O Noise Gate silencia o áudio quando o volume cai abaixo de um certo nível,
-/// eliminando ruídos indesejados (como o chiado de uma guitarra parada) ou
-/// quando queremos silenciar partes específicas do áudio.
+/// Test module for the Noise Gate.
+/// The Noise Gate silences audio when volume falls below a certain level,
+/// eliminating unwanted noise (such as hum from an idle guitar) or
+/// when we want to mute specific parts of the audio.
 mod tests {
     use crate::dsp::gate::*;
 
-    /// Verifica se as configurações padrão do redutor de ruído estão corretas.
+    /// Verifies that the noise gate default settings are correct.
     #[test]
     fn test_gate_params_default() {
         let params = GateParams::default();
-        // O padrão é começar a fechar em -80dB e abrir em -70dB.
+        // The default is to start closing at -80dB and opening at -70dB.
         assert_eq!(params.threshold_open_db, -70.0);
         assert_eq!(params.threshold_close_db, -80.0);
-        // Tempo que ele espera antes de começar a fechar (hold) e tempo de suavização (fade).
+        // Time it waits before starting to close (hold) and smoothing time (fade).
         assert_eq!(params.hold_frames, 2048);
         assert_eq!(params.fade_frames, 256);
     }
 
-    /// Testa o ciclo de vida básico do portão de ruído:
-    /// Aberto -> Esperando (Hold) -> Fechando (FadeOut) -> Fechado -> Abrindo (FadeIn) -> Aberto.
+    /// Tests the basic lifecycle of the noise gate:
+    /// Open -> Holding (Hold) -> Closing (FadeOut) -> Closed -> Opening (FadeIn) -> Open.
     #[test]
     fn test_hysteresis_basic_transitions() {
         let mut dh = DynamicHysteresis::new();
         let params = GateParams::new(-10.0, -20.0, 10, 10, 1e-4);
-        // Usamos valores simples para o teste: 1.0 é "alto", 0.1 é "silêncio".
+        // We use simple values for the test: 1.0 is "loud", 0.1 is "silence".
         let th_open = 1.0;
         let th_close = 0.5;
 
-        // Começa totalmente aberto.
+        // Starts fully open.
         assert_eq!(dh.state(), GateState::Open);
         assert_eq!(dh.multiplier(), 1.0);
 
-        // 1. O volume cai abaixo do nível de fechamento.
-        // Ele deve continuar aberto por um tempo (período de 'hold').
+        // 1. Volume drops below the closing threshold.
+        // It should remain open for some time (hold period).
         dh.update(0.1, th_open, th_close, &params, 5);
         assert_eq!(
             dh.state(),
             GateState::Open,
-            "Deve permanecer Open durante o hold"
+            "Should remain Open during hold"
         );
 
-        // 2. O tempo de 'hold' acaba. Agora ele começa a fechar suavemente.
+        // 2. Hold time expires. Now it starts closing smoothly.
         dh.update(0.1, th_open, th_close, &params, 5);
         assert_eq!(
             dh.state(),
             GateState::FadingOut,
-            "Deve entrar em FadingOut após hold_frames"
+            "Should enter FadingOut after hold_frames"
         );
 
-        // 3. No meio do fechamento (fade out), o volume deve estar pela metade.
+        // 3. Mid-fade out, volume should be at half.
         dh.update(0.1, th_open, th_close, &params, 5);
         assert_eq!(dh.state(), GateState::FadingOut);
-        assert_eq!(dh.multiplier(), 0.5); // 5 de 10 passos concluídos.
+        assert_eq!(dh.multiplier(), 0.5); // 5 of 10 steps completed.
 
-        // 4. Conclui o fechamento. Volume agora é zero (totalmente silenciado).
+        // 4. Completes the closing. Volume is now zero (fully muted).
         dh.update(0.1, th_open, th_close, &params, 5);
         assert_eq!(dh.state(), GateState::Closed);
         assert_eq!(dh.multiplier(), 0.0);
 
-        // 5. O som volta a ficar alto (acima do nível de abertura).
-        // Ele deve começar a abrir suavemente.
+        // 5. Sound becomes loud again (above the opening threshold).
+        // It should start opening smoothly.
         dh.update(2.0, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingIn);
         assert_eq!(
             dh.multiplier(),
             0.1,
-            "Começa a abrir imediatamente quando o som volta"
+            "Starts opening immediately when sound returns"
         );
 
-        // 6. Progresso da abertura (fade in).
+        // 6. Fade-in progress.
         dh.update(2.0, th_open, th_close, &params, 4);
         assert_eq!(dh.state(), GateState::FadingIn);
         assert_eq!(dh.multiplier(), 0.5);
 
-        // 7. Totalmente aberto novamente.
+        // 7. Fully open again.
         dh.update(2.0, th_open, th_close, &params, 5);
         assert_eq!(dh.state(), GateState::Open);
         assert_eq!(dh.multiplier(), 1.0);
     }
 
-    /// Testa o que acontece se o som voltar enquanto o portão ainda estava fechando.
-    /// Ele deve parar de fechar e começar a abrir imediatamente de onde parou.
+    /// Tests what happens if sound returns while the gate was still closing.
+    /// It should stop closing and start opening immediately from where it stopped.
     #[test]
     fn test_hysteresis_interrupted_fade() {
         let mut dh = DynamicHysteresis::new();
@@ -92,67 +92,67 @@ mod tests {
         let th_open = 1.0;
         let th_close = 0.5;
 
-        // Força o início do fechamento (fade out).
+        // Forces the start of closing (fade out).
         dh.update(0.1, th_open, th_close, &params, 11);
         assert_eq!(dh.state(), GateState::FadingOut);
 
-        // Avança o fechamento até a metade (multiplier = 0.5).
+        // Advances the closing to halfway (multiplier = 0.5).
         dh.update(0.1, th_open, th_close, &params, 5);
         assert_eq!(dh.multiplier(), 0.5);
 
-        // O som volta forte no meio do fechamento!
-        // O portão deve decidir abrir a partir de onde estava.
+        // Sound comes back loud in the middle of closing!
+        // The gate should decide to open from where it was.
         dh.update(2.0, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingIn);
-        assert_eq!(dh.multiplier(), 0.6); // Estava em 0.5 e subiu para 0.6.
+        assert_eq!(dh.multiplier(), 0.6); // Was at 0.5 and rose to 0.6.
 
-        // Avança mais um pouco a abertura.
+        // Advances the opening a bit more.
         dh.update(2.0, th_open, th_close, &params, 2);
         assert_eq!(dh.multiplier(), 0.8);
 
-        // O som some de novo. Ele volta a fechar imediatamente.
+        // Sound drops out again. It starts closing immediately.
         dh.update(0.1, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingOut);
         assert_eq!(dh.multiplier(), 0.1);
     }
 
-    /// Verifica se a suavização do volume (rampa de ganho) está sendo aplicada corretamente no áudio.
+    /// Verifies that volume smoothing (gain ramp) is being correctly applied to the audio.
     #[test]
     fn test_hysteresis_apply_gain_ramp() {
         let params = GateParams::new(-70.0, -80.0, 2048, 100, 1e-4);
         let mut buffer = [1.0f32; 10];
 
         let mut dh = DynamicHysteresis::new();
-        // Simula silêncio quase completando o tempo de espera (hold).
+        // Simulates silence almost completing the hold time.
         dh.update(0.0, 1.0, 0.5, &params, 2047);
         assert_eq!(dh.state(), GateState::Open);
 
-        // Passa o hold e inicia o processo de fechamento suave (fade out).
+        // Passes hold and starts the smooth closing process (fade out).
         dh.update(0.0, 1.0, 0.5, &params, 10);
         assert_eq!(dh.state(), GateState::FadingOut);
         assert_eq!(
             dh.multiplier(),
             1.0,
-            "No bloco de transição o multiplier ainda é 1.0"
+            "In the transition block the multiplier is still 1.0"
         );
 
-        // Primeiro bloco real de fade.
+        // First actual fade block.
         dh.update(0.0, 1.0, 0.5, &params, 10);
-        assert_eq!(dh.multiplier(), 0.9); // 90 de 100 passos concluídos.
+        assert_eq!(dh.multiplier(), 0.9); // 90 of 100 steps completed.
 
         buffer.fill(1.0);
         dh.apply_gain_rt(&mut buffer, 10);
-        // Deve ser uma rampa suave: o primeiro sample mantém o volume e o último já está reduzido.
+        // Should be a smooth ramp: the first sample maintains volume and the last is already reduced.
         assert!((buffer[0] - 1.0).abs() < 1e-3);
         assert!((buffer[9] - 0.91).abs() < 1e-3);
 
-        // Testa agora a abertura suave (FadingIn).
+        // Now tests the smooth opening (FadingIn).
         let mut dh = DynamicHysteresis::new();
-        dh.update(0.0, 1.0, 0.5, &params, 2048); // Força fechar.
-        dh.update(0.0, 1.0, 0.5, &params, 101); // Garante que fechou totalmente.
+        dh.update(0.0, 1.0, 0.5, &params, 2048); // Forces close.
+        dh.update(0.0, 1.0, 0.5, &params, 101); // Ensures it fully closed.
         assert_eq!(dh.state(), GateState::Closed);
 
-        // Som volta, inicia a abertura.
+        // Sound returns, starts opening.
         dh.update(2.0, 1.0, 0.5, &params, 1);
         assert_eq!(dh.multiplier(), 0.01);
 
@@ -161,13 +161,13 @@ mod tests {
 
         buffer.fill(1.0);
         dh.apply_gain_rt(&mut buffer, 10);
-        // O volume deve subir gradualmente de quase zero (0.01) para 0.11.
+        // Volume should rise gradually from nearly zero (0.01) to 0.11.
         assert!((buffer[0] - 0.01).abs() < 1e-3);
         assert!((buffer[9] - 0.10).abs() < 1e-3);
     }
 
-    /// Testa como o sistema lida com blocos de áudio muito grandes de uma só vez.
-    /// A suavização deve acontecer apenas no tempo correto e o resto deve ser processado.
+    /// Tests how the system handles very large audio blocks all at once.
+    /// Smoothing should only happen in the correct timeframe and the rest should be processed.
     #[test]
     fn test_sub_block_granularity() {
         let mut dh = DynamicHysteresis::new();
@@ -175,12 +175,12 @@ mod tests {
         let th_open = 1.0;
         let th_close = 0.5;
 
-        // Prepara para fechar (fade out).
+        // Prepares to close (fade out).
         dh.update(0.0, th_open, th_close, &params, 2048);
         assert_eq!(dh.state(), GateState::FadingOut);
 
-        // Processa um bloco gigante de 4096 amostras, mas o tempo de suavização é só de 256!
-        // O sistema deve fechar nos primeiros 256 samples e silenciar o restante do bloco.
+        // Processes a giant block of 4096 samples, but the smoothing time is only 256!
+        // The system should close in the first 256 samples and silence the rest of the block.
         dh.update(0.0, th_open, th_close, &params, 4096);
         assert_eq!(dh.state(), GateState::Closed);
         assert_eq!(dh.multiplier(), 0.0);
@@ -188,24 +188,24 @@ mod tests {
         let mut buffer = vec![1.0f32; 4096];
         dh.apply_gain_rt(&mut buffer, 4096);
 
-        // Verifica a suavização exata nos primeiros 256 samples.
+        // Verifies exact smoothing in the first 256 samples.
         assert!(
             (buffer[0] - 1.0).abs() < 1e-3,
-            "Início do fade-out deve ser volume máximo"
+            "Start of fade-out should be maximum volume"
         );
         assert!(
             (buffer[128] - 0.5).abs() < 1e-2,
-            "Meio do fade-out deve ser metade do volume"
+            "Middle of fade-out should be half volume"
         );
 
-        // A partir do sample 256, tudo deve ser silêncio absoluto.
-        assert_eq!(buffer[256], 0.0, "Fim da rampa não silenciou estritamente");
+        // From sample 256 onward, everything should be absolute silence.
+        assert_eq!(buffer[256], 0.0, "End of ramp did not strictly silence");
         assert_eq!(
             buffer[4095], 0.0,
-            "Restante do buffer não preenchido com zeros"
+            "Remainder of buffer not filled with zeros"
         );
 
-        // Testa o mesmo para a abertura (FadingIn) com bloco gigante.
+        // Tests the same for opening (FadingIn) with a giant block.
         dh.update(2.0, th_open, th_close, &params, 4096);
         assert_eq!(dh.state(), GateState::Open);
         assert_eq!(dh.multiplier(), 1.0);
@@ -213,26 +213,26 @@ mod tests {
         let mut buffer2 = vec![1.0f32; 4096];
         dh.apply_gain_rt(&mut buffer2, 4096);
 
-        // Começa em silêncio.
-        assert_eq!(buffer2[0], 0.0, "Início do fade-in deve ser silêncio");
+        // Starts in silence.
+        assert_eq!(buffer2[0], 0.0, "Start of fade-in should be silence");
         assert!(
             (buffer2[128] - 0.5).abs() < 1e-2,
-            "Meio do fade-in deve ser metade do volume"
+            "Middle of fade-in should be half volume"
         );
 
-        // A partir do sample 256, o volume deve estar 100% aberto.
+        // From sample 256 onward, volume should be 100% open.
         assert_eq!(
             buffer2[256], 1.0,
-            "Fim da rampa não abriu totalmente o volume"
+            "End of ramp did not fully open the volume"
         );
         assert_eq!(
             buffer2[4095], 1.0,
-            "Restante do buffer não preservado em volume máximo"
+            "Remainder of buffer not preserved at maximum volume"
         );
     }
 
-    /// Testa o processamento com blocos de apenas 1 amostra (n_samples = 1).
-    /// Isso é crítico para hosts CLAP que podem subdividir blocos arbitrariamente.
+    /// Tests processing with blocks of only 1 sample (n_samples = 1).
+    /// This is critical for CLAP hosts that may arbitrarily subdivide blocks.
     #[test]
     fn test_unit_block_processing() {
         let mut dh = DynamicHysteresis::new();
@@ -240,7 +240,7 @@ mod tests {
         let th_open = 1.0;
         let th_close = 0.5;
 
-        // 1. Transição Open -> Hold -> FadingOut
+        // 1. Transition Open -> Hold -> FadingOut
         assert_eq!(dh.state(), GateState::Open);
         dh.update(0.0, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::Open, "Hold 1/2");
@@ -248,40 +248,40 @@ mod tests {
         assert_eq!(
             dh.state(),
             GateState::FadingOut,
-            "Entrou em fade-out após hold=2"
+            "Entered fade-out after hold=2"
         );
 
-        // 2. Transição FadingOut -> Closed
+        // 2. Transition FadingOut -> Closed
         dh.update(0.0, th_open, th_close, &params, 1);
         assert_eq!(dh.state(), GateState::FadingOut, "FadeOut 1/2");
         assert_eq!(dh.multiplier(), 0.5);
         dh.update(0.0, th_open, th_close, &params, 1);
-        assert_eq!(dh.state(), GateState::Closed, "Silêncio total atingido");
+        assert_eq!(dh.state(), GateState::Closed, "Full silence achieved");
         assert_eq!(dh.multiplier(), 0.0);
 
-        // 3. Transição Closed -> FadingIn -> Open
+        // 3. Transition Closed -> FadingIn -> Open
         dh.update(2.0, th_open, th_close, &params, 1);
-        assert_eq!(dh.state(), GateState::FadingIn, "Início do FadeIn");
+        assert_eq!(dh.state(), GateState::FadingIn, "Start of FadeIn");
         assert_eq!(dh.multiplier(), 0.5);
         dh.update(2.0, th_open, th_close, &params, 1);
-        assert_eq!(dh.state(), GateState::Open, "Totalmente aberto novamente");
+        assert_eq!(dh.state(), GateState::Open, "Fully open again");
         assert_eq!(dh.multiplier(), 1.0);
 
-        // 4. Teste de Rampa com n=1 (Deve funcionar sem pânico ou divisões por zero)
+        // 4. Ramp test with n=1 (Should work without panic or division by zero)
         let mut buffer = [1.0f32; 1];
-        dh.update(0.0, th_open, th_close, &params, 2); // Força FadingOut
+        dh.update(0.0, th_open, th_close, &params, 2); // Forces FadingOut
         dh.update(0.0, th_open, th_close, &params, 1); // FadeOut 1/2
         dh.apply_gain_rt(&mut buffer, 1);
         assert!(
             (buffer[0] - 1.0).abs() < 1e-6,
-            "O multiplicador inicial da rampa é 1.0"
+            "The ramp start multiplier is 1.0"
         );
 
         dh.update(0.0, th_open, th_close, &params, 1); // FadeOut 2/2 -> Closed
         dh.apply_gain_rt(&mut buffer, 1);
         assert!(
             (buffer[0] - 0.5).abs() < 1e-6,
-            "O multiplicador inicial para este bloco era 0.5"
+            "The ramp start multiplier for this block was 0.5"
         );
     }
 }

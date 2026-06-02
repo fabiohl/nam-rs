@@ -1,39 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Model Dispatcher — converte `NamModelData` (parsers JSON/NAMB) em `Box<DynamicModel>`.
+//! Model Dispatcher — converts `NamModelData` (JSON/NAMB parsers) into `Box<DynamicModel>`.
 //!
-//! Toda a lógica de construção e alocação ocorre exclusivamente na thread CLI,
-//! garantindo que o `Box<DynamicModel>` resultante esteja pronto para injeção na
-//! thread DSP via SPSC sem nenhuma alocação no caminho RT.
+//! All construction and allocation logic occurs exclusively on the CLI thread,
+//! ensuring the resulting `Box<DynamicModel>` is ready for injection into the
+//! DSP thread via SPSC without any allocation on the RT path.
 //!
-//! Os pesos são consumidos sequencialmente por um `WeightCursor` cursor-forward,
-//! com verificação de exaustão ao final para detectar modelos inconsistentes.
+//! Weights are consumed sequentially by a forward-only `WeightCursor`,
+//! with an exhaustion check at the end to detect inconsistent models.
 
 use crate::loader::nam_json::NamModelData;
 use crate::models::DynamicModel;
 use anyhow::bail;
 
 // =============================================================================
-// WeightCursor — Leitura sequencial determinística dos pesos planificados
+// WeightCursor — Deterministic sequential reading of flattened weights
 // =============================================================================
 
-/// Cursor de leitura forward-only sobre o vetor de pesos planificados.
+/// Forward-only read cursor over the flattened weight vector.
 ///
-/// Garante:
-/// - Nenhum peso é lido fora dos limites (`read_slice` / `read_f32`)
-/// - Todos os pesos foram consumidos no final (`verify_exhausted`)
+/// Ensures:
+/// - No weight is read out of bounds (`read_slice` / `read_f32`)
+/// - All weights have been consumed at the end (`verify_exhausted`)
 pub(crate) struct WeightCursor<'a> {
-    /// Referência ao slice completo de pesos do modelo.
+    /// Reference to the full model weight slice.
     data: &'a [f32],
-    /// Posição corrente do cursor (avança a cada leitura).
+    /// Current cursor position (advances with each read).
     pos: usize,
-    /// Layout dos pesos informado no cabeçalho binário.
+    /// Weight layout reported in the binary header.
     pub layout: crate::loader::nam_json::WeightsLayout,
 }
 
 impl<'a> WeightCursor<'a> {
-    /// Cria um novo cursor sobre a fatia de pesos com layout especificado.
+    /// Creates a new cursor over the weight slice with the specified layout.
     #[cold]
     pub fn new(data: &'a [f32], layout: crate::loader::nam_json::WeightsLayout) -> Self {
         Self {
@@ -43,17 +43,17 @@ impl<'a> WeightCursor<'a> {
         }
     }
 
-    /// Verifica se os pesos estão em formato entrelaçado (WaveNet v2).
+    /// Checks whether the weights are in interleaved format (WaveNet v2).
     pub fn is_interleaved4(&self) -> bool {
         self.layout == crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet
     }
 
-    /// Verifica se os pesos estão em formato Gate-Major (LSTM v2).
+    /// Checks whether the weights are in Gate-Major format (LSTM v2).
     pub fn is_gate_major_lstm(&self) -> bool {
         self.layout == crate::loader::nam_json::WeightsLayout::GateMajorLstm
     }
 
-    /// Lê uma fatia contígua de `len` pesos, avançando o cursor.
+    /// Reads a contiguous slice of `len` weights, advancing the cursor.
     fn read_slice(&mut self, len: usize) -> anyhow::Result<&'a [f32]> {
         if self.pos + len > self.data.len() {
             bail!(
@@ -68,13 +68,13 @@ impl<'a> WeightCursor<'a> {
         Ok(slice)
     }
 
-    /// Lê um único escalar `f32`, avançando o cursor.
+    /// Reads a single `f32` scalar, advancing the cursor.
     fn read_f32(&mut self) -> anyhow::Result<f32> {
         let s = self.read_slice(1)?;
         Ok(s[0])
     }
 
-    /// Verifica que todos os pesos foram consumidos. Falha se restarem pesos.
+    /// Verifies that all weights have been consumed. Fails if weights remain.
     fn verify_exhausted(&self) -> anyhow::Result<()> {
         if self.pos != self.data.len() {
             bail!(
@@ -88,13 +88,13 @@ impl<'a> WeightCursor<'a> {
 }
 
 // =============================================================================
-// Ponto de Entrada Público
+// Public Entry Point
 // =============================================================================
 
-/// Constrói um `Box<DynamicModel>` a partir dos dados brutos parseados.
+/// Builds a `Box<DynamicModel>` from the raw parsed data.
 ///
-/// Bifurca por arquitetura (`"WaveNet"` / `"LSTM"`) e delega para os
-/// construtores especializados com const generics.
+/// Branches by architecture (`"WaveNet"` / `"LSTM"`) and delegates to the
+/// specialized builders with const generics.
 pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     match data.architecture.as_str() {
         "WaveNet" => wavenet::build_wavenet(data),
@@ -103,9 +103,9 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     }
 }
 
-/// Módulo de construção de modelos LSTM
+/// LSTM model builder module
 pub mod lstm;
-/// Módulo de construção de modelos WaveNet
+/// WaveNet model builder module
 pub mod wavenet;
 
 pub use lstm::build_lstm_dynamic;

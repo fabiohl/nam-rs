@@ -1,61 +1,61 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Malha de Células Recorrentes Dinâmica para inferência LSTM (Fallback).
+//! Dynamic Recurrent Cell Mesh for LSTM Inference (Fallback).
 //!
-//! Permite carregamento de modelos com topologias LSTM arbitrárias
-//! (e.g., mais de 2 camadas, tamanhos ocultos customizados) que não possuem
-//! implementações SoA estáticas via Const Generics.
-//! Para respeitar o path RT Lock-Free, toda manipulação de memória é
-//! resolvida com buffers passados diretamente à pipeline iterativa vetorial math da SIMMathConfig.
+//! Enables loading models with arbitrary LSTM topologies
+//! (e.g., more than 2 layers, custom hidden sizes) that lack
+//! static SoA implementations via Const Generics.
+//! To respect the RT Lock-Free path, all memory manipulation is
+//! resolved with buffers passed directly to the iterative vector math pipeline of SIMMathConfig.
 
-/// Camada Dinâmica LSMT gerida em tempo de execução
+/// Dynamically managed LSMT layer at runtime
 #[derive(Clone)]
 pub struct LstmDynLayer {
-    /// Peso `(Input + Hidden)` por `(4 * Hidden)` matriz dimensionada 1D e linearizada.
+    /// Weight `(Input + Hidden)` by `(4 * Hidden)` matrix, 1D linearized.
     pub input_hidden_weights: Vec<u16>,
-    /// Array linear (H * 4) com os desvios de ativação de cada porta.
+    /// Linear array (H * 4) with the activation biases of each gate.
     pub bias: Vec<f32>,
-    /// Tensor de Estado local, funde o sample entrante e o momento final do frame anterior. [I + H]
+    /// Local State tensor, merges the incoming sample and the previous frame's final moment. [I + H]
     pub state: Vec<f32>,
-    /// Estado global espelhado em BF16 para processamento VNNI.
+    /// Global state mirrored in BF16 for VNNI processing.
     pub state_bf16: Vec<u16>,
-    /// Bloco restrito de recursividade matemática da célula LSTM. [H]
+    /// Restricted block of mathematical recursion of the LSTM cell. [H]
     pub cell_state: Vec<f32>,
-    /// Buffers de acúmulo da avaliação vetorial sobre a camada. [H * 4]
+    /// Accumulation buffers for vector evaluation over the layer. [H * 4]
     pub gates: Vec<f32>,
-    /// Buffer auxiliar de escopo contíguo. [H]
+    /// Auxiliary buffer of contiguous scope. [H]
     pub tanh_cs: Vec<f32>,
-    /// Dimensão física do vetor inicial `[1]` ou contiguidade prévia num Lstm2.
+    /// Physical dimension of the initial vector `[1]` or previous contiguity in an Lstm2.
     pub input_size: usize,
-    /// Dimensão latente matemática.
+    /// Latent mathematical dimension.
     pub hidden_size: usize,
 }
 
 impl LstmDynLayer {
-    /// Desdobra a malha sobre os ciclos do SimdMathConfig
+    /// Unfolds the mesh over SimdMathConfig cycles
     ///
     /// # Safety
-    /// Depende nativamente das matrizes preenchidas via alocador estrito no C++ Fallback parser (Loader CLI).
+    /// Natively depends on matrices filled via strict allocator in the C++ Fallback parser (Loader CLI).
     pub unsafe fn process_sample<M: crate::math::common::SimdMath>(&mut self, input: &[f32]) {
-        // ih = Input + Hidden: O tamanho total do vetor que entra no cálculo (X_t + H_t-1)
+        // ih = Input + Hidden: The total size of the vector entering the computation (X_t + H_t-1)
         let ih = self.input_size + self.hidden_size;
-        // h = Hidden: A dimensão do estado interno e da saída desta camada
+        // h = Hidden: The dimension of the internal state and the output of this layer
         let h = self.hidden_size;
 
-        // 1. Atualiza state com sample de input (substitui no prefixo)
-        // O vetor 'state' contém [Input_da_vez | Hidden_da_rodada_anterior].
-        // Aqui, injetamos o novo áudio no começo do buffer para a próxima multiplicação.
+        // 1. Update state with input sample (replace in the prefix)
+        // The 'state' vector contains [Current_Input | Previous_Hidden].
+        // Here, we inject the new audio at the beginning of the buffer for the next multiplication.
         self.state[..self.input_size].copy_from_slice(input);
 
-        // OTIMIZAÇÃO: "Prefetch" avisa a CPU para trazer os dados da memória RAM para o Cache L1
-        // ANTES de começarmos o loop pesado de cálculos. Isso reduz a latência de acesso (Memory Stall).
+        // OPTIMIZATION: "Prefetch" tells the CPU to bring data from RAM to L1 Cache
+        // BEFORE the heavy computation loop starts. This reduces access latency (Memory Stall).
         unsafe {
-            // T0 = Traz para todos os níveis de cache (L1, L2, L3)
+            // T0 = Bring to all cache levels (L1, L2, L3)
             core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
                 self.state.as_ptr().cast::<i8>(),
             );
-            // Se o vetor for grande, fazemos o prefetch da próxima "cache line" (64 bytes/16 floats)
+            // If the vector is large, prefetch the next "cache line" (64 bytes/16 floats)
             if ih > 16 {
                 core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
                     self.state.as_ptr().add(16).cast::<i8>(),
@@ -63,9 +63,9 @@ impl LstmDynLayer {
             }
         }
 
-        // 2. Linear Dot Products -> Preenche GATES e adiciona BIAS via GEMV
+        // 2. Linear Dot Products -> Fills GATES and adds BIAS via GEMV
         if M::IS_BF16 {
-            // Sincroniza estado BF16
+            // Sync BF16 state
             unsafe { M::f32_to_bf16(&self.state, &mut self.state_bf16) };
 
             unsafe {
@@ -91,9 +91,9 @@ impl LstmDynLayer {
             }
         }
 
-        // 3. Kernel fundido: Ativações + Atualização de Estado
-        // Realiza sigmoids (I, F, O) e tanh (G), atualiza cell_state e hidden_state (state[input_size..])
-        // em um único passo fundido, reduzindo o tráfego de memória de 3 passes para 1.
+        // 3. Fused Kernel: Activations + State Update
+        // Performs sigmoids (I, F, O) and tanh (G), updates cell_state and hidden_state (state[input_size..])
+        // in a single fused step, reducing memory traffic from 3 passes to 1.
         unsafe {
             M::fused_lstm_gates_dyn(
                 &mut self.gates,
@@ -104,13 +104,13 @@ impl LstmDynLayer {
         }
     }
 
-    /// Retorna a parte visível do estado oculto (hidden state).
+    /// Returns the visible part of the hidden state.
     #[inline(always)]
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[self.input_size..]
     }
 
-    /// Zera os estados internos (hidden e cell) da camada.
+    /// Zeros the layer's internal states (hidden and cell).
     pub fn reset_states(&mut self) {
         self.state.fill(0.0);
         self.cell_state.fill(0.0);
@@ -119,36 +119,36 @@ impl LstmDynLayer {
     }
 }
 
-/// Invólucro Dinâmico LSTM final.
+/// Final Dynamic LSTM Wrapper.
 ///
-/// **Referência Científica:** Hochreiter, S., & Schmidhuber, J. (1997). *"Long Short-Term Memory."*
+/// **Scientific Reference:** Hochreiter, S., & Schmidhuber, J. (1997). *"Long Short-Term Memory."*
 pub struct LstmDynModel {
-    /// Conjunto linearizado empilhado das subrotinas LSTM.
-    /// Em modelos complexos, podemos ter 2, 3 ou mais camadas onde uma alimenta a outra.
+    /// Linearly stacked set of LSTM subroutines.
+    /// In complex models, we can have 2, 3 or more layers where one feeds the other.
     pub layers: Vec<LstmDynLayer>,
-    /// Filtro de predição linear da saída (Head).
-    /// Após todas as camadas LSTM, aplicamos uma última camada linear para transformar
-    /// o estado oculto final no valor do sample de áudio.
+    /// Linear prediction filter of the output (Head).
+    /// After all LSTM layers, we apply a final linear layer to transform
+    /// the final hidden state into the audio sample value.
     pub head_weights: Vec<u16>,
-    /// Acumulador linear projetado de saída.
+    /// Projected linear output accumulator.
     pub head_bias: f32,
 }
 
 impl LstmDynModel {
-    /// Processamento Síncrono de Áudio. Requer instanciamento RT.
-    /// Esta função processa um bloco de áudio, amostra por amostra.
+    /// Synchronous Audio Processing. Requires RT instantiation.
+    /// This function processes an audio block, sample by sample.
     ///
-    /// **Para Cientistas e Devs:** A macro `dispatch_simd!` inspeciona o CPU (ex: tem AVX-512? AVX2?)
-    /// de forma imediata (pré-resolvida no startup) e despacha para a função `process_internal`
-    /// parametrizada com o tipo de matemática SIMD otimizado (`M: SimdMath`).
+    /// **For Scientists and Devs:** The `dispatch_simd!` macro inspects the CPU (e.g., has AVX-512? AVX2?)
+    /// immediately (pre-resolved at startup) and dispatches to the `process_internal` function
+    /// parameterized with the optimized SIMD math type (`M: SimdMath`).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             crate::math::common::dispatch_simd!(self, process_internal, input, output);
         }
     }
 
-    /// Função restrita para processamento neural onde o compilador substitui genéricos `M`
-    /// pelas instruções intrínsecas adequadas (como FMA AVX2) da SIMDMath selecionada.
+    /// Restricted function for neural processing where the compiler substitutes generic `M`
+    /// with the appropriate intrinsic instructions (like AVX2 FMA) from the selected SIMDMath.
     unsafe fn process_internal<M: crate::math::common::SimdMath>(
         &mut self,
         input: &[f32],
@@ -157,34 +157,34 @@ impl LstmDynModel {
         let num_frames = input.len();
 
         for i in 0..num_frames {
-            // Pegamos o sample atual de áudio.
+            // Take the current audio sample.
             let current_sample = [input[i]];
-            // O 'hidden_out' começa como o sample de entrada e vai sendo atualizado
-            // conforme passamos por cada camada da rede.
+            // 'hidden_out' starts as the input sample and gets updated
+            // as we pass through each layer of the network.
             let mut hidden_out: &[f32] = &current_sample;
 
-            // Loop de camadas: A saída (hidden state) da camada N
-            // serve como entrada (input) para a camada N+1.
+            // Layer loop: The output (hidden state) of layer N
+            // serves as the input for layer N+1.
             for layer in self.layers.iter_mut() {
                 unsafe { layer.process_sample::<M>(hidden_out) };
-                // Pega o estado oculto que acabou de ser calculado para a próxima camada
+                // Get the hidden state that was just computed for the next layer
                 hidden_out = layer.get_hidden_state();
             }
 
-            // Camada de Saída (Head): Multiplicamos o estado oculto da última camada
-            // pelos pesos do 'head' e somamos o bias para obter o sample final.
+            // Output Layer (Head): Multiply the last layer's hidden state
+            // by the 'head' weights and add the bias to get the final sample.
             let head_out =
                 unsafe { M::dot_product(hidden_out, &self.head_weights) } + self.head_bias;
 
-            // Salva o resultado no buffer de saída
+            // Save the result to the output buffer
             output[i] = head_out;
         }
     }
 
-    /// Processamento Síncrono de Áudio (Fallback)
-    /// Executa o aquecimento (Pre-warm) do estado interno da LSTM.
-    /// O dispatch garante que o silêncio de pre-warm seja calculado na mesma velocidade
-    /// que o processamento real.
+    /// Synchronous Audio Processing (Fallback)
+    /// Executes the LSTM internal state prewarm (Pre-warm).
+    /// Dispatch ensures that the prewarm silence is calculated at the same speed
+    /// as real processing.
     pub fn prewarm(&mut self, num_samples: usize) {
         unsafe {
             crate::math::common::dispatch_simd!(self, prewarm_internal, num_samples);
@@ -210,7 +210,7 @@ impl LstmDynModel {
         }
     }
 
-    /// Zera os estados internos de todas as camadas LSTM.
+    /// Zeros the internal states of all LSTM layers.
     pub fn reset_states(&mut self) {
         for layer in self.layers.iter_mut() {
             layer.reset_states();

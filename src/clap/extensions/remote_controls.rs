@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão `clap_plugin_remote_controls` para o NAM-rs.
+//! Implementation of the `clap_plugin_remote_controls` extension for NAM-rs.
 
 use crate::clap::extensions::params::{
     PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
@@ -12,12 +12,12 @@ use clack_extensions::remote_controls::{
     PluginRemoteControls, PluginRemoteControlsImpl, RemoteControlsPage, RemoteControlsPageWriter,
 };
 
-/// Retorna a quantidade de páginas de controle remoto de hardware.
+/// Returns the number of hardware remote control pages.
 pub fn get_page_count() -> u32 {
     2
 }
 
-/// Preenche a página de controle remoto especificada pelo índice.
+/// Fills the remote control page specified by the index.
 pub fn fill_remote_controls_page(index: u32, writer: &mut RemoteControlsPageWriter) {
     match index {
         0 => {
@@ -62,7 +62,7 @@ impl<'a> PluginRemoteControlsImpl for NamClapMainThread<'a> {
     }
 }
 
-/// Tipo marcador para registro da extensão.
+/// Marker type for extension registration.
 pub type NamPluginRemoteControls = PluginRemoteControls;
 
 #[cfg(test)]
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn test_fill_pages() {
-        // Página 0: Main
+        // Page 0: Main
         let mut raw_page = MaybeUninit::<clap_remote_controls_page>::zeroed();
         unsafe {
             let mut writer = RemoteControlsPageWriter::from_raw(raw_page.as_mut_ptr());
@@ -100,7 +100,7 @@ mod tests {
             }
         }
 
-        // Página 1: Gate
+        // Page 1: Gate
         let mut raw_page = MaybeUninit::<clap_remote_controls_page>::zeroed();
         unsafe {
             let mut writer = RemoteControlsPageWriter::from_raw(raw_page.as_mut_ptr());

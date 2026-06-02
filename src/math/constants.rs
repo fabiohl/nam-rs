@@ -1,35 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Constantes matemáticas, coeficientes de polinômios Minimax e parâmetros de LUT.
-//! Centralizadas para garantir consistência entre implementações escalares, AVX2 e AVX-512.
+//! Mathematical constants, Minimax polynomial coefficients, and LUT parameters.
+//! Centralized to ensure consistency across scalar, AVX2, and AVX-512 implementations.
 
-// --- Parâmetros de LUT de Ganho ---
+// --- Gain LUT Parameters ---
 
-/// Tamanho da tabela LUT para ganho. 4096 pontos fornecem precisão sub-0.001 dB.
+/// Size of the gain LUT table. 4096 points provide sub-0.001 dB precision.
 pub const GAIN_LUT_SIZE: usize = 4096;
-/// Limite inferior em dB para a LUT (Piso de silêncio prático -96dB).
+/// Lower dB limit for the LUT (practical silence floor -96dB).
 pub const GAIN_MIN_DB: f32 = -96.0;
-/// Limite superior em dB para a LUT (+30dB é um boost extremo).
+/// Upper dB limit for the LUT (+30dB is an extreme boost).
 pub const GAIN_MAX_DB: f32 = 30.0;
-/// Intervalo total de ganho em dB suportado pela LUT.
+/// Total gain range in dB supported by the LUT.
 pub const GAIN_DB_RANGE: f32 = GAIN_MAX_DB - GAIN_MIN_DB;
-/// Passo em dB entre cada entrada da LUT.
+/// dB step between each LUT entry.
 pub const GAIN_DB_STEP: f32 = GAIN_DB_RANGE / (GAIN_LUT_SIZE as f32 - 1.0);
-/// Inverso do passo de ganho (otimização para evitar divisões no hot-path).
+/// Inverse of the gain step (optimization to avoid divisions in the hot-path).
 pub const INV_GAIN_DB_STEP: f32 = 1.0 / GAIN_DB_STEP;
 
-// --- Coeficientes Padé para Tanh (Rational [5,4]) ---
+// --- Padé Coefficients for Tanh (Rational [5,4]) ---
 
-/// Numerador constante: x⁴ + 105·x² + 945.
+/// Numerator constant: x⁴ + 105·x² + 945.
 pub const PADE_TANH_NUM_A: f32 = 105.0;
-/// Numerador constante.
+/// Numerator constant.
 pub const PADE_TANH_NUM_B: f32 = 945.0;
-/// Denominador coeficiente x⁴: 15.
+/// Denominator x⁴ coefficient: 15.
 pub const PADE_TANH_DEN_C4: f32 = 15.0;
-/// Denominador coeficiente x²: 420.
+/// Denominator x² coefficient: 420.
 pub const PADE_TANH_DEN_C2: f32 = 420.0;
-/// Denominador constante.
+/// Denominator constant.
 pub const PADE_TANH_DEN_A: f32 = 945.0;
-/// Limite de clamp para o domínio do Padé tanh (|x| < 4).
+/// Clamp limit for the Padé tanh domain (|x| < 4).
 pub const PADE_TANH_CLAMP: f32 = 4.0;

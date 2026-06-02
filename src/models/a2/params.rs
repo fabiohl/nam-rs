@@ -1,161 +1,161 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Parâmetros de configuração para a arquitetura WaveNet A2.
+//! Configuration parameters for the WaveNet A2 architecture.
 //!
-//! Este módulo contém as estruturas que descrevem a topologia de um modelo WaveNet A2,
-//! permitindo a construção e validação das camadas de inferência.
+//! This module contains the structures that describe the topology of a WaveNet A2 model,
+//! enabling construction and validation of the inference layers.
 //!
-//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
-//! aguardando estabilização da implementação de referência.
+//! IMPORTANT: A2 architecture support is in "placeholder" stage
+//! pending stabilization of the reference implementation.
 
 use super::activations::ActivationType;
 use super::film::FiLMConfig;
 use super::gating::GatingMode;
 
-/// Parâmetros para configuração do Head 1x1.
+/// Parameters for Head 1x1 configuration.
 ///
-/// Configura uma convolução 1x1 opcional que envia a saída diretamente para o head
-/// (skip connection) em vez de usar a saída da ativação diretamente.
+/// Configures an optional 1x1 convolution that sends output directly to the head
+/// (skip connection) instead of using the activation output directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Head1x1Params {
-    /// Se a convolução head 1x1 está ativa.
+    /// Whether the head 1x1 convolution is active.
     pub active: bool,
-    /// Número de canais de saída para a convolução head 1x1.
+    /// Number of output channels for the head 1x1 convolution.
     pub out_channels: usize,
-    /// Número de grupos para a convolução agrupada.
+    /// Number of groups for the grouped convolution.
     pub groups: u32,
 }
 
-/// Parâmetros para configuração da Camada 1x1.
+/// Parameters for Layer 1x1 configuration.
 ///
-/// Configura uma convolução 1x1 opcional que processa a saída da ativação
-/// para a conexão residual com a próxima camada.
+/// Configures an optional 1x1 convolution that processes the activation output
+/// for the residual connection to the next layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layer1x1Params {
-    /// Se a convolução de camada 1x1 está ativa.
+    /// Whether the layer 1x1 convolution is active.
     pub active: bool,
-    /// Número de grupos para a convolução agrupada.
+    /// Number of groups for the grouped convolution.
     pub groups: u32,
 }
 
-/// Parâmetros para construção de uma única camada WaveNet A2.
+/// Parameters for constructing a single WaveNet A2 layer.
 ///
-/// Contém toda a configuração necessária para instanciar uma camada detalhada.
+/// Contains all configuration needed to instantiate a detailed layer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerParamsA2 {
-    /// Tamanho da entrada de condicionamento.
+    /// Conditioning input size.
     pub condition_size: usize,
-    /// Número de canais de entrada/saída entre as camadas.
+    /// Number of input/output channels between layers.
     pub channels: usize,
-    /// Número de canais internos (bottleneck).
+    /// Number of internal channels (bottleneck).
     pub bottleneck: usize,
-    /// Tamanho do kernel para a convolução dilatada.
+    /// Kernel size for the dilated convolution.
     pub kernel_size: usize,
-    /// Fator de dilatação para a convolução.
+    /// Dilation factor for the convolution.
     pub dilation: usize,
-    /// Configuração da função de ativação primária.
+    /// Primary activation function configuration.
     pub activation: ActivationType,
-    /// Modo de gating (None, Gated ou Blended).
+    /// Gating mode (None, Gated, or Blended).
     pub gating_mode: GatingMode,
-    /// Número de grupos para a convolução de entrada.
+    /// Number of groups for the input convolution.
     pub groups_input: u32,
-    /// Número de grupos para a convolução de mixin de entrada.
+    /// Number of groups for the input mixin convolution.
     pub groups_input_mixin: u32,
-    /// Configuração da convolução opcional layer 1x1.
+    /// Optional layer 1x1 convolution configuration.
     pub layer1x1: Layer1x1Params,
-    /// Configuração da convolução opcional head 1x1.
+    /// Optional head 1x1 convolution configuration.
     pub head1x1: Head1x1Params,
-    /// Ativação secundária (utilizada para gating/blending).
+    /// Secondary activation (used for gating/blending).
     pub secondary_activation: ActivationType,
-    /// Parâmetros FiLM antes da convolução de entrada.
+    /// FiLM parameters before the input convolution.
     pub conv_pre_film: FiLMConfig,
-    /// Parâmetros FiLM após a convolução de entrada.
+    /// FiLM parameters after the input convolution.
     pub conv_post_film: FiLMConfig,
-    /// Parâmetros FiLM antes do mixin de entrada.
+    /// FiLM parameters before the input mixin.
     pub input_mixin_pre_film: FiLMConfig,
-    /// Parâmetros FiLM após o mixin de entrada.
+    /// FiLM parameters after the input mixin.
     pub input_mixin_post_film: FiLMConfig,
-    /// Parâmetros FiLM antes da ativação.
+    /// FiLM parameters before activation.
     pub activation_pre_film: FiLMConfig,
-    /// Parâmetros FiLM após a ativação.
+    /// FiLM parameters after activation.
     pub activation_post_film: FiLMConfig,
-    /// Parâmetros FiLM após a convolução layer 1x1.
+    /// FiLM parameters after the layer 1x1 convolution.
     pub layer1x1_post_film: FiLMConfig,
-    /// Parâmetros FiLM após a convolução head 1x1.
+    /// FiLM parameters after the head 1x1 convolution.
     pub head1x1_post_film: FiLMConfig,
 }
 
-/// Parâmetros para construção de um Array de Camadas (LayerArray) WaveNet A2.
+/// Parameters for constructing a WaveNet A2 Layer Array.
 ///
-/// Configura múltiplas camadas que compartilham a mesma contagem de canais
-/// e tamanho de kernel, mas podem ter dilatações e ativações distintas.
+/// Configures multiple layers that share the same channel count
+/// and kernel size, but can have distinct dilations and activations.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LayerArrayParamsA2 {
-    /// Tamanho da entrada (número de canais).
+    /// Input size (number of channels).
     pub input_size: usize,
-    /// Tamanho da entrada de condicionamento.
+    /// Conditioning input size.
     pub condition_size: usize,
-    /// Tamanho da saída do head (após o rechannel).
+    /// Head output size (after rechannel).
     pub head_size: usize,
-    /// Tamanho do kernel da convolução de rechannel do head (>= 1).
+    /// Head rechannel convolution kernel size (>= 1).
     pub head_kernel_size: usize,
-    /// Número de canais em cada camada.
+    /// Number of channels in each layer.
     pub channels: usize,
-    /// Tamanho do bottleneck (contagem de canais internos).
+    /// Bottleneck size (internal channel count).
     pub bottleneck: usize,
-    /// Tamanhos de kernel por camada.
+    /// Kernel sizes per layer.
     pub kernel_sizes: Vec<usize>,
-    /// Vetor de fatores de dilatação, um por camada.
+    /// Vector of dilation factors, one per layer.
     pub dilations: Vec<usize>,
-    /// Vetor de configurações de ativação primária, uma por camada.
+    /// Vector of primary activation configurations, one per layer.
     pub activations: Vec<ActivationType>,
-    /// Vetores de modos de gating, um por camada.
+    /// Vectors of gating modes, one per layer.
     pub gating_modes: Vec<GatingMode>,
-    /// Se deve utilizar bias no rechannel do head.
+    /// Whether to use bias in the head rechannel.
     pub head_bias: bool,
-    /// Número de grupos para as convoluções de entrada.
+    /// Number of groups for input convolutions.
     pub groups_input: u32,
-    /// Número de grupos para as convoluções de mixin de entrada.
+    /// Number of groups for input mixin convolutions.
     pub groups_input_mixin: u32,
-    /// Parâmetros para as convoluções opcionais layer 1x1.
+    /// Parameters for optional layer 1x1 convolutions.
     pub layer1x1: Layer1x1Params,
-    /// Parâmetros para as convoluções opcionais head 1x1.
+    /// Parameters for optional head 1x1 convolutions.
     pub head1x1: Head1x1Params,
-    /// Vetor de configurações de ativação secundária para gating/blending.
+    /// Vector of secondary activation configurations for gating/blending.
     pub secondary_activations: Vec<ActivationType>,
-    /// Parâmetros FiLM antes das convoluções de entrada.
+    /// FiLM parameters before input convolutions.
     pub conv_pre_film: FiLMConfig,
-    /// Parâmetros FiLM após as convoluções de entrada.
+    /// FiLM parameters after input convolutions.
     pub conv_post_film: FiLMConfig,
-    /// Parâmetros FiLM antes dos mixins de entrada.
+    /// FiLM parameters before input mixins.
     pub input_mixin_pre_film: FiLMConfig,
-    /// Parâmetros FiLM após os mixins de entrada.
+    /// FiLM parameters after input mixins.
     pub input_mixin_post_film: FiLMConfig,
-    /// Parâmetros FiLM antes da ativação.
+    /// FiLM parameters before activation.
     pub activation_pre_film: FiLMConfig,
-    /// Parâmetros FiLM após a ativação.
+    /// FiLM parameters after activation.
     pub activation_post_film: FiLMConfig,
-    /// Parâmetros FiLM após as convoluções layer 1x1.
+    /// FiLM parameters after layer 1x1 convolutions.
     pub layer1x1_post_film: FiLMConfig,
-    /// Parâmetros FiLM após as convoluções head 1x1.
+    /// FiLM parameters after head 1x1 convolutions.
     pub head1x1_post_film: FiLMConfig,
 }
 
-/// Parâmetros para o Head opcional pós-stack.
+/// Parameters for the optional post-stack Head.
 ///
-/// Corresponde ao componente `Head` do WaveNet no NAM.
+/// Corresponds to the `Head` component of WaveNet in NAM.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HeadParams {
-    /// Canais de entrada (geralmente herdados da última camada).
+    /// Input channels (usually inherited from the last layer).
     pub in_channels: usize,
-    /// Canais internos do head.
+    /// Head internal channels.
     pub channels: usize,
-    /// Canais de saída final.
+    /// Final output channels.
     pub out_channels: usize,
-    /// Tamanhos de kernel das convoluções do head.
+    /// Kernel sizes of the head convolutions.
     pub kernel_sizes: Vec<usize>,
-    /// Configuração da ativação do head.
+    /// Head activation configuration.
     pub activation: ActivationType,
 }
 

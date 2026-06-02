@@ -6,30 +6,30 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels GEMV (Multiplicação de Matriz por Vetor) — AVX2 e AVX-512.
+//! GEMV kernels (Matrix-Vector Multiplication) — AVX2 and AVX-512.
 //!
-//! Inclui variantes `_small` especializadas para Standard WaveNet (CH=16),
-//! versões em batch e a operação fundida `fused_add_gemv`.
+//! Includes `_small` variants specialized for Standard WaveNet (CH=16),
+//! batch versions, and the fused operation `fused_add_gemv`.
 //!
-//! # Estratégia de Paralelismo
-//! - AVX2: 4 acumuladores YMM (4×8 = 32 lanes), loop interno com passo 4.
-//! - AVX-512: 8 acumuladores ZMM (8×16 = 128 lanes), loop interno com passo 8.
-//! - Quebra de cadeias de dependência FMA via múltiplos acumuladores.
-//! - Software prefetch em in_frame para reduzir latência de cache miss.
+//! # Parallelism Strategy
+//! - AVX2: 4 YMM accumulators (4×8 = 32 lanes), inner loop with step 4.
+//! - AVX-512: 8 ZMM accumulators (8×16 = 128 lanes), inner loop with step 8.
+//! - FMA dependency chain breaking via multiple accumulators.
+//! - Software prefetch on in_frame to reduce cache miss latency.
 
 use core::arch::x86_64::*;
 
 // ── AVX2 ──────────────────────────────────────────────────────────────────────
 
-/// Realiza uma operação matemática combinada (fundida) de alta velocidade: Y = X_res + Bias + W * Z.
+/// Performs a combined (fused) high-speed mathematical operation: Y = X_res + Bias + W * Z.
 ///
-/// Esta função faz três coisas ao mesmo tempo: preserva o valor atual (residual), soma um
-/// ajuste (bias) e adiciona o resultado de uma multiplicação de pesos por entrada. Fazer tudo
-/// de uma vez evita que o processador precise ler e escrever na memória várias vezes, mantendo
-/// os dados "quentes" e prontos para o próximo cálculo.
+/// This function does three things at the same time: preserves the current value (residual), adds an
+/// offset (bias), and adds the result of a weight-times-input multiplication. Doing everything
+/// at once avoids the processor having to read and write to memory multiple times, keeping
+/// the data "hot" and ready for the next computation.
 ///
-/// Utiliza 4 acumuladores independentes para quebrar a cadeia de dependência do pipeline FMA,
-/// permitindo que o processador execute até 4 FMAs em paralelo.
+/// Uses 4 independent accumulators to break the FMA pipeline dependency chain,
+/// allowing the processor to execute up to 4 FMAs in parallel.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn fused_add_gemv_avx2(
     in_frame: &[f32],
@@ -105,9 +105,9 @@ pub unsafe fn fused_add_gemv_avx2(
     }
 }
 
-/// Realiza uma projeção linear (Y = Bias + W * Z), substituindo o conteúdo anterior.
+/// Performs a linear projection (Y = Bias + W * Z), replacing the previous content.
 ///
-/// Utiliza 4 acumuladores independentes para quebrar a cadeia de dependência do pipeline FMA.
+/// Uses 4 independent accumulators to break the FMA pipeline dependency chain.
 #[target_feature(enable = "avx2,fma,f16c")]
 pub unsafe fn gemv_overwrite_avx2(
     in_frame: &[f32],
@@ -185,13 +185,13 @@ pub unsafe fn gemv_overwrite_avx2(
     }
 }
 
-// ── AVX-512 Small (CH=16 especializado) ──────────────────────────────────────
+// ── AVX-512 Small (CH=16 specialized) ──────────────────────────────────────
 
-/// Kernel GEMV AVX-512 especializado para Standard WaveNet (CH=16).
+/// GEMV kernel AVX-512 specialized for Standard WaveNet (CH=16).
 ///
-/// Utiliza 8 acumuladores ZMM independentes (8×16 = 128 lanes) e loop interno
-/// com passo 8, quebrando a cadeia de dependência FMA e saturando as portas
-/// de execução AVX-512.
+/// Uses 8 independent ZMM accumulators (8×16 = 128 lanes) with an inner loop
+/// step of 8, breaking the FMA dependency chain and saturating the AVX-512
+/// execution ports.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_overwrite_avx512_small(
     in_frame: &[f32],
@@ -296,9 +296,9 @@ pub unsafe fn gemv_overwrite_avx512_small(
     _mm512_storeu_ps(out_frame.as_mut_ptr(), acc0);
 }
 
-/// Kernel Fused-Add-GEMV AVX-512 especializado para Standard WaveNet (CH=16).
+/// Fused-Add-GEMV kernel AVX-512 specialized for Standard WaveNet (CH=16).
 ///
-/// 8 acumuladores ZMM independentes com passo 8 no loop interno.
+/// 8 independent ZMM accumulators with step 8 in the inner loop.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemv_avx512_small(
     in_frame: &[f32],
@@ -402,12 +402,12 @@ pub unsafe fn fused_add_gemv_avx512_small(
     _mm512_storeu_ps(out_frame.as_mut_ptr(), acc0);
 }
 
-// ── AVX-512 Geral ────────────────────────────────────────────────────────────
+// ── AVX-512 General ────────────────────────────────────────────────────────────
 
-/// Realiza a projeção linear Y = Bias + W * Z (GEMV) substituindo o conteúdo de out_frame via AVX-512.
+/// Performs the linear projection Y = Bias + W * Z (GEMV) replacing the contents of out_frame via AVX-512.
 ///
-/// Utiliza 8 acumuladores ZMM independentes (8×16 = 128 lanes) com loop interno
-/// de passo 8 para quebrar a cadeia de dependência FMA.
+/// Uses 8 independent ZMM accumulators (8×16 = 128 lanes) with an inner loop
+/// step of 8 to break the FMA dependency chain.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_overwrite_avx512(
     in_frame: &[f32],
@@ -512,7 +512,7 @@ pub unsafe fn gemv_overwrite_avx512(
     }
 }
 
-/// Versão em batch de gemv_overwrite via AVX-512.
+/// Batch version of gemv_overwrite via AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn gemv_overwrite_batch_avx512(
     in_frames: &[f32],
@@ -534,9 +534,9 @@ pub unsafe fn gemv_overwrite_batch_avx512(
     }
 }
 
-/// Realiza a operação fundida Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX-512.
+/// Performs the fused operation Y = X_res + Bias + W * Z (Broadcast GEMV) via AVX-512.
 ///
-/// 8 acumuladores ZMM independentes com passo 8 no loop interno.
+/// 8 independent ZMM accumulators with step 8 in the inner loop.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_add_gemv_avx512(
     in_frame: &[f32],

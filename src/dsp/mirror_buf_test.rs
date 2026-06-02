@@ -9,7 +9,7 @@ fn test_mirror_buf_page_alignment() -> Result<(), Box<dyn std::error::Error>> {
     let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
     let element_size = std::mem::size_of::<f32>();
 
-    // Pede 1 elemento, deve arredondar para 1 página
+    // Request 1 element, should round to 1 page
     let buf = MirroredBuffer::<f32>::new(1)?;
     let expected_elements = page_size / element_size;
 
@@ -20,39 +20,39 @@ fn test_mirror_buf_page_alignment() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_mirror_buf_mirroring() -> Result<(), Box<dyn std::error::Error>> {
-    // Teste do Espelhamento: Verifica se o "truque" da memória virtual está funcionando.
-    // Qualquer valor escrito na primeira metade deve aparecer instantaneamente na
-    // segunda metade (o espelho), pois ambas as janelas apontam para o mesmo lugar físico.
-    // Cria um buffer pequeno (será arredondado para 1 página)
+    // Mirroring Test: Verifies that the virtual memory "trick" works.
+    // Any value written to the first half should instantly appear in the
+    // second half (the mirror), since both windows point to the same physical location.
+    // Creates a small buffer (will be rounded to 1 page)
     let mut buf = MirroredBuffer::<u32>::new(1)?;
     let size = buf.size();
 
-    // 1. Escrita no início da primeira metade
+    // 1. Write at the start of the first half
     buf[0] = 0x12345678;
-    // Deve ser visível no início da segunda metade (espelho)
+    // Should be visible at the start of the second half (mirror)
     assert_eq!(buf[size], 0x12345678);
 
-    // 2. Escrita no final da primeira metade
+    // 2. Write at the end of the first half
     buf[size - 1] = 0xDEADBEEF;
-    // Deve ser visível no final da segunda metade
+    // Should be visible at the end of the second half
     assert_eq!(buf[2 * size - 1], 0xDEADBEEF);
 
-    // 3. Acesso contíguo cruzando a fronteira (o "Pulo do Gato")
-    // Vamos escrever uma sequência de valores que atravessa exatamente o meio do buffer.
-    // Em um buffer comum isso exigiria dois loops ou um 'if', mas aqui é linear.
+    // 3. Contiguous access crossing the boundary (the "Ace in the Hole")
+    // Let's write a sequence of values that crosses exactly the buffer midpoint.
+    // In a regular buffer this would require two loops or an 'if', but here it is linear.
     let middle = size;
     let start = middle - 8;
     for i in 0..16 {
         buf[start + i] = i as u32;
     }
 
-    // Verifica se a primeira metade (original) reflete as mudanças
-    // Os primeiros 8 valores foram escritos no final da primeira metade
+    // Verifies that the first half (original) reflects the changes
+    // The first 8 values were written at the end of the first half
     for i in 0..8 {
         assert_eq!(buf[size - 8 + i], i as u32);
     }
-    // Os próximos 8 valores foram escritos no início da segunda metade,
-    // o que deve ter modificado o início da PRIMEIRA metade física.
+    // The next 8 values were written at the start of the second half,
+    // which should have modified the start of the physical FIRST half.
     for i in 8..16 {
         assert_eq!(buf[i - 8], i as u32);
     }
@@ -68,12 +68,9 @@ fn test_mirror_buf_clone() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(buf2[0], 42);
     assert_eq!(buf2.size(), buf.size());
 
-    // Modifica o original, o clone deve permanecer inalterado
+    // Modifies the original, the clone should remain unchanged
     buf[0] = 99;
-    assert_eq!(
-        buf2[0], 42,
-        "Clones de MirroredBuffer devem ser independentes"
-    );
+    assert_eq!(buf2[0], 42, "MirroredBuffer clones must be independent");
     Ok(())
 }
 
@@ -84,11 +81,11 @@ fn test_mirror_buf_zst_error() {
 
 #[test]
 fn test_mirror_buf_large_allocation() -> Result<(), Box<dyn std::error::Error>> {
-    // Testa alocação de ~1MB
+    // Tests allocation of ~1MB
     let size = 1024 * 1024 / 4;
     let buf = MirroredBuffer::<f32>::new(size)?;
     assert!(buf.size() >= size);
-    // Apenas garante que não deu panic e o mmap foi bem sucedido
+    // Just ensures no panic occurred and mmap succeeded
     Ok(())
 }
 

@@ -1,68 +1,68 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Tipos de ponte (bridge) para comunicação lock-free entre capture e playback.
+//! Bridge types for lock-free communication between capture and playback.
 //!
-//! Contém `DspBridge`, `BridgeBuffer`, `BridgeRef`, `DspBridgeWriter`,
-//! `DspBridgeReader` e as constantes `MAX_BRIDGE_BUF` / `MAX_RESAMP_BUF`.
+//! Contains `DspBridge`, `BridgeBuffer`, `BridgeRef`, `DspBridgeWriter`,
+//! `DspBridgeReader` and the constants `MAX_BRIDGE_BUF` / `MAX_RESAMP_BUF`.
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use std::sync::atomic::Ordering;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Tamanho máximo do buffer intermediário entre as duas streams (capture → playback).
-/// Dimensionado para o quantum máximo do PipeWire (`max-quantum = 8192`).
+/// Maximum intermediate buffer size between the two streams (capture → playback).
+/// Sized for the maximum PipeWire quantum (`max-quantum = 8192`).
 pub const MAX_BRIDGE_BUF: usize = 8192;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Tamanho máximo do buffer para resampling.
+/// Maximum buffer size for resampling.
 ///
-/// **Contrato de Segurança RT**: Este valor determina o tamanho dos buffers pré-alocados
-/// no `DspPipelineContext`. Aumentar este valor impacta o tamanho do objeto da closure
-/// de processamento (que deve caber na stack da thread RT ou ser movido para o heap).
-/// Atualmente fixado em 4096 amostras (16 KiB por canal).
+/// **RT Safety Contract**: This value determines the size of pre-allocated buffers
+/// in `DspPipelineContext`. Increasing this value impacts the size of the processing
+/// closure object (which must fit on the RT thread stack or be moved to the heap).
+/// Currently fixed at 4096 samples (16 KiB per channel).
 pub const MAX_RESAMP_BUF: usize = 8192;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Buffer individual de áudio para o DspBridge (double-buffer).
+/// Individual audio buffer for the DspBridge (double-buffer).
 #[repr(align(128))]
 pub struct BridgeBuffer {
-    /// Buffer de saída processada, canal esquerdo.
+    /// Processed output buffer, left channel.
     pub buf_l: [f32; MAX_BRIDGE_BUF],
-    /// Buffer de saída processada, canal direito.
+    /// Processed output buffer, right channel.
     pub buf_r: [f32; MAX_BRIDGE_BUF],
-    /// Número de amostras válidas no buffer atual.
+    /// Number of valid samples in the current buffer.
     pub n_samples: u32,
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Buffer compartilhado entre o callback de captura (DSP) e o callback de playback.
+/// Shared buffer between the capture callback (DSP) and the playback callback.
 ///
-/// O capture callback escreve o resultado processado aqui com `fence(Release)`;
-/// o playback callback lê com `fence(Acquire)`. A `generation` atômica permite
-/// ao playback detectar se há dados novos disponíveis sem spin-lock.
+/// The capture callback writes the processed result here with `fence(Release)`;
+/// the playback callback reads with `fence(Acquire)`. The atomic `generation` allows
+/// the playback to detect whether new data is available without spin-lock.
 ///
-/// Alinhado a 128 bytes para evitar false-sharing entre os dois callbacks RT.
+/// Aligned to 128 bytes to avoid false-sharing between the two RT callbacks.
 #[repr(align(128))]
 pub struct DspBridge {
-    /// Os dois buffers físicos (front / back) para o double-buffering.
+    /// The two physical buffers (front/back) for double-buffering.
     pub buffers: [BridgeBuffer; 2],
-    /// Índice do buffer ativo para LEITURA (0 ou 1). O capture sempre escreve no (1 - ativo).
+    /// Index of the active buffer for READING (0 or 1). Capture always writes to (1 - active).
     pub active_read_idx: std::sync::atomic::AtomicUsize,
-    /// Contador de geração — incrementado a cada escrita pelo capture callback.
-    /// O playback compara com sua cópia local para detectar novos dados.
+    /// Generation counter — incremented on each write by the capture callback.
+    /// Playback compares with its local copy to detect new data.
     pub generation: std::sync::atomic::AtomicU64,
-    /// Contador de geração consumida — atualizado pelo playback callback.
+    /// Consumed generation counter — updated by the playback callback.
     pub consumed_gen: std::sync::atomic::AtomicU64,
-    /// Contador de frames descartados (sobrescritos sem consumo).
-    /// Incrementado pelos callbacks RT, drenado via `drain_dropped_frames()` pelo loop principal.
+    /// Counter of dropped frames (overwritten without consumption).
+    /// Incremented by RT callbacks, drained via `drain_dropped_frames()` by the main loop.
     pub dropped_frames: std::sync::atomic::AtomicU32,
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl DspBridge {
-    /// Drena o contador de frames descartados, retornando o valor acumulado e zerando-o.
+    /// Drains the dropped frames counter, returning the accumulated value and resetting it.
     ///
-    /// RT-Safe para o leitor: usa `swap` atômico sem locks.
+    /// RT-Safe for the reader: uses atomic `swap` without locks.
     pub fn drain_dropped_frames(&self) -> u32 {
         self.dropped_frames.swap(0, Ordering::Relaxed)
     }
@@ -70,35 +70,35 @@ impl DspBridge {
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[derive(Clone, Copy)]
-/// Referência segura para o DspBridge (compartilhado entre threads via ponteiro).
+/// Safe reference to the DspBridge (shared across threads via pointer).
 pub struct BridgeRef(*mut DspBridge);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl BridgeRef {
-    /// Cria um novo BridgeRef.
+    /// Creates a new BridgeRef.
     /// # Safety
-    /// O ponteiro deve ser válido e não nulo.
+    /// The pointer must be valid and non-null.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
         debug_assert!(!ptr.is_null());
         Self(ptr)
     }
 
-    /// Cria um BridgeRef nulo (para quando a ponte não é necessária).
+    /// Creates a null BridgeRef (for when the bridge is not needed).
     #[inline(always)]
     pub fn null() -> Self {
         Self(std::ptr::null_mut())
     }
 
-    /// Verifica se o BridgeRef é nulo.
+    /// Checks whether BridgeRef is null.
     #[inline(always)]
     pub fn is_null(self) -> bool {
         self.0.is_null()
     }
 
-    /// Retorna o ponteiro bruto interno.
+    /// Returns the internal raw pointer.
     /// # Safety
-    /// O chamador deve garantir que o ponteiro é válido se for desreferenciado.
+    /// The caller must ensure the pointer is valid if dereferenced.
     #[inline(always)]
     pub unsafe fn as_ptr(self) -> *mut DspBridge {
         self.0
@@ -107,38 +107,38 @@ impl BridgeRef {
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[derive(Clone, Copy)]
-/// Face de escrita do `DspBridge` exposta à capture thread.
+/// Write face of `DspBridge` exposed to the capture thread.
 pub struct DspBridgeWriter(std::ptr::NonNull<DspBridge>);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeWriter é seguro de enviar entre threads para inicialização.
-/// O acesso em tempo real ocorre de forma exclusiva/síncrona na capture thread.
+/// SAFETY: DspBridgeWriter is safe to send between threads for initialization.
+/// Real-time access occurs exclusively/synchronously on the capture thread.
 unsafe impl Send for DspBridgeWriter {}
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeWriter é seguro de compartilhar entre threads pois o acesso é internamente atômico/síncrono.
+/// SAFETY: DspBridgeWriter is safe to share between threads since access is internally atomic/synchronous.
 unsafe impl Sync for DspBridgeWriter {}
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl DspBridgeWriter {
-    /// Cria um `DspBridgeWriter` a partir de um ponteiro bruto para `DspBridge`.
+    /// Creates a `DspBridgeWriter` from a raw pointer to `DspBridge`.
     /// # Safety
-    /// O ponteiro deve ser válido e não nulo.
+    /// The pointer must be valid and non-null.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
         debug_assert!(!ptr.is_null());
         Self(unsafe { std::ptr::NonNull::new_unchecked(ptr) })
     }
 
-    /// Cria um `DspBridgeWriter` a partir de um `BridgeRef`.
-    /// Retorna `None` se a referência for nula.
+    /// Creates a `DspBridgeWriter` from a `BridgeRef`.
+    /// Returns `None` if the reference is null.
     #[inline(always)]
     pub fn from_ref(r: BridgeRef) -> Option<Self> {
         std::ptr::NonNull::new(r.0).map(Self)
     }
 
-    /// Escreve um bloco de amostras estéreo no buffer back-buffer ativo do bridge.
+    /// Writes a stereo sample block into the bridge's active back-buffer.
     pub fn write_block(&self, resamp_out_l: &[f32], resamp_out_r: &[f32], n_pw: usize) {
-        // SAFETY: O ponteiro subjacente é válido e o acesso ao back-buffer é exclusivo e atômico.
+        // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
         unsafe {
             let bridge = self.0.as_ref();
             let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
@@ -174,9 +174,9 @@ impl DspBridgeWriter {
         }
     }
 
-    /// Reseta o buffer back-buffer ativo para indicar silêncio (0 amostras).
+    /// Resets the active back-buffer to indicate silence (0 samples).
     pub fn write_silence(&self) {
-        // SAFETY: O ponteiro subjacente é válido e o acesso ao back-buffer é exclusivo e atômico.
+        // SAFETY: The underlying pointer is valid and back-buffer access is exclusive and atomic.
         unsafe {
             let bridge = self.0.as_ref();
             let back_idx = 1 - bridge.active_read_idx.load(Ordering::Relaxed);
@@ -203,44 +203,44 @@ impl DspBridgeWriter {
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[derive(Clone, Copy)]
-/// Face de leitura do `DspBridge` exposta à playback thread.
+/// Read face of `DspBridge` exposed to the playback thread.
 pub struct DspBridgeReader(std::ptr::NonNull<DspBridge>);
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeReader é seguro de enviar entre threads para inicialização.
-/// O acesso em tempo real ocorre de forma exclusiva/síncrona na playback thread.
+/// SAFETY: DspBridgeReader is safe to send between threads for initialization.
+/// Real-time access occurs exclusively/synchronously on the playback thread.
 unsafe impl Send for DspBridgeReader {}
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// SAFETY: DspBridgeReader é seguro de compartilhar entre threads pois o acesso é internamente atômico/síncrono.
+/// SAFETY: DspBridgeReader is safe to share between threads since access is internally atomic/synchronous.
 unsafe impl Sync for DspBridgeReader {}
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 impl DspBridgeReader {
-    /// Cria um `DspBridgeReader` a partir de um ponteiro bruto para `DspBridge`.
+    /// Creates a `DspBridgeReader` from a raw pointer to `DspBridge`.
     /// # Safety
-    /// O ponteiro deve ser válido e não nulo.
+    /// The pointer must be valid and non-null.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
         debug_assert!(!ptr.is_null());
         Self(unsafe { std::ptr::NonNull::new_unchecked(ptr) })
     }
 
-    /// Cria um `DspBridgeReader` a partir de um `BridgeRef`.
-    /// Retorna `None` se a referência for nula.
+    /// Creates a `DspBridgeReader` from a `BridgeRef`.
+    /// Returns `None` if the reference is null.
     #[inline(always)]
     pub fn from_ref(r: BridgeRef) -> Option<Self> {
         std::ptr::NonNull::new(r.0).map(Self)
     }
 
-    /// Tenta ler um bloco de áudio do bridge, passando referências aos canais L e R para um closure.
+    /// Attempts to read an audio block from the bridge, passing references to L and R channels to a closure.
     ///
-    /// Retorna `Some(R)` se houver um bloco novo e válido disponível.
-    /// Caso contrário, retorna `None`.
+    /// Returns `Some(R)` if a new, valid block is available.
+    /// Otherwise, returns `None`.
     pub fn read_block<F, R>(&self, last_bridge_gen: &mut u64, f: F) -> Option<R>
     where
         F: FnOnce(&[f32], &[f32]) -> R,
     {
-        // SAFETY: O ponteiro é válido e o acesso ao buffer ativo é exclusivo e atômico.
+        // SAFETY: The pointer is valid and active buffer access is exclusive and atomic.
         unsafe {
             let bridge = self.0.as_ref();
             let current_gen = bridge.generation.load(Ordering::Acquire);

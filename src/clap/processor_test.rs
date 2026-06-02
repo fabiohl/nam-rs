@@ -33,7 +33,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new(
             "NAM-rs-Test",
@@ -41,7 +41,7 @@ mod tests {
             "https://github.com/fabiohl/nam-rs",
             "0.1.0",
         )
-        .expect("Falha ao criar HostInfo");
+        .expect("Failed to create HostInfo");
 
         let mut plugin_instance = PluginInstance::<TestHost>::new(
             |_| TestHostShared,
@@ -50,7 +50,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -100,31 +100,31 @@ mod tests {
                 None,
                 None,
             )
-            .expect("Falha no process()");
+            .expect("Failure in process()");
 
         let after = ALLOC_COUNT.load(Ordering::Relaxed);
         let diff = after - before;
 
         println!(
-            "[CLAP Zero-Alloc Test] Alocações detectadas no process(): {}",
+            "[CLAP Zero-Alloc Test] Allocations detected in process(): {}",
             diff
         );
         assert_eq!(
             diff, 0,
-            "Alocações detectadas no hot-path do CLAP via clack-host!"
+            "Allocations detected in CLAP hot-path via clack-host!"
         );
 
         for i in 0..512 {
             assert!(
                 (output_l[i] - input_l[i]).abs() < 1e-4,
-                "Falha no bypass Canal L amostra {}: {} vs {}",
+                "Bypass failure Channel L sample {}: {} vs {}",
                 i,
                 output_l[i],
                 input_l[i]
             );
             assert!(
                 (output_r[i] - input_l[i]).abs() < 1e-4,
-                "Falha no bypass Canal R amostra {}: {} vs {}",
+                "Bypass failure Channel R sample {}: {} vs {}",
                 i,
                 output_r[i],
                 input_l[i]
@@ -137,7 +137,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -148,7 +148,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -159,7 +159,7 @@ mod tests {
         let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
-        // Sequência expandida conforme Tarefa 3.2.2
+        // Expanded sequence as per Task 3.2.2
         let sizes = [1, 7, 17, 33, 53, 128, 256, 512, 1, 1];
 
         let mut input_ports = AudioPorts::with_capacity(2, 1);
@@ -198,17 +198,17 @@ mod tests {
                     None,
                     None,
                 )
-                .unwrap_or_else(|_| panic!("Falha no process() para n={}", n));
+                .unwrap_or_else(|_| panic!("Failure in process() for n={}", n));
 
             for i in 0..n {
                 assert!(
                     out_l[i].is_finite(),
-                    "NaN/Inf detectado no canal L para n={}",
+                    "NaN/Inf detected in channel L for n={}",
                     n
                 );
                 assert!(
                     out_r[i].is_finite(),
-                    "NaN/Inf detectado no canal R para n={}",
+                    "NaN/Inf detected in channel R for n={}",
                     n
                 );
             }
@@ -220,7 +220,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -231,12 +231,12 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let state_ext = plugin_instance
             .plugin_handle()
             .get_extension::<PluginState>()
-            .expect("Extensão de Estado não encontrada");
+            .expect("State extension not found");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -267,9 +267,9 @@ mod tests {
         let mut output_ports = AudioPorts::with_capacity(2, 1);
         let mut output_events_buffer = EventBuffer::new();
 
-        // 1000 ciclos de process()
+        // 1000 process() cycles
         for i in 0..1000 {
-            // Troca de modelo a cada 50 ciclos
+            // Model switch every 50 cycles
             if i % 50 == 0 {
                 let model_name = models[(i / 50) % models.len()];
                 let mut path = model_dir.clone();
@@ -288,7 +288,7 @@ mod tests {
                 let mut handle = plugin_instance.plugin_handle();
                 state_ext
                     .load(&mut handle, &mut state_bytes.as_slice())
-                    .expect("Falha ao carregar estado");
+                    .expect("Failed to load state");
             }
 
             let mut input_channels = [in_l.as_mut_slice(), in_r.as_mut_slice()];
@@ -308,7 +308,7 @@ mod tests {
             let input_events = InputEvents::empty();
             let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-            // Verificação de Zero-Alloc durante a troca de modelo (no hot-path)
+            // Zero-Alloc check during model switch (on hot-path)
             let _guard = TrackingGuard::new();
             let before = ALLOC_COUNT.load(Ordering::Relaxed);
 
@@ -327,7 +327,7 @@ mod tests {
             assert_eq!(
                 after - before,
                 0,
-                "Alocação detectada no process() durante ciclo {}",
+                "Allocation detected in process() during cycle {}",
                 i
             );
         }
@@ -338,7 +338,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -349,7 +349,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -400,7 +400,7 @@ mod tests {
                     None,
                     None,
                 )
-                .expect("Falha no pre-warm");
+                .expect("Failure in pre-warm");
         }
 
         let mut output_events_buffer = EventBuffer::new();
@@ -410,10 +410,10 @@ mod tests {
         use clack_common::events::event_types::ParamValueEvent;
         use clack_common::utils::{ClapId, Cookie};
 
-        // Cria eventos de modulação intensa (um por sample)
+        // Creates intense modulation events (one per sample)
         let mut input_events_buffer = EventBuffer::new();
         for i in 0..n {
-            // Modula o ganho de -20dB a +20dB linearmente
+            // Modulates gain from -20dB to +20dB linearly
             let val = -20.0 + (i as f32 / n as f32) * 40.0;
             let event = ParamValueEvent::new(
                 i as u32,
@@ -455,27 +455,27 @@ mod tests {
                 None,
                 None,
             )
-            .expect("Falha no process() com modulação intensa");
+            .expect("Failure in process() with intense modulation");
 
         let after = ALLOC_COUNT.load(Ordering::Relaxed);
         assert_eq!(
             after - before,
             0,
-            "Alocação detectada no process() durante modulação"
+            "Allocation detected in process() during modulation"
         );
 
-        // Verificação de "Zipper Noise" (continuidade)
+        // "Zipper Noise" check (continuity)
         for i in 1..n {
             let diff_l = (out_l[i] - out_l[i - 1]).abs();
             let diff_r = (out_r[i] - out_r[i - 1]).abs();
             assert!(
                 diff_l < 0.05,
-                "Possível zipper noise detectado no canal L amostra {}",
+                "Possible zipper noise detected in channel L sample {}",
                 i
             );
             assert!(
                 diff_r < 0.05,
-                "Possível zipper noise detectado no canal R amostra {}",
+                "Possible zipper noise detected in channel R sample {}",
                 i
             );
         }
@@ -489,7 +489,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -500,7 +500,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let gui_ext = plugin_instance
             .plugin_handle()
@@ -570,7 +570,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -581,7 +581,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -611,7 +611,7 @@ mod tests {
         let mut handle = plugin_instance.plugin_handle();
         state_ext
             .load(&mut handle, &mut state_bytes.as_slice())
-            .expect("Falha ao carregar estado");
+            .expect("Failed to load state");
 
         // Obtain shared instance
         let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
@@ -620,7 +620,7 @@ mod tests {
                 raw_plugin_ptr,
                 |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
             )
-            .expect("Falha ao obter wrapper do plugin")
+            .expect("Failed to get plugin wrapper")
         };
         let shared = unsafe { &*shared_ptr };
 
@@ -697,7 +697,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -708,7 +708,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -720,7 +720,7 @@ mod tests {
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
         let n = 512;
-        // Sinal constante de 0.5 (DC)
+        // Constant 0.5 signal (DC)
         let mut in_l = vec![0.5f32; n];
         let mut in_r = vec![0.5f32; n];
         let mut out_l = vec![0.0f32; n];
@@ -734,10 +734,10 @@ mod tests {
         use clack_common::events::event_types::{ParamModEvent, ParamValueEvent};
         use clack_common::utils::{ClapId, Cookie};
 
-        // 1. Caso base: Sem modulação, ganho base = 0dB. A saída deve ser igual à entrada (ou próxima).
+        // 1. Base case: No modulation, base gain = 0dB. Output should equal input (or close).
         {
             let mut input_events_buffer = EventBuffer::new();
-            // Garante que o input gain base esteja em 0.0 dB
+            // Ensures base input gain is at 0.0 dB
             let val_event = ParamValueEvent::new(
                 0,
                 ClapId::new(PARAM_INPUT_GAIN),
@@ -747,7 +747,7 @@ mod tests {
             );
             input_events_buffer.push(&val_event);
 
-            // Garante que o gate threshold esteja em -90.0 dB (completamente aberto)
+            // Ensures gate threshold is at -90.0 dB (fully open)
             let gate_event = ParamValueEvent::new(
                 0,
                 ClapId::new(PARAM_GATE_THRESH),
@@ -784,27 +784,28 @@ mod tests {
                     None,
                     None,
                 )
-                .expect("Falha no process de caso base");
+                .expect("Failure in base case process");
 
-            // A saída deve ter processado o sinal (como não temos modelo carregado, ele faz bypass no modelo interno do pipeline, mas aplica os ganhos)
-            // Esperamos que o ganho seja 1.0 (0dB) após convergência do smoother.
-            // Para as primeiras amostras, o smoother converge a partir do valor inicial 1.0.
-            // Então todas as amostras devem ser aproximadamente 0.5.
+            // The output should have processed the signal (since no model is loaded, it bypasses the pipeline's
+            // internal model, but applies the gains).
+            // We expect the gain to be 1.0 (0dB) after smoother convergence.
+            // The smoother converges from the initial value 1.0 over the first samples.
+            // So all samples should be approximately 0.5.
             for (i, &val) in out_l.iter().enumerate().take(n) {
                 assert!(
                     (val - 0.5).abs() < 1e-4,
-                    "Caso base L amostra {}: {}",
+                    "Base case L sample {}: {}",
                     i,
                     val
                 );
             }
         }
 
-        // 2. Modulação: Aplicar modulação de +6dB ao Input Gain.
-        // O smoother deve subir em direção a 6dB (linear ~1.995).
+        // 2. Modulation: Apply +6dB modulation to Input Gain.
+        // The smoother should ramp up towards 6dB (linear ~1.995).
         {
             let mut input_events_buffer = EventBuffer::new();
-            // Modula o input gain por +6.0 dB no sample 0
+            // Modulates input gain by +6.0 dB at sample 0
             let mod_event = ParamModEvent::new(
                 0,
                 ClapId::new(PARAM_INPUT_GAIN),
@@ -844,29 +845,29 @@ mod tests {
                     None,
                     None,
                 )
-                .expect("Falha no process com modulação");
+                .expect("Failure in process with modulation");
 
             let after = ALLOC_COUNT.load(Ordering::Relaxed);
             assert_eq!(
                 after - before,
                 0,
-                "Alocação detectada no process com modulação"
+                "Allocation detected in process with modulation"
             );
 
-            // O smoother deve convergir em direção a 1.995 * 0.5 = 0.9975.
-            // Ao final do bloco (amostra 511), o valor deve ter subido significativamente em relação a 0.5.
+            // The smoother should converge towards 1.995 * 0.5 = 0.9975.
+            // At the end of the block (sample 511), the value should have increased significantly relative to 0.5.
             assert!(
                 out_l[n - 1] > 0.6,
-                "Modulação não aplicada, último sample: {}",
+                "Modulation not applied, last sample: {}",
                 out_l[n - 1]
             );
         }
 
-        // 3. Modulação do Gate: Modular o limiar do gate para um valor extremamente alto, tipo +90dB (fazendo -90 + 90 = 0dB),
-        // o sinal de entrada -6dB estará abaixo do limiar (0dB), silenciando a saída.
+        // 3. Gate Modulation: Modulate gate threshold to an extremely high value, like +90dB (making -90 + 90 = 0dB),
+        // the -6dB input signal will be below the threshold (0dB), silencing the output.
         {
             let mut input_events_buffer = EventBuffer::new();
-            // Modula o gate threshold por +120dB (trazendo o threshold efetivo para +30dB)
+            // Modulates gate threshold by +120dB (bringing effective threshold to +30dB)
             let mod_event = ParamModEvent::new(
                 0,
                 ClapId::new(PARAM_GATE_THRESH),
@@ -885,7 +886,7 @@ mod tests {
                 ),
             }]);
 
-            // Reseta a saída para garantir que não restaram valores
+            // Resets output to ensure no leftover values
             let mut out_l_gate = vec![0.0f32; n];
             let mut out_r_gate = vec![0.0f32; n];
             let output_channels = [out_l_gate.as_mut_slice(), out_r_gate.as_mut_slice()];
@@ -897,7 +898,7 @@ mod tests {
             let mut output_events_buffer = EventBuffer::new();
             let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-            // Processa o primeiro bloco contendo o evento de modulação
+            // Processes the first block containing the modulation event
             started_processor
                 .process(
                     &input_audio,
@@ -907,9 +908,9 @@ mod tests {
                     None,
                     None,
                 )
-                .expect("Falha no process com modulação do gate");
+                .expect("Failure in process with gate modulation");
 
-            // Processa mais 5 blocos sem novos eventos de modulação para permitir que a FSM do gate transicione:
+            // Processes 5 more blocks without new modulation events to allow the gate FSM to transition:
             // Open -> hold (2048 frames) -> FadingOut (256 frames) -> Closed
             let empty_events = InputEvents::empty();
             for _ in 0..5 {
@@ -942,14 +943,14 @@ mod tests {
                         None,
                         None,
                     )
-                    .expect("Falha no process de blocos subsequentes do gate");
+                    .expect("Failure in subsequent gate blocks process");
             }
 
-            // Como o threshold efetivo é 0dB e o sinal é -6dB, o gate deve fechar e silenciar a saída.
+            // Since the effective threshold is 0dB and the signal is -6dB, the gate should close and silence the output.
             assert_eq!(
                 out_l_gate[n - 1],
                 0.0,
-                "Gate deveria ter silenciado o sinal na última amostra. Última amostra: {}",
+                "Gate should have silenced the signal at the last sample. Last sample: {}",
                 out_l_gate[n - 1]
             );
         }
@@ -961,7 +962,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -972,9 +973,9 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
-        // Carrega o modelo A2 para disparar o incremento de alocação simulado durante process()
+        // Loads the A2 model to trigger the simulated allocation increment during process()
         let mut model_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         model_dir.push("tests/fixtures/models/mock_a2.nam");
 
@@ -996,7 +997,7 @@ mod tests {
         let mut handle = plugin_instance.plugin_handle();
         state_ext
             .load(&mut handle, &mut state_bytes.as_slice())
-            .expect("Falha ao carregar estado");
+            .expect("Failed to load state");
 
         let audio_config = PluginAudioConfiguration {
             sample_rate: 48000.0,
@@ -1011,7 +1012,7 @@ mod tests {
                 raw_plugin_ptr,
                 |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
             )
-            .expect("Falha ao obter wrapper do plugin")
+            .expect("Failed to get plugin wrapper")
         };
         let shared = unsafe { &*shared_ptr };
 
@@ -1045,17 +1046,17 @@ mod tests {
         let input_events = InputEvents::empty();
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-        // Ativa a auditoria de heap e força o contador para simular alocação
+        // Activates heap audit and forces the counter to simulate allocation
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
         crate::clap::heap_audit::AUDIT_THREAD.store(tid, Ordering::Relaxed);
         crate::clap::heap_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
 
-        // Reseta o flag no status para garantir que está limpo antes
+        // Resets the status flag to ensure it is clean before
         shared
             .rt_status
             .clear_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
 
-        // Executa o process(), que deve retornar Ok(ProcessStatus::Sleep)
+        // Runs process(), which should return Ok(ProcessStatus::Sleep)
         let status = started_processor
             .process(
                 &input_audio,
@@ -1065,17 +1066,17 @@ mod tests {
                 None,
                 None,
             )
-            .expect("process falhou na simulação de alocação de heap");
+            .expect("process failed in heap allocation simulation");
 
-        // Desativa a auditoria de heap para não interferir em outros testes
+        // Disables heap audit to avoid interfering with other tests
         crate::clap::heap_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
         crate::clap::heap_audit::AUDIT_THREAD.store(0, Ordering::Relaxed);
         crate::clap::heap_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
 
-        // Verifica que o status retornado é Sleep
+        // Verifies that the returned status is Sleep
         assert!(matches!(status, ProcessStatus::Sleep));
 
-        // Verifica se o flag RT_STATUS_HEAP_ALLOC foi setado nas flags de status
+        // Checks if the RT_STATUS_HEAP_ALLOC flag was set in the status flags
         assert!(
             shared
                 .rt_status
@@ -1088,7 +1089,7 @@ mod tests {
         let entry = PluginEntry::load_from_clack::<
             clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
         >(c"/test")
-        .expect("Falha ao carregar PluginEntry");
+        .expect("Failed to load PluginEntry");
 
         let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
 
@@ -1099,7 +1100,7 @@ mod tests {
             c"br.eti.fabiolima.nam-rs",
             &host_info,
         )
-        .expect("Falha ao instanciar plugin");
+        .expect("Failed to instantiate plugin");
 
         let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
         let shared_ptr = unsafe {
@@ -1107,7 +1108,7 @@ mod tests {
                 raw_plugin_ptr,
                 |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
             )
-            .expect("Falha ao obter wrapper do plugin")
+            .expect("Failed to get plugin wrapper")
         };
         let shared = unsafe { &*shared_ptr };
 

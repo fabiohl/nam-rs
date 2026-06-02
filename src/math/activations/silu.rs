@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels de ativação SiLU (Sigmoid Linear Unit / Swish) otimizados.
+//! Optimized SiLU (Sigmoid Linear Unit / Swish) activation kernels.
 
 use super::sigmoid::{simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2};
 use core::arch::x86_64::*;
 
-/// Aproximação vetorial de `SiLU(x) = x * sigmoid(x)` usando AVX2.
+/// Vector approximation of `SiLU(x) = x * sigmoid(x)` using AVX2.
 ///
-/// Reutiliza o kernel `simd_sigmoid_avx2` (Minimax D6).
+/// Reuses the `simd_sigmoid_avx2` kernel (Minimax D6).
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_silu_avx2(x: __m256) -> __m256 {
     unsafe {
@@ -20,10 +20,10 @@ pub unsafe fn simd_silu_avx2(x: __m256) -> __m256 {
     }
 }
 
-/// Aproximação vetorial de `SiLU(x)` (Dual, 16 floats).
+/// Vector approximation of `SiLU(x)` (Dual, 16 floats).
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_silu_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     unsafe {
@@ -32,10 +32,10 @@ pub unsafe fn simd_silu_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     }
 }
 
-/// Aproximação vetorial de `SiLU(x) = x * sigmoid(x)` usando AVX-512.
+/// Vector approximation of `SiLU(x) = x * sigmoid(x)` using AVX-512.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_silu_avx512(x: __m512) -> __m512 {
     unsafe {
@@ -44,10 +44,10 @@ pub unsafe fn simd_silu_avx512(x: __m512) -> __m512 {
     }
 }
 
-/// Aplica a ativação SiLU a um slice de f32 usando otimização AVX2.
+/// Applies SiLU activation to a slice of f32 using AVX2 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn silu_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
@@ -76,10 +76,10 @@ pub unsafe fn silu_slice_avx2(slice: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação SiLU a um slice de f32 usando otimização AVX-512.
+/// Applies SiLU activation to a slice of f32 using AVX-512 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn silu_slice_avx512(slice: &mut [f32]) {
     let mut i = 0;
@@ -99,7 +99,7 @@ pub unsafe fn silu_slice_avx512(slice: &mut [f32]) {
     }
 }
 
-/// Versão escalar de `silu` (x * sigmoid(x)).
+/// Scalar version of `silu` (x * sigmoid(x)).
 #[inline(always)]
 pub fn silu(x: f32) -> f32 {
     x / (1.0 + (-x).exp())

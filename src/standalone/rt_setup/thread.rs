@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Configuração de thread e processo para operação de tempo real.
+//! Thread and process configuration for real-time operation.
 //!
-//! Aplica afinidade de CPU, SCHED_FIFO, mlockall, DAZ/FTZ e desabilitação
-//! de THP para garantir execução determinística da thread DSP.
+//! Applies CPU affinity, SCHED_FIFO, mlockall, DAZ/FTZ and THP disabling
+//! to ensure deterministic execution of the DSP thread.
 
 use crate::common::spsc::RtStatusFlags;
 use crate::standalone::colors::Colorize;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// Configura o processo para operação de tempo real (process-wide).
+/// Configures the process for real-time operation (process-wide).
 ///
-/// Deve ser chamada de `main()` **após** todas as alocações heap principais e
-/// **antes** de iniciar a thread DSP do PipeWire. Executa:
+/// Must be called from `main()` **after** all major heap allocations and
+/// **before** starting the PipeWire DSP thread. Runs:
 ///
-/// 1. **THP disable** — Desabilita Transparent Huge Pages via `prctl`, evitando
-///    latências de compactação em background pelo khugepaged.
-/// 2. **mlockall** — Bloqueia a memória atual e futura na RAM física, prevenindo
-///    page faults na thread DSP.
+/// 1. **THP disable** — Disables Transparent Huge Pages via `prctl`, avoiding
+///    background compaction latencies from khugepaged.
+/// 2. **mlockall** — Locks current and future memory in physical RAM, preventing
+///    page faults in the DSP thread.
 ///
-/// Estas operações eram originalmente executadas no cold-path do primeiro frame DSP,
-/// mas foram movidas para cá para reduzir o jitter no momento crítico da primeira
-/// entrega de áudio.
+/// These operations were originally executed in the cold-path of the first DSP frame,
+/// but were moved here to reduce jitter at the critical moment of the first
+/// audio delivery.
 pub fn configure_process_wide() {
     unsafe {
         libc::prctl(libc::PR_SET_THP_DISABLE, 1, 0, 0, 0);
@@ -42,32 +42,32 @@ pub fn configure_process_wide() {
     }
 }
 
-/// Configura a thread DSP atual para operação em tempo real.
+/// Configures the current DSP thread for real-time operation.
 ///
-/// Executada **uma única vez** no cold-path do primeiro frame do callback `process()`,
-/// antes do fluxo de dados começar de fato. Aplica:
+/// Executed **only once** in the cold-path of the first `process()` callback frame,
+/// before the data flow actually begins. Applies:
 ///
-/// 1. **DAZ/FTZ** — Habilita Denormals-Are-Zero e Flush-To-Zero no registro MXCSR
-///    para evitar penalidades de FPU em blocos de silêncio ("espiral da morte").
-/// 2. **Core Affinity** — Fixa a thread no núcleo físico ideal via
-///    `pthread_setaffinity_np`, evitando migração de core e cache misses L1/L2.
-/// 3. **SCHED_FIFO** — Eleva a prioridade para agendamento de tempo real (prio 90).
+/// 1. **DAZ/FTZ** — Enables Denormals-Are-Zero and Flush-To-Zero in the MXCSR register
+///    to avoid FPU penalties on silence blocks ("death spiral").
+/// 2. **Core Affinity** — Pins the thread to the ideal physical core via
+///    `pthread_setaffinity_np`, avoiding core migration and L1/L2 cache misses.
+/// 3. **SCHED_FIFO** — Elevates priority to real-time scheduling (prio 90).
 ///
-/// As operações process-wide (THP disable, mlockall) foram movidas para
-/// `configure_process_wide()`, chamada de `main()` antes do PipeWire.
+/// The process-wide operations (THP disable, mlockall) have been moved to
+/// `configure_process_wide()`, called from `main()` before PipeWire.
 ///
-/// Após configurar, publica o resultado via `rt_status` (flags atômicas):
-/// - `rt_is_fifo`: `true` se `SCHED_FIFO` foi confirmado por `pthread_getschedparam`.
-/// - `rt_priority`: prioridade efetiva concedida pelo kernel (ou `0` se FIFO não obtido).
+/// After configuring, publishes the result via `rt_status` (atomic flags):
+/// - `rt_is_fifo`: `true` if `SCHED_FIFO` was confirmed by `pthread_getschedparam`.
+/// - `rt_priority`: effective priority granted by the kernel (or `0` if FIFO not obtained).
 ///
-/// O loop principal em `run_pipewire_host` lê essas flags e emite log de confirmação
-/// (ou aviso) de forma auditável — **zero I/O adicional dentro do callback RT**.
+/// The main loop in `run_pipewire_host` reads these flags and emits an auditable
+/// confirmation log (or warning) — **zero additional I/O inside the RT callback**.
 #[cold]
 #[inline(never)]
 pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags>) {
-    // Proteção contra denormals (números subnormalizados que travam o processador):
-    // Habilita DAZ (Denormals-Are-Zero) e FTZ (Flush-To-Zero) via registro MXCSR.
-    // Sem isso, blocos de silêncio poderiam causar lentidão extrema na FPU ("espiral da morte").
+    // Protection against denormals (subnormal numbers that stall the processor):
+    // Enables DAZ (Denormals-Are-Zero) and FTZ (Flush-To-Zero) via the MXCSR register.
+    // Without this, silence blocks could cause extreme FPU slowdown ("death spiral").
     unsafe {
         crate::math::common::set_daz_ftz();
     }
@@ -78,7 +78,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
         let name = b"nam_rs_dsp\0";
         libc::pthread_setname_np(thread_id, name.as_ptr() as *const libc::c_char);
 
-        // 1. Afinidade de Núcleo: evita migração de core e invalidação de cache L1/L2
+        // 1. Core Affinity: avoids core migration and L1/L2 cache invalidation
         let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
         libc::CPU_ZERO(&mut cpuset);
         libc::CPU_SET(target_cpu, &mut cpuset);
@@ -99,7 +99,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             );
         }
 
-        // 2. Verificação programática prévia: lê policy/prio concedidos pelo kernel via rtkit/PipeWire
+        // 2. Prior programmatic check: reads policy/prio granted by the kernel via rtkit/PipeWire
         let mut actual_policy = 0i32;
         let mut actual_param: libc::sched_param = std::mem::zeroed();
         let ret_getsched =
@@ -112,7 +112,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             let mut has_reset_on_fork = (actual_policy & reset_on_fork_flag) != 0;
             let mut base_policy = actual_policy & !reset_on_fork_flag;
 
-            // 3. Se PipeWire não elevou para SCHED_FIFO via rtkit, tentamos forçar manualmente
+            // 3. If PipeWire did not elevate to SCHED_FIFO via rtkit, we force it manually
             if base_policy != libc::SCHED_FIFO {
                 let mut param: libc::sched_param = std::mem::zeroed();
                 param.sched_priority = 90;
@@ -124,16 +124,16 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                         ret_sched
                     );
                 } else {
-                    // Atualiza as variáveis refletindo a aplicação bem-sucedida
+                    // Updates variables reflecting the successful application
                     base_policy = libc::SCHED_FIFO;
                     actual_param.sched_priority = 90;
-                    has_reset_on_fork = false; // Nós não setamos a flag de reset on fork
+                    has_reset_on_fork = false; // We did not set the reset-on-fork flag
                 }
             }
 
             let confirmed_fifo = base_policy == libc::SCHED_FIFO;
 
-            // Publica resultado real via flags atômicas — zero I/O no caminho quente
+            // Publishes actual result via atomic flags — zero I/O on the hot path
             if confirmed_fifo {
                 rt_status.set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
             } else {
@@ -144,7 +144,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                 .rt_priority
                 .store(actual_param.sched_priority, Ordering::Relaxed);
 
-            // Log inline no cold-path (uma única vez, antes do deadline RT) — aceitável.
+            // Inline log in the cold-path (one time only, before the RT deadline) — acceptable.
             let reset_info = if has_reset_on_fork {
                 " | Reset-on-Fork"
             } else {
@@ -158,7 +158,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
                 actual_param.sched_priority.to_string().green()
             );
         } else {
-            // Publica sentinela de falha de verificação
+            // Publishes verification failure sentinel
             rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
             rt_status.rt_priority.store(0, Ordering::Relaxed);
 

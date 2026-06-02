@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão `clap_plugin_gui` para o NAM-rs.
+//! Implementation of the `clap_plugin_gui` extension for NAM-rs.
 
 use crate::clap::gui::{GUI_HEIGHT, GUI_WIDTH};
 use crate::clap::plugin::NamClapMainThread;
@@ -11,14 +11,14 @@ use clack_extensions::gui::{
 use clack_plugin::plugin::PluginError;
 
 impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
-    /// Indica se a configuração de API gráfica e modo de flutuação é suportada.
+    /// Indicates whether the given graphics API configuration and floating mode is supported.
     ///
-    /// Para Linux (X11 via XWayland), aceitamos estritamente a API X11 embutida.
+    /// For Linux (X11 via XWayland), we strictly accept the embedded X11 API.
     fn is_api_supported(&mut self, configuration: GuiConfiguration) -> bool {
         configuration.api_type == GuiApiType::X11 && !configuration.is_floating
     }
 
-    /// Retorna a configuração gráfica preferencial para o plugin (X11 embutida).
+    /// Returns the preferred graphics configuration for the plugin (embedded X11).
     fn get_preferred_api(&mut self) -> Option<GuiConfiguration<'_>> {
         Some(GuiConfiguration {
             api_type: GuiApiType::X11,
@@ -26,15 +26,15 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         })
     }
 
-    /// Cria e aloca recursos para a interface gráfica.
+    /// Creates and allocates resources for the graphical interface.
     fn create(&mut self, configuration: GuiConfiguration) -> Result<(), PluginError> {
         if !self.is_api_supported(configuration) {
-            return Err(PluginError::Message("Configuração de GUI não suportada"));
+            return Err(PluginError::Message("GUI configuration not supported"));
         }
         Ok(())
     }
 
-    /// Libera os recursos alocados para a interface gráfica.
+    /// Frees the resources allocated for the graphical interface.
     fn destroy(&mut self) {
         #[cfg(feature = "clap-plugin")]
         if let Some(mut window_handle) = self.window_handle.take() {
@@ -42,12 +42,12 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         }
     }
 
-    /// Define o fator de escala absoluto para a GUI.
+    /// Sets the absolute scale factor for the GUI.
     fn set_scale(&mut self, _scale: f64) -> Result<(), PluginError> {
         Ok(())
     }
 
-    /// Retorna o tamanho fixo da GUI (GUI_WIDTH x GUI_HEIGHT pixels).
+    /// Returns the fixed GUI size (GUI_WIDTH x GUI_HEIGHT pixels).
     fn get_size(&mut self) -> Option<GuiSize> {
         Some(GuiSize {
             width: GUI_WIDTH,
@@ -55,18 +55,18 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         })
     }
 
-    /// Define o tamanho da GUI. Aceita apenas o tamanho fixo.
+    /// Sets the GUI size. Only the fixed size is accepted.
     fn set_size(&mut self, size: GuiSize) -> Result<(), PluginError> {
         if size.width == GUI_WIDTH && size.height == GUI_HEIGHT {
             Ok(())
         } else {
             Err(PluginError::Message(
-                "Resizing da GUI não é suportado nesta versão",
+                "GUI resizing is not supported in this version",
             ))
         }
     }
 
-    /// Define a janela pai (host) onde a GUI deve ser embutida.
+    /// Sets the parent window (host) where the GUI should be embedded.
     fn set_parent(&mut self, _window: Window) -> Result<(), PluginError> {
         #[cfg(feature = "clap-plugin")]
         {
@@ -77,8 +77,8 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
             }
 
             let options = baseview::WindowOpenOptions {
-                // Título vazio: o host (Bitwig) já exibe o nome do plugin no frame da janela.
-                // Usar um título aqui causaria duplicação: "NAM-rs / NAM-rs Neural Amp Modeler".
+                // Empty title: the host (Bitwig) already displays the plugin name in the window frame.
+                // Using a title here would cause duplication: "NAM-rs / NAM-rs Neural Amp Modeler".
                 title: String::new(),
                 size: baseview::Size::new(GUI_WIDTH as f64, GUI_HEIGHT as f64),
                 scale: baseview::WindowScalePolicy::SystemScaleFactor,
@@ -87,13 +87,13 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
 
             let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
             let host_shared = self.host.shared();
-            // SAFETY: `host_shared` é um handle compartilhado do host CLAP cujo tempo de vida
-            // real é o da própria instância do plugin, que vive enquanto o plugin estiver carregado.
-            // O closure passado a `open_parented` requer `'static` para satisfazer a API de
-            // threading do baseview (`Send + 'static`), mas o host é garantidamente válido durante
-            // toda a execução da janela (a janela é fechada antes do plugin ser destruído via
-            // `destroy()`). Este transmute é o padrão aceito para integrar plugins CLAP com
-            // bibliotecas de janelamento que requerem closures `'static`.
+            // SAFETY: `host_shared` is a shared handle of the CLAP host whose real lifetime
+            // is that of the plugin instance itself, which lives as long as the plugin is loaded.
+            // The closure passed to `open_parented` requires `'static` to satisfy the baseview
+            // threading API (`Send + 'static`), but the host is guaranteed to be valid for the
+            // entire lifetime of the window (the window is closed before the plugin is destroyed via
+            // `destroy()`). This transmute is the accepted pattern for integrating CLAP plugins with
+            // windowing libraries that require `'static` closures.
             let host_static: clack_plugin::host::HostSharedHandle<'static> =
                 unsafe { crate::clap::gui::extend_host_lifetime(host_shared) };
 
@@ -106,28 +106,26 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         Ok(())
     }
 
-    /// Configura a janela para flutuar acima da janela especificada (não suportado).
+    /// Configures the window to float above the specified window (not supported).
     fn set_transient(&mut self, _window: Window) -> Result<(), PluginError> {
-        Err(PluginError::Message(
-            "Modo flutuante (floating) não é suportado",
-        ))
+        Err(PluginError::Message("Floating mode is not supported"))
     }
 
-    /// Torna a janela da GUI visível.
+    /// Makes the GUI window visible.
     fn show(&mut self) -> Result<(), PluginError> {
         Ok(())
     }
 
-    /// Oculta a janela da GUI.
+    /// Hides the GUI window.
     fn hide(&mut self) -> Result<(), PluginError> {
         Ok(())
     }
 
-    /// Informa se o tamanho da janela pode ser alterado (tamanho fixo).
+    /// Reports whether the window size can be changed (fixed size).
     fn can_resize(&mut self) -> bool {
         false
     }
 }
 
-/// Tipo marcador para registro da extensão.
+/// Marker type for extension registration.
 pub type NamPluginGui = PluginGui;

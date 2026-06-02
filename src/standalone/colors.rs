@@ -1,35 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Fornece uma trait simples `Colorize` para formatar strings com
-//! sequências de escape ANSI em terminais POSIX.
+//! Provides a simple `Colorize` trait for formatting strings with
+//! ANSI escape sequences in POSIX terminals.
 //!
-//! **Decisão de Design:** Optamos por manter esta implementação local minimalista
-//! em vez de adicionar crates externas (ex: `colored`, `owo-colors`) para manter
-//! o grafo de dependências o mais enxuto possível, já que a necessidade do
-//! projeto é básica e restrita a threads não-críticas (CLI/Logging).
+//! **Design Decision:** We opted to keep this minimal local implementation
+//! instead of adding external crates (e.g.: `colored`, `owo-colors`) to keep
+//! the dependency graph as lean as possible, since the project's need
+//! is basic and restricted to non-critical threads (CLI/Logging).
 
-/// Trait simples para formatar strings com sequências de escape ANSI em terminais POSIX.
+/// Simple trait for formatting strings with ANSI escape sequences in POSIX terminals.
 pub trait Colorize {
-    /// Aplica formatação em negrito.
+    /// Applies bold formatting.
     fn bold(&self) -> String;
-    /// Colore o texto de vermelho.
+    /// Colors the text red.
     fn red(&self) -> String;
-    /// Colore o texto de verde.
+    /// Colors the text green.
     fn green(&self) -> String;
-    /// Colore o texto de amarelo.
+    /// Colors the text yellow.
     fn yellow(&self) -> String;
-    /// Colore o texto de azul.
+    /// Colors the text blue.
     fn blue(&self) -> String;
-    /// Colore o texto de ciano.
+    /// Colors the text cyan.
     fn cyan(&self) -> String;
-    /// Colore o texto de vermelho claro.
+    /// Colors the text bright red.
     fn bright_red(&self) -> String;
-    /// Colore o texto de verde claro.
+    /// Colors the text bright green.
     fn bright_green(&self) -> String;
-    /// Colore o texto de azul claro.
+    /// Colors the text bright blue.
     fn bright_blue(&self) -> String;
-    /// Colore o texto de ciano claro.
+    /// Colors the text bright cyan.
     fn bright_cyan(&self) -> String;
 }
 

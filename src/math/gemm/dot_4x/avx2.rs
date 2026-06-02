@@ -6,16 +6,16 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels Dot Product 4x — AVX2 (básico + interleaved).
+//! Dot Product 4x kernels — AVX2 (basic + interleaved).
 
 use core::arch::x86_64::*;
 
-/// Calcula 4 Produtos Escalares simultaneamente com o máximo de paralelismo (ILP) via AVX2.
+/// Computes 4 Dot Products simultaneously with maximum parallelism (ILP) via AVX2.
 ///
-/// Esta função é otimizada para situações onde precisamos multiplicar um mesmo "estado"
-/// por 4 conjuntos diferentes de "pesos". Ao fazer os 4 cálculos de uma vez, mantemos
-/// o processador ocupado e aproveitamos que o "estado" já está carregado para economizar
-/// tempo de memória.
+/// This function is optimized for situations where we need to multiply a single "state"
+/// by 4 different sets of "weights". By doing all 4 computations at once, we keep
+/// the processor busy and take advantage of the fact that the "state" is already loaded
+/// to save memory time.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_avx2(
     w0: &[u16],
@@ -110,12 +110,12 @@ pub unsafe fn dot_product_4x_avx2(
     }
 }
 
-/// Calcula 4 Produtos Escalares simultaneamente usando o layout de "pesos interfolhados" via AVX2.
+/// Computes 4 Dot Products simultaneously using the "interleaved weights" layout via AVX2.
 ///
-/// Neste formato, os pesos dos 4 cálculos estão organizados juntos na memória (em grupos de 4).
-/// Esta função usa truques de "embaralhamento" (broadcast e blend) para alinhar os dados do
-/// estado com esses pesos, permitindo um processamento extremamente veloz e eficiente em termos
-/// de acesso à memória (cache friendly).
+/// In this format, the weights for the 4 computations are laid out together in memory
+/// (in groups of 4). This function uses "shuffling" tricks (broadcast and blend) to align
+/// the state data with these weights, enabling extremely fast and memory-access efficient
+/// (cache friendly) processing.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_avx2(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = state.len();

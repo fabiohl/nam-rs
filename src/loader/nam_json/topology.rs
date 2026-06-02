@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Detecção de topologias WaveNet e LSTM a partir dos dados do modelo.
+//! Detection of WaveNet and LSTM topologies from model data.
 
 use super::data::NamModelData;
 
-/// As Topologias fechadas e suportadas dentro da modelagem WaveNet nativa.
+/// The closed and supported topologies within native WaveNet modeling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NamWavenetTopology {
-    /// Canais: 16 (Standard)
+    /// Channels: 16 (Standard)
     Standard,
-    /// Canais: 12 (Lite)
+    /// Channels: 12 (Lite)
     Lite,
-    /// Canais: 8 (Feather)
+    /// Channels: 8 (Feather)
     Feather,
-    /// Canais: 4 (Nano)
+    /// Channels: 4 (Nano)
     Nano,
 }
 
@@ -22,9 +22,9 @@ static STD_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 static LITE_DILATIONS: &[usize] = &[1, 2, 4, 8, 16, 32, 64];
 static LITE_DILATIONS_2: &[usize] = &[128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512];
 
-/// Realiza o parsing de uma string de versão no formato SemVer mínimo.
-/// Suporta sufixos de pré-lançamento ou metadados e prefixo 'v' ou 'V'.
-/// Retorna `Some((major, minor, patch))` ou `None` em caso de falha de parsing.
+/// Parses a version string in minimal SemVer format.
+/// Supports pre-release or metadata suffixes and 'v' or 'V' prefix.
+/// Returns `Some((major, minor, patch))` or `None` on parsing failure.
 pub(crate) fn parse_semver(version: &str) -> Option<(u16, u16, u16)> {
     let clean = version.trim().trim_start_matches(['v', 'V']);
     let clean = clean.split('-').next()?.split('+').next()?;
@@ -36,11 +36,11 @@ pub(crate) fn parse_semver(version: &str) -> Option<(u16, u16, u16)> {
 }
 
 impl NamModelData {
-    /// Detecta se o modelo utiliza a arquitetura WaveNet A2.
+    /// Detects whether the model uses the WaveNet A2 architecture.
     ///
-    /// Um modelo é considerado A2 se a arquitetura for "WaveNet" e:
-    /// 1. A versão declarada for >= 0.6.0.
-    /// 2. Utilizar funções de ativação diferentes de "Tanh".
+    /// A model is considered A2 if the architecture is "WaveNet" and:
+    /// 1. The declared version is >= 0.6.0.
+    /// 2. It uses activation functions other than "Tanh".
     pub fn is_wavenet_a2(&self) -> bool {
         if self.architecture != "WaveNet" {
             return false;
@@ -65,7 +65,7 @@ impl NamModelData {
     }
 }
 
-/// Baseando-se no NeuralModel.cpp (`L:155-218`), verifica a identidade estática da topologia WaveNet.
+/// Based on NeuralModel.cpp (`L:155-218`), checks the static identity of the WaveNet topology.
 pub fn get_wavenet_topology(data: &NamModelData) -> Option<NamWavenetTopology> {
     if data.architecture != "WaveNet" || data.config.layers.len() != 2 {
         return None;
@@ -104,7 +104,7 @@ pub fn get_wavenet_topology(data: &NamModelData) -> Option<NamWavenetTopology> {
     }
 }
 
-/// Verifica e retorna a geometria do LSTM (num_layers, hidden_size).
+/// Checks and returns the LSTM geometry (num_layers, hidden_size).
 pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
     if data.architecture != "LSTM" {
         return None;

@@ -1,38 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Paleta de cores aprovada (T4.0.2) e helpers de resolução de cor.
+//! Approved color palette (T4.0.2) and color resolution helpers.
 
-/// Cor de fundo principal da janela (`#1A1D23`).
+/// Main window background color (`#1A1D23`).
 pub const COL_BG: egui::Color32 = egui::Color32::from_rgb(26, 29, 35);
-/// Cor de fundo de painéis e botões (`#232830`).
+/// Panel and button background color (`#232830`).
 pub const COL_PANEL: egui::Color32 = egui::Color32::from_rgb(35, 40, 48);
-/// Cor de bordas e separadores (`#2E3440`).
+/// Border and separator color (`#2E3440`).
 pub const COL_BORDER: egui::Color32 = egui::Color32::from_rgb(46, 52, 64);
-/// Cor de texto principal (`#E5E9F0`).
+/// Primary text color (`#E5E9F0`).
 pub const COL_TEXT: egui::Color32 = egui::Color32::from_rgb(229, 233, 240);
-/// Cor de texto secundário/atenuado (`#8B95A5`).
+/// Secondary/muted text color (`#8B95A5`).
 pub const COL_MUTED: egui::Color32 = egui::Color32::from_rgb(139, 149, 165);
-/// Cor de destaque principal — turquesa padrão (`#00D4AA`).
+/// Primary accent color — default turquoise (`#00D4AA`).
 pub const COL_ACCENT: egui::Color32 = egui::Color32::from_rgb(0, 212, 170);
-/// Cor âmbar para avisos e destaque secundário (`#F5A623`).
+/// Amber color for warnings and secondary highlights (`#F5A623`).
 pub const COL_AMBER: egui::Color32 = egui::Color32::from_rgb(245, 166, 35);
-/// Cor verde do medidor VU (`#43E97B`).
+/// VU meter green color (`#43E97B`).
 pub const COL_VU_GREEN: egui::Color32 = egui::Color32::from_rgb(67, 233, 123);
-/// Cor amarela do medidor VU (`#F5CE62`).
+/// VU meter yellow color (`#F5CE62`).
 pub const COL_VU_YELLOW: egui::Color32 = egui::Color32::from_rgb(245, 206, 98);
-/// Cor vermelha do medidor VU e LEDs de clipping (`#F74E4E`).
+/// VU meter red and clipping LED color (`#F74E4E`).
 pub const COL_VU_RED: egui::Color32 = egui::Color32::from_rgb(247, 78, 78);
-/// Cor do botão de bypass quando desativado (`#4A4F5A`).
+/// Bypass button color when disabled (`#4A4F5A`).
 pub const COL_BYPASS_OFF: egui::Color32 = egui::Color32::from_rgb(74, 79, 90);
 
 use crate::clap::plugin::NamClapShared;
 use std::sync::atomic::Ordering;
 
-/// Resolve a cor de accent dinâmica do plugin.
+/// Resolves the plugin's dynamic accent color.
 ///
-/// Primeiro tenta usar a cor da track fornecida pelo host DAW (armazenada em
-/// `track_accent_color` como ARGB empacotado). Se `alpha == 0` (sentinela de
-/// "sem cor"), retorna `COL_ACCENT` (turquesa padrão).
+/// First tries to use the track color provided by the DAW host (stored in
+/// `track_accent_color` as packed ARGB). If `alpha == 0` (sentinel for
+/// "no color"), returns `COL_ACCENT` (default turquoise).
 pub fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
     let packed = shared.track_accent_color.load(Ordering::Relaxed);
     let alpha = (packed >> 24) as u8;
@@ -46,10 +46,10 @@ pub fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
     }
 }
 
-/// Resolve uma cor ARGB empacotada em u32 para `egui::Color32`, com fallback.
+/// Resolves a packed ARGB color in u32 to `egui::Color32`, with fallback.
 ///
-/// Segue a mesma convenção de `resolve_accent`: `alpha == 0` indica ausência
-/// de cor e retorna o fallback fornecido.
+/// Follows the same convention as `resolve_accent`: `alpha == 0` indicates no
+/// color and returns the provided fallback.
 pub fn resolve_color(packed: u32, fallback: egui::Color32) -> egui::Color32 {
     let alpha = (packed >> 24) as u8;
     if alpha == 0 {

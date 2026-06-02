@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Drenagem de eventos: SPSC (Main Thread → Audio Thread), eventos do host,
-//! sincronização de parâmetros GUI e monitoramento de latência.
+//! Event draining: SPSC (Main Thread → Audio Thread), host events,
+//! GUI parameter sync and latency monitoring.
 
 use super::NamClapProcessor;
 use crate::clap::extensions::params::{
@@ -16,12 +16,12 @@ use clack_plugin::prelude::Events;
 use std::sync::atomic::Ordering;
 
 impl<'a> NamClapProcessor<'a> {
-    /// Processa todos os eventos de entrada: gestos GUI → host, payloads SPSC,
-    /// eventos sample-accurate do host, sincronização de parâmetros GUI e latência.
+    /// Processes all input events: GUI gestures → host, SPSC payloads,
+    /// sample-accurate host events, GUI parameter sync and latency.
     pub(super) fn process_events(&mut self, events: Events) {
         self.shared.write_gui_events(events.output);
 
-        // 1. Processamento de Eventos (Main Thread SPSC)
+        // 1. Event Processing (Main Thread SPSC)
         let lut = get_gain_lut();
 
         while let Ok(payload) = self.param_rx.pop() {
@@ -54,7 +54,7 @@ impl<'a> NamClapProcessor<'a> {
             }
         }
 
-        // 2. Processamento de Eventos (Host Events Queue - Sample Accurate)
+        // 2. Event Processing (Host Events Queue - Sample Accurate)
         for event in events.input {
             if let Some(param_event) = event.as_event::<ParamValueEvent>() {
                 let Some(clap_id) = param_event.param_id() else {
@@ -118,7 +118,7 @@ impl<'a> NamClapProcessor<'a> {
             }
         }
 
-        // Sincroniza parâmetros alterados via GUI que não foram ecoados como eventos de entrada pelo host.
+        // Sync parameters changed via GUI that were not echoed as input events by the host.
         let shared_in_db = f32::from_bits(self.shared.param_input_gain.load(Ordering::Relaxed));
         if shared_in_db != self.params.input_gain_db {
             self.params.input_gain_db = shared_in_db;
@@ -144,7 +144,7 @@ impl<'a> NamClapProcessor<'a> {
             self.params.bypass = shared_bypass;
         }
 
-        // Monitoramento dinâmico de latência na Audio Thread
+        // Dynamic latency monitoring on the Audio Thread
         let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let effective_latency = self.resampler.latency_samples(host_rate);

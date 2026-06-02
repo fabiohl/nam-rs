@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels de ativação Sigmoid (Logística) otimizados.
+//! Optimized Sigmoid (Logistic) activation kernels.
 //!
-//! Reutiliza a identidade exata `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)`,
-//! delegando ao kernel Padé [5,4] de tanh para zero branches e ~6 FMAs.
+//! Reuses the exact identity `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)`,
+//! delegating to the Padé [5,4] tanh kernel for zero branches and ~6 FMAs.
 
 use super::tanh::{simd_tanh_avx2, simd_tanh_avx512, simd_tanh_dual_avx2};
 use core::arch::x86_64::*;
 
-/// Aproximação branchless de `sigmoid(x)` via identidade tanh (AVX2).
+/// Branchless approximation of `sigmoid(x)` via tanh identity (AVX2).
 ///
 /// # Safety
-/// O chamador deve garantir suporte a AVX2 e FMA.
+/// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
@@ -22,10 +22,10 @@ pub unsafe fn simd_sigmoid_avx2(x: __m256) -> __m256 {
     _mm256_fmadd_ps(half, t, half)
 }
 
-/// Aproximação branchless de `sigmoid(x)` (Dual, 16 floats) via identidade tanh.
+/// Branchless approximation of `sigmoid(x)` (Dual, 16 floats) via tanh identity.
 ///
 /// # Safety
-/// O chamador deve garantir suporte a AVX2 e FMA.
+/// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
@@ -39,10 +39,10 @@ pub unsafe fn simd_sigmoid_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256)
     )
 }
 
-/// Aproximação branchless de `sigmoid(x)` via identidade tanh (AVX-512).
+/// Branchless approximation of `sigmoid(x)` via tanh identity (AVX-512).
 ///
 /// # Safety
-/// O chamador deve garantir suporte a AVX-512F e AVX-512VL.
+/// The caller must guarantee AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
@@ -52,10 +52,10 @@ pub unsafe fn simd_sigmoid_avx512(x: __m512) -> __m512 {
     _mm512_fmadd_ps(half, t, half)
 }
 
-/// Aplica a ativação Sigmoid a um slice de f32 usando otimização AVX2.
+/// Applies Sigmoid activation to a slice of f32 using AVX2 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
@@ -87,10 +87,10 @@ pub unsafe fn sigmoid_slice_avx2(slice: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação Sigmoid a um slice de f32 usando otimização AVX-512.
+/// Applies Sigmoid activation to a slice of f32 using AVX-512 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
@@ -111,7 +111,7 @@ pub unsafe fn sigmoid_slice_avx512(slice: &mut [f32]) {
     }
 }
 
-/// Versão escalar de `sigmoid` (1 / (1 + exp(-x))).
+/// Scalar version of `sigmoid` (1 / (1 + exp(-x))).
 #[inline(always)]
 pub fn sigmoid(x: f32) -> f32 {
     1.0 / (1.0 + (-x).exp())

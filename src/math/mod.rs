@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo raiz de operações matemáticas e inferência neural.
+//! Root module for mathematical operations and neural inference.
 //!
-//! O NAM-rs organiza sua infraestrutura matemática de forma modular para garantir
-//! performance extrema (SIMD) e manutenibilidade. Este módulo coordena os kernels
-//! de álgebra linear, funções de ativação e utilitários DSP.
+//! NAM-rs organizes its mathematical infrastructure in a modular way to ensure
+//! extreme performance (SIMD) and maintainability. This module coordinates the
+//! linear algebra kernels, activation functions, and DSP utilities.
 //!
-//! # Estrutura
-//! - `common`: Traits, despacho dinâmico e implementações base (AVX2/AVX-512).
-//! - `activations`: Funções de ativação otimizadas (tanh, sigmoid, etc.).
-//! - `gemm`: Operações de matriz-vetor e dot product de alto throughput.
-//! - `dsp`: Processamento de áudio (ganho, stereo, conversão).
-//! - `lstm` & `wavenet`: Kernels especializados para cada arquitetura de modelo.
-//! Contém funcionalidades estruturais para simulações como algoritmos vetoriais
-//! massivamente paralelos.
+//! # Structure
+//! - `common`: Traits, dynamic dispatch, and base implementations (AVX2/AVX-512).
+//! - `activations`: Optimized activation functions (tanh, sigmoid, etc.).
+//! - `gemm`: High-throughput matrix-vector and dot product operations.
+//! - `dsp`: Audio processing (gain, stereo, conversion).
+//! - `lstm` & `wavenet`: Specialized kernels for each model architecture.
+//! Contains structural functionality for simulations such as massively parallel
+//! vector algorithms.
 
 pub mod activations;
 pub mod common;

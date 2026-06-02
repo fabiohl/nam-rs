@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Medidor VU vertical com gradient tricolor, peak hold analógico e LED de clipping.
+//! Vertical VU meter with tricolor gradient, analog peak hold and clipping LED.
 
 use glow::HasContext;
 use std::sync::Arc;
@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 use super::colors::{COL_BG, COL_BYPASS_OFF, COL_MUTED, COL_VU_GREEN, COL_VU_RED, COL_VU_YELLOW};
 use super::state::{VuMeterSharedState, VuUniforms};
 
-/// Desenha um medidor VU vertical com gradiente tricolor, peak hold com fade analógico (E2),
-/// LED de clipping persistente acima (E4) e labels L/R acima e abaixo (m4).
+/// Draws a vertical VU meter with tricolor gradient, analog peak hold fade (E2),
+/// persistent clipping LED on top (E4) and L/R labels above and below (m4).
 #[allow(clippy::too_many_arguments)]
 pub fn draw_vertical_meter(
     ui: &mut egui::Ui,

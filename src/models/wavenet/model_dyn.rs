@@ -1,37 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Modelo WaveNet dinâmico (fallback para topologias não-cobertas por Const Generics).
+//! Dynamic WaveNet model (fallback for topologies not covered by Const Generics).
 
 use super::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext};
 use super::conv1d_dyn::Conv1dDyn;
 use crate::math::common::{AlignedVec, SimdMath};
 use core::arch::x86_64::{_MM_HINT_T0, _mm_prefetch};
 
-/// Camada Dense 1x1 com dimensões dinâmicas.
+/// 1x1 Dense Layer with dynamic dimensions.
 #[derive(Clone)]
 pub struct DenseLayerDyn {
-    /// Pesos da matriz [OUT][IN].
+    /// Matrix weights [OUT][IN].
     pub weights: AlignedVec<u16>,
     /// Bias [OUT].
     pub bias: AlignedVec<f32>,
-    /// Flag de aplicação de bias.
+    /// Bias application flag.
     pub do_bias: bool,
-    /// Dimensão da entrada.
+    /// Input dimension.
     pub in_size: usize,
-    /// Dimensão da saída.
+    /// Output dimension.
     pub out_size: usize,
 }
 
 impl DenseLayerDyn {
-    /// Processa a camada fundindo com o acumulador de saída.
+    /// Processes the layer by fusing with the output accumulator.
     ///
     /// # Safety
     ///
-    /// Depende da validade dos ponteiros de entrada/saída e do alinhamento SIMD.
+    /// Depends on the validity of input/output pointers and SIMD alignment.
     #[inline(always)]
     /// # Safety
-    /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
+    /// `output` must have size at least `num_frames * self.out_size`.
     pub unsafe fn process_acc_block<M: SimdMath>(
         &self,
         input: &[f32],
@@ -50,11 +50,11 @@ impl DenseLayerDyn {
         }
     }
 
-    /// Processa a camada fundindo com a soma do residual.
+    /// Processes the layer by fusing with the residual sum.
     ///
     /// # Safety
     ///
-    /// O chamador deve garantir que os buffers residual e output tenham tamanhos compatíveis.
+    /// The caller must guarantee that the residual and output buffers have compatible sizes.
     #[inline(always)]
     pub unsafe fn process_residual_batch<M: SimdMath>(
         &self,
@@ -76,11 +76,11 @@ impl DenseLayerDyn {
         }
     }
 
-    /// Processa a camada substituindo o output.
+    /// Processes the layer by replacing the output.
     ///
     /// # Safety
-    /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
-    /// Depende da validade dos buffers de entrada e saída para num_frames.
+    /// `output` must have size at least `num_frames * self.out_size`.
+    /// Depends on the validity of input and output buffers for num_frames.
     #[inline(always)]
     pub unsafe fn process_block<M: SimdMath>(
         &self,
@@ -100,11 +100,11 @@ impl DenseLayerDyn {
         }
     }
 
-    /// Processa a camada usando BF16.
+    /// Processes the layer using BF16.
     ///
     /// # Safety
-    /// `output` deve ter tamanho pelo menos `num_frames * self.out_size`.
-    /// Requer que `M::IS_BF16` seja true e que os buffers de entrada/saída sejam válidos.
+    /// `output` must have size at least `num_frames * self.out_size`.
+    /// Requires `M::IS_BF16` to be true and that the input/output buffers are valid.
     #[inline(always)]
     pub unsafe fn process_block_bf16<M: SimdMath>(
         &self,
@@ -124,11 +124,11 @@ impl DenseLayerDyn {
         }
     }
 
-    /// Projeção fundida para um único frame.
+    /// Fused projection for a single frame.
     ///
     /// # Safety
     ///
-    /// Depende da validade dos buffers de frame único.
+    /// Depends on the validity of single-frame buffers.
     #[inline(always)]
     pub unsafe fn process_fused<M: SimdMath>(&self, in_frame: &[f32], out_frame: &mut [f32]) {
         unsafe {
@@ -137,28 +137,28 @@ impl DenseLayerDyn {
     }
 }
 
-/// Camada WaveNet com dimensões dinâmicas.
+/// WaveNet Layer with dynamic dimensions.
 #[derive(Clone)]
 pub struct WaveNetLayerDyn {
-    /// Núcleo convolutivo casual.
+    /// Causal convolution core.
     pub conv1d: Conv1dDyn,
-    /// Misturador de entrada local (residuum).
+    /// Local input mixer (residuum).
     pub input_mixin: DenseLayerDyn,
-    /// Transformador 1x1 associado ao output final.
+    /// 1x1 transformer associated with the final output.
     pub one_by_one: DenseLayerDyn,
-    /// Quantidade de canais base.
+    /// Number of base channels.
     pub ch: usize,
-    /// Ativa o mecanismo de Gated Activation.
+    /// Enables the Gated Activation mechanism.
     pub gated: bool,
 }
 
 impl WaveNetLayerDyn {
-    /// Executa o processamento interno de uma camada WaveNet com Tiling Dual-Frame.
+    /// Executes the internal processing of a WaveNet layer with Dual-Frame Tiling.
     /// # Safety
-    /// `ctx.block` deve ser grande o suficiente para conter `num_frames * out_ch` amostras.
-    /// Orquestrador Interno da Camada WaveNet.
-    /// Esta função é o 'maestro' que coordena todos os passos matemáticos
-    /// necessários para processar uma única camada da rede neural.
+    /// `ctx.block` must be large enough to hold `num_frames * out_ch` samples.
+    /// Internal Orchestrator of the WaveNet Layer.
+    /// This function is the 'maestro' that coordinates all the mathematical steps
+    /// needed to process a single layer of the neural network.
     pub unsafe fn process_block_internal<M: SimdMath>(&self, ctx: WavenetProcessContext<'_>) {
         let WavenetProcessContext {
             condition,
@@ -175,10 +175,10 @@ impl WaveNetLayerDyn {
         let ch = self.ch;
         let out_ch = self.conv1d.out_ch;
 
-        // --- Buffer Temporário na Stack ---
-        // Usamos um buffer alinhado diretamente na memória de execução (pilha).
-        // Isso evita alocações lentas e garante que o processamento seja
-        // determinístico e ultra-rápido para áudio em tempo real.
+        // --- On-Stack Temporary Buffer ---
+        // We use a buffer aligned directly in execution memory (stack).
+        // This avoids slow allocations and ensures that processing is
+        // deterministic and ultra-fast for real-time audio.
         const MAX_STACK: usize = 8192;
 
         #[repr(align(64))]
@@ -195,18 +195,18 @@ impl WaveNetLayerDyn {
         let mixin_out_slice = &mut mixin_out.0[..mixin_len];
 
         unsafe {
-            // Decidimos entre o caminho BF16 (mais rápido) ou F32 (padrão)
+            // Decide between the BF16 (faster) or F32 (standard) path
             if M::IS_BF16 {
-                // 1. Mixin (Preparação):
-                // Processamos as condições externas (como gain/tone) em lote.
+                // 1. Mixin (Preparation):
+                // Process external conditions (like gain/tone) in batch.
                 self.input_mixin.process_block_bf16::<M>(
                     condition_bf16,
                     mixin_out_slice,
                     num_frames,
                 );
 
-                // 2. Conv1D (O Núcleo):
-                // Aplicamos a convolução dilatada que 'ouve' o passado.
+                // 2. Conv1D (The Core):
+                // Apply the dilated convolution that 'listens' to the past.
                 let mut i = 0;
                 let active_block = &mut block[..num_frames * out_ch];
                 let mut chunks = active_block.chunks_exact_mut(2 * out_ch);
@@ -239,7 +239,7 @@ impl WaveNetLayerDyn {
                     );
                 }
             } else {
-                // Caminho padrão F32 (Idêntico ao acima, mas com precisão total).
+                // Standard F32 path (Identical to the above, but with full precision).
                 // 1. Mixin
                 self.input_mixin
                     .process_block::<M>(condition, mixin_out_slice, num_frames);
@@ -278,29 +278,29 @@ impl WaveNetLayerDyn {
                 }
             }
 
-            // 3. Ativação (Não-Linearidade):
-            // Aplicamos funções como Tanh ou Gated para dar o 'caráter' do som.
+            // 3. Activation (Non-linearity):
+            // Apply functions like Tanh or Gated to give the 'character' of the sound.
             if self.gated {
-                // Gated Activation: Funciona como uma porta que abre e fecha seletivamente.
+                // Gated Activation: Works like a gate that selectively opens and closes.
                 M::gated_activation_and_accumulate_block(
                     head_input,
                     &mut block[..num_frames * 2 * ch],
                     ch,
                 );
 
-                // [T1.2] Otimização: Re-alinhamos os dados para que o próximo passo (GEMM)
-                // seja processado em um único bloco contínuo de memória.
+                // [T1.2] Optimization: Realign data so the next step (GEMM)
+                // is processed as a single contiguous memory block.
                 for i in 1..num_frames {
                     block.copy_within(i * 2 * ch..i * 2 * ch + ch, i * ch);
                 }
             } else {
-                // Tanh: Ativação clássica que 'achata' o sinal para manter a estabilidade.
+                // Tanh: Classic activation that 'flattens' the signal to maintain stability.
                 M::tanh_and_accumulate_block(head_input, &mut block[..num_frames * ch]);
             }
 
-            // 4. Residual + 1x1 (A Mistura Final):
-            // Somamos o som original (residual) ao que acabamos de processar.
-            // Isso permite que a rede aprenda transformações complexas sem perder a base.
+            // 4. Residual + 1x1 (The Final Mix):
+            // Sum the original sound (residual) with what we just processed.
+            // This allows the network to learn complex transformations without losing the foundation.
             let lb_offset = buffer_start * ch;
             let residual_slice = layer_buffer.get_unchecked(lb_offset..lb_offset + num_frames * ch);
 
@@ -311,8 +311,8 @@ impl WaveNetLayerDyn {
                 num_frames,
             );
 
-            // 5. Conversão BF16 Final:
-            // Se estivermos usando o modo rápido, limpamos os dados para a próxima camada.
+            // 5. Final BF16 Conversion:
+            // If we're using fast mode, clean the data for the next layer.
             if let (true, Some(bf16_out)) = (M::IS_BF16, output_bf16.as_mut()) {
                 M::f32_to_bf16(output, bf16_out);
             }
@@ -320,46 +320,46 @@ impl WaveNetLayerDyn {
     }
 }
 
-/// Representa a topologia vertical inteira de um galho WaveNet dinâmico, suportando múltiplas dilatações seq.
+/// Represents the entire vertical topology of a dynamic WaveNet branch, supporting multiple sequential dilations.
 pub struct WaveNetLayerArrayDyn {
-    /// Lista empilhada de camadas com suas respectivas dilatações fixadas na RAM em loading.
+    /// Stacked list of layers with their respective dilations fixed in RAM at loading.
     pub layers: Vec<WaveNetLayerDyn>,
-    /// Registro espelho local de fita de retardo. Mantido para as passagens lock-free circulares.
+    /// Local mirror register of delay tape. Maintained for lock-free circular passes.
     pub states: Vec<WaveNetLayerState>,
-    /// Redimensionador denso do canal de entrada.
+    /// Dense resizer for the input channel.
     pub rechannel: DenseLayerDyn,
-    /// Redimensionador denso para a malha da cabeça de soma paramétrica.
+    /// Dense resizer for the parametric head sum mesh.
     pub head_rechannel: DenseLayerDyn,
-    /// Acumulador temporário das cadeias sequenciais.
+    /// Temporary accumulator of sequential chains.
     pub array_outputs: AlignedVec<f32>,
-    /// Acumulador das ativações projetadas pela malha Head.
+    /// Accumulator of activations projected by the Head mesh.
     pub head_accum: AlignedVec<f32>,
-    /// Projeções finais da cabeça em andamento (somatório de projeções de múltiplas camadas).
+    /// Ongoing final head projections (sum of multi-layer projections).
     pub head_outputs: AlignedVec<f32>,
-    /// Buffer de estado auxiliar reutilizado para inibir heap allocation nas threads de RT.
+    /// Auxiliary state buffer reused to inhibit heap allocation in RT threads.
     pub block_buffer: AlignedVec<f32>,
-    /// Tamanho efetivo do `block_buffer`. Igual a `ch` ou `2*ch` conforme gated.
+    /// Effective size of `block_buffer`. Equals `ch` or `2*ch` depending on gated.
     pub block_size: usize,
-    /// Tamanho analítico global de latência causal desta cascata.
+    /// Global analytical causal latency size of this cascade.
     pub receptive_field_size: usize,
-    /// Eixo transversal de Canais base (`C`).
+    /// Transverse axis of base Channels (`C`).
     pub ch: usize,
-    /// Redução projetada somatória.
+    /// Summed projected reduction.
     pub head: usize,
-    /// Cache do último condicionamento f32.
+    /// Cache of the last f32 conditioning.
     pub last_condition: AlignedVec<f32>,
-    /// Cache do último condicionamento BF16.
+    /// Cache of the last BF16 conditioning.
     pub last_condition_bf16: AlignedVec<u16>,
-    /// Flag de inicialização do cache.
+    /// Cache initialization flag.
     pub condition_init: bool,
 }
 
 impl WaveNetLayerArrayDyn {
-    /// ORQUESTRADOR DE INFERÊNCIA (Cascade Process):
-    /// Realiza a inferência síncrona de todas as camadas do Array em cascata.
+    /// INFERENCE ORCHESTRATOR (Cascade Process):
+    /// Performs synchronous inference of all layers of the Array in cascade.
     ///
     /// # Safety
-    /// Depende da integridade das matrizes carregadas e dos estados de buffer circular.
+    /// Depends on the integrity of the loaded matrices and the circular buffer states.
     pub unsafe fn process<M: crate::math::common::SimdMath>(
         &mut self,
         layer_inputs: &[f32],
@@ -371,7 +371,7 @@ impl WaveNetLayerArrayDyn {
         }
     }
 
-    /// AQUECIMENTO DE ESTADO (Pre-warm).
+    /// STATE PREWARM (Pre-warm).
     pub fn prewarm<M: crate::math::common::SimdMath>(
         &mut self,
         layer_inputs: &[f32],
@@ -382,8 +382,8 @@ impl WaveNetLayerArrayDyn {
         }
     }
 
-    /// Implementação genérica que unifica o processamento normal e o pre-warm.
-    /// [TA5.5] Redução de duplicidade lógica em ~70%.
+    /// Generic implementation that unifies normal processing and pre-warm.
+    /// [TA5.5] Logical duplication reduction of ~70%.
     #[inline(always)]
     unsafe fn process_internal_generic<M: crate::math::common::SimdMath>(
         &mut self,
@@ -397,7 +397,7 @@ impl WaveNetLayerArrayDyn {
         let head = self.head;
         let states_ptr = self.states.as_mut_ptr();
 
-        // 1) RESET DO ACUMULADOR DE CABEÇA
+        // 1) HEAD ACCUMULATOR RESET
         self.head_accum[..num_frames * ch].fill(0.0);
 
         // 2) Lazy BF16 Conversion
@@ -417,7 +417,7 @@ impl WaveNetLayerArrayDyn {
             let state_0 = &mut *states_ptr.add(0);
             let start = state_0.buffer_start * ch;
 
-            // 3) RECHANNEL (Entrada -> Residual)
+            // 3) RECHANNEL (Input -> Residual)
             self.rechannel.process_block::<M>(
                 layer_inputs,
                 &mut state_0.layer_buffer[start..start + num_frames * ch],
@@ -428,12 +428,12 @@ impl WaveNetLayerArrayDyn {
             let last_layer = num_layers - 1;
             let block_size = self.block_size;
 
-            // 4) CASCATEAMENTO DE CAMADAS
+            // 4) LAYER CASCADING
             for i in 0..num_layers {
                 let layer = &self.layers[i];
                 let current_state = &mut *states_ptr.add(i);
 
-                // [T2.2] Software Prefetch do próximo estado na cascata (L1).
+                // [T2.2] Software Prefetch of the next state in the cascade (L1).
                 if i + 1 < num_layers {
                     _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 1) as *const i8);
                 }
@@ -441,8 +441,8 @@ impl WaveNetLayerArrayDyn {
                     _mm_prefetch::<_MM_HINT_T0>(states_ptr.add(i + 2) as *const i8);
                 }
 
-                // [PASSO 4.1: Pre-fill Ring Buffer (Backwards)]
-                // Se estivermos em modo pre-warm, replicamos a entrada atual para todo o passado.
+                // [STEP 4.1: Pre-fill Ring Buffer (Backwards)]
+                // If in prewarm mode, replicate the current input to the entire past.
                 if prewarm_mode {
                     let start_idx = current_state.buffer_start * ch;
                     for offset in 1..=current_state.receptive_field_size {
@@ -485,7 +485,7 @@ impl WaveNetLayerArrayDyn {
 
                 layer.process_block_internal::<M>(ctx);
 
-                // No modo pre-warm não avançamos o ponteiro circular (estabilização estática).
+                // In prewarm mode we don't advance the circular pointer (static stabilization).
                 if !prewarm_mode {
                     current_state.advance_frames(num_frames, ch);
                 }
@@ -501,32 +501,32 @@ impl WaveNetLayerArrayDyn {
     }
 }
 
-/// Invólucro Dinâmico final. Comporta Arrays interconectados.
+/// Final Dynamic Wrapper. Holds interconnected Arrays.
 pub struct WaveNetDynModel {
-    /// O galho Primário com maior parte do campo causal da WaveNet.
+    /// The Primary branch with the majority of the WaveNet causal field.
     pub array1: WaveNetLayerArrayDyn,
-    /// Galho Secundário, redutor mono causal.
+    /// Secondary Branch, mono causal reducer.
     pub array2: WaveNetLayerArrayDyn,
-    /// Ajuste de volume master computado pré-linearização.
+    /// Pre-linearization master volume adjustment.
     pub head_scale: f32,
-    /// Carga total de frames que este modelo assimila antes da saída confiável.
+    /// Total frame load this model assimilates before reliable output.
     pub receptive_field_size: usize,
-    /// Dimensões da convergência interna final do head.
+    /// Dimensions of the head's final internal convergence.
     pub head: usize,
 }
 
 impl WaveNetDynModel {
-    /// Processa o bloco de áudio na matriz causal.
+    /// Processes the audio block in the causal matrix.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             crate::math::common::dispatch_simd!(self, process_internal, input, output);
         }
     }
 
-    /// Variante clonada e puramente otimizada para SIMD `M` do processamento da rede inteira.
+    /// Cloned and purely SIMD-optimized `M` variant of full network processing.
     ///
     /// # Safety
-    /// Deve ser invocado apenas via macro `dispatch_simd!`.
+    /// Must only be invoked via macro `dispatch_simd!`.
     unsafe fn process_internal<M: crate::math::common::SimdMath>(
         &mut self,
         input: &[f32],
@@ -558,7 +558,7 @@ impl WaveNetDynModel {
         }
     }
 
-    /// Realiza o `Prewarm` inicial para estabilizar os buffers.
+    /// Performs the initial `Prewarm` to stabilize the buffers.
     pub fn prewarm(&mut self) {
         unsafe {
             crate::math::common::dispatch_simd!(self, prewarm_internal);
@@ -566,7 +566,7 @@ impl WaveNetDynModel {
     }
 
     /// # Safety
-    /// Deve ser invocado apenas via macro `dispatch_simd!`.
+    /// Must only be invoked via macro `dispatch_simd!`.
     unsafe fn prewarm_internal<M: crate::math::common::SimdMath>(&mut self) {
         let condition = [0.0f32];
         let layer_inputs_1 = [0.0f32];

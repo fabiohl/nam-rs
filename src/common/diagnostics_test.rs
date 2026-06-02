@@ -3,7 +3,7 @@
 
 use super::*;
 
-/// Valida a formatação visual e consistência do código de erro e seu mnemônico.
+/// Validates the visual formatting and consistency of the error code and its mnemonic.
 #[test]
 fn test_error_code_display() {
     let code = NamErrorCode::NambCrc32Mismatch;
@@ -12,8 +12,8 @@ fn test_error_code_display() {
     assert_eq!(format!("{}", code), "E1201 | NAMB_CRC32_MISMATCH");
 }
 
-/// Garante a integridade do registro de erros, impedindo duplicidade de códigos numéricos (E####).
-/// Essencial para manter a estabilidade de logs e protocolos de suporte.
+/// Ensures the integrity of the error registry, preventing duplicate numeric codes (E####).
+/// Essential for maintaining log stability and support protocols.
 #[test]
 fn test_all_codes_have_unique_numeric() {
     use NamErrorCode::*;
@@ -44,7 +44,7 @@ fn test_all_codes_have_unique_numeric() {
         InvalidGainValue,
         UnknownCommand,
         CtrlCHandlerFailed,
-        DeadlineExceeded, // Adicionado conforme T17
+        DeadlineExceeded, // Added as per T17
     ];
 
     let codes: Vec<&str> = all.iter().map(|c| c.code()).collect();
@@ -58,7 +58,7 @@ fn test_all_codes_have_unique_numeric() {
     );
 }
 
-/// Verifica se a captura de informações do sistema (OS, Arch, Versão) está ativa e retornando dados válidos.
+/// Verifies that system information capture (OS, Arch, Version) is active and returning valid data.
 #[test]
 fn test_system_snapshot_capture() {
     let snap = SystemSnapshot::capture();
@@ -67,8 +67,8 @@ fn test_system_snapshot_capture() {
     assert!(!snap.os.is_empty());
 }
 
-/// Valida a geração do "bloco de suporte" para o usuário, garantindo que contenha o erro,
-/// mnemônico, parâmetros contextuais e instruções de cópia.
+/// Validates the generation of the "support block" for the user, ensuring it contains the error,
+/// mnemonic, contextual parameters, and copy instructions.
 #[test]
 fn test_diagnostic_support_block_contains_code() {
     let snap = SystemSnapshot::capture();
@@ -79,26 +79,26 @@ fn test_diagnostic_support_block_contains_code() {
         .param("computed", "0x12345678");
 
     let block = diag.support_block();
-    assert!(block.contains("E1201"), "Bloco deve conter o código");
+    assert!(block.contains("E1201"), "Block must contain the code");
     assert!(
         block.contains("NAMB_CRC32_MISMATCH"),
-        "Bloco deve conter o mnemônico"
+        "Block must contain the mnemonic"
     );
     assert!(
         block.contains("expected=0xDEADBEEF"),
-        "Bloco deve conter parâmetros"
+        "Block must contain parameters"
     );
     assert!(
         block.contains("computed=0x12345678"),
-        "Bloco deve conter parâmetros"
+        "Block must contain parameters"
     );
     assert!(
         block.contains("Copy the block above"),
-        "Bloco deve conter instrução de cópia"
+        "Block must contain copy instructions"
     );
 }
 
-/// Testa a representação simplificada do diagnóstico para exibição direta via trait Display.
+/// Tests the simplified diagnostic representation for display via the Display trait.
 #[test]
 fn test_diagnostic_display() {
     let snap = SystemSnapshot::capture();
@@ -106,15 +106,15 @@ fn test_diagnostic_display() {
     assert_eq!(format!("{}", diag), "[E1100] Model not found");
 }
 
-/// Valida o algoritmo manual de conversão de dias desde o epoch para data (Ano, Mês, Dia),
-/// permitindo manter o binário leve sem dependências externas de tempo (como chrono).
+/// Validates the manual algorithm for converting days since epoch to a date (Year, Month, Day),
+/// keeping the binary lightweight without external time dependencies (like chrono).
 #[test]
 fn test_days_to_date_epoch() {
     let (y, m, d) = days_to_date(0);
     assert_eq!((y, m, d), (1970, 1, 1));
 }
 
-/// Testa a precisão do algoritmo de data com uma data conhecida (2026-04-10).
+/// Tests the accuracy of the date algorithm with a known date (2026-04-10).
 #[test]
 fn test_days_to_date_known() {
     // 2026-04-10 = ~20553 days since epoch
@@ -125,26 +125,26 @@ fn test_days_to_date_known() {
     assert_eq!(d, 10);
 }
 
-/// Garante que o timestamp gerado segue rigorosamente o padrão ISO 8601 (YYYY-MM-DDTHH:MM:SSZ).
+/// Ensures the generated timestamp strictly follows the ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ).
 #[test]
 fn test_timestamp_format() {
     let ts = NamDiagnostic::timestamp();
-    // Verifica formato ISO 8601: YYYY-MM-DDTHH:MM:SSZ
-    assert_eq!(ts.len(), 20, "Timestamp deve ter 20 caracteres");
-    assert!(ts.ends_with('Z'), "Timestamp deve terminar em Z");
-    assert_eq!(&ts[4..5], "-", "Separador de data");
-    assert_eq!(&ts[10..11], "T", "Separador T");
+    // Verify ISO 8601 format: YYYY-MM-DDTHH:MM:SSZ
+    assert_eq!(ts.len(), 20, "Timestamp must be 20 characters long");
+    assert!(ts.ends_with('Z'), "Timestamp must end with Z");
+    assert_eq!(&ts[4..5], "-", "Date separator");
+    assert_eq!(&ts[10..11], "T", "T separator");
 }
 
-/// Garante que o cálculo da máscara de IRQ não causa panic em sistemas com muitos cores (Bug B5).
+/// Ensures the IRQ mask calculation does not panic on systems with many cores (Bug B5).
 #[test]
 fn test_emit_irq_advisory_safety() {
     let snap = SystemSnapshot::capture();
-    // Teste de cores baixos, limite de u32, e limite de u64
+    // Test low cores, u32 boundary, and u64 boundary
     snap.emit_irq_advisory(0);
     snap.emit_irq_advisory(31);
     snap.emit_irq_advisory(32);
     snap.emit_irq_advisory(63);
-    snap.emit_irq_advisory(64); // Deve retornar via guarda sem panic
-    snap.emit_irq_advisory(128); // Caso extremo
+    snap.emit_irq_advisory(64); // Should return via guard without panic
+    snap.emit_irq_advisory(128); // Extreme case
 }

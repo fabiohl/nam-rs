@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Malha de Células Recorrentes Otimizada (LSTM) para inferência NAM.
+//! Optimized Recurrent Cell Mesh (LSTM) for NAM inference.
 
 use core::arch::x86_64::*;
 
-/// Uma camada individual do modelo LSTM otimizada para SIMD.
+/// An individual LSTM model layer optimized for SIMD.
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
-    /// Pesos da camada no layout Gate-Major.
+    /// Layer weights in Gate-Major layout.
     pub input_hidden_weights: [[[u16; H]; IH]; 4],
-    /// Bias lineares da camada.
+    /// Layer linear biases.
     pub bias: [f32; H4],
-    /// Buffer de estado consolidado [Input | Hidden].
+    /// Consolidated state buffer [Input | Hidden].
     pub state: [f32; IH],
-    /// Espelho do estado em BF16 para aceleração VNNI.
+    /// State mirror in BF16 for VNNI acceleration.
     pub state_bf16: [u16; IH],
-    /// Estado da célula (C) do LSTM.
+    /// LSTM cell state (C).
     pub cell_state: [f32; H],
-    /// Ativações intermediárias das portas.
+    /// Intermediate gate activations.
     pub gates: [f32; H4],
 }
 
@@ -38,32 +38,32 @@ macro_rules! define_lstm_process {
         $fused_gates:path,
         $is_bf16:expr
     ) => {
-        /// Processa uma amostra através da camada LSTM.
+        /// Processes a sample through the LSTM layer.
         ///
         /// # Safety
-        /// O chamador deve garantir suporte às instruções SIMD especificadas.
-        // NOTE: $target_meta permite injetar #[inline(always)] para AVX2 (nosso baseline x86-64-v3)
-        // ou #[target_feature] para extensões superiores, garantindo codegen correto.
+        /// The caller must guarantee support for the specified SIMD instructions.
+        // NOTE: $target_meta allows injecting #[inline(always)] for AVX2 (our x86-64-v3 baseline)
+        // or #[target_feature] for higher extensions, ensuring correct codegen.
         #[$target_meta]
         pub unsafe fn $fn_name(&mut self, input: &[f32]) {
             unsafe {
-                // 1. Alimentamos a 'memória' do modelo com o novo fragmento de áudio.
+                // 1. Feed the model's 'memory' with the new audio fragment.
                 self.state[..I].copy_from_slice(&input[..I]);
 
-                // 2. Se o hardware suportar BF16 (Brain Floating Point), convertemos os dados.
-                // Isso mantém a escala do áudio mas usa metade do espaço, acelerando o cálculo.
+                // 2. If the hardware supports BF16 (Brain Floating Point), convert the data.
+                // This preserves the audio scale but uses half the space, speeding up the calculation.
                 if $is_bf16 {
                     use $crate::math::common::SimdMath;
                     <$simd_math>::f32_to_bf16(&self.state[..I], &mut self.state_bf16[..I]);
                 }
 
-                // 3. 'Prefetch': Avisamos o processador para buscar os pesos na memória RAM
-                // um pouco antes de precisarmos deles, evitando que o cálculo pare para esperar os dados.
+                // 3. 'Prefetch': Notify the processor to fetch the weights from RAM
+                // slightly ahead of when they're needed, preventing the computation from stalling for data.
                 _mm_prefetch::<{ _MM_HINT_T0 }>(self.state.as_ptr().cast::<i8>());
 
-                // 4. Multiplicação de Matriz-Vetor (GEMV):
-                // Aqui multiplicamos a entrada e o estado anterior pelos pesos (o 'cérebro' treinado).
-                // O resultado ativa as 4 'portas' do LSTM: Esquecimento, Entrada, Candidata e Saída.
+                // 4. Matrix-Vector Multiplication (GEMV):
+                // Here we multiply the input and previous state by the weights (the trained 'brain').
+                // The result activates the 4 'gates' of the LSTM: Forget, Input, Candidate, and Output.
                 if $is_bf16 {
                     $gemv_4gate_bf16(
                         &self.state_bf16,
@@ -88,27 +88,27 @@ macro_rules! define_lstm_process {
                     );
                 }
 
-                // 5. Mapeamos onde cada uma das 4 portas começa no nosso buffer de cálculo.
-                let f_offset = H; // Porta de Esquecimento (Forget)
-                let g_offset = 2 * H; // Porta de Atualização (Cell Candidate)
-                let o_offset = 3 * H; // Porta de Saída (Output)
-                let h_offset = I; // Onde guardamos o resultado final para o próximo passo
+                // 5. Map where each of the 4 gates starts in our calculation buffer.
+                let f_offset = H; // Forget Gate
+                let g_offset = 2 * H; // Update Gate (Cell Candidate)
+                let o_offset = 3 * H; // Output Gate
+                let h_offset = I; // Where we store the final result for the next step
 
                 let mut i = 0;
-                // 6. Loop Principal (SIMD): Processamos vários neurônios em paralelo (8 ou 16 por vez).
+                // 6. Main Loop (SIMD): Process several neurons in parallel (8 or 16 at a time).
                 while i + $step <= H {
-                    // Carregamos os valores pré-calculados das 4 portas e da memória atual (cell state).
+                    // Load the pre-computed values of the 4 gates and current memory (cell state).
                     let g_f = $load(self.gates.as_ptr().add(i + f_offset));
                     let g_i = $load(self.gates.as_ptr().add(i));
                     let g_g = $load(self.gates.as_ptr().add(i + g_offset));
                     let g_o = $load(self.gates.as_ptr().add(i + o_offset));
                     let c_s = $load(self.cell_state.as_ptr().add(i));
 
-                    // 'Fused Gates': A mágica do LSTM acontece aqui.
-                    // Decidimos o que esquecer da memória antiga e o que aprender da nova entrada.
+                    // 'Fused Gates': The LSTM magic happens here.
+                    // We decide what to forget from old memory and what to learn from the new input.
                     let (new_c_s, h_s) = $fused_gates(g_f, g_i, g_g, g_o, c_s);
 
-                    // Salvamos a nova memória (longo prazo) e a nova saída (curto prazo).
+                    // Save the new memory (long-term) and the new output (short-term).
                     $store(self.cell_state.as_mut_ptr().add(i), new_c_s);
                     $store(self.state.as_mut_ptr().add(h_offset + i), h_s);
 
@@ -122,8 +122,8 @@ macro_rules! define_lstm_process {
                     i += $step;
                 }
 
-                // 7. Tratamento de 'Cauda': Se o número de neurônios não for um múltiplo exato do
-                // processamento paralelo, cuidamos dos últimos elementos individualmente.
+                // 7. 'Tail' Handling: If the number of neurons is not an exact multiple of the
+                // parallel processing, we handle the last elements individually.
                 if i < H {
                     let tail_len = H - i;
                     let mut temp_gf = [0.0; $step];
@@ -166,7 +166,7 @@ macro_rules! define_lstm_process {
     };
 }
 impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer<I, H, IH, H4> {
-    /// Cria uma nova camada LSTM zerada.
+    /// Creates a new zero-initialized LSTM layer.
     pub fn new() -> Self {
         Self {
             input_hidden_weights: [[[0u16; H]; IH]; 4],
@@ -177,23 +177,23 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             gates: [0.0; H4],
         }
     }
-    /// Retorna uma referência ao estado oculto atual.
+    /// Returns a reference to the current hidden state.
     #[inline(always)]
     pub fn get_hidden_state(&self) -> &[f32] {
         &self.state[I..]
     }
-    /// Retorna uma referência ao estado oculto atual espelhado em BF16.
+    /// Returns a reference to the current hidden state mirrored in BF16.
     #[inline(always)]
     pub fn get_hidden_state_bf16(&self) -> &[u16] {
         &self.state_bf16[I..]
     }
 
-    // --- Especializações por Hardware (SIMD) ---
-    // Criamos versões diferentes da mesma lógica para tirar o máximo proveito de cada CPU.
+    // --- Hardware (SIMD) Specializations ---
+    // We create different versions of the same logic to get the most out of each CPU.
 
-    // 1. Especialização AVX2 (Padrão para x86-64-v3):
-    // Utiliza registradores de 256 bits (processando 8 floats em paralelo) com aproximadores
-    // rápidos de Tanh e Sigmoid via SIMD AVX2.
+    // 1. AVX2 Specialization (Default for x86-64-v3):
+    // Uses 256-bit registers (processing 8 floats in parallel) with fast
+    // Tanh and Sigmoid approximators via AVX2 SIMD.
     define_lstm_process!(
         process_sample_avx2,
         inline(always),
@@ -211,15 +211,15 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
-    // 2. Especialização AVX-512 (F/VL):
-    // Utiliza registradores de 512 bits (processando 16 floats de uma só vez). Ideal para
-    // servidores ou CPUs Intel/AMD mais recentes que suportam instruções vetoriais estendidas.
+    // 2. AVX-512 (F/VL) Specialization:
+    // Uses 512-bit registers (processing 16 floats at once). Ideal for
+    // servers or newer Intel/AMD CPUs that support extended vector instructions.
     define_lstm_process!(
         process_sample_avx512,
         target_feature(enable = "avx512f,avx512vl"),
         crate::math::common::Avx512Math,
         crate::math::gemm::gemv_4gate_avx512,
-        crate::math::common::gemv_4gate_bf16_fallback, // Sem BF16 nativo aqui
+        crate::math::common::gemv_4gate_bf16_fallback, // No native BF16 here
         16,
         _mm512_loadu_ps,
         _mm512_storeu_ps,
@@ -231,9 +231,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
-    // 3. Especialização AVX2 VNNI (Vector Neural Network Instructions):
-    // Voltado para processamento de redes neurais em CPUs que suportam aceleração VNNI
-    // sobre registradores de 256 bits, otimizando o throughput aritmético.
+    // 3. AVX2 VNNI (Vector Neural Network Instructions) Specialization:
+    // Targeted at neural network processing on CPUs that support VNNI acceleration
+    // over 256-bit registers, optimizing arithmetic throughput.
     define_lstm_process!(
         process_sample_avx2vnni,
         target_feature(enable = "avxvnni"),
@@ -251,9 +251,9 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
-    // 4. Especialização AVX-512 VNNI:
-    // Combina a largura de registrador de 512 bits (16 floats) com a aceleração de hardware VNNI
-    // para ganho massivo de throughput em operações GEMV.
+    // 4. AVX-512 VNNI Specialization:
+    // Combines the 512-bit register width (16 floats) with VNNI hardware acceleration
+    // for massive throughput gains in GEMV operations.
     define_lstm_process!(
         process_sample_avx512vnni,
         target_feature(enable = "avx512f,avx512vl,avx512vnni"),
@@ -271,7 +271,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
-    // O ápice da otimização: Uso de BF16 nativo para velocidade extrema.
+    // The pinnacle of optimization: Using native BF16 for extreme speed.
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
@@ -289,17 +289,17 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         true
     );
 
-    /// Processamento escalar (fallback) para testes e benchmarks.
+    /// Scalar processing (fallback) for tests and benchmarks.
     ///
-    /// Esta é a versão 'manual' e lenta, usada apenas como referência para garantir
-    /// que as versões ultra-rápidas acima não tenham erros matemáticos.
+    /// This is the 'manual' and slow version, used only as a reference to ensure
+    /// the ultra-fast versions above have no mathematical errors.
     #[inline(always)]
     pub fn process_sample_scalar(&mut self, input: &[f32], is_bf16: bool) {
         let ih = I + H;
         let h = H;
         self.state[..I].copy_from_slice(&input[..I]);
 
-        // Multiplicação manual dos pesos pelas entradas (4 portas).
+        // Manual weight-input multiplication (4 gates).
         for k in 0..4 {
             let target_gate_offset = k * h;
             for i in 0..h {
@@ -317,7 +317,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             }
         }
 
-        // Ativação manual das portas do LSTM.
+        // Manual activation of the LSTM gates.
         for j in 0..h {
             let gf = self.gates[j + h];
             let gi = self.gates[j];
@@ -325,7 +325,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
             let go = self.gates[j + 3 * h];
             let cs = self.cell_state[j];
 
-            // Funções de ativação (Sigmoid e Tanh) que moldam o sinal.
+            // Activation functions (Sigmoid and Tanh) that shape the signal.
             let f = 0.5 * (1.0 + (gf * 0.5).tanh());
             let i = 0.5 * (1.0 + (gi * 0.5).tanh());
             let g = gg.tanh();
@@ -339,17 +339,17 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         }
     }
 
-    /// Reseta apenas o slot de entrada, preservando o estado oculto e o estado da célula.
+    /// Resets only the input slot, preserving the hidden state and cell state.
     ///
-    /// Usado no prewarm para evitar descartar os estados iniciais `_xh` e `_c`
-    /// carregados do arquivo NAM.
+    /// Used during prewarm to avoid discarding the initial `_xh` and `_c` states
+    /// loaded from the NAM file.
     pub fn reset_input_slot(&mut self) {
         self.state[..I].fill(0.0);
     }
 
-    /// Reseta os estados internos para zero.
+    /// Resets the internal states to zero.
     ///
-    /// Importante para 'limpar a memória' do modelo entre diferentes execuções.
+    /// Important for 'clearing the model's memory' between different runs.
     pub fn reset_states(&mut self) {
         self.state.fill(0.0);
         self.cell_state.fill(0.0);

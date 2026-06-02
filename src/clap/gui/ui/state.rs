@@ -1,43 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Estado persistente da interface gráfica: `UiState`, `VuMeterSharedState`, `VuUniforms`.
+//! Persistent GUI state: `UiState`, `VuMeterSharedState`, `VuUniforms`.
 
 use crate::clap::plugin::NamModelMetadata;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Instant;
 
-/// Cache de locais de variáveis uniformes no shader GLSL do VU meter.
+/// Cache of uniform variable locations in the VU meter GLSL shader.
 #[derive(Debug, Clone)]
 pub struct VuUniforms {
-    /// Localização do uniform de viewport.
+    /// Location of the viewport uniform.
     pub loc_viewport: Option<glow::UniformLocation>,
-    /// Localização do uniform do retângulo do medidor.
+    /// Location of the meter rectangle uniform.
     pub loc_meter_rect: Option<glow::UniformLocation>,
-    /// Localização do uniform do valor de pico.
+    /// Location of the peak value uniform.
     pub loc_peak_frac: Option<glow::UniformLocation>,
-    /// Localização do uniform do valor hold.
+    /// Location of the hold value uniform.
     pub loc_hold_frac: Option<glow::UniformLocation>,
-    /// Localização do uniform da cor do hold.
+    /// Location of the hold color uniform.
     pub loc_hold_color_type: Option<glow::UniformLocation>,
 }
 
-/// Estado compartilhado do VU meter para renderização em callback do egui sem alocações no heap por frame.
+/// Shared VU meter state for rendering in the egui callback without heap allocations per frame.
 #[derive(Debug)]
 pub struct VuMeterSharedState {
-    /// Fração atual do nível de pico do medidor (0.0 a 1.0, codificado como bits u32).
+    /// Current peak level fraction of the meter (0.0 to 1.0, encoded as u32 bits).
     pub peak_frac: std::sync::atomic::AtomicU32,
-    /// Fração atual do nível do indicador peak hold (0.0 a 1.0, codificado como bits u32).
+    /// Current level fraction of the peak hold indicator (0.0 to 1.0, encoded as u32 bits).
     pub hold_frac: std::sync::atomic::AtomicU32,
-    /// Tipo de cor a aplicar no indicador peak hold (representando verde, amarelo ou vermelho).
+    /// Color type to apply to the peak hold indicator (representing green, yellow, or red).
     pub hold_color_type: std::sync::atomic::AtomicI32,
-    /// Coordenada mínima X do retângulo de desenho lógica do medidor (codificada como bits u32).
+    /// Minimum X coordinate of the meter's logical drawing rectangle (encoded as u32 bits).
     pub rect_min_x: std::sync::atomic::AtomicU32,
-    /// Coordenada mínima Y do retângulo de desenho lógica do medidor (codificada como bits u32).
+    /// Minimum Y coordinate of the meter's logical drawing rectangle (encoded as u32 bits).
     pub rect_min_y: std::sync::atomic::AtomicU32,
-    /// Coordenada máxima X do retângulo de desenho lógica do medidor (codificada como bits u32).
+    /// Maximum X coordinate of the meter's logical drawing rectangle (encoded as u32 bits).
     pub rect_max_x: std::sync::atomic::AtomicU32,
-    /// Coordenada máxima Y do retângulo de desenho lógica do medidor (codificada como bits u32).
+    /// Maximum Y coordinate of the meter's logical drawing rectangle (encoded as u32 bits).
     pub rect_max_y: std::sync::atomic::AtomicU32,
 }
 
@@ -55,68 +55,68 @@ impl Default for VuMeterSharedState {
     }
 }
 
-/// Estado persistente da interface gráfica entre frames.
+/// Persistent GUI state between frames.
 #[derive(Clone)]
 pub struct UiState {
-    /// Último valor de pico do canal esquerdo retido.
+    /// Last retained peak value for the left channel.
     pub peak_l_hold: f32,
-    /// Último valor de pico do canal direito retido.
+    /// Last retained peak value for the right channel.
     pub peak_r_hold: f32,
-    /// Instante em que o valor de pico esquerdo foi retido.
+    /// Instant when the left peak value was retained.
     pub peak_l_hold_time: Instant,
-    /// Instante em que o valor de pico direito foi retido.
+    /// Instant when the right peak value was retained.
     pub peak_r_hold_time: Instant,
-    /// LED de clipping L persistente — limpa com clique no medidor.
+    /// Persistent L clipping LED — cleared by clicking on the meter.
     pub clip_l: bool,
-    /// LED de clipping R persistente — limpa com clique no medidor.
+    /// Persistent R clipping LED — cleared by clicking on the meter.
     pub clip_r: bool,
-    /// Indica se o painel expandido de telemetria deve ser exibido.
+    /// Indicates whether the expanded telemetry panel should be displayed.
     pub show_telemetry: bool,
-    /// Último instante em que as informações de telemetria foram atualizadas na GUI.
+    /// Last instant when telemetry information was updated in the GUI.
     pub last_telem_update: Instant,
-    /// Cópia amortecida do ciclo de DSP para exibição.
+    /// Damped copy of the DSP cycle time for display.
     pub telem_cycles: u64,
-    /// Cópia amortecida do último tamanho de bloco para exibição.
+    /// Damped copy of the last block size for display.
     pub telem_last_n: u32,
-    /// Cópia amortecida da prioridade RT da thread DSP.
+    /// Damped copy of the DSP thread RT priority.
     pub telem_prio: i32,
-    /// Cópia amortecida do número de overloads.
+    /// Damped copy of the overload count.
     pub telem_overloads: u32,
-    /// Program do shader OpenGL compilado para desenhar o VU meter.
+    /// Compiled OpenGL shader program for drawing the VU meter.
     pub vu_program: Option<glow::Program>,
-    /// VAO vazio para draw calls sem buffers.
+    /// Empty VAO for bufferless draw calls.
     pub vu_vao: Option<glow::VertexArray>,
-    /// Cache de locations dos uniforms do shader GLSL do VU meter.
+    /// Cache of uniform locations in the VU meter GLSL shader.
     pub vu_uniforms: Arc<OnceLock<VuUniforms>>,
-    /// Estado compartilhado do medidor esquerdo.
+    /// Shared state for the left meter.
     pub vu_l_state: Option<Arc<VuMeterSharedState>>,
-    /// Estado compartilhado do medidor direito.
+    /// Shared state for the right meter.
     pub vu_r_state: Option<Arc<VuMeterSharedState>>,
-    /// Callback de desenho OpenGL do medidor esquerdo.
+    /// OpenGL drawing callback for the left meter.
     pub vu_l_callback: Option<Arc<egui_glow::CallbackFn>>,
-    /// Callback de desenho OpenGL do medidor direito.
+    /// OpenGL drawing callback for the right meter.
     pub vu_r_callback: Option<Arc<egui_glow::CallbackFn>>,
-    /// Indica se um arquivo de modelo válido está sendo arrastado sobre a janela.
+    /// Indicates whether a valid model file is being dragged over the window.
     pub drag_active: bool,
-    /// Carga da CPU/DSP amortecida em porcentagem.
+    /// Damped CPU/DSP load in percentage.
     pub telem_load_pct: f64,
-    /// Tempo de ciclo amortecido em nanosegundos.
+    /// Damped cycle time in nanoseconds.
     pub telem_cycle_ns: u64,
-    /// Buffer de tempo máximo em nanosegundos.
+    /// Maximum time buffer in nanoseconds.
     pub telem_budget_ns: u64,
-    /// Expiração do banner visual de erro de carregamento (None se não estiver ativo).
+    /// Expiration of the visual error loading banner (None if not active).
     pub error_expiration: Option<Instant>,
-    /// Mensagem curta/resumida do erro.
+    /// Short/summary error message.
     pub error_msg: String,
-    /// Cache de strings da status bar (SR, Lat, DSP%, Cycles, Last N, RT Prio, Overloads, Flags).
+    /// Cached status bar strings (SR, Lat, DSP%, Cycles, Last N, RT Prio, Overloads, Flags).
     pub status_strings: [String; 8],
-    /// Tooltips correspondentes de cada item da status bar.
+    /// Corresponding tooltips for each status bar item.
     pub status_tooltips: [&'static str; 8],
-    /// Cache dos metadados completos do modelo para detecção de mudanças.
+    /// Cache of complete model metadata for change detection.
     pub cached_metadata: Option<NamModelMetadata>,
-    /// Cache de strings de exibição dos metadados (texto, tooltip).
+    /// Cached metadata display strings (text, tooltip).
     pub metadata_display: Vec<(String, String)>,
-    /// Nome do modelo armazenado em cache para exibição.
+    /// Cached model name for display.
     pub model_display_name: String,
 }
 

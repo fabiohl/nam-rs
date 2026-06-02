@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels SIMD para arquitetura WaveNet (Head Sum, Accumulate, Gated Activation).
+//! SIMD kernels for WaveNet architecture (Head Sum, Accumulate, Gated Activation).
 //!
-//! Este módulo contém kernels altamente especializados para a cascata de camadas
-//! WaveNet, focando em minimizar acessos à memória e maximizar a densidade aritmética.
+//! This module contains highly specialized kernels for the WaveNet layer cascade,
+//! focusing on minimizing memory accesses and maximizing arithmetic density.
 //!
-//! # Operações Críticas
-//! - **Head Accumulate**: Soma dos vetores de skip-connection para a saída final.
-//! - **Gated Activation**: Fusão de `tanh` e `sigmoid` em um único kernel SIMD.
-//! - **Dialated Conv Fetches**: Otimização de busca de dados em linhas de atraso (delay lines).
+//! # Critical Operations
+//! - **Head Accumulate**: Sum of skip-connection vectors for the final output.
+//! - **Gated Activation**: Fusion of `tanh` and `sigmoid` in a single SIMD kernel.
+//! - **Dilated Conv Fetches**: Data fetch optimization for delay lines.
 //!
-//! Extraídos de `simd/avx2.rs`, `simd/avx512.rs` e `common/scalar_ref.rs`
-//! durante a Tarefa 3.4.
+//! Extracted from `simd/avx2.rs`, `simd/avx512.rs` and `common/scalar_ref.rs`
+//! during Task 3.4.
 
 pub mod accumulate;
 pub mod head;

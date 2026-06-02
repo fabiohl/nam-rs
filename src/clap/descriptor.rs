@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Descriptor de identidade do plugin NAM-rs no formato CLAP.
+//! Identity descriptor of the NAM-rs plugin in CLAP format.
 
 use clack_plugin::prelude::*;
 
-/// Retorna o descritor imutável do plugin.
-/// Lido pelo host durante scan — deve ser determinístico e sem alocações.
+/// Returns the immutable plugin descriptor.
+/// Read by the host during scan — must be deterministic and without allocations.
 pub fn nam_descriptor() -> PluginDescriptor {
     PluginDescriptor::new("br.eti.fabiolima.nam-rs", "NAM-rs")
         .with_vendor("Fabio Lima")

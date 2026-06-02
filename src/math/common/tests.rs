@@ -9,8 +9,8 @@ use crate::math::gemm::dot::{dot_product_avx2, dot_product_avx512};
 
 #[test]
 fn test_dot_product_avx2_fma() {
-    // Testa a operação de 'Produto Escalar' (multiplicar e somar tudo).
-    // É o cálculo matemático mais frequente dentro das redes neurais.
+    // Tests the 'Dot Product' operation (multiply and sum everything).
+    // This is the most frequent mathematical calculation inside neural networks.
     let vec_a = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
     let vec_b = vec![2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0];
     let vec_b_u16: Vec<u16> = vec_b
@@ -27,7 +27,7 @@ fn test_dot_product_avx2_fma() {
     // FMA math is accurate but compare with epsilon
     assert!(
         (result - expected).abs() < 1e-4,
-        "Resultado divergente: esperado {}, obtido {}",
+        "Divergent result: expected {}, got {}",
         expected,
         result
     );
@@ -35,7 +35,7 @@ fn test_dot_product_avx2_fma() {
 
 #[test]
 fn test_dot_product_avx512() {
-    // Versão do teste de produto escalar para processadores ultra-modernos (AVX-512).
+    // Dot product test version for ultra-modern processors (AVX-512).
     if crate::math::common::SimdMathConfig::get().instruction_set
         >= crate::math::common::InstructionSet::Avx512
     {
@@ -56,20 +56,20 @@ fn test_dot_product_avx512() {
 
         assert!(
             (result - expected).abs() < 1e-4,
-            "Resultado divergente: esperado {}, obtido {}",
+            "Divergent result: expected {}, got {}",
             expected,
             result
         );
     }
 }
 
-/// Verifica que `set_daz_ftz` seta corretamente os bits DAZ (6) e FTZ (15) no MXCSR.
+/// Verifies that `set_daz_ftz` correctly sets the DAZ (6) and FTZ (15) bits in MXCSR.
 #[test]
 fn test_set_daz_ftz() {
-    // Verifica se o processador está configurado para ignorar números 'fantasmagoricamente'
-    // pequenos (denormais). Isso evita lentidão extrema no processamento de áudio.
+    // Checks if the processor is configured to ignore 'ghostly'
+    // tiny numbers (denormals). This avoids extreme slowdown in audio processing.
     unsafe {
-        // Ler MXCSR atual e limpar DAZ+FTZ para verificar que a função os seta
+        // Read current MXCSR and clear DAZ+FTZ to verify the function sets them
         let mut before: u32 = 0;
         core::arch::asm!("stmxcsr [{0}]", in(reg) &mut before);
         let cleared = before & !0x8040;
@@ -81,18 +81,18 @@ fn test_set_daz_ftz() {
         core::arch::asm!("stmxcsr [{0}]", in(reg) &mut after);
         assert!(
             (after & 0x8040) == 0x8040,
-            "set_daz_ftz() não setou DAZ+FTZ: MXCSR=0x{:08X}",
+            "set_daz_ftz() did not set DAZ+FTZ: MXCSR=0x{:08X}",
             after
         );
 
-        // Restaurar MXCSR original
+        // Restore original MXCSR
         core::arch::asm!("ldmxcsr [{0}]", in(reg) &before);
     }
 }
 
 #[test]
 fn test_compute_energy_avx2() {
-    // Testa o cálculo de energia (volume médio) usando aceleração AVX2.
+    // Tests energy calculation (average volume) using AVX2 acceleration.
     let data = vec![1.0, 2.0, 3.0, 4.0];
     let energy = unsafe { compute_energy_avx2(&data) };
     // (1^2 + 2^2 + 3^2 + 4^2) / 4 = (1 + 4 + 9 + 16) / 4 = 30 / 4 = 7.5
@@ -105,7 +105,7 @@ fn test_compute_energy_avx2() {
 
 #[test]
 fn test_compute_max_diff_avx2() {
-    // Testa o cálculo da maior diferença entre dois sons usando AVX2.
+    // Tests the calculation of the largest difference between two sounds using AVX2.
     let a = vec![1.0, 2.0, 3.0, 4.0];
     let b = vec![1.1, 1.9, 3.5, 3.8];
     let max_diff = unsafe { compute_max_diff_avx2(&a, &b) };
@@ -120,7 +120,7 @@ fn test_compute_max_diff_avx2() {
 
 #[test]
 fn test_horizontal_sum() {
-    // Testa a soma de todos os números dentro de um 'pacote' SIMD (8 ou 16 números).
+    // Tests the sum of all numbers inside a SIMD 'pack' (8 or 16 numbers).
     fn test_n<const N: usize>(data_ptr: *const f32, expected: f32) {
         let res_avx2 = unsafe { Avx2Math::horizontal_sum::<N>(data_ptr) };
         assert!(
@@ -156,7 +156,7 @@ fn test_horizontal_sum() {
 
 #[test]
 fn test_accumulate_head() {
-    // Testa a soma acumulada de dois blocos de som (usada para combinar resultados de camadas).
+    // Tests the accumulated sum of two sound blocks (used to combine layer results).
     fn test_backend<M: SimdMath>() {
         let mut dest = vec![1.0; 32];
         let src = vec![2.0; 32];
@@ -174,15 +174,15 @@ fn test_accumulate_head() {
         }
     }
 
-    // test_backend::<ScalarMath>(); // ScalarMath foi removido (Projeto foca em x86-64-v3+)
+    // test_backend::<ScalarMath>(); // ScalarMath removed (Project targets x86-64-v3+)
     test_backend::<Avx2Math>();
     if std::is_x86_feature_detected!("avx512f") {
         test_backend::<Avx512Math>();
     }
 }
 
-/// Verifica se a conversão de números de precisão total (f32) para o formato compacto (bfloat16)
-/// mantém a paridade matemática rigorosa.
+/// Verifies that the conversion from full-precision numbers (f32) to the compact format (bfloat16)
+/// maintains strict mathematical parity.
 #[test]
 fn test_f32_to_bf16_avx2_parity() {
     if !is_x86_feature_detected!("avx2") {
@@ -202,8 +202,8 @@ fn test_f32_to_bf16_avx2_parity() {
     assert_eq!(dest_simd, dest_ref);
 }
 
-/// Garante que o salvamento dos dados compactos (bfloat16) na memória é feito
-/// sem perdas ou corrupção de dados.
+/// Ensures that saving compact data (bfloat16) to memory is done
+/// without data loss or corruption.
 #[test]
 fn test_store_bf16_avx2() {
     if !is_x86_feature_detected!("avx2") {
@@ -222,8 +222,8 @@ fn test_store_bf16_avx2() {
     }
 }
 
-/// Garante que o salvamento de dados compactos (bfloat16) usando a largura total do
-/// AVX-512 (512 bits) seja feito sem perdas ou corrupção.
+/// Ensures that saving compact data (bfloat16) using the full AVX-512
+/// width (512 bits) is done without data loss or corruption.
 #[test]
 fn test_store_bf16_avx512() {
     if !is_x86_feature_detected!("avx512f") {
@@ -360,12 +360,12 @@ fn test_convolve_stereo_dual_parity() {
 
 // ── S7.T08 Regression Tests ──────────────────────────────────────────────────
 
-/// Converte um slice f32 para BF16 usando o método correto (shift right by 16).
+/// Converts an f32 slice to BF16 using the correct method (shift right by 16).
 fn f32_to_bf16_ref(src: &[f32]) -> Vec<u16> {
     src.iter().map(|s| (s.to_bits() >> 16) as u16).collect()
 }
 
-/// Gera dados BF16 pseudo-aleatórios a partir de sementes determinísticas.
+/// Generates pseudo-random BF16 data from deterministic seeds.
 fn gen_bf16_data(len: usize, seed: f32) -> Vec<u16> {
     (0..len)
         .map(|i| {
@@ -375,8 +375,8 @@ fn gen_bf16_data(len: usize, seed: f32) -> Vec<u16> {
         .collect()
 }
 
-/// Verifica que a conversão F32→BF16 via AVX-512 produz os mesmos bits
-/// que a referência escalar, inclusive no remainder (< 16 elementos).
+/// Verifies that the F32→BF16 conversion via AVX-512 produces the same bits
+/// as the scalar reference, including in the remainder (< 16 elements).
 #[test]
 fn test_f32_to_bf16_avx512_regression() {
     if !is_x86_feature_detected!("avx512f") {
@@ -397,7 +397,7 @@ fn test_f32_to_bf16_avx512_regression() {
         assert_eq!(
             dest,
             expected,
-            "F32→BF16 divergiu no len={}: simd={:?}, ref={:?}",
+            "F32→BF16 diverged at len={}: simd={:?}, ref={:?}",
             len,
             &dest[..],
             &expected[..]
@@ -405,7 +405,7 @@ fn test_f32_to_bf16_avx512_regression() {
     }
 }
 
-/// Valida que dot_product_bf16_avx512 bate com o fallback escalar (já correto).
+/// Validates that dot_product_bf16_avx512 matches the scalar fallback (already correct).
 #[test]
 fn test_dot_product_bf16_avx512_regression() {
     if !is_x86_feature_detected!("avx512bf16") {
@@ -424,7 +424,7 @@ fn test_dot_product_bf16_avx512_regression() {
         let error = (result - expected).abs();
         assert!(
             error < 1e-5,
-            "BF16 dot product divergiu no len={}: simd={}, ref={}, err={}",
+            "BF16 dot product diverged at len={}: simd={}, ref={}, err={}",
             len,
             result,
             expected,
@@ -433,7 +433,7 @@ fn test_dot_product_bf16_avx512_regression() {
     }
 }
 
-/// Valida que gemv_overwrite_bf16_avx512 bate com o fallback escalar.
+/// Validates that gemv_overwrite_bf16_avx512 matches the scalar fallback.
 #[test]
 fn test_gemv_overwrite_bf16_avx512_regression() {
     if !is_x86_feature_detected!("avx512bf16") {
@@ -488,7 +488,7 @@ fn test_gemv_overwrite_bf16_avx512_regression() {
             let error = (out_simd[j] - out_ref[j]).abs();
             assert!(
                 error < 1e-5,
-                "BF16 GEMV divergiu: in={} out={} ch={}: simd={}, ref={}, err={}",
+                "BF16 GEMV diverged: in={} out={} ch={}: simd={}, ref={}, err={}",
                 in_len,
                 out_len,
                 j,

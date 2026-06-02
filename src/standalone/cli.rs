@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Funções auxiliares para interface de Linha de Comando (CLI).
+//! Helper functions for Command Line Interface (CLI).
 //!
-//! Lida com a exibição de ajuda e a interpretação dos argumentos
-//! fornecidos pelo usuário via terminal.
+//! Handles the display of help and parsing of arguments
+//! provided by the user via terminal.
 
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 
@@ -13,7 +13,7 @@ use lexopt::prelude::*;
 
 use std::path::PathBuf;
 
-/// Imprime as instruções de uso e ajuda no terminal.
+/// Prints usage instructions and help in the terminal.
 pub fn print_help() {
     println!(
         "{}",
@@ -36,20 +36,20 @@ pub fn print_help() {
     println!("  -h, --help              Show this help message and exit");
 }
 
-/// Exibe uma mensagem de erro estilizada e encerra o processo com código 1.
+/// Displays a styled error message and exits the process with code 1.
 pub fn exit_with_error(msg: impl std::fmt::Display) -> ! {
     eprintln!("{} {}", "❌ Argument error:".red().bold(), msg);
     eprintln!("{}", "👉 Use '-h' to show the help screen".yellow());
     std::process::exit(1);
 }
 
-/// Faz o parsing dos argumentos de linha de comando.
+/// Parses command-line arguments.
 ///
-/// Retorna uma tupla contendo:
-/// - Opcional caminho para o modelo (`PathBuf`)
-/// - Ganho de entrada em dB (`f32`)
-/// - Ganho de saída em dB (`f32`)
-/// - Tamanho de buffer desejado (`u32`)
+/// Returns a tuple containing:
+/// - Optional path to the model (`PathBuf`)
+/// - Input gain in dB (`f32`)
+/// - Output gain in dB (`f32`)
+/// - Desired buffer size (`u32`)
 pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
     let mut model_path = None;
     let mut input_gain = 0.0;
@@ -72,7 +72,7 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
                     .into_string()
                     .unwrap_or_else(|_| exit_with_error("Invalid model path (UTF-8)."));
 
-                // Implementação simplificada de tilde expansion
+                // Simplified tilde expansion implementation
                 let expanded = if p_str.starts_with("~/") {
                     if let Ok(home) = std::env::var("HOME") {
                         p_str.replacen("~", &home, 1)

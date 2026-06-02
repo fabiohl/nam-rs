@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Toggle de bypass Rocker Switch com LED, glow e halo de automação.
+//! Bypass Rocker Switch toggle with LED, glow and automation halo.
 
 use clack_plugin::host::HostSharedHandle;
 use std::sync::atomic::Ordering;
 
 use super::colors::{COL_BORDER, COL_BYPASS_OFF, COL_MUTED, COL_PANEL};
 
-/// Desenha o toggle de bypass com LED e labels "BYPASS" / "ACTIVE".
-/// `indication` encoda os bits de `param_indication`: bit 0=IS_MAPPED, bit 1=IS_AUTOMATING, bit 2=IS_OVERRIDING.
+/// Draws the bypass toggle with LED and "BYPASS" / "ACTIVE" labels.
+/// `indication` encodes the bits of `param_indication`: bit 0=IS_MAPPED, bit 1=IS_AUTOMATING, bit 2=IS_OVERRIDING.
 #[allow(clippy::too_many_arguments)]
 pub fn handle_bypass(
     ui: &mut egui::Ui,

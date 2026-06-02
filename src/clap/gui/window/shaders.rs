@@ -3,12 +3,12 @@
 
 use glow::HasContext;
 
-/// Shader GLSL de vértices para o medidor VU.
+/// GLSL vertex shader for the VU meter.
 ///
-/// Geometria: gera um quad (2 triângulos, 6 vértices) a partir dos uniforms `u_viewport` e
-/// `u_meter_rect`. As coordenadas do retângulo do medidor são convertidas para NDC (Normalized
-/// Device Coordinates) usando o viewport do egui. O atributo `v_uv` (0→1 em ambos os eixos)
-/// é interpolado para uso no fragment shader.
+/// Geometry: generates a quad (2 triangles, 6 vertices) from the `u_viewport` and
+/// `u_meter_rect` uniforms. The meter rectangle coordinates are converted to NDC (Normalized
+/// Device Coordinates) using the egui viewport. The `v_uv` attribute (0→1 on both axes)
+/// is interpolated for use in the fragment shader.
 pub(crate) const VERTEX_SHADER_SRC: &str = r#"#version 330 core
 uniform vec4 u_viewport;
 uniform vec4 u_meter_rect;
@@ -52,16 +52,16 @@ void main() {
 }
 "#;
 
-/// Shader GLSL de fragmento para o medidor VU.
+/// GLSL fragment shader for the VU meter.
 ///
-/// Implementa um medidor vertical com gradiente tricolor baseado em thresholds de dB:
-/// - **Verde** (`COL_VU_GREEN`): até `green_frac` (≈ -12 dBFS → 48/66 do range)
-/// - **Amarelo** (`COL_VU_YELLOW`): de `green_frac` até `yellow_frac` (≈ -3 dBFS → 57/66)
-/// - **Vermelho** (`COL_VU_RED`): acima de `yellow_frac`
+/// Implements a vertical meter with a three-color gradient based on dB thresholds:
+/// - **Green** (`COL_VU_GREEN`): up to `green_frac` (≈ -12 dBFS → 48/66 of range)
+/// - **Yellow** (`COL_VU_YELLOW`): from `green_frac` up to `yellow_frac` (≈ -3 dBFS → 57/66)
+/// - **Red** (`COL_VU_RED`): above `yellow_frac`
 ///
-/// O indicador de peak hold é renderizado como uma linha horizontal fina (1.5px)
-/// na posição `u_hold_frac`, colorida conforme `u_hold_color_type` (0=verde, 1=amarelo, 2=vermelho).
-/// Cantos arredondados (raio 1.5px) são aplicados via distance field no espaço de textura.
+/// The peak hold indicator is rendered as a thin horizontal line (1.5px)
+/// at position `u_hold_frac`, colored according to `u_hold_color_type` (0=green, 1=yellow, 2=red).
+/// Rounded corners (radius 1.5px) are applied via distance field in texture space.
 pub(crate) const FRAGMENT_SHADER_SRC: &str = r#"#version 330 core
 precision mediump float;
 in vec2 v_uv;
@@ -134,11 +134,11 @@ void main() {
 }
 "#;
 
-/// Compila e linka um programa OpenGL a partir de fontes GLSL de vértice e fragmento.
+/// Compiles and links an OpenGL program from GLSL vertex and fragment sources.
 ///
-/// Em caso de erro de compilação ou linkagem, todos os recursos parciais (shaders, programa)
-/// são limpos antes de retornar o erro. Os shaders são desanexados e deletados após a
-/// linkagem bem-sucedida, conforme boas práticas de OpenGL.
+/// In case of compilation or linking errors, all partial resources (shaders, program)
+/// are cleaned up before returning the error. Shaders are detached and deleted after
+/// successful linking, following OpenGL best practices.
 pub(crate) fn compile_shader_program(
     gl: &glow::Context,
     vertex_source: &str,

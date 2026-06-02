@@ -1,97 +1,97 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Códigos de erro tipados para triagem precisa de falhas.
+//! Typed error codes for precise failure triage.
 //!
-//! A convenção numérica dos códigos:
-//! - **E1xxx**: Carregamento de modelo (I/O, parse, build)
-//! - **E2xxx**: PipeWire / áudio (init, stream, resampler, RT)
-//! - **E3xxx**: SPSC / comunicação inter-thread
-//! - **E4xxx**: Runtime / CLI (parsing, comandos)
-//! - **E5xxx**: Sistema / hardware (CPU features, memória)
+//! Numeric code convention:
+//! - **E1xxx**: Model loading (I/O, parse, build)
+//! - **E2xxx**: PipeWire / audio (init, stream, resampler, RT)
+//! - **E3xxx**: SPSC / inter-thread communication
+//! - **E4xxx**: Runtime / CLI (parsing, commands)
+//! - **E5xxx**: System / hardware (CPU features, memory)
 
 use std::fmt;
 
-/// Código de erro estruturado para triagem precisa de falhas.
+/// Structured error code for precise failure triage.
 ///
-/// Cada variante mapeia a exatamente um cenário de falha. O código numérico
-/// (usado no bloco de suporte) segue a convenção:
-/// - **E1xxx**: Carregamento de modelo (I/O, parse, build)
-/// - **E2xxx**: PipeWire / áudio (init, stream, resampler, RT)
-/// - **E3xxx**: SPSC / comunicação inter-thread
-/// - **E4xxx**: Runtime / CLI (parsing, comandos)
-/// - **E5xxx**: Sistema / hardware (CPU features, memória)
+/// Each variant maps to exactly one failure scenario. The numeric code
+/// (used in the support block) follows the convention:
+/// - **E1xxx**: Model loading (I/O, parse, build)
+/// - **E2xxx**: PipeWire / audio (init, stream, resampler, RT)
+/// - **E3xxx**: SPSC / inter-thread communication
+/// - **E4xxx**: Runtime / CLI (parsing, commands)
+/// - **E5xxx**: System / hardware (CPU features, memory)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NamErrorCode {
-    // E1xxx — Carregamento de Modelo
-    /// Arquivo de modelo não encontrado no sistema de arquivos.
+    // E1xxx — Model Loading
+    /// Model file not found on the filesystem.
     FileNotFound,
-    /// Erro de leitura de I/O ao acessar o arquivo de modelo.
+    /// I/O read error while accessing the model file.
     FileReadError,
-    /// Extensão de arquivo desconhecida (esperado .nam ou .namb).
+    /// Unknown file extension (expected .nam or .namb).
     UnknownExtension,
-    /// Falha ao fazer parse do JSON no formato .nam.
+    /// Failed to parse JSON in .nam format.
     NamJsonParseError,
-    /// Array `weights` do JSON excede o limite de floats (MAX_WEIGHTS).
+    /// JSON `weights` array exceeds float limit (MAX_WEIGHTS).
     NamJsonWeightsExceedLimit,
-    /// Campo `metadata.training` do JSON excede limite de tamanho (1 MiB).
+    /// JSON `metadata.training` field exceeds size limit (1 MiB).
     NamJsonTrainingTooLarge,
-    /// Campo `metadata.training` do JSON excede limite de profundidade de árvore.
+    /// JSON `metadata.training` field exceeds tree depth limit.
     NamJsonTrainingTooDeep,
-    /// Checksum CRC32 do .namb não confere com o esperado.
+    /// .namb CRC32 checksum does not match expected value.
     NambCrc32Mismatch,
-    /// Flag CRC32 ausente em arquivo .namb v2+ (obrigatório).
+    /// CRC32 flag missing in .namb v2+ file (mandatory).
     NambCrc32Missing,
-    /// Assinatura mágica do .namb inválida.
+    /// Invalid .namb magic signature.
     NambInvalidMagic,
-    /// Versão do formato .namb não suportada.
+    /// Unsupported .namb format version.
     NambUnsupportedVersion,
-    /// Arquivo .namb truncado (menor que o cabeçalho mínimo).
+    /// Truncated .namb file (smaller than the minimum header).
     NambTruncated,
-    /// Arquitetura neural declarada não é suportada (nem WaveNet nem LSTM).
+    /// Declared neural architecture is not supported (neither WaveNet nor LSTM).
     UnsupportedArchitecture,
-    /// Topologia WaveNet/LSTM não detectável a partir da configuração.
+    /// WaveNet/LSTM topology not detectable from the configuration.
     TopologyDetectionFailed,
-    /// Quantidade de pesos inconsistente com a geometria da rede.
+    /// Weight count inconsistent with network geometry.
     WeightCountMismatch,
-    /// Falha genérica na construção do modelo pelo dispatcher.
+    /// Generic failure building the model via the dispatcher.
     ModelBuildFailed,
-    /// Arquivo de modelo excede o tamanho máximo permitido (256 MiB).
+    /// Model file exceeds the maximum allowed size (256 MiB).
     ModelTooLarge,
 
-    // E2xxx — PipeWire / Áudio
-    /// Falha ao inicializar o PipeWire ou criar o contexto/core.
+    // E2xxx — PipeWire / Audio
+    /// Failed to initialize PipeWire or create context/core.
     PipewireInitFailed,
-    /// Falha ao conectar o stream do PipeWire.
+    /// Failed to connect the PipeWire stream.
     StreamConnectFailed,
-    /// Falha ao construir o NamResampler (Sinc Polifásico nativo).
+    /// Failed to build the NamResampler (native Polyphase Sinc).
     ResamplerBuildFailed,
-    /// Canal SPSC de resamplers cheio (rebuild descartado).
+    /// SPSC resampler channel full (rebuild discarded).
     ResamplerChannelFull,
-    /// Permissão negada para SCHED_FIFO (sem RT privileges).
+    /// Permission denied for SCHED_FIFO (no RT privileges).
     SchedFifoDenied,
-    /// Falha ao definir afinidade de CPU na thread DSP.
+    /// Failed to set CPU affinity on the DSP thread.
     CpuAffinityFailed,
-    /// Deadline do PipeWire estourado (Processamento DSP excedeu budget).
+    /// PipeWire deadline exceeded (DSP processing exceeded budget).
     DeadlineExceeded,
 
-    // E3xxx — SPSC / Comunicação
-    /// Canal SPSC de parâmetros CLI→DSP cheio.
+    // E3xxx — SPSC / Communication
+    /// CLI→DSP parameter SPSC channel full.
     ParamChannelFull,
 
     // E4xxx — Runtime / CLI
-    /// Valor de ganho inválido (não é um número f32 válido).
+    /// Invalid gain value (not a valid f32 number).
     InvalidGainValue,
-    /// Comando CLI desconhecido.
+    /// Unknown CLI command.
     UnknownCommand,
-    /// Falha ao configurar o handler de Ctrl-C.
+    /// Failed to configure the Ctrl-C handler.
     CtrlCHandlerFailed,
-    /// Overflow detectado no canal de Garbage Collection (GC).
+    /// Overflow detected in the Garbage Collection (GC) channel.
     GcOverflow,
 }
 
 impl NamErrorCode {
-    /// Retorna o código numérico no formato "Exxxx".
+    /// Returns the numeric code in "Exxxx" format.
     pub fn code(self) -> &'static str {
         match self {
             Self::FileNotFound => "E1100",
@@ -126,7 +126,7 @@ impl NamErrorCode {
         }
     }
 
-    /// Retorna o nome mnemônico legível (SCREAMING_SNAKE_CASE) do código.
+    /// Returns the human-readable mnemonic name (SCREAMING_SNAKE_CASE) of the code.
     pub fn mnemonic(self) -> &'static str {
         match self {
             Self::FileNotFound => "FILE_NOT_FOUND",

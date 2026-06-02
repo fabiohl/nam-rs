@@ -7,10 +7,10 @@ use std::time::{Duration, Instant};
 
 #[test]
 fn test_dsp_bridge_concurrent_access() {
-    // 1. Setup do DspBridge:
-    // Usamos Box::leak para obter uma referência 'static, simulando o comportamento
-    // em tempo de execução onde o objeto vive por toda a duração do host PipeWire.
-    // Isso permite converter a referência para ponteiros raw (*const/*mut) com segurança.
+    // 1. DspBridge setup:
+    // We use Box::leak to obtain a 'static reference, simulating the runtime
+    // behavior where the object lives for the entire duration of the PipeWire host.
+    // This allows safely converting the reference into raw pointers (*const/*mut).
     let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
         buffers: [
             BridgeBuffer {
@@ -30,31 +30,31 @@ fn test_dsp_bridge_concurrent_access() {
         dropped_frames: std::sync::atomic::AtomicU32::new(0),
     }));
 
-    // Ponteiros raw para as threads (writer/reader)
+    // Raw pointers for the threads (writer/reader)
     let bridge_ptr_writer = bridge as *const DspBridge as *mut DspBridge as usize;
     let bridge_ptr_reader = bridge as *const DspBridge;
 
-    // 2. Thread Escritora (Simula Capture Callback RT):
-    // Esta thread preenche o "back buffer" (o buffer que não está sendo lido)
-    // e depois alterna o índice atômico para torná-lo o novo "front buffer".
+    // 2. Writer Thread (Simulates RT Capture Callback):
+    // This thread fills the "back buffer" (the buffer not being read)
+    // and then toggles the atomic index to make it the new "front buffer".
     let writer_handle = std::thread::spawn(move || {
         let mut counter = 0.0f32;
         let bridge_ptr_writer = bridge_ptr_writer as *mut DspBridge;
         for _ in 0..1000 {
             let bridge_ref = unsafe { &mut *bridge_ptr_writer };
 
-            // Evita que o escritor sobrescreva o buffer que está sendo lido
+            // Prevents the writer from overwriting the buffer being read
             while bridge_ref.generation.load(Ordering::Acquire)
                 > bridge_ref.consumed_gen.load(Ordering::Acquire)
             {
                 std::thread::yield_now();
             }
 
-            // Localiza o buffer inativo (back-buffer) para escrita.
+            // Locates the inactive buffer (back-buffer) for writing.
             let back_idx = 1 - bridge_ref.active_read_idx.load(Ordering::Relaxed);
             let back_buf = &mut bridge_ref.buffers[back_idx];
 
-            // Preenche com dados sequenciais para verificar integridade no leitor.
+            // Fills with sequential data to verify integrity in the reader.
             for i in 0..64 {
                 back_buf.buf_l[i] = counter;
                 back_buf.buf_r[i] = counter;
@@ -67,14 +67,14 @@ fn test_dsp_bridge_concurrent_access() {
                 .store(back_idx, Ordering::Release);
             bridge_ref.generation.fetch_add(1, Ordering::Release);
 
-            // Pequeno delay para simular o tempo de processamento DSP e permitir interleave.
+            // Small delay to simulate DSP processing time and allow interleaving.
             std::thread::sleep(Duration::from_micros(10));
         }
     });
 
-    // 3. Thread Leitora (Simula Playback Callback RT):
-    // Esta thread monitora o contador 'generation'. Quando ele muda, ela
-    // consome o novo "front buffer".
+    // 3. Reader Thread (Simulates RT Playback Callback):
+    // This thread monitors the 'generation' counter. When it changes, it
+    // consumes the new "front buffer".
     let start = Instant::now();
     let mut last_gen = 0;
     let mut reads = 0;
@@ -90,27 +90,27 @@ fn test_dsp_bridge_concurrent_access() {
 
             assert_eq!(front_buf.n_samples, 64);
 
-            // Verificação de Integridade: os dados em um buffer devem ser contíguos.
+            // Integrity Check: data in a buffer must be contiguous.
             let first_val = front_buf.buf_l[0];
             for i in 0..64 {
                 assert_eq!(
                     front_buf.buf_l[i],
                     first_val + i as f32,
-                    "Buffer mixing detectado no canal L"
+                    "Buffer mixing detected in channel L"
                 );
                 assert_eq!(
                     front_buf.buf_r[i],
                     first_val + i as f32,
-                    "Buffer mixing detectado no canal R"
+                    "Buffer mixing detected in channel R"
                 );
             }
 
-            // Verificação de Monotonicidade:
-            // Mesmo se pularmos frames (o que pode ocorrer em testes sob carga),
-            // nunca devemos ler dados mais antigos do que os lidos anteriormente.
+            // Monotonicity Check:
+            // Even if we skip frames (which may occur in tests under load),
+            // we must never read data older than previously read.
             assert!(
                 first_val > last_val_read,
-                "Lido dado mais antigo do que o visto anteriormente! (Stale read)"
+                "Read older data than previously seen! (Stale read)"
             );
             last_val_read = front_buf.buf_l[63];
 
@@ -128,11 +128,11 @@ fn test_dsp_bridge_concurrent_access() {
 
     writer_handle.join().unwrap();
 
-    // 4. Verificação de Performance:
-    // O teste deve completar rapidamente. Se demorar muito, indica deadlocks
-    // ou starvation severa (embora o design seja lock-free).
+    // 4. Performance Check:
+    // The test should complete quickly. If it takes too long, it indicates deadlocks
+    // or severe starvation (even though the design is lock-free).
     assert!(
         start.elapsed() < Duration::from_millis(500),
-        "O teste demorou demais para executar"
+        "Test took too long to execute"
     );
 }

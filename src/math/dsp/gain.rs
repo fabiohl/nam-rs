@@ -7,33 +7,33 @@
     clippy::too_many_arguments
 )]
 
-//! Operações DSP de ganho, detecção de clipping e rampa estéreo.
+//! DSP gain operations, clipping detection, and stereo ramp.
 //!
-//! Despacha dinamicamente para o backend SIMD configurado.
+//! Dynamically dispatches to the configured SIMD backend.
 
 use core::arch::x86_64::*;
 
-/// Aplica ganho constante em um buffer mono via despacho SIMD.
+/// Applies constant gain to a mono buffer via SIMD dispatch.
 ///
 /// # Safety
-/// O buffer deve ser válido.
+/// The buffer must be valid.
 pub unsafe fn apply_gain(data: &mut [f32], gain: f32) {
     crate::math::common::dispatch_simd!(apply_gain(data, gain))
 }
 
-/// Aplica ganho constante em estéreo via despacho SIMD.
+/// Applies constant gain in stereo via SIMD dispatch.
 ///
 /// # Safety
-/// Os buffers devem ser válidos e ter o mesmo tamanho.
+/// The buffers must be valid and have the same size.
 pub unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
     crate::math::common::dispatch_simd!(apply_gain_stereo(left, right, gain))
 }
 
-/// Aplica ganho e detecta clipping em estéreo em uma única passagem.
-/// Retorna `true` se qualquer amostra resultante possuir `|x| > 1.0`.
+/// Applies gain and detects clipping in stereo in a single pass.
+/// Returns `true` if any resulting sample has `|x| > 1.0`.
 ///
 /// # Safety
-/// Os buffers devem ser válidos e ter o mesmo tamanho.
+/// The buffers must be valid and have the same size.
 pub unsafe fn apply_gain_and_detect_clipping_stereo(
     left: &mut [f32],
     right: &mut [f32],
@@ -42,26 +42,26 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo(
     crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(left, right, gain))
 }
 
-/// Aplica rampa linear de ganho em estéreo via despacho SIMD.
+/// Applies linear gain ramp in stereo via SIMD dispatch.
 ///
 /// # Safety
-/// Os buffers devem ser válidos e ter o mesmo tamanho.
+/// The buffers must be valid and have the same size.
 pub unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
     crate::math::common::dispatch_simd!(apply_ramp_stereo(left, right, start, step))
 }
 
-/// Aplica rampa linear de ganho em um buffer mono via despacho SIMD.
+/// Applies linear gain ramp to a mono buffer via SIMD dispatch.
 ///
 /// # Safety
-/// O buffer deve ser válido.
+/// The buffer must be valid.
 pub unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
     crate::math::common::dispatch_simd!(apply_ramp(data, start, step))
 }
 
-/// Aplica o multiplicador linear de ganho sobre o buffer (safe wrapper).
+/// Applies the linear gain multiplier to the buffer (safe wrapper).
 ///
-/// Aborta rápido se `gain_linear` ~= 1.0 (fast-path bypass).
-/// Direciona para o backend SIMD via v-table.
+/// Fast-returns if `gain_linear` ~= 1.0 (fast-path bypass).
+/// Routes to the SIMD backend via v-table.
 pub fn apply_gain_simd(buffer: &mut [f32], gain_linear: f32) {
     if (gain_linear - 1.0).abs() < 1e-6 {
         return;
@@ -69,10 +69,10 @@ pub fn apply_gain_simd(buffer: &mut [f32], gain_linear: f32) {
     unsafe { apply_gain(buffer, gain_linear) };
 }
 
-/// Aplica uma rampa linear de ganho sobre o buffer (safe wrapper).
+/// Applies a linear gain ramp to the buffer (safe wrapper).
 ///
-/// Se o incremento for desprezível, aplica ganho constante.
-/// Direciona para o backend SIMD via v-table.
+/// If the increment is negligible, applies constant gain instead.
+/// Routes to the SIMD backend via v-table.
 pub fn apply_ramp_simd(buffer: &mut [f32], start: f32, step: f32) {
     if step.abs() < 1e-9 {
         apply_gain_simd(buffer, start);
@@ -85,7 +85,7 @@ pub fn apply_ramp_simd(buffer: &mut [f32], start: f32, step: f32) {
 // Kernels AVX2
 // ═══════════════════════════════════════════════════════════════
 
-/// Aplica ganho constante em um buffer mono usando AVX2.
+/// Applies constant gain to a mono buffer using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_gain_avx2(data: &mut [f32], gain: f32) {
     let len = data.len();
@@ -102,7 +102,7 @@ pub unsafe fn apply_gain_avx2(data: &mut [f32], gain: f32) {
     }
 }
 
-/// Aplica ganho e detecta clipping em estéreo em uma única passagem usando AVX2.
+/// Applies gain and detects clipping in stereo in a single pass using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
     left: &mut [f32],
@@ -154,7 +154,7 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(
     clipped
 }
 
-/// Aplica ganho constante em estéreo via AVX2.
+/// Applies constant gain in stereo via AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_gain_stereo_avx2(left: &mut [f32], right: &mut [f32], gain: f32) {
     let n = core::cmp::min(left.len(), right.len());
@@ -174,7 +174,7 @@ pub unsafe fn apply_gain_stereo_avx2(left: &mut [f32], right: &mut [f32], gain: 
     }
 }
 
-/// Aplica rampa linear de ganho em estéreo via AVX2.
+/// Applies linear gain ramp in stereo via AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
     let n = core::cmp::min(left.len(), right.len());
@@ -207,7 +207,7 @@ pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start:
     }
 }
 
-/// Aplica rampa linear de ganho em um buffer mono via AVX2.
+/// Applies linear gain ramp to a mono buffer via AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {
     let len = buffer.len();
@@ -241,7 +241,7 @@ pub unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {
 // Kernels AVX-512
 // ═══════════════════════════════════════════════════════════════
 
-/// Aplica ganho constante em um buffer mono usando AVX-512.
+/// Applies constant gain to a mono buffer using AVX-512.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {
     let len = data.len();
@@ -259,7 +259,7 @@ pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {
     }
 }
 
-/// Aplica ganho e detecta clipping em estéreo em uma única passagem usando AVX-512.
+/// Applies gain and detects clipping in stereo in a single pass using AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
     left: &mut [f32],
@@ -311,7 +311,7 @@ pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(
     clipped
 }
 
-/// Aplica ganho constante em estéreo via AVX-512.
+/// Applies constant gain in stereo via AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_gain_stereo_avx512(left: &mut [f32], right: &mut [f32], gain: f32) {
     let n = core::cmp::min(left.len(), right.len());
@@ -331,13 +331,13 @@ pub unsafe fn apply_gain_stereo_avx512(left: &mut [f32], right: &mut [f32], gain
     }
 }
 
-/// Aplica uma rampa de volume suave para não dar "estalos" no áudio.
-/// O volume começa em "start" e vai mudando a cada amostra pelo valor "step".
+/// Applies a smooth volume ramp to avoid audio "pops".
+/// Volume starts at "start" and changes each sample by the "step" value.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
     let n = core::cmp::min(left.len(), right.len());
     let mut i = 0;
-    // Cria uma rampa de 16 valores para multiplicar de uma vez.
+    // Creates a ramp of 16 values to multiply at once.
     let mut current_ramp = _mm512_set_ps(
         start + 15.0 * step,
         start + 14.0 * step,
@@ -360,14 +360,14 @@ pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], star
     while i + 16 <= n {
         let pl = left.as_mut_ptr().add(i);
         let pr = right.as_mut_ptr().add(i);
-        // Multiplica 16 amostras pelo volume gradual.
+        // Multiplies 16 samples by the gradual volume.
         _mm512_storeu_ps(pl, _mm512_mul_ps(_mm512_loadu_ps(pl), current_ramp));
         _mm512_storeu_ps(pr, _mm512_mul_ps(_mm512_loadu_ps(pr), current_ramp));
-        // Avança a rampa para os próximos 16.
+        // Advances the ramp for the next 16.
         current_ramp = _mm512_add_ps(current_ramp, v_step_16);
         i += 16;
     }
-    // Finaliza o que sobrou.
+    // Finishes the remainder.
     let mut g = start + (i as f32) * step;
     while i < n {
         *left.get_unchecked_mut(i) *= g;
@@ -377,7 +377,7 @@ pub unsafe fn apply_ramp_stereo_avx512(left: &mut [f32], right: &mut [f32], star
     }
 }
 
-/// Aplica rampa linear de ganho em um buffer mono via AVX-512.
+/// Applies linear gain ramp to a mono buffer via AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_ramp_avx512(buffer: &mut [f32], start: f32, step: f32) {
     let len = buffer.len();

@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Widget de knob customizado com arco, glow, tooltip e halo de automação.
+//! Custom knob widget with arc, glow, tooltip and automation halo.
 
 use clack_plugin::host::HostSharedHandle;
 use std::sync::atomic::Ordering;
 
 use super::colors::{COL_AMBER, COL_BG, COL_BORDER, COL_BYPASS_OFF, COL_MUTED, COL_TEXT};
 
-/// Renderiza um knob customizado com:
-/// - 48 segmentos (arco suave)
-/// - Glow no arco durante drag (E1)
-/// - Tooltip com valor exato no hover (E3)
-/// - Ctrl+Drag para fine-tune ÷10 (E5)
-/// - Halo de mapeamento, pulsação de automação e cor de override (A.3)
+/// Renders a custom knob with:
+/// - 48 segments (smooth arc)
+/// - Arc glow during drag (E1)
+/// - Tooltip with exact value on hover (E3)
+/// - Ctrl+Drag for fine-tune ÷10 (E5)
+/// - Mapping halo, automation pulsation and override color (A.3)
 ///
-/// Retorna `(response, new_value)`.
+/// Returns `(response, new_value)`.
 #[allow(clippy::too_many_arguments)]
 pub fn knob_widget(
     ui: &mut egui::Ui,
@@ -203,7 +203,7 @@ pub fn knob_widget(
     (response, current_value)
 }
 
-/// Gerencia um knob com label, valor em dB, gestos de automação e double-click para reset.
+/// Manages a knob with label, dB value, automation gestures and double-click to reset.
 #[allow(clippy::too_many_arguments)]
 pub fn handle_knob(
     ui: &mut egui::Ui,

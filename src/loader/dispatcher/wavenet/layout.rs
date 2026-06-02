@@ -6,7 +6,7 @@ use super::traits::{ConvWeightsOutput, DenseWeightsOutput};
 use crate::math::common::{AlignedVec, quantize_weight};
 
 // =============================================================================
-// Leitura de pesos unificada (estático + dinâmico)
+// Unified weight reading (static + dynamic)
 // =============================================================================
 
 #[allow(clippy::too_many_arguments)]
@@ -90,12 +90,12 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
 }
 
 // =============================================================================
-// Transposição e quantização
+// Transposition and quantization
 // =============================================================================
 
-/// Reorganiza os pesos das camadas de convolução no formato "Interleaved 4-Wide".
-/// Esta técnica agrupa os dados de 4 em 4, permitindo que o processador execute
-/// cálculos em "lote" (SIMD), processando 4 canais de áudio de uma só vez.
+/// Rearranges convolution layer weights into the "Interleaved 4-Wide" format.
+/// This technique groups data in blocks of 4, allowing the processor to execute
+/// calculations in "batch" (SIMD), processing 4 audio channels at once.
 pub fn transpose_conv1d_interleaved_4wide(
     raw: &[f32],
     weights: &mut [u16],
@@ -123,8 +123,8 @@ pub fn transpose_conv1d_interleaved_4wide(
     }
 }
 
-/// Reorganiza os pesos das camadas densas, trocando linhas por colunas (transposição).
-/// Isso alinha os dados com a forma como o processador lê a memória, evitando lentidão.
+/// Rearranges dense layer weights, swapping rows and columns (transposition).
+/// This aligns the data with the way the processor reads memory, avoiding slowdown.
 fn transpose_dense_layer(
     raw: &[f32],
     weights: &mut [u16],

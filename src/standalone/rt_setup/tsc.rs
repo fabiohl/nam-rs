@@ -1,32 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Calibração e leitura do Time Stamp Counter (TSC) via RDTSC.
+//! Time Stamp Counter (TSC) calibration and reading via RDTSC.
 //!
-//! Oferece medição de tempo com precisão de ~1ns e custo de ~1 ciclo,
-//! evitando a syscall vDSO clock_gettime no hot-path de áudio.
+//! Provides time measurement with ~1ns precision and ~1 cycle cost,
+//! avoiding the vDSO clock_gettime syscall in the audio hot-path.
 
 use crate::standalone::colors::Colorize;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-/// Frequência calibrada do TSC em GHz (ciclos por nanosegundo).
-/// Armazenado como ponto fixo (valor * 1000) para evitar floats no hot-path.
+/// Calibrated TSC frequency in GHz (cycles per nanosecond).
+/// Stored as fixed-point (value * 1000) to avoid floats in the hot-path.
 static TSC_FREQ_GHZ_X1000: AtomicU64 = AtomicU64::new(0);
-/// Âncora temporal para o fallback de rdtsc (monotônico).
+/// Time anchor for rdtsc fallback (monotonic).
 static BOOT_TIME: OnceLock<Instant> = OnceLock::new();
 
-/// Retorna o tempo atual em nanosegundos usando a instrução RDTSC.
+/// Returns the current time in nanoseconds using the RDTSC instruction.
 ///
-/// Oferece precisão de ~1ns com custo de ~1 ciclo, evitando a syscall vDSO clock_gettime.
-/// Se o TSC não estiver calibrado ou disponível, faz fallback para Instant::now().
+/// Provides ~1ns precision with ~1 cycle cost, avoiding the vDSO clock_gettime syscall.
+/// If the TSC is not calibrated or unavailable, falls back to Instant::now().
 #[inline(always)]
 pub fn rdtsc_nanos() -> u64 {
     let freq_x1000 = TSC_FREQ_GHZ_X1000.load(Ordering::Relaxed);
 
-    // SAFETY: Divisão por zero no hot-path é fatal. Se a calibração falhou
-    // no boot, usamos o relógio do sistema como rede de segurança.
+    // SAFETY: Division by zero in the hot-path is fatal. If calibration failed
+    // at boot, we use the system clock as a safety net.
     #[allow(clippy::manual_checked_ops)]
     if freq_x1000 != 0 {
         let cycles = unsafe { core::arch::x86_64::_rdtsc() };
@@ -36,51 +36,51 @@ pub fn rdtsc_nanos() -> u64 {
     }
 }
 
-/// Calibra a frequência do TSC (Time Stamp Counter) em relação ao relógio do sistema.
+/// Calibrates the TSC (Time Stamp Counter) frequency against the system clock.
 ///
-/// Imagine que a CPU tem um "odômetro" interno que conta cada batida do seu coração (ciclo).
-/// Como a velocidade da CPU pode variar, precisamos descobrir quantos "batimentos"
-/// equivalem a 1 nanosegundo real para podermos medir o tempo com precisão cirúrgica.
+/// Imagine the CPU has an internal "odometer" that counts every heartbeat (cycle).
+/// Since the CPU speed can vary, we need to figure out how many "ticks"
+/// equal 1 real nanosecond so we can measure time with surgical precision.
 ///
-/// Esta função é executada apenas uma vez no início do programa (cold-path).
+/// This function runs only once at program startup (cold-path).
 #[cold]
 pub fn calibrate_tsc() {
     use std::thread;
 
-    // 1. AQUECIMENTO:
-    // Chamamos a instrução uma vez e esperamos um pouco. Isso garante que a CPU
-    // "acorde" de estados de baixo consumo e que os dados estejam prontos nos caches.
+    // 1. WARM-UP:
+    // We call the instruction once and wait a bit. This ensures the CPU
+    // "wakes up" from low-power states and that data is ready in the caches.
     let _ = unsafe { core::arch::x86_64::_rdtsc() };
     thread::sleep(Duration::from_millis(10));
 
-    // 2. MARCO ZERO (Início da Medição):
-    // Capturamos simultaneamente o tempo do relógio do sistema (lento mas confiável)
-    // e o valor do contador de ciclos da CPU (ultra-rápido).
+    // 2. ZERO POINT (Start of Measurement):
+    // We simultaneously capture the system clock time (slow but reliable)
+    // and the CPU cycle counter value (ultra-fast).
     let start_inst = Instant::now();
     let start_tsc = unsafe { core::arch::x86_64::_rdtsc() };
 
-    // 3. ESPERA CONTROLADA:
-    // Aguardamos 50 milissegundos. É um tempo curto para o humano, mas permite que
-    // a CPU realize milhões de ciclos, reduzindo erros de amostragem.
+    // 3. CONTROLLED WAIT:
+    // We wait 50 milliseconds. It's a short time for a human, but allows
+    // the CPU to run millions of cycles, reducing sampling errors.
     thread::sleep(Duration::from_millis(50));
 
-    // 4. MARCO FINAL:
-    // Capturamos novamente os dois valores para calcular quanto cada um avançou.
+    // 4. END POINT:
+    // We capture both values again to calculate how much each advanced.
     let end_inst = Instant::now();
     let end_tsc = unsafe { core::arch::x86_64::_rdtsc() };
 
     let elapsed_nanos = end_inst.duration_since(start_inst).as_nanos() as u64;
     let elapsed_cycles = end_tsc.wrapping_sub(start_tsc);
 
-    // 5. CÁLCULO DA TAXA DE CONVERSÃO:
-    // Calculamos a relação: (Ciclos * 1000) / Nanosegundos.
-    // Usamos o multiplicador 1000 para guardar o resultado como um número inteiro
-    // mantendo 3 casas decimais de precisão sem precisar de ponto flutuante (floats).
+    // 5. CONVERSION RATE CALCULATION:
+    // We compute the ratio: (Cycles * 1000) / Nanoseconds.
+    // We use the 1000 multiplier to store the result as an integer
+    // while maintaining 3 decimal places of precision without floating point.
     if let Some(freq_x1000) = (elapsed_cycles * 1000).checked_div(elapsed_nanos) {
         TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::SeqCst);
 
         log::info!(
-            "{} Relógio de Alta Precisão (TSC) calibrado em {:.3} GHz",
+            "{} High-Precision Clock (TSC) calibrated at {:.3} GHz",
             "⏱️".bright_blue(),
             freq_x1000 as f64 / 1000.0
         );

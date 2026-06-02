@@ -1,35 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Lógica de Gate com Histerese Dinâmica para Otimizações de DSP.
+//! Gate logic with Dynamic Hysteresis for DSP optimizations.
 //!
-//! Este módulo implementa uma Máquina de Estados Finitos (FSM) para detectar
-//! silêncio ou sinal mono com histerese temporal e de amplitude (Schmitt Trigger).
-//! O objetivo é evitar "chattering" (oscilação rápida de estado) e artefatos
-//! audíveis (clicks/zipper noise) ao alternar entre modos de processamento.
+//! This module implements a Finite State Machine (FSM) to detect
+//! silence or mono signal with temporal and amplitude hysteresis (Schmitt Trigger).
+//! The goal is to prevent "chattering" (fast state oscillation) and audible
+//! artifacts (clicks/zipper noise) when switching between processing modes.
 
 use crate::math::common::SimdMath;
 
-/// Parâmetros de configuração para a lógica de Gate e Histerese.
+/// Configuration parameters for the Gate and Hysteresis logic.
 #[derive(Debug, Clone, Copy, PartialEq)]
-#[repr(align(128))] // Evita false sharing no canal SPSC
+#[repr(align(128))] // Avoids false sharing on the SPSC channel
 pub struct GateParams {
-    /// Limiar para abrir o gate (transição de Silêncio para Sinal), em dB.
+    /// Threshold to open the gate (transition from Silence to Signal), in dB.
     pub threshold_open_db: f32,
-    /// Limiar para fechar o gate (transição de Sinal para Silêncio), em dB.
+    /// Threshold to close the gate (transition from Signal to Silence), in dB.
     pub threshold_close_db: f32,
-    /// Número de frames (amostras) a aguardar em silêncio antes de fechar o gate.
+    /// Number of frames (samples) to wait in silence before closing the gate.
     pub hold_frames: usize,
-    /// Número de frames (amostras) para realizar o fade-in/fade-out (suavização).
+    /// Number of frames (samples) to perform the fade-in/fade-out (smoothing).
     pub fade_frames: usize,
-    /// Pré-computado: `1.0 / fade_frames as f32` para evitar divisão no hotpath.
+    /// Pre-computed: `1.0 / fade_frames as f32` to avoid division in the hotpath.
     pub inv_fade_frames: f32,
-    /// Tolerância absoluta entre canais L/R para detecção de sinal Mono.
+    /// Absolute tolerance between L/R channels for Mono signal detection.
     pub mono_epsilon: f32,
 }
 
 impl GateParams {
-    /// Cria novos parâmetros de gate computando `inv_fade_frames = 1.0 / fade_frames`.
+    /// Creates new gate parameters by computing `inv_fade_frames = 1.0 / fade_frames`.
     pub fn new(
         threshold_open_db: f32,
         threshold_close_db: f32,
@@ -55,20 +55,20 @@ impl Default for GateParams {
     }
 }
 
-/// Representa os estados possíveis do gate com histerese.
+/// Represents the possible states of the gate with hysteresis.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GateState {
-    /// Gate aberto: processamento normal.
+    /// Gate open: normal processing.
     Open,
-    /// Iniciando transição para fechado (fade-out).
+    /// Starting transition to closed (fade-out).
     FadingOut,
-    /// Gate fechado: bypass total/silêncio.
+    /// Gate closed: full bypass/silence.
     Closed,
-    /// Iniciando transição para aberto (fade-in).
+    /// Starting transition to open (fade-in).
     FadingIn,
 }
 
-/// Implementação da FSM de Histerese Dinâmica (Schmitt Trigger).
+/// Dynamic Hysteresis FSM Implementation (Schmitt Trigger).
 pub struct DynamicHysteresis {
     state: GateState,
     hold_counter: usize,
@@ -85,7 +85,7 @@ impl Default for DynamicHysteresis {
 }
 
 impl DynamicHysteresis {
-    /// Cria uma nova instância no estado inicial Aberto.
+    /// Creates a new instance in the initial Open state.
     #[cold]
     pub fn new() -> Self {
         Self {
@@ -98,25 +98,25 @@ impl DynamicHysteresis {
         }
     }
 
-    /// Retorna o estado atual da FSM.
+    /// Returns the current state of the FSM.
     pub fn state(&self) -> GateState {
         self.state
     }
 
-    /// Retorna o multiplicador de ganho atual (0.0 a 1.0).
+    /// Returns the current gain multiplier (0.0 to 1.0).
     pub fn multiplier(&self) -> f32 {
         self.current_multiplier
     }
 
-    /// Decide se o portão de ruído deve abrir, fechar ou continuar como está,
-    /// baseando-se no volume do áudio atual.
+    /// Decides whether the noise gate should open, close, or remain as is,
+    /// based on the current audio volume.
     ///
-    /// # Parâmetros
-    /// - `value`: O volume atual detectado.
-    /// - `threshold_open`: O volume necessário para "abrir" o portão.
-    /// - `threshold_close`: O volume abaixo do qual o portão deve começar a "fechar".
-    /// - `params`: Configurações de tempo (quanto tempo esperar e quão lento fechar).
-    /// - `n_samples`: Quantas amostras de som estamos processando agora.
+    /// # Parameters
+    /// - `value`: The currently detected volume.
+    /// - `threshold_open`: The volume threshold to "open" the gate.
+    /// - `threshold_close`: The volume below which the gate should start to "close".
+    /// - `params`: Timing settings (how long to wait and how slow to close).
+    /// - `n_samples`: Number of sound samples being processed now.
     pub fn update(
         &mut self,
         value: f32,
@@ -250,20 +250,20 @@ impl DynamicHysteresis {
         }
     }
 
-    /// Aplica o volume (ganho) atual ao som.
-    /// Se o portão estiver abrindo ou fechando, ele faz uma mudança suave (rampa).
-    /// Se estiver totalmente aberto ou fechado, ele aplica o volume constante.
+    /// Applies the current volume (gain) to the sound.
+    /// If the gate is opening or closing, it performs a smooth change (ramp).
+    /// If it is fully open or closed, it applies a constant volume.
     pub fn apply_gain_rt(&self, buffer: &mut [f32], n_samples: usize) {
         if self.ramp_samples == 0 {
-            // O volume está estável (não está no meio de um fade).
+            // Volume is stable (not in the middle of a fade).
             if self.current_multiplier == 0.0 {
-                // Silêncio total.
+                // Total silence.
                 buffer.fill(0.0);
             } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
-                // Aplica um volume constante (ex: 50%).
+                // Applies a constant volume (e.g., 50%).
                 crate::math::dsp::gain::apply_gain_simd(buffer, self.current_multiplier);
             }
-            // Se o volume for 1.0 (100%), não precisamos fazer nada.
+            // If volume is 1.0 (100%), nothing needs to be done.
             return;
         }
 
@@ -271,20 +271,20 @@ impl DynamicHysteresis {
         let end_mult = self.current_multiplier;
 
         if self.ramp_samples >= n_samples {
-            // A mudança suave de volume vai durar o bloco inteiro.
+            // The smooth volume change will span the entire block.
             if (start_mult - end_mult).abs() < 1e-6 {
                 crate::math::dsp::gain::apply_gain_simd(buffer, end_mult);
             } else {
-                // Calcula o "degrau" de volume para cada amostra de som.
-                // NOTA: Se n_samples = 1, step = (end - start) / 1.0.
-                // O valor resultante será aplicado à única amostra, o que é o comportamento
-                // esperado para mudanças instantâneas (sample-accurate) no CLAP.
+                // Computes the volume "step" for each sound sample.
+                // NOTE: If n_samples = 1, step = (end - start) / 1.0.
+                // The resulting value will be applied to the single sample, which is the
+                // expected behavior for sample-accurate transitions in CLAP.
                 let step = (end_mult - start_mult) / (n_samples as f32);
                 crate::math::dsp::gain::apply_ramp_simd(buffer, start_mult, step);
             }
         } else {
-            // Caso especial: a mudança de volume termina antes do fim do bloco.
-            // Dividimos o bloco em duas partes: a rampa e o volume constante final.
+            // Special case: the volume change finishes before the end of the block.
+            // We split the block into two parts: the ramp and the final constant volume.
             let (ramp_part, const_part) = buffer.split_at_mut(self.ramp_samples);
 
             if (start_mult - end_mult).abs() < 1e-6 {
@@ -294,7 +294,7 @@ impl DynamicHysteresis {
                 crate::math::dsp::gain::apply_ramp_simd(ramp_part, start_mult, step);
             }
 
-            // Preenche o restante do bloco com o volume final estabilizado.
+            // Fills the rest of the block with the stabilized final volume.
             if end_mult == 0.0 {
                 const_part.fill(0.0);
             } else if (end_mult - 1.0).abs() > 1e-6 {
@@ -303,8 +303,8 @@ impl DynamicHysteresis {
         }
     }
 
-    /// Faz o mesmo que a função acima, mas para som estéreo (canal esquerdo e direito).
-    /// O processamento é feito em conjunto para ser mais rápido.
+    /// Does the same as the function above, but for stereo sound (left and right channels).
+    /// Processing is done jointly for improved speed.
     pub fn apply_gain_rt_stereo<M: SimdMath>(
         &self,
         left: &mut [f32],
@@ -312,12 +312,12 @@ impl DynamicHysteresis {
         n_samples: usize,
     ) {
         if self.ramp_samples == 0 {
-            // Volume estável para ambos os canais.
+            // Stable volume for both channels.
             if self.current_multiplier == 0.0 {
                 left.fill(0.0);
                 right.fill(0.0);
             } else if (self.current_multiplier - 1.0).abs() > 1e-6 {
-                // Aplica o volume nos dois canais de forma eficiente.
+                // Applies volume to both channels efficiently.
                 unsafe { M::apply_gain_stereo(left, right, self.current_multiplier) };
             }
             return;
@@ -327,17 +327,17 @@ impl DynamicHysteresis {
         let end_mult = self.current_multiplier;
 
         if self.ramp_samples >= n_samples {
-            // Mudança suave nos dois canais durante todo o bloco.
+            // Smooth change across both channels for the entire block.
             if (start_mult - end_mult).abs() < 1e-6 {
                 unsafe { M::apply_gain_stereo(left, right, end_mult) };
             } else {
-                // NOTA: Com n_samples = 1, o "ramp" de 1 sample
-                // resulta em um salto direto para o valor alvo, o que é aceito por design.
+                // NOTE: With n_samples = 1, the 1-sample "ramp"
+                // results in a direct jump to the target value, which is accepted by design.
                 let step = (end_mult - start_mult) / (n_samples as f32);
                 unsafe { M::apply_ramp_stereo(left, right, start_mult, step) };
             }
         } else {
-            // Mudança suave termina antes do fim do bloco para ambos os canais.
+            // Smooth change finishes before the end of the block for both channels.
             let (ramp_l, const_l) = left.split_at_mut(self.ramp_samples);
             let (ramp_r, const_r) = right.split_at_mut(self.ramp_samples);
 
@@ -348,7 +348,7 @@ impl DynamicHysteresis {
                 unsafe { M::apply_ramp_stereo(ramp_l, ramp_r, start_mult, step) };
             }
 
-            // Finaliza o restante do bloco com o volume estável.
+            // Finalizes the rest of the block with stable volume.
             if end_mult == 0.0 {
                 const_l.fill(0.0);
                 const_r.fill(0.0);

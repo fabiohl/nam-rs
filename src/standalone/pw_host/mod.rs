@@ -1,51 +1,51 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Núcleo de processamento de áudio DSP usando `pipewire-rs`.
+//! DSP audio processing core using `pipewire-rs`.
 //!
-//! Este é o "coração" do modo Standalone do NAM-rs: o módulo que processa o áudio em
-//! tempo real. Ele recebe amostras brutas de áudio do PipeWire (o servidor de som
-//! do Linux), passa pelo "motor neural", e entrega o resultado final processado
-//! ao hardware via arquitetura dual-stream.
+//! This is the "heart" of NAM-rs Standalone mode: the module that processes audio in
+//! real time. It receives raw audio samples from PipeWire (the Linux sound
+//! server), passes them through the "neural engine", and delivers the processed
+//! final result to the hardware via a dual-stream architecture.
 //!
-//! ## Arquitetura Dual-Stream com DspBridge
+//! ## Dual-Stream Architecture with DspBridge
 //!
-//! O PipeWire copia os buffers para o monitor port **antes** de chamar o `process()`.
-//! Portanto, modificações in-place numa única stream `Audio/Sink` seriam invisíveis
-//! ao hardware. A solução usa duas streams:
+//! PipeWire copies buffers to the monitor port **before** calling `process()`.
+//! Therefore, in-place modifications on a single `Audio/Sink` stream would be invisible
+//! to the hardware. The solution uses two streams:
 //!
-//! 1. **Capture stream** (`Audio/Sink`, `Direction::Input`) — atua como um Virtual Sink
-//!    que recebe áudio dos apps, aplica a cadeia DSP (ganho + inferência neural)
-//!    e escreve o resultado no [`DspBridge`].
-//! 2. **Playback stream** (`Stream/Output/Audio`, `Direction::Output`) — atua como um
-//!    cliente de reprodução que lê do [`DspBridge`] e entrega ao hardware.
+//! 1. **Capture stream** (`Audio/Sink`, `Direction::Input`) — acts as a Virtual Sink
+//!    that receives audio from apps, applies the DSP chain (gain + neural inference)
+//!    and writes the result to [`DspBridge`].
+//! 2. **Playback stream** (`Stream/Output/Audio`, `Direction::Output`) — acts as a
+//!    playback client that reads from [`DspBridge`] and delivers to hardware.
 //!
-//! O [`DspBridge`] é um buffer `#[repr(align(128))]` compartilhado entre as duas
-//! closures via ponteiro raw, com sincronização lock-free via `Ordering::Release/Acquire`
-//! e contador de geração atômico.
+//! The [`DspBridge`] is a `#[repr(align(128))]` buffer shared between the two
+//! closures via raw pointer, with lock-free synchronization via `Ordering::Release/Acquire`
+//! and an atomic generation counter.
 //!
-//! ## Regras absolutas deste módulo (por que são tão rigorosas?)
+//! ## Absolute rules of this module (why are they so strict?)
 //!
-//! No `process()` callback (a função chamada centenas de vezes por segundo pelo PipeWire):
-//! - **Zero alocação na heap** — nunca pedimos memória nova ao sistema durante o processamento.
-//! - **Zero I/O** — nunca escrevemos no terminal ou em arquivos; status é reportado via flags atômicas.
-//! - **Zero mutexes** — nunca travamos/esperamos por outras threads.
+//! In the `process()` callback (the function called hundreds of times per second by PipeWire):
+//! - **Zero heap allocation** — we never request new memory from the system during processing.
+//! - **Zero I/O** — we never write to the terminal or files; status is reported via atomic flags.
+//! - **Zero mutexes** — we never lock/wait for other threads.
 //!
-//! Essas regras existem porque qualquer pausa, por menor que seja, causaria estalos e cortes no
-//! áudio — inaceitável para um músico tocando ao vivo.
+//! These rules exist because any pause, no matter how small, would cause clicks and glitches in
+//! the audio — unacceptable for a musician playing live.
 //!
-//! ## Fluxo de processamento (Capture callback)
+//! ## Processing flow (Capture callback)
 //!
-//! O callback `process()` segue esta sequência para cada bloco de áudio:
-//! 1. **Noise Gate e Ganho de Entrada** — Avalia a energia do sinal e aplica o ganho inicial (pré-DSP).
-//! 2. `NamResampler::process_input()` — Converte o sample rate para a taxa compatível (geralmente 48 kHz).
-//! 3. **Inferência neural WaveNet/LSTM** — O motor neural que processa o sinal sonoro.
-//! 4. `NamResampler::process_output()` — Converte de volta para o sample rate original do host.
-//! 5. **Ganho de Saída e Clipping** — Aplica o volume final e detecta saturação digital.
-//! 6. **Escrita no [`DspBridge`]** — Publica o resultado com `Ordering::Release` para o playback callback.
+//! The `process()` callback follows this sequence for each audio block:
+//! 1. **Noise Gate and Input Gain** — Evaluates signal energy and applies the initial gain (pre-DSP).
+//! 2. `NamResampler::process_input()` — Converts sample rate to the compatible rate (usually 48 kHz).
+//! 3. **WaveNet/LSTM neural inference** — The neural engine that processes the audio signal.
+//! 4. `NamResampler::process_output()` — Converts back to the original host sample rate.
+//! 5. **Output Gain and Clipping** — Applies the final volume and detects digital saturation.
+//! 6. **Write to [`DspBridge`]** — Publishes the result with `Ordering::Release` to the playback callback.
 //!
-//! Quando nenhum modelo está carregado, o motor opera em **True-Bypass** (o sinal de entrada passa limpo).
-//! Quando o sample rate do PipeWire é o mesmo do modelo nam, o resampler opera em bypass sem overhead.
+//! When no model is loaded, the engine operates in **True-Bypass** (the input signal passes clean).
+//! When the PipeWire sample rate is the same as the nam model, the resampler operates in bypass without overhead.
 
 mod bridge;
 mod capture;
@@ -64,26 +64,26 @@ use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-// Re-exports para compatibilidade do módulo de testes (pw_host_test.rs).
+// Re-exports for test module compatibility (pw_host_test.rs).
 #[cfg(test)]
 pub(crate) use crate::dsp::pipeline::{BridgeBuffer, DspBridge, MAX_BRIDGE_BUF};
 
-/// Inicializa a topologia PipeWire dual-stream (Capture + Playback).
+/// Initializes the PipeWire dual-stream topology (Capture + Playback).
 ///
-/// Arquitetura: Apps → [Capture: Audio/Sink] → process(DSP) → DspBridge → [Playback: Stream/Output] → Hardware.
-/// O monitor port do `Audio/Sink` copia o buffer *antes* do `process()` — portanto, a única
-/// forma de entregar o áudio processado ao hardware é via uma segunda stream de playback
-/// que lê do `DspBridge` pós-DSP.
+/// Architecture: Apps → [Capture: Audio/Sink] → process(DSP) → DspBridge → [Playback: Stream/Output] → Hardware.
+/// The monitor port of `Audio/Sink` copies the buffer *before* `process()` — therefore, the only
+/// way to deliver the processed audio to hardware is via a second playback stream
+/// that reads from `DspBridge` post-DSP.
 ///
-/// ## Parâmetros de canais SPSC
+/// ## SPSC channel parameters
 ///
-/// - `consumer`: Consumidor do canal de parâmetros CLI→DSP (gain, modelo, etc.).
-/// - `gc_producer`: Produtor do canal GC para drop-delegation de modelos obsoletos.
-/// - `resampler_consumer`: Canal dedicado para receber resamplers pré-construídos
-///   pela thread principal — **zero alocações no callback RT**.
-/// - `resampler_producer`: Produtor do canal de resamplers — a thread principal
-///   constrói `NamResampler::new()` aqui (alocação fora do RT) e envia para o callback.
-/// - `rt_status`: Flags atômicas para comunicação silenciosa RT→Main.
+/// - `consumer`: Consumer of the CLI→DSP parameter channel (gain, model, etc.).
+/// - `gc_producer`: Producer of the GC channel for drop-delegation of obsolete models.
+/// - `resampler_consumer`: Dedicated channel for receiving pre-built resamplers
+///   from the main thread — **zero allocations in the RT callback**.
+/// - `resampler_producer`: Producer of the resampler channel — the main thread
+///   builds `NamResampler::new()` here (allocation outside RT) and sends to the callback.
+/// - `rt_status`: Atomic flags for silent RT→Main communication.
 #[allow(clippy::too_many_arguments)]
 pub fn run_pipewire_host(
     consumer: Consumer<ParamPayload>,
@@ -102,7 +102,7 @@ pub fn run_pipewire_host(
     } = config;
 
     // =========================================================
-    // 1. INICIALIZAÇÃO DO LOOP PIPEWIRE
+    // 1. PIPEWIRE LOOP INITIALIZATION
     // =========================================================
     let thread_loop =
         unsafe { pipewire::thread_loop::ThreadLoopBox::new(Some("nam-rs-loop"), None) }?;
@@ -110,17 +110,17 @@ pub fn run_pipewire_host(
     let core = context.connect(None)?;
 
     // =========================================================
-    // 2. ALOCAÇÃO DO DSP BRIDGE (Comunicação Lock-Free)
+    // 2. DSP BRIDGE ALLOCATION (Lock-Free Communication)
     // =========================================================
     let bridge_ptr = bridge::allocate_dsp_bridge();
 
     // =========================================================
-    // 3. OTIMIZAÇÃO DE NÚCLEO (CPU Affinity)
+    // 3. CORE OPTIMIZATION (CPU Affinity)
     // =========================================================
     let target_cpu = rt_setup::select_optimal_cpu().unwrap_or(0);
 
     // =========================================================
-    // 4. ESCOPO DE CONFIGURAÇÃO PROTEGIDA (RAII)
+    // 4. PROTECTED CONFIGURATION SCOPE (RAII)
     // =========================================================
     let (capture_stream, capture_listener, playback_stream, playback_listener);
     {
@@ -161,12 +161,12 @@ pub fn run_pipewire_host(
     sys.emit_irq_advisory(target_cpu);
 
     // =========================================================
-    // 5. INÍCIO DA THREAD RT (Background)
+    // 5. RT THREAD START (Background)
     // =========================================================
     thread_loop.start();
 
     // =========================================================
-    // 6. LOOP DE CONTROLE PRINCIPAL (Thread Main, Non-RT)
+    // 6. MAIN CONTROL LOOP (Main Thread, Non-RT)
     // =========================================================
     let mut was_silent = false;
     let mut was_fading = false;

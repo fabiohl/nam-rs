@@ -11,10 +11,10 @@ use anyhow::Context;
 use log::info;
 
 // =============================================================================
-// Construtor genérico estático
+// Generic static constructor
 // =============================================================================
 
-/// Constrói um `WaveNetModel<CH, K, HEAD>` com pesos lidos sequencialmente.
+/// Builds a `WaveNetModel<CH, K, HEAD>` with sequentially read weights.
 ///
 /// Layout dos pesos (C++ WaveNet.h `SetWeights`):
 /// ```text
@@ -35,11 +35,11 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
     let dils_0 = l0
         .dilations
         .as_deref()
-        .context("Dilatações ausentes na layer 0")?;
+        .context("Missing dilations in layer 0")?;
     let dils_1 = l1
         .dilations
         .as_deref()
-        .context("Dilatações ausentes na layer 1")?;
+        .context("Missing dilations in layer 1")?;
 
     let mut alloc_num = 0usize;
 
@@ -71,7 +71,7 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
     };
 
     info!(
-        "[Dispatcher] WaveNet {:?} construído — CH={}, K={}, HEAD={}, head_scale={:.6}, pesos={}",
+        "[Dispatcher] WaveNet {:?} built — CH={}, K={}, HEAD={}, head_scale={:.6}, weights={}",
         topo,
         CH,
         K,
@@ -84,10 +84,10 @@ pub(crate) fn build_wavenet_typed<const CH: usize, const K: usize, const HEAD: u
 }
 
 // =============================================================================
-// Construtor de array estático
+// Static array constructor
 // =============================================================================
 
-/// Configurações para construção de um WaveNetLayerArray estático.
+/// Configuration for building a static WaveNetLayerArray.
 pub(crate) struct WaveNetArrayConfig<'a, 'b, 'c> {
     pub cursor: &'a mut WeightCursor<'b>,
     pub dilations: &'c [usize],
@@ -95,7 +95,7 @@ pub(crate) struct WaveNetArrayConfig<'a, 'b, 'c> {
     pub alloc_num: &'a mut usize,
 }
 
-/// Constrói uma `WaveNetLayerArray` lendo pesos cursor-forward.
+/// Builds a `WaveNetLayerArray` by reading weights cursor-forward.
 ///
 /// Layout por array (C++ `WaveNetLayerArrayT::SetWeights`):
 /// ```text
@@ -175,7 +175,7 @@ pub(crate) fn build_wavenet_array<
 }
 
 // =============================================================================
-// Instanciação por topologia (Standard)
+// Topology instantiation (Standard)
 // =============================================================================
 
 pub(crate) fn build_wavenet_standard(

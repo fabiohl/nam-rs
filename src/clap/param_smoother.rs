@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Filtro de suavização (smoothing) para parâmetros de áudio.
+//! Smoothing filter for audio parameters.
 //!
-//! Implementa um filtro IIR de 1-pólo (Low-pass) para evitar cliques e ruídos
-//! de zipper ao alterar ganhos durante o processamento em tempo real.
+//! Implements a 1-pole IIR filter (Low-pass) to avoid clicks and zipper noise
+//! when changing gains during real-time processing.
 
-/// Suavizador de parâmetros baseado em filtro IIR de 1-pólo.
+/// Parameter smoother based on a 1-pole IIR filter.
 /// y[n] = α * target + (1 - α) * y[n-1]
 #[derive(Debug, Clone, Copy)]
 pub struct ParamSmoother {
@@ -16,12 +16,12 @@ pub struct ParamSmoother {
 }
 
 impl ParamSmoother {
-    /// Cria um novo suavizador com valor inicial e coeficiente alfa.
+    /// Creates a new smoother with initial value and alpha coefficient.
     ///
-    /// # Parâmetros
-    /// * `initial_value`: Valor inicial (e alvo inicial).
-    /// * `sample_rate`: Taxa de amostragem (fs).
-    /// * `cutoff_hz`: Frequência de corte (fc). Recomendado ~20Hz para ganhos.
+    /// # Parameters
+    /// * `initial_value`: Initial value (and initial target).
+    /// * `sample_rate`: Sampling rate (fs).
+    /// * `cutoff_hz`: Cutoff frequency (fc). Recommended ~20Hz for gains.
     pub fn new(initial_value: f32, sample_rate: f32, cutoff_hz: f32) -> Self {
         let alpha = if sample_rate > 0.0 {
             // α = 1 - exp(-2π * fc / fs)
@@ -37,35 +37,35 @@ impl ParamSmoother {
         }
     }
 
-    /// Atualiza o valor alvo do parâmetro.
+    /// Updates the target value of the parameter.
     #[inline]
     pub fn set_target(&mut self, target: f32) {
         self.target = target;
     }
 
-    /// Salta imediatamente para o valor alvo (sem suavização).
+    /// Jumps immediately to the target value (without smoothing).
     #[inline]
     pub fn snap_to_target(&mut self) {
         self.current = self.target;
     }
 
-    /// Avança um sample e retorna o valor suavizado.
+    /// Advances one sample and returns the smoothed value.
     #[inline]
     pub fn tick(&mut self) -> f32 {
         let diff = self.current - self.target;
-        // Threshold proporcional ao target: convergência 2-5x mais rápida para valores altos.
+        // Threshold proportional to the target: 2-5x faster convergence for higher values.
         let threshold = 1e-6 * self.target.abs().max(1.0);
         if diff.abs() < threshold {
             self.current = self.target;
         } else {
             let next = self.alpha * self.target + (1.0 - self.alpha) * self.current;
             if next == self.current {
-                // Detecção de precision stall em f32: se o passo for menor do que
-                // a menor variação representável, força snap para o target.
+                // Precision stall detection in f32: if the step is smaller than
+                // the smallest representable variation, forces a snap to the target.
                 self.current = self.target;
             } else {
                 self.current = next;
-                // Denormal guard (RT-Safety §2.1): flush a zero para evitar FPU slowdown.
+                // Denormal guard (RT-Safety §2.1): flush to zero to avoid FPU slowdown.
                 if self.current.abs() < 1e-15 {
                     self.current = 0.0;
                 }
@@ -74,13 +74,13 @@ impl ParamSmoother {
         self.current
     }
 
-    /// Retorna o valor atual (último calculado).
+    /// Returns the current value (last computed).
     #[inline]
     pub fn current_value(&self) -> f32 {
         self.current
     }
 
-    /// Retorna o valor alvo.
+    /// Returns the target value.
     #[inline]
     pub fn target_value(&self) -> f32 {
         self.target
@@ -96,7 +96,7 @@ mod tests {
         let mut smoother = ParamSmoother::new(0.0, 48000.0, 20.0);
         smoother.set_target(1.0);
 
-        // Deve convergir gradualmente
+        // Should converge gradually
         let mut last_val = 0.0;
         for _ in 0..1000 {
             let current = smoother.tick();
@@ -104,7 +104,7 @@ mod tests {
             last_val = current;
         }
 
-        assert!(last_val > 0.5); // Em 1000 samples @ 48k com 20Hz (~20ms), já deve estar bem avançado
+        assert!(last_val > 0.5); // At 1000 samples @ 48k with 20Hz (~20ms), should already be pretty far along
     }
 
     #[test]
@@ -117,10 +117,10 @@ mod tests {
 
     #[test]
     fn test_smoother_convergence_high_gain() {
-        // Verificar que para target = 3.98 (≈ +12dB), o smoother converge em ≤ 2400 samples a 48kHz (50ms).
-        // Nota: O cutoff de 45Hz ilustra perfeitamente o benefício do threshold relativo,
-        // pois com threshold fixo (1e-6) a convergência levaria 2581 samples (excedendo 2400),
-        // enquanto o threshold relativo permite a convergência em 2347 samples.
+        // Verify that for target = 3.98 (≈ +12dB), the smoother converges within ≤ 2400 samples at 48kHz (50ms).
+        // Note: The 45Hz cutoff perfectly illustrates the benefit of the relative threshold,
+        // since with a fixed threshold (1e-6) convergence would take 2581 samples (exceeding 2400),
+        // while the relative threshold allows convergence in 2347 samples.
         let mut smoother = ParamSmoother::new(0.0, 48000.0, 45.0);
         smoother.set_target(3.98);
 
@@ -134,14 +134,14 @@ mod tests {
         }
         assert!(
             samples <= 2400,
-            "Convergência demorou {} samples (esperado <= 2400)",
+            "Convergence took {} samples (expected <= 2400)",
             samples
         );
     }
 
     #[test]
     fn test_smoother_denormal_prevention() {
-        // Verificar que para target = 0.0 e initial = 1e-20, o tick() retorna exatamente 0.0 após ≤ 10 iterações.
+        // Verify that for target = 0.0 and initial = 1e-20, tick() returns exactly 0.0 after ≤ 10 iterations.
         let mut smoother = ParamSmoother::new(1e-20, 48000.0, 20.0);
         smoother.set_target(0.0);
 
@@ -152,21 +152,21 @@ mod tests {
                 break;
             }
         }
-        assert!(converged, "Não convergiu a 0.0 em 10 iterações");
+        assert!(converged, "Did not converge to 0.0 in 10 iterations");
     }
 
     #[test]
     fn test_smoother_relative_threshold() {
-        // Verificar que target = 0.001 ainda converge corretamente (não snap prematuro).
+        // Verify that target = 0.001 still converges correctly (no premature snap).
         let mut smoother = ParamSmoother::new(0.0, 48000.0, 20.0);
         smoother.set_target(0.001);
 
-        // O primeiro tick não deve atingir imediatamente 0.001 (snap prematuro).
+        // The first tick should not hit 0.001 immediately (premature snap).
         let val1 = smoother.tick();
         assert!(val1 > 0.0);
         assert!(val1 < 0.001);
 
-        // Deve convergir eventualmente
+        // Should eventually converge
         let mut converged = false;
         for _ in 0..5000 {
             if smoother.tick() == 0.001 {
@@ -174,6 +174,6 @@ mod tests {
                 break;
             }
         }
-        assert!(converged, "Deveria convergir para 0.001");
+        assert!(converged, "Should converge to 0.001");
     }
 }

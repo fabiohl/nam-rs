@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão de portas de áudio CLAP para o NAM-rs.
+//! Implementation of the audio ports CLAP extension for NAM-rs.
 
 use crate::clap::plugin::NamClapMainThread;
 use clack_extensions::audio_ports::{
@@ -10,22 +10,22 @@ use clack_extensions::audio_ports::{
 use clack_plugin::prelude::ClapId;
 
 impl PluginAudioPortsImpl for NamClapMainThread<'_> {
-    /// Retorna o número de portas de áudio (entrada ou saída).
+    /// Returns the number of audio ports (input or output).
     ///
-    /// O NAM-rs é um plugin mono-nativo por definição com exatamente 1 porta de entrada e 1 de saída.
+    /// NAM-rs is a native mono plugin by definition with exactly 1 input and 1 output port.
     fn count(&mut self, _is_input: bool) -> u32 {
         1
     }
 
-    /// Preenche as informações da porta de áudio no índice especificado.
+    /// Fills in the audio port info at the specified index.
     ///
-    /// Configura uma porta **mono** (1 canal) com in-place pair habilitado
-    /// (permite que o host use o mesmo buffer para entrada e saída).
+    /// Configures a **mono** port (1 channel) with in-place pair enabled
+    /// (allows the host to use the same buffer for input and output).
     ///
-    /// A porta é declarada como mono porque o NAM é mono-nativo por definição.
-    /// Para respeitar os workflows tradicionais em DAWs, o plugin funciona estritamente como mono.
-    /// A DAW decide como conectar o plugin (por exemplo, gerenciando o roteamento de canais estéreo externamente),
-    /// enquanto o suporte a estéreo é fornecido exclusivamente como conveniência no modo standalone.
+    /// The port is declared as mono because NAM is native mono by definition.
+    /// To respect traditional DAW workflows, the plugin works strictly as mono.
+    /// The DAW decides how to connect the plugin (e.g., managing stereo channel routing externally),
+    /// while stereo support is provided exclusively as a convenience in standalone mode.
     fn get(&mut self, index: u32, is_input: bool, writer: &mut AudioPortInfoWriter) {
         if index == 0 {
             writer.set(&AudioPortInfo {

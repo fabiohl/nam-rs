@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo de Processamento Digital de Sinais (DSP) para operações genéricas
-//! pré e pós motor neural no NAM-rs.
+//! Digital Signal Processing (DSP) module for generic operations
+//! before and after the neural engine in NAM-rs.
 
 pub mod gate;
 pub mod mirror_buf;

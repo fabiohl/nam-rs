@@ -3,10 +3,10 @@
 
 //! Kernels de Dot Product 4x (ILP interleaved, dual frame, batch) — AVX2 e AVX-512.
 //!
-//! Organizado em submódulos por ISA e variante:
+//! Organized into submodules by ISA and variant:
 //! - `avx2` / `avx2_dual`: kernels AVX2 com F16C.
 //! - `avx512` / `avx512_dual`: kernels AVX-512 com permutexvar.
-//! - `scalar`: implementações escalares de referência.
+//! - `scalar`: reference scalar implementations.
 //! - `avx512_bf16`: placeholder para VNNI BF16 (`vdpbf16ps`).
 
 pub mod avx2;

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Fundação comum para operações matemáticas e SIMD.
+//! Common foundation for mathematical operations and SIMD.
 //!
-//! Este módulo contém as definições estruturais que permitem ao NAM-rs ser
-//! agnóstico ao hardware enquanto mantém performance nativa.
+//! This module contains the structural definitions that allow NAM-rs to be
+//! hardware-agnostic while maintaining native performance.
 //!
-//! # Componentes
-//! - `traits`: A trait `SimdMath` que define a interface de todos os kernels.
-//! - `dispatch`: Mecanismo de seleção dinâmica de arquitetura (AVX2, AVX-512, etc.).
-//! - `avx2_impl` / `avx512`: Implementações concretas dos kernels para x86-64.
-//! - `scalar_ref`: Implementações de fallback para compatibilidade e testes.
-//! - `aligned`: Estruturas para garantir alinhamento de memória (RT-Safety).
+//! # Components
+//! - `traits`: The `SimdMath` trait defining the interface for all kernels.
+//! - `dispatch`: Dynamic architecture selection mechanism (AVX2, AVX-512, etc.).
+//! - `avx2_impl` / `avx512`: Concrete kernel implementations for x86-64.
+//! - `scalar_ref`: Fallback implementations for compatibility and testing.
+//! - `aligned`: Structures to guarantee memory alignment (RT-Safety).
 
 pub mod aligned;
 pub mod avx2_impl;
@@ -19,7 +19,7 @@ pub mod avx512;
 pub mod dispatch;
 pub mod ops;
 pub mod scalar_ref;
-/// Testes de unidade para a infraestrutura matemática comum.
+/// Unit tests for the common math infrastructure.
 #[cfg(test)]
 pub mod tests;
 pub mod traits;
@@ -34,10 +34,10 @@ pub use scalar_ref::*;
 pub use traits::SimdMath;
 pub use utility::*;
 
-/// Macro para despacho dinâmico SIMD baseado na configuração global.
+/// Macro for dynamic SIMD dispatch based on global configuration.
 #[macro_export]
 macro_rules! dispatch_simd {
-    // Modo 2: Despacho para métodos específicos de um objeto (ex: lstm.rs)
+    // Mode 2: Dispatch to specific methods of an object (e.g.: lstm.rs)
     ($target:expr, $m512bf16:ident, $m512vnni:ident, $m512:ident, $m256vnni:ident, $m256:ident $(, $arg:expr)*) => {
         {
             use $crate::math::common::{SIMD_MATH, InstructionSet};
@@ -51,7 +51,7 @@ macro_rules! dispatch_simd {
         }
     };
 
-    // Modo 1: Despacho para método genérico de um objeto (ex: wavenet.rs)
+    // Mode 1: Dispatch to generic method of an object (e.g.: wavenet.rs)
     ($target:expr, $method:ident $(, $arg:expr)*) => {
         {
             use $crate::math::common::{SIMD_MATH, InstructionSet};
@@ -75,7 +75,7 @@ macro_rules! dispatch_simd {
         }
     };
 
-    // Modo 3: Chamada direta à v-table
+    // Mode 3: Direct v-table call
     ($method:ident ($($arg:expr),*)) => {
         {
             #[allow(clippy::macro_metavars_in_unsafe)]

@@ -1,44 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Parâmetros agnósticos ao host do NAM-rs.
+//! Host-agnostic parameters for NAM-rs.
 //!
-//! Este módulo define o estado completo de configuração do processamento,
-//! permitindo que diferentes hosts (CLI/PipeWire ou CLAP) gerenciem e
-//! sincronizem os parâmetros de forma consistente.
+//! This module defines the complete processing configuration state,
+//! allowing different hosts (CLI/PipeWire or CLAP) to manage and
+//! synchronize parameters consistently.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 const GATE_THRESHOLD_DB_DEFAULT: f32 = -70.0;
 
-/// Parâmetros globais de processamento do plugin/aplicativo.
+/// Global processing parameters for the plugin/application.
 ///
-/// Esta estrutura encapsula todos os controles disponíveis para o usuário,
-/// desde ganhos básicos até o caminho do modelo neural carregado.
+/// This structure encapsulates all controls available to the user,
+/// from basic gains to the path of the loaded neural model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NamPluginParams {
-    /// Ganho de entrada em decibéis (dB). Padrão: 0.0.
+    /// Input gain in decibels (dB). Default: 0.0.
     #[serde(default)]
     pub input_gain_db: f32,
-    /// Ganho de saída em decibéis (dB). Padrão: 0.0.
+    /// Output gain in decibels (dB). Default: 0.0.
     #[serde(default)]
     pub output_gain_db: f32,
-    /// Threshold do Noise Gate em decibéis (dB). Padrão: -70.0.
-    /// Este valor mapeia para o `threshold_open_db` do motor de gate.
+    /// Noise Gate threshold in decibels (dB). Default: -70.0.
+    /// This value maps to the `threshold_open_db` of the gate engine.
     #[serde(default = "default_gate_threshold_db")]
     pub gate_threshold_db: f32,
-    /// Caminho para o modelo `.nam` ou `.namb` carregado.
+    /// Path to the loaded `.nam` or `.namb` model.
     #[serde(default)]
     pub model_path: Option<PathBuf>,
-    /// Nome base do modelo (apenas nome do arquivo), usado para busca portátil
-    /// quando o path absoluto não existe (cross-machine / cross-user).
+    /// Base name of the model (filename only), used for portable lookup
+    /// when the absolute path does not exist (cross-machine / cross-user).
     #[serde(default)]
     pub model_basename: Option<String>,
-    /// Diretórios onde procurar o modelo se o `model_path` absoluto não existir.
+    /// Directories to search for the model if the absolute `model_path` does not exist.
     #[serde(default)]
     pub model_search_paths: Vec<PathBuf>,
-    /// Estado de Bypass (se `true`, o áudio passa sem processamento neural).
+    /// Bypass state (if `true`, audio passes without neural processing).
     #[serde(default)]
     pub bypass: bool,
 }

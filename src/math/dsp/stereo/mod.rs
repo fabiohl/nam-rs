@@ -7,7 +7,7 @@
     clippy::too_many_arguments
 )]
 
-//! Operações DSP para processamento estéreo e medição de sinal.
+//! DSP operations for stereo processing and signal metering.
 
 mod convolution_avx2;
 mod convolution_avx512;
@@ -24,28 +24,28 @@ pub use energy::{
 };
 pub use max_diff::{compute_max_diff_avx2, compute_max_diff_avx512};
 
-/// Calcula o máximo da energia entre dois canais de áudio via despacho SIMD.
+/// Computes the maximum energy between two audio channels via SIMD dispatch.
 ///
 /// # Safety
-/// Utiliza despacho dinâmico via v-table global.
+/// Uses dynamic dispatch via global v-table.
 pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_energy_stereo(l, r))
 }
 
-/// Calcula a diferença absoluta máxima entre dois blocos via despacho SIMD.
+/// Computes the maximum absolute difference between two blocks via SIMD dispatch.
 ///
 /// # Safety
-/// Utiliza despacho dinâmico via v-table global.
+/// Uses dynamic dispatch via global v-table.
 pub unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_max_diff(a, b))
 }
 
-/// Convolução estéreo (usada no resampler) via despacho SIMD.
-/// Realiza o produto escalar entre um banco de coeficientes e dois buffers de entrada (L/R).
+/// Stereo convolution (used in the resampler) via SIMD dispatch.
+/// Computes the dot product between a filter bank and two input buffers (L/R).
 ///
 /// # Safety
-/// `coeffs`, `input_l` e `input_r` devem ser ponteiros válidos para pelo menos `taps` elementos.
-/// `coeffs` deve estar alinhado conforme o registrador SIMD.
+/// `coeffs`, `input_l`, and `input_r` must be valid pointers to at least `taps` elements.
+/// `coeffs` must be aligned according to the SIMD register.
 pub unsafe fn convolve_stereo(
     coeffs: *const f32,
     input_l: *const f32,
@@ -55,12 +55,12 @@ pub unsafe fn convolve_stereo(
     crate::math::common::dispatch_simd!(convolve_stereo(coeffs, input_l, input_r, taps))
 }
 
-/// Convolução mono (usada no resampler) via despacho SIMD.
-/// Realiza o produto escalar entre um banco de coeficientes e um buffer de entrada.
+/// Mono convolution (used in the resampler) via SIMD dispatch.
+/// Computes the dot product between a filter bank and an input buffer.
 ///
 /// # Safety
-/// `coeffs` e `input` devem ser ponteiros válidos para pelo menos `taps` elementos.
-/// `coeffs` deve estar alinhado conforme o registrador SIMD.
+/// `coeffs` and `input` must be valid pointers to at least `taps` elements.
+/// `coeffs` must be aligned according to the SIMD register.
 pub unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     crate::math::common::dispatch_simd!(convolve_mono(coeffs, input, taps))
 }

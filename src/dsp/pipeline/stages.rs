@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Estágios individuais do pipeline DSP: gate/ganho de entrada,
-//! inferência neural, ganho de saída/clipping e escrita no bridge.
+//! Individual DSP pipeline stages: input gate/gain,
+//! neural inference, output gain/clipping, and bridge writing.
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::common::spsc::RtStatusFlags;
@@ -18,7 +18,7 @@ use crate::models::{DynamicModel, NamModel};
 use super::bridge::{DspBridgeWriter, MAX_RESAMP_BUF};
 use super::context::DspPipelineContext;
 
-/// Silence Bypass: sinaliza silêncio e zera o bridge para que o playback emita silêncio.
+/// Silence Bypass: signals silence and zeros the bridge so that playback emits silence.
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[cold]
 #[inline(never)]
@@ -32,7 +32,7 @@ pub fn handle_silence_bypass(bridge: Option<DspBridgeWriter>, rt_status: &RtStat
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Estágio 1: Gate, Ganhos de Entrada e Detecção de Mono.
+/// Stage 1: Gate, Input Gains, and Mono Detection.
 #[inline(always)]
 pub(crate) fn apply_input_stage(
     samples_l: &mut [f32],
@@ -40,13 +40,13 @@ pub(crate) fn apply_input_stage(
     n_samples: usize,
     ctx: &mut DspPipelineContext<'_>,
 ) -> GateState {
-    // Usa o máximo das energias de ambos os canais: qualquer canal com sinal ativo
-    // deve manter o gate aberto. Usando o kernel fundido para reduzir o tráfego de cache.
+    // Uses the maximum energy of both channels: any channel with active signal
+    // must keep the gate open. Using the fused kernel to reduce cache traffic.
     let energy_ms =
         unsafe { compute_energy_stereo(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
-    // 1. ATUALIZA O PORTÃO DE SILÊNCIO (NOISE GATE)
-    // Decide se o som é forte o suficiente para passar ou se deve ser silenciado para economizar processamento.
+    // 1. UPDATE THE NOISE GATE
+    // Decides whether the sound is strong enough to pass or should be silenced to save processing.
     ctx.silence_hysteresis.update(
         energy_ms,
         ctx.threshold_open_sq,
@@ -55,13 +55,13 @@ pub(crate) fn apply_input_stage(
         n_samples,
     );
 
-    // Se o portão estiver totalmente fechado (silêncio absoluto), paramos por aqui para poupar bateria/CPU.
+    // If the gate is fully closed (absolute silence), we stop here to save battery/CPU.
     if ctx.silence_hysteresis.state() == GateState::Closed {
         return GateState::Closed;
     }
 
-    // 2. DETECÇÃO DE SOM MONO (IGUAL NOS DOIS LADOS)
-    // Calcula a diferença entre o lado esquerdo e direito para ver se o som é o mesmo.
+    // 2. MONO SOUND DETECTION (SAME ON BOTH SIDES)
+    // Computes the difference between left and right to check if the sound is the same.
     let max_diff = unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
     ctx.mono_hysteresis.update(
@@ -72,16 +72,16 @@ pub(crate) fn apply_input_stage(
         n_samples,
     );
 
-    // Se o som for igual nos dois lados (mono), avisamos o sistema para processar apenas um lado.
-    // Isso corta o trabalho pela metade sem perder qualidade!
+    // If the sound is identical on both sides (mono), notify the system to process only one side.
+    // This cuts the workload in half without losing quality!
     *ctx.process_mono = ctx.mono_hysteresis.state() == GateState::Closed
         || ctx.mono_hysteresis.state() == GateState::FadingOut;
 
-    // 3. AJUSTE DE VOLUME DE ENTRADA (GAIN)
-    // Aplica o ganho (volume) inicial definido pelo usuário.
+    // 3. INPUT VOLUME ADJUSTMENT (GAIN)
+    // Applies the initial user-defined gain (volume).
     crate::math::dsp::gain::apply_gain_simd(&mut samples_l[..n_samples], ctx.input_gain_mult);
 
-    // Só ajustamos o lado direito se o som NÃO for mono (para economizar processamento).
+    // Only adjust the right side if the sound is NOT mono (to save processing).
     if !*ctx.process_mono {
         crate::math::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], ctx.input_gain_mult);
     }
@@ -90,10 +90,10 @@ pub(crate) fn apply_input_stage(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Helper unificado para processamento mono/stereo de modelos neurais.
+/// Unified helper for mono/stereo processing of neural models.
 ///
-/// Processa o modelo do canal L (_always_) e decide se o canal R é cópia mono
-/// ou processamento independente via modelo R ativo.
+/// Processes the L channel model (_always_) and decides whether the R channel is a mono copy
+/// or independent processing via the active R model.
 #[inline(always)]
 fn run_stereo_or_mono(
     active_model_l: &mut Option<Box<DynamicModel>>,
@@ -120,7 +120,7 @@ fn run_stereo_or_mono(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Estágio 2: Inferência Neural e Resampling.
+/// Stage 2: Neural Inference and Resampling.
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn run_inference(
@@ -138,7 +138,7 @@ pub(crate) fn run_inference(
     let is_resamp_bypass = ctx.resampler.is_bypass();
     let n = n_samples.min(MAX_RESAMP_BUF);
 
-    // CAMINHO A: Ajuste de Qualidade desligado (Resampler em Bypass).
+    // PATH A: Quality adjustment off (Resampler in Bypass).
     if is_resamp_bypass {
         let model_in_l = &samples_l[..n];
         let model_in_r = if *ctx.process_mono {
@@ -161,9 +161,9 @@ pub(crate) fn run_inference(
 
         n
     } else {
-        // CAMINHO B: Ajuste de Qualidade ligado (Resampler Ativo).
+        // PATH B: Quality adjustment on (Active Resampler).
 
-        // 1. Traduz o som para a frequência que o "Cérebro" neural entende (geralmente 48kHz).
+        // 1. Translates the sound to the frequency the neural "Brain" understands (usually 48kHz).
         let n_48k = if *ctx.process_mono {
             ctx.resampler.process_input_mono(
                 &samples_l[..n],
@@ -184,7 +184,7 @@ pub(crate) fn run_inference(
         let m_out_l = &mut model_out_l[..n_48k];
         let m_out_r = &mut model_out_r[..n_48k];
 
-        // 2. Aplica a simulação do amplificador (Modelo Neural).
+        // 2. Applies the amplifier simulation (Neural Model).
         run_stereo_or_mono(
             ctx.active_model_l,
             ctx.active_model_r,
@@ -195,7 +195,7 @@ pub(crate) fn run_inference(
             *ctx.process_mono,
         );
 
-        // 3. Traduz o som de volta para a frequência original da sua placa de som.
+        // 3. Translates the sound back to the original frequency of your sound card.
         if *ctx.process_mono {
             ctx.resampler.process_output_mono(
                 m_out_l,
@@ -214,7 +214,7 @@ pub(crate) fn run_inference(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Estágio 3: Ganho de Saída, Fading e Detecção de Clipping.
+/// Stage 3: Output Gain, Fading, and Clipping Detection.
 #[inline(always)]
 pub(crate) fn apply_output_stage(
     resamp_out_l: &mut [f32],
@@ -224,16 +224,16 @@ pub(crate) fn apply_output_stage(
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
 ) {
-    // 1. AJUSTE DE VOLUME FINAL E PROTEÇÃO CONTRA DISTORÇÃO (CLIPPING)
-    // Aplica o volume de saída e verifica se o som não "estourou" o limite digital.
+    // 1. FINAL VOLUME ADJUSTMENT AND CLIPPING PROTECTION
+    // Applies output volume and checks if the sound has "blown past" the digital limit.
     let has_clipped = crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
         &mut resamp_out_l[..n_pw],
         &mut resamp_out_r[..n_pw],
         output_gain_mult
     ));
 
-    // 2. SUAVIZAÇÃO DO PORTÃO DE SILÊNCIO (FADING)
-    // Aplica o fechamento ou abertura suave do som (fade) para evitar estalos ou cliques.
+    // 2. NOISE GATE SMOOTHING (FADING)
+    // Applies smooth opening/closing of the sound (fade) to avoid pops or clicks.
     dispatch_simd!(
         silence_hysteresis,
         apply_gain_rt_stereo,
@@ -242,14 +242,14 @@ pub(crate) fn apply_output_stage(
         n_pw
     );
 
-    // Se o som "estourou" o limite em qualquer momento, acendemos um aviso (flag) no sistema.
+    // If the sound "blew past" the limit at any moment, we raise a warning flag in the system.
     if has_clipped {
         rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
     }
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Estágio 4: Escrita no DspBridge.
+/// Stage 4: Write to DspBridge.
 #[inline(always)]
 pub fn write_bridge(
     resamp_out_l: &[f32],

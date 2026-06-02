@@ -10,11 +10,11 @@
 
 use core::arch::x86_64::*;
 
-/// Processa dois frames simultaneamente com 16 acumuladores ZMM (8 por frame)
-/// em 2 conjuntos alternados para quebrar dependências FMA.
+/// Processes two frames simultaneously with 16 ZMM accumulators (8 per frame)
+/// in 2 alternating sets to break FMA dependencies.
 ///
-/// Reutiliza a mesma carga de pesos para ambos os frames (f0 e f1),
-/// dobrando a eficiência de acesso à memória.
+/// Reuses the same weight load for both frames (f0 and f1),
+/// doubling memory access efficiency.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_avx512(
     weights: &[[u16; 4]],

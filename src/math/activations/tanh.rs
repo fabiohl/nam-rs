@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels de ativação Tanh (Tangente Hiperbólica) otimizados.
+//! Optimized Tanh (Hyperbolic Tangent) activation kernels.
 //!
-//! Utiliza o aproximante racional de Padé [5,4] branchless:
+//! Uses the branchless Padé [5,4] rational approximant:
 //! `tanh(x) ≈ x · (x⁴ + 105·x² + 945) / (15·x⁴ + 420·x² + 945)`
-//! com clamp de entrada em `|x| < 4` e saída saturada em `[-1, 1]`.
-//! Referência: VDT library (CERN), Mineiro & Vorlicek (2016).
+//! with input clamped to `|x| < 4` and output saturated to `[-1, 1]`.
+//! Reference: VDT library (CERN), Mineiro & Vorlicek (2016).
 
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
-/// Aproximação vetorial branchless de `tanh(x)` usando Padé [5,4] (AVX2).
+/// Branchless vector approximation of `tanh(x)` using Padé [5,4] (AVX2).
 ///
 /// # Safety
-/// O chamador deve garantir suporte a AVX2 e FMA.
+/// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
@@ -49,10 +49,10 @@ pub unsafe fn simd_tanh_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
 }
 
-/// Aproximação vetorial de `tanh(x)` (Dual, 16 floats) usando Padé [5,4].
+/// Vector approximation of `tanh(x)` (Dual, 16 floats) using Padé [5,4].
 ///
 /// # Safety
-/// O chamador deve garantir suporte a AVX2 e FMA.
+/// The caller must guarantee AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
@@ -101,10 +101,10 @@ pub unsafe fn simd_tanh_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     )
 }
 
-/// Aproximação vetorial branchless de `tanh(x)` usando Padé [5,4] (AVX-512).
+/// Branchless vector approximation of `tanh(x)` using Padé [5,4] (AVX-512).
 ///
 /// # Safety
-/// O chamador deve garantir suporte a AVX-512F e AVX-512VL.
+/// The caller must guarantee AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
@@ -137,10 +137,10 @@ pub unsafe fn simd_tanh_avx512(x: __m512) -> __m512 {
     _mm512_max_ps(neg_one, _mm512_min_ps(one, result))
 }
 
-/// Aplica a ativação Tanh a um slice de f32 usando otimização AVX2.
+/// Applies Tanh activation to a slice of f32 using AVX2 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
@@ -172,10 +172,10 @@ pub unsafe fn tanh_slice_avx2(slice: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação Tanh a um slice de f32 usando otimização AVX-512.
+/// Applies Tanh activation to a slice of f32 using AVX-512 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
@@ -196,7 +196,7 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
     }
 }
 
-/// Versão escalar de `tanh`.
+/// Scalar version of `tanh`.
 #[inline]
 pub fn tanh(x: f32) -> f32 {
     x.tanh()

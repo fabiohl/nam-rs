@@ -3,50 +3,50 @@
 
 #![warn(missing_docs)]
 
-//! Biblioteca do motor de inferência Neural Amp Modeler (NAM-rs).
+//! Neural Amp Modeler (NAM-rs) inference engine library.
 //!
-//! Este arquivo define o "coração" do projeto. Ele é uma biblioteca compartilhada que:
-//! 1. Serve de base para o executável CLI (`main.rs`).
-//! 2. Serve de base para os plugins (ex: CLAP).
+//! This file defines the "heart" of the project. It is a shared library that:
+//! 1. Serves as the foundation for the CLI executable (`main.rs`).
+//! 2. Serves as the foundation for plugins (e.g. CLAP).
 //!
-//! O NAM-rs é organizado em uma estrutura modular para suportar múltiplos alvos de build:
+//! NAM-rs is organized in a modular structure to support multiple build targets:
 //!
-//! - **Common**: Infraestrutura agnóstica de host (diagnósticos, comunicação SPSC, parâmetros).
-//! - **Standalone**: Implementação nativa para PipeWire e utilitários de CLI.
-//!   Ativado via feature `standalone`. Utilizado por `main.rs`.
-//! - **CLAP Plugin**: Integração como plugin no formato CLAP (CLever Audio Plug-in) com GUI completa.
-//!   Ativado via feature `clap-plugin`.
+//! - **Common**: Host-agnostic infrastructure (diagnostics, SPSC communication, parameters).
+//! - **Standalone**: Native implementation for PipeWire and CLI utilities.
+//!   Enabled via `standalone` feature. Used by `main.rs`.
+//! - **CLAP Plugin**: Integration as a CLAP (CLever Audio Plug-in) format plugin with full GUI.
+//!   Enabled via `clap-plugin` feature.
 //!
-//! O motor de inferência, os kernels de processamento (SIMD) e a lógica de carregamento
-//! de modelos residem aqui para garantir paridade matemática entre o CLI e o Plugin.
+//! The inference engine, processing kernels (SIMD), and model loading logic
+//! reside here to ensure mathematical parity between the CLI and the Plugin.
 
-/// Camada de infraestrutura comum e agnóstica de host.
+/// Common host-agnostic infrastructure layer.
 pub mod common;
 pub use common::*;
 
-/// Infraestrutura para execução standalone (PipeWire + CLI).
+/// Infrastructure for standalone execution (PipeWire + CLI).
 #[cfg(feature = "standalone")]
 pub mod standalone;
 #[cfg(feature = "standalone")]
 pub use standalone::*;
 
-/// Integração no formato de plugin CLAP.
+/// CLAP plugin format integration.
 #[cfg(feature = "clap-plugin")]
 pub mod clap;
 
-/// Motor de processamento digital de sinais (DSP).
+/// Digital signal processing (DSP) engine.
 pub mod dsp;
-/// Carregamento e construção de modelos (.nam, .namb).
+/// Model loading and construction (.nam, .namb).
 pub mod loader;
-/// Primitivas matemáticas e kernels SIMD otimizados.
+/// Mathematical primitives and optimized SIMD kernels.
 pub mod math;
-/// Definições de tensores e topologias de redes neurais.
+/// Tensor definitions and neural network topologies.
 pub mod models;
 
-// Retrocompatibilidade com versões mais antigas do GLIBC (ex: para Flatpak/Bitwig).
-// Redireciona símbolos matemáticos para a versão estável do GLIBC_2.2.5.
-// Como dependências externas usam esses símbolos, declaramos wrappers globais
-// que interceptam as chamadas e saltam (jmp) via PLT para as versões compatíveis.
+// Backward compatibility with older GLIBC versions (e.g. for Flatpak/Bitwig).
+// Redirects math symbols to the stable GLIBC_2.2.5 version.
+// Since external dependencies use these symbols, we declare global wrappers
+// that intercept calls and jump (jmp) via PLT to the compatible versions.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 core::arch::global_asm!(
     ".global log10f",

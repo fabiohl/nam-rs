@@ -7,98 +7,98 @@
     clippy::too_many_arguments
 )]
 
-//! Implementações Escalares de Referência para kernels matemáticos DSP.
+//! Scalar Reference Implementations for DSP math kernels.
 //!
-//! # Propósito
+//! # Purpose
 //!
-//! O papel deste módulo é ser a **implementação escalar de referência**: algoritmos
-//! simples, corretos e sem otimizações, que servem como oráculo nos testes de paridade
-//! dos kernels AVX2 e AVX-512. Todo kernel vetorial deve produzir o mesmo resultado
-//! numérico (dentro da tolerância de ponto-flutuante) que a sua contraparte escalar aqui.
+//! The role of this module is to be the **scalar reference implementation**: simple,
+//! correct, unoptimized algorithms that serve as an oracle in parity tests
+//! for AVX2 and AVX-512 kernels. Every vector kernel must produce the same
+//! numerical result (within floating-point tolerance) as its scalar counterpart here.
 //!
-//! # Fonte de Verdade
+//! # Source of Truth
 //!
-//! A especificação matemática definitiva de cada operação é o NeuralAmpModelerCore (C++).
-//! As implementações aqui são traduções escalares fiéis desse código de referência,
-//! usadas exclusivamente para validação interna.
+//! The definitive mathematical specification of each operation is NeuralAmpModelerCore (C++).
+//! The implementations here are faithful scalar translations of that reference code,
+//! used exclusively for internal validation.
 
-// Re-exports de fallbacks Wavenet (Tarefa 3.4 — mantém compatibilidade de paths)
+// Re-exports of Wavenet fallbacks (Task 3.4 — maintains path compatibility)
 pub use crate::math::wavenet::accumulate::{
     accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
     tanh_and_accumulate_block_fallback,
 };
 
-/// Faz o "Produto Escalar" entre dois conjuntos de números.
-/// Imagine multiplicar cada item de uma lista pelo item correspondente de outra lista
-/// e, no final, somar tudo o que deu.
+/// Computes the "Dot Product" between two sets of numbers.
+/// Imagine multiplying each item from one list by the corresponding item of another list
+/// and, in the end, summing everything up.
 ///
-/// - `a`: Lista de números decimais (f32).
-/// - `b`: Lista de "pesos" que estão guardados de forma compacta (u16/f16).
+/// - `a`: List of decimal numbers (f32).
+/// - `b`: List of "weights" stored in compact form (u16/f16).
 pub unsafe fn dot_product_fallback(a: &[f32], b: &[u16]) -> f32 {
-    // Escolhemos o tamanho da menor lista para garantir que não vamos "atropelar" a memória.
+    // We pick the size of the smaller list to ensure we won't "run over" memory.
     let len = core::cmp::min(a.len(), b.len());
-    let mut sum = 0.0f32; // Começamos a soma com zero.
+    let mut sum = 0.0f32; // Start the sum at zero.
 
     for i in 0..len {
         unsafe {
-            // O peso 'b' está "encolhido" (f16). Aqui nós transformamos ele de volta para
-            // um número decimal normal (f32) para poder fazer a conta.
+            // The weight 'b' is "shrunken" (f16). Here we transform it back into
+            // a normal decimal number (f32) so we can do the math.
             let fb = half::f16::from_bits(*b.get_unchecked(i)).to_f32();
 
-            // Multiplicamos o valor da entrada 'a' pelo peso 'fb' e somamos ao total.
-            // O 'get_unchecked' é como dizer ao computador: "Pode ir direto nesse endereço,
-            // eu garanto que ele existe", o que ganha um pouquinho de velocidade.
+            // We multiply the input value 'a' by the weight 'fb' and add to the total.
+            // `get_unchecked` is like telling the computer: "Go straight to this address,
+            // I guarantee it exists", which saves a bit of speed.
             sum += *a.get_unchecked(i) * fb;
         }
     }
-    sum // Devolve o resultado final da soma.
+    sum // Returns the final result of the sum.
 }
 
-/// Versão do Produto Escalar para o formato "BF16" (Brain Floating Point).
-/// É um formato de número decimal muito usado em Inteligência Artificial porque
-/// ocupa metade do espaço mas mantém a "escala" dos números grandes.
+/// Version of the Dot Product for the "BF16" (Brain Floating Point) format.
+/// This is a decimal number format widely used in AI because
+/// it takes half the space but preserves the "scale" of large numbers.
 pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut sum = 0.0f32;
 
     for i in 0..len {
         unsafe {
-            // Aqui fazemos uma "mágica" com bits: movemos o número 16 casas para a esquerda.
-            // Isso transforma o formato compacto BF16 de volta para o decimal f32 padrão.
+            // Here we do some bit "magic": we shift the number 16 places to the left.
+            // This transforms the compact BF16 format back into standard f32 decimal.
             let fa = f32::from_bits((*a.get_unchecked(i) as u32) << 16);
             let fb = f32::from_bits((*b.get_unchecked(i) as u32) << 16);
 
-            // Multiplica e acumula na soma.
+            // Multiply and accumulate into the sum.
             sum += fa * fb;
         }
     }
     sum
 }
 
-/// Produto Escalar Intercalado (4x).
-/// Em vez de calcular uma única soma, esta função calcula 4 somas ao mesmo tempo
-/// usando os mesmos dados de entrada mas pesos diferentes.
-/// Útil quando um som (estado) afeta 4 "canais" ou "neurônios" diferentes.
+/// Interleaved Dot Product (4x).
+/// Instead of computing a single sum, this function computes 4 sums at the same time
+/// using the same input data but different weights.
+/// Useful when a sound (state) affects 4 different "channels" or "neurons".
 pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = core::cmp::min(weights.len(), state.len());
-    let mut sum = [0.0f32; 4]; // Criamos um "baldinho" para cada uma das 4 somas.
+    let mut sum = [0.0f32; 4]; // We create a "small bucket" for each of the 4 sums.
 
     for i in 0..len {
         unsafe {
-            let s = *state.get_unchecked(i); // Pegamos um valor da entrada.
-            let w = weights.get_unchecked(i); // Pegamos 4 pesos correspondentes.
+            let s = *state.get_unchecked(i); // Get one input value.
+            let w = weights.get_unchecked(i); // Get the 4 corresponding weights.
 
-            // Cada peso multiplica o mesmo valor de entrada e vai para sua respectiva soma.
+            // Each weight multiplies the same input value and goes into its respective sum.
             sum[0] += half::f16::from_bits(w[0]).to_f32() * s;
             sum[1] += half::f16::from_bits(w[1]).to_f32() * s;
             sum[2] += half::f16::from_bits(w[2]).to_f32() * s;
             sum[3] += half::f16::from_bits(w[3]).to_f32() * s;
         }
     }
-    sum // Retorna os 4 resultados.
+    sum // Returns the 4 results.
 }
 
-/// Mesma lógica de cima (4 somas ao mesmo tempo), mas usando o formato compacto BF16.
+/// Same logic as above (4 sums at once), but using the compact BF16 format.
 pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
     weights: &[[u16; 4]],
     state: &[u16],
@@ -108,11 +108,11 @@ pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
 
     for i in 0..len {
         unsafe {
-            // Descompacta a entrada BF16 -> f32.
+            // Unpack BF16 input -> f32.
             let s = f32::from_bits((*state.get_unchecked(i) as u32) << 16);
             let w = weights.get_unchecked(i);
 
-            // Descompacta cada um dos 4 pesos e multiplica pela entrada.
+            // Unpack each of the 4 weights and multiply by the input.
             sum[0] += f32::from_bits((w[0] as u32) << 16) * s;
             sum[1] += f32::from_bits((w[1] as u32) << 16) * s;
             sum[2] += f32::from_bits((w[2] as u32) << 16) * s;
@@ -122,14 +122,14 @@ pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
     sum
 }
 
-/// Produto Escalar Intercalado para "Dual Frame" (Dois quadros de áudio).
-/// Esta função é ainda mais trabalhadora: ela calcula 4 somas para o primeiro
-/// quadro de áudio E 4 somas para o segundo quadro, tudo num loop só.
-/// Isso economiza tempo porque lemos os pesos da memória apenas uma vez.
+/// Interleaved Dot Product for "Dual Frame" (Two audio frames).
+/// This function is even more hardworking: it computes 4 sums for the first
+/// audio frame AND 4 sums for the second frame, all in a single loop.
+/// This saves time because we read the weights from memory only once.
 pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
     weights: &[[u16; 4]],
-    state_f0: &[f32], // Primeiro quadro de áudio (Ex: amostra atual)
-    state_f1: &[f32], // Segundo quadro (Ex: amostra anterior ou próxima)
+    state_f0: &[f32], // First audio frame (e.g.: current sample)
+    state_f1: &[f32], // Second frame (e.g.: previous or next sample)
 ) -> ([f32; 4], [f32; 4]) {
     let len = core::cmp::min(
         weights.len(),
@@ -144,19 +144,19 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
             let s1 = *state_f1.get_unchecked(i);
             let w = weights.get_unchecked(i);
 
-            // Descompactamos os 4 pesos uma única vez para usar nos dois quadros.
+            // We unpack the 4 weights just once to use in both frames.
             let w0 = half::f16::from_bits(w[0]).to_f32();
             let w1 = half::f16::from_bits(w[1]).to_f32();
             let w2 = half::f16::from_bits(w[2]).to_f32();
             let w3 = half::f16::from_bits(w[3]).to_f32();
 
-            // Somas para o quadro 0.
+            // Sums for frame 0.
             sum_f0[0] += w0 * s0;
             sum_f0[1] += w1 * s0;
             sum_f0[2] += w2 * s0;
             sum_f0[3] += w3 * s0;
 
-            // Somas para o quadro 1.
+            // Sums for frame 1.
             sum_f1[0] += w0 * s1;
             sum_f1[1] += w1 * s1;
             sum_f1[2] += w2 * s1;
@@ -166,7 +166,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
     (sum_f0, sum_f1)
 }
 
-/// Mesma lógica do "Dual Frame" acima, mas tudo no formato BF16.
+/// Same "Dual Frame" logic as above, but everything in BF16 format.
 pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
     weights: &[[u16; 4]],
     state_f0: &[u16],
@@ -181,18 +181,18 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
 
     for i in 0..len {
         unsafe {
-            // Converte entradas de BF16 para f32.
+            // Convert BF16 inputs to f32.
             let s0 = f32::from_bits((*state_f0.get_unchecked(i) as u32) << 16);
             let s1 = f32::from_bits((*state_f1.get_unchecked(i) as u32) << 16);
             let w = weights.get_unchecked(i);
 
-            // Converte pesos de BF16 para f32.
+            // Convert BF16 weights to f32.
             let w0 = f32::from_bits((w[0] as u32) << 16);
             let w1 = f32::from_bits((w[1] as u32) << 16);
             let w2 = f32::from_bits((w[2] as u32) << 16);
             let w3 = f32::from_bits((w[3] as u32) << 16);
 
-            // Acumula os resultados.
+            // Accumulate the results.
             sum_f0[0] += w0 * s0;
             sum_f0[1] += w1 * s0;
             sum_f0[2] += w2 * s0;
@@ -207,8 +207,8 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
     (sum_f0, sum_f1)
 }
 
-/// Calcula 4 produtos escalares de uma vez para BF16.
-/// É um atalho para chamar a função de uma única linha 4 vezes.
+/// Computes 4 dot products at once for BF16.
+/// This is a shortcut to call the single-line function 4 times.
 pub unsafe fn dot_product_bf16_4x_fallback(
     w0: &[u16],
     w1: &[u16],
@@ -226,13 +226,13 @@ pub unsafe fn dot_product_bf16_4x_fallback(
     }
 }
 
-/// Processamento de Matriz (GEMM) em lote.
-/// GEMM significa "Multiplicação de Matriz Geral". É o coração das redes neurais.
-/// Esta função processa vários "quadros" de áudio de uma vez só.
+/// Batch Matrix Processing (GEMM).
+/// GEMM stands for "General Matrix Multiplication". It's the heart of neural networks.
+/// This function processes multiple audio "frames" at once.
 pub unsafe fn fused_add_gemm_batch_fallback(
     in_frames: &[f32],
     weights: &[u16],
-    bias: &[f32], // "Bias" é um ajuste fixo somado ao final (como o 'b' em y = ax + b).
+    bias: &[f32], // "Bias" is a fixed offset added at the end (like the 'b' in y = ax + b).
     out_frames: &mut [f32],
     num_frames: usize,
     do_bias: bool,
@@ -240,14 +240,14 @@ pub unsafe fn fused_add_gemm_batch_fallback(
     if num_frames == 0 {
         return;
     }
-    // Descobre quanto espaço cada quadro ocupa na memória.
+    // Figure out how much space each frame occupies in memory.
     let in_len = in_frames.len() / num_frames;
     let out_len = out_frames.len() / num_frames;
 
-    // Para cada quadro no lote...
+    // For each frame in the batch...
     for f in 0..num_frames {
         unsafe {
-            // ...chama a função que processa um único vetor (GEMV).
+            // ...call the function that processes a single vector (GEMV).
             fused_add_gemv_fallback(
                 in_frames.get_unchecked(f * in_len..(f + 1) * in_len),
                 weights,
@@ -259,8 +259,8 @@ pub unsafe fn fused_add_gemm_batch_fallback(
     }
 }
 
-/// Multiplicação Matriz-Vetor (GEMV) que SOMA ao resultado existente.
-/// Pense nisso como injetar uma nova camada de processamento por cima do que já estava lá.
+/// Matrix-Vector Multiplication (GEMV) that ADDS to the existing result.
+/// Think of it as injecting a new processing layer on top of what was already there.
 pub unsafe fn fused_add_gemv_fallback(
     in_frame: &[f32],
     weights: &[u16],
@@ -271,30 +271,30 @@ pub unsafe fn fused_add_gemv_fallback(
     let out_len = out_frame.len();
     let in_len = in_frame.len();
 
-    // Para cada "neurônio" de saída...
+    // For each output "neuron"...
     for (out_c, &b) in bias.iter().enumerate().take(out_len) {
-        // Começamos com o 'bias' (ajuste) ou com zero.
+        // We start with the 'bias' (offset) or with zero.
         let mut sum = if do_bias { b } else { 0.0 };
 
-        // Passamos por todas as entradas e pesos correspondentes.
+        // We iterate through all inputs and corresponding weights.
         for in_c in 0..in_len {
             unsafe {
-                // Pega o peso comprimido e descompacta.
+                // Gets the compressed weight and unpacks it.
                 let w =
                     half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
-                // Multiplica a entrada pelo peso e acumula.
+                // Multiplies the input by the weight and accumulates.
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
         }
         unsafe {
-            // IMPORTANTE: Aqui usamos '+=' para SOMAR ao que já estava no buffer de saída.
+            // IMPORTANT: Here we use '+=' to ADD to what was already in the output buffer.
             *out_frame.get_unchecked_mut(out_c) += sum;
         }
     }
 }
 
-/// Multiplicação Matriz-Vetor (GEMV) que SOBRESCREVE o resultado.
-/// Diferente da anterior, esta apaga o que estava na saída e coloca o novo valor.
+/// Matrix-Vector Multiplication (GEMV) that OVERWRITES the result.
+/// Unlike the previous one, this erases what was in the output and places the new value.
 pub unsafe fn gemv_overwrite_fallback(
     in_frame: &[f32],
     weights: &[u16],
@@ -314,20 +314,20 @@ pub unsafe fn gemv_overwrite_fallback(
             }
         }
         unsafe {
-            // IMPORTANTE: Aqui usamos '=' para LIMPAR e definir o novo valor.
+            // IMPORTANT: Here we use '=' to CLEAR and set the new value.
             *out_frame.get_unchecked_mut(out_c) = sum;
         }
     }
 }
 
-/// Multiplicação de Matriz Residual em lote.
-/// Em redes neurais "Residuais", nós somamos o resultado do processamento ao sinal original.
-/// É como dizer: "Mude o som apenas um pouquinho em relação ao que ele era".
+/// Residual Matrix Multiplication in a batch.
+/// In "Residual" neural networks, we add the processing result to the original signal.
+/// It's like saying: "Change the sound just a little bit relative to what it was."
 pub unsafe fn fused_gemm_residual_batch_fallback(
     in_frames: &[f32],
     weights: &[u16],
     bias: &[f32],
-    residual: &[f32], // Este é o sinal "limpo" que será somado ao final.
+    residual: &[f32], // This is the "clean" signal that will be added at the end.
     out_frames: &mut [f32],
     num_frames: usize,
     do_bias: bool,
@@ -347,7 +347,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
                     let w = half::f16::from_bits(w_bits).to_f32();
                     sum += *in_frames.get_unchecked(frame_idx * in_len + in_c) * w;
                 }
-                // Resultado final = (Processamento da Matriz) + (Sinal Residual original).
+                // Final result = (Matrix Processing) + (Original Residual Signal).
                 *out_frames.get_unchecked_mut(frame_idx * out_len + out_c) =
                     sum + *residual.get_unchecked(frame_idx * out_len + out_c);
             }
@@ -355,7 +355,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
     }
 }
 
-/// Multiplicação Matriz-Vetor (Sobrescrita) usando entrada e pesos BF16.
+/// Matrix-Vector Multiplication (Overwrite) using BF16 input and weights.
 pub unsafe fn gemv_overwrite_bf16_fallback(
     in_frame: &[u16],
     weights: &[u16],
@@ -369,9 +369,9 @@ pub unsafe fn gemv_overwrite_bf16_fallback(
         let mut sum = if do_bias { b } else { 0.0 };
         for in_c in 0..in_len {
             unsafe {
-                // Descompacta entrada BF16 -> f32.
+                // Unpack BF16 input -> f32.
                 let s = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
-                // Descompacta peso BF16 -> f32 e multiplica.
+                // Unpack BF16 weight -> f32 and multiply.
                 sum += s * f32::from_bits(
                     (*weights.get_unchecked(in_c * out_len + out_c) as u32) << 16,
                 );
@@ -383,45 +383,45 @@ pub unsafe fn gemv_overwrite_bf16_fallback(
     }
 }
 
-/// Converte números decimais de alta precisão (f32) para o formato compacto (BF16).
-/// Isso economiza muita memória e é usado para guardar os "pesos" da rede neural.
+/// Converts high-precision decimal numbers (f32) to the compact format (BF16).
+/// This saves a lot of memory and is used to store neural network "weights".
 pub unsafe fn f32_to_bf16_fallback(src: &[f32], dest: &mut [u16]) {
     for (s, d) in src.iter().zip(dest.iter_mut()) {
-        // Pega os 16 bits mais importantes do número e descarta o resto.
+        // Gets the 16 most important bits of the number and discards the rest.
         *d = (s.to_bits() >> 16) as u16;
     }
 }
 
-/// Aplica o "esmagamento" Tanh em toda uma lista de números.
+/// Applies the Tanh "squashing" function across an entire list of numbers.
 pub unsafe fn tanh_slice_fallback(slice: &mut [f32]) {
     for v in slice.iter_mut() {
         *v = v.tanh();
     }
 }
 
-/// Aplica a função "Sigmoid" em toda uma lista de números.
-/// A Sigmoid esmaga os números para ficarem entre 0.0 e 1.0.
-/// É ótima para criar "portões" ou controles de volume automáticos.
+/// Applies the "Sigmoid" function across an entire list of numbers.
+/// Sigmoid squashes numbers to stay between 0.0 and 1.0.
+/// It's great for creating "gates" or automatic volume controls.
 pub unsafe fn sigmoid_slice_fallback(slice: &mut [f32]) {
     for v in slice.iter_mut() {
         *v = 1.0 / (1.0 + (-*v).exp());
     }
 }
 
-/// Soma todos os números de uma lista e devolve um único valor final.
+/// Sums all numbers in a list and returns a single final value.
 pub unsafe fn horizontal_sum_fallback(ptr: *const f32, len: usize) -> f32 {
     let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
     slice.iter().sum()
 }
 
-/// Convolução Estéreo (usada no Resampler).
-/// Convolução é como aplicar um filtro (como um equalizador).
-/// Aqui fazemos isso para os canais Esquerdo (L) e Direito (R) simultaneamente.
+/// Stereo Convolution (used in the Resampler).
+/// Convolution is like applying a filter (like an equalizer).
+/// Here we do it for the Left (L) and Right (R) channels simultaneously.
 pub unsafe fn convolve_stereo_fallback(
-    coeffs: *const f32,  // Coeficientes do filtro.
-    input_l: *const f32, // Entrada canal esquerdo.
-    input_r: *const f32, // Entrada canal direito.
-    taps: usize,         // "Tamanho" do filtro.
+    coeffs: *const f32,  // Filter coefficients.
+    input_l: *const f32, // Left channel input.
+    input_r: *const f32, // Right channel input.
+    taps: usize,         // Filter "length".
 ) -> (f32, f32) {
     let mut sum_l = 0.0f32;
     let mut sum_r = 0.0f32;
@@ -433,8 +433,8 @@ pub unsafe fn convolve_stereo_fallback(
     (sum_l, sum_r)
 }
 
-/// Convolução Estéreo Dupla (usada no Resampler).
-/// Realiza duas convoluções estéreo consecutivas reutilizando os loads das entradas.
+/// Dual Stereo Convolution (used in the Resampler).
+/// Performs two consecutive stereo convolutions reusing input loads.
 pub unsafe fn convolve_stereo_dual_fallback(
     coeffs0: *const f32,
     coeffs1: *const f32,
@@ -459,7 +459,7 @@ pub unsafe fn convolve_stereo_dual_fallback(
     ((sum0_l, sum0_r), (sum1_l, sum1_r))
 }
 
-/// Convolução Mono (usada no Resampler).
+/// Mono Convolution (used in the Resampler).
 pub unsafe fn convolve_mono_fallback(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     let mut sum = 0.0f32;
     for i in 0..taps {
@@ -468,9 +468,9 @@ pub unsafe fn convolve_mono_fallback(coeffs: *const f32, input: *const f32, taps
     sum
 }
 
-/// Fallback escalar para os 4 portões da LSTM.
-/// Cada portão controla um aspecto diferente: entrada, esquecimento, conteúdo e saída.
-/// Usado diretamente por `avx512.rs` e `avx2.rs` para operações não-vetorizadas.
+/// Scalar fallback for the 4 LSTM gates.
+/// Each gate controls a different aspect: input, forget, content, and output.
+/// Used directly by `avx512.rs` and `avx2.rs` for non-vectorized operations.
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_fallback(
     in_frame: &[f32],
@@ -484,7 +484,7 @@ pub unsafe fn gemv_4gate_fallback(
 ) {
     let out_len = out.len() / 4;
     unsafe {
-        // Processa cada um dos 4 portões separadamente.
+        // Processes each of the 4 gates separately.
         gemv_overwrite_fallback(
             in_frame,
             w0,
@@ -516,7 +516,7 @@ pub unsafe fn gemv_4gate_fallback(
     }
 }
 
-/// Versão BF16 para os 4 portões da LSTM.
+/// BF16 version for the 4 LSTM gates.
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn gemv_4gate_bf16_fallback(
     in_frame: &[u16],
@@ -561,14 +561,14 @@ pub unsafe fn gemv_4gate_bf16_fallback(
     }
 }
 
-/// Aplica um volume (ganho) multiplicando cada amostra pelo valor desejado.
+/// Applies a volume (gain) by multiplying each sample by the desired value.
 pub unsafe fn apply_gain_fallback(data: &mut [f32], gain: f32) {
     for x in data.iter_mut() {
         *x *= gain;
     }
 }
 
-/// Calcula a energia (Mean Square) de um bloco via escalar.
+/// Computes the energy (Mean Square) of a block via scalar.
 pub unsafe fn compute_energy_fallback(data: &[f32]) -> f32 {
     let len = data.len();
     if len == 0 {
@@ -581,7 +581,7 @@ pub unsafe fn compute_energy_fallback(data: &[f32]) -> f32 {
     sum / (len as f32)
 }
 
-/// Calcula o máximo da energia entre dois canais via escalar.
+/// Computes the maximum energy between two channels via scalar.
 pub unsafe fn compute_energy_stereo_fallback(l: &[f32], r: &[f32]) -> f32 {
     let len = core::cmp::min(l.len(), r.len());
     if len == 0 {
@@ -600,7 +600,7 @@ pub unsafe fn compute_energy_stereo_fallback(l: &[f32], r: &[f32]) -> f32 {
     energy_l.max(energy_r)
 }
 
-/// Calcula a diferença absoluta máxima entre dois blocos via escalar.
+/// Computes the maximum absolute difference between two blocks via scalar.
 pub unsafe fn compute_max_diff_fallback(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     if len == 0 {

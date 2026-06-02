@@ -1235,11 +1235,11 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 ---
 
-### Sprint S13b — Prototipação e Otimização de Precisão FastMath e Redução de Drift ✨
+## Épico 8 —  Prototipação e Otimização de Precisão FastMath e Redução de Drift ✨
 
 Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão identificadas a partir dos resultados de S13a.T02 para mitigar a divergência acumulada na WaveNet Standard, sem degradar o budget de CPU/latência do hotpath DSP.
 
-#### Tarefa S13b.T01 — Prototipação de Minimax Polinomial Direto para Sigmoid ✨
+### Tarefa E8.T01 — Prototipação de Minimax Polinomial Direto para Sigmoid ✨
 
 - **Onde:** `src/math/activations/sigmoid.rs`, `src/math/activations/fused.rs`.
 - **Por que é importante:** A função de ativação `sigmoid` atual delega os cálculos para a identidade `0.5 + 0.5 * tanh(x/2)`. Isso força a propagação do erro da aproximação de `tanh` e introduz operações aritméticas extras de reescalonamento, acumulando desvios na saída.
@@ -1253,7 +1253,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Latência dos kernels de ativação igual ou menor que o baseline atual.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 
-#### Tarefa S13b.T02 — Implementação de Piecewise Minimax SIMD com Blending Branchless ✨
+### Tarefa E8.T02 — Implementação de Piecewise Minimax SIMD com Blending Branchless ✨
 
 - **Onde:** `src/math/activations/tanh.rs`.
 - **Por que é importante:** Um único aproximante racional Padé [5,4] cobrindo todo o intervalo `[-4, 4]` resulta em picos de erro locais nas zonas de transição rápida de curvatura de `tanh`.
@@ -1266,7 +1266,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Zero branches condicionais inseridos no hot-path SIMD.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 
-#### Tarefa S13b.T03 — Compensação de Viés de Arredondamento nos Pesos Quantizados (Bias-Tuning) ✨
+### Tarefa E8.T03 — Compensação de Viés de Arredondamento nos Pesos Quantizados (Bias-Tuning) ✨
 
 - **Onde:** `src/loader/dispatcher/wavenet/` e `src/loader/nam_json/` (inicialização de pesos).
 - **Por que é importante:** A conversão estática dos pesos originais FP32 para o formato compacto BF16 introduz um viés numérico (drift linear) persistente. Esse drift acumula-se de forma multiplicativa ao longo de mais de 18 camadas residuais na WaveNet Standard, gerando o pior cenário de SNR (9.5 dB).
@@ -1280,7 +1280,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Zero overhead computacional na thread RT (soma ocorre no bias offline).
 - **Especialista:** `pesquisador-inovador`.
 
-#### Tarefa S13b.T04 — Validação de Precisão de Divisão SIMD e Refinamento Newton-Raphson 💡
+### Tarefa E8.T04 — Validação de Precisão de Divisão SIMD e Refinamento Newton-Raphson 💡
 
 - **Onde:** `src/math/activations/tanh.rs`.
 - **Por que é importante:** A aproximação de divisão del denominador Padé via instrução rápida `rcp_ps` seguida de uma única iteração de Newton-Raphson limita o resultado a ~22 bits, introduzindo ruído de truncamento invisível em redes profundas.
@@ -1292,7 +1292,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Determinar a contribuição exata da aproximação de recíproco no drift numérico da WaveNet Standard em relação ao baseline.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 
-#### Tarefa S13b.T05 — Dithering determinístico e supressão de efeitos de sub-limiares (Denormais) ⚠️
+### Tarefa E8.T05 — Dithering determinístico e supressão de efeitos de sub-limiares (Denormais) ⚠️
 
 - **Onde:** `src/dsp/pipeline/stages.rs` ou `src/models/wavenet/model.rs`.
 - **Por que é importante:** Sinais em fade-out ou trechos de silêncio decaem para faixas subnormais de ponto flutuante ($10^{-10}$ a $10^{-38}$). Nessas regiões extremas, as aproximações de Padé e Minimax apresentam instabilidade matemática ou erros de arredondamento relativos amplificados.
@@ -1304,7 +1304,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Golden tests e análise espectral confirmam que o decaimento para o silêncio é livre de artefatos digitais ou picos de erro.
 - **Especialista:** `pesquisador-inovador`.
 
-#### Tarefa S13b.T06 — Compensação de Erro de Acumulação Estocástica (Kahan/Pairwise Summation nas Convoluções) ✨
+### Tarefa E8.T06 — Compensação de Erro de Acumulação Estocástica (Kahan/Pairwise Summation nas Convoluções) ✨
 
 - **Onde:** `src/models/wavenet/conv1d.rs`, `src/math/gemm/dot_4x/`.
 - **Por que é importante:** A acumulação sequencial de produtos parciais em loops de convolução com muitos canais (como 64 ou 128 na WaveNet) perde precisão a cada soma devido ao truncamento dos bits menos significativos da mantissa (erro de arredondamento estocástico).
@@ -1316,7 +1316,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Redução de pelo menos 2 dB de drift acumulado em testes de convolução profunda com 10+ layers.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 
-#### Tarefa S13b.T07 — Mixed-Precision Accumulation em Convolução de Pesos BF16 e Fusão de Conexão Residual ✨
+### Tarefa E8.T07 — Mixed-Precision Accumulation em Convolução de Pesos BF16 e Fusão de Conexão Residual ✨
 
 - **Onde:** `src/models/wavenet/conv1d.rs`, `src/math/gemm/dot_4x/avx512_bf16.rs`.
 - **Por que é importante:** Fazer somas parciais ou casting intermediário de dados de acumuladores em BF16 degrada a mantissa para 7 bits, destruindo a fidelidade harmônica. Adicionalmente, ler e escrever no buffer para fazer a soma residual separadamente adiciona perdas numéricas e penalidades de barramento de memória.
@@ -1329,7 +1329,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Zero conversões desnecessárias f32->bf16->f32 entre o acúmulo e o cálculo residual da mesma camada.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 
-#### Tarefa S13b.T08 — Calibração Adaptativa de Threshold por Topologia e Mixed-Precision Seletiva 💡
+### Tarefa E8.T08 — Calibração Adaptativa de Threshold por Topologia e Mixed-Precision Seletiva 💡
 
 - **Onde:** `src/loader/nam_json/topology.rs`, `tests/cpp_parity.rs`.
 - **Por que é importante:** Nem todas as camadas da WaveNet têm a mesma sensibilidade ao ruído de aproximação. As camadas iniciais de extração de features aceitam quantização agressiva (BF16/F16), enquanto as camadas finais (heads de convolução 1x1) são críticas e definem a qualidade tonal do sinal final de áudio. Ademais, os limites de teste antigos são fixos, causando falhas falsas em redes complexas ou macronos erros em redes rasas.
@@ -1341,50 +1341,3 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Adoção de tolerâncias adaptativas por família de modelo em testes.
   - Ganho de fidelidade tonal com manutenção de BF16 na espinha dorsal da WaveNet e FP32 na saída.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
-
----
-
-## Épico 8 — Documentação Técnica
-
-Objetivo: assegurar que cada decisão e cada subsistema crítico têm documentação acessível para mantenedores futuros.
-
-### Sprint S14 — Documentação técnica & comentários
-
-#### Tarefa S14.T01 — (Referência cruzada) Especificação formal do formato NAMB 💡 [DONE]
-
-- **Status:** **Entrega real consolidada em S5.T07** (Épico 3, Sprint S5). Esta entrada permanece apenas para sinalizar que o trabalho está mapeado no Épico de documentação técnica.
-- **Validação esperada na conclusão do S14:** Confirmar com `documentador` que `docs/namb-spec.md` está completo e atualizado refletindo as mudanças dos Sprints S3 e S5 (CRC flag, padding Interleaved-4, erros tipados).
-- **Especialista:** `documentador` (revisão apenas).
-
-#### Tarefa S14.T02 — Padronizar idioma de docstrings (en-US) ⚠️
-
-- **Onde:** Todo `src/`.
-- **Problema:** Mistura pt-BR e en-US em docstrings, mensagens, comentários. README do projeto especifica pt-BR para devs.
-- **Solução técnica:** Pass de revisão (`documentador`) garantindo inglês internacional em `///`, `//`, `//!`. Mensagens de erro user-facing podem ficar em inglês se justificado.
-- **Critérios de aceitação:** Coverage > 90% inglês internacional.
-- **Especialista:** `documentador`.
-
-#### Tarefa S14.T03 — Adicionar `# Safety` faltantes em `unsafe { ... }` 💡
-
-- **Onde:** `src/clap/processor/dsp.rs` (unsafe blocks do processamento DSP, migrados de `processor.rs`); `src/dsp/pipeline/bridge.rs` (acesso ao `DspBridge`); `src/math/common/avx2_impl.rs`; `src/math/common/avx512/` (kernels SIMD); outros identificados na auditoria.
-- **Solução técnica:** Adicionar comentário `// SAFETY: ...` justificando cada bloco.
-- **Critérios de aceitação:** `cargo clippy -- -D clippy::undocumented_unsafe_blocks` passa.
-- **Especialista:** `documentador` + `implementador`.
-
-#### Tarefa S14.T04 — Atualizar `docs/architecture.md` 💡
-
-- **Onde:** `docs/architecture.md`.
-- **Solução técnica:** Refletir mudanças dos Épicos 1–6: split de `DspBridge` em Reader/Writer (S1.T01), quebra dos módulos CLAP (`plugin/`, `processor/`, `gui/ui/`, `gui/window/`), standalone (`pw_host/`, `rt_setup/`), pipeline (`pipeline/`), math (`common/avx512/`, `gemm/dot_4x/`, `dsp/stereo/`), loader (`dispatcher/wavenet/`, `nam_json/`), diagnostics (`diagnostics/`), renomeação `vring`→`mirror_buf`, trait `NamModel::reset()`, Padé activations (S7.T09), e demais alterações estruturais.
-- **Critérios de aceitação:** Documento revisto pela skill `documentador`.
-- **Especialista:** `documentador`.
-
-#### Tarefa S14.T05 — Comentários técnicos em hotpath de SIMD 💡
-
-- **Onde:** `src/math/common/avx2_impl.rs`; `src/math/common/avx512/` (activations, gemv, bf16, reduce); `src/math/gemm/dot_4x/` (avx2, avx2_dual, avx512, avx512_dual, avx512_bf16); `src/math/gemm/gemv.rs`; `src/math/gemm/gemv_4gate.rs`.
-- **Problema:** Funções SIMD com algoritmos não-óbvios sem documentação de microarquitetura alvo (Skylake/Zen/Ice Lake).
-- **Solução técnica:** Adicionar header em cada kernel SIMD com:
-  - Latência/throughput esperada.
-  - Número de acumuladores e justificativa.
-  - Citação a paper/manual se aplicável.
-- **Critérios de aceitação:** Toda função `#[target_feature(...)]` tem header documentado.
-- **Especialista:** `documentador` + `pesquisador-inovador`.

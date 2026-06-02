@@ -1,49 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo de gating e blending para a arquitetura NAM A2.
+//! Gating and blending module for the NAM A2 architecture.
 //!
-//! Este módulo define os modos de operação e estruturas de configuração para
-//! as camadas do WaveNet A2 que utilizam mecanismos de gating ou blending.
+//! This module defines the operation modes and configuration structures for
+//! WaveNet A2 layers that use gating or blending mechanisms.
 //!
-//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
-//! aguardando estabilização da implementação de referência.
+//! IMPORTANT: A2 architecture support is in "placeholder" stage
+//! pending stabilization of the reference implementation.
 
 use super::activations::ActivationType;
 
-/// Modos de gating para as camadas do WaveNet.
+/// Gating modes for WaveNet layers.
 ///
-/// Determina como a camada processa os canais de bottleneck duplicados.
+/// Determines how the layer processes duplicated bottleneck channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GatingMode {
-    /// Sem gating ou blending - ativação padrão.
+    /// No gating or blending - standard activation.
     #[default]
     None,
-    /// Gating tradicional (multiplicação elemento a elemento).
+    /// Traditional gating (element-wise multiplication).
     Gated,
-    /// Blending (média ponderada entre valores ativados e pré-ativados).
+    /// Blending (weighted average between activated and pre-activated values).
     Blended,
 }
 
-/// Configuração para ativação do tipo Gating.
+/// Configuration for Gating-type activation.
 ///
-/// Corresponde à classe `GatingActivation` do C++.
+/// Corresponds to the `GatingActivation` class in C++.
 #[derive(Debug, Clone, PartialEq)]
 pub struct GatingActivationConfig {
-    /// Função de ativação para os canais de entrada.
+    /// Activation function for input channels.
     pub input_activation: ActivationType,
-    /// Função de ativação para os canais de gating.
+    /// Activation function for gating channels.
     pub gating_activation: ActivationType,
 }
 
-/// Configuração para ativação do tipo Blending.
+/// Configuration for Blending-type activation.
 ///
-/// Corresponde à classe `BlendingActivation` do C++.
+/// Corresponds to the `BlendingActivation` class in C++.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlendingActivationConfig {
-    /// Função de ativação para os canais de entrada.
+    /// Activation function for input channels.
     pub input_activation: ActivationType,
-    /// Função de ativação para os canais de blending (determina o alpha).
+    /// Activation function for blending channels (determines alpha).
     pub blending_activation: ActivationType,
 }
 

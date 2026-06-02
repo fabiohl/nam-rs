@@ -3,7 +3,7 @@
 
 use super::SIMULATE_FAIL;
 
-/// Cria o backing store (memfd) específico para Linux.
+/// Creates the Linux-specific backing store (memfd).
 pub(crate) unsafe fn create_backing_fd() -> std::io::Result<libc::c_int> {
     let fd = if SIMULATE_FAIL.with(|f| f.get()) {
         unsafe {

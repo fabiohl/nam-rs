@@ -7,12 +7,12 @@ use crate::models::wavenet::conv1d::Conv1d;
 use crate::models::wavenet::dense::DenseLayer;
 use crate::models::wavenet::model::*;
 
-/// Constrói um WaveNetModel<4, 3, 2> mínimo para testes com dados estáticos e controlados.
-/// Esta função serve como um "mock" (modelo simulado) para os testes unitários.
+/// Builds a minimal WaveNetModel<4, 3, 2> for tests with static, controlled data.
+/// This function serves as a "mock" (simulated model) for unit tests.
 fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
-    // Fábrica de camadas para o Array 1 (Main Array).
+    // Layer factory for Array 1 (Main Array).
     // Generics: <COND=1, CH=4, K=3>.
-    // No WaveNet, cada camada é uma unidade funcional que processa o sinal dilatado.
+    // In WaveNet, each layer is a functional unit that processes the dilated signal.
     let make_layer_a1 = |dilation: usize| -> WaveNetLayer<1, 4, 3> {
         let raw_weights = vec![0.01f32; 4 * 3 * 4];
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
@@ -27,11 +27,11 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             is_bf16,
         );
         WaveNetLayer {
-            // A Convolução Causal Dilatada permite capturar dependências temporais longas
-            // sem aumentar linearmente o número de parâmetros.
+            // Dilated Causal Convolution enables capturing long temporal dependencies
+            // without linearly increasing the number of parameters.
             conv1d: Conv1d {
-                // Dimensões: OUT * K * IN = 4 * 3 * 4.
-                // Aqui, IN=CH pois a camada recebe o sinal das camadas anteriores.
+                // Dimensions: OUT * K * IN = 4 * 3 * 4.
+                // Here, IN=CH because the layer receives the signal from previous layers.
                 weights,
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -42,15 +42,15 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                     crate::math::common::prefetch_strategy_simple
                 },
             },
-            // O input_mixin injeta o condicionamento (ex: metadados do timbre) no sinal.
-            // Dimensões: OUT * IN = 4 * 1.
+            // input_mixin injects conditioning (e.g., timbre metadata) into the signal.
+            // Dimensions: OUT * IN = 4 * 1.
             input_mixin: DenseLayer {
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
             },
-            // A projeção 1x1 (Dense) finaliza a célula, preparando o sinal para o residual.
-            // Dimensões: OUT * IN = 4 * 4.
+            // The 1x1 projection (Dense) finalizes the cell, preparing the signal for the residual.
+            // Dimensions: OUT * IN = 4 * 4.
             one_by_one: DenseLayer {
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
@@ -59,10 +59,10 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         }
     };
 
-    // Array2: CH=2 (=HEAD), layers com COND=1, CH=2
-    // Fábrica de camadas para o Array 2 (Head Array).
+    // Array2: CH=2 (=HEAD), layers with COND=1, CH=2
+    // Layer factory for Array 2 (Head Array).
     // Generics: <COND=1, CH=2, K=3>.
-    // Este array geralmente possui menos canais e foca no refinamento final do áudio.
+    // This array usually has fewer channels and focuses on final audio refinement.
     let make_layer_a2 = |dilation: usize| -> WaveNetLayer<1, 2, 3> {
         let raw_weights = vec![0.01f32; 2 * 3 * 2];
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
@@ -89,13 +89,13 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 },
             },
             input_mixin: DenseLayer {
-                // Dimensões: OUT * IN = 2 * 1.
+                // Dimensions: OUT * IN = 2 * 1.
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
-                // Dimensões: OUT * IN = 2 * 2.
+                // Dimensions: OUT * IN = 2 * 2.
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
@@ -103,19 +103,19 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         }
     };
 
-    // Definimos o padrão de dilatação. O crescimento exponencial (1, 2, 4...)
-    // é o que permite à WaveNet ter um campo receptivo vasto com poucas camadas.
+    // Define the dilation pattern. Exponential growth (1, 2, 4...)
+    // is what allows WaveNet to have a vast receptive field with few layers.
     let dilations_1 = [1, 2, 4];
     let dilations_2 = [1, 2, 4];
 
-    // Cálculo do Receptive Field (RF): determina quantos samples do passado influenciam o presente.
-    // Fórmula simplificada: max_dilation * (kernel_size - 1).
+    // Receptive Field (RF) calculation: determines how many past samples influence the present.
+    // Simplified formula: max_dilation * (kernel_size - 1).
     let rf1 = *dilations_1.iter().max().unwrap_or(&1) * (3 - 1);
     let rf2 = *dilations_2.iter().max().unwrap_or(&1) * (3 - 1);
 
-    // Construção manual das arrays com const generics explícitos.
-    // Array1 (Main Receptive Field): Assegura a extração principal de características.
-    // Para cada dilatação, construímos uma camada e alocamos seu estado interno (buffer histórico).
+    // Manual array construction with explicit const generics.
+    // Array1 (Main Receptive Field): Ensures primary feature extraction.
+    // For each dilation, we build a layer and allocate its internal state (historical buffer).
     let layers_1: Vec<WaveNetLayer<1, 4, 3>> =
         dilations_1.iter().map(|&d| make_layer_a1(d)).collect();
     let states_1: Vec<WaveNetLayerState> = (0..layers_1.len())
@@ -125,19 +125,19 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     let array1 = WaveNetLayerArray::<1, 1, 4, 3, 2> {
         layers: layers_1,
         states: states_1,
-        // Rechannel: Projeta a entrada bruta (Mono/Stereo) para a dimensão interna (Channels).
+        // Rechannel: Projects raw input (Mono/Stereo) to the internal dimension (Channels).
         rechannel: DenseLayer {
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
             bias: AlignedVec::from_vec(vec![0.0; 4]),
             do_bias: false,
         },
-        // Head Rechannel: Agrega as "skip connections" de todas as camadas para a saída do array.
+        // Head Rechannel: Aggregates "skip connections" from all layers for the array's output.
         head_rechannel: DenseLayer {
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 4]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
-        // Buffers de saída pré-alocados para garantir RT-Safety (Zero Alloc no loop).
+        // Pre-allocated output buffers to ensure RT-Safety (Zero Alloc in the loop).
         array_outputs: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
         head_accum: AlignedVec::from_vec(vec![0.0; 4 * WAVENET_MAX_NUM_FRAMES]),
         head_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
@@ -149,9 +149,9 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         condition_init: false,
     };
 
-    // Array2 (Head Definition): O array secundário atua nas predições refinadas finais.
-    // IN=4(=CH de array1), COND=1, CH=2(=HEAD1), K=3, HEAD2=1
-    // O `head_rechannel` define a transição final de dados.
+    // Array2 (Head Definition): The secondary array acts on refined final predictions.
+    // IN=4(=CH of array1), COND=1, CH=2(=HEAD1), K=3, HEAD2=1
+    // `head_rechannel` defines the final data transition.
     let layers_2: Vec<WaveNetLayer<1, 2, 3>> =
         dilations_2.iter().map(|&d| make_layer_a2(d)).collect();
     let states_2: Vec<WaveNetLayerState> = (0..layers_2.len())
@@ -161,17 +161,17 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
     let array2 = WaveNetLayerArray::<4, 1, 2, 3, 1> {
         layers: layers_2,
         states: states_2,
-        // Projeta a saída do Array 1 (HEAD1=2) para a dimensão do Array 2 (CH2=2).
+        // Projects Array 1 output (HEAD1=2) to Array 2 dimension (CH2=2).
         rechannel: DenseLayer {
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 2]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
-        // A projeção final do modelo NAM reduz tudo para 1 canal (áudio mono).
+        // The final NAM model projection reduces everything to 1 channel (mono audio).
         head_rechannel: DenseLayer {
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
-            do_bias: true, // Habilitamos bias na saída final para DC offset Correction.
+            do_bias: true, // Enable bias for final DC offset correction.
         },
         array_outputs: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
         head_accum: AlignedVec::from_vec(vec![0.0; 2 * WAVENET_MAX_NUM_FRAMES]),
@@ -184,114 +184,114 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         condition_init: false,
     };
 
-    // O WaveNetModel orquestra a cascata de arrays e aplica o ganho final.
+    // WaveNetModel orchestrates the array cascade and applies the final gain.
     WaveNetModel {
         array1,
         array2,
         head_scale: 0.02,
-        // O RF global é o maior entre os arrays (geralmente o RF do array 1 domina).
+        // The global RF is the largest among the arrays (usually Array1's RF dominates).
         receptive_field_size: rf1.max(rf2),
     }
 }
 
-/// Testa se os tamanhos alocados na pilha/heap pelas estruturas do WaveNet
-/// coincidem com as especificações matemáticas de canais e frames.
+/// Tests that the stack/heap allocated sizes of WaveNet structures
+/// match the mathematical specifications for channels and frames.
 ///
-/// Como o WaveNet usa vetores e arrays fixos, é crucial garantir
-/// que `head_outputs` tenha espaço exato (ex: 2 canais * 64 frames),
-/// prevenindo segfaults e "out of bounds" durante o processamento de áudio em tempo real.
+/// Since WaveNet uses fixed vectors and arrays, it is crucial to ensure
+/// that `head_outputs` has exact space (e.g., 2 channels * 64 frames),
+/// preventing segfaults and "out of bounds" during real-time audio processing.
 #[test]
 fn test_wavenet_model_allocation() {
     let model = build_tiny_wavenet();
     assert_eq!(model.array1.layers.len(), 3);
     assert_eq!(model.array2.layers.len(), 3);
     assert_eq!(model.array1.head_outputs.len(), 2 * WAVENET_MAX_NUM_FRAMES); // HEAD1=2
-    assert_eq!(model.array2.head_outputs.len(), WAVENET_MAX_NUM_FRAMES); // HEAD2=1 (sempre fixo)
+    assert_eq!(model.array2.head_outputs.len(), WAVENET_MAX_NUM_FRAMES); // HEAD2=1 (always fixed)
     assert!((model.head_scale - 0.02).abs() < 1e-6);
 }
 
-/// Verifica se a inicialização "a quente" (prewarm) do modelo não gera
-/// instabilidade numérica como NaN (Not a Number) ou Inf (Infinity).
+/// Verifies that "hot" initialization (prewarm) of the model does not generate
+/// numerical instability like NaN (Not a Number) or Inf (Infinity).
 ///
-/// O *prewarm* serve para estabilizar a rede (especialmente buffers de delay)
-/// iterando repetidas vezes com zeros antes de iniciar a reprodução. Um bug
-/// de memória não inicializada rapidamente apareceria aqui.
+/// *Prewarm* serves to stabilize the network (especially delay buffers)
+/// by iterating repeatedly with zeros before starting playback. An
+/// uninitialized memory bug would rapidly appear here.
 #[test]
 fn test_wavenet_prewarm_no_nan() {
     let mut model = build_tiny_wavenet();
     model.prewarm();
 
-    // Verificar que os buffers internos não contêm NaN/Inf após prewarm
+    // Verify that internal buffers contain no NaN/Inf after prewarm
     for state in &model.array1.states {
         for &v in state.layer_buffer.iter() {
-            assert!(v.is_finite(), "NaN/Inf detectado no array1 após prewarm");
+            assert!(v.is_finite(), "NaN/Inf detected in array1 after prewarm");
         }
     }
     for state in &model.array2.states {
         for &v in state.layer_buffer.iter() {
-            assert!(v.is_finite(), "NaN/Inf detectado no array2 após prewarm");
+            assert!(v.is_finite(), "NaN/Inf detected in array2 after prewarm");
         }
     }
 }
 
-/// Processa um bloco inteiro de silêncio absoluto (zeros) e garante
-/// que o modelo reaja de forma linear e previsível.
+/// Processes an entire block of absolute silence (zeros) and ensures
+/// that the model reacts in a linear and predictable fashion.
 ///
-/// Silêncio na entrada deve, no máximo, extrair os *bias* (vieses) do modelo
-/// de maneira estável. Qualquer divergência para NaN ou Inf significa que
-/// o modelo sofreu divisão por zero ou corrupção de ponteiro no fluxo SIMD.
+/// Silence at the input should, at most, extract the model's *bias*
+/// in a stable manner. Any divergence to NaN or Inf means that
+/// the model suffered division by zero or pointer corruption in the SIMD flow.
 #[test]
 fn test_wavenet_process_zeros() {
-    // Instancia o modelo "tiny" (mock) e estabiliza os Ring Buffers históricos.
+    // Instantiate the "tiny" model (mock) and stabilize the historical Ring Buffers.
     let mut model = build_tiny_wavenet();
     model.prewarm();
 
-    // Prepara um bloco de 16 amostras de silêncio absoluto.
+    // Prepare a block of 16 samples of absolute silence.
     let input = [0.0f32; 16];
     let mut output = [0.0f32; 16];
 
-    // O processo forward deve converter silêncio em valores estáveis (geralmente pequenos DC offsets).
+    // The forward pass should convert silence into stable values (usually small DC offsets).
     model.process(&input, &mut output);
 
-    // Validamos se o sinal de saída é finito. Se houver divisão por zero ou overflow
-    // em qualquer camada SIMD, o resultado será NaN ou Inf, o que é inaceitável em DSP.
+    // Validate that the output signal is finite. If there's division by zero or overflow
+    // in any SIMD layer, the result will be NaN or Inf, which is unacceptable in DSP.
     for (i, &v) in output.iter().enumerate() {
-        assert!(v.is_finite(), "Amostra de saída [{}] é NaN/Inf: {}", i, v);
+        assert!(v.is_finite(), "Output sample [{}] is NaN/Inf: {}", i, v);
     }
 }
 
-/// Teste de integridade determinística.
+/// Deterministic integrity test.
 ///
-/// Executa duas instâncias idênticas do modelo processando o mesmo estímulo.
-/// O motor DSP (neste caso, as rotinas SIMD AVX2) precisa ser matematicamente
-/// determinístico. Diferenças pontuais (Flutuantes divergentes) indicariam
-/// vazamento de estado de processamentos anteriores (*state bleeding*),
-/// o que arruinaria a qualidade de fase do áudio gerado.
+/// Runs two identical model instances processing the same stimulus.
+/// The DSP engine (in this case, the AVX2 SIMD routines) must be mathematically
+/// deterministic. Point differences (diverging floats) would indicate
+/// state leakage from previous processing (*state bleeding*),
+/// which would ruin the phase quality of the generated audio.
 #[test]
 fn test_wavenet_process_deterministic() {
-    // Criamos duas instâncias isoladas e idênticas para garantir que o estado interno
-    // não é compartilhado de forma insegura (vazamento de memória ou threads).
+    // Create two isolated and identical instances to ensure internal state
+    // is not shared unsafely (memory leak or thread).
     let mut model_a = build_tiny_wavenet();
     let mut model_b = build_tiny_wavenet();
 
     model_a.prewarm();
     model_b.prewarm();
 
-    // Aplicamos um estímulo constante de 0.1 (impulso DC).
+    // Apply a constant stimulus of 0.1 (DC impulse).
     let input = [0.1f32; 8];
     let mut out_a = [0.0f32; 8];
     let mut out_b = [0.0f32; 8];
 
-    // Processamos o mesmo sinal em ambos os modelos.
+    // Process the same signal in both models.
     model_a.process(&input, &mut out_a);
     model_b.process(&input, &mut out_b);
 
-    // A arquitetura NAM deve ser determinística: o mesmo input deve gerar o mesmo output
-    // bit-a-bit ou dentro da tolerância de arredondamento de hardware (1e-6).
+    // The NAM architecture must be deterministic: the same input must generate the same output
+    // bit-for-bit or within hardware rounding tolerance (1e-6).
     for i in 0..8 {
         assert!(
             (out_a[i] - out_b[i]).abs() < 1e-6,
-            "Resultado não-determinístico na amostra [{}]: {} vs {}",
+            "Non-deterministic result at sample [{}]: {} vs {}",
             i,
             out_a[i],
             out_b[i]
@@ -299,16 +299,16 @@ fn test_wavenet_process_deterministic() {
     }
 }
 
-/// Verifica se uma Convolução 1D atuando como "Kernel Identidade"
-/// reproduz exatamente a entrada na saída, sem qualquer modificação.
+/// Verifies that a 1D Convolution acting as an "Identity Kernel"
+/// exactly reproduces the input at the output, without any modification.
 ///
-/// A importância pedagógica disto é enorme: usamos isso para garantir que
-/// as primitivas SIMD de mais baixo nível não estão transpondo, corrompendo
-/// ou descartando canais ao acessar e armazenar valores na memória (SoA/AoS).
+/// The pedagogical importance of this is enormous: we use it to ensure that
+/// the lowest-level SIMD primitives are not transposing, corrupting,
+/// or dropping channels when accessing and storing values in memory (SoA/AoS).
 #[test]
 fn test_conv1d_identity_kernel() {
-    // Criamos uma matriz de pesos 4x4 (achatada para 16 floats).
-    // Ao preencher apenas a diagonal principal com 1.0, criamos um "Kernel Identidade".
+    // Create a 4x4 weight matrix (flattened to 16 floats).
+    // By filling only the main diagonal with 1.0, we create an "Identity Kernel".
     let mut raw_weights = vec![0.0f32; 16];
     for i in 0..4 {
         raw_weights[i * 4 + i] = 1.0;
@@ -325,7 +325,7 @@ fn test_conv1d_identity_kernel() {
         is_bf16,
     );
 
-    // Instanciamos a Convolução 1D sem bias e com dilatação 1 (processamento linear).
+    // Instantiate 1D Convolution without bias and with dilation 1 (linear processing).
     let conv = Conv1d::<4, 4, 1> {
         weights,
         bias: AlignedVec::from_vec(vec![0.0; 4]),
@@ -334,28 +334,28 @@ fn test_conv1d_identity_kernel() {
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
-    // Simulamos um buffer de camada (input) com valores sequenciais.
+    // Simulate a layer buffer (input) with sequential values.
     let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
     let mut block = vec![0.0; 4];
 
-    // Invocamos manualmente a rotina SIMD otimizada para AVX2.
-    // O uso do bloco 'unsafe' é necessário pois acessamos primitivas intrínsecas de hardware.
+    // Manually invoke the SIMD routine optimized for AVX2.
+    // The unsafe block is necessary because we access hardware intrinsic primitives.
     unsafe {
         conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1);
     }
 
-    // Como o kernel é identidade, a saída deve ser uma cópia bit-perfect da entrada.
+    // Since the kernel is identity, the output should be a bit-perfect copy of the input.
     assert_eq!(block, vec![1.0, 2.0, 3.0, 4.0]);
 }
 
-/// Verifica a funcionalidade de adição de *Bias* (viés) na Convolução 1D.
+/// Verifies the *Bias* addition functionality in Conv1D.
 ///
-/// Uma camada equipada com pesos de matriz Identidade somada a um viés constante
-/// deve apenas transladar o eixo numérico dos valores processados. Isso atesta
-/// o uso correto de FMA (Fused Multiply-Add) com a flag `do_bias`.
+/// A layer equipped with Identity matrix weights plus a constant bias
+/// should merely translate the numeric axis of the processed values. This attests
+/// to the correct use of FMA (Fused Multiply-Add) with the `do_bias` flag.
 #[test]
 fn test_conv1d_with_bias() {
-    // Novamente, usamos um kernel identidade para isolar o efeito do Bias.
+    // Again, we use an identity kernel to isolate the Bias effect.
     let mut raw_weights = vec![0.0f32; 16];
     for i in 0..4 {
         raw_weights[i * 4 + i] = 1.0;
@@ -372,11 +372,11 @@ fn test_conv1d_with_bias() {
         is_bf16,
     );
 
-    // Configuramos a camada com Bias de 0.5 em todos os canais de saída.
+    // Configure the layer with Bias of 0.5 on all output channels.
     let conv = Conv1d::<4, 4, 1> {
         weights,
         bias: AlignedVec::from_vec(vec![0.5; 4]),
-        do_bias: true, // Habilita a adição do vetor de bias.
+        do_bias: true, // Enable bias vector addition.
         dilation: 1,
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
@@ -384,25 +384,25 @@ fn test_conv1d_with_bias() {
     let layer_buffer = vec![1.0, 2.0, 3.0, 4.0];
     let mut block = vec![0.0; 4];
 
-    // O motor SIMD executa Fused Multiply-Add (FMA): (input * 1.0) + 0.5.
+    // The SIMD engine executes Fused Multiply-Add (FMA): (input * 1.0) + 0.5.
     unsafe {
         conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 0, 1);
     }
 
-    // Verificamos se cada elemento foi transladado corretamente pelo valor do bias.
+    // Verify that each element was correctly translated by the bias value.
     assert_eq!(block, vec![1.5, 2.5, 3.5, 4.5]);
 }
 
-/// Testa o conceito central do WaveNet: Convoluções Dilatadas.
+/// Tests the central concept of WaveNet: Dilated Convolutions.
 ///
-/// A dilatação insere espaçamentos determinísticos na amostragem histórica de dados.
-/// Aqui validamos se o deslocamento matemático na `Conv1d` acessa corretamente os
-/// frames defasados (com `dilation: 2`). Isso significa ignorar amostras adjacentes
-/// e pular janelas dentro do Ring Buffer. O sucesso deste teste garante a
-/// construção correta do *Receptive Field* geral da arquitetura.
+/// Dilation inserts deterministic spacing in the historical data sampling.
+/// Here we validate whether the mathematical offset in `Conv1d` correctly accesses
+/// the delayed frames (with `dilation: 2`). This means skipping adjacent samples
+/// and jumping windows within the Ring Buffer. The success of this test ensures the
+/// correct construction of the architecture's overall *Receptive Field*.
 #[test]
 fn test_conv1d_dilation() {
-    // Configuramos pesos unitários (1.0) para somar todos os inputs diretamente.
+    // Configure unit weights (1.0) to sum all inputs directly.
     let raw_weights = vec![1.0f32; 2 * 3 * 2];
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
@@ -416,7 +416,7 @@ fn test_conv1d_dilation() {
         is_bf16,
     );
 
-    // Definimos dilation: 2. Isso fará o kernel "saltar" um frame a cada tap.
+    // Define dilation: 2. This will make the kernel "skip" one frame per tap.
     let conv = Conv1d::<2, 2, 3> {
         weights,
         bias: AlignedVec::from_vec(vec![0.0; 2]),
@@ -425,24 +425,24 @@ fn test_conv1d_dilation() {
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
-    // Criamos um histórico de 6 frames (12 floats).
-    // Organização: [F0, F1, F2, F3, F4, F5] -> [ (1,2), (10,20), (3,4), (30,40), (5,6), (0,0) ]
+    // Create a history of 6 frames (12 floats).
+    // Layout: [F0, F1, F2, F3, F4, F5] -> [ (1,2), (10,20), (3,4), (30,40), (5,6), (0,0) ]
     let mut layer_buffer = vec![0.0; 6 * 2];
     layer_buffer[0] = 1.0;
     layer_buffer[1] = 2.0; // F0
     layer_buffer[2] = 10.0;
-    layer_buffer[3] = 20.0; // F1 (Será ignorado pela dilatação 2)
+    layer_buffer[3] = 20.0; // F1 (Will be ignored by dilation 2)
     layer_buffer[4] = 3.0;
     layer_buffer[5] = 4.0; // F2
     layer_buffer[6] = 30.0;
-    layer_buffer[7] = 40.0; // F3 (Será ignorado pela dilatação 2)
+    layer_buffer[7] = 40.0; // F3 (Will be ignored by dilation 2)
     layer_buffer[8] = 5.0;
     layer_buffer[9] = 6.0; // F4
 
     let mut block = vec![0.0; 2];
 
-    // Processamos no frame de índice 4 (F4).
-    // Com K=3 e Dilation=2, os taps serão:
+    // Process at frame index 4 (F4).
+    // With K=3 and Dilation=2, the taps will be:
     // Tap 0: frame 4 - (2 * 2) = frame 0 -> [1.0, 2.0]
     // Tap 1: frame 4 - (2 * 1) = frame 2 -> [3.0, 4.0]
     // Tap 2: frame 4 - (2 * 0) = frame 4 -> [5.0, 6.0]
@@ -450,19 +450,19 @@ fn test_conv1d_dilation() {
         conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 4, 1);
     }
 
-    // Soma total esperada: 1+2 + 3+4 + 5+6 = 21.0.
+    // Expected total sum: 1+2 + 3+4 + 5+6 = 21.0.
     assert_eq!(block[0], 21.0);
     assert_eq!(block[1], 21.0);
 }
 
-/// Garante que pesos gigantes (100.0) multiplicados por entradas de silêncio (0.0)
-/// se manterão absolutamente no zero, provando que o laço de multiplicação não
-/// introduz ruído digital (*DC offset* espontâneo).
-/// Em seguida, ativa o *bias* no meio da execução para provar que a alternância
-/// no tempo de execução é respeitada pela primitiva DSP.
+/// Ensures that giant weights (100.0) multiplied by silence inputs (0.0)
+/// will stay absolutely at zero, proving that the multiplication loop does not
+/// introduce digital noise (*spontaneous DC offset*).
+/// Then, activates *bias* mid-execution to prove that the runtime
+/// switch is respected by the DSP primitive.
 #[test]
 fn test_conv1d_zero_input() {
-    // Pesos extremamente altos para testar se qualquer ruído residual é amplificado.
+    // Extremely high weights to test if any residual noise is amplified.
     let raw_weights = vec![100.0f32; 2 * 3 * 2];
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
@@ -484,18 +484,18 @@ fn test_conv1d_zero_input() {
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
-    // Buffer preenchido com zeros.
+    // Buffer filled with zeros.
     let layer_buffer = vec![0.0; 4 * 2];
     let mut block = vec![0.0; 2];
 
-    // Primeira passagem: Sem bias, saída deve ser 0.0 absoluto.
+    // First pass: Without bias, output should be absolute 0.0.
     unsafe {
         conv.process_block::<crate::math::common::Avx2Math>(&layer_buffer, &mut block, 2, 1);
     }
 
     assert_eq!(block, vec![0.0, 0.0]);
 
-    // Segunda passagem: Ativamos o bias. A saída deve refletir exatamente o bias injetado.
+    // Second pass: Activate bias. The output should reflect exactly the injected bias.
     conv.do_bias = true;
     conv.bias = AlignedVec::from_vec(vec![7.5, 8.5]);
 
@@ -506,16 +506,16 @@ fn test_conv1d_zero_input() {
     assert_eq!(block, vec![7.5, 8.5]);
 }
 
-/// Teste manual de cruzamento de matrizes (Dot Product)
-/// contra um resultado esperado e pré-calculado por um cientista.
+/// Manual matrix cross-product test (Dot Product)
+/// against an expected result pre-calculated by a scientist.
 ///
-/// Provê garantia absoluta de que a rotina `process_block` otimizada para
-/// hardware x86-64 lida perfeitamente com somatórias que contêm valores e pesos
-/// positivos e negativos concorrentes, validando a correção dos cálculos matemáticos.
+/// Provides absolute guarantee that the `process_block` routine optimized for
+/// x86-64 hardware handles perfectly summations containing concurrent positive
+/// and negative values and weights, validating the correctness of mathematical calculations.
 #[test]
 fn test_conv1d_known_output() {
-    // Matriz de pesos heterogênea para validar o cruzamento de canais (Dot Product).
-    // Estrutura: OUT=2, K=2, IN=2. Total 8 pesos.
+    // Heterogeneous weight matrix to validate channel cross-product (Dot Product).
+    // Structure: OUT=2, K=2, IN=2. Total 8 weights.
     let raw_weights = vec![
         0.5, 1.5, // out0, in0, k0 and k1
         1.0, 2.0, // out0, in1, k0 and k1
@@ -542,11 +542,11 @@ fn test_conv1d_known_output() {
         prefetch_fn: crate::math::common::prefetch_strategy_simple,
     };
 
-    // Layer buffer com 2 frames: F0=(2.0, 3.0), F1=(4.0, 5.0).
+    // Layer buffer with 2 frames: F0=(2.0, 3.0), F1=(4.0, 5.0).
     let layer_buffer = vec![2.0, 3.0, 4.0, 5.0];
     let mut block = vec![0.0; 2];
 
-    // Processamos no frame de índice 1 (F1).
+    // Process at frame index 1 (F1).
     // out0 = bias[0] + dot(F0, w[out0,k0]) + dot(F1, w[out0,k1])
     //      = 1.0 + (2*0.5 + 3*1.0) + (4*1.5 + 5*2.0) = 1.0 + 4.0 + 16.0 = 21.0
     // out1 = bias[1] + dot(F0, w[out1,k0]) + dot(F1, w[out1,k1])
@@ -559,12 +559,12 @@ fn test_conv1d_known_output() {
     assert_eq!(block[1], -21.0);
 }
 
-/// Verifica a funcionalidade "Identidade" básica de uma camada Densa
-/// (Totalmente Conectada). Isso é usado em demasia nas conexões *1x1* e
-/// agregações de saída de canal do WaveNet (*Skip Connections*).
+/// Verifies the basic "Identity" functionality of a Dense layer
+/// (Fully Connected). This is used extensively in the *1x1* connections and
+/// WaveNet output channel aggregations (*Skip Connections*).
 #[test]
 fn test_dense_layer_identity() {
-    // Matriz de pesos 4x4 Identity.
+    // 4x4 Identity weight matrix.
     let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16]); // OUT=4 * IN=4
     for out_c in 0..4 {
         weights[out_c * 4 + out_c] = half::f16::from_f32(1.0).to_bits();
@@ -579,7 +579,7 @@ fn test_dense_layer_identity() {
     let input = vec![1.5, 2.5, 3.5, 4.5];
     let mut output = vec![0.0; 4];
 
-    // Camadas densas 1x1 são fundamentais para misturar canais sem olhar para o tempo.
+    // 1x1 dense layers are fundamental for mixing channels without looking at time.
     unsafe {
         dense.process_block::<crate::math::common::Avx2Math>(&input, &mut output, 1);
     }
@@ -587,11 +587,11 @@ fn test_dense_layer_identity() {
     assert_eq!(output, vec![1.5, 2.5, 3.5, 4.5]);
 }
 
-/// Verifica a correta injeção de tensores de *Bias* (viés) em Camadas Densas
-/// através de ponteiros SIMD, garantindo a alteração linear do Output final.
+/// Verifies the correct injection of *Bias* tensors in Dense Layers
+/// via SIMD pointers, ensuring the final Output's linear alteration.
 #[test]
 fn test_dense_layer_with_bias() {
-    // Pesos identidade + Bias de 1.0.
+    // Identity weights + Bias of 1.0.
     let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16]);
     for out_c in 0..4 {
         weights[out_c * 4 + out_c] = half::f16::from_f32(1.0).to_bits();
@@ -606,7 +606,7 @@ fn test_dense_layer_with_bias() {
     let input = vec![1.0, 2.0, 3.0, 4.0];
     let mut output = vec![0.0; 4];
 
-    // O resultado deve ser transladado pelo bias em todos os 4 canais.
+    // The result should be translated by the bias across all 4 channels.
     unsafe {
         dense.process_block::<crate::math::common::Avx2Math>(&input, &mut output, 1);
     }
@@ -614,16 +614,16 @@ fn test_dense_layer_with_bias() {
     assert_eq!(output, vec![2.0, 3.0, 4.0, 5.0]);
 }
 
-/// Executa uma Camada Densa com dimensionalidade não-quadrada (IN=8, OUT=4).
+/// Runs a Dense Layer with non-square dimensionality (IN=8, OUT=4).
 ///
-/// Como o WaveNet altera constantemente as matrizes (de CH para HEAD e vice-versa),
-/// os motores SIMD jamais devem presumir matrizes perfeitamente simétricas (NxN).
-/// Este teste injeta valores heterogêneos para garantir que as paradas
-/// dos laços aninhados de FMA calculem tudo até o limite exato de alocação.
+/// Since WaveNet constantly changes matrices (from CH to HEAD and vice-versa),
+/// SIMD engines must never assume perfectly symmetric matrices (NxN).
+/// This test injects heterogeneous values to ensure that
+/// nested FMA loop stops compute correctly up to the exact allocation limit.
 #[test]
 fn test_dense_layer_rectangular() {
-    // Matriz Assimétrica: IN=8, OUT=4.
-    // Em modelos reais, isso acontece ao projetar CH (ex: 16) para HEAD (ex: 8).
+    // Asymmetric Matrix: IN=8, OUT=4.
+    // In real models, this happens when projecting CH (e.g., 16) to HEAD (e.g., 8).
     let mut weights = AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 32]); // 4 * 8
     // out_c = 0: Soma ponderada de in[0] e in[1]
     // [IN][OUT] -> in_c * OUT + out_c
@@ -637,7 +637,7 @@ fn test_dense_layer_rectangular() {
     // out_c = 2: Escala simples de in[4]
     weights[18] = half::f16::from_f32(0.5).to_bits(); // in4, out2
 
-    // out_c = 3: Inversão de fase de in[7]
+    // out_c = 3: Phase inversion of in[7]
     weights[31] = half::f16::from_f32(-1.0).to_bits(); // in7, out3
 
     let dense = DenseLayer::<8, 4> {
@@ -649,12 +649,12 @@ fn test_dense_layer_rectangular() {
     let input = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
     let mut output = vec![0.0; 4];
 
-    // Validamos se o laço SIMD trata corretamente o fim da linha da matriz (stride).
+    // Validate that the SIMD loop correctly handles the matrix row end (stride).
     unsafe {
         dense.process_block::<crate::math::common::Avx2Math>(&input, &mut output, 1);
     }
 
-    // Trace do cálculo manual:
+    // Manual calculation trace:
     // out[0] = (1.0 * 1.0) + (2.0 * 2.0) + 0.5 = 1.0 + 4.0 + 0.5 = 5.5
     // out[1] = (3.0 * 3.0) + (4.0 * 4.0) - 0.5 = 9.0 + 16.0 - 0.5 = 24.5
     // out[2] = (5.0 * 0.5) + 1.0 = 2.5 + 1.0 = 3.5
@@ -670,11 +670,11 @@ use crate::models::wavenet::common::WavenetProcessContext;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
 use crate::models::wavenet::model_dyn::*;
 
-/// Constrói um `Conv1dDyn` mínimo com `kernel=1`, `dilation=1`.
+/// Builds a minimal `Conv1dDyn` with `kernel=1`, `dilation=1`.
 ///
-/// - `in_ch`: canais de entrada
-/// - `out_ch`: canais de saída (2×ch quando gated)
-/// - `weight`: valor fixo para todos os pesos (facilita cálculo analítico)
+/// - `in_ch`: input channels
+/// - `out_ch`: output channels (2×ch when gated)
+/// - `weight`: fixed value for all weights (facilitates analytical calculation)
 fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
     let num_blocks = out_ch.div_ceil(4);
     let needed = num_blocks * 4 * in_ch;
@@ -691,7 +691,7 @@ fn make_conv1d(in_ch: usize, out_ch: usize, weight: f32) -> Conv1dDyn {
     }
 }
 
-/// Constrói um `DenseLayerDyn` identidade (peso=0, bias=0, sem efeito).
+/// Builds an identity `DenseLayerDyn` (weight=0, bias=0, no effect).
 fn make_dense_zero(in_size: usize, out_size: usize) -> DenseLayerDyn {
     DenseLayerDyn {
         weights: AlignedVec::new(out_size * in_size, 0u16),
@@ -702,46 +702,46 @@ fn make_dense_zero(in_size: usize, out_size: usize) -> DenseLayerDyn {
     }
 }
 
-/// Verifica que `WaveNetLayerDyn` com `gated=true` produz `tanh(conv) ⊙ sigmoid(conv)`.
+/// Verifies that `WaveNetLayerDyn` with `gated=true` produces `tanh(conv) ⊙ sigmoid(conv)`.
 ///
-/// Configuração sintética (CH=1, kernel=1, dilation=1):
-/// - `conv1d` IN=1, OUT=2, peso=1.0 → out[0]=x, out[1]=x (ambos os slots recebem x)
-/// - `input_mixin` e `one_by_one` com pesos zero (sem contribuição externa)
-/// - `layer_buffer[buffer_start] = x = 0.7` → residual adicionado ao output
+/// Synthetic configuration (CH=1, kernel=1, dilation=1):
+/// - `conv1d` IN=1, OUT=2, weight=1.0 → out[0]=x, out[1]=x (both slots receive x)
+/// - `input_mixin` and `one_by_one` with zero weights (no external contribution)
+/// - `layer_buffer[buffer_start] = x = 0.7` → residual added to the output
 ///
-/// Saída esperada em `head_input[0]`: `tanh(x) * sigmoid(x)`.
-/// Verifica que `WaveNetLayerDyn` com `gated=true` produz `tanh(conv) ⊙ sigmoid(conv)`.
+/// Expected output in `head_input[0]`: `tanh(x) * sigmoid(x)`.
+/// Verifies that `WaveNetLayerDyn` with `gated=true` produces `tanh(conv) ⊙ sigmoid(conv)`.
 #[test]
 fn test_gated_layer_dyn_process() {
-    // Usamos CH=1 para facilitar o rastreio manual dos valores.
+    // Use CH=1 to simplify manual value tracing.
     let ch = 1usize;
-    let x = 0.7f32; // Valor de entrada arbitrário
+    let x = 0.7f32; // Arbitrary input value
 
-    // O 'layer_buffer' simula o histórico de amostras (receptive field).
-    // Aqui, colocamos 'x' exatamente onde a convolução irá ler.
-    // buffer_start=1 significa que estamos processando a amostra no índice 1.
+    // 'layer_buffer' simulates the sample history (receptive field).
+    // Here, we place 'x' exactly where the convolution will read.
+    // buffer_start=1 means we're processing the sample at index 1.
     let buffer_start = 1usize;
     let layer_buffer = vec![0.0f32, x]; // [t-1, t] onde t=x
 
-    // Camada de Convolução 1D:
-    // No modo 'gated', a saída tem o DOBRO de canais (2 * ch).
-    // A primeira metade vai para o Tanh, a segunda para o Sigmoid.
-    // Com peso 1.0 e kernel 1, out[0] = x e out[1] = x.
+    // Conv1D Layer:
+    // In 'gated' mode, the output has DOUBLE the channels (2 * ch).
+    // The first half goes to Tanh, the second to Sigmoid.
+    // With weight 1.0 and kernel 1, out[0] = x and out[1] = x.
     let conv1d = make_conv1d(ch, 2 * ch, 1.0);
 
-    // WaveNetLayerDyn agrupa a convolução, mixins de condicionamento e projeção 1x1.
+    // WaveNetLayerDyn groups convolution, conditioning mixins, and 1x1 projection.
     let layer = WaveNetLayerDyn {
         conv1d,
-        // Zeramos o input_mixin para que o sinal externo (condition) não afete o teste.
+        // Zero out input_mixin so the external signal (condition) doesn't affect the test.
         input_mixin: make_dense_zero(1, ch),
-        // Zeramos o one_by_one para que a saída da ativação não contribua para o próximo bloco,
-        // isolando o teste apenas para o valor residual.
+        // Zero out one_by_one so the activation output doesn't contribute to the next block,
+        // isolating the test to the residual value only.
         one_by_one: make_dense_zero(ch, ch),
         ch,
         gated: true,
     };
 
-    // Inputs para o processamento:
+    // Inputs for processing:
     let condition = AlignedVec::new(ch, 0.0);
     let mut head_input = AlignedVec::new(ch, 0.0);
     let mut output = AlignedVec::new(ch, 0.0);
@@ -749,7 +749,7 @@ fn test_gated_layer_dyn_process() {
 
     let _math = SimdMathConfig::current();
 
-    // Executamos o processamento interno (unsafe pois lida com ponteiros/SIMD em produção).
+    // Execute internal processing (unsafe because it deals with production pointers/SIMD).
     unsafe {
         layer.process_block_internal::<crate::math::common::Avx2Math>(WavenetProcessContext {
             condition: &condition,
@@ -765,44 +765,44 @@ fn test_gated_layer_dyn_process() {
         });
     }
 
-    // --- VALIDAÇÃO DA ATIVAÇÃO GATED ---
-    // A matemática da WaveNet original define: activation = tanh(W_f * x) * sigmoid(W_g * x)
-    // Onde 'f' é o filtro e 'g' é o gate. Como nossos pesos são 1.0:
+    // --- GATED ACTIVATION VALIDATION ---
+    // The original WaveNet math defines: activation = tanh(W_f * x) * sigmoid(W_g * x)
+    // Where 'f' is the filter and 'g' is the gate. Since our weights are 1.0:
     // activation = tanh(x) * sigmoid(x)
-    let expected_activation = x.tanh() * (0.5 * (1.0 + (0.5 * x).tanh())); // sigmoid(x) aproximado/padrão
+    let expected_activation = x.tanh() * (0.5 * (1.0 + (0.5 * x).tanh())); // approximate/standard sigmoid(x)
 
     let eps = 1e-5f32;
-    // 'head_input' recebe o resultado da ativação (skip connection).
+    // 'head_input' receives the activation result (skip connection).
     assert!(
         (head_input[0] - expected_activation).abs() < eps,
-        "head_input[0] deveria ser tanh(x)*sigmoid(x)={}, obteve {}",
+        "head_input[0] should be tanh(x)*sigmoid(x)={}, got {}",
         expected_activation,
         head_input[0]
     );
 
-    // --- VALIDAÇÃO DO RESIDUAL PATH ---
-    // Na WaveNet, output = one_by_one(activation) + input.
-    // Como 'one_by_one' é zero, output deve ser apenas o 'x' original (o residual).
+    // --- RESIDUAL PATH VALIDATION ---
+    // In WaveNet, output = one_by_one(activation) + input.
+    // Since 'one_by_one' is zero, output should be only the original 'x' (the residual).
     assert!(
         (output[0] - x).abs() < eps,
-        "output[0] deveria ser residual x={}, obteve {}",
+        "output[0] should be residual x={}, got {}",
         x,
         output[0]
     );
 }
 
-/// Verifica que `gated=false` mantém o comportamento original: `tanh(conv + mixin)`.
+/// Verifies that `gated=false` maintains the original behavior: `tanh(conv + mixin)`.
 #[test]
 fn test_non_gated_layer_dyn_process() {
-    // Setup similar ao teste gated, mas com lógica simplificada (apenas 1 canal de saída).
+    // Setup similar to the gated test, but with simplified logic (only 1 output channel).
     let ch = 1usize;
     let x = 0.7f32;
 
     let buffer_start = 1usize;
     let layer_buffer = vec![0.0f32, x];
 
-    // Conv1d: IN=1, OUT=1 (não-gated).
-    // Diferente do modo gated, aqui a saída tem o MESMO número de canais da entrada.
+    // Conv1d: IN=1, OUT=1 (non-gated).
+    // Unlike gated mode, here the output has the SAME number of channels as the input.
     // weight=1.0 → out[0]=x
     let conv1d = make_conv1d(ch, ch, 1.0);
 
@@ -811,7 +811,7 @@ fn test_non_gated_layer_dyn_process() {
         input_mixin: make_dense_zero(1, ch),
         one_by_one: make_dense_zero(ch, ch),
         ch,
-        gated: false, // Desativa a lógica de split tanh * sigmoid
+        gated: false, // Disable the tanh * sigmoid split logic
     };
 
     let condition = AlignedVec::new(ch, 0.0);
@@ -836,30 +836,30 @@ fn test_non_gated_layer_dyn_process() {
         });
     }
 
-    // --- VALIDAÇÃO DA ATIVAÇÃO PADRÃO ---
-    // Sem o gate, a WaveNet aplica apenas tanh ao resultado da convolução + mixin.
+    // --- STANDARD ACTIVATION VALIDATION ---
+    // Without the gate, WaveNet only applies tanh to the convolution + mixin result.
     // expected = tanh(x)
     let expected = x.tanh();
     let eps = 1e-5f32;
     assert!(
         (head_input[0] - expected).abs() < eps,
-        "head_input[0] deveria ser tanh(x)={}, obteve {}",
+        "head_input[0] should be tanh(x)={}, got {}",
         expected,
         head_input[0]
     );
 }
 
-/// Verifica que `WaveNetLayerState` e pool de buffers são corretamente mantidos
-/// ao construir um `WaveNetLayerArrayDyn` com `block_size = 2*ch` quando gated.
+/// Verifies that `WaveNetLayerState` and buffer pool are correctly maintained
+/// when building a `WaveNetLayerArrayDyn` with `block_size = 2*ch` when gated.
 #[test]
 fn test_wavenet_layer_array_dyn_block_size_gated() {
-    // Este teste foca na ALOCAÇÃO DE MEMÓRIA.
-    // Em redes neurais de áudio, evitar realocações durante o processamento é crucial.
+    // This test focuses on MEMORY ALLOCATION.
+    // In audio neural networks, avoiding reallocations during processing is crucial.
     let ch = 4usize;
-    let block_size = 2 * ch; // Para modo 'gated', precisamos de espaço para Tanh E Sigmoid.
+    let block_size = 2 * ch; // For 'gated' mode, we need space for both Tanh AND Sigmoid.
 
-    // 'WaveNetLayerState' gerencia o buffer circular (histórico) de uma camada.
-    // Receptive Field (RF) aqui é 0 apenas para simplificar a alocação do teste.
+    // 'WaveNetLayerState' manages the circular buffer (history) of a layer.
+    // Receptive Field (RF) here is 0 just to simplify test allocation.
     let state = WaveNetLayerState::new(ch, 0, 0).expect("Failed to create WaveNetLayerState");
 
     let conv1d = Conv1dDyn {
@@ -882,9 +882,9 @@ fn test_wavenet_layer_array_dyn_block_size_gated() {
         gated: true,
     };
 
-    // 'WaveNetLayerArrayDyn' é o container principal que orquestra todas as camadas.
-    // Ele pré-aloca 'block_buffer' para ser reutilizado por todas as camadas durante o processamento,
-    // economizando memória e aumentando a performance (cache locality).
+    // 'WaveNetLayerArrayDyn' is the main container that orchestrates all layers.
+    // It pre-allocates 'block_buffer' to be reused by all layers during processing,
+    // saving memory and increasing performance (cache locality).
     let array = WaveNetLayerArrayDyn {
         layers: vec![layer],
         states: vec![state],
@@ -903,12 +903,12 @@ fn test_wavenet_layer_array_dyn_block_size_gated() {
         condition_init: false,
     };
 
-    // Verificação crucial: se o buffer não tiver 2*ch, o processamento gated causaria
-    // um transbordamento de buffer (buffer overflow) ou pânico.
+    // Crucial verification: if the buffer doesn't have 2*ch, gated processing would cause
+    // a buffer overflow or panic.
     assert_eq!(
         array.block_buffer.len(),
         2 * ch,
-        "block_buffer deve ter tamanho 2*ch para suportar ativação gated (filter + gate)"
+        "block_buffer must have size 2*ch to support gated activation (filter + gate)"
     );
     assert_eq!(array.block_size, 2 * ch);
 }
@@ -1086,5 +1086,5 @@ fn test_read_conv1d_weights_dyn_limits() {
 
     assert!(build_res.is_err());
     let err_msg = build_res.err().unwrap().to_string();
-    assert!(err_msg.contains("Tamanho do kernel"));
+    assert!(err_msg.contains("Kernel size"));
 }

@@ -18,16 +18,16 @@ pub use dynamic::build_wavenet_dynamic;
 pub use layout::transpose_conv1d_interleaved_4wide;
 
 // =============================================================================
-// Validação
+// Validation
 // =============================================================================
 
-/// Valida o campo `activation` em todas as layers de um modelo WaveNet.
+/// Validates the `activation` field in all layers of a WaveNet model.
 pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<()> {
     for (idx, layer) in data.config.layers.iter().enumerate() {
         let act = layer.activation.as_deref().unwrap_or("Tanh");
         if act != "Tanh" {
             bail!(
-                "Ativação '{}' na layer {} não é suportada. Apenas 'Tanh' é implementado.",
+                "Activation '{}' in layer {} is not supported. Only 'Tanh' is implemented.",
                 act,
                 idx
             );
@@ -37,10 +37,10 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
 }
 
 // =============================================================================
-// Ponto de entrada do dispatcher WaveNet
+// WaveNet dispatcher entry point
 // =============================================================================
 
-/// Detecta a topologia do WaveNet e bifurca para o construtor const-generic correto.
+/// Detects the WaveNet topology and branches to the correct const-generic builder.
 pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     let topo_opt = get_wavenet_topology(data);
 
@@ -65,7 +65,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
     };
 
     if res.is_err() && data.is_wavenet_a2() {
-        info!("[Dispatcher] Modelo WaveNet A2 detectado. Utilizando placeholder temporário...");
+        info!("[Dispatcher] WaveNet A2 model detected. Using temporary placeholder...");
         return Ok(Box::new(DynamicModel::WavenetA2(Box::default())));
     }
 

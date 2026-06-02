@@ -19,10 +19,10 @@ use self::shaders::{FRAGMENT_SHADER_SRC, VERTEX_SHADER_SRC, compile_shader_progr
 
 use crate::clap::plugin::NamClapSharedRef;
 
-/// Verifica se os dados de drag-and-drop contêm um arquivo de modelo NAM válido.
+/// Checks whether the drag-and-drop data contains a valid NAM model file.
 ///
-/// Aceita arquivos com extensão `.nam` (JSON) ou `.namb` (binário compacto).
-/// Retorna o `PathBuf` do primeiro arquivo válido encontrado, ou `None`.
+/// Accepts files with `.nam` (JSON) or `.namb` (compact binary) extension.
+/// Returns the `PathBuf` of the first valid file found, or `None`.
 fn get_valid_model_file(data: &DropData) -> Option<PathBuf> {
     if let DropData::Files(files) = data {
         for file in files {
@@ -37,46 +37,46 @@ fn get_valid_model_file(data: &DropData) -> Option<PathBuf> {
     None
 }
 
-/// Representação da janela principal do plugin NAM-rs.
+/// Main window representation of the NAM-rs plugin.
 ///
-/// Gerencia a inicialização e o ciclo de vida do contexto `egui` e do pintor `egui_glow`
-/// para desenho acelerado via OpenGL (glow).
+/// Manages the initialization and lifecycle of the `egui` context and the `egui_glow` painter
+/// for accelerated drawing via OpenGL (glow).
 pub struct NamPluginWindow {
-    /// Contexto do Egui.
+    /// Egui Context.
     egui_ctx: egui::Context,
-    /// Pintor Glow para renderização via OpenGL.
+    /// Glow Painter for rendering via OpenGL.
     painter: egui_glow::Painter,
-    /// Entrada bruta acumulada para o Egui.
+    /// Accumulated raw input for Egui.
     raw_input: egui::RawInput,
-    /// Instante de início para cálculos de tempo corrido.
+    /// Start time for elapsed time calculations.
     start_time: Instant,
-    /// Largura física da janela.
+    /// Physical window width.
     width: u32,
-    /// Altura física da janela.
+    /// Physical window height.
     height: u32,
-    /// Fator de escala da tela.
+    /// Screen scale factor.
     scale: f32,
-    /// Referência ao estado compartilhado do plugin.
+    /// Reference to the plugin's shared state.
     shared: NamClapSharedRef,
-    /// Cerca de vida útil (Arc compartilhado para detecção de destruição).
+    /// Lifetime fence (shared Arc for destruction detection).
     alive_fence: Arc<std::sync::atomic::AtomicBool>,
-    /// Handle compartilhado estático do host CLAP.
+    /// Static shared handle of the CLAP host.
     host: clack_plugin::host::HostSharedHandle<'static>,
-    /// Estado persistente local da interface gráfica.
+    /// Local persistent state of the graphical interface.
     state: crate::clap::gui::ui::UiState,
-    /// Última posição conhecida do mouse.
+    /// Last known mouse position.
     last_mouse_pos: egui::Pos2,
 }
 
 impl NamPluginWindow {
-    /// Inicializa a janela principal do plugin com baseview, criando o contexto gráfico
-    /// e configurando o visual escuro customizado.
+    /// Initializes the main plugin window with baseview, creating the graphics context
+    /// and setting up the custom dark theme.
     ///
-    /// # Robustez FFI
+    /// # FFI Robustness
     ///
-    /// Esta função é chamada pela thread da GUI via callback de baseview (C ABI). Panics que
-    /// cruzam essa fronteira são UB em hosts C++. Por isso, falhas de inicialização do contexto
-    /// OpenGL ou do Painter resultam em log de erro e stub gracioso — não em panic.
+    /// This function is called by the GUI thread via baseview callback (C ABI). Panics that
+    /// cross this boundary are UB in C++ hosts. Therefore, OpenGL context or Painter
+    /// initialization failures result in error logging and graceful stub — not a panic.
     pub fn new(
         window: &mut Window,
         shared: NamClapSharedRef,
@@ -92,9 +92,9 @@ impl NamPluginWindow {
             log.log(&host, clack_extensions::log::LogSeverity::Info, &c_msg);
         }
 
-        // WHITELIST: gl_context() falha apenas se baseview não configurou um contexto OpenGL,
-        // o que é uma violação de contrato do host GUI — não é recuperável. O panic ocorre na
-        // thread de criação da janela, antes de qualquer callback RT/FFI de áudio.
+        // WHITELIST: gl_context() fails only if baseview did not set up an OpenGL context,
+        // which is a host GUI contract violation — not recoverable. The panic occurs on the
+        // window creation thread, before any RT/FFI audio callback.
         let gl_ctx = window.gl_context().expect("OpenGL context not available");
         unsafe {
             gl_ctx.make_current();
@@ -102,12 +102,12 @@ impl NamPluginWindow {
 
         let gl = unsafe { glow::Context::from_loader_function(|s| gl_ctx.get_proc_address(s)) };
 
-        // WHITELIST: Painter::new falha apenas se o contexto OpenGL é inválido (já verificado
-        // acima). Ocorre na thread de criação da janela, antes de qualquer callback FFI de áudio.
+        // WHITELIST: Painter::new fails only if the OpenGL context is invalid (already verified
+        // above). Occurs on the window creation thread, before any FFI audio callback.
         let painter = egui_glow::Painter::new(Arc::new(gl), "", None, true)
             .expect("Failed to create egui_glow Painter");
 
-        // Compilação do shader de forma robusta e criação do VAO
+        // Robust shader compilation and VAO creation
         let (vu_program, vu_vao) = unsafe {
             let gl = painter.gl();
             match compile_shader_program(gl, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC) {
@@ -184,8 +184,8 @@ impl NamPluginWindow {
 
     fn safe_shared(&self) -> Option<&'static crate::clap::plugin::NamClapShared> {
         if self.alive_fence.load(std::sync::atomic::Ordering::Relaxed) {
-            // SAFETY: Se a alive_fence for true, o plugin e seu estado compartilhado
-            // ainda estão vivos em memória, logo o ponteiro é válido.
+            // SAFETY: If alive_fence is true, the plugin and its shared state
+            // are still alive in memory, so the pointer is valid.
             unsafe { Some(&*self.shared.0) }
         } else {
             None
@@ -195,9 +195,9 @@ impl NamPluginWindow {
 
 impl WindowHandler for NamPluginWindow {
     fn on_frame(&mut self, window: &mut Window) {
-        // Ao contrário de `new()`, `on_frame()` é chamado repetidamente pelo loop de
-        // renderização da baseview (C ABI). Um panic aqui cruzaria a fronteira FFI e
-        // causaria UB em hosts C++. Usamos early-return silencioso como fallback seguro.
+        // Unlike `new()`, `on_frame()` is called repeatedly by the baseview
+        // rendering loop (C ABI). A panic here would cross the FFI boundary and
+        // cause UB in C++ hosts. We use a silent early-return as a safe fallback.
         let Some(gl_ctx) = window.gl_context() else {
             return;
         };
@@ -231,7 +231,7 @@ impl WindowHandler for NamPluginWindow {
                 .tessellate(full_output.shapes, full_output.pixels_per_point);
 
             let screen_size = [self.width, self.height];
-            // Cor de fundo: #1A1D23 (paleta dark mode aprovada — T4.0.2)
+            // Background color: #1A1D23 (approved dark mode palette — T4.0.2)
             self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
             self.painter.paint_and_update_textures(
                 screen_size,
@@ -248,11 +248,11 @@ impl WindowHandler for NamPluginWindow {
         }
     }
 
-    /// Processa eventos de janela (mouse, teclado, redimensionamento, drag-and-drop).
+    /// Processes window events (mouse, keyboard, resize, drag-and-drop).
     ///
-    /// Converte eventos do baseview para o formato `egui::RawInput` que será consumido
-    /// no próximo `on_frame()`. Para drag-and-drop de modelos NAM, comunica diretamente
-    /// com o `NamClapShared` para enfileirar o carregamento via `ui_pending_model`.
+    /// Converts baseview events to the `egui::RawInput` format that will be consumed
+    /// in the next `on_frame()`. For NAM model drag-and-drop, communicates directly
+    /// with `NamClapShared` to enqueue loading via `ui_pending_model`.
     fn on_event(&mut self, _window: &mut Window, event: Event) -> EventStatus {
         const SCROLL_LINES_TO_POINTS: f32 = input_map::SCROLL_LINES_TO_POINTS;
 

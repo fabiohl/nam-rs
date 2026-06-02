@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Separador vertical estilizado.
+//! Styled vertical separator.
 
 use super::colors::COL_BORDER;
 
-/// Renderiza um separador vertical estilizado (m5) — linha fina #2E3440 ao invés do Separator padrão do egui.
+/// Renders a styled vertical separator (m5) — thin #2E3440 line instead of egui's default Separator.
 pub fn styled_vsep(ui: &mut egui::Ui) {
     let space = 6.0;
     ui.add_space(space);

@@ -1,38 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! # Buffer Espelhado (MirroredBuffer) via Mapeamento de Memória Espelhada
+//! # Mirrored Buffer (MirroredBuffer) via Mirrored Memory Mapping
 //!
-//! O `MirroredBuffer` é uma técnica avançada de gerenciamento de memória que resolve
-//! o problema clássico da "quebra de contiguidade" em buffers circulares/fita de atraso.
+//! The `MirroredBuffer` is an advanced memory management technique that solves
+//! the classic "contiguity break" problem in circular/delay-line buffers.
 //!
-//! ## O Problema: A Fronteira do Buffer
-//! Em buffers circulares tradicionais, ao atingir o fim do espaço alocado, o ponteiro volta
-//! para o início. Se um algoritmo DSP (como uma Convolução ou FFT) precisar ler uma janela
-//! de 1024 amostras, mas o ponteiro estiver a apenas 500 amostras do fim, o programador
-//! teria que lidar com a leitura em duas partes ou realizar uma cópia cara (`copy_within`).
-//! Isso introduz lógica complexa (`if/else`) e prejudica a performance no "hot-path".
+//! ## The Problem: The Buffer Boundary
+//! In traditional circular buffers, upon reaching the end of allocated space, the pointer
+//! wraps back to the start. If a DSP algorithm (such as a Convolution or FFT) needs to read
+//! a window of 1024 samples, but the pointer is only 500 samples from the end, the developer
+//! would have to handle the read in two parts or perform an expensive copy (`copy_within`).
+//! This introduces complex logic (`if/else`) and hurts performance in the "hot-path".
 //!
-//! ## A Solução: O "Truque" do Espelhamento
-//! Esta estrutura utiliza recursos da Unidade de Gerenciamento de Memória (MMU) do processador
-//! para mapear o **mesmo bloco de memória física** duas vezes consecutivas no espaço de
-//! endereçamento virtual:
+//! ## The Solution: The Mirroring "Trick"
+//! This structure leverages the processor's Memory Management Unit (MMU) features
+//! to map the **same physical memory block** twice consecutively in the virtual
+//! address space:
 //!
 //! ```text
-//! Espaço Virtual: [ Bloco Físico (Página 0..N) ] [ Bloco Físico (Página 0..N) ]
+//! Virtual Space: [ Physical Block (Page 0..N) ] [ Physical Block (Page 0..N) ]
 //!                 ^                             ^
 //!                 |                             |
-//!           Início do Buffer              Espelhamento do Início
+//!          Buffer Start                    Mirror of the Start
 //! ```
 //!
-//! Graças a este mapeamento, qualquer acesso que "ultrapasse" o fim do primeiro bloco cairá
-//! automaticamente no início do segundo bloco — que é, fisicamente, o próprio início do buffer.
+//! Thanks to this mapping, any access that "goes past" the end of the first block will
+//! automatically fall into the start of the second block — which is, physically, the buffer
+//! start itself.
 //!
-//! ## Benefícios para Áudio Real-Time
-//! 1. **Acesso Linear**: Algoritmos podem ler janelas contíguas de qualquer tamanho (até o tamanho total do buffer) sem se preocupar com o "wrap".
-//! 2. **Zero-Copy**: Elimina a necessidade de copiar dados para buffers temporários para linearizá-los.
-//! 3. **Performance SIMD**: Permite que instruções vetoriais (AVX/SSE) processem dados através da fronteira do buffer sem interrupções de lógica.
-//! 4. **Sem Branches**: Remove operações de módulo (`%`) e condições `if`, otimizando a predição de desvios do processador.
+//! ## Benefits for Real-Time Audio
+//! 1. **Linear Access**: Algorithms can read contiguous windows of any size (up to the full buffer size) without worrying about "wrap".
+//! 2. **Zero-Copy**: Eliminates the need to copy data to temporary buffers to linearize them.
+//! 3. **SIMD Performance**: Enables vector instructions (AVX/SSE) to process data across the buffer boundary without logic interruptions.
+//! 4. **Branch-Free**: Removes modulo (`%`) operations and `if` conditions, optimizing processor branch prediction.
 use libc::{
     _SC_PAGESIZE, MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_PRIVATE, MAP_SHARED, PROT_NONE,
     PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
@@ -47,12 +48,12 @@ mod linux;
 #[cfg(not(target_os = "linux"))]
 mod fallback;
 
-/// Um Buffer Espelhado que usa mapeamento de memória espelhado.
+/// A Mirrored Buffer that uses mirrored memory mapping.
 ///
-/// Esta estrutura mapeia o mesmo conteúdo físico duas vezes consecutivas no espaço
-/// de endereçamento virtual. Isso permite que acessos que "atravessariam" o fim do
-/// buffer sejam feitos de forma linear e contígua, eliminando a necessidade de
-/// operações de "rewind" ou "copy_within" no hot-path do DSP.
+/// This structure maps the same physical content twice consecutively in the virtual
+/// address space. This allows accesses that would "cross" the end of the buffer
+/// to be performed linearly and contiguously, eliminating the need for "rewind"
+/// or "copy_within" operations in the DSP hot-path.
 pub struct MirroredBuffer<T> {
     ptr: *mut T,
     size_elements: usize,
@@ -63,23 +64,23 @@ thread_local! {
     pub(crate) static SIMULATE_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Define se as próximas chamadas de criação do `MirroredBuffer` devem simular
-/// falha de alocação de memória virtual.
+/// Sets whether the next `MirroredBuffer` creation calls should simulate
+/// virtual memory allocation failure.
 pub fn set_simulate_fail(fail: bool) {
     SIMULATE_FAIL.with(|f| f.set(fail));
 }
 
 impl<T> MirroredBuffer<T> {
-    /// Cria um novo buffer espelhado.
+    /// Creates a new mirrored buffer.
     ///
-    /// O tamanho `requested_size` (em elementos) será arredondado para cima para
-    /// o próximo múltiplo do tamanho da página do sistema.
+    /// The `requested_size` (in elements) will be rounded up to the next
+    /// multiple of the system page size.
     #[cold]
     pub fn new(requested_size: usize) -> std::io::Result<Self> {
         let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<T>();
 
-        // Garantir que o tamanho do elemento não seja zero (ex: ZST)
+        // Ensure the element size is not zero (e.g., ZST)
         if element_size == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -104,7 +105,7 @@ impl<T> MirroredBuffer<T> {
             }
         };
 
-        // Arredonda para múltiplo da página
+        // Rounds to page multiple
         let page_mask = page_size - 1;
         let size_bytes = match requested_bytes.checked_add(page_mask) {
             Some(val) => val & !page_mask,
@@ -117,7 +118,7 @@ impl<T> MirroredBuffer<T> {
         };
         let size_elements = size_bytes / element_size;
 
-        // 1. Criar backing store (memfd no Linux, stub fallback em outras plataformas)
+        // 1. Create backing store (memfd on Linux, stub fallback on other platforms)
         let fd = unsafe {
             #[cfg(target_os = "linux")]
             {
@@ -129,14 +130,14 @@ impl<T> MirroredBuffer<T> {
             }
         };
 
-        // 2. Definir o tamanho do arquivo
+        // 2. Set file size
         if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
             return Err(err);
         }
 
-        // 3. Reservar espaço virtual contíguo (2x tamanho)
+        // 3. Reserve contiguous virtual space (2x size)
         let total_size = match size_bytes.checked_mul(2) {
             Some(val) => val,
             None => {
@@ -148,7 +149,7 @@ impl<T> MirroredBuffer<T> {
             }
         };
 
-        // Assegurar invariante requerida antes de mmap
+        // Ensure required invariant before mmap
         assert!(
             requested_size > 0,
             "requested_size must be greater than zero"
@@ -175,7 +176,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // 4. Mapear a primeira metade
+        // 4. Map the first half
         let ptr1 = unsafe {
             mmap(
                 base_ptr,
@@ -195,7 +196,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // 5. Mapear a segunda metade (espelho)
+        // 5. Map the second half (mirror)
         let ptr2 = unsafe {
             mmap(
                 (base_ptr as *mut u8).add(size_bytes) as *mut c_void,
@@ -215,7 +216,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // O FD não é mais necessário após o mmap (ele mantém uma referência ao arquivo)
+        // The FD is no longer needed after mmap (it holds a reference to the file)
         unsafe { libc::close(fd) };
 
         Ok(Self {
@@ -225,7 +226,7 @@ impl<T> MirroredBuffer<T> {
         })
     }
 
-    /// Retorna o tamanho físico do buffer (antes do espelhamento) em elementos.
+    /// Returns the physical buffer size (before mirroring) in elements.
     pub fn size(&self) -> usize {
         self.size_elements
     }
@@ -246,7 +247,7 @@ impl<T> Deref for MirroredBuffer<T> {
 
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
-        // Retornamos um slice que cobre as duas metades (tamanho 2x)
+        // Returns a slice that covers both halves (2x size)
         unsafe { std::slice::from_raw_parts(self.ptr, self.size_elements * 2) }
     }
 }

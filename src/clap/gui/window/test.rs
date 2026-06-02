@@ -133,7 +133,7 @@ fn test_gui_drag_drop_fuzz() {
     let shared_ref = NamClapSharedRef(&*shared as *const NamClapShared);
     let alive_fence = Arc::clone(&shared.alive_fence);
 
-    // Simula a lógica de helper safe_shared para o drag-drop:
+    // Simulates the safe_shared helper logic for drag-drop:
     let check_and_drop =
         |alive: &Arc<std::sync::atomic::AtomicBool>, s_ref: NamClapSharedRef, path: PathBuf| {
             if alive.load(Ordering::Relaxed) {
@@ -148,7 +148,7 @@ fn test_gui_drag_drop_fuzz() {
             }
         };
 
-    // 1. Caso vivo: deve setar o modelo pendente
+    // 1. Alive case: should set the pending model
     let path = PathBuf::from("model.nam");
     assert!(check_and_drop(&alive_fence, shared_ref, path.clone()));
     assert_eq!(*shared.ui_pending_model.lock().unwrap(), Some(path));
@@ -157,7 +157,7 @@ fn test_gui_drag_drop_fuzz() {
     *shared.ui_pending_model.lock().unwrap() = None;
     shared.ui_loading.store(false, Ordering::Relaxed);
 
-    // 2. Caso morto (cerca false): não deve acessar ou alterar nada
+    // 2. Dead case (fence false): should not access or change anything
     alive_fence.store(false, Ordering::Relaxed);
     assert!(!check_and_drop(
         &alive_fence,

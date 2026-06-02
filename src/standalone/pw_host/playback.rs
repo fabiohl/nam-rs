@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Configuração da playback stream (`Stream/Output/Audio`) do PipeWire — lê do
-//! `DspBridge` e entrega o áudio processado ao hardware.
+//! PipeWire playback stream configuration (`Stream/Output/Audio`) — reads from
+//! `DspBridge` and delivers processed audio to the hardware.
 
 use crate::dsp::pipeline::{BridgeRef, DspBridgeReader, build_spa_format_pod, playback_dsp_cycle};
 use crate::standalone::colors::Colorize;
@@ -10,9 +10,9 @@ use crate::standalone::colors::Colorize;
 use pipewire as pw;
 use pw::properties::properties;
 
-/// Configura a playback stream e seu listener RT.
+/// Configures the playback stream and its RT listener.
 ///
-/// A closure `process()` lê do `DspBridge` (preenchido pela capture stream)
+/// The `process()` closure reads from `DspBridge` (filled by the capture stream)
 /// e entrega ao hardware via `playback_dsp_cycle`.
 pub fn setup_playback_stream<'c>(
     core: &'c pw::core::Core,

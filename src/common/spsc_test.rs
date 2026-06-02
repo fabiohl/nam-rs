@@ -3,66 +3,66 @@
 
 use super::*;
 
-/// Testa se o RingBuffer consegue passar dados entre duas "linhas de processamento" (threads)
-/// diferentes ao mesmo tempo sem perder informações ou travar.
+/// Tests whether the RingBuffer can pass data between two "processing lines" (threads)
+/// concurrently without losing information or locking up.
 #[test]
 fn test_spsc_concurrency() {
-    // Cria um buffer com 64 espaços vazios.
-    // 'prod' (produtor) envia dados, 'cons' (consumidor) recebe.
+    // Creates a buffer with 64 empty slots.
+    // 'prod' (producer) sends data, 'cons' (consumer) receives.
     let (mut prod, mut cons) = RingBuffer::<i32>::new(64);
 
-    // Cria uma nova linha de processamento que vai "produzir" números de 0 a 999.
+    // Creates a new processing line that will "produce" numbers from 0 to 999.
     let handle = std::thread::spawn(move || {
         let mut count = 0;
         while count < 1000 {
-            // Tenta colocar o número no buffer. Se estiver cheio, tenta de novo depois.
+            // Attempt to push the number into the buffer. If full, retry later.
             if prod.push(count).is_ok() {
                 count += 1;
             }
-            std::thread::yield_now(); // Dá uma pequena pausa para não sobrecarregar o processador.
+            std::thread::yield_now(); // A small pause to avoid overwhelming the processor.
         }
     });
 
-    // Esta parte (a linha principal) vai "consumir" os números enviados.
+    // This part (the main line) will "consume" the numbers sent.
     let mut count = 0;
     while count < 1000 {
-        // Tenta tirar um número do buffer.
+        // Attempt to pop a number from the buffer.
         if let Ok(val) = cons.pop() {
-            // Verifica se o número recebido é exatamente o que esperávamos.
+            // Verify that the received number is exactly what we expected.
             assert_eq!(val, count);
             count += 1;
         }
         std::thread::yield_now();
     }
-    // Espera a outra linha de processamento terminar antes de encerrar o teste.
+    // Wait for the other processing line to finish before ending the test.
     handle.join().unwrap();
 }
 
-/// Testa os limites do buffer: o que acontece quando ele está totalmente vazio ou totalmente cheio.
+/// Tests buffer limits: what happens when it is completely empty or completely full.
 #[test]
 fn test_spsc_full_empty() {
-    // Cria um buffer pequeno, com apenas 4 espaços.
+    // Creates a small buffer with only 4 slots.
     let (mut prod, mut cons) = RingBuffer::<i32>::new(4);
 
-    // Tenta tirar algo de um buffer vazio. Deve retornar um erro dizendo que não há nada.
+    // Attempt to pop from an empty buffer. Should return an error indicating nothing is there.
     assert!(cons.pop().is_err());
 
-    // Preenche os 4 espaços disponíveis.
+    // Fill the 4 available slots.
     assert!(prod.push(1).is_ok());
     assert!(prod.push(2).is_ok());
     assert!(prod.push(3).is_ok());
     assert!(prod.push(4).is_ok());
 
-    // Tenta colocar o 5º item em um buffer de 4 espaços. Deve retornar um erro de "cheio".
+    // Attempt to push the 5th item into a 4-slot buffer. Should return a "full" error.
     assert!(prod.push(5).is_err());
 
-    // Retira o primeiro item (o número 1).
+    // Pop the first item (the number 1).
     assert_eq!(cons.pop(), Ok(1));
 
-    // Agora que abriu um espaço, o número 5 deve entrar com sucesso.
+    // Now that a slot opened, the number 5 should push successfully.
     assert!(prod.push(5).is_ok());
 
-    // Tenta colocar o 6º item. Como o buffer está cheio de novo (contém 2, 3, 4, 5), deve falhar.
+    // Attempt to push the 6th item. Since the buffer is full again (contains 2, 3, 4, 5), it should fail.
     assert!(prod.push(6).is_err());
 }
 
@@ -74,17 +74,17 @@ fn test_gc_overflow_overwrite() {
     let overflow = GcOverflowBuffer::new(64);
     let counter = Arc::new(AtomicU32::new(0));
 
-    // 1. Enche o buffer de 64 slots
+    // 1. Fill the 64-slot buffer
     for _ in 0..64 {
         let item = GcItem::Test(Box::new(counter.clone()));
         overflow.push(item);
     }
 
-    // 2. Tenta inserir o 65º item (deve sobrescrever o 1º)
+    // 2. Attempt to insert the 65th item (should overwrite the 1st)
     let item_65 = GcItem::Test(Box::new(counter.clone()));
     overflow.push(item_65);
 
-    // 3. Valida que o drain retorna 64 itens
+    // 3. Validate that drain returns 64 items
     let drained = overflow.drain();
     assert_eq!(drained.len(), 64);
 }
@@ -98,19 +98,19 @@ fn test_gc_stress_no_leak() {
     let overflow = GcOverflowBuffer::new(32);
     let counter = Arc::new(AtomicU32::new(0));
 
-    // Stress: 1000 trocas de "recursos"
+    // Stress: 1000 "resource" swaps
     for _ in 0..1000 {
         let item = GcItem::Test(Box::new(counter.clone()));
         if let Err(rtrb::PushError::Full(returned_item)) = gc_prod.push(item) {
-            // Se o canal principal encher, vai para o overflow
+            // If the main channel is full, go to overflow
             overflow.push(returned_item);
         }
 
-        // Drena periodicamente para não acumular infinitamente
+        // Drain periodically to avoid unbounded accumulation
         super::drain_gc_channels(&mut gc_cons, &overflow);
     }
 
-    // Valida que o contador final está correto após o drop de tudo
+    // Validate that the final counter is correct after dropping everything
     drop(gc_cons);
     for _ in overflow.drain() {}
 }

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 #[test]
 fn test_v0_legacy_load() {
     let v0_json = r#"{"input_gain_db": 3.0,"output_gain_db": -6.0,"gate_threshold_db": -50.0,"model_path": null,"bypass": false}"#;
-    let params = load_state(v0_json.as_bytes()).expect("v0 payload deve carregar");
+    let params = load_state(v0_json.as_bytes()).expect("v0 payload should load");
     assert!((params.input_gain_db - 3.0).abs() < f32::EPSILON);
     assert!((params.output_gain_db - (-6.0)).abs() < f32::EPSILON);
     assert!((params.gate_threshold_db - (-50.0)).abs() < f32::EPSILON);
@@ -17,9 +17,9 @@ fn test_v0_legacy_load() {
 
 #[test]
 fn test_v0_legacy_load_with_missing_fields() {
-    // Simula payload v0 antigo que poderia ter campos ausentes
+    // Simulates old v0 payload that could have missing fields
     let v0_json = r#"{"input_gain_db": 1.5}"#;
-    let params = load_state(v0_json.as_bytes()).expect("v0 com campos ausentes deve carregar");
+    let params = load_state(v0_json.as_bytes()).expect("v0 with missing fields should load");
     assert!((params.input_gain_db - 1.5).abs() < f32::EPSILON);
     assert_eq!(params.output_gain_db, 0.0);
     assert_eq!(params.gate_threshold_db, -70.0);
@@ -45,8 +45,8 @@ fn test_v1_round_trip() {
     };
     let json = serde_json::to_vec(&envelope).unwrap();
 
-    let restored = load_state(&json).expect("v1 payload deve carregar");
-    assert_eq!(restored, original, "round-trip v1 deve ser idempotente");
+    let restored = load_state(&json).expect("v1 payload should load");
+    assert_eq!(restored, original, "v1 round-trip should be idempotent");
 }
 
 #[test]
@@ -58,14 +58,17 @@ fn test_v1_save_format() {
     };
     let json = serde_json::to_vec(&envelope).unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
-    assert_eq!(parsed["version"], 1, "envelope deve conter version: 1");
-    assert!(parsed["params"].is_object(), "envelope deve conter params");
+    assert_eq!(parsed["version"], 1, "envelope should contain version: 1");
+    assert!(
+        parsed["params"].is_object(),
+        "envelope should contain params"
+    );
 }
 
 #[test]
 fn test_v0_legacy_load_new_fields_default() {
     let v0_json = r#"{"input_gain_db": 3.0,"output_gain_db": -6.0,"gate_threshold_db": -50.0,"model_path": null,"bypass": false}"#;
-    let params = load_state(v0_json.as_bytes()).expect("v0 payload deve carregar");
+    let params = load_state(v0_json.as_bytes()).expect("v0 payload should load");
     assert_eq!(params.model_basename, None);
     assert!(params.model_search_paths.is_empty());
 }
@@ -92,10 +95,10 @@ fn test_v1_round_trip_with_search_fields() {
     };
     let json = serde_json::to_vec(&envelope).unwrap();
 
-    let restored = load_state(&json).expect("v1 payload deve carregar");
+    let restored = load_state(&json).expect("v1 payload should load");
     assert_eq!(
         restored, original,
-        "round-trip v1 com search fields deve ser idempotente"
+        "v1 round-trip with search fields should be idempotent"
     );
 }
 

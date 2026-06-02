@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo para operações de processamento de sinal digital (DSP).
+//! Module for digital signal processing (DSP) operations.
 //!
-//! Contém utilitários para manipulação de áudio em buffers, otimizados para
-//! operação em estéreo e segurança contra clipping.
+//! Contains utilities for audio buffer manipulation, optimized for
+//! stereo operation and clipping safety.
 //!
-//! # Funcionalidades
-//! - **Ganho e Rampa**: Aplicação de ganho linear e rampas SIMD para transições suaves.
-//! - **Clipping Detection**: Detecção de picos acima de 0dBFS integrada à aplicação de ganho.
-//! - **Stereo Processing**: Kernels que operam simultaneamente em canais L/R para melhor localidade de cache.
-//! - **Energy Computation**: Cálculo de energia RMS/Peak para telemetria de sinal.
+//! # Features
+//! - **Gain and Ramp**: Linear gain application and SIMD ramps for smooth transitions.
+//! - **Clipping Detection**: Detection of peaks above 0dBFS integrated into gain application.
+//! - **Stereo Processing**: Kernels that operate simultaneously on L/R channels for better cache locality.
+//! - **Energy Computation**: RMS/Peak energy calculation for signal telemetry.
 //!
-//! Contém implementações de algoritmos de áudio otimizados, incluindo
-//! cálculos de energia, correlações e filtros.
+//! Contains implementations of optimized audio algorithms, including
+//! energy calculations, correlations, and filters.
 
 pub mod gain;
 pub mod gain_lut;

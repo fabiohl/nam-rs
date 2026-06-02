@@ -6,13 +6,13 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels de soma Head (Batch) do WaveNet — AVX2, AVX-512 e dispatch dinâmico.
+//! WaveNet Head Sum (Batch) kernels — AVX2, AVX-512 and dynamic dispatch.
 //!
-//! Extraídos de `simd/avx2.rs` e `simd/avx512.rs` durante a Tarefa 3.4.
-//! Depende de `common::utility::horizontal_sum_avx2` e `common::utility::horizontal_sum_avx512`
-//! para as operações de soma horizontal.
+//! Extracted from `simd/avx2.rs` and `simd/avx512.rs` during Task 3.4.
+//! Depends on `common::utility::horizontal_sum_avx2` and `common::utility::horizontal_sum_avx512`
+//! for the horizontal sum operations.
 
-/// Soma em lote (batch) das projeções Head do WaveNet usando AVX2.
+/// Batch sum of WaveNet Head projections using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn batch_wavenet_head_sum_avx2<const HEAD: usize>(
     head1: &[f32],
@@ -23,15 +23,15 @@ pub unsafe fn batch_wavenet_head_sum_avx2<const HEAD: usize>(
     let num_frames = output.len();
     for i in 0..num_frames {
         let ptr = head1.as_ptr().add(i * HEAD);
-        // Soma os canais internos de cada quadro.
+        // Sum the internal channels of each frame.
         let sum = crate::math::common::utility::horizontal_sum_avx2(ptr, HEAD);
-        // Adiciona a entrada residual e aplica o volume (scale).
+        // Add the residual input and apply the volume (scale).
         *output.get_unchecked_mut(i) = (sum + *head2.get_unchecked(i)) * scale;
     }
 }
 
-/// Dispatch dinâmico para `batch_wavenet_head_sum` via AVX2.
-/// Despacha para o const generic apropriado (1 ou 16) ou usa fallback AVX2.
+/// Dynamic dispatch for `batch_wavenet_head_sum` via AVX2.
+/// Dispatches to the appropriate const generic (1 or 16) or uses AVX2 fallback.
 #[target_feature(enable = "avx2")]
 pub unsafe fn batch_wavenet_head_sum_dyn_avx2(
     head1: &[f32],
@@ -56,7 +56,7 @@ pub unsafe fn batch_wavenet_head_sum_dyn_avx2(
     }
 }
 
-/// Kernel especializado para soma Head do WaveNet usando AVX-512.
+/// Specialized kernel for WaveNet Head sum using AVX-512.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn batch_wavenet_head_sum_avx512<const HEAD: usize>(
     head1: &[f32],
@@ -72,8 +72,8 @@ pub unsafe fn batch_wavenet_head_sum_avx512<const HEAD: usize>(
     }
 }
 
-/// Dispatch dinâmico para `batch_wavenet_head_sum` via AVX-512.
-/// Despacha para o const generic apropriado (1 ou 16) ou usa fallback AVX-512.
+/// Dynamic dispatch for `batch_wavenet_head_sum` via AVX-512.
+/// Dispatches to the appropriate const generic (1 or 16) or uses AVX-512 fallback.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn batch_wavenet_head_sum_dyn_avx512(
     head1: &[f32],

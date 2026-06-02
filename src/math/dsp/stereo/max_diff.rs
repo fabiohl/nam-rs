@@ -5,11 +5,11 @@
 
 use core::arch::x86_64::*;
 
-/// Calcula a diferença absoluta máxima entre dois blocos via AVX2.
+/// Computes the maximum absolute difference between two blocks via AVX2.
 /// $\max(|L_i - R_i|)$
 ///
 /// # Safety
-/// Os slices `a` e `b` devem ter o mesmo tamanho.
+/// The slices `a` and `b` must have the same length.
 #[inline]
 #[target_feature(enable = "avx2")]
 pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
@@ -58,7 +58,7 @@ pub unsafe fn compute_max_diff_avx2(a: &[f32], b: &[f32]) -> f32 {
     max_diff
 }
 
-/// Calcula a diferença absoluta máxima entre dois blocos via AVX-512.
+/// Computes the maximum absolute difference between two blocks via AVX-512.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn compute_max_diff_avx512(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
@@ -92,7 +92,7 @@ pub unsafe fn compute_max_diff_avx512(a: &[f32], b: &[f32]) -> f32 {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Fallbacks Escalares (Cold-Path)
+// Scalar Fallbacks (Cold-Path)
 // ═══════════════════════════════════════════════════════════════
 
 #[cold]

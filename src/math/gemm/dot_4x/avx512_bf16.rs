@@ -3,8 +3,8 @@
 
 //! Kernels Dot Product 4x — AVX-512 VNNI BF16 (`vdpbf16ps`).
 //!
-//! Placeholder para implementação futura com VNNI BF16.
-//! Atualmente delega para as implementações escalares de referência.
+//! Placeholder for future implementation using VNNI BF16.
+//! Currently delegates to scalar reference implementations.
 
 pub use crate::math::common::scalar_ref::{
     dot_product_4x_interleaved_bf16_fallback as dot_product_4x_interleaved_avx512_bf16,

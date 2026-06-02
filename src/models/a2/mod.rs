@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Arquitetura A2 (Staging e Placeholder).
+//! A2 Architecture (Staging and Placeholder).
 //!
-//! Este módulo isola os componentes da arquitetura A2 (v0.6+), incluindo
-//! stubs para ativações, FiLM, gating e parâmetros.
+//! This module isolates components of the A2 architecture (v0.6+), including
+//! stubs for activations, FiLM, gating, and parameters.
 
 pub mod activations;
 pub mod film;
@@ -15,31 +15,31 @@ use crate::common::spsc::RtStatusFlags;
 use crate::models::NamModel;
 use std::sync::Arc;
 
-/// Re-exports públicos para facilitar o acesso.
+/// Public re-exports for easy access.
 pub use activations::{ActivationFn, ActivationType};
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
 pub use params::{HeadParams, LayerArrayParamsA2, LayerParamsA2};
 
 // =============================================================================
-// Placeholder para WaveNet A2 (Staging)
+// Placeholder for WaveNet A2 (Staging)
 // =============================================================================
 
-/// Placeholder para a arquitetura WaveNet A2.
+/// Placeholder for the WaveNet A2 architecture.
 ///
-/// Este struct permite que o sistema carregue modelos A2 sem falhar, retornando
-/// silêncio até que a implementação completa do motor de inferência esteja pronta.
+/// This struct allows the system to load A2 models without failing, returning
+/// silence until the complete inference engine implementation is ready.
 #[derive(Default)]
 pub struct WavenetA2Placeholder {
-    /// Flag para emitir o aviso de log apenas uma vez por instância.
+    /// Flag to emit the log warning only once per instance.
     warned: bool,
-    /// Flags de status RT compartilhadas para sinalizar o placeholder ao UI.
+    /// Shared RT status flags to signal the placeholder to the UI.
     rt_status: Option<Arc<RtStatusFlags>>,
 }
 
 impl WavenetA2Placeholder {
-    /// Injeta a referência para `RtStatusFlags` para que o placeholder possa
-    /// sinalizar seu estado ao UI via flags atômicas.
+    /// Injects the reference to `RtStatusFlags` so the placeholder can
+    /// signal its state to the UI via atomic flags.
     pub fn inject_rt_status(&mut self, rt_status: Arc<RtStatusFlags>) {
         self.rt_status = Some(rt_status);
     }
@@ -60,7 +60,7 @@ impl NamModel for WavenetA2Placeholder {
 
         if !self.warned {
             log::warn!(
-                "Arquitetura WaveNet A2 detectada: Modo Placeholder (Silencioso) ativo. A implementação real está em desenvolvimento."
+                "WaveNet A2 architecture detected: Placeholder (Silent) mode active. The real implementation is under development."
             );
             self.warned = true;
             if let Some(ref rt) = self.rt_status {
@@ -68,12 +68,12 @@ impl NamModel for WavenetA2Placeholder {
             }
         }
 
-        // Retorna silêncio absoluto.
+        // Return absolute silence.
         output.fill(0.0);
     }
 
     fn prewarm(&mut self, _num_samples: usize) {
-        // No-op para o placeholder.
+        // No-op for the placeholder.
     }
 }
 

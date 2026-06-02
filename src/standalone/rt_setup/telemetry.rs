@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Telemetria e monitoramento de status RT do motor de áudio.
+//! Telemetry and RT status monitoring for the audio engine.
 //!
-//! Traduz sinais atômicos da thread DSP em logs de diagnóstico para
-//! o loop principal, atuando como "painel de instrumentos" do NAM-rs.
+//! Translates atomic signals from the DSP thread into diagnostic logs for
+//! the main loop, acting as the "dashboard" of NAM-rs.
 
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
 use crate::common::spsc::RtStatusFlags;
@@ -13,13 +13,13 @@ use minstant::Anchor;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-/// Lê flags atômicas de status RT e emite logs de monitoramento para o usuário.
+/// Reads atomic RT status flags and emits monitoring logs to the user.
 ///
-/// Esta função atua como o "painel de instrumentos" do NAM-rs. Ela é chamada periodicamente
-/// para traduzir os sinais técnicos vindos da thread de áudio (que é silenciosa e ultra-veloz)
-/// em mensagens compreensíveis, avisos de performance e telemetria de latência.
+/// This function acts as the "dashboard" of NAM-rs. It is called periodically
+/// to translate the technical signals coming from the audio thread (which is silent and ultra-fast)
+/// into understandable messages, performance warnings, and latency telemetry.
 ///
-/// Retorna uma tupla (current_silent, current_fading) para controle de estado no loop principal.
+/// Returns a tuple (current_silent, current_fading) for state control in the main loop.
 pub fn poll_rt_status(
     rt_status: &RtStatusFlags,
     sys: &SystemSnapshot,
@@ -28,10 +28,10 @@ pub fn poll_rt_status(
     _tsc_anchor: &Anchor,
     bridge: &crate::dsp::pipeline::DspBridge,
 ) -> (bool, bool) {
-    // 1. GERENCIAMENTO DE MEMÓRIA (Garbage Collection):
-    // Se o canal de limpeza estiver cheio, significa que estamos trocando modelos neurais
-    // mais rápido do que o sistema consegue descartar os antigos. Priorizamos o áudio
-    // "vazando" memória temporariamente para evitar estalos (drops) no som.
+    // 1. MEMORY MANAGEMENT (Garbage Collection):
+    // If the cleanup channel is full, it means we are swapping neural models
+    // faster than the system can discard old ones. We prioritize audio
+    // "leaking" memory temporarily to avoid clicks (drops) in the sound.
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW) {
         NamDiagnostic::new(NamErrorCode::GcOverflow, sys)
             .message("Garbage Collection (GC) channel overflow detected.")
@@ -43,17 +43,17 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
-    // 1.5. MODELO A2 PLACEHOLDER
+    // 1.5. A2 PLACEHOLDER MODEL
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER) {
         log::info!(
-            "{} Modelo A2 não suportado — bypass ativo. A implementação real está em desenvolvimento.",
+            "{} A2 model unsupported — bypass active. The actual implementation is under development.",
             "⚠️".yellow()
         );
     }
 
-    // 2. MUDANÇA DE RITMO (Sample Rate):
-    // Avisa quando o servidor de áudio (PipeWire) altera a frequência de amostragem
-    // (ex: mudou de 44.100 para 48.000 batidas por segundo).
+    // 2. RATE CHANGE (Sample Rate):
+    // Warns when the audio server (PipeWire) changes the sampling frequency
+    // (e.g. changed from 44.100 to 48.000 beats per second).
     let rate_notif = rt_status.active_rate_changed.swap(0, Ordering::Relaxed);
     if rate_notif != 0 {
         log::info!(
@@ -63,9 +63,9 @@ pub fn poll_rt_status(
         );
     }
 
-    // 3. DISTORÇÃO DIGITAL (Clipping):
-    // O equivalente ao "LED vermelho" em mesas de som. Indica que o volume do sinal
-    // ultrapassou o limite máximo do processamento digital.
+    // 3. DIGITAL DISTORTION (Clipping):
+    // The equivalent of the "red LED" on mixing consoles. Indicates that the signal volume
+    // exceeded the maximum limit of digital processing.
     if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED) {
         log::warn!(
             "{} Clipping detected! Consider reducing the input and/or output gain.",
@@ -73,9 +73,9 @@ pub fn poll_rt_status(
         );
     }
 
-    // 4. PRIORIDADE DE TEMPO REAL (Real-Time Priority):
-    // Verifica se o Linux permitiu que o NAM-rs rode com "prioridade máxima".
-    // Isso impede que outros programas (como o navegador) causem interrupções no áudio.
+    // 4. REAL-TIME PRIORITY:
+    // Checks whether Linux allowed NAM-rs to run with "maximum priority".
+    // This prevents other programs (like the browser) from causing audio interruptions.
     let prio = rt_status.rt_priority.load(Ordering::Relaxed);
     if prio != -1 {
         let is_fifo = rt_status.check_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
@@ -103,9 +103,9 @@ pub fn poll_rt_status(
         }
     }
 
-    // 5. SOBRECARGA DE PROCESSAMENTO (Overloads):
-    // Avisa se o processador (CPU) não está sendo rápido o suficiente para calcular
-    // a rede neural antes do próximo bloco de áudio ser necessário.
+    // 5. PROCESSING OVERLOAD (Overloads):
+    // Warns if the processor (CPU) is not fast enough to compute
+    // the neural network before the next audio block is needed.
     let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
     if overloads > 0 {
         log::warn!(
@@ -115,10 +115,10 @@ pub fn poll_rt_status(
         );
     }
 
-    // 6. SINCRONIA DE PLACAS (Clock Drifting):
-    // Ocorre quando você usa dispositivos diferentes para entrada e saída (ex: Microfone USB
-    // e Fone P2). Se um for levemente mais rápido que o outro, o sistema precisa descartar
-    // alguns pequenos pedaços de áudio para manter a sincronia.
+    // 6. CLOCK DRIFTING:
+    // Occurs when you use different devices for input and output (e.g. USB Microphone
+    // and P2 Headphones). If one is slightly faster than the other, the system needs to discard
+    // some small audio chunks to maintain synchronization.
     let drops = bridge.drain_dropped_frames();
     if drops > 0 {
         log::warn!(
@@ -128,11 +128,11 @@ pub fn poll_rt_status(
         );
     }
 
-    // 7. TELEMETRIA DE PERFORMANCE (Latência):
-    // Mostra estatísticas de quanto tempo a CPU leva para processar cada bloco.
-    // - Mediana (P50): O tempo "comum" de processamento.
-    // - P99: O pior caso em 99% das vezes (indica estabilidade).
-    // - Máx: O maior pico de atraso já registrado.
+    // 7. PERFORMANCE TELEMETRY (Latency):
+    // Shows statistics of how long the CPU takes to process each block.
+    // - Median (P50): The "common" processing time.
+    // - P99: The worst case 99% of the time (indicates stability).
+    // - Max: The highest delay peak ever recorded.
     let nanos = rt_status.dsp_cycle_time.load(Ordering::Relaxed);
     if nanos > 0 {
         let duration = Duration::from_nanos(nanos);
@@ -158,9 +158,9 @@ pub fn poll_rt_status(
             rt_status.latency_hist.reset();
         }
 
-        // 8. VERIFICAÇÃO DE PRAZO (Deadline):
-        // Se o tempo de execução ultrapassar o "orçamento" dado pelo sistema de áudio,
-        // geramos um erro de diagnóstico explicando o que falhou.
+        // 8. DEADLINE CHECK:
+        // If execution time exceeds the "budget" given by the audio system,
+        // we generate a diagnostic error explaining what failed.
         let rate_val = rt_status.active_rate.load(Ordering::Relaxed);
         let samples_val = rt_status.last_n_samples.load(Ordering::Relaxed);
 
@@ -181,7 +181,7 @@ pub fn poll_rt_status(
         }
     }
 
-    // Detecção de transição de silêncio
+    // Silence transition detection
     let current_silent = rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
 
     if current_silent != was_silent {
@@ -198,7 +198,7 @@ pub fn poll_rt_status(
         }
     }
 
-    // Detecção de transição de fading
+    // Fading transition detection
     let current_fading = rt_status.check_flag(crate::common::spsc::RT_STATUS_IS_FADING);
 
     if current_fading != was_fading && current_fading {

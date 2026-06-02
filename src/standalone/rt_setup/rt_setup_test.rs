@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn test_get_allowed_cpus_not_empty() {
     let allowed = get_allowed_cpus();
-    // Em um sistema Linux normal, pelo menos a CPU atual deve estar permitida.
+    // On a normal Linux system, at least the current CPU should be allowed.
     assert!(
         !allowed.is_empty(),
         "The list of allowed CPUs must not be empty."
@@ -15,7 +15,7 @@ fn test_get_allowed_cpus_not_empty() {
 
 #[test]
 fn test_select_optimal_cpu_returns_something() {
-    // select_optimal_cpu deve retornar um núcleo válido no ambiente de teste.
+    // select_optimal_cpu should return a valid core in the test environment.
     let cpu = select_optimal_cpu();
     assert!(cpu.is_some(), "Should be able to select an optimal core.");
 
@@ -37,7 +37,7 @@ fn test_parse_interrupts_basic() {
 
 #[test]
 fn test_rdtsc_nanos_monotonic() {
-    // Garante que o tempo avança mesmo em fallback
+    // Ensures time advances even in fallback
     let t1 = rdtsc_nanos();
     std::thread::sleep(std::time::Duration::from_millis(1));
     let t2 = rdtsc_nanos();
@@ -46,10 +46,10 @@ fn test_rdtsc_nanos_monotonic() {
 
 #[test]
 fn test_rdtsc_nanos_significant() {
-    // Garante que o tempo retornado não é quase zero (problema do Instant::now().elapsed())
-    // Note: se o sistema for muito rápido, pode ser pequeno, mas rdtsc_nanos
-    // usa um BOOT_TIME estático, então deve ser pelo menos alguns microssegundos
-    // desde que o binário de teste começou.
+    // Ensures the returned time is not near zero (Instant::now().elapsed() issue)
+    // Note: if the system is very fast, it can be small, but rdtsc_nanos
+    // uses a static BOOT_TIME, so it should be at least a few microseconds
+    // since the test binary started.
     std::thread::sleep(std::time::Duration::from_millis(5));
     let t = rdtsc_nanos();
     assert!(t > 1_000_000, "Reported time is too low: {} ns", t);

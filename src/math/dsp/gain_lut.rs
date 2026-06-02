@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Tabela de Look-Up (LUT) para conversão ultra-rápida de dB para ganho linear.
+//! Look-Up Table (LUT) for ultra-fast dB to linear gain conversion.
 //!
-//! Projetada para ser instanciada via `OnceLock` e acessada em threads RT.
-//! Migrada de `math::fastmath` como parte da Tarefa 3.5 (Épico 3).
+//! Designed to be instantiated via `OnceLock` and accessed in RT threads.
+//! Migrated from `math::fastmath` as part of Task 3.5 (Epic 3).
 
 use crate::math::constants::*;
 use std::sync::OnceLock;
 
-/// Tabela de Look-Up para conversão ultra-rápida de dB para ganho linear.
-/// Projetada para ser instanciada via `OnceLock` e acessada em threads RT.
+/// Look-Up Table for ultra-fast dB to linear gain conversion.
+/// Designed to be instantiated via `OnceLock` and accessed in RT threads.
 pub struct GainLUT {
     table: [f32; GAIN_LUT_SIZE],
 }
 
 impl GainLUT {
-    /// Inicializa a LUT pré-calculando os valores de ganho linear.
+    /// Initializes the LUT by precomputing the linear gain values.
     pub fn new() -> Self {
         let mut table = [0.0f32; GAIN_LUT_SIZE];
         for (i, item) in table.iter_mut().enumerate() {
@@ -27,7 +27,7 @@ impl GainLUT {
         Self { table }
     }
 
-    /// Converte dB para ganho linear usando a LUT com interpolação linear.
+    /// Converts dB to linear gain using the LUT with linear interpolation.
     #[inline(always)]
     pub fn db_to_linear(&self, db: f32) -> f32 {
         let db_clamped = db.clamp(GAIN_MIN_DB, GAIN_MAX_DB - 0.001);
@@ -48,10 +48,10 @@ impl Default for GainLUT {
     }
 }
 
-/// Acesso global e seguro à LUT de ganho.
+/// Safe global access to the gain LUT.
 pub static GAIN_LUT: OnceLock<GainLUT> = OnceLock::new();
 
-/// Retorna a referência global para a LUT de ganho, inicializando-a se necessário.
+/// Returns the global reference to the gain LUT, initializing it if necessary.
 pub fn get_gain_lut() -> &'static GainLUT {
     GAIN_LUT.get_or_init(GainLUT::new)
 }
@@ -63,9 +63,9 @@ mod tests {
     #[test]
     fn test_gain_lut_initialization() {
         let lut = GainLUT::new();
-        // Teste de borda: ganho mínimo
+        // Boundary test: minimum gain
         assert!((lut.db_to_linear(GAIN_MIN_DB) - 10.0f32.powf(GAIN_MIN_DB / 20.0)).abs() < 1e-6);
-        // Teste de borda: ganho máximo dentro do range de interpolação seguro
+        // Boundary test: maximum gain within the safe interpolation range
         let max_db = GAIN_MAX_DB - GAIN_DB_STEP;
         let max_val = lut.db_to_linear(max_db);
         let expected_max = 10.0f32.powf(max_db / 20.0);
@@ -81,8 +81,8 @@ mod tests {
         let mid_db = (GAIN_MIN_DB + GAIN_MAX_DB) / 2.0;
         let linear = lut.db_to_linear(mid_db);
         let expected = 10.0f32.powf(mid_db / 20.0);
-        // Interpolação linear em curva exponencial introduz pequeno erro,
-        // mas deve ser bem próximo com step de 0.1dB.
+        // Linear interpolation on an exponential curve introduces small error,
+        // but should be very close with a 0.1dB step.
         assert!((linear - expected).abs() < 1e-3);
     }
 

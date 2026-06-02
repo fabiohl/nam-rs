@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Auditoria de alocações no heap em tempo real (RT-Safety).
+//! Real-time heap allocation auditing (RT-Safety).
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
 
-/// Flag controlando se a verificação de alocação de heap está ativada.
+/// Flag controlling whether heap allocation tracking is enabled.
 pub static AUDIT_ENABLED: AtomicBool = AtomicBool::new(false);
-/// Contador global de alocações realizadas na thread vigiada.
+/// Global counter of allocations performed on the watched thread.
 pub static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-/// ID da thread (tid) que estamos vigiando.
+/// ID of the thread (tid) we are watching.
 pub static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
-/// ID da thread que está autorizada a realizar a auditoria (usada para isolar testes paralelos).
+/// ID of the thread authorized to perform the audit (used to isolate parallel tests).
 pub static AUDIT_THREAD: AtomicI32 = AtomicI32::new(0);
 
-/// O "Vigia de Memória": intercepta todos os pedidos de memória do programa.
+/// The "Memory Watchdog": intercepts all memory requests from the program.
 pub struct CountingAllocator;
 
 unsafe impl GlobalAlloc for CountingAllocator {
@@ -35,11 +35,11 @@ unsafe impl GlobalAlloc for CountingAllocator {
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
-/// O "Interruptor": liga o vigia quando criado e o desliga quando destruído.
+/// The "Switch": turns on the watchdog when created and turns it off when destroyed.
 pub struct TrackingGuard;
 
 impl TrackingGuard {
-    /// Começa a vigiar a thread atual.
+    /// Starts watching the current thread.
     pub fn new() -> Self {
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
         TRACKING_THREAD.store(tid, Ordering::Relaxed);

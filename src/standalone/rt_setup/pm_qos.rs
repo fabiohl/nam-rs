@@ -1,60 +1,60 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! PM QoS e detecção de hardware de áudio.
+//! PM QoS and hardware audio detection.
 //!
-//! Funções para bloquear C-States profundos da CPU e detectar
-//! o sink de hardware padrão do sistema via PipeWire.
+//! Functions to lock deep CPU C-States and detect
+//! the system's default hardware sink via PipeWire.
 
-/// Detecta dinamicamente o sink de hardware padrão do sistema via `pw-metadata`.
+/// Dynamically detects the system's default hardware sink via `pw-metadata`.
 ///
-/// Esta função tenta identificar para qual dispositivo físico o áudio deve ser enviado
-/// por padrão. Ela faz o parsing da saída do utilitário `pw-metadata` do PipeWire.
+/// This function attempts to identify which physical device audio should be sent to
+/// by default. It parses the output of the PipeWire `pw-metadata` utility.
 ///
-/// Retorna `Some(name)` se encontrar um sink válido que não seja o próprio NAM-rs,
-/// ou `None` caso contrário (permitindo que o roteamento seja decidido pelo WirePlumber).
+/// Returns `Some(name)` if a valid sink that is not NAM-rs itself is found,
+/// or `None` otherwise (allowing routing to be decided by WirePlumber).
 pub fn detect_hardware_sink() -> Option<String> {
-    // Executa o comando externo para ler metadados do servidor PipeWire
+    // Runs the external command to read PipeWire server metadata
     let out = std::process::Command::new("pw-metadata")
         .args(["-n", "default", "0", "default.audio.sink"])
         .output()
         .ok()?;
 
-    // Converte a saída bruta para string (UTF-8 com perdas)
+    // Converts the raw output to string (UTF-8 lossy)
     let s = String::from_utf8_lossy(&out.stdout);
 
-    // Parsing manual: localiza a chave "name" na saída JSON-like
+    // Manual parsing: locates the "name" key in the JSON-like output
     let start = s.find("\"name\":\"")?;
     let rest = &s[start + 8..];
     let end = rest.find('"')?;
     let name = &rest[..end];
 
-    // Evitamos o "loop infinito" de roteamento se o default detectado for o próprio input do NAM-rs.
+    // We avoid the "infinite loop" routing if the detected default is NAM-rs's own input.
     if name == "NAM-rs-input" || name == "NAM-rs-standalone" {
         None
     } else {
-        // Retorna o nome do hardware real (ex: 'alsa_output.pci-0000_00_1f.3.analog-stereo')
+        // Returns the real hardware name (e.g. 'alsa_output.pci-0000_00_1f.3.analog-stereo')
         Some(name.to_string())
     }
 }
 
-/// Impede que o processador entre em C-States de economia de energia,
-/// garantindo latência de despertar de 0ms para processamento de áudio RT.
+/// Prevents the processor from entering power-saving C-States,
+/// guaranteeing 0ms wake-up latency for RT audio processing.
 ///
-/// **Aviso:** Esta proteção é **sistêmica (global)** e afeta todos os cores da CPU,
-/// não apenas a thread que executa esta função.
+/// **Warning:** This protection is **system-wide (global)** and affects all CPU cores,
+/// not just the thread executing this function.
 ///
-/// Utiliza a interface PM QoS do kernel Linux para solicitar latência zero.
+/// Uses the Linux kernel PM QoS interface to request zero latency.
 ///
-/// RETORNO: O arquivo `File`. Ele DEVE ser mantido vivo no escopo principal.
-/// Se o descritor de arquivo for fechado (drop), o kernel anula a proteção.
+/// RETURN: The `File` handle. It MUST be kept alive in the main scope.
+/// If the file descriptor is closed (drop), the kernel revokes the protection.
 pub fn lock_cpu_c_states() -> Option<std::fs::File> {
     match std::fs::OpenOptions::new()
         .write(true)
         .open("/dev/cpu_dma_latency")
     {
         Ok(mut file) => {
-            // Valor 0 indica tolerância zero a latência de transição de energia.
+            // Value 0 indicates zero tolerance to power transition latency.
             let zero: i32 = 0;
             if std::io::Write::write_all(&mut file, &zero.to_ne_bytes()).is_ok() {
                 log::info!("⚡ PM QoS Lock: Deep CPU C-States disabled (Zero DMA Latency).");
@@ -64,7 +64,7 @@ pub fn lock_cpu_c_states() -> Option<std::fs::File> {
             None
         }
         Err(e) => {
-            // Frequentemente falha se não houver permissão de escrita ou se o arquivo não existir.
+            // Often fails if write permission is missing or the file does not exist.
             log::warn!(
                 "PM QoS: Access denied to /dev/cpu_dma_latency ({}). \
                  Consider creating a udev rule for the 'audio' group.",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão `clap_plugin_track_info` para o NAM-rs.
+//! Implementation of the `clap_plugin_track_info` extension for NAM-rs.
 
 use crate::clap::plugin::NamClapMainThread;
 use clack_extensions::track_info::{PluginTrackInfo, PluginTrackInfoImpl};
@@ -14,8 +14,8 @@ impl<'a> PluginTrackInfoImpl for NamClapMainThread<'a> {
             .get_extension::<clack_extensions::track_info::HostTrackInfo>()
         {
             let mut buffer = clack_extensions::track_info::TrackInfoBuffer::new();
-            // SAFETY: A thread principal do CLAP executa este callback de forma síncrona.
-            // É seguro criar um HostMainThreadHandle temporário pois estamos na thread principal.
+            // SAFETY: The CLAP main thread executes this callback synchronously.
+            // It is safe to create a temporary HostMainThreadHandle since we are on the main thread.
             let mut host_mut = unsafe { self.host.shared().as_main_thread_unchecked() };
             if let Some(info) = track_info_ext.get(&mut host_mut, &mut buffer) {
                 if let Some(color) = info.color() {
@@ -31,23 +31,23 @@ impl<'a> PluginTrackInfoImpl for NamClapMainThread<'a> {
     }
 }
 
-/// Empacota componentes de cor ARGB em um `u32` para armazenamento atômico.
+/// Packs ARGB color components into a `u32` for atomic storage.
 ///
-/// Formato: `(alpha << 24) | (red << 16) | (green << 8) | blue`.
-/// O valor zero (`pack_argb(0, 0, 0, 0)`) é tratado como sentinela de "sem cor".
-/// A função `resolve_accent()` na GUI usa `alpha == 0` como fallback para `COL_ACCENT`.
+/// Format: `(alpha << 24) | (red << 16) | (green << 8) | blue`.
+/// A value of zero (`pack_argb(0, 0, 0, 0)`) is treated as a "no color" sentinel.
+/// The `resolve_accent()` function in the GUI uses `alpha == 0` as a fallback for `COL_ACCENT`.
 pub fn pack_argb(alpha: u8, red: u8, green: u8, blue: u8) -> u32 {
     ((alpha as u32) << 24) | ((red as u32) << 16) | ((green as u32) << 8) | (blue as u32)
 }
 
-/// Tipo marcador para registro da extensão.
+/// Marker type for extension registration.
 pub type NamPluginTrackInfo = PluginTrackInfo;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Valida o empacotamento ARGB para as 5 cores representativas exigidas pela spec A.1.
+    /// Validates ARGB packing for the 5 representative colors required by spec A.1.
     #[test]
     fn test_pack_argb_representative_colors() {
         // Branco opaco: ARGB = (FF, FF, FF, FF)
@@ -66,13 +66,13 @@ mod tests {
         assert_eq!(pack_argb(0xFF, 0x5E, 0x81, 0xAC), 0xFF5E_81AC);
     }
 
-    /// Valida que alpha == 0 (sentinela) resulta em packed == 0 quando RGB também é zero.
+    /// Validates that alpha == 0 (sentinel) results in packed == 0 when RGB is also zero.
     #[test]
     fn test_pack_argb_zero_is_sentinel() {
         assert_eq!(pack_argb(0, 0, 0, 0), 0);
     }
 
-    /// Valida consistência bidirecional: pack e depois unpack deve recuperar os componentes.
+    /// Validates bidirectional consistency: pack then unpack should recover the components.
     #[test]
     fn test_pack_argb_roundtrip() {
         let colors = [

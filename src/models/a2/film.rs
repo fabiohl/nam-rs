@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo de Feature-wise Linear Modulation (FiLM) para a arquitetura NAM A2.
+//! Feature-wise Linear Modulation (FiLM) module for the NAM A2 architecture.
 //!
-//! O FiLM permite que o modelo adapte seu comportamento com base em sinais
-//! de condicionamento externos, aplicando escala e deslocamento (shift) por canal.
+//! FiLM enables the model to adapt its behavior based on external
+//! conditioning signals, applying per-channel scale and shift.
 //!
-//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
-//! aguardando estabilização da implementação de referência.
+//! IMPORTANT: A2 architecture support is in "placeholder" stage
+//! pending stabilization of the reference implementation.
 
-/// Configuração para uma camada ou operação FiLM.
+/// Configuration for a FiLM layer or operation.
 ///
-/// Corresponde à struct `_FiLMParams` do C++.
+/// Corresponds to the `_FiLMParams` struct in C++.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FiLMConfig {
-    /// Se o FiLM está ativo nesta localização.
+    /// Whether FiLM is active at this location.
     pub active: bool,
-    /// Se deve aplicar tanto escala quanto deslocamento (true) ou apenas escala (false).
+    /// Whether to apply both scale and shift (true) or only scale (false).
     pub shift: bool,
-    /// Número de grupos para a convolução agrupada no submódulo de condicionamento.
+    /// Number of groups for grouped convolution in the conditioning submodule.
     pub groups: u32,
 }
 
@@ -32,13 +32,13 @@ impl Default for FiLMConfig {
     }
 }
 
-/// Trait para implementação de camadas FiLM.
+/// Trait for implementing FiLM layers.
 ///
-/// Define a interface para o processamento de modulação linear baseada em características.
+/// Defines the interface for feature-based linear modulation processing.
 pub trait FiLMLayer {
-    /// Processa a modulação FiLM sobre o buffer de entrada.
+    /// Processes FiLM modulation over the input buffer.
     ///
-    /// Esta é uma implementação stub (placeholder) para a arquitetura A2.
+    /// This is a stub (placeholder) implementation for the A2 architecture.
     fn process(&mut self, input: &mut [f32], condition: &[f32]);
 }
 

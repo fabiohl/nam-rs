@@ -1,38 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Seleção de núcleo de CPU ideal e análise de interrupções.
+//! Optimal CPU core selection and interrupt analysis.
 //!
-//! Implementa heurísticas para fixar a thread DSP no core com maior
-//! capacidade de processamento e menor carga de IRQ, respeitando
-//! máscaras de afinidade do kernel (isolcpus, cgroups).
+//! Implements heuristics to pin the DSP thread to the core with the highest
+//! processing capacity and lowest IRQ load, respecting
+//! kernel affinity masks (isolcpus, cgroups).
 
-/// Seleciona o núcleo de CPU ideal para fixar a thread RT (core affinity).
+/// Selects the ideal CPU core to pin the RT thread (core affinity).
 ///
-/// A heurística prioriza:
-/// 1. **Filtro de Afinidade** — Respeita os núcleos autorizados pelo SO (isolcpus, cgroups).
-/// 2. **Capacidade Máxima** — Em arquiteturas híbridas (ex: big.LITTLE), prefere núcleos de alta performance.
-/// 3. **Menor Carga de IRQ** — Minimiza jitter causado por interrupções de hardware (rede, disco, etc).
-/// 4. **Índice Numérico** — Desempate determinístico.
+/// The heuristic prioritizes:
+/// 1. **Affinity Filter** — Respects the cores authorized by the OS (isolcpus, cgroups).
+/// 2. **Maximum Capacity** — On hybrid architectures (e.g. big.LITTLE), prefers high-performance cores.
+/// 3. **Lowest IRQ Load** — Minimizes jitter caused by hardware interrupts (network, disk, etc.).
+/// 4. **Numeric Index** — Deterministic tiebreaker.
 pub fn select_optimal_cpu() -> Option<usize> {
     use std::fs;
 
-    // 1. Obtém os núcleos que o sistema operacional permitiu para este processo.
+    // 1. Gets the cores the operating system has allowed for this process.
     let allowed_cpus = get_allowed_cpus();
     if allowed_cpus.is_empty() {
         log::warn!("Could not detect allowed CPUs via sched_getaffinity. Using total fallback.");
     }
 
-    // Varre /sys para encontrar todos os núcleos lógicos disponíveis.
+    // Scans /sys to find all available logical cores.
     let cpu_dir = fs::read_dir("/sys/devices/system/cpu").ok()?;
     let mut cpus: Vec<usize> = cpu_dir
         .filter_map(|entry| {
             let name = entry.ok()?.file_name();
             let name = name.to_str()?;
-            // Filtra apenas diretórios no formato 'cpuX'.
+            // Filters only directories in the 'cpuX' format.
             let cpu_idx = name.strip_prefix("cpu")?.parse::<usize>().ok()?;
 
-            // Se tivermos a lista de permitidos, filtramos por ela.
+            // If we have the allowed list, we filter by it.
             if !allowed_cpus.is_empty() && !allowed_cpus.contains(&cpu_idx) {
                 return None;
             }
@@ -46,7 +46,7 @@ pub fn select_optimal_cpu() -> Option<usize> {
     }
     cpus.sort_unstable();
 
-    // Obtém a capacidade de processamento de cada núcleo.
+    // Gets the processing capacity of each core.
     let capacities: Vec<(usize, u64)> = cpus
         .iter()
         .map(|&cpu| {
@@ -54,12 +54,12 @@ pub fn select_optimal_cpu() -> Option<usize> {
             let cap = fs::read_to_string(path)
                 .ok()
                 .and_then(|s| s.trim().parse::<u64>().ok())
-                .unwrap_or(1024); // Fallback padrão do kernel.
+                .unwrap_or(1024); // Default kernel fallback.
             (cpu, cap)
         })
         .collect();
 
-    // Totaliza as interrupções processadas por cada core para detectar "vizinhos barulhentos".
+    // Totals the interrupts handled per core to detect "noisy neighbors".
     let irq_totals = parse_interrupts_per_cpu(cpus.len());
 
     capacities
@@ -69,10 +69,10 @@ pub fn select_optimal_cpu() -> Option<usize> {
             (cpu, cap, irqs)
         })
         .max_by(|a, b| {
-            // Heurística de Ordenação:
-            // 1. Maior capacidade (cap)
-            // 2. Menor número de interrupções (irqs) — invertido no cmp
-            // 3. Maior índice de CPU (cpu)
+            // Sorting Heuristic:
+            // 1. Highest capacity (cap)
+            // 2. Lowest interrupt count (irqs) — inverted in cmp
+            // 3. Highest CPU index (cpu)
             a.1.cmp(&b.1)
                 .then_with(|| b.2.cmp(&a.2))
                 .then_with(|| a.0.cmp(&b.0))
@@ -80,17 +80,17 @@ pub fn select_optimal_cpu() -> Option<usize> {
         .map(|(cpu, _, _)| cpu)
 }
 
-/// Obtém a lista de CPUs permitidas para o processo atual via `sched_getaffinity`.
+/// Gets the list of CPUs allowed for the current process via `sched_getaffinity`.
 ///
-/// Respeita isolamento de CPUs (isolcpus), cgroups e máscaras de afinidade
-/// impostas pelo sistema operacional ou pelo usuário (ex: taskset).
+/// Respects CPU isolation (isolcpus), cgroups and affinity masks
+/// imposed by the operating system or the user (e.g. taskset).
 pub fn get_allowed_cpus() -> Vec<usize> {
     let mut allowed = Vec::new();
     unsafe {
         let mut cpuset: libc::cpu_set_t = std::mem::zeroed();
         libc::CPU_ZERO(&mut cpuset);
 
-        // Chamada ao kernel para obter a máscara de afinidade do processo atual (pid 0)
+        // Kernel call to get the affinity mask of the current process (pid 0)
         if libc::sched_getaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &mut cpuset) == 0 {
             for i in 0..libc::CPU_SETSIZE as usize {
                 if libc::CPU_ISSET(i, &cpuset) {
@@ -102,38 +102,38 @@ pub fn get_allowed_cpus() -> Vec<usize> {
     allowed
 }
 
-/// Analisa /proc/interrupts para extrair a carga de interrupções por núcleo.
+/// Parses /proc/interrupts to extract the interrupt load per core.
 ///
-/// Esta função realiza o parsing do formato tabular do kernel, onde cada coluna
-/// (após a primeira) representa um contador para um núcleo específico.
+/// This function parses the kernel's tabular format, where each column
+/// (after the first) represents a counter for a specific core.
 pub fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
     let mut totals = vec![0u64; num_cpus];
 
-    // Refatoração para Streaming: Evita alocação monolítica de string para /proc/interrupts.
-    // Essencial para sistemas com alto número de CPUs onde o arquivo pode ser grande.
+    // Streaming Refactoring: Avoids monolithic string allocation for /proc/interrupts.
+    // Essential for systems with high CPU counts where the file can be large.
     let file = match File::open("/proc/interrupts") {
         Ok(f) => f,
         Err(_) => return totals,
     };
     let reader = BufReader::new(file);
 
-    // Pula o cabeçalho (CPU0 CPU1 ...)
+    // Skips the header (CPU0 CPU1 ...)
     for line_result in reader.lines().skip(1) {
         let line = match line_result {
             Ok(l) => l,
             Err(_) => break,
         };
         let trimmed = line.trim_start();
-        // Localiza o delimitador do nome da interrupção (ex: "7: ...")
+        // Locates the interrupt name delimiter (e.g. "7: ...")
         let irq_end = trimmed.find(':').unwrap_or(0);
         if irq_end == 0 {
             continue;
         }
 
-        // Filtra apenas interrupções numéricas (ignora NMI, LOC, etc por simplicidade).
+        // Filters only numeric interrupts (ignores NMI, LOC, etc. for simplicity).
         if !trimmed[..irq_end]
             .trim()
             .bytes()
@@ -147,7 +147,7 @@ pub fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
             None => continue,
         };
 
-        // Acumula os contadores para cada core presente na linha.
+        // Accumulates counters for each core present in the line.
         for (cpu_idx, token) in after_colon.split_whitespace().enumerate() {
             if cpu_idx >= num_cpus {
                 break;
@@ -155,7 +155,7 @@ pub fn parse_interrupts_per_cpu(num_cpus: usize) -> Vec<u64> {
             if let Ok(count) = token.parse::<u64>() {
                 totals[cpu_idx] += count;
             } else {
-                // Para no primeiro token não numérico (geralmente o nome do driver/dispositivo).
+                // Stops at the first non-numeric token (usually the driver/device name).
                 break;
             }
         }

@@ -1,36 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Diagnóstico estruturado para erros e avisos do NAM-rs.
+//! Structured diagnostic for NAM-rs errors and warnings.
 //!
-//! Combina uma mensagem amigável para o usuário com um bloco técnico
-//! copiável para suporte. Formatado para triagem precisa.
+//! Combines a user-friendly message with a copyable technical
+//! support block. Formatted for precise triage.
 
 use super::error_codes::NamErrorCode;
 use super::system_info::SystemSnapshot;
 use std::fmt;
 use std::time::SystemTime;
 
-/// Diagnóstico estruturado para erros e avisos do NAM-rs.
+/// Structured diagnostic for NAM-rs errors and warnings.
 ///
-/// Combina uma mensagem amigável para o usuário com um bloco técnico
-/// copiável para suporte. Formatado para triagem precisa.
+/// Combines a user-friendly message with a copyable technical
+/// support block. Formatted for precise triage.
 #[derive(Debug)]
 pub struct NamDiagnostic {
-    /// Código de erro tipado.
+    /// Typed error code.
     code: NamErrorCode,
-    /// Mensagem amigável para o usuário (pt-BR).
+    /// User-friendly message (en-US).
     user_message: String,
-    /// Sugestão de ação para o usuário (pt-BR).
+    /// Suggested action for the user (en-US).
     user_hint: String,
-    /// Parâmetros contextuais para o bloco de suporte (chave=valor).
+    /// Contextual parameters for the support block (key=value).
     params: Vec<(&'static str, String)>,
-    /// Snapshot do sistema (capturado no startup).
+    /// System snapshot (captured at startup).
     system: SystemSnapshot,
 }
 
 impl NamDiagnostic {
-    /// Cria um novo diagnóstico com o código de erro e snapshot do sistema.
+    /// Creates a new diagnostic with the error code and system snapshot.
     #[cold]
     pub fn new(code: NamErrorCode, system: &SystemSnapshot) -> Self {
         Self {
@@ -42,31 +42,31 @@ impl NamDiagnostic {
         }
     }
 
-    /// Define a mensagem amigável para o usuário.
+    /// Sets the user-friendly message.
     pub fn message(mut self, msg: impl Into<String>) -> Self {
         self.user_message = msg.into();
         self
     }
 
-    /// Define a sugestão de ação para o usuário.
+    /// Sets the suggested action for the user.
     pub fn hint(mut self, hint: impl Into<String>) -> Self {
         self.user_hint = hint.into();
         self
     }
 
-    /// Adiciona um parâmetro contextual ao bloco de suporte.
+    /// Adds a contextual parameter to the support block.
     pub fn param(mut self, key: &'static str, value: impl fmt::Display) -> Self {
         self.params.push((key, value.to_string()));
         self
     }
 
-    /// Gera o timestamp ISO 8601 do momento atual.
+    /// Generates the ISO 8601 timestamp for the current moment.
     pub(crate) fn timestamp() -> String {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default();
 
-        // Formatação manual ISO 8601 sem dependências externas
+        // Manual ISO 8601 formatting without external dependencies
         let secs = now.as_secs();
         let days = secs / 86400;
         let time_of_day = secs % 86400;
@@ -74,13 +74,13 @@ impl NamDiagnostic {
         let minutes = (time_of_day % 3600) / 60;
         let seconds = time_of_day % 60;
 
-        // Cálculo da data a partir de dias desde epoch (1970-01-01)
+        // Date calculation from days since epoch (1970-01-01)
         let (year, month, day) = days_to_date(days);
 
         format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
     }
 
-    /// Gera o bloco de suporte técnico formatado para cópia.
+    /// Generates the formatted technical support block for copying.
     pub(crate) fn support_block(&self) -> String {
         let separator = "────────────────────────────────────────────────";
         let mut block = format!(
@@ -91,7 +91,7 @@ impl NamDiagnostic {
             self.code.mnemonic(),
         );
 
-        // Parâmetros contextuais
+        // Contextual parameters
         if !self.params.is_empty() {
             let param_line: String = self
                 .params
@@ -103,7 +103,7 @@ impl NamDiagnostic {
             block.push('\n');
         }
 
-        // Informações do sistema
+        // System information
         block.push_str(&format!(
             "arch={}\n\
              os={} kernel={}\n\
@@ -127,7 +127,7 @@ impl NamDiagnostic {
         block
     }
 
-    /// Imprime o diagnóstico completo no stderr (mensagem amigável + bloco de suporte).
+    /// Prints the complete diagnostic to stderr (user-friendly message + support block).
     pub fn emit(&self) {
         log::error!(
             "{}\n\n{}\n\n{}",
@@ -141,7 +141,7 @@ impl NamDiagnostic {
         );
     }
 
-    /// Imprime como aviso (não-fatal) com prefixo visual diferenciado.
+    /// Prints as a warning (non-fatal) with a distinct visual prefix.
     pub fn emit_warning(&self) {
         log::warn!(
             "{}\n\n{}\n\n{}",
@@ -155,7 +155,7 @@ impl NamDiagnostic {
         );
     }
 
-    /// Retorna o código de erro associado ao diagnóstico.
+    /// Returns the error code associated with the diagnostic.
     pub fn error_code(&self) -> NamErrorCode {
         self.code
     }
@@ -169,10 +169,10 @@ impl fmt::Display for NamDiagnostic {
 
 impl std::error::Error for NamDiagnostic {}
 
-/// Converte dias desde 1970-01-01 em (ano, mês, dia) gregoriano.
+/// Converts days since 1970-01-01 to Gregorian (year, month, day).
 ///
-/// Implementação mínima do algoritmo civil de Howard Hinnant,
-/// sem dependências externas.
+/// Minimal implementation of Howard Hinnant's civil algorithm,
+/// without external dependencies.
 pub(crate) fn days_to_date(days: u64) -> (u64, u64, u64) {
     // Algoritmo civil: https://howardhinnant.github.io/date_algorithms.html
     let z = days + 719468;

@@ -1,46 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Componentes comuns e dinâmicos para arquiteturas WaveNet.
+//! Common and dynamic components for WaveNet architectures.
 //!
-//! Contém as estruturas fundamentais (Conv1D, Dense, Layer) que operam com
-//! dimensões definidas em runtime, servindo como base para o modelo dinâmico
-//! e futuros estágios da arquitetura A2.
+//! Contains the fundamental structures (Conv1D, Dense, Layer) that operate with
+//! runtime-defined dimensions, serving as a foundation for the dynamic model
+//! and future A2 architecture stages.
 //!
-//! IMPORTANTE: O suporte à arquitetura A2 está em estágio de "placeholder"
-//! aguardando estabilização da implementação de referência.
+//! IMPORTANT: A2 architecture support is in "placeholder" stage
+//! pending stabilization of the reference implementation.
 
 use super::conv1d::ConvInput;
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
-/// Máximo de frames a processar em um pulso do callback.
+/// Maximum frames to process in one callback pulse.
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
-/// Padding temporal circular das memórias no framework de Ring Buffers.
+/// Circular temporal padding of memories in the Ring Buffers framework.
 pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
-/// Limite máximo suportado para o tamanho do kernel.
+/// Maximum supported kernel size.
 pub const MAX_KERNEL: usize = 16;
 
-/// Estrutura para convolução causal 1D com dimensões dinâmicas.
+/// Structure for causal 1D convolution with dynamic dimensions.
 #[derive(Clone)]
 #[repr(align(64))]
 pub struct Conv1dDyn {
-    /// Pesos da convolução [OUT][KERNEL][IN] (quantizados u16).
+    /// Convolution weights [OUT][KERNEL][IN] (quantized u16).
     pub weights: AlignedVec<u16>,
-    /// Vetor de bias [OUT].
+    /// Bias vector [OUT].
     pub bias: AlignedVec<f32>,
-    /// Flag indicando se o bias deve ser aplicado.
+    /// Flag indicating whether bias should be applied.
     pub do_bias: bool,
-    /// Fator de dilatação temporal.
+    /// Temporal dilation factor.
     pub dilation: usize,
-    /// Quantidade de canais de entrada.
+    /// Number of input channels.
     pub in_ch: usize,
-    /// Quantidade de canais de saída.
+    /// Number of output channels.
     pub out_ch: usize,
-    /// Quantidade de blocos de 4 canais.
+    /// Number of 4-channel blocks.
     pub num_blocks: usize,
-    /// Tamanho físico do kernel.
+    /// Physical kernel size.
     pub kernel: usize,
-    /// Estratégia de prefetch pré-calculada.
+    /// Pre-computed prefetch strategy.
     pub prefetch_fn: PrefetchFn,
 }
 
@@ -57,10 +57,10 @@ fn panic_kernel_exceeds(kernel: usize) -> ! {
 }
 
 impl Conv1dDyn {
-    /// Processa dois frames simultaneamente (f32).
+    /// Processes two frames simultaneously (f32).
     ///
     /// # Safety
-    /// `out_f0` e `out_f1` devem ter tamanho compatível com `self.out_ch`.
+    /// `out_f0` and `out_f1` must have sizes compatible with `self.out_ch`.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame<M: SimdMath>(
@@ -86,10 +86,10 @@ impl Conv1dDyn {
         }
     }
 
-    /// Processa dois frames simultaneamente (BF16).
+    /// Processes two frames simultaneously (BF16).
     ///
     /// # Safety
-    /// `out_f0` e `out_f1` devem ter tamanho compatível com `self.out_ch`.
+    /// `out_f0` and `out_f1` must have sizes compatible with `self.out_ch`.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_bf16<M: SimdMath>(
@@ -115,10 +115,10 @@ impl Conv1dDyn {
         }
     }
 
-    /// Processa um bloco de amostras com mixin opcional (f32).
+    /// Processes a sample block with optional mixin (f32).
     ///
     /// # Safety
-    /// `block` deve ter tamanho pelo menos `num_frames * self.out_ch`.
+    /// `block` must have size at least `num_frames * self.out_ch`.
     #[inline(always)]
     pub unsafe fn process_block<M: SimdMath>(
         &self,
@@ -139,10 +139,10 @@ impl Conv1dDyn {
         }
     }
 
-    /// Processa um bloco de amostras usando BF16.
+    /// Processes a sample block using BF16.
     ///
     /// # Safety
-    /// `block` deve ter tamanho pelo menos `num_frames * self.out_ch`.
+    /// `block` must have size at least `num_frames * self.out_ch`.
     #[inline(always)]
     pub unsafe fn process_block_bf16<M: SimdMath>(
         &self,
@@ -163,10 +163,10 @@ impl Conv1dDyn {
         }
     }
 
-    /// Processa um único frame (f32).
+    /// Processes a single frame (f32).
     ///
     /// # Safety
-    /// `out_frame` deve ter tamanho compatível com `self.out_ch`.
+    /// `out_frame` must have size compatible with `self.out_ch`.
     #[inline(always)]
     pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
@@ -180,10 +180,10 @@ impl Conv1dDyn {
         }
     }
 
-    /// Processa um único frame BF16.
+    /// Processes a single BF16 frame.
     ///
     /// # Safety
-    /// `out_frame` deve ter tamanho compatível com `self.out_ch`.
+    /// `out_frame` must have size compatible with `self.out_ch`.
     #[inline(always)]
     pub unsafe fn process_single_frame_bf16<M: SimdMath>(
         &self,

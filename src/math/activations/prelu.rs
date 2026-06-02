@@ -1,43 +1,43 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels de ativação PReLU (Parametric ReLU) otimizados.
+//! Optimized PReLU (Parametric ReLU) activation kernels.
 
 use core::arch::x86_64::*;
 
-/// Aproximação vetorial de `PReLU(x) = x > 0 ? x : alpha * x` usando AVX2.
+/// Vector approximation of `PReLU(x) = x > 0 ? x : alpha * x` using AVX2.
 ///
 /// # Safety
-/// Requer suporte a AVX2.
+/// Requires AVX2 support.
 #[target_feature(enable = "avx2")]
 pub unsafe fn simd_prelu_avx2(x: __m256, alpha: __m256) -> __m256 {
-    // Máscara de valores positivos (x > 0)
+    // Mask of positive values (x > 0)
     let mask = _mm256_cmp_ps(x, _mm256_setzero_ps(), _CMP_GT_OQ);
-    // alpha * x para a região negativa
+    // alpha * x for the negative region
     let neg_part = _mm256_mul_ps(alpha, x);
-    // Seleciona x se mask for true, senão neg_part
+    // Selects x if mask is true, otherwise neg_part
     _mm256_blendv_ps(neg_part, x, mask)
 }
 
-/// Aproximação vetorial de `PReLU(x) = x > 0 ? x : alpha * x` usando AVX-512.
+/// Vector approximation of `PReLU(x) = x > 0 ? x : alpha * x` using AVX-512.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn simd_prelu_avx512(x: __m512, alpha: __m512) -> __m512 {
     let zero = _mm512_setzero_ps();
-    // Máscara de valores positivos (x > 0)
+    // Mask of positive values (x > 0)
     let mask = _mm512_cmp_ps_mask(x, zero, _CMP_GT_OQ);
-    // alpha * x para a região negativa
+    // alpha * x for the negative region
     let neg_part = _mm512_mul_ps(alpha, x);
-    // Seleciona x se mask for true, senão neg_part (usando masking do AVX-512)
+    // Selects x if mask is true, otherwise neg_part (using AVX-512 masking)
     _mm512_mask_blend_ps(mask, neg_part, x)
 }
 
-/// Aplica a ativação PReLU a um slice de f32 usando otimização AVX2.
+/// Applies PReLU activation to a slice of f32 using AVX2 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX2.
+/// Requires AVX2 support.
 #[target_feature(enable = "avx2")]
 pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
     let mut i = 0;
@@ -48,7 +48,7 @@ pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
         return;
     }
 
-    // Caso otimizado: slope único (LeakyReLU)
+    // Optimized case: single slope (LeakyReLU)
     if s_len == 1 {
         let alpha = _mm256_set1_ps(slopes[0]);
         while i + 16 <= len {
@@ -68,7 +68,7 @@ pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
             i += 8;
         }
     } else if s_len == len {
-        // Caso otimizado: slopes por elemento
+        // Optimized case: per-element slopes
         while i + 16 <= len {
             unsafe {
                 let x1 = _mm256_loadu_ps(slice.as_ptr().add(i));
@@ -90,7 +90,7 @@ pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
         }
     }
 
-    // Fallback escalar (também lida com o resto dos casos otimizados e com o ciclismo)
+    // Scalar fallback (also handles remainder for optimized cases and cycling)
     for idx in i..len {
         let x = slice[idx];
         if x < 0.0 {
@@ -99,10 +99,10 @@ pub unsafe fn prelu_slice_avx2(slice: &mut [f32], slopes: &[f32]) {
     }
 }
 
-/// Aplica a ativação PReLU a um slice de f32 usando otimização AVX-512.
+/// Applies PReLU activation to a slice of f32 using AVX-512 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn prelu_slice_avx512(slice: &mut [f32], slopes: &[f32]) {
     let mut i = 0;
@@ -141,7 +141,7 @@ pub unsafe fn prelu_slice_avx512(slice: &mut [f32], slopes: &[f32]) {
     }
 }
 
-/// Versão escalar de `prelu`.
+/// Scalar version of `prelu`.
 #[inline(always)]
 pub fn prelu(x: f32, alpha: f32) -> f32 {
     if x > 0.0 { x } else { x * alpha }

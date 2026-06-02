@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Interface gráfica do plugin NAM-rs renderizada via `egui` + `egui_glow`.
+//! Graphical interface of the NAM-rs plugin rendered via `egui` + `egui_glow`.
 //!
-//! Este módulo implementa toda a renderização da GUI do plugin CLAP,
-//! organizada em 5 zonas visuais:
+//! This module implements the entire GUI rendering of the CLAP plugin,
+//! organized into 5 visual zones:
 //!
-//! - **Zona 1** (esquerda): Identidade — logo, versão, badge SIMD, botão de carga de modelo
-//! - **Zona 2** (centro): Controles — knobs de Input Gain, Output Gain e Gate Threshold
-//! - **Zona 3** (direita): Medidores VU stereo com peak hold e LEDs de clipping
-//! - **Zona 4** (extrema direita): Toggle de Bypass com LED de status
-//! - **Zona 5** (footer): Status bar com sample rate, latência, carga DSP e telemetria
+//! - **Zone 1** (left): Identity — logo, version, SIMD badge, model load button
+//! - **Zone 2** (center): Controls — Input Gain, Output Gain and Gate Threshold knobs
+//! - **Zone 3** (right): Stereo VU meters with peak hold and clipping LEDs
+//! - **Zone 4** (far right): Bypass toggle with status LED
+//! - **Zone 5** (footer): Status bar with sample rate, latency, DSP load and telemetry
 //!
-//! A comunicação com o estado do plugin é feita inteiramente via atômicos
-//! em `NamClapShared`, sem locks no caminho de renderização.
+//! Communication with the plugin state is done entirely via atomics
+//! in `NamClapShared`, with no locks in the render path.
 
 mod bypass;
 pub mod colors;
@@ -46,11 +46,11 @@ use self::meter::draw_vertical_meter;
 use self::simd::get_simd_badge;
 use self::vsep::styled_vsep;
 
-/// Desenha os componentes e o layout de 5 zonas da interface gráfica do NAM-rs.
+/// Draws the components and 5-zone layout of the NAM-rs graphical interface.
 ///
-/// Esta é a função principal de renderização da GUI, chamada a cada frame pelo
-/// `NamPluginWindow::on_frame()`. Lê o estado compartilhado via atômicos e
-/// escreve alterações de parâmetros de volta nos atômicos + solicita flush ao host.
+/// This is the main GUI rendering function, called every frame by
+/// `NamPluginWindow::on_frame()`. Reads shared state via atomics and
+/// writes parameter changes back to atomics + requests host flush.
 ///
 /// # Layout
 ///
@@ -85,7 +85,7 @@ pub fn draw_ui(
 
     let available_w = ui.available_width();
 
-    // Layout principal: horizontal com Zonas 1–4 centralizadas
+    // Main layout: horizontal with Zones 1-4 centered
     ui.horizontal(|ui| {
         let total_content_width =
             135.0 + 240.0 + 80.0 + 60.0 + 3.0 * 13.0 + 6.0 * ui.spacing().item_spacing.x;
@@ -95,7 +95,7 @@ pub fn draw_ui(
             ui.add_space(left_space);
         }
 
-        // ── Zona 1: Identidade (esquerda) ─────────────────────
+        // ── Zone 1: Identity (left) ───────────────────────────
         ui.allocate_ui(egui::vec2(135.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(8.0);
@@ -148,7 +148,7 @@ pub fn draw_ui(
                 );
                 ui.add_space(2.0);
 
-                // Botão "Load Model"
+                // "Load Model" button
                 let load_btn = ui.add(
                     egui::Button::new(
                         egui::RichText::new("📂 Load Model")
@@ -327,7 +327,7 @@ pub fn draw_ui(
 
         styled_vsep(ui);
 
-        // ── Zona 2: Controles (centro) ─────────────────────
+        // ── Zone 2: Controls (center) ────────────────────
         ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
             if current_bypass {
                 ui.disable();
@@ -432,7 +432,7 @@ pub fn draw_ui(
 
         styled_vsep(ui);
 
-        // ── Zona 3: Medidores VU (direita) ──────────────────
+        // ── Zone 3: VU Meters (right) ─────────────────────
         ui.allocate_ui(egui::vec2(80.0, 210.0), |ui| {
             if current_bypass {
                 ui.disable();
@@ -509,7 +509,7 @@ pub fn draw_ui(
 
         styled_vsep(ui);
 
-        // ── Zona 4: Bypass (extrema direita) ─────────────────
+        // ── Zone 4: Bypass (far right) ────────────────────
         ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
             ui.vertical(|ui| {
                 ui.add_space(18.0);
@@ -708,7 +708,7 @@ pub fn draw_ui(
                 ui.horizontal(|ui| {
                     let warn_font = egui::FontId::proportional(9.0);
                     let galley = ui.painter().layout_no_wrap(
-                        "⚠ Modelo A2 não suportado — bypass ativo".to_string(),
+                        "⚠ A2 model not supported — bypass active".to_string(),
                         warn_font.clone(),
                         COL_AMBER,
                     );
@@ -716,7 +716,7 @@ pub fn draw_ui(
                     let x_center = (available_width - galley.rect.width()).max(0.0) / 2.0;
                     ui.add_space(x_center);
                     ui.label(
-                        egui::RichText::new("⚠ Modelo A2 não suportado — bypass ativo")
+                        egui::RichText::new("⚠ A2 model not supported — bypass active")
                             .font(warn_font)
                             .color(COL_AMBER),
                     );

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Modelo LSTM de 2 camadas com pipeline e despacho SIMD.
+//! 2-layer LSTM model with pipelining and SIMD dispatch.
 
 use super::layer::LstmLayer;
 
@@ -13,41 +13,41 @@ macro_rules! define_lstm2_process_pipelined {
         $dot_prod:path,
         $get_h2:ident
     ) => {
-        // NOTE: Injeta #[inline(always)] para AVX2 ou #[target_feature] para extensões.
+        // NOTE: Injects #[inline(always)] for AVX2 or #[target_feature] for extensions.
         #[$target_meta]
         unsafe fn $fn_name(&mut self, input: &[f32], output: &mut [f32]) {
             unsafe {
                 let len = input.len();
                 if len >= 1 {
-                    // --- Técnica de Pipelining (Linha de Montagem) ---
-                    // Para máxima velocidade, processamos as duas camadas do LSTM em paralelo.
-                    // Enquanto a Camada 2 termina o som anterior, a Camada 1 já inicia o próximo.
+                    // --- Pipelining Technique (Assembly Line) ---
+                    // For maximum speed, we process the two LSTM layers in parallel.
+                    // While Layer 2 finishes the previous sound, Layer 1 already begins the next.
 
-                    // 1. Prólogo: Processamos o primeiríssimo frame apenas na Camada 1.
+                    // 1. Prologue: Process the very first frame only in Layer 1.
                     self.layer1.$layer_proc(&[input[0]]);
                     let mut prev_h1 = [0.0; H];
                     prev_h1.copy_from_slice(self.layer1.get_hidden_state());
 
-                    // 2. Loop Principal: Onde o 'trabalho em equipe' acontece.
-                    // Camada 1 e Camada 2 operam de forma independente sobre frames diferentes (i e i-1).
+                    // 2. Main Loop: Where the 'teamwork' happens.
+                    // Layer 1 and Layer 2 operate independently on different frames (i and i-1).
                     for i in 1..len {
                         let current_input = [input[i]];
 
-                        // Estas duas chamadas rodam agora sem depender uma da outra neste ciclo!
+                        // These two calls now run without depending on each other in this cycle!
                         self.layer1.$layer_proc(&current_input);
                         self.layer2.$layer_proc(&prev_h1);
 
-                        // 3. Projeção de Saída: Convertemos a 'votação' dos neurônios da Camada 2
-                        // em um valor real de áudio usando um produto escalar (Dot Product).
+                        // 3. Output Projection: Convert the Layer 2 neuron 'vote'
+                        // into a real audio value using a Dot Product.
                         let h2 = self.layer2.$get_h2();
                         let dot = $dot_prod(h2, &self.head_weights);
                         output[i - 1] = dot + self.head_bias;
 
-                        // Guardamos o resultado da Camada 1 para a Camada 2 usar na próxima volta.
+                        // Save Layer 1's result for Layer 2 to use on the next iteration.
                         prev_h1.copy_from_slice(self.layer1.get_hidden_state());
                     }
 
-                    // 4. Epílogo: Processamos o último frame que sobrou na Camada 2.
+                    // 4. Epilogue: Process the last remaining frame in Layer 2.
                     self.layer2.$layer_proc(&prev_h1);
                     let h2 = self.layer2.$get_h2();
                     let dot = $dot_prod(h2, &self.head_weights);
@@ -58,22 +58,22 @@ macro_rules! define_lstm2_process_pipelined {
     };
 }
 
-/// Modelo LSTM de 2 camadas.
+/// 2-layer LSTM model.
 pub struct LstmModel2<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> {
-    /// Camada 1 do modelo.
+    /// Model layer 1.
     pub layer1: LstmLayer<1, H, H1_IH, H_H4>,
-    /// Camada 2 do modelo.
+    /// Model layer 2.
     pub layer2: LstmLayer<H, H, H2_IH, H_H4>,
-    /// Pesos do cabeçalho de saída.
+    /// Output head weights.
     pub head_weights: [u16; H],
-    /// Bias do cabeçalho de saída.
+    /// Output head bias.
     pub head_bias: f32,
 }
 
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
-    /// Cria um novo modelo LSTM de 2 camadas.
+    /// Creates a new 2-layer LSTM model.
     pub fn new() -> Self {
         Self {
             layer1: LstmLayer::new(),
@@ -121,7 +121,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
         crate::math::gemm::dot_product_bf16_avx512,
         get_hidden_state_bf16
     );
-    /// Processa um bloco de áudio através do modelo (SIMD dispatch).
+    /// Processes an audio block through the model (SIMD dispatch).
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             crate::math::common::dispatch_simd!(
@@ -136,10 +136,10 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             );
         }
     }
-    /// Processamento escalar (fallback).
+    /// Scalar processing (fallback).
     ///
-    /// # Atenção
-    /// Exclusivo para testes de paridade. Extremamente lento.
+    /// # Note
+    /// Exclusively for parity tests. Extremely slow.
     pub fn process_scalar(&mut self, input: &[f32], output: &mut [f32]) {
         let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
             == crate::math::common::InstructionSet::Avx512VnniBf16;
@@ -161,7 +161,7 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             output[i] = dot + self.head_bias;
         }
     }
-    /// Reseta os estados internos.
+    /// Resets the internal states.
     pub fn reset_states(&mut self) {
         self.layer1.reset_states();
         self.layer2.reset_states();

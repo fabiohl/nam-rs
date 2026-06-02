@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Testes de unidade para as funções de ativação SIMD.
-//! Migrados de `fastmath_test.rs` como parte da Tarefa 3.1 (Épico 3).
+//! Unit tests for SIMD activation functions.
+//! Migrated from `fastmath_test.rs` as part of Task 3.1 (Epic 3).
 //!
-//! Valida a precisão das aproximações Padé contra as referências
-//! escalares da biblioteca padrão.
+//! Validates the precision of Padé approximations against the standard
+//! library scalar references.
 //!
-//! Tarefa S7.T09: Substituição de polinômios Minimax por Padé branchless.
+//! Task S7.T09: Replacement of Minimax polynomials with branchless Padé.
 
 use super::*;
 use proptest::prelude::*;
@@ -25,7 +25,7 @@ fn test_tanh_scalar_equivalences() {
         let error = (expected - actual).abs();
         assert!(
             error < 2e-5,
-            "tanh({x}) = {actual}, esperado {expected}, delta {error}"
+            "tanh({x}) = {actual}, expected {expected}, delta {error}"
         );
     }
 }
@@ -41,13 +41,13 @@ fn test_tanh_slice_dispatch_smoke() {
         assert!(b.is_finite(), "tanh index {i}: NaN/Inf");
         assert!(
             error < 5e-3,
-            "tanh[{i}] = {b}, esperado {expected}, delta {error}"
+            "tanh[{i}] = {b}, expected {expected}, delta {error}"
         );
     }
 }
 
-// Proptest: valida precisão do Padé tanh escalar contra referência f32::tanh.
-// 100k inputs uniformes em [-10, 10].
+// Proptest: validates Padé tanh scalar precision against f32::tanh reference.
+// 100k uniform inputs in [-10, 10].
 proptest! {
     #[test]
     fn test_tanh_pade_proptest_100k(x in -10.0f32..10.0f32) {
@@ -71,7 +71,7 @@ fn test_sigmoid_scalar_equivalences() {
         let error = (expected - actual).abs();
         assert!(
             error < 2e-5,
-            "sigmoid({x}) = {actual}, esperado {expected}, delta {error}"
+            "sigmoid({x}) = {actual}, expected {expected}, delta {error}"
         );
     }
 }
@@ -88,13 +88,13 @@ fn test_sigmoid_slice_dispatch_smoke() {
         assert!(b.is_finite(), "sigmoid index {i}: NaN/Inf");
         assert!(
             error < 5e-3,
-            "sigmoid[{i}] = {b}, esperado {expected}, delta {error}"
+            "sigmoid[{i}] = {b}, expected {expected}, delta {error}"
         );
     }
 }
 
-// Proptest: valida precisão do sigmoid escalar contra referência.
-// 100k inputs uniformes em [-10, 10].
+// Proptest: validates sigmoid scalar precision against reference.
+// 100k uniform inputs in [-10, 10].
 proptest! {
     #[test]
     fn test_sigmoid_pade_proptest_100k(x in -10.0f32..10.0f32) {
@@ -192,7 +192,7 @@ fn test_softsign_slice_dispatch_smoke() {
         assert!(b.is_finite(), "softsign index {i}: NaN/Inf");
         assert!(
             error < 1e-5,
-            "softsign[{i}] = {b}, esperado {expected}, delta {error}"
+            "softsign[{i}] = {b}, expected {expected}, delta {error}"
         );
     }
 }
@@ -225,7 +225,7 @@ fn test_silu_slice_dispatch_smoke() {
         assert!(b.is_finite(), "silu index {i}: NaN/Inf");
         assert!(
             error < 5e-3,
-            "silu[{i}] = {b}, esperado {expected}, delta {error}"
+            "silu[{i}] = {b}, expected {expected}, delta {error}"
         );
     }
 }
@@ -257,7 +257,7 @@ fn test_fused_sigmoid_relu_slice_dispatch_smoke() {
         assert!(b.is_finite(), "fused sigmoid+relu index {i}: NaN/Inf");
         assert!(
             error < 5e-3,
-            "fused[{i}] = {b}, esperado {expected}, delta {error}"
+            "fused[{i}] = {b}, expected {expected}, delta {error}"
         );
     }
 }

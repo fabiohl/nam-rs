@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Estado exclusivo da main thread (carregamento de modelos, state save/load).
+//! Main thread exclusive state (model loading, state save/load).
 
 use super::shared::{ClapParamPayload, NamClapShared, NamModelMetadata};
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode, SystemSnapshot};
@@ -16,34 +16,34 @@ use std::ffi::CString;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-/// Estado exclusivo da main thread (carregamento de modelos, state save/load).
+/// Main thread exclusive state (model loading, state save/load).
 pub struct NamClapMainThread<'a> {
     pub(crate) shared: &'a NamClapShared,
-    /// Parâmetros atuais conhecidos pela main thread (espelho dos params da audio thread).
+    /// Current parameters known by the main thread (mirror of the audio thread params).
     pub params: NamPluginParams,
-    /// Handle do host para notificações (latency_changed, state, etc.).
+    /// Host handle for notifications (latency_changed, state, etc.).
     pub host: HostMainThreadHandle<'a>,
-    /// Snapshot do sistema para emissão de diagnósticos.
+    /// System snapshot for emitting diagnostics.
     pub sys: SystemSnapshot,
-    /// Produtor para enviar atualizações para a audio thread.
+    /// Producer to send updates to the audio thread.
     pub param_tx: Producer<ClapParamPayload>,
-    /// Consumidor para coletar lixo (modelos obsoletos) da audio thread.
+    /// Consumer to collect garbage (obsolete models) from the audio thread.
     pub gc_rx: Consumer<GcItem>,
-    /// Cache da última latência reportada ao host para evitar notificações redundantes.
+    /// Cached last latency reported to the host to avoid redundant notifications.
     pub last_reported_latency: u32,
-    /// Handle da janela baseview para controle de ciclo de vida da GUI.
+    /// Baseview window handle for GUI lifecycle control.
     #[cfg(feature = "clap-plugin")]
     pub window_handle: Option<baseview::WindowHandle>,
 }
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
-    /// Chamado periodicamente ou em resposta a eventos do host.
-    /// Aqui podemos aproveitar para drenar o canal de GC.
+    /// Called periodically or in response to host events.
+    /// Here we can drain the GC channel.
     fn on_main_thread(&mut self) {
-        // Drenar modelos obsoletos para liberar memória fora do RT.
+        // Drain obsolete models to free memory outside RT.
         drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
 
-        // Verifica se há um modelo pendente enviado pela UI
+        // Check if there is a pending model sent by the UI
         let pending_model = if let Ok(mut pending_guard) = self.shared.ui_pending_model.lock() {
             pending_guard.take()
         } else {
@@ -93,14 +93,14 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             }
         }
 
-        // Logging RT-Safe via flags atômicas (consome eventos transientes)
+        // RT-Safe logging via atomic flags (consumes transient events)
         if let Some(log) = self.host.get_extension::<HostLog>() {
             let shared = self.host.shared();
 
-            // WHITELIST: CString::new(…).expect() nas linhas abaixo é seguro porque:
-            // - Todas as strings são literais ASCII estáticos sem bytes nulos internos.
-            // - O compilador garante que tais strings não contêm '\0' antes do terminador.
-            // - Estas chamadas estão na main thread, fora de qualquer hotpath RT ou FFI de áudio.
+            // WHITELIST: CString::new(…).expect() on the lines below is safe because:
+            // - All strings are static ASCII literals with no internal null bytes.
+            // - The compiler guarantees such strings contain no '\0' before the terminator.
+            // - These calls are on the main thread, outside any RT hotpath or FFI audio.
             if self
                 .shared
                 .rt_status
@@ -144,7 +144,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             }
         }
 
-        // 2. Monitoramento de Latência: Notifica o host se o valor mudou
+        // 2. Latency Monitoring: Notify the host if the value changed
         let current_latency = self.shared.current_latency.load(Ordering::Relaxed);
         if current_latency != self.last_reported_latency {
             self.last_reported_latency = current_latency;
@@ -159,13 +159,13 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 }
 
 impl<'a> NamClapMainThread<'a> {
-    /// Carrega um novo modelo neural a partir do caminho especificado.
+    /// Loads a new neural model from the specified path.
     ///
-    /// Este método realiza I/O e alocações de memória, sendo seguro para execução
-    /// apenas na thread principal. O modelo carregado é enviado para a thread RT
-    /// via canal lock-free.
+    /// This method performs I/O and memory allocations, being safe to execute
+    /// only on the main thread. The loaded model is sent to the RT thread
+    /// via a lock-free channel.
     pub fn load_model(&mut self, path: &Path) -> Result<(), Box<NamDiagnostic>> {
-        // 1. Carregamento e build do par de modelos (L+R)
+        // 1. Loading and building the model pair (L+R)
         let model_pair = load_and_build_model(path, &self.sys).map_err(|e| {
             Box::new(
                 NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
@@ -174,7 +174,7 @@ impl<'a> NamClapMainThread<'a> {
             )
         })?;
 
-        // Construção do novo resampler para a taxa do host e do modelo
+        // Build new resampler for host and model rates
         let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let new_resampler = Box::new(
@@ -187,7 +187,7 @@ impl<'a> NamClapMainThread<'a> {
             })?,
         );
 
-        // 3. Atualiza o path nos parâmetros locais (espelhados)
+        // 3. Update path in local params (mirrored)
         self.params.model_path = Some(path.to_path_buf());
         self.params.model_basename = path
             .file_name()
@@ -200,7 +200,7 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
-        // Extrai e atualiza os metadados do modelo para a GUI
+        // Extract and update model metadata for the GUI
         let metadata = model_pair.metadata.clone();
         let architecture = model_pair.architecture.clone();
         let topology = model_pair.topology.clone();
@@ -226,12 +226,12 @@ impl<'a> NamClapMainThread<'a> {
             });
         }
 
-        // Atualiza o sample rate do modelo
+        // Update model sample rate
         self.shared
             .model_sample_rate
             .store(model_pair.sample_rate, Ordering::Relaxed);
 
-        // 2. Envio para a thread RT via canal SPSC
+        // 2. Send to RT thread via SPSC channel
         self.param_tx
             .push(ClapParamPayload::LoadModel(
                 Box::new(model_pair),
@@ -245,7 +245,7 @@ impl<'a> NamClapMainThread<'a> {
                 )
             })?;
 
-        // Atualiza o nome do modelo carregado para exibição na UI (basename)
+        // Update the loaded model name for UI display (basename)
         let basename = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -258,7 +258,7 @@ impl<'a> NamClapMainThread<'a> {
             .model_load_counter
             .fetch_add(1, Ordering::Relaxed);
 
-        // Notifica o host que o valor do parâmetro de modelo ativo mudou
+        // Notify host that the active model parameter value changed
         if let Some(params_ext) = self
             .host
             .get_extension::<clack_extensions::params::HostParams>()
@@ -269,7 +269,7 @@ impl<'a> NamClapMainThread<'a> {
             );
         }
 
-        // 4. Notifica o host sobre o carregamento bem-sucedido (Cold Path)
+        // 4. Notify host about successful loading (Cold Path)
         if let Some(log) = self.host.get_extension::<HostLog>() {
             let msg = format!("NAM-rs: model loaded ({:?})", path);
             if let Ok(c_msg) = CString::new(msg) {
@@ -277,7 +277,7 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
-        // 5. Notifica o host que o estado mudou (dirty)
+        // 5. Notify host that state changed (dirty)
         if let Some(mut state_ext) = self
             .host
             .get_extension::<clack_extensions::state::HostState>()

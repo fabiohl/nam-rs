@@ -1,47 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Estruturas de dados e validação para o formato `.nam` (JSON).
+//! Data structures and validation for the `.nam` format (JSON).
 //!
-//! Contém as structs que modelam o arquivo de modelo neural, os erros tipados
-//! do parser e os visitors customizados de serde para validação de limites.
+//! Contains the structs that model the neural model file, typed parser errors,
+//! and custom serde visitors for limit validation.
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// Tamanho máximo de floats no array `weights` (MAX_MODEL_BYTES / 4).
+/// Maximum number of floats in the `weights` array (MAX_MODEL_BYTES / 4).
 const MAX_WEIGHTS: usize = (256 * 1024 * 1024 / 4) as usize; // 64 Mi floats
 
-/// Tamanho máximo do campo `metadata.training` em bytes.
+/// Maximum size of the `metadata.training` field in bytes.
 const MAX_TRAINING_BYTES: usize = 1024 * 1024; // 1 MiB
 
-/// Profundidade máxima da árvore JSON em `metadata.training`.
+/// Maximum depth of the JSON tree in `metadata.training`.
 const MAX_TRAINING_DEPTH: usize = 16;
 
-/// Erros tipados do parser JSON `.nam`.
+/// Typed errors of the `.nam` JSON parser.
 #[derive(Debug)]
 pub enum JsonError {
-    /// O array `weights` excede o limite de floats.
+    /// The `weights` array exceeds the float limit.
     WeightsExceedLimit {
-        /// Quantidade de floats recebida.
+        /// Number of floats received.
         got: usize,
-        /// Limite máximo configurado.
+        /// Maximum configured limit.
         max: usize,
     },
-    /// O campo `metadata.training` excede o limite de profundidade da árvore JSON.
+    /// The `metadata.training` field exceeds the JSON tree depth limit.
     TrainingTooDeep {
-        /// Profundidade encontrada.
+        /// Depth found.
         depth: usize,
-        /// Profundidade máxima permitida.
+        /// Maximum allowed depth.
         max_depth: usize,
     },
-    /// O campo `metadata.training` excede o limite de tamanho.
+    /// The `metadata.training` field exceeds the size limit.
     TrainingTooLarge {
-        /// Tamanho aproximado em bytes.
+        /// Approximate size in bytes.
         size: usize,
-        /// Tamanho máximo permitido.
+        /// Maximum allowed size.
         max_size: usize,
     },
-    /// Erro genérico de parse do serde_json.
+    /// Generic serde_json parse error.
     Serde(String),
 }
 
@@ -82,7 +82,7 @@ impl From<serde_json::Error> for JsonError {
     }
 }
 
-/// Visitor custom para `Vec<f32>` que aborta ao exceder MAX_WEIGHTS floats.
+/// Custom visitor for `Vec<f32>` that aborts upon exceeding MAX_WEIGHTS floats.
 struct WeightsVisitor;
 
 impl<'de> serde::de::Visitor<'de> for WeightsVisitor {
@@ -116,7 +116,7 @@ impl<'de> serde::de::Visitor<'de> for WeightsVisitor {
     }
 }
 
-/// Custom deserializer para `weights: Vec<f32>` com cap em MAX_WEIGHTS.
+/// Custom deserializer for `weights: Vec<f32>` with cap at MAX_WEIGHTS.
 fn deserialize_weights<'de, D>(deserializer: D) -> Result<Vec<f32>, D::Error>
 where
     D: Deserializer<'de>,
@@ -124,9 +124,9 @@ where
     deserializer.deserialize_seq(WeightsVisitor)
 }
 
-/// Visitor da árvore JSON para `metadata.training` com limites de profundidade e tamanho.
-/// Usa `std::cell::Cell<usize>` para que child visitors compartilhem o contador
-/// de tamanho com o parent, evitando bypass do limite agregado de 1 MiB.
+/// JSON tree visitor for `metadata.training` with depth and size limits.
+/// Uses `std::cell::Cell<usize>` so that child visitors share the size counter
+/// with the parent, avoiding bypass of the 1 MiB aggregate limit.
 struct LimitedValueVisitor {
     depth: usize,
     max_depth: usize,
@@ -292,8 +292,8 @@ impl<'de> serde::de::DeserializeSeed<'de> for LimitedValueVisitor {
     }
 }
 
-/// Visitor externo para `Option<serde_json::Value>`: retorna `None` para null/ausente,
-/// e `Some(value)` com limites de profundidade/tamanho para valores presentes.
+/// External visitor for `Option<serde_json::Value>`: returns `None` for null/absent,
+/// and `Some(value)` with depth/size limits for present values.
 struct TrainingOptionVisitor;
 
 impl<'de> serde::de::Visitor<'de> for TrainingOptionVisitor {
@@ -327,7 +327,7 @@ impl<'de> serde::de::Visitor<'de> for TrainingOptionVisitor {
     }
 }
 
-/// Custom deserializer para `metadata.training` com limites de profundidade e tamanho.
+/// Custom deserializer for `metadata.training` with depth and size limits.
 fn deserialize_training<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
 where
     D: Deserializer<'de>,
@@ -335,120 +335,120 @@ where
     deserializer.deserialize_option(TrainingOptionVisitor)
 }
 
-/// Estrutura que representa uma data e hora associada aos metadados do modelo.
+/// Structure representing a date and time associated with the model's metadata.
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct NamDate {
-    /// Ano.
+    /// Year.
     pub year: Option<i32>,
-    /// Mês.
+    /// Month.
     pub month: Option<i32>,
-    /// Dia.
+    /// Day.
     pub day: Option<i32>,
-    /// Hora.
+    /// Hour.
     pub hour: Option<i32>,
-    /// Minuto.
+    /// Minute.
     pub minute: Option<i32>,
-    /// Segundo.
+    /// Second.
     pub second: Option<i32>,
 }
 
-/// Metadados opcionais contidos no fim do formato `.nam`.
+/// Optional metadata contained at the end of the `.nam` format.
 #[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct NamMetadata {
-    /// Data de autoria ou exportação do modelo.
+    /// Model authorship or export date.
     pub date: Option<NamDate>,
-    /// O nome do modelo.
+    /// The model name.
     pub name: Option<String>,
-    /// Quem fez/treinou o modelo.
+    /// Who made/trained the model.
     pub modeled_by: Option<String>,
-    /// Fabricante do equipamento original (Ex: Fender).
+    /// Manufacturer of the original equipment (e.g. Fender).
     pub gear_make: Option<String>,
-    /// O modelo do equipamento original (Ex: Deluxe Reverb).
+    /// The model of the original equipment (e.g. Deluxe Reverb).
     pub gear_model: Option<String>,
-    /// Que tipo de equipamento é este? Opções: "amp", "pedal", "pedal_amp", "amp_cab", "amp_pedal_cab", "preamp" e "studio".
+    /// What type of equipment is this? Options: "amp", "pedal", "pedal_amp", "amp_cab", "amp_pedal_cab", "preamp", and "studio".
     pub gear_type: Option<String>,
-    /// De qual estilo do equipamento? Opções: "clean", "overdrive", "crunch", "hi_gain" e "fuzz".
+    /// What style of equipment? Options: "clean", "overdrive", "crunch", "hi_gain", and "fuzz".
     pub tone_type: Option<String>,
-    /// Informação opcional de documentação sobre configuração Pydantic de treinamento.
+    /// Optional documentation about Pydantic training configuration.
     #[serde(default, deserialize_with = "deserialize_training")]
     pub training: Option<serde_json::Value>,
-    /// Nível de entrada esperado pelo modelo (dBu). Usado no gain staging de entrada.
+    /// Expected input level for the model (dBu). Used in input gain staging.
     pub input_level_dbu: Option<f32>,
-    /// Nível de saída esperado pelo modelo (dBu). Usado no gain staging de saída.
+    /// Expected output level for the model (dBu). Used in output gain staging.
     pub output_level_dbu: Option<f32>,
-    /// Loudness geral gravado.
+    /// Overall recorded loudness.
     pub loudness: Option<f32>,
 }
 
-/// A configuração estrutural de uma única camada (layer) da rede (seja WaveNet ou LSTM).
+/// The structural configuration of a single layer of the network (whether WaveNet or LSTM).
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamLayerConfig {
-    /// Opcional: Tamanho do tensor de entrada.
+    /// Optional: Input tensor size.
     pub input_size: Option<usize>,
-    /// Opcional: Tamanho do tensor de condicionamento (ex: parâmetros externos).
+    /// Optional: Conditioning tensor size (e.g. external parameters).
     pub condition_size: Option<usize>,
-    /// Opcional: Tamanho do tensor de saída (head size).
+    /// Optional: Output tensor size (head size).
     pub head_size: Option<usize>,
-    /// Opcional: Quantidade de canais internos (ex: 16 ou 24).
+    /// Optional: Number of internal channels (e.g. 16 or 24).
     pub channels: Option<usize>,
-    /// Opcional: Tamanho do kernel convolucional.
+    /// Optional: Convolutional kernel size.
     pub kernel_size: Option<usize>,
-    /// Opcional: Array de fatores de dilatação.
+    /// Optional: Array of dilation factors.
     pub dilations: Option<Vec<usize>>,
-    /// Opcional: Função de ativação (ex: "Tanh").
+    /// Optional: Activation function (e.g. "Tanh").
     pub activation: Option<String>,
-    /// Opcional: Se a arquitetura usa portas (gating).
+    /// Optional: Whether the architecture uses gating.
     pub gated: Option<bool>,
-    /// Opcional: Se a cabeça de processamento possui bias.
+    /// Optional: Whether the processing head has bias.
     pub head_bias: Option<bool>,
 }
 
-/// Opções de layout de pesos suportadas no formato `.namb`.
+/// Weight layout options supported in the `.namb` format.
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum WeightsLayout {
-    /// Layout original (NAM padrão): [Gate][H][IH] para LSTM, [OUT][IN][K] para Conv1D.
+    /// Original layout (standard NAM): [Gate][H][IH] for LSTM, [OUT][IN][K] for Conv1D.
     #[default]
     Original = 0,
-    /// Layout otimizado para LSTM: [Gate][IH][H].
+    /// Layout optimized for LSTM: [Gate][IH][H].
     GateMajorLstm = 1,
-    /// Layout otimizado para WaveNet: Intercalado 4-Wide ([OUT/4][K][IN][4]).
+    /// Layout optimized for WaveNet: Interleaved 4-Wide ([OUT/4][K][IN][4]).
     Interleaved4WaveNet = 2,
 }
 
-/// A configuração interna do nó da arquitetura no JSON.
+/// The internal configuration of the architecture node in the JSON.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamConfig {
-    /// Lista das configurações das camadas empilhadas (presente em WaveNet, ausente em LSTM).
+    /// List of stacked layer configurations (present in WaveNet, absent in LSTM).
     #[serde(default)]
     pub layers: Vec<NamLayerConfig>,
-    /// Uma possível string auxiliar pra head final. Se null no JSON, pode faltar.
+    /// A possible auxiliary string for the final head. If null in JSON, it may be absent.
     pub head: Option<std::option::Option<String>>,
-    /// Escala fina sobre o somatório da rede.
+    /// Fine scale over the network summation.
     pub head_scale: Option<f32>,
-    /// Número de layers (para LSTMs no C++ é count das layers, ou explícito)
+    /// Number of layers (for LSTMs in C++ it is the layer count, or explicit)
     pub num_layers: Option<usize>,
-    /// Tamanho oculto da célula LSTMs
+    /// Hidden size of the LSTM cell
     pub hidden_size: Option<usize>,
 }
 
-/// Estrutura raiz de mapeamento dos arquivos `.nam`.
+/// Root mapping structure for `.nam` files.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NamModelData {
-    /// Versão no cabeçalho do JSON (ex: "0.5.4")
+    /// Version in the JSON header (e.g. "0.5.4")
     pub version: Option<String>,
-    /// Tipo da arquitetura declarada ("WaveNet" ou "LSTM")
+    /// Declared architecture type ("WaveNet" or "LSTM")
     pub architecture: String,
-    /// Configuração estrutural de hiperparâmetros
+    /// Structural configuration of hyperparameters
     pub config: NamConfig,
-    /// Os imensos tensores Float32 planificados em formato SoA.
+    /// The huge Float32 tensors flattened in SoA format.
     #[serde(deserialize_with = "deserialize_weights")]
     pub weights: Vec<f32>,
-    /// Frequência de amostragem original projetada pela modelagem (referência sempre ideal 48 kHz).
+    /// Original sample rate projected by the modeling (always ideal reference 48 kHz).
     pub sample_rate: Option<f32>,
-    /// Propriedades físico-acústicas extras associadas.
+    /// Extra physical-acoustic properties associated.
     pub metadata: Option<NamMetadata>,
-    /// Layout dos pesos (usado apenas no formato binário .namb v2+).
+    /// Weight layout (used only in the .namb v2+ binary format).
     #[serde(skip)]
     pub weights_layout: WeightsLayout,
 }

@@ -3,7 +3,7 @@
 
 use std::io;
 
-/// Stub de criação do backing store para plataformas não-Linux.
+/// Backing store creation stub for non-Linux platforms.
 pub(crate) unsafe fn create_backing_fd() -> io::Result<libc::c_int> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,

@@ -6,15 +6,15 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels Dot Product 4x — AVX-512 (interleaved).
+//! Dot Product 4x kernels — AVX-512 (interleaved).
 
 use core::arch::x86_64::*;
 
-/// Dot product interleaved 4x com 8 acumuladores ZMM (2 conjuntos alternados de 4)
-/// para quebrar cadeias de dependência no pipeline FMA.
+/// Dot product interleaved 4x with 8 ZMM accumulators (2 alternating sets of 4)
+/// to break dependency chains in the FMA pipeline.
 ///
-/// Cada ZMM processa 4 valores de estado (16 lanes f32: 4 output channels × 4 replicações).
-/// Os 2 conjuntos alternam a cada 16 elementos de estado para manter o pipeline FMA saturado.
+/// Each ZMM processes 4 state values (16 f32 lanes: 4 output channels × 4 replications).
+/// The 2 sets alternate every 16 state elements to keep the FMA pipeline saturated.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn dot_product_4x_interleaved_avx512(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = core::cmp::min(weights.len(), state.len());

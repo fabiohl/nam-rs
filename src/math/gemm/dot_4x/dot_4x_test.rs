@@ -4,7 +4,7 @@
 use super::*;
 use crate::math::common::scalar_ref;
 
-/// Gera dados de teste: weights `[[u16; 4]]` e state `[f32]`.
+/// Generates test data: weights `[[u16; 4]]` and state `[f32]`.
 fn make_data(len: usize) -> (Vec<[u16; 4]>, Vec<f32>) {
     let weights: Vec<[u16; 4]> = (0..len)
         .map(|i| {

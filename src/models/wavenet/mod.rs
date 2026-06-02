@@ -1,76 +1,76 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Módulo WaveNet — Arquitetura Neural Causal Dilatada para emulação de amplificadores e pedais.
+//! WaveNet Module — Dilated Causal Neural Architecture for amplifier and pedal emulation.
 //!
-//! Este módulo fornece motores de inferência WaveNet otimizados para execução DSP em tempo real:
+//! This module provides WaveNet inference engines optimized for real-time DSP execution:
 //!
-//! - **Caminho Estático** (`model`): usa Const Generics para dimensões fixas (ex: 16 canais),
-//!   eliminando verificações de bounds e maximizando throughput.
-//! - **Caminho Dinâmico** (`model_dyn`): fallback para topologias não-cobertas por Const Generics,
-//!   com alocação única no construtor e zero-alocação no hot-path.
+//! - **Static Path** (`model`): uses Const Generics for fixed dimensions (e.g., 16 channels),
+//!   eliminating bounds checks and maximizing throughput.
+//! - **Dynamic Path** (`model_dyn`): fallback for topologies not covered by Const Generics,
+//!   with single allocation in the constructor and zero-allocation on the hot-path.
 //!
-//! ## Sub-módulos
+//! ## Sub-modules
 //!
-//! | Módulo        | Descrição                                                            |
-//! | ------------- | -------------------------------------------------------------------- |
-//! | `common`      | Constantes e tipos fundamentais (`WaveNetLayerState`, `WavenetProcessContext`) |
-//! | `conv1d`      | Convolução 1D causal estática (`Conv1d`) + trait `ConvInput`        |
-//! | `conv1d_dyn`  | Convolução 1D causal dinâmica (`Conv1dDyn`)                         |
-//! | `dense`       | Camada densa 1x1 estática (`DenseLayer`)                            |
-//! | `model`       | Modelo estático completo (`WaveNetModel`, `WaveNetLayerArray`)      |
-//! | `model_dyn`   | Modelo dinâmico com dimensões runtime (`WaveNetDynModel`)           |
+//! | Module        | Description                                                             |
+//! | ------------- | ----------------------------------------------------------------------- |
+//! | `common`      | Fundamental constants and types (`WaveNetLayerState`, `WavenetProcessContext`) |
+//! | `conv1d`      | Static causal 1D convolution (`Conv1d`) + `ConvInput` trait             |
+//! | `conv1d_dyn`  | Dynamic causal 1D convolution (`Conv1dDyn`)                             |
+//! | `dense`       | Static 1x1 dense layer (`DenseLayer`)                                   |
+//! | `model`       | Complete static model (`WaveNetModel`, `WaveNetLayerArray`)             |
+//! | `model_dyn`   | Dynamic model with runtime dimensions (`WaveNetDynModel`)               |
 
 pub mod common;
 pub mod conv1d;
 pub mod conv1d_dual;
 pub mod conv1d_dyn;
-/// Camada densa 1x1 estática (`DenseLayer<IN, OUT>`).
+/// Static 1x1 dense layer (`DenseLayer<IN, OUT>`).
 pub mod dense;
-/// Modelo estático (`WaveNetModel`, `WaveNetLayerArray`, `WaveNetLayer`).
+/// Static model (`WaveNetModel`, `WaveNetLayerArray`, `WaveNetLayer`).
 pub mod model;
 pub mod model_dyn;
 
 use super::NamModel;
 
 // =============================================================================
-// NamModel para WaveNet (Const Generics)
+// NamModel for WaveNet (Const Generics)
 // =============================================================================
 
 impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
     for model::WaveNetModel<CH, K, HEAD>
 {
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        // Delega ao método inherent WaveNetModel::process (métodos inherent têm prioridade)
+        // Delegates to the inherent WaveNetModel::process method (inherent methods have priority)
         self.process(input, output);
     }
 
     fn prewarm(&mut self, _num_samples: usize) {
-        // WaveNet prewarm é one-shot: preenche o campo receptivo via copy_buffer.
-        // O C++ executa `model->Prewarm()` sem parâmetro (diferente do LSTM).
+        // WaveNet prewarm is one-shot: fills the receptive field via copy_buffer.
+        // C++ runs `model->Prewarm()` without a parameter (unlike LSTM).
         self.prewarm();
     }
 }
 
 // =============================================================================
-// NamModel para WaveNet Dinâmico
+// NamModel for Dynamic WaveNet
 // =============================================================================
 
 impl NamModel for model_dyn::WaveNetDynModel {
-    /// Delega o processamento para a implementação interna do modelo WaveNet dinâmico.
+    /// Delegates processing to the dynamic WaveNet model's internal implementation.
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         self.process(input, output);
     }
 
-    /// O "aquecimento" da WaveNet é simplificado pois ela não possui memória infinita
-    /// como a LSTM, apenas um buffer de delay (campo receptivo).
+    /// WaveNet's "prewarm" is simplified since it has no infinite memory
+    /// like LSTM, only a delay buffer (receptive field).
     fn prewarm(&mut self, _num_samples: usize) {
         self.prewarm();
     }
 }
 
 // =============================================================================
-// Re-exports públicos
+// Public re-exports
 // =============================================================================
 
 pub use common::{

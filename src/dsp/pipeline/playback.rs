@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Pipeline DSP de reprodução e configurações do host PipeWire (standalone).
+//! Playback DSP pipeline and PipeWire host configuration (standalone).
 
 use super::bridge::DspBridgeReader;
 
@@ -12,7 +12,7 @@ use minstant::Anchor;
 #[cfg(feature = "standalone")]
 use pipewire as pw;
 
-/// das instâncias essenciais do PipeWire (`StreamBox` e `Listener`).
+/// Holds essential PipeWire instances (`StreamBox` and `Listener`).
 #[cfg(feature = "standalone")]
 pub(crate) struct AppState<S1, L1, S2, L2> {
     #[allow(dead_code)]
@@ -25,18 +25,18 @@ pub(crate) struct AppState<S1, L1, S2, L2> {
     pub playback_listener: L2,
 }
 
-/// Configurações para inicialização do host PipeWire.
+/// Configuration for PipeWire host initialization.
 #[cfg(feature = "standalone")]
 pub struct PipewireHostConfig {
-    /// Tamanho do buffer de áudio solicitado.
+    /// Requested audio buffer size.
     pub buffer_size: u32,
-    /// Âncora de tempo para telemetria RDTSC.
+    /// Time anchor for RDTSC telemetry.
     pub tsc_anchor: Anchor,
-    /// Snapshot do sistema para diagnósticos.
+    /// System snapshot for diagnostics.
     pub sys: SystemSnapshot,
 }
 
-/// Pipeline DSP de Reprodução (Bridge → Hardware).
+/// Playback DSP Pipeline (Bridge → Hardware).
 #[cfg(feature = "standalone")]
 #[inline(always)]
 pub(crate) fn playback_dsp_cycle(
@@ -50,7 +50,7 @@ pub(crate) fn playback_dsp_cycle(
             return;
         }
 
-        // Pede ao sistema de som (PipeWire) um espaço vazio para colocar o áudio.
+        // Requests an empty space from the sound system (PipeWire) to place the audio.
         let mut buf = match stream.dequeue_buffer() {
             Some(b) => b,
             None => return,
@@ -61,7 +61,7 @@ pub(crate) fn playback_dsp_cycle(
             return;
         }
 
-        // Separa os canais Esquerdo e Direito para a entrega final.
+        // Splits the Left and Right channels for final delivery.
         let (datas_left, datas_right) = datas.split_at_mut(1);
         let data_l = &mut datas_left[0];
         let data_r = &mut datas_right[0];
@@ -73,7 +73,7 @@ pub(crate) fn playback_dsp_cycle(
             return;
         }
 
-        // Copia o som processado diretamente para as saídas da sua placa de som.
+        // Copies the processed sound directly to your sound card outputs.
         if let Some(raw_l) = data_l.data() {
             let out_l =
                 unsafe { std::slice::from_raw_parts_mut(raw_l.as_mut_ptr().cast::<f32>(), n_out) };
@@ -85,7 +85,7 @@ pub(crate) fn playback_dsp_cycle(
             out_r.copy_from_slice(&buf_r[..n_out]);
         }
 
-        // Informa ao hardware exatamente quanto de som foi entregue agora.
+        // Informs the hardware exactly how much sound was delivered this time.
         {
             let chunk = data_l.chunk_mut();
             *chunk.size_mut() = (n_out * std::mem::size_of::<f32>()) as u32;
@@ -101,10 +101,10 @@ pub(crate) fn playback_dsp_cycle(
     });
 }
 
-/// Constrói um SPA Pod de formato de áudio F32P stereo para negociação PipeWire.
+/// Builds an F32P stereo audio format SPA Pod for PipeWire negotiation.
 ///
 /// # Safety
-/// O pod binário retornado aponta diretamente para o `format_buf` fornecido.
+/// The returned binary pod points directly to the provided `format_buf`.
 #[cfg(feature = "standalone")]
 pub(crate) unsafe fn build_spa_format_pod<'a>(
     audio_info: &pw::spa::param::audio::AudioInfoRaw,
@@ -112,15 +112,15 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
 ) -> anyhow::Result<&'a pw::spa::pod::Pod> {
     unsafe {
         let mut builder: pw::spa::sys::spa_pod_builder = std::mem::zeroed();
-        // Prepara um "construtor" para criar o contrato de formato de áudio.
+        // Prepares a "builder" to create the audio format contract.
         pw::spa::sys::spa_pod_builder_init(
             &mut builder,
             format_buf.as_mut_ptr().cast(),
             format_buf.len() as u32,
         );
 
-        // Constrói o documento binário (SPA Pod) que descreve o áudio (Ex: 48kHz, Estéreo).
-        // Esse documento é o que o PipeWire usa para entender como enviar som para nós.
+        // Builds the binary document (SPA Pod) describing the audio (e.g.: 48kHz, Stereo).
+        // This document is what PipeWire uses to understand how to send sound to us.
         let pod_ptr = pw::spa::sys::spa_format_audio_raw_build(
             &mut builder,
             pw::spa::param::ParamType::EnumFormat.as_raw(),
@@ -128,13 +128,13 @@ pub(crate) unsafe fn build_spa_format_pod<'a>(
         );
 
         if pod_ptr.is_null() {
-            // Se falhar, o sistema não saberá como negociar o som com a sua placa.
+            // If failure, the system won't know how to negotiate sound with your card.
             return Err(anyhow::anyhow!(
                 "Failed to build the audio negotiation document (SPA Pod)"
             ));
         }
 
-        // Retorna o contrato pronto para ser assinado e usado pelo sistema.
+        // Returns the contract ready to be signed and used by the system.
         Ok(&*(pod_ptr as *const pw::spa::pod::Pod))
     }
 }

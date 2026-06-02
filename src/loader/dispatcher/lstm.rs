@@ -9,10 +9,10 @@ use crate::models::lstm::{LstmDynLayer, LstmDynModel, LstmLayer, LstmModel1, Lst
 use anyhow::Context;
 use log::info;
 
-/// Detecta a geometria LSTM (num_layers × hidden_size) e despacha ao construtor correto.
+/// Detects the LSTM geometry (num_layers × hidden_size) and dispatches to the correct constructor.
 pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     let (num_layers, hidden_size) = get_lstm_topology(data)
-        .context("Geometria LSTM não detectável (verifique num_layers e hidden_size)")?;
+        .context("LSTM geometry not detectable (check num_layers and hidden_size)")?;
 
     match (num_layers, hidden_size) {
         (1, 8) => {
@@ -55,9 +55,9 @@ pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel
     }
 }
 
-/// Constrói um `LstmModel1<H, H1_IH, H_H4>` com pesos lidos sequencialmente.
+/// Builds an `LstmModel1<H, H1_IH, H_H4>` with sequentially read weights.
 ///
-/// Layout LSTM NAM (C++ `LSTMLayerT::SetNAMWeights`):
+/// LSTM NAM Layout (C++ `LSTMLayerT::SetNAMWeights`):
 /// ```text
 /// layer.input_hidden_weights[H4 * IH]  (row-major)
 /// layer.bias[H4]
@@ -77,7 +77,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     // Layer 1: input_size=1
     let layer = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
 
-    // Head: pesos da projeção linear de saída
+    // Head: output linear projection weights
     let head_weights_data = cursor.read_slice(H)?;
     let mut head_weights = [0u16; H];
     for i in 0..H {
@@ -94,7 +94,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     };
 
     info!(
-        "[Dispatcher] LSTM 1×{} construído — pesos={}",
+        "[Dispatcher] LSTM 1×{} built — weights={}",
         hidden_size,
         data.weights.len()
     );
@@ -102,7 +102,7 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     Ok(model)
 }
 
-/// Constrói um `LstmModel2<H, H1_IH, H2_IH, H_H4>` com pesos lidos sequencialmente.
+/// Builds an `LstmModel2<H, H1_IH, H2_IH, H_H4>` with sequentially read weights.
 pub(crate) fn build_lstm_2layer<
     const H: usize,
     const H1_IH: usize,
@@ -120,10 +120,10 @@ pub(crate) fn build_lstm_2layer<
     // Layer 1: input_size=1
     let layer1 = read_lstm_layer::<1, H, H1_IH, H_H4>(&mut cursor, is_bf16)?;
 
-    // Layer 2: input_size=H (estado oculto da camada anterior)
+    // Layer 2: input_size=H (hidden state from previous layer)
     let layer2 = read_lstm_layer::<H, H, H2_IH, H_H4>(&mut cursor, is_bf16)?;
 
-    // Head: pesos da projeção final
+    // Head: final projection weights
     let head_weights_data = cursor.read_slice(H)?;
     let mut head_weights = [0u16; H];
     for i in 0..H {
@@ -141,7 +141,7 @@ pub(crate) fn build_lstm_2layer<
     };
 
     info!(
-        "[Dispatcher] LSTM {}×{} construído — pesos={}",
+        "[Dispatcher] LSTM {}×{} built — weights={}",
         num_layers,
         hidden_size,
         data.weights.len()
@@ -151,12 +151,12 @@ pub(crate) fn build_lstm_2layer<
 }
 
 // =============================================================================
-// LSTM — Construtor Dinâmico (Fallback)
+// LSTM — Dynamic Builder (Fallback)
 // =============================================================================
 
-/// Constrói um `LstmDynModel` com pesos lidos sequencialmente (fallback dinâmico).
+/// Builds an `LstmDynModel` with sequentially read weights (dynamic fallback).
 ///
-/// Visível publicamente para testes de paridade numérica dinâmico ↔ estático.
+/// Publicly visible for dynamic ↔ static numerical parity tests.
 pub fn build_lstm_dynamic(
     data: &NamModelData,
     num_layers: usize,
@@ -165,14 +165,14 @@ pub fn build_lstm_dynamic(
     let mut cursor = WeightCursor::new(&data.weights, data.weights_layout);
     let mut layers = Vec::with_capacity(num_layers);
 
-    let mut current_input_size = 1; // O primeiro sinal que entra tem tamanho 1 (um único valor de áudio)
+    let mut current_input_size = 1; // The first signal that enters has size 1 (a single audio value)
 
-    // Processamos cada "camada" (layer) do modelo. Pense nelas como estágios de uma linha de montagem.
+    // We process each "layer" of the model. Think of them as stages of an assembly line.
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     for _ in 0..num_layers {
-        // Lemos todos os pesos (a "inteligência" treinada) desta camada de uma vez só.
+        // We read all the weights (the trained "intelligence") of this layer at once.
         let raw_weights =
             cursor.read_slice(hidden_size * 4 * (current_input_size + hidden_size))?;
 
@@ -186,12 +186,12 @@ pub fn build_lstm_dynamic(
             is_bf16,
         );
 
-        // O 'bias' é um ajuste fixo somado ao final de cada conta, como uma "calibração".
+        // The 'bias' is a fixed adjustment added at the end of each calculation, like a "calibration".
         let bias = cursor.read_slice(hidden_size * 4)?.to_vec();
 
-        // O 'state' (estado oculto) e o 'cell_state' (estado da célula) são a memória da rede.
-        // Eles guardam informações sobre os sons que passaram milissegundos atrás para
-        // ajudar a prever o som atual.
+        // The 'state' (hidden state) and the 'cell_state' (cell state) are the memory of the network.
+        // They store information about sounds that passed milliseconds ago to
+        // help predict the current sound.
         let hidden_init = cursor.read_slice(hidden_size)?;
         let mut state = vec![0.0; current_input_size + hidden_size];
         state[current_input_size..current_input_size + hidden_size].copy_from_slice(hidden_init);
@@ -215,8 +215,8 @@ pub fn build_lstm_dynamic(
         current_input_size = hidden_size;
     }
 
-    // A "Head" (cabeça) é o estágio final. Ela pega toda a memória acumulada
-    // e a transforma de volta em um único valor de volume de som (amostra de áudio).
+    // The "Head" is the final stage. It takes all the accumulated memory
+    // and transforms it back into a single sound volume value (audio sample).
     let raw_head_weights = cursor.read_slice(hidden_size)?;
     let mut head_weights = vec![0u16; hidden_size];
     for i in 0..hidden_size {
@@ -224,7 +224,7 @@ pub fn build_lstm_dynamic(
     }
     let head_bias = cursor.read_f32()?;
 
-    // Verifica se lemos exatamente tudo o que precisávamos, sem sobrar nada.
+    // Checks whether we read exactly everything we needed, with nothing left over.
     cursor.verify_exhausted()?;
 
     let model = LstmDynModel {
@@ -234,7 +234,7 @@ pub fn build_lstm_dynamic(
     };
 
     info!(
-        "[Dispatcher] LSTM Dinâmico {}×{} construído — pesos={}",
+        "[Dispatcher] LSTM Dynamic {}×{} built — weights={}",
         num_layers,
         hidden_size,
         data.weights.len()
@@ -244,13 +244,13 @@ pub fn build_lstm_dynamic(
 }
 
 // =============================================================================
-// LSTM — Função Compartilhada para Leitura de Pesos
+// LSTM — Shared Function for Reading Weights
 // =============================================================================
 
-/// Preenche `output` (buffer de `u16` com tamanho `4 * hidden * (input + hidden)`)
-/// com os pesos do LSTM quantizados a partir de `raw` (fatia `f32` já lida do cursor).
+/// Fills `output` (buffer of `u16` with size `4 * hidden * (input + hidden)`)
+/// with the LSTM weights quantized from `raw` (`f32` slice already read from the cursor).
 ///
-/// Aplica transposição de layout quando necessário (Original → GateMajor).
+/// Applies layout transposition when needed (Original → GateMajor).
 fn read_lstm_weights_into(
     raw: &[f32],
     output: &mut [u16],
@@ -277,11 +277,11 @@ fn read_lstm_weights_into(
     }
 }
 
-/// Lê os pesos de uma `LstmLayer<I, H, IH, H4>`.
+/// Reads the weights of an `LstmLayer<I, H, IH, H4>`.
 ///
 /// Layout NAM JSON (C++ `LSTMLayerT::SetNAMWeights`):
 /// ```text
-/// input_hidden_weights: [H4 rows × IH cols] — row-major, mapeamento direto
+/// input_hidden_weights: [H4 rows × IH cols] — row-major, direct mapping
 /// bias:                 [H4]
 /// initial_hidden:       [H]  → state[I..I+H]
 /// initial_cell_state:   [H]  → cell_state[0..H]

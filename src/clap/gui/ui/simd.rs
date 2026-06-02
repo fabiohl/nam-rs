@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Identificação do backend SIMD ativo em tempo de execução.
+//! Active SIMD backend identification at runtime.
 
-/// Retorna o nome do badge SIMD conforme o instruction set detectado.
+/// Returns the SIMD badge name based on the detected instruction set.
 pub fn get_simd_badge() -> &'static str {
     use crate::math::common::{InstructionSet, SIMD_MATH};
     match SIMD_MATH.instruction_set {

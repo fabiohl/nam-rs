@@ -1,67 +1,67 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Tipos comuns, constantes e estado de camada para módulos WaveNet.
+//! Common types, constants, and layer state for WaveNet modules.
 
 use crate::dsp::mirror_buf::MirroredBuffer;
 
-/// Máximo de frames a processar em um pulso do callback.
+/// Maximum frames to process in one callback pulse.
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
-/// Padding temporal circular das memórias no framework de Ring Buffers.
+/// Circular temporal padding of memory buffers in the Ring Buffers framework.
 pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
 
-/// Contexto de processamento para otimizar a passagem de parâmetros no hot-path da WaveNet.
-/// Unifica as necessidades dos modelos estáticos (const generic) e dinâmicos.
+/// Processing context to optimize parameter passing on the WaveNet hot-path.
+/// Unifies the needs of static (const generic) and dynamic models.
 pub struct WavenetProcessContext<'a> {
-    /// Buffer de condicionamento (sidechain).
+    /// Conditioning (sidechain) buffer.
     pub condition: &'a [f32],
-    /// Buffer de condicionamento pré-convertido em BF16.
+    /// Conditioning buffer pre-converted to BF16.
     pub condition_bf16: &'a [u16],
-    /// Acumulador Head (Skip-Connection).
+    /// Head accumulator (Skip-Connection).
     pub head_input: &'a mut [f32],
-    /// Buffer de saída da camada (para a próxima camada ou output final).
+    /// Layer output buffer (for the next layer or final output).
     pub output: &'a mut [f32],
-    /// Buffer de saída opcional em BF16 (para a próxima camada em CPUs BF16).
+    /// Optional BF16 output buffer (for the next layer on BF16 CPUs).
     pub output_bf16: Option<&'a mut [u16]>,
-    /// Buffer circular da camada corrente (delay line).
+    /// Circular buffer of the current layer (delay line).
     pub layer_buffer: &'a [f32],
-    /// Buffer circular (fita de retardo) em BF16.
+    /// Circular buffer (delay tape) in BF16.
     pub layer_buffer_bf16: &'a [u16],
-    /// Índice inicial no buffer circular.
+    /// Starting index in the circular buffer.
     pub buffer_start: usize,
-    /// Número de frames a processar.
+    /// Number of frames to process.
     pub num_frames: usize,
-    /// Buffer temporário na stack para cálculos intermediários.
+    /// On-stack temporary buffer for intermediate calculations.
     pub block: &'a mut [f32],
 }
 
-/// Gerencia a memória buffer de uma célula WaveNet.
+/// Manages the buffer memory of a WaveNet cell.
 ///
-/// Alinhamento de 64B (cache line) é suficiente pois esta struct vive exclusivamente
-/// na thread DSP — não há compartilhamento inter-thread que exija 128B anti-false-sharing.
+/// 64B (cache line) alignment is sufficient because this struct lives exclusively
+/// on the DSP thread — there is no inter-thread sharing that would require 128B anti-false-sharing.
 #[repr(align(64))]
 #[derive(Clone)]
 pub struct WaveNetLayerState {
-    /// Buffer Espelhado (zero alocações em contexto DSP, eliminação de rewind).
+    /// Mirrored Buffer (zero allocations in DSP context, rewind elimination).
     pub layer_buffer: MirroredBuffer<f32>,
-    /// Buffer Espelhado em BF16 para processamento VNNI.
+    /// Mirrored Buffer in BF16 for VNNI processing.
     pub layer_buffer_bf16: MirroredBuffer<u16>,
-    /// Ponteiro numérico do frame atual (avança a cada frame processado).
+    /// Numeric pointer of the current frame (advances with each processed frame).
     pub buffer_start: usize,
-    /// Dimensão física do espaço vetorial receptivo (tamanho do histórico de dilatação).
+    /// Physical dimension of the receptive vector space (size of the dilation history).
     pub receptive_field_size: usize,
 }
 
 impl WaveNetLayerState {
-    /// Construtor alocador estático do Estado (executar antes do Thread DSP).
+    /// Static allocator constructor for State (execute before DSP Thread).
     pub fn new(
         channels: usize,
         receptive_field_size: usize,
         alloc_num: usize,
     ) -> std::io::Result<Self> {
-        // [PASSO 1: Cálculo do Tamanho do Buffer Temporal]
-        // O buffer precisa acomodar o campo receptivo e o padding de blocos.
-        // Arredondamento para página é feito internamente pelo MirroredBuffer.
+        // [STEP 1: Calculate Temporal Buffer Size]
+        // The buffer needs to accommodate the receptive field and block padding.
+        // Page rounding is done internally by MirroredBuffer.
         let min_buffer_frames =
             receptive_field_size + (LAYER_ARRAY_BUFFER_PADDING + 1) * WAVENET_MAX_NUM_FRAMES;
 
@@ -70,9 +70,9 @@ impl WaveNetLayerState {
 
         let actual_buffer_frames = buffer.size() / channels;
 
-        // [PASSO 2: Offset Inicial (Jittering Alocado)]
-        // Posicionamos o ponteiro inicial na segunda metade do mapeamento virtual (offset N).
-        // Isso permite olhar para trás (receptive field) sem cruzar o início do buffer virtual.
+        // [STEP 2: Initial Offset (Allocated Jittering)]
+        // Position the initial pointer in the second half of the virtual mapping (offset N).
+        // This allows looking backwards (receptive field) without crossing the virtual buffer start.
         let jitter = (alloc_num % LAYER_ARRAY_BUFFER_PADDING) + 1;
         let start = actual_buffer_frames * 2 - (WAVENET_MAX_NUM_FRAMES * jitter);
 
@@ -95,15 +95,15 @@ impl WaveNetLayerState {
         })
     }
 
-    /// Executa um passo do ponteiro do Ring Buffer. Se chegar na margem, volta para o início.
+    /// Executes one Ring Buffer pointer step. If it reaches the margin, it wraps back to the start.
     pub fn advance_frames(&mut self, num_frames: usize, channels: usize) {
         self.buffer_start += num_frames;
         let buffer_frames = self.layer_buffer.size() / channels;
 
         // [MIRRORED BUFFER]
-        // Se o próximo bloco de tamanho máximo (64) puder ultrapassar o limite do mapeamento 2N,
-        // retrocedemos o ponteiro para a primeira metade (mantendo a paridade de endereço virtual).
-        // Isso garante que [buffer_start .. buffer_start + 64] seja sempre um acesso seguro.
+        // If the next max-size block (64) could overflow the 2N mapping limit,
+        // we rewind the pointer to the first half (maintaining virtual address parity).
+        // This ensures [buffer_start .. buffer_start + 64] is always a safe access.
         if self.buffer_start + WAVENET_MAX_NUM_FRAMES > buffer_frames * 2 {
             self.buffer_start -= buffer_frames;
         }

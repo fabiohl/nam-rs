@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da janela de interface gráfica principal.
+//! Implementation of the main graphical user interface window.
 
-/// Função de renderização e componentes da UI do egui.
+/// egui rendering function and UI components.
 pub mod ui;
-/// Janela principal e gerenciador de eventos/desenho com baseview + egui.
+/// Main window and event/draw manager with baseview + egui.
 pub mod window;
 
-/// Largura padrão da janela do plugin.
+/// Default width of the plugin window.
 pub const GUI_WIDTH: u32 = 600;
-/// Altura padrão da janela do plugin.
+/// Default height of the plugin window.
 pub const GUI_HEIGHT: u32 = 275;
 
-/// Estende o lifetime de um `HostSharedHandle` para `'static`.
+/// Extends the lifetime of a `HostSharedHandle` to `'static`.
 ///
 /// # Safety
 ///
-/// O chamador deve garantir que o host CLAP referenciado pelo handle permaneça
-/// válido e não seja descarregado enquanto o handle retornado com lifetime `'static`
-/// estiver em uso. No contexto do plugin, a janela gráfica (GUI) que usa o handle
-/// `'static` é garantidamente destruída/fechada antes da destruição do plugin,
-/// assegurando que o tempo de vida real do host englobe todo o uso do handle.
+/// The caller must ensure that the CLAP host referenced by the handle remains
+/// valid and is not unloaded while the returned handle with `'static` lifetime
+/// is in use. In the plugin context, the GUI window that uses the `'static`
+/// handle is guaranteed to be destroyed/closed before the plugin is destroyed,
+/// ensuring that the host's real lifetime encompasses all use of the handle.
 #[inline]
 pub(crate) unsafe fn extend_host_lifetime<'a>(
     h: clack_plugin::host::HostSharedHandle<'a>,

@@ -6,10 +6,10 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels fundidos para portas LSTM (AVX2 e AVX-512).
+//! Fused kernels for LSTM gates (AVX2 and AVX-512).
 //!
-//! Extraídos de `activations/fused.rs` e `simd/avx2.rs`/`simd/avx512.rs`
-//! durante a Tarefa 3.3.
+//! Extracted from `activations/fused.rs` and `simd/avx2.rs`/`simd/avx512.rs`
+//! during Task 3.3.
 
 use crate::math::activations::sigmoid::{
     simd_sigmoid_avx2, simd_sigmoid_avx512, simd_sigmoid_dual_avx2,
@@ -17,13 +17,13 @@ use crate::math::activations::sigmoid::{
 use crate::math::activations::tanh::{simd_tanh_avx2, simd_tanh_avx512};
 use core::arch::x86_64::*;
 
-/// Kernel fundido para portas LSTM (AVX2).
-/// Computa:
+/// Fused kernel for LSTM gates (AVX2).
+/// Computes:
 ///   new_cs = sig(gf) * cs + sig(gi) * tanh(gg)
 ///   hidden = sig(go) * tanh(new_cs)
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_lstm_gates_avx2(
@@ -33,7 +33,7 @@ pub unsafe fn fused_lstm_gates_avx2(
     go: __m256,
     cs: __m256,
 ) -> (__m256, __m256) {
-    // Intercala sigmoides
+    // Interleave sigmoids
     let (sig_f, sig_i) = unsafe { simd_sigmoid_dual_avx2(gf, gi) };
     let sig_o = unsafe { simd_sigmoid_avx2(go) };
     let tanh_g = unsafe { simd_tanh_avx2(gg) };
@@ -44,10 +44,10 @@ pub unsafe fn fused_lstm_gates_avx2(
     (new_cs, hidden)
 }
 
-/// Kernel fundido para portas LSTM (AVX-512).
+/// Fused kernel for LSTM gates (AVX-512).
 ///
 /// # Safety
-/// Requer suporte a AVX-512F e AVX-512VL.
+/// Requires AVX-512F and AVX-512VL support.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_lstm_gates_avx512(
@@ -68,7 +68,7 @@ pub unsafe fn fused_lstm_gates_avx512(
     (new_cs, hidden)
 }
 
-/// Kernel fundido para processamento de portas LSTM dinâmicas via AVX2.
+/// Fused kernel for dynamic LSTM gate processing via AVX2.
 #[inline]
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn fused_lstm_gates_dyn_avx2(
@@ -105,9 +105,9 @@ pub unsafe fn fused_lstm_gates_dyn_avx2(
     }
 }
 
-/// Kernel fundido para atualizar a memória (estado) de uma rede LSTM.
-/// Esta função decide o que a rede deve "esquecer" do passado e o que "aprender" do presente,
-/// atualizando os valores de uma só vez para 16 células de memória.
+/// Fused kernel to update the memory (state) of an LSTM network.
+/// This function decides what the network should "forget" from the past and what to "learn" from the present,
+/// updating the values all at once for 16 memory cells.
 #[inline]
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn fused_lstm_gates_dyn_avx512(
@@ -118,14 +118,14 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
 ) {
     let mut j = 0;
     while j + 16 <= hidden_size {
-        // Carrega as 4 decisões (esquecer, aprender, etc.) para 16 células.
+        // Load the 4 decisions (forget, learn, etc.) for 16 cells.
         let gi = _mm512_loadu_ps(gates.as_ptr().add(j));
         let gf = _mm512_loadu_ps(gates.as_ptr().add(j + hidden_size));
         let gg = _mm512_loadu_ps(gates.as_ptr().add(j + 2 * hidden_size));
         let go = _mm512_loadu_ps(gates.as_ptr().add(j + 3 * hidden_size));
         let cs = _mm512_loadu_ps(cell_state.as_ptr().add(j));
 
-        // Faz o cálculo da memória de forma fundida (fused).
+        // Perform the memory computation in a fused manner.
         let (new_cs, hidden) = fused_lstm_gates_avx512(gf, gi, gg, go, cs);
 
         _mm512_storeu_ps(cell_state.as_mut_ptr().add(j), new_cs);
@@ -133,7 +133,7 @@ pub unsafe fn fused_lstm_gates_dyn_avx512(
 
         j += 16;
     }
-    // Trata o resto.
+    // Handle the remainder.
     while j < hidden_size {
         let sig_i = 1.0 / (1.0 + (-gates[j]).exp());
         let sig_f = 1.0 / (1.0 + (-gates[j + hidden_size]).exp());

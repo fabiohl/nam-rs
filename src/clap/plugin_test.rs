@@ -59,7 +59,7 @@ fn test_gui_gestures_and_parameter_flow() {
         gesture_flags: AtomicU32::new(0),
     };
 
-    // Simula início de gesto, mudança de valor e término de gesto do ganho de entrada
+    // Simulates gesture begin, value change, and gesture end for input gain
     let input_idx = PARAM_INPUT_GAIN as usize;
     const BITS_PER_PARAM: u32 = 3;
     const CHANGED_SHIFT: u32 = 0;
@@ -107,11 +107,11 @@ fn test_gui_gestures_and_parameter_flow() {
         }
     }
 
-    assert!(begin_received, "Deveria receber ParamGestureBeginEvent");
-    assert!(value_received, "Deveria receber ParamValueEvent");
-    assert!(end_received, "Deveria receber ParamGestureEndEvent");
+    assert!(begin_received, "Should receive ParamGestureBeginEvent");
+    assert!(value_received, "Should receive ParamValueEvent");
+    assert!(end_received, "Should receive ParamGestureEndEvent");
 
-    // Verifica que as flags foram limpas
+    // Verifies that the flags were cleared
     let flags = shared.gesture_flags.load(Ordering::Relaxed);
     assert_eq!(
         flags & (1 << (offset + BEGIN_SHIFT)),
@@ -179,7 +179,7 @@ fn test_file_picker_alive_fence_and_timeout() {
         gesture_flags: AtomicU32::new(0),
     });
 
-    // 1. Caso de Sucesso: alive_fence é true e recebemos o caminho antes do timeout
+    // 1. Success Case: alive_fence is true and we receive the path before timeout
     {
         shared.ui_loading.store(true, Ordering::Relaxed);
         let alive_fence = Arc::clone(&shared.alive_fence);
@@ -189,7 +189,7 @@ fn test_file_picker_alive_fence_and_timeout() {
         tx.send(Some(std::path::PathBuf::from("/tmp/model.nam")))
             .unwrap();
 
-        // Simula o comportamento do Picker Manager Thread
+        // Simulates the Picker Manager Thread behavior
         match rx.recv_timeout(std::time::Duration::from_millis(50)) {
             Ok(path_opt) => {
                 if alive_fence.load(Ordering::Relaxed) {
@@ -201,7 +201,7 @@ fn test_file_picker_alive_fence_and_timeout() {
                     }
                 }
             }
-            Err(_) => panic!("Deveria ter recebido o caminho"),
+            Err(_) => panic!("Should have received the path"),
         }
 
         assert_eq!(
@@ -210,16 +210,16 @@ fn test_file_picker_alive_fence_and_timeout() {
         );
     }
 
-    // Limpa o estado
+    // Clears the state
     *shared.ui_pending_model.lock().unwrap() = None;
 
-    // 2. Caso alive_fence seja false: o plugin foi destruído antes do picker retornar
+    // 2. Case alive_fence is false: the plugin was destroyed before the picker returned
     {
         shared.ui_loading.store(true, Ordering::Relaxed);
         let alive_fence = Arc::clone(&shared.alive_fence);
         let shared_addr = &*shared as *const NamClapShared as usize;
 
-        // Modifica a cerca de vida útil para false (simulando a destruição do plugin/GUI)
+        // Sets the alive fence to false (simulating plugin/GUI destruction)
         alive_fence.store(false, Ordering::Relaxed);
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -229,7 +229,7 @@ fn test_file_picker_alive_fence_and_timeout() {
         match rx.recv_timeout(std::time::Duration::from_millis(50)) {
             Ok(path_opt) => {
                 if alive_fence.load(Ordering::Relaxed) {
-                    // Se entrasse aqui, seria um erro (acesso ilegal ao endereço liberado)
+                    // If it entered here, it would be an error (illegal access to freed address)
                     let shared_ref = unsafe { &*(shared_addr as *const NamClapShared) };
                     if let Some(path) = path_opt
                         && let Ok(mut pending_guard) = shared_ref.ui_pending_model.lock()
@@ -238,28 +238,28 @@ fn test_file_picker_alive_fence_and_timeout() {
                     }
                 }
             }
-            Err(_) => panic!("Deveria ter recebido o caminho"),
+            Err(_) => panic!("Should have received the path"),
         }
 
-        // Deve continuar None porque alive_fence era false e evitou acessar o shared_addr
+        // Must remain None because alive_fence was false and prevented accessing shared_addr
         assert_eq!(*shared.ui_pending_model.lock().unwrap(), None);
     }
 
-    // 3. Caso de Timeout: rx.recv_timeout falha por timeout, reiniciando ui_loading
+    // 3. Timeout Case: rx.recv_timeout fails due to timeout, resetting ui_loading
     {
-        // Restaura alive_fence para true
+        // Restores alive_fence to true
         shared.alive_fence.store(true, Ordering::Relaxed);
         shared.ui_loading.store(true, Ordering::Relaxed);
         let alive_fence = Arc::clone(&shared.alive_fence);
         let shared_addr = &*shared as *const NamClapShared as usize;
 
         let (_tx, rx) = std::sync::mpsc::channel::<Option<std::path::PathBuf>>();
-        // Não enviamos nada pelo canal para forçar o timeout
+        // We don't send anything through the channel to force the timeout
 
         match rx.recv_timeout(std::time::Duration::from_millis(10)) {
-            Ok(_) => panic!("Não deveria ter recebido nada"),
+            Ok(_) => panic!("Should not have received anything"),
             Err(_) => {
-                // Timeout ocorreu
+                // Timeout occurred
                 if alive_fence.load(Ordering::Relaxed) {
                     let shared_ref = unsafe { &*(shared_addr as *const NamClapShared) };
                     shared_ref.ui_loading.store(false, Ordering::Relaxed);
@@ -267,7 +267,7 @@ fn test_file_picker_alive_fence_and_timeout() {
             }
         }
 
-        // ui_loading deve ser redefinido para false
+        // ui_loading must be reset to false
         assert!(!shared.ui_loading.load(Ordering::Relaxed));
     }
 }

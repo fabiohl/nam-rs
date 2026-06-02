@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Alocação do buffer compartilhado `DspBridge` para comunicação lock-free
-//! entre as streams de captura e playback.
+//! Allocation of the `DspBridge` shared buffer for lock-free communication
+//! between capture and playback streams.
 
 use crate::dsp::pipeline::{BridgeBuffer, BridgeRef, DspBridge, MAX_BRIDGE_BUF};
 
-/// Aloca o `DspBridge` com double-buffering via `Box::leak` (vida `'static`).
+/// Allocates `DspBridge` with double-buffering via `Box::leak` (`'static` lifetime).
 ///
-/// O buffer é alinhado a 128 bytes (`repr(align(128))`) para evitar false-sharing
-/// entre os dois callbacks RT.
+/// The buffer is aligned to 128 bytes (`repr(align(128))`) to avoid false-sharing
+/// between the two RT callbacks.
 ///
-/// Aplica `madvise(MADV_DONTFORK | MADV_DONTDUMP)` para evitar overhead de
-/// Copy-on-Write em forks e excluir os buffers de core dumps.
+/// Applies `madvise(MADV_DONTFORK | MADV_DONTDUMP)` to avoid Copy-on-Write
+/// overhead on forks and to exclude the buffers from core dumps.
 pub fn allocate_dsp_bridge() -> BridgeRef {
     let bridge: &'static DspBridge = Box::leak(Box::new(DspBridge {
         buffers: [

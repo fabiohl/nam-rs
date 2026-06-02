@@ -3,26 +3,26 @@
 
 use crate::math::common::{AlignedVec, SimdMath};
 
-/// Camada Densa 1x1 (O Mixador de Canais):
-/// Pense nesta camada como uma 'mesa de som digital'. Ela mistura os diversos
-/// canais de áudio vindos da etapa anterior para criar a combinação final de timbres.
+/// 1x1 Dense Layer (The Channel Mixer):
+/// Think of this layer as a 'digital mixing console'. It blends the various
+/// audio channels coming from the previous stage to create the final timbre combination.
 #[derive(Clone)]
 pub struct DenseLayer<const IN: usize, const OUT: usize> {
-    /// Matriz de pesos: Define 'quanto' de cada canal entra na mistura.
+    /// Weight matrix: Defines 'how much' of each channel goes into the mix.
     pub weights: AlignedVec<u16>,
-    /// Bias: Um ajuste de 'volume' básico para cada canal de saída.
+    /// Bias: A basic 'volume' adjustment for each output channel.
     pub bias: AlignedVec<f32>,
-    /// Flag que indica se o bias deve ser aplicado.
+    /// Flag indicating whether bias should be applied.
     pub do_bias: bool,
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
-    /// Processamento Fundido (Fused):
-    /// Multiplica, aplica o bias e soma ao resultado, tudo em um único passo matemático.
-    /// É a forma mais eficiente de processar um único frame de áudio.
+    /// Fused Processing:
+    /// Multiplies, applies bias, and sums to the result, all in a single mathematical step.
+    /// This is the most efficient way to process a single audio frame.
     ///
     /// # Safety
-    /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `IN` e `OUT`.
+    /// The caller must guarantee that `in_frame` and `out_frame` have sizes compatible with `IN` and `OUT`.
     #[inline(always)]
     pub unsafe fn process_fused<M: SimdMath>(&self, in_frame: &[f32], out_frame: &mut [f32]) {
         unsafe {
@@ -30,10 +30,10 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Alias para `process_fused`.
+    /// Alias for `process_fused`.
     ///
     /// # Safety
-    /// Depende da validade dos buffers e da trait `SimdMath`.
+    /// Depends on buffer validity and the `SimdMath` trait.
     #[inline(always)]
     pub unsafe fn process_acc_single_frame<M: SimdMath>(
         &self,
@@ -43,12 +43,12 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         unsafe { self.process_fused::<M>(in_frame, out_frame) }
     }
 
-    /// Processamento 'Limpo' (Overwrite):
-    /// Similar ao fundido, mas substitui o que estiver no buffer de saída
-    /// em vez de somar ao valor existente.
+    /// 'Clean' Processing (Overwrite):
+    /// Similar to fused, but replaces what's in the output buffer
+    /// instead of adding to the existing value.
     ///
     /// # Safety
-    /// O chamador deve garantir que `in_frame` e `out_frame` tenham tamanhos compatíveis com `IN` e `OUT`.
+    /// The caller must guarantee that `in_frame` and `out_frame` have sizes compatible with `IN` and `OUT`.
     #[inline(always)]
     pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
@@ -60,12 +60,12 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Processamento de Bloco Fundido:
-    /// Versão otimizada para processar várias amostras (batches) de uma só vez,
-    /// ganhando muita velocidade em processadores modernos.
+    /// Fused Block Processing:
+    /// Optimized version to process multiple samples (batches) at once,
+    /// gaining significant speed on modern processors.
     ///
     /// # Safety
-    /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
+    /// The caller must guarantee that `input` and `output` have sizes compatible with `IN`, `OUT`, and `num_frames`.
     #[inline(always)]
     pub unsafe fn process_fused_block<M: SimdMath>(
         &self,
@@ -85,10 +85,10 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         }
     }
 
-    /// Alias para `process_fused_block`.
+    /// Alias for `process_fused_block`.
     ///
     /// # Safety
-    /// Depende da validade dos buffers e da trait `SimdMath`.
+    /// Depends on buffer validity and the `SimdMath` trait.
     #[inline(always)]
     pub unsafe fn process_acc_block<M: SimdMath>(
         &self,
@@ -99,12 +99,12 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         unsafe { self.process_fused_block::<M>(input, output, num_frames) }
     }
 
-    /// Soma do Residual (O 'Atalho' Final):
-    /// Esta função faz algo incrível: ela mistura os canais E soma o som original
-    /// (residual) ao resultado, tudo sem precisar copiar dados extras na memória.
+    /// Residual Sum (The Final 'Shortcut'):
+    /// This function does something amazing: it mixes channels AND adds the original sound
+    /// (residual) to the result, all without needing to copy extra data in memory.
     ///
     /// # Safety
-    /// O chamador deve garantir tamanhos compatíveis e validade dos buffers.
+    /// The caller must guarantee compatible sizes and buffer validity.
     #[inline(always)]
     pub unsafe fn process_residual_batch<M: SimdMath>(
         &self,
@@ -127,10 +127,10 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
     }
 
     #[inline(always)]
-    /// Processa bloco iterativo substituindo (OVERWRITE) os valores passados em vez de acumular.
+    /// Processes iterative block by replacing (OVERWRITE) the given values instead of accumulating.
     ///
     /// # Safety
-    /// O chamador deve garantir que `input` e `output` tenham tamanhos compatíveis com `IN` e `OUT` e `num_frames`.
+    /// The caller must guarantee that `input` and `output` have sizes compatible with `IN`, `OUT`, and `num_frames`.
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         input: &[f32],
@@ -151,9 +151,9 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
 
     ///
     /// # Safety
-    /// O chamador deve garantir que `input` e `output` tenham tamanhos
-    /// compatíveis com as dimensões `IN` e `OUT` da camada, e que as instruções
-    /// SIMD solicitadas pelo despachante `M` estejam disponíveis.
+    /// The caller must guarantee that `input` and `output` have sizes
+    /// compatible with the layer's `IN` and `OUT` dimensions, and that the
+    /// SIMD instructions requested by the dispatcher `M` are available.
     pub unsafe fn process_bf16<M: SimdMath>(&self, input: &[u16], output: &mut [f32]) {
         let num_frames = output.len() / OUT;
         unsafe {

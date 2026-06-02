@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels de ativação Softsign otimizados.
+//! Optimized Softsign activation kernels.
 
 use core::arch::x86_64::*;
 
-/// Aproximação vetorial de `Softsign(x) = x / (1 + |x|)` usando AVX2.
+/// Vector approximation of `Softsign(x) = x / (1 + |x|)` using AVX2.
 ///
-/// Utiliza `_mm256_rcp_ps` com uma iteração de Newton-Raphson para precisão de ~24 bits.
+/// Uses `_mm256_rcp_ps` with a Newton-Raphson iteration for ~24-bit precision.
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_softsign_avx2(x: __m256) -> __m256 {
     let one = _mm256_set1_ps(1.0);
@@ -19,7 +19,7 @@ pub unsafe fn simd_softsign_avx2(x: __m256) -> __m256 {
     let abs_x = _mm256_andnot_ps(_mm256_set1_ps(-0.0), x);
     let den = _mm256_add_ps(one, abs_x);
 
-    // Recíproco com Newton-Raphson duplo (satura f32)
+    // Reciprocal with double Newton-Raphson (saturates f32)
     let mut res = _mm256_rcp_ps(den);
     res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
     res = _mm256_mul_ps(res, _mm256_fnmadd_ps(den, res, two));
@@ -27,10 +27,10 @@ pub unsafe fn simd_softsign_avx2(x: __m256) -> __m256 {
     _mm256_mul_ps(x, res)
 }
 
-/// Aproximação vetorial de `Softsign(x)` (Dual, 16 floats).
+/// Vector approximation of `Softsign(x)` (Dual, 16 floats).
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn simd_softsign_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256) {
     let one = _mm256_set1_ps(1.0);
@@ -45,30 +45,30 @@ pub unsafe fn simd_softsign_dual_avx2(x1: __m256, x2: __m256) -> (__m256, __m256
     let mut res1 = _mm256_rcp_ps(den1);
     let mut res2 = _mm256_rcp_ps(den2);
 
-    // 1ª iteração NR
+    // 1st NR iteration
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
-    // 2ª iteração NR: satura mantissa f32
+    // 2nd NR iteration: saturates f32 mantissa
     res1 = _mm256_mul_ps(res1, _mm256_fnmadd_ps(den1, res1, two));
     res2 = _mm256_mul_ps(res2, _mm256_fnmadd_ps(den2, res2, two));
 
     (_mm256_mul_ps(x1, res1), _mm256_mul_ps(x2, res2))
 }
 
-/// Aproximação vetorial de `Softsign(x) = x / (1 + |x|)` usando AVX-512.
+/// Vector approximation of `Softsign(x) = x / (1 + |x|)` using AVX-512.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F, AVX-512VL e AVX-512DQ.
+/// Requires AVX-512F, AVX-512VL and AVX-512DQ support.
 #[target_feature(enable = "avx512f,avx512vl,avx512dq")]
 pub unsafe fn simd_softsign_avx512(x: __m512) -> __m512 {
     let one = _mm512_set1_ps(1.0);
     let two = _mm512_set1_ps(2.0);
 
-    // _mm512_andnot_ps requer AVX-512DQ. Com a feature habilitada no contexto, a chamada é segura.
+    // _mm512_andnot_ps requires AVX-512DQ. With the feature enabled in context, the call is safe.
     let abs_x = _mm512_andnot_ps(_mm512_set1_ps(-0.0), x);
     let den = _mm512_add_ps(one, abs_x);
 
-    // Recíproco com Newton-Raphson duplo (satura f32)
+    // Reciprocal with double Newton-Raphson (saturates f32)
     let mut res = _mm512_rcp14_ps(den);
     res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
     res = _mm512_mul_ps(res, _mm512_fnmadd_ps(den, res, two));
@@ -76,10 +76,10 @@ pub unsafe fn simd_softsign_avx512(x: __m512) -> __m512 {
     _mm512_mul_ps(x, res)
 }
 
-/// Aplica a ativação Softsign a um slice de f32 usando otimização AVX2.
+/// Applies Softsign activation to a slice of f32 using AVX2 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX2 e FMA.
+/// Requires AVX2 and FMA support.
 #[target_feature(enable = "avx2,fma")]
 pub unsafe fn softsign_slice_avx2(slice: &mut [f32]) {
     let mut i = 0;
@@ -110,10 +110,10 @@ pub unsafe fn softsign_slice_avx2(slice: &mut [f32]) {
     }
 }
 
-/// Aplica a ativação Softsign a um slice de f32 usando otimização AVX-512.
+/// Applies Softsign activation to a slice of f32 using AVX-512 optimization.
 ///
 /// # Safety
-/// Requer suporte a AVX-512F, AVX-512VL e AVX-512DQ.
+/// Requires AVX-512F, AVX-512VL and AVX-512DQ support.
 #[target_feature(enable = "avx512f,avx512vl,avx512dq")]
 pub unsafe fn softsign_slice_avx512(slice: &mut [f32]) {
     let mut i = 0;
@@ -133,7 +133,7 @@ pub unsafe fn softsign_slice_avx512(slice: &mut [f32]) {
     }
 }
 
-/// Versão escalar de `softsign` (x / (1 + |x|)).
+/// Scalar version of `softsign` (x / (1 + |x|)).
 #[inline(always)]
 pub fn softsign(x: f32) -> f32 {
     x / (1.0 + x.abs())

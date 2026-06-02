@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Kernels de álgebra linear SIMD (GEMM, GEMV, Dot Product).
+//! SIMD linear algebra kernels (GEMM, GEMV, Dot Product).
 //!
-//! Este módulo é o motor de alta vazão do NAM-rs, responsável pela multiplicação
-//! massiva de pesos por estados dos modelos neurais.
+//! This module is the high-throughput engine of NAM-rs, responsible for the
+//! massive multiplication of weights by neural network states.
 //!
-//! # Estratégias de Performance
-//! - **ILP (Instruction Level Parallelism)**: Múltiplos acumuladores para saturar as portas FMA.
-//! - **F16C Compression**: Pesos armazenados em meia-precisão para dobrar o throughput de cache.
-//! - **Interleaved Layout**: Pesos organizados para maximizar o reúso de dados nos registros.
-//! - **Tiling**: Processamento em blocos para otimizar a localidade de dados.
+//! # Performance Strategies
+//! - **ILP (Instruction Level Parallelism)**: Multiple accumulators to saturate the FMA ports.
+//! - **F16C Compression**: Weights stored in half-precision to double cache throughput.
+//! - **Interleaved Layout**: Weights organized to maximize data reuse in registers.
+//! - **Tiling**: Block processing to optimize data locality.
 //!
-//! Extraídos de `simd/avx2.rs` e `simd/avx512.rs` durante a Tarefa 3.2.
-//! Contém implementações AVX2 e AVX-512 lado a lado, organizadas por operação.
+//! Extracted from `simd/avx2.rs` and `simd/avx512.rs` during Task 3.2.
+//! Contains AVX2 and AVX-512 implementations side by side, organized by operation.
 
 pub mod dot;
 pub mod dot_4x;

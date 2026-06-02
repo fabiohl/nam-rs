@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Implementação da extensão de estado (state) do CLAP.
-//! Permite que o plugin salve e carregue sua configuração atual (parâmetros e modelo).
+//! Implementation of the CLAP state extension.
+//! Allows the plugin to save and load its current configuration (parameters and model).
 //!
-//! Versionamento do payload:
-//! - v0 (legacy, CLAP v1.5.x): `NamPluginParams` JSON puro, sem campo `version`.
-//! - v1 (atual): envelope `StateEnvelope { version: 1, params: {...} }`.
+//! Payload versioning:
+//! - v0 (legacy, CLAP v1.5.x): plain JSON `NamPluginParams`, without a `version` field.
+//! - v1 (current): envelope `StateEnvelope { version: 1, params: {...} }`.
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::NamPluginParams;
@@ -23,19 +23,19 @@ const CURRENT_STATE_VERSION: u32 = 1;
 
 #[derive(Debug, thiserror::Error)]
 enum StateError {
-    #[error("Falha ao serializar estado: {0}")]
+    #[error("Failed to serialize state: {0}")]
     Serialize(#[source] serde_json::Error),
 
-    #[error("Falha ao escrever no stream de estado: {0}")]
+    #[error("Failed to write to state stream: {0}")]
     WriteStream(#[source] std::io::Error),
 
-    #[error("Falha ao ler do stream de estado: {0}")]
+    #[error("Failed to read from state stream: {0}")]
     ReadStream(#[source] std::io::Error),
 
-    #[error("Falha ao deserializar estado (envelope v1+ corrompido)")]
+    #[error("Failed to deserialize state (corrupted v1+ envelope)")]
     CorruptedEnvelope,
 
-    #[error("Falha ao deserializar estado (v0 legacy): {0}")]
+    #[error("Failed to deserialize state (v0 legacy): {0}")]
     Deserialize(#[source] serde_json::Error),
 }
 
@@ -48,8 +48,8 @@ struct StateEnvelope {
 #[allow(unused_mut)]
 fn migrate(version: u32, mut params: NamPluginParams) -> NamPluginParams {
     if version < 1 {
-        // v0 → v1: campos comuns copiados, novos campos com Default
-        // (NamPluginParams já tem #[serde(default)] em todos os campos)
+        // v0 → v1: common fields copied, new fields use Default
+        // (NamPluginParams already has #[serde(default)] on all fields)
     }
     let _ = version;
     params
@@ -123,10 +123,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 if let Err(e) = self.load_model(&path)
                     && let Some(log) = self.host.get_extension::<HostLog>()
                 {
-                    let msg = format!(
-                        "NAM-rs: Falha ao restaurar modelo salvo ({:?}): {}",
-                        path, e
-                    );
+                    let msg = format!("NAM-rs: Failed to restore saved model ({:?}): {}", path, e);
                     if let Ok(c_msg) = CString::new(msg) {
                         log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                     }
@@ -134,7 +131,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 return Ok(());
             }
 
-            // Fallback: path absoluto não existe, tenta busca portátil via basename
+            // Fallback: absolute path does not exist, try portable lookup via basename
             if let Some(ref basename) = self.params.model_basename {
                 let found = self
                     .params
@@ -152,7 +149,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 if let Some(new_path) = found {
                     if let Some(log) = self.host.get_extension::<HostLog>() {
                         let msg = format!(
-                            "NAM-rs: Modelo não encontrado no path original ({:?}), usando fallback portátil: {:?}",
+                            "NAM-rs: Model not found at original path ({:?}), using portable fallback: {:?}",
                             path, new_path
                         );
                         if let Ok(c_msg) = CString::new(msg) {
@@ -163,7 +160,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                         && let Some(log) = self.host.get_extension::<HostLog>()
                     {
                         let msg = format!(
-                            "NAM-rs: Falha ao restaurar modelo via fallback ({:?}): {}",
+                            "NAM-rs: Failed to restore model via fallback ({:?}): {}",
                             new_path, e
                         );
                         if let Ok(c_msg) = CString::new(msg) {
@@ -172,7 +169,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                     }
                 } else if let Some(log) = self.host.get_extension::<HostLog>() {
                     let msg = format!(
-                        "NAM-rs: Modelo salvo não encontrado no caminho: {:?} e basename {:?} não localizado nos search paths",
+                        "NAM-rs: Saved model not found at path: {:?} and basename {:?} not located in search paths",
                         path, basename
                     );
                     if let Ok(c_msg) = CString::new(msg) {
@@ -180,7 +177,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                     }
                 }
             } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                let msg = format!("NAM-rs: Modelo salvo não encontrado no caminho: {:?}", path);
+                let msg = format!("NAM-rs: Saved model not found at path: {:?}", path);
                 if let Ok(c_msg) = CString::new(msg) {
                     log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                 }
@@ -204,15 +201,15 @@ fn load_state(buffer: &[u8]) -> Result<NamPluginParams, PluginError> {
         return Ok(migrate(envelope.version, envelope.params));
     }
 
-    // Se o buffer é um envelope v1+ (contém chave "version") que falhou parse,
-    // não fazemos fallback v0 — propagamos erro como dados corrompidos
+    // If the buffer is a v1+ envelope (contains a "version" key) that failed to parse,
+    // we don't fall back to v0 — we propagate the error as corrupted data
     if let Ok(value) = serde_json::from_slice::<serde_json::Value>(buffer)
         && value.get("version").is_some()
     {
         return Err(PluginError::Error(Box::new(StateError::CorruptedEnvelope)));
     }
 
-    // Fallback: v0 legacy — NamPluginParams direto sem campo version
+    // Fallback: v0 legacy — NamPluginParams directly, without a version field
     let params: NamPluginParams = serde_json::from_slice(buffer)
         .map_err(|e| PluginError::Error(Box::new(StateError::Deserialize(e))))?;
 

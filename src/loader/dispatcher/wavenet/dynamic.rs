@@ -13,13 +13,13 @@ use anyhow::{Context, bail};
 use log::info;
 
 // =============================================================================
-// Construtor dinâmico (fallback)
+// Dynamic constructor (fallback)
 // =============================================================================
 
-/// Constrói um `WaveNetDynModel` com pesos lidos sequencialmente (fallback dinâmico).
+/// Builds a `WaveNetDynModel` with sequentially read weights (dynamic fallback).
 pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
     if data.config.layers.len() != 2 {
-        bail!("WaveNet dinâmico exige 2 arrays");
+        bail!("Dynamic WaveNet requires 2 arrays");
     }
 
     super::validate_layer_activations(data)?;
@@ -29,13 +29,19 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
     let l0 = &data.config.layers[0];
     let l1 = &data.config.layers[1];
 
-    let ch1 = l0.channels.context("Layer 0: sem channels")?;
+    let ch1 = l0.channels.context("Layer 0: missing channels")?;
     let k1 = l0.kernel_size.unwrap_or(3);
-    let head1 = l0.head_size.context("Layer 0: sem head_size")?;
-    let dils_0 = l0.dilations.as_deref().context("Layer 0: sem dilations")?;
+    let head1 = l0.head_size.context("Layer 0: missing head_size")?;
+    let dils_0 = l0
+        .dilations
+        .as_deref()
+        .context("Layer 0: missing dilations")?;
     let b1 = l0.head_bias.unwrap_or(false);
 
-    let dils_1 = l1.dilations.as_deref().context("Layer 1: sem dilations")?;
+    let dils_1 = l1
+        .dilations
+        .as_deref()
+        .context("Layer 1: missing dilations")?;
     let b2 = l1.head_bias.unwrap_or(true);
 
     let mut alloc_num = 0usize;
@@ -81,7 +87,7 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
     };
 
     info!(
-        "[Dispatcher] WaveNet Dinâmico construído — CH={}, K={}, HEAD={}, PESOS={}",
+        "[Dispatcher] WaveNet Dynamic built — CH={}, K={}, HEAD={}, WEIGHTS={}",
         ch1,
         k1,
         head1,
@@ -92,10 +98,10 @@ pub fn build_wavenet_dynamic(data: &NamModelData) -> anyhow::Result<Box<DynamicM
 }
 
 // =============================================================================
-// Construtor de array dinâmico
+// Dynamic array constructor
 // =============================================================================
 
-/// Configurações para construção de um WaveNetLayerArrayDyn.
+/// Configuration for building a WaveNetLayerArrayDyn.
 pub(crate) struct WaveNetArrayDynConfig<'a, 'b, 'c> {
     pub cursor: &'a mut WeightCursor<'b>,
     pub in_size: usize,
@@ -129,7 +135,7 @@ pub(crate) fn build_wavenet_array_dyn(
 
     if conv_out_ch * WAVENET_MAX_NUM_FRAMES > 4096 {
         bail!(
-            "Dimensões da WaveNet não suportadas: conv_out_ch ({}) * MAX_FRAMES ({}) > 4096",
+            "Unsupported WaveNet dimensions: conv_out_ch ({}) * MAX_FRAMES ({}) > 4096",
             conv_out_ch,
             WAVENET_MAX_NUM_FRAMES
         );
@@ -143,7 +149,7 @@ pub(crate) fn build_wavenet_array_dyn(
     for &dilation in dilations {
         if k > MAX_KERNEL {
             bail!(
-                "Tamanho do kernel {} excede o máximo suportado ({})",
+                "Kernel size {} exceeds the maximum supported ({})",
                 k,
                 MAX_KERNEL
             );

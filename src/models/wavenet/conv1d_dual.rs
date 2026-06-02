@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Processamento Dual-Frame da Convolução Causal WaveNet.
+//! Dual-Frame Processing of Causal WaveNet Convolution.
 //!
-//! Extensão do `Conv1d` com métodos que processam dois frames simultaneamente
-//! (Temporal Tiling), maximizando a reutilização de pesos nos registradores.
+//! Extension of `Conv1d` with methods that process two frames simultaneously
+//! (Temporal Tiling), maximizing weight reuse in registers.
 
 use super::conv1d::{Conv1d, ConvInput};
 use crate::math::common::SimdMath;
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
-    /// Variante fundida que processa dois frames simultaneamente, adicionando vetores Mixin (condicionamento) diretamente nos acumuladores.
-    /// Esta abordagem maximiza a utilização dos pesos carregados nos registradores (Temporal Tiling).
+    /// Fused variant that processes two frames simultaneously, adding Mixin vectors (conditioning) directly to the accumulators.
+    /// This approach maximizes the utilization of weights loaded into registers (Temporal Tiling).
     ///
     /// # Safety
-    /// `layer_buffer` e `mixin` devem possuir os tamanhos adequados.
-    /// Processamento Dual Frame com Mixin:
-    /// Esta função calcula dois momentos do áudio de uma vez só, já integrando
-    /// as configurações externas (mixin) para economizar tempo de processamento.
+    /// `layer_buffer` and `mixin` must have appropriate sizes.
+    /// Dual Frame Processing with Mixin:
+    /// This function computes two audio moments at once, already integrating
+    /// external settings (mixin) to save processing time.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_with_mixin<M: SimdMath>(
@@ -43,9 +43,9 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Organizador Interno:
-    /// Prepara os dados para o 'Motor Universal' (Generic), decidindo como
-    /// as informações serão enviadas para o cálculo.
+    /// Internal Organizer:
+    /// Prepares data for the 'Universal Engine' (Generic), deciding how
+    /// information will be sent for computation.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     unsafe fn process_dual_frame_internal<M: SimdMath>(
@@ -71,10 +71,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Motor Universal (Generic Engine):
-    /// Esta é a inteligência central que faz a matemática pesada. Graças ao uso
-    /// de tipos genéricos (T: ConvInput), este mesmo código funciona tanto no
-    /// modo de precisão total quanto no modo ultra-rápido (BF16).
+    /// Universal Engine (Generic Engine):
+    /// This is the central intelligence that performs the heavy math. Thanks to the use
+    /// of generic types (T: ConvInput), this same code works in both
+    /// full precision mode and ultra-fast mode (BF16).
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     unsafe fn process_dual_frame_generic<M: SimdMath, T: ConvInput>(
@@ -87,7 +87,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin_f0: Option<&[f32]>,
         mixin_f1: Option<&[f32]>,
     ) {
-        // --- 1. Preparação (Bias e Mixin) ---
+        // --- 1. Setup (Bias and Mixin) ---
         if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
             if self.do_bias {
                 out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
@@ -108,7 +108,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_frame_f1.fill(0.0);
         }
 
-        // --- 2. Busca no Passado (Dilatação) ---
+        // --- 2. Look into the Past (Dilation) ---
         let mut in_taps_f0 = [[T::default(); IN]; K];
         let mut in_taps_f1 = [[T::default(); IN]; K];
         for k in 0..K {
@@ -135,7 +135,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let num_blocks = OUT.div_ceil(4);
         let mut out_c = 0;
 
-        // --- 3. Loop de Cálculo Central (Blocks de 4) ---
+        // --- 3. Central Computation Loop (4-Blocks) ---
         for b in 0..num_blocks {
             let mut r0_f0;
             let mut r1_f0;
@@ -253,11 +253,11 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Variante fundida BF16 que processa dois frames simultaneamente, adicionando vetores Mixin diretamente nos acumuladores.
-    /// Esta abordagem maximiza a utilização dos pesos (VNNI) carregados nos registradores (Temporal Tiling).
+    /// Fused BF16 variant that processes two frames simultaneously, adding Mixin vectors directly to the accumulators.
+    /// This approach maximizes the utilization of weights (VNNI) loaded into registers (Temporal Tiling).
     ///
     /// # Safety
-    /// O chamador deve garantir que `layer_buffer` e `mixin` possuam os tamanhos adequados.
+    /// The caller must guarantee that `layer_buffer` and `mixin` have appropriate sizes.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_bf16_with_mixin<M: SimdMath>(
@@ -283,8 +283,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Organizador Interno BF16:
-    /// Encaminha os dados de 16 bits para o Motor Universal de cálculo.
+    /// Internal BF16 Organizer:
+    /// Routes 16-bit data to the Universal Engine for computation.
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     unsafe fn process_dual_frame_bf16_internal<M: SimdMath>(

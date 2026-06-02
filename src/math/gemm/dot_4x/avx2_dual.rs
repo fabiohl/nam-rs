@@ -6,16 +6,16 @@
     clippy::too_many_arguments
 )]
 
-//! Kernels Dot Product 4x — AVX2 (dual-frame + batch).
+//! Dot Product 4x kernels — AVX2 (dual-frame + batch).
 
 use core::arch::x86_64::*;
 
-/// Calcula 4 Produtos Escalares para dois quadros de áudio simultâneos (Dual Frame) via AVX2.
+/// Computes 4 Dot Products for two simultaneous audio frames (Dual Frame) via AVX2.
 ///
-/// Esta é uma das funções mais eficientes do sistema. Ela aproveita que os pesos já foram
-/// carregados na memória para aplicá-los em dois blocos de áudio diferentes (f0 e f1) ao
-/// mesmo tempo. Isso dobra a produtividade do processador, pois cada peso lido é "reutilizado"
-/// imediatamente para dois cálculos distintos.
+/// This is one of the most efficient functions in the system. It takes advantage of the fact
+/// that the weights have already been loaded into memory to apply them to two different audio
+/// blocks (f0 and f1) at the same time. This doubles processor throughput, since each loaded
+/// weight is "reused" immediately for two distinct computations.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
     weights: &[[u16; 4]],
@@ -144,10 +144,10 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_avx2(
     }
 }
 
-/// Kernel especializado para multiplicar pesos por 4 canais de áudio diferentes ao mesmo tempo.
-/// Esta função é o "faz tudo" das redes neurais WaveNet e LSTM quando processamos
-/// áudio em lote (batch). Ela economiza energia e tempo ao não precisar ler
-/// os mesmos pesos da memória repetidamente.
+/// Specialized kernel for multiplying weights by 4 different audio channels at the same time.
+/// This function is the "do-it-all" of WaveNet and LSTM neural networks when we process
+/// audio in batch. It saves energy and time by not having to read
+/// the same weights from memory repeatedly.
 #[target_feature(enable = "f16c")]
 pub unsafe fn dot_product_batch_4x_avx2(
     h0: &[f32],

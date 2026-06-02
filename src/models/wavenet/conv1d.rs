@@ -1,56 +1,56 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Malha CNN Causal Estática para inferência WaveNet (Design Orientado a Dados, SoA).
+//! Static Causal CNN Mesh for WaveNet Inference (Data-Oriented Design, SoA).
 //!
-//! Todas as estruturas utilizam `Const Generics` nas dimensões matemáticas e vetores pré-alocados
-//! garantindo uma política de instanciamento estrito (Zero-Allocation durante processamento).
-//! As loops dinâmicos resolvem cálculos em sequências FMA determinísticas via AVX2.
+//! All structures use `Const Generics` for mathematical dimensions and pre-allocated vectors
+//! ensuring a strict instantiation policy (Zero-Allocation during processing).
+//! Dynamic loops resolve computations in deterministic FMA sequences via AVX2.
 
-//! Módulo de Inferência WaveNet (Arquitetura Causal Dilatada).
+//! WaveNet Inference Module (Dilated Causal Architecture).
 
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 
-/// Convolução Causal Dilatada (WaveNet Conv1D).
+/// Dilated Causal Convolution (WaveNet Conv1D).
 #[derive(Clone)]
 #[repr(align(64))]
 pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
-    /// Matriz achatada de pesos do tamanho OUT * K * IN.
+    /// Flattened weight matrix of size OUT * K * IN.
     pub weights: AlignedVec<u16>,
-    /// Viés causal, atrelado se do_bias for verdadeiro. Total: OUT.
+    /// Causal bias, applied if do_bias is true. Total: OUT.
     pub bias: AlignedVec<f32>,
-    /// Determina se o array de bias deve ser somado.
+    /// Determines if the bias array should be added.
     pub do_bias: bool,
-    /// Fator de diluição no eixo temporal causacional (Ex: 1, 2, 4.. 512).
+    /// Dilation factor on the causal temporal axis (e.g.: 1, 2, 4.. 512).
     pub dilation: usize,
-    /// Estratégia de prefetch pré-calculada (Eliminação de Branch).
+    /// Pre-computed prefetch strategy (Branch Elimination).
     pub prefetch_fn: PrefetchFn,
 }
 
-/// Ponte de Dados (ConvInput):
-/// Esta trait é uma ponte que permite ao NAM-rs usar exatamente o mesmo código
-/// para dois tipos de números: decimais comuns (f32) e números compactos (u16/BF16).
-/// Isso evita duplicar lógica complexa e facilita a manutenção.
+/// Data Bridge (ConvInput):
+/// This trait is a bridge that allows NAM-rs to use exactly the same code
+/// for two number types: regular floats (f32) and compact numbers (u16/BF16).
+/// This avoids duplicating complex logic and facilitates maintenance.
 pub(crate) trait ConvInput: Copy + Default {
-    /// Versão 4x: Calcula 4 canais ao mesmo tempo.
+    /// 4x version: Computes 4 channels at once.
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
         weights: &[[u16; 4]],
         state: &[Self],
     ) -> [f32; 4];
 
-    /// Versão Dual Frame: Calcula 4 canais de DOIS frames simultaneamente.
+    /// Dual Frame version: Computes 4 channels of TWO frames simultaneously.
     unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
         weights: &[[u16; 4]],
         state_f0: &[Self],
         state_f1: &[Self],
     ) -> ([f32; 4], [f32; 4]);
 
-    /// Ajuste de Ponteiro: Garante que o endereço de memória esteja no formato correto.
+    /// Pointer Adjustment: Ensures the memory address follows the correct format.
     fn cast_ptr(ptr: *const Self) -> *const f32;
 }
 
-// 1. Modo de Precisão Total (f32):
-// Usado em computadores que priorizam a fidelidade absoluta do som.
+// 1. Full Precision Mode (f32):
+// Used on computers that prioritize absolute sound fidelity.
 impl ConvInput for f32 {
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
@@ -73,10 +73,10 @@ impl ConvInput for f32 {
     }
 }
 
-// 2. Modo 'Turbo' (u16/BF16):
-// Usado para ganhar velocidade. O formato BF16 corta o tamanho dos dados pela metade,
-// permitindo que o processador calcule muito mais rápido com uma perda de qualidade
-// que é imperceptível ao ouvido humano.
+// 2. 'Turbo' Mode (u16/BF16):
+// Used to gain speed. The BF16 format cuts the data size in half,
+// allowing the processor to compute much faster with a quality loss
+// imperceptible to the human ear.
 impl ConvInput for u16 {
     #[inline(always)]
     unsafe fn dot_product_4x_interleaved<M: SimdMath>(
@@ -100,21 +100,21 @@ impl ConvInput for u16 {
 }
 
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
-    /// Executa convolução causal num array bidirecional flat (`layer_buffer`).
+    /// Executes causal convolution over a flat bidirectional array (`layer_buffer`).
     ///
-    /// ## Otimização: Software Prefetch Proativo
+    /// ## Optimization: Proactive Software Prefetch
     ///
-    /// Para dilatações grandes (256, 512), os acessos ao `layer_buffer` saltam
-    /// milhares de floats entre taps consecutivos do kernel, provocando cache
-    /// misses L1 previsíveis. O `_mm_prefetch` emitido para o **próximo tap**
-    /// enquanto o tap atual é processado via FMA permite ao memory subsystem
-    /// trazer a cache line proativamente — custo de 1 ciclo (mascarado pelo
-    /// pipeline FMA), benefício de ~5–10% de latência em layers com dilatação alta.
+    /// For large dilations (256, 512), accesses to `layer_buffer` skip
+    /// thousands of floats between consecutive kernel taps, causing predictable
+    /// L1 cache misses. The `_mm_prefetch` issued for the **next tap**
+    /// while the current tap is processed via FMA allows the memory subsystem
+    /// to proactively bring in the cache line — cost of 1 cycle (masked by the
+    /// FMA pipeline), benefit of ~5–10% latency in layers with high dilation.
     ///
     /// # Safety
-    /// Depende dinamicamente da trait `SimdMath` fornecida.
+    /// Dynamically depends on the `SimdMath` trait provided.
     ///
-    /// Processa um único frame aplicando convolução ao ring buffer (otimizado via FMA 4x).
+    /// Processes a single frame applying convolution to the ring buffer (optimized via FMA 4x).
     #[inline(always)]
     pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
@@ -127,12 +127,12 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Variante fundida que adiciona um vetor Mixin (condicionamento) diretamente no acumulador.
+    /// Fused variant that adds a Mixin vector (conditioning) directly to the accumulator.
     #[inline(always)]
-    /// Soma o mixin e processa a Conv1D para um único frame.
+    /// Sums the mixin and processes Conv1D for a single frame.
     ///
     /// # Safety
-    /// O chamador deve garantir que `frame_idx` e `mixin` sejam válidos.
+    /// The caller must guarantee that `frame_idx` and `mixin` are valid.
     pub unsafe fn process_single_frame_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
@@ -171,7 +171,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
-        // [PASSO 1: Inicialização do Acumulador]
+        // [STEP 1: Accumulator Initialization]
         if let Some(m) = mixin {
             if self.do_bias {
                 out_frame.copy_from_slice(&self.bias[0..OUT]);
@@ -187,14 +187,14 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             out_frame.fill(0.0);
         }
 
-        // [PASSO 2: Iteração do Kernel (Receptive Field)]
-        // Inversão de Loop: Channel-First Tiling.
-        // Processamos todos os taps (K) para um bloco de canais de saída antes de mover para o próximo.
-        // Isso mantém os acumuladores nos registros SIMD, reduzindo tráfego de cache L1.
+        // [STEP 2: Kernel Iteration (Receptive Field)]
+        // Loop Inversion: Channel-First Tiling.
+        // Process all taps (K) for one output channel block before moving to the next.
+        // This keeps accumulators in SIMD registers, reducing L1 cache traffic.
 
-        // Pre-carregamento dos taps (Input data) para o bloco atual.
-        // Como K e IN são pequenos (ex: 3 e 16), o custo de cópia para a stack é compensado
-        // pela eliminação de re-cálculos de endereços e maior localidade no loop b-first.
+        // Pre-loading taps (Input data) for the current block.
+        // Since K and IN are small (e.g., 3 and 16), the stack copy cost is compensated
+        // by the elimination of address recomputation and better locality in the b-first loop.
         let mut in_taps = [[T::default(); IN]; K];
         for (k, in_tap) in in_taps.iter_mut().enumerate() {
             let offset = (self.dilation as isize) * ((k as isize) + 1 - (K as isize));
@@ -205,7 +205,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 );
             }
 
-            // Prefetch via estratégia pré-calculada (Branchless)
+            // Prefetch via pre-computed strategy (Branchless)
             unsafe {
                 (self.prefetch_fn)(
                     T::cast_ptr(layer_buffer.as_ptr().add(in_slice_start)),
@@ -217,10 +217,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
         }
 
-        // Processamento de Convolução 1D por Blocos Intercalados (Interleaved):
-        // Para otimizar o throughput de cálculo e uso de cache, processamos os canais de saída
-        // agrupados em blocos de 4 elementos. Isso permite computar 4 saídas em paralelo usando
-        // instruções SIMD que lêem os pesos e as entradas de forma altamente combinada.
+        // Interleaved 1D Convolution Processing by Blocks:
+        // To optimize computation throughput and cache usage, we process output channels
+        // grouped in blocks of 4 elements. This enables computing 4 outputs in parallel using
+        // SIMD instructions that read weights and inputs in a highly combined fashion.
         let num_blocks = OUT.div_ceil(4);
         let mut out_c = 0;
 
@@ -230,7 +230,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             let mut r2;
             let mut r3;
 
-            // Carrega os 4 acumuladores temporários a partir do frame de saída atual.
+            // Load the 4 temporary accumulators from the current output frame.
             unsafe {
                 r0 = *out_frame.get_unchecked(out_c);
                 if OUT.is_multiple_of(4) || out_c + 3 < OUT {
@@ -256,7 +256,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 }
             }
 
-            // Para cada tap (atraso/deslocamento no buffer de áudio circular) da convolução
+            // For each tap (delay/offset in the circular audio buffer) of the convolution
             for (k, in_slice) in in_taps.iter().enumerate() {
                 let w_start = (b * K + k) * IN * 4;
                 let w_slice: &[[u16; 4]] = unsafe {
@@ -264,7 +264,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                     core::slice::from_raw_parts(ptr, IN)
                 };
 
-                // Realiza o produto escalar intercalado de 4 canais de uma só vez.
+                // Performs the 4-channel interleaved dot product at once.
                 let [t0, t1, t2, t3] =
                     unsafe { T::dot_product_4x_interleaved::<M>(w_slice, in_slice) };
                 r0 += t0;
@@ -273,7 +273,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 r3 += t3;
             }
 
-            // Grava de volta os 4 acumuladores processados no buffer de saída in-place.
+            // Write back the 4 processed accumulators to the output buffer in-place.
             unsafe {
                 *out_frame.get_unchecked_mut(out_c) = r0;
                 if OUT.is_multiple_of(4) || out_c + 3 < OUT {
@@ -296,12 +296,12 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Processa um único frame usando buffers BF16 (VNNI).
+    /// Processes a single frame using BF16 buffers (VNNI).
     ///
     /// # Safety
-    /// O chamador deve garantir que `layer_buffer` e `out_frame` tenham tamanhos
-    /// compatíveis com as dimensões `IN` e `OUT` da camada, e que as instruções
-    /// SIMD solicitadas pelo despachante `M` estejam disponíveis.
+    /// The caller must guarantee that `layer_buffer` and `out_frame` have sizes
+    /// compatible with the layer's `IN` and `OUT` dimensions, and that the
+    /// SIMD instructions requested by the dispatcher `M` are available.
     #[inline(always)]
     pub unsafe fn process_single_frame_bf16<M: SimdMath>(
         &self,
@@ -314,12 +314,12 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Variante fundida BF16 que adiciona um vetor Mixin diretamente no acumulador.
+    /// Fused BF16 variant that adds a Mixin vector directly to the accumulator.
     #[inline(always)]
-    /// Soma o mixin e processa a Conv1D (BF16) para um único frame.
+    /// Sums the mixin and processes Conv1D (BF16) for a single frame.
     ///
     /// # Safety
-    /// O chamador deve garantir que `frame_idx` e `mixin` sejam válidos.
+    /// The caller must guarantee that `frame_idx` and `mixin` are valid.
     pub unsafe fn process_single_frame_bf16_with_mixin<M: SimdMath>(
         &self,
         layer_buffer: &[u16],
@@ -350,12 +350,12 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Processa bloco iterativo sequencial.
-    /// Para eficiência no cache, em vez de processar toda a camada por múltiplos blocos,
-    /// limitamos a chamadas consecutivas quadro a quadro (`process_single_frame`).
+    /// Processes a sequential iterative block.
+    /// For cache efficiency, instead of processing the entire layer by multiple blocks,
+    /// we limit calls to consecutive frame-by-frame calls (`process_single_frame`).
     ///
     /// # Safety
-    /// Pointer must be valid e num_frames deve estar contido nos limites do layer_buffer.
+    /// Pointer must be valid and num_frames must fit within the layer_buffer bounds.
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
@@ -364,8 +364,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         num_frames: usize,
     ) {
         for i in 0..num_frames {
-            // [PASSO: Delegação por Frame]
-            // Fatia o buffer de saída (output multi-canal do tamanho `OUT`) e despacha para cálculo.
+            // [STEP: Per-Frame Delegation]
+            // Slice the output buffer (multi-channel output of size `OUT`) and dispatch to computation.
             let out_frame = unsafe { block.get_unchecked_mut(i * OUT..i * OUT + OUT) };
             unsafe {
                 self.process_single_frame::<M>(layer_buffer, out_frame, buffer_start + i);

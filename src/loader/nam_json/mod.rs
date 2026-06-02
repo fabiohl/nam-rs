@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Parser para o formato .nam (JSON)
+//! Parser for the .nam format (JSON)
 //!
-//! Realiza o carregamento dos tensores e metadados fora do caminho RT.
+//! Loads tensors and metadata outside the RT path.
 
 pub mod data;
 pub mod parse;

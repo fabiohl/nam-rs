@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Pipeline de processamento DSP (Capture → DSP → Bridge).
+//! DSP processing pipeline (Capture → DSP → Bridge).
 //!
-//! Este módulo isola a lógica de processamento de áudio da orquestração do PipeWire.
-//! Ele contém o "hot-path" que é executado a cada ciclo de áudio na thread de tempo real.
+//! This module isolates the audio processing logic from PipeWire orchestration.
+//! It contains the hot-path executed every audio cycle on the real-time thread.
 
 #[cfg(test)]
 use crate::models::NamModel;
@@ -20,7 +20,7 @@ mod playback;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 mod stages;
 
-// Re-exports — preservam a mesma visibilidade do pipeline.rs original.
+// Re-exports — preserve the same visibility as the original pipeline.rs.
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 pub use bridge::{BridgeBuffer, BridgeRef, DspBridge, DspBridgeReader, DspBridgeWriter};

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Integração do NAM-rs como plugin no formato CLAP (CLever Audio Plug-in).
+//! Integration of NAM-rs as a plugin in CLAP (CLever Audio Plug-in) format.
 //!
-//! Ativado via feature flag `clap-plugin`. Totalmente isolado do PipeWire.
+//! Activated via the `clap-plugin` feature flag. Completely isolated from PipeWire.
 
 pub mod descriptor;
 pub mod extensions;
@@ -13,7 +13,7 @@ pub mod param_smoother;
 pub mod plugin;
 pub mod processor;
 
-/// Módulo contendo a implementação da interface gráfica (GUI).
+/// Module containing the graphical user interface (GUI) implementation.
 #[cfg(feature = "clap-plugin")]
 pub mod gui;
 

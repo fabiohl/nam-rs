@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Estruturas de dados e flags compartilhadas para coordenação lock-free entre threads.
+//! Shared data structures and flags for lock-free thread coordination.
 //!
-//! Este módulo define toda a "fiação invisível" que conecta a interface CLI (o controle
-//! remoto do músico) com o motor de áudio DSP (o amplificador neural rodando em tempo real).
+//! This module defines all the "invisible wiring" that connects the CLI interface (the
+//! musician's remote control) with the DSP audio engine (the neural amplifier running in real-time).
 //!
-//! ## Componentes principais
+//! ## Main components
 //!
-//! - **`SHUTDOWN`**: flag global que sinaliza a todas as threads que o programa deve encerrar.
-//! - **`ParamPayload`**: "pacotes" de parâmetros (ganho de entrada/saída, troca de modelo)
-//!   que a CLI envia para o DSP sem travar nenhuma thread (lock-free via ring buffer SPSC).
-//! - **`RtStatusFlags`**: flags atômicas para comunicação silenciosa RT→Main (sem I/O no callback).
-//!   Permitem que o motor DSP reporte seu estado sem jamais chamar `println!`.
-//! - Canal SPSC de `NamResampler`: a thread principal constrói o resampler (com alocações
-//!   de memória) fora do tempo real e o envia para o callback DSP via canal lock-free.
+//! - **`SHUTDOWN`**: global flag signaling all threads that the program should terminate.
+//! - **`ParamPayload`**: parameter "packets" (input/output gain, model swap)
+//!   that the CLI sends to the DSP without locking any thread (lock-free via SPSC ring buffer).
+//! - **`RtStatusFlags`**: atomic flags for silent RT→Main communication (no I/O in callback).
+//!   Allows the DSP engine to report its status without ever calling `println!`.
+//! - **`NamResampler` SPSC channel**: the main thread builds the resampler (with memory
+//!   allocations) outside real-time and sends it to the DSP callback via a lock-free channel.
 
 use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::Arc;
@@ -22,99 +22,99 @@ use std::sync::atomic::{
     AtomicBool, AtomicI32, AtomicPtr, AtomicU8, AtomicU32, AtomicU64, Ordering,
 };
 
-/// Flag global para shutdown coordenado e gracioso entre todas as threads.
-/// Definida como `true` pelo handler de CTRL+C.
+/// Global flag for coordinated graceful shutdown across all threads.
+/// Set to `true` by the CTRL+C handler.
 pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
-/// Flag indicando que a thread DSP precisa de um novo `NamResampler`.
+/// Flag indicating that the DSP thread needs a new `NamResampler`.
 pub const RT_STATUS_NEEDS_RESAMPLER_REBUILD: u64 = 1 << 0;
-/// Indica se a última tentativa de rebuild do resampler pela thread principal falhou.
+/// Indicates whether the last resampler rebuild attempt by the main thread failed.
 pub const RT_STATUS_RESAMPLER_REBUILD_FAILED: u64 = 1 << 1;
-/// `true` se a thread DSP confirmou operação em `SCHED_FIFO`.
+/// `true` if the DSP thread confirmed operation under `SCHED_FIFO`.
 pub const RT_STATUS_RT_IS_FIFO: u64 = 1 << 2;
-/// Flag indicando que houve saturação (clipping) no áudio de saída.
+/// Flag indicating that saturation (clipping) occurred on the output audio.
 pub const RT_STATUS_HAS_CLIPPED: u64 = 1 << 3;
-/// Flag indicando que o buffer atual está em silêncio total (Gate fechado).
+/// Flag indicating that the current buffer is completely silent (Gate closed).
 pub const RT_STATUS_IS_SILENT: u64 = 1 << 4;
-/// Flag indicando que houve overflow no canal de GC.
+/// Flag indicating that the GC channel overflowed.
 pub const RT_STATUS_GC_OVERFLOW: u64 = 1 << 5;
-/// Flag indicando que o gate está em transição (Fade-In ou Fade-Out).
+/// Flag indicating that the gate is transitioning (Fade-In or Fade-Out).
 pub const RT_STATUS_IS_FADING: u64 = 1 << 6;
-/// Flag indicando que houve falha crítica no carregamento do modelo na thread RT.
+/// Flag indicating that a critical model load failure occurred on the RT thread.
 pub const RT_STATUS_MODEL_LOAD_FAILED: u64 = 1 << 7;
-/// Flag indicando que ocorreu alocação no heap na thread RT (detectada por heap-audit).
+/// Flag indicating that a heap allocation occurred on the RT thread (detected by heap-audit).
 pub const RT_STATUS_HEAP_ALLOC: u64 = 1 << 8;
-/// Flag indicando que um modelo A2 placeholder está ativo (bypass silencioso).
+/// Flag indicating that an A2 placeholder model is active (silent bypass).
 pub const RT_STATUS_A2_PLACEHOLDER: u64 = 1 << 9;
-/// Flag indicando que o callback RT deve pausar o processamento DSP até que
-/// o resampler seja substituído (durante hot-plug ou mudança de sample rate).
+/// Flag indicating that the RT callback should pause DSP processing until
+/// the resampler is replaced (during hot-plug or sample rate change).
 pub const RT_STATUS_RESAMP_SWAP_PENDING: u64 = 1 << 10;
 
-/// Flags atômicas de status para comunicação silenciosa RT→Main.
+/// Atomic status flags for silent RT→Main communication.
 ///
-/// A thread DSP seta flags atômicas ao invés de chamar `println!`/`eprintln!`.
-/// A thread principal lê estas flags periodicamente e imprime logs ao usuário.
-/// Isso garante que **zero I/O** ocorra no callback RT.
+/// The DSP thread sets atomic flags instead of calling `println!`/`eprintln!`.
+/// The main thread reads these flags periodically and prints logs to the user.
+/// This ensures **zero I/O** occurs in the RT callback.
 ///
-/// ### Mapa do Bitmask (`status_bits`)
+/// ### Bitmask Map (`status_bits`)
 ///
-/// | Bit | Constante | Descrição |
+/// | Bit | Constant | Description |
 /// | :--- | :--- | :--- |
-/// | 0 | `NEEDS_RESAMPLER_REBUILD` | Thread DSP solicita novo resampler |
-/// | 1 | `RESAMPLER_REBUILD_FAILED` | Falha no rebuild do resampler |
-/// | 2 | `RT_IS_FIFO` | Confirmação de SCHED_FIFO ativo |
-/// | 3 | `HAS_CLIPPED` | Saturação (clipping) na saída |
-/// | 4 | `IS_SILENT` | Buffer em silêncio total (Gate Closed) |
-/// | 5 | `GC_OVERFLOW` | Overflow no canal de Garbage Collection |
-/// | 6 | `IS_FADING` | Gate em transição (Fading In/Out) |
-/// | 7 | `MODEL_LOAD_FAILED` | Falha no carregamento do modelo na RT |
-/// | 8 | `HEAP_ALLOC` | Alocação no heap detectada na thread RT |
-/// | 9 | `A2_PLACEHOLDER` | Modelo A2 placeholder ativo (bypass silencioso) |
-/// | 10 | `RESAMP_SWAP_PENDING` | Callback RT pausado aguardando swap de resampler |
+/// | 0 | `NEEDS_RESAMPLER_REBUILD` | DSP thread requests new resampler |
+/// | 1 | `RESAMPLER_REBUILD_FAILED` | Resampler rebuild failed |
+/// | 2 | `RT_IS_FIFO` | SCHED_FIFO active confirmed |
+/// | 3 | `HAS_CLIPPED` | Output saturation (clipping) |
+/// | 4 | `IS_SILENT` | Buffer completely silent (Gate Closed) |
+/// | 5 | `GC_OVERFLOW` | Garbage Collection channel overflow |
+/// | 6 | `IS_FADING` | Gate transitioning (Fading In/Out) |
+/// | 7 | `MODEL_LOAD_FAILED` | Model load failure on RT thread |
+/// | 8 | `HEAP_ALLOC` | Heap allocation detected on RT thread |
+/// | 9 | `A2_PLACEHOLDER` | A2 placeholder model active (silent bypass) |
+/// | 10 | `RESAMP_SWAP_PENDING` | RT callback paused awaiting resampler swap |
 #[repr(align(128))]
 pub struct RtStatusFlags {
-    /// Sample rate efetivamente ativo na thread DSP após reconstrução do resampler.
-    /// Setado pela thread DSP ao consumir um novo `NamResampler` do canal SPSC.
-    /// Valor `0` indica ausência de atualização pendente.
+    /// Effective sample rate active on the DSP thread after resampler rebuild.
+    /// Set by the DSP thread upon consuming a new `NamResampler` from the SPSC channel.
+    /// Value `0` indicates no pending update.
     pub active_rate: AtomicU32,
-    /// Notificação de mudança de rate para fins de log.
-    /// Valor `0` indica nenhuma mudança desde o último poll.
+    /// Rate change notification for logging purposes.
+    /// Value `0` indicates no change since the last poll.
     pub active_rate_changed: AtomicU32,
 
-    /// Rate alvo que a thread DSP detectou do pw mas não conseguiu aplicar (aguardando rebuild).
-    /// A thread principal lê este valor para saber qual rate construir.
-    /// Valor `0` indica nenhuma requisição pendente.
+    /// Target rate detected by the DSP thread from PipeWire but not yet applied (awaiting rebuild).
+    /// The main thread reads this value to know which rate to build.
+    /// Value `0` indicates no pending request.
     pub requested_pw_rate: AtomicU32,
 
-    /// Rate alvo do modelo carregado (NAM). O padrão usual é 48000.
+    /// Target rate of the loaded model (NAM). The usual default is 48000.
     pub requested_nam_rate: AtomicU32,
 
-    /// Prioridade RT efetiva confirmada por `pthread_getschedparam`.
-    /// Valor `-1` indica que a verificação ainda não foi realizada.
-    /// Setado no cold-path do primeiro frame da thread DSP.
+    /// Effective RT priority confirmed by `pthread_getschedparam`.
+    /// Value `-1` indicates the check has not yet been performed.
+    /// Set on the cold-path of the DSP thread's first frame.
     pub rt_priority: AtomicI32,
 
-    /// Contador atômico de overloads de DSP (XRUNs virtuais).
-    /// Incrementado pelo callback RT se o processamento exceder 85% do tempo limite (budget).
+    /// Atomic counter of DSP overloads (virtual XRUNs).
+    /// Incremented by the RT callback if processing exceeds 85% of the time budget.
     pub dsp_overloads: AtomicU32,
 
-    /// Tempo de processamento do último ciclo DSP em ticks (RDTSC).
-    /// Lido pela thread principal e convertido para Duration via Anchor.
+    /// Processing time of the last DSP cycle in ticks (RDTSC).
+    /// Read by the main thread and converted to Duration via Anchor.
     pub dsp_cycle_time: AtomicU64,
 
-    /// Número de amostras processadas no último ciclo (para cálculo de budget).
+    /// Number of samples processed in the last cycle (for budget calculation).
     pub last_n_samples: AtomicU32,
 
-    /// Histograma de latência para análise estatística (P50, P95, P99).
+    /// Latency histogram for statistical analysis (P50, P95, P99).
     pub latency_hist: crate::dsp::telemetry::LatencyHistogram,
 
-    /// Bitmask atômico contendo os estados binários (needs_rebuild, clipped, silent, etc).
-    /// Reduz Cache Bouncing ao condensar múltiplos estados em uma única linha de cache.
+    /// Atomic bitmask containing binary states (needs_rebuild, clipped, silent, etc).
+    /// Reduces Cache Bouncing by condensing multiple states into a single cache line.
     pub status_bits: AtomicU64,
 }
 
 impl RtStatusFlags {
-    /// Cria uma nova instância com valores iniciais zerados/sentinela.
+    /// Creates a new instance with zero/sentinel initial values.
     #[cold]
     pub fn new() -> Self {
         Self {
@@ -131,26 +131,26 @@ impl RtStatusFlags {
         }
     }
 
-    /// Seta uma ou mais flags no bitmask.
+    /// Sets one or more flags in the bitmask.
     #[inline(always)]
     pub fn set_flag(&self, flag: u64) {
         self.status_bits.fetch_or(flag, Ordering::Relaxed);
     }
 
-    /// Limpa uma ou mais flags no bitmask.
+    /// Clears one or more flags in the bitmask.
     #[inline(always)]
     pub fn clear_flag(&self, flag: u64) {
         self.status_bits.fetch_and(!flag, Ordering::Relaxed);
     }
 
-    /// Verifica se uma flag está ativa.
+    /// Checks whether a flag is active.
     #[inline(always)]
     pub fn check_flag(&self, flag: u64) -> bool {
         (self.status_bits.load(Ordering::Relaxed) & flag) != 0
     }
 
-    /// Verifica se uma flag está ativa e a limpa atomicamente em uma única operação.
-    /// Retorna `true` se a flag estava ativa.
+    /// Checks whether a flag is active and clears it atomically in a single operation.
+    /// Returns `true` if the flag was active.
     #[inline(always)]
     pub fn check_and_clear_flag(&self, flag: u64) -> bool {
         (self.status_bits.fetch_and(!flag, Ordering::Relaxed) & flag) != 0
@@ -163,48 +163,48 @@ impl Default for RtStatusFlags {
     }
 }
 
-/// Payload SPSC enviado do Host (CLI/UI) para a Thread DSP.
-/// Adota alinhamento a 128 bytes para mitigar False Sharing.
+/// SPSC payload sent from the Host (CLI/UI) to the DSP Thread.
+/// Aligned to 128 bytes to mitigate False Sharing.
 #[repr(align(128))]
 pub enum ParamPayload {
-    /// Injeta o ganho de entrada (Input Gain) como multiplicador linear.
+    /// Injects the input gain as a linear multiplier.
     InputGain(f32),
-    /// Injeta o ganho de saída (Output Gain) como multiplicador linear.
+    /// Injects the output gain as a linear multiplier.
     OutputGain(f32),
-    /// Carrega a topologia matemática decodificada informando, simultaneamente, os limiares
-    /// esperados pelo criador do modelo (resolvidos da tag input_level_dbu e loudness).
-    /// O ponteiro garante alocação-zero (no-heap) e inicialização determinística.
+    /// Loads the decoded mathematical topology, also informing the thresholds
+    /// expected by the model creator (resolved from input_level_dbu and loudness tags).
+    /// The pointer ensures zero-allocation (no-heap) and deterministic initialization.
     LoadModel {
-        /// O modelo encapsulado para a inferência neural (Canal Esquerdo)
+        /// The encapsulated model for neural inference (Left Channel)
         model_l: Option<Box<crate::models::DynamicModel>>,
-        /// O modelo encapsulado para a inferência neural (Canal Direito)
+        /// The encapsulated model for neural inference (Right Channel)
         model_r: Option<Box<crate::models::DynamicModel>>,
-        /// Ajuste de ganho esperado na entrada como multiplicador linear.
+        /// Expected input gain adjustment as a linear multiplier.
         input_mult_adj: f32,
-        /// Ajuste de ganho esperado na saída como multiplicador linear.
+        /// Expected output gain adjustment as a linear multiplier.
         output_mult_adj: f32,
-        /// Sample rate exigido pelo modelo (geralmente 48000).
+        /// Sample rate required by the model (usually 48000).
         sample_rate: u32,
     },
-    /// Injeta as configurações do Gate de Silêncio/Mono.
+    /// Injects the Silence/Mono Gate settings.
     GateConfig(crate::dsp::gate::GateParams),
 }
 
 #[allow(clippy::large_enum_variant)]
-/// Representa um item que deve ser descartado com segurança fora da thread de áudio.
-/// O descarte (drop) desses itens pode envolver liberações de memória pesadas.
+/// Represents an item that should be safely disposed outside the audio thread.
+/// Dropping these items may involve heavy memory deallocations.
 pub enum GcItem {
-    /// Um modelo dinâmico (LSTM ou WaveNet).
+    /// A dynamic model (LSTM or WaveNet).
     Model(Box<crate::models::DynamicModel>),
-    /// Um resampler (Boxed para garantir RT-safety no descarte).
+    /// A resampler (boxed to ensure RT-safety on drop).
     Resampler(Box<crate::dsp::resampler::NamResampler>),
-    /// Variante de teste para validação de integridade e stress.
+    /// Test variant for integrity and stress validation.
     #[cfg(test)]
     Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
 }
 
 impl GcItem {
-    /// Retorna o ID do tipo para o overflow buffer.
+    /// Returns the type ID for the overflow buffer.
     fn type_id(&self) -> u8 {
         match self {
             GcItem::Model(_) => 1,
@@ -214,10 +214,10 @@ impl GcItem {
         }
     }
 
-    /// Reconstrói um GcItem a partir de um ponteiro bruto e um ID de tipo.
+    /// Reconstructs a GcItem from a raw pointer and a type ID.
     ///
     /// # Safety
-    /// O ponteiro deve ter sido gerado via `Box::into_raw` de um objeto do tipo correspondente.
+    /// The pointer must have been generated via `Box::into_raw` of an object of the corresponding type.
     unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Self {
         match type_id {
             1 => GcItem::Model(unsafe { Box::from_raw(ptr as *mut crate::models::DynamicModel) }),
@@ -233,10 +233,10 @@ impl GcItem {
     }
 }
 
-/// Buffer circular de "estacionamento final" para itens de GC.
-/// Utilizado quando o canal SPSC principal e o parking lot da thread estão cheios.
-/// Garante que nenhum objeto seja descartado na thread de áudio em troca de um leak controlado
-/// ou sobrescrita em cenários de estresse extremo.
+/// Circular "final parking" buffer for GC items.
+/// Used when the main SPSC channel and the thread's parking lot are both full.
+/// Ensures no object is dropped on the audio thread at the cost of a controlled leak
+/// or overwrite in extreme stress scenarios.
 pub struct GcOverflowBuffer {
     slots: Box<[AtomicPtr<std::ffi::c_void>]>,
     types: Box<[AtomicU8]>,
@@ -245,11 +245,11 @@ pub struct GcOverflowBuffer {
 
 impl GcOverflowBuffer {
     #[cold]
-    /// Cria um novo buffer de overflow com a capacidade especificada.
+    /// Creates a new overflow buffer with the specified capacity.
     pub fn new(capacity: usize) -> Self {
         assert!(
             capacity > 0,
-            "GcOverflowBuffer: capacity deve ser maior que 0 para evitar panic por divisão por zero."
+            "GcOverflowBuffer: capacity must be greater than 0 to avoid division by zero panic."
         );
         let mut slots = Vec::with_capacity(capacity);
         let mut types = Vec::with_capacity(capacity);
@@ -264,9 +264,9 @@ impl GcOverflowBuffer {
         }
     }
 
-    /// Tenta estacionar um item no buffer de overflow sem alocações RT.
+    /// Attempts to park an item in the overflow buffer without RT allocations.
     ///
-    /// Se o buffer estiver cheio, o item mais antigo é sobrescrevido (leak).
+    /// If the buffer is full, the oldest item is overwritten (leak).
     pub fn push(&self, item: GcItem) -> bool {
         let type_id = item.type_id();
         let ptr = match item {
@@ -279,21 +279,21 @@ impl GcOverflowBuffer {
         let len = self.slots.len() as u64;
         let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
 
-        // Swap do tipo primeiro, depois do ponteiro.
+        // Swap the type first, then the pointer.
         let old_type = self.types[idx].swap(type_id, Ordering::Release);
         let old_ptr = self.slots[idx].swap(ptr, Ordering::Acquire);
 
         if !old_ptr.is_null() && old_type != 0 {
-            // SOBRESCRITA: Vazamento intencional para evitar Drop no RT.
-            // O usuário será avisado via flag de status.
-            true // Houve sobrescrita
+            // OVERWRITE: Intentional leak to avoid Drop in RT.
+            // The user will be notified via the status flag.
+            true // An overwrite occurred
         } else {
             false
         }
     }
 
-    /// Drena todos os itens acumulados no buffer de overflow.
-    /// Deve ser chamado periodicamente pela thread principal (Cold Path).
+    /// Drains all accumulated items from the overflow buffer.
+    /// Should be called periodically by the main thread (Cold Path).
     pub fn drain(&self) -> Vec<GcItem> {
         let mut items = Vec::with_capacity(self.slots.len());
         for i in 0..self.slots.len() {
@@ -315,44 +315,44 @@ impl Default for GcOverflowBuffer {
     }
 }
 
-/// Resultado da inicialização SPSC: canais de parâmetros, GC de modelos,
-/// canal de resamplers RT-safe, e flags de status atômicas.
+/// SPSC initialization result: parameter channels, model GC,
+/// RT-safe resampler channel, and atomic status flags.
 pub struct SpscChannels {
-    /// Produtor de parâmetros CLI→DSP.
+    /// CLI→DSP parameter producer.
     pub param_producer: Producer<ParamPayload>,
-    /// Consumidor de parâmetros CLI→DSP (movido para o callback RT).
+    /// CLI→DSP parameter consumer (moved to the RT callback).
     pub param_consumer: Consumer<ParamPayload>,
-    /// Produtor GC: thread DSP envia itens obsoletos para drop fora do RT.
+    /// GC producer: DSP thread sends obsolete items for drop outside RT.
     pub gc_producer: Producer<GcItem>,
-    /// Consumidor GC: thread background executa `drop()`.
+    /// GC consumer: background thread executes `drop()`.
     pub gc_consumer: Consumer<GcItem>,
-    /// Buffer de fallback para overflow de GC (overwrite).
+    /// Fallback buffer for GC overflow (overwrite).
     pub gc_overflow: Arc<GcOverflowBuffer>,
-    /// Produtor de resamplers: thread principal constrói e envia para o callback RT.
+    /// Resampler producer: main thread builds and sends to the RT callback.
     pub resampler_producer: Producer<crate::dsp::resampler::NamResampler>,
-    /// Consumidor de resamplers: callback RT drena para substituir o resampler ativo.
+    /// Resampler consumer: RT callback drains to replace the active resampler.
     pub resampler_consumer: Consumer<crate::dsp::resampler::NamResampler>,
-    /// Flags atômicas de status compartilhadas entre RT e Main (zero I/O no callback).
+    /// Atomic status flags shared between RT and Main (zero I/O in callback).
     pub rt_status: Arc<RtStatusFlags>,
 }
 
-/// Cria e retorna a malha SPSC lock-free completa para o pipeline.
+/// Creates and returns the complete lock-free SPSC mesh for the pipeline.
 ///
-/// Inclui canais para:
-/// - Parâmetros CLI→DSP (`ParamPayload`)
-/// - GC de modelos obsoletos (Drop-Delegation)
-/// - Resamplers pré-construídos (Main→RT, zero alocação no callback)
-/// - Flags atômicas de status RT→Main
+/// Includes channels for:
+/// - CLI→DSP parameters (`ParamPayload`)
+/// - Obsolete model GC (Drop-Delegation)
+/// - Pre-built resamplers (Main→RT, zero allocation in callback)
+/// - RT→Main atomic status flags
 ///
-/// `capacity` deve ser preferencialmente potência de 2.
+/// `capacity` should preferably be a power of 2.
 pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (param_prod, param_cons) = RingBuffer::new(capacity);
-    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 4); // Capacidade quadruplicada para garbage collection segura
-    // Canal de resampler: capacidade pequena (apenas 1 em trânsito por vez, tipicamente)
+    let (gc_prod, gc_cons) = RingBuffer::new(capacity * 4); // Quadrupled capacity for safe garbage collection
+    // Resampler channel: small capacity (only 1 in transit at a time, typically)
     let (rs_prod, rs_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
-    // O buffer de overflow deve ser grande o suficiente para acomodar picos de trocas de modelos.
-    // Usamos 64 como base, ou a capacidade solicitada se for maior.
+    // The overflow buffer should be large enough to accommodate model swap spikes.
+    // We use 64 as a base, or the requested capacity if higher.
     let gc_overflow = Arc::new(GcOverflowBuffer::new(capacity.max(64)));
 
     SpscChannels {
@@ -367,18 +367,18 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
     }
 }
 
-/// Drena agressivamente os canais de Garbage Collection para liberar memória.
+/// Aggressively drains the Garbage Collection channels to free memory.
 ///
-/// Esta função deve ser chamada periodicamente pela thread principal (CLI/UI)
-/// ou pelo loop de eventos do host (PipeWire, CLAP). Ela executa o `drop()`
-/// dos objetos obsoletos (modelos, resamplers) fora da thread RT.
+/// This function should be called periodically by the main thread (CLI/UI)
+/// or by the host event loop (PipeWire, CLAP). It executes `drop()`
+/// on obsolete objects (models, resamplers) outside the RT thread.
 pub fn drain_gc_channels(gc_consumer: &mut Consumer<GcItem>, gc_overflow: &GcOverflowBuffer) {
-    // 1. Drena o canal SPSC principal (Drop-Delegation)
+    // 1. Drain the main SPSC channel (Drop-Delegation)
     while let Ok(item) = gc_consumer.pop() {
         drop(item);
     }
 
-    // 2. Drena o buffer de overflow (overwrite ring buffer)
+    // 2. Drain the overflow buffer (overwrite ring buffer)
     for item in gc_overflow.drain() {
         drop(item);
     }

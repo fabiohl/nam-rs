@@ -3,9 +3,9 @@
 
 use baseview::MouseButton;
 
-pub(crate) const SCROLL_LINES_TO_POINTS: f32 = 10.0; // ~10 pixels/linha (heurística baseview→egui)
+pub(crate) const SCROLL_LINES_TO_POINTS: f32 = 10.0; // ~10 pixels/line (baseview→egui heuristic)
 
-/// Mapeia botões do mouse baseview → egui.
+/// Maps baseview mouse buttons → egui.
 pub(crate) fn map_mouse_button(button: MouseButton) -> Option<egui::PointerButton> {
     match button {
         MouseButton::Left => Some(egui::PointerButton::Primary),
@@ -15,10 +15,10 @@ pub(crate) fn map_mouse_button(button: MouseButton) -> Option<egui::PointerButto
     }
 }
 
-/// Mapeia modificadores de teclado baseview → egui.
+/// Maps baseview keyboard modifiers → egui.
 ///
-/// No Linux, `META` (Super/Win) é mapeado tanto para `mac_cmd` quanto para `command`,
-/// mantendo compatibilidade com atalhos multiplataforma do egui.
+/// On Linux, `META` (Super/Win) is mapped to both `mac_cmd` and `command`,
+/// maintaining compatibility with egui's cross-platform shortcuts.
 pub(crate) fn map_modifiers(mods: keyboard_types::Modifiers) -> egui::Modifiers {
     egui::Modifiers {
         alt: mods.contains(keyboard_types::Modifiers::ALT),
@@ -30,10 +30,10 @@ pub(crate) fn map_modifiers(mods: keyboard_types::Modifiers) -> egui::Modifiers 
     }
 }
 
-/// Converte um evento de teclado baseview em um `egui::Event::Key`.
+/// Converts a baseview keyboard event into an `egui::Event::Key`.
 ///
-/// Mapeia teclas de navegação (setas, Tab, Enter, etc.), letras (a-z), dígitos (0-9)
-/// e espaço. Teclas não mapeadas (F-keys, teclas especiais) retornam `None` e são ignoradas.
+/// Maps navigation keys (arrows, Tab, Enter, etc.), letters (a-z), digits (0-9)
+/// and space. Unmapped keys (F-keys, special keys) return `None` and are ignored.
 pub(crate) fn map_keyboard_event(key_event: &keyboard_types::KeyboardEvent) -> Option<egui::Event> {
     let pressed = match key_event.state {
         keyboard_types::KeyState::Down => true,
@@ -58,7 +58,7 @@ pub(crate) fn map_keyboard_event(key_event: &keyboard_types::KeyboardEvent) -> O
         keyboard_types::Key::PageDown => Some(egui::Key::PageDown),
         keyboard_types::Key::Character(s) => {
             if s.len() == 1 {
-                // SAFETY: len() == 1 garante que next() não retorna None.
+                // SAFETY: len() == 1 guarantees that next() does not return None.
                 let c = s.chars().next().unwrap_or('\0').to_ascii_lowercase();
                 match c {
                     'a' => Some(egui::Key::A),

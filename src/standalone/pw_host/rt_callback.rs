@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Funções auxiliares executadas dentro do `process()` callback RT da capture stream.
+//! Helper functions executed inside the capture stream's `process()` RT callback.
 //!
-//! Todas as funções neste módulo seguem as regras absolutas do callback:
-//! - Zero alocação na heap
+//! All functions in this module follow the absolute callback rules:
+//! - Zero heap allocation
 //! - Zero I/O
 //! - Zero mutexes
 
@@ -19,8 +19,8 @@ use rtrb::Consumer;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// 5.1.1. Drenagem de Resamplers (Zero-Alloc Swap)
-/// Substitui os resamplers sem usar alocação de memória no caminho crítico.
+/// 5.1.1. Resampler Draining (Zero-Alloc Swap)
+/// Replaces resamplers without using memory allocation in the critical path.
 #[inline(always)]
 pub fn drain_resamplers(
     resampler_consumer: &mut Consumer<NamResampler>,
@@ -77,8 +77,8 @@ pub fn drain_resamplers(
     }
 }
 
-/// 5.1.2. RECEPÇÃO DE COMANDOS (Canal SPSC)
-/// Processa comandos da interface de linha de comando ou sistema de controle (volume, modelo, noise gate).
+/// 5.1.2. COMMAND RECEPTION (SPSC Channel)
+/// Processes commands from the command-line interface or control system (volume, model, noise gate).
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 pub fn receive_commands(
@@ -191,8 +191,8 @@ pub fn receive_commands(
     param_changed
 }
 
-/// 5.1.3. SINCRONIZAÇÃO DE RATE (Clock Tracking)
-/// Avalia se houve discrepância de frequência e envia pedido para a Thread Main.
+/// 5.1.3. RATE SYNCHRONIZATION (Clock Tracking)
+/// Checks for frequency discrepancy and sends a request to the Main Thread.
 #[inline(always)]
 pub fn sync_rate(
     rate_for_process: &std::sync::atomic::AtomicU32,
@@ -229,8 +229,8 @@ pub fn sync_rate(
     current_pw_rate
 }
 
-/// 5.1.4. LÓGICA DSP DE TEMPO REAL
-/// Adquire o Buffer bruto do sistema e delega à Fábrica de Áudio (pipeline) o trabalho pesado.
+/// 5.1.4. REAL-TIME DSP LOGIC
+/// Acquires the raw system buffer and delegates the heavy lifting to the Audio Factory (pipeline).
 #[inline(always)]
 pub fn process_dsp_buffer(
     stream: &pw::stream::Stream,

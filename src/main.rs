@@ -3,19 +3,19 @@
 
 #![warn(missing_docs)]
 
-//! Ponto de entrada principal do binário CLI/Standalone do NAM-rs.
+//! Main entry point for the NAM-rs CLI/Standalone binary.
 //!
-//! **NOTA:** Este arquivo é utilizado apenas para o modo executável (terminal/PipeWire).
-//! O plugin CLAP ignora este arquivo e utiliza diretamente a biblioteca definida em `lib.rs`.
+//! **NOTE:** This file is only used for executable mode (terminal/PipeWire).
+//! The CLAP plugin ignores this file and directly uses the library defined in `lib.rs`.
 //!
-//! Pense neste arquivo como a "recepção" do nosso estúdio virtual. Ele é responsável por:
-//! 1. Ler o que o usuário digita no terminal (qual amplificador carregar e os volumes de entrada/saída).
-//! 2. Abrir a conexão de áudio com o sistema (PipeWire), conectando o sinal de áudio ao motor sonoro.
-//! 3. Garantir que, quando o usuário apertar CTRL+C, tudo seja desligado com segurança, sem deixar ruídos.
+//! Think of this file as the "reception" of our virtual studio. It is responsible for:
+//! 1. Reading what the user types in the terminal (which amp to load and the input/output volumes).
+//! 2. Opening the audio connection to the system (PipeWire), connecting the audio signal to the sound engine.
+//! 3. Ensuring that when the user presses CTRL+C, everything shuts down safely, without leaving noise.
 //!
-//! # Regras de Arquitetura para Desenvolvedores
-//! - **ZERO LOCKS** na thread de Áudio (módulo `pw_host`): O áudio não "espera" pela interface visual. Se não houver instrução nova, ele continua usando a anterior. Evita "engasgos" no som.
-//! - **ZERO ALOCAÇÕES** na thread de Áudio: A memória do canal de áudio (`process()`) é sempre preparada 100% de antemão. O áudio nunca "pede por mais memória RAM" de supetão.
+//! # Architecture Rules for Developers
+//! - **ZERO LOCKS** in the Audio thread (`pw_host` module): Audio does not "wait" for the visual interface. If there is no new instruction, it continues using the previous one. This avoids sound "glitching".
+//! - **ZERO ALLOCATIONS** in the Audio thread: The audio channel memory (`process()`) is always prepared 100% in advance. Audio never "requests more RAM" out of nowhere.
 
 use nam_rs::diagnostics::SystemSnapshot;
 use nam_rs::standalone::{cli, colors::Colorize, pw_host, rt_setup};
@@ -23,17 +23,17 @@ use nam_rs::{loader, spsc, spsc::ParamPayload};
 
 use std::sync::atomic::Ordering;
 
-/// Ponto de entrada do NAM-rs.
+/// Entry point for NAM-rs.
 fn main() -> anyhow::Result<()> {
-    // Inicializa o backend de logging (respeita RUST_LOG; padrão: info)
+    // Initialize the logging backend (respects RUST_LOG; default: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    // 1. LER CONFIGURAÇÕES: O sistema começa lendo o que você digitou no terminal.
-    // Ele descobre qual arquivo de "amplificador" (.nam) você quer usar e os volumes iniciais.
+    // 1. READ CONFIGURATIONS: The system starts by reading what you typed in the terminal.
+    // It figures out which "amplifier" file (.nam) you want to use and the initial volumes.
     let (model_path, initial_in_gain, initial_out_gain, buffer_size) = cli::parse_args();
 
-    // 2. CONHECER O COMPUTADOR: Captura uma "foto" das capacidades do seu processador.
-    // Isso ajuda o NAM-rs a escolher a forma mais rápida de processar a matemática do áudio.
+    // 2. KNOW THE COMPUTER: Captures a "snapshot" of your processor's capabilities.
+    // This helps NAM-rs choose the fastest way to process the audio math.
     let sys = SystemSnapshot::capture();
     log::info!(
         "🎸 {}",
@@ -42,13 +42,13 @@ fn main() -> anyhow::Result<()> {
             .bold()
     );
 
-    // 3. PREPARAR O ÁUDIO: Inicializa o PipeWire (o sistema de som do Linux)
-    // e calibra os "relógios" internos para garantir que o som saia sem atrasos (latência).
+    // 3. PREPARE THE AUDIO: Initialize PipeWire (the Linux sound system)
+    // and calibrate the internal "clocks" to ensure sound output without delays (latency).
     pipewire::init();
     rt_setup::calibrate_tsc();
 
-    // 4. BOTÃO DE EMERGÊNCIA: Configura o "Ctrl+C".
-    // Se você quiser fechar o programa, ele garante que o áudio pare de forma suave, sem estalos.
+    // 4. EMERGENCY BUTTON: Configures "Ctrl+C".
+    // If you want to close the program, it ensures the audio stops smoothly, without clicks.
     extern "C" fn sigint_handler(_sig: libc::c_int) {
         if spsc::SHUTDOWN.load(Ordering::SeqCst) {
             unsafe { libc::_exit(1) };
@@ -62,9 +62,9 @@ fn main() -> anyhow::Result<()> {
         libc::sigaction(libc::SIGINT, &sa, std::ptr::null_mut());
     }
 
-    // 5. CANAIS DE COMUNICAÇÃO: Cria "tubos" de comunicação ultra-rápidos.
-    // Imagine que a Interface (você) e o Motor de Som (o áudio) moram em salas separadas.
-    // Esses canais permitem enviar comandos (ex: "aumenta o volume") sem nunca fazer o som "engasgar".
+    // 5. COMMUNICATION CHANNELS: Creates ultra-fast "pipes" for communication.
+    // Imagine the Interface (you) and the Sound Engine (audio) live in separate rooms.
+    // These channels allow sending commands (e.g. "increase volume") without ever making the sound "glitch".
     let channels = spsc::setup_spsc(64);
     let mut producer = channels.param_producer;
     let consumer = channels.param_consumer;
@@ -75,8 +75,8 @@ fn main() -> anyhow::Result<()> {
     let resampler_consumer = channels.resampler_consumer;
     let rt_status = channels.rt_status;
 
-    // 6. CARREGAR O SOM: Se você disse "use o amplificador X",
-    // aqui é onde o computador abre aquele arquivo e prepara as contas matemáticas (Redes Neurais).
+    // 6. LOAD THE SOUND: If you said "use amplifier X",
+    // this is where the computer opens that file and prepares the math (Neural Networks).
     if let Some(path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
         match loader::load_and_build_model(&path, &sys) {
@@ -100,7 +100,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Ganhos iniciais
+    // Initial gains
     if initial_in_gain != 0.0 {
         let _ = producer.push(ParamPayload::InputGain(
             nam_rs::math::dsp::gain_lut::get_gain_lut().db_to_linear(initial_in_gain),
@@ -114,12 +114,12 @@ fn main() -> anyhow::Result<()> {
 
     let tsc_anchor = minstant::Anchor::new();
 
-    // Configurações process-wide (THP disable + mlockall) antes de iniciar o PipeWire.
-    // Executadas aqui (fora do cold-path do primeiro frame DSP) para evitar
-    // syscalls que causariam jitter no momento crítico da primeira entrega de áudio.
+    // Process-wide settings (THP disable + mlockall) before starting PipeWire.
+    // Executed here (outside the cold-path of the first DSP frame) to avoid
+    // syscalls that would cause jitter at the critical moment of the first audio delivery.
     rt_setup::configure_process_wide();
 
-    // Executa o host PipeWire (bloqueante)
+    // Run the PipeWire host (blocking)
     pw_host::run_pipewire_host(
         consumer,
         gc_producer,

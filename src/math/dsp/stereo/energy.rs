@@ -5,11 +5,11 @@
 
 use core::arch::x86_64::*;
 
-/// Calcula a energia (Mean Square) de um bloco via AVX2.
+/// Computes the energy (Mean Square) of a block via AVX2.
 /// $E = \frac{1}{N} \sum x_i^2$
 ///
 /// # Safety
-/// O slice `data` deve ser válido.
+/// The `data` slice must be valid.
 #[inline]
 #[target_feature(enable = "avx2")]
 pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
@@ -61,8 +61,8 @@ pub unsafe fn compute_energy_avx2(data: &[f32]) -> f32 {
     total_sum / (len as f32)
 }
 
-/// Calcula o máximo da energia entre dois canais (Mean Square) via AVX2.
-/// Funde as duas passagens em uma para economizar banda de memória.
+/// Computes the maximum energy between two channels (Mean Square) via AVX2.
+/// Fuses both passes into one to save memory bandwidth.
 #[target_feature(enable = "avx2")]
 pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
     let len = core::cmp::min(l.len(), r.len());
@@ -101,7 +101,7 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
         i += 8;
     }
 
-    // Soma horizontal para L
+    // Horizontal sum for L
     let sum_l = _mm256_add_ps(sum_l0, sum_l1);
     let hi_l = _mm256_extractf128_ps(sum_l, 1);
     let lo_l = _mm256_castps256_ps128(sum_l);
@@ -113,7 +113,7 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
     let mut total_sum_l = 0.0f32;
     _mm_store_ss(&mut total_sum_l, r_l);
 
-    // Soma horizontal para R
+    // Horizontal sum for R
     let sum_r = _mm256_add_ps(sum_r0, sum_r1);
     let hi_r = _mm256_extractf128_ps(sum_r, 1);
     let lo_r = _mm256_castps256_ps128(sum_r);
@@ -136,12 +136,11 @@ pub unsafe fn compute_energy_stereo_avx2(l: &[f32], r: &[f32]) -> f32 {
     energy_l.max(energy_r)
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Kernels AVX-512
+// AVX-512 Kernels
 // ═══════════════════════════════════════════════════════════════
 
-/// Calcula o máximo da energia entre dois canais (Mean Square) via AVX-512.
-/// Funde as duas passagens em uma para economizar banda de memória.
+/// Computes the maximum energy between two channels (Mean Square) via AVX-512.
+/// Fuses both passes into one to save memory bandwidth.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn compute_energy_stereo_avx512(l: &[f32], r: &[f32]) -> f32 {
     let len = core::cmp::min(l.len(), r.len());
@@ -174,7 +173,7 @@ pub unsafe fn compute_energy_stereo_avx512(l: &[f32], r: &[f32]) -> f32 {
     energy_l.max(energy_r)
 }
 
-/// Calcula a energia (Mean Square) de um bloco via AVX-512.
+/// Computes the energy (Mean Square) of a block via AVX-512.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn compute_energy_avx512(data: &[f32]) -> f32 {
     let len = data.len();
@@ -200,8 +199,7 @@ pub unsafe fn compute_energy_avx512(data: &[f32]) -> f32 {
     total_sum / (len as f32)
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Fallbacks Escalares (Cold-Path)
+// Scalar Fallbacks (Cold-Path)
 // ═══════════════════════════════════════════════════════════════
 
 #[cold]
