@@ -47,6 +47,8 @@ pub type Lstm1x12 = LstmModel1<12, 13, 48>;
 pub type Lstm1x16 = LstmModel1<16, 17, 64>;
 /// LSTM 1 camada × 24 unidades ocultas (Heavy Standard).
 pub type Lstm1x24 = LstmModel1<24, 25, 96>;
+/// LSTM 1 camada × 40 unidades ocultas (Tone Matching).
+pub type Lstm1x40 = LstmModel1<40, 41, 160>;
 
 /// LSTM 2 camadas × 8 unidades ocultas.
 pub type Lstm2x8 = LstmModel2<8, 9, 16, 32>;
@@ -54,6 +56,8 @@ pub type Lstm2x8 = LstmModel2<8, 9, 16, 32>;
 pub type Lstm2x12 = LstmModel2<12, 13, 24, 48>;
 /// LSTM 2 camadas × 16 unidades ocultas.
 pub type Lstm2x16 = LstmModel2<16, 17, 32, 64>;
+/// LSTM 2 camadas × 24 unidades ocultas.
+pub type Lstm2x24 = LstmModel2<24, 25, 48, 96>;
 
 // =============================================================================
 // NamModel para LSTM — 1 Camada

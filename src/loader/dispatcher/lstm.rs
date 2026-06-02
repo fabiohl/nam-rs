@@ -43,6 +43,14 @@ pub(crate) fn build_lstm(data: &NamModelData) -> anyhow::Result<Box<DynamicModel
             let model = build_lstm_2layer::<16, 17, 32, 64>(data, num_layers, hidden_size)?;
             Ok(Box::new(DynamicModel::Lstm2x16(Box::new(model))))
         }
+        (1, 40) => {
+            let model = build_lstm_1layer::<40, 41, 160>(data, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm1x40(Box::new(model))))
+        }
+        (2, 24) => {
+            let model = build_lstm_2layer::<24, 25, 48, 96>(data, num_layers, hidden_size)?;
+            Ok(Box::new(DynamicModel::Lstm2x24(Box::new(model))))
+        }
         _ => build_lstm_dynamic(data, num_layers, hidden_size),
     }
 }

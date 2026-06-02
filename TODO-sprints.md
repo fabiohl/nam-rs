@@ -1210,7 +1210,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Critérios de aceitação:** Sem `debug_assert!` quebrado; saída plausível.
 - **Especialista:** `implementador`.
 
-#### Tarefa S13.T05 — Adicionar variantes LSTM ao catálogo (1×40, 2×24) 💡
+#### Tarefa S13.T05 — Adicionar variantes LSTM ao catálogo (1×40, 2×24) 💡 [DONE]
 
 - **Onde:** `src/models/lstm/mod.rs` (enum `DynamicModel`); `src/loader/dispatcher/lstm.rs` (match de dispatch estático, região ~linha 17-46 pós-refatoração).
 - **Problema:** Modelos `LSTM 1×40` (tone matching) e `2×24` (deeper) caem em fallback dinâmico, perdendo performance.

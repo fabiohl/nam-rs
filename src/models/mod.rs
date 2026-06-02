@@ -65,6 +65,10 @@ pub enum DynamicModel {
     Lstm2x12(Box<lstm::Lstm2x12>),
     /// LSTM 2 Camadas × 16 unidades ocultas.
     Lstm2x16(Box<lstm::Lstm2x16>),
+    /// LSTM 1 Camada × 40 unidades ocultas.
+    Lstm1x40(Box<lstm::Lstm1x40>),
+    /// LSTM 2 Camadas × 24 unidades ocultas.
+    Lstm2x24(Box<lstm::Lstm2x24>),
     /// LSTM Dinâmico (usado como fallback).
     LstmDyn(Box<lstm::LstmDynModel>),
 }
@@ -96,6 +100,8 @@ impl NamModel for DynamicModel {
             Self::Lstm2x8(m) => m.process(input, output),
             Self::Lstm2x12(m) => m.process(input, output),
             Self::Lstm2x16(m) => m.process(input, output),
+            Self::Lstm1x40(m) => m.process(input, output),
+            Self::Lstm2x24(m) => m.process(input, output),
             Self::LstmDyn(m) => m.process(input, output),
         }
     }
@@ -116,6 +122,8 @@ impl NamModel for DynamicModel {
             Self::Lstm2x8(m) => m.prewarm(num_samples),
             Self::Lstm2x12(m) => m.prewarm(num_samples),
             Self::Lstm2x16(m) => m.prewarm(num_samples),
+            Self::Lstm1x40(m) => m.prewarm(num_samples),
+            Self::Lstm2x24(m) => m.prewarm(num_samples),
             Self::LstmDyn(m) => m.prewarm(num_samples),
         }
     }
@@ -135,6 +143,8 @@ impl NamModel for DynamicModel {
             Self::Lstm2x8(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm2x12(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm2x16(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm1x40(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Lstm2x24(m) => m.reset(sample_rate, max_buffer_size),
             Self::LstmDyn(m) => m.reset(sample_rate, max_buffer_size),
         }
     }
