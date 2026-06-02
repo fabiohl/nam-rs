@@ -437,7 +437,17 @@ fn test_original_roundtrip(data: &NamModelData) {
 
 #[test]
 fn test_lstm_original_roundtrip() {
-    let topologies = [(1, 8), (1, 12), (1, 16), (1, 24), (2, 8), (2, 12), (2, 16)];
+    let topologies = [
+        (1, 8),
+        (1, 12),
+        (1, 16),
+        (1, 24),
+        (1, 40),
+        (2, 8),
+        (2, 12),
+        (2, 16),
+        (2, 24),
+    ];
     for &(layers, hidden) in &topologies {
         let data = make_synthetic_lstm(layers, hidden);
         test_original_roundtrip(&data);
@@ -458,7 +468,17 @@ fn test_wavenet_original_roundtrip() {
 
 #[test]
 fn test_lstm_gate_major_roundtrip() {
-    let topologies = [(1, 8), (1, 12), (1, 16), (1, 24), (2, 8), (2, 12), (2, 16)];
+    let topologies = [
+        (1, 8),
+        (1, 12),
+        (1, 16),
+        (1, 24),
+        (1, 40),
+        (2, 8),
+        (2, 12),
+        (2, 16),
+        (2, 24),
+    ];
     for &(num_layers, hidden_size) in &topologies {
         let orig_data = make_synthetic_lstm(num_layers, hidden_size);
 

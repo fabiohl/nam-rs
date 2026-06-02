@@ -2051,3 +2051,98 @@ fn test_accept_a2_activation_with_fallback() {
 
     println!("Ativação não-Tanh (ReLU) direcionada corretamente para fallback A2.");
 }
+
+/// Teste 18: Paridade LSTM 1x40 e 2x24 — estático vs dinâmico com modelos sintéticos.
+#[test]
+fn test_parity_lstm_new_topologies() {
+    use nam_rs::loader::dispatcher::build_lstm_dynamic;
+
+    // --- 1. Lstm1x40 (H=40) ---
+    // Total weights = 6841
+    let json_1x40 = serde_json::json!({
+        "version": "0.5.4",
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 1,
+            "hidden_size": 40
+        },
+        "weights": vec![0.01; 6841],
+        "sample_rate": 48000
+    });
+    let data_1x40 = parse_nam_json(&json_1x40.to_string()).unwrap();
+
+    let mut model_static_1x40 = build_model(&data_1x40).unwrap();
+    let mut model_dynamic_1x40 = build_lstm_dynamic(&data_1x40, 1, 40).unwrap();
+
+    model_static_1x40.prewarm(1024);
+    model_dynamic_1x40.prewarm(1024);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_static_1x40 = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_dynamic_1x40 = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(
+        &mut model_static_1x40,
+        &input,
+        &mut out_static_1x40,
+        GOLDEN_BLOCK_SIZE,
+    );
+    process_in_blocks(
+        &mut model_dynamic_1x40,
+        &input,
+        &mut out_dynamic_1x40,
+        GOLDEN_BLOCK_SIZE,
+    );
+
+    let mse_1x40 = compute_mse(&out_static_1x40, &out_dynamic_1x40);
+    println!("[Paridade LSTM 1x40] MSE = {:e}", mse_1x40);
+    assert!(
+        mse_1x40 <= 1e-7,
+        "LSTM 1x40 estático vs dinâmico divergiu! MSE = {:e}",
+        mse_1x40
+    );
+
+    // --- 2. Lstm2x24 (H=24) ---
+    // Total weights = 7321
+    let json_2x24 = serde_json::json!({
+        "version": "0.5.4",
+        "architecture": "LSTM",
+        "config": {
+            "num_layers": 2,
+            "hidden_size": 24
+        },
+        "weights": vec![0.01; 7321],
+        "sample_rate": 48000
+    });
+    let data_2x24 = parse_nam_json(&json_2x24.to_string()).unwrap();
+
+    let mut model_static_2x24 = build_model(&data_2x24).unwrap();
+    let mut model_dynamic_2x24 = build_lstm_dynamic(&data_2x24, 2, 24).unwrap();
+
+    model_static_2x24.prewarm(1024);
+    model_dynamic_2x24.prewarm(1024);
+
+    let mut out_static_2x24 = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_dynamic_2x24 = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(
+        &mut model_static_2x24,
+        &input,
+        &mut out_static_2x24,
+        GOLDEN_BLOCK_SIZE,
+    );
+    process_in_blocks(
+        &mut model_dynamic_2x24,
+        &input,
+        &mut out_dynamic_2x24,
+        GOLDEN_BLOCK_SIZE,
+    );
+
+    let mse_2x24 = compute_mse(&out_static_2x24, &out_dynamic_2x24);
+    println!("[Paridade LSTM 2x24] MSE = {:e}", mse_2x24);
+    assert!(
+        mse_2x24 <= 1e-7,
+        "LSTM 2x24 estático vs dinâmico divergiu! MSE = {:e}",
+        mse_2x24
+    );
+}

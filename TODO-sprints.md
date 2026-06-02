@@ -1221,6 +1221,18 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Critérios de aceitação:** Modelos batem performance dentro de 5% das variantes catalogadas.
 - **Especialista:** `implementador`.
 
+> **Auditoria da Sprint S13 (2026-06-02):**
+>
+> Todas as tarefas da Sprint S13 foram revisadas, auditadas e verificadas com sucesso. A cobertura de testes foi expandida para incluir as novas topologias LSTM `Lstm1x40` e `Lstm2x24`.
+>
+> - **S13.T01** ✓ — Testes de round-trip binário `.namb` v2 expandidos para incluir `(1, 40)` e `(2, 24)`.
+> - **S13.T02** ✓ — Fuzzing e proptests de parsers validando integridade com 100k iterações.
+> - **S13.T03** ✓ — Teste multi-instância do CLAP validando isolamento de `rt_priority` sob 10 instâncias simultâneas.
+> - **S13.T04** ✓ — Testes de prewarm para receptive field de tamanho extremo (até 4092 com K=5).
+> - **S13.T05** ✓ — Paridade estático vs dinâmico implementada e verificada para `Lstm1x40` e `Lstm2x24` (`test_parity_lstm_new_topologies`). Benchmarks integrados para as novas topologias no `inference_bench`.
+>
+> **Conclusão:** A Sprint S13 cumpre todos os objetivos micro e macro com cobertura exemplar de conformidade.
+
 ---
 
 ### Sprint S13b — Prototipação e Otimização de Precisão FastMath e Redução de Drift ✨

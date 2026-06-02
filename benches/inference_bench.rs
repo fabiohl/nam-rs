@@ -584,6 +584,90 @@ fn bench_resampler_long_run(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_lstm_1x40_process(c: &mut Criterion) {
+    let data = make_lstm_data(1, 40, 6841);
+    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("LSTM_1x40_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+fn bench_lstm_2x24_process(c: &mut Criterion) {
+    let data = make_lstm_data(2, 24, 7321);
+    let mut model = build_model(&data).expect("Dispatcher falhou para LSTM benchmark");
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("LSTM_2x24_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+fn bench_lstm_1x40_comparison(c: &mut Criterion) {
+    let data = make_lstm_data(1, 40, 6841);
+    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 1x40 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 1x40 benchmark");
+    model_simd.prewarm(1024);
+    model_scalar.prewarm(1024);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    let mut group = c.benchmark_group("LSTM_1x40_Comparison");
+    group.bench_function("SIMD_Fused_T3", |b| {
+        b.iter(|| {
+            model_simd.process(&input, &mut output);
+        });
+    });
+
+    #[cfg(any(test, feature = "long_bench"))]
+    group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
+        nam_rs::models::DynamicModel::Lstm1x40(m) => {
+            b.iter(|| m.process_scalar(&input, &mut output));
+        }
+        _ => panic!("Modelo não é Lstm1x40"),
+    });
+    group.finish();
+}
+
+fn bench_lstm_2x24_comparison(c: &mut Criterion) {
+    let data = make_lstm_data(2, 24, 7321);
+    let mut model_simd = build_model(&data).expect("Dispatcher falhou para LSTM 2x24 benchmark");
+    let mut model_scalar = build_model(&data).expect("Dispatcher falhou para LSTM 2x24 benchmark");
+    model_simd.prewarm(1024);
+    model_scalar.prewarm(1024);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    let mut group = c.benchmark_group("LSTM_2x24_Comparison");
+    group.bench_function("SIMD_Fused_T3", |b| {
+        b.iter(|| {
+            model_simd.process(&input, &mut output);
+        });
+    });
+
+    #[cfg(any(test, feature = "long_bench"))]
+    group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
+        nam_rs::models::DynamicModel::Lstm2x24(m) => {
+            b.iter(|| m.process_scalar(&input, &mut output));
+        }
+        _ => panic!("Modelo não é Lstm2x24"),
+    });
+    group.finish();
+}
+
 // Definição do grupo principal de benchmarks (latência de inferência e kernels DSP)
 criterion_group!(
     name = benches;
@@ -595,6 +679,10 @@ criterion_group!(
     bench_lstm_2x16_block_sizes,
     bench_lstm_1x8_comparison,
     bench_lstm_2x16_comparison,
+    bench_lstm_1x40_process,
+    bench_lstm_2x24_process,
+    bench_lstm_1x40_comparison,
+    bench_lstm_2x24_comparison,
     bench_tanh_slice_256,
     bench_sigmoid_slice_256,
     bench_wavenet_dynamic_standard,
