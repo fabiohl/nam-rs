@@ -1,112 +1,100 @@
-# tests/fixtures — Golden Vectors para Validação Cross-Reference C++ ↔ Rust
+# tests/fixtures — Golden Vectors para Validação Cross-Reference NeuralAmpModelerCore ↔ NAM-rs
+
+## Fonte de Verdade
+
+Todos os golden vectors neste diretório são gerados pelo **NeuralAmpModelerCore** (Steven Atkinson) — implementação canônica que treina e gera os modelos `.nam`.
 
 ## Arquivos neste diretório
 
-    golden_wavenet_standard.bin — Gerado pelo C++ NeuralAudio (BossWN-standard.nam)
-    golden_wavenet_feather.bin  — Gerado pelo C++ NeuralAudio (BossWN-feather.nam)
-    golden_wavenet_nano.bin     — Gerado pelo C++ NeuralAudio (BossWN-nano.nam)
-    golden_lstm_1x16.bin        — Gerado pelo C++ NeuralAudio (BossLSTM-1x16.nam)
+| Golden File                       | Modelo `.nam`        | Origem  | Topologia              |
+| --------------------------------- | -------------------- | ------- | ---------------------- |
+| `golden_wavenet_standard.bin`     | `BossWN-standard.nam` | NAM-rs | CH=16, K=3, HEAD=8, 20 layers |
+| `golden_wavenet_feather.bin`      | `BossWN-feather.nam`  | NAM-rs | CH=8, K=3, HEAD=4, 20 layers  |
+| `golden_wavenet_nano.bin`         | `BossWN-nano.nam`     | NAM-rs | CH=4, K=3, HEAD=2, 20 layers  |
+| `golden_lstm_1x16.bin`            | `BossLSTM-1x16.nam`   | NAM-rs | 1 layer, H=16          |
+| `golden_lstm_2x8.bin`             | `BossLSTM-2x8.nam`    | NAM-rs | 2 layers, H=8          |
+| `golden_namcore_lstm_1x3.bin`     | `lstm.nam`            | NAMCore | 1 layer, H=3, 70 pesos |
+| `golden_namcore_wn_micro.bin`     | `wavenet.nam`         | NAMCore | CH=3/2, K=3, HEAD=2/1, 3 layers |
+
+Os 2 modelos NAMCore (`lstm.nam` e `wavenet.nam`) são do diretório `example_models/` do NeuralAmpModelerCore — os mesmos usados nos testes oficiais (`test_get_dsp.cpp`, `test_slimmable_wavenet.cpp`). Exercitam topologias **abaixo de qualquer perfil estático** do NAM-rs, forçando os caminhos de despacho dinâmico/fallback.
 
 ## Formato binário (.golden.bin)
 
-    [u32 num_samples LE]
-    [f32×N input samples LE]       — senoidal 440Hz a 48kHz (512 amostras)
-    [f32×N expected output LE]     — output do C++ NeuralAudio Internal mode
+```
+[u32 num_samples LE]
+[f32×N input samples LE]       — stress signal (2048 amostras @ 48 kHz)
+[f32×N expected output LE]     — output do NeuralAmpModelerCore (render tool)
+```
+
+## Sinal de Stress (2048 amostras @ 48 kHz ≈ 42.7 ms)
+
+Substitui a senoidal 440 Hz por um sinal multi-componente deterministico:
+
+| Comportamento a testar                     | Componente do sinal                          |
+| ------------------------------------------ | -------------------------------------------- |
+| Resposta em frequência (grave → agudo)     | Chirp sweep 220 Hz → 3520 Hz                 |
+| Intermodulação harmônica (guitarra real)   | Harmônicos Low-E (82/165/330/659 Hz)         |
+| Resposta a transientes (ataque de nota)    | Impulso isolado (+0.9) a 25%                 |
+| Dinâmica de amplitude                      | Envelope attack–sustain–release              |
+| Comportamento near-silence / denormals     | Fade-to-silence (release tail)               |
+
+## Métricas de Precisão (5 métricas, single-pass fusion)
+
+Cada golden test reporta **5 métricas** calculadas numa única iteração sobre o buffer:
+
+| Métrica      | Fórmula                                          | O que detecta                              |
+| ------------ | ------------------------------------------------ | ------------------------------------------ |
+| **MSE**      | `Σ(rᵢ - tᵢ)² / N`                                | Erro médio (regressões estruturais)        |
+| **MAE**      | `max|rᵢ - tᵢ|`                                   | Pior caso pontual (outliers, overflow)     |
+| **SNR**      | `10 · log₁₀(Σrᵢ² / Σ(rᵢ-tᵢ)²)`                   | Relação sinal/ruído (interpretação DSP)    |
+| **PSNR**     | `10 · log₁₀(peak² / MSE)`                        | SNR normalizado pelo pico                  |
+| **Bits eq.** | `-0.5 · log₂(MSE / signal_power)`                | Precisão — quantos bits de float32 corretos|
+
+## Thresholds de Paridade
+
+| Modelo           | MSE threshold | SNR threshold |
+| ---------------- |:-------------:|:-------------:|
+| LSTM 1×16        | < 3e-3        | ≥ 15 dB       |
+| LSTM 2×8         | < 1e-3        | ≥ 18 dB       |
+| NAMCore LSTM 1×3 | < 1e-3        | ≥ 22 dB       |
+| WaveNet Nano     | < 5e-2        | ≥ 9 dB        |
+| WaveNet Feather  | < 5e-2        | ≥ 9 dB        |
+| WaveNet Standard | < 5e-2        | ≥ 9 dB        |
+| NAMCore WN Micro | < 5e-2        | ≥ 9 dB        |
+
+> [!IMPORTANT]
+> Os thresholds são calibrados empiricamente. NAMCore (`std::tanh` nativo) pode mostrar SNR superior aos modelos Boss (FastMath Padé). A divergência é dominada exclusivamente pela implementação de `tanh`/`sigmoid` — ver ADR-001 em `docs/architecture.md §2`.
 
 ## Para regenerar
 
-    ./tests/fixtures/golden_gen_build.sh
+```bash
+./tests/fixtures/golden_gen_build.sh
+```
 
-Estes arquivos são commitados no repositório para que os testes Rust
-(test_golden_vectors_wavenet, test_golden_vectors_lstm, etc.) executem sem
-precisar recompilar o NeuralAudio C++.
-Se os golden vectors não existirem, os testes fazem skip gracioso.
+Pré-requisitos: `cmake`, `g++` (ou `clang++`, C++20), `python3`, `git`.
 
-## Metodologia de Validação
+Estes arquivos são commitados no repositório para que os testes Rust de golden vectors executem sem precisar recompilar C++. Se os golden vectors não existirem, os testes fazem skip gracioso.
 
-Os golden tests assertam **duas métricas independentes** em fusão single-pass
-(MSE, MAE e SNR calculados numa única iteração sobre o buffer — zero overhead):
+## Duas Camadas de Validação
 
-### MSE — Erro Quadrático Médio
+### Camada 1 — Goldens pré-commitados (rápido, `cargo test`)
 
-Métrica primária de regressão, sensível à escala absoluta do erro.
+Testes em `tests/nam_infer_test.rs` carregam os `.golden.bin` e comparam contra inferência Rust. Roda em cada `cargo test` sem C++.
 
-- Detecta erros estruturais: transposição de pesos, offset de bias, gate invertido.
-- Falha ruídos de baixa magnitude que SNR acomodaria (ex: DC offset sistemático).
+### Camada 2 — Validação cruzada ao vivo (lento, `utils/tests-long.sh`)
 
-| Modelo           | Threshold MSE | MSE medido (2026-04-24) | Headroom |
-| ---------------- |:-------------:|:-----------------------:|:--------:|
-| WaveNet Standard | `< 5e-2`      | 3.21e-2                 | ~1.56×   |
-| WaveNet Feather  | `< 5e-2`      | 8.34e-3                 | ~6.00×   |
-| WaveNet Nano     | `< 5e-2`      | 2.08e-3                 | ~24.0×   |
-| LSTM 1×16        | `< 1e-3`      | 6.02e-4                 | ~1.66×   |
+Testes `#[ignore]` em `tests/cpp_parity.rs` compilam o `render` tool do NeuralAmpModelerCore on-demand e comparam C++ vs Rust ao vivo. Detecta drift se o NAMCore for atualizado e os goldens pré-commitados ficarem defasados.
 
-### SNR — Signal-to-Noise Ratio em dB
+## Decisão Técnica: Cross-Reference NÃO é Bit-Identical (ADR-002)
 
-Métrica de equivalência perceptual normalizada pela potência do sinal,
-padrão da indústria DSP. Complementa o MSE:
-
-- MSE detecta erros absolutos (útil para regressões estruturais).
-- SNR fornece interpretação DSP padrão (útil para engenheiros de áudio):
-  valores > 20 dB são imperceptíveis; valores < 6 dB indicam falha grave.
-
-| Modelo           | Threshold SNR | SNR medido (2026-04-24) | Headroom |
-| ---------------- |:-------------:|:-----------------------:|:--------:|
-| WaveNet Standard | `≥ 9 dB`      | 10.1 dB                 | ~1.1×    |
-| WaveNet Feather  | `≥ 9 dB`      | 13.8 dB                 | ~1.5×    |
-| WaveNet Nano     | `≥ 9 dB`      | 20.0 dB                 | ~2.2×    |
-| LSTM 1×16        | `≥ 22 dB`     | 24.5 dB                 | ~1.1×    |
-
-As métricas são **aditivas, não substitutivas**: uma regressão pode passar
-em SNR mas falhar em MSE (ex: erro estrutural de baixa potência) ou vice-versa.
-
-### Fonte de Divergência: FastMath Padé vs C++ Polynomial
-
-O motor Rust usa `simd_tanh` — polinômio Padé grau 5 + refinamento
-Newton-Raphson sobre `_mm256_rsqrt_ps` — enquanto o NeuralAudio C++ usa
-um polinômio racional diferente (`Activation.h`, grau variado por plataforma).
-
-Esta divergência é **intencional e esperada**:
-
-- Erro máximo por ativação: **~5e-3** (validado por `test_simd_fastmath_tanh_mse`).
-
-- Acumulação em profundidade: **sublinear** — cada camada aplica ativação
-  não-linear que reescala o resíduo. Modelo empírico:
-  `erro_máx_acumulado ≈ √N_camadas × erro_por_camada`
-
-- Para WaveNet Standard (20 camadas: 2 arrays × 10 layers):
-  `√20 × 5e-3 ≈ 2.2e-2  →  MSE medido: 3.21e-2  →  SNR medido: 10.1 dB`
-
-Os thresholds `MSE < 5e-2` e `SNR ≥ 9 dB` foram calibrados contra estas
-medições reais com headroom suficiente para absorver variações de compilador
-e FP, mas apertados o suficiente para capturar regressões estruturais
-(onde MSE tipicamente salta para > 0.5 e SNR cai abaixo de 0 dB).
-
-### Referências
-
-- `docs/architecture.md §2` — Inferência FastMath e Microarquitetura (ADR-001)
-- `src/math/fastmath.rs` → `simd_tanh` — derivação do erro e acumulação
-- `tests/nam_infer_test.rs` → `test_golden_vectors_wavenet` — calibração completa
-
-### Decisão Técnica: Cross-Reference C++ NÃO é Bit-Identical (ADR-002)
-
-> **Decisão:** Os golden vectors validam paridade *funcional* (MSE + SNR dentro de
-> thresholds calibrados) contra o NeuralAmpModelerCore C++, **não** paridade *bit-a-bit*.
+> **Decisão:** Os golden vectors validam paridade *funcional* (MSE + SNR + PSNR + bits dentro de thresholds calibrados) contra o NeuralAmpModelerCore C++, **não** paridade *bit-a-bit*.
 >
-> **Consequência:** O NAM-rs produz áudio perceptualmente equivalente ao C++, mas com
-> diferenças numéricas mensuráveis (SNR 10-25 dB dependendo do modelo). Estas diferenças
-> são inaudíveis em qualquer pipeline de áudio 16-bit ou superior.
+> **Consequência:** O NAM-rs produz áudio perceptualmente equivalente ao C++, mas com diferenças numéricas mensuráveis (SNR 9–25 dB dependendo do modelo). Estas diferenças são inaudíveis em qualquer pipeline de áudio 16-bit ou superior.
 >
-> **Fonte exclusiva da divergência:** Implementações de `tanh` e `sigmoid` — ver ADR-001
-> em `docs/architecture.md §2`. Toda a lógica estrutural (pesos, topologia, parsing,
-> ring buffers, Conv1D, MatMul) é equivalente entre as implementações.
+> **Fonte exclusiva da divergência:** Implementações de `tanh` e `sigmoid` — ver ADR-001 em `docs/architecture.md §2`.
 >
 > **Prova:** A degradação de SNR é proporcional à profundidade do modelo:
+> - LSTM 1×16 (1 camada): SNR ~25 dB
+> - WaveNet Standard (20 camadas): SNR ~10 dB
 >
-> - LSTM 1×16 (1 camada): SNR = 24.5 dB
-> - WaveNet Standard (20 camadas): SNR = 10.1 dB
 > Se houvesse erro estrutural, o SNR não degradaria linearmente com a profundidade.
->
-> **Para obter paridade bit-a-bit (não recomendado):**
-> Substituir `simd_tanh_avx2`/`simd_sigmoid_avx2` por `f32::tanh()`/`1/(1+(-x).exp())`
-> escalar — custo: performance cairia 10-30× (~4-8 → ~40-120 ciclos/ativação).

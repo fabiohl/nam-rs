@@ -16,7 +16,7 @@ repomix-*.xml
 *.json
 
 # Espelho dos projetos de referência no GitHub
-/github.com/
+#/github.com/
 
 # Ignorar artefatos do Rust
 #Cargo.lock
@@ -33,7 +33,6 @@ scratch.rs
 
 # Golden vectors de validação numérica (não ignorar)
 !tests/fixtures/*.bin
-!tests/golden/*.bin
 
 # Proptest regression files (gerados automaticamente)
 *.proptest-regressions
@@ -49,3 +48,14 @@ fuzz/Cargo.lock
 .mutants/
 .out/
 mutants.out.old/
+
+# NeuralAmpModelerCore — clone local para cross-validation (não commitar)
+/tests/fixtures/NeuralAmpModelerCore/
+
+# Build artifacts do render tool C++
+/build/namcore_render/
+
+# Arquivos temporários dos scripts de geração de golden vectors
+/tests/fixtures/.temp_golden/
+/tests/fixtures/.temp_live/
+/tests/fixtures/stress_signal.wav

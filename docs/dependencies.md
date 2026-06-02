@@ -82,3 +82,24 @@ As seguintes dependências estão implementadas para viabilizar o suporte a plug
 | `egui`             | `0.34.2` | `clap-plugin` | Introduzida na Sprint 4 | Framework GUI de modo imediato, puro Rust. Renderização de GPU via OpenGL (`egui_glow` e `glow`).                                                               |
 | `baseview`         | `0.1.1`  | `clap-plugin` | Introduzida na Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Publicada e consumida a partir do crates.io.                                                   |
 | `rfd`              | `0.17.2` | `clap-plugin` | Introduzida na Sprint 4 | File Dialog nativo e assíncrono para carregamento de modelos (.nam/.namb) via GUI.                                                                              |
+
+## 6. Dependências para Cross-Validation C++ (Opcional)
+
+Para regenerar os golden vectors ou executar a validação cruzada ao vivo contra o
+NeuralAmpModelerCore, os seguintes pacotes são necessários:
+
+```bash
+sudo apt install cmake g++ python3
+```
+
+- **cmake** (≥ 3.10): Build system do NeuralAmpModelerCore.
+- **g++** (ou `clang++`, C++20): Compilador C++ para o tool `render`.
+- **python3**: Geração do WAV de teste (sinal de stress).
+
+> [!NOTE]
+> Estas dependências são **opcionais**. Os golden vectors são pré-commitados no
+> repositório e os testes de validação rodam sem C++ no `cargo test` normal.
+> O C++ é necessário apenas para:
+>
+> - Regenerar goldens: `./tests/fixtures/golden_gen_build.sh`
+> - Validação cruzada ao vivo: `./utils/tests-long.sh`

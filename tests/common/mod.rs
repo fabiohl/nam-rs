@@ -6,6 +6,8 @@
 //! Centraliza funções de geração de sinais, métricas de erro e validação DSP
 //! para evitar duplicação entre os arquivos de teste de integração.
 
+pub mod wav;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,7 +18,7 @@ use nam_rs::models::NamModel;
 // =============================================================================
 
 /// Número de amostras para testes de golden vectors e auto-consistência.
-pub const GOLDEN_NUM_SAMPLES: usize = 512;
+pub const GOLDEN_NUM_SAMPLES: usize = 2048;
 
 /// Tamanho de bloco para processamento nos testes de validação numérica.
 pub const GOLDEN_BLOCK_SIZE: usize = 64;
@@ -27,14 +29,68 @@ pub const TEST_BLOCK_SIZE: usize = 64;
 /// Número de blocos para testes de estabilidade (~5.4 segundos a 48kHz).
 pub const TEST_NUM_BLOCKS: usize = 4096;
 
+/// Sample rate padrão usada nos golden vectors (48 kHz).
+pub const STRESS_SAMPLE_RATE: u32 = 48000;
+
 // =============================================================================
 // Geração de Sinais
 // =============================================================================
 
-/// Gera sinal senoidal determinístico de 440 Hz a 48 kHz.
+/// Gera o sinal de stress multi-componente determinístico (2048 amostras @ 48 kHz).
 ///
-/// O mesmo sinal é usado tanto pelo gerador C++ (`golden_gen.cpp`) quanto pelos
-/// testes Rust, garantindo reprodutibilidade cross-platform.
+/// Componentes:
+/// - Harmônicos de guitarra Low-E (82/165/330/659 Hz)
+/// - Chirp linear 220 Hz → 3520 Hz
+/// - Impulso transiente (+0.9) a 25%
+/// - Envelope attack–sustain–release com fade-to-silence
+///
+/// Totalmente determinístico: mesmos resultados bit-a-bit em Python e Rust.
+pub fn generate_stress_signal() -> Vec<f32> {
+    let n = GOLDEN_NUM_SAMPLES;
+    let sr = STRESS_SAMPLE_RATE as f64;
+    let attack_end = (0.002 * sr) as usize; // 96 samples
+    let release_beg = n - (0.005 * sr) as usize; // 1808 samples
+    let t_total = n as f64 / sr;
+
+    (0..n)
+        .map(|i| {
+            let t = i as f64 / sr;
+
+            // Envelope (attack 2ms, sustain, release 5ms)
+            let env = if i < attack_end {
+                i as f64 / attack_end as f64
+            } else if i >= release_beg {
+                (n - 1 - i) as f64 / (n - release_beg) as f64
+            } else {
+                1.0
+            };
+
+            // Harmônicos de guitarra (Low-E: 82.41 Hz)
+            let guitar = 0.40 * (2.0 * std::f64::consts::PI * 82.41 * t).sin()
+                + 0.25 * (2.0 * std::f64::consts::PI * 164.81 * t).sin()
+                + 0.15 * (2.0 * std::f64::consts::PI * 329.63 * t).sin()
+                + 0.08 * (2.0 * std::f64::consts::PI * 659.25 * t).sin();
+
+            // Chirp linear 220 Hz → 3520 Hz
+            let f0: f64 = 220.0;
+            let f1: f64 = 3520.0;
+            let chirp_phase =
+                2.0 * std::f64::consts::PI * (f0 * t + (f1 - f0) * t * t / (2.0 * t_total));
+            let chirp = 0.30 * chirp_phase.sin();
+
+            // Impulso transiente a 25%
+            let impulse = if i == n / 4 { 0.9 } else { 0.0 };
+
+            let sample = env * (guitar + chirp) + impulse;
+            (sample.max(-1.0)).min(1.0) as f32
+        })
+        .collect()
+}
+
+/// Gera sinal senoidal determinístico de 440 Hz a 48 kHz (legacy).
+///
+/// Mantido para retrocompatibilidade com testes de auto-consistência,
+/// paridade estático/dinâmico e zero-alloc — estes não dependem do sinal de stress.
 pub fn generate_sine_440hz(num_samples: usize) -> Vec<f32> {
     (0..num_samples)
         .map(|i| (2.0 * std::f32::consts::PI * 440.0 * (i as f32) / 48000.0).sin())
@@ -79,27 +135,34 @@ pub fn compute_max_abs_error(a: &[f32], b: &[f32]) -> f64 {
 }
 
 // =============================================================================
-// Validação DSP
+// Validação DSP — 5 métricas em single-pass
 // =============================================================================
 
-/// Valida fidelidade DSP em single-pass, calculando MSE, MAE e SNR simultaneamente.
+/// Valida fidelidade DSP em single-pass, calculando MSE, MAE, SNR, PSNR e bits
+/// equivalentes simultaneamente numa única iteração sobre o buffer.
 ///
-/// Esta função funde as 3 métricas numa única iteração sobre o buffer, evitando
-/// múltiplas passagens sobre os dados (zero overhead adicional vs. validação prévia).
+/// As 5 métricas derivam dos mesmos acumuladores (`signal_power`, `noise_power`,
+/// `max_abs_diff`, `peak_ref`) — zero overhead adicional.
 ///
 /// # Parâmetros
-/// - `reference` — vetor de saída de referência (C++ NeuralAudio ou outra implementação)
+/// - `reference` — vetor de saída de referência (NeuralAmpModelerCore C++)
 /// - `test`      — vetor de saída do motor Rust a ser validado
-/// - `mse_limit` — threshold máximo permitido de MSE (erro quadrático médio)
+/// - `mse_limit` — threshold máximo permitido de MSE
 /// - `min_snr_db` — SNR mínimo em dB que deve ser atingido
 /// - `label`     — rótulo para identificação nas mensagens de diagnóstico
 ///
-/// # Comportamento
-/// Imprime `[{label}] MSE=..., MaxAbsErr=..., SNR=... dB` para diagnóstico.
-/// Falha com `assert!` se `mse >= mse_limit` **ou** `snr < min_snr_db`.
-/// As duas métricas são assertadas independentemente para facilitar diagnóstico.
+/// # Formato de output
+/// ```text
+/// [NeuralAmpModelerCore × NAM-rs — label]
+///   MSE     = 3.21e-02      (threshold < 5.0e-02)  ✓
+///   MAE     = 2.84e-01
+///   SNR     = 10.1 dB       (threshold ≥ 9.0 dB)   ✓
+///   PSNR    = 14.9 dB
+///   Bits    = 2.5 bits equiv.
+///   Samples = 2048 @ 48 kHz (stress signal)
+/// ```
 #[track_caller]
-pub fn assert_dsp_fidelity(
+pub fn report_dsp_fidelity(
     reference: &[f32],
     test: &[f32],
     mse_limit: f64,
@@ -109,42 +172,78 @@ pub fn assert_dsp_fidelity(
     assert_eq!(
         reference.len(),
         test.len(),
-        "[{label}] Vetores de tamanhos diferentes para assert_dsp_fidelity"
+        "[{label}] Vetores de tamanhos diferentes para report_dsp_fidelity"
     );
     let n = reference.len() as f64;
     let mut signal_power = 0.0f64;
     let mut noise_power = 0.0f64;
-    let mut sum_sq_diff = 0.0f64;
     let mut max_abs_diff = 0.0f64;
+    let mut peak_ref = 0.0f64;
     for (&r, &t) in reference.iter().zip(test.iter()) {
         let r64 = r as f64;
         let t64 = t as f64;
         let diff = r64 - t64;
         signal_power += r64 * r64;
         noise_power += diff * diff;
-        sum_sq_diff += diff * diff;
         let abs_diff = diff.abs();
         if abs_diff > max_abs_diff {
             max_abs_diff = abs_diff;
         }
+        if r64.abs() > peak_ref {
+            peak_ref = r64.abs();
+        }
     }
-    let mse = sum_sq_diff / n;
+    let mse = noise_power / n;
+    let mae = max_abs_diff;
     let snr = if noise_power <= f64::EPSILON {
         f64::INFINITY
     } else {
         10.0 * (signal_power / noise_power).log10()
     };
+    let psnr = if mse <= f64::EPSILON {
+        f64::INFINITY
+    } else {
+        10.0 * (peak_ref * peak_ref / mse).log10()
+    };
+    let signal_avg_power = signal_power / n;
+    let bits = if mse <= f64::EPSILON || signal_avg_power <= f64::EPSILON {
+        f64::INFINITY
+    } else {
+        -0.5 * (mse / signal_avg_power).log2()
+    };
+
+    println!();
     println!(
-        "[{label}] MSE={mse:.2e}, MaxAbsErr={max_abs_diff:.2e}, SNR={snr:.1} dB, amostras={}",
-        reference.len()
+        "[NeuralAmpModelerCore × NAM-rs — {label}]"
     );
+    println!("  MSE     = {mse:.2e}      (threshold < {mse_limit:.1e})  {}",
+        if mse < mse_limit { "✓" } else { "✗" });
+    println!("  MAE     = {mae:.2e}");
+    if snr.is_finite() {
+        println!("  SNR     = {snr:.1} dB       (threshold ≥ {min_snr_db:.1} dB)   {}",
+            if snr >= min_snr_db { "✓" } else { "✗" });
+    } else {
+        println!("  SNR     = ∞ dB");
+    }
+    if psnr.is_finite() {
+        println!("  PSNR    = {psnr:.1} dB");
+    } else {
+        println!("  PSNR    = ∞ dB");
+    }
+    if bits.is_finite() {
+        println!("  Bits    = {bits:.2} bits equiv.");
+    } else {
+        println!("  Bits    = ∞ bits equiv.");
+    }
+    println!("  Samples = {} @ 48 kHz (stress signal)", reference.len());
+
     assert!(
         mse < mse_limit,
-        "[{label}] MSE={mse:.6e} excede limiar {mse_limit:.1e} (MaxAbsErr={max_abs_diff:.6e}, SNR={snr:.1} dB)"
+        "[{label}] MSE={mse:.6e} excede limiar {mse_limit:.1e} (MAE={mae:.6e}, SNR={snr:.1} dB)"
     );
     assert!(
         snr >= min_snr_db,
-        "[{label}] SNR={snr:.1} dB abaixo do mínimo {min_snr_db:.1} dB (MSE={mse:.6e}, MaxAbsErr={max_abs_diff:.6e})"
+        "[{label}] SNR={snr:.1} dB abaixo do mínimo {min_snr_db:.1} dB (MSE={mse:.6e}, MAE={mae:.6e})"
     );
 }
 

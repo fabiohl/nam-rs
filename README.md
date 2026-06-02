@@ -127,6 +127,7 @@ Every 10 seconds, NAM-rs prints a performance report in the terminal to monitor 
 
 * [docs/architecture.md](docs/architecture.md) — Topology, modules, and design decisions
 * [docs/dependencies.md](docs/dependencies.md) — System dependencies and Rust crates
+* [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector format, stress signal design, and regeneration instructions
 * [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics
 * [docs/clap_integration.md](docs/clap_integration.md) — CLAP (Clever Audio Plug-in) integration strategy
 
@@ -142,13 +143,13 @@ Two levels of parsing operations are provided:
 * **Static Mode (Ultra Performance):** *Const Generics* structures sized at compile time.
   * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4), and Nano (4×2)
   * **LSTM:** 1 and 2 Layers (Hidden Size 8 to 24: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
-* **Dynamic Mode (Absolute Flexibility):** Fallback activated automatically when loading `.nam` arrangements with uncatalogued geometries (arbitrary `num_layers` and `channels`), operating without *loop unrolling*.
+* **Dynamic Mode (Absolute Flexibility):** Fallback activated automatically when loading `.nam` arrangements with uncatalogued geometries (arbitrary `num_layers` and `channels`), operating without *loop unrolling*. This includes NAMCore upstream models (`lstm.nam` H=3, `wavenet.nam` CH=3/2) used in cross-validation.
 
 ---
 
 ## 🧪 Tests & Validation
 
-NAM-rs maintains a suite of approximately **220 automated checks**. To simplify development and QA flows, use the scripts located under `utils/`:
+NAM-rs maintains a suite of approximately **230 automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. To simplify development and QA flows, use the scripts located under `utils/`:
 
 ```bash
 # 1. Lint & Quality (Formatting + Clippy + Feature Matrix)
@@ -157,7 +158,7 @@ utils/lints.sh
 # 2. Standard Suite (Unit + Integration + Fast Benchmarks)
 utils/tests-cargo.sh
 
-# 3. Soak & Stress Tests (Long-duration verification)
+# 3. Soak, Stress & Cross-Validation Tests (Long-duration + C++ parity)
 utils/tests-long.sh
 ```
 
@@ -194,7 +195,7 @@ Contributions are welcome! The project is in active development.
 This project builds upon the logic, science, and inspiration of notable works in the audio and AI communities:
 
 * **Steven Atkinson** — For pioneering the [Neural Amp Modeler (NAM)](https://github.com/sdatkinson/neural-amp-modeler), his research on amplifier modeling with deep learning, and sharing the ecosystem.
-* **Mike Oliphant** — For the exceptional [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio) library, which served as a direct reference for porting inference logic to this engine.
+* **Mike Oliphant** — For the exceptional [NeuralAudio (C++)](https://github.com/mikeoliphant/NeuralAudio) library, which served as a historical reference for the original A1 inference logic.
 
 ---
 

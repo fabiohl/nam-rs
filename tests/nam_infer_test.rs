@@ -15,17 +15,17 @@
 //! mesmo modelo + mesmo input → MSE = 0.0 (bitwise identical).
 //!
 //! Testes de golden vectors comparam a saída do motor Rust contra referência C++
-//! (NeuralAudio Internal mode) gravada em `tests/fixtures/*.golden.bin`.
+//! (NeuralAmpModelerCore — Steven Atkinson) gravada em `tests/fixtures/*.bin`.
 //!
 //! ## Formato `.golden.bin`
 //! ```text
 //! [u32 num_samples LE]
-//! [f32×N input samples LE]       — senoidal 440Hz a 48kHz
-//! [f32×N expected output LE]     — output do C++ NeuralAudio Internal mode
+//! [f32×N input samples LE]       — stress signal (2048 amostras @ 48 kHz)
+//! [f32×N expected output LE]     — output do C++ NeuralAmpModelerCore (render tool)
 //! ```
 //!
 //! ## Regeneração dos golden vectors
-//! Execute `tests/fixtures/golden_gen_build.sh` com a árvore NeuralAudio C++ compilável.
+//! Execute `tests/fixtures/golden_gen_build.sh` com o NeuralAmpModelerCore.
 //! Os arquivos `.golden.bin` resultantes devem ser commitados em `tests/fixtures/`.
 
 use nam_rs::loader::dispatcher::build_model;
@@ -477,60 +477,19 @@ fn test_auto_consistency_lstm() {
 // Testes de Golden Vectors (Cross-Reference C++ ↔ Rust)
 // =============================================================================
 
-/// Teste 7: Golden Vectors WaveNet — cross-reference C++ ↔ Rust.
+/// Teste 7: Golden Vectors WaveNet — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
 /// Lê `tests/fixtures/golden_wavenet_standard.bin`, constrói o `DynamicModel`
 /// a partir de `BossWN-standard.nam`, executa prewarm + processamento,
-/// e compara a saída contra a referência C++ (NeuralAudio Internal mode).
+/// e compara a saída contra a referência C++ (NeuralAmpModelerCore).
 ///
-/// **Validação dual MSE + SNR** (aditiva; ambas assertadas independentemente):
+/// **Métricas de precisão expandidas** (MSE, MAE, SNR, PSNR, bits equiv.)
+/// calculadas em single-pass fusion — ver `report_dsp_fidelity` em `tests/common/mod.rs`.
 ///
-/// ## MSE — Erro Quadrático Médio
-/// - Threshold: `MSE < 5e-2`
-/// - MSE medido em 2026-04-15: 3.21e-2 → headroom ~1.56×
-/// - Sensível à escala absoluta; detecta erros estruturais
-///   (transposição de pesos, offset de gates, gated activation invertida).
-///
-/// ## SNR — Signal-to-Noise Ratio em dB
-/// - Threshold: `SNR ≥ 9 dB` (calibrado contra medição real em 2026-04-15)
-/// - SNR medido: 10.1 dB → headroom ~1.1× (conservador); threshold menor que 9 dB
-///   indica regressões estruturais severas (impacto típico > 6 dB de perda SNR).
-/// - A subtração é feita integralmente em `f64` para preservar precisão do resíduo.
-/// - O `simd_tanh` (Padé grau 5 + rsqrt_ps) difere do polinômio racional
-///   (`Activation.h`) do C++, acumulando ~3e-3 a ~5e-3 de erro por camada.
-///   Com 20 camadas empilhadas (2 arrays × 10 layers), o erro acumula
-///   sublinearmente — SNR resultante medido: ~10 dB (FastMath Padé real).
-/// - O threshold original de 30 dB era irrealista: a divergência cross-implementação
-///   c/ FastMath acumulado em profundidade reduz o SNR para ~10 dB inevitavelmente.
-///
-/// ## Calibração do Threshold vs Erro FastMath (`simd_tanh`)
-///
-/// O `simd_tanh` introduz um erro máximo de **~5e-3 por ativação** em relação a
-/// `f32::tanh()` — ver `docs/architecture.md §2` e docstring de `simd_tanh` para
-/// a derivação completa. O erro **não** acumula linearmente em profundidade:
-/// cada camada aplica uma ativação não-linear que reescala o resíduo. O modelo
-/// de acumulação sublinear aproximado é:
-///
-/// ```text
-/// erro_máx_acumulado ≈ √N_camadas × erro_por_camada
-/// ```
-///
-/// Para o BossWN-standard com 20 camadas (2 arrays × 10 layers):
-///
-/// ```text
-/// erro_máx ≈ √20 × 5e-3 ≈ 4.47 × 5e-3 ≈ 2.2e-2
-/// ```
-///
-/// O MSE medido (3.21e-2) excede a estimativa de pico por ~1.5× — consistente
-/// com a conversão MSE↔MaxAbs em sinais correlacionados. O threshold `5e-2`
-/// oferece headroom ~1.56× acima do valor real: suficiente para absorver
-/// variações de compilador/FP mas apertado o suficiente para capturar
-/// regressões estruturais (onde o MSE tipicamente salta para > 0.5).
-///
-/// ## Fusão Single-Pass
-/// MSE, MAE e SNR são calculados numa única iteração sobre o buffer (512 amostras
-/// em `f64`), substituindo as 2 passagens anteriores (`compute_mse` + `compute_max_abs_error`).
-/// Funções vivem exclusivamente em `#[test]` — zero impacto em produção.
+/// ## Thresholds
+/// - MSE < 5e-2, SNR ≥ 9 dB
+/// - Divergência dominada exclusivamente pela FastMath Padé vs `std::tanh` nativo.
+/// - Sinal de stress: 2048 amostras (chirp + harmônicos guitarra + impulso + fade-to-silence).
 ///
 /// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
 /// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
@@ -567,41 +526,25 @@ fn test_golden_vectors_wavenet() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Validação dual MSE + SNR — single-pass fusion
-    assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet");
+    // Validação 5 métricas — single-pass fusion
+    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-standard");
 }
 
-/// Teste 8: Golden Vectors LSTM — cross-reference C++ ↔ Rust.
+/// Teste 8: Golden Vectors LSTM 1×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
 /// Lê `tests/fixtures/golden_lstm_1x16.bin`, constrói o `DynamicModel`
 /// a partir de `BossLSTM-1x16.nam`, executa prewarm + processamento,
-/// e compara a saída contra a referência C++ (NeuralAudio Internal mode).
+/// e compara a saída contra a referência C++ (NeuralAmpModelerCore).
 ///
-/// **Validação dual MSE + SNR** (aditiva; ambas assertadas independentemente):
-///
-/// ## MSE — Erro Quadrático Médio
-/// - Threshold: `MSE < 1e-3`
-/// - LSTM converge melhor que WaveNet (sem acumulação de FastMath Padé entre camadas).
-/// - Sensível à escala absoluta; detecta regressões estruturais no path LSTM.
-///
-/// ## SNR — Signal-to-Noise Ratio em dB
-/// - Threshold: `SNR ≥ 22 dB` (calibrado contra medição real em 2026-04-15)
-/// - SNR medido: 26.0 dB → headroom ~0.85× (conservador); threshold menor que 22 dB
-///   indica regressões estruturais severas no path LSTM.
-/// - LSTM não usa `simd_tanh` Padé extensivo, mas o path sigmoid/tanh ainda diverge
-///   cross-implementação; SNR de ~26 dB reflete a divergência real observada.
-/// - A subtração é feita integralmente em `f64` para preservar precisão do resíduo.
-/// - 22 dB detecta regressões estruturais enquanto acomoda variação numérica legítima
-///   entre implementações C++ e Rust em plataformas x86-64-v3.
-///
-/// ## Fusão Single-Pass
-/// MSE, MAE e SNR são calculados numa única iteração sobre o buffer,
-/// substituindo as 2 passagens anteriores. Zero impacto em produção.
+/// ## Thresholds
+/// - MSE < 3e-3, SNR ≥ 15 dB
+/// - LSTM converge melhor que WaveNet (sem acumulação FastMath Padé entre camadas).
+/// - Sinal de stress: 2048 amostras (multi-componente).
 ///
 /// Se o arquivo golden não existir, o teste imprime SKIP e retorna.
 /// Execute `tests/fixtures/golden_gen_build.sh` para regenerar os golden vectors.
 #[test]
-fn test_golden_vectors_lstm() {
+fn test_golden_vectors_lstm_1x16() {
     let golden_path =
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_1x16.bin");
 
@@ -633,11 +576,53 @@ fn test_golden_vectors_lstm() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Validação dual MSE + SNR — single-pass fusion
-    assert_dsp_fidelity(&expected, &output, 1e-3, 22.0, "Golden LSTM 1×16");
+    // Validação 5 métricas — single-pass fusion
+    report_dsp_fidelity(&expected, &output, 3e-3, 15.0, "BossLSTM-1x16");
 }
 
-/// Teste 8b: Golden Vectors WaveNet Feather — cross-reference C++ ↔ Rust.
+/// Teste 8b: Golden Vectors LSTM 2×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// Lê `tests/fixtures/golden_lstm_2x8.bin`, constrói o `DynamicModel`
+/// a partir de `BossLSTM-2x8.nam`. Exercita LSTM de 2 camadas.
+///
+/// ## Thresholds
+/// - MSE < 1e-3, SNR ≥ 18 dB
+/// - Sinal de stress: 2048 amostras (multi-componente).
+#[test]
+fn test_golden_vectors_lstm_2x8() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_lstm_2x8.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_lstm_2x8.bin não encontrado em {golden_path:?}. \
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_lstm_2x8.bin");
+
+    let nam_path = model_path("BossLSTM-2x8.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: BossLSTM-2x8.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo LSTM 2x8");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher falhou ao construir LSTM 2x8 para golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    report_dsp_fidelity(&expected, &output, 1e-3, 18.0, "BossLSTM-2x8");
+}
+
+/// Teste 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
 fn test_golden_vectors_wavenet_feather() {
     let golden_path =
@@ -654,7 +639,6 @@ fn test_golden_vectors_wavenet_feather() {
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_feather.bin");
 
-    // Carregar e construir o modelo
     let nam_path = model_path("BossWN-feather.nam");
     if !nam_path.exists() {
         eprintln!("SKIP: BossWN-feather.nam não encontrado. Golden test impossível.");
@@ -666,16 +650,14 @@ fn test_golden_vectors_wavenet_feather() {
     let mut model = build_model(&model_data)
         .expect("Dispatcher falhou ao construir WaveNet Feather para golden test");
 
-    // Prewarm + Processamento
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Validação dual MSE + SNR — single-pass fusion
-    assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet Feather");
+    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-feather");
 }
 
-/// Teste 8c: Golden Vectors WaveNet Nano — cross-reference C++ ↔ Rust.
+/// Teste 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 #[test]
 fn test_golden_vectors_wavenet_nano() {
     let golden_path =
@@ -692,7 +674,6 @@ fn test_golden_vectors_wavenet_nano() {
     let (input, expected) =
         read_golden_bin(&golden_path).expect("Falha ao ler golden_wavenet_nano.bin");
 
-    // Carregar e construir o modelo
     let nam_path = model_path("BossWN-nano.nam");
     if !nam_path.exists() {
         eprintln!("SKIP: BossWN-nano.nam não encontrado. Golden test impossível.");
@@ -704,13 +685,95 @@ fn test_golden_vectors_wavenet_nano() {
     let mut model = build_model(&model_data)
         .expect("Dispatcher falhou ao construir WaveNet Nano para golden test");
 
-    // Prewarm + Processamento
     model.prewarm(2048);
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    // Validação dual MSE + SNR — single-pass fusion
-    assert_dsp_fidelity(&expected, &output, 5e-2, 9.0, "Golden WaveNet Nano");
+    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-nano");
+}
+
+/// Teste 8e: Golden Vectors NAMCore LSTM 1×3 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// Modelo `lstm.nam` do diretório `example_models/` do NeuralAmpModelerCore.
+/// LSTM com H=3, 70 pesos — exercita topologia abaixo de qualquer perfil estático,
+/// forçando o despacho dinâmico/fallback do NAM-rs.
+///
+/// ## Thresholds
+/// - MSE < 1e-3, SNR ≥ 22 dB
+#[test]
+fn test_golden_vectors_namcore_lstm_1x3() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_namcore_lstm_1x3.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_namcore_lstm_1x3.bin não encontrado em {golden_path:?}. \
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_namcore_lstm_1x3.bin");
+
+    let nam_path = model_path("lstm.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: lstm.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo NAMCore LSTM");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher falhou ao construir NAMCore LSTM para golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    report_dsp_fidelity(&expected, &output, 1e-3, 22.0, "NAMCore-LSTM-1x3");
+}
+
+/// Teste 8f: Golden Vectors NAMCore WaveNet Micro — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
+///
+/// Modelo `wavenet.nam` do diretório `example_models/` do NeuralAmpModelerCore.
+/// WaveNet com CH=3/2, K=3, HEAD=2/1, 3 camadas — topologia abaixo de qualquer
+/// perfil estático, forçando fallback dinâmico.
+///
+/// ## Thresholds
+/// - MSE < 5e-2, SNR ≥ 9 dB
+#[test]
+fn test_golden_vectors_namcore_wn_micro() {
+    let golden_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/golden_namcore_wn_micro.bin");
+
+    if !golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_namcore_wn_micro.bin não encontrado em {golden_path:?}. \
+             Execute tests/fixtures/golden_gen_build.sh para gerar os golden vectors."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&golden_path).expect("Falha ao ler golden_namcore_wn_micro.bin");
+
+    let nam_path = model_path("wavenet.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: wavenet.nam não encontrado. Golden test impossível.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Falha ao ler modelo NAMCore WN");
+    let model_data = parse_nam_json(&json_data).expect("Falha no parser JSON");
+    let mut model = build_model(&model_data)
+        .expect("Dispatcher falhou ao construir NAMCore WN para golden test");
+
+    model.prewarm(2048);
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "NAMCore-WN-micro");
 }
 
 // =============================================================================

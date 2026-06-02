@@ -39,8 +39,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 > Erro máximo: **tanh < 2e-5**, **sigmoid < 5e-6** (sweep 32.768 pontos em [-8, 8]).
 > A divergência vs C++ é perceptualmente inaudível (abaixo do piso de quantização 16-bit PCM).
 >
-> **Validação:** Sweep determinístico, proptest (10k inputs), golden vectors cross-C++ (4 modelos),
-> regression goldens self-reference (7 modelos, MSE < 1e-6).
+> **Validação:** Sweep determinístico, proptest (10k inputs), golden vectors cross-NeuralAmpModelerCore (7 modelos).
 >
 > **Referências:** `src/math/fastmath.rs` (docstring de `simd_tanh_avx2`),
 > `tests/nam_infer_test.rs` (docstring de `test_golden_vectors_wavenet`)
@@ -210,7 +209,7 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 
 | Camada                        | Local                                                    | Força como Ground Truth         | O que captura                                                                                           |
 |:----------------------------- |:-------------------------------------------------------- |:------------------------------- |:------------------------------------------------------------------------------------------------------- |
-| **Golden Vectors**            | `tests/regression_goldens.rs`, `tests/nam_infer_test.rs` | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência original.                |
+| **Golden Vectors**            | `tests/nam_infer_test.rs`, `tests/cpp_parity.rs`              | ✅✅ Ancoragem externa ao C++   | Erros na composição de kernels, regressões end-to-end e paridade vs referência canônica (NeuralAmpModelerCore). |
 | **PropTests (aleatórios)**    | `tests/proptest_math.rs`                                 | ✅ `f64` e `f32::tanh()` nativa | Erros numéricos SIMD (RMSE) e paridade SIMD vs Escalar em espaço amplo de entradas.                     |
 | **Testes Unitários de Bit**   | `src/math/common/tests.rs`                               | ✅ Operação de bits direta      | Corretude de conversão f32↔bf16/f16, FMA e setup de hardware (DAZ/FTZ).                                 |
 | **Compatibilidade A1/A2**     | `tests/loader_a2_compat.rs`                              | ✅ Especificação de Formato     | Garante que novos loaders aceitam modelos antigos (Regressão) e fazem fallback correto para A2.         |
@@ -220,9 +219,11 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 | **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                              | —                               | ~45.000 inputs adversários contra parsers JSON/.namb para evitar vulnerabilidades e panics.             |
 | **Soak Test (Endurance)**     | `tests/soak_test.rs`                                     | —                               | Estabilidade numérica de longa duração (10M+ frames). `#[ignore]` no CI; via `bash utils/tests-long.sh` |
 
-### Decisão de Arquitetura: Remoção dos Parity Tests com Inputs Fixos
+### Decisão de Arquitetura: Remoção dos Parity Tests com Inputs Fixos e Goldens Autorreferenciais
 
 > Testes que comparavam kernels SIMD contra `ScalarRefMath` com entradas fixas foram removidos — eram circulares (validação contra si mesmos) e redundantes com os PropTests (10k inputs aleatórios com referências independentes `f64`/`f32::tanh()`). A struct `ScalarRefMath` foi eliminada; as funções `_fallback` em `src/math/common/scalar_ref.rs` permanecem como delegates escalares.
+>
+> Os goldens autorreferenciais (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) foram substituídos por ancoragem externa ao [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (Steven Atkinson) — fonte canônica dos modelos `.nam`. Sete modelos de referência cobrem WaveNet (Standard/Feather/Nano/Micro) e LSTM (1×16/2×8/1×3), com 5 métricas de precisão (MSE, MAE, SNR, PSNR, bits equiv.) calculadas em single-pass fusion. Ver `tests/fixtures/golden_gen_build.sh` e `docs/dependencies.md §6`.
 
 ### Benchmarks e Performance
 
@@ -321,6 +322,6 @@ Para detalhes de cada extensão, stack gráfico e estratégia de windowing, veja
 Os seguintes repositórios e especificações são as principais referências para o NAM-rs:
 
 - [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) - Implementação de referência do NAM.
-- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) - Inspiração no suporte à arquitetura A1.
 - [CLAP (CLever Audio Plug-in)](https://cleveraudio.org/) - Especificação do formato de plugin CLAP.
 - [Clack Framework](https://github.com/prokopyl/clack) - Infraestrutura para implementação do plugin em Rust.
+- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) - Referência histórica; os golden vectors originais foram migrados para ancoragem no NeuralAmpModelerCore (ver ADR §6).

@@ -41,7 +41,11 @@ echo "📊 Executando Long Benchmarks (Performance)..."
 time cargo bench
 time cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | tee long-bench.log
 
+echo "==================================================================="
+echo "🌐 Executando Cross-Validation NAM-rs ↔ NeuralAmpModelerCore..."
+cargo test --test cpp_parity -- --ignored --nocapture 2>&1 | tee cpp-parity.log
+
 echo -e "\n==================================="
 echo "✅ Auditoria concluída com sucesso!"
-echo "📄 Logs: soak-test.log, long-bench.log, debug-validation.json, release-validation.json"
+echo "📄 Logs: soak-test.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json"
 date
