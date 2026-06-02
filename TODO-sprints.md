@@ -1189,7 +1189,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Especialista:** `implementador`.
 - **Nota do PO:** Este teste deve ser acionável apenas a partir do `utils/tests-long.sh`.
 
-#### Tarefa S13.T03 — Stress test multi-instância CLAP ⚠️
+#### Tarefa S13.T03 — Stress test multi-instância CLAP ⚠️ [DONE]
 
 - **Onde:** `tests/clap_multi_instance.rs` (novo).
 - **Problema:** `ONCE_PRIO` global pode causar comportamento errático em hosts com 10+ instâncias.

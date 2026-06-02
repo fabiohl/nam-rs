@@ -96,6 +96,8 @@ pub struct NamClapProcessor<'a> {
     cycles_since_telemetry: u32,
     /// Handle do host para chamadas na thread de áudio.
     host: HostAudioProcessorHandle<'a>,
+    /// Flag per-instância para consulta única da prioridade RT no primeiro bloco.
+    prio_checked: bool,
 }
 
 impl<'a> NamClapProcessor<'a> {
@@ -238,6 +240,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             gate_dirty: true,
             cycles_since_telemetry: 0,
             host,
+            prio_checked: false,
         })
     }
 
@@ -275,8 +278,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let start_time = minstant::Instant::now();
 
         // Consulta única da prioridade da thread no primeiro bloco processado
-        static ONCE_PRIO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-        if !ONCE_PRIO.load(Ordering::Relaxed) {
+        if !self.prio_checked {
+            self.prio_checked = true;
             unsafe {
                 let thread_id = libc::pthread_self();
                 let mut policy = 0i32;
@@ -291,7 +294,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     }
                 }
             }
-            ONCE_PRIO.store(true, Ordering::Relaxed);
         }
 
         // Drenagem de eventos (SPSC + Host + GUI sync + Latência)

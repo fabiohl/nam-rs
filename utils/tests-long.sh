@@ -49,6 +49,10 @@ NAM_HEAP_AUDIT=1 \
   clap-validator validate target/clap-test/release/libnam_rs.so --json > release-validation.json
 jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' release-validation.json
 
+echo "============================================================"
+echo "🔬 Executando Stress Test Multi-Instância CLAP (10 instâncias)..."
+cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture 2>&1 | tee clap-multi-instance.log
+
 echo "=============================================="
 echo "📊 Executando Long Benchmarks (Performance)..."
 cargo bench
@@ -56,4 +60,4 @@ cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | te
 
 echo "==================================="
 echo "✅ Auditoria concluída com sucesso!"
-echo "📄 Logs: soak-test.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log"
+echo "📄 Logs: soak-test.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log, clap-multi-instance.log"
