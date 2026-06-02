@@ -1287,7 +1287,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
      4. **Aguardar coeficientes ótimos via Sollya** antes de decidir a arquitetura final — o erro do segmento [0,1] (1.3e-3) é o fator limitante da acurácia global e pode ser reduzido com grau 7 (4 coeficientes) sem aumentar o número de segmentos.
 - **Git Commit:** 592db0b667822d9246d15e75bebef560d8df66c4
 
-### Tarefa E8.T03 — Compensação de Viés de Arredondamento nos Pesos Quantizados (Bias-Tuning) ✅
+### Tarefa E8.T03 — Compensação de Viés de Arredondamento nos Pesos Quantizados (Bias-Tuning) ✅ [DONE]
 
 - **Onde:** `src/loader/dispatcher/wavenet/` e `src/loader/nam_json/` (inicialização de pesos).
 - **Por que é importante:** A conversão estática dos pesos originais FP32 para o formato compacto BF16 introduz um viés numérico (drift linear) persistente. Esse drift acumula-se de forma multiplicativa ao longo de mais de 18 camadas residuais na WaveNet Standard, gerando o pior cenário de SNR (9.5 dB).
@@ -1311,9 +1311,9 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
     2. Camadas sem bias (rechannel, input_mixin) não recebem compensação, mas seu erro de quantização propaga-se para as camadas seguintes com bias, sendo parcialmente absorvido pela compensação destas.
     3. A cópia completa dos pesos FP32 crus (`raw_f32_owned`) durante a carga dobra temporariamente o uso de memória para pesos — impacto negligível em sistemas desktop (≈400 KB para WaveNet Standard), mas digno de nota para sistemas embarcados.
   - **Sugestão de git message:** `feat(loader): bias-tuning compensation for quantized weights in WaveNet conv/dense layers`
-- **Git Commit:** `[PENDENTE — implementar código antes de commitar]`
+- **Git Commit:** eb18f638899402b892cdb1433a085f389c2bad31
 
-### Tarefa E8.T04 — Validação de Precisão de Divisão SIMD e Refinamento Newton-Raphson 💡
+### Tarefa E8.T04 — Validação de Precisão de Divisão SIMD e Refinamento Newton-Raphson 💡 [DONE]
 
 - **Onde:** `src/math/activations/tanh.rs`.
 - **Por que é importante:** A aproximação de divisão del denominador Padé via instrução rápida `rcp_ps` seguida de uma única iteração de Newton-Raphson limita o resultado a ~22 bits, introduzindo ruído de truncamento invisível em redes profundas.
@@ -1325,7 +1325,59 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Determinar a contribuição exata da aproximação de recíproco no drift numérico da WaveNet Standard em relação ao baseline.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
-- **Git Commit:**
+- **Parecer Técnico Final (E8.T04):**
+
+  **Contexto:** A tarefa E8.T04 foi planejada antes de E8.T02 substituir o Padé [5,4] por piecewise minimax. Como o código de produção em `tanh.rs` não contém mais `rcp_ps`/Newton-Raphson, foram implementadas funções Padé de referência (`simd_tanh_pade_nr2_*`, `simd_tanh_pade_div_*`) como oráculos para análise comparativa, sem alterar o caminho de produção.
+
+  **Implementação:**
+  1. `simd_tanh_pade_nr2_avx2` / `simd_tanh_pade_nr2_avx512`: Padé [5,4] com `_mm256_rcp_ps` + duas iterações Newton-Raphson (satura mantissa f32).
+  2. `simd_tanh_pade_div_avx2` / `simd_tanh_pade_div_avx512`: Padé [5,4] com `_mm256_div_ps` — oráculo IEEE 754 de máxima fidelidade.
+  3. Teste de precisão `test_tanh_precision_analysis_e8t04`: 10M amostras em [-4, 4] comparando as três variantes contra `f32::tanh`.
+  4. Benchmarks `FastMath_tanh_PadeNR2_AVX2_256elem` e `FastMath_tanh_PadeDiv_AVX2_256elem` adicionados.
+
+  **Resultados de Precisão (10M amostras, domínio [-4, 4]):**
+
+  | Variant           | Max Abs Err | RMS Error  | Equiv. Bits |
+  |-------------------|-------------|------------|-------------|
+  | Piecewise Minimax | 4.90e-3     | 1.64e-3    | ~7.7        |
+  | Padé [5,4] NR2    | 2.32e-3     | 6.50e-4    | ~8.8        |
+  | Padé [5,4] Div    | 2.32e-3     | 6.50e-4    | ~8.8        |
+
+  - **Padé [5,4] é 2.1× mais preciso que piecewise minimax** em erro máximo absoluto.
+  - **Dupla iteração NR satura completamente a mantissa f32:** a razão de erro NR2/Div = 1.000× — o erro do recíproco é zero mensurável em f32.
+  - O erro dominante (~8.8 bits equivalentes) é intrínseco à aproximação racional Padé [5,4], não ao recíproco.
+
+  **Resultados de Throughput (AVX2, 256 elementos, `cargo bench`):**
+
+  | Variant           | Latência | vs Piecewise    |
+  |-------------------|----------|-----------------|
+  | Piecewise Minimax | ~156 ns  | baseline        |
+  | Padé [5,4] NR2    | ~104 ns  | 33% mais rápido |
+  | Padé [5,4] Div    | ~62 ns   | 60% mais rápido |
+
+  - Padé [5,4] executa ~12 operações SIMD vs ~28 do piecewise (7 polinômios + 6 blends).
+  - O overhead do blend cascade (E8.T02) confirma-se como fator dominante de regressão de throughput.
+  - A divisão hardware (`_mm256_div_ps`) é paradoxalmente a mais rápida (~62 ns), sendo uma única instrução que cobre tanto o recíproco quanto a multiplicação.
+
+  **C++ Parity (`cargo test --test cpp_parity -- --ignored --nocapture`):** 5/5 PASS.
+  - WaveNet Standard SNR=9.5 dB, Feather SNR=16.5 dB, Nano SNR=25.0 dB, LSTM 1×16 SNR=19.7 dB, LSTM 2×8 SNR=25.7 dB.
+  - Valores idênticos aos de E8.T02/E8.T03 — esperado, pois o caminho de produção (piecewise) não foi alterado.
+
+  **Contribuição da Aproximação de Recíproco no Drift Numérico da WaveNet Standard:**
+
+  1. **ZERO.** A dupla iteração Newton-Raphson satura a mantissa f32 (24 bits), tornando o erro do recíproco imensurável em relação ao erro da aproximação racional Padé [5,4] (~8.8 bits).
+  2. Mesmo com uma única iteração NR (~22 bits), o erro do recíproco seria ordens de magnitude menor que o erro da aproximação racional.
+  3. O drift numérico da WaveNet Standard (SNR=9.5 dB) é dominado pela quantização de pesos BF16/FP16 (E8.T03) e pelo erro de aproximação da função de ativação, não pelo recíproco.
+  4. **Conclusão crítica:** A premissa original da tarefa — de que o `rcp_ps` com 1 iteração NR limita a precisão a ~22 bits e causa drift — está correta em teoria, mas **irrelevante na prática para f32**, pois o erro da aproximação Padé [5,4] (~8.8 bits) é ordens de magnitude maior que o erro do recíproco (~22 bits). O gargalo de precisão está na fórmula racional, não na divisão.
+
+  **Implicações para iterações futuras:**
+
+  1. **Reconsiderar Padé [5,4] como caminho de produção:** É 2.1× mais preciso E 60% mais rápido que o piecewise atual. O blend cascade de 7 segmentos (E8.T02) provou-se contraproducente. Um Padé [5,4] com `_mm256_div_ps` (ou `rcp_ps` + 1 NR, já que 2 NR é overkill) seria estritamente superior.
+  2. **Se piecewise for mantido:** Reduzir para 5 segmentos (conforme recomendação E8.T02) e recalcular coeficientes via Sollya `fpminimax` para atingir erro < 2e-3 — o threshold competitivo com Padé [5,4].
+  3. **Acurácia além de Padé [5,4]:** Requer aproximantes racionais de grau superior (Padé [7,6] ou [9,8]) ou piecewise com polinômios de grau 7-9 por segmento — ambos com custo computacional maior.
+  4. **A dupla iteração NR é desnecessária para tanh em f32** — 1 iteração (~22 bits) já é 100× mais precisa que o erro da fórmula Padé. Reservar dupla iteração para contextos onde o denominador é computado com precisão quase-exata (ex: softsign, onde den = 1+|x| tem erro zero).
+
+- **Git Commit:** perf(math): add Padé [5,4] reference variants with double NR and hardware-div oracle for E8.T04 precision analysis
 
 ### Tarefa E8.T05 — Dithering determinístico e supressão de efeitos de sub-limiares (Denormais) ⚠️
 

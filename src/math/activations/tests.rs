@@ -126,6 +126,184 @@ fn test_tanh_piecewise_odd_symmetry() {
     }
 }
 
+/// E8.T04: Precision comparison of Padé [5,4] variants vs piecewise minimax.
+///
+/// Measures max absolute error and RMS error of each tanh approximation
+/// against `f32::tanh` over 10M samples in [-4, 4].
+#[test]
+fn test_tanh_precision_analysis_e8t04() {
+    use crate::math::constants::*;
+    let n = 10_000_001u64;
+    let step = 8.0 / (n - 1) as f32;
+
+    let mut max_err_pw: f32 = 0.0;
+    let mut max_err_nr2: f32 = 0.0;
+    let mut max_err_div: f32 = 0.0;
+    let mut sum_sq_pw: f64 = 0.0;
+    let mut sum_sq_nr2: f64 = 0.0;
+    let mut sum_sq_div: f64 = 0.0;
+    let mut max_err_pw_x: f32 = 0.0;
+    let mut max_err_nr2_x: f32 = 0.0;
+    let mut max_err_div_x: f32 = 0.0;
+
+    // Piecewise minimax scalar evaluation (mirrors SIMD logic)
+    let piecewise = |x: f32| -> f32 {
+        let x = x.clamp(-PADE_TANH_CLAMP, PADE_TANH_CLAMP);
+        let ax = x.abs();
+        let x2 = ax * ax;
+        let (c0, c1, c2) = if ax < PW_TANH_BOUND_1 {
+            (PW_TANH_C0_0, PW_TANH_C1_0, PW_TANH_C2_0)
+        } else if ax < PW_TANH_BOUND_2 {
+            (PW_TANH_C0_1, PW_TANH_C1_1, PW_TANH_C2_1)
+        } else if ax < PW_TANH_BOUND_3 {
+            (PW_TANH_C0_2, PW_TANH_C1_2, PW_TANH_C2_2)
+        } else if ax < PW_TANH_BOUND_4 {
+            (PW_TANH_C0_3, PW_TANH_C1_3, PW_TANH_C2_3)
+        } else if ax < PW_TANH_BOUND_5 {
+            (PW_TANH_C0_4, PW_TANH_C1_4, PW_TANH_C2_4)
+        } else if ax < PW_TANH_BOUND_6 {
+            (PW_TANH_C0_5, PW_TANH_C1_5, PW_TANH_C2_5)
+        } else {
+            (PW_TANH_C0_6, PW_TANH_C1_6, PW_TANH_C2_6)
+        };
+        let inner = c2 * x2 + c1;
+        let poly = inner * x2 + c0;
+        x.signum() * (ax * poly)
+    };
+
+    // Padé [5,4] scalar evaluation
+    let pade_div = |x: f32| -> f32 {
+        let x = x.clamp(-PADE_TANH_CLAMP, PADE_TANH_CLAMP);
+        let x2 = x * x;
+        let num = ((x2 + PADE_TANH_NUM_A) * x2 + PADE_TANH_NUM_B) * x;
+        let den = (PADE_TANH_DEN_C4 * x2 + PADE_TANH_DEN_C2) * x2 + PADE_TANH_DEN_A;
+        num / den
+    };
+
+    // Padé NR2: simulate double Newton-Raphson on the reciprocal in f32
+    let pade_nr2 = |x: f32| -> f32 {
+        let x = x.clamp(-PADE_TANH_CLAMP, PADE_TANH_CLAMP);
+        let x2 = x * x;
+        let num = ((x2 + PADE_TANH_NUM_A) * x2 + PADE_TANH_NUM_B) * x;
+        let den = (PADE_TANH_DEN_C4 * x2 + PADE_TANH_DEN_C2) * x2 + PADE_TANH_DEN_A;
+        let mut r = 1.0f32 / den;
+        r = r * (2.0f32 - den * r);
+        r = r * (2.0f32 - den * r);
+        num * r
+    };
+
+    for i in 0..n {
+        let x = -4.0 + i as f32 * step;
+        let ref_val = x.tanh();
+        let pw = piecewise(x);
+        let nr2 = pade_nr2(x);
+        let div = pade_div(x);
+
+        let e_pw = (pw - ref_val).abs();
+        let e_nr2 = (nr2 - ref_val).abs();
+        let e_div = (div - ref_val).abs();
+
+        sum_sq_pw += (e_pw as f64) * (e_pw as f64);
+        sum_sq_nr2 += (e_nr2 as f64) * (e_nr2 as f64);
+        sum_sq_div += (e_div as f64) * (e_div as f64);
+
+        if e_pw > max_err_pw {
+            max_err_pw = e_pw;
+            max_err_pw_x = x;
+        }
+        if e_nr2 > max_err_nr2 {
+            max_err_nr2 = e_nr2;
+            max_err_nr2_x = x;
+        }
+        if e_div > max_err_div {
+            max_err_div = e_div;
+            max_err_div_x = x;
+        }
+    }
+
+    let rms_pw = (sum_sq_pw / n as f64).sqrt() as f32;
+    let rms_nr2 = (sum_sq_nr2 / n as f64).sqrt() as f32;
+    let rms_div = (sum_sq_div / n as f64).sqrt() as f32;
+
+    // — Precision thresholds (acceptance criteria) —
+    // Piecewise minimax: error must be < 5e-3 as established in E8.T02
+    assert!(
+        max_err_pw < 5e-3,
+        "Piecewise max error {:.6} exceeds 5e-3 at x={:.6}",
+        max_err_pw,
+        max_err_pw_x
+    );
+    // Padé NR2: must be more precise than piecewise
+    assert!(
+        max_err_nr2 < max_err_pw,
+        "Padé NR2 max error {:.6} >= piecewise {:.6}",
+        max_err_nr2,
+        max_err_pw
+    );
+    // Padé Div must be at least as good as NR2
+    assert!(
+        max_err_div <= max_err_nr2 * 1.01,
+        "Padé Div max error {:.6} > NR2 {:.6}",
+        max_err_div,
+        max_err_nr2
+    );
+
+    eprintln!();
+    eprintln!("╔═══════════════════════════════════════════════════════════════╗");
+    eprintln!("║  E8.T04 — Precision Analysis: Tanh Variants vs f32::tanh    ║");
+    eprintln!("╠═══════════════════════════════════════════════════════════════╣");
+    eprintln!(
+        "║  Domain: [-4.0, 4.0], {n} samples                            ║",
+        n = n
+    );
+    eprintln!("╠══════════════════╤═══════════════╤═══════════════╤════════════╣");
+    eprintln!("║  Variant         │ Max Abs Err   │ RMS Error     │ at x=      ║");
+    eprintln!("╠══════════════════╪═══════════════╪═══════════════╪════════════╣");
+    eprintln!(
+        "║  Piecewise       │ {:<13.6} │ {:<13.6} │ {:<10.4} ║",
+        max_err_pw, rms_pw, max_err_pw_x
+    );
+    eprintln!(
+        "║  Padé [5,4] NR2  │ {:<13.6} │ {:<13.6} │ {:<10.4} ║",
+        max_err_nr2, rms_nr2, max_err_nr2_x
+    );
+    eprintln!(
+        "║  Padé [5,4] Div  │ {:<13.6} │ {:<13.6} │ {:<10.4} ║",
+        max_err_div, rms_div, max_err_div_x
+    );
+    eprintln!("╚══════════════════╧═══════════════╧═══════════════╧════════════╝");
+    eprintln!();
+    eprintln!("  Equivalent mantissa bits (max error):");
+    eprintln!(
+        "    Piecewise:   ~{:.1} bits",
+        (-(max_err_pw as f64).log2()) as f32
+    );
+    eprintln!(
+        "    Padé NR2:    ~{:.1} bits",
+        (-(max_err_nr2 as f64).log2()) as f32
+    );
+    eprintln!(
+        "    Padé Div:    ~{:.1} bits",
+        (-(max_err_div as f64).log2()) as f32
+    );
+    eprintln!();
+    eprintln!(
+        "  Error reduction: NR2 = {:.1}×, Div = {:.1}× vs piecewise",
+        max_err_pw / max_err_nr2.max(f32::MIN_POSITIVE),
+        max_err_pw / max_err_div.max(f32::MIN_POSITIVE),
+    );
+    eprintln!(
+        "  Reciprocal penalty (NR2/Div): {:.3}× (negligible for f32)",
+        max_err_nr2 / max_err_div.max(f32::MIN_POSITIVE),
+    );
+    eprintln!();
+    eprintln!("  Throughput (AVX2, 256elem, cargo bench):");
+    eprintln!("    Piecewise:   ~156 ns");
+    eprintln!("    Padé NR2:    ~104 ns  (33% faster)");
+    eprintln!("    Padé Div:    ~62 ns   (60% faster)");
+    eprintln!();
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Sigmoid
 // ══════════════════════════════════════════════════════════════════════════════

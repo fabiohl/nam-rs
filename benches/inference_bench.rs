@@ -183,8 +183,8 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
 }
 
 /// Measures the performance of the AVX2-optimized `tanh` activation kernel.
-/// This kernel uses Padé approximations and rsqrt instructions to maximize
-/// throughput at the expense of sub-sample precision irrelevant to audio.
+/// Uses piecewise minimax odd polynomials (degree 5) with branchless blending
+/// for maximum throughput at the expense of sub-sample precision.
 fn bench_tanh_slice_256(c: &mut Criterion) {
     // Input range covering the linear and saturation regions of tanh
     let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
@@ -196,6 +196,44 @@ fn bench_tanh_slice_256(c: &mut Criterion) {
             // values, simulating the actual load of a neural layer.
             buf.copy_from_slice(&base);
             unsafe { nam_rs::math::activations::tanh_slice_avx2(&mut buf) };
+        });
+    });
+}
+
+/// E8.T04: Padé [5,4] tanh with double Newton-Raphson on reciprocal (AVX2).
+/// Evaluates rcp_ps + 2×NR iteration throughput vs piecewise minimax.
+fn bench_tanh_pade_nr2_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PadeNR2_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for chunk in buf.chunks_exact_mut(8) {
+                    let x = _mm256_loadu_ps(chunk.as_ptr());
+                    let y = nam_rs::math::activations::simd_tanh_pade_nr2_avx2(x);
+                    _mm256_storeu_ps(chunk.as_mut_ptr(), y);
+                }
+            }
+        });
+    });
+}
+
+/// E8.T04: Padé [5,4] tanh with hardware division oracle (AVX2).
+/// IEEE 754 full-precision reference — maximum fidelity, minimum throughput.
+fn bench_tanh_pade_div_256(c: &mut Criterion) {
+    use std::arch::x86_64::*;
+    let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+    c.bench_function("FastMath_tanh_PadeDiv_AVX2_256elem", |b| {
+        b.iter(|| {
+            let mut buf = base.clone();
+            unsafe {
+                for chunk in buf.chunks_exact_mut(8) {
+                    let x = _mm256_loadu_ps(chunk.as_ptr());
+                    let y = nam_rs::math::activations::simd_tanh_pade_div_avx2(x);
+                    _mm256_storeu_ps(chunk.as_mut_ptr(), y);
+                }
+            }
         });
     });
 }
@@ -479,6 +517,46 @@ fn bench_sigmoid_avx512_256elem(c: &mut Criterion) {
     }
 }
 
+/// E8.T04: Padé [5,4] tanh with double Newton-Raphson (AVX-512).
+fn bench_tanh_pade_nr2_avx512_256elem(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        use std::arch::x86_64::*;
+        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+        c.bench_function("FastMath_tanh_PadeNR2_AVX512_256elem", |b| {
+            b.iter(|| {
+                let mut buf = base.clone();
+                unsafe {
+                    for chunk in buf.chunks_exact_mut(16) {
+                        let x = _mm512_loadu_ps(chunk.as_ptr());
+                        let y = nam_rs::math::activations::simd_tanh_pade_nr2_avx512(x);
+                        _mm512_storeu_ps(chunk.as_mut_ptr(), y);
+                    }
+                }
+            });
+        });
+    }
+}
+
+/// E8.T04: Padé [5,4] tanh with hardware division oracle (AVX-512).
+fn bench_tanh_pade_div_avx512_256elem(c: &mut Criterion) {
+    if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+        use std::arch::x86_64::*;
+        let base: Vec<f32> = (0..256).map(|i| ((i as f32) * 0.05) - 6.4).collect();
+        c.bench_function("FastMath_tanh_PadeDiv_AVX512_256elem", |b| {
+            b.iter(|| {
+                let mut buf = base.clone();
+                unsafe {
+                    for chunk in buf.chunks_exact_mut(16) {
+                        let x = _mm512_loadu_ps(chunk.as_ptr());
+                        let y = nam_rs::math::activations::simd_tanh_pade_div_avx512(x);
+                        _mm512_storeu_ps(chunk.as_mut_ptr(), y);
+                    }
+                }
+            });
+        });
+    }
+}
+
 /// Measures the time spent in the `prewarm` function.
 /// Although prewarm runs outside the audio thread, it must be fast enough
 /// so that model switching during a live performance is imperceptible.
@@ -684,6 +762,8 @@ criterion_group!(
     bench_lstm_1x40_comparison,
     bench_lstm_2x24_comparison,
     bench_tanh_slice_256,
+    bench_tanh_pade_nr2_256,
+    bench_tanh_pade_div_256,
     bench_sigmoid_slice_256,
     bench_wavenet_dynamic_standard,
     bench_lstm_dynamic_1x16,
@@ -694,6 +774,8 @@ criterion_group!(
     bench_resampler_48000_bypass,
     bench_record,
     bench_tanh_avx512_256elem,
+    bench_tanh_pade_nr2_avx512_256elem,
+    bench_tanh_pade_div_avx512_256elem,
     bench_sigmoid_avx512_256elem,
     bench_prewarm_wavenet_standard,
     bench_prewarm_lstm_2x16
