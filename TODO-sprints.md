@@ -1169,7 +1169,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 ### Sprint S13 — Cobertura de testes
 
-#### Tarefa S13.T01 — Round-trip encode→decode em NAMB v2 ⚠️
+#### Tarefa S13.T01 — Round-trip encode→decode em NAMB v2 ⚠️ [DONE]
 
 - **Onde:** `tests/namb_v2_roundtrip.rs` (novo).
 - **Problema:** Bugs Sprint S3.T03 só foram identificados por leitura manual.
