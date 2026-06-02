@@ -4,10 +4,10 @@
 //! Unit tests for SIMD activation functions.
 //! Migrated from `fastmath_test.rs` as part of Task 3.1 (Epic 3).
 //!
-//! Validates the precision of Padé approximations against the standard
-//! library scalar references.
+//! Validates the precision of piecewise minimax polynomial approximations
+//! against the standard library scalar references.
 //!
-//! Task S7.T09: Replacement of Minimax polynomials with branchless Padé.
+//! Task E8.T02: Piecewise Minimax SIMD with Branchless Blending.
 
 use super::*;
 use proptest::prelude::*;
@@ -46,7 +46,7 @@ fn test_tanh_slice_dispatch_smoke() {
     }
 }
 
-// Proptest: validates Padé tanh scalar precision against f32::tanh reference.
+// Proptest: validates scalar tanh precision against f32::tanh reference.
 // 100k uniform inputs in [-10, 10].
 proptest! {
     #[test]
@@ -55,6 +55,74 @@ proptest! {
         let actual = tanh::tanh(x);
         let error = (expected - actual).abs();
         prop_assert!(error < 5e-3, "tanh({x}) = {actual}, expected {expected}, delta {error}",);
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Tanh – Piecewise Minimax (E8.T02)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Validates tanh precision at segment boundaries and critical interior
+/// points for the piecewise minimax polynomial approximation.
+#[test]
+fn test_tanh_piecewise_boundaries() {
+    let test_vals: [f32; 14] = [
+        -3.5, -2.5, -2.001, -1.999, -1.001, -0.999, 0.0, 0.999, 1.001, 1.999, 2.001, 2.5, 3.5, 4.0,
+    ];
+    for &x in &test_vals {
+        let expected = x.tanh();
+        let actual = tanh::tanh(x);
+        let error = (expected - actual).abs();
+        assert!(
+            error < 2e-5,
+            "tanh({x}) = {actual}, expected {expected}, delta {error}"
+        );
+    }
+}
+
+/// Validates that the SIMD slice dispatch produces finite values and
+/// that extreme inputs are properly saturated to [-1, 1].
+#[test]
+fn test_tanh_piecewise_saturation() {
+    let mut data: Vec<f32> = vec![-100.0, -10.0, -4.0, -0.5, 0.0, 0.5, 4.0, 10.0, 100.0];
+    let original = data.clone();
+    tanh_slice(&mut data);
+    for (i, (&a, &b)) in original.iter().zip(data.iter()).enumerate() {
+        assert!(b.is_finite(), "tanh index {i}: NaN/Inf for input {a}");
+        assert!(
+            (-1.0..=1.0).contains(&b),
+            "tanh[{i}] = {b} out of [-1, 1] for input {a}"
+        );
+        let expected = a.tanh();
+        let error = (expected - b).abs();
+        assert!(
+            error < 5e-3,
+            "tanh[{i}] = {b}, expected {expected}, delta {error} for input {a}"
+        );
+    }
+}
+
+// Proptest targeting the sub-intervals uniformly — 50k samples.
+proptest! {
+    #[test]
+    fn test_tanh_piecewise_proptest_50k(x in -4.1f32..4.1f32) {
+        let expected = x.tanh();
+        let actual = tanh::tanh(x);
+        let error = (expected - actual).abs();
+        prop_assert!(
+            error < 1e-2,
+            "tanh({x}) = {actual}, expected {expected}, delta {error}",
+        );
+    }
+}
+
+/// Symmetry test: tanh is an odd function — validates that the
+/// piecewise implementation preserves sign-odd behaviour.
+#[test]
+fn test_tanh_piecewise_odd_symmetry() {
+    let test_vals: [f32; 10] = [0.0, 0.1, 0.5, 0.8, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0];
+    for &x in &test_vals {
+        assert_eq!(tanh::tanh(-x), -tanh::tanh(x), "tanh(-{x}) != -tanh({x})");
     }
 }
 

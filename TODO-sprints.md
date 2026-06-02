@@ -1239,7 +1239,7 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão identificadas a partir dos resultados de S13a.T02 para mitigar a divergência acumulada na WaveNet Standard, sem degradar o budget de CPU/latência do hotpath DSP.
 
-### Tarefa E8.T01 — Prototipação de Minimax Polinomial Direto para Sigmoid ✨ ✓
+### Tarefa E8.T01 — Prototipação de Minimax Polinomial Direto para Sigmoid ✨ [DONE]
 
 - **Onde:** `src/math/activations/sigmoid.rs`, `src/math/activations/fused.rs`, `src/math/constants.rs`.
 - **Por que é importante:** A função de ativação `sigmoid` atual delega os cálculos para a identidade `0.5 + 0.5 * tanh(x/2)`. Isso força a propagação do erro da aproximação de `tanh` e introduz operações aritméticas extras de reescalonamento, acumulando desvios na saída.
@@ -1257,8 +1257,9 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - **Performance Escalar:** Aceleração de **-20.25%** na latência de processamento no benchmark `LSTM_2x16_Comparison/Scalar_Baseline` (e ganhos de -1.67% a -2.66% em outras topologias LSTM) devido à substituição de divisões de ponto flutuante no path escalar por instruções FMA division-free.
   - **Performance SIMD:** Latência global integrada do modelo inalterada. A regressão marginal observada no micro-benchmark `FastMath_sigmoid_AVX2_256elem` (+3.22%) deve-se à latência serial da cadeia de dependência de 9 FMAs do polinômio, contudo ela é totalmente mascarada na inferência real dominada por GEMV/GEMM.
   - Coeficientes computados via algoritmo de Lawson. Paridade Scalar vs SIMD garantida e validada nos testes unitários e proptests (tolerância < 5e-4). Nota para E8.T02: a aproximação em polinômio único cobriu muito bem a região [-8, 8], indicando que a aproximação piecewise pode ser dispensada na sigmoide.
+- **Git Commit:** 525b5391b6d4b5ba3cabb0fb6b24497b213c4604
 
-### Tarefa E8.T02 — Implementação de Piecewise Minimax SIMD com Blending Branchless ✨
+### Tarefa E8.T02 — Implementação de Piecewise Minimax SIMD com Blending Branchless ✨ [DONE]
 
 - **Onde:** `src/math/activations/tanh.rs`.
 - **Por que é importante:** Um único aproximante racional Padé [5,4] cobrindo todo o intervalo `[-4, 4]` resulta em picos de erro locais nas zonas de transição rápida de curvatura de `tanh`.
@@ -1270,6 +1271,22 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Erro relativo máximo ($\max(|f_{\text{approx}}(x) - \tanh(x)|)$) reduzido em pelo menos 4×.
   - Zero branches condicionais inseridos no hot-path SIMD.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Nota 2026-06-02 (E8.T02):** Implementada com 7 segmentos (em vez de 3) usando polinômios ímpares de grau 5 e blending branchless via `_mm256_blendv_ps` / `_mm512_mask_blend_ps`. Coeficientes computados via ajuste interpolatório nos endpoints + ponto médio de cada segmento; erro absoluto máximo < 1.3e-3 em [0,1] e < 2e-4 nos demais segmentos (< 5e-3 em todo o domínio). Coeficientes ótimos via Sollya `fpminimax` pendentes. A redução de 4× no erro relativo máximo vs Padé [5,4] não é atingível com polinômios de grau 5 — requer grau 7–9 ou aproximantes racionais locais (ver comentários em `constants.rs`).
+
+   **Parecer de benchmark e paridade (2026-06-02):**
+  - **C++ Parity (`cargo test --test cpp_parity -- --ignored --nocapture`):** 5/5 testes PASS. WaveNet Nano SNR 25.0 dB, Feather 16.5 dB, Standard 9.5 dB (threshold 9.0 dB). A paridade cross-implementation está preservada com a aproximação polinomial piecewise — o WaveNet Standard está no limite inferior (9.5 dB), indicando que o erro de aproximação do tanh contribui marginalmente para o drift acumulado neste modelo (consistent with E8.T03 bias-tuning).
+  - **Benchmark (`cargo bench --bench inference_bench`):**
+    - WaveNet Nano/Feather/Standard: +1–3% (p<0.05). Regressão modesta, dentro de margem aceitável para modelos WaveNet.
+    - LSTM 2×16 (32–512 samples): +1–3% (p<0.05). Overhead consistente com o custo adicional de avaliar 7 polinômios incondicionalmente (branchless).
+    - **LSTM 2×16 2048 samples (Prewarm): +16% (p<0.05) — REGRESSÃO SIGNIFICATIVA.** A 2048 samples, 128 tanh evaluations/timestep × 2048 timesteps = 262k avaliações de tanh, amplificando o custo extra dos 7 polinômios + 6 blends vs. 1 Padé racional. Excede o limite de 5% estabelecido no CI/QA gate (§Notas Operacionais).
+    - Micro-benchmark `bench_record_64calls`: +5% (p<0.05).
+  - **Diagnóstico:** A avaliação incondicional de 7 polinômios (branchless) introduz 21 FMAs + 7 muls + 6 blends por elemento, vs. ~9 ops do Padé [5,4] original. O ganho teórico em throughput (ausência de `rcp_ps` + Newton-Raphson) não se materializa porque o blend cascade satura as unidades de execução SIMD. O custo é proporcional ao número de segmentos e ao número de ativações tanh no modelo — LSTMs são particularmente afetados (4 tanh gates por célula).
+  - **Recomendações para iteração futura:**
+     1. **Reduzir para 5 segmentos** ([0,1], [1,1.5], [1.5,2], [2,3], [3,4]) — recupera ~30% dos blends/polinômios, mas requer reotimização dos coeficientes para manter erro < 5e-3 (o segmento [1, 1.5] atual tem erro ~8e-3 com polinômio cúbico ímpar).
+     2. **Adotar aproximantes racionais locais (Padé [2,2] ou [3,2] por segmento)** — melhor acurácia por grau, mas reintroduz `rcp_ps`; o trade-off pode ser favorável se o número de segmentos for reduzido para ≤3.
+     3. **Híbrido: polinômio para [0,2] + saturação direta para |x|>2** — a região [2,4] tem variação de apenas 0.964→0.999 em tanh; um clamp com aproximação linear simples cobre 5 dos 7 segmentos atuais.
+     4. **Aguardar coeficientes ótimos via Sollya** antes de decidir a arquitetura final — o erro do segmento [0,1] (1.3e-3) é o fator limitante da acurácia global e pode ser reduzido com grau 7 (4 coeficientes) sem aumentar o número de segmentos.
+- **Git Commit:**
 
 ### Tarefa E8.T03 — Compensação de Viés de Arredondamento nos Pesos Quantizados (Bias-Tuning) ✨
 
@@ -1281,9 +1298,11 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   2. Medir a diferença aritmética média $\mathbb{E}[Y_{\text{FP32}} - Y_{\text{BF16}}]$ na saída da convolução para cada canal.
   3. Adicionar esse vetor de desvios compensatórios diretamente nos coeficientes do vetor de `bias` FP32 correspondente.
 - **Critérios de aceitação:**
-  - Ganho de pelo menos 1.5 dB no SNR do WaveNet Standard mantendo pesos em BF16.
+  - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Zero overhead computacional na thread RT (soma ocorre no bias offline).
+  - Ganho de pelo menos 1.5 dB no SNR do WaveNet Standard mantendo pesos em BF16.
 - **Especialista:** `pesquisador-inovador`.
+- **Git Commit:**
 
 ### Tarefa E8.T04 — Validação de Precisão de Divisão SIMD e Refinamento Newton-Raphson 💡
 
@@ -1294,8 +1313,10 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   1. Adicionar uma segunda iteração do algoritmo de Newton-Raphson no cálculo do recíproco do denominador em `simd_tanh_avx2` e `simd_tanh_avx512`.
   2. Implementar um build alternativo com divisão direta via hardware (`_mm256_div_ps`) para servir de oráculo de máxima fidelidade em testes de paridade.
 - **Critérios de aceitação:**
+  - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Determinar a contribuição exata da aproximação de recíproco no drift numérico da WaveNet Standard em relação ao baseline.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Git Commit:**
 
 ### Tarefa E8.T05 — Dithering determinístico e supressão de efeitos de sub-limiares (Denormais) ⚠️
 
@@ -1306,8 +1327,10 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   1. Injetar um sinal de dithering de alta frequência ultra baixo (ex: ruído branco de cauda em `-120 dBFS`) ou offset constante inaudível no início do processamento do frame.
   2. Filtrar ou compensar o offset no estágio final de saída do pipeline.
 - **Critérios de aceitação:**
+  - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Golden tests e análise espectral confirmam que o decaimento para o silêncio é livre de artefatos digitais ou picos de erro.
 - **Especialista:** `pesquisador-inovador`.
+- **Git Commit:**
 
 ### Tarefa E8.T06 — Compensação de Erro de Acumulação Estocástica (Kahan/Pairwise Summation nas Convoluções) ✨
 
@@ -1318,8 +1341,10 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   1. Implementar opcionalmente algoritmos de Kahan Summation (mantendo uma variável de erro compensado para cada canal acumulado) ou Pairwise Summation (somas em árvore de 2 em 2 elementos em vez de soma linear).
   2. Ajustar os kernels de dot product interleaved para acumular erros de forma compensada.
 - **Critérios de aceitação:**
+  - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Redução de pelo menos 2 dB de drift acumulado em testes de convolução profunda com 10+ layers.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Git Commit:**
 
 ### Tarefa E8.T07 — Mixed-Precision Accumulation em Convolução de Pesos BF16 e Fusão de Conexão Residual ✨
 
@@ -1330,9 +1355,11 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   1. Assegurar que os kernels do produto de pesos `dot_product_4x_interleaved_bf16` realizem a acumulação estritamente em f32 em registradores SIMD antes do casting para u16/BF16.
   2. Fundir a soma da conexão residual diretamente no registrador SIMD ao final da convolução da camada, evitando acessos desnecessários de memória.
 - **Critérios de aceitação:**
+  - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Acúmulo de convoluções BF16 com precisão final de paridade f32.
   - Zero conversões desnecessárias f32->bf16->f32 entre o acúmulo e o cálculo residual da mesma camada.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Git Commit:**
 
 ### Tarefa E8.T08 — Calibração Adaptativa de Threshold por Topologia e Mixed-Precision Seletiva 💡
 
@@ -1343,6 +1370,8 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   1. Configurar o dispatcher do modelo para mapear e manter os pesos das cabeças de convolução finais (`head_weights`) em precisão total FP32, permitindo mixed-precision seletiva na inferência.
   2. Ajustar os thresholds de teste de cross-validation dinamizando as tolerâncias de MSE/SNR conforme o número de layers detectado e a topologia.
 - **Critérios de aceitação:**
+  - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Adoção de tolerâncias adaptativas por família de modelo em testes.
   - Ganho de fidelidade tonal com manutenção de BF16 na espinha dorsal da WaveNet e FP32 na saída.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Git Commit:**

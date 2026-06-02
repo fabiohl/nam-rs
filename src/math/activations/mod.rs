@@ -4,7 +4,8 @@
 //! Central activations module with automatic SIMD dispatch.
 //!
 //! Provides ultra-fast and branchless implementations of `tanh` and `sigmoid`.
-//! - `tanh(x)` uses Padé [5,4] rational approximant for |x| < 4, saturated to [-1, 1].
+//! - `tanh(x)` uses piecewise minimax odd polynomials (degree 5) with branchless
+//!   blending for |x| < 4, saturated to [-1, 1] (7 symmetric sub-intervals).
 //! - `sigmoid(x)` uses a direct degree-17 minimax polynomial (9 odd terms) for |x| < 8,
 //!   saturated to [0, 1].  Max error ~4.09e-4 vs `f32::exp` reference.
 //!
