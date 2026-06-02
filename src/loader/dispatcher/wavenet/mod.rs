@@ -6,6 +6,7 @@ use crate::models::DynamicModel;
 use anyhow::bail;
 use log::info;
 
+mod bias_tune;
 pub(crate) mod dynamic;
 pub(crate) mod feather;
 pub(crate) mod layout;

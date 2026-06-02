@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::super::WeightCursor;
+use super::bias_tune;
 use super::traits::{ConvWeightsOutput, DenseWeightsOutput};
 use crate::math::common::{AlignedVec, quantize_weight};
 
@@ -24,23 +25,57 @@ pub(crate) fn read_conv1d_weights_typed<T: ConvWeightsOutput>(
         == crate::math::common::InstructionSet::Avx512VnniBf16;
 
     let mut weights = AlignedVec::new(padded_total, 0u16);
+    let interleaved = cursor.is_interleaved4();
+    let raw_f32_owned: Vec<f32>;
 
-    if cursor.is_interleaved4() {
+    if interleaved {
         let raw = cursor.read_slice(padded_total)?;
+        raw_f32_owned = raw.to_vec();
         for i in 0..padded_total {
-            weights[i] = quantize_weight(raw[i], is_bf16);
+            weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
         }
     } else {
         let total = out_size * in_size * k_size;
         let raw = cursor.read_slice(total)?;
-        transpose_conv1d_interleaved_4wide(raw, &mut weights, in_size, out_size, k_size, is_bf16);
+        raw_f32_owned = raw.to_vec();
+        transpose_conv1d_interleaved_4wide(
+            &raw_f32_owned,
+            &mut weights,
+            in_size,
+            out_size,
+            k_size,
+            is_bf16,
+        );
     }
 
-    let bias = if do_bias {
+    let mut bias = if do_bias {
         AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
     } else {
         AlignedVec::new(out_size, 0.0)
     };
+
+    if do_bias && !raw_f32_owned.is_empty() {
+        let compensation = bias_tune::compute_conv1d_bias_compensation(
+            &raw_f32_owned,
+            &weights,
+            in_size,
+            out_size,
+            k_size,
+            interleaved,
+            is_bf16,
+        );
+        let max_comp = compensation.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
+        log::debug!(
+            "[BiasTune] Conv1D in={}, out={}, k={}, dil={}, bf16={}: max_comp={:.6e}",
+            in_size,
+            out_size,
+            k_size,
+            dilation,
+            is_bf16,
+            max_comp
+        );
+        bias_tune::apply_bias_compensation(&mut bias, &compensation);
+    }
 
     let prefetch_fn = if dilation >= 128 {
         crate::math::common::prefetch_strategy_2stage
@@ -68,23 +103,45 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
 ) -> anyhow::Result<T> {
     let total = out_size * in_size;
     let raw = cursor.read_slice(total)?;
+    let raw_f32_owned = raw.to_vec();
     let mut weights = AlignedVec::new(total, 0u16);
     let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
         == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let interleaved = cursor.is_interleaved4();
 
-    if cursor.is_interleaved4() {
+    if interleaved {
         for i in 0..total {
-            weights[i] = quantize_weight(raw[i], is_bf16);
+            weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
         }
     } else {
-        transpose_dense_layer(raw, &mut weights, in_size, out_size, is_bf16);
+        transpose_dense_layer(&raw_f32_owned, &mut weights, in_size, out_size, is_bf16);
     }
 
-    let bias = if do_bias {
+    let mut bias = if do_bias {
         AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
     } else {
         AlignedVec::new(out_size, 0.0)
     };
+
+    if do_bias && !raw_f32_owned.is_empty() {
+        let compensation = bias_tune::compute_dense_bias_compensation(
+            &raw_f32_owned,
+            &weights,
+            in_size,
+            out_size,
+            interleaved,
+            is_bf16,
+        );
+        let max_comp = compensation.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
+        log::debug!(
+            "[BiasTune] Dense in={}, out={}, bf16={}: max_comp={:.6e}",
+            in_size,
+            out_size,
+            is_bf16,
+            max_comp
+        );
+        bias_tune::apply_bias_compensation(&mut bias, &compensation);
+    }
 
     Ok(T::from_parts(weights, bias, do_bias, in_size, out_size))
 }

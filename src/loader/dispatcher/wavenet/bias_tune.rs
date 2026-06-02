@@ -1,0 +1,191 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Bias-Tuning: compensação de viés de arredondamento nos pesos quantizados.
+//!
+//! Durante a carga do modelo, executa-se uma inferência simulada com sinal
+//! sintético DC=1.0 para medir o drift por canal introduzido pela quantização
+//! BF16/FP16 dos pesos. O vetor de desvios compensatórios é adicionado
+//! diretamente aos coeficientes de bias FP32, resultando em zero overhead
+//! computacional na thread RT.
+
+#[cfg(test)]
+use crate::math::common::quantize_weight;
+
+/// Reverte `quantize_weight`: reconstrói um f32 aproximado a partir do u16.
+#[inline(always)]
+fn dequantize_weight(w: u16, is_bf16: bool) -> f32 {
+    if is_bf16 {
+        f32::from_bits((w as u32) << 16)
+    } else {
+        half::f16::from_bits(w).to_f32()
+    }
+}
+
+/// Calcula a compensação de bias por canal para uma camada Dense.
+///
+/// Usa a premissa de sinal DC=1.0 em todos os canais de entrada.
+/// Para cada canal de saída `i`:
+///   compensation[i] = Σⱼ (W_fp32[i,j] - W_quant[i,j])
+///
+/// * `raw_f32` — pesos originais no layout pós-leitura do cursor.
+/// * `quant_u16` — pesos já quantizados e transpostos.
+/// * `is_interleaved` — se true, raw_f32 e quant_u16 estão no mesmo layout interleaved.
+pub fn compute_dense_bias_compensation(
+    raw_f32: &[f32],
+    quant_u16: &[u16],
+    in_size: usize,
+    out_size: usize,
+    is_interleaved: bool,
+    is_bf16: bool,
+) -> Vec<f32> {
+    let mut compensation = vec![0.0f32; out_size];
+
+    if is_interleaved {
+        for (out_c, comp) in compensation.iter_mut().enumerate().take(out_size) {
+            let mut sum_diff = 0.0f32;
+            for in_c in 0..in_size {
+                let idx = in_c * out_size + out_c;
+                sum_diff += raw_f32[idx] - dequantize_weight(quant_u16[idx], is_bf16);
+            }
+            *comp = sum_diff;
+        }
+    } else {
+        for (out_c, comp) in compensation.iter_mut().enumerate().take(out_size) {
+            let mut sum_diff = 0.0f32;
+            for in_c in 0..in_size {
+                let raw = raw_f32[out_c * in_size + in_c];
+                let quant = dequantize_weight(quant_u16[in_c * out_size + out_c], is_bf16);
+                sum_diff += raw - quant;
+            }
+            *comp = sum_diff;
+        }
+    }
+
+    compensation
+}
+
+/// Calcula a compensação de bias por canal para uma camada Conv1D.
+///
+/// Usa a premissa de sinal DC=1.0 em todos os canais de entrada e taps.
+/// Para cada canal de saída `i`:
+///   compensation[i] = Σ_{k,cin} (W_fp32[i,cin,k] - W_quant[i,cin,k])
+pub fn compute_conv1d_bias_compensation(
+    raw_f32: &[f32],
+    quant_u16: &[u16],
+    in_size: usize,
+    out_size: usize,
+    k_size: usize,
+    is_interleaved: bool,
+    is_bf16: bool,
+) -> Vec<f32> {
+    let mut compensation = vec![0.0f32; out_size];
+
+    if is_interleaved {
+        // Layout interleaved 4-wide:
+        // raw[b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane]
+        // quant mesmo layout
+        let num_blocks = out_size.div_ceil(4);
+        for b in 0..num_blocks {
+            for k in 0..k_size {
+                for in_c in 0..in_size {
+                    for lane in 0..4 {
+                        let out_c = b * 4 + lane;
+                        if out_c < out_size {
+                            let idx =
+                                b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane;
+                            compensation[out_c] +=
+                                raw_f32[idx] - dequantize_weight(quant_u16[idx], is_bf16);
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // raw: raw[(out_c * in_size + in_c) * k_size + k]
+        // quant: interleaved 4-wide
+        let num_blocks = out_size.div_ceil(4);
+        for b in 0..num_blocks {
+            for k in 0..k_size {
+                for in_c in 0..in_size {
+                    for lane in 0..4 {
+                        let out_c = b * 4 + lane;
+                        if out_c < out_size {
+                            let raw_idx = (out_c * in_size + in_c) * k_size + k;
+                            let quant_idx =
+                                b * (k_size * in_size * 4) + k * (in_size * 4) + in_c * 4 + lane;
+                            compensation[out_c] +=
+                                raw_f32[raw_idx] - dequantize_weight(quant_u16[quant_idx], is_bf16);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    compensation
+}
+
+/// Aplica o vetor de compensação ao bias, somando elemento a elemento.
+pub fn apply_bias_compensation(bias: &mut [f32], compensation: &[f32]) {
+    for i in 0..bias.len() {
+        bias[i] += compensation[i];
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_dequantize_bf16_roundtrip() {
+        let original = 0.123456f32;
+        let quant = quantize_weight(original, true);
+        let recovered = dequantize_weight(quant, true);
+        // BF16 truncation: error should be < 1%
+        assert!((original - recovered).abs() < 0.01 * original.abs());
+    }
+
+    #[test]
+    fn test_dequantize_f16_roundtrip() {
+        let original = 0.123456f32;
+        let quant = quantize_weight(original, false);
+        let recovered = dequantize_weight(quant, false);
+        assert!((original - recovered).abs() < 0.001 * original.abs());
+    }
+
+    #[test]
+    fn test_dense_compensation_nonzero_bf16() {
+        // Two input channels, two output channels.
+        // Raw data row-major: raw[out_c * in_size + in_c]
+        let raw = vec![0.1f32, 0.2, 0.3, 0.4]; // ch0=[0.1,0.2], ch1=[0.3,0.4]
+        let mut quant = [0u16; 4];
+        for i in 0..4 {
+            quant[i] = quantize_weight(raw[i], true);
+        }
+        // Non-interleaved: compensation uses raw row-major and quant column-major.
+        // Transpose quant to column-major: quant_col[in_c * out_size + out_c]
+        let mut quant_col = vec![0u16; 4];
+        quant_col[0] = quant[0]; // in=0,out=0
+        quant_col[1] = quant[2]; // in=0,out=1 (was raw[0*2+1])
+        quant_col[2] = quant[1]; // in=1,out=0
+        quant_col[3] = quant[3]; // in=1,out=1
+        let comp = compute_dense_bias_compensation(&raw, &quant_col, 2, 2, false, true);
+        for i in 0..2 {
+            let expected = (raw[i * 2] - dequantize_weight(quant[i * 2], true))
+                + (raw[i * 2 + 1] - dequantize_weight(quant[i * 2 + 1], true));
+            assert!((comp[i] - expected).abs() < 1e-10);
+        }
+        assert!(comp[0].abs() > 0.0);
+    }
+
+    #[test]
+    fn test_apply_bias_compensation() {
+        let mut bias = vec![1.0, 2.0, 3.0];
+        let comp = vec![0.1, 0.2, 0.0];
+        apply_bias_compensation(&mut bias, &comp);
+        assert!((bias[0] - 1.1).abs() < 1e-10);
+        assert!((bias[1] - 2.2).abs() < 1e-10);
+        assert!((bias[2] - 3.0).abs() < 1e-10);
+    }
+}
