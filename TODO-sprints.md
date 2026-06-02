@@ -1157,21 +1157,27 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 #### Tarefa S13.T01 — Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore 🔥
 
-- **Onde:** `tests/cpp_parity.rs` (novo); `utils/cpp_parity/generate_goldens.sh` (novo); `tests/fixtures/cpp_parity/` (novos goldens).
-- **Problema:** Os goldens existentes em `tests/golden/*.bin` são autorreferenciais (Rust-only) — se há um bug na implementação, o golden perpetua o bug. Os goldens em `tests/fixtures/golden_*.bin` comparam contra NeuralAudio (Mike Oliphant), uma reimplementação C++ independente (RTNeural + Eigen), mas **não** contra a referência canônica: o `NeuralAmpModelerCore` de Steven Atkinson — o código que treina e gera os modelos `.nam`.
-- **Solução técnica — Arquitetura de duas camadas:**
-  1. **Camada 1 — Goldens pré-commitados (rápido, `cargo test`):**
-     - Script `utils/cpp_parity/generate_goldens.sh` gera goldens **uma única vez**: compila o CLI `render` existente em `github.com/NeuralAmpModelerCore/tools/render.cpp` (CMake, já testado e funcional), processa cada modelo de referência com sinal senoidal 440 Hz @ 48 kHz (512 amostras, block_size=64), extrai samples f32 da saída WAV e salva como `.golden.bin` em `tests/fixtures/cpp_parity/` (~4 KB cada, ~25 KB total).
-     - Testes normais `#[test]` em `tests/cpp_parity.rs` carregam estes goldens e comparam contra saída Rust — roda em cada `cargo test` sem compilar C++.
-  2. **Camada 2 — Validação cruzada ao vivo (lento, `tests-long.sh`):**
-     - Testes `#[test] #[ignore]` que compilam o `render` (idempotente, cached), geram output C++ ao vivo, e comparam diretamente com Rust.
-     - Detecta drift se alguém atualizar o mirror `github.com/NeuralAmpModelerCore/` e os goldens commitados ficarem defasados.
-  3. **WAV I/O minimalista:** helpers ~60 LoC em `tests/common/wav.rs` para ler/escrever WAV mono float32 IEEE — sem crate externo.
-  4. **Documentação:** Atualizar `docs/dependencies.md` e `README.md` com pré-requisitos (CMake ≥ 3.10, compilador C++20, submodules) e instruções de setup para developers.
-- **Nota técnica:** O `NeuralAmpModelerCore` usa `std::tanh`/`std::exp` nativos (alta precisão), ao contrário do NeuralAudio que tem suas próprias aproximações. A divergência NAM-rs↔NAMCore será dominada exclusivamente pela FastMath Padé do NAM-rs. Thresholds serão calibrados na implementação; estimativas: LSTM MSE < 1e-3 / SNR ≥ 22 dB; WaveNet MSE < 5e-2 / SNR ≥ 9 dB.
-- **Zero poluição git:** Diretório `/github.com/` inteiro está no `.gitignore`; goldens em `tests/fixtures/cpp_parity/` são pequenos (~4 KB) e explicitamente permitidos (`!tests/fixtures/*.bin`).
-- **Modelos de referência:** BossWN-standard.nam, BossWN-feather.nam, BossWN-nano.nam, BossLSTM-1x16.nam, BossLSTM-2x8.nam.
-- **Critérios de aceitação:** Todos os modelos de referência passam na validação dual MSE+SNR tanto na Camada 1 (goldens pré-commitados) quanto na Camada 2 (validação ao vivo).
+- **Onde:** `tests/cpp_parity.rs` (novo); `tests/fixtures/golden_gen_build.sh` (reescrito); `tests/common/wav.rs` (novo); `tests/common/mod.rs` (atualizado); `tests/nam_infer_test.rs` (atualizado).
+- **Problema:** Fonte de verdade fragmentada em 3 camadas desalinhadas:
+  - `tests/regression_goldens.rs` + `tests/golden/*.bin` — autorreferenciais (Rust-only): perpetuam bugs.
+  - `tests/fixtures/golden_*.bin` gerados por `golden_gen.cpp` — baseados em NeuralAudio (Mike Oliphant), reimplementação independente, **não** a referência canônica.
+  - Nenhuma validação contra o `NeuralAmpModelerCore` (Steven Atkinson) — o código que treina e gera os modelos `.nam`.
+- **Solução técnica — Unificação exclusiva com NeuralAmpModelerCore:**
+  1. **Remoção total** dos goldens autorreferenciais (`tests/golden/`, `regression_goldens.rs`) e NeuralAudio (`golden_gen.cpp`, goldens `tests/fixtures/golden_*.bin` atuais). **Nuke do histórico git** via `git filter-repo`.
+  2. **Camada 1 — Goldens pré-commitados (rápido, `cargo test`):**
+     - Script `tests/fixtures/golden_gen_build.sh` (reescrito) compila o CLI `render` do NeuralAmpModelerCore (CMake, já testado e funcional), processa cada modelo com **sinal de stress multi-componente** (2048 amostras — chirp 82→3520 Hz + harmônicos de guitarra Low-E + impulso transiente + envelope attack-sustain-release com fade-to-silence), extrai samples f32 e salva como `.golden.bin` em `tests/fixtures/` (~16 KB cada, ~80 KB total).
+     - Testes existentes `test_golden_vectors_*` em `nam_infer_test.rs` continuam como `#[test]` normal — roda em cada `cargo test` sem compilar C++. Código Rust de teste praticamente inalterado (mesma API `read_golden_bin`).
+  3. **Camada 2 — Validação cruzada ao vivo (lento, `tests-long.sh`):**
+     - Testes `#[test] #[ignore]` em `tests/cpp_parity.rs` que compilam o `render` (idempotente, cached), geram output C++ ao vivo, e comparam diretamente com Rust.
+     - Detecta drift se alguém atualizar o mirror `github.com/NeuralAmpModelerCore/`.
+  4. **Métricas de precisão expandidas (5 métricas, single-pass fusion):**
+     - MSE (erro quadrático médio), MAE (max absolute error), SNR, **PSNR** (normalizado pelo pico), **bits equivalentes de precisão** (`-0.5 * log₂(MSE/signal_power)`).
+     - Calculadas em uma única iteração sobre o buffer — zero overhead adicional.
+  5. **WAV I/O minimalista:** helpers ~80 LoC em `tests/common/wav.rs` — sem crate externo.
+  6. **Documentação completa:** Atualizar `docs/architecture.md` (ADRs, tabela de testes), `docs/dependencies.md` (seção "apt install cmake g++ python3"), `tests/fixtures/README.md` (reescrita total), `README.md` (seção Tests & Validation).
+- **Sinal de stress (substitui senoidal 440 Hz):** Chirp linear 220→3520 Hz (resposta em frequência) + harmônicos Low-E 82/165/330/659 Hz (intermodulação) + impulso transiente +0.9 a 25% (resposta a transientes) + envelope attack-release com fade-to-silence (dinâmica/denormals). 2048 amostras @ 48 kHz, determinístico (reprodutível bit-a-bit em Python e Rust).
+- **Modelos de referência:** BossWN-standard.nam, BossWN-feather.nam, BossWN-nano.nam, BossLSTM-1x16.nam, BossLSTM-2x8.nam (novo).
+- **Critérios de aceitação:** Todos os 5 modelos passam validação quíntupla (MSE + MAE + SNR + PSNR + bits) nas Camadas 1 e 2. Zero referência a NeuralAudio ou goldens autorreferenciais no codebase.
 - **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
 - **Nota do PO 1:** A Camada 2 (validação ao vivo com compilação C++) deve ser acionável apenas a partir do `utils/tests-long.sh`. A Camada 1 (goldens pré-commitados) roda no `cargo test` normal — rápido e sem dependência de C++.
 - **Nota do PO 2:** A implementação de referência NeuralAmpModelerCore pode ser consultada integralmente na pasta `github.com/NeuralAmpModelerCore/`, que contém o git oficial espelhado.
