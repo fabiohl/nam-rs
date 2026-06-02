@@ -19,4 +19,4 @@ Use esta skill para revisar geral o projeto em busca de melhorias.
   * Revisão criteriosa do "budget de ciclos de código" atrás de mais otimizações para instruções modernas de cpu, mais resultados, por menos ciclos de clock, etc.
   * Cobertura integral de bons comentários de código fonte;
   * Documentação (skill `documentador`) exemplar.
-* Acione a skill `planejador-arquiteto` para transformar as ideias levantadas em sprints e tarefas técnicas granulares, muitíssimo bem escritas e detalhadas, em `TODO-sprints.md`.
+* Acione a skill `planejador-arquiteto` para transformar as ideias levantadas em sprints e tarefas técnicas granulares, muitíssimo bem escritas e detalhadas, em `TODO-sprints.md` (pt-BR).

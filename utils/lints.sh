@@ -4,13 +4,13 @@
 
 set -xeuo pipefail
 
-echo "🎨 Formatando código..."
+echo "🎨 Formatting code..."
 cargo fmt --all
 
-echo "🚀 Check de features de compilação..."
+echo "🚀 Checking compilation features..."
 cargo check --features standalone
 cargo check --no-default-features
 cargo check --no-default-features --features clap-plugin
 
-echo "🔍 Executando Clippy (all features)..."
+echo "🔍 Running Clippy (all features)..."
 cargo clippy --all-targets --all-features -- -D warnings

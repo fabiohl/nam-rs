@@ -16,4 +16,5 @@ description: Transformar planos em Sprints e Tarefas técnicas. Painel multi-dis
 * Tenha ciência plena das documentações oficiais em `docs/` e `README.md`.
 * Vide todas as rules em `.agents/rules/` para diretrizes técnicas mandatórias.
 * Crie o arquivo `TODO-sprints.md`, caso ainda não exista, com o plano de execução.
+* Este arquivo deve ser escrito exclusivamente em pt-BR (português brasileiro).
 * Quebre entregas maiores em entidades menores (épicos, sprints e tarefas técnicas) atômicas e detalhadas, direcionadas aos especialistas capazes de cumpri-las com perfeição.

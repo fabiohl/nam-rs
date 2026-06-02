@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #
-# Build e instalação do plugin NAM-rs no formato CLAP (Release/Produção).
-# Gera libnam_rs.so e copia para ~/.clap/nam-rs.clap
+# Build and install the NAM-rs plugin in CLAP format (Release/Production).
+# Generates libnam_rs.so and copies it to ~/.clap/nam-rs.clap
 #
 
 set -xeuo pipefail
@@ -15,36 +15,36 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
     cargo build --release --target-dir target/clap --no-default-features --features "clap-plugin" --lib
 sync
 
-echo "📁 Instalando em $DEST_PATH ..."
+echo "📁 Installing to $DEST_PATH ..."
 mkdir -p "$HOME/.clap"
 rm -f "$DEST_PATH"
 cp target/clap/release/libnam_rs.so "$DEST_PATH"
 sync
 ls -lath "$DEST_PATH"
 
-echo "🔍 Auditando validade do binário..."
+echo "🔍 Auditing binary validity..."
 
-# 1. Verificação de SONAME (Shared Object válida)
+# 1. SONAME check (valid Shared Object)
 if readelf -d "$DEST_PATH" | grep -q SONAME; then
-    echo "  ✅ SONAME encontrado."
+    echo "  ✅ SONAME found."
 else
-    echo "  ❌ ERRO: SONAME não encontrado no binário!"
+    echo "  ❌ ERROR: SONAME not found in binary!"
     exit 1
 fi
 
-# 2. Verificação de símbolo de entrada CLAP
+# 2. CLAP entry symbol check
 if nm -D "$DEST_PATH" | grep -q "clap_entry"; then
-    echo "  ✅ Símbolo 'clap_entry' encontrado."
+    echo "  ✅ Symbol 'clap_entry' found."
 else
-    echo "  ❌ ERRO: Símbolo 'clap_entry' não encontrado! O plugin não será carregado."
+    echo "  ❌ ERROR: 'clap_entry' symbol not found! Plugin will not load."
     exit 1
 fi
 
-# 3. Verificação de tipo de arquivo ELF 64-bit
+# 3. ELF 64-bit file type check
 FILE_INFO=$(file "$DEST_PATH")
 if [[ $FILE_INFO == *"ELF 64-bit LSB shared object"* ]] && [[ $FILE_INFO == *"x86-64"* ]]; then
-    echo "  ✅ Formato ELF 64-bit x86-64 confirmado."
+    echo "  ✅ ELF 64-bit x86-64 format confirmed."
 else
-    echo "  ❌ ERRO: Formato de arquivo inválido: $FILE_INFO"
+    echo "  ❌ ERROR: Invalid file format: $FILE_INFO"
     exit 1
 fi

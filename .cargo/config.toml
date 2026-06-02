@@ -3,32 +3,27 @@
 
 [build]
 rustflags = [
-  # --- Configuração de Arquitetura e Otimização (march / mtune) ---
+  # --- Architecture and Optimization Configuration (march / mtune) ---
 
-  # OPÇÃO 1 (Padrão Distribuível): 
-  # Requisito mínimo indispensável: CPUs com AVX2, FMA e BMI2 (2013+).
-  # Nota: No Rust Estável (Ex: 1.95), '-Ctarget-cpu' define TANTO o ISA (march) quanto o Tuning genérico (mtune).
+  # OPTION 1 (Distributable Default):
+  # Minimum hard requirement: CPUs with AVX2, FMA, and BMI2 (2013+).
+  # Note: On Rust Stable (e.g. 1.95), '-Ctarget-cpu' sets BOTH the ISA (march) and generic tuning (mtune).
   "-Ctarget-cpu=x86-64-v3",
 
-  # OPÇÃO 2 (Tuning Específico para CPUs 2019+ - REQUER RUST NIGHTLY):
-  # Mantém a compatibilidade x86-64-v3, mas otimiza o agendamento de instruções (mtune) 
-  # para microarquiteturas modernas (ex: AMD Zen 2 ou Intel Ice Lake / Skylake).
-  # "-Ctarget-cpu=x86-64-v3", "-Ztune-cpu=znver2",
-
-  # OPÇÃO 3 (Otimização Máxima Local - "Native"):
-  # Define tanto march quanto mtune para a sua própria CPU atual.
-  # ATENÇÃO: O binário gerado será incompatível com processadores mais antigos ou de outras famílias.
+  # OPTION 2 (Maximum Local Optimization - "Native"):
+  # Sets both march and mtune for your own current CPU.
+  # WARNING: The resulting binary will be incompatible with older or different-family processors.
   # "-Ctarget-cpu=native",
 
-  # --- Otimizações de Linker ---
-  # Remove código morto para reduzir o tamanho final do binário.
+  # --- Linker Optimizations ---
+  # Remove dead code to reduce final binary size.
   "-Clink-arg=-Wl,--gc-sections",
 
-  # CRÍTICO PARA TEMPO-REAL (DSP): Força a resolução de símbolos dinâmicos no startup (Bind Now).
-  # Evita que o lazy-binding do SO (ex: chamadas para libm ou libc) ocorra de surpresa 
-  # durante a thread de DSP de áudio, o que causaria lockups e XRuns (page-faults de execução).
+  # CRITICAL FOR REAL-TIME (DSP): Forces dynamic symbol resolution at startup (Bind Now).
+  # Prevents OS lazy-binding (e.g. calls to libm or libc) from occurring unexpectedly
+  # during the audio DSP thread, which would cause lockups and XRuns (execution page-faults).
   "-Clink-arg=-Wl,-z,now",
 
-  # Melhora a velocidade de carregamento descartando bibliotecas listadas que não são de fato usadas.
+  # Improves load speed by discarding listed libraries that are not actually used.
   "-Clink-arg=-Wl,--as-needed",
 ]

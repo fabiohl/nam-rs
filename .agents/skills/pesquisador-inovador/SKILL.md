@@ -16,4 +16,4 @@ description: Painel de cientistas, engenheiros sêniors e especialistas em diver
 * Seja criativo, pense fora da caixa e proponha soluções inovadoras.
 * Pesquise na internet, artigos, papers, documentação, etc., a respeito de cada área do projeto.
 * Proponha e justifique com base técnica, sempre que possível, as soluções para os problemas identificados.
-* Acione a skill `planejador-arquiteto` para transformar as ideias levantadas em sprints e tarefas técnicas granulares, muitíssimo bem escritas e detalhadas, em `TODO-sprints.md`.
+* Acione a skill `planejador-arquiteto` para transformar as ideias levantadas em sprints e tarefas técnicas granulares, muitíssimo bem escritas e detalhadas, em `TODO-sprints.md` (pt-BR).
