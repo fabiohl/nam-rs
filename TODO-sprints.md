@@ -1425,7 +1425,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - **Considerações de desempenho:** O overhead de Kahan é de 2 operações f32 extras por adição (1 subtração + 1 adição + 1 subtração). No loop externo do conv1d (K=3 taps típico), isso representa 12 operações extras por bloco de 4 canais — overhead < 0.1% do tempo total da convolução (dominado pelo dot product SIMD com centenas de FMAs). Nos fallbacks escalares (usados apenas quando SIMD não está disponível), o overhead de Kahan é amortizado pelo custo muito maior da conversão f16→f32 e das multiplicações.
   - **Cobertura de precisão:** Os fallbacks escalares com Kahan cobrem os cenários onde a acumulação sequencial de IN=64-128 produtos por canal mais se beneficia da compensação. O loop externo do conv1d com Kahan protege contra drift entre taps mesmo quando K é pequeno, prevenindo acúmulo de erro através da cascata de camadas WaveNet (10-20 layers).
 
-### Tarefa E8.T07 — Mixed-Precision Accumulation em Convolução de Pesos BF16 e Fusão de Conexão Residual ✨
+### Tarefa E8.T07 — Mixed-Precision Accumulation em Convolução de Pesos BF16 e Fusão de Conexão Residual ✨ [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d.rs`, `src/math/gemm/dot_4x/avx512_bf16.rs`.
 - **Por que é importante:** Fazer somas parciais ou casting intermediário de dados de acumuladores em BF16 degrada a mantissa para 7 bits, destruindo a fidelidade harmônica. Adicionalmente, ler e escrever no buffer para fazer a soma residual separadamente adiciona perdas numéricas e penalidades de barramento de memória.
@@ -1438,7 +1438,20 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - Acúmulo de convoluções BF16 com precisão final de paridade f32.
   - Zero conversões desnecessárias f32->bf16->f32 entre o acúmulo e o cálculo residual da mesma camada.
 - **Especialista:** `pesquisador-inovador` + `implementador`.
-- **Git Commit:**
+- **Git Commit:** `feat(E8.T07): AVX-512 BF16 SIMD dot product kernel + fused residual connection in Conv1D`
+- **Parecer E8.T07 — Resultados da Implementação:**
+  **1. Kernel SIMD BF16 (`dot_product_4x_interleaved_avx512_bf16`):** O arquivo `src/math/gemm/dot_4x/avx512_bf16.rs` foi convertido de placeholder (delegava para scalar fallback) para kernel SIMD nativo AVX-512 com acumulação estrita em f32. A conversão BF16→f32 é feita via shift-left-16 (`_mm512_slli_epi32`) + `_mm512_fmadd_ps`, mantendo 24 bits de mantissa em todos os registradores ZMM. O kernel dual-frame correspondente também foi implementado, reutilizando cada carga de pesos para ambos os frames. O dispatch do `Avx512VnniBf16Math` foi atualizado para usar os novos kernels SIMD em vez dos fallbacks escalares — corrigindo regressão de performance onde a ISA mais capaz usava código escalar.
+  **2. Fusão de Conexão Residual no Conv1D:** Adicionado campo `fuse_residual: bool` ao `Conv1d` (default `false`). Quando ativado, o `process_single_frame_generic` recebe parâmetro `residual: Option<&[T]>` e adiciona o sinal original diretamente ao acumulador (junto com bias+mixin), eliminando a leitura separada de `residual_slice` no passo `fused_gemm_residual_batch` da camada 1x1. No caminho BF16, o residual vem de `layer_buffer_bf16` (formato BF16) e é convertido para f32 via `ConvInput::to_f32()` antes da soma — zero conversões f32→bf16→f32 intermediárias. O `model.rs` foi atualizado para usar o caminho fundido quando `fuse_residual=true`, substituindo `process_residual_batch` por `process_block` no 1x1 (já que o residual já está incorporado ao sinal).
+  **3. Testes de Paridade (`cargo test --test cpp_parity -- --ignored --nocapture`):** 5/5 PASS, SNRs idênticos ao baseline de E8.T05: WaveNet Standard 9.5 dB, Feather 16.5 dB, Nano 25.0 dB, LSTM 1×16 19.7 dB, LSTM 2×8 25.7 dB. Confirmado: kernel BF16 SIMD não introduz regressão de qualidade.
+  **4. Testes unitários (`cargo test --lib`):** 200/200 PASS. Testes de dot_4x (6/6 PASS), kahan (4/4 PASS), conv1d, wavenet — todos sem regressão.
+  **5. Clippy:** Limpo, sem warnings.
+  **6. Verificação de conversões f32↔bf16↔f32:** Rastreamento completo do caminho BF16 no `process_block_internal`:
+  - `input_mixin.process_bf16` → BF16 input, f16 weights, f32 output ✓
+  - `conv1d.process_dual_frame_bf16_*` → BF16 state, f16 weights → acumulação f32 no dot_product → Kahan f32 → f32 output ✓
+  - `tanh_and_accumulate_block` → f32 ✓
+  - `one_by_one.process_residual_batch` (ou `process_block` quando fused) → leitura f32, f16 weights → output f32 ✓
+  - `f32_to_bf16(output, bf16_out)` → única conversão f32→bf16, feita apenas na saída para a próxima camada ✓
+  - Zero conversões f32→bf16→f32 no mesmo estágio de camada ✓
 
 ### Tarefa E8.T08 — Calibração Adaptativa de Threshold por Topologia e Mixed-Precision Seletiva 💡
 
