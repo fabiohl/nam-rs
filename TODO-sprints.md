@@ -1940,6 +1940,7 @@ Notas Operacionais — Épico 14
 ### Sprint S26 — Architectural Adherence vs `NeuralAmpModelerCore`
 
 > Foco: alinhar contratos de API (não implementação) com a referência C++ para reduzir custo de futuras paridades. **Sem implementar A2** (escopo PO).
+> Liberar acesso ao espelho do github
 
 #### Tarefa S26.T01 — A2 placeholder com constantes interface-compliant 🔥
 
@@ -2275,15 +2276,7 @@ Notas Operacionais — Épico 14
 
 ## Épico 15 — Cross-Validation v2 (Stress Signal & Métricas Perceptuais)
 
-> Continuação direta da S13a.T01 (Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore). Foco em expandir o sinal de stress para cobertura perceptualmente representativa e introduzir métricas alinhadas com o estado-da-arte da pesquisa NAM (ESR, MR-STFT). Estabelece fundação para futura ponte com a comunidade A2/MUSHRA, sem implementar A2.
->
-> **Pré-condições:** S13a.T01 concluída (confirmado); `cpp_parity` 5/5 PASS estável; Liberar acesso ao mirror do github.
-
 ### Sprint S28 — Stress Signal Generator v2 (port `t3k-mushra` primitives)
-
-> Conforme solicitação direta da Auditoria 2026-06-03: criar **uma tarefa única** para aprimorar o gerador de WAV de teste de S13a.T01, com avaliação dos pros/cons de alinhamento com o gerador/dataset usado por `sdatkinson` no contexto A2.
->
-> **Correção de auditoria (2026-06-03):** o repositório `a2-mushra-data` é apenas um **CSV de ratings MUSHRA** (105.842 ratings, 1.184 participantes), **não um gerador**. O gerador real está no **runner companheiro `t3k-mushra`** (`github.com/t3k-mushra/`), em `src/demo/generateSampleAudio.ts` — uma biblioteca React para conduzir testes MUSHRA em browser. As primitivas do gerador (synthTone, lowPass, softClip, addNoise, gain) **são** portáveis e foram analisadas em profundidade abaixo.
 
 #### Tarefa S28.T01 — Stress Signal v2 (multi-componente, multi-SR, single source of truth, com primitivas portadas do `t3k-mushra`) 🔥✨
 
@@ -2456,9 +2449,7 @@ Notas Operacionais — Épico 14
 #### Tarefa S29.T01 — Implementar ESR (Error-to-Signal Ratio) + MR-STFT calibrados com baselines `A2Esr.tsx` ✨⚠️
 
 - **Onde:** `tests/common/mod.rs::report_dsp_fidelity`; criar `tests/common/perceptual.rs`; atualizar `docs/perceptual_validation.md` (criado em S28.T01).
-
 - **Problema:** Métricas atuais (MSE, MAE, SNR, PSNR, equiv. bits) são puramente time-domain L2/L∞. Para modelos não-lineares (saturação, distorção), erro perceptualmente equivalente pode dar MSE muito diferente. ESR e MR-STFT são padrões na pesquisa NAM (Yamamoto et al. 2020 *"Real-Time Modeling of Audio Distortion Circuits with Deep Learning"*; Atkinson 2023 *"NAM A2 Technical Report"*). `rustfft = "6.4.1"` já é dependência (`Cargo.toml:31`).
-
 - **Baselines empíricos publicados** (extraídos de `github.com/t3k-mushra/A2Esr.tsx:19-38`, dataset Tone3000):
 
   | Modelo          | Q1 ESR  | Mediana ESR | Q3 ESR  | Mediana dB   | Interpretação       |
@@ -2469,13 +2460,11 @@ Notas Operacionais — Épico 14
   **Contexto:** estes valores comparam modelo NAM **treinado** vs gear analógico real (envolve erro de modelagem). Nam-rs comparando vs C++ reference deve atingir ESR **ordens de magnitude menor** (1e-5 a 1e-7 = −50 a −70 dB) — diferenças são apenas erro de implementação numérica, não de training.
 
 - **Solução técnica:**
-
   1. Adicionar `tests/common/perceptual.rs` com:
      - `pub fn compute_esr(reference: &[f32], test: &[f32]) -> f64` — ESR linear = `Σ(r-t)² / Σ r²`. Retornar f64 linear; conversão dB feita no caller.
      - `pub fn esr_to_db(esr: f64) -> f64` — `10 * log10(esr)`.
      - `pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64` — Multi-Resolution STFT loss: window sizes `[256, 1024, 4096]`, hop=window/4, soma L1+L2 das diferenças de log-magnitude. FFT via `rustfft::FftPlanner`.
      - Implementação puramente escalar (não-RT, OK em testes).
-
   2. Estender `report_dsp_fidelity` para imprimir adicionalmente:
 
      ```text
@@ -2484,7 +2473,6 @@ Notas Operacionais — Épico 14
      ```
 
   3. Adicionar parâmetro opcional `max_esr: Option<f64>` para assert (default `None` mantém compat). Para `cpp_parity`, definir threshold como **`NAM_RS_CPP_PARITY_ESR_MAX = 1e-3`** (≈ −30 dB) — funcionando como **gate de regressão conservador**, ~6× (≈ 8 dB) abaixo da mediana A1-Standard (6.23e-3). O ESR real observado em nam-rs deve estar **2–4 ordens de magnitude menor** que o gate (faixa esperada `1e-5` a `1e-7`, ≈ −50 a −70 dB), já que validamos apenas paridade de implementação numérica vs C++ (sem erro de training). O gate fica folgado de propósito para tolerar variação em SRs menos cobertas pela auditoria (44.1k/192k).
-
   4. Constantes públicas em `perceptual.rs`:
 
      ```rust
@@ -2507,77 +2495,31 @@ Notas Operacionais — Épico 14
      - `MR-STFT` consistente com referência Python — cross-check via golden vector pré-computado em `tests/fixtures/mrstft_golden.bin` (gerado por script `tests/fixtures/scripts/gen_mrstft_golden.py` com pesos públicos `[0.1, 0.3, 0.5]` para cada window size — documentado no script).
 
 - **Critérios de aceitação:**
-
   - Suíte `cpp_parity` imprime ESR (linear + dB) e MR-STFT junto com MSE/SNR.
   - Todos os 5 modelos atuais atingem `ESR < NAM_RS_CPP_PARITY_ESR_MAX (= 1e-3)` no stress signal v1 atual.
   - `docs/perceptual_validation.md` descreve fórmulas + tabula baselines A2Esr.tsx + cita atribuição.
   - Sem regressão em `tests-cargo.sh` (testes existentes continuam passando).
-
 - **Especialista:** `pesquisador-inovador`.
-
 - **Esforço:** 1.5 dia.
 
 #### Tarefa S29.T02 — Adoção de nomenclatura `tone_id` MUSHRA-aligned ✨💡
 
 - **Onde:** `tests/fixtures/README.md`; opcionalmente renomear goldens em sprint subsequente.
-
 - **Problema:** Goldens atuais (`golden_wavenet_standard`, `golden_lstm_1x16`, etc.) identificam apenas por **modelo**, não por **tone/stimulus**. Quando expandirmos para multi-stimulus (S28.T01), o sufixo do golden precisará incluir tanto modelo quanto tone para evitar colisão e facilitar comparação inter-projetos.
-
 - **Solução técnica:**
-
   1. Esquema novo: `golden_<model_id>_<tone_id>_<sr>.bin`. Exemplos:
      - `golden_bosswn_standard_GA-1_48k.bin`
      - `golden_bosslstm_2x8_FRG-1_48k.bin`
-
   2. Mapping documentado em `tests/fixtures/README.md` espelhando a taxonomia `a2-mushra-data`:
      - `GA-N` ← stress v2 segment 0.0–1.0s × variação `N` (single-note guitar amp).
      - `FRG-N` ← stress v2 segment 1.0–2.0s (full rig guitar — power chord).
      - `P-N` ← stress v2 segment 2.0–2.5s (pedal — palm-mute transient).
      - `BA-N` ← stress v2 segment 3.5–4.5s (bass amp).
      - `PA-N`, `FRB-N`, `PB-N` — reservados para expansão futura.
-
   3. Documentar referência cruzada: tabela "nam-rs tone_id ↔ a2-mushra-data categoria" + link para `t3k-mushra` como ferramenta canônica de teste MUSHRA caso queiramos publicar ratings derivados.
 
 - **Critérios de aceitação:**
-
   - `README.md` lista os tone_ids usados pelo nam-rs com referência cruzada à categoria MUSHRA de `a2-mushra-data` + atribuição a `t3k-mushra`.
   - Goldens v1 mantidos para compat retroativa; goldens v2 usam novo schema.
-
 - **Especialista:** `documentador`.
-
 - **Esforço:** 30 min.
-
----
-
-## Resumo Executivo da Continuação Parte I (Épicos 14–15)
-
-| Sprint                                                       | Tarefas     | Esforço (dias) | Prioridade |
-| ------------------------------------------------------------ | ----------- | -------------- | ---------- |
-| **S25** (Hotpath SIMD)                                       | 8 (T01–T08) | ~6.0           | 🔥/⚠️      |
-| **S26** (Aderência C++)                                      | 4 (T01–T04) | ~2.5           | 🔥/⚠️/💡   |
-| **S27** (Organização & Safety)                               | 8 (T01–T08) | ~7.0           | 🔥/⚠️/💡   |
-| **S27b** (Cobertura & Docs)                                  | 7 (T01–T07) | ~5.0           | 🔥/⚠️/💡   |
-| **S28** (Stress Signal v2 + t3k-mushra port + wav_to_golden) | 1 (T01)     | ~3.0           | 🔥✨       |
-| **S29** (Métricas perceptuais c/ baselines A2Esr)            | 2 (T01–T02) | ~2.0           | ✨⚠️/💡    |
-| **TOTAL Épicos 14–15**                                       | 30 tarefas  | **~25.5 dias** | —          |
-
-> **Correlação Parte I ↔ Parte II:** S29.T01 (Épico 15, Parte I) entrega a fundação `compute_esr`/`compute_mr_stft`/baselines em `tests/common/perceptual.rs`; S21.T02 (TODO2.md, Parte II) foi **patcheada na auditoria 2026-06-03** com pré-condição explícita "depende de S29.T01" e re-escopada para harness de regressão histórica (delta tracking) — consumidor, não duplicador.
-
-**Ordem de execução agile sugerida (3 sprints de ~2 semanas em paralelizável):**
-
-- **Sprint #1 (semana 1–2):** S25.T01–T04 (críticos hotpath) + S27b.T04 (bench baseline) + S26.T01 (A2 placeholder) + S28.T01 (stress v2 — paralelo, sem dependência).
-- **Sprint #2 (semana 3–4):** S25.T05–T08 + S26.T02–T04 + S27b.T01–T02 (resampler + pipeline soak) + S27.T07 (cold-panic cleanup).
-- **Sprint #3 (semana 5–6):** S27.T01–T06 (organização & safety sweep) + S27b.T03/T05/T06 (gate proptest, LSTM 1×40/2×24 parity, architecture.md) + S27.T08 (doccomments) + S29.T01–T02 (métricas perceptuais).
-
-**Pré-condição de início:** baseline `cargo bench inference_bench` salvo em `target/criterion/baseline_pre_e14/`.
-
-**Gate de saída de cada sprint:**
-
-1. `bash utils/lints.sh` (clippy strict + fmt).
-2. `bash utils/tests-cargo.sh` (unit + integration).
-3. `cargo bench inference_bench` — sem regressão > 1% vs baseline e/ou recuperação positiva conforme tarefa.
-4. `cargo test --test cpp_parity -- --ignored --nocapture` — 5/5 PASS (após S28.T01, 20/20).
-
-**Validação final do Épico 14:** auditoria comparativa antes/depois pelo skill `revisor-auditor`, com relatório de impacto cumulativo no `WaveNet_Standard_CH16_64samp_48kHz`, `Prewarm_LSTM_2x16_2048samp`, `Resampler_96000_to_48000` e `LSTM_2x16_Comparison/Scalar_Baseline`.
-
-**Validação final do Épico 15:** stress v2 com 4 SRs principais (44.1k/48k/96k/192k) × 5 modelos = 20 PASS no `cpp_parity`; **ESR < `NAM_RS_CPP_PARITY_ESR_MAX = 1e-3` (≈ −30 dB) em todos os modelos** — gate conservador ~6× abaixo da mediana A1-Standard (6.23e-3, fonte `t3k-mushra/A2Esr.tsx`); ESR efetivamente observado esperado em 1e-5 a 1e-7 (−50 a −70 dB), pois validamos paridade de implementação numérica vs C++, não training; teste `test_mulberry32_parity_with_ts` PASS (bit-paridade Rust↔TS port); `docs/perceptual_validation.md` revisado por `documentador` com baselines tabulados; `NOTICE.txt` atualizado com atribuição t3k-mushra MIT.
