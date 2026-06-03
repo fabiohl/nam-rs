@@ -455,12 +455,14 @@ impl WaveNetLayerArrayDyn {
                         // SAFETY: garantido pelo construtor WaveNetLayerState::new que valida buffer_start >= receptive_field_size
                         let dst_start = current_state.buffer_start - offset;
                         let dst_idx = dst_start * ch;
-                        for j in 0..ch {
-                            current_state.layer_buffer[dst_idx + j] =
-                                current_state.layer_buffer[start_idx + j];
-                            current_state.layer_buffer_bf16[dst_idx + j] =
-                                current_state.layer_buffer_bf16[start_idx + j];
-                        }
+                        debug_assert!(start_idx + ch <= current_state.layer_buffer.len());
+                        debug_assert!(dst_idx + ch <= current_state.layer_buffer.len());
+                        current_state
+                            .layer_buffer
+                            .copy_within(start_idx..start_idx + ch, dst_idx);
+                        current_state
+                            .layer_buffer_bf16
+                            .copy_within(start_idx..start_idx + ch, dst_idx);
                     }
                 }
 

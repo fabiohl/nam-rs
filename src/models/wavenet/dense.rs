@@ -194,14 +194,7 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
             .as_ref()
             .expect("process_block_f32_native requires f32_weights");
         unsafe {
-            M::gemv_overwrite_batch_f32(
-                input,
-                f32_w,
-                &self.bias,
-                output,
-                num_frames,
-                self.do_bias,
-            );
+            M::gemv_overwrite_batch_f32(input, f32_w, &self.bias, output, num_frames, self.do_bias);
         }
     }
 }

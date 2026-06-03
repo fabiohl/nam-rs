@@ -670,9 +670,7 @@ pub unsafe fn gemv_overwrite_batch_f32_avx2(
             let mut acc = _mm256_setzero_ps();
             let mut in_c = 0;
             while in_c + 8 <= in_len {
-                let v_in = _mm256_loadu_ps(
-                    in_frames.as_ptr().add(n * in_len + in_c),
-                );
+                let v_in = _mm256_loadu_ps(in_frames.as_ptr().add(n * in_len + in_c));
                 let v_w = _mm256_loadu_ps(weights.as_ptr().add(in_c));
                 acc = _mm256_fmadd_ps(v_in, v_w, acc);
                 in_c += 8;
@@ -693,8 +691,11 @@ pub unsafe fn gemv_overwrite_batch_f32_avx2(
             let mut tmp = [0.0f32; 8];
             _mm256_storeu_ps(tmp.as_mut_ptr(), acc);
             let sum: f32 = tmp.iter().sum();
-            *out_frames.get_unchecked_mut(n) =
-                if do_bias { sum + *bias.get_unchecked(0) } else { sum };
+            *out_frames.get_unchecked_mut(n) = if do_bias {
+                sum + *bias.get_unchecked(0)
+            } else {
+                sum
+            };
         }
         return;
     }
@@ -721,14 +722,10 @@ pub unsafe fn gemv_overwrite_batch_f32_avx2(
                 let mut acc3 = _mm256_setzero_ps();
                 let mut in_c = 0;
                 while in_c + 4 <= in_len {
-                    let vs0 =
-                        _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
-                    let vs1 =
-                        _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
-                    let vs2 =
-                        _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 2));
-                    let vs3 =
-                        _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 3));
+                    let vs0 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vs1 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
+                    let vs2 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 2));
+                    let vs3 = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 3));
 
                     let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
                     let w0 = _mm256_loadu_ps(w_ptr);
@@ -746,12 +743,8 @@ pub unsafe fn gemv_overwrite_batch_f32_avx2(
                 acc2 = _mm256_add_ps(acc2, acc3);
                 acc0 = _mm256_add_ps(acc0, acc2);
                 while in_c < in_len {
-                    let vs = _mm256_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c),
-                    );
-                    let vw = _mm256_loadu_ps(
-                        weights.as_ptr().add(in_c * out_len + out_c),
-                    );
+                    let vs = _mm256_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vw = _mm256_loadu_ps(weights.as_ptr().add(in_c * out_len + out_c));
                     acc0 = _mm256_fmadd_ps(vs, vw, acc0);
                     in_c += 1;
                 }
@@ -763,7 +756,11 @@ pub unsafe fn gemv_overwrite_batch_f32_avx2(
         // Scalar tail for remaining out_c
         for n in 0..num_frames {
             for oc in out_c..out_len {
-                let mut sum = if do_bias { *bias.get_unchecked(oc) } else { 0.0 };
+                let mut sum = if do_bias {
+                    *bias.get_unchecked(oc)
+                } else {
+                    0.0
+                };
                 for in_c in 0..in_len {
                     sum += *in_frames.get_unchecked(n * in_len + in_c)
                         * *weights.get_unchecked(in_c * out_len + oc);
@@ -807,9 +804,7 @@ pub unsafe fn gemv_overwrite_batch_f32_avx512(
             let mut acc = _mm512_setzero_ps();
             let mut in_c = 0;
             while in_c + 16 <= in_len {
-                let v_in = _mm512_loadu_ps(
-                    in_frames.as_ptr().add(n * in_len + in_c),
-                );
+                let v_in = _mm512_loadu_ps(in_frames.as_ptr().add(n * in_len + in_c));
                 let v_w = _mm512_loadu_ps(weights.as_ptr().add(in_c));
                 acc = _mm512_fmadd_ps(v_in, v_w, acc);
                 in_c += 16;
@@ -827,8 +822,11 @@ pub unsafe fn gemv_overwrite_batch_f32_avx512(
                 acc = _mm512_fmadd_ps(v_in, v_w, acc);
             }
             let sum = _mm512_reduce_add_ps(acc);
-            *out_frames.get_unchecked_mut(n) =
-                if do_bias { sum + *bias.get_unchecked(0) } else { sum };
+            *out_frames.get_unchecked_mut(n) = if do_bias {
+                sum + *bias.get_unchecked(0)
+            } else {
+                sum
+            };
         }
         return;
     }
@@ -860,35 +858,17 @@ pub unsafe fn gemv_overwrite_batch_f32_avx512(
                 let mut in_c = 0;
                 while in_c + 8 <= in_len {
                     _mm_prefetch::<_MM_HINT_T0>(
-                        in_frames
-                            .as_ptr()
-                            .add(f * in_len + in_c + 64) as *const i8,
+                        in_frames.as_ptr().add(f * in_len + in_c + 64) as *const i8
                     );
 
-                    let vs0 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c),
-                    );
-                    let vs1 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 1),
-                    );
-                    let vs2 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 2),
-                    );
-                    let vs3 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 3),
-                    );
-                    let vs4 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 4),
-                    );
-                    let vs5 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 5),
-                    );
-                    let vs6 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 6),
-                    );
-                    let vs7 = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c + 7),
-                    );
+                    let vs0 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vs1 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 1));
+                    let vs2 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 2));
+                    let vs3 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 3));
+                    let vs4 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 4));
+                    let vs5 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 5));
+                    let vs6 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 6));
+                    let vs7 = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c + 7));
 
                     let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
 
@@ -928,20 +908,13 @@ pub unsafe fn gemv_overwrite_batch_f32_avx512(
                 acc = _mm512_add_ps(acc, acc4);
 
                 while in_c < in_len {
-                    let vs = _mm512_set1_ps(
-                        *in_frames.get_unchecked(f * in_len + in_c),
-                    );
-                    let vw = _mm512_loadu_ps(
-                        weights.as_ptr().add(in_c * out_len + out_c),
-                    );
+                    let vs = _mm512_set1_ps(*in_frames.get_unchecked(f * in_len + in_c));
+                    let vw = _mm512_loadu_ps(weights.as_ptr().add(in_c * out_len + out_c));
                     acc = _mm512_fmadd_ps(vs, vw, acc);
                     in_c += 1;
                 }
 
-                _mm512_storeu_ps(
-                    out_frames.as_mut_ptr().add(f * out_len + out_c),
-                    acc,
-                );
+                _mm512_storeu_ps(out_frames.as_mut_ptr().add(f * out_len + out_c), acc);
                 f += 1;
             }
             out_c += 16;
@@ -949,8 +922,11 @@ pub unsafe fn gemv_overwrite_batch_f32_avx512(
         // Scalar tail for remaining out_c
         for n in 0..num_frames {
             for oc in out_c..out_len {
-                let mut sum =
-                    if do_bias { *bias.get_unchecked(oc) } else { 0.0 };
+                let mut sum = if do_bias {
+                    *bias.get_unchecked(oc)
+                } else {
+                    0.0
+                };
                 for in_c in 0..in_len {
                     sum += *in_frames.get_unchecked(n * in_len + in_c)
                         * *weights.get_unchecked(in_c * out_len + oc);

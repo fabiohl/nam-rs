@@ -287,7 +287,9 @@ fn test_compute_max_diff_parity() {
 #[test]
 fn test_compute_peak_abs_stereo_parity() {
     let l: Vec<f32> = (0..100).map(|i| (i as f32 * 0.01).sin() * 2.0).collect();
-    let r: Vec<f32> = (0..100).map(|i| ((100 - i) as f32 * 0.01).cos() * -1.5).collect();
+    let r: Vec<f32> = (0..100)
+        .map(|i| ((100 - i) as f32 * 0.01).cos() * -1.5)
+        .collect();
     let expected = unsafe { crate::math::common::compute_peak_abs_stereo_fallback(&l, &r) };
 
     let res_avx2 = unsafe { Avx2Math::compute_peak_abs_stereo(&l, &r) };

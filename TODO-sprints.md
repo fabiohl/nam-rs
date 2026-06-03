@@ -1806,7 +1806,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S25.T03 — Substituir backfill escalar por `copy_from_slice` no prewarm WaveNet dinâmico 🔥
+#### Tarefa S25.T03 — Substituir backfill escalar por `copy_from_slice` no prewarm WaveNet dinâmico 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/model_dyn.rs:447-465` (loop aninhado escalar).
 - **Problema:** Loop interno `for j in 0..ch { buffer[dst+j] = buffer[src+j]; buffer_bf16[dst+j] = buffer_bf16[src+j]; }` para `receptive_field_size` × `ch` iterações = até 65k stores/loads escalares no prewarm. Resíduo da regressão `Prewarm_WaveNet_Standard` (item ainda não 100% recuperado em S7.R03).

@@ -36,8 +36,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
-use nam_rs::models::wavenet::dense::DenseLayer;
 use nam_rs::models::NamModel;
+use nam_rs::models::wavenet::dense::DenseLayer;
 
 /// Generates a deterministic 440 Hz sinusoidal signal at a 48 kHz sample rate.
 /// Used as a stable input to ensure processing load is consistent across
@@ -777,7 +777,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         group.bench_function("DenseLayer_16x8_64f", |b| {
             b.iter(|| unsafe {
                 layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
-                    &input, &mut output, num_frames,
+                    &input,
+                    &mut output,
+                    num_frames,
                 )
             });
         });
@@ -801,7 +803,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         group.bench_function("DenseLayer_8x1_64f", |b| {
             b.iter(|| unsafe {
                 layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
-                    &input, &mut output, num_frames,
+                    &input,
+                    &mut output,
+                    num_frames,
                 )
             });
         });
@@ -825,7 +829,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         group.bench_function("DenseLayer_16x1_64f", |b| {
             b.iter(|| unsafe {
                 layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
-                    &input, &mut output, num_frames,
+                    &input,
+                    &mut output,
+                    num_frames,
                 )
             });
         });
@@ -854,12 +860,12 @@ impl clack_host::prelude::HostHandlers for BenchHost {
 
 #[cfg(feature = "clap-plugin")]
 fn bench_clap_process_block_64samp(c: &mut criterion::Criterion) {
-    use clack_host::prelude::*;
-    use nam_rs::clap::plugin::NamClapPlugin;
-    use nam_rs::clap::extensions::params::{PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN};
     use clack_common::events::Pckn;
     use clack_common::events::event_types::ParamValueEvent;
     use clack_common::utils::{ClapId, Cookie};
+    use clack_host::prelude::*;
+    use nam_rs::clap::extensions::params::{PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN};
+    use nam_rs::clap::plugin::NamClapPlugin;
 
     let entry =
         PluginEntry::load_from_clack::<clack_plugin::entry::SinglePluginEntry<NamClapPlugin>>(
@@ -928,7 +934,9 @@ fn bench_clap_process_block_64samp(c: &mut criterion::Criterion) {
             let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(
-                    output_audio_buffers.iter_mut().map(|buf| buf.as_mut_slice()),
+                    output_audio_buffers
+                        .iter_mut()
+                        .map(|buf| buf.as_mut_slice()),
                 ),
             }]);
 
@@ -982,7 +990,9 @@ fn bench_clap_process_block_64samp(c: &mut criterion::Criterion) {
             let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
                 latency: 0,
                 channels: AudioPortBufferType::f32_output_only(
-                    output_audio_buffers.iter_mut().map(|buf| buf.as_mut_slice()),
+                    output_audio_buffers
+                        .iter_mut()
+                        .map(|buf| buf.as_mut_slice()),
                 ),
             }]);
 
