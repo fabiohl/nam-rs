@@ -257,8 +257,7 @@ impl ResamplerCore {
                 let x_l = self.state_l.window_ptr();
                 let taps = self.bank.taps_per_phase;
 
-                let y0_l = M::convolve_mono(c0, x_l, taps);
-                let y1_l = M::convolve_mono(c1, x_l, taps);
+                let (y0_l, y1_l) = M::convolve_mono_dual(c0, c1, x_l, taps);
                 y0_l + frac * (y1_l - y0_l)
             };
 

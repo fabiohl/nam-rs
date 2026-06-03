@@ -207,6 +207,86 @@ pub unsafe fn convolve_stereo_dual_avx2(
     ((out0_l, out0_r), (out1_l, out1_r))
 }
 
+/// Mono Dual Convolution AVX2.
+/// Performs two mono convolutions on the same input buffer, reusing the loaded input samples.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn convolve_mono_dual_avx2(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    let mut sum0_0 = _mm256_setzero_ps();
+    let mut sum0_1 = _mm256_setzero_ps();
+    let mut sum1_0 = _mm256_setzero_ps();
+    let mut sum1_1 = _mm256_setzero_ps();
+    let mut i = 0;
+
+    while i + 16 <= taps {
+        let x0 = _mm256_loadu_ps(input.add(i));
+
+        let h0_0 = _mm256_load_ps(coeffs0.add(i));
+        sum0_0 = _mm256_fmadd_ps(h0_0, x0, sum0_0);
+
+        let h1_0 = _mm256_load_ps(coeffs1.add(i));
+        sum1_0 = _mm256_fmadd_ps(h1_0, x0, sum1_0);
+
+        let x1 = _mm256_loadu_ps(input.add(i + 8));
+
+        let h0_1 = _mm256_load_ps(coeffs0.add(i + 8));
+        sum0_1 = _mm256_fmadd_ps(h0_1, x1, sum0_1);
+
+        let h1_1 = _mm256_load_ps(coeffs1.add(i + 8));
+        sum1_1 = _mm256_fmadd_ps(h1_1, x1, sum1_1);
+
+        i += 16;
+    }
+
+    while i + 8 <= taps {
+        let x = _mm256_loadu_ps(input.add(i));
+
+        let h0 = _mm256_load_ps(coeffs0.add(i));
+        sum0_0 = _mm256_fmadd_ps(h0, x, sum0_0);
+
+        let h1 = _mm256_load_ps(coeffs1.add(i));
+        sum1_0 = _mm256_fmadd_ps(h1, x, sum1_0);
+
+        i += 8;
+    }
+
+    let sum0 = _mm256_add_ps(sum0_0, sum0_1);
+    let sum1 = _mm256_add_ps(sum1_0, sum1_1);
+
+    // Horizontal reduction sum0
+    let hi128_0 = _mm256_extractf128_ps(sum0, 1);
+    let lo128_0 = _mm256_castps256_ps128(sum0);
+    let s128_0 = _mm_add_ps(lo128_0, hi128_0);
+    let shuf_0 = _mm_movehdup_ps(s128_0);
+    let sums_0 = _mm_add_ps(s128_0, shuf_0);
+    let shuf2_0 = _mm_movehl_ps(sums_0, sums_0);
+    let r_0 = _mm_add_ss(sums_0, shuf2_0);
+    let mut out0 = _mm_cvtss_f32(r_0);
+
+    // Horizontal reduction sum1
+    let hi128_1 = _mm256_extractf128_ps(sum1, 1);
+    let lo128_1 = _mm256_castps256_ps128(sum1);
+    let s128_1 = _mm_add_ps(lo128_1, hi128_1);
+    let shuf_1 = _mm_movehdup_ps(s128_1);
+    let sums_1 = _mm_add_ps(s128_1, shuf_1);
+    let shuf2_1 = _mm_movehl_ps(sums_1, sums_1);
+    let r_1 = _mm_add_ss(sums_1, shuf2_1);
+    let mut out1 = _mm_cvtss_f32(r_1);
+
+    while i < taps {
+        let xl = *input.add(i);
+        out0 += *coeffs0.add(i) * xl;
+        out1 += *coeffs1.add(i) * xl;
+        i += 1;
+    }
+
+    (out0, out1)
+}
+
 /// Mono Convolution AVX2.
 /// Loads coefficients and applies them to a single channel.
 #[target_feature(enable = "avx2,fma")]

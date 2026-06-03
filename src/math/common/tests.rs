@@ -377,6 +377,50 @@ fn test_convolve_stereo_dual_parity() {
     }
 }
 
+#[test]
+fn test_convolve_mono_dual_parity() {
+    let coeffs0 =
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());
+    let coeffs1 = crate::math::common::AlignedVec::from_vec(
+        (0..32).map(|i| (32 - i) as f32 * 0.007).collect(),
+    );
+    let input =
+        crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect());
+
+    let expected = unsafe {
+        crate::math::common::convolve_mono_dual_fallback(
+            coeffs0.as_ptr(),
+            coeffs1.as_ptr(),
+            input.as_ptr(),
+            32,
+        )
+    };
+
+    let res_avx2 = unsafe {
+        Avx2Math::convolve_mono_dual(
+            coeffs0.as_ptr(),
+            coeffs1.as_ptr(),
+            input.as_ptr(),
+            32,
+        )
+    };
+    assert!((res_avx2.0 - expected.0).abs() < 1e-5);
+    assert!((res_avx2.1 - expected.1).abs() < 1e-5);
+
+    if is_x86_feature_detected!("avx512f") {
+        let res_avx512 = unsafe {
+            Avx512Math::convolve_mono_dual(
+                coeffs0.as_ptr(),
+                coeffs1.as_ptr(),
+                input.as_ptr(),
+                32,
+            )
+        };
+        assert!((res_avx512.0 - expected.0).abs() < 1e-5);
+        assert!((res_avx512.1 - expected.1).abs() < 1e-5);
+    }
+}
+
 // ── S7.T08 Regression Tests ──────────────────────────────────────────────────
 
 /// Converts an f32 slice to BF16 using the correct method (shift right by 16).

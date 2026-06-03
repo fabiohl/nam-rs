@@ -358,6 +358,19 @@ pub trait SimdMath {
     /// `coeffs` must be aligned according to the SIMD register.
     unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32;
 
+    /// Dual mono convolution (reuses input loads).
+    /// Performs the dot product between two coefficient banks and one input buffer.
+    ///
+    /// # Safety
+    /// `coeffs0`, `coeffs1`, and `input` must be valid pointers to at least `taps` elements.
+    /// `coeffs0` and `coeffs1` must be aligned according to the SIMD register.
+    unsafe fn convolve_mono_dual(
+        coeffs0: *const f32,
+        coeffs1: *const f32,
+        input: *const f32,
+        taps: usize,
+    ) -> (f32, f32);
+
     /// Applies gain and detects clipping in stereo in a single pass.
     /// Returns `true` if any resulting sample has `|x| > 1.0`.
     ///

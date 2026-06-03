@@ -108,6 +108,44 @@ pub unsafe fn convolve_stereo_dual_avx512(
     ((out0_l, out0_r), (out1_l, out1_r))
 }
 
+/// Mono Dual Convolution AVX-512.
+/// Performs two mono convolutions on the same input buffer, reusing the loaded input samples.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn convolve_mono_dual_avx512(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    let mut sum0 = _mm512_setzero_ps();
+    let mut sum1 = _mm512_setzero_ps();
+    let mut i = 0;
+
+    while i + 16 <= taps {
+        let x = _mm512_loadu_ps(input.add(i));
+
+        let h0 = _mm512_load_ps(coeffs0.add(i));
+        sum0 = _mm512_fmadd_ps(h0, x, sum0);
+
+        let h1 = _mm512_load_ps(coeffs1.add(i));
+        sum1 = _mm512_fmadd_ps(h1, x, sum1);
+
+        i += 16;
+    }
+
+    let mut out0 = _mm512_reduce_add_ps(sum0);
+    let mut out1 = _mm512_reduce_add_ps(sum1);
+
+    while i < taps {
+        let xl = *input.add(i);
+        out0 += *coeffs0.add(i) * xl;
+        out1 += *coeffs1.add(i) * xl;
+        i += 1;
+    }
+
+    (out0, out1)
+}
+
 /// Mono Convolution AVX-512.
 /// Loads coefficients and applies them to a single channel.
 #[target_feature(enable = "avx512f")]

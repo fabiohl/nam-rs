@@ -15,9 +15,12 @@ mod energy;
 mod max_diff;
 mod peak;
 
-pub use convolution_avx2::{convolve_mono_avx2, convolve_stereo_avx2, convolve_stereo_dual_avx2};
+pub use convolution_avx2::{
+    convolve_mono_avx2, convolve_mono_dual_avx2, convolve_stereo_avx2, convolve_stereo_dual_avx2,
+};
 pub use convolution_avx512::{
-    convolve_mono_avx512, convolve_stereo_avx512, convolve_stereo_dual_avx512,
+    convolve_mono_avx512, convolve_mono_dual_avx512, convolve_stereo_avx512,
+    convolve_stereo_dual_avx512,
 };
 pub use energy::{
     compute_energy_avx2, compute_energy_avx512, compute_energy_stereo_avx2,
@@ -73,4 +76,19 @@ pub unsafe fn convolve_stereo(
 /// `coeffs` must be aligned according to the SIMD register.
 pub unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     crate::math::common::dispatch_simd!(convolve_mono(coeffs, input, taps))
+}
+
+/// Dual mono convolution (used in the resampler) via SIMD dispatch.
+/// Computes two mono convolutions on the same input buffer, reusing the loaded input samples.
+///
+/// # Safety
+/// `coeffs0`, `coeffs1`, and `input` must be valid pointers to at least `taps` elements.
+/// `coeffs0` and `coeffs1` must be aligned according to the SIMD register.
+pub unsafe fn convolve_mono_dual(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    crate::math::common::dispatch_simd!(convolve_mono_dual(coeffs0, coeffs1, input, taps))
 }

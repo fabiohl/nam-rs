@@ -36,6 +36,18 @@ macro_rules! impl_avx512_dsp {
         }
 
         #[inline(always)]
+        unsafe fn convolve_mono_dual(
+            coeffs0: *const f32,
+            coeffs1: *const f32,
+            input: *const f32,
+            taps: usize,
+        ) -> (f32, f32) {
+            unsafe {
+                crate::math::dsp::stereo::convolve_mono_dual_avx512(coeffs0, coeffs1, input, taps)
+            }
+        }
+
+        #[inline(always)]
         unsafe fn apply_gain_and_detect_clipping_stereo(
             left: &mut [f32],
             right: &mut [f32],
@@ -128,6 +140,16 @@ macro_rules! impl_avx512vnni_dsp {
         }
 
         #[inline(always)]
+        unsafe fn convolve_mono_dual(
+            coeffs0: *const f32,
+            coeffs1: *const f32,
+            input: *const f32,
+            taps: usize,
+        ) -> (f32, f32) {
+            unsafe { Avx512Math::convolve_mono_dual(coeffs0, coeffs1, input, taps) }
+        }
+
+        #[inline(always)]
         unsafe fn apply_gain_and_detect_clipping_stereo(
             left: &mut [f32],
             right: &mut [f32],
@@ -209,6 +231,16 @@ macro_rules! impl_avx512vnni_bf16_dsp {
         #[inline(always)]
         unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
             unsafe { Avx512Math::convolve_mono(coeffs, input, taps) }
+        }
+
+        #[inline(always)]
+        unsafe fn convolve_mono_dual(
+            coeffs0: *const f32,
+            coeffs1: *const f32,
+            input: *const f32,
+            taps: usize,
+        ) -> (f32, f32) {
+            unsafe { Avx512Math::convolve_mono_dual(coeffs0, coeffs1, input, taps) }
         }
 
         #[inline(always)]

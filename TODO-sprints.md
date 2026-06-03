@@ -1847,7 +1847,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S25.T05 — `convolve_mono_dual` SIMD para resampler mono ⚠️
+#### Tarefa S25.T05 — `convolve_mono_dual` SIMD para resampler mono ⚠️ [DONE]
 
 - **Onde:** `src/dsp/resampler.rs:260-262` (path mono); `src/math/dsp/stereo/convolution_avx2.rs` e `convolution_avx512.rs` (onde `convolve_stereo_dual` já existe).
 - **Problema:** No resampler em modo mono (caminho exclusivo do CLAP plugin), cada output sample faz **duas chamadas independentes** `M::convolve_mono(c0, x_l, taps)` e `M::convolve_mono(c1, x_l, taps)` para as duas phases — desperdiçando reuso de taps em registradores.

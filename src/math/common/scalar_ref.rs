@@ -532,6 +532,24 @@ pub unsafe fn convolve_stereo_dual_fallback(
     ((sum0_l, sum0_r), (sum1_l, sum1_r))
 }
 
+/// Mono Dual Convolution (used in the Resampler).
+/// Performs two mono convolutions on the same input buffer, reusing the loaded input samples.
+pub unsafe fn convolve_mono_dual_fallback(
+    coeffs0: *const f32,
+    coeffs1: *const f32,
+    input: *const f32,
+    taps: usize,
+) -> (f32, f32) {
+    let mut sum0 = 0.0f32;
+    let mut sum1 = 0.0f32;
+    for i in 0..taps {
+        let x = *input.add(i);
+        sum0 += *coeffs0.add(i) * x;
+        sum1 += *coeffs1.add(i) * x;
+    }
+    (sum0, sum1)
+}
+
 /// Mono Convolution (used in the Resampler).
 pub unsafe fn convolve_mono_fallback(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     let mut sum = 0.0f32;
