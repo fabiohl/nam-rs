@@ -15,8 +15,12 @@ repomix-*.xml
 *.log
 *.json
 
-# Espelho dos projetos de referência no GitHub
+# Espelho dos projetos de referência no GitHub (clones locais para consulta — NUNCA commitar)
 /github.com/
+
+# Defesa em profundidade: impede commit de metadados .git/ aninhados em qualquer subdiretório
+# (ex.: se /github.com/ for futuramente unignorado por engano, .git/ aninhados não serão stagedos).
+**/.git/
 
 # Ignorar artefatos do Rust
 #Cargo.lock

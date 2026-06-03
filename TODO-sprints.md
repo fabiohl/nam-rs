@@ -37,8 +37,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 - **Ordem de execução recomendada:** Épico 12 (S21 HDR + diff fuzz primeiro — instrumenta o resto) → 9 (Quantização) → 10 (RT-OS) → 11 (UX) → 13 (Portabilidade & Hardware Especializado).
 - **CI/QA gate por Sprint:**
+
   1. `bash utils/lints.sh` — formatação, clippy strict, feature matrix.
+
   2. `bash utils/tests-cargo.sh` — unit + integration
+
   3. `cargo bench inference_bench` — comparar contra baseline; sem regressão > 5%.
 - **Convenções:**
   - PR/branch por Tarefa (`feat/S1-T01-bridgeref-soundness`).
@@ -71,9 +74,13 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/dsp/pipeline.rs:116-146` (e callers em `src/standalone/pw_host.rs:525, 972` e `src/clap/processor.rs`).
 - **Problema:** `BridgeRef::as_mut(self) -> &'static mut DspBridge` cria múltiplas referências mutáveis ao mesmo objeto a partir de threads distintas (capture e playback), violando o **aliasing XOR-mut** do modelo de memória Rust. Apesar de funcional na prática (todos os campos sensíveis são `AtomicU*`), é UB segundo o ref. abstract do `rustc`.
 - **Solução técnica:**
+
   1. Quebrar `DspBridge` em duas faces de tipos disjuntos: `DspBridgeWriter` e `DspBridgeReader`, ambas guardando `*const DspBridge` (ou `NonNull<DspBridge>`).
+
   2. Apenas o `Writer` exposto à capture thread expõe `write_block(..)`; apenas o `Reader` exposto ao playback expõe `read_block(..)`. Acesso interno via `&*ptr` com lifetime curto, dentro de cada método.
+
   3. Remover `as_mut`; deixar apenas `unsafe fn as_ptr(self) -> *mut DspBridge`.
+
   4. Documentar invariantes de `Send`/`Sync` explicitamente em comentários `SAFETY:`.
 - **Critérios de aceitação:**
   - Nenhum `&'static mut` no crate (grep).
@@ -86,10 +93,15 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/dsp/mirror_buf.rs:62-164` e construtor portado para `Result<Self>`.
 - **Problema:** `new()` faz `panic!` em casos legítimos (sandboxes, container, RLIMIT_AS baixo). Inaceitável em plugin CLAP carregado por host arbitrário.
 - **Solução técnica:**
+
   1. Mudar `pub fn new(...) -> Self` para `pub fn new(...) -> std::io::Result<Self>`.
+
   2. Propagar erro pelo construtor de `WaveNetLayerState` (`src/models/wavenet/common.rs:73`).
+
   3. Adicionar `checked_mul(2)` em `mirror_buf.rs:96` (overflow protection).
+
   4. Adicionar `assert!(requested_size > 0)` antes de `mmap` para evitar UB POSIX.
+
   5. Adicionar `#[cold]` no `Clone` impl (`mirror_buf.rs:209-214`).
 - **Critérios de aceitação:**
   - Nenhum `panic!`/`expect`/`unwrap` em `mirror_buf.rs`.
@@ -101,8 +113,11 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/dsp/mirror_buf.rs` (todo o arquivo), `src/models/wavenet/common.rs` (uso).
 - **Problema:** O tipo **não é um ring buffer funcional** — não armazena `read_pos`/`write_pos`. É apenas um alocador de buffer espelhado. Nome induz a erros futuros.
 - **Solução técnica:**
+
   1. Renomear o tipo, módulo (`vring.rs` → `mirror_buf.rs`), e re-export.
+
   2. Atualizar `src/dsp/mod.rs` e todos os imports.
+
   3. Atualizar `docs/architecture.md` (seção 2.) e mensagens.
 - **Critérios de aceitação:** `cargo check --all-features` verde, sem warnings.
 - **Especialista:** `implementador`.
@@ -112,8 +127,11 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/dsp/mirror_buf.rs:62, 199`.
 - **Problema:** Usa `memfd_create`, Linux-only. Para manter o crate portátil para outros sistemas operacionais (não-Linux), precisamos de fallback ou cfg-gate.
 - **Solução técnica:**
+
   1. Adicionar `#[cfg(target_os = "linux")] mod linux;` e `#[cfg(not(target_os = "linux"))] mod fallback;`.
+
   2. Fallback usa `mmap` anônimo + segundo mapeamento com `MAP_FIXED` (ou similar adequado ao SO de destino).
+
   3. Documentar tradeoffs em `docs/architecture.md`.
 - **Critérios de aceitação:** Crate compila com sucesso em alvos não-Linux sem erros ou warnings sobre `memfd_create`.
 - **Especialista:** `implementador`.
@@ -130,7 +148,9 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/clap/processor.rs:709-714`.
 - **Problema:** Panic atravessando a fronteira FFI do host (clack/clap) é **UB** em hosts que não tratam unwind (Bitwig, FL Studio C++).
 - **Solução técnica:**
+
   1. Substituir `panic!` por: (a) `set_flag(RT_STATUS_HEAP_ALLOC)`, (b) `eprintln!` apenas se `cfg!(debug_assertions)`, (c) retorno `ProcessStatus::Sleep` indicando bypass intencional.
+
   2. Adicionar drain do flag em `on_main_thread()` para registrar via `HostLog`.
 - **Critérios de aceitação:** `cargo test --features heap-audit` ainda detecta regressões mas sem panic. Stress-run via DAW host real (Bitwig + FL) por 5 minutos sem crashes.
 - **Especialista:** `implementador`.
@@ -140,8 +160,11 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/clap/processor.rs:131-133, 161`; `src/clap/plugin.rs:594`.
 - **Problema:** `.expect()` em `activate()` mata o host se houver Mutex poisoning, dupla activate, ou falha rara do resampler. Especialmente perigoso em hosts agressivos (Reaper render).
 - **Solução técnica:**
+
   1. Substituir cada `.expect()` por match com `PluginError::Message(...)` propagando ao host.
+
   2. Em caso de `Mutex` envenenado, usar `lock().unwrap_or_else(|e| e.into_inner())` (padrão já presente em `ui.rs:1304`).
+
   3. Auditar todo `.expect()` em paths que atravessam FFI (`grep -rn "\.expect(" src/clap`).
 - **Critérios de aceitação:** Nenhum `expect`/`unwrap` em paths de activate/deactivate/process (lista whitelisted documentada).
 - **Especialista:** `implementador`.
@@ -151,8 +174,11 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/clap/gui/window.rs:492-507`; `src/clap/gui/ui.rs:1212-1273`.
 - **Problema:** UAF latente. Em `DragDropped`, dereferencia `self.shared.0` sem checar `alive_fence`. Se host destruir o plugin entre eventos, há use-after-free.
 - **Solução técnica:**
+
   1. Encapsular acesso em helper `fn safe_shared(&self) -> Option<&NamClapShared>` que retorna `None` se `alive_fence == false`.
+
   2. Substituir todos `unsafe { &*self.shared.0 }` por `if let Some(shared) = self.safe_shared()`.
+
   3. Idem para o file-picker manager thread.
 - **Critérios de aceitação:** Stress test fechando janela de modo agressivo durante drag (`utils/tests-cargo.sh test_gui_drag_drop_fuzz`).
 - **Especialista:** `implementador`.
@@ -162,7 +188,9 @@ Objetivo: eliminar todas as ocorrências de **Undefined Behavior latente** e **p
 - **Onde:** `src/clap/gui/gui.rs:97-98`; `src/clap/gui/ui.rs:1212-1214`.
 - **Problema:** `transmute::<HostSharedHandle<'a>, HostSharedHandle<'static>>` repetido em dois lugares — chance de divergência. Padrão de ocultação de UB.
 - **Solução técnica:**
+
   1. Criar `pub(crate) unsafe fn extend_host_lifetime<'a>(h: HostSharedHandle<'a>) -> HostSharedHandle<'static>` em `src/clap/gui/mod.rs` com SAFETY comment exaustivo.
+
   2. Substituir as duas ocorrências por chamada à função.
 - **Critérios de aceitação:** Apenas 1 `transmute` no crate (sob essa função); `cargo clippy -- -D clippy::transmute_ptr_to_ptr` passa.
 - **Especialista:** `implementador`.
@@ -231,9 +259,13 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Problema:** `build_lstm_dynamic` detecta CPU (`is_bf16`, linha 159-160) e quantiza adequadamente usando `f32_to_bf16` (já importado no topo do arquivo). Mas `build_lstm_1layer` (linha 74), `build_lstm_2layer` (linha 118), e `read_lstm_layer` (linhas 279, 293) **sempre usam `half::f16::from_f32(w).to_bits()`** — ignorando o dispatcher dinâmico. Em CPUs Sapphire Rapids+ com kernels BF16-nativos, drift numérico imediato.
 - **Estado atual do código:** `build_lstm_dynamic:159-160` detecta `is_bf16` via `SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16` e usa `f32_to_bf16` (importado em linha 6). `read_lstm_layer` (linhas 266-312) e os builders estáticos usam apenas `half::f16::from_f32(w).to_bits()`.
 - **Solução técnica:**
+
   1. Extrair `fn quantize_weight(f: f32, is_bf16: bool) -> u16` para `src/math/common/mod.rs` (usa `f32_to_bf16` se `is_bf16`, senão `half::f16::from_f32(f).to_bits()`).
+
   2. Detectar `is_bf16` no início de `build_lstm_1layer` e `build_lstm_2layer` (mesmo padrão de `build_lstm_dynamic:159-160`).
+
   3. Adicionar `is_bf16: bool` como parâmetro de `read_lstm_layer` e substituir as duas ocorrências de `half::f16::from_f32(w).to_bits()` (linhas 279, 293) pelo helper.
+
   4. Substituir `head_weights` em `build_lstm_1layer:74` e `build_lstm_2layer:118` pelo helper.
 - **Critérios de aceitação:** Em CPU AVX-512 BF16, golden vectors LSTM 1x16 e 2x16 produzem mesma saída de `build_lstm_dynamic`.
 - **Especialista:** `implementador`.
@@ -247,8 +279,11 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
   - Para 2-layer, isso embaralha `bias2` com `hidden_init1`.
 - **Estado atual do código:** `read_lstm_layer` lê na ordem `weights (H4×IH) → bias (H4) → hidden_init (H) → cell_init (H)` (linhas 271-309). Verificar o encoder (`namb_encoder.rs:99-157`) para confirmar a divergência na ordenação de camadas.
 - **Solução técnica:**
+
   1. No encoder, intercalar por camada: após escrever `W_l, bias_l`, escrever `hidden_init_l, cell_init_l` imediatamente.
+
   2. Substituir o "resto" final (`namb_encoder.rs:152-154`) pela escrita explícita de `head_weights, head_bias`.
+
   3. Adicionar teste `tests/namb_v2_roundtrip.rs` cobrindo todas as topologias LSTM (1×{8,12,16,24}, 2×{8,12,16}), assertando que decode(encode(x)) == x para todos os pesos.
 - **Critérios de aceitação:** Teste round-trip passa para 7 topologias; modelo `tests/fixtures/models/*-2x16.nam` produz mesma saída via JSON e NAMB v2.
 - **Especialista:** `implementador`.
@@ -258,10 +293,15 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Onde:** Encoder `src/loader/namb_encoder.rs:213-232` (Interleaved-4 transpose); decoder `src/models/wavenet/conv1d_dyn.rs` — tail loops nas linhas 229-253 (`process_dual_frame`) e 445-461 (`process_single_frame`), e equivalentes BF16 nas linhas 641-665 (`process_dual_frame_bf16`) e ~838-860 (`process_single_frame_bf16`).
 - **Problema:** O loop SIMD escreve em **`[OUT_BLK][K][IN][4]` interleaved** mas os tail loops (canais restantes `OUT % 4 != 0`) lêem pesos do offset `(out_c * self.kernel + k) * self.in_ch`, assumindo layout `[OUT][K][IN]`. Layouts incompatíveis ⇒ leitura de **bytes errados** ⇒ ruído na saída. Hoje os catálogos (`CH ∈ {4,8,12,16}`) garantem `OUT % 4 == 0` e o bug está latente, mas geometrias futuras (de comunidade) acionariam o defeito. O `conv1d.rs` estático usa `const CH` sempre múltiplo de 4 no catálogo atual — o problema é principalmente no path dinâmico (`conv1d_dyn.rs`).
 - **Solução técnica (única):** Padding implícito no encoder para sempre gerar layout `[CEIL(OUT/4)][K][IN][4]`.
+
   1. No `transpose_wavenet_interleaved4` (`namb_encoder.rs:213-232`), trocar o "tail-loop separado" por padding de até 3 canais zero, escrevendo **todo** o bloco no formato interleaved-4 uniformemente.
+
   2. Remover os 4 tail-loops com layout não-interleaved em `conv1d_dyn.rs`. O decoder passa a ler sempre via `dot_product_4x_interleaved`.
+
   3. Adicionar `assert!(self.out_ch <= num_blocks * 4)` nos construtores de `Conv1dDyn` (com `num_blocks = (out_ch + 3) / 4`).
+
   4. Adicionar teste com `OUT = 6` (não múltiplo de 4) sintético; o encoder gera `2 * 4 = 8` slots interleaved, os 2 últimos preenchidos com zero, e a saída ignora os canais excedentes via `out_ch` lógico.
+
   5. **Compatibilidade retroativa:** modelos NAMB v2 produzidos antes do fix permanecem corretos (afetam só geometrias `OUT % 4 != 0` que não existem no catálogo atual). Documentar como bump implícito em NAMB v2 (sem mudança de versão).
 - **Critérios de aceitação:**
   - Modelo sintético `<6,3,...>` produz saída idêntica via path estático e referência escalar (`ScalarRefMath::dot_product`).
@@ -273,9 +313,13 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs` — `process_dual_frame` linhas 65-93 (populate de `tap_ptrs_f0[8]`) e 184 (loop de convolução); `process_single_frame` linhas 349-366 (populate de `tap_ptrs[8]`) e 417 (loop); variantes BF16 em `process_dual_frame_bf16:487-506` e `process_single_frame_bf16:757-774`.
 - **Problema:** `let mut tap_ptrs_f0 = [core::ptr::null::<f32>(); 8];` é populado apenas até `k_limit = self.kernel.min(8)` (linha 67), mas os loops de convolução usam `tap_ptrs_f0.get_unchecked(k)` iterando `for k in 0..kernel` (linha 184) — desreferencia ponteiro nulo se `kernel > 8`. O mesmo padrão ocorre nas 4 variantes de `process_*_frame*`. O limite de 8 é um hardcode que não reflete o `kernel` real do modelo carregado.
 - **Solução técnica:**
+
   1. Definir `const MAX_KERNEL: usize = 16;` (ou valor adequado) no topo de `conv1d_dyn.rs`.
+
   2. Substituir todos os arrays `[_; 8]` por `[_; MAX_KERNEL]` nos 4 locais.
+
   3. Adicionar no início de cada `process_*_frame*`: `debug_assert!(self.kernel <= MAX_KERNEL, "kernel {} excede MAX_KERNEL", self.kernel);`.
+
   4. No construtor ou ao carregar o modelo, validar `kernel <= MAX_KERNEL` e retornar `Err` se violado.
 - **Critérios de aceitação:** Teste com modelo sintético `kernel=10` carrega sem segfault, produz saída numérica correta vs referência escalar.
 - **Especialista:** `implementador`.
@@ -318,8 +362,11 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Problema:** Buffers de stack fixos em 1024 podem ser excedidos por geometrias com `CH>16` ou `WAVENET_MAX_NUM_FRAMES>64` sem aviso em release. Atualmente há `debug_assert!(num_frames * CH <= 1024)` em `model.rs:46-50` que protege apenas em debug — em release o overflow silencioso corrompe o stack.
 - **Estado atual do código:** Em `model.rs`, `process_block_internal` usa dois arrays `[0.0f32; 1024]` na stack (linhas 51 e 64). O `debug_assert!` em linhas 46-50 valida `num_frames * CH <= 1024`. O `const WAVENET_MAX_NUM_FRAMES = 64` está definido em `conv1d_dyn.rs:16`.
 - **Solução técnica:**
+
   1. Para o caminho estático, trocar para `[f32; CH * WAVENET_MAX_NUM_FRAMES]` usando const generics (estável em Rust ≥1.79). Isso tornará o `debug_assert` desnecessário (erro de compilação em topologias inválidas).
+
   2. Elevar o `debug_assert` atual para um `const_assert!(CH * WAVENET_MAX_NUM_FRAMES <= 1024)` em compile-time.
+
   3. Para o caminho dinâmico (`model_dyn.rs`), usar `assert!(num_frames * ch <= MAX_STACK)` com `const MAX_STACK: usize = 8192` ou pré-alocar via `AlignedVec` em `WaveNetDynModel::new`.
 - **Critérios de aceitação:** Compilação falha (com erro útil) ao tentar topologia maior; testes passam no painel de 4 topologias atual.
 - **Especialista:** `implementador`.
@@ -329,9 +376,13 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Onde:** `src/models/a2/mod.rs:37-49`; `src/clap/gui/ui.rs` (status bar).
 - **Problema:** Modelos A2 carregados produzem **silêncio absoluto** sem feedback adequado ao usuário (apenas um `log::warn!` único).
 - **Solução técnica:**
+
   1. Adicionar `RT_STATUS_A2_PLACEHOLDER` em `src/common/spsc.rs` (seguindo o padrão dos outros flags RT já existentes).
+
   2. Em `WavenetA2Placeholder::process` setar o flag atomicamente (uma vez por modelo carregado, não a cada buffer).
+
   3. Em `src/clap/gui/ui.rs` (status bar), exibir mensagem "Modelo A2 não suportado — bypass ativo" quando o flag estiver ativo.
+
   4. Em standalone, log INFO uma única vez por carregamento.
 - **Critérios de aceitação:** Carregar modelo A2 exibe mensagem clara no UI; bypass sonoro permanece ativo.
 - **Especialista:** `implementador`.
@@ -344,9 +395,13 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Problema:** A referência C++ `NAM/dsp.cpp::Reset(sr, max_buf)` deve ser chamada antes de `process`. NAM-rs não tem equivalente: `prewarm(2048)` é hardcoded no loader. O trait `NamModel` em `mod.rs:18` define apenas `process` e `prewarm`.
 - **Estado atual do código:** `NamModel` em `mod.rs:18-24` tem `fn process` e `fn prewarm`. O `DynamicModel::prewarm` na linha 81 recebe `num_samples` mas WaveNet variants ignoram esse parâmetro (chamam `m.prewarm()` sem argumento — linhas 83-88).
 - **Solução técnica:**
+
   1. Adicionar `fn reset(&mut self, sample_rate: u32, max_buffer_size: usize)` ao trait `NamModel` com implementação default que chama `self.prewarm(max_buffer_size)`.
+
   2. WaveNet: implementação default é adequada (prewarm com silêncio).
+
   3. LSTM: pode override para resetar apenas o input slot (`state[0..I] = 0.0`) sem reprocessar prewarm completo.
+
   4. Chamar no `loader/mod.rs` antes do primeiro `process`.
 - **Critérios de aceitação:** Conformidade documentada em `docs/architecture.md`. Goldens não regridem.
 - **Especialista:** `documentador` + `implementador`.
@@ -357,8 +412,11 @@ Objetivo: corrigir todas as divergências numéricas/lógicas entre nam-rs e a i
 - **Problema:** `prewarm_internal` zera `state` e `cell_state` ANTES de processar o silêncio, descartando os valores `_xh` e `_c` carregados do arquivo NAM (que foram preservados em `build_lstm_dynamic:204-209` usando `copy_from_slice`). Comportamento divergente da referência C++.
 - **Estado atual do código:** Em `build_lstm_dynamic` (linhas 203-209), `state` e `cell_state` são inicializados com os valores do arquivo. Verificar se `prewarm` reseta esses valores antes de processar o silêncio.
 - **Solução técnica:**
+
   1. No prewarm, apenas zerar o input slot: `state[0..input_size] = 0.0`, preservar `state[input_size..]`.
+
   2. `cell_state` permanece inalterado (valores carregados do arquivo).
+
   3. Processar as amostras de silêncio normalmente a partir desse estado.
 - **Critérios de aceitação:** Goldens LSTM 1×16 batem com saída C++ de referência.
 - **Especialista:** `implementador`.
@@ -402,8 +460,11 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/mod.rs:70, 94`.
 - **Problema:** `std::fs::read` carrega o arquivo inteiro em RAM. Sem cap de tamanho, um `.namb` adversário de 4 GB consome 4 GB de memória.
 - **Solução técnica:**
+
   1. Adicionar `const MAX_MODEL_BYTES: u64 = 256 * 1024 * 1024;` (256 MiB).
+
   2. Antes do `std::fs::read`: `let len = std::fs::metadata(path)?.len(); if len > MAX_MODEL_BYTES { bail!(...); }`.
+
   3. Emit erro com diagnóstico tipado (`NamErrorCode::ModelTooLarge`).
 - **Critérios de aceitação:** Tentar carregar arquivo 300 MiB rejeita com mensagem clara em < 50ms.
 - **Especialista:** `implementador`.
@@ -413,8 +474,11 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/mod.rs:79-92`; `src/loader/namb.rs:68, 73, 98, 109, 113, 142`.
 - **Problema:** O matcher de erro busca substrings em português (`"muito pequeno"`, `"mágica inválida"`) mas as mensagens estão em **inglês** → `NambTruncated`, `NambInvalidMagic` etc. **nunca disparam**. Todo erro vira `ModelBuildFailed`.
 - **Solução técnica:**
+
   1. Criar `pub enum NambError { Truncated { got, need }, InvalidMagic(u32), InvalidVersion(u32), CrcMismatch { got, expected }, ... }` com `thiserror::Error`.
+
   2. Substituir `anyhow::bail!` por `Err(NambError::*)` em `namb.rs`.
+
   3. Em `mod.rs:79`, fazer `match err.downcast_ref::<NambError>()` para categorização tipada.
 - **Critérios de aceitação:** Cada variante de erro maps para `NamErrorCode` correto; teste `test_error_codes_*` cobre todas.
 - **Especialista:** `implementador`.
@@ -424,10 +488,15 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/namb.rs:28-57` (header struct), `:137-147` (verificação).
 - **Problema:** `if crc32_header != 0` usa `crc=0` como sentinel "CRC ausente", mas arquivos legítimos podem produzir `crc32 == 0` por coincidência (~1/2³²) ou por escolha adversarial de pesos. Em v1 é tolerável (compatibilidade); em v2+ a obrigatoriedade deve usar **flag explícito** em vez de sentinel.
 - **Solução técnica:**
+
   1. Reservar 1 byte dos `reserved_v2: [u8; 5]` no header como `flags: u8` com bit `FLAG_HAS_CRC32 = 0x01`.
+
   2. Encoder NAMB v2 sempre seta o flag e grava o CRC verdadeiro.
+
   3. Decoder: em v2+ exigir `flags & FLAG_HAS_CRC32 != 0` (rejeitar se ausente); validar CRC mesmo se `crc==0` (caso legítimo de coincidência).
+
   4. Em v1, manter comportamento atual de `crc==0 ⇒ skip` mas emitir `log::warn!("CRC32 missing in NAMB v1 file ...")` (não-bloqueante).
+
   5. Documentar a evolução do header em `docs/namb-spec.md` (ver S5.T07).
 - **Critérios de aceitação:**
   - Teste v2 sem flag `FLAG_HAS_CRC32` falha com erro tipado `NambError::CrcMissing`.
@@ -440,10 +509,13 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/nam_json.rs:46, 117, 176-179`.
 - **Problema:** `serde_json::from_str` aloca `Vec<f32>` ilimitado. JSON com 100M floats consome 400 MB instantaneamente. Adicionalmente `metadata.training: Option<serde_json::Value>` aceita árvore JSON ilimitada.
 - **Solução técnica (forward-compat-safe):**
+
   1. Custom deserializer `weights: Vec<f32>` que aborta após `MAX_WEIGHTS = MAX_MODEL_BYTES / 4` floats com erro `JsonError::WeightsExceedLimit`.
+
   2. Para `metadata.training`, **não** usar `#[serde(deny_unknown_fields)]` (quebraria forward-compat com upstream que adiciona campos novos). Em vez disso:
      - Visitor custom que limita profundidade da árvore a 16 e tamanho total a `MAX_TRAINING_BYTES = 1 MiB`.
      - Campos desconhecidos no nível raiz de `NamMetadata`/`NamConfig` permanecem **ignorados silenciosamente** (compatibilidade) — apenas o tamanho global do JSON é capado em parsing.
+
   3. O cap total do JSON é derivado de `MAX_MODEL_BYTES` (S5.T01); JSON inválido por tamanho falha cedo e com erro tipado.
 - **Critérios de aceitação:**
   - JSON de 200 MiB rejeitado em < 100ms.
@@ -456,8 +528,11 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/nam_json.rs:133-155`.
 - **Problema:** Detecção via `starts_with("0.6")` quebra para versões 0.9+ ou 1.0.
 - **Solução técnica:**
+
   1. Adicionar parser SemVer mínimo (sem dep nova: split por `.` + parse u16) e comparar `version >= (0, 6, 0)`.
+
   2. Manter critério de activation != Tanh como alternativa.
+
   3. Adicionar teste para versões `0.9`, `1.0`, `0.10`, `2.0`.
 - **Critérios de aceitação:** Todas as versões futuras detectadas; teste exaustivo passa.
 - **Especialista:** `implementador`.
@@ -467,7 +542,9 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/dispatcher/wavenet.rs:341-378 vs :414-465`, `:467-510 vs :503-540`.
 - **Problema:** Funções `read_conv1d_weights` e `read_conv1d_weights_dyn` duplicam ~100 LoC. Same para `read_dense_layer`.
 - **Solução técnica:**
+
   1. Extrair `fn read_conv1d_weights_typed<T: ConvOutput>(...)` que aceita o tipo de buffer.
+
   2. Implementar `ConvOutput` para `[u16]` (estático) e `AlignedVec<u16>` (dinâmico).
 - **Critérios de aceitação:** ~200 LoC removidas; testes passam.
 - **Especialista:** `implementador`.
@@ -477,9 +554,13 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** Criar `docs/namb-spec.md`.
 - **Problema:** Especificação do formato não está documentada formalmente. Comentários in-line são insuficientes para implementadores externos.
 - **Solução técnica:**
+
   1. Estrutura: header (offsets, semântica), CRC32 (qual range cobre, flag `FLAG_HAS_CRC32` — ver S5.T03), magic, versionamento, layouts (Original, GateMajorLstm, Interleaved4WaveNet).
+
   2. Exemplos hex de cada layout (incluindo padding-zero do Interleaved-4 — ver S3.T04).
+
   3. Política de evolução (compatibilidade retroativa, novos flags reservados).
+
   4. Referenciar contrato de erros tipados (`NambError`).
 - **Critérios de aceitação:** Doc revisto pela skill `documentador`; cobre todas as decisões tomadas em S3.T03/S3.T04/S5.T02/S5.T03.
 - **Especialista:** `documentador`.
@@ -494,7 +575,9 @@ Objetivo: blindar parsers contra inputs adversários, corrigir categorização d
 - **Onde:** `src/loader/namb.rs:64-70`.
 - **Problema:** Aceitar magic alternativo "BMAN" sem byte-swap leva à leitura errada de `weights_offset` (u32 LE).
 - **Solução técnica:**
+
   1. Se quirk não documentado, **remover** aceitação do magic alternativo.
+
   2. Se for variante BE legítima, ativar modo BE-swap (todos os u32/u16 lidos com `from_be_bytes`).
 - **Critérios de aceitação:** Decisão documentada; teste para cada cenário.
 - **Especialista:** `implementador` + `documentador`.
@@ -528,7 +611,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/telemetry.rs:40, 52`.
 - **Problema:** `fetch_update` é um CAS-loop. Para um contador monotônico, `fetch_add` é um único `lock xadd` no x86 (3× mais rápido).
 - **Solução técnica:**
+
   1. Substituir por `self.bins[index].fetch_add(1, Ordering::Relaxed)`.
+
   2. Considerar `AtomicU64` para evitar overflow em runs > 2.8 anos.
 - **Critérios de aceitação:** Benchmark `bench_record` reduz em ≥40%.
 - **Especialista:** `implementador`.
@@ -538,7 +623,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/gate.rs:158, 176, 204, 213, 216, 270, 324`.
 - **Problema:** Divisão `f32` (`fade_counter / fade_frames`) repetida no hotpath, ~3× mais cara que multiplicação.
 - **Solução técnica:**
+
   1. Em `GateParams::new`, calcular `inv_fade_frames: f32 = 1.0 / fade_frames as f32`.
+
   2. Substituir todas as divisões por `fade_counter as f32 * params.inv_fade_frames`.
 - **Critérios de aceitação:** Benchmark de fade-in/fade-out melhora ≥10%.
 - **Especialista:** `implementador`.
@@ -548,9 +635,13 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/gain.rs` (todo o arquivo) vs `src/math/dsp/gain.rs:58-71`.
 - **Problema:** Duas implementações independentes de `apply_gain_simd`. A versão em `src/dsp/gain.rs:15` chama diretamente `apply_gain_avx2` **sem checagem de feature** — UB em CPUs sem AVX2. A versão em `math/dsp/gain.rs:20` usa `dispatch_simd!`.
 - **Solução técnica:**
+
   1. Deletar `src/dsp/gain.rs` (deletar `src/dsp/gain_test.rs`).
+
   2. Em `src/dsp/mod.rs`, remover `pub mod gain;`.
+
   3. Atualizar callers: `src/dsp/gate.rs:241, 253, 260, 268, 271, 278`; `src/dsp/pipeline.rs:276` → usar `crate::math::dsp::gain::apply_gain(...)` e `apply_ramp_stereo`.
+
   4. Migrar testes em `src/dsp/gain_test.rs` para `src/math/dsp/gain_test.rs` (se ausentes lá).
 - **Critérios de aceitação:** Crate compila sem `src/dsp/gain.rs`; todos os testes passam.
 - **Especialista:** `implementador`.
@@ -560,7 +651,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/clap/processor.rs:565`.
 - **Problema:** `lut.db_to_linear(modulated_gate_db).powi(2)` recalculado a cada `process()` mesmo sem mudança.
 - **Solução técnica:**
+
   1. Cachear o resultado em `&mut self.cached_threshold_sq: f32`.
+
   2. Invalidar somente se param `gate_threshold_db` ou modulação mudou (flag `gate_dirty: AtomicBool`).
 - **Critérios de aceitação:** Latência média de `process()` reduz ≥1µs em modelos pequenos.
 - **Especialista:** `implementador`.
@@ -570,7 +663,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/clap/processor.rs:691-701`.
 - **Problema:** `latency_hist.record()` chamado a cada `process()`. Em hosts com buffer pequeno (32 spl @ 96k = ~333µs), telemetria é dominante.
 - **Solução técnica:**
+
   1. Adicionar `cycles_since_telemetry: u32` em `NamClapProcessor`.
+
   2. Decimar 1-em-16 (igual ao standalone — `pw_host.rs:962`).
 - **Critérios de aceitação:** Overhead de telemetria fica abaixo de 1% nas medidas.
 - **Especialista:** `implementador`.
@@ -587,9 +682,13 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Problema:** `num_blocks = self.out_ch.div_ceil(4)` é recalculado em **cada chamada** às 4 variantes de `process_dual_frame`, `process_single_frame` e suas contrapartes BF16. Para um modelo WaveNet Standard (CH=16, 20 layers, 4096 amostras), isso representa ~80k divisões desnecessárias por bloco de áudio. A regressão de +6.3% no benchmark `DotProduct_AVX2_256elem` é atribuída principalmente a este padrão.
 - **Causa raiz:** `div_ceil(4)` foi introduzido como parte do fix S3.T04 (encoder interleaved padding). O valor nunca muda após construção do struct.
 - **Solução técnica:**
+
   1. Adicionar campo `pub num_blocks: usize` em `Conv1dDyn` (em `src/models/wavenet/conv1d_dyn.rs`, na struct de definição).
+
   2. Inicializar `num_blocks = out_ch.div_ceil(4)` no construtor `Conv1dDyn::new(...)`.
+
   3. Substituir as 4 ocorrências `let num_blocks = self.out_ch.div_ceil(4);` por `let num_blocks = self.num_blocks;`.
+
   4. Atualizar leitores do struct (se houver) para usar o campo cached.
 - **Critérios de aceitação:** Benchmark `DotProduct_AVX2_256elem` retorna a ≤ baseline pré-S3 (alvo: ≤ +1.0% vs baseline histórica). Todos os testes de paridade `conv1d_dyn_*` continuam passando.
 - **Esforço:** 30 min.
@@ -601,9 +700,13 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Problema:** `SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16` é avaliado **por amostra** — para um modelo LSTM 2×16 processando 2048 amostras de prewarm, isso representa 2048 leituras atômicas de `LazyLock`. A `LazyLock` é segura, mas tem custo de barreira de memória `Acquire` por chamada. O resultado nunca muda durante a vida do processo. Regressão de +5.2% em `Prewarm_LSTM_2x16`.
 - **Causa raiz:** Fix S3.T01 corretamente adicionou a detecção runtime, mas não hoistou a detecção para fora do loop.
 - **Solução técnica:**
+
   1. Em `LstmModel1::process_scalar` (linha 529): mover `let is_bf16 = ...` para **antes** do `for i in 0..input.len()`, mantendo-a uma única leitura por chamada.
+
   2. Em `LstmLayer::process_sample_scalar` (linha 379): este método é chamado dentro do loop de `process_scalar`. O fix correto é **remover** a detecção de `is_bf16` daqui e receber `is_bf16: bool` como parâmetro (passado pelo caller, que já o detectou antes do loop).
+
   3. Atualizar os 3 callers de `process_sample_scalar` (em `LstmModel1::process_scalar`, `LstmModel2::process_scalar` e o path de `process_scalar` da `DynamicLstmModel`) para passar `is_bf16`.
+
   4. Em `LstmModel2::process_scalar` (linha 642): mesmo padrão — hoistar `is_bf16` para fora do loop.
 - **Critérios de aceitação:** Benchmark `Prewarm_LSTM_2x16` retorna a ≤ baseline (alvo: ≤ +1.0%). Proptest `test_lstm_scalar_vs_simd_parity` (10k casos) continua passando.
 - **Esforço:** 45 min.
@@ -615,9 +718,13 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Problema:** O `checked_sub` introduz uma ramificação condicional + `Option` unwrap dentro de um loop tight de `O(RF)` iterações onde `RF` pode chegar a 2046 (WaveNet Standard). O `log::error!` dentro do branch `None` bloqueia o LLVM de otimizar o loop (presença de side effects). O `debug_assert!` acima (linha 266) já garante a invariante em debug; em release a proteção real vem do construtor `WaveNetLayerState::new` que valida `buffer_start >= receptive_field_size`. Regressão de +2.4% em `Prewarm_WaveNet_Standard`.
 - **Causa raiz:** Fix S4.T01 usou `checked_sub` como proteção release, mas com o construtor já validando a invariante, o `checked_sub` em release é overhead puro.
 - **Solução técnica:**
+
   1. Substituir o bloco `let Some(dst_start) = current_state.buffer_start.checked_sub(offset) else { log::error!(...); continue; };` por subtração direta: `let dst_start = current_state.buffer_start - offset;`.
+
   2. Manter o `debug_assert!` acima (linha 266) — ele continua protegendo em debug builds.
+
   3. Adicionar comentário `// SAFETY: garantido pelo construtor WaveNetLayerState::new` que valida `buffer_start >= receptive_field_size`.
+
   4. Rodar `cargo test --test wavenet_prewarm_edge` para confirmar que nenhuma regressão de correção é introduzida.
 - **Critérios de aceitação:** Benchmark `Prewarm_WaveNet_Standard` retorna a ≤ baseline (alvo: ≤ +0.5%). Teste `wavenet_prewarm_edge.rs` continua passando.
 - **Esforço:** 20 min.
@@ -630,8 +737,11 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
   - (a) Os `debug_assert!` adicionais em S3.T05 — inofensivos em release, mas podem afetar o cache de instruções (Icache pressure).
   - (b) O campo adicional `num_blocks` no struct pode desalinhar outros campos do `Conv1dDyn` (falso sharing / cache line split).
 - **Solução técnica:**
+
   1. Após implementar S7.R01, re-rodar `cargo bench Long_Run_WaveNet` e medir delta.
+
   2. Se regressão persistir > 0.5%: verificar o alinhamento do struct `Conv1dDyn` com `#[repr(align(64))]` e usar `cargo asm` para confirmar ausência de `panic_bounds_check` nos loops internos.
+
   3. Se regressão persistir > 1%: adicionar `#[cold]` nos path de erro dos `debug_assert!` para isolar o código quente.
 - **Critérios de aceitação:** `Long_Run_WaveNet` retorna a ≤ +0.3% da baseline histórica (dentro do ruído de medição do criterion). Se a regressão for eliminada por S7.R01, esta tarefa é CONCLUÍDA por consequência.
 - **Esforço:** 30 min (+ S7.R01).
@@ -655,9 +765,13 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/pipeline.rs:339-348` (e callers do resampler).
 - **Problema:** Em `process_mono`, o resampler executa **duas convoluções idênticas** em `state_l` e `state_r`. 50% de trabalho jogado fora.
 - **Solução técnica:**
+
   1. Adicionar `pub fn process_input_mono(&mut self, in_l: &[f32], out_l: &mut [f32], out_r: &mut [f32])` em `src/dsp/resampler.rs`.
+
   2. Internamente, opera só em `state_l` e duplica o resultado em `out_l` e `out_r`.
+
   3. Idem para `process_output_mono`.
+
   4. Em `pipeline.rs`, escolher entre mono/stereo no caller.
 - **Critérios de aceitação:** Em modo mono, latência por bloco reduz em ≥30% vs estéreo.
 - **Especialista:** `implementador`.
@@ -667,7 +781,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/resampler.rs:65-72, 136-137`.
 - **Problema:** Indexação `self.buf[pos]` com bounds check no hotpath (provavelmente eliminado pelo LLVM, mas não garantido).
 - **Solução técnica:**
+
   1. Substituir por `*self.buf.get_unchecked_mut(pos)` com `debug_assert!(pos < TAPS_PER_PHASE)`.
+
   2. Mesmo padrão em `in_l[in_idx]` → `*in_l.get_unchecked(in_idx)`.
 - **Critérios de aceitação:** Assembly produzido por `cargo asm` confirma ausência de jmp para `panic_bounds_check`.
 - **Especialista:** `implementador` + `pesquisador-inovador`.
@@ -677,8 +793,11 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/resampler.rs:130-180`.
 - **Problema:** Cada saída executa **2× `convolve_stereo`** (taps das fases φ_idx e φ_next). Os loads de `x_l/x_r` poderiam ser compartilhados.
 - **Solução técnica:**
+
   1. Adicionar `fn convolve_stereo_dual(c0: &[f32], c1: &[f32], x_l: &[f32], x_r: &[f32]) -> [(f32,f32); 2]` em `src/dsp/sinc_kernel.rs`.
+
   2. Implementação SIMD: load `x_l/x_r` uma vez por tap, multiply com `c0` e `c1` em paralelo.
+
   3. Atualizar caller em `resampler.rs:160-168`.
 - **Critérios de aceitação:** Throughput de resampling ≥15% maior.
 - **Especialista:** `pesquisador-inovador`.
@@ -688,7 +807,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/dsp/pipeline.rs:317-321, 339-348, 372-377, 356-365` (4 blocos quase idênticos).
 - **Problema:** Padrão `if let Some(model_l) ... else copy_from_slice` duplicado 4× com pequena variação de mono/stereo.
 - **Solução técnica:**
+
   1. Extrair `#[inline(always)] fn run_stereo_or_mono(...)`.
+
   2. Recomposição de bypass/stereo via closure ou helper.
 - **Critérios de aceitação:** Funções com ≤50 LoC; redução ≥30 LoC totais.
 - **Especialista:** `implementador`.
@@ -698,8 +819,11 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/math/gemm/dot_4x.rs:466-481` (kernels não implementados ou suboptimais).
 - **Problema:** Auditoria SIMD identificou potencial 8-16× speedup ainda não capturado em AVX-512.
 - **Solução técnica:**
+
   1. Reescrever loops para usar 8 acumuladores ZMM (16 lanes f32 cada).
+
   2. Quebrar cadeias de dependência via 4 acumuladores independentes em FMA pipeline.
+
   3. Software prefetch a 4 cache lines à frente.
 - **Critérios de aceitação:** Benchmark `bench_dot_4x_avx512` melhora ≥4× vs versão atual.
 - **Especialista:** `pesquisador-inovador`.
@@ -710,7 +834,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/math/gemm/gemv.rs`.
 - **Problema:** GEMV com 1 acumulador atinge ~12-25% do peak FMA. Cadeia de dependência limita throughput.
 - **Solução técnica:**
+
   1. 4 acumuladores em AVX2 (4×8 = 32 lanes), 8 em AVX-512 (8×16 = 128 lanes).
+
   2. Reduzir loop de fora para minimizar pressure no register file.
 - **Critérios de aceitação:** GEMV achieves ≥70% peak FMA em AVX2/AVX-512.
 - **Especialista:** `pesquisador-inovador`.
@@ -725,8 +851,11 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/math/gemm/gemv_4gate.rs:281-322`.
 - **Problema:** Auditoria SIMD identificou que o kernel BF16 4-gate **produz áudio errado** (drift severo vs `Avx2Math` em LSTM 1×16).
 - **Solução técnica:**
+
   1. Investigar a cadeia de conversão BF16 → F32 → FMA: verificar uso de `_mm512_dpbf16_ps` vs conversão manual.
+
   2. Comparar com goldens C++ de modelo de referência.
+
   3. Adicionar teste cross-implementação em `tests/lstm_gate_bf16_parity.rs`.
 - **Critérios de aceitação:** Diferença vs F32 < 1e-3 em proptest com 10k inputs.
 - **Especialista:** `pesquisador-inovador` + `revisor-auditor`.
@@ -736,7 +865,9 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/math/gemm/dot.rs:144-147`; `src/math/common/ops.rs:38`; `src/math/common/avx512_impl.rs:780`.
 - **Problema:** Auditoria identificou falhas de correção numérica nesses pontos (ordering de reduções, broadcast errado, conversões F16 indevidas).
 - **Solução técnica:**
+
   1. Investigar caso a caso; adicionar testes mínimos reproduzindo a divergência.
+
   2. Corrigir e adicionar regression test.
 - **Critérios de aceitação:** Diferença vs `ScalarRefMath` < 1e-5 em 10k inputs.
 - **Especialista:** `pesquisador-inovador`.
@@ -746,9 +877,13 @@ Objetivo: arrancar 5–30% adicional de throughput sem comprometer correção, r
 - **Onde:** `src/math/activations/tanh.rs:15-200`, `sigmoid.rs:18-280`.
 - **Problema/Oportunidade:** Aproximações atuais usam polinômio grau-7 iterado (~15 FMAs por activation). Padé approximant **(p/q polinomial ratio)** atinge precisão equivalente em ~7 FMAs com **zero branches**. Para LSTM 1×16 com 4 activations por amostra a 48 kHz, ganho cumulativo significativo. Referência: VDT library (CERN), Mineiro & Vorlicek (2016).
 - **Solução técnica:**
+
   1. Para `tanh(x)`: usar identidade `tanh(x) = x · (27 + x²) / (27 + 9x²)` em região `|x| < 4`, saturar em ±1 fora. AVX2/AVX-512 + AMX/AVX10.2-ready.
+
   2. Para `sigmoid(x)`: `sigmoid(x) = 0.5 + 0.5 · tanh(x/2)` reutiliza kernel.
+
   3. Manter trait existente; substituir corpo de `simd_tanh_*` e `simd_sigmoid_*` (transparente para callers).
+
   4. Validar via proptest com 100k inputs distribuídos em `-10..10`, exigir `|err| < 2e-5` (compatível com FP16 precision).
 - **Critérios de aceitação:**
   - Benchmark `bench_tanh_slice` ≥ 30% mais rápido.
@@ -837,9 +972,13 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Onde:** `src/clap/gui/ui.rs:394` (`Vec::with_capacity(num_segments + 1)` no knob), `src/clap/gui/ui.rs:1663-1726` (status bar: SR/Lat/DSP/Cycles/Last N/RT Prio/Overloads/Flags via `format!`), `src/clap/gui/ui.rs:1803-1859` (metadata: Model/Author/Gear/Tone via `format!` + `join`).
 - **Problema:** `Vec::with_capacity(...)`, `format!`, `.join(...)` em paths de draw — em status bar, ~8 `format!` por frame × 30 FPS ≈ 240 alocações/s; em metadata, `Vec<String>` + `join` cada repaint.
 - **Solução técnica:**
+
   1. `SmallVec<[Pos2; 49]>` para pontos do knob (ou buffer pré-alocado em `UiState`).
+
   2. String pooling: caches em `UiState` para tooltips e linhas da status bar (`Vec<String>` reutilizado, `clear()` + `write!` por frame).
+
   3. `write!()` em buffer thread-local em vez de `format!`.
+
   4. Pré-computar strings de metadata em `UiState` quando o modelo carrega (não a cada frame).
 - **Critérios de aceitação:** Memory profiling mostra zero new allocations em 1s de draw idle.
 - **Especialista:** `implementador`.
@@ -863,7 +1002,9 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Onde:** `src/standalone/pw_host.rs:490` (`detect_hardware_sink`), `src/standalone/pw_host.rs:505-507` (set `node.target`), `src/standalone/pw_host.rs:882` (`sync_rate` fn).
 - **Problema:** `hardware_target` capturado uma vez; mudança de sample rate processa frames com resampler antigo (janela de dropout).
 - **Solução técnica:**
+
   1. Setar `node.target = ""` deixando WirePlumber rotear dinamicamente.
+
   2. Em `sync_rate`, suspender brevemente o processamento até `swap` do resampler.
 - **Critérios de aceitação:** Desconectar hardware durante play sem crash; trocar SR sem dropouts inesperados.
 - **Especialista:** `implementador`.
@@ -926,7 +1067,9 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs`.
 - **Problema:** Duplicação massiva entre `process_single_frame`, `process_single_frame_bf16`, `process_dual_frame`, `process_dual_frame_bf16`.
 - **Solução técnica:**
+
   1. Generalizar via `trait ConvInput` (já existe em `conv1d.rs`).
+
   2. Reduzir para ~400 LoC.
 - **Critérios de aceitação:** Arquivo < 500 LoC; testes passam.
 - **Especialista:** `implementador`.
@@ -936,7 +1079,9 @@ Objetivo: trazer todos os arquivos > 500 LoC para conformidade, melhorar coesão
 - **Onde:** `src/dsp/gate.rs:120-242` (declaração `pub fn update` em :120).
 - **Problema:** Função única de ~123 linhas mistura 4 estados FSM (`Open`, `FadingOut`, `Closed`, `FadingIn`).
 - **Solução técnica:**
+
   1. Extrair `update_open`, `update_fading_out`, `update_closed`, `update_fading_in`.
+
   2. Renomear `GateState::Closed` se contexto for ambíguo (uso em `process_mono` em `pipeline.rs:271`).
 - **Critérios de aceitação:** Cada método < 50 LoC; cobertura de teste mantida.
 - **Especialista:** `implementador`.
@@ -1048,11 +1193,15 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Onde:** `src/clap/extensions/state.rs:45-77`.
 - **Problema:** Sem `version` no payload de save/load. Qualquer adição de campo futuro quebra todos os projetos salvos. **Adicionalmente**, projetos existentes salvos pelo CLAP v1.5.x atual contêm apenas o payload `NamPluginParams` JSON puro — sem migração explícita, a release com versionamento quebraria todos eles.
 - **Solução técnica:**
+
   1. Novo envelope: `{ "version": 1, "params": {...} }`.
+
   2. No load:
      - Tentar deserializar como `StateEnvelope { version: u32, params: NamPluginParams }`.
      - Se falhar (provável v0 legacy: sem chave `version`), fallback para `NamPluginParams` direto, tratado como `version = 0`, aplicando migration default (estado v0 → v1: copy campos comuns, novos campos com `Default`).
+
   3. Adicionar `#[serde(default)]` em todos os campos de `NamPluginParams` (já obrigatório para v0 compat).
+
   4. Padrão de migration: `fn migrate(v: u32, params: NamPluginParams) -> NamPluginParams` para evolução futura (v1 → v2 etc).
 - **Critérios de aceitação:**
   - **Migração v0 → v1:** payload sem campo `version` (gerado por CLAP v1.5.x) carrega com sucesso, todos os 4 params recuperados, sem warning.
@@ -1066,7 +1215,9 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Onde:** `src/clap/extensions/state.rs:46-77`.
 - **Problema:** Leak intencional de strings em paths de erro. Acumula em hosts com muitos save/load (Bitwig auto-save).
 - **Solução técnica:**
+
   1. Trocar `PluginError::Message` por variante custom com `Cow<'static, str>` se a API `clack` permitir.
+
   2. Caso contrário, usar pool estático de erros conhecidos.
 - **Critérios de aceitação:** Sem `Box::leak` no módulo state.
 - **Especialista:** `implementador`.
@@ -1076,7 +1227,9 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Onde:** `src/common/params.rs:27`; `src/clap/extensions/state.rs`.
 - **Problema:** Path absoluto em projects quebra portabilidade entre máquinas/usuários.
 - **Solução técnica:**
+
   1. Adicionar `model_basename: Option<String>` e `model_search_paths: Vec<PathBuf>`.
+
   2. Em load, se path absoluto não existe, procurar `basename` em search_paths.
 - **Critérios de aceitação:** Projeto salvo em Linux abre em Linux com path diferente sem erros.
 - **Especialista:** `implementador`.
@@ -1112,7 +1265,9 @@ Objetivo: assegurar que o plugin CLAP é robusto em hosts variados, persiste est
 - **Onde:** `src/clap/plugin.rs:127-152`.
 - **Problema:** 12 `AtomicBool` desperdiçam 12 cache lines potenciais (com alinhamento). Bitmap único é mais eficiente.
 - **Solução técnica:**
+
   1. Substituir array por `AtomicU32` com bitmask `(1 << i)` por parâmetro × gesto (begin/end/value-change).
+
   2. Helpers `set_gesture`, `take_gesture`, `clear_gestures`.
 - **Critérios de aceitação:** Smoke test de gestures (begin/end + value change) ok.
 - **Especialista:** `implementador`.
@@ -1163,7 +1318,9 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
   - `tests/fixtures/golden_*.bin` gerados por `golden_gen.cpp` — baseados em NeuralAudio (Mike Oliphant), reimplementação independente, **não** a referência canônica.
   - Nenhuma validação contra o `NeuralAmpModelerCore` (Steven Atkinson) — o código que treina e gera os modelos `.nam`.
 - **Solução técnica — Unificação exclusiva com NeuralAmpModelerCore:**
+
   1. **Remoção total** dos goldens autorreferenciais (`tests/golden/`, `regression_goldens.rs`) e NeuralAudio (`golden_gen.cpp`, goldens `tests/fixtures/golden_*.bin` atuais). **Nuke do histórico git** via `git filter-repo`.
+
   2. **Camada 1 — Goldens pré-commitados (rápido, `cargo test`):**
      - Script `tests/fixtures/golden_gen_build.sh` (reescrito) compila o CLI `render` do NeuralAmpModelerCore (CMake, já testado e funcional), processa cada modelo com **sinal de stress multi-componente** (2048 amostras �
 
@@ -1174,7 +1331,9 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Onde:** `tests/namb_v2_roundtrip.rs` (novo).
 - **Problema:** Bugs Sprint S3.T03 só foram identificados por leitura manual.
 - **Solução técnica:**
+
   1. Para cada layout (`Original`, `GateMajorLstm`, `Interleaved4WaveNet`) e topologia (todas no catálogo), gerar `NamModelData`, encodar para `.namb`, decodar, comparar.
+
   2. Assertar igualdade bit-a-bit de pesos transposed.
 - **Critérios de aceitação:** Round-trip passa para 11 topologias (7 LSTM + 4 WaveNet).
 - **Especialista:** `implementador`.
@@ -1183,7 +1342,9 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 - **Onde:** `tests/proptest_parsers.rs` (estender).
 - **Solução técnica:**
+
   1. Adicionar shrinking estratégia para `Arbitrary<NamModelData>`.
+
   2. 100k iterações com `arbitrary_namb_bytes` (header válido + corpo aleatório).
 - **Critérios de aceitação:** Zero panics em 100k inputs.
 - **Especialista:** `implementador`.
@@ -1194,7 +1355,9 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Onde:** `tests/clap_multi_instance.rs` (novo).
 - **Problema:** `ONCE_PRIO` global pode causar comportamento errático em hosts com 10+ instâncias.
 - **Solução técnica:**
+
   1. Instanciar 10 plugins via `clack-host`.
+
   2. Verificar telemetria, params, activate/deactivate sem race conditions.
 - **Critérios de aceitação:** Sem panic; rt_priority correto em cada instância.
 - **Especialista:** `implementador`.
@@ -1204,8 +1367,11 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 
 - **Onde:** `tests/wavenet_prewarm_edge.rs` (novo).
 - **Solução técnica:**
+
   1. Modelo sintético com `dilation=512, K=5` (RF=2560).
+
   2. Prewarm com `num_samples=2048`.
+
   3. Verificar ausência de OOB / underflow.
 - **Critérios de aceitação:** Sem `debug_assert!` quebrado; saída plausível.
 - **Especialista:** `implementador`.
@@ -1215,8 +1381,11 @@ Nota: A implementação de referência NeuralAmpModelerCore pode ser consultada 
 - **Onde:** `src/models/lstm/mod.rs` (enum `DynamicModel`); `src/loader/dispatcher/lstm.rs` (match de dispatch estático, região ~linha 17-46 pós-refatoração).
 - **Problema:** Modelos `LSTM 1×40` (tone matching) e `2×24` (deeper) caem em fallback dinâmico, perdendo performance.
 - **Solução técnica:**
+
   1. Adicionar `Lstm1x40`, `Lstm2x24` ao enum `DynamicModel` em `src/models/lstm/mod.rs`.
+
   2. Adicionar match no dispatcher estático em `src/loader/dispatcher/lstm.rs`.
+
   3. Testes de regressão e benchmark.
 - **Critérios de aceitação:** Modelos batem performance dentro de 5% das variantes catalogadas.
 - **Especialista:** `implementador`.
@@ -1245,8 +1414,11 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 - **Por que é importante:** A função de ativação `sigmoid` atual delega os cálculos para a identidade `0.5 + 0.5 * tanh(x/2)`. Isso força a propagação do erro da aproximação de `tanh` e introduz operações aritméticas extras de reescalonamento, acumulando desvios na saída.
 - **Como melhora a qualidade:** Ao eliminar o acoplamento com a curva `tanh`, reduzimos o erro relativo pico a pico e evitamos a distorção introduzida nos limites de saturação `[-8, 8]` da sigmoide.
 - **Como fazer:**
+
   1. ~~Utilizar ferramentas de aproximação minimax (Sollya/Lolremez) para derivar um polinômio de aproximação direto para `sigmoid(x)` otimizado para o intervalo `[-8, 8]`.~~ → Coeficientes obtidos via algoritmo de Lawson (minimax ponderado) — polinômio ímpar de grau 17 (9 termos).
+
   2. ~~Implementar `simd_sigmoid_avx2` e `simd_sigmoid_avx512` usando o polinômio minimax direto.~~
+
   3. ~~Atualizar o kernel combinado `simd_tanh_sigmoid_dual_avx2` para rodar a sigmoide direta em paralelo com a tanh.~~
 - **Critérios de aceitação:**
   - ✓ Redução mensurável do erro máximo absoluto de sigmoide versus `f32::exp` nativo: de ~6.8e-4 (baseline tanh-based) para ~4.09e-4 (direct minimax, ~1.67× improvement).
@@ -1265,7 +1437,9 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 - **Por que é importante:** Um único aproximante racional Padé [5,4] cobrindo todo o intervalo `[-4, 4]` resulta em picos de erro locais nas zonas de transição rápida de curvatura de `tanh`.
 - **Como melhora a qualidade:** Segmentar o domínio em subintervalos estreitos (ex: `[0, 1]`, `[1, 2]`, `[2, 4]`) e ajustar polinômios de grau reduzido (2 ou 3) para cada trecho minimiza o erro local ao nível de ~23 bits equivalentes de mantissa.
 - **Como fazer:**
+
   1. Dividir o intervalo `[-4, 4]` em 3 subsegmentos simétricos e calcular os coeficientes minimax ótimos para cada segmento usando Sollya.
+
   2. Vetorizar o cálculo carregando os conjuntos de coeficientes na stack e selecionando a expressão polinomial correta usando máscaras de magnitude (`_mm256_blendv_ps` / `_mm512_mask_blend_ps`) de forma branchless.
 - **Critérios de aceitação:**
   - Erro relativo máximo ($\max(|f_{\text{approx}}(x) - \tanh(x)|)$) reduzido em pelo menos 4×.
@@ -1281,9 +1455,13 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
     - Micro-benchmark `bench_record_64calls`: +5% (p<0.05).
   - **Diagnóstico:** A avaliação incondicional de 7 polinômios (branchless) introduz 21 FMAs + 7 muls + 6 blends por elemento, vs. ~9 ops do Padé [5,4] original. O ganho teórico em throughput (ausência de `rcp_ps` + Newton-Raphson) não se materializa porque o blend cascade satura as unidades de execução SIMD. O custo é proporcional ao número de segmentos e ao número de ativações tanh no modelo — LSTMs são particularmente afetados (4 tanh gates por célula).
   - **Recomendações para iteração futura:**
+
      1. **Reduzir para 5 segmentos** ([0,1], [1,1.5], [1.5,2], [2,3], [3,4]) — recupera ~30% dos blends/polinômios, mas requer reotimização dos coeficientes para manter erro < 5e-3 (o segmento [1, 1.5] atual tem erro ~8e-3 com polinômio cúbico ímpar).
+
      2. **Adotar aproximantes racionais locais (Padé [2,2] ou [3,2] por segmento)** — melhor acurácia por grau, mas reintroduz `rcp_ps`; o trade-off pode ser favorável se o número de segmentos for reduzido para ≤3.
+
      3. **Híbrido: polinômio para [0,2] + saturação direta para |x|>2** — a região [2,4] tem variação de apenas 0.964→0.999 em tanh; um clamp com aproximação linear simples cobre 5 dos 7 segmentos atuais.
+
      4. **Aguardar coeficientes ótimos via Sollya** antes de decidir a arquitetura final — o erro do segmento [0,1] (1.3e-3) é o fator limitante da acurácia global e pode ser reduzido com grau 7 (4 coeficientes) sem aumentar o número de segmentos.
 - **Git Commit:** 592db0b667822d9246d15e75bebef560d8df66c4
 
@@ -1293,8 +1471,11 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 - **Por que é importante:** A conversão estática dos pesos originais FP32 para o formato compacto BF16 introduz um viés numérico (drift linear) persistente. Esse drift acumula-se de forma multiplicativa ao longo de mais de 18 camadas residuais na WaveNet Standard, gerando o pior cenário de SNR (9.5 dB).
 - **Como melhora a qualidade:** Compensa os desvios DC e distorções sistemáticas geradas pela quantização sem adicionar nenhuma instrução de cálculo no processamento de tempo real do sinal.
 - **Como fazer:**
+
   1. Durante a carga do modelo (no dispatcher), executar uma inferência teste simulada com sinal sintético usando os pesos originais FP32 e os quantizados BF16.
+
   2. Medir a diferença aritmética média $\mathbb{E}[Y_{\text{FP32}} - Y_{\text{BF16}}]$ na saída da convolução para cada canal.
+
   3. Adicionar esse vetor de desvios compensatórios diretamente nos coeficientes do vetor de `bias` FP32 correspondente.
 - **Critérios de aceitação:**
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
@@ -1307,8 +1488,11 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - **cargo test --test cpp_parity -- --ignored --nocapture:** Todos os 5 testes passaram (WaveNet Standard SNR=9.5 dB, Feather SNR=16.5 dB, Nano SNR=25.0 dB, LSTM 1x16 SNR=19.7 dB, LSTM 2x8 SNR=25.7 dB). Nenhuma regressão. Os valores de SNR mantiveram-se estáveis porque a máquina de teste (AMD Zen 3, AVX2) opera em modo FP16, cujo erro de quantização (~0.1% por peso) é ~8× menor que BF16 (~0.8%). A compensação é proporcionalmente menor neste regime.
   - **Ganho BF16 (≥1.5 dB):** Não verificável nesta máquina por ausência de suporte AVX-512 VNNI BF16. A arquitetura está correta e preparada para BF16 — quando executada em hardware compatível (Intel Sapphire Rapids+, AMD Zen 5+), o `is_bf16=true` ativa a desquantização BF16 e a compensação terá magnitude ~8× maior, prospectivamente atingindo o ganho de ≥1.5 dB. **Recomenda-se validação em CI com CPU BF16-capable.**
   - **Riscos identificados:**
+
     1. A premissa DC=1.0 é uma aproximação de primeira ordem — para distribuições de ativação com média zero (típicas após tanh), a compensação subestima o drift; uma iteração futura poderia usar o sinal de stress real (2048 amostras) como entrada da inferência simulada.
+
     2. Camadas sem bias (rechannel, input_mixin) não recebem compensação, mas seu erro de quantização propaga-se para as camadas seguintes com bias, sendo parcialmente absorvido pela compensação destas.
+
     3. A cópia completa dos pesos FP32 crus (`raw_f32_owned`) durante a carga dobra temporariamente o uso de memória para pesos — impacto negligível em sistemas desktop (≈400 KB para WaveNet Standard), mas digno de nota para sistemas embarcados.
   - **Sugestão de git message:** `feat(loader): bias-tuning compensation for quantized weights in WaveNet conv/dense layers`
 - **Git Commit:** eb18f638899402b892cdb1433a085f389c2bad31
@@ -1316,32 +1500,45 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 ### Tarefa E8.T04 — Validação de Precisão de Divisão SIMD e Refinamento Newton-Raphson 💡 [DONE]
 
 - **Onde:** `src/math/activations/tanh.rs`.
+
 - **Por que é importante:** A aproximação de divisão del denominador Padé via instrução rápida `rcp_ps` seguida de uma única iteração de Newton-Raphson limita o resultado a ~22 bits, introduzindo ruído de truncamento invisível em redes profundas.
+
 - **Como melhora a qualidade:** Restaura a precisão total de ponto flutuante IEEE 754 de 24 bits da mantissa, eliminando o ruído de fundo acumulado.
+
 - **Como fazer:**
+
   1. Adicionar uma segunda iteração do algoritmo de Newton-Raphson no cálculo do recíproco do denominador em `simd_tanh_avx2` e `simd_tanh_avx512`.
+
   2. Implementar um build alternativo com divisão direta via hardware (`_mm256_div_ps`) para servir de oráculo de máxima fidelidade em testes de paridade.
+
 - **Critérios de aceitação:**
+
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Determinar a contribuição exata da aproximação de recíproco no drift numérico da WaveNet Standard em relação ao baseline.
+
 - **Especialista:** `pesquisador-inovador` + `implementador`.
+
 - **Parecer Técnico Final (E8.T04):**
 
   **Contexto:** A tarefa E8.T04 foi planejada antes de E8.T02 substituir o Padé [5,4] por piecewise minimax. Como o código de produção em `tanh.rs` não contém mais `rcp_ps`/Newton-Raphson, foram implementadas funções Padé de referência (`simd_tanh_pade_nr2_*`, `simd_tanh_pade_div_*`) como oráculos para análise comparativa, sem alterar o caminho de produção.
 
   **Implementação:**
+
   1. `simd_tanh_pade_nr2_avx2` / `simd_tanh_pade_nr2_avx512`: Padé [5,4] com `_mm256_rcp_ps` + duas iterações Newton-Raphson (satura mantissa f32).
+
   2. `simd_tanh_pade_div_avx2` / `simd_tanh_pade_div_avx512`: Padé [5,4] com `_mm256_div_ps` — oráculo IEEE 754 de máxima fidelidade.
+
   3. Teste de precisão `test_tanh_precision_analysis_e8t04`: 10M amostras em [-4, 4] comparando as três variantes contra `f32::tanh`.
+
   4. Benchmarks `FastMath_tanh_PadeNR2_AVX2_256elem` e `FastMath_tanh_PadeDiv_AVX2_256elem` adicionados.
 
   **Resultados de Precisão (10M amostras, domínio [-4, 4]):**
 
-  | Variant           | Max Abs Err | RMS Error  | Equiv. Bits |
-  |-------------------|-------------|------------|-------------|
-  | Piecewise Minimax | 4.90e-3     | 1.64e-3    | ~7.7        |
-  | Padé [5,4] NR2    | 2.32e-3     | 6.50e-4    | ~8.8        |
-  | Padé [5,4] Div    | 2.32e-3     | 6.50e-4    | ~8.8        |
+  | Variant           | Max Abs Err | RMS Error | Equiv. Bits |
+  | ----------------- | ----------- | --------- | ----------- |
+  | Piecewise Minimax | 4.90e-3     | 1.64e-3   | ~7.7        |
+  | Padé [5,4] NR2    | 2.32e-3     | 6.50e-4   | ~8.8        |
+  | Padé [5,4] Div    | 2.32e-3     | 6.50e-4   | ~8.8        |
 
   - **Padé [5,4] é 2.1× mais preciso que piecewise minimax** em erro máximo absoluto.
   - **Dupla iteração NR satura completamente a mantissa f32:** a razão de erro NR2/Div = 1.000× — o erro do recíproco é zero mensurável em f32.
@@ -1350,7 +1547,7 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   **Resultados de Throughput (AVX2, 256 elementos, `cargo bench`):**
 
   | Variant           | Latência | vs Piecewise    |
-  |-------------------|----------|-----------------|
+  | ----------------- | -------- | --------------- |
   | Piecewise Minimax | ~156 ns  | baseline        |
   | Padé [5,4] NR2    | ~104 ns  | 33% mais rápido |
   | Padé [5,4] Div    | ~62 ns   | 60% mais rápido |
@@ -1360,21 +1557,28 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   - A divisão hardware (`_mm256_div_ps`) é paradoxalmente a mais rápida (~62 ns), sendo uma única instrução que cobre tanto o recíproco quanto a multiplicação.
 
   **C++ Parity (`cargo test --test cpp_parity -- --ignored --nocapture`):** 5/5 PASS.
+
   - WaveNet Standard SNR=9.5 dB, Feather SNR=16.5 dB, Nano SNR=25.0 dB, LSTM 1×16 SNR=19.7 dB, LSTM 2×8 SNR=25.7 dB.
   - Valores idênticos aos de E8.T02/E8.T03 — esperado, pois o caminho de produção (piecewise) não foi alterado.
 
   **Contribuição da Aproximação de Recíproco no Drift Numérico da WaveNet Standard:**
 
   1. **ZERO.** A dupla iteração Newton-Raphson satura a mantissa f32 (24 bits), tornando o erro do recíproco imensurável em relação ao erro da aproximação racional Padé [5,4] (~8.8 bits).
+
   2. Mesmo com uma única iteração NR (~22 bits), o erro do recíproco seria ordens de magnitude menor que o erro da aproximação racional.
+
   3. O drift numérico da WaveNet Standard (SNR=9.5 dB) é dominado pela quantização de pesos BF16/FP16 (E8.T03) e pelo erro de aproximação da função de ativação, não pelo recíproco.
+
   4. **Conclusão crítica:** A premissa original da tarefa — de que o `rcp_ps` com 1 iteração NR limita a precisão a ~22 bits e causa drift — está correta em teoria, mas **irrelevante na prática para f32**, pois o erro da aproximação Padé [5,4] (~8.8 bits) é ordens de magnitude maior que o erro do recíproco (~22 bits). O gargalo de precisão está na fórmula racional, não na divisão.
 
   **Implicações para iterações futuras:**
 
   1. **Reconsiderar Padé [5,4] como caminho de produção:** É 2.1× mais preciso E 60% mais rápido que o piecewise atual. O blend cascade de 7 segmentos (E8.T02) provou-se contraproducente. Um Padé [5,4] com `_mm256_div_ps` (ou `rcp_ps` + 1 NR, já que 2 NR é overkill) seria estritamente superior.
+
   2. **Se piecewise for mantido:** Reduzir para 5 segmentos (conforme recomendação E8.T02) e recalcular coeficientes via Sollya `fpminimax` para atingir erro < 2e-3 — o threshold competitivo com Padé [5,4].
+
   3. **Acurácia além de Padé [5,4]:** Requer aproximantes racionais de grau superior (Padé [7,6] ou [9,8]) ou piecewise com polinômios de grau 7-9 por segmento — ambos com custo computacional maior.
+
   4. **A dupla iteração NR é desnecessária para tanh em f32** — 1 iteração (~22 bits) já é 100× mais precisa que o erro da fórmula Padé. Reservar dupla iteração para contextos onde o denominador é computado com precisão quase-exata (ex: softsign, onde den = 1+|x| tem erro zero).
 
 - **Git Commit:** perf(math): add Padé [5,4] reference variants with double NR and hardware-div oracle for E8.T04 precision analysis
@@ -1382,18 +1586,28 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 ### Tarefa E8.T05 — Dithering determinístico e supressão de efeitos de sub-limiares (Denormais) ⚠️ [DONE]
 
 - **Onde:** `src/dsp/pipeline/stages.rs` ou `src/models/wavenet/model.rs`.
+
 - **Por que é importante:** Sinais em fade-out ou trechos de silêncio decaem para faixas subnormais de ponto flutuante ($10^{-10}$ a $10^{-38}$). Nessas regiões extremas, as aproximações de Padé e Minimax apresentam instabilidade matemática ou erros de arredondamento relativos amplificados.
+
 - **Como melhora a qualidade:** Elimina ruídos de estalos e degradações harmônicas de fundo quando o áudio decai para o silêncio, garantindo decaimento de fade suave.
+
 - **Como fazer:**
+
   1. Injetar um sinal de dithering de alta frequência ultra baixo (ex: ruído branco de cauda em `-120 dBFS`) ou offset constante inaudível no início do processamento do frame.
+
   2. Filtrar ou compensar o offset no estágio final de saída do pipeline.
+
 - **Critérios de aceitação:**
+
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
   - Golden tests e análise espectral confirmam que o decaimento para o silêncio é livre de artefatos digitais ou picos de erro.
+
 - **Especialista:** `pesquisador-inovador`.
+
 - **Git Commit:** feat(dsp): inject deterministic DC dither (-220 dBFS) at input stage to suppress subnormal floats in neural activations during fade-out
 
   **Resultados E8.T05:**
+
   - **Implementação:** Injeção de offset DC constante (`1.0e-11`, −220 dBFS) ao final de `apply_input_stage()` (após gain), com compensação por subtração no início de `apply_output_stage()`. Ciente de mono (right channel só recebe offset quando som estereo real).
   - **cpp_parity:** 5/5 PASS. SNRs idênticos ao baseline de E8.T04 — WaveNet Standard 9.5 dB, Feather 16.5 dB, Nano 25.0 dB, LSTM 1×16 19.7 dB, LSTM 2×8 25.7 dB. **Impacto zero em sinais de nível normal.**
   - **Benchmarks (`inference_bench`):** Sem regressão. Melhoras de 1–8% na maioria dos benchmarks (dentro de margem de ruído ou leve melhora real por alinhamento).
@@ -1408,7 +1622,9 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 - **Por que é importante:** A acumulação sequencial de produtos parciais em loops de convolução com muitos canais (como 64 ou 128 na WaveNet) perde precisão a cada soma devido ao truncamento dos bits menos significativos da mantissa (erro de arredondamento estocástico).
 - **Como melhora a qualidade:** Mantém a precisão dos acumuladores de convolução próxima da representação original, reduzindo o desvio total em malhas CNN causais longas.
 - **Como fazer:**
+
   1. Implementar opcionalmente algoritmos de Kahan Summation (mantendo uma variável de erro compensado para cada canal acumulado) ou Pairwise Summation (somas em árvore de 2 em 2 elementos em vez de soma linear).
+
   2. Ajustar os kernels de dot product interleaved para acumular erros de forma compensada.
 - **Critérios de aceitação:**
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
@@ -1431,7 +1647,9 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 - **Por que é importante:** Fazer somas parciais ou casting intermediário de dados de acumuladores em BF16 degrada a mantissa para 7 bits, destruindo a fidelidade harmônica. Adicionalmente, ler e escrever no buffer para fazer a soma residual separadamente adiciona perdas numéricas e penalidades de barramento de memória.
 - **Como melhora a qualidade:** Garante fidelidade de acumulador em precisão total FP32 (24 bits mantissa) e reduz o ruído gerado por truncamento intermédio entre convolução e conexão de bypass residual.
 - **Como fazer:**
+
   1. Assegurar que os kernels do produto de pesos `dot_product_4x_interleaved_bf16` realizem a acumulação estritamente em f32 em registradores SIMD antes do casting para u16/BF16.
+
   2. Fundir a soma da conexão residual diretamente no registrador SIMD ao final da convolução da camada, evitando acessos desnecessários de memória.
 - **Critérios de aceitação:**
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
@@ -1459,7 +1677,9 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 - **Por que é importante:** Nem todas as camadas da WaveNet têm a mesma sensibilidade ao ruído de aproximação. As camadas iniciais de extração de features aceitam quantização agressiva (BF16/F16), enquanto as camadas finais (heads de convolução 1x1) são críticas e definem a qualidade tonal do sinal final de áudio. Ademais, os limites de teste antigos são fixos, causando falhas falsas em redes complexas ou macronos erros em redes rasas.
 - **Como melhora a qualidade:** Permite um balanço dinâmico ideal de performance/precisão, executando trechos cruciais em FP32 e preservando aceleração Turbo no restante, além de calibrar a suíte de testes de paridade.
 - **Como fazer:**
+
   1. Configurar o dispatcher do modelo para mapear e manter os pesos das cabeças de convolução finais (`head_weights`) em precisão total FP32, permitindo mixed-precision seletiva na inferência.
+
   2. Ajustar os thresholds de teste de cross-validation dinamizando as tolerâncias de MSE/SNR conforme o número de layers detectado e a topologia.
 - **Critérios de aceitação:**
   - Análise dos resultados dos comandos `cargo bench` (bench diretamente relacionado ao que foi editado) e `cargo test --test cpp_parity -- --ignored --nocapture`. Insira um detalhado parecer ao final desta tarefa.
@@ -1512,3 +1732,990 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 > 3. **Coeficientes Sollya para piecewise (se retomado):** O `TODO` em `constants.rs` permanece — usar `fpminimax` pode reduzir o erro do segmento [0,1] de 1.3e-3 para ~5e-4, mas não resolve o throughput.
 >
 > **Git commit:** `perf(math): revert tanh to Padé [5,4] hardware-div, fixing +16% LSTM prewarm regression from E8.T02 piecewise`
+
+---
+
+## Épico 14 — Hotpath Recovery & Architectural Polish (Continuação Parte I, Auditoria 2026-06-03)
+
+> **Contexto da auditoria 2026-06-03 (skill `revisor-auditor`):** Após o fechamento dos Épicos 1–8, uma nova passada de auditoria multi-disciplinar (DSP/SIMD, modelos NN, plugin CLAP, host PipeWire/RT, loader, soundness) identificou um conjunto coeso de oportunidades de melhoria que são **continuação natural** da Parte I — focadas em (a) recuperar/superar gaps de performance ainda mensuráveis, (b) consolidar aderência arquitetural com `NeuralAmpModelerCore` (espelhado em `github.com/NeuralAmpModelerCore/`), (c) elevar a qualidade de organização de código e cobertura de safety/testes/docs.
+>
+> **Critério para inclusão nesta Parte I (vs Parte II/inovações):** o item deve ser um *fix* ou *consolidação* sobre o que já existe — não introduzir features novas (que estão na Parte II — Épicos 9–13 em `TODO2.md`).
+>
+> Objetivo: consolidar a baseline pós-Épicos 1–8 antes de qualquer trabalho de inovação. Nenhuma tarefa abaixo introduz mudança de paradigma; todas operam dentro do contrato existente.
+>
+> **Pré-condições:** Épicos 1–8 concluídos (confirmado). `cargo bench inference_bench` salvo como baseline em `target/criterion/` antes de iniciar S25 — todas as tarefas têm critério de aceitação medido contra esse snapshot.
+
+### Notas Operacionais — Épico 14
+
+- **Ordem de execução recomendada:** S25 (Hotpath) → S26 (Aderência C++) → S27 (Organização & Safety) → S27b (Cobertura & Docs). S26.T03 depende de S25.T01; demais paralelizáveis dentro de cada sprint.
+- **CI/QA gate por Sprint:**
+
+  1. `bash utils/lints.sh`
+
+  2. `bash utils/tests-cargo.sh`
+
+  3. `cargo bench inference_bench` — sem regressão > 1% vs baseline congelada no início do Épico 14.
+
+  4. `cargo test --test cpp_parity -- --ignored --nocapture` — 5/5 PASS mantido.
+- **Convenções:** mesmas dos Épicos 1–8 (PR por tarefa, branch `feat/S25-T01-...`, commit `[S25.T01]`, atualização `documentador` quando arquitetura muda).
+
+### Sprint S25 — Hotpath SIMD Recovery & Buffer Alignment
+
+> Foco: recuperar gaps remanescentes pós-Épicos 4/6/8 e endereçar paths ainda escalares descobertos pela auditoria. Cada tarefa tem critério de regressão **medido por benchmark concreto**.
+
+#### Tarefa S25.T01 — SIMD vectorize `process_block_f32_native` (head_rechannel FP32) 🔥
+
+- **Onde:** `src/models/wavenet/dense.rs:182-196` (`process_block_f32_native`); `src/math/common/traits.rs` (trait `SimdMath`).
+- **Problema:** O path FP32 nativo introduzido pela E8.T08 (mixed-precision seletiva no head_rechannel) é **GEMV escalar puro** — triple-nested loop O(N·OUT·IN) sem nenhuma instrução SIMD. Em WaveNet Standard (`HEAD=1, CH=16, num_frames=64`), isso são 1024 FMAs escalares por bloco. Apesar de OUT=1 ser pequeno, é o **único stage FP32** do pipeline e domina quando o backbone roda em BF16/F16.
+- **Estado atual do código:** `dense.rs:182-196` itera `for n in 0..num_frames { for out_c in 0..OUT { for in_c in 0..IN { sum += input * f32_w } } }` com `if self.do_bias { ... }` no início do loop intermediário (branch a cada `out_c`). O resto do pipeline já é SIMD via dispatcher.
+- **Solução técnica (estratégia de batching dependente do shape):**
+
+  1. Adicionar ao trait `SimdMath` (`src/math/common/traits.rs`) o método `unsafe fn gemv_overwrite_batch_f32(in_frame: &[f32], weights: &[f32], out_frame: &mut [f32], out_dim: usize, in_dim: usize, num_frames: usize, do_bias: bool, bias: &[f32])` paralelo ao existente `gemv_overwrite_batch_bf16`.
+
+  2. **Estratégia de paralelização correta para low-OUT GEMV** (WaveNet Standard tem `array1=DenseLayer<16,8>` e `array2=DenseLayer<8,1>` — paralelizar across `out_c` desperdiça lanes):
+     - **Para `OUT ≤ 4`:** batch across `num_frames` — N ZMM acumuladores cada um carregando 16 frames de **um único** `out_c`, broadcast de 1 peso por iteração do loop `in_c`. Com `num_frames=64`, 4 ZMM × 16 lanes = 64 frames cobertos com 1 acumulador por `out_c`.
+     - **Para `OUT > 4`:** batch hybrid — 4 ZMM (frames 0..16) × `out_c` em paralelo até saturar, depois iterar.
+     - **Para `OUT == 1`:** caso ainda mais especializado — dot-product f32 sobre `num_frames × in_dim` com horizontal sum no fim, exatamente como Yamamoto et al. para head heads.
+
+  3. Implementar em `src/math/common/avx2_impl.rs` (YMM, max 8 frames por acumulador), `src/math/common/avx512/gemv.rs` (ZMM, 16 frames) e `src/math/common/scalar_ref.rs` (fallback).
+
+  4. Substituir corpo de `process_block_f32_native` por chamada via `dispatch_simd!`.
+
+  5. Bench dedicado em `benches/inference_bench.rs` (`bench_head_rechannel_fp32` por S27b.T04) — **três shapes**: `DenseLayer<16,8>` (array1), `DenseLayer<8,1>` (array2 — caso dominante na WaveNet Standard), `DenseLayer<16,1>` (LSTM head).
+- **Critérios de aceitação:**
+  - `bench_head_rechannel_fp32` melhora ≥4× vs scalar baseline (AVX2) e ≥8× (AVX-512) **para os 3 shapes**.
+  - Caso `DenseLayer<8,1>` em ZMM deve atingir ≥85% utilização de lanes (medir via `perf stat -e fp_arith_inst_retired.512b_packed_single`).
+  - `cpp_parity` permanece 5/5 PASS; SNRs idênticos (±0.1 dB).
+  - `WaveNet_Standard_CH16_64samp_48kHz` melhora 5-15% (depende de quanto o head_rechannel domina o bloco).
+  - Proptest scalar↔SIMD (10k inputs) com `|err| < 1e-6` (f32 native, sem quantização).
+- **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Esforço:** 1.5 dia.
+
+#### Tarefa S25.T02 — SIMD vectorize gain + peak detection no CLAP processor 🔥
+
+- **Onde:** `src/clap/processor/dsp.rs:166-178` (input gain), `:285-290` (output gain), `:292-313` (peak detection); kernels já disponíveis em `src/math/common/dispatch.rs` (`apply_gain_and_detect_clipping_stereo`, `apply_ramp_stereo`).
+- **Problema:** Três loops `for i in 0..n_samples` escalares no hotpath do CLAP. O kernel SIMD `apply_gain_and_detect_clipping_stereo` **já existe** no dispatcher e faz exatamente o necessário (gain + clipping mask via `_mm256_max_ps`), mas **não é usado pelo CLAP processor** — duplicação evitável após S6.T03 que já consolidou `apply_gain`. Peak detection idem: 4 `abs()` + 4 cmp por iteração escalar.
+- **Estado atual do código:** Após S6.T03/S10.T02, `src/clap/processor/dsp.rs` foi refatorado mas mantém os 3 loops escalares — provavelmente porque tocam estado per-frame (`smoother_in.tick()`, `smoother_out.tick()`). A assinatura real do kernel é `apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32)` em `src/math/dsp/gain.rs:49` — recebe **scalar start + step linear**, não slice de gains.
+- **Solução técnica (corrigida — usa kernel existente como-está):**
+
+  1. Por chunk de N amostras (ex.: N = 32 ou bloco completo, n_samples ≤ 64 típico no CLAP): extrair `start = smoother.peek()` e calcular `step = (smoother.target() - start) / n_samples as f32`. O smoother é aproximadamente linear em chunks pequenos.
+
+  2. Chamar `M::apply_ramp_stereo(buf_host_l, buf_host_r, start, step)` — kernel **já existe** com essa assinatura, sem extensão SIMD necessária.
+
+  3. Após o chunk, sincronizar o smoother: `smoother.set(start + step * n_samples as f32)` para refletir o estado equivalente a N ticks.
+
+  4. Documentar trade-off: per-chunk-linear é aproximação do smoother nativo (curva exponencial) — diferença audível somente em transitions abruptas; para suavidade idêntica, manter smoother tradicional no path slow (param mudou) e usar ramp SIMD no path fast (param estável).
+
+  5. Idem para output gain.
+
+  6. Peak detection: usar kernel SIMD existente (`compute_max_diff_*` ou criar `compute_peak_abs_stereo` se não existir); decimar para 1-em-16 já implementado por S6.T05.
+- **Critérios de aceitação:**
+  - Bench `CLAP_process_block_64samp` melhora ≥15% no bypass-disabled path.
+  - Heap-audit não regride (`tests-long.sh` 100% pass).
+  - clap-validator com `NAM_HEAP_AUDIT=1` permanece sem falhas.
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S25.T03 — Substituir backfill escalar por `copy_from_slice` no prewarm WaveNet dinâmico 🔥
+
+- **Onde:** `src/models/wavenet/model_dyn.rs:447-465` (loop aninhado escalar).
+
+- **Problema:** Loop interno `for j in 0..ch { buffer[dst+j] = buffer[src+j]; buffer_bf16[dst+j] = buffer_bf16[src+j]; }` para `receptive_field_size` × `ch` iterações = até 65k stores/loads escalares no prewarm. Resíduo da regressão `Prewarm_WaveNet_Standard` (item ainda não 100% recuperado em S7.R03).
+
+- **Estado atual do código:** Após S7.R03, `model.rs` (estático) está otimizado. O `model_dyn.rs` mantém o padrão antigo. O `start_idx` e `dst_idx` são offsets em arrays separados (`layer_buffer` f32 e `layer_buffer_bf16` u16) — não-overlapping nesta iteração específica.
+
+- **Solução técnica:** `copy_within` aceita ranges sobrepostos para tipos `Copy` (caso de `f32` e `u16`), tornando-o universalmente correto:
+
+  ```rust
+  // Substitui o loop interno duplo (`for j in 0..ch { ... }`).
+  // copy_within é seguro mesmo com sobreposição — usa memmove internamente.
+  debug_assert!(start_idx + ch <= current_state.layer_buffer.len());
+  debug_assert!(dst_idx + ch <= current_state.layer_buffer.len());
+  current_state.layer_buffer.copy_within(start_idx..start_idx + ch, dst_idx);
+  current_state.layer_buffer_bf16.copy_within(start_idx..start_idx + ch, dst_idx);
+  ```
+
+- **Critérios de aceitação:**
+
+  - `Prewarm_WaveNet_Standard_2048samp` melhora 30-50% vs baseline pós-Épico 4.
+  - `test_wavenet_prewarm_edge.rs` continua passando.
+  - `cpp_parity` 5/5 PASS mantido.
+
+- **Especialista:** `implementador`.
+
+- **Esforço:** 30 min.
+
+#### Tarefa S25.T04 — Alinhamento 64-byte para buffers do CLAP processor ⚠️
+
+- **Onde:** `src/clap/processor/mod.rs:40-50, 172-178` (declarações `Box<[f32]>` para 8 buffers).
+- **Problema:** Os 8 buffers de trabalho (`buf_host_l/r`, `buf_mid_l/r`, `buf_model_l/r`, `buf_out_l/r`) são `Box<[f32]>` com alinhamento garantido apenas de 4 bytes. Loads SIMD nesses buffers ficam **misaligned** (penalty 1-3 cycles por load cross-cache-line). Em AVX-512 com `_mm512_load_ps` (aligned-only), poderia até causar SIGSEGV se o caminho for ativado por engano.
+- **Estado atual do código:** Após S10.T02, `NamClapProcessor` foi refatorado para `processor/mod.rs`. Os buffers permanecem `Box<[f32]>`.
+- **Solução técnica:**
+
+  1. Usar `AlignedVec<f32>` (já existe em `src/math/common/aligned.rs`, alinhamento 64 B) em vez de `Box<[f32]>`.
+
+  2. Aceitar que `AlignedVec` não implementa `Deref<Target=[f32]>` automaticamente — adicionar trait impls necessárias se já não estiverem disponíveis (já são — vide `AlignedVec::as_slice/as_mut_slice`).
+
+  3. Atualizar `activate()` para alocar `AlignedVec::with_capacity_zeroed(max_buffer)` e descartar (via SPSC GC) o anterior sem `drop` em RT.
+
+  4. Verificar que callers usam `.as_mut_slice()` em vez de indexação direta `&mut buf_host_l[..n]`.
+- **Critérios de aceitação:**
+  - `cargo asm` confirma uso de `_mm256_load_ps` (vs `_mm256_loadu_ps`) onde o compilador prova alinhamento.
+  - Bench `CLAP_process_block_*` melhora 2-5%.
+  - Heap-audit não regride.
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S25.T05 — `convolve_mono_dual` SIMD para resampler mono ⚠️
+
+- **Onde:** `src/dsp/resampler.rs:260-262` (path mono); `src/math/dsp/stereo/convolution_avx2.rs` e `convolution_avx512.rs` (onde `convolve_stereo_dual` já existe).
+- **Problema:** No resampler em modo mono (caminho exclusivo do CLAP plugin), cada output sample faz **duas chamadas independentes** `M::convolve_mono(c0, x_l, taps)` e `M::convolve_mono(c1, x_l, taps)` para as duas phases — desperdiçando reuso de taps em registradores.
+- **Estado atual do código:** A função `convolve_stereo_dual` existe (S7.T03) e processa 2 phases × 2 canais em loop único. O equivalente mono **não existe** — após o S7.T01 (mono path), só há `convolve_mono` single-phase.
+- **Solução técnica:**
+
+  1. Adicionar `convolve_mono_dual(c0: &[f32], c1: &[f32], x_l: &[f32], taps: usize) -> (f32, f32)` ao trait `SimdMath`.
+
+  2. Implementação AVX2: loop único sobre taps, 2 acumuladores YMM (um por phase), reuso de load `x_l` em ambos.
+
+  3. Implementação AVX-512: 2 acumuladores ZMM.
+
+  4. Atualizar `process_internal_mono` para usar `convolve_mono_dual` em vez de duas chamadas.
+- **Critérios de aceitação:**
+  - Bench `Resampler_96000_to_48000/process_input_mono` melhora ≥25%.
+  - Proptest paridade vs `convolve_mono` chamada dupla: `|err| < 1e-6`.
+- **Especialista:** `pesquisador-inovador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S25.T06 — Activation slice dispatch via function pointer ⚠️
+
+- **Onde:** `src/math/activations/mod.rs:46, 59, 72, 85, 98, 111` (`tanh_slice`, `sigmoid_slice`, `relu_slice`, `silu_slice`, `softsign_slice`, `prelu_slice`).
+- **Problema:** Cada call faz `match SIMD_MATH.instruction_set { Avx512VnniBf16 => ..., Avx512 => ..., Avx2 => ..., ScalarRef => ... }` — branch a cada ativação em loop. Para WaveNet 20-layer × 2 ativações/layer × 64 frames = 2560 dispatches/block. Embora previsto pelo branch predictor após warmup, ainda gera 1-2 cycles/dispatch.
+- **Estado atual do código:** O `dispatch_simd!` macro já é usado para outros kernels (gemv, dot, conv); activations seguem padrão antigo de `match` explícito.
+- **Solução técnica:**
+
+  1. Promover function pointers ao `SimdMathConfig` (`src/math/common/dispatch.rs`): adicionar `tanh_slice: unsafe fn(&mut [f32])`, etc.
+
+  2. Inicializar no `init()` baseado no `instruction_set` detectado.
+
+  3. Caller: `unsafe { (SIMD_MATH.tanh_slice)(data) }` — single indirect call, sem branch.
+- **Critérios de aceitação:**
+  - Bench `FastMath_tanh_slice_AVX2` overhead reduz ≥3 ns/call em micro-bench.
+  - Inferência integrada (`WaveNet_Standard`) melhora 0.5-1.5%.
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S25.T07 — Fixed-point `phase_accum` no resampler ⚠️
+
+- **Onde:** `src/dsp/resampler.rs:158, 243` (path stereo + mono).
+
+- **Problema:** `phase_accum: f64` somado e convertido a `usize` em cada output sample via `cvttsd2si` (4-6 cycles, alta latência). Float-to-int conversion bloqueia ILP.
+
+- **Estado atual do código:** `phase_accum` é `f64`, `phase_idx = phase_f as usize`, `frac = phase_f - phase_idx as f64`. Funciona, mas é caro.
+
+- **Solução técnica:**
+
+  1. Trocar `phase_accum: f64` por `phase_accum: u64` com formato fixed-point 24.40 (24 bits inteiros, 40 fracionários — cobre ratios até 2^24 com precisão de 1e-12 no fractional).
+
+  2. `phase_step` pré-computado como `u64` no `update_ratio`.
+
+  3. `phase_idx = (phase_accum >> 40) as usize` (1 cycle shift).
+
+  4. Conversão correta de `frac` (evita erro do literal truncado):
+
+     ```rust
+     // 2^40 = 1_099_511_627_776 — recíproco constante (LLVM constant-folds multiplicação).
+     const INV_2P40: f32 = 1.0_f32 / ((1u64 << 40) as f32);
+     const FRAC_MASK: u64 = (1u64 << 40) - 1;
+     let frac_bits = phase_accum & FRAC_MASK;
+     let frac = (frac_bits as f32) * INV_2P40;
+     ```
+
+     ⚠️ Nota de precisão: `u40 → f32` perde precisão (f32 mantissa = 23 bits). Para garantir o critério `drift < 1e-9` em runs longos, **manter intermediário em f64** apenas no caminho de calcular `frac` — única operação f64 por output sample, ~3 cycles:
+
+     ```rust
+     let frac = (frac_bits as f64 * (1.0 / (1u64 << 40) as f64)) as f32;
+     ```
+
+     LLVM constant-folds o `1.0 / 2^40` em f64. Trade-off documentado.
+
+  5. Manter API externa em f64 para hosts; conversão interna feita uma vez.
+
+- **Critérios de aceitação:**
+
+  - Bench `Resampler_96000_to_48000` melhora 10-15%.
+  - Proptest com ratio aleatório [0.5, 2.0] sobre 100k inputs: drift acumulado < 1e-9 vs implementação f64.
+
+- **Especialista:** `pesquisador-inovador`.
+
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S25.T08 — Eliminar `head_accum.fill(0.0)` via kernel overwrite no primeiro layer ⚠️
+
+- **Onde:** `src/models/wavenet/model_dyn.rs:401` (`self.head_accum[..num_frames * ch].fill(0.0)`); `src/math/common/traits.rs` (trait `SimdMath`); `src/math/common/avx2_impl.rs`, `avx512/gemv.rs`, `scalar_ref.rs`.
+- **Problema:** `head_accum` (já `AlignedVec<f32>` em `model_dyn.rs:336` — alinhamento correto) é zerado a cada `process_internal_generic` via `fill(0.0)`. Em WaveNet Standard com `num_frames=64, ch=16` → 1024 floats = 4 KiB zerados por block; este store domina bandwidth L1 entre layers e é redundante (poderíamos escrever direto no primeiro layer).
+- **Estado atual do código:** O loop de layers chama `M::accumulate_head(input, weights, bias, &mut head_accum, ...)` (fused-add) — todo layer **inclusive o primeiro** acumula sobre o que estava lá. Daí a necessidade do `fill`.
+- **Solução técnica:**
+
+  1. Adicionar ao trait `SimdMath` o kernel `unsafe fn accumulate_head_overwrite(input, weights, bias, out, ...)` paralelo a `accumulate_head` mas com `out = w·x + b` (overwrite, não add).
+
+  2. Implementar nos 3 backends (AVX2, AVX-512, scalar_ref) — basicamente copy do `accumulate_head` removendo o load `_mm256_loadu_ps(out_ptr)` antes do FMA.
+
+  3. No loop de layers em `model_dyn.rs`, primeira iteração usa `accumulate_head_overwrite`, demais usam `accumulate_head`.
+
+  4. Remover o `self.head_accum[..num_frames * ch].fill(0.0)`.
+
+  5. Replicar pattern em `model.rs` (estático) se também aplicável.
+
+  6. Validar via proptest scalar↔SIMD (10k inputs) com tolerância 1e-6 (numericamente idêntico, só elimina store redundante).
+- **Análise quantitativa do ganho esperado:** O `fill(0.0)` é ~64 stores de cache-line @ ~1 cycle/store ≈ 16-64 cycles. Em block budget de ~100k cycles (`WaveNet_Standard` @ 3 GHz), isso representa apenas ~0.06% — **o ganho real vem de mecanismo secundário**: eliminar o `_mm256_loadu_ps(out_ptr)` antes do FMA no primeiro layer (read-after-write false dependency chain) + reduzir pressão no write combiner do L1. O ganho típico observado em otimizações análogas é **0.3-1%**, não 2-4%.
+- **Critérios de aceitação:**
+  - Bench `WaveNet_Standard_CH16_64samp_48kHz` melhora ≥ 0.3% (não regride > 1%).
+  - Se ganho > 1%, documentar mecanismo dominante (instrumentação `perf stat -e ld_blocks.store_forward, mem_load_retired.l1_hit`).
+  - Goldens não regridem; `cpp_parity` 5/5 PASS.
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+### Sprint S26 — Architectural Adherence vs `NeuralAmpModelerCore`
+
+> Foco: alinhar contratos de API (não implementação) com a referência C++ para reduzir custo de futuras paridades. **Sem implementar A2** (escopo PO).
+
+#### Tarefa S26.T01 — A2 placeholder com constantes interface-compliant 🔥
+
+- **Onde:** `src/models/a2/params.rs` (existente), `src/models/a2/mod.rs:33-78` (`WavenetA2Placeholder`); referência em `github.com/NeuralAmpModelerCore/NAM/wavenet/a2_fast.h`.
+
+- **Problema:** `WavenetA2Placeholder` é trivial (`warned: bool` + `rt_status`). Não memoriza shape (`channels: 3 | 8`), kernel sizes, dilations, leaky slope — todas constantes públicas em `a2_fast.h`. Quando A2 for implementado no futuro (Parte II ou além), terá que ser refatorado do zero, quebrando o princípio "placeholder evita conflito".
+
+- **Solução técnica (sem implementar A2 real):**
+
+  1. Em `src/models/a2/params.rs`, exportar constantes públicas espelhando `a2_fast.h`:
+
+     ```rust
+     pub const A2_NUM_LAYERS: usize = 23;
+     pub const A2_HEAD_KERNEL_SIZE: usize = 16;
+     pub const A2_LEAKY_SLOPE: f32 = 0.01;
+     pub const A2_KERNEL_SIZES: [usize; 23] = [/* valores reais de a2_fast.h */];
+     pub const A2_DILATIONS: [usize; 23] = [/* valores reais */];
+     pub const A2_VALID_CHANNELS: [u8; 2] = [3, 8];
+     ```
+
+  2. `WavenetA2Placeholder::new(channels: u8)` valida e armazena `channels`.
+
+  3. Em `src/loader/nam_json/topology.rs`, adicionar `fn is_a2_shape(...) -> Option<u8>` espelhando `is_a2_shape` C++ (shape-based). Manter detecção SemVer (S5.T05) como confirmação cruzada — `is_a2_shape || is_a2_semver`.
+
+  4. Documentar em `docs/architecture.md` que o placeholder mantém o **contrato de detecção** sem suportar inferência.
+
+  5. Adicionar teste `tests/a2_placeholder_interface.rs` validando: constantes batem com `a2_fast.h` (cross-check via include de string raw), detecção `is_a2_shape` aceita `{3,8}` e rejeita demais.
+
+- **Critérios de aceitação:**
+
+  - Constantes Rust idênticas às de `a2_fast.h` (verificável via leitura).
+  - Carregar modelo A2 emite warning + bypass; placeholder reporta `channels` corretamente.
+
+- **Especialista:** `implementador` + `pesquisador-inovador`.
+
+- **Esforço:** 30 min.
+
+#### Tarefa S26.T02 — `set_max_buffer_size` e `prewarm_samples` no trait `NamModel` ⚠️
+
+- **Onde:** `src/models/mod.rs` (trait `NamModel`); `Cargo.toml`; referência C++: `NeuralAmpModelerCore/NAM/dsp.h:184`, `dsp.cpp:93-102`.
+
+- **Pré-requisito de soundness (auditoria 2026-06-03):** `nam-rs` é atualmente um crate self-contained (workspace de 1 crate, sem `publish = false` explícito em `Cargo.toml`). Adicionar métodos ao trait `NamModel` é additivo para callers mas **breaking para impls externas** se o crate vier a ser publicado. **Antes desta tarefa:** decidir uma das opções abaixo e implementá-la **na mesma sprint**:
+
+  - **(A) Selar o trait `NamModel` (recomendado):** padrão de supertrait privado:
+
+    ```rust
+    mod sealed { pub trait Sealed {} }
+    pub trait NamModel: sealed::Sealed { ... }
+    impl sealed::Sealed for WaveNetModel<...> {}
+    // etc para todas as impls do crate
+    ```
+
+    Garante que adições futuras ao trait sejam sempre não-breaking (impls externas são impossíveis por design).
+
+  - **(B) Adicionar `publish = false` em `Cargo.toml`:** declara explicitamente que o crate não é API pública; releva o constraint de break-changes.
+
+  - **Decisão padrão se nenhuma for tomada:** (A) — sealing é mais robusto e não impede consumers (que precisam do crate como inferência, não como API extensível).
+
+- **Problema:** O contrato C++ é:
+
+  ```cpp
+  void Reset(double sr, int maxBuf) { mExternalSampleRate = sr; SetMaxBufferSize(maxBuf); prewarm(); }
+  int PrewarmSamples() override { return receptive_field; }
+  ```
+
+  O Rust expôs `reset(sr, max_buf)` em S4.T04 mas o default delega a `prewarm(max_buf)` — pulando `SetMaxBufferSize`. Modelos dinâmicos cujo `max_buffer_size` mude em runtime não realocam internamente.
+
+- **Solução técnica:**
+
+  1. Adicionar ao trait `NamModel`:
+
+     ```rust
+     fn set_max_buffer_size(&mut self, max_buf: usize) { /* default no-op */ }
+     fn prewarm_samples(&self) -> usize { 0 } // default 0 (LSTM); WaveNet override
+     ```
+
+  2. WaveNet variants override `prewarm_samples()` retornando `array1.receptive_field_size`.
+
+  3. WaveNetDynModel override `set_max_buffer_size()` realocando `block_buffer` e `head_accum` se `max_buf > current_capacity`.
+
+  4. `loader/mod.rs`: usar `model.prewarm(model.prewarm_samples().max(2048))` no boot (cap 2048 para mantém compat).
+
+  5. CLAP processor `activate()` chama `model.set_max_buffer_size(max_frames_count)` se `max_frames_count > previous`.
+
+- **Critérios de aceitação:**
+
+  - Conformidade documentada em `docs/architecture.md`.
+  - Goldens não regridem.
+  - Teste de mudança de buffer size em runtime passa (host muda 256 → 1024 → 512).
+
+- **Especialista:** `implementador` + `documentador`.
+
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S26.T03 — `process_block_f32_native` separar paths com/sem bias ⚠️
+
+- **Dependência:** Executar **após** S25.T01 (SIMD vectorização).
+- **Onde:** `src/models/wavenet/dense.rs:182-196` (e novo `gemv_overwrite_batch_f32` introduzido em S25.T01).
+- **Problema:** Após S25.T01, o kernel SIMD ainda terá `do_bias: bool` como parâmetro causando branch no loop interno (impede vectorização cross-channel).
+- **Solução técnica:**
+
+  1. Duas funções: `gemv_with_bias_f32` (always-add bias) e `gemv_no_bias_f32` (overwrite).
+
+  2. Dispatch no caller, sem branch no kernel.
+
+  3. Atualizar trait `SimdMath`.
+- **Critérios de aceitação:** Bench `bench_head_rechannel_fp32` ganha adicionais 1-3% sobre S25.T01.
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S26.T04 — Documentação `docs/cpp_parity_map.md` (mapeamento Rust ↔ C++) 💡
+
+- **Onde:** Criar `docs/cpp_parity_map.md`.
+
+- **Problema:** Decisões de paridade matemática (Épico 2 — S3.T01 a S3.T05) foram custosas porque a divergência era detectada tarde. Não há documento que mapeie ponto-a-ponto qual arquivo C++ corresponde a qual módulo Rust.
+
+- **Solução técnica:** Tabela markdown:
+
+  | C++ (`github.com/NeuralAmpModelerCore/`)  | Rust (`src/`)                                     | Notas                      |
+  | ----------------------------------------- | ------------------------------------------------- | -------------------------- |
+  | `NAM/dsp.cpp::DSP::Reset`                 | `models/mod.rs::NamModel::reset`                  | Parity: S4.T04 + S26.T02   |
+  | `NAM/wavenet/model.cpp::WaveNet::process` | `models/wavenet/model.rs::process_block_internal` | Parity: S3.T04, S4.T01     |
+  | `NAM/lstm.cpp::LSTM::process_sample`      | `models/lstm/layer.rs::process_sample_*`          | Parity: S3.T01–T02, S7.R02 |
+  | ...                                       | ...                                               | ...                        |
+
+  Incluir notas sobre divergências aceitas (e.g., BF16 vs F16 dispatch é decisão NAM-rs sem equivalente C++).
+
+- **Critérios de aceitação:** Doc revisado pela skill `documentador`; cobre todos os modelos suportados (WaveNet Standard/Lite/Feather/Nano, LSTM 1×{8,12,16,24,40}, 2×{8,12,16,24}).
+
+- **Especialista:** `documentador`.
+
+- **Esforço:** 1.0 dia.
+
+### Sprint S27 — Code Organization, Safety Sweep & Cleanup
+
+> Foco: reduzir tamanho de funções/arquivos grandes que ainda restam após S8/S10/S10b, e fechar o ciclo de safety/whitelist iniciado em S2.
+
+#### Tarefa S27.T01 — Quebrar `draw_ui` em 5 zone-functions ⚠️
+
+- **Onde:** `src/clap/gui/ui/mod.rs:66-958` (função `draw_ui` ≈ 893 LoC).
+- **Problema:** Após S8.T01, sub-widgets foram extraídos (`bypass.rs`, `knob.rs`, `meter.rs`), mas a função orquestradora `draw_ui` ainda contém todo o layout das 5 zonas inline. Complexidade ciclomática alta; impossível revisar uma zona isoladamente.
+- **Solução técnica:**
+
+  1. Extrair em `ui/mod.rs` (ou novos arquivos em `ui/zones/`):
+     - `fn draw_zone1_identity(...)` — logo + model loader.
+     - `fn draw_zone2_controls(...)` — 3 knobs.
+     - `fn draw_zone3_meters(...)` — VU meters.
+     - `fn draw_zone4_bypass(...)` — bypass toggle.
+     - `fn draw_zone5_status_bar(...)` — telemetry.
+
+  2. `draw_ui` fica orquestrador ≤ 100 LoC: setup egui frame + 5 chamadas + 4 separadores verticais.
+
+  3. Manter testes existentes em `ui/test.rs` passando.
+- **Critérios de aceitação:** Nenhuma função em `ui/` > 250 LoC; testes existentes passam; render manual em DAW continua idêntico (visual e funcional).
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27.T02 — Quebrar `src/math/common/scalar_ref.rs` (690 LoC) em sub-módulos ⚠️
+
+- **Onde:** `src/math/common/scalar_ref.rs` → `src/math/common/scalar_ref/`.
+- **Problema:** Arquivo monolítico com fallbacks escalares de **todas** as famílias (GEMM, GEMV, dot, activations, DSP). Adicionar novos kernels (NEON em S24, AMX em S23) sem split torna o arquivo > 1000 LoC.
+- **Solução técnica:**
+  - `scalar_ref/mod.rs` — re-exports + entry-points.
+  - `scalar_ref/gemm.rs` — `gemm_batch_fallback`, `fused_residual_fallback`.
+  - `scalar_ref/gemv.rs` — `gemv_overwrite_fallback`, `fused_add_gemv_fallback`, `gemv_4gate_fallback`, `accumulate_head_fallback`.
+  - `scalar_ref/dot.rs` — `dot_product_*_fallback` (com Kahan onde aplicável — preservar S22.T03 / E8.T06).
+  - `scalar_ref/activations.rs` — tanh, sigmoid, gated, fused.
+  - `scalar_ref/dsp.rs` — apply_gain, apply_ramp, convolve, compute_energy.
+- **Critérios de aceitação:** Nenhum submódulo > 350 LoC; testes de paridade SIMD↔fallback continuam passando.
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27.T03 — Cleanup `src/math/activations/tanh.rs` (piecewise dead + Padé duplicates) 💡
+
+- **Onde:** `src/math/activations/tanh.rs:267-352` (piecewise experimental); funções `simd_tanh_pade_div_*` (duplicatas exatas das de produção em produção pós-Quick Win E8.T02).
+- **Problema:**
+
+  1. `simd_tanh_piecewise_avx2` (86 LoC) marcado `#[allow(dead_code)]` permanece como "research retained".
+
+  2. `simd_tanh_pade_div_avx2/avx512` (introduzidas em E8.T04 como oráculo) são literalmente o mesmo body de `simd_tanh_avx2/avx512` após o Quick Win — duplicação inútil.
+
+  3. Constantes piecewise (`PW_TANH_C0_0..C2_6`) em `constants.rs` ocupam espaço sem uso ativo.
+- **Solução técnica:**
+
+  1. Mover piecewise + suas constantes para `src/math/activations/experimental/piecewise_tanh.rs` com módulo `#[cfg(all(test, feature = "research"))]` (feature opcional).
+
+  2. Remover `simd_tanh_pade_div_*` — substituir referências em benches por aliases para `simd_tanh_avx2/avx512`.
+
+  3. Limpar `constants.rs`: mover `PW_TANH_*` para `experimental/piecewise_tanh.rs`.
+- **Critérios de aceitação:** `tanh.rs` < 350 LoC; benches continuam compilando; -200 LoC líquido entre tanh.rs + constants.rs.
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S27.T04 — Macro-extract `gemv_kernel!` para reduzir duplicação AVX2/AVX-512 ⚠️
+
+- **Onde:** `src/math/gemm/gemv.rs` (641 LoC), `src/math/common/avx512/gemv.rs` (564 LoC).
+- **Problema:** 6 funções (`gemv_overwrite_avx2`, `fused_add_gemv_avx2`, `gemv_overwrite_avx512`, `fused_add_gemv_avx512`, e suas variantes `_small`) com ~100 LoC cada, todas com mesmo padrão: unroll N (4 YMM ou 8 ZMM acumuladores), prefetch, reduce em árvore. Cada fix matemático/perf requer alterar 6 lugares.
+- **Solução técnica:**
+
+  1. Criar macro `gemv_kernel!($simd_set, $vec_width, $unroll, $load_op, $fma_op, $reduce_fn)` que gera o corpo.
+
+  2. Aplicar nas 6 funções; manter `#[target_feature(...)]` per-function.
+
+  3. Validar via diff dos asm (`cargo asm`) antes e depois — esperar zero diff em release.
+- **Critérios de aceitação:** -200 LoC líquido; benches GEMV sem regressão (±0.3% no ruído); diff de asm release confirma identidade.
+- **Especialista:** `pesquisador-inovador`.
+- **Esforço:** 1.5 dia.
+
+#### Tarefa S27.T05 — SAFETY block sweep em `src/math/common/` 🔥
+
+- **Onde:** `src/math/common/avx2_impl.rs` (494 LoC), `src/math/common/avx512/`, `src/dsp/mirror_buf.rs`, `src/clap/gui/window/mod.rs`.
+- **Problema:** Auditoria contou ≈ 920 `unsafe` (fn + blocks) com apenas ≈ 149 doccomments `# Safety`. Gap de ≈ 770 blocos sem `// SAFETY:` adjacente. Vai contra Rust API Guidelines e dificulta auditoria futura.
+- **Solução técnica:**
+
+  1. Sweep arquivo por arquivo: adicionar `// SAFETY: <reason>` antes de cada `unsafe { ... }` block.
+
+  2. Habilitar `clippy::undocumented_unsafe_blocks = "warn"` no `Cargo.toml` (ou `clippy.toml`) — adicionar como warn-only para não quebrar build, escalar a deny após coverage 100%.
+
+  3. Para `unsafe fn`, garantir doccomment `# Safety` com pré-condições.
+- **Critérios de aceitação:**
+  - 100% de `unsafe {}` em `src/math/common/`, `src/dsp/mirror_buf.rs`, `src/clap/gui/` têm `// SAFETY:` adjacente.
+  - `cargo clippy -- -W clippy::undocumented_unsafe_blocks` ≤ 50 warnings residuais documentados.
+- **Especialista:** `revisor-auditor` + `implementador`.
+- **Esforço:** 1.5 dia.
+
+#### Tarefa S27.T06 — Whitelist sweep: `.unwrap()`/`.expect()` em `main_thread.rs` e `window/mod.rs` ⚠️
+
+- **Onde:** `src/clap/plugin/main_thread.rs:88, 110, 120, 130, 142`; `src/clap/gui/window/mod.rs:98, 108`.
+- **Problema:**
+
+  1. Em `main_thread.rs`, a estratégia "sanitize string → fallback `CString` literal" usa `.unwrap()` em 5 pontos. Quatro têm comentário `WHITELIST:` agregado; **um (linha 88) é sobre `format!` string e não está coberto**.
+
+  2. Em `window/mod.rs:98, 108`, `.expect("OpenGL context not available")` panica em init se host não suportar OpenGL — ainda pode escapar FFI baseview em paths de criação.
+- **Solução técnica:**
+
+  1. Linha 88 (`main_thread.rs`): adicionar `// WHITELIST:` adjacente cobrindo o raciocínio (sanitize remove `\0` → CString fail é impossível na fallback literal).
+
+  2. `window/mod.rs`: converter `.expect()` para `?`, retornar `Result<NamPluginWindow>`. Caller (`gui.rs`) decide entre fallback text-only ou falha de criação de janela (host trata via clack).
+- **Critérios de aceitação:**
+  - `grep -rn '\.expect\|\.unwrap' src/clap/` lista apenas itens whitelisted (todos com comentário WHITELIST).
+  - Host sem OpenGL (testar via xvfb sem GLX) não causa panic — falha de inicialização propaga limpa.
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27.T07 — Substituir `cfg!(debug_assertions)` panic helpers por `debug_assert!` direto 🔥
+
+- **Onde:** `src/models/wavenet/conv1d_dyn.rs:49-57` (`panic_weights_len`, `panic_kernel_exceeds`).
+- **Problema:** As funções helper são chamadas apenas quando `cfg!(debug_assertions)` é true — equivale a `debug_assert!` sem o `unwrap_or` etc., mas com indireção desnecessária. **Em release, nenhuma checagem residual** — defesa em profundidade fraca contra carregamento adversarial. O loader já valida na load (S3.T05) então não há gap real, mas a estrutura confunde leitores.
+- **Solução técnica:**
+
+  1. Remover `panic_weights_len` e `panic_kernel_exceeds`.
+
+  2. Substituir call sites por `debug_assert!(self.weights.len() >= expected, "...")` e `debug_assert!(self.kernel <= MAX_KERNEL, "...")` diretamente.
+
+  3. Validação dura permanece no construtor `Conv1dDyn::new(...) -> Result<Self>`.
+- **Critérios de aceitação:** Mesmo comportamento debug; release inalterado; -20 LoC.
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S27.T08 — Doccomments algoritmicos em `process_dual_frame` 💡
+
+- **Onde:** `src/models/wavenet/conv1d_dyn.rs:60-90` e variantes BF16.
+- **Problema:** Comentário atual diz "Processes two frames simultaneously" mas não explica o insight central: 2-frame tiling permite reuso de pesos cross-frame, dobrando ILP útil em registradores SIMD.
+- **Solução técnica:** Expandir doccomment cobrindo:
+  - Insight: weight reuse + ILP doubling.
+  - Layout interleaved-4 esperado.
+  - Trade-off vs single-frame (tail-case quando `num_frames % 2 == 1`).
+  - Referência para `process_single_frame`.
+- **Critérios de aceitação:** Doccomment ≥ 20 linhas com explicação técnica auditável.
+- **Especialista:** `documentador`.
+- **Esforço:** 30 min.
+
+### Sprint S27b — Test Coverage & Documentation Backfill
+
+> Foco: fechar gaps de cobertura que se acumularam durante Épicos 4–8 e atualizar documentação arquitetural.
+
+#### Tarefa S27b.T01 — Resampler heap-audit coverage 🔥
+
+- **Onde:** Criar `tests/resampler_heap_audit.rs`.
+- **Problema:** `heap-audit` cobre o CLAP processor e indiretamente WaveNet/LSTM via `nam_infer_test.rs`. **O `NamResampler::process_input/output` não é testado com heap-audit explicitamente.** Risco de regressão silenciosa se algum bug introduzir alocação no hot path.
+- **Solução técnica:**
+
+  1. Criar `tests/resampler_heap_audit.rs` com `#[cfg(feature = "heap-audit")]`.
+
+  2. Cenários: ratio 1:1 (passthrough), 96k → 48k (downsample), 44.1k → 48k (upsample), processamento mono e stereo, blocos pequenos (32) e grandes (1024).
+
+  3. Após warmup, instanciar `HeapAuditGuard` e iterar 1000 blocks.
+
+  4. Assert `alloc_count() == 0`.
+- **Critérios de aceitação:** Teste passa em `utils/tests-cargo.sh`; quebra se alocação for introduzida.
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27b.T02 — Pipeline soak test integrado 🔥
+
+- **Onde:** Criar `tests/pipeline_soak.rs`.
+- **Problema:** `soak_test.rs` cobre resampler e ring buffer mas **não o pipeline integrado** (Capture → DSP → Bridge → Playback) sob carga prolongada. Pré-requisito empírico para qualquer trabalho de hot-swap (S18.T01 em Parte II).
+- **Solução técnica:**
+
+  1. `tests/pipeline_soak.rs` com `#[ignore]` (rodável via `utils/tests-long.sh`).
+
+  2. Inicializar `DspPipelineContext` com modelo Boss WN-Nano + resampler 96k→48k.
+
+  3. 10M frames de white noise + silêncio alternados (~3 min @ 96k).
+
+  4. Validar: zero panic, zero NaN, telemetria `latency_hist` consistente, generation counter monotônico, RSS estável (variação < 10 MB após warmup).
+- **Critérios de aceitação:**
+  - Teste passa em `utils/tests-long.sh`.
+  - **Budget paramétrico (não absoluto):** `assert!(elapsed < 2.5 * audio_duration_s)` onde `audio_duration_s = n_frames / sr`. Isso garante ≤ 2.5× realtime independente do modelo escolhido — robusto contra substituição futura do modelo.
+  - **Política documentada no comentário do teste:** "Este soak roda em Boss WN-Nano (real-time factor ~5-10× em CPU moderno). Para cobertura de Standard, criar teste separado em `tests-long.sh` com budget 15-min."
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27b.T03 — Gate FSM proptest adversarial ⚠️
+
+- **Onde:** Estender `src/dsp/gate_test.rs` (ou `tests/gate_fsm_proptest.rs` se LOC excede 300).
+- **Problema:** Testes atuais cobrem casos básicos; faltam:
+  - Threshold crossing rápido (jitter in/out repetido).
+  - Hysteresis margin com `threshold_open - threshold_close` muito próximo (1 dB).
+  - `fade_frames = 0` edge case.
+  - Energia exatamente igual ao threshold (boundary).
+- **Solução técnica:**
+
+  1. Proptest gerando sequências aleatórias de energias [0.0, 1.0] de 1024 amostras.
+
+  2. Variar `threshold_open_db`, `threshold_close_db`, `fade_frames`.
+
+  3. Invariantes: `state ∈ {Open, FadingOut, Closed, FadingIn}`, transições monotônicas em fade, sem state stuck.
+- **Critérios de aceitação:** 10k inputs sem panic; sem state inválido.
+- **Especialista:** `implementador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27b.T04 — Benchmark dedicado para `head_rechannel` FP32 ⚠️
+
+- **Dependência:** Executar **antes** ou em paralelo com S25.T01 (precisa baseline).
+- **Onde:** `benches/inference_bench.rs`.
+- **Problema:** Sem bench específico para o path FP32 nativo (`process_block_f32_native`), não há como medir o ganho de S25.T01.
+- **Solução técnica:**
+
+  1. Adicionar grupo `bench_head_rechannel_fp32` em `inference_bench.rs`:
+     - DenseLayer<16, 1> (WaveNet Standard config).
+     - 64 frames input random determinístico.
+     - Variantes: AVX2, AVX-512, fallback scalar.
+- **Critérios de aceitação:** Bench compila e roda em `utils/tests-long.sh`; baseline registrado.
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S27b.T05 — Paridade scalar↔SIMD LSTM 1×40 e 2×24 com pesos não-triviais ⚠️
+
+- **Onde:** Estender `tests/lstm_scalar_bf16_parity.rs`.
+- **Problema:** S13.T05 adicionou as topologias 1×40 e 2×24 ao catálogo estático; bench foi adicionado (`inference_bench.rs:665, 680`). **Mas o teste de paridade scalar↔SIMD não foi estendido** — usa apenas 1×16 e 2×16.
+- **Solução técnica:**
+
+  1. Adicionar casos `test_lstm_1x40_scalar_simd_parity` e `test_lstm_2x24_scalar_simd_parity` em `lstm_scalar_bf16_parity.rs`.
+
+  2. Pesos aleatórios não-triviais (faixa `[-1.5, 1.5]`); 5k inputs; tolerância 5e-3 (alinhada com Padé tanh).
+- **Critérios de aceitação:** Ambos casos passam em `utils/tests-long.sh` (release).
+- **Especialista:** `implementador`.
+- **Esforço:** 30 min.
+
+#### Tarefa S27b.T06 — Atualizar `docs/architecture.md` para refletir S8/S10/S10b/E8 ⚠️
+
+- **Onde:** `docs/architecture.md`.
+- **Problema:**
+
+  1. Seção 8.3 (CLAP/GUI) ainda cita estrutura monolítica pré-S8.T01.
+
+  2. Seção 2 (Weight Compression) menciona apenas F16C — não menciona dispatch BF16 vs F16 (S3.T01/T02).
+
+  3. Não cobre mixed-precision seletiva (head FP32) introduzido em E8.T08.
+
+  4. Não cobre Kahan summation no conv1d (E8.T06).
+- **Solução técnica:**
+
+  1. Atualizar seção 8.3 com sub-módulos atuais de `src/clap/gui/ui/`.
+
+  2. Renomear seção 2 para "Weight Compression (F16C/BF16)" com explicação da seleção runtime via `SimdMathConfig`.
+
+  3. Adicionar seção 6.X "Mixed-Precision Selective" descrevendo head_rechannel FP32.
+
+  4. Adicionar seção 6.Y "Numerical Stability (Kahan + Dither)" sumarizando E8.T05/T06.
+- **Critérios de aceitação:** Doc revisado pela skill `documentador`; refere file:line atualizados.
+- **Especialista:** `documentador`.
+- **Esforço:** 1.0 dia.
+
+#### Tarefa S27b.T07 — Reservar flags futuros em `docs/namb-spec.md` 💡
+
+- **Onde:** `docs/namb-spec.md`.
+
+- **Problema:** Spec atual cobre v1 (sem flag CRC) e v2 (`FLAG_HAS_CRC32 = 0x01`). Trabalhos futuros (S15.T01 INT8 SmoothQuant, S23.T02 AMX tile, S24.T01 NEON) exigirão novos flags. Reservar pre-emptivamente evita conflito de bits.
+
+- **Solução técnica:**
+
+  1. Adicionar seção "Reserved Flags for Future Versions":
+
+     ```text
+     FLAG_HAS_CRC32           = 0x01  (NAMB v2, in use)
+     FLAG_HAS_QUANT_INT8      = 0x02  (RESERVED — S15.T01)
+     FLAG_HAS_QUANT_INT4      = 0x04  (RESERVED — S15.T02)
+     FLAG_HAS_AMX_TILE_LAYOUT = 0x08  (RESERVED — S23.T02)
+     FLAG_HAS_SVE2_LAYOUT     = 0x10  (RESERVED — S24.T02)
+     bits 5-7                          (RESERVED for future)
+     ```
+
+  2. Política: novos flags só ativados em NAMB v3+ ou via opt-in explícito.
+
+- **Critérios de aceitação:** Doc atualizado; sem mudança de comportamento decoder atual.
+
+- **Especialista:** `documentador`.
+
+- **Esforço:** 30 min.
+
+---
+
+## Épico 15 — Cross-Validation v2 (Stress Signal & Métricas Perceptuais)
+
+> Continuação direta da S13a.T01 (Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore). Foco em expandir o sinal de stress para cobertura perceptualmente representativa e introduzir métricas alinhadas com o estado-da-arte da pesquisa NAM (ESR, MR-STFT). Estabelece fundação para futura ponte com a comunidade A2/MUSHRA, sem implementar A2.
+>
+> **Pré-condições:** S13a.T01 concluída (confirmado); `cpp_parity` 5/5 PASS estável.
+
+### Sprint S28 — Stress Signal Generator v2 (port `t3k-mushra` primitives)
+
+> Conforme solicitação direta da Auditoria 2026-06-03: criar **uma tarefa única** para aprimorar o gerador de WAV de teste de S13a.T01, com avaliação dos pros/cons de alinhamento com o gerador/dataset usado por `sdatkinson` no contexto A2.
+>
+> **Correção de auditoria (2026-06-03):** o repositório `a2-mushra-data` é apenas um **CSV de ratings MUSHRA** (105.842 ratings, 1.184 participantes), **não um gerador**. O gerador real está no **runner companheiro `t3k-mushra`** (`github.com/t3k-mushra/`), em `src/demo/generateSampleAudio.ts` — uma biblioteca React para conduzir testes MUSHRA em browser. As primitivas do gerador (synthTone, lowPass, softClip, addNoise, gain) **são** portáveis e foram analisadas em profundidade abaixo.
+
+#### Tarefa S28.T01 — Stress Signal v2 (multi-componente, multi-SR, single source of truth, com primitivas portadas do `t3k-mushra`) 🔥✨
+
+- **Onde:** `tests/common/mod.rs::generate_stress_signal` (atual); criar `tests/common/stress2.rs` e `tests/common/mushra_primitives.rs`; binário `src/bin/gen_stress.rs`; atualizar `tests/fixtures/golden_gen_build.sh`, `tests/cpp_parity.rs`, e `tests/common/wav.rs`.
+
+- **Problema (limites atuais identificados pela auditoria):**
+
+  1. **Duração curta:** 2048 samples ≈ 42.7 ms @ 48 kHz capturam apenas 1 transiente + chirp breve. Drift acumulativo em modelos com receptive_field grande (RF=2046 em WaveNet Standard) fica sub-amostrado.
+
+  2. **Single sample rate:** Apenas 48 kHz. Paridade C++ ↔ Rust em 44.1k/88.2k/96k/192k não exercitada.
+
+  3. **Sem polifonia/dinâmicas musicais:** Acordes, palm-mute, pinch harmonic, bends ausentes. Modelos não-lineares respondem assimetricamente — gap maior justamente na zona perceptualmente relevante.
+
+  4. **Duplicação Python ↔ Rust:** A lógica de geração existe em `tests/fixtures/golden_gen_build.sh:118-181` (Python) **e** em `tests/common/mod.rs:50-90` (Rust). Comentário declara paridade bit-a-bit, mas qualquer adição precisa ser feita em dois lugares — risco de drift silencioso.
+
+  5. **Loop byte-a-byte na escrita WAV:** `tests/common/wav.rs:47-49` itera por sample chamando `extend_from_slice(&s.to_le_bytes())`. Negligível em 2048 samples, mas O(n) escalar quando crescer para 240k+.
+
+  6. **Sem componentes degradativos para anchor:** atual stress signal não permite gerar anchor canônico MUSHRA (low-pass 3.5 kHz) nem variantes em qualidade graduada.
+
+  7. **Falta calibração ESR contra referências publicadas:** sem números de baseline da literatura, definimos thresholds heuristicamente em vez de empiricamente.
+
+- **Avaliação do `t3k-mushra` (`github.com/t3k-mushra/`, MIT-licenciado):**
+
+  **O que é:** Biblioteca React/TypeScript publicada em npm para conduzir testes MUSHRA blind em browser. Contém um **gerador de áudio sintético demo** em `src/demo/generateSampleAudio.ts` (168 LoC) com primitivas reutilizáveis.
+
+  | Primitiva                                     | LoC TS | Função                                                                                                                                | Portabilidade Rust                                                                  |
+  | --------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+  | `synthTone(freq)`                             | 18-34  | Pluck guitarístico: 6 harmônicos `[1, 0.5, 0.34, 0.22, 0.14, 0.09]`, envelope `min(1, t*120) * exp(-2.2t)`, vibrato 5 Hz @ 0.3% depth | Trivial (~25 LoC Rust f64)                                                          |
+  | `lowPass(input, cutoff)`                      | 37-48  | 1-pole IIR; `a = dt/(rc+dt)`, `y = y + a*(x-y)`                                                                                       | Trivial (~10 LoC); ideal para anchor 3.5 kHz                                        |
+  | `softClip(input, drive)`                      | 58-64  | `tanh(x*drive) / tanh(drive)` — saturação simétrica                                                                                   | Trivial (~5 LoC)                                                                    |
+  | `addNoise(input, amount)`                     | 50-56  | White noise PRNG                                                                                                                      | Trivial; usar Mulberry32 para paridade Rust↔TS                                      |
+  | `gain(input, g)`                              | 66-70  | Linear scaling                                                                                                                        | Trivial (~3 LoC)                                                                    |
+  | `fnv1a32` + `mulberry32` (`internal/prng.ts`) | 9-27   | Hash + PRNG determinístico                                                                                                            | ~30 LoC Rust; **bit-paridade Rust↔TS** se quisermos publicar dataset cross-language |
+
+  **Esquema de variants MUSHRA-compliant pronto** (`generateSampleAudio.ts:132-139`):
+
+  ```text
+  hidden-ref  → reference bit-identical
+  excellent   → reference + noise(0.001)
+  good        → lowpass(9 kHz) + noise(0.002)
+  fair        → lowpass(5 kHz) + softclip(drive=1.6)
+  poor        → lowpass(2.5 kHz) + gain(0.9) + noise(0.01)
+  anchor      → lowpass(3.5 kHz)  [MUSHRA anchor canônico]
+  ```
+
+  **Calibração ESR empírica** (`A2Esr.tsx:19-38`, dados publicados Tone3000):
+
+  | Modelo      | Q1      | mediana ESR | Q3      | mediana em dB |
+  | ----------- | ------- | ----------- | ------- | ------------- |
+  | A1-Standard | 0.00218 | **0.00623** | 0.01571 | **−22.1 dB**  |
+  | A2-Full     | 0.00114 | **0.00334** | 0.00913 | **−24.8 dB**  |
+
+  Estes números são para **modelo NAM bem-treinado vs gear real** — Nam-rs (apenas porta de inferência, sem treinamento) comparando vs C++ deve atingir ESR **muito menor** (≤ 1e-4 ≈ −40 dB), pois diferenças aqui são apenas erro de implementação, não training.
+
+  **PROS de integração:**
+
+  1. ✨ **Primitivas portáveis em ~80 LoC Rust** — zero deps externas, MIT-licensed (compatível com Apache-2.0 do nam-rs).
+
+  2. ✨ **Esquema 6-variants MUSHRA-compliant pronto** (hidden-ref → excellent → good → fair → poor → anchor) cobrindo desde transparência até degradação extrema.
+
+  3. ✨ **PRNG determinístico testável** (FNV-1a + Mulberry32) — permite bit-paridade Rust↔TS se publicarmos nosso próprio dataset MUSHRA usando o mesmo runner web.
+
+  4. ✨ **Baseline ESR concreto e publicado** (A1-Standard ≈ −22 dB, A2-Full ≈ −25 dB) — usável como gates de regressão em `cpp_parity` com fonte rastreável.
+
+  5. ✨ **Posicionamento acadêmico:** alinha nam-rs com o ecossistema A2/Tone3000, abre caminho futuro para publicação "NAM-rs: Rust port with measured fidelity equivalence using t3k-mushra protocol".
+
+  **CONS:**
+
+  1. ❌ **Não substitui o sinal de stress multi-componente:** as primitivas do `t3k-mushra` geram **um único tone simples** por chamada — adequado para anchor/variants degradados em MUSHRA, mas não cobre transientes/chirp/decay que precisamos para detectar drift acumulativo. Os dois são **complementares**.
+
+  2. ❌ **Foco em quality grading (humano), não numerical parity (CI):** `t3k-mushra` valida "qual variant soa melhor"; nossa cross-validation valida "Rust ≡ C++". Casos de uso ortogonais — não há substituição direta.
+
+  3. ❌ **Atribuição obrigatória (MIT):** ao portar, manter copyright notice do `t3k-mushra` no header dos arquivos derivados; documentar em `NOTICE.txt`.
+
+  4. ❌ **Audio do dataset não disponível:** os 37 tones de `a2-mushra-data` (recordings reais de gear) não estão publicados — apenas IDs. Não podemos reproduzir os MUSHRA tests do paper, só usar a metodologia.
+
+  **Veredicto:** **Hybrid approach.** Stress signal v2 multi-componente (numerical CI) **+** primitivas portadas do `t3k-mushra` (perceptual stimuli generation, anchor, variants). Calibração ESR usa baselines publicados A2Esr.tsx.
+
+- **Solução técnica (entrega única, escopo desta tarefa):**
+
+  1. **Single source of truth Rust para geração de sinal (eliminar duplicação Python ↔ Rust):**
+     - Criar binário `src/bin/gen_stress.rs` que invoca função pública `nam_rs::testing::generate_stress_signal_v2(seed, sample_rate)` e escreve via `write_wav_f32`.
+     - Mover `generate_stress_signal` (legacy 2048 samples) para `nam_rs::testing::generate_stress_signal_v1` — manter para CI rápido.
+     - Refatorar `tests/fixtures/golden_gen_build.sh` para chamar `cargo run --release --bin gen_stress -- --version v2 --sample-rate 48000 --output stress_signal.wav` em vez do bloco Python inline.
+     - **Decisão de escopo (auditoria 2026-06-03):** o parsing WAV → `.golden.bin` (extração de samples f32 do output do `render` tool) também será portado para Rust nesta mesma tarefa, via segundo binário `src/bin/wav_to_golden.rs` (~40 LoC usando o `read_wav_f32` já existente em `tests/common/wav.rs`, promovido a `nam_rs::testing::wav::*`). **Após esta tarefa, Python deixa de ser dependência do workflow de regeneração de goldens.**
+     - Atualizar `docs/dependencies.md` removendo Python da lista de prerequisites de geração.
+
+  2. **Stress Signal v2 (5 segundos, 240k samples @ 48 kHz) — sinal multi-componente para detecção numérica:**
+     - **0.0–1.0s — Single note Low-E (82.41 Hz) com bend ½-tone + vibrato (5 Hz, ±10 cents).** Categoria `GA` (guitar amp).
+     - **1.0–2.0s — Power chord E2+E3+B3 (3 voices stacked) com envelope ADSR realista.** Categoria `FRG` (full rig guitar).
+     - **2.0–2.5s — Palm-mute attack-release (16 hits @ 16th note timing, 120 BPM, attack 2 ms, decay 20 ms).** Categoria `P` (pedal/transient response).
+     - **2.5–3.5s — Pinch harmonic train + saw sweep 200→3500 Hz (250 ms per harmonic, 4 harmonics).** Saturação assimétrica.
+     - **3.5–4.5s — Bass amp content: low-A (55 Hz) com 5 harmônicos + transient pluck.** Categoria `BA` (bass amp).
+     - **4.5–5.0s — Slow chord ringing decay (3 voices C-E-G, 0 dBFS → -60 dBFS em 500 ms exponential).** Testa denormal handling + Gate FSM.
+     - Componentes determinísticos via PRNG `mulberry32(fnv1a32("nam-rs-stress-v2"))` — porta exata das funções do `t3k-mushra/src/lib/internal/prng.ts`.
+     - Clamp final `[-0.95, 0.95]` (deixa headroom para hosts).
+
+  3. **Porte das primitivas `t3k-mushra` (`tests/common/mushra_primitives.rs`, novo módulo):**
+     - **Header obrigatório:** copyright duplo (nam-rs + t3k-mushra MIT, atribuição clara).
+     - Implementar em Rust as 5 primitivas + PRNG:
+
+       ```rust
+       pub fn synth_tone(freq: f64, sr: u32, duration_s: f64) -> Vec<f32>;
+       pub fn low_pass_1pole(input: &[f32], cutoff_hz: f32, sr: u32) -> Vec<f32>;
+       pub fn soft_clip(input: &[f32], drive: f32) -> Vec<f32>;
+       pub fn add_noise(input: &[f32], amount: f32, rng: &mut Mulberry32) -> Vec<f32>;
+       pub fn apply_gain(input: &[f32], g: f32) -> Vec<f32>;
+       pub fn fnv1a32(s: &[u8]) -> u32;
+       pub struct Mulberry32 { state: u32 }
+       impl Mulberry32 { pub fn new(seed: u32) -> Self; pub fn next_f32(&mut self) -> f32; }
+       ```
+
+     - Adicionar `NOTICE.txt` entry documentando atribuição.
+     - Teste de paridade Rust↔TS: golden vector pré-computado pelo demo TS (rodando `npm run dev` uma vez no repo `t3k-mushra/` mirror), commitado em `tests/fixtures/mushra_prng_golden.bin`. Teste `test_mulberry32_parity_with_ts` valida bit-a-bit.
+
+  4. **Anchor MUSHRA + 6 variants graduados (uso opcional, para futura ferramenta de geração de stimuli):**
+     - Adicionar `nam_rs::testing::build_mushra_variants(reference: &[f32], sr: u32) -> [Variant; 6]` que aplica as 5 receitas do esquema `t3k-mushra:132-139`.
+     - Em `report_dsp_fidelity`, **opcionalmente** computar e logar SNR(test, anchor) — sanidade que nosso output esteja muito acima do anchor (≥ 15 dB).
+     - **Não bloqueante em CI** — só logging informativo nesta sprint; uso pleno em S29.T01.
+
+  5. **Multi-sample-rate generation:**
+     - O binário `gen_stress` aceita `--sample-rate {44100, 48000, 88200, 96000, 192000}`.
+     - Geração feita em f64 internamente (precisão de fase); decimação determinística para target SR.
+     - `cpp_parity` ganha helper que parametriza modelos × SRs principais — preferir parametrização runtime sobre explosão de funções `#[test]`.
+
+  6. **Otimização da escrita WAV (cobre item 5 do problema):**
+     - Em `tests/common/wav.rs`, trocar loop por:
+
+       ```rust
+       #[cfg(target_endian = "little")]
+       {
+           // SAFETY: f32 has no padding bytes; system is little-endian.
+           let bytes: &[u8] = unsafe {
+               std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 4)
+           };
+           buf.extend_from_slice(bytes);
+       }
+       #[cfg(not(target_endian = "little"))]
+       {
+           // Fallback portátil (BE archs)
+           for &s in samples { buf.extend_from_slice(&s.to_le_bytes()); }
+       }
+       ```
+
+  7. **LUFS normalization opcional (não-bloqueante):**
+     - Adicionar `compute_lufs(samples: &[f32], sr: u32) -> f64` (ITU-R BS.1770-4 simplificado: K-weighting + gating) em **`tests/common/perceptual.rs`** (criar o arquivo nesta tarefa se executada antes de S29.T01; caso contrário, anexar ao módulo existente). **Convenção: TODA métrica perceptual (LUFS, ESR, MR-STFT) vive em `tests/common/perceptual.rs` para evitar drift de organização — S29.T01 estenderá o mesmo módulo.**
+     - Logar LUFS no `report_dsp_fidelity` (`tests/common/mod.rs`) para diagnóstico; não usar como assert nesta sprint.
+
+  8. **Documentação:**
+     - Atualizar `tests/fixtures/README.md` com:
+       - Estrutura dos 6 componentes do stress v2.
+       - Tabela das primitivas portadas do `t3k-mushra` + atribuição MIT.
+       - Citação a `a2-mushra-data` como inspiração da taxonomia.
+       - Comandos para regenerar goldens (`cargo run --bin gen_stress ...`).
+     - Adicionar `docs/perceptual_validation.md` esboçando ESR/MR-STFT + tabela de baselines A2Esr.tsx (pré-requisito conceitual para S29.T01).
+     - Atualizar `NOTICE.txt` raiz do projeto: "This product includes code derived from t3k-mushra (<https://github.com/tone-3000/t3k-mushra>), licensed under MIT."
+
+  9. **Regenerar goldens + gestão de fixture bloat:**
+     - Após implementação, rodar `tests/fixtures/golden_gen_build.sh` para gerar `golden_*_v2_<sr>k.bin`.
+     - **Quantificação:** 4 SRs × 5 modelos = 20 goldens, ~7.6 MB de inputs WAV + ~19 MB de outputs golden binários = **~27 MB de adição líquida**.
+     - **Gate de fixture bloat:** total `tests/fixtures/*.bin` após v2 ≤ **45 MB** (margem para v1 coexistir durante deprecação).
+     - **Deprecação v1 explícita (criar tarefa de follow-up):** "S28.T02 (deprecação v1) — drop `golden_<model>.bin` v1 (manter apenas `v2_<sr>k`) após 2 sprints consecutivas com `cpp_parity v2` 20/20 PASS estável. Esforço: 15 min."
+
+- **Critérios de aceitação:**
+
+  - `tests/common/mod.rs` não contém mais lógica de geração inline duplicada — delega para `nam_rs::testing::*`.
+  - `tests/fixtures/golden_gen_build.sh` **não invoca mais `python3`**. Workflow de regeneração: apenas `cmake` (para compilar `render`) + `cargo`.
+  - `cargo run --bin gen_stress -- --version v2 --sample-rate 48000 --output stress_signal.wav` produz WAV idêntico bit-a-bit ao consumido pela suite.
+  - `cargo run --bin wav_to_golden -- --input rendered.wav --reference stress.wav --output golden.bin` produz `.golden.bin` no formato consumido pelos testes.
+  - `cpp_parity` (`utils/tests-long.sh`) roda em todos os 5 modelos × 4 sample rates principais (44.1k, 48k, 96k, 192k) = 20 testes, todos PASS.
+  - `test_mulberry32_parity_with_ts` passa: golden TS pré-computado bate bit-a-bit com Rust port.
+  - SNR no stress v2 ≥ threshold adaptativo (`topology_thresholds`) — ajustar tolerâncias se necessário (signal v2 é mais agressivo), documentar no parecer.
+  - Anchor SNR(reference, anchor) < 5 dB (sanidade: o low-pass 3.5 kHz degrada ≥ 20 dB).
+  - `NOTICE.txt` cita t3k-mushra MIT.
+  - `tests/fixtures/README.md` documenta primitivas portadas + taxonomia.
+  - `docs/perceptual_validation.md` esboça caminho ESR/MR-STFT com baselines A2Esr.tsx tabulados.
+  - `docs/dependencies.md` lista apenas `cargo` + `cmake` como prerequisites (Python removido).
+  - **Total `tests/fixtures/*.bin` ≤ 45 MB.**
+  - Build de release < 5 s para `gen_stress` e `wav_to_golden` (não bloqueia `tests-long.sh`).
+
+- **Especialista:** `pesquisador-inovador` + `implementador` + `documentador`.
+
+- **Esforço:** 2.5 dias (+ 0.5 dia para porte+paridade PRNG vs original 2.0).
+
+### Sprint S29 — Métricas Perceptuais & Tooling
+
+> Esta sprint estabelece a infraestrutura métrica que servirá tanto para Parte I (consolidação de cobertura) quanto para Parte II (validação BF16 em CI quando hardware Sapphire Rapids estiver disponível). É **complementar** a S21.T02 (Parte II) — esta sprint entrega a fundação (ESR + MR-STFT scalar implementations), S21.T02 integra em CI completo com regressão tracking.
+
+#### Tarefa S29.T01 — Implementar ESR (Error-to-Signal Ratio) + MR-STFT calibrados com baselines `A2Esr.tsx` ✨⚠️
+
+- **Onde:** `tests/common/mod.rs::report_dsp_fidelity`; criar `tests/common/perceptual.rs`; atualizar `docs/perceptual_validation.md` (criado em S28.T01).
+
+- **Problema:** Métricas atuais (MSE, MAE, SNR, PSNR, equiv. bits) são puramente time-domain L2/L∞. Para modelos não-lineares (saturação, distorção), erro perceptualmente equivalente pode dar MSE muito diferente. ESR e MR-STFT são padrões na pesquisa NAM (Yamamoto et al. 2020 *"Real-Time Modeling of Audio Distortion Circuits with Deep Learning"*; Atkinson 2023 *"NAM A2 Technical Report"*). `rustfft = "6.4.1"` já é dependência (`Cargo.toml:31`).
+
+- **Baselines empíricos publicados** (extraídos de `github.com/t3k-mushra/A2Esr.tsx:19-38`, dataset Tone3000):
+
+  | Modelo          | Q1 ESR  | Mediana ESR | Q3 ESR  | Mediana dB   | Interpretação       |
+  | --------------- | ------- | ----------- | ------- | ------------ | ------------------- |
+  | NAM A1-Standard | 0.00218 | **0.00623** | 0.01571 | **−22.1 dB** | Baseline 2024 "bom" |
+  | NAM A2-Full     | 0.00114 | **0.00334** | 0.00913 | **−24.8 dB** | State-of-art 2026   |
+
+  **Contexto:** estes valores comparam modelo NAM **treinado** vs gear analógico real (envolve erro de modelagem). Nam-rs comparando vs C++ reference deve atingir ESR **ordens de magnitude menor** (1e-5 a 1e-7 = −50 a −70 dB) — diferenças são apenas erro de implementação numérica, não de training.
+
+- **Solução técnica:**
+
+  1. Adicionar `tests/common/perceptual.rs` com:
+     - `pub fn compute_esr(reference: &[f32], test: &[f32]) -> f64` — ESR linear = `Σ(r-t)² / Σ r²`. Retornar f64 linear; conversão dB feita no caller.
+     - `pub fn esr_to_db(esr: f64) -> f64` — `10 * log10(esr)`.
+     - `pub fn compute_mr_stft(reference: &[f32], test: &[f32]) -> f64` — Multi-Resolution STFT loss: window sizes `[256, 1024, 4096]`, hop=window/4, soma L1+L2 das diferenças de log-magnitude. FFT via `rustfft::FftPlanner`.
+     - Implementação puramente escalar (não-RT, OK em testes).
+
+  2. Estender `report_dsp_fidelity` para imprimir adicionalmente:
+
+     ```text
+       ESR     = 1.23e-05    (−49.1 dB)   [baseline A1-Std: 6.23e-03, A2-Full: 3.34e-03]
+       MR-STFT = 0.0042      (relative)
+     ```
+
+  3. Adicionar parâmetro opcional `max_esr: Option<f64>` para assert (default `None` mantém compat). Para `cpp_parity`, definir threshold como **`NAM_RS_CPP_PARITY_ESR_MAX = 1e-3`** (≈ −30 dB) — funcionando como **gate de regressão conservador**, ~6× (≈ 8 dB) abaixo da mediana A1-Standard (6.23e-3). O ESR real observado em nam-rs deve estar **2–4 ordens de magnitude menor** que o gate (faixa esperada `1e-5` a `1e-7`, ≈ −50 a −70 dB), já que validamos apenas paridade de implementação numérica vs C++ (sem erro de training). O gate fica folgado de propósito para tolerar variação em SRs menos cobertas pela auditoria (44.1k/192k).
+
+  4. Constantes públicas em `perceptual.rs`:
+
+     ```rust
+     /// A1-Standard median ESR baseline from t3k-mushra/A2Esr.tsx
+     pub const A2ESR_A1_STANDARD_MEDIAN: f64 = 0.00623;
+     pub const A2ESR_A1_STANDARD_Q1: f64 = 0.00218;
+     pub const A2ESR_A1_STANDARD_Q3: f64 = 0.01571;
+     /// A2-Full median ESR baseline from t3k-mushra/A2Esr.tsx
+     pub const A2ESR_A2_FULL_MEDIAN: f64 = 0.00334;
+     pub const A2ESR_A2_FULL_Q1: f64 = 0.00114;
+     pub const A2ESR_A2_FULL_Q3: f64 = 0.00913;
+     /// nam-rs ↔ C++ implementation parity target (much stricter than training baselines)
+     pub const NAM_RS_CPP_PARITY_ESR_MAX: f64 = 1e-3;
+     ```
+
+  5. Testes unitários em `perceptual.rs`:
+     - `ESR(x, x) == 0.0` (identical → zero error).
+     - `ESR(x, 0) ≈ 1.0` (test all-zero → ESR = 1.0).
+     - `ESR` invariante a sample-rate (mesmo cálculo time-domain).
+     - `MR-STFT` consistente com referência Python — cross-check via golden vector pré-computado em `tests/fixtures/mrstft_golden.bin` (gerado por script `tests/fixtures/scripts/gen_mrstft_golden.py` com pesos públicos `[0.1, 0.3, 0.5]` para cada window size — documentado no script).
+
+- **Critérios de aceitação:**
+
+  - Suíte `cpp_parity` imprime ESR (linear + dB) e MR-STFT junto com MSE/SNR.
+  - Todos os 5 modelos atuais atingem `ESR < NAM_RS_CPP_PARITY_ESR_MAX (= 1e-3)` no stress signal v1 atual.
+  - `docs/perceptual_validation.md` descreve fórmulas + tabula baselines A2Esr.tsx + cita atribuição.
+  - Sem regressão em `tests-cargo.sh` (testes existentes continuam passando).
+
+- **Especialista:** `pesquisador-inovador`.
+
+- **Esforço:** 1.5 dia.
+
+#### Tarefa S29.T02 — Adoção de nomenclatura `tone_id` MUSHRA-aligned ✨💡
+
+- **Onde:** `tests/fixtures/README.md`; opcionalmente renomear goldens em sprint subsequente.
+
+- **Problema:** Goldens atuais (`golden_wavenet_standard`, `golden_lstm_1x16`, etc.) identificam apenas por **modelo**, não por **tone/stimulus**. Quando expandirmos para multi-stimulus (S28.T01), o sufixo do golden precisará incluir tanto modelo quanto tone para evitar colisão e facilitar comparação inter-projetos.
+
+- **Solução técnica:**
+
+  1. Esquema novo: `golden_<model_id>_<tone_id>_<sr>.bin`. Exemplos:
+     - `golden_bosswn_standard_GA-1_48k.bin`
+     - `golden_bosslstm_2x8_FRG-1_48k.bin`
+
+  2. Mapping documentado em `tests/fixtures/README.md` espelhando a taxonomia `a2-mushra-data`:
+     - `GA-N` ← stress v2 segment 0.0–1.0s × variação `N` (single-note guitar amp).
+     - `FRG-N` ← stress v2 segment 1.0–2.0s (full rig guitar — power chord).
+     - `P-N` ← stress v2 segment 2.0–2.5s (pedal — palm-mute transient).
+     - `BA-N` ← stress v2 segment 3.5–4.5s (bass amp).
+     - `PA-N`, `FRB-N`, `PB-N` — reservados para expansão futura.
+
+  3. Documentar referência cruzada: tabela "nam-rs tone_id ↔ a2-mushra-data categoria" + link para `t3k-mushra` como ferramenta canônica de teste MUSHRA caso queiramos publicar ratings derivados.
+
+- **Critérios de aceitação:**
+
+  - `README.md` lista os tone_ids usados pelo nam-rs com referência cruzada à categoria MUSHRA de `a2-mushra-data` + atribuição a `t3k-mushra`.
+  - Goldens v1 mantidos para compat retroativa; goldens v2 usam novo schema.
+
+- **Especialista:** `documentador`.
+
+- **Esforço:** 30 min.
+
+---
+
+## Resumo Executivo da Continuação Parte I (Épicos 14–15)
+
+| Sprint                                                       | Tarefas     | Esforço (dias) | Prioridade |
+| ------------------------------------------------------------ | ----------- | -------------- | ---------- |
+| **S25** (Hotpath SIMD)                                       | 8 (T01–T08) | ~6.0           | 🔥/⚠️      |
+| **S26** (Aderência C++)                                      | 4 (T01–T04) | ~2.5           | 🔥/⚠️/💡   |
+| **S27** (Organização & Safety)                               | 8 (T01–T08) | ~7.0           | 🔥/⚠️/💡   |
+| **S27b** (Cobertura & Docs)                                  | 7 (T01–T07) | ~5.0           | 🔥/⚠️/💡   |
+| **S28** (Stress Signal v2 + t3k-mushra port + wav_to_golden) | 1 (T01)     | ~3.0           | 🔥✨       |
+| **S29** (Métricas perceptuais c/ baselines A2Esr)            | 2 (T01–T02) | ~2.0           | ✨⚠️/💡    |
+| **TOTAL Épicos 14–15**                                       | 30 tarefas  | **~25.5 dias** | —          |
+
+> **Correlação Parte I ↔ Parte II:** S29.T01 (Épico 15, Parte I) entrega a fundação `compute_esr`/`compute_mr_stft`/baselines em `tests/common/perceptual.rs`; S21.T02 (TODO2.md, Parte II) foi **patcheada na auditoria 2026-06-03** com pré-condição explícita "depende de S29.T01" e re-escopada para harness de regressão histórica (delta tracking) — consumidor, não duplicador.
+
+**Ordem de execução agile sugerida (3 sprints de ~2 semanas em paralelizável):**
+
+- **Sprint #1 (semana 1–2):** S25.T01–T04 (críticos hotpath) + S27b.T04 (bench baseline) + S26.T01 (A2 placeholder) + S28.T01 (stress v2 — paralelo, sem dependência).
+- **Sprint #2 (semana 3–4):** S25.T05–T08 + S26.T02–T04 + S27b.T01–T02 (resampler + pipeline soak) + S27.T07 (cold-panic cleanup).
+- **Sprint #3 (semana 5–6):** S27.T01–T06 (organização & safety sweep) + S27b.T03/T05/T06 (gate proptest, LSTM 1×40/2×24 parity, architecture.md) + S27.T08 (doccomments) + S29.T01–T02 (métricas perceptuais).
+
+**Pré-condição de início:** baseline `cargo bench inference_bench` salvo em `target/criterion/baseline_pre_e14/`.
+
+**Gate de saída de cada sprint:**
+
+1. `bash utils/lints.sh` (clippy strict + fmt).
+2. `bash utils/tests-cargo.sh` (unit + integration).
+3. `cargo bench inference_bench` — sem regressão > 1% vs baseline e/ou recuperação positiva conforme tarefa.
+4. `cargo test --test cpp_parity -- --ignored --nocapture` — 5/5 PASS (após S28.T01, 20/20).
+
+**Validação final do Épico 14:** auditoria comparativa antes/depois pelo skill `revisor-auditor`, com relatório de impacto cumulativo no `WaveNet_Standard_CH16_64samp_48kHz`, `Prewarm_LSTM_2x16_2048samp`, `Resampler_96000_to_48000` e `LSTM_2x16_Comparison/Scalar_Baseline`.
+
+**Validação final do Épico 15:** stress v2 com 4 SRs principais (44.1k/48k/96k/192k) × 5 modelos = 20 PASS no `cpp_parity`; **ESR < `NAM_RS_CPP_PARITY_ESR_MAX = 1e-3` (≈ −30 dB) em todos os modelos** — gate conservador ~6× abaixo da mediana A1-Standard (6.23e-3, fonte `t3k-mushra/A2Esr.tsx`); ESR efetivamente observado esperado em 1e-5 a 1e-7 (−50 a −70 dB), pois validamos paridade de implementação numérica vs C++, não training; teste `test_mulberry32_parity_with_ts` PASS (bit-paridade Rust↔TS port); `docs/perceptual_validation.md` revisado por `documentador` com baselines tabulados; `NOTICE.txt` atualizado com atribuição t3k-mushra MIT.
