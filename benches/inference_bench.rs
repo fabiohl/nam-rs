@@ -35,6 +35,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamConfig, NamModelData, parse_nam_json};
+use nam_rs::math::common::AlignedVec;
+use nam_rs::models::wavenet::dense::DenseLayer;
 use nam_rs::models::NamModel;
 
 /// Generates a deterministic 440 Hz sinusoidal signal at a 48 kHz sample rate.
@@ -746,6 +748,92 @@ fn bench_lstm_2x24_comparison(c: &mut Criterion) {
     group.finish();
 }
 
+/// Measures the processing time of `process_block_f32_native` (head_rechannel FP32)
+/// for three representative shapes, verifying the SIMD vectorization speedup.
+///
+/// Tested shapes:
+/// - `DenseLayer<16,8>`: array1 (head_rechannel of WaveNet Standard)
+/// - `DenseLayer<8,1>`:  array2 dominant case (final head 8→1)
+/// - `DenseLayer<16,1>`: LSTM head single-output
+fn bench_head_rechannel_fp32(c: &mut Criterion) {
+    let num_frames: usize = 64;
+    let mut group = c.benchmark_group("head_rechannel_fp32");
+
+    // ── DenseLayer<16,8> ──
+    {
+        let in_size: usize = 16;
+        let out_size: usize = 8;
+        let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
+        let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
+        let layer = DenseLayer::<16, 8> {
+            weights: AlignedVec::new(0, 0u16),
+            bias,
+            do_bias: true,
+            f32_weights: Some(weights),
+        };
+        let input = vec![0.01f32; num_frames * in_size];
+        let mut output = vec![0.0f32; num_frames * out_size];
+
+        group.bench_function("DenseLayer_16x8_64f", |b| {
+            b.iter(|| unsafe {
+                layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
+                    &input, &mut output, num_frames,
+                )
+            });
+        });
+    }
+
+    // ── DenseLayer<8,1> (dominant case) ──
+    {
+        let in_size: usize = 8;
+        let out_size: usize = 1;
+        let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
+        let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
+        let layer = DenseLayer::<8, 1> {
+            weights: AlignedVec::new(0, 0u16),
+            bias,
+            do_bias: true,
+            f32_weights: Some(weights),
+        };
+        let input = vec![0.01f32; num_frames * in_size];
+        let mut output = vec![0.0f32; num_frames * out_size];
+
+        group.bench_function("DenseLayer_8x1_64f", |b| {
+            b.iter(|| unsafe {
+                layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
+                    &input, &mut output, num_frames,
+                )
+            });
+        });
+    }
+
+    // ── DenseLayer<16,1> (LSTM head) ──
+    {
+        let in_size: usize = 16;
+        let out_size: usize = 1;
+        let weights: AlignedVec<f32> = AlignedVec::new(in_size * out_size, 0.01);
+        let bias: AlignedVec<f32> = AlignedVec::new(out_size, 0.0);
+        let layer = DenseLayer::<16, 1> {
+            weights: AlignedVec::new(0, 0u16),
+            bias,
+            do_bias: true,
+            f32_weights: Some(weights),
+        };
+        let input = vec![0.01f32; num_frames * in_size];
+        let mut output = vec![0.0f32; num_frames * out_size];
+
+        group.bench_function("DenseLayer_16x1_64f", |b| {
+            b.iter(|| unsafe {
+                layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
+                    &input, &mut output, num_frames,
+                )
+            });
+        });
+    }
+
+    group.finish();
+}
+
 // Main benchmark group definition (inference latency and DSP kernels)
 criterion_group!(
     name = benches;
@@ -778,7 +866,8 @@ criterion_group!(
     bench_tanh_pade_div_avx512_256elem,
     bench_sigmoid_avx512_256elem,
     bench_prewarm_wavenet_standard,
-    bench_prewarm_lstm_2x16
+    bench_prewarm_lstm_2x16,
+    bench_head_rechannel_fp32
 );
 
 // Long-running benchmark group definition (Soak Tests)

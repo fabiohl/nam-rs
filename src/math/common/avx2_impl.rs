@@ -467,6 +467,22 @@ impl SimdMath for Avx2Math {
         }
     }
 
+    #[inline(always)]
+    unsafe fn gemv_overwrite_batch_f32(
+        in_frames: &[f32],
+        weights: &[f32],
+        bias: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+        do_bias: bool,
+    ) {
+        unsafe {
+            super::super::gemm::gemv::gemv_overwrite_batch_f32_avx2(
+                in_frames, weights, bias, out_frames, num_frames, do_bias,
+            )
+        }
+    }
+
     // Final WaveNet processing stage: sums the outputs to generate the final audio.
     #[inline(always)]
     unsafe fn batch_wavenet_head_sum_dyn(

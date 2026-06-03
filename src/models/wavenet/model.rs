@@ -347,7 +347,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
             // precision for this critical final projection (tonal fidelity),
             // while the backbone runs quantized (BF16/F16) for performance.
             if self.head_rechannel.f32_weights.is_some() {
-                self.head_rechannel.process_block_f32_native(
+                self.head_rechannel.process_block_f32_native::<M>(
                     &self.head_accum[0..num_frames * CH],
                     &mut self.head_outputs[0..num_frames * HEAD],
                     num_frames,

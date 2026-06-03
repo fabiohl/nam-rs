@@ -1763,7 +1763,7 @@ Notas Operacionais — Épico 14
 
 > Foco: recuperar gaps remanescentes pós-Épicos 4/6/8 e endereçar paths ainda escalares descobertos pela auditoria. Cada tarefa tem critério de regressão **medido por benchmark concreto**.
 
-#### Tarefa S25.T01 — SIMD vectorize `process_block_f32_native` (head_rechannel FP32) 🔥
+#### Tarefa S25.T01 — SIMD vectorize `process_block_f32_native` (head_rechannel FP32) 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/dense.rs:182-196` (`process_block_f32_native`); `src/math/common/traits.rs` (trait `SimdMath`).
 - **Problema:** O path FP32 nativo introduzido pela E8.T08 (mixed-precision seletiva no head_rechannel) é **GEMV escalar puro** — triple-nested loop O(N·OUT·IN) sem nenhuma instrução SIMD. Em WaveNet Standard (`HEAD=1, CH=16, num_frames=64`), isso são 1024 FMAs escalares por bloco. Apesar de OUT=1 ser pequeno, é o **único stage FP32** do pipeline e domina quando o backbone roda em BF16/F16.

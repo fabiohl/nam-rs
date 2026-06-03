@@ -174,24 +174,34 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
 
     /// Full-precision f32 head projection for mixed-precision inference.
     ///
-    /// Performs a scalar GEMV using the stored `f32_weights` (native FP32),
-    /// bypassing the quantized SIMD path. Used exclusively for the
-    /// `head_rechannel` layer to preserve tonal quality in the final stage
-    /// while the backbone runs quantized (BF16/F16).
+    /// Dispatches to the appropriate SIMD kernel via the `SimdMath` trait,
+    /// replacing the previous scalar triple-nested loop with shape-dependent
+    /// vectorization (frame-batching for OUT≤4, channel-batching for OUT≥8).
+    ///
+    /// # Safety
+    /// The caller must ensure that `in_frame` and `out_frame` have sizes
+    /// compatible with `IN`, `OUT`, and `num_frames`, and that the SIMD
+    /// instructions for `M` are available on the host CPU.
     #[inline(always)]
-    pub fn process_block_f32_native(&self, input: &[f32], output: &mut [f32], num_frames: usize) {
+    pub unsafe fn process_block_f32_native<M: SimdMath>(
+        &self,
+        input: &[f32],
+        output: &mut [f32],
+        num_frames: usize,
+    ) {
         let f32_w = self
             .f32_weights
             .as_ref()
             .expect("process_block_f32_native requires f32_weights");
-        for n in 0..num_frames {
-            for out_c in 0..OUT {
-                let mut sum = if self.do_bias { self.bias[out_c] } else { 0.0 };
-                for in_c in 0..IN {
-                    sum += input[n * IN + in_c] * f32_w[in_c * OUT + out_c];
-                }
-                output[n * OUT + out_c] = sum;
-            }
+        unsafe {
+            M::gemv_overwrite_batch_f32(
+                input,
+                f32_w,
+                &self.bias,
+                output,
+                num_frames,
+                self.do_bias,
+            );
         }
     }
 }

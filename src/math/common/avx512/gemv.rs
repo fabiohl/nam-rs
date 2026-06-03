@@ -204,6 +204,21 @@ macro_rules! impl_avx512_gemv {
                 );
             }
         }
+        #[inline(always)]
+        unsafe fn gemv_overwrite_batch_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            bias: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+            do_bias: bool,
+        ) {
+            unsafe {
+                crate::math::gemm::gemv::gemv_overwrite_batch_f32_avx512(
+                    in_frames, weights, bias, out_frames, num_frames, do_bias,
+                )
+            }
+        }
     };
 }
 
@@ -380,6 +395,21 @@ macro_rules! impl_avx512vnni_gemv {
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
         }
+        #[inline(always)]
+        unsafe fn gemv_overwrite_batch_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            bias: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+            do_bias: bool,
+        ) {
+            unsafe {
+                crate::math::gemm::gemv::gemv_overwrite_batch_f32_avx512(
+                    in_frames, weights, bias, out_frames, num_frames, do_bias,
+                )
+            }
+        }
     };
 }
 
@@ -555,6 +585,21 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             crate::math::gemm::gemv_bf16::gemv_overwrite_batch_bf16_avx512(
                 in_frames, weights, bias, out_frames, num_frames, do_bias,
             )
+        }
+        #[inline(always)]
+        unsafe fn gemv_overwrite_batch_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            bias: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+            do_bias: bool,
+        ) {
+            unsafe {
+                crate::math::gemm::gemv::gemv_overwrite_batch_f32_avx512(
+                    in_frames, weights, bias, out_frames, num_frames, do_bias,
+                )
+            }
         }
     };
 }

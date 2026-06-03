@@ -688,3 +688,35 @@ pub unsafe fn compute_max_diff_fallback(a: &[f32], b: &[f32]) -> f32 {
     }
     max_diff
 }
+
+/// Batch GEMV overwrite with native f32 weights and inputs.
+///
+/// Performs `num_frames` independent matrix-vector multiplications.
+/// Layout: input is frame-major `[f0_in.., f1_in.., ...]`, output is
+/// frame-major `[f0_out.., f1_out.., ...]`. Weights are column-major
+/// `weights[in_c * OUT + out_c]`.
+///
+/// This is the scalar reference oracle for the SIMD kernels.
+pub fn gemv_overwrite_batch_f32_fallback(
+    in_frames: &[f32],
+    weights: &[f32],
+    bias: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+    do_bias: bool,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+    for n in 0..num_frames {
+        for out_c in 0..out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            for in_c in 0..in_len {
+                sum += in_frames[n * in_len + in_c] * weights[in_c * out_len + out_c];
+            }
+            out_frames[n * out_len + out_c] = sum;
+        }
+    }
+}
