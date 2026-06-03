@@ -1735,7 +1735,12 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 
 ---
 
-## Épico 14 — Hotpath Recovery & Architectural Polish (Continuação Parte I, Auditoria 2026-06-03)
+(Continuação Parte I, Auditoria 2026-06-03)
+Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
+
+---
+
+## Épico 14 — Hotpath Recovery & Architectural Polish
 
 > **Contexto da auditoria 2026-06-03 (skill `revisor-auditor`):** Após o fechamento dos Épicos 1–8, uma nova passada de auditoria multi-disciplinar (DSP/SIMD, modelos NN, plugin CLAP, host PipeWire/RT, loader, soundness) identificou um conjunto coeso de oportunidades de melhoria que são **continuação natural** da Parte I — focadas em (a) recuperar/superar gaps de performance ainda mensuráveis, (b) consolidar aderência arquitetural com `NeuralAmpModelerCore` (espelhado em `github.com/NeuralAmpModelerCore/`), (c) elevar a qualidade de organização de código e cobertura de safety/testes/docs.
 >
