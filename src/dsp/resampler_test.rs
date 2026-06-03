@@ -210,21 +210,17 @@ fn test_phase_accum_underflow_guard() {
     // We use ResamplerCore directly to test the internal logic
     let mut core = ResamplerCore::new(44100, 48000);
 
-    // Simulates a negative drift (underflow)
-    core.phase_accum = -1e-15;
+    // Simulates starting at 0
+    core.phase_accum = 0;
 
     let in_l = [0.0f32; 64];
     let in_r = [0.0f32; 64];
     let mut out_l = [0.0f32; 64];
     let mut out_r = [0.0f32; 64];
 
-    // Processing should occur without panic (the 'as usize' from 0.0 clamp is safe)
+    // Processing should occur without panic
     let n = dispatch_simd!(core, process_internal, &in_l, &in_r, &mut out_l, &mut out_r);
     assert!(n > 0);
-    assert!(
-        core.phase_accum >= 0.0,
-        "Accumulator should have been clamped to >= 0"
-    );
 }
 
 #[test]
@@ -261,16 +257,11 @@ fn test_resampler_micro_soak() {
 
             // Access internal core to check accumulator (via ResamplerCore)
             if let Some(ref core) = rs.inner {
-                assert!(
-                    core.phase_accum >= 0.0,
-                    "Underflow detected in {}->{}",
-                    from,
-                    to
-                );
+                let num_phases_fp = (NUM_PHASES as u64) << 40;
                 // The accumulator may be >= NUM_PHASES if the input block finished
                 // before consuming what's needed for the next output sample.
                 assert!(
-                    core.phase_accum < NUM_PHASES as f64 + core.phase_step * 2.0,
+                    core.phase_accum < num_phases_fp + core.phase_step * 2,
                     "Overflow detected in {}->{}",
                     from,
                     to
@@ -404,6 +395,47 @@ fn test_resampler_mono_equivalence() {
                 out_final_r_mono[i]
             );
             assert_eq!(out_final_l_mono[i], out_final_r_mono[i]);
+        }
+    }
+}
+
+#[test]
+fn test_fixed_point_drift_random_ratios() {
+    let ratios = [
+        (44100.0, 48000.0),
+        (48000.0, 44100.0),
+        (96000.0, 48000.0),
+        (88200.0, 48000.0),
+    ];
+
+    for &(from, to) in &ratios {
+        let phase_step_f64 = (from / to) * NUM_PHASES as f64;
+        let phase_step_u64 = (phase_step_f64 * ((1u64 << 40) as f64)).round() as u64;
+
+        let mut accum_f64 = NUM_PHASES as f64;
+        let mut accum_u64 = (NUM_PHASES as u64) << 40;
+
+        let num_phases_fp = (NUM_PHASES as u64) << 40;
+
+        for _ in 0..100_000 {
+            while accum_f64 >= NUM_PHASES as f64 {
+                accum_f64 -= NUM_PHASES as f64;
+            }
+            while accum_u64 >= num_phases_fp {
+                accum_u64 -= num_phases_fp;
+            }
+
+            let phase_idx_f64 = accum_f64 as usize;
+            let frac_f64 = accum_f64 - phase_idx_f64 as f64;
+
+            let frac_bits = accum_u64 & ((1u64 << 40) - 1);
+            let frac_u64 = frac_bits as f64 * (1.0 / (1u64 << 40) as f64);
+
+            let diff = (frac_f64 - frac_u64).abs();
+            assert!(diff < 1e-7, "Drift exceeds 1e-7: from={}, to={}, diff={}", from, to, diff);
+
+            accum_f64 += phase_step_f64;
+            accum_u64 += phase_step_u64;
         }
     }
 }

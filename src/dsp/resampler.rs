@@ -93,11 +93,11 @@ struct ResamplerCore {
     state_l: DelayLine,
     /// Right channel delay line.
     state_r: DelayLine,
-    /// Fractional position in phase space (0.0 .. NUM_PHASES).
+    /// Fractional position in phase space (0.0 .. NUM_PHASES) in 24.40 fixed point.
     /// Advances by `phase_step` on each output sample.
-    phase_accum: f64,
-    /// Phase increment per output sample = `from_rate / to_rate * NUM_PHASES`.
-    phase_step: f64,
+    phase_accum: u64,
+    /// Phase increment per output sample = `from_rate / to_rate * NUM_PHASES` in 24.40 fixed point.
+    phase_step: u64,
 }
 
 impl ResamplerCore {
@@ -106,12 +106,13 @@ impl ResamplerCore {
         // Starts the accumulator at NUM_PHASES so that the first iteration
         // of the processing loop immediately consumes the first input
         // sample, filling the delay line before attempting to produce output.
-        let phase_step = (from_rate as f64 / to_rate as f64) * NUM_PHASES as f64;
+        let phase_step_f = (from_rate as f64 / to_rate as f64) * NUM_PHASES as f64;
+        let phase_step = (phase_step_f * ((1u64 << 40) as f64)).round() as u64;
         Self {
             bank,
             state_l: DelayLine::new(),
             state_r: DelayLine::new(),
-            phase_accum: NUM_PHASES as f64,
+            phase_accum: (NUM_PHASES as u64) << 40,
             phase_step,
         }
     }
@@ -131,9 +132,11 @@ impl ResamplerCore {
         let mut in_idx = 0usize;
         let mut out_idx = 0usize;
 
+        let num_phases_fp = (NUM_PHASES as u64) << 40;
+
         while out_idx < n_out_max {
             // Consume input samples as the phase accumulator advances
-            while self.phase_accum >= NUM_PHASES as f64 {
+            while self.phase_accum >= num_phases_fp {
                 if in_idx >= n_in {
                     return out_idx;
                 }
@@ -141,22 +144,15 @@ impl ResamplerCore {
                     self.state_l.push(*in_l.get_unchecked(in_idx));
                     self.state_r.push(*in_r.get_unchecked(in_idx));
                 }
-                self.phase_accum -= NUM_PHASES as f64;
-                // In debug: verifies non-underflow invariant.
-                // The subtraction of NUM_PHASES (exact in f64) from phase_accum >= NUM_PHASES
-                // always results in a value >= 0, since both are exactly representable.
-                #[cfg(debug_assertions)]
-                {
-                    debug_assert!(self.phase_accum >= -1e-12);
-                    self.phase_accum = self.phase_accum.max(0.0);
-                }
+                self.phase_accum -= num_phases_fp;
                 in_idx += 1;
             }
 
             // Determines the phase and the fractional interpolation factor
-            let phase_f = self.phase_accum;
-            let phase_idx = phase_f as usize;
-            let frac = (phase_f - phase_idx as f64) as f32;
+            let phase_idx = (self.phase_accum >> 40) as usize;
+            const FRAC_MASK: u64 = (1u64 << 40) - 1;
+            let frac_bits = self.phase_accum & FRAC_MASK;
+            let frac = (frac_bits as i64 as f64 * (1.0 / (1u64 << 40) as f64)) as f32;
 
             // Next phase (with wrap)
             let phase_next = if phase_idx + 1 >= NUM_PHASES {
@@ -187,18 +183,12 @@ impl ResamplerCore {
         }
 
         // Consume remaining input samples (keep state updated)
-        while self.phase_accum >= NUM_PHASES as f64 && in_idx < n_in {
+        while self.phase_accum >= num_phases_fp && in_idx < n_in {
             unsafe {
                 self.state_l.push(*in_l.get_unchecked(in_idx));
                 self.state_r.push(*in_r.get_unchecked(in_idx));
             }
-            self.phase_accum -= NUM_PHASES as f64;
-            // In debug: verifies non-underflow invariant.
-            #[cfg(debug_assertions)]
-            {
-                debug_assert!(self.phase_accum >= -1e-12);
-                self.phase_accum = self.phase_accum.max(0.0);
-            }
+            self.phase_accum -= num_phases_fp;
             in_idx += 1;
         }
 
@@ -219,29 +209,26 @@ impl ResamplerCore {
         let mut in_idx = 0usize;
         let mut out_idx = 0usize;
 
+        let num_phases_fp = (NUM_PHASES as u64) << 40;
+
         while out_idx < n_out_max {
             // Consume input samples as the phase accumulator advances
-            while self.phase_accum >= NUM_PHASES as f64 {
+            while self.phase_accum >= num_phases_fp {
                 if in_idx >= n_in {
                     return out_idx;
                 }
                 unsafe {
                     self.state_l.push(*in_l.get_unchecked(in_idx));
                 }
-                self.phase_accum -= NUM_PHASES as f64;
-                // In debug: verifies non-underflow invariant.
-                #[cfg(debug_assertions)]
-                {
-                    debug_assert!(self.phase_accum >= -1e-12);
-                    self.phase_accum = self.phase_accum.max(0.0);
-                }
+                self.phase_accum -= num_phases_fp;
                 in_idx += 1;
             }
 
             // Determines the phase and the fractional interpolation factor
-            let phase_f = self.phase_accum;
-            let phase_idx = phase_f as usize;
-            let frac = (phase_f - phase_idx as f64) as f32;
+            let phase_idx = (self.phase_accum >> 40) as usize;
+            const FRAC_MASK: u64 = (1u64 << 40) - 1;
+            let frac_bits = self.phase_accum & FRAC_MASK;
+            let frac = (frac_bits as i64 as f64 * (1.0 / (1u64 << 40) as f64)) as f32;
 
             // Next phase (with wrap)
             let phase_next = if phase_idx + 1 >= NUM_PHASES {
@@ -271,17 +258,11 @@ impl ResamplerCore {
         }
 
         // Consume remaining input samples (keep state updated)
-        while self.phase_accum >= NUM_PHASES as f64 && in_idx < n_in {
+        while self.phase_accum >= num_phases_fp && in_idx < n_in {
             unsafe {
                 self.state_l.push(*in_l.get_unchecked(in_idx));
             }
-            self.phase_accum -= NUM_PHASES as f64;
-            // In debug: verifies non-underflow invariant.
-            #[cfg(debug_assertions)]
-            {
-                debug_assert!(self.phase_accum >= -1e-12);
-                self.phase_accum = self.phase_accum.max(0.0);
-            }
+            self.phase_accum -= num_phases_fp;
             in_idx += 1;
         }
 

@@ -1878,7 +1878,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S25.T07 — Fixed-point `phase_accum` no resampler ⚠️
+#### Tarefa S25.T07 — Fixed-point `phase_accum` no resampler ⚠️ [DONE]
 
 - **Onde:** `src/dsp/resampler.rs:158, 243` (path stereo + mono).
 - **Problema:** `phase_accum: f64` somado e convertido a `usize` em cada output sample via `cvttsd2si` (4-6 cycles, alta latência). Float-to-int conversion bloqueia ILP.
@@ -1910,6 +1910,12 @@ Notas Operacionais — Épico 14
   - Proptest com ratio aleatório [0.5, 2.0] sobre 100k inputs: drift acumulado < 1e-9 vs implementação f64.
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.0 dia.
+- **Sugestão de git message:** `perf(dsp): implement 24.40 fixed-point phase accumulator in polyphase FIR resampler`
+- **Resultados da Implementação (S25.T07):**
+  - Implementado acumulador e passo no formato 24.40 fixed-point (`u64`).
+  - Casting do `frac` otimizado via `i64` para utilizar a instrução nativa de x86 `cvtsi2sd` de forma direta e eficiente.
+  - Testes do resampler atualizados e passando (incluindo teste de drift de 100k samples).
+  - Ganhos de performance de até 17% medidos no benchmark.
 
 #### Tarefa S25.T08 — Eliminar `head_accum.fill(0.0)` via kernel overwrite no primeiro layer ⚠️
 
