@@ -689,6 +689,24 @@ pub unsafe fn compute_max_diff_fallback(a: &[f32], b: &[f32]) -> f32 {
     max_diff
 }
 
+/// Computes the peak absolute value of both channels (fallback).
+pub unsafe fn compute_peak_abs_stereo_fallback(left: &[f32], right: &[f32]) -> (f32, f32) {
+    let mut peak_l = 0.0f32;
+    let mut peak_r = 0.0f32;
+    let len = core::cmp::min(left.len(), right.len());
+    for i in 0..len {
+        let al = (*left.get_unchecked(i)).abs();
+        let ar = (*right.get_unchecked(i)).abs();
+        if al > peak_l {
+            peak_l = al;
+        }
+        if ar > peak_r {
+            peak_r = ar;
+        }
+    }
+    (peak_l, peak_r)
+}
+
 /// Batch GEMV overwrite with native f32 weights and inputs.
 ///
 /// Performs `num_frames` independent matrix-vector multiplications.

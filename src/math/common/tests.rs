@@ -285,6 +285,23 @@ fn test_compute_max_diff_parity() {
 }
 
 #[test]
+fn test_compute_peak_abs_stereo_parity() {
+    let l: Vec<f32> = (0..100).map(|i| (i as f32 * 0.01).sin() * 2.0).collect();
+    let r: Vec<f32> = (0..100).map(|i| ((100 - i) as f32 * 0.01).cos() * -1.5).collect();
+    let expected = unsafe { crate::math::common::compute_peak_abs_stereo_fallback(&l, &r) };
+
+    let res_avx2 = unsafe { Avx2Math::compute_peak_abs_stereo(&l, &r) };
+    assert!((res_avx2.0 - expected.0).abs() < 1e-6);
+    assert!((res_avx2.1 - expected.1).abs() < 1e-6);
+
+    if is_x86_feature_detected!("avx512f") {
+        let res_avx512 = unsafe { Avx512Math::compute_peak_abs_stereo(&l, &r) };
+        assert!((res_avx512.0 - expected.0).abs() < 1e-6);
+        assert!((res_avx512.1 - expected.1).abs() < 1e-6);
+    }
+}
+
+#[test]
 fn test_convolve_mono_parity() {
     let coeffs =
         crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.01).collect());

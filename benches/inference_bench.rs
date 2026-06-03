@@ -834,11 +834,187 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
     group.finish();
 }
 
+#[cfg(feature = "clap-plugin")]
+struct BenchHostShared;
+#[cfg(feature = "clap-plugin")]
+impl clack_host::prelude::SharedHandler<'_> for BenchHostShared {
+    fn request_restart(&self) {}
+    fn request_process(&self) {}
+    fn request_callback(&self) {}
+}
+
+#[cfg(feature = "clap-plugin")]
+struct BenchHost;
+#[cfg(feature = "clap-plugin")]
+impl clack_host::prelude::HostHandlers for BenchHost {
+    type Shared<'a> = BenchHostShared;
+    type MainThread<'a> = ();
+    type AudioProcessor<'a> = ();
+}
+
+#[cfg(feature = "clap-plugin")]
+fn bench_clap_process_block_64samp(c: &mut criterion::Criterion) {
+    use clack_host::prelude::*;
+    use nam_rs::clap::plugin::NamClapPlugin;
+    use nam_rs::clap::extensions::params::{PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN};
+    use clack_common::events::Pckn;
+    use clack_common::events::event_types::ParamValueEvent;
+    use clack_common::utils::{ClapId, Cookie};
+
+    let entry =
+        PluginEntry::load_from_clack::<clack_plugin::entry::SinglePluginEntry<NamClapPlugin>>(
+            c"/bench",
+        )
+        .expect("Failed to load PluginEntry");
+
+    let host_info = HostInfo::new(
+        "NAM-rs Bench Host",
+        "Fabio Lima",
+        "https://github.com/fabiohl/nam-rs",
+        "0.1.0",
+    )
+    .unwrap();
+
+    let mut plugin_instance = PluginInstance::<BenchHost>::new(
+        |_| BenchHostShared,
+        |_| (),
+        &entry,
+        c"br.eti.fabiolima.nam-rs",
+        &host_info,
+    )
+    .expect("Failed to create plugin instance");
+
+    let audio_config = PluginAudioConfiguration {
+        sample_rate: 48000.0,
+        min_frames_count: 64,
+        max_frames_count: 64,
+    };
+
+    let stopped_processor = plugin_instance
+        .activate(|_, _| (), audio_config)
+        .expect("Failed to activate plugin");
+
+    let mut started_processor = stopped_processor
+        .start_processing()
+        .expect("Failed to start processing");
+
+    // Prepare non-silent audio buffers (sine wave at 440Hz)
+    // Non-silent so the gate stays open and the DSP/gain/peaks code is fully exercised
+    let sine = generate_sine_440hz(64);
+    let mut input_audio_buffers = [sine.clone(), sine.clone()];
+    let mut output_audio_buffers = [[0.0f32; 64], [0.0f32; 64]];
+
+    let mut input_ports = AudioPorts::with_capacity(2, 1);
+    let mut output_ports = AudioPorts::with_capacity(2, 1);
+
+    let mut output_events_buffer = EventBuffer::with_capacity(10);
+
+    let mut group = c.benchmark_group("CLAP_process_block_64samp");
+
+    // 1. Fast Path (SIMD) - stable parameters, no changes
+    group.bench_function("SIMD_FastPath", |b| {
+        b.iter(|| {
+            let input_events = InputEvents::empty();
+            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+            // Reconstruct the port views to keep it realistic
+            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_audio_buffers.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(
+                    output_audio_buffers.iter_mut().map(|buf| buf.as_mut_slice()),
+                ),
+            }]);
+
+            let status = started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Process failed");
+
+            std::hint::black_box(status);
+        });
+    });
+
+    // 2. Slow Path (Scalar) - forced parameter changes on every block
+    let mut input_events_buffer = EventBuffer::new();
+    let event_in = ParamValueEvent::new(
+        0,
+        ClapId::new(PARAM_INPUT_GAIN),
+        Pckn::match_all(),
+        0.0,
+        Cookie::empty(),
+    );
+    let event_out = ParamValueEvent::new(
+        0,
+        ClapId::new(PARAM_OUTPUT_GAIN),
+        Pckn::match_all(),
+        0.0,
+        Cookie::empty(),
+    );
+    input_events_buffer.push(&event_in);
+    input_events_buffer.push(&event_out);
+    let input_events = InputEvents::from_buffer(&input_events_buffer);
+
+    group.bench_function("Scalar_SlowPath", |b| {
+        b.iter(|| {
+            let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+            // Reconstruct the port views to keep it realistic
+            let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_input_only(
+                    input_audio_buffers.iter_mut().map(InputChannel::constant),
+                ),
+            }]);
+
+            let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+                latency: 0,
+                channels: AudioPortBufferType::f32_output_only(
+                    output_audio_buffers.iter_mut().map(|buf| buf.as_mut_slice()),
+                ),
+            }]);
+
+            let status = started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("Process failed");
+
+            std::hint::black_box(status);
+        });
+    });
+
+    group.finish();
+
+    let stopped_processor = started_processor.stop_processing();
+    plugin_instance.deactivate(stopped_processor);
+}
+
+#[cfg(not(feature = "clap-plugin"))]
+fn bench_clap_process_block_64samp(_c: &mut criterion::Criterion) {}
+
 // Main benchmark group definition (inference latency and DSP kernels)
 criterion_group!(
     name = benches;
     // sample_size(50) is a balance between statistical accuracy and total runtime.
-    config = Criterion::default().sample_size(50);
+    config = criterion::Criterion::default().sample_size(50);
     targets = bench_wavenet_standard_process,
     bench_wavenet_standard_block_sizes,
     bench_lstm_2x16_process,
@@ -867,7 +1043,8 @@ criterion_group!(
     bench_sigmoid_avx512_256elem,
     bench_prewarm_wavenet_standard,
     bench_prewarm_lstm_2x16,
-    bench_head_rechannel_fp32
+    bench_head_rechannel_fp32,
+    bench_clap_process_block_64samp
 );
 
 // Long-running benchmark group definition (Soak Tests)

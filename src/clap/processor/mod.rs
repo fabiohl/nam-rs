@@ -98,6 +98,8 @@ pub struct NamClapProcessor<'a> {
     host: HostAudioProcessorHandle<'a>,
     /// Per-instance flag for one-time RT priority query on the first block.
     prio_checked: bool,
+    pub(crate) param_in_changed: bool,
+    pub(crate) param_out_changed: bool,
 }
 
 impl<'a> NamClapProcessor<'a> {
@@ -241,6 +243,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             cycles_since_telemetry: 0,
             host,
             prio_checked: false,
+            param_in_changed: false,
+            param_out_changed: false,
         })
     }
 

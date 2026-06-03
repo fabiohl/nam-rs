@@ -85,6 +85,18 @@ impl ParamSmoother {
     pub fn target_value(&self) -> f32 {
         self.target
     }
+
+    /// Returns the current value (peek).
+    #[inline]
+    pub fn peek(&self) -> f32 {
+        self.current
+    }
+
+    /// Sets the current value.
+    #[inline]
+    pub fn set(&mut self, val: f32) {
+        self.current = val;
+    }
 }
 
 #[cfg(test)]

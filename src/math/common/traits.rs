@@ -270,6 +270,13 @@ pub trait SimdMath {
     /// The buffers must be valid and have the same length.
     unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32;
 
+    /// Computes the peak absolute value of both channels.
+    /// Returns `(max(|left_i|), max(|right_i|))`
+    ///
+    /// # Safety
+    /// The buffers must be valid and have the same length.
+    unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32);
+
     /// Applies Tanh to a slice.
     ///
     /// # Safety

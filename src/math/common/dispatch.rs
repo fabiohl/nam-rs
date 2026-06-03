@@ -108,6 +108,8 @@ pub struct SimdMathConfig {
     pub compute_energy: unsafe fn(&[f32]) -> f32,
     /// Computes the maximum absolute difference between two blocks.
     pub compute_max_diff: unsafe fn(&[f32], &[f32]) -> f32,
+    /// Computes the peak absolute value of both stereo channels.
+    pub compute_peak_abs_stereo: unsafe fn(&[f32], &[f32]) -> (f32, f32),
 }
 
 impl SimdMathConfig {
@@ -165,6 +167,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy_stereo: Avx512VnniBf16Math::compute_energy_stereo,
                 compute_energy: Avx512VnniBf16Math::compute_energy,
                 compute_max_diff: Avx512VnniBf16Math::compute_max_diff,
+                compute_peak_abs_stereo: Avx512VnniBf16Math::compute_peak_abs_stereo,
             };
         }
         // 2. AVX-512 with VNNI support only.
@@ -193,6 +196,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy_stereo: Avx512VnniMath::compute_energy_stereo,
                 compute_energy: Avx512VnniMath::compute_energy,
                 compute_max_diff: Avx512VnniMath::compute_max_diff,
+                compute_peak_abs_stereo: Avx512VnniMath::compute_peak_abs_stereo,
             };
         }
         // 3. Basic AVX-512 Foundation (512-bit).
@@ -221,6 +225,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy_stereo: Avx512Math::compute_energy_stereo,
                 compute_energy: Avx512Math::compute_energy,
                 compute_max_diff: Avx512Math::compute_max_diff,
+                compute_peak_abs_stereo: Avx512Math::compute_peak_abs_stereo,
             };
         }
         // 4. AVX2 with VNNI support (AVX-VNNI).
@@ -249,6 +254,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy_stereo: Avx2VnniMath::compute_energy_stereo,
                 compute_energy: Avx2VnniMath::compute_energy,
                 compute_max_diff: Avx2VnniMath::compute_max_diff,
+                compute_peak_abs_stereo: Avx2VnniMath::compute_peak_abs_stereo,
             };
         }
         // 5. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
@@ -278,6 +284,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy_stereo: Avx2Math::compute_energy_stereo,
                 compute_energy: Avx2Math::compute_energy,
                 compute_max_diff: Avx2Math::compute_max_diff,
+                compute_peak_abs_stereo: Avx2Math::compute_peak_abs_stereo,
             };
         }
     }

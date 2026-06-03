@@ -22,6 +22,10 @@ impl<'a> NamClapProcessor<'a> {
         audio: &mut Audio,
         start_time: Instant,
     ) -> Result<ProcessStatus, PluginError> {
+        let param_in_changed = self.param_in_changed;
+        let param_out_changed = self.param_out_changed;
+        self.param_in_changed = false;
+        self.param_out_changed = false;
         for mut port_pair in audio {
             let n_samples = port_pair.frames_count() as usize;
             if n_samples == 0 {
@@ -165,12 +169,47 @@ impl<'a> NamClapProcessor<'a> {
 
             // 2. Input Gain Application (Sample-Accurate Smoothing)
             let mut input_has_clipped = false;
-            for i in 0..n_samples {
-                let g = self.smoother_in.tick();
-                self.buf_host_l[i] *= g;
-                self.buf_host_r[i] *= g;
-                if self.buf_host_l[i].abs() > 1.0 || self.buf_host_r[i].abs() > 1.0 {
-                    input_has_clipped = true;
+            if param_in_changed {
+                for i in 0..n_samples {
+                    let g = self.smoother_in.tick();
+                    self.buf_host_l[i] *= g;
+                    self.buf_host_r[i] *= g;
+                    if self.buf_host_l[i].abs() > 1.0 || self.buf_host_r[i].abs() > 1.0 {
+                        input_has_clipped = true;
+                    }
+                }
+            } else {
+                let start = self.smoother_in.peek();
+                let target = self.smoother_in.target_value();
+                if (start - target).abs() < 1e-9 {
+                    input_has_clipped = unsafe {
+                        crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
+                            &mut self.buf_host_l[..n_samples],
+                            &mut self.buf_host_r[..n_samples],
+                            start,
+                        )
+                    };
+                } else {
+                    let step = (target - start) / n_samples as f32;
+                    unsafe {
+                        crate::math::dsp::gain::apply_ramp_stereo(
+                            &mut self.buf_host_l[..n_samples],
+                            &mut self.buf_host_r[..n_samples],
+                            start,
+                            step,
+                        );
+                    }
+                    self.smoother_in.set(start + step * n_samples as f32);
+
+                    let (peak_l, peak_r) = unsafe {
+                        crate::math::dsp::stereo::compute_peak_abs_stereo(
+                            &self.buf_host_l[..n_samples],
+                            &self.buf_host_r[..n_samples],
+                        )
+                    };
+                    if peak_l > 1.0 || peak_r > 1.0 {
+                        input_has_clipped = true;
+                    }
                 }
             }
             if input_has_clipped {
@@ -283,33 +322,78 @@ impl<'a> NamClapProcessor<'a> {
             );
 
             // 5. Output Gain Application (Sample-Accurate Smoothing)
-            for i in 0..n_out {
-                let g = self.smoother_out.tick();
-                self.buf_out_l[i] *= g;
-                self.buf_out_r[i] *= g;
+            if param_out_changed {
+                for i in 0..n_out {
+                    let g = self.smoother_out.tick();
+                    self.buf_out_l[i] *= g;
+                    self.buf_out_r[i] *= g;
+                }
+            } else {
+                let start = self.smoother_out.peek();
+                let target = self.smoother_out.target_value();
+                if (start - target).abs() < 1e-9 {
+                    unsafe {
+                        crate::math::dsp::gain::apply_gain_stereo(
+                            &mut self.buf_out_l[..n_out],
+                            &mut self.buf_out_r[..n_out],
+                            start,
+                        );
+                    }
+                } else {
+                    let step = (target - start) / n_out as f32;
+                    unsafe {
+                        crate::math::dsp::gain::apply_ramp_stereo(
+                            &mut self.buf_out_l[..n_out],
+                            &mut self.buf_out_r[..n_out],
+                            start,
+                            step,
+                        );
+                    }
+                    self.smoother_out.set(start + step * n_out as f32);
+                }
             }
 
             let mut peak_l = 0.0f32;
+            let mut peak_r = 0.0f32;
+            let mut len_l = 0;
             if let Some(o_l) = out_l {
                 let n = n_out.min(o_l.len());
                 o_l[..n].copy_from_slice(&self.buf_out_l[..n]);
-                for &sample in &self.buf_out_l[..n] {
-                    let abs_val = sample.abs();
-                    if abs_val > peak_l {
-                        peak_l = abs_val;
-                    }
-                }
+                len_l = n;
             }
-            let mut peak_r = 0.0f32;
+            let mut len_r = 0;
             if let Some(o_r) = out_r {
                 let n = n_out.min(o_r.len());
                 o_r[..n].copy_from_slice(&self.buf_out_r[..n]);
-                for &sample in &self.buf_out_r[..n] {
-                    let abs_val = sample.abs();
-                    if abs_val > peak_r {
-                        peak_r = abs_val;
-                    }
-                }
+                len_r = n;
+            }
+
+            if len_l > 0 && len_r > 0 {
+                let n = len_l.min(len_r);
+                let (p_l, p_r) = unsafe {
+                    crate::math::dsp::stereo::compute_peak_abs_stereo(
+                        &self.buf_out_l[..n],
+                        &self.buf_out_r[..n],
+                    )
+                };
+                peak_l = p_l;
+                peak_r = p_r;
+            } else if len_l > 0 {
+                let (p_l, _) = unsafe {
+                    crate::math::dsp::stereo::compute_peak_abs_stereo(
+                        &self.buf_out_l[..len_l],
+                        &self.buf_out_l[..len_l],
+                    )
+                };
+                peak_l = p_l;
+            } else if len_r > 0 {
+                let (_, p_r) = unsafe {
+                    crate::math::dsp::stereo::compute_peak_abs_stereo(
+                        &self.buf_out_r[..len_r],
+                        &self.buf_out_r[..len_r],
+                    )
+                };
+                peak_r = p_r;
             }
 
             let current_peak_l = f32::from_bits(self.shared.ui_peak_l.load(Ordering::Relaxed));

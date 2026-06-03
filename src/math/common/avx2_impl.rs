@@ -345,6 +345,11 @@ impl SimdMath for Avx2Math {
         unsafe { super::super::dsp::stereo::compute_max_diff_avx2(a, b) }
     }
 
+    #[inline(always)]
+    unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32) {
+        unsafe { super::super::dsp::stereo::compute_peak_abs_stereo_avx2(left, right) }
+    }
+
     // Convolve Stereo: Applies filtering (equalization) to both channels (left and right) simultaneously.
     //
     // ## SIMD Throughput Optimization:

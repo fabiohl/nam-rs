@@ -1786,7 +1786,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S25.T02 — SIMD vectorize gain + peak detection no CLAP processor 🔥
+#### Tarefa S25.T02 — SIMD vectorize gain + peak detection no CLAP processor 🔥 [DONE]
 
 - **Onde:** `src/clap/processor/dsp.rs:166-178` (input gain), `:285-290` (output gain), `:292-313` (peak detection); kernels já disponíveis em `src/math/common/dispatch.rs` (`apply_gain_and_detect_clipping_stereo`, `apply_ramp_stereo`).
 - **Problema:** Três loops `for i in 0..n_samples` escalares no hotpath do CLAP. O kernel SIMD `apply_gain_and_detect_clipping_stereo` **já existe** no dispatcher e faz exatamente o necessário (gain + clipping mask via `_mm256_max_ps`), mas **não é usado pelo CLAP processor** — duplicação evitável após S6.T03 que já consolidou `apply_gain`. Peak detection idem: 4 `abs()` + 4 cmp por iteração escalar.

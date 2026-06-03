@@ -13,6 +13,7 @@ mod convolution_avx2;
 mod convolution_avx512;
 mod energy;
 mod max_diff;
+mod peak;
 
 pub use convolution_avx2::{convolve_mono_avx2, convolve_stereo_avx2, convolve_stereo_dual_avx2};
 pub use convolution_avx512::{
@@ -23,6 +24,7 @@ pub use energy::{
     compute_energy_stereo_avx512,
 };
 pub use max_diff::{compute_max_diff_avx2, compute_max_diff_avx512};
+pub use peak::{compute_peak_abs_stereo_avx2, compute_peak_abs_stereo_avx512};
 
 /// Computes the maximum energy between two audio channels via SIMD dispatch.
 ///
@@ -38,6 +40,14 @@ pub unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
 /// Uses dynamic dispatch via global v-table.
 pub unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
     crate::math::common::dispatch_simd!(compute_max_diff(a, b))
+}
+
+/// Computes the peak absolute value of both stereo channels via SIMD dispatch.
+///
+/// # Safety
+/// Uses dynamic dispatch via global v-table.
+pub unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32) {
+    crate::math::common::dispatch_simd!(compute_peak_abs_stereo(left, right))
 }
 
 /// Stereo convolution (used in the resampler) via SIMD dispatch.
