@@ -583,6 +583,35 @@ fn test_tanh_and_overwrite_block() {
 }
 
 #[test]
+fn test_tanh_and_accumulate_block() {
+    fn test_backend<M: SimdMath>() {
+        for len in [1, 4, 8, 15, 16, 17, 31, 32, 33, 64] {
+            let mut head_input = vec![1.0f32; len];
+            let mut block = vec![0.5f32; len];
+            unsafe { M::tanh_and_accumulate_block(&mut head_input, &mut block) };
+            let expected_tanh = 0.5f32.tanh();
+            for i in 0..len {
+                assert!(
+                    (block[i] - expected_tanh).abs() < 1e-6,
+                    "Length {} block[{}] failed: got {}, expected {}",
+                    len, i, block[i], expected_tanh
+                );
+                assert!(
+                    (head_input[i] - (1.0 + expected_tanh)).abs() < 1e-6,
+                    "Length {} head_input[{}] failed: got {}, expected {}",
+                    len, i, head_input[i], 1.0 + expected_tanh
+                );
+            }
+        }
+    }
+
+    test_backend::<Avx2Math>();
+    if std::is_x86_feature_detected!("avx512f") {
+        test_backend::<Avx512Math>();
+    }
+}
+
+#[test]
 fn test_gated_activation_and_overwrite_block() {
     fn test_backend<M: SimdMath>() {
         let ch = 8;

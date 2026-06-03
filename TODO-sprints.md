@@ -1759,7 +1759,7 @@ Notas Operacionais — Épico 14
   4. `cargo test --test cpp_parity -- --ignored --nocapture` — 5/5 PASS mantido.
 - **Convenções:** mesmas dos Épicos 1–8 (PR por tarefa, branch `feat/S25-T01-...`, commit `[S25.T01]`, atualização `documentador` quando arquitetura muda).
 
-### Sprint S25 — Hotpath SIMD Recovery & Buffer Alignment
+### Sprint S25 — Hotpath SIMD Recovery & Buffer Alignment [DONE]
 
 > Foco: recuperar gaps remanescentes pós-Épicos 4/6/8 e endereçar paths ainda escalares descobertos pela auditoria. Cada tarefa tem critério de regressão **medido por benchmark concreto**.
 

@@ -316,3 +316,69 @@ pub unsafe fn gated_activation_and_overwrite_block_fallback(
     }
 }
 
+/// Accumulates src into dest using AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn accumulate_head_avx512(dest: &mut [f32], src: &[f32]) {
+    let len = dest.len();
+    let mut i = 0;
+    while i + 16 <= len {
+        let vs = _mm512_loadu_ps(src.as_ptr().add(i));
+        let vd = _mm512_loadu_ps(dest.as_ptr().add(i));
+        _mm512_storeu_ps(dest.as_mut_ptr().add(i), _mm512_add_ps(vd, vs));
+        i += 16;
+    }
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let vs = _mm512_maskz_loadu_ps(mask, src.as_ptr().add(i));
+        let vd = _mm512_maskz_loadu_ps(mask, dest.as_ptr().add(i));
+        _mm512_mask_storeu_ps(dest.as_mut_ptr().add(i), mask, _mm512_add_ps(vd, vs));
+    }
+}
+
+/// Applies tanh in-place on block and accumulates into head_input using AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn tanh_and_accumulate_block_avx512(head_input: &mut [f32], block: &mut [f32]) {
+    let len = block.len();
+    let mut i = 0;
+    while i + 16 <= len {
+        let vb = _mm512_loadu_ps(block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_avx512(vb);
+        _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
+
+        let vh = _mm512_loadu_ps(head_input.as_ptr().add(i));
+        _mm512_storeu_ps(head_input.as_mut_ptr().add(i), _mm512_add_ps(vh, vt));
+        i += 16;
+    }
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_avx512(vb);
+        _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
+
+        let vh = _mm512_maskz_loadu_ps(mask, head_input.as_ptr().add(i));
+        _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, _mm512_add_ps(vh, vt));
+    }
+}
+
+/// Applies tanh in-place on block and overwrites head_input using AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mut [f32]) {
+    let len = block.len();
+    let mut i = 0;
+    while i + 16 <= len {
+        let vb = _mm512_loadu_ps(block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_avx512(vb);
+        _mm512_storeu_ps(block.as_mut_ptr().add(i), vt);
+        _mm512_storeu_ps(head_input.as_mut_ptr().add(i), vt);
+        i += 16;
+    }
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let vb = _mm512_maskz_loadu_ps(mask, block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_avx512(vb);
+        _mm512_mask_storeu_ps(block.as_mut_ptr().add(i), mask, vt);
+        _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, vt);
+    }
+}
+
+
