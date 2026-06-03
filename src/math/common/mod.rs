@@ -17,6 +17,7 @@ pub mod aligned;
 pub mod avx2_impl;
 pub mod avx512;
 pub mod dispatch;
+pub mod kahan;
 pub mod ops;
 pub mod scalar_ref;
 /// Unit tests for the common math infrastructure.
@@ -29,6 +30,7 @@ pub use aligned::AlignedVec;
 pub use avx2_impl::{Avx2Math, Avx2VnniMath};
 pub use avx512::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
+pub use kahan::{Kahan4F32, KahanF32, kahan_add};
 pub use ops::*;
 pub use scalar_ref::*;
 pub use traits::SimdMath;

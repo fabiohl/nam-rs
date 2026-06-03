@@ -23,6 +23,7 @@
 //! used exclusively for internal validation.
 
 // Re-exports of Wavenet fallbacks (Task 3.4 — maintains path compatibility)
+use crate::math::common::kahan_add;
 pub use crate::math::wavenet::accumulate::{
     accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
     tanh_and_accumulate_block_fallback,
@@ -81,21 +82,34 @@ pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
 /// Useful when a sound (state) affects 4 different "channels" or "neurons".
 pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = core::cmp::min(weights.len(), state.len());
-    let mut sum = [0.0f32; 4]; // We create a "small bucket" for each of the 4 sums.
+    let mut sum = [0.0f32; 4];
+    let mut comp = [0.0f32; 4];
 
     for i in 0..len {
         unsafe {
-            let s = *state.get_unchecked(i); // Get one input value.
-            let w = weights.get_unchecked(i); // Get the 4 corresponding weights.
+            let s = *state.get_unchecked(i);
+            let w = weights.get_unchecked(i);
 
-            // Each weight multiplies the same input value and goes into its respective sum.
-            sum[0] += half::f16::from_bits(w[0]).to_f32() * s;
-            sum[1] += half::f16::from_bits(w[1]).to_f32() * s;
-            sum[2] += half::f16::from_bits(w[2]).to_f32() * s;
-            sum[3] += half::f16::from_bits(w[3]).to_f32() * s;
+            let w0 = half::f16::from_bits(w[0]).to_f32();
+            let w1 = half::f16::from_bits(w[1]).to_f32();
+            let w2 = half::f16::from_bits(w[2]).to_f32();
+            let w3 = half::f16::from_bits(w[3]).to_f32();
+
+            let (s0, c0) = kahan_add(sum[0], comp[0], w0 * s);
+            sum[0] = s0;
+            comp[0] = c0;
+            let (s1, c1) = kahan_add(sum[1], comp[1], w1 * s);
+            sum[1] = s1;
+            comp[1] = c1;
+            let (s2, c2) = kahan_add(sum[2], comp[2], w2 * s);
+            sum[2] = s2;
+            comp[2] = c2;
+            let (s3, c3) = kahan_add(sum[3], comp[3], w3 * s);
+            sum[3] = s3;
+            comp[3] = c3;
         }
     }
-    sum // Returns the 4 results.
+    sum
 }
 
 /// Same logic as above (4 sums at once), but using the compact BF16 format.
@@ -105,18 +119,30 @@ pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
 ) -> [f32; 4] {
     let len = core::cmp::min(weights.len(), state.len());
     let mut sum = [0.0f32; 4];
+    let mut comp = [0.0f32; 4];
 
     for i in 0..len {
         unsafe {
-            // Unpack BF16 input -> f32.
             let s = f32::from_bits((*state.get_unchecked(i) as u32) << 16);
             let w = weights.get_unchecked(i);
 
-            // Unpack each of the 4 weights and multiply by the input.
-            sum[0] += f32::from_bits((w[0] as u32) << 16) * s;
-            sum[1] += f32::from_bits((w[1] as u32) << 16) * s;
-            sum[2] += f32::from_bits((w[2] as u32) << 16) * s;
-            sum[3] += f32::from_bits((w[3] as u32) << 16) * s;
+            let w0 = f32::from_bits((w[0] as u32) << 16);
+            let w1 = f32::from_bits((w[1] as u32) << 16);
+            let w2 = f32::from_bits((w[2] as u32) << 16);
+            let w3 = f32::from_bits((w[3] as u32) << 16);
+
+            let (s0, c0) = kahan_add(sum[0], comp[0], w0 * s);
+            sum[0] = s0;
+            comp[0] = c0;
+            let (s1, c1) = kahan_add(sum[1], comp[1], w1 * s);
+            sum[1] = s1;
+            comp[1] = c1;
+            let (s2, c2) = kahan_add(sum[2], comp[2], w2 * s);
+            sum[2] = s2;
+            comp[2] = c2;
+            let (s3, c3) = kahan_add(sum[3], comp[3], w3 * s);
+            sum[3] = s3;
+            comp[3] = c3;
         }
     }
     sum
@@ -137,6 +163,8 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
     );
     let mut sum_f0 = [0.0f32; 4];
     let mut sum_f1 = [0.0f32; 4];
+    let mut comp_f0 = [0.0f32; 4];
+    let mut comp_f1 = [0.0f32; 4];
 
     for i in 0..len {
         unsafe {
@@ -150,17 +178,33 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
             let w2 = half::f16::from_bits(w[2]).to_f32();
             let w3 = half::f16::from_bits(w[3]).to_f32();
 
-            // Sums for frame 0.
-            sum_f0[0] += w0 * s0;
-            sum_f0[1] += w1 * s0;
-            sum_f0[2] += w2 * s0;
-            sum_f0[3] += w3 * s0;
+            // Kahan-compensated accumulations for frame 0.
+            let (s, c) = kahan_add(sum_f0[0], comp_f0[0], w0 * s0);
+            sum_f0[0] = s;
+            comp_f0[0] = c;
+            let (s, c) = kahan_add(sum_f0[1], comp_f0[1], w1 * s0);
+            sum_f0[1] = s;
+            comp_f0[1] = c;
+            let (s, c) = kahan_add(sum_f0[2], comp_f0[2], w2 * s0);
+            sum_f0[2] = s;
+            comp_f0[2] = c;
+            let (s, c) = kahan_add(sum_f0[3], comp_f0[3], w3 * s0);
+            sum_f0[3] = s;
+            comp_f0[3] = c;
 
-            // Sums for frame 1.
-            sum_f1[0] += w0 * s1;
-            sum_f1[1] += w1 * s1;
-            sum_f1[2] += w2 * s1;
-            sum_f1[3] += w3 * s1;
+            // Kahan-compensated accumulations for frame 1.
+            let (s, c) = kahan_add(sum_f1[0], comp_f1[0], w0 * s1);
+            sum_f1[0] = s;
+            comp_f1[0] = c;
+            let (s, c) = kahan_add(sum_f1[1], comp_f1[1], w1 * s1);
+            sum_f1[1] = s;
+            comp_f1[1] = c;
+            let (s, c) = kahan_add(sum_f1[2], comp_f1[2], w2 * s1);
+            sum_f1[2] = s;
+            comp_f1[2] = c;
+            let (s, c) = kahan_add(sum_f1[3], comp_f1[3], w3 * s1);
+            sum_f1[3] = s;
+            comp_f1[3] = c;
         }
     }
     (sum_f0, sum_f1)
@@ -178,30 +222,45 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
     );
     let mut sum_f0 = [0.0f32; 4];
     let mut sum_f1 = [0.0f32; 4];
+    let mut comp_f0 = [0.0f32; 4];
+    let mut comp_f1 = [0.0f32; 4];
 
     for i in 0..len {
         unsafe {
-            // Convert BF16 inputs to f32.
             let s0 = f32::from_bits((*state_f0.get_unchecked(i) as u32) << 16);
             let s1 = f32::from_bits((*state_f1.get_unchecked(i) as u32) << 16);
             let w = weights.get_unchecked(i);
 
-            // Convert BF16 weights to f32.
             let w0 = f32::from_bits((w[0] as u32) << 16);
             let w1 = f32::from_bits((w[1] as u32) << 16);
             let w2 = f32::from_bits((w[2] as u32) << 16);
             let w3 = f32::from_bits((w[3] as u32) << 16);
 
-            // Accumulate the results.
-            sum_f0[0] += w0 * s0;
-            sum_f0[1] += w1 * s0;
-            sum_f0[2] += w2 * s0;
-            sum_f0[3] += w3 * s0;
+            let (s, c) = kahan_add(sum_f0[0], comp_f0[0], w0 * s0);
+            sum_f0[0] = s;
+            comp_f0[0] = c;
+            let (s, c) = kahan_add(sum_f0[1], comp_f0[1], w1 * s0);
+            sum_f0[1] = s;
+            comp_f0[1] = c;
+            let (s, c) = kahan_add(sum_f0[2], comp_f0[2], w2 * s0);
+            sum_f0[2] = s;
+            comp_f0[2] = c;
+            let (s, c) = kahan_add(sum_f0[3], comp_f0[3], w3 * s0);
+            sum_f0[3] = s;
+            comp_f0[3] = c;
 
-            sum_f1[0] += w0 * s1;
-            sum_f1[1] += w1 * s1;
-            sum_f1[2] += w2 * s1;
-            sum_f1[3] += w3 * s1;
+            let (s, c) = kahan_add(sum_f1[0], comp_f1[0], w0 * s1);
+            sum_f1[0] = s;
+            comp_f1[0] = c;
+            let (s, c) = kahan_add(sum_f1[1], comp_f1[1], w1 * s1);
+            sum_f1[1] = s;
+            comp_f1[1] = c;
+            let (s, c) = kahan_add(sum_f1[2], comp_f1[2], w2 * s1);
+            sum_f1[2] = s;
+            comp_f1[2] = c;
+            let (s, c) = kahan_add(sum_f1[3], comp_f1[3], w3 * s1);
+            sum_f1[3] = s;
+            comp_f1[3] = c;
         }
     }
     (sum_f0, sum_f1)
