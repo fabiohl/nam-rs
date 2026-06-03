@@ -42,7 +42,10 @@ macro_rules! define_lstm2_process_pipelined {
                         let h2 = self.layer2.$get_h2();
                         let dot = if self.use_f32_head {
                             let h2_f32 = self.layer2.get_hidden_state();
-                            crate::math::common::scalar_ref::dot_product_f32_native(h2_f32, &self.head_weights_f32)
+                            crate::math::common::scalar_ref::dot_product_f32_native(
+                                h2_f32,
+                                &self.head_weights_f32,
+                            )
                         } else {
                             $dot_prod(h2, &self.head_weights)
                         };
@@ -57,7 +60,10 @@ macro_rules! define_lstm2_process_pipelined {
                     let h2 = self.layer2.$get_h2();
                     let dot = if self.use_f32_head {
                         let h2_f32 = self.layer2.get_hidden_state();
-                        crate::math::common::scalar_ref::dot_product_f32_native(h2_f32, &self.head_weights_f32)
+                        crate::math::common::scalar_ref::dot_product_f32_native(
+                            h2_f32,
+                            &self.head_weights_f32,
+                        )
                     } else {
                         $dot_prod(h2, &self.head_weights)
                     };
@@ -165,7 +171,10 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
                 .process_sample_scalar(self.layer1.get_hidden_state(), is_bf16);
             let hidden2 = self.layer2.get_hidden_state();
             let dot = if self.use_f32_head {
-                crate::math::common::scalar_ref::dot_product_f32_native(hidden2, &self.head_weights_f32)
+                crate::math::common::scalar_ref::dot_product_f32_native(
+                    hidden2,
+                    &self.head_weights_f32,
+                )
             } else {
                 let mut dot = 0.0;
                 for (j, &h_val) in hidden2.iter().enumerate().take(H) {

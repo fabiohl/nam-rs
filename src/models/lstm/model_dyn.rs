@@ -176,7 +176,10 @@ impl LstmDynModel {
             // Output Layer (Head): Multiply the last layer's hidden state
             // by the 'head' weights and add the bias to get the final sample.
             let head_out = if self.use_f32_head {
-                crate::math::common::scalar_ref::dot_product_f32_native(hidden_out, &self.head_weights_f32)
+                crate::math::common::scalar_ref::dot_product_f32_native(
+                    hidden_out,
+                    &self.head_weights_f32,
+                )
             } else {
                 unsafe { M::dot_product(hidden_out, &self.head_weights) }
             } + self.head_bias;

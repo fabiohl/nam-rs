@@ -743,7 +743,13 @@ fn test_golden_vectors_namcore_lstm_1x3() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "NAMCore-LSTM-1x3");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        "NAMCore-LSTM-1x3",
+    );
 }
 
 /// Test 8f: Golden Vectors NAMCore WaveNet Micro — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -786,7 +792,13 @@ fn test_golden_vectors_namcore_wn_micro() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "NAMCore-WN-micro");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        "NAMCore-WN-micro",
+    );
 }
 
 // =============================================================================

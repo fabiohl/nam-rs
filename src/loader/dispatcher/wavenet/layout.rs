@@ -198,7 +198,12 @@ pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
     }
 
     Ok(T::from_parts_head(
-        weights, bias, do_bias, in_size, out_size, f32_weights,
+        weights,
+        bias,
+        do_bias,
+        in_size,
+        out_size,
+        f32_weights,
     ))
 }
 
@@ -256,12 +261,7 @@ fn transpose_dense_layer(
 
 /// Rearranges dense layer weights into transposed format, keeping full f32 precision.
 /// Stores result in column-major layout: `f32_weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c]`.
-fn transpose_dense_layer_f32(
-    raw: &[f32],
-    weights: &mut [f32],
-    in_size: usize,
-    out_size: usize,
-) {
+fn transpose_dense_layer_f32(raw: &[f32], weights: &mut [f32], in_size: usize, out_size: usize) {
     for out_c in 0..out_size {
         for in_c in 0..in_size {
             weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c];

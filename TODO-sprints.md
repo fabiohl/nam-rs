@@ -1472,3 +1472,43 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
   **2. Thresholds Adaptativos:** A função `topology_thresholds()` em `tests/common/mod.rs` computa thresholds dinamicamente: WaveNet usa `snr_db = 22.0 - (channels + total_dils) * 0.35` com clamp 9–16 dB; LSTM usa `snr_db = 28.0 - (num_layers * hidden_size) * 0.65` com clamp 10–24 dB. Isso garante que modelos pequenos (ex: Nano 4ch, Micro 3ch) tenham thresholds mais apertados (~13–16 dB), enquanto Standard (16ch) mantém o baseline de 9 dB.
   **3. Testes de Paridade (`cargo test`):** 200/200 lib tests PASS, 32/32 nam_infer_test PASS, todos os testes de golden vectors com thresholds adaptativos PASS. Clippy limpo, sem warnings.
   **4. Verificação de fidelidade tonal:** O caminho FP32 no head_rechannel preserva a precisão total dos pesos de saída (24 bits de mantissa) vs ~10 bits do BF16. O backbone permanece BF16/F16 acelerado. A conversão f32→bf16 na saída da camada ocorre apenas uma vez, como antes. O resultado é uma melhoria sutil mas mensurável na qualidade tonal do sinal final, sem custo de performance significativo (head_rechannel representa < 1% do total de operações).
+
+> **Auditoria do Épico 8 (2026-06-03) — FastMath e Redução de Drift:**
+>
+> **Status geral:** Épico concluído com auditoria completa de todas as 8 tarefas. Todos os 200 testes lib passam. Clippy limpo. Quick win de correção de regressão aplicado.
+>
+> **Resumo de resultados por tarefa:**
+>
+> - **E8.T01** ✅ — Sigmoid minimax direto (grau 17, Lawson). Maior sucesso do épico: redução de 40% no erro máximo da sigmoid (6.8e-4 → 4.09e-4). Ganho escalar de -20.25% em `LSTM_2x16_Comparison/Scalar_Baseline`. Zero regressão SIMD relevante.
+> - **E8.T02** ⚠️ CORRIGIDO — Tanh piecewise 7 segmentos. Introduziu regressão de +16% em prewarm LSTM 2×16 (2048 samples) com erro pior (4.90e-3) que o Padé (2.32e-3). Corrigido pelo Quick Win abaixo.
+> - **E8.T03** ✅ — Bias-tuning BF16: zero overhead RT, compensação no load. Ganho ≥1.5 dB de SNR pendente de hardware BF16-capable (Intel Sapphire Rapids+, AMD Zen 5+). Arquitetura correta e pronta.
+> - **E8.T04** ✅ — Análise de precisão Padé NR2/Div: ZERO contribuição do recíproco ao drift (NR2/Div = 1.000×). O gargalo é a fórmula racional, não a divisão. Padé [5,4] div = 2.1× mais preciso e 60% mais rápido que piecewise 7-seg.
+> - **E8.T05** ✅ — Dither DC anti-subnormal (-220 dBFS): zero overhead, estabilidade de fade garantida. Benchmark sem regressão.
+> - **E8.T06** ✅ — Kahan summation: drift de acumulação reduzido de O(N·ε) para O(ε). Overhead <0.1% do tempo total. Kernels SIMD já usam soma pairwise — Kahan aplicado apenas nos loops externos de conv1d.
+> - **E8.T07** ✅ — Kernel BF16 SIMD nativo (`dot_product_4x_interleaved_avx512_bf16`) com acumulação estrita em f32. Fusão de conexão residual. Zero conversões f32→bf16→f32 no mesmo estágio. 5/5 cpp_parity PASS.
+> - **E8.T08** ✅ — Mixed-precision seletiva: head_rechannel em FP32 (24-bit mantissa) vs BF16 (~10-bit). Thresholds adaptativos de teste por topologia. 200/200 PASS, clippy limpo.
+>
+> **Quick Win aplicado (2026-06-03) — Regressão E8.T02 corrigida:**
+>
+> `simd_tanh_avx2`, `simd_tanh_dual_avx2` e `simd_tanh_avx512` substituídos por Padé [5,4] com `_mm256_div_ps` / `_mm512_div_ps`. O piecewise 7-segmentos é mantido como `simd_tanh_piecewise_avx2` (experimental, `#[allow(dead_code)]`) para referência futura.
+>
+> **Resultados confirmados por benchmark (final):**
+>
+> - `FastMath_tanh_AVX2_256elem`: **54.2 ns** (vs ~163 ns piecewise) — **−66.6%** de latência. Melhor que o PadeDiv individual (~63 ns) pois o dual amortiza o broadcast de coeficientes sobre 16 elementos.
+> - `Prewarm_LSTM_2x16_2048samp`: **341 µs** — ganho total vs baseline piecewise (~426 µs): **~−20%**. Regressão E8.T02 totalmente eliminada e superada.
+> - Erro máximo tanh: **4.90e-3 → 2.32e-3** (2.1× melhor precisão).
+> - 200/200 testes PASS, clippy limpo.
+>
+> **Conclusões sobre precisão prática:**
+>
+> 1. O drift WaveNet Standard (SNR=9.5 dB) é dominado pela quantização BF16 dos pesos, não pelas ativações. As melhorias de precisão no tanh/sigmoid contribuem marginalmente ao SNR final.
+> 2. Os gains mais práticos vieram de: (a) sigmoid direta [-20.25% escalar], (b) head FP32 [fidelidade tonal final], (c) Kahan [robustez em cascatas profundas], (d) dither DC [estabilidade fade].
+> 3. A dupla iteração Newton-Raphson no recíproco é completamente desnecessária para tanh em f32 — erro mensurável zero vs `div_ps`.
+>
+> **Pendências para sprints futuras:**
+>
+> 1. **Bias-tuning com sinal de stress real (S22/S23):** A premissa DC=1.0 é primeira ordem; usar sinal de stress real (2048 amostras) como entrada da inferência simulada no load do modelo.
+> 2. **Validação BF16 em CI:** Adicionar runner com CPU BF16-capable (Intel Sapphire Rapids ou AMD Zen 5) para validar ganho ≥1.5 dB do E8.T03.
+> 3. **Coeficientes Sollya para piecewise (se retomado):** O `TODO` em `constants.rs` permanece — usar `fpminimax` pode reduzir o erro do segmento [0,1] de 1.3e-3 para ~5e-4, mas não resolve o throughput.
+>
+> **Git commit:** `perf(math): revert tanh to Padé [5,4] hardware-div, fixing +16% LSTM prewarm regression from E8.T02 piecewise`

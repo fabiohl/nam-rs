@@ -141,11 +141,7 @@ fn ensure_render_compiled() -> bool {
     render_bin().exists()
 }
 
-fn run_render_comparison(
-    model_filename: &str,
-    golden_name: &str,
-    label: &str,
-) {
+fn run_render_comparison(model_filename: &str, golden_name: &str, label: &str) {
     if !ensure_render_compiled() {
         eprintln!("SKIP: {label} — render tool not available.");
         return;
@@ -256,21 +252,13 @@ fn live_cross_validation_wavenet_feather() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_nano() {
-    run_render_comparison(
-        "BossWN-nano.nam",
-        "wavenet_nano",
-        "Live WaveNet Nano",
-    );
+    run_render_comparison("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano");
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_1x16() {
-    run_render_comparison(
-        "BossLSTM-1x16.nam",
-        "lstm_1x16",
-        "Live LSTM 1×16",
-    );
+    run_render_comparison("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16");
 }
 
 #[test]
