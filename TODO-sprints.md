@@ -1736,7 +1736,8 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 ---
 
 (Continuação Parte I, Auditoria 2026-06-03)
-Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
+Anotar: /pesquisador-inovador Máxima eficiência nos modos stereo e modo; Threading CLAP.
+Rodar "cargo bench inference_bench" a frio antes de começar.
 
 ---
 
@@ -1774,18 +1775,13 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Problema:** O path FP32 nativo introduzido pela E8.T08 (mixed-precision seletiva no head_rechannel) é **GEMV escalar puro** — triple-nested loop O(N·OUT·IN) sem nenhuma instrução SIMD. Em WaveNet Standard (`HEAD=1, CH=16, num_frames=64`), isso são 1024 FMAs escalares por bloco. Apesar de OUT=1 ser pequeno, é o **único stage FP32** do pipeline e domina quando o backbone roda em BF16/F16.
 - **Estado atual do código:** `dense.rs:182-196` itera `for n in 0..num_frames { for out_c in 0..OUT { for in_c in 0..IN { sum += input * f32_w } } }` com `if self.do_bias { ... }` no início do loop intermediário (branch a cada `out_c`). O resto do pipeline já é SIMD via dispatcher.
 - **Solução técnica (estratégia de batching dependente do shape):**
-
   1. Adicionar ao trait `SimdMath` (`src/math/common/traits.rs`) o método `unsafe fn gemv_overwrite_batch_f32(in_frame: &[f32], weights: &[f32], out_frame: &mut [f32], out_dim: usize, in_dim: usize, num_frames: usize, do_bias: bool, bias: &[f32])` paralelo ao existente `gemv_overwrite_batch_bf16`.
-
   2. **Estratégia de paralelização correta para low-OUT GEMV** (WaveNet Standard tem `array1=DenseLayer<16,8>` e `array2=DenseLayer<8,1>` — paralelizar across `out_c` desperdiça lanes):
      - **Para `OUT ≤ 4`:** batch across `num_frames` — N ZMM acumuladores cada um carregando 16 frames de **um único** `out_c`, broadcast de 1 peso por iteração do loop `in_c`. Com `num_frames=64`, 4 ZMM × 16 lanes = 64 frames cobertos com 1 acumulador por `out_c`.
      - **Para `OUT > 4`:** batch hybrid — 4 ZMM (frames 0..16) × `out_c` em paralelo até saturar, depois iterar.
      - **Para `OUT == 1`:** caso ainda mais especializado — dot-product f32 sobre `num_frames × in_dim` com horizontal sum no fim, exatamente como Yamamoto et al. para head heads.
-
   3. Implementar em `src/math/common/avx2_impl.rs` (YMM, max 8 frames por acumulador), `src/math/common/avx512/gemv.rs` (ZMM, 16 frames) e `src/math/common/scalar_ref.rs` (fallback).
-
   4. Substituir corpo de `process_block_f32_native` por chamada via `dispatch_simd!`.
-
   5. Bench dedicado em `benches/inference_bench.rs` (`bench_head_rechannel_fp32` por S27b.T04) — **três shapes**: `DenseLayer<16,8>` (array1), `DenseLayer<8,1>` (array2 — caso dominante na WaveNet Standard), `DenseLayer<16,1>` (LSTM head).
 - **Critérios de aceitação:**
   - `bench_head_rechannel_fp32` melhora ≥4× vs scalar baseline (AVX2) e ≥8× (AVX-512) **para os 3 shapes**.
@@ -1802,18 +1798,13 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Problema:** Três loops `for i in 0..n_samples` escalares no hotpath do CLAP. O kernel SIMD `apply_gain_and_detect_clipping_stereo` **já existe** no dispatcher e faz exatamente o necessário (gain + clipping mask via `_mm256_max_ps`), mas **não é usado pelo CLAP processor** — duplicação evitável após S6.T03 que já consolidou `apply_gain`. Peak detection idem: 4 `abs()` + 4 cmp por iteração escalar.
 - **Estado atual do código:** Após S6.T03/S10.T02, `src/clap/processor/dsp.rs` foi refatorado mas mantém os 3 loops escalares — provavelmente porque tocam estado per-frame (`smoother_in.tick()`, `smoother_out.tick()`). A assinatura real do kernel é `apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32)` em `src/math/dsp/gain.rs:49` — recebe **scalar start + step linear**, não slice de gains.
 - **Solução técnica (corrigida — usa kernel existente como-está):**
-
   1. Por chunk de N amostras (ex.: N = 32 ou bloco completo, n_samples ≤ 64 típico no CLAP): extrair `start = smoother.peek()` e calcular `step = (smoother.target() - start) / n_samples as f32`. O smoother é aproximadamente linear em chunks pequenos.
-
   2. Chamar `M::apply_ramp_stereo(buf_host_l, buf_host_r, start, step)` — kernel **já existe** com essa assinatura, sem extensão SIMD necessária.
-
   3. Após o chunk, sincronizar o smoother: `smoother.set(start + step * n_samples as f32)` para refletir o estado equivalente a N ticks.
-
   4. Documentar trade-off: per-chunk-linear é aproximação do smoother nativo (curva exponencial) — diferença audível somente em transitions abruptas; para suavidade idêntica, manter smoother tradicional no path slow (param mudou) e usar ramp SIMD no path fast (param estável).
-
   5. Idem para output gain.
-
   6. Peak detection: usar kernel SIMD existente (`compute_max_diff_*` ou criar `compute_peak_abs_stereo` se não existir); decimar para 1-em-16 já implementado por S6.T05.
+  7. Documentar: Nos locais aplicáveis registrar o aproveitamento de código e/ou de algoritmo para que a IA saiba que melhorias, quando ocorrerem, devem ser propagadas.
 - **Critérios de aceitação:**
   - Bench `CLAP_process_block_64samp` melhora ≥15% no bypass-disabled path.
   - Heap-audit não regride (`tests-long.sh` 100% pass).
@@ -1824,11 +1815,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 #### Tarefa S25.T03 — Substituir backfill escalar por `copy_from_slice` no prewarm WaveNet dinâmico 🔥
 
 - **Onde:** `src/models/wavenet/model_dyn.rs:447-465` (loop aninhado escalar).
-
 - **Problema:** Loop interno `for j in 0..ch { buffer[dst+j] = buffer[src+j]; buffer_bf16[dst+j] = buffer_bf16[src+j]; }` para `receptive_field_size` × `ch` iterações = até 65k stores/loads escalares no prewarm. Resíduo da regressão `Prewarm_WaveNet_Standard` (item ainda não 100% recuperado em S7.R03).
-
 - **Estado atual do código:** Após S7.R03, `model.rs` (estático) está otimizado. O `model_dyn.rs` mantém o padrão antigo. O `start_idx` e `dst_idx` são offsets em arrays separados (`layer_buffer` f32 e `layer_buffer_bf16` u16) — não-overlapping nesta iteração específica.
-
 - **Solução técnica:** `copy_within` aceita ranges sobrepostos para tipos `Copy` (caso de `f32` e `u16`), tornando-o universalmente correto:
 
   ```rust
@@ -1845,9 +1833,7 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
   - `Prewarm_WaveNet_Standard_2048samp` melhora 30-50% vs baseline pós-Épico 4.
   - `test_wavenet_prewarm_edge.rs` continua passando.
   - `cpp_parity` 5/5 PASS mantido.
-
 - **Especialista:** `implementador`.
-
 - **Esforço:** 30 min.
 
 #### Tarefa S25.T04 — Alinhamento 64-byte para buffers do CLAP processor ⚠️
@@ -1856,13 +1842,9 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Problema:** Os 8 buffers de trabalho (`buf_host_l/r`, `buf_mid_l/r`, `buf_model_l/r`, `buf_out_l/r`) são `Box<[f32]>` com alinhamento garantido apenas de 4 bytes. Loads SIMD nesses buffers ficam **misaligned** (penalty 1-3 cycles por load cross-cache-line). Em AVX-512 com `_mm512_load_ps` (aligned-only), poderia até causar SIGSEGV se o caminho for ativado por engano.
 - **Estado atual do código:** Após S10.T02, `NamClapProcessor` foi refatorado para `processor/mod.rs`. Os buffers permanecem `Box<[f32]>`.
 - **Solução técnica:**
-
   1. Usar `AlignedVec<f32>` (já existe em `src/math/common/aligned.rs`, alinhamento 64 B) em vez de `Box<[f32]>`.
-
   2. Aceitar que `AlignedVec` não implementa `Deref<Target=[f32]>` automaticamente — adicionar trait impls necessárias se já não estiverem disponíveis (já são — vide `AlignedVec::as_slice/as_mut_slice`).
-
   3. Atualizar `activate()` para alocar `AlignedVec::with_capacity_zeroed(max_buffer)` e descartar (via SPSC GC) o anterior sem `drop` em RT.
-
   4. Verificar que callers usam `.as_mut_slice()` em vez de indexação direta `&mut buf_host_l[..n]`.
 - **Critérios de aceitação:**
   - `cargo asm` confirma uso de `_mm256_load_ps` (vs `_mm256_loadu_ps`) onde o compilador prova alinhamento.
@@ -1877,13 +1859,9 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Problema:** No resampler em modo mono (caminho exclusivo do CLAP plugin), cada output sample faz **duas chamadas independentes** `M::convolve_mono(c0, x_l, taps)` e `M::convolve_mono(c1, x_l, taps)` para as duas phases — desperdiçando reuso de taps em registradores.
 - **Estado atual do código:** A função `convolve_stereo_dual` existe (S7.T03) e processa 2 phases × 2 canais em loop único. O equivalente mono **não existe** — após o S7.T01 (mono path), só há `convolve_mono` single-phase.
 - **Solução técnica:**
-
   1. Adicionar `convolve_mono_dual(c0: &[f32], c1: &[f32], x_l: &[f32], taps: usize) -> (f32, f32)` ao trait `SimdMath`.
-
   2. Implementação AVX2: loop único sobre taps, 2 acumuladores YMM (um por phase), reuso de load `x_l` em ambos.
-
   3. Implementação AVX-512: 2 acumuladores ZMM.
-
   4. Atualizar `process_internal_mono` para usar `convolve_mono_dual` em vez de duas chamadas.
 - **Critérios de aceitação:**
   - Bench `Resampler_96000_to_48000/process_input_mono` melhora ≥25%.
@@ -1897,11 +1875,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Problema:** Cada call faz `match SIMD_MATH.instruction_set { Avx512VnniBf16 => ..., Avx512 => ..., Avx2 => ..., ScalarRef => ... }` — branch a cada ativação em loop. Para WaveNet 20-layer × 2 ativações/layer × 64 frames = 2560 dispatches/block. Embora previsto pelo branch predictor após warmup, ainda gera 1-2 cycles/dispatch.
 - **Estado atual do código:** O `dispatch_simd!` macro já é usado para outros kernels (gemv, dot, conv); activations seguem padrão antigo de `match` explícito.
 - **Solução técnica:**
-
   1. Promover function pointers ao `SimdMathConfig` (`src/math/common/dispatch.rs`): adicionar `tanh_slice: unsafe fn(&mut [f32])`, etc.
-
   2. Inicializar no `init()` baseado no `instruction_set` detectado.
-
   3. Caller: `unsafe { (SIMD_MATH.tanh_slice)(data) }` — single indirect call, sem branch.
 - **Critérios de aceitação:**
   - Bench `FastMath_tanh_slice_AVX2` overhead reduz ≥3 ns/call em micro-bench.
@@ -1912,19 +1887,12 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 #### Tarefa S25.T07 — Fixed-point `phase_accum` no resampler ⚠️
 
 - **Onde:** `src/dsp/resampler.rs:158, 243` (path stereo + mono).
-
 - **Problema:** `phase_accum: f64` somado e convertido a `usize` em cada output sample via `cvttsd2si` (4-6 cycles, alta latência). Float-to-int conversion bloqueia ILP.
-
 - **Estado atual do código:** `phase_accum` é `f64`, `phase_idx = phase_f as usize`, `frac = phase_f - phase_idx as f64`. Funciona, mas é caro.
-
 - **Solução técnica:**
-
   1. Trocar `phase_accum: f64` por `phase_accum: u64` com formato fixed-point 24.40 (24 bits inteiros, 40 fracionários — cobre ratios até 2^24 com precisão de 1e-12 no fractional).
-
   2. `phase_step` pré-computado como `u64` no `update_ratio`.
-
   3. `phase_idx = (phase_accum >> 40) as usize` (1 cycle shift).
-
   4. Conversão correta de `frac` (evita erro do literal truncado):
 
      ```rust
@@ -1942,16 +1910,11 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
      ```
 
      LLVM constant-folds o `1.0 / 2^40` em f64. Trade-off documentado.
-
   5. Manter API externa em f64 para hosts; conversão interna feita uma vez.
-
 - **Critérios de aceitação:**
-
   - Bench `Resampler_96000_to_48000` melhora 10-15%.
   - Proptest com ratio aleatório [0.5, 2.0] sobre 100k inputs: drift acumulado < 1e-9 vs implementação f64.
-
 - **Especialista:** `pesquisador-inovador`.
-
 - **Esforço:** 1.0 dia.
 
 #### Tarefa S25.T08 — Eliminar `head_accum.fill(0.0)` via kernel overwrite no primeiro layer ⚠️
@@ -1960,17 +1923,11 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Problema:** `head_accum` (já `AlignedVec<f32>` em `model_dyn.rs:336` — alinhamento correto) é zerado a cada `process_internal_generic` via `fill(0.0)`. Em WaveNet Standard com `num_frames=64, ch=16` → 1024 floats = 4 KiB zerados por block; este store domina bandwidth L1 entre layers e é redundante (poderíamos escrever direto no primeiro layer).
 - **Estado atual do código:** O loop de layers chama `M::accumulate_head(input, weights, bias, &mut head_accum, ...)` (fused-add) — todo layer **inclusive o primeiro** acumula sobre o que estava lá. Daí a necessidade do `fill`.
 - **Solução técnica:**
-
   1. Adicionar ao trait `SimdMath` o kernel `unsafe fn accumulate_head_overwrite(input, weights, bias, out, ...)` paralelo a `accumulate_head` mas com `out = w·x + b` (overwrite, não add).
-
   2. Implementar nos 3 backends (AVX2, AVX-512, scalar_ref) — basicamente copy do `accumulate_head` removendo o load `_mm256_loadu_ps(out_ptr)` antes do FMA.
-
   3. No loop de layers em `model_dyn.rs`, primeira iteração usa `accumulate_head_overwrite`, demais usam `accumulate_head`.
-
   4. Remover o `self.head_accum[..num_frames * ch].fill(0.0)`.
-
   5. Replicar pattern em `model.rs` (estático) se também aplicável.
-
   6. Validar via proptest scalar↔SIMD (10k inputs) com tolerância 1e-6 (numericamente idêntico, só elimina store redundante).
 - **Análise quantitativa do ganho esperado:** O `fill(0.0)` é ~64 stores de cache-line @ ~1 cycle/store ≈ 16-64 cycles. Em block budget de ~100k cycles (`WaveNet_Standard` @ 3 GHz), isso representa apenas ~0.06% — **o ganho real vem de mecanismo secundário**: eliminar o `_mm256_loadu_ps(out_ptr)` antes do FMA no primeiro layer (read-after-write false dependency chain) + reduzir pressão no write combiner do L1. O ganho típico observado em otimizações análogas é **0.3-1%**, não 2-4%.
 - **Critérios de aceitação:**
@@ -1987,11 +1944,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 #### Tarefa S26.T01 — A2 placeholder com constantes interface-compliant 🔥
 
 - **Onde:** `src/models/a2/params.rs` (existente), `src/models/a2/mod.rs:33-78` (`WavenetA2Placeholder`); referência em `github.com/NeuralAmpModelerCore/NAM/wavenet/a2_fast.h`.
-
 - **Problema:** `WavenetA2Placeholder` é trivial (`warned: bool` + `rt_status`). Não memoriza shape (`channels: 3 | 8`), kernel sizes, dilations, leaky slope — todas constantes públicas em `a2_fast.h`. Quando A2 for implementado no futuro (Parte II ou além), terá que ser refatorado do zero, quebrando o princípio "placeholder evita conflito".
-
 - **Solução técnica (sem implementar A2 real):**
-
   1. Em `src/models/a2/params.rs`, exportar constantes públicas espelhando `a2_fast.h`:
 
      ```rust
@@ -2004,28 +1958,19 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
      ```
 
   2. `WavenetA2Placeholder::new(channels: u8)` valida e armazena `channels`.
-
   3. Em `src/loader/nam_json/topology.rs`, adicionar `fn is_a2_shape(...) -> Option<u8>` espelhando `is_a2_shape` C++ (shape-based). Manter detecção SemVer (S5.T05) como confirmação cruzada — `is_a2_shape || is_a2_semver`.
-
   4. Documentar em `docs/architecture.md` que o placeholder mantém o **contrato de detecção** sem suportar inferência.
-
   5. Adicionar teste `tests/a2_placeholder_interface.rs` validando: constantes batem com `a2_fast.h` (cross-check via include de string raw), detecção `is_a2_shape` aceita `{3,8}` e rejeita demais.
-
 - **Critérios de aceitação:**
-
   - Constantes Rust idênticas às de `a2_fast.h` (verificável via leitura).
   - Carregar modelo A2 emite warning + bypass; placeholder reporta `channels` corretamente.
-
 - **Especialista:** `implementador` + `pesquisador-inovador`.
-
 - **Esforço:** 30 min.
 
 #### Tarefa S26.T02 — `set_max_buffer_size` e `prewarm_samples` no trait `NamModel` ⚠️
 
 - **Onde:** `src/models/mod.rs` (trait `NamModel`); `Cargo.toml`; referência C++: `NeuralAmpModelerCore/NAM/dsp.h:184`, `dsp.cpp:93-102`.
-
 - **Pré-requisito de soundness (auditoria 2026-06-03):** `nam-rs` é atualmente um crate self-contained (workspace de 1 crate, sem `publish = false` explícito em `Cargo.toml`). Adicionar métodos ao trait `NamModel` é additivo para callers mas **breaking para impls externas** se o crate vier a ser publicado. **Antes desta tarefa:** decidir uma das opções abaixo e implementá-la **na mesma sprint**:
-
   - **(A) Selar o trait `NamModel` (recomendado):** padrão de supertrait privado:
 
     ```rust
@@ -2036,11 +1981,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
     ```
 
     Garante que adições futuras ao trait sejam sempre não-breaking (impls externas são impossíveis por design).
-
   - **(B) Adicionar `publish = false` em `Cargo.toml`:** declara explicitamente que o crate não é API pública; releva o constraint de break-changes.
-
   - **Decisão padrão se nenhuma for tomada:** (A) — sealing é mais robusto e não impede consumers (que precisam do crate como inferência, não como API extensível).
-
 - **Problema:** O contrato C++ é:
 
   ```cpp
@@ -2049,9 +1991,7 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
   ```
 
   O Rust expôs `reset(sr, max_buf)` em S4.T04 mas o default delega a `prewarm(max_buf)` — pulando `SetMaxBufferSize`. Modelos dinâmicos cujo `max_buffer_size` mude em runtime não realocam internamente.
-
 - **Solução técnica:**
-
   1. Adicionar ao trait `NamModel`:
 
      ```rust
@@ -2060,21 +2000,14 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
      ```
 
   2. WaveNet variants override `prewarm_samples()` retornando `array1.receptive_field_size`.
-
   3. WaveNetDynModel override `set_max_buffer_size()` realocando `block_buffer` e `head_accum` se `max_buf > current_capacity`.
-
   4. `loader/mod.rs`: usar `model.prewarm(model.prewarm_samples().max(2048))` no boot (cap 2048 para mantém compat).
-
   5. CLAP processor `activate()` chama `model.set_max_buffer_size(max_frames_count)` se `max_frames_count > previous`.
-
 - **Critérios de aceitação:**
-
   - Conformidade documentada em `docs/architecture.md`.
   - Goldens não regridem.
   - Teste de mudança de buffer size em runtime passa (host muda 256 → 1024 → 512).
-
 - **Especialista:** `implementador` + `documentador`.
-
 - **Esforço:** 1.0 dia.
 
 #### Tarefa S26.T03 — `process_block_f32_native` separar paths com/sem bias ⚠️
@@ -2083,11 +2016,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Onde:** `src/models/wavenet/dense.rs:182-196` (e novo `gemv_overwrite_batch_f32` introduzido em S25.T01).
 - **Problema:** Após S25.T01, o kernel SIMD ainda terá `do_bias: bool` como parâmetro causando branch no loop interno (impede vectorização cross-channel).
 - **Solução técnica:**
-
   1. Duas funções: `gemv_with_bias_f32` (always-add bias) e `gemv_no_bias_f32` (overwrite).
-
   2. Dispatch no caller, sem branch no kernel.
-
   3. Atualizar trait `SimdMath`.
 - **Critérios de aceitação:** Bench `bench_head_rechannel_fp32` ganha adicionais 1-3% sobre S25.T01.
 - **Especialista:** `implementador`.
@@ -2096,9 +2026,7 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 #### Tarefa S26.T04 — Documentação `docs/cpp_parity_map.md` (mapeamento Rust ↔ C++) 💡
 
 - **Onde:** Criar `docs/cpp_parity_map.md`.
-
 - **Problema:** Decisões de paridade matemática (Épico 2 — S3.T01 a S3.T05) foram custosas porque a divergência era detectada tarde. Não há documento que mapeie ponto-a-ponto qual arquivo C++ corresponde a qual módulo Rust.
-
 - **Solução técnica:** Tabela markdown:
 
   | C++ (`github.com/NeuralAmpModelerCore/`)  | Rust (`src/`)                                     | Notas                      |
@@ -2109,11 +2037,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
   | ...                                       | ...                                               | ...                        |
 
   Incluir notas sobre divergências aceitas (e.g., BF16 vs F16 dispatch é decisão NAM-rs sem equivalente C++).
-
 - **Critérios de aceitação:** Doc revisado pela skill `documentador`; cobre todos os modelos suportados (WaveNet Standard/Lite/Feather/Nano, LSTM 1×{8,12,16,24,40}, 2×{8,12,16,24}).
-
 - **Especialista:** `documentador`.
-
 - **Esforço:** 1.0 dia.
 
 ### Sprint S27 — Code Organization, Safety Sweep & Cleanup
@@ -2125,16 +2050,13 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Onde:** `src/clap/gui/ui/mod.rs:66-958` (função `draw_ui` ≈ 893 LoC).
 - **Problema:** Após S8.T01, sub-widgets foram extraídos (`bypass.rs`, `knob.rs`, `meter.rs`), mas a função orquestradora `draw_ui` ainda contém todo o layout das 5 zonas inline. Complexidade ciclomática alta; impossível revisar uma zona isoladamente.
 - **Solução técnica:**
-
   1. Extrair em `ui/mod.rs` (ou novos arquivos em `ui/zones/`):
      - `fn draw_zone1_identity(...)` — logo + model loader.
      - `fn draw_zone2_controls(...)` — 3 knobs.
      - `fn draw_zone3_meters(...)` — VU meters.
      - `fn draw_zone4_bypass(...)` — bypass toggle.
      - `fn draw_zone5_status_bar(...)` — telemetry.
-
   2. `draw_ui` fica orquestrador ≤ 100 LoC: setup egui frame + 5 chamadas + 4 separadores verticais.
-
   3. Manter testes existentes em `ui/test.rs` passando.
 - **Critérios de aceitação:** Nenhuma função em `ui/` > 250 LoC; testes existentes passam; render manual em DAW continua idêntico (visual e funcional).
 - **Especialista:** `implementador`.
@@ -2159,18 +2081,12 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 
 - **Onde:** `src/math/activations/tanh.rs:267-352` (piecewise experimental); funções `simd_tanh_pade_div_*` (duplicatas exatas das de produção em produção pós-Quick Win E8.T02).
 - **Problema:**
-
   1. `simd_tanh_piecewise_avx2` (86 LoC) marcado `#[allow(dead_code)]` permanece como "research retained".
-
   2. `simd_tanh_pade_div_avx2/avx512` (introduzidas em E8.T04 como oráculo) são literalmente o mesmo body de `simd_tanh_avx2/avx512` após o Quick Win — duplicação inútil.
-
   3. Constantes piecewise (`PW_TANH_C0_0..C2_6`) em `constants.rs` ocupam espaço sem uso ativo.
 - **Solução técnica:**
-
   1. Mover piecewise + suas constantes para `src/math/activations/experimental/piecewise_tanh.rs` com módulo `#[cfg(all(test, feature = "research"))]` (feature opcional).
-
   2. Remover `simd_tanh_pade_div_*` — substituir referências em benches por aliases para `simd_tanh_avx2/avx512`.
-
   3. Limpar `constants.rs`: mover `PW_TANH_*` para `experimental/piecewise_tanh.rs`.
 - **Critérios de aceitação:** `tanh.rs` < 350 LoC; benches continuam compilando; -200 LoC líquido entre tanh.rs + constants.rs.
 - **Especialista:** `implementador`.
@@ -2181,11 +2097,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Onde:** `src/math/gemm/gemv.rs` (641 LoC), `src/math/common/avx512/gemv.rs` (564 LoC).
 - **Problema:** 6 funções (`gemv_overwrite_avx2`, `fused_add_gemv_avx2`, `gemv_overwrite_avx512`, `fused_add_gemv_avx512`, e suas variantes `_small`) com ~100 LoC cada, todas com mesmo padrão: unroll N (4 YMM ou 8 ZMM acumuladores), prefetch, reduce em árvore. Cada fix matemático/perf requer alterar 6 lugares.
 - **Solução técnica:**
-
   1. Criar macro `gemv_kernel!($simd_set, $vec_width, $unroll, $load_op, $fma_op, $reduce_fn)` que gera o corpo.
-
   2. Aplicar nas 6 funções; manter `#[target_feature(...)]` per-function.
-
   3. Validar via diff dos asm (`cargo asm`) antes e depois — esperar zero diff em release.
 - **Critérios de aceitação:** -200 LoC líquido; benches GEMV sem regressão (±0.3% no ruído); diff de asm release confirma identidade.
 - **Especialista:** `pesquisador-inovador`.
@@ -2196,11 +2109,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Onde:** `src/math/common/avx2_impl.rs` (494 LoC), `src/math/common/avx512/`, `src/dsp/mirror_buf.rs`, `src/clap/gui/window/mod.rs`.
 - **Problema:** Auditoria contou ≈ 920 `unsafe` (fn + blocks) com apenas ≈ 149 doccomments `# Safety`. Gap de ≈ 770 blocos sem `// SAFETY:` adjacente. Vai contra Rust API Guidelines e dificulta auditoria futura.
 - **Solução técnica:**
-
   1. Sweep arquivo por arquivo: adicionar `// SAFETY: <reason>` antes de cada `unsafe { ... }` block.
-
   2. Habilitar `clippy::undocumented_unsafe_blocks = "warn"` no `Cargo.toml` (ou `clippy.toml`) — adicionar como warn-only para não quebrar build, escalar a deny após coverage 100%.
-
   3. Para `unsafe fn`, garantir doccomment `# Safety` com pré-condições.
 - **Critérios de aceitação:**
   - 100% de `unsafe {}` em `src/math/common/`, `src/dsp/mirror_buf.rs`, `src/clap/gui/` têm `// SAFETY:` adjacente.
@@ -2212,14 +2122,10 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 
 - **Onde:** `src/clap/plugin/main_thread.rs:88, 110, 120, 130, 142`; `src/clap/gui/window/mod.rs:98, 108`.
 - **Problema:**
-
   1. Em `main_thread.rs`, a estratégia "sanitize string → fallback `CString` literal" usa `.unwrap()` em 5 pontos. Quatro têm comentário `WHITELIST:` agregado; **um (linha 88) é sobre `format!` string e não está coberto**.
-
   2. Em `window/mod.rs:98, 108`, `.expect("OpenGL context not available")` panica em init se host não suportar OpenGL — ainda pode escapar FFI baseview em paths de criação.
 - **Solução técnica:**
-
   1. Linha 88 (`main_thread.rs`): adicionar `// WHITELIST:` adjacente cobrindo o raciocínio (sanitize remove `\0` → CString fail é impossível na fallback literal).
-
   2. `window/mod.rs`: converter `.expect()` para `?`, retornar `Result<NamPluginWindow>`. Caller (`gui.rs`) decide entre fallback text-only ou falha de criação de janela (host trata via clack).
 - **Critérios de aceitação:**
   - `grep -rn '\.expect\|\.unwrap' src/clap/` lista apenas itens whitelisted (todos com comentário WHITELIST).
@@ -2232,11 +2138,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs:49-57` (`panic_weights_len`, `panic_kernel_exceeds`).
 - **Problema:** As funções helper são chamadas apenas quando `cfg!(debug_assertions)` é true — equivale a `debug_assert!` sem o `unwrap_or` etc., mas com indireção desnecessária. **Em release, nenhuma checagem residual** — defesa em profundidade fraca contra carregamento adversarial. O loader já valida na load (S3.T05) então não há gap real, mas a estrutura confunde leitores.
 - **Solução técnica:**
-
   1. Remover `panic_weights_len` e `panic_kernel_exceeds`.
-
   2. Substituir call sites por `debug_assert!(self.weights.len() >= expected, "...")` e `debug_assert!(self.kernel <= MAX_KERNEL, "...")` diretamente.
-
   3. Validação dura permanece no construtor `Conv1dDyn::new(...) -> Result<Self>`.
 - **Critérios de aceitação:** Mesmo comportamento debug; release inalterado; -20 LoC.
 - **Especialista:** `implementador`.
@@ -2258,19 +2161,16 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 ### Sprint S27b — Test Coverage & Documentation Backfill
 
 > Foco: fechar gaps de cobertura que se acumularam durante Épicos 4–8 e atualizar documentação arquitetural.
+> Importante: Ao criar novos testes, sempre julgar se é um teste que vale a pena rodar a cada "cargo test" ou se pode tranquilamente ser transferido para "utils\tests-long.sh". Testes muito longos são uma tentação para serem pulados. O "cargo test" deveria ser destinado apenas a coisas com riscos de quebras a cada commit, logo que realmente precisam ser verificadas sempre.
 
 #### Tarefa S27b.T01 — Resampler heap-audit coverage 🔥
 
 - **Onde:** Criar `tests/resampler_heap_audit.rs`.
 - **Problema:** `heap-audit` cobre o CLAP processor e indiretamente WaveNet/LSTM via `nam_infer_test.rs`. **O `NamResampler::process_input/output` não é testado com heap-audit explicitamente.** Risco de regressão silenciosa se algum bug introduzir alocação no hot path.
 - **Solução técnica:**
-
   1. Criar `tests/resampler_heap_audit.rs` com `#[cfg(feature = "heap-audit")]`.
-
   2. Cenários: ratio 1:1 (passthrough), 96k → 48k (downsample), 44.1k → 48k (upsample), processamento mono e stereo, blocos pequenos (32) e grandes (1024).
-
   3. Após warmup, instanciar `HeapAuditGuard` e iterar 1000 blocks.
-
   4. Assert `alloc_count() == 0`.
 - **Critérios de aceitação:** Teste passa em `utils/tests-cargo.sh`; quebra se alocação for introduzida.
 - **Especialista:** `implementador`.
@@ -2281,13 +2181,9 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
 - **Onde:** Criar `tests/pipeline_soak.rs`.
 - **Problema:** `soak_test.rs` cobre resampler e ring buffer mas **não o pipeline integrado** (Capture → DSP → Bridge → Playback) sob carga prolongada. Pré-requisito empírico para qualquer trabalho de hot-swap (S18.T01 em Parte II).
 - **Solução técnica:**
-
   1. `tests/pipeline_soak.rs` com `#[ignore]` (rodável via `utils/tests-long.sh`).
-
   2. Inicializar `DspPipelineContext` com modelo Boss WN-Nano + resampler 96k→48k.
-
   3. 10M frames de white noise + silêncio alternados (~3 min @ 96k).
-
   4. Validar: zero panic, zero NaN, telemetria `latency_hist` consistente, generation counter monotônico, RSS estável (variação < 10 MB após warmup).
 - **Critérios de aceitação:**
   - Teste passa em `utils/tests-long.sh`.
@@ -2305,11 +2201,8 @@ Anotar: Máxima eficiência nos modos stereo e modo; Threading CLAP.
   - `fade_frames = 0` edge case.
   - Energia exatamente igual ao threshold (boundary).
 - **Solução técnica:**
-
   1. Proptest gerando sequências aleatórias de energias [0.0, 1.0] de 1024 amostras.
-
   2. Variar `threshold_open_db`, `threshold_close_db`, `fade_frames`.
-
   3. Invariantes: `state ∈ {Open, FadingOut, Closed, FadingIn}`, transições monotônicas em fade, sem state stuck.
 - **Critérios de aceitação:** 10k inputs sem panic; sem state inválido.
 - **Especialista:** `implementador`.

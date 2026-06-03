@@ -36,10 +36,12 @@ Unit tests should test the internal logic of each module.
 ## 2. Integration Tests
 
 Tests that exercise the crate's public API or multiple integrated modules should be placed in the root `tests/` directory.
+Important: When creating new tests, always judge whether a test is worth running with every `cargo test` or if it can be moved to `utils/tests-long.sh`. Very long tests are a temptation to skip. `cargo test` should be reserved only for things with a risk of breaking on every commit, which truly need to be verified always.
 
 ## 3. Benchmarks
 
 Performance benchmarks using the `criterion` framework should be placed in the root `benches/` directory.
+Important: When creating new benchmarks, always judge whether a benchmark is worth running with every `cargo bench` or if it can be moved to `utils/tests-long.sh`. Very long benchmarks are a temptation to skip. `cargo bench` should be reserved only for things with a risk of breaking on every commit, which truly need to be verified always.
 
 ## 4. Code Requirements
 

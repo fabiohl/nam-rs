@@ -27,4 +27,4 @@ CLAP_PLUGIN_PATH="target/clap-test/debug/libnam_rs.so" \
 
 # 5. Run basic benchmarks [Usually takes about 9 minutes]
 #At this stage it's more useful to only run them via utils/tests-long.sh
-#cargo bench
+#cargo bench inference_bench
