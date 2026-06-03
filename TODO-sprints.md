@@ -2024,7 +2024,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S26.T04 — Documentação `docs/cpp_parity_map.md` (mapeamento Rust ↔ C++) 💡
+#### Tarefa S26.T04 — Documentação `docs/cpp_parity_map.md` (mapeamento Rust ↔ C++) 💡 [DONE]
 
 - **Onde:** Criar `docs/cpp_parity_map.md`.
 - **Problema:** Decisões de paridade matemática (Épico 2 — S3.T01 a S3.T05) foram custosas porque a divergência era detectada tarde. Não há documento que mapeie ponto-a-ponto qual arquivo C++ corresponde a qual módulo Rust.
