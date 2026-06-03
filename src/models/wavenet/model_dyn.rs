@@ -171,6 +171,7 @@ impl WaveNetLayerDyn {
             block,
             num_frames,
             mut output_bf16,
+            is_first_layer,
         } = ctx;
         let ch = self.ch;
         let out_ch = self.conv1d.out_ch;
@@ -282,11 +283,19 @@ impl WaveNetLayerDyn {
             // Apply functions like Tanh or Gated to give the 'character' of the sound.
             if self.gated {
                 // Gated Activation: Works like a gate that selectively opens and closes.
-                M::gated_activation_and_accumulate_block(
-                    head_input,
-                    &mut block[..num_frames * 2 * ch],
-                    ch,
-                );
+                if is_first_layer {
+                    M::gated_activation_and_overwrite_block(
+                        head_input,
+                        &mut block[..num_frames * 2 * ch],
+                        ch,
+                    );
+                } else {
+                    M::gated_activation_and_accumulate_block(
+                        head_input,
+                        &mut block[..num_frames * 2 * ch],
+                        ch,
+                    );
+                }
 
                 // [T1.2] Optimization: Realign data so the next step (GEMM)
                 // is processed as a single contiguous memory block.
@@ -295,7 +304,11 @@ impl WaveNetLayerDyn {
                 }
             } else {
                 // Tanh: Classic activation that 'flattens' the signal to maintain stability.
-                M::tanh_and_accumulate_block(head_input, &mut block[..num_frames * ch]);
+                if is_first_layer {
+                    M::tanh_and_overwrite_block(head_input, &mut block[..num_frames * ch]);
+                } else {
+                    M::tanh_and_accumulate_block(head_input, &mut block[..num_frames * ch]);
+                }
             }
 
             // 4. Residual + 1x1 (The Final Mix):
@@ -398,7 +411,7 @@ impl WaveNetLayerArrayDyn {
         let states_ptr = self.states.as_mut_ptr();
 
         // 1) HEAD ACCUMULATOR RESET
-        self.head_accum[..num_frames * ch].fill(0.0);
+        // (Eliminated: first layer overwrites head_accum directly)
 
         // 2) Lazy BF16 Conversion
         if M::IS_BF16 {
@@ -483,6 +496,7 @@ impl WaveNetLayerArrayDyn {
                     buffer_start: current_state.buffer_start,
                     block: &mut self.block_buffer[0..num_frames * block_size],
                     num_frames,
+                    is_first_layer: i == 0,
                 };
 
                 layer.process_block_internal::<M>(ctx);

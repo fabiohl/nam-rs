@@ -27,6 +27,24 @@ macro_rules! impl_avx512_activations {
         }
 
         #[inline(always)]
+        unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]) {
+            tanh_and_overwrite_block_fallback(head_input, block)
+        }
+
+        #[inline(always)]
+        unsafe fn gated_activation_and_overwrite_block(
+            head_input: &mut [f32],
+            block: &mut [f32],
+            ch: usize,
+        ) {
+            unsafe {
+                crate::math::wavenet::accumulate::gated_activation_and_overwrite_block_avx512(
+                    head_input, block, ch,
+                )
+            }
+        }
+
+        #[inline(always)]
         unsafe fn tanh_slice(slice: &mut [f32]) {
             crate::math::activations::tanh_slice_avx512(slice)
         }
@@ -82,6 +100,20 @@ macro_rules! impl_avx512vnni_activations {
         }
 
         #[inline(always)]
+        unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]) {
+            Avx512Math::tanh_and_overwrite_block(head_input, block)
+        }
+
+        #[inline(always)]
+        unsafe fn gated_activation_and_overwrite_block(
+            head_input: &mut [f32],
+            block: &mut [f32],
+            ch: usize,
+        ) {
+            Avx512Math::gated_activation_and_overwrite_block(head_input, block, ch)
+        }
+
+        #[inline(always)]
         unsafe fn tanh_slice(slice: &mut [f32]) {
             Avx512Math::tanh_slice(slice)
         }
@@ -130,6 +162,20 @@ macro_rules! impl_avx512vnni_bf16_activations {
         }
 
         #[inline(always)]
+        unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]) {
+            Avx512Math::tanh_and_overwrite_block(head_input, block)
+        }
+
+        #[inline(always)]
+        unsafe fn gated_activation_and_overwrite_block(
+            head_input: &mut [f32],
+            block: &mut [f32],
+            ch: usize,
+        ) {
+            Avx512Math::gated_activation_and_overwrite_block(head_input, block, ch)
+        }
+
+        #[inline(always)]
         unsafe fn tanh_slice(slice: &mut [f32]) {
             Avx512Math::tanh_slice(slice)
         }
@@ -155,6 +201,7 @@ macro_rules! impl_avx512vnni_bf16_activations {
         }
     };
 }
+
 
 pub(super) use impl_avx512_activations;
 pub(super) use impl_avx512vnni_activations;

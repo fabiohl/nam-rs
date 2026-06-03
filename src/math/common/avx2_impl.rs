@@ -260,6 +260,27 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]) {
+        unsafe {
+            super::super::wavenet::accumulate::tanh_and_overwrite_block_avx2(head_input, block)
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gated_activation_and_overwrite_block(
+        head_input: &mut [f32],
+        block: &mut [f32],
+        ch: usize,
+    ) {
+        unsafe {
+            super::super::wavenet::accumulate::gated_activation_and_overwrite_block_avx2(
+                head_input, block, ch,
+            )
+        }
+    }
+
+
+    #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         unsafe { f32_to_bf16_fallback(src, dest) }
     }

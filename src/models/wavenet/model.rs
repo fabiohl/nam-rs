@@ -133,9 +133,13 @@ impl<const COND: usize, const CH: usize, const K: usize> WaveNetLayer<COND, CH, 
             }
 
             // [PHASE 2 & 3: Fused Activation and Head Update]
-            // Apply Tanh and accumulate in Head in a single memory pass.
+            // Apply Tanh and accumulate/overwrite in Head in a single memory pass.
             // This reduces bandwidth pressure (avoids 1 extra read and 1 extra write).
-            M::tanh_and_accumulate_block(head_input, conv_slice);
+            if ctx.is_first_layer {
+                M::tanh_and_overwrite_block(head_input, conv_slice);
+            } else {
+                M::tanh_and_accumulate_block(head_input, conv_slice);
+            }
 
             // [PHASE 3: Output - 1x1 Residual]
             // [TF3] Optimization: 1x1 projection fused with residual sum in batch.
@@ -219,7 +223,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
         // [STEP 1: Zero-Accumulator]
         // Zeros the "Skip Connections" output accumulator (Head) for this frame block.
         // This is essential because each layer of the array will add its contribution here.
-        self.head_accum[0..num_frames * CH].fill(0.0);
+        // (Eliminated: first layer overwrites head_accum directly)
 
         // [STEP 2: Lazy BF16 Conversion]
         if M::IS_BF16 {
@@ -309,6 +313,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
+                        is_first_layer: i == 0,
                     });
                 } else {
                     let next_state = &mut *states_ptr.add(i + 1);
@@ -332,6 +337,7 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                         buffer_start: current_state.buffer_start,
                         num_frames,
                         block: &mut self.block_buffer[0..num_frames * self.block_size],
+                        is_first_layer: i == 0,
                     });
                 }
 

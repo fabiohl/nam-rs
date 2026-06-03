@@ -562,3 +562,48 @@ fn test_gemv_overwrite_bf16_avx512_regression() {
         }
     }
 }
+
+#[test]
+fn test_tanh_and_overwrite_block() {
+    fn test_backend<M: SimdMath>() {
+        let mut head_input = vec![-999.0; 64];
+        let mut block = vec![0.5f32; 64];
+        unsafe { M::tanh_and_overwrite_block(&mut head_input, &mut block) };
+        for i in 0..64 {
+            let expected = 0.5f32.tanh();
+            assert!((head_input[i] - expected).abs() < 1e-6);
+            assert!((block[i] - expected).abs() < 1e-6);
+        }
+    }
+
+    test_backend::<Avx2Math>();
+    if std::is_x86_feature_detected!("avx512f") {
+        test_backend::<Avx512Math>();
+    }
+}
+
+#[test]
+fn test_gated_activation_and_overwrite_block() {
+    fn test_backend<M: SimdMath>() {
+        let ch = 8;
+        let num_frames = 4;
+        let mut head_input = vec![-999.0; num_frames * ch];
+        let mut block = vec![0.5f32; num_frames * 2 * ch];
+        unsafe { M::gated_activation_and_overwrite_block(&mut head_input, &mut block, ch) };
+        for f in 0..num_frames {
+            for c in 0..ch {
+                let z1 = 0.5f32;
+                let z2 = 0.5f32;
+                let expected = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+                let head_idx = f * ch + c;
+                assert!((head_input[head_idx] - expected).abs() < 1e-3);
+            }
+        }
+    }
+
+    test_backend::<Avx2Math>();
+    if std::is_x86_feature_detected!("avx512f") {
+        test_backend::<Avx512Math>();
+    }
+}
+

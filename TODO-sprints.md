@@ -1917,7 +1917,7 @@ Notas Operacionais — Épico 14
   - Testes do resampler atualizados e passando (incluindo teste de drift de 100k samples).
   - Ganhos de performance de até 17% medidos no benchmark.
 
-#### Tarefa S25.T08 — Eliminar `head_accum.fill(0.0)` via kernel overwrite no primeiro layer ⚠️
+#### Tarefa S25.T08 — Eliminar `head_accum.fill(0.0)` via kernel overwrite no primeiro layer ⚠️ [DONE]
 
 - **Onde:** `src/models/wavenet/model_dyn.rs:401` (`self.head_accum[..num_frames * ch].fill(0.0)`); `src/math/common/traits.rs` (trait `SimdMath`); `src/math/common/avx2_impl.rs`, `avx512/gemv.rs`, `scalar_ref.rs`.
 - **Problema:** `head_accum` (já `AlignedVec<f32>` em `model_dyn.rs:336` — alinhamento correto) é zerado a cada `process_internal_generic` via `fill(0.0)`. Em WaveNet Standard com `num_frames=64, ch=16` → 1024 floats = 4 KiB zerados por block; este store domina bandwidth L1 entre layers e é redundante (poderíamos escrever direto no primeiro layer).

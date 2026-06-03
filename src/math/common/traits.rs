@@ -249,6 +249,23 @@ pub trait SimdMath {
         ch: usize,
     );
 
+    /// Fused Tanh + Head Overwrite.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]);
+
+    /// Fused Gated Activation + Head Overwrite.
+    ///
+    /// # Safety
+    /// Buffers must be valid.
+    unsafe fn gated_activation_and_overwrite_block(
+        head_input: &mut [f32],
+        block: &mut [f32],
+        ch: usize,
+    );
+
+
     /// Computes the maximum energy between two channels (Stereo).
     /// Returns `max(energy_l, energy_r)`.
     ///

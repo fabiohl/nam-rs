@@ -760,7 +760,6 @@ fn test_gated_layer_dyn_process() {
 
     let _math = SimdMathConfig::current();
 
-    // Execute internal processing (unsafe because it deals with production pointers/SIMD).
     unsafe {
         layer.process_block_internal::<crate::math::common::Avx2Math>(WavenetProcessContext {
             condition: &condition,
@@ -773,6 +772,7 @@ fn test_gated_layer_dyn_process() {
             buffer_start,
             block: &mut block,
             num_frames: 1,
+            is_first_layer: false,
         });
     }
 
@@ -846,6 +846,7 @@ fn test_non_gated_layer_dyn_process() {
             buffer_start,
             block: &mut block,
             num_frames: 1,
+            is_first_layer: false,
         });
     }
 

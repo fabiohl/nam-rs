@@ -33,7 +33,10 @@ pub struct WavenetProcessContext<'a> {
     pub num_frames: usize,
     /// On-stack temporary buffer for intermediate calculations.
     pub block: &'a mut [f32],
+    /// Indicates if this is the first layer of the array.
+    pub is_first_layer: bool,
 }
+
 
 /// Manages the buffer memory of a WaveNet cell.
 ///

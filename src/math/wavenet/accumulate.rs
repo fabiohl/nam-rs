@@ -189,3 +189,130 @@ pub unsafe fn gated_activation_and_accumulate_block_fallback(
         }
     }
 }
+
+/// Applies tanh in-place on block and overwrites head_input using AVX2.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn tanh_and_overwrite_block_avx2(head_input: &mut [f32], block: &mut [f32]) {
+    let len = block.len();
+    let mut i = 0;
+    while i + 8 <= len {
+        let vb = _mm256_loadu_ps(block.as_ptr().add(i));
+        let vt = crate::math::activations::simd_tanh_avx2(vb);
+        _mm256_storeu_ps(block.as_mut_ptr().add(i), vt);
+        _mm256_storeu_ps(head_input.as_mut_ptr().add(i), vt);
+        i += 8;
+    }
+    while i < len {
+        let val = block[i].tanh();
+        block[i] = val;
+        head_input[i] = val;
+        i += 1;
+    }
+}
+
+/// Applies gated activation (tanh * sigmoid) in-place on block and overwrites head_input using AVX2.
+#[target_feature(enable = "avx2,fma")]
+pub unsafe fn gated_activation_and_overwrite_block_avx2(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    ch: usize,
+) {
+    let num_frames = head_input.len() / ch;
+    for f in 0..num_frames {
+        let block_offset = f * 2 * ch;
+        let head_offset = f * ch;
+        let mut c = 0;
+        while c + 8 <= ch {
+            let z1 = _mm256_loadu_ps(block.as_ptr().add(block_offset + c));
+            let z2 = _mm256_loadu_ps(block.as_ptr().add(block_offset + ch + c));
+
+            let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx2(z1, z2);
+            let activated = _mm256_mul_ps(tanh_z1, sig_z2);
+
+            _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
+            _mm256_storeu_ps(
+                head_input.as_mut_ptr().add(head_offset + c),
+                activated,
+            );
+            c += 8;
+        }
+        while c < ch {
+            let z1 = block[block_offset + c];
+            let z2 = block[block_offset + ch + c];
+            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+            block[block_offset + c] = activated;
+            head_input[head_offset + c] = activated;
+            c += 1;
+        }
+    }
+}
+
+/// Applies the "gate" activation (tanh * sigmoid) to audio blocks.
+/// Overwrites to "head_input".
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn gated_activation_and_overwrite_block_avx512(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    ch: usize,
+) {
+    let num_frames = head_input.len() / ch;
+    for f in 0..num_frames {
+        let block_offset = f * 2 * ch;
+        let head_offset = f * ch;
+        let mut c = 0;
+        while c + 16 <= ch {
+            let z1 = _mm512_loadu_ps(block.as_ptr().add(block_offset + c));
+            let z2 = _mm512_loadu_ps(block.as_ptr().add(block_offset + ch + c));
+
+            let (tanh_z1, sig_z2) = crate::math::activations::simd_tanh_sigmoid_dual_avx512(z1, z2);
+            let activated = _mm512_mul_ps(tanh_z1, sig_z2);
+
+            _mm512_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
+            _mm512_storeu_ps(
+                head_input.as_mut_ptr().add(head_offset + c),
+                activated,
+            );
+            c += 16;
+        }
+        while c < ch {
+            let z1 = block[block_offset + c];
+            let z2 = block[block_offset + ch + c];
+            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+            block[block_offset + c] = activated;
+            head_input[head_offset + c] = activated;
+            c += 1;
+        }
+    }
+}
+
+/// Applies the 'Tanh' activation and overwrites the main output.
+pub unsafe fn tanh_and_overwrite_block_fallback(head_input: &mut [f32], block: &mut [f32]) {
+    let len = head_input.len();
+    for i in 0..len {
+        let v = block[i];
+        let activated = v.tanh();
+        block[i] = activated;
+        head_input[i] = activated;
+    }
+}
+
+/// Gated Activation + Overwrite.
+pub unsafe fn gated_activation_and_overwrite_block_fallback(
+    head_input: &mut [f32],
+    block: &mut [f32],
+    ch: usize,
+) {
+    let num_frames = head_input.len() / ch;
+    for f in 0..num_frames {
+        let block_offset = f * 2 * ch;
+        let head_offset = f * ch;
+        for c in 0..ch {
+            let z1 = block[block_offset + c];
+            let z2 = block[block_offset + ch + c];
+            let activated = z1.tanh() * (1.0 / (1.0 + (-z2).exp()));
+            block[block_offset + c] = activated;
+            head_input[head_offset + c] = activated;
+        }
+    }
+}
+

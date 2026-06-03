@@ -26,8 +26,10 @@
 use crate::math::common::kahan_add;
 pub use crate::math::wavenet::accumulate::{
     accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
-    tanh_and_accumulate_block_fallback,
+    gated_activation_and_overwrite_block_fallback, tanh_and_accumulate_block_fallback,
+    tanh_and_overwrite_block_fallback,
 };
+
 
 /// Computes the "Dot Product" between two sets of numbers.
 /// Imagine multiplying each item from one list by the corresponding item of another list
