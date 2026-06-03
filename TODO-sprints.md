@@ -1830,7 +1830,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S25.T04 — Alinhamento 64-byte para buffers do CLAP processor ⚠️
+#### Tarefa S25.T04 — Alinhamento 64-byte para buffers do CLAP processor ✅ [DONE]
 
 - **Onde:** `src/clap/processor/mod.rs:40-50, 172-178` (declarações `Box<[f32]>` para 8 buffers).
 - **Problema:** Os 8 buffers de trabalho (`buf_host_l/r`, `buf_mid_l/r`, `buf_model_l/r`, `buf_out_l/r`) são `Box<[f32]>` com alinhamento garantido apenas de 4 bytes. Loads SIMD nesses buffers ficam **misaligned** (penalty 1-3 cycles por load cross-cache-line). Em AVX-512 com `_mm512_load_ps` (aligned-only), poderia até causar SIGSEGV se o caminho for ativado por engano.

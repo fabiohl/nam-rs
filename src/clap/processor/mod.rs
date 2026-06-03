@@ -16,6 +16,7 @@ use crate::common::params::NamPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::gate::DynamicHysteresis;
 use crate::dsp::resampler::NamResampler;
+use crate::math::common::AlignedVec;
 use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
@@ -37,17 +38,17 @@ pub struct NamClapProcessor<'a> {
 
     /// Intermediate buffers pre-allocated in activate() — ZERO alloc in process().
     /// 1. Copy of host input (variable sample_rate)
-    buf_host_l: Box<[f32]>,
-    buf_host_r: Box<[f32]>,
+    buf_host_l: AlignedVec<f32>,
+    buf_host_r: AlignedVec<f32>,
     /// 2. Post-resampler input / Pre-model (f32 @ 48kHz)
-    pub(crate) buf_mid_l: Box<[f32]>,
-    pub(crate) buf_mid_r: Box<[f32]>,
+    pub(crate) buf_mid_l: AlignedVec<f32>,
+    pub(crate) buf_mid_r: AlignedVec<f32>,
     /// 3. Post-model / Pre-resampler output (f32 @ 48kHz)
-    pub(crate) buf_model_l: Box<[f32]>,
-    pub(crate) buf_model_r: Box<[f32]>,
+    pub(crate) buf_model_l: AlignedVec<f32>,
+    pub(crate) buf_model_r: AlignedVec<f32>,
     /// 4. Post-resampler output / Final (variable sample_rate)
-    pub(crate) buf_out_l: Box<[f32]>,
-    pub(crate) buf_out_r: Box<[f32]>,
+    pub(crate) buf_out_l: AlignedVec<f32>,
+    pub(crate) buf_out_r: AlignedVec<f32>,
 
     /// Hysteresis for absolute silence detection.
     silence_hyst: DynamicHysteresis,
@@ -171,14 +172,14 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .max(crate::dsp::pipeline::MAX_RESAMP_BUF)
             .max(1024)
             * 2;
-        let buf_host_l = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_host_r = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_mid_l = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_mid_r = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_model_l = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_model_r = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_out_l = vec![0.0f32; buf_capacity].into_boxed_slice();
-        let buf_out_r = vec![0.0f32; buf_capacity].into_boxed_slice();
+        let buf_host_l = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_host_r = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_mid_l = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_mid_r = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_model_l = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_model_r = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_out_l = AlignedVec::new(buf_capacity, 0.0f32);
+        let buf_out_r = AlignedVec::new(buf_capacity, 0.0f32);
 
         // 3. DSP component initialization
         let model_rate = shared.model_sample_rate.load(Ordering::Relaxed);
