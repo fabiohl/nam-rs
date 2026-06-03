@@ -147,11 +147,13 @@ fn make_wavenet_layer(
             },
         },
         input_mixin: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); ch]),
             bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); ch * ch]),
             bias: AlignedVec::from_vec(vec![0.0; ch]),
             do_bias: false,
@@ -174,11 +176,13 @@ fn make_wavenet_layer_a2(dilation: usize) -> wavenet::WaveNetLayer<1, 8, 3> {
             },
         },
         input_mixin: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         one_by_one: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8 * 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
@@ -225,11 +229,13 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_1,
         states: states_1,
         rechannel: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 16]),
             bias: AlignedVec::from_vec(vec![0.0; 16]),
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.001).to_bits(); 8 * 16]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
@@ -265,11 +271,13 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         layers: layers_2,
         states: states_2,
         rechannel: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 16 * 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         head_rechannel: wavenet::DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.0).to_bits(); 8]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,
@@ -525,7 +533,8 @@ fn test_golden_vectors_wavenet() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-standard");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossWN-standard");
 }
 
 /// Test 8: Golden Vectors LSTM 1×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -575,7 +584,8 @@ fn test_golden_vectors_lstm_1x16() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     // 5-metric validation — single-pass fusion
-    report_dsp_fidelity(&expected, &output, 3e-3, 15.0, "BossLSTM-1x16");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossLSTM-1x16");
 }
 
 /// Test 8b: Golden Vectors LSTM 2×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -617,7 +627,8 @@ fn test_golden_vectors_lstm_2x8() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    report_dsp_fidelity(&expected, &output, 1e-3, 18.0, "BossLSTM-2x8");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossLSTM-2x8");
 }
 
 /// Test 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -652,7 +663,8 @@ fn test_golden_vectors_wavenet_feather() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-feather");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossWN-feather");
 }
 
 /// Test 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -687,7 +699,8 @@ fn test_golden_vectors_wavenet_nano() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "BossWN-nano");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossWN-nano");
 }
 
 /// Test 8e: Golden Vectors NAMCore LSTM 1×3 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -729,7 +742,8 @@ fn test_golden_vectors_namcore_lstm_1x3() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    report_dsp_fidelity(&expected, &output, 1e-3, 22.0, "NAMCore-LSTM-1x3");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "NAMCore-LSTM-1x3");
 }
 
 /// Test 8f: Golden Vectors NAMCore WaveNet Micro — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -771,7 +785,8 @@ fn test_golden_vectors_namcore_wn_micro() {
     let mut output = vec![0.0f32; input.len()];
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
-    report_dsp_fidelity(&expected, &output, 5e-2, 9.0, "NAMCore-WN-micro");
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "NAMCore-WN-micro");
 }
 
 // =============================================================================

@@ -24,7 +24,12 @@ macro_rules! define_lstm1_process {
 
                     // Transform the neural network output into the final audio signal.
                     let h = self.layer.$get_h();
-                    let dot = $dot_prod(h, &self.head_weights);
+                    let dot = if self.use_f32_head {
+                        let h_f32 = self.layer.get_hidden_state();
+                        crate::math::common::scalar_ref::dot_product_f32_native(h_f32, &self.head_weights_f32)
+                    } else {
+                        $dot_prod(h, &self.head_weights)
+                    };
                     output[i] = dot + self.head_bias;
                 }
             }
@@ -36,10 +41,14 @@ macro_rules! define_lstm1_process {
 pub struct LstmModel1<const H: usize, const H1_IH: usize, const H_H4: usize> {
     /// The model's single layer.
     pub layer: LstmLayer<1, H, H1_IH, H_H4>,
-    /// Output head weights (Linear Projection).
+    /// Output head weights (Linear Projection) — quantized.
     pub head_weights: [u16; H],
+    /// Output head weights in full f32 precision (mixed-precision selective).
+    pub head_weights_f32: [f32; H],
     /// Output head bias.
     pub head_bias: f32,
+    /// Whether to use f32 head weights instead of quantized.
+    pub use_f32_head: bool,
 }
 
 impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH, H_H4> {
@@ -48,7 +57,9 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         Self {
             layer: LstmLayer::new(),
             head_weights: [0u16; H],
+            head_weights_f32: [0.0f32; H],
             head_bias: 0.0,
+            use_f32_head: false,
         }
     }
     define_lstm1_process!(
@@ -115,16 +126,21 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
         for i in 0..input.len() {
             self.layer.process_sample_scalar(&[input[i]], is_bf16);
             let hidden = self.layer.get_hidden_state();
-            let mut dot = 0.0;
-            for (j, &h_val) in hidden.iter().enumerate().take(H) {
-                let w = self.head_weights[j];
-                let w_f32 = if is_bf16 {
-                    f32::from_bits((w as u32) << 16)
-                } else {
-                    half::f16::from_bits(w).to_f32()
-                };
-                dot += h_val * w_f32;
-            }
+            let dot = if self.use_f32_head {
+                crate::math::common::scalar_ref::dot_product_f32_native(hidden, &self.head_weights_f32)
+            } else {
+                let mut dot = 0.0;
+                for (j, &h_val) in hidden.iter().enumerate().take(H) {
+                    let w = self.head_weights[j];
+                    let w_f32 = if is_bf16 {
+                        f32::from_bits((w as u32) << 16)
+                    } else {
+                        half::f16::from_bits(w).to_f32()
+                    };
+                    dot += h_val * w_f32;
+                }
+                dot
+            };
             output[i] = dot + self.head_bias;
         }
     }

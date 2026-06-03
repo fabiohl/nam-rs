@@ -150,7 +150,7 @@ pub(crate) fn build_wavenet_array<
     }
 
     let head_rechannel =
-        layout::read_dense_weights_typed::<DenseLayer<CH, HEAD>>(cursor, CH, HEAD, has_head_bias)?;
+        layout::read_dense_head_weights_typed::<DenseLayer<CH, HEAD>>(cursor, CH, HEAD, has_head_bias)?;
 
     let receptive_field_size: usize = dilations.iter().map(|&d| (K - 1) * d).sum();
 

@@ -146,6 +146,62 @@ pub(crate) fn read_dense_weights_typed<T: DenseWeightsOutput>(
     Ok(T::from_parts(weights, bias, do_bias, in_size, out_size))
 }
 
+pub(crate) fn read_dense_head_weights_typed<T: DenseWeightsOutput>(
+    cursor: &mut WeightCursor<'_>,
+    in_size: usize,
+    out_size: usize,
+    do_bias: bool,
+) -> anyhow::Result<T> {
+    let total = out_size * in_size;
+    let raw = cursor.read_slice(total)?;
+    let raw_f32_owned = raw.to_vec();
+    let mut weights = AlignedVec::new(total, 0u16);
+    let mut f32_weights = AlignedVec::new(total, 0.0f32);
+    let is_bf16 = crate::math::common::SimdMathConfig::get().instruction_set
+        == crate::math::common::InstructionSet::Avx512VnniBf16;
+    let interleaved = cursor.is_interleaved4();
+
+    if interleaved {
+        for i in 0..total {
+            weights[i] = quantize_weight(raw_f32_owned[i], is_bf16);
+            f32_weights[i] = raw_f32_owned[i];
+        }
+    } else {
+        transpose_dense_layer_f32(&raw_f32_owned, &mut f32_weights, in_size, out_size);
+        transpose_dense_layer(&raw_f32_owned, &mut weights, in_size, out_size, is_bf16);
+    }
+
+    let mut bias = if do_bias {
+        AlignedVec::from_vec(cursor.read_slice(out_size)?.to_vec())
+    } else {
+        AlignedVec::new(out_size, 0.0)
+    };
+
+    if do_bias && !raw_f32_owned.is_empty() {
+        let compensation = bias_tune::compute_dense_bias_compensation(
+            &raw_f32_owned,
+            &weights,
+            in_size,
+            out_size,
+            interleaved,
+            is_bf16,
+        );
+        let max_comp = compensation.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
+        log::debug!(
+            "[BiasTune] Dense HEAD in={}, out={}, bf16={}: max_comp={:.6e}",
+            in_size,
+            out_size,
+            is_bf16,
+            max_comp
+        );
+        bias_tune::apply_bias_compensation(&mut bias, &compensation);
+    }
+
+    Ok(T::from_parts_head(
+        weights, bias, do_bias, in_size, out_size, f32_weights,
+    ))
+}
+
 // =============================================================================
 // Transposition and quantization
 // =============================================================================
@@ -194,6 +250,21 @@ fn transpose_dense_layer(
             let raw_val = raw[out_c * in_size + in_c];
             let val = quantize_weight(raw_val, is_bf16);
             weights[in_c * out_size + out_c] = val;
+        }
+    }
+}
+
+/// Rearranges dense layer weights into transposed format, keeping full f32 precision.
+/// Stores result in column-major layout: `f32_weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c]`.
+fn transpose_dense_layer_f32(
+    raw: &[f32],
+    weights: &mut [f32],
+    in_size: usize,
+    out_size: usize,
+) {
+    for out_c in 0..out_size {
+        for in_c in 0..in_size {
+            weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c];
         }
     }
 }

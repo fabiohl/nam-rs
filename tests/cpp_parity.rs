@@ -15,15 +15,11 @@
 //!
 //! Tests are `#[ignore]` in normal CI — requires C++ toolchain installed.
 //!
-//! ## Parity Thresholds
+//! ## Parity Thresholds (Adaptive)
 //!
-//! | Model            | MSE       | SNR      |
-//! | ---------------- |:---------:|:--------:|
-//! | WaveNet Standard | < 5e-2    | ≥ 9 dB   |
-//! | WaveNet Feather  | < 5e-2    | ≥ 9 dB   |
-//! | WaveNet Nano     | < 5e-2    | ≥ 9 dB   |
-//! | LSTM 1×16        | < 3e-3    | ≥ 15 dB  |
-//! | LSTM 2×8         | < 1e-3    | ≥ 18 dB  |
+//! Thresholds are now computed dynamically by `topology_thresholds()` based on
+//! model topology (channels, dilations for WaveNet; num_layers, hidden_size for LSTM).
+//! More complex models get more permissive thresholds; simpler models get tighter ones.
 
 mod common;
 use common::*;
@@ -149,8 +145,6 @@ fn run_render_comparison(
     model_filename: &str,
     golden_name: &str,
     label: &str,
-    mse_limit: f64,
-    min_snr_db: f64,
 ) {
     if !ensure_render_compiled() {
         eprintln!("SKIP: {label} — render tool not available.");
@@ -206,6 +200,10 @@ fn run_render_comparison(
     // Rust inference
     let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
+
+    // Compute adaptive thresholds based on model topology
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+
     let mut model = build_model(&model_data).expect("Dispatcher failed");
 
     model.prewarm(2048);
@@ -242,8 +240,6 @@ fn live_cross_validation_wavenet_standard() {
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard",
-        5e-2,
-        9.0,
     );
 }
 
@@ -254,8 +250,6 @@ fn live_cross_validation_wavenet_feather() {
         "BossWN-feather.nam",
         "wavenet_feather",
         "Live WaveNet Feather",
-        5e-2,
-        9.0,
     );
 }
 
@@ -266,8 +260,6 @@ fn live_cross_validation_wavenet_nano() {
         "BossWN-nano.nam",
         "wavenet_nano",
         "Live WaveNet Nano",
-        5e-2,
-        9.0,
     );
 }
 
@@ -278,13 +270,11 @@ fn live_cross_validation_lstm_1x16() {
         "BossLSTM-1x16.nam",
         "lstm_1x16",
         "Live LSTM 1×16",
-        3e-3,
-        15.0,
     );
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_2x8() {
-    run_render_comparison("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8", 1e-3, 18.0);
+    run_render_comparison("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8");
 }

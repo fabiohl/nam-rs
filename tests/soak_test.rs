@@ -72,11 +72,13 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 },
             },
             input_mixin: DenseLayer {
+                f32_weights: None,
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16]),
                 bias: AlignedVec::from_vec(vec![0.0; 16]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
+                f32_weights: None,
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16 * 16]),
                 bias: AlignedVec::from_vec(vec![0.0; 16]),
                 do_bias: false,
@@ -98,11 +100,13 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         layers: layers_1,
         states: states_1,
         rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16]),
             bias: AlignedVec::from_vec(vec![0.0; 16]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 16]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
@@ -129,11 +133,13 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
                 prefetch_fn: nam_rs::math::common::prefetch_strategy_simple,
             },
             input_mixin: DenseLayer {
+                f32_weights: None,
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),
                 bias: AlignedVec::from_vec(vec![0.0; 8]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
+                f32_weights: None,
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8 * 8]),
                 bias: AlignedVec::from_vec(vec![0.0; 8]),
                 do_bias: false,
@@ -152,11 +158,13 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         layers: layers_2,
         states: states_2,
         rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 16 * 8]),
             bias: AlignedVec::from_vec(vec![0.0; 8]),
             do_bias: false,
         },
         head_rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 8]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true,

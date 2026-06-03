@@ -40,7 +40,12 @@ macro_rules! define_lstm2_process_pipelined {
                         // 3. Output Projection: Convert the Layer 2 neuron 'vote'
                         // into a real audio value using a Dot Product.
                         let h2 = self.layer2.$get_h2();
-                        let dot = $dot_prod(h2, &self.head_weights);
+                        let dot = if self.use_f32_head {
+                            let h2_f32 = self.layer2.get_hidden_state();
+                            crate::math::common::scalar_ref::dot_product_f32_native(h2_f32, &self.head_weights_f32)
+                        } else {
+                            $dot_prod(h2, &self.head_weights)
+                        };
                         output[i - 1] = dot + self.head_bias;
 
                         // Save Layer 1's result for Layer 2 to use on the next iteration.
@@ -50,7 +55,12 @@ macro_rules! define_lstm2_process_pipelined {
                     // 4. Epilogue: Process the last remaining frame in Layer 2.
                     self.layer2.$layer_proc(&prev_h1);
                     let h2 = self.layer2.$get_h2();
-                    let dot = $dot_prod(h2, &self.head_weights);
+                    let dot = if self.use_f32_head {
+                        let h2_f32 = self.layer2.get_hidden_state();
+                        crate::math::common::scalar_ref::dot_product_f32_native(h2_f32, &self.head_weights_f32)
+                    } else {
+                        $dot_prod(h2, &self.head_weights)
+                    };
                     output[len - 1] = dot + self.head_bias;
                 }
             }
@@ -64,10 +74,14 @@ pub struct LstmModel2<const H: usize, const H1_IH: usize, const H2_IH: usize, co
     pub layer1: LstmLayer<1, H, H1_IH, H_H4>,
     /// Model layer 2.
     pub layer2: LstmLayer<H, H, H2_IH, H_H4>,
-    /// Output head weights.
+    /// Output head weights (quantized).
     pub head_weights: [u16; H],
+    /// Output head weights in full f32 precision (mixed-precision selective).
+    pub head_weights_f32: [f32; H],
     /// Output head bias.
     pub head_bias: f32,
+    /// Whether to use f32 head weights instead of quantized.
+    pub use_f32_head: bool,
 }
 
 impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
@@ -79,7 +93,9 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             layer1: LstmLayer::new(),
             layer2: LstmLayer::new(),
             head_weights: [0u16; H],
+            head_weights_f32: [0.0f32; H],
             head_bias: 0.0,
+            use_f32_head: false,
         }
     }
     define_lstm2_process_pipelined!(
@@ -148,16 +164,21 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
             self.layer2
                 .process_sample_scalar(self.layer1.get_hidden_state(), is_bf16);
             let hidden2 = self.layer2.get_hidden_state();
-            let mut dot = 0.0;
-            for (j, &h_val) in hidden2.iter().enumerate().take(H) {
-                let w = self.head_weights[j];
-                let w_f32 = if is_bf16 {
-                    f32::from_bits((w as u32) << 16)
-                } else {
-                    half::f16::from_bits(w).to_f32()
-                };
-                dot += h_val * w_f32;
-            }
+            let dot = if self.use_f32_head {
+                crate::math::common::scalar_ref::dot_product_f32_native(hidden2, &self.head_weights_f32)
+            } else {
+                let mut dot = 0.0;
+                for (j, &h_val) in hidden2.iter().enumerate().take(H) {
+                    let w = self.head_weights[j];
+                    let w_f32 = if is_bf16 {
+                        f32::from_bits((w as u32) << 16)
+                    } else {
+                        half::f16::from_bits(w).to_f32()
+                    };
+                    dot += h_val * w_f32;
+                }
+                dot
+            };
             output[i] = dot + self.head_bias;
         }
     }

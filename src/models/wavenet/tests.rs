@@ -45,6 +45,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             // input_mixin injects conditioning (e.g., timbre metadata) into the signal.
             // Dimensions: OUT * IN = 4 * 1.
             input_mixin: DenseLayer {
+                f32_weights: None,
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -52,6 +53,7 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
             // The 1x1 projection (Dense) finalizes the cell, preparing the signal for the residual.
             // Dimensions: OUT * IN = 4 * 4.
             one_by_one: DenseLayer {
+                f32_weights: None,
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 4]),
                 bias: AlignedVec::from_vec(vec![0.0; 4]),
                 do_bias: false,
@@ -89,12 +91,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
                 },
             },
             input_mixin: DenseLayer {
+                f32_weights: None,
                 // Dimensions: OUT * IN = 2 * 1.
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
                 do_bias: false,
             },
             one_by_one: DenseLayer {
+                f32_weights: None,
                 // Dimensions: OUT * IN = 2 * 2.
                 weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 2]),
                 bias: AlignedVec::from_vec(vec![0.0; 2]),
@@ -127,12 +131,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         states: states_1,
         // Rechannel: Projects raw input (Mono/Stereo) to the internal dimension (Channels).
         rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4]),
             bias: AlignedVec::from_vec(vec![0.0; 4]),
             do_bias: false,
         },
         // Head Rechannel: Aggregates "skip connections" from all layers for the array's output.
         head_rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2 * 4]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
@@ -163,12 +169,14 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         states: states_2,
         // Projects Array 1 output (HEAD1=2) to Array 2 dimension (CH2=2).
         rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 4 * 2]),
             bias: AlignedVec::from_vec(vec![0.0; 2]),
             do_bias: false,
         },
         // The final NAM model projection reduces everything to 1 channel (mono audio).
         head_rechannel: DenseLayer {
+            f32_weights: None,
             weights: AlignedVec::from_vec(vec![half::f16::from_f32(0.01).to_bits(); 2]),
             bias: AlignedVec::from_vec(vec![0.0; 1]),
             do_bias: true, // Enable bias for final DC offset correction.
@@ -571,6 +579,7 @@ fn test_dense_layer_identity() {
     }
 
     let dense = DenseLayer::<4, 4> {
+        f32_weights: None,
         weights,
         bias: AlignedVec::from_vec(vec![0.0; 4]),
         do_bias: false,
@@ -598,6 +607,7 @@ fn test_dense_layer_with_bias() {
     }
 
     let dense = DenseLayer::<4, 4> {
+        f32_weights: None,
         weights,
         bias: AlignedVec::from_vec(vec![1.0; 4]),
         do_bias: true,
@@ -641,6 +651,7 @@ fn test_dense_layer_rectangular() {
     weights[31] = half::f16::from_f32(-1.0).to_bits(); // in7, out3
 
     let dense = DenseLayer::<8, 4> {
+        f32_weights: None,
         weights,
         bias: AlignedVec::from_vec(vec![0.5, -0.5, 1.0, -1.0]),
         do_bias: true,

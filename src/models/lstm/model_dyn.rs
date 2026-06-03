@@ -126,12 +126,14 @@ pub struct LstmDynModel {
     /// Linearly stacked set of LSTM subroutines.
     /// In complex models, we can have 2, 3 or more layers where one feeds the other.
     pub layers: Vec<LstmDynLayer>,
-    /// Linear prediction filter of the output (Head).
-    /// After all LSTM layers, we apply a final linear layer to transform
-    /// the final hidden state into the audio sample value.
+    /// Linear prediction filter of the output (Head) — quantized.
     pub head_weights: Vec<u16>,
+    /// Output head weights in full f32 precision (mixed-precision selective).
+    pub head_weights_f32: Vec<f32>,
     /// Projected linear output accumulator.
     pub head_bias: f32,
+    /// Whether to use f32 head weights instead of quantized.
+    pub use_f32_head: bool,
 }
 
 impl LstmDynModel {
@@ -173,8 +175,11 @@ impl LstmDynModel {
 
             // Output Layer (Head): Multiply the last layer's hidden state
             // by the 'head' weights and add the bias to get the final sample.
-            let head_out =
-                unsafe { M::dot_product(hidden_out, &self.head_weights) } + self.head_bias;
+            let head_out = if self.use_f32_head {
+                crate::math::common::scalar_ref::dot_product_f32_native(hidden_out, &self.head_weights_f32)
+            } else {
+                unsafe { M::dot_product(hidden_out, &self.head_weights) }
+            } + self.head_bias;
 
             // Save the result to the output buffer
             output[i] = head_out;

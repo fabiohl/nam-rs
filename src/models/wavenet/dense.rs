@@ -14,6 +14,10 @@ pub struct DenseLayer<const IN: usize, const OUT: usize> {
     pub bias: AlignedVec<f32>,
     /// Flag indicating whether bias should be applied.
     pub do_bias: bool,
+    /// Optional full-precision f32 weights for mixed-precision head projection.
+    /// When present, `process_block_f32_native` can be used instead of the
+    /// quantized SIMD path, preserving tonal fidelity in the critical final stage.
+    pub f32_weights: Option<AlignedVec<f32>>,
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
@@ -165,6 +169,29 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
                 num_frames,
                 self.do_bias,
             );
+        }
+    }
+
+    /// Full-precision f32 head projection for mixed-precision inference.
+    ///
+    /// Performs a scalar GEMV using the stored `f32_weights` (native FP32),
+    /// bypassing the quantized SIMD path. Used exclusively for the
+    /// `head_rechannel` layer to preserve tonal quality in the final stage
+    /// while the backbone runs quantized (BF16/F16).
+    #[inline(always)]
+    pub fn process_block_f32_native(&self, input: &[f32], output: &mut [f32], num_frames: usize) {
+        let f32_w = self
+            .f32_weights
+            .as_ref()
+            .expect("process_block_f32_native requires f32_weights");
+        for n in 0..num_frames {
+            for out_c in 0..OUT {
+                let mut sum = if self.do_bias { self.bias[out_c] } else { 0.0 };
+                for in_c in 0..IN {
+                    sum += input[n * IN + in_c] * f32_w[in_c * OUT + out_c];
+                }
+                output[n * OUT + out_c] = sum;
+            }
         }
     }
 }

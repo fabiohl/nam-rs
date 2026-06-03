@@ -77,6 +77,15 @@ pub(crate) trait DenseWeightsOutput: Sized {
         in_size: usize,
         out_size: usize,
     ) -> Self;
+
+    fn from_parts_head(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        in_size: usize,
+        out_size: usize,
+        f32_weights: AlignedVec<f32>,
+    ) -> Self;
 }
 
 impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OUT> {
@@ -92,6 +101,24 @@ impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OU
             weights,
             bias,
             do_bias,
+            f32_weights: None,
+        }
+    }
+
+    #[inline(always)]
+    fn from_parts_head(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        _in_size: usize,
+        _out_size: usize,
+        f32_weights: AlignedVec<f32>,
+    ) -> Self {
+        DenseLayer {
+            weights,
+            bias,
+            do_bias,
+            f32_weights: Some(f32_weights),
         }
     }
 }
@@ -105,6 +132,25 @@ impl DenseWeightsOutput for DenseLayerDyn {
         in_size: usize,
         out_size: usize,
     ) -> Self {
+        DenseLayerDyn {
+            weights,
+            bias,
+            do_bias,
+            in_size,
+            out_size,
+        }
+    }
+
+    #[inline(always)]
+    fn from_parts_head(
+        weights: AlignedVec<u16>,
+        bias: AlignedVec<f32>,
+        do_bias: bool,
+        in_size: usize,
+        out_size: usize,
+        f32_weights: AlignedVec<f32>,
+    ) -> Self {
+        let _ = f32_weights;
         DenseLayerDyn {
             weights,
             bias,

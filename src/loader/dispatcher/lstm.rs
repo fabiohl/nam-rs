@@ -80,8 +80,10 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     // Head: output linear projection weights
     let head_weights_data = cursor.read_slice(H)?;
     let mut head_weights = [0u16; H];
+    let mut head_weights_f32 = [0.0f32; H];
     for i in 0..H {
         head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
+        head_weights_f32[i] = head_weights_data[i];
     }
     let head_bias = cursor.read_f32()?;
 
@@ -90,7 +92,9 @@ pub(crate) fn build_lstm_1layer<const H: usize, const H1_IH: usize, const H_H4: 
     let model = LstmModel1::<H, H1_IH, H_H4> {
         layer,
         head_weights,
+        head_weights_f32,
         head_bias,
+        use_f32_head: true,
     };
 
     info!(
@@ -126,8 +130,10 @@ pub(crate) fn build_lstm_2layer<
     // Head: final projection weights
     let head_weights_data = cursor.read_slice(H)?;
     let mut head_weights = [0u16; H];
+    let mut head_weights_f32 = [0.0f32; H];
     for i in 0..H {
         head_weights[i] = quantize_weight(head_weights_data[i], is_bf16);
+        head_weights_f32[i] = head_weights_data[i];
     }
     let head_bias = cursor.read_f32()?;
 
@@ -137,7 +143,9 @@ pub(crate) fn build_lstm_2layer<
         layer1,
         layer2,
         head_weights,
+        head_weights_f32,
         head_bias,
+        use_f32_head: true,
     };
 
     info!(
@@ -219,8 +227,10 @@ pub fn build_lstm_dynamic(
     // and transforms it back into a single sound volume value (audio sample).
     let raw_head_weights = cursor.read_slice(hidden_size)?;
     let mut head_weights = vec![0u16; hidden_size];
+    let mut head_weights_f32 = vec![0.0f32; hidden_size];
     for i in 0..hidden_size {
         head_weights[i] = quantize_weight(raw_head_weights[i], is_bf16);
+        head_weights_f32[i] = raw_head_weights[i];
     }
     let head_bias = cursor.read_f32()?;
 
@@ -230,7 +240,9 @@ pub fn build_lstm_dynamic(
     let model = LstmDynModel {
         layers,
         head_weights,
+        head_weights_f32,
         head_bias,
+        use_f32_head: true,
     };
 
     info!(

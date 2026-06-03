@@ -76,6 +76,20 @@ pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
     sum
 }
 
+/// Native f32 dot_product for mixed-precision head projection.
+///
+/// Used for the final head weights (WaveNet head_rechannel, LSTM head_weights)
+/// when running in full FP32 precision, while the backbone uses quantized
+/// (BF16/F16) weights for performance.
+pub fn dot_product_f32_native(a: &[f32], b: &[f32]) -> f32 {
+    let len = core::cmp::min(a.len(), b.len());
+    let mut sum = 0.0f32;
+    for i in 0..len {
+        sum += a[i] * b[i];
+    }
+    sum
+}
+
 /// Interleaved Dot Product (4x).
 /// Instead of computing a single sum, this function computes 4 sums at the same time
 /// using the same input data but different weights.

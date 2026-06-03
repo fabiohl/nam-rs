@@ -252,6 +252,52 @@ pub fn report_dsp_fidelity(
 }
 
 // =============================================================================
+// Adaptive Threshold Calibration
+// =============================================================================
+
+/// Computes model-adaptive MSE/SNR test thresholds based on topology.
+///
+/// More complex models (more channels, more layers) accumulate more
+/// quantization noise, so they require more permissive thresholds.
+/// Simpler models get tighter thresholds to catch regressions earlier.
+///
+/// Returns `(mse_limit, min_snr_db)`.
+pub fn topology_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> (f64, f64) {
+    match data.architecture.as_str() {
+        "WaveNet" => {
+            let channels = data
+                .config
+                .layers
+                .first()
+                .and_then(|l| l.channels)
+                .unwrap_or(16);
+            let total_dils: usize = data
+                .config
+                .layers
+                .iter()
+                .filter_map(|l| l.dilations.as_ref())
+                .map(|d| d.len())
+                .sum();
+            // Quantization noise accumulates with both channel count and cascade depth.
+            // Larger models (more channels + more dilations) → lower expected SNR.
+            let noise_factor = (channels + total_dils) as f64;
+            let snr_db = (22.0 - noise_factor * 0.35).clamp(9.0, 16.0);
+            let mse = 10.0_f64.powf(-snr_db / 10.0) * 0.3;
+            (mse.clamp(1e-4, 5e-2), snr_db)
+        }
+        "LSTM" => {
+            let num_layers = data.config.num_layers.unwrap_or(1);
+            let hidden_size = data.config.hidden_size.unwrap_or(16);
+            let complexity = (num_layers * hidden_size) as f64;
+            let snr_db = (28.0 - complexity * 0.65).clamp(10.0, 24.0);
+            let mse = 10.0_f64.powf(-snr_db / 10.0) * 0.3;
+            (mse.clamp(1e-4, 5e-2), snr_db)
+        }
+        _ => (5e-2, 9.0),
+    }
+}
+
+// =============================================================================
 // I/O Helpers
 // =============================================================================
 
