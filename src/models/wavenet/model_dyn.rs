@@ -590,4 +590,26 @@ impl WaveNetDynModel {
         let array1_outputs = &self.array1.array_outputs[0..self.array1.ch];
         self.array2.prewarm::<M>(array1_outputs, &condition);
     }
+
+    /// Reallocates `block_buffer` and `head_accum` in both arrays to support
+    /// the given maximum buffer size, if larger than current capacity.
+    pub fn set_max_buffer_size(&mut self, max_buf: usize) {
+        let min_buf = max_buf.max(WAVENET_MAX_NUM_FRAMES);
+        let ch1 = self.array1.ch;
+        let block_size1 = self.array1.block_size;
+        self.array1
+            .head_accum
+            .resize(min_buf * ch1, 0.0f32);
+        self.array1
+            .block_buffer
+            .resize(min_buf * block_size1, 0.0f32);
+        let ch2 = self.array2.ch;
+        let block_size2 = self.array2.block_size;
+        self.array2
+            .head_accum
+            .resize(min_buf * ch2, 0.0f32);
+        self.array2
+            .block_buffer
+            .resize(min_buf * block_size2, 0.0f32);
+    }
 }

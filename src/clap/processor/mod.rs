@@ -101,6 +101,8 @@ pub struct NamClapProcessor<'a> {
     prio_checked: bool,
     pub(crate) param_in_changed: bool,
     pub(crate) param_out_changed: bool,
+    /// Host audio buffer size, used for model buffer realocation on load.
+    max_frames_count: usize,
 }
 
 impl<'a> NamClapProcessor<'a> {
@@ -246,6 +248,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             prio_checked: false,
             param_in_changed: false,
             param_out_changed: false,
+            max_frames_count: audio_config.max_frames_count as usize,
         })
     }
 

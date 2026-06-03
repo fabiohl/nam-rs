@@ -1968,7 +1968,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador` + `pesquisador-inovador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S26.T02 — `set_max_buffer_size` e `prewarm_samples` no trait `NamModel` ⚠️
+#### Tarefa S26.T02 — `set_max_buffer_size` e `prewarm_samples` no trait `NamModel` ⚠️ [DONE]
 
 - **Onde:** `src/models/mod.rs` (trait `NamModel`); `Cargo.toml`; referência C++: `NeuralAmpModelerCore/NAM/dsp.h:184`, `dsp.cpp:93-102`.
 - **Pré-requisito de soundness (auditoria 2026-06-03):** `nam-rs` é atualmente um crate self-contained (workspace de 1 crate, sem `publish = false` explícito em `Cargo.toml`). Adicionar métodos ao trait `NamModel` é additivo para callers mas **breaking para impls externas** se o crate vier a ser publicado. **Antes desta tarefa:** decidir uma das opções abaixo e implementá-la **na mesma sprint**:

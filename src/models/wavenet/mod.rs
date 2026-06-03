@@ -32,6 +32,16 @@ pub mod model;
 pub mod model_dyn;
 
 use super::NamModel;
+use super::sealed;
+
+// =============================================================================
+// sealed::Sealed for WaveNet (Const Generics)
+// =============================================================================
+
+impl<const CH: usize, const K: usize, const HEAD: usize> sealed::Sealed
+    for model::WaveNetModel<CH, K, HEAD>
+{
+}
 
 // =============================================================================
 // NamModel for WaveNet (Const Generics)
@@ -50,7 +60,17 @@ impl<const CH: usize, const K: usize, const HEAD: usize> NamModel
         // C++ runs `model->Prewarm()` without a parameter (unlike LSTM).
         self.prewarm();
     }
+
+    fn prewarm_samples(&self) -> usize {
+        self.array1.receptive_field_size
+    }
 }
+
+// =============================================================================
+// sealed::Sealed for Dynamic WaveNet
+// =============================================================================
+
+impl sealed::Sealed for model_dyn::WaveNetDynModel {}
 
 // =============================================================================
 // NamModel for Dynamic WaveNet
@@ -66,6 +86,14 @@ impl NamModel for model_dyn::WaveNetDynModel {
     /// like LSTM, only a delay buffer (receptive field).
     fn prewarm(&mut self, _num_samples: usize) {
         self.prewarm();
+    }
+
+    fn prewarm_samples(&self) -> usize {
+        self.receptive_field_size
+    }
+
+    fn set_max_buffer_size(&mut self, max_buf: usize) {
+        self.set_max_buffer_size(max_buf);
     }
 }
 

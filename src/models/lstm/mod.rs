@@ -20,6 +20,7 @@
 //! ```
 
 use super::NamModel;
+use super::sealed;
 
 pub mod layer;
 pub mod model1;
@@ -58,6 +59,20 @@ pub type Lstm2x12 = LstmModel2<12, 13, 24, 48>;
 pub type Lstm2x16 = LstmModel2<16, 17, 32, 64>;
 /// LSTM 2 layers × 24 hidden units.
 pub type Lstm2x24 = LstmModel2<24, 25, 48, 96>;
+
+// =============================================================================
+// sealed::Sealed for LSTM types
+// =============================================================================
+
+impl<const H: usize, const H1_IH: usize, const H_H4: usize> sealed::Sealed
+    for LstmModel1<H, H1_IH, H_H4>
+{
+}
+impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> sealed::Sealed
+    for LstmModel2<H, H1_IH, H2_IH, H_H4>
+{
+}
+impl sealed::Sealed for LstmDynModel {}
 
 // =============================================================================
 // NamModel for LSTM — 1 Layer

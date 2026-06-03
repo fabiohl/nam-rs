@@ -14,11 +14,21 @@ use crate::common::spsc::RtStatusFlags;
 use std::sync::Arc;
 
 // =============================================================================
+// Sealed Pattern — Prevents external implementations of NamModel
+// =============================================================================
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+// =============================================================================
 // Trait NamModel — Public Contract
 // =============================================================================
 
 /// The interface (standard connector) for any neural model (amplifiers, pedals, etc.).
-pub trait NamModel: Send + Sync {
+///
+/// Sealed via private supertrait — only types within this crate can implement `NamModel`.
+pub trait NamModel: Send + Sync + sealed::Sealed {
     /// Invoked by the DSP RT-Thread to process acoustic sample blocks (Float32).
     fn process(&mut self, input: &[f32], output: &mut [f32]);
 
@@ -33,6 +43,24 @@ pub trait NamModel: Send + Sync {
     /// reset (only zero the internal states without reprocessing a full prewarm).
     fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) {
         self.prewarm(max_buffer_size);
+    }
+
+    /// Reallocates internal buffers to support the given maximum block size.
+    ///
+    /// Models with fixed (const-generic) buffer sizes can use the default no-op.
+    /// Dynamic models (e.g., `WaveNetDynModel`) should reallocate `block_buffer`
+    /// and `head_accum` when `max_buf` exceeds the current capacity.
+    ///
+    /// Default: no-op (suitable for static models and LSTM).
+    fn set_max_buffer_size(&mut self, _max_buf: usize) {}
+
+    /// Returns the number of samples needed to fully stabilize the model's internal
+    /// state (receptive field / recurrent memory depth).
+    ///
+    /// Default: `0` (suitable for LSTM, which stabilizes via recurrence).
+    /// WaveNet variants override this to return `array1.receptive_field_size`.
+    fn prewarm_samples(&self) -> usize {
+        0
     }
 }
 
@@ -148,4 +176,48 @@ impl NamModel for DynamicModel {
             Self::LstmDyn(m) => m.reset(sample_rate, max_buffer_size),
         }
     }
+
+    fn set_max_buffer_size(&mut self, max_buf: usize) {
+        match self {
+            Self::WavenetStandard(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetLite(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetFeather(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetNano(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetDyn(m) => m.set_max_buffer_size(max_buf),
+            Self::WavenetA2(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm1x8(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm1x12(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm1x16(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm1x24(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm2x8(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm2x12(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm2x16(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm1x40(m) => m.set_max_buffer_size(max_buf),
+            Self::Lstm2x24(m) => m.set_max_buffer_size(max_buf),
+            Self::LstmDyn(m) => m.set_max_buffer_size(max_buf),
+        }
+    }
+
+    fn prewarm_samples(&self) -> usize {
+        match self {
+            Self::WavenetStandard(m) => m.prewarm_samples(),
+            Self::WavenetLite(m) => m.prewarm_samples(),
+            Self::WavenetFeather(m) => m.prewarm_samples(),
+            Self::WavenetNano(m) => m.prewarm_samples(),
+            Self::WavenetDyn(m) => m.prewarm_samples(),
+            Self::WavenetA2(m) => m.prewarm_samples(),
+            Self::Lstm1x8(m) => m.prewarm_samples(),
+            Self::Lstm1x12(m) => m.prewarm_samples(),
+            Self::Lstm1x16(m) => m.prewarm_samples(),
+            Self::Lstm1x24(m) => m.prewarm_samples(),
+            Self::Lstm2x8(m) => m.prewarm_samples(),
+            Self::Lstm2x12(m) => m.prewarm_samples(),
+            Self::Lstm2x16(m) => m.prewarm_samples(),
+            Self::Lstm1x40(m) => m.prewarm_samples(),
+            Self::Lstm2x24(m) => m.prewarm_samples(),
+            Self::LstmDyn(m) => m.prewarm_samples(),
+        }
+    }
 }
+
+impl sealed::Sealed for DynamicModel {}

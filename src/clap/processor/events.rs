@@ -11,6 +11,7 @@ use crate::clap::extensions::params::{
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
 use crate::math::dsp::gain_lut::get_gain_lut;
+use crate::models::NamModel;
 use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
 use std::sync::atomic::Ordering;
@@ -46,6 +47,7 @@ impl<'a> NamClapProcessor<'a> {
                     }
                     if let Some(ref mut model) = self.model_l {
                         model.inject_rt_status(std::sync::Arc::clone(&self.shared.rt_status));
+                        model.set_max_buffer_size(self.max_frames_count);
                     }
                     if let Some(model_r) = model_pair.model_r {
                         self.push_to_gc(GcItem::Model(model_r));

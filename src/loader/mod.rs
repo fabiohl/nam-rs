@@ -201,7 +201,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         })
         .ok();
     if let Some(ref mut m) = model_l {
-        m.prewarm(2048);
+        m.prewarm(m.prewarm_samples().max(2048));
     }
 
     let mut model_r = dispatcher::build_model(&model_data)
@@ -213,7 +213,7 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         })
         .ok();
     if let Some(ref mut m) = model_r {
-        m.prewarm(2048);
+        m.prewarm(m.prewarm_samples().max(2048));
     }
 
     let architecture = model_data.architecture.clone();

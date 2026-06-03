@@ -13,6 +13,7 @@ pub mod params;
 
 use crate::common::spsc::RtStatusFlags;
 use crate::models::NamModel;
+use crate::models::sealed;
 use std::sync::Arc;
 
 /// Public re-exports for easy access.
@@ -65,6 +66,8 @@ impl WavenetA2Placeholder {
         self.rt_status = Some(rt_status);
     }
 }
+
+impl sealed::Sealed for WavenetA2Placeholder {}
 
 impl NamModel for WavenetA2Placeholder {
     fn process(&mut self, _input: &[f32], output: &mut [f32]) {

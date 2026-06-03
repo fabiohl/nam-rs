@@ -78,6 +78,30 @@ impl<T> AlignedVec<T> {
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
+
+    /// Resizes the buffer to a new length, filling new elements with `default`.
+    /// If `new_len <= self.len`, this is a no-op (never shrinks).
+    pub fn resize(&mut self, new_len: usize, default: T)
+    where
+        T: Copy,
+    {
+        if new_len <= self.len {
+            return;
+        }
+        let mut new_vec = Self::with_capacity(new_len);
+        unsafe {
+            let old_ptr = self.ptr.as_ptr();
+            for i in 0..self.len {
+                new_vec.ptr.as_ptr().add(i).write(old_ptr.add(i).read());
+            }
+            for i in self.len..new_len {
+                new_vec.ptr.as_ptr().add(i).write(default);
+            }
+        }
+        new_vec.len = new_len;
+        let old = std::mem::replace(self, new_vec);
+        drop(old);
+    }
 }
 
 /// Allows accessing the buffer data as if it were a regular Rust slice.
