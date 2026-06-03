@@ -18,6 +18,12 @@ use crate::models::{DynamicModel, NamModel};
 use super::bridge::{DspBridgeWriter, MAX_RESAMP_BUF};
 use super::context::DspPipelineContext;
 
+/// Ultra-low DC offset injected at the input stage to prevent subnormal floats
+/// from propagating through neural network activations during fade-out/silence.
+/// At -220 dBFS, this bias is 76 dB below the 24-bit DAC noise floor and inaudible.
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+const DENORMAL_DITHER_OFFSET: f32 = 1.0e-11;
+
 /// Silence Bypass: signals silence and zeros the bridge so that playback emits silence.
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 #[cold]
@@ -84,6 +90,20 @@ pub(crate) fn apply_input_stage(
     // Only adjust the right side if the sound is NOT mono (to save processing).
     if !*ctx.process_mono {
         crate::math::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], ctx.input_gain_mult);
+    }
+
+    // 4. DENORMAL SUPPRESSION: Inject ultra-low DC offset
+    // Prevents subnormal floats from reaching neural network activations
+    // during fade-out/silence, ensuring smooth decay without digital artifacts.
+    unsafe {
+        for i in 0..n_samples {
+            *samples_l.get_unchecked_mut(i) += DENORMAL_DITHER_OFFSET;
+        }
+        if !*ctx.process_mono {
+            for i in 0..n_samples {
+                *samples_r.get_unchecked_mut(i) += DENORMAL_DITHER_OFFSET;
+            }
+        }
     }
 
     ctx.silence_hysteresis.state()
@@ -224,6 +244,16 @@ pub(crate) fn apply_output_stage(
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
 ) {
+    // 0. DENORMAL SUPPRESSION COMPENSATION: Subtract the injected DC offset
+    // Compensates the ultra-low bias added at the input stage. Any residual is
+    // far below the DAC noise floor and inaudible.
+    unsafe {
+        for i in 0..n_pw {
+            *resamp_out_l.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
+            *resamp_out_r.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
+        }
+    }
+
     // 1. FINAL VOLUME ADJUSTMENT AND CLIPPING PROTECTION
     // Applies output volume and checks if the sound has "blown past" the digital limit.
     let has_clipped = crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
