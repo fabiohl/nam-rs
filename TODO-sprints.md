@@ -1942,7 +1942,7 @@ Notas Operacionais — Épico 14
 > Foco: alinhar contratos de API (não implementação) com a referência C++ para reduzir custo de futuras paridades. **Sem implementar A2** (escopo PO).
 > Liberar acesso ao espelho do github
 
-#### Tarefa S26.T01 — A2 placeholder com constantes interface-compliant 🔥
+#### Tarefa S26.T01 — A2 placeholder com constantes interface-compliant 🔥[DONE]
 
 - **Onde:** `src/models/a2/params.rs` (existente), `src/models/a2/mod.rs:33-78` (`WavenetA2Placeholder`); referência em `github.com/NeuralAmpModelerCore/NAM/wavenet/a2_fast.h`.
 - **Problema:** `WavenetA2Placeholder` é trivial (`warned: bool` + `rt_status`). Não memoriza shape (`channels: 3 | 8`), kernel sizes, dilations, leaky slope — todas constantes públicas em `a2_fast.h`. Quando A2 for implementado no futuro (Parte II ou além), terá que ser refatorado do zero, quebrando o princípio "placeholder evita conflito".

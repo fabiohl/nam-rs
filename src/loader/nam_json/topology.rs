@@ -114,3 +114,52 @@ pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
     let hidden_size = data.config.hidden_size?;
     Some((num_layers, hidden_size))
 }
+
+// =============================================================================
+// A2 Shape Detection — Mirror of C++ is_a2_shape (a2_fast.cpp:754-885)
+// =============================================================================
+
+/// Shape-based A2 detector: returns `Some(channels)` if the parsed model data
+/// matches the A2 architectural signature (single layer array, channels ∈ {3,8},
+/// dilations matching kDilations). Returns `None` if the shape does not match.
+///
+/// This check is limited to fields available in `NamLayerConfig`. Full C++
+/// equivalence requires additional fields (per-layer kernel_sizes, per-layer
+/// activations with negative_slope, bottleneck, FiLM flags, etc.) not yet
+/// captured by the Rust deserialization structs. Once those fields are added,
+/// this function should be extended to match a2_fast.cpp:754-885 exactly.
+pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
+    use crate::models::a2::{
+        A2_DILATIONS, A2_NUM_LAYERS, A2_VALID_CHANNELS,
+    };
+
+    if data.architecture != "WaveNet" {
+        return None;
+    }
+
+    let layers = &data.config.layers;
+
+    // Exactly one layer array (C++ a2_fast.cpp:757-759)
+    if layers.len() != 1 {
+        return None;
+    }
+
+    let l0 = &layers[0];
+    let ch = l0.channels? as u8;
+
+    // Channels must be exactly 3 or 8 (C++ a2_fast.cpp:785-788)
+    if !A2_VALID_CHANNELS.contains(&ch) {
+        return None;
+    }
+
+    // Dilations must match kDilations exactly (C++ a2_fast.cpp:800-808)
+    let dils = l0.dilations.as_deref()?;
+    if dils.len() != A2_NUM_LAYERS {
+        return None;
+    }
+    if dils.iter().zip(A2_DILATIONS.iter()).any(|(a, b)| *a != *b) {
+        return None;
+    }
+
+    Some(ch)
+}

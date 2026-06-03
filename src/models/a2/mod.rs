@@ -19,7 +19,10 @@ use std::sync::Arc;
 pub use activations::{ActivationFn, ActivationType};
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
-pub use params::{HeadParams, LayerArrayParamsA2, LayerParamsA2};
+pub use params::{
+    A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
+    A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,
+};
 
 // =============================================================================
 // Placeholder for WaveNet A2 (Staging)
@@ -29,8 +32,13 @@ pub use params::{HeadParams, LayerArrayParamsA2, LayerParamsA2};
 ///
 /// This struct allows the system to load A2 models without failing, returning
 /// silence until the complete inference engine implementation is ready.
+///
+/// Stores the channel count reported by the model metadata so the placeholder
+/// can signal whether it detected A2 nano (3) or A2 standard (8) architecture.
 #[derive(Default)]
 pub struct WavenetA2Placeholder {
+    /// Number of channels detected from the model topology.
+    pub channels: u8,
     /// Flag to emit the log warning only once per instance.
     warned: bool,
     /// Shared RT status flags to signal the placeholder to the UI.
@@ -38,6 +46,19 @@ pub struct WavenetA2Placeholder {
 }
 
 impl WavenetA2Placeholder {
+    /// Creates a new placeholder storing the detected channel count.
+    ///
+    /// The channel count is informational — the placeholder outputs silence
+    /// regardless — but allows callers and tests to inspect the architecture
+    /// that was detected during loading.
+    pub fn new(channels: u8) -> Self {
+        Self {
+            channels,
+            warned: false,
+            rt_status: None,
+        }
+    }
+
     /// Injects the reference to `RtStatusFlags` so the placeholder can
     /// signal its state to the UI via atomic flags.
     pub fn inject_rt_status(&mut self, rt_status: Arc<RtStatusFlags>) {
@@ -60,7 +81,8 @@ impl NamModel for WavenetA2Placeholder {
 
         if !self.warned {
             log::warn!(
-                "WaveNet A2 architecture detected: Placeholder (Silent) mode active. The real implementation is under development."
+                "WaveNet A2 (channels={}) architecture detected: Placeholder (Silent) mode active. The real implementation is under development.",
+                self.channels
             );
             self.warned = true;
             if let Some(ref rt) = self.rt_status {
@@ -83,7 +105,7 @@ mod tests {
 
     #[test]
     fn test_wavenet_a2_placeholder_silence() {
-        let mut model = WavenetA2Placeholder::default();
+        let mut model = WavenetA2Placeholder::new(8);
         let input = [1.0f32; 10];
         let mut output = [1.0f32; 10];
         model.process(&input, &mut output);

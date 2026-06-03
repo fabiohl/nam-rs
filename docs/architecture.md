@@ -235,6 +235,7 @@ O projeto segue uma hierarquia rigorosa para garantir que a lógica interna e a 
 O NAM-rs v1.4 introduz o scaffolding necessário para a próxima geração de modelos (A2), mantendo paridade absoluta com os modelos A1 existentes, mas sem implementação real. Apenas deixamos as coisas prontas para quando "chegar a hora".
 
 - **Forward-Compatible Loader:** O dispatcher (`src/loader/dispatcher/wavenet.rs`) identifica modelos A2 via metadados de versão ou ativações não-Tanh, redirecionando-os para um `WavenetA2Placeholder`.
+- **Placeholder com Contrato de Detecção:** O `WavenetA2Placeholder` armazena o número de canais detectado (3 = nano, 8 = standard) e reporta essa informação via log de warning. A detecção usa duas vias independentes: `is_wavenet_a2()` (SemVer baseado em versão ≥ 0.6.0 ou ativações não-Tanh) e `is_a2_shape()` (verificação da assinatura arquitetural: 1 layer array, canais ∈ {3,8}, dilations idênticos a `a2_fast.h`). O placeholder não suporta inferência real — emite silêncio — mas mantém o contrato de detecção para evitar conflitos quando a implementação real de A2 for integrada.
 - **Extensibilidade de Ativações:** Suporte a 11 variantes de funções de ativação (HardTanh, SiLU, LeakyReLU, etc.) via trait `ActivationFn`, prontas para futura implementação SIMD.
 - **Parametrização Flexível:** Inclusão de estruturas para FiLM, Gating dinâmico e Blending de ativações, permitindo que o parser aceite novos formatos de arquivo sem panics.
 

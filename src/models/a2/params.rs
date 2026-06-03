@@ -9,6 +9,27 @@
 //! IMPORTANT: A2 architecture support is in "placeholder" stage
 //! pending stabilization of the reference implementation.
 
+// =============================================================================
+// A2 Architectural Constants — mirroring github.com/NeuralAmpModelerCore/NAM/wavenet/a2_fast.h
+// =============================================================================
+
+/// Number of layers in an A2 layer array.
+pub const A2_NUM_LAYERS: usize = 23;
+/// Kernel size of the layer-array head rechannel convolution.
+pub const A2_HEAD_KERNEL_SIZE: usize = 16;
+/// LeakyReLU negative-slope used by every layer.
+pub const A2_LEAKY_SLOPE: f32 = 0.01;
+/// Per-layer kernel sizes (fixed pattern shared by A2 standard + nano).
+pub const A2_KERNEL_SIZES: [usize; 23] = [
+    6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 15, 15, 6, 6, 6, 6, 6, 6, 6,
+];
+/// Per-layer dilations (fixed pattern shared by A2 standard + nano).
+pub const A2_DILATIONS: [usize; 23] = [
+    1, 3, 7, 17, 41, 101, 239, 1, 3, 7, 17, 41, 101, 239, 1, 13, 1, 3, 7, 17, 41, 101, 239,
+];
+/// Valid channel counts for A2 architectures (nano = 3, standard = 8).
+pub const A2_VALID_CHANNELS: [u8; 2] = [3, 8];
+
 use super::activations::ActivationType;
 use super::film::FiLMConfig;
 use super::gating::GatingMode;
