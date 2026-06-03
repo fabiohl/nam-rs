@@ -1863,7 +1863,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S25.T06 — Activation slice dispatch via function pointer ⚠️
+#### Tarefa S25.T06 — Activation slice dispatch via function pointer ⚠️ [DONE]
 
 - **Onde:** `src/math/activations/mod.rs:46, 59, 72, 85, 98, 111` (`tanh_slice`, `sigmoid_slice`, `relu_slice`, `silu_slice`, `softsign_slice`, `prelu_slice`).
 - **Problema:** Cada call faz `match SIMD_MATH.instruction_set { Avx512VnniBf16 => ..., Avx512 => ..., Avx2 => ..., ScalarRef => ... }` — branch a cada ativação em loop. Para WaveNet 20-layer × 2 ativações/layer × 64 frames = 2560 dispatches/block. Embora previsto pelo branch predictor após warmup, ainda gera 1-2 cycles/dispatch.

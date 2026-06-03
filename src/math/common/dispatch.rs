@@ -112,6 +112,18 @@ pub struct SimdMathConfig {
     pub compute_max_diff: unsafe fn(&[f32], &[f32]) -> f32,
     /// Computes the peak absolute value of both stereo channels.
     pub compute_peak_abs_stereo: unsafe fn(&[f32], &[f32]) -> (f32, f32),
+    /// Applies Tanh activation to a slice.
+    pub tanh_slice: unsafe fn(&mut [f32]),
+    /// Applies Sigmoid activation to a slice.
+    pub sigmoid_slice: unsafe fn(&mut [f32]),
+    /// Applies ReLU activation to a slice.
+    pub relu_slice: unsafe fn(&mut [f32]),
+    /// Applies PReLU activation to a slice.
+    pub prelu_slice: unsafe fn(&mut [f32], &[f32]),
+    /// Applies Softsign activation to a slice.
+    pub softsign_slice: unsafe fn(&mut [f32]),
+    /// Applies SiLU activation to a slice.
+    pub silu_slice: unsafe fn(&mut [f32]),
 }
 
 impl SimdMathConfig {
@@ -171,6 +183,12 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy: Avx512VnniBf16Math::compute_energy,
                 compute_max_diff: Avx512VnniBf16Math::compute_max_diff,
                 compute_peak_abs_stereo: Avx512VnniBf16Math::compute_peak_abs_stereo,
+                tanh_slice: crate::math::activations::tanh_slice_avx512,
+                sigmoid_slice: crate::math::activations::sigmoid_slice_avx512,
+                relu_slice: crate::math::activations::relu_slice_avx512,
+                prelu_slice: crate::math::activations::prelu_slice_avx512,
+                softsign_slice: crate::math::activations::softsign_slice_avx512,
+                silu_slice: crate::math::activations::silu_slice_avx512,
             };
         }
         // 2. AVX-512 with VNNI support only.
@@ -201,6 +219,12 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy: Avx512VnniMath::compute_energy,
                 compute_max_diff: Avx512VnniMath::compute_max_diff,
                 compute_peak_abs_stereo: Avx512VnniMath::compute_peak_abs_stereo,
+                tanh_slice: crate::math::activations::tanh_slice_avx512,
+                sigmoid_slice: crate::math::activations::sigmoid_slice_avx512,
+                relu_slice: crate::math::activations::relu_slice_avx512,
+                prelu_slice: crate::math::activations::prelu_slice_avx512,
+                softsign_slice: crate::math::activations::softsign_slice_avx512,
+                silu_slice: crate::math::activations::silu_slice_avx512,
             };
         }
         // 3. Basic AVX-512 Foundation (512-bit).
@@ -231,6 +255,12 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy: Avx512Math::compute_energy,
                 compute_max_diff: Avx512Math::compute_max_diff,
                 compute_peak_abs_stereo: Avx512Math::compute_peak_abs_stereo,
+                tanh_slice: crate::math::activations::tanh_slice_avx512,
+                sigmoid_slice: crate::math::activations::sigmoid_slice_avx512,
+                relu_slice: crate::math::activations::relu_slice_avx512,
+                prelu_slice: crate::math::activations::prelu_slice_avx512,
+                softsign_slice: crate::math::activations::softsign_slice_avx512,
+                silu_slice: crate::math::activations::silu_slice_avx512,
             };
         }
         // 4. AVX2 with VNNI support (AVX-VNNI).
@@ -261,6 +291,12 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy: Avx2VnniMath::compute_energy,
                 compute_max_diff: Avx2VnniMath::compute_max_diff,
                 compute_peak_abs_stereo: Avx2VnniMath::compute_peak_abs_stereo,
+                tanh_slice: crate::math::activations::tanh_slice_avx2,
+                sigmoid_slice: crate::math::activations::sigmoid_slice_avx2,
+                relu_slice: crate::math::activations::relu_slice_avx2,
+                prelu_slice: crate::math::activations::prelu_slice_avx2,
+                softsign_slice: crate::math::activations::softsign_slice_avx2,
+                silu_slice: crate::math::activations::silu_slice_avx2,
             };
         }
         // 5. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
@@ -292,6 +328,12 @@ fn detect_best_simd() -> SimdMathConfig {
                 compute_energy: Avx2Math::compute_energy,
                 compute_max_diff: Avx2Math::compute_max_diff,
                 compute_peak_abs_stereo: Avx2Math::compute_peak_abs_stereo,
+                tanh_slice: crate::math::activations::tanh_slice_avx2,
+                sigmoid_slice: crate::math::activations::sigmoid_slice_avx2,
+                relu_slice: crate::math::activations::relu_slice_avx2,
+                prelu_slice: crate::math::activations::prelu_slice_avx2,
+                softsign_slice: crate::math::activations::softsign_slice_avx2,
+                silu_slice: crate::math::activations::silu_slice_avx2,
             };
         }
     }

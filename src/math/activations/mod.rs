@@ -38,82 +38,40 @@ pub use silu::*;
 pub use softsign::*;
 pub use tanh::*;
 
-use crate::math::common::{InstructionSet, SIMD_MATH};
+use crate::math::common::SIMD_MATH;
 
 /// Applies Tanh activation to a slice of f32 with automatic dispatch to the best SIMD implementation.
 #[inline(always)]
 pub fn tanh_slice(data: &mut [f32]) {
-    match SIMD_MATH.instruction_set {
-        InstructionSet::Avx512 | InstructionSet::Avx512Vnni | InstructionSet::Avx512VnniBf16 => {
-            unsafe { tanh::tanh_slice_avx512(data) };
-        }
-        _ => {
-            unsafe { tanh::tanh_slice_avx2(data) };
-        }
-    }
+    unsafe { (SIMD_MATH.tanh_slice)(data) };
 }
 
 /// Applies Sigmoid activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn sigmoid_slice(data: &mut [f32]) {
-    match SIMD_MATH.instruction_set {
-        InstructionSet::Avx512 | InstructionSet::Avx512Vnni | InstructionSet::Avx512VnniBf16 => {
-            unsafe { sigmoid::sigmoid_slice_avx512(data) };
-        }
-        _ => {
-            unsafe { sigmoid::sigmoid_slice_avx2(data) };
-        }
-    }
+    unsafe { (SIMD_MATH.sigmoid_slice)(data) };
 }
 
 /// Applies ReLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn relu_slice(data: &mut [f32]) {
-    match SIMD_MATH.instruction_set {
-        InstructionSet::Avx512 | InstructionSet::Avx512Vnni | InstructionSet::Avx512VnniBf16 => {
-            unsafe { relu::relu_slice_avx512(data) };
-        }
-        _ => {
-            unsafe { relu::relu_slice_avx2(data) };
-        }
-    }
+    unsafe { (SIMD_MATH.relu_slice)(data) };
 }
 
 /// Applies PReLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn prelu_slice(data: &mut [f32], slopes: &[f32]) {
-    match SIMD_MATH.instruction_set {
-        InstructionSet::Avx512 | InstructionSet::Avx512Vnni | InstructionSet::Avx512VnniBf16 => {
-            unsafe { prelu::prelu_slice_avx512(data, slopes) };
-        }
-        _ => {
-            unsafe { prelu::prelu_slice_avx2(data, slopes) };
-        }
-    }
+    unsafe { (SIMD_MATH.prelu_slice)(data, slopes) };
 }
 
 /// Applies Softsign activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn softsign_slice(data: &mut [f32]) {
-    match SIMD_MATH.instruction_set {
-        InstructionSet::Avx512 | InstructionSet::Avx512Vnni | InstructionSet::Avx512VnniBf16 => {
-            unsafe { softsign::softsign_slice_avx512(data) };
-        }
-        _ => {
-            unsafe { softsign::softsign_slice_avx2(data) };
-        }
-    }
+    unsafe { (SIMD_MATH.softsign_slice)(data) };
 }
 
 /// Applies SiLU activation to a slice of f32 with automatic dispatch.
 #[inline(always)]
 pub fn silu_slice(data: &mut [f32]) {
-    match SIMD_MATH.instruction_set {
-        InstructionSet::Avx512 | InstructionSet::Avx512Vnni | InstructionSet::Avx512VnniBf16 => {
-            unsafe { silu::silu_slice_avx512(data) };
-        }
-        _ => {
-            unsafe { silu::silu_slice_avx2(data) };
-        }
-    }
+    unsafe { (SIMD_MATH.silu_slice)(data) };
 }
