@@ -1736,8 +1736,6 @@ Objetivo: Explorar de forma rigorosa e prototipar as hipóteses de precisão ide
 ---
 
 (Continuação Parte I, Auditoria 2026-06-03)
-Anotar: /pesquisador-inovador Máxima eficiência nos modos stereo e modo; Threading CLAP.
-Rodar "cargo bench inference_bench" a frio antes de começar.
 
 ---
 
@@ -1751,17 +1749,13 @@ Rodar "cargo bench inference_bench" a frio antes de começar.
 >
 > **Pré-condições:** Épicos 1–8 concluídos (confirmado). `cargo bench inference_bench` salvo como baseline em `target/criterion/` antes de iniciar S25 — todas as tarefas têm critério de aceitação medido contra esse snapshot.
 
-### Notas Operacionais — Épico 14
+Notas Operacionais — Épico 14
 
 - **Ordem de execução recomendada:** S25 (Hotpath) → S26 (Aderência C++) → S27 (Organização & Safety) → S27b (Cobertura & Docs). S26.T03 depende de S25.T01; demais paralelizáveis dentro de cada sprint.
 - **CI/QA gate por Sprint:**
-
   1. `bash utils/lints.sh`
-
   2. `bash utils/tests-cargo.sh`
-
   3. `cargo bench inference_bench` — sem regressão > 1% vs baseline congelada no início do Épico 14.
-
   4. `cargo test --test cpp_parity -- --ignored --nocapture` — 5/5 PASS mantido.
 - **Convenções:** mesmas dos Épicos 1–8 (PR por tarefa, branch `feat/S25-T01-...`, commit `[S25.T01]`, atualização `documentador` quando arquitetura muda).
 
@@ -2214,7 +2208,6 @@ Rodar "cargo bench inference_bench" a frio antes de começar.
 - **Onde:** `benches/inference_bench.rs`.
 - **Problema:** Sem bench específico para o path FP32 nativo (`process_block_f32_native`), não há como medir o ganho de S25.T01.
 - **Solução técnica:**
-
   1. Adicionar grupo `bench_head_rechannel_fp32` em `inference_bench.rs`:
      - DenseLayer<16, 1> (WaveNet Standard config).
      - 64 frames input random determinístico.
@@ -2228,9 +2221,7 @@ Rodar "cargo bench inference_bench" a frio antes de começar.
 - **Onde:** Estender `tests/lstm_scalar_bf16_parity.rs`.
 - **Problema:** S13.T05 adicionou as topologias 1×40 e 2×24 ao catálogo estático; bench foi adicionado (`inference_bench.rs:665, 680`). **Mas o teste de paridade scalar↔SIMD não foi estendido** — usa apenas 1×16 e 2×16.
 - **Solução técnica:**
-
   1. Adicionar casos `test_lstm_1x40_scalar_simd_parity` e `test_lstm_2x24_scalar_simd_parity` em `lstm_scalar_bf16_parity.rs`.
-
   2. Pesos aleatórios não-triviais (faixa `[-1.5, 1.5]`); 5k inputs; tolerância 5e-3 (alinhada com Padé tanh).
 - **Critérios de aceitação:** Ambos casos passam em `utils/tests-long.sh` (release).
 - **Especialista:** `implementador`.
@@ -2240,22 +2231,14 @@ Rodar "cargo bench inference_bench" a frio antes de começar.
 
 - **Onde:** `docs/architecture.md`.
 - **Problema:**
-
   1. Seção 8.3 (CLAP/GUI) ainda cita estrutura monolítica pré-S8.T01.
-
   2. Seção 2 (Weight Compression) menciona apenas F16C — não menciona dispatch BF16 vs F16 (S3.T01/T02).
-
   3. Não cobre mixed-precision seletiva (head FP32) introduzido em E8.T08.
-
   4. Não cobre Kahan summation no conv1d (E8.T06).
 - **Solução técnica:**
-
   1. Atualizar seção 8.3 com sub-módulos atuais de `src/clap/gui/ui/`.
-
   2. Renomear seção 2 para "Weight Compression (F16C/BF16)" com explicação da seleção runtime via `SimdMathConfig`.
-
   3. Adicionar seção 6.X "Mixed-Precision Selective" descrevendo head_rechannel FP32.
-
   4. Adicionar seção 6.Y "Numerical Stability (Kahan + Dither)" sumarizando E8.T05/T06.
 - **Critérios de aceitação:** Doc revisado pela skill `documentador`; refere file:line atualizados.
 - **Especialista:** `documentador`.
@@ -2264,11 +2247,8 @@ Rodar "cargo bench inference_bench" a frio antes de começar.
 #### Tarefa S27b.T07 — Reservar flags futuros em `docs/namb-spec.md` 💡
 
 - **Onde:** `docs/namb-spec.md`.
-
 - **Problema:** Spec atual cobre v1 (sem flag CRC) e v2 (`FLAG_HAS_CRC32 = 0x01`). Trabalhos futuros (S15.T01 INT8 SmoothQuant, S23.T02 AMX tile, S24.T01 NEON) exigirão novos flags. Reservar pre-emptivamente evita conflito de bits.
-
 - **Solução técnica:**
-
   1. Adicionar seção "Reserved Flags for Future Versions":
 
      ```text
@@ -2281,11 +2261,8 @@ Rodar "cargo bench inference_bench" a frio antes de começar.
      ```
 
   2. Política: novos flags só ativados em NAMB v3+ ou via opt-in explícito.
-
 - **Critérios de aceitação:** Doc atualizado; sem mudança de comportamento decoder atual.
-
 - **Especialista:** `documentador`.
-
 - **Esforço:** 30 min.
 
 ---
