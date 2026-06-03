@@ -727,21 +727,21 @@ pub unsafe fn compute_peak_abs_stereo_fallback(left: &[f32], right: &[f32]) -> (
     (peak_l, peak_r)
 }
 
-/// Batch GEMV overwrite with native f32 weights and inputs.
+/// Batch GEMV overwrite with bias using native f32 weights and inputs.
 ///
 /// Performs `num_frames` independent matrix-vector multiplications.
 /// Layout: input is frame-major `[f0_in.., f1_in.., ...]`, output is
 /// frame-major `[f0_out.., f1_out.., ...]`. Weights are column-major
 /// `weights[in_c * OUT + out_c]`.
 ///
+/// Always initialises the accumulator with the bias.
 /// This is the scalar reference oracle for the SIMD kernels.
-pub fn gemv_overwrite_batch_f32_fallback(
+pub fn gemv_with_bias_f32_fallback(
     in_frames: &[f32],
     weights: &[f32],
     bias: &[f32],
     out_frames: &mut [f32],
     num_frames: usize,
-    do_bias: bool,
 ) {
     if num_frames == 0 {
         return;
@@ -750,7 +750,38 @@ pub fn gemv_overwrite_batch_f32_fallback(
     let out_len = out_frames.len() / num_frames;
     for n in 0..num_frames {
         for out_c in 0..out_len {
-            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            let mut sum = bias[out_c];
+            for in_c in 0..in_len {
+                sum += in_frames[n * in_len + in_c] * weights[in_c * out_len + out_c];
+            }
+            out_frames[n * out_len + out_c] = sum;
+        }
+    }
+}
+
+/// Batch GEMV overwrite without bias using native f32 weights and inputs.
+///
+/// Performs `num_frames` independent matrix-vector multiplications.
+/// Layout: input is frame-major `[f0_in.., f1_in.., ...]`, output is
+/// frame-major `[f0_out.., f1_out.., ...]`. Weights are column-major
+/// `weights[in_c * OUT + out_c]`.
+///
+/// Does not add bias; pure overwrite.
+/// This is the scalar reference oracle for the SIMD kernels.
+pub fn gemv_no_bias_f32_fallback(
+    in_frames: &[f32],
+    weights: &[f32],
+    out_frames: &mut [f32],
+    num_frames: usize,
+) {
+    if num_frames == 0 {
+        return;
+    }
+    let in_len = in_frames.len() / num_frames;
+    let out_len = out_frames.len() / num_frames;
+    for n in 0..num_frames {
+        for out_c in 0..out_len {
+            let mut sum = 0.0;
             for in_c in 0..in_len {
                 sum += in_frames[n * in_len + in_c] * weights[in_c * out_len + out_c];
             }

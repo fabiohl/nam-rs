@@ -504,17 +504,30 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
-    unsafe fn gemv_overwrite_batch_f32(
+    unsafe fn gemv_with_bias_f32(
         in_frames: &[f32],
         weights: &[f32],
         bias: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,
-        do_bias: bool,
     ) {
         unsafe {
-            super::super::gemm::gemv::gemv_overwrite_batch_f32_avx2(
-                in_frames, weights, bias, out_frames, num_frames, do_bias,
+            super::super::gemm::gemv::gemv_with_bias_f32_avx2(
+                in_frames, weights, bias, out_frames, num_frames,
+            )
+        }
+    }
+
+    #[inline(always)]
+    unsafe fn gemv_no_bias_f32(
+        in_frames: &[f32],
+        weights: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
+    ) {
+        unsafe {
+            super::super::gemm::gemv::gemv_no_bias_f32_avx2(
+                in_frames, weights, out_frames, num_frames,
             )
         }
     }

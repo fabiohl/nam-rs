@@ -205,17 +205,29 @@ macro_rules! impl_avx512_gemv {
             }
         }
         #[inline(always)]
-        unsafe fn gemv_overwrite_batch_f32(
+        unsafe fn gemv_with_bias_f32(
             in_frames: &[f32],
             weights: &[f32],
             bias: &[f32],
             out_frames: &mut [f32],
             num_frames: usize,
-            do_bias: bool,
         ) {
             unsafe {
-                crate::math::gemm::gemv::gemv_overwrite_batch_f32_avx512(
-                    in_frames, weights, bias, out_frames, num_frames, do_bias,
+                crate::math::gemm::gemv::gemv_with_bias_f32_avx512(
+                    in_frames, weights, bias, out_frames, num_frames,
+                )
+            }
+        }
+        #[inline(always)]
+        unsafe fn gemv_no_bias_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+        ) {
+            unsafe {
+                crate::math::gemm::gemv::gemv_no_bias_f32_avx512(
+                    in_frames, weights, out_frames, num_frames,
                 )
             }
         }
@@ -396,17 +408,29 @@ macro_rules! impl_avx512vnni_gemv {
             )
         }
         #[inline(always)]
-        unsafe fn gemv_overwrite_batch_f32(
+        unsafe fn gemv_with_bias_f32(
             in_frames: &[f32],
             weights: &[f32],
             bias: &[f32],
             out_frames: &mut [f32],
             num_frames: usize,
-            do_bias: bool,
         ) {
             unsafe {
-                crate::math::gemm::gemv::gemv_overwrite_batch_f32_avx512(
-                    in_frames, weights, bias, out_frames, num_frames, do_bias,
+                crate::math::gemm::gemv::gemv_with_bias_f32_avx512(
+                    in_frames, weights, bias, out_frames, num_frames,
+                )
+            }
+        }
+        #[inline(always)]
+        unsafe fn gemv_no_bias_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+        ) {
+            unsafe {
+                crate::math::gemm::gemv::gemv_no_bias_f32_avx512(
+                    in_frames, weights, out_frames, num_frames,
                 )
             }
         }
@@ -587,17 +611,29 @@ macro_rules! impl_avx512vnni_bf16_gemv {
             )
         }
         #[inline(always)]
-        unsafe fn gemv_overwrite_batch_f32(
+        unsafe fn gemv_with_bias_f32(
             in_frames: &[f32],
             weights: &[f32],
             bias: &[f32],
             out_frames: &mut [f32],
             num_frames: usize,
-            do_bias: bool,
         ) {
             unsafe {
-                crate::math::gemm::gemv::gemv_overwrite_batch_f32_avx512(
-                    in_frames, weights, bias, out_frames, num_frames, do_bias,
+                crate::math::gemm::gemv::gemv_with_bias_f32_avx512(
+                    in_frames, weights, bias, out_frames, num_frames,
+                )
+            }
+        }
+        #[inline(always)]
+        unsafe fn gemv_no_bias_f32(
+            in_frames: &[f32],
+            weights: &[f32],
+            out_frames: &mut [f32],
+            num_frames: usize,
+        ) {
+            unsafe {
+                crate::math::gemm::gemv::gemv_no_bias_f32_avx512(
+                    in_frames, weights, out_frames, num_frames,
                 )
             }
         }

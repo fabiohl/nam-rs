@@ -2011,7 +2011,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador` + `documentador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S26.T03 — `process_block_f32_native` separar paths com/sem bias ⚠️
+#### Tarefa S26.T03 — `process_block_f32_native` separar paths com/sem bias ⚠️ [DONE]
 
 - **Dependência:** Executar **após** S25.T01 (SIMD vectorização).
 - **Onde:** `src/models/wavenet/dense.rs:182-196` (e novo `gemv_overwrite_batch_f32` introduzido em S25.T01).

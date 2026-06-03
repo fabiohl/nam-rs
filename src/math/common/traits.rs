@@ -182,21 +182,37 @@ pub trait SimdMath {
         do_bias: bool,
     );
 
-    /// GEMV kernel with overwrite in batch using native f32 weights.
+    /// GEMV kernel with overwrite and bias in batch using native f32 weights.
     ///
-    /// Used for mixed-precision head projection where the final stage
-    /// requires full FP32 precision while the backbone runs quantized.
+    /// Always adds bias. Used for mixed-precision head projection where
+    /// the final stage requires full FP32 precision while the backbone
+    /// runs quantized.
     ///
     /// # Safety
     /// Buffers must be valid. The caller must ensure that `in_frames`,
     /// `weights`, and `out_frames` have compatible dimensions.
-    unsafe fn gemv_overwrite_batch_f32(
+    unsafe fn gemv_with_bias_f32(
         in_frames: &[f32],
         weights: &[f32],
         bias: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,
-        do_bias: bool,
+    );
+
+    /// GEMV kernel with overwrite (no bias) in batch using native f32 weights.
+    ///
+    /// Overwrites without adding bias. Used for mixed-precision head
+    /// projection where the final stage requires full FP32 precision
+    /// while the backbone runs quantized.
+    ///
+    /// # Safety
+    /// Buffers must be valid. The caller must ensure that `in_frames`,
+    /// `weights`, and `out_frames` have compatible dimensions.
+    unsafe fn gemv_no_bias_f32(
+        in_frames: &[f32],
+        weights: &[f32],
+        out_frames: &mut [f32],
+        num_frames: usize,
     );
 
     /// GEMV kernel with overwrite for 4 simultaneous gates.
