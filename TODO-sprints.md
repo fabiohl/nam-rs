@@ -2271,7 +2271,7 @@ Notas Operacionais — Épico 14
 
 > Continuação direta da S13a.T01 (Suite de cross-validation NAM-rs ↔ NeuralAmpModelerCore). Foco em expandir o sinal de stress para cobertura perceptualmente representativa e introduzir métricas alinhadas com o estado-da-arte da pesquisa NAM (ESR, MR-STFT). Estabelece fundação para futura ponte com a comunidade A2/MUSHRA, sem implementar A2.
 >
-> **Pré-condições:** S13a.T01 concluída (confirmado); `cpp_parity` 5/5 PASS estável.
+> **Pré-condições:** S13a.T01 concluída (confirmado); `cpp_parity` 5/5 PASS estável; Liberar acesso ao mirror do github.
 
 ### Sprint S28 — Stress Signal Generator v2 (port `t3k-mushra` primitives)
 
@@ -2282,25 +2282,15 @@ Notas Operacionais — Épico 14
 #### Tarefa S28.T01 — Stress Signal v2 (multi-componente, multi-SR, single source of truth, com primitivas portadas do `t3k-mushra`) 🔥✨
 
 - **Onde:** `tests/common/mod.rs::generate_stress_signal` (atual); criar `tests/common/stress2.rs` e `tests/common/mushra_primitives.rs`; binário `src/bin/gen_stress.rs`; atualizar `tests/fixtures/golden_gen_build.sh`, `tests/cpp_parity.rs`, e `tests/common/wav.rs`.
-
 - **Problema (limites atuais identificados pela auditoria):**
-
   1. **Duração curta:** 2048 samples ≈ 42.7 ms @ 48 kHz capturam apenas 1 transiente + chirp breve. Drift acumulativo em modelos com receptive_field grande (RF=2046 em WaveNet Standard) fica sub-amostrado.
-
   2. **Single sample rate:** Apenas 48 kHz. Paridade C++ ↔ Rust em 44.1k/88.2k/96k/192k não exercitada.
-
   3. **Sem polifonia/dinâmicas musicais:** Acordes, palm-mute, pinch harmonic, bends ausentes. Modelos não-lineares respondem assimetricamente — gap maior justamente na zona perceptualmente relevante.
-
   4. **Duplicação Python ↔ Rust:** A lógica de geração existe em `tests/fixtures/golden_gen_build.sh:118-181` (Python) **e** em `tests/common/mod.rs:50-90` (Rust). Comentário declara paridade bit-a-bit, mas qualquer adição precisa ser feita em dois lugares — risco de drift silencioso.
-
   5. **Loop byte-a-byte na escrita WAV:** `tests/common/wav.rs:47-49` itera por sample chamando `extend_from_slice(&s.to_le_bytes())`. Negligível em 2048 samples, mas O(n) escalar quando crescer para 240k+.
-
   6. **Sem componentes degradativos para anchor:** atual stress signal não permite gerar anchor canônico MUSHRA (low-pass 3.5 kHz) nem variantes em qualidade graduada.
-
   7. **Falta calibração ESR contra referências publicadas:** sem números de baseline da literatura, definimos thresholds heuristicamente em vez de empiricamente.
-
 - **Avaliação do `t3k-mushra` (`github.com/t3k-mushra/`, MIT-licenciado):**
-
   **O que é:** Biblioteca React/TypeScript publicada em npm para conduzir testes MUSHRA blind em browser. Contém um **gerador de áudio sintético demo** em `src/demo/generateSampleAudio.ts` (168 LoC) com primitivas reutilizáveis.
 
   | Primitiva                                     | LoC TS | Função                                                                                                                                | Portabilidade Rust                                                                  |
@@ -2333,25 +2323,16 @@ Notas Operacionais — Épico 14
   Estes números são para **modelo NAM bem-treinado vs gear real** — Nam-rs (apenas porta de inferência, sem treinamento) comparando vs C++ deve atingir ESR **muito menor** (≤ 1e-4 ≈ −40 dB), pois diferenças aqui são apenas erro de implementação, não training.
 
   **PROS de integração:**
-
   1. ✨ **Primitivas portáveis em ~80 LoC Rust** — zero deps externas, MIT-licensed (compatível com Apache-2.0 do nam-rs).
-
   2. ✨ **Esquema 6-variants MUSHRA-compliant pronto** (hidden-ref → excellent → good → fair → poor → anchor) cobrindo desde transparência até degradação extrema.
-
   3. ✨ **PRNG determinístico testável** (FNV-1a + Mulberry32) — permite bit-paridade Rust↔TS se publicarmos nosso próprio dataset MUSHRA usando o mesmo runner web.
-
   4. ✨ **Baseline ESR concreto e publicado** (A1-Standard ≈ −22 dB, A2-Full ≈ −25 dB) — usável como gates de regressão em `cpp_parity` com fonte rastreável.
-
   5. ✨ **Posicionamento acadêmico:** alinha nam-rs com o ecossistema A2/Tone3000, abre caminho futuro para publicação "NAM-rs: Rust port with measured fidelity equivalence using t3k-mushra protocol".
 
   **CONS:**
-
   1. ❌ **Não substitui o sinal de stress multi-componente:** as primitivas do `t3k-mushra` geram **um único tone simples** por chamada — adequado para anchor/variants degradados em MUSHRA, mas não cobre transientes/chirp/decay que precisamos para detectar drift acumulativo. Os dois são **complementares**.
-
   2. ❌ **Foco em quality grading (humano), não numerical parity (CI):** `t3k-mushra` valida "qual variant soa melhor"; nossa cross-validation valida "Rust ≡ C++". Casos de uso ortogonais — não há substituição direta.
-
   3. ❌ **Atribuição obrigatória (MIT):** ao portar, manter copyright notice do `t3k-mushra` no header dos arquivos derivados; documentar em `NOTICE.txt`.
-
   4. ❌ **Audio do dataset não disponível:** os 37 tones de `a2-mushra-data` (recordings reais de gear) não estão publicados — apenas IDs. Não podemos reproduzir os MUSHRA tests do paper, só usar a metodologia.
 
   **Veredicto:** **Hybrid approach.** Stress signal v2 multi-componente (numerical CI) **+** primitivas portadas do `t3k-mushra` (perceptual stimuli generation, anchor, variants). Calibração ESR usa baselines publicados A2Esr.tsx.
