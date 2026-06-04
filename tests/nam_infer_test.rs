@@ -35,9 +35,9 @@ use nam_rs::models::{NamModel, wavenet};
 use std::fs;
 use std::path::PathBuf;
 
-#[cfg(not(feature = "heap-audit"))]
+#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
 use std::alloc::{GlobalAlloc, Layout, System};
-#[cfg(not(feature = "heap-audit"))]
+#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -50,15 +50,15 @@ use common::*;
 // Counts malloc/free during an interval. Active only when #[cfg(test)].
 // Used in `test_zero_alloc_process_*` tests to prove the hot-path is allocation-free.
 
-#[cfg(not(feature = "heap-audit"))]
+#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
 static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
-#[cfg(not(feature = "heap-audit"))]
+#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
 static TRACKING_THREAD: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
 
-#[cfg(not(feature = "heap-audit"))]
+#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
 struct CountingAllocator;
 
-#[cfg(not(feature = "heap-audit"))]
+#[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
@@ -72,25 +72,25 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 }
 
-#[cfg(all(test, not(feature = "heap-audit")))]
+#[cfg(all(test, any(not(feature = "heap-audit"), not(feature = "clap-plugin"))))]
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 // Guard to safely enable/disable counting (even in panics).
 struct TrackingGuard {
-    #[cfg(feature = "heap-audit")]
+    #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
     _inner: nam_rs::clap::heap_audit::TrackingGuard,
 }
 
 impl TrackingGuard {
     fn new() -> Self {
-        #[cfg(feature = "heap-audit")]
+        #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
         {
             Self {
                 _inner: nam_rs::clap::heap_audit::TrackingGuard::new(),
             }
         }
-        #[cfg(not(feature = "heap-audit"))]
+        #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
         {
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
             TRACKING_THREAD.store(tid, Ordering::Relaxed);
@@ -103,7 +103,7 @@ impl TrackingGuard {
 impl Drop for TrackingGuard {
     fn drop(&mut self) {
         // Disable tracking when going out of scope
-        #[cfg(not(feature = "heap-audit"))]
+        #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
         {
             TRACKING_THREAD.store(0, Ordering::Relaxed);
         }
@@ -111,11 +111,11 @@ impl Drop for TrackingGuard {
 }
 
 fn get_alloc_count() -> usize {
-    #[cfg(feature = "heap-audit")]
+    #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
     {
         nam_rs::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed)
     }
-    #[cfg(not(feature = "heap-audit"))]
+    #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
     {
         ALLOC_COUNT.load(Ordering::Relaxed)
     }
