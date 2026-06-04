@@ -2193,7 +2193,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27b.T03 — Gate FSM proptest adversarial ⚠️
+#### Tarefa S27b.T03 — Gate FSM proptest adversarial ⚠️ [DONE]
 
 - **Onde:** Estender `src/dsp/gate_test.rs` (ou `tests/gate_fsm_proptest.rs` se LOC excede 300).
 - **Problema:** Testes atuais cobrem casos básicos; faltam:
