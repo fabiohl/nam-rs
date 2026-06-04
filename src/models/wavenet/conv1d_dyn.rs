@@ -44,18 +44,6 @@ pub struct Conv1dDyn {
     pub prefetch_fn: PrefetchFn,
 }
 
-#[cold]
-#[inline(never)]
-fn panic_weights_len(len: usize, expected: usize) -> ! {
-    panic!("weights length {} is less than expected {}", len, expected);
-}
-
-#[cold]
-#[inline(never)]
-fn panic_kernel_exceeds(kernel: usize) -> ! {
-    panic!("kernel {} excede MAX_KERNEL", kernel);
-}
-
 impl Conv1dDyn {
     /// Processes two frames simultaneously (f32).
     ///
@@ -238,15 +226,17 @@ impl Conv1dDyn {
         mixin_f1: Option<&[f32]>,
     ) {
         let num_blocks = self.num_blocks;
-        if cfg!(debug_assertions) {
-            let expected = num_blocks * 4 * self.in_ch * self.kernel;
-            if self.weights.len() < expected {
-                panic_weights_len(self.weights.len(), expected);
-            }
-            if self.kernel > MAX_KERNEL {
-                panic_kernel_exceeds(self.kernel);
-            }
-        }
+        debug_assert!(
+            self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel,
+            "weights length {} is less than expected {}",
+            self.weights.len(),
+            num_blocks * 4 * self.in_ch * self.kernel
+        );
+        debug_assert!(
+            self.kernel <= MAX_KERNEL,
+            "kernel {} excede MAX_KERNEL",
+            self.kernel
+        );
         let mut tap_ptrs_f0 = [core::ptr::null::<T>(); MAX_KERNEL];
         let mut tap_ptrs_f1 = [core::ptr::null::<T>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
@@ -394,15 +384,17 @@ impl Conv1dDyn {
         mixin: Option<&[f32]>,
     ) {
         let num_blocks = self.num_blocks;
-        if cfg!(debug_assertions) {
-            if self.kernel > MAX_KERNEL {
-                panic_kernel_exceeds(self.kernel);
-            }
-            let expected = num_blocks * 4 * self.in_ch * self.kernel;
-            if self.weights.len() < expected {
-                panic_weights_len(self.weights.len(), expected);
-            }
-        }
+        debug_assert!(
+            self.kernel <= MAX_KERNEL,
+            "kernel {} excede MAX_KERNEL",
+            self.kernel
+        );
+        debug_assert!(
+            self.weights.len() >= num_blocks * 4 * self.in_ch * self.kernel,
+            "weights length {} is less than expected {}",
+            self.weights.len(),
+            num_blocks * 4 * self.in_ch * self.kernel
+        );
         let mut tap_ptrs = [core::ptr::null::<T>(); MAX_KERNEL];
         let k_limit = self.kernel.min(MAX_KERNEL);
 

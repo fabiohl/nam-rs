@@ -2134,7 +2134,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27.T07 — Substituir `cfg!(debug_assertions)` panic helpers por `debug_assert!` direto 🔥
+#### Tarefa S27.T07 — Substituir `cfg!(debug_assertions)` panic helpers por `debug_assert!` direto 🔥 [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs:49-57` (`panic_weights_len`, `panic_kernel_exceeds`).
 - **Problema:** As funções helper são chamadas apenas quando `cfg!(debug_assertions)` é true — equivale a `debug_assert!` sem o `unwrap_or` etc., mas com indireção desnecessária. **Em release, nenhuma checagem residual** — defesa em profundidade fraca contra carregamento adversarial. O loader já valida na load (S3.T05) então não há gap real, mas a estrutura confunde leitores.
