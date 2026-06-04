@@ -2223,7 +2223,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S27b.T05 — Paridade scalar↔SIMD LSTM 1×40 e 2×24 com pesos não-triviais ⚠️
+#### Tarefa S27b.T05 — Paridade scalar↔SIMD LSTM 1×40 e 2×24 com pesos não-triviais ✅ [DONE]
 
 - **Onde:** Estender `tests/lstm_scalar_bf16_parity.rs`.
 - **Problema:** S13.T05 adicionou as topologias 1×40 e 2×24 ao catálogo estático; bench foi adicionado (`inference_bench.rs:665, 680`). **Mas o teste de paridade scalar↔SIMD não foi estendido** — usa apenas 1×16 e 2×16.
