@@ -59,11 +59,14 @@ pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
 /// Used for the final head weights (WaveNet head_rechannel, LSTM head_weights)
 /// when running in full FP32 precision, while the backbone uses quantized
 /// (BF16/F16) weights for performance.
+#[inline(always)]
 pub fn dot_product_f32_native(a: &[f32], b: &[f32]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
+    let a_sub = &a[..len];
+    let b_sub = &b[..len];
     let mut sum = 0.0f32;
     for i in 0..len {
-        sum += a[i] * b[i];
+        sum += a_sub[i] * b_sub[i];
     }
     sum
 }

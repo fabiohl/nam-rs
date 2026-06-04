@@ -109,7 +109,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S3 — Diagnóstico e Correção de Regressões de Benchmark
 
-#### Tarefa S3.T01 — Investigar e corrigir regressão +28.5% no LSTM_1x8/SIMD_Fused_T3 ⚠️
+#### Tarefa S3.T01 — Investigar e corrigir regressão +28.5% no LSTM_1x8/SIMD_Fused_T3 ⚠️ [DONE]
 
 - **Onde:** `benches/inference_bench.rs` (benchmark), `src/math/lstm/` (kernels LSTM), `src/math/gemm/` (GEMM fused).
 - **Problema:** O benchmark `LSTM_1x8_Comparison/SIMD_Fused_T3` regrediu **+28.5%** (de ~2.29 µs para 2.98 µs). Enquanto isso, o LSTM 2x16 está estável (+1.1%). A regressão pode ser:

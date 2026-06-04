@@ -36,20 +36,49 @@ fn scalar_minimax_sigmoid(x: f32) -> f32 {
     result.clamp(0.0, 1.0)
 }
 
+use std::ops::{Deref, DerefMut};
+
+/// Wrapper to guarantee 64-byte alignment (Cache Line / AVX-512).
+#[repr(align(64))]
+#[derive(Clone, Copy, Debug)]
+pub struct Aligned64<T>(pub T);
+
+impl<T> Deref for Aligned64<T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Aligned64<T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T: Default> Default for Aligned64<T> {
+    #[inline(always)]
+    fn default() -> Self {
+        Aligned64(T::default())
+    }
+}
+
 /// An individual LSTM model layer optimized for SIMD.
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {
     /// Layer weights in Gate-Major layout.
-    pub input_hidden_weights: [[[u16; H]; IH]; 4],
+    pub input_hidden_weights: Aligned64<[[[u16; H]; IH]; 4]>,
     /// Layer linear biases.
-    pub bias: [f32; H4],
+    pub bias: Aligned64<[f32; H4]>,
     /// Consolidated state buffer [Input | Hidden].
-    pub state: [f32; IH],
+    pub state: Aligned64<[f32; IH]>,
     /// State mirror in BF16 for VNNI acceleration.
-    pub state_bf16: [u16; IH],
+    pub state_bf16: Aligned64<[u16; IH]>,
     /// LSTM cell state (C).
-    pub cell_state: [f32; H],
+    pub cell_state: Aligned64<[f32; H]>,
     /// Intermediate gate activations.
-    pub gates: [f32; H4],
+    pub gates: Aligned64<[f32; H4]>,
 }
 
 macro_rules! define_lstm_process {
@@ -97,24 +126,24 @@ macro_rules! define_lstm_process {
                 // The result activates the 4 'gates' of the LSTM: Forget, Input, Candidate, and Output.
                 if $is_bf16 {
                     $gemv_4gate_bf16(
-                        &self.state_bf16,
+                        &self.state_bf16.0,
                         self.input_hidden_weights[0].as_flattened(),
                         self.input_hidden_weights[1].as_flattened(),
                         self.input_hidden_weights[2].as_flattened(),
                         self.input_hidden_weights[3].as_flattened(),
-                        &self.bias,
-                        &mut self.gates,
+                        &self.bias.0,
+                        &mut self.gates.0,
                         true,
                     );
                 } else {
                     $gemv_4gate(
-                        &self.state,
+                        &self.state.0,
                         self.input_hidden_weights[0].as_flattened(),
                         self.input_hidden_weights[1].as_flattened(),
                         self.input_hidden_weights[2].as_flattened(),
                         self.input_hidden_weights[3].as_flattened(),
-                        &self.bias,
-                        &mut self.gates,
+                        &self.bias.0,
+                        &mut self.gates.0,
                         true,
                     );
                 }
@@ -200,12 +229,12 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     /// Creates a new zero-initialized LSTM layer.
     pub fn new() -> Self {
         Self {
-            input_hidden_weights: [[[0u16; H]; IH]; 4],
-            bias: [0.0; H4],
-            state: [0.0; IH],
-            state_bf16: [0u16; IH],
-            cell_state: [0.0; H],
-            gates: [0.0; H4],
+            input_hidden_weights: Aligned64([[[0u16; H]; IH]; 4]),
+            bias: Aligned64([0.0; H4]),
+            state: Aligned64([0.0; IH]),
+            state_bf16: Aligned64([0u16; IH]),
+            cell_state: Aligned64([0.0; H]),
+            gates: Aligned64([0.0; H4]),
         }
     }
     /// Returns a reference to the current hidden state.
@@ -227,7 +256,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
     // Tanh and Sigmoid approximators via AVX2 SIMD.
     define_lstm_process!(
         process_sample_avx2,
-        inline(always),
+        target_feature(enable = "avx2,fma,f16c"),
         crate::math::common::Avx2Math,
         crate::math::gemm::gemv_4gate_avx2,
         crate::math::common::gemv_4gate_bf16_fallback,

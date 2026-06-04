@@ -67,7 +67,7 @@ impl<const H: usize, const H1_IH: usize, const H_H4: usize> LstmModel1<H, H1_IH,
     }
     define_lstm1_process!(
         process_avx2,
-        inline(always),
+        target_feature(enable = "avx2,fma,f16c"),
         process_sample_avx2,
         crate::math::gemm::dot_product_avx2,
         get_hidden_state

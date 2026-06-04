@@ -314,10 +314,10 @@ fn test_lstm_silence_soak() {
             );
         }
         // Checks divergence of internal states in the 2-layer architecture
-        for &v in &model.layer1.cell_state {
+        for &v in model.layer1.cell_state.iter() {
             assert!(v.is_finite(), "Layer 1 LSTM internal state corrupted");
         }
-        for &v in &model.layer2.cell_state {
+        for &v in model.layer2.cell_state.iter() {
             assert!(v.is_finite(), "Layer 2 LSTM internal state corrupted");
         }
 
