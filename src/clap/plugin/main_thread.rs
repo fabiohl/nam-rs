@@ -85,7 +85,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                             CString::new(
                                 "NAM-rs: Failed to load model from GUI due to invalid characters",
                             )
-                            .unwrap()
+                            .unwrap_or_default()
                         });
                         log.log(&shared, LogSeverity::Error, &msg);
                     }
@@ -97,7 +97,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         if let Some(log) = self.host.get_extension::<HostLog>() {
             let shared = self.host.shared();
 
-            // WHITELIST: CString::new(…).expect() on the lines below is safe because:
+            // WHITELIST: CString::new(…).unwrap_or_default() is safe and cannot panic because:
             // - All strings are static ASCII literals with no internal null bytes.
             // - The compiler guarantees such strings contain no '\0' before the terminator.
             // - These calls are on the main thread, outside any RT hotpath or FFI audio.
@@ -106,8 +106,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED)
             {
-                let msg = CString::new("NAM-rs: Output clipping detected!")
-                    .expect("Failed to create CString");
+                let msg = CString::new("NAM-rs: Output clipping detected!").unwrap_or_default();
                 log.log(&shared, LogSeverity::Warning, &msg);
             }
 
@@ -117,7 +116,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW)
             {
                 let msg = CString::new("NAM-rs: GC channel overflow! Possible memory leak.")
-                    .expect("Failed to create CString");
+                    .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
             }
 
@@ -127,7 +126,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED)
             {
                 let msg = CString::new("NAM-rs: Critical failure! No active model for processing.")
-                    .expect("Failed to create CString");
+                    .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
             }
 
@@ -139,7 +138,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 let msg = CString::new(
                     "NAM-rs: Heap allocation detected in audio thread during process()!",
                 )
-                .expect("Failed to create CString");
+                .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
             }
         }

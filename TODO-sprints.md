@@ -2119,7 +2119,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `revisor-auditor` + `implementador`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S27.T06 — Whitelist sweep: `.unwrap()`/`.expect()` em `main_thread.rs` e `window/mod.rs` ⚠️
+#### Tarefa S27.T06 — Whitelist sweep: `.unwrap()`/`.expect()` em `main_thread.rs` e `window/mod.rs` ⚠️ [DONE]
 
 - **Onde:** `src/clap/plugin/main_thread.rs:88, 110, 120, 130, 142`; `src/clap/gui/window/mod.rs:98, 108`.
 - **Problema:**
