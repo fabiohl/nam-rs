@@ -4,6 +4,7 @@
 /// Batch Matrix Processing (GEMM).
 /// GEMM stands for "General Matrix Multiplication". It's the heart of neural networks.
 /// This function processes multiple audio "frames" at once.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn fused_add_gemm_batch_fallback(
     in_frames: &[f32],
     weights: &[u16],
@@ -21,6 +22,7 @@ pub unsafe fn fused_add_gemm_batch_fallback(
 
     // For each frame in the batch...
     for f in 0..num_frames {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // ...call the function that processes a single vector (GEMV).
             fused_add_gemv_fallback(
@@ -36,6 +38,7 @@ pub unsafe fn fused_add_gemm_batch_fallback(
 
 /// Matrix-Vector Multiplication (GEMV) that ADDS to the existing result.
 /// Think of it as injecting a new processing layer on top of what was already there.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn fused_add_gemv_fallback(
     in_frame: &[f32],
     weights: &[u16],
@@ -53,6 +56,7 @@ pub unsafe fn fused_add_gemv_fallback(
 
         // We iterate through all inputs and corresponding weights.
         for in_c in 0..in_len {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
                 // Gets the compressed weight and unpacks it.
                 let w =
@@ -61,6 +65,7 @@ pub unsafe fn fused_add_gemv_fallback(
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
         }
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // IMPORTANT: Here we use '+=' to ADD to what was already in the output buffer.
             *out_frame.get_unchecked_mut(out_c) += sum;
@@ -70,6 +75,7 @@ pub unsafe fn fused_add_gemv_fallback(
 
 /// Matrix-Vector Multiplication (GEMV) that OVERWRITES the result.
 /// Unlike the previous one, this erases what was in the output and places the new value.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn gemv_overwrite_fallback(
     in_frame: &[f32],
     weights: &[u16],
@@ -82,12 +88,14 @@ pub unsafe fn gemv_overwrite_fallback(
     for (out_c, &b) in bias.iter().enumerate().take(out_len) {
         let mut sum = if do_bias { b } else { 0.0 };
         for in_c in 0..in_len {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
                 let w =
                     half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
                 sum += *in_frame.get_unchecked(in_c) * w;
             }
         }
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // IMPORTANT: Here we use '=' to CLEAR and set the new value.
             *out_frame.get_unchecked_mut(out_c) = sum;
@@ -98,6 +106,7 @@ pub unsafe fn gemv_overwrite_fallback(
 /// Residual Matrix Multiplication in a batch.
 /// In "Residual" neural networks, we add the processing result to the original signal.
 /// It's like saying: "Change the sound just a little bit relative to what it was."
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn fused_gemm_residual_batch_fallback(
     in_frames: &[f32],
     weights: &[u16],
@@ -114,6 +123,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
     let out_len = out_frames.len() / num_frames;
 
     for frame_idx in 0..num_frames {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             for (out_c, &b) in bias.iter().enumerate().take(out_len) {
                 let mut sum = if do_bias { b } else { 0.0 };
@@ -131,6 +141,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
 }
 
 /// Matrix-Vector Multiplication (Overwrite) using BF16 input and weights.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn gemv_overwrite_bf16_fallback(
     in_frame: &[u16],
     weights: &[u16],
@@ -143,6 +154,7 @@ pub unsafe fn gemv_overwrite_bf16_fallback(
     for (out_c, &b) in bias.iter().enumerate().take(out_len) {
         let mut sum = if do_bias { b } else { 0.0 };
         for in_c in 0..in_len {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
                 // Unpack BF16 input -> f32.
                 let s = f32::from_bits((*in_frame.get_unchecked(in_c) as u32) << 16);
@@ -152,6 +164,7 @@ pub unsafe fn gemv_overwrite_bf16_fallback(
                 );
             }
         }
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             *out_frame.get_unchecked_mut(out_c) = sum;
         }

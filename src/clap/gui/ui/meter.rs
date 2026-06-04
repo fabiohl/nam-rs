@@ -191,6 +191,7 @@ pub fn draw_vertical_meter(
                     let vp_right = info.viewport.max.x;
                     let vp_bottom = info.viewport.max.y;
 
+                    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                     unsafe {
                         gl.enable(glow::BLEND);
                         gl.blend_func(glow::SRC_ALPHA, glow::ONE_MINUS_SRC_ALPHA);

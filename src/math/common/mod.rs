@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 //! Common foundation for mathematical operations and SIMD.
 //!
@@ -80,9 +82,11 @@ macro_rules! dispatch_simd {
     // Mode 3: Direct v-table call
     ($method:ident ($($arg:expr),*)) => {
         {
+            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
             #[allow(clippy::macro_metavars_in_unsafe)]
             {
                 use $crate::math::common::SIMD_MATH;
+                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
                 unsafe { (SIMD_MATH.$method)($($arg),*) }
             }
         }

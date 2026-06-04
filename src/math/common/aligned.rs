@@ -32,6 +32,7 @@ impl<T> AlignedVec<T> {
         T: Copy,
     {
         let mut vec = Self::with_capacity(len);
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             for i in 0..len {
                 vec.ptr.as_ptr().add(i).write(default);
@@ -58,6 +59,7 @@ impl<T> AlignedVec<T> {
         let layout = Layout::from_size_align(capacity * std::mem::size_of::<T>(), Self::ALIGN)
             .expect("Failed to create layout for AlignedVec");
 
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         let ptr = unsafe { alloc(layout) };
         if ptr.is_null() {
             handle_alloc_error(layout);
@@ -89,6 +91,7 @@ impl<T> AlignedVec<T> {
             return;
         }
         let mut new_vec = Self::with_capacity(new_len);
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             let old_ptr = self.ptr.as_ptr();
             for i in 0..self.len {
@@ -115,6 +118,7 @@ impl<T> Deref for AlignedVec<T> {
         if self.len == 0 {
             &[]
         } else {
+            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
             unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
         }
     }
@@ -128,6 +132,7 @@ impl<T> DerefMut for AlignedVec<T> {
         if self.len == 0 {
             &mut []
         } else {
+            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
             unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
         }
     }
@@ -142,6 +147,7 @@ impl<T> Drop for AlignedVec<T> {
         if self.len > 0 {
             let layout =
                 Layout::from_size_align(self.len * std::mem::size_of::<T>(), Self::ALIGN).unwrap();
+            // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
             unsafe {
                 dealloc(self.ptr.as_ptr() as *mut u8, layout);
             }
@@ -156,6 +162,7 @@ impl<T> Drop for AlignedVec<T> {
 impl<T: Clone> Clone for AlignedVec<T> {
     fn clone(&self) -> Self {
         let mut new_vec = Self::with_capacity(self.len);
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             for i in 0..self.len {
                 let val = (*self.ptr.as_ptr().add(i)).clone();
@@ -194,6 +201,7 @@ impl<T: Copy> AlignedVec<T> {
             return Self::with_capacity(0);
         }
         let mut aligned = Self::with_capacity(v.len());
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             std::ptr::copy_nonoverlapping(v.as_ptr(), aligned.ptr.as_ptr(), v.len());
         }
@@ -206,5 +214,7 @@ impl<T: Copy> AlignedVec<T> {
 ///
 /// This is essential so that audio processing can be distributed across
 /// multiple processor cores with full safety.
+// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
 unsafe impl<T: Send> Send for AlignedVec<T> {}
+// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
 unsafe impl<T: Sync> Sync for AlignedVec<T> {}

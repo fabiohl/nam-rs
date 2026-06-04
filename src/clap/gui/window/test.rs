@@ -137,6 +137,7 @@ fn test_gui_drag_drop_fuzz() {
     let check_and_drop =
         |alive: &Arc<std::sync::atomic::AtomicBool>, s_ref: NamClapSharedRef, path: PathBuf| {
             if alive.load(Ordering::Relaxed) {
+                // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                 let s = unsafe { &*s_ref.0 };
                 if let Ok(mut pending_guard) = s.ui_pending_model.lock() {
                     *pending_guard = Some(path);

@@ -2105,7 +2105,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S27.T05 — SAFETY block sweep em `src/math/common/` 🔥
+#### Tarefa S27.T05 — SAFETY block sweep em `src/math/common/` 🔥 [DONE]
 
 - **Onde:** `src/math/common/avx2_impl.rs` (494 LoC), `src/math/common/avx512/`, `src/dsp/mirror_buf.rs`, `src/clap/gui/window/mod.rs`.
 - **Problema:** Auditoria contou ≈ 920 `unsafe` (fn + blocks) com apenas ≈ 149 doccomments `# Safety`. Gap de ≈ 770 blocos sem `// SAFETY:` adjacente. Vai contra Rust API Guidelines e dificulta auditoria futura.

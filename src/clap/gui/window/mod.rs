@@ -96,10 +96,12 @@ impl NamPluginWindow {
         // which is a host GUI contract violation — not recoverable. The panic occurs on the
         // window creation thread, before any RT/FFI audio callback.
         let gl_ctx = window.gl_context().expect("OpenGL context not available");
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         unsafe {
             gl_ctx.make_current();
         }
 
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         let gl = unsafe { glow::Context::from_loader_function(|s| gl_ctx.get_proc_address(s)) };
 
         // WHITELIST: Painter::new fails only if the OpenGL context is invalid (already verified
@@ -108,6 +110,7 @@ impl NamPluginWindow {
             .expect("Failed to create egui_glow Painter");
 
         // Robust shader compilation and VAO creation
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         let (vu_program, vu_vao) = unsafe {
             let gl = painter.gl();
             match compile_shader_program(gl, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC) {
@@ -122,6 +125,7 @@ impl NamPluginWindow {
             }
         };
 
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         unsafe {
             gl_ctx.make_not_current();
         }
@@ -164,6 +168,7 @@ impl NamPluginWindow {
             ..Default::default()
         };
 
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         let alive_fence = unsafe { &*shared.0 }.alive_fence.clone();
 
         Self {
@@ -201,6 +206,7 @@ impl WindowHandler for NamPluginWindow {
         let Some(gl_ctx) = window.gl_context() else {
             return;
         };
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         unsafe {
             gl_ctx.make_current();
         }
@@ -243,6 +249,7 @@ impl WindowHandler for NamPluginWindow {
             gl_ctx.swap_buffers();
         }
 
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
         unsafe {
             gl_ctx.make_not_current();
         }

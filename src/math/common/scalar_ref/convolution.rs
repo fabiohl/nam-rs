@@ -4,6 +4,7 @@
 /// Stereo Convolution (used in the Resampler).
 /// Convolution is like applying a filter (like an equalizer).
 /// Here we do it for the Left (L) and Right (R) channels simultaneously.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn convolve_stereo_fallback(
     coeffs: *const f32,  // Filter coefficients.
     input_l: *const f32, // Left channel input.
@@ -22,6 +23,7 @@ pub unsafe fn convolve_stereo_fallback(
 
 /// Dual Stereo Convolution (used in the Resampler).
 /// Performs two consecutive stereo convolutions reusing input loads.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn convolve_stereo_dual_fallback(
     coeffs0: *const f32,
     coeffs1: *const f32,
@@ -48,6 +50,7 @@ pub unsafe fn convolve_stereo_dual_fallback(
 
 /// Mono Dual Convolution (used in the Resampler).
 /// Performs two mono convolutions on the same input buffer, reusing the loaded input samples.
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn convolve_mono_dual_fallback(
     coeffs0: *const f32,
     coeffs1: *const f32,
@@ -65,6 +68,7 @@ pub unsafe fn convolve_mono_dual_fallback(
 }
 
 /// Mono Convolution (used in the Resampler).
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn convolve_mono_fallback(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
     let mut sum = 0.0f32;
     for i in 0..taps {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #![allow(
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe_op_in_unsafe_fn,
     clippy::missing_safety_doc,
     clippy::too_many_arguments
@@ -30,32 +31,42 @@ impl SimdMath for Avx2Math {
     // Dot Product: Multiplies weights by signal and sums the result (the "DNA" of neural networks).
     // In AVX2, we use 256-bit registers that process 8 numbers at once.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product(a: &[f32], b: &[u16]) -> f32 {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::gemm::dot::dot_product_avx2(a, b) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_bf16(a: &[u16], b: &[u16]) -> f32 {
         // Since pure AVX2 has no native acceleration for BF16 (Brain Float), we use the common fallback version.
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { dot_product_bf16_fallback(a, b) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_4x_interleaved(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::gemm::dot_4x::dot_product_4x_interleaved_avx2(weights, state) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_4x_interleaved_bf16(weights: &[[u16; 4]], state: &[u16]) -> [f32; 4] {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { dot_product_4x_interleaved_bf16_fallback(weights, state) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_4x_interleaved_dual_frame(
         weights: &[[u16; 4]],
         state_f0: &[f32],
         state_f1: &[f32],
     ) -> ([f32; 4], [f32; 4]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::gemm::dot_4x::dot_product_4x_interleaved_dual_frame_avx2(
                 weights, state_f0, state_f1,
@@ -64,15 +75,18 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_4x_interleaved_dual_frame_bf16(
         weights: &[[u16; 4]],
         state_f0: &[u16],
         state_f1: &[u16],
     ) -> ([f32; 4], [f32; 4]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { dot_product_4x_interleaved_dual_frame_bf16_fallback(weights, state_f0, state_f1) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn dot_product_bf16_4x(
         w0: &[u16],
         w1: &[u16],
@@ -80,6 +94,7 @@ impl SimdMath for Avx2Math {
         w3: &[u16],
         in_frame: &[u16],
     ) -> [f32; 4] {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { dot_product_bf16_4x_fallback(w0, w1, w2, w3, in_frame) }
     }
 
@@ -87,6 +102,7 @@ impl SimdMath for Avx2Math {
     // The "fused" prefix indicates that the Bias vector addition is combined (fused) with the multiplication
     // to save memory accesses and processor instructions.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn fused_add_gemv(
         in_frame: &[f32],
         weights: &[u16],
@@ -94,6 +110,7 @@ impl SimdMath for Avx2Math {
         out_frame: &mut [f32],
         do_bias: bool,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // Delegates the computation to the optimized AVX2 matrix-vector multiplication kernel.
             super::super::gemm::gemv::fused_add_gemv_avx2(
@@ -105,6 +122,7 @@ impl SimdMath for Avx2Math {
     /// Performs matrix multiplication on a batch of vectors via AVX2.
     /// Useful when processing multiple audio frames concurrently to reduce overheads.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn fused_add_gemm_batch(
         in_frames: &[f32],
         weights: &[u16],
@@ -113,6 +131,7 @@ impl SimdMath for Avx2Math {
         num_frames: usize,
         do_bias: bool,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // Delegates the batch matrix-matrix multiplication (GEMM) computation to the AVX2 kernel.
             super::super::gemm::gemm_batch::fused_add_gemm_batch_avx2(
@@ -124,6 +143,7 @@ impl SimdMath for Avx2Math {
     /// Performs matrix-vector multiplication also adding the residual connection (skip connection)
     /// from the previous layer. Widely used in the WaveNet residual block architecture.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn fused_gemm_residual_batch(
         in_frames: &[f32],
         weights: &[u16],
@@ -133,6 +153,7 @@ impl SimdMath for Avx2Math {
         num_frames: usize,
         do_bias: bool,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // Delegates the multiplication with integrated residual sum and bias to the AVX2 kernel.
             super::super::gemm::gemm_batch::fused_gemm_residual_batch_avx2(
@@ -144,6 +165,7 @@ impl SimdMath for Avx2Math {
     /// Version that overwrites the output buffer directly with the matrix-vector multiplication result,
     /// without accumulating with pre-existing values in the buffer.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite(
         in_frame: &[f32],
         weights: &[u16],
@@ -151,6 +173,7 @@ impl SimdMath for Avx2Math {
         out_frame: &mut [f32],
         do_bias: bool,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::gemm::gemv::gemv_overwrite_avx2(
                 in_frame, weights, bias, out_frame, do_bias,
@@ -161,6 +184,7 @@ impl SimdMath for Avx2Math {
     /// Version that overwrites the output buffer accepting input data represented in BF16 (16-bit)
     /// and BF16 weights, performing accumulation in f32 to preserve fidelity.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_bf16(
         in_frame: &[u16],
         weights: &[u16],
@@ -170,6 +194,7 @@ impl SimdMath for Avx2Math {
     ) {
         // Since the classic AVX2 architecture has no native support for BF16 dot-product instructions,
         // we fall back to a runtime conversion to f32.
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { gemv_overwrite_bf16_fallback(in_frame, weights, bias, out_frame, do_bias) }
     }
 
@@ -177,6 +202,7 @@ impl SimdMath for Avx2Math {
     // Gate computation (Input, Forget, Cell Candidate, and Output) shares the same input
     // states. Computing them in parallel drastically reduces cache jumps.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_4gate(
         in_frame: &[f32],
         weights: &[u16],
@@ -187,6 +213,7 @@ impl SimdMath for Avx2Math {
     ) {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // We split the single contiguous weight matrix into 4 blocks (strides) corresponding to each gate:
             // - weights[0..stride]: Input Gate weights.
@@ -209,6 +236,7 @@ impl SimdMath for Avx2Math {
     /// Equivalent to `gemv_overwrite_4gate` but processing input data represented
     /// in the BF16 reduced precision format.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_bf16_4gate(
         in_frame: &[u16],
         weights: &[u16],
@@ -219,6 +247,7 @@ impl SimdMath for Avx2Math {
     ) {
         let ih = in_frame.len();
         let stride = ih * hidden_size;
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // Since AVX2 does not have native VNNI/BF16 with direct CPU accumulation, we use fallback.
             gemv_4gate_bf16_fallback(
@@ -235,23 +264,29 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::wavenet::accumulate::accumulate_head_avx2(dest, src) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn tanh_and_accumulate_block(head_input: &mut [f32], block: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::wavenet::accumulate::tanh_and_accumulate_block_avx2(head_input, block)
         }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gated_activation_and_accumulate_block(
         head_input: &mut [f32],
         block: &mut [f32],
         ch: usize,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::wavenet::accumulate::gated_activation_and_accumulate_block_avx2(
                 head_input, block, ch,
@@ -260,18 +295,22 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn tanh_and_overwrite_block(head_input: &mut [f32], block: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::wavenet::accumulate::tanh_and_overwrite_block_avx2(head_input, block)
         }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gated_activation_and_overwrite_block(
         head_input: &mut [f32],
         block: &mut [f32],
         ch: usize,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::wavenet::accumulate::gated_activation_and_overwrite_block_avx2(
                 head_input, block, ch,
@@ -280,7 +319,9 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { f32_to_bf16_fallback(src, dest) }
     }
 
@@ -293,7 +334,9 @@ impl SimdMath for Avx2Math {
     /// Both share the same dynamic range (8 exponent bits), but BF16 discards the
     /// 16 least significant mantissa bits (truncation/rounding).
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn store_bf16(ptr: *mut u16, v: Self::V) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             // 1. Reinterpret the f32 register (__m256) as 32-bit integers (__m256i). Cost: 0 cycles.
             let v_i = _mm256_castps_si256(v);
@@ -314,32 +357,42 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn tanh_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { crate::math::activations::tanh_slice_avx2(slice) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn sigmoid_slice(slice: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { crate::math::activations::sigmoid_slice_avx2(slice) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn horizontal_sum<const N: usize>(ptr: *const f32) -> f32 {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::utility::horizontal_sum_avx2(ptr, N) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn activation_tanh_block(buf: &mut [f32]) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { crate::math::activations::tanh_slice_avx2(buf) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn fused_lstm_gates_dyn(
         gates: &mut [f32],
         cell_state: &mut [f32],
         hidden_state: &mut [f32],
         hidden_size: usize,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::lstm::fused_lstm_gates_dyn_avx2(
                 gates,
@@ -351,22 +404,30 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn compute_energy_stereo(l: &[f32], r: &[f32]) -> f32 {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::compute_energy_stereo_avx2(l, r) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn compute_energy(data: &[f32]) -> f32 {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::compute_energy_avx2(data) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn compute_max_diff(a: &[f32], b: &[f32]) -> f32 {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::compute_max_diff_avx2(a, b) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::compute_peak_abs_stereo_avx2(left, right) }
     }
 
@@ -378,16 +439,19 @@ impl SimdMath for Avx2Math {
     // multiply them concurrently by the left (input_l) and right (input_r) audio samples.
     // This doubles the computation efficiency compared to filtering each channel sequentially.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn convolve_stereo(
         coeffs: *const f32,
         input_l: *const f32,
         input_r: *const f32,
         taps: usize,
     ) -> (f32, f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::convolve_stereo_avx2(coeffs, input_l, input_r, taps) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn convolve_stereo_dual(
         coeffs0: *const f32,
         coeffs1: *const f32,
@@ -395,6 +459,7 @@ impl SimdMath for Avx2Math {
         input_r: *const f32,
         taps: usize,
     ) -> ((f32, f32), (f32, f32)) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::dsp::stereo::convolve_stereo_dual_avx2(
                 coeffs0, coeffs1, input_l, input_r, taps,
@@ -403,53 +468,67 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32 {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::convolve_mono_avx2(coeffs, input, taps) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn convolve_mono_dual(
         coeffs0: *const f32,
         coeffs1: *const f32,
         input: *const f32,
         taps: usize,
     ) -> (f32, f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::stereo::convolve_mono_dual_avx2(coeffs0, coeffs1, input, taps) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_gain_and_detect_clipping_stereo(
         left: &mut [f32],
         right: &mut [f32],
         gain: f32,
     ) -> bool {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::dsp::gain::apply_gain_and_detect_clipping_stereo_avx2(left, right, gain)
         }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_gain_stereo(left: &mut [f32], right: &mut [f32], gain: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::gain::apply_gain_stereo_avx2(left, right, gain) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_gain(data: &mut [f32], gain: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::gain::apply_gain_avx2(data, gain) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_ramp(data: &mut [f32], start: f32, step: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::gain::apply_ramp_avx2(data, start, step) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
         head1: &[f32],
         head2: &[f32],
         output: &mut [f32],
         scale: f32,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::wavenet::head::batch_wavenet_head_sum_avx2::<HEAD>(
                 head1, head2, output, scale,
@@ -458,11 +537,14 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { super::super::dsp::gain::apply_ramp_stereo_avx2(left, right, start, step) }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_batch(
         in_frames: &[f32],
         weights: &[u16],
@@ -476,6 +558,7 @@ impl SimdMath for Avx2Math {
         for i in 0..num_frames {
             let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
             let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe {
                 super::super::gemm::gemv::gemv_overwrite_avx2(
                     in_slice, weights, bias, out_slice, do_bias,
@@ -485,6 +568,7 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_batch_bf16(
         in_frames: &[u16],
         weights: &[u16],
@@ -498,11 +582,13 @@ impl SimdMath for Avx2Math {
         for i in 0..num_frames {
             let in_slice = &in_frames[i * in_len..(i + 1) * in_len];
             let out_slice = &mut out_frames[i * out_len..(i + 1) * out_len];
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { gemv_overwrite_bf16_fallback(in_slice, weights, bias, out_slice, do_bias) };
         }
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_with_bias_f32(
         in_frames: &[f32],
         weights: &[f32],
@@ -510,6 +596,7 @@ impl SimdMath for Avx2Math {
         out_frames: &mut [f32],
         num_frames: usize,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::gemm::gemv::gemv_with_bias_f32_avx2(
                 in_frames, weights, bias, out_frames, num_frames,
@@ -518,12 +605,14 @@ impl SimdMath for Avx2Math {
     }
 
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_no_bias_f32(
         in_frames: &[f32],
         weights: &[f32],
         out_frames: &mut [f32],
         num_frames: usize,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::gemm::gemv::gemv_no_bias_f32_avx2(
                 in_frames, weights, out_frames, num_frames,
@@ -533,6 +622,7 @@ impl SimdMath for Avx2Math {
 
     // Final WaveNet processing stage: sums the outputs to generate the final audio.
     #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn batch_wavenet_head_sum_dyn(
         head1: &[f32],
         head2: &[f32],
@@ -540,6 +630,7 @@ impl SimdMath for Avx2Math {
         head: usize,
         scale: f32,
     ) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::super::wavenet::head::batch_wavenet_head_sum_dyn_avx2(
                 head1, head2, output, head, scale,

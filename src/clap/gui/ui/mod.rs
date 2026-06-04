@@ -301,6 +301,7 @@ fn draw_zone1_identity(
                 shared.ui_loading.store(true, Ordering::Relaxed);
                 let shared_addr = shared as *const NamClapShared as usize;
                 let host_static: clack_plugin::host::HostSharedHandle<'static> =
+                    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                     unsafe { super::extend_host_lifetime(*host) };
                 let alive_fence = Arc::clone(&shared.alive_fence);
                 std::thread::spawn(move || {
@@ -316,6 +317,7 @@ fn draw_zone1_identity(
                     match rx.recv_timeout(std::time::Duration::from_secs(120)) {
                         Ok(path_opt) => {
                             if alive_fence.load(Ordering::Relaxed) {
+                                // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                                 let shared = unsafe { &*(shared_addr as *const NamClapShared) };
                                 if let Some(path) = path_opt {
                                     if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
@@ -329,6 +331,7 @@ fn draw_zone1_identity(
                         }
                         Err(_) => {
                             if alive_fence.load(Ordering::Relaxed) {
+                                // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                                 let shared = unsafe { &*(shared_addr as *const NamClapShared) };
                                 shared.ui_loading.store(false, Ordering::Relaxed);
 

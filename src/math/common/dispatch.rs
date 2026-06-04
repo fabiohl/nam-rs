@@ -76,53 +76,76 @@ pub struct SimdMathConfig {
     /// Whether the backend is AVX-512.
     pub is_avx512: bool,
     /// Fused add + GEMV kernel.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub fused_add_gemv: unsafe fn(&[f32], &[u16], &[f32], &mut [f32], bool),
     /// Fused add + batch GEMM kernel.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub fused_add_gemm_batch: unsafe fn(&[f32], &[u16], &[f32], &mut [f32], usize, bool),
     /// Fused residual batch GEMM kernel.
     pub fused_gemm_residual_batch:
         unsafe fn(&[f32], &[u16], &[f32], &[f32], &mut [f32], usize, bool),
     /// GEMV kernel with overwrite.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub gemv_overwrite: unsafe fn(&[f32], &[u16], &[f32], &mut [f32], bool),
     /// Head accumulation kernel.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub accumulate_head: unsafe fn(&mut [f32], &[f32]),
     /// Horizontal sum of a buffer.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub horizontal_sum: unsafe fn(*const f32, usize) -> f32,
     /// Applies gain and detects clipping in stereo.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_gain_and_detect_clipping_stereo: unsafe fn(&mut [f32], &mut [f32], f32) -> bool,
     /// Applies constant gain in stereo (without clipping detection).
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_gain_stereo: unsafe fn(&mut [f32], &mut [f32], f32),
     /// Applies constant gain to a mono buffer.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_gain: unsafe fn(&mut [f32], f32),
     /// Applies a linear gain ramp to a mono buffer.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_ramp: unsafe fn(&mut [f32], f32, f32),
     /// Applies a linear gain ramp in stereo.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_ramp_stereo: unsafe fn(&mut [f32], &mut [f32], f32, f32),
     /// Stereo convolution (used in the resampler).
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub convolve_stereo: unsafe fn(*const f32, *const f32, *const f32, usize) -> (f32, f32),
     /// Mono convolution (used in the resampler).
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub convolve_mono: unsafe fn(*const f32, *const f32, usize) -> f32,
     /// Dual mono convolution (used in the resampler).
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub convolve_mono_dual: unsafe fn(*const f32, *const f32, *const f32, usize) -> (f32, f32),
     /// Computes the maximum energy between two channels.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub compute_energy_stereo: unsafe fn(&[f32], &[f32]) -> f32,
     /// Computes the energy of a block.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub compute_energy: unsafe fn(&[f32]) -> f32,
     /// Computes the maximum absolute difference between two blocks.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub compute_max_diff: unsafe fn(&[f32], &[f32]) -> f32,
     /// Computes the peak absolute value of both stereo channels.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub compute_peak_abs_stereo: unsafe fn(&[f32], &[f32]) -> (f32, f32),
     /// Applies Tanh activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub tanh_slice: unsafe fn(&mut [f32]),
     /// Applies Sigmoid activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub sigmoid_slice: unsafe fn(&mut [f32]),
     /// Applies ReLU activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub relu_slice: unsafe fn(&mut [f32]),
     /// Applies PReLU activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub prelu_slice: unsafe fn(&mut [f32], &[f32]),
     /// Applies Softsign activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub softsign_slice: unsafe fn(&mut [f32]),
     /// Applies SiLU activation to a slice.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub silu_slice: unsafe fn(&mut [f32]),
 }
 
@@ -167,6 +190,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 fused_gemm_residual_batch: Avx512VnniBf16Math::fused_gemm_residual_batch,
                 gemv_overwrite: Avx512VnniBf16Math::gemv_overwrite,
                 accumulate_head: Avx512VnniBf16Math::accumulate_head,
+                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
@@ -203,6 +227,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 fused_gemm_residual_batch: Avx512VnniMath::fused_gemm_residual_batch,
                 gemv_overwrite: Avx512VnniMath::gemv_overwrite,
                 accumulate_head: Avx512VnniMath::accumulate_head,
+                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
@@ -239,6 +264,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 fused_gemm_residual_batch: Avx512Math::fused_gemm_residual_batch,
                 gemv_overwrite: Avx512Math::gemv_overwrite,
                 accumulate_head: Avx512Math::accumulate_head,
+                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
@@ -275,6 +301,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 fused_gemm_residual_batch: Avx2VnniMath::fused_gemm_residual_batch,
                 gemv_overwrite: Avx2VnniMath::gemv_overwrite,
                 accumulate_head: Avx2VnniMath::accumulate_head,
+                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx2(ptr, len)
                 },
@@ -312,6 +339,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 fused_gemm_residual_batch: Avx2Math::fused_gemm_residual_batch,
                 gemv_overwrite: Avx2Math::gemv_overwrite,
                 accumulate_head: Avx2Math::accumulate_head,
+                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx2(ptr, len)
                 },

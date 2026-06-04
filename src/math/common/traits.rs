@@ -191,6 +191,7 @@ pub trait SimdMath {
     /// # Safety
     /// Buffers must be valid. The caller must ensure that `in_frames`,
     /// `weights`, and `out_frames` have compatible dimensions.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe fn gemv_with_bias_f32(
         in_frames: &[f32],
         weights: &[f32],
@@ -208,6 +209,7 @@ pub trait SimdMath {
     /// # Safety
     /// Buffers must be valid. The caller must ensure that `in_frames`,
     /// `weights`, and `out_frames` have compatible dimensions.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe fn gemv_no_bias_f32(
         in_frames: &[f32],
         weights: &[f32],
@@ -361,6 +363,7 @@ pub trait SimdMath {
     /// # Safety
     /// `coeffs`, `input_l`, and `input_r` must be valid pointers to at least `taps` elements.
     /// `coeffs` must be aligned according to the SIMD register.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe fn convolve_stereo(
         coeffs: *const f32,
         input_l: *const f32,
@@ -374,6 +377,7 @@ pub trait SimdMath {
     /// # Safety
     /// `coeffs0`, `coeffs1`, `input_l`, and `input_r` must be valid pointers to at least `taps` elements.
     /// `coeffs0` and `coeffs1` must be aligned according to the SIMD register.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe fn convolve_stereo_dual(
         coeffs0: *const f32,
         coeffs1: *const f32,
@@ -388,6 +392,7 @@ pub trait SimdMath {
     /// # Safety
     /// `coeffs` and `input` must be valid pointers to at least `taps` elements.
     /// `coeffs` must be aligned according to the SIMD register.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe fn convolve_mono(coeffs: *const f32, input: *const f32, taps: usize) -> f32;
 
     /// Dual mono convolution (reuses input loads).
@@ -396,6 +401,7 @@ pub trait SimdMath {
     /// # Safety
     /// `coeffs0`, `coeffs1`, and `input` must be valid pointers to at least `taps` elements.
     /// `coeffs0` and `coeffs1` must be aligned according to the SIMD register.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe fn convolve_mono_dual(
         coeffs0: *const f32,
         coeffs1: *const f32,

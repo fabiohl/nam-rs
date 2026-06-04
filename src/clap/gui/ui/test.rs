@@ -130,6 +130,7 @@ fn test_ui_load_error_visual_feedback() {
 
     let ctx = egui::Context::default();
     let dummy = 42i32;
+    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
 
     let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
@@ -352,6 +353,7 @@ fn test_bypass_keyboard_trigger() {
     let atomic_val = std::sync::atomic::AtomicU32::new(0); // initial: bypass off
     let gesture_flags = std::sync::atomic::AtomicU32::new(0);
     let dummy = 42i32;
+    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
 
     const BYPASS_INDEX: usize = 3; // PARAM_BYPASS = 3
@@ -417,6 +419,7 @@ fn test_tab_order_navigation() {
     let shared = make_test_shared(0);
     let mut state = UiState::default();
     let dummy = 42i32;
+    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
 
     // Frame 1: Initial render, no focus

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+// SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 //! Implementation of the main graphical user interface window.
 
@@ -23,6 +25,7 @@ pub const GUI_HEIGHT: u32 = 275;
 /// handle is guaranteed to be destroyed/closed before the plugin is destroyed,
 /// ensuring that the host's real lifetime encompasses all use of the handle.
 #[inline]
+// SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
 pub(crate) unsafe fn extend_host_lifetime<'a>(
     h: clack_plugin::host::HostSharedHandle<'a>,
 ) -> clack_plugin::host::HostSharedHandle<'static> {

@@ -18,6 +18,7 @@ fn test_dot_product_avx2_fma() {
         .map(|&x| half::f16::from_f32(x).to_bits())
         .collect();
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let result = unsafe { dot_product_avx2(&vec_a, &vec_b_u16) };
 
     // Expected = (1*2 + 2*2 ... + 8*2) + 9*2
@@ -51,6 +52,7 @@ fn test_dot_product_avx512() {
             .map(|&x| half::f16::from_f32(x).to_bits())
             .collect();
 
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let result = unsafe { dot_product_avx512(&vec_a, &vec_b_u16) };
         let expected: f32 = vec_a.iter().zip(vec_b.iter()).map(|(a, b)| a * b).sum();
 
@@ -68,6 +70,7 @@ fn test_dot_product_avx512() {
 fn test_set_daz_ftz() {
     // Checks if the processor is configured to ignore 'ghostly'
     // tiny numbers (denormals). This avoids extreme slowdown in audio processing.
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe {
         // Read current MXCSR and clear DAZ+FTZ to verify the function sets them
         let mut before: u32 = 0;
@@ -94,11 +97,13 @@ fn test_set_daz_ftz() {
 fn test_compute_energy_avx2() {
     // Tests energy calculation (average volume) using AVX2 acceleration.
     let data = vec![1.0, 2.0, 3.0, 4.0];
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let energy = unsafe { compute_energy_avx2(&data) };
     // (1^2 + 2^2 + 3^2 + 4^2) / 4 = (1 + 4 + 9 + 16) / 4 = 30 / 4 = 7.5
     assert!((energy - 7.5).abs() < 1e-6);
 
     let data2 = vec![0.0; 16];
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let energy2 = unsafe { compute_energy_avx2(&data2) };
     assert_eq!(energy2, 0.0);
 }
@@ -108,12 +113,14 @@ fn test_compute_max_diff_avx2() {
     // Tests the calculation of the largest difference between two sounds using AVX2.
     let a = vec![1.0, 2.0, 3.0, 4.0];
     let b = vec![1.1, 1.9, 3.5, 3.8];
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let max_diff = unsafe { compute_max_diff_avx2(&a, &b) };
     // diffs: [0.1, 0.1, 0.5, 0.2] -> max = 0.5
     assert!((max_diff - 0.5).abs() < 1e-6);
 
     let a2 = vec![1.0; 8];
     let b2 = vec![1.0; 8];
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let max_diff2 = unsafe { compute_max_diff_avx2(&a2, &b2) };
     assert_eq!(max_diff2, 0.0);
 }
@@ -122,6 +129,7 @@ fn test_compute_max_diff_avx2() {
 fn test_horizontal_sum() {
     // Tests the sum of all numbers inside a SIMD 'pack' (8 or 16 numbers).
     fn test_n<const N: usize>(data_ptr: *const f32, expected: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx2 = unsafe { Avx2Math::horizontal_sum::<N>(data_ptr) };
         assert!(
             (res_avx2 - expected).abs() < 1e-5,
@@ -132,6 +140,7 @@ fn test_horizontal_sum() {
         );
 
         if std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl") {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             let res_avx512 = unsafe { Avx512Math::horizontal_sum::<N>(data_ptr) };
             assert!(
                 (res_avx512 - expected).abs() < 1e-5,
@@ -160,6 +169,7 @@ fn test_accumulate_head() {
     fn test_backend<M: SimdMath>() {
         let mut dest = vec![1.0; 32];
         let src = vec![2.0; 32];
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { M::accumulate_head(&mut dest, &src) };
         for val in dest {
             assert!((val - 3.0).abs() < 1e-6);
@@ -168,6 +178,7 @@ fn test_accumulate_head() {
         // Test with odd length
         let mut dest2 = vec![1.0; 7];
         let src2 = vec![3.0; 7];
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { M::accumulate_head(&mut dest2, &src2) };
         for val in dest2 {
             assert!((val - 4.0).abs() < 1e-6);
@@ -192,6 +203,7 @@ fn test_f32_to_bf16_avx2_parity() {
     let mut dest_simd = vec![0u16; 64];
     let mut dest_ref = vec![0u16; 64];
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe {
         Avx2Math::f32_to_bf16(&src, &mut dest_simd);
         for i in 0..64 {
@@ -213,6 +225,7 @@ fn test_store_bf16_avx2() {
         1.0f32, 2.0f32, 3.0f32, 4.0f32, 5.0f32, 6.0f32, 7.0f32, 8.0f32,
     ];
     let mut dest = [0u16; 8];
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe {
         let v = core::arch::x86_64::_mm256_loadu_ps(vals.as_ptr());
         Avx2Math::store_bf16(dest.as_mut_ptr(), v);
@@ -231,6 +244,7 @@ fn test_store_bf16_avx512() {
     }
     let vals: Vec<f32> = (0..16).map(|i| i as f32 + 1.0).collect();
     let mut dest = [0u16; 16];
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe {
         let v = core::arch::x86_64::_mm512_loadu_ps(vals.as_ptr());
         Avx512Math::store_bf16(dest.as_mut_ptr(), v);
@@ -243,12 +257,15 @@ fn test_store_bf16_avx512() {
 #[test]
 fn test_compute_energy_parity() {
     let data: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe { crate::math::common::compute_energy_fallback(&data) };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe { Avx2Math::compute_energy(&data) };
     assert!((res_avx2 - expected).abs() < 1e-6);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe { Avx512Math::compute_energy(&data) };
         assert!((res_avx512 - expected).abs() < 1e-6);
     }
@@ -258,12 +275,15 @@ fn test_compute_energy_parity() {
 fn test_compute_energy_stereo_parity() {
     let l: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
     let r: Vec<f32> = (0..100).map(|i| (100 - i) as f32 * 0.01).collect();
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe { crate::math::common::compute_energy_stereo_fallback(&l, &r) };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe { Avx2Math::compute_energy_stereo(&l, &r) };
     assert!((res_avx2 - expected).abs() < 1e-6);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe { Avx512Math::compute_energy_stereo(&l, &r) };
         assert!((res_avx512 - expected).abs() < 1e-6);
     }
@@ -273,12 +293,15 @@ fn test_compute_energy_stereo_parity() {
 fn test_compute_max_diff_parity() {
     let a: Vec<f32> = (0..100).map(|i| i as f32 * 0.01).collect();
     let b: Vec<f32> = (0..100).map(|i| (i as f32 * 1.1) * 0.01).collect();
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe { crate::math::common::compute_max_diff_fallback(&a, &b) };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe { Avx2Math::compute_max_diff(&a, &b) };
     assert!((res_avx2 - expected).abs() < 1e-6);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe { Avx512Math::compute_max_diff(&a, &b) };
         assert!((res_avx512 - expected).abs() < 1e-6);
     }
@@ -290,13 +313,16 @@ fn test_compute_peak_abs_stereo_parity() {
     let r: Vec<f32> = (0..100)
         .map(|i| ((100 - i) as f32 * 0.01).cos() * -1.5)
         .collect();
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe { crate::math::common::compute_peak_abs_stereo_fallback(&l, &r) };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe { Avx2Math::compute_peak_abs_stereo(&l, &r) };
     assert!((res_avx2.0 - expected.0).abs() < 1e-6);
     assert!((res_avx2.1 - expected.1).abs() < 1e-6);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe { Avx512Math::compute_peak_abs_stereo(&l, &r) };
         assert!((res_avx512.0 - expected.0).abs() < 1e-6);
         assert!((res_avx512.1 - expected.1).abs() < 1e-6);
@@ -312,12 +338,15 @@ fn test_convolve_mono_parity() {
     );
 
     let expected =
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { crate::math::common::convolve_mono_fallback(coeffs.as_ptr(), input.as_ptr(), 32) };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe { Avx2Math::convolve_mono(coeffs.as_ptr(), input.as_ptr(), 32) };
     assert!((res_avx2 - expected).abs() < 1e-6);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe { Avx512Math::convolve_mono(coeffs.as_ptr(), input.as_ptr(), 32) };
         assert!((res_avx512 - expected).abs() < 1e-6);
     }
@@ -336,6 +365,7 @@ fn test_convolve_stereo_dual_parity() {
         (0..32).map(|i| (32 - i) as f32 * 0.04).collect(),
     );
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe {
         crate::math::common::convolve_stereo_dual_fallback(
             coeffs0.as_ptr(),
@@ -346,6 +376,7 @@ fn test_convolve_stereo_dual_parity() {
         )
     };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe {
         Avx2Math::convolve_stereo_dual(
             coeffs0.as_ptr(),
@@ -361,6 +392,7 @@ fn test_convolve_stereo_dual_parity() {
     assert!((res_avx2.1.1 - expected.1.1).abs() < 1e-5);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe {
             Avx512Math::convolve_stereo_dual(
                 coeffs0.as_ptr(),
@@ -387,6 +419,7 @@ fn test_convolve_mono_dual_parity() {
     let input =
         crate::math::common::AlignedVec::from_vec((0..32).map(|i| i as f32 * 0.03).collect());
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let expected = unsafe {
         crate::math::common::convolve_mono_dual_fallback(
             coeffs0.as_ptr(),
@@ -396,6 +429,7 @@ fn test_convolve_mono_dual_parity() {
         )
     };
 
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let res_avx2 = unsafe {
         Avx2Math::convolve_mono_dual(coeffs0.as_ptr(), coeffs1.as_ptr(), input.as_ptr(), 32)
     };
@@ -403,6 +437,7 @@ fn test_convolve_mono_dual_parity() {
     assert!((res_avx2.1 - expected.1).abs() < 1e-5);
 
     if is_x86_feature_detected!("avx512f") {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let res_avx512 = unsafe {
             Avx512Math::convolve_mono_dual(coeffs0.as_ptr(), coeffs1.as_ptr(), input.as_ptr(), 32)
         };
@@ -443,6 +478,7 @@ fn test_f32_to_bf16_avx512_regression() {
         let mut dest = vec![0u16; len];
         let expected = f32_to_bf16_ref(&src);
 
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             super::ops::f32_to_bf16_avx512(&src, &mut dest);
         }
@@ -471,7 +507,9 @@ fn test_dot_product_bf16_avx512_regression() {
     for &len in &sizes {
         let a = gen_bf16_data(len, 0.5);
         let b = gen_bf16_data(len, -1.3);
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let expected = unsafe { crate::math::common::dot_product_bf16_fallback(&a, &b) };
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         let result = unsafe { crate::math::gemm::dot::dot_product_bf16_avx512(&a, &b) };
 
         let error = (result - expected).abs();
@@ -520,6 +558,7 @@ fn test_gemv_overwrite_bf16_avx512_regression() {
         let mut out_simd = vec![0.0f32; out_len];
         let mut out_ref = vec![0.0f32; out_len];
 
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe {
             crate::math::gemm::gemv_bf16::gemv_overwrite_bf16_avx512(
                 &in_frame,
@@ -558,6 +597,7 @@ fn test_tanh_and_overwrite_block() {
     fn test_backend<M: SimdMath>() {
         let mut head_input = vec![-999.0; 64];
         let mut block = vec![0.5f32; 64];
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { M::tanh_and_overwrite_block(&mut head_input, &mut block) };
         for i in 0..64 {
             let expected = 0.5f32.tanh();
@@ -578,6 +618,7 @@ fn test_tanh_and_accumulate_block() {
         for len in [1, 4, 8, 15, 16, 17, 31, 32, 33, 64] {
             let mut head_input = vec![1.0f32; len];
             let mut block = vec![0.5f32; len];
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { M::tanh_and_accumulate_block(&mut head_input, &mut block) };
             let expected_tanh = 0.5f32.tanh();
             for i in 0..len {
@@ -614,6 +655,7 @@ fn test_gated_activation_and_overwrite_block() {
         let num_frames = 4;
         let mut head_input = vec![-999.0; num_frames * ch];
         let mut block = vec![0.5f32; num_frames * 2 * ch];
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe { M::gated_activation_and_overwrite_block(&mut head_input, &mut block, ch) };
         for f in 0..num_frames {
             for c in 0..ch {

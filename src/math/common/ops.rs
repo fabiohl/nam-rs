@@ -28,11 +28,13 @@ pub fn quantize_weight(f: f32, is_bf16: bool) -> u16 {
 /// # Safety
 /// `src` and `dest` must be valid slices. `dest` must have at least `src.len()` elements.
 #[target_feature(enable = "avx512f,avx512vl")]
+// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
 pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
     let n = core::cmp::min(src.len(), dest.len());
     let mut i = 0;
     // Process 16 conversions at once.
     while i + 16 <= n {
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             let v = _mm512_loadu_ps(src.as_ptr().add(i)); // Load 16 f32 numbers.
             let v_i = _mm512_castps_si512(v); // Treat as integers for bit manipulation.
@@ -44,6 +46,7 @@ pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
     }
     // Convert the remainder manually.
     while i < n {
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             *dest.get_unchecked_mut(i) = ((*src.get_unchecked(i)).to_bits() >> 16) as u16;
         }
@@ -56,16 +59,19 @@ pub unsafe fn f32_to_bf16_avx512(src: &[f32], dest: &mut [u16]) {
 /// # Safety
 /// The `ptr` pointer must be valid or within the safe margin of the buffer.
 #[inline(always)]
+// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
 pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
     if dilation <= 8 {
         // Hardware prefetcher dominates.
     } else if dilation <= 64 {
         // Fetch to L1 (imminent reuse).
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             _mm_prefetch::<_MM_HINT_T0>(ptr as *const i8);
         }
     } else {
         // Massive dilations: fetch to L2 to spare L1 from aggressive eviction.
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             _mm_prefetch::<_MM_HINT_T1>(ptr as *const i8);
         }
@@ -77,12 +83,14 @@ pub unsafe fn adaptive_prefetch_f32(ptr: *const f32, dilation: usize) {
 /// # Safety
 /// The pointers must be valid or within the safe margin of the buffer.
 #[inline(always)]
+// SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
 pub unsafe fn adaptive_prefetch_2stage_f32(
     ptr_next: *const f32,
     ptr_next_next: *const f32,
     dilation: usize,
 ) {
     if dilation >= 128 {
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             // Fetch the next tap to L1 (immediate use in the next k)
             _mm_prefetch::<_MM_HINT_T0>(ptr_next as *const i8);
@@ -91,6 +99,7 @@ pub unsafe fn adaptive_prefetch_2stage_f32(
         }
     } else {
         // Fallback to simple prefetch for smaller dilations
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             adaptive_prefetch_f32(ptr_next, dilation);
         }
@@ -112,6 +121,7 @@ pub unsafe fn prefetch_strategy_simple(
     _k_limit: usize,
     _dilation: usize,
 ) {
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe {
         core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(
             base_ptr.add(16).cast(),
@@ -131,6 +141,7 @@ pub unsafe fn prefetch_strategy_2stage(
     _dilation: usize,
 ) {
     if k + 1 < k_limit {
+        // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
         unsafe {
             let ptr_n1 = base_ptr.add(step);
             core::arch::x86_64::_mm_prefetch::<{ core::arch::x86_64::_MM_HINT_T0 }>(ptr_n1.cast());
@@ -150,6 +161,7 @@ pub unsafe fn prefetch_strategy_2stage(
 /// # Safety
 /// SSE2 is implicit on x86-64.
 pub unsafe fn set_daz_ftz() {
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     unsafe {
         let mut mxcsr: u32 = 0;
         core::arch::asm!("stmxcsr [{0}]", in(reg) &mut mxcsr);

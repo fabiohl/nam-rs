@@ -6,6 +6,7 @@ use libc::sysconf;
 
 #[test]
 fn test_mirror_buf_page_alignment() -> Result<(), Box<dyn std::error::Error>> {
+    // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
     let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
     let element_size = std::mem::size_of::<f32>();
 

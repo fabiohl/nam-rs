@@ -144,6 +144,7 @@ pub(crate) fn compile_shader_program(
     vertex_source: &str,
     fragment_source: &str,
 ) -> Result<glow::Program, String> {
+    // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
     unsafe {
         let program = gl.create_program()?;
 

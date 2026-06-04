@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+// SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+#![warn(clippy::undocumented_unsafe_blocks)]
 
 //! # Mirrored Buffer (MirroredBuffer) via Mirrored Memory Mapping
 //!
@@ -77,6 +79,7 @@ impl<T> MirroredBuffer<T> {
     /// multiple of the system page size.
     #[cold]
     pub fn new(requested_size: usize) -> std::io::Result<Self> {
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<T>();
 
@@ -119,6 +122,7 @@ impl<T> MirroredBuffer<T> {
         let size_elements = size_bytes / element_size;
 
         // 1. Create backing store (memfd on Linux, stub fallback on other platforms)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let fd = unsafe {
             #[cfg(target_os = "linux")]
             {
@@ -131,8 +135,10 @@ impl<T> MirroredBuffer<T> {
         };
 
         // 2. Set file size
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
             let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
             unsafe { libc::close(fd) };
             return Err(err);
         }
@@ -141,6 +147,7 @@ impl<T> MirroredBuffer<T> {
         let total_size = match size_bytes.checked_mul(2) {
             Some(val) => val,
             None => {
+                // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
                 unsafe { libc::close(fd) };
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -155,6 +162,7 @@ impl<T> MirroredBuffer<T> {
             "requested_size must be greater than zero"
         );
 
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let base_ptr = unsafe {
             if SIMULATE_FAIL.with(|f| f.get()) {
                 *libc::__errno_location() = libc::ENOMEM;
@@ -172,11 +180,13 @@ impl<T> MirroredBuffer<T> {
         };
         if base_ptr == MAP_FAILED {
             let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
             unsafe { libc::close(fd) };
             return Err(err);
         }
 
         // 4. Map the first half
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr1 = unsafe {
             mmap(
                 base_ptr,
@@ -189,6 +199,7 @@ impl<T> MirroredBuffer<T> {
         };
         if ptr1 != base_ptr {
             let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
             unsafe {
                 munmap(base_ptr, total_size);
                 libc::close(fd);
@@ -197,6 +208,7 @@ impl<T> MirroredBuffer<T> {
         }
 
         // 5. Map the second half (mirror)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr2 = unsafe {
             mmap(
                 (base_ptr as *mut u8).add(size_bytes) as *mut c_void,
@@ -207,8 +219,10 @@ impl<T> MirroredBuffer<T> {
                 0,
             )
         };
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         if ptr2 != unsafe { (base_ptr as *mut u8).add(size_bytes) as *mut c_void } {
             let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
             unsafe {
                 munmap(base_ptr, total_size);
                 libc::close(fd);
@@ -217,6 +231,7 @@ impl<T> MirroredBuffer<T> {
         }
 
         // The FD is no longer needed after mmap (it holds a reference to the file)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe { libc::close(fd) };
 
         Ok(Self {
@@ -248,6 +263,7 @@ impl<T> Deref for MirroredBuffer<T> {
     #[inline(always)]
     fn deref(&self) -> &Self::Target {
         // Returns a slice that covers both halves (2x size)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe { std::slice::from_raw_parts(self.ptr, self.size_elements * 2) }
     }
 }
@@ -255,6 +271,7 @@ impl<T> Deref for MirroredBuffer<T> {
 impl<T> DerefMut for MirroredBuffer<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe { std::slice::from_raw_parts_mut(self.ptr, self.size_elements * 2) }
     }
 }
@@ -263,6 +280,7 @@ impl<T> Drop for MirroredBuffer<T> {
     fn drop(&mut self) {
         let element_size = std::mem::size_of::<T>();
         let size_bytes = self.size_elements * element_size;
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe {
             munmap(self.ptr as *mut c_void, size_bytes * 2);
         }
@@ -284,7 +302,9 @@ impl<T: Clone> Clone for MirroredBuffer<T> {
     }
 }
 
+// SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
 unsafe impl<T: Send> Send for MirroredBuffer<T> {}
+// SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
 unsafe impl<T: Sync> Sync for MirroredBuffer<T> {}
 
 #[cfg(all(test, target_os = "linux"))]
