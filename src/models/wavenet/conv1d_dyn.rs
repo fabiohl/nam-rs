@@ -45,10 +45,30 @@ pub struct Conv1dDyn {
 }
 
 impl Conv1dDyn {
-    /// Processes two frames simultaneously (f32).
+    /// Processes two audio frames simultaneously using single-precision (f32) inputs.
+    ///
+    /// # Algorithmic Details & Optimizations
+    /// - **Temporal Tiling & Weight Reuse**: The critical performance bottleneck of WaveNet inference
+    ///   is the memory bandwidth/latency of loading convolution weights. By processing two independent
+    ///   temporal frames (`idx_f0` and `idx_f1`) simultaneously, loaded weights are reused across both
+    ///   calculations. This reduces weight loads from L1 cache/registers by 50% per calculated frame.
+    /// - **Instruction-Level Parallelism (ILP)**: Interleaving instructions for two independent frames
+    ///   allows the CPU's execution pipelines to hide instruction latencies (e.g., FMA latencies). Instead
+    ///   of waiting on dependency chains of a single frame's accumulator, we alternate operations between
+    ///   the two frames, saturating execution units.
+    /// - **Interleaved Layout**: Weights are stored in a `[OUT/4][KERNEL][IN][4]` layout. This allows the
+    ///   underlying SIMD engine to perform 4-lane wide vector dot products on output channels in parallel
+    ///   using a single weight vector load.
+    /// - **Fallback / Tail Trade-off**: When the total block size `num_frames` is odd, the even pairs
+    ///   are processed in dual-frame batches, and the final remaining frame falls back to the single-frame
+    ///   variant ([`Self::process_single_frame`]) which does not benefit from the weight reuse optimization.
     ///
     /// # Safety
-    /// `out_f0` and `out_f1` must have sizes compatible with `self.out_ch`.
+    /// - `out_f0` and `out_f1` must have lengths of at least `self.out_ch`.
+    /// - `layer_buffer` must contain valid elements for the dilated tap indexes calculated from
+    ///   `idx_f0` and `idx_f1`.
+    /// - Pointers derived from `layer_buffer` must not violate Rust's aliasing rules (they should be
+    ///   disjoint or read-only).
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame<M: SimdMath>(
@@ -74,10 +94,33 @@ impl Conv1dDyn {
         }
     }
 
-    /// Processes two frames simultaneously (BF16).
+    /// Processes two audio frames simultaneously using half-precision (BF16) inputs.
+    ///
+    /// # Algorithmic Details & Optimizations
+    /// - **Temporal Tiling & Weight Reuse**: The critical performance bottleneck of WaveNet inference
+    ///   is the memory bandwidth/latency of loading convolution weights. By processing two independent
+    ///   temporal frames (`idx_f0` and `idx_f1`) simultaneously, loaded weights are reused across both
+    ///   calculations. This reduces weight loads from L1 cache/registers by 50% per calculated frame.
+    /// - **Instruction-Level Parallelism (ILP)**: Interleaving instructions for two independent frames
+    ///   allows the CPU's execution pipelines to hide instruction latencies (e.g., FMA latencies). Instead
+    ///   of waiting on dependency chains of a single frame's accumulator, we alternate operations between
+    ///   the two frames, saturating execution units.
+    /// - **Interleaved Layout**: Weights are stored in a `[OUT/4][KERNEL][IN][4]` layout. This allows the
+    ///   underlying SIMD engine to perform 4-lane wide vector dot products on output channels in parallel
+    ///   using a single weight vector load.
+    /// - **BF16 / VNNI Acceleration**: By utilizing BF16 inputs, memory bandwidth is further halved, and
+    ///   vector hardware instructions (like VNNI or AVX-512 BF16) can perform dot products at double the
+    ///   throughput of f32.
+    /// - **Fallback / Tail Trade-off**: When the total block size `num_frames` is odd, the even pairs
+    ///   are processed in dual-frame batches, and the final remaining frame falls back to the single-frame
+    ///   variant ([`Self::process_single_frame_bf16`]) which does not benefit from the weight reuse optimization.
     ///
     /// # Safety
-    /// `out_f0` and `out_f1` must have sizes compatible with `self.out_ch`.
+    /// - `out_f0` and `out_f1` must have lengths of at least `self.out_ch`.
+    /// - `layer_buffer` must contain valid elements for the dilated tap indexes calculated from
+    ///   `idx_f0` and `idx_f1`.
+    /// - Pointers derived from `layer_buffer` must not violate Rust's aliasing rules (they should be
+    ///   disjoint or read-only).
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn process_dual_frame_bf16<M: SimdMath>(
