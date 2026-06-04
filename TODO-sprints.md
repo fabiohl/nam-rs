@@ -2042,7 +2042,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `documentador`.
 - **Esforço:** 1.0 dia.
 
-### Sprint S27 — Code Organization, Safety Sweep & Cleanup
+### Sprint S27 — Code Organization, Safety Sweep & Cleanup [DONE]
 
 > Foco: reduzir tamanho de funções/arquivos grandes que ainda restam após S8/S10/S10b, e fechar o ciclo de safety/whitelist iniciado em S2.
 
@@ -2164,7 +2164,7 @@ Notas Operacionais — Épico 14
 > Foco: fechar gaps de cobertura que se acumularam durante Épicos 4–8 e atualizar documentação arquitetural.
 > Importante: Ao criar novos testes, sempre julgar se é um teste que vale a pena rodar a cada "cargo test" ou se pode tranquilamente ser transferido para "utils\tests-long.sh". Testes muito longos são uma tentação para serem pulados. O "cargo test" deveria ser destinado apenas a coisas com riscos de quebras a cada commit, logo que realmente precisam ser verificadas sempre.
 
-#### Tarefa S27b.T01 — Resampler heap-audit coverage 🔥
+#### Tarefa S27b.T01 — Resampler heap-audit coverage 🔥[DONE]
 
 - **Onde:** Criar `tests/resampler_heap_audit.rs`.
 - **Problema:** `heap-audit` cobre o CLAP processor e indiretamente WaveNet/LSTM via `nam_infer_test.rs`. **O `NamResampler::process_input/output` não é testado com heap-audit explicitamente.** Risco de regressão silenciosa se algum bug introduzir alocação no hot path.

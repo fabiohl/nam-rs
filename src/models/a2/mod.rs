@@ -71,7 +71,7 @@ impl sealed::Sealed for WavenetA2Placeholder {}
 
 impl NamModel for WavenetA2Placeholder {
     fn process(&mut self, _input: &[f32], output: &mut [f32]) {
-        #[cfg(feature = "heap-audit")]
+        #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
         if crate::clap::heap_audit::AUDIT_ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
             let audit_thread =
