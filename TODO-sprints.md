@@ -127,7 +127,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `pesquisador-inovador` + `implementador`.
 - **Esforço:** 1 dia.
 
-#### Tarefa S3.T02 — Investigar regressão +5.6% no DotProduct_AVX2_256elem 💡
+#### Tarefa S3.T02 — Investigar regressão +5.6% no DotProduct_AVX2_256elem 💡 [DONE]
 
 - **Onde:** `src/math/gemm/dot.rs` (kernel dot product), `benches/inference_bench.rs`.
 - **Problema:** O benchmark `DotProduct_AVX2_256elem` regrediu **+5.6%** (de ~11.26 ns para 11.90 ns). O `DotProduct_AVX2_64elem` permanece estável. Possível issue de TLB/cache alignment específico para buffers de 256 elementos (1 KB — próximo da fronteira de cacheline L1).

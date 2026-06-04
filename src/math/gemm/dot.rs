@@ -30,11 +30,6 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 
         // Main Loop: Processes 32 numbers at a time (4x8 unrolling).
         while i + 32 <= len {
-            // Prefetch: Tells the processor to fetch the next data from memory
-            // before we even need it, eliminating wait times.
-            _mm_prefetch::<_MM_HINT_T0>(a.as_ptr().add(i + 32) as *const i8);
-            _mm_prefetch::<_MM_HINT_T0>(b.as_ptr().add(i + 32) as *const i8);
-
             // Load and convert data:
             // The 'b' vector uses compressed numbers (f16/half), which are converted
             // to high-precision format (f32) instantly by hardware.
