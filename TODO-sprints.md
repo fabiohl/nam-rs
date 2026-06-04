@@ -4,13 +4,173 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 -->
 # TODO-sprints — Plano de Sprints
 
-## Épico 1 — Otimizações Gerais
+> **Convenções de referência cruzada:**
+>
+> - `Sx.Ty` sem anotação refere-se a uma tarefa **neste documento**.
+> - `Sx.Ty (anterior)` refere-se a trabalho já concluído em sprints passadas, cujo código já está no repositório.
 
-### Sprint 1 - Quantização e Compressão de Modelos
+## Épico 1 — Quick Wins: Determinismo RT e Performance Mono/Stereo
 
-#### Tarefa S1.T01 — INT8 weight quantization SmoothQuant para Conv1D heads ✨⚠️
+> **Contexto:** Auditoria completa em 2026-06-04 revelou violações RT-safety no PipeWire callback, ausência de DAZ/FTZ no CLAP, overhead stereo redundante no plugin mono-only, e regressões de benchmark. Todas as tarefas deste épico são cirúrgicas — sem mudança arquitetural — e devem ser executadas **antes** dos épicos seguintes para assegurar uma base sólida.
 
-- **Onde:** `src/loader/dispatcher/wavenet/` (heads de Conv1D — ver módulo `standard.rs` e `dynamic.rs`); novo `src/math/common/int8_quant.rs`; novo `weights_layout = SmoothQuantInt8`.
+### Sprint S1 — Correções RT-Safety Imediatas
+
+#### Tarefa S1.T01 — Eliminar heap allocation no callback RT do PipeWire 🔥
+
+- **Onde:** `src/standalone/pw_host/rt_callback.rs` — funções `receive_commands()` (linha ~126) e `drain_resamplers()` (linha ~34).
+- **Problema 1:** `receive_commands()` cria `Vec::with_capacity(2)` para armazenar modelos antigos durante o swap. Isto é uma **violação direta** da regra de zero heap allocation no thread RT. Embora o path de model swap seja frio (executa apenas quando o modelo muda), a alocação pode causar jitter mensurável se o alocador global estiver sob contenção.
+- **Problema 2:** `drain_resamplers()` executa `Box::new(new_rs)` ao receber um `NamResampler` pelo canal SPSC. A alocação heap deveria ocorrer no main thread antes do envio.
+- **Solução técnica:**
+  1. **`receive_commands()`:** Substituir `let mut old_models = Vec::with_capacity(2);` por `let mut old_models: [Option<Box<DynamicModel>>; 2] = [None, None];` (stack-allocated). Adaptar o loop de push-to-gc para iterar sobre o array filtrando `Some(...)`.
+  2. **`drain_resamplers()`:** Alterar o tipo do canal SPSC de `Consumer<NamResampler>` para `Consumer<Box<NamResampler>>`. O main thread (em `src/standalone/pw_host/mod.rs`, local que envia o resampler) passa a fazer `Box::new(...)` antes de `producer.push(...)`. No callback RT, substituir `let new_rs = Box::new(new_rs);` por `let new_rs = new_rs;` (já é Box).
+- **Critérios de aceitação:**
+  - `cargo test --features heap-audit` não dispara `RT_STATUS_HEAP_ALLOC`.
+  - `grep -rn "Vec::with_capacity\|Vec::new" src/standalone/pw_host/rt_callback.rs` retorna zero resultados.
+  - `grep -rn "Box::new" src/standalone/pw_host/rt_callback.rs` retorna zero resultados (exceto em doc-comments).
+  - Benchmarks `cargo bench` sem regressão (±1% tolerance).
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
+
+#### Tarefa S1.T02 — Configurar DAZ/FTZ no primeiro bloco do CLAP audio thread 🔥
+
+- **Onde:** `src/clap/processor/mod.rs` — dentro do bloco `if !self.prio_checked` (linhas ~289-305).
+- **Problema:** O standalone chama `crate::math::common::set_daz_ftz()` via `rt_setup::apply_rt_thread_config()` na thread RT. O CLAP plugin **não faz isso**, confiando que o host DAW configura FTZ+DAZ. Hosts como Ardour, Zrythm, Qtractor e hosts menores **não garantem** FTZ/DAZ. Sem essas flags, denormals gerados internamente pelas activations do LSTM/WaveNet (sigmoid/tanh) podem causar penalidade de 50-100x por operação afetada, manifestando-se como xruns esporádicos sob carga.
+- **Nota:** O plugin já injeta `DENORMAL_DITHER_OFFSET` (1e-11) na entrada para prevenir denormals no input, mas isto **não protege** contra denormals gerados internamente pelo modelo neural nas activations.
+- **Solução técnica:**
+  1. Adicionar `unsafe { crate::math::common::set_daz_ftz(); }` imediatamente após o bloco `if libc::pthread_getschedparam(...)` (mas dentro do `if !self.prio_checked`), garantindo execução one-time no primeiro bloco processado.
+  2. O `set_daz_ftz()` já é idempotente e seguro para chamar múltiplas vezes (seta bits no MXCSR).
+- **Critérios de aceitação:**
+  - Teste unitário existente `test_set_daz_ftz` (`src/math/common/tests.rs`) continua verde.
+  - Benchmark `WaveNet_Standard_CH16_64samp_48kHz` sem regressão.
+  - Teste manual: plugin CLAP em host que não configura FTZ (Ardour) processa sinal near-silence (1e-20) sem aumento de latência p99.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.25 dia.
+
+#### Tarefa S1.T03 — Corrigir compensação assimétrica do denormal dither no output stage 💡
+
+- **Onde:** `src/dsp/pipeline/stages.rs` — `apply_input_stage()` (linhas ~98-107) e `apply_output_stage()` (linhas ~250-255).
+- **Problema:** O input stage adiciona `DENORMAL_DITHER_OFFSET` (1e-11) a `samples_l` sempre, e a `samples_r` **apenas quando `!process_mono`** (correto). Porém, o output stage subtrai o offset de **ambos** `resamp_out_l` e `resamp_out_r` incondicionalmente (loop nas linhas 251-254). Quando `process_mono=true`, o canal R não recebeu o offset na entrada, mas o output subtrai dele, introduzindo um DC residual de -1e-11 no canal R. Embora inaudível (-220 dBFS), viola o princípio de simetria matemática e pode acumular drift em chains longas.
+- **Solução técnica:**
+  1. Adicionar parâmetro `process_mono: bool` à assinatura de `apply_output_stage()`.
+  2. Condicionar a subtração do offset no canal R: `if !process_mono { /* subtrair de R */ }`.
+  3. Atualizar todos os call-sites: `src/clap/processor/dsp.rs` (linha ~315), `src/dsp/pipeline/stages.rs` (chamadas internas), e `src/standalone/pw_host/` (se aplicável via `capture_dsp_pipeline`).
+  4. Atualizar testes em `src/dsp/pipeline/pipeline_test.rs` para verificar DC offset zero em R quando mono.
+- **Critérios de aceitação:**
+  - Novo teste unitário: output mono tem DC offset ≤ 1e-15 em ambos canais (float epsilon).
+  - Todos os testes existentes passam sem regressão.
+  - `cargo test --release --test soak_test` verde.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.25 dia.
+
+---
+
+### Sprint S2 — Otimização Mono no CLAP Plugin
+
+> **Contexto:** O CLAP plugin opera em modo mono-only (linhas 126-127 de `dsp.rs`: `active_channel_count=1, process_mono=true`). No entanto, o code path processa buffers R completos (memcpy, gain, peak detection) redundantemente. O código stereo deve ser preservado sob `#[cfg(feature = "stereo")]` para futuro suporte, mas o path default deve ser mono-optimizado.
+
+#### Tarefa S2.T01 — Eliminar overhead stereo redundante no input processing do CLAP ⚠️
+
+- **Onde:** `src/clap/processor/dsp.rs` — linhas ~156, ~170-213.
+- **Problema:**
+  1. **Linha 156:** `buf_host_r[..n_samples].copy_from_slice(&buf_host_l[..n_samples])` — copia L→R incondicionalmente. Em modo mono-only, a cópia é desnecessária porque o pipeline (`stages.rs:apply_input_stage`) e a inferência (`stages.rs:run_inference`) já lidam com mono via `process_mono` flag.
+  2. **Linhas 186-188:** `apply_gain_and_detect_clipping_stereo()` processa ambos L e R, mesmo quando mono.
+  3. **Linhas 195-208:** `apply_ramp_stereo()` e `compute_peak_abs_stereo()` idem.
+- **Solução técnica:**
+  1. Envolver a cópia L→R (linha 156) e todas as operações sobre `buf_host_r` no input gain em `#[cfg(feature = "stereo")]`, ou condicioná-las a `!self.process_mono`.
+  2. Para o path mono: usar `apply_gain_and_detect_clipping` single-buffer (criar variante mono se não existir, ou reusar `apply_gain_simd` + inline clipping check).
+  3. No path mono, `peak_r = peak_l` (ambos canais são idênticos).
+  4. Preservar o código stereo completo sob `#[cfg(feature = "stereo")]` para futuro uso.
+- **Critérios de aceitação:**
+  - Benchmark `WaveNet_Standard_CH16_64samp_48kHz` melhora ≥ 2% (eliminação de memcpy 64*4=256 bytes + gain R + peak R).
+  - Output L/R do plugin mono permanece bit-exact com a versão anterior.
+  - `cargo test` e `cargo test --features heap-audit` verdes.
+  - Cross-validation `cpp_parity` mantém MSE/SNR dentro das tolerâncias.
+- **Especialista:** `implementador` + revisão `revisor-auditor`.
+- **Esforço:** 0.5 dia.
+
+#### Tarefa S2.T02 — Eliminar overhead stereo redundante no output processing do CLAP ⚠️
+
+- **Onde:** `src/clap/processor/dsp.rs` — linhas ~325-397.
+- **Problema:**
+  1. **Linhas 325-353:** `apply_gain_stereo` e `apply_ramp_stereo` processam `buf_out_r` desnecessariamente em modo mono.
+  2. **Linhas 371-397:** `compute_peak_abs_stereo` itera sobre ambos buffers de output.
+- **Solução técnica:**
+  1. Path mono: aplicar gain/ramp apenas em `buf_out_l[..n_out]`.
+  2. Copiar resultado L→R **apenas** no momento do write de output (linhas 365-369: `o_r[..n].copy_from_slice(&self.buf_out_l[..n])` em vez de `&self.buf_out_r[..n]`).
+  3. Peak detection mono: computar apenas `peak_l`, setar `peak_r = peak_l`.
+  4. Envolver path stereo em `#[cfg(feature = "stereo")]`.
+- **Critérios de aceitação:**
+  - Mesmos critérios de S2.T01 (benchmark, bit-exact, testes).
+  - Ganho combinado S2.T01+S2.T02 ≥ 3% no benchmark principal.
+- **Especialista:** `implementador` + revisão `revisor-auditor`.
+- **Esforço:** 0.25 dia (execução conjunta com S2.T01).
+
+---
+
+### Sprint S3 — Diagnóstico e Correção de Regressões de Benchmark
+
+#### Tarefa S3.T01 — Investigar e corrigir regressão +28.5% no LSTM_1x8/SIMD_Fused_T3 ⚠️
+
+- **Onde:** `benches/inference_bench.rs` (benchmark), `src/math/lstm/` (kernels LSTM), `src/math/gemm/` (GEMM fused).
+- **Problema:** O benchmark `LSTM_1x8_Comparison/SIMD_Fused_T3` regrediu **+28.5%** (de ~2.29 µs para 2.98 µs). Enquanto isso, o LSTM 2x16 está estável (+1.1%). A regressão pode ser:
+  - (a) Issue de code alignment/layout (LLVM inlining threshold afetando o 1x8 path diferentemente do 2x16);
+  - (b) Regressão real introduzida em refactor recente do GEMM fused;
+  - (c) Cache contention devido a mudança em struct layout.
+- **Solução técnica:**
+  1. Executar `git bisect` com o benchmark como critério de aceitação (threshold ≤ 2.35 µs) para identificar o commit que introduziu a regressão.
+  2. Se code alignment: ajustar `#[repr(align)]` do struct do LSTM 1x8 ou adicionar `#[cold]` em paths não-hot para influenciar layout.
+  3. Se code generation: verificar com `cargo asm` (crate `cargo-show-asm`) se o loop unrolling do 1x8 path está sendo afetado por inlining threshold. Considerar `#[inline(always)]` ou `#[inline(never)]` cirúrgicos.
+  4. Se cache: verificar com `perf stat -e L1-dcache-load-misses` antes e depois do commit identificado.
+- **Critérios de aceitação:**
+  - Benchmark `LSTM_1x8_Comparison/SIMD_Fused_T3` retorna ao baseline (≤ 2.35 µs).
+  - Nenhuma outra métrica regride (tolerância ±2%).
+- **Especialista:** `pesquisador-inovador` + `implementador`.
+- **Esforço:** 1 dia.
+
+#### Tarefa S3.T02 — Investigar regressão +5.6% no DotProduct_AVX2_256elem 💡
+
+- **Onde:** `src/math/gemm/dot.rs` (kernel dot product), `benches/inference_bench.rs`.
+- **Problema:** O benchmark `DotProduct_AVX2_256elem` regrediu **+5.6%** (de ~11.26 ns para 11.90 ns). O `DotProduct_AVX2_64elem` permanece estável. Possível issue de TLB/cache alignment específico para buffers de 256 elementos (1 KB — próximo da fronteira de cacheline L1).
+- **Solução técnica:**
+  1. `git bisect` para identificar commit.
+  2. Verificar se padding/alignment dos buffers de teste mudou (devem ser `AlignedVec<f32>` com 64-byte alignment).
+  3. Verificar se houve mudança no layout de `dot.rs` que afete o hot loop (e.g., adição de branches antes do loop principal).
+  4. Se necessário, adicionar `#[repr(align(64))]` explícito nos buffers de benchmark.
+- **Critérios de aceitação:**
+  - Benchmark retorna a ≤ 11.4 ns.
+  - Nenhum outro benchmark regride.
+- **Especialista:** `pesquisador-inovador`.
+- **Esforço:** 0.5 dia.
+
+---
+
+### Sprint S4 — Cross-Validation WaveNet Standard v2 Multi-SR
+
+#### Tarefa S4.T01 — Corrigir render CLI standalone para aceitar SR ≠ 48000 Hz com WaveNet Standard 💡
+
+- **Onde:** `src/main.rs` ou `src/bin/` (CLI render), `src/dsp/resampler.rs`.
+- **Problema:** O cross-validation test (`tests/cpp_parity.rs`) pula WaveNet Standard v2 quando o sample rate é ≠ 48000 Hz porque o render CLI standalone retorna exit code 1 com a mensagem "Input WAV sample rate (44100 Hz) does not match model expected rate (48000 Hz)". Os modelos LSTM passam nesses cenários porque o resampler é ativado. O WaveNet Standard deve suportar o mesmo path de resampling. Evidência nos logs: `target/logs/cpp-parity.log` linhas 82-85, 291-292, 300-301, 314-315.
+- **Solução técnica:**
+  1. Identificar no CLI render onde a validação de sample rate rejeita SR ≠ model_rate para WaveNet.
+  2. Reusar o `NamResampler` existente para converter input WAV → model_rate → output WAV (mesmo path que LSTM já usa).
+  3. Verificar se a restrição era intencional (possível bug no render, não no modelo — o plugin CLAP e standalone PipeWire já fazem resampling com WaveNet Standard).
+  4. Atualizar testes de cross-validation para remover SKIPs e validar WaveNet Standard em 44100, 88200, 96000 e 192000 Hz.
+- **Critérios de aceitação:**
+  - `cargo test --release --test cpp_parity -- --ignored --nocapture` produz resultados (não SKIP) para WaveNet Standard v2 em todos os sample rates testados (44100, 88200, 96000, 192000 Hz).
+  - MSE e SNR dentro das tolerâncias definidas pelo teste para cada SR.
+  - Zero regressão nos resultados existentes de LSTM e WaveNet Nano/Feather.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
+
+---
+
+## Épico 2 — Otimizações Gerais
+
+### Sprint S5 — Quantização e Compressão de Modelos
+
+#### Tarefa S5.T01 — INT8 weight quantization SmoothQuant para Conv1D heads ✨⚠️
+
+- **Onde:** `src/loader/dispatcher/wavenet/` (heads de Conv1D — módulos `standard.rs` e `dynamic.rs`); novo `src/math/common/int8_quant.rs`; novo `weights_layout = SmoothQuantInt8`.
 - **Problema/Oportunidade:** Pesos do `head_weights` (Conv1D 1×1 do output) **dominam memória** em WaveNet Standard (40 KB de pesos vs 8 KB de activations). INT8 weights + FP32 activations (per-channel scale) reduzem 4× memory bandwidth (cache-friendly em L1/L2). SmoothQuant migra outliers de activations para weights via per-channel scaling — proven 99.5% accuracy retention em LLM.cpp e NAM-class workloads.
 - **Solução técnica:**
   1. **Treinamento-livre quantization** (post-training): para cada Conv1D head, computar per-channel scale `s_c = max(|W_c|) / 127`, armazenar `Q_W[c,i] = round(W[c,i] / s_c)` como `i8` + scale vector `s_c` como `f32`.
@@ -19,41 +179,41 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   4. **Encoder NAMB v3:** novo `weights_layout = SmoothQuantInt8` que serializa `[Q_W: i8, scales: f32]`. v3 bump justificado.
   5. **Auto-calibração:** durante o `loader/mod.rs`, opcional sweep de input típico (impulse response) para ajustar scales adversariamente.
   6. **Fallback:** se SmoothQuant falha calibração (golden delta > tolerância), reverter para BF16/FP32 com warning.
-- **Pré-requisitos (obrigatórios — herdam invariantes da Parte I):**
-  - **S3.T03/S3.T04** — disciplina de layout sequencial e padding implícito; SmoothQuant deve usar a mesma estratégia (bloco contíguo `[Q_W: i8 ..., scales: f32 ...]` por camada, padding para múltiplo do bloco SIMD).
-  - **S5.T03** (flag `FLAG_HAS_CRC32`) e (spec NAMB) — a seção `SmoothQuantInt8` deve ser adicionada à spec **antes** da implementação; bump explícito para NAMB v3 com `FLAG_HAS_QUANT_INT8`.
-  - **S13.T02** (round-trip) — cobertura obrigatória do novo layout antes do merge.
+- **Pré-requisitos (obrigatórios — herdam invariantes já concluídas em sprints anteriores):**
+  - Disciplina de layout sequencial e padding implícito (concluída em sprints anteriores — código já no repositório). SmoothQuant deve usar a mesma estratégia (bloco contíguo `[Q_W: i8 ..., scales: f32 ...]` por camada, padding para múltiplo do bloco SIMD).
+  - Flag `FLAG_HAS_CRC32` explícito e spec NAMB (concluída em sprints anteriores). A seção `SmoothQuantInt8` deve ser adicionada à spec **antes** da implementação; bump explícito para NAMB v3 com `FLAG_HAS_QUANT_INT8`.
+  - Round-trip encode/decode (concluído em sprints anteriores). Cobertura obrigatória do novo layout antes do merge.
 - **Critérios de aceitação:**
   - Modelo WaveNet Standard quantizado: tamanho do arquivo 60% menor, MSE vs FP32 < 1e-3 em 60s de signal de teste.
   - Benchmark mostra ≥ 30% redução em latência média para WaveNet Standard.
-  - Round-trip encode/decode preserva pesos com erro < 1/127, validado via harness estendido de S13.T02.
+  - Round-trip encode/decode preserva pesos com erro < 1/127, validado via harness estendido.
 - **Especialista:** `pesquisador-inovador` + revisão `revisor-auditor`.
 - **Esforço:** 4 dias.
 
-#### Tarefa S1.T02 — INT4 weight packing experimental (AWQ-style) ✨💡
+#### Tarefa S5.T02 — INT4 weight packing experimental (AWQ-style) ✨💡
 
-- **Onde:** estensão de S15.T01 para `weights_layout = AwqInt4`.
+- **Onde:** extensão de S5.T01 para `weights_layout = AwqInt4`.
 - **Problema/Oportunidade:** INT4 (4 bits) entrega 8× memory reduction. AWQ (Activation-aware Weight Quantization, Lin et al. 2023) preserva pesos "salientes" em FP16 e quantiza o resto em INT4. Apropriado para WaveNet com layers de magnitude variada (~1% dos pesos contribuem >50% do output).
 - **Solução técnica:**
   1. Identificar 1% top-magnitude weights via análise off-line (script `utils/awq-calibrate.py` opcional, ou heuristic Rust).
   2. Layout: `[Q_W: u4 packed nibbles, salient_mask: bitmap, salient_values: f16, scales: f32]`.
-  3. Decoder kernel: unpack INT4 → INT8 com LUT, depois INT8 dot product (reusa S15.T01 path).
+  3. Decoder kernel: unpack INT4 → INT8 com LUT, depois INT8 dot product (reusa S5.T01 path).
   4. **Apenas catálogo dinâmico** (não Conv1D estático) — INT4 é override expressivo.
-- **Pré-requisitos (obrigatórios):** S15.T01 (path INT8 + scales infra), S5.T07 (spec NAMB v3 com `FLAG_HAS_QUANT_INT4`), S13.T02 (round-trip estendido).
+- **Pré-requisitos (obrigatórios):** S5.T01 (path INT8 + scales infra), spec NAMB v3 com `FLAG_HAS_QUANT_INT4` (adicionar à spec antes da implementação), round-trip estendido (cobertura do novo layout).
 - **Critérios de aceitação:**
   - MSE < 5e-3 para WaveNet Standard quantizado AWQ vs FP32 (tolerância dobrada vs INT8).
   - Tamanho de arquivo 80% menor que FP32.
-  - Round-trip encode/decode validado no harness estendido de S13.T02.
+  - Round-trip encode/decode validado no harness estendido.
   - Feature `awq-int4` em Cargo (default off).
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 3 dias.
 
-#### Tarefa S1.T03 — Kahan summation em acumuladores críticos ✨💡
+#### Tarefa S5.T03 — Kahan summation em acumuladores críticos ✨💡
 
-- **Onde:** `src/math/gemm/dot.rs`, `dot_4x.rs` (acumuladores horizontal_sum).
-- **Problema/Oportunedade:** Em LSTM de muitas amostras, drift de soma FP32 acumula erro de magnitude `~N · eps`. Kahan summation (compensated summation) reduz para `O(1)` em troca de 2 FMAs extras — tolerável fora do tightest inner loop.
+- **Onde:** `src/math/gemm/dot.rs`, `dot_4x.rs` (acumuladores `horizontal_sum`).
+- **Problema/Oportunidade:** Em LSTM de muitas amostras, drift de soma FP32 acumula erro de magnitude `~N · eps`. Kahan summation (compensated summation) reduz para `O(1)` em troca de 2 FMAs extras — tolerável fora do tightest inner loop.
 - **Solução técnica:**
-  1. Apenas em horizontal_sum (1× por bloco GEMM), não no inner FMA.
+  1. Apenas em `horizontal_sum` (1× por bloco GEMM), não no inner FMA.
   2. Manter `compensation: f32` acumulador secundário.
 - **Critérios de aceitação:** Drift vs scalar reference em LSTM de 1M amostras reduz ≥ 100×.
 - **Especialista:** `pesquisador-inovador`.
@@ -61,9 +221,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### Sprint 2 - Responsividade
+### Sprint S6 — Responsividade
 
-### Tarefa S2.T01 — Async model loading via io_uring ✨⚠️
+#### Tarefa S6.T01 — Async model loading via io_uring ✨⚠️
 
 - **Onde:** `src/loader/mod.rs:70-94`; novo `src/loader/async_io.rs`.
 - **Problema/Oportunidade:** Hoje `std::fs::read` é síncrono — usuário arrastando modelo grande de 30 MiB em DAW vê **UI freeze** por ~100ms (SSD) ou ~2s (NFS). io_uring permite zero-syscall I/O completion + worker thread separado, mantendo UI responsiva.
@@ -79,7 +239,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + `pesquisador-inovador`.
 - **Esforço:** 2 dias.
 
-### Tarefa S2.T02 — Huge Pages (THP / MAP_HUGETLB) para weights e mirror buffer ✨⚠️
+#### Tarefa S6.T02 — Huge Pages (THP / MAP_HUGETLB) para weights e mirror buffer ✨⚠️
 
 - **Onde:** `src/loader/mod.rs` (alocação de `AlignedVec<u16>` para pesos dinâmicos); `src/dsp/mirror_buf.rs` + `src/dsp/mirror_buf/linux.rs`.
 - **Problema/Oportunidade:** Modelos WaveNet Standard alocam ~80 KB de pesos contíguos. Em páginas de 4 KB, esses pesos consomem ~20 entradas TLB; em **2 MiB huge pages**, **1 entrada TLB**. TLB miss em hotpath custa ~100 ciclos. Para audio de 32 spl @ 96k = 333 µs, eliminar TLB misses pode reduzir p99 em 5–15%.
@@ -94,10 +254,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 2 dias.
 
-#### Tarefa S2.T03 — Soft-degrade automático sob CPU pressure (graceful fallback) ✨🔥
+#### Tarefa S6.T03 — Soft-degrade automático sob CPU pressure (graceful fallback) ✨🔥
 
 - **Onde:** novo `src/dsp/adaptive.rs`; integração em `src/clap/processor/dsp.rs` e `src/standalone/pw_host/rt_callback.rs`.
-- **Problema/Oportunidade:** Hoje, quando o host empurra a CPU acima do budget (live performance com 4 plugins + outros tracks, ou laptop em bateria com `cpufreq schedutil` agressivo), o nam-rs **falha hard** com `xrun` audível. **Soft-degrade** = detectar pressão precocemente (p95 do bloco anterior > 70% do budget) e **reduzir graciosamente** a carga (truncate receptive field, skip Conv1D layers profundos, ou desativar oversampling se S18P.T03 ativo) com **crossfade** transparente. Trade controlado: pequena perda de fidelidade vs glitch audível.
+- **Problema/Oportunidade:** Hoje, quando o host empurra a CPU acima do budget (live performance com 4 plugins + outros tracks, ou laptop em bateria com `cpufreq schedutil` agressivo), o nam-rs **falha hard** com `xrun` audível. **Soft-degrade** = detectar pressão precocemente (p95 do bloco anterior > 70% do budget) e **reduzir graciosamente** a carga (truncate receptive field, skip Conv1D layers profundos, ou desativar oversampling) com **crossfade** transparente. Trade controlado: pequena perda de fidelidade vs glitch audível.
 - **Solução técnica:**
 
   1. **Hysteresis com 3 estados:** `Full / Reduced / Minimal`.
@@ -109,7 +269,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
      - **WaveNet:** `Reduced` desativa últimas N_dilation_layers (configurable, default 25% dos layers); `Minimal` desativa 50%.
      - **LSTM:** `Reduced` mantém apenas primeira camada (2×16 → 1×16); `Minimal` skip total + passa input com gain compensado.
 
-  3. **Crossfade** entre estados (32 ms linear ramp, similar ao S18.T01 hot swap, mas **intra-modelo**).
+  3. **Crossfade** entre estados (32 ms linear ramp, similar ao hot swap já implementado, mas **intra-modelo**).
 
   4. **Telemetria:** `RT_STATUS_DEGRADE_REDUCED` e `RT_STATUS_DEGRADE_MINIMAL` flags; counter `degrade_transitions_total`.
 
@@ -117,10 +277,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
   6. **UX feedback:** GUI ícone discreto em status bar quando `Reduced/Minimal` ativo, com tooltip explicativo.
 - **Pré-requisitos:**
-  - **S21.T03** (HDR Histograms) — fonte da estatística p95.
-  - **S6.T01** (telemetria lock-free `fetch_add`).
-  - **S4.T04** (reset trait) — necessário para reset interno do estado RNN ao mudar de variante.
-  - **S18.T01** (hot swap crossfade) — reusa máquina de crossfade.
+  - HDR Histograms para estatística p95 (já implementado em `dsp/telemetry.rs`).
+  - Telemetria lock-free `fetch_add` (já implementada em `common/spsc.rs`).
+  - Reset de estado RNN ao mudar de variante (já implementado via trait).
+  - Crossfade de hot swap (já implementado — reusar máquina de crossfade).
 - **Critérios de aceitação:**
   - Stress test `stress-ng --cpu 16 --cpu-load 90` durante 60 s com nam-rs ativo: zero xruns audíveis; transição para `Reduced` detectada em telemetria; retorno a `Full` quando stress termina.
   - Soak test 1h em laptop alimentado por bateria: nam-rs degrada graciosamente quando CPU thermal throttle ativa.
@@ -130,11 +290,11 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### Sprint S3 — Compiler-Grade Optimization (PGO + BOLT)
+### Sprint S7 — Compiler-Grade Optimization (PGO + BOLT)
 
-#### Tarefa S3.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️
+#### Tarefa S7.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️
 
-- **Onde:** `Cargo.toml`; `utils/build-pgo.sh`.
+- **Onde:** `Cargo.toml`; novo `utils/build-pgo.sh`.
 - **Problema/Oportunidade:** Rustc/LLVM PGO instrumenta build → roda workload representativo → coleta profile → rebuilda com `-Cprofile-use`. Tipicamente entrega 5–15% throughput em hotpath. Já standard em Firefox, Chromium.
 - **Solução técnica:**
   1. Script multi-passo: build instrumented, roda `inference_bench` + `bench` real de modelos canônicos, coleta `.profraw`, merge, rebuilda release.
@@ -143,10 +303,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S3.T02 — BOLT post-link layout optimization ✨💡
+#### Tarefa S7.T02 — BOLT post-link layout optimization ✨💡
 
-- **Onde:** `utils/build-bolt.sh`.
-- **Problema/Oportunedade:** LLVM BOLT é a "última gota": reordena basic blocks no binário linkado para que hot paths fiquem em sequência (melhor L1i utilização). Combinado com PGO, mais 3–8%.
+- **Onde:** novo `utils/build-bolt.sh`.
+- **Problema/Oportunidade:** LLVM BOLT é a "última gota": reordena basic blocks no binário linkado para que hot paths fiquem em sequência (melhor L1i utilização). Combinado com PGO, mais 3–8%.
 - **Solução técnica:**
   1. Após PGO build, coletar `perf record` em workload representativo.
   2. `llvm-bolt nam-rs -o nam-rs.bolt -data=perf.data --reorder-blocks=cache+ --reorder-functions=hfsort`.
@@ -157,20 +317,20 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Épico 2 - DSP e Suporte Técnico
+## Épico 3 — DSP e Suporte Técnico
 
-### Sprint S4 — DSP Suplementar
+### Sprint S8 — DSP Suplementar
 
-#### Tarefa S4.T01 — IR cabsim convolution (uniformly-partitioned FFT) ✨🔥
+#### Tarefa S8.T01 — IR cabsim convolution (uniformly-partitioned FFT) ✨🔥
 
 - **Onde:** novo `src/dsp/ir_cab.rs`.
-- **Problema/Oportunedade:** Workflow NAM é "amp + cabinet". Hoje, usuário precisa de plugin separado (Topaz, NadIR). Integrar cabsim com convolução IR (impulse response, .wav de 4096–8192 spl) **eliminado um plugin do chain** e habilitando workflow "amp+cab presets" únicos.
+- **Problema/Oportunidade:** Workflow NAM é "amp + cabinet". Hoje, usuário precisa de plugin separado (Topaz, NadIR). Integrar cabsim com convolução IR (impulse response, .wav de 4096–8192 spl) **elimina um plugin do chain** e habilita workflow "amp+cab presets" únicos.
 - **Solução técnica:**
   1. **Uniformly-Partitioned Convolution (UPC):** dividir IR em blocos de N=64 amostras; convolve cada bloco via FFT 128-point (já existe `rustfft`); somar com latência total = N.
   2. **Frequency-domain delay line** evita realocação por bloco.
   3. SIMD complex multiply em FFT bins.
   4. **CLAP IO format:** parâmetros `PARAM_IR_PATH` (file picker drag-drop), `PARAM_IR_GAIN`, `PARAM_IR_ENABLED`.
-  5. Carregamento async via io_uring (S17.T01).
+  5. Carregamento async via io_uring (S6.T01).
 - **Critérios de aceitação:**
   - Convolução de IR 4096-tap em < 50% do block budget @ 48k/64 spl.
   - Match bit-perfect vs reference convolution (numpy.convolve) com FFT round-trip.
@@ -180,9 +340,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-### Sprint S5 — Suporte ao Usuário & Diagnóstico de Campo (Observability sem regressão) ✨⚠️
+### Sprint S9 — Suporte ao Usuário & Diagnóstico de Campo (Observability sem regressão) ✨⚠️
 
-> **Contexto e justificativa:** A skill `diagnostico` (vide `.agents/workflows/diagnostico.md`) espera receber um "bloco de suporte" colado pelo usuário contendo código de erro, mnemônico, parâmetros contextuais e info de sistema. Hoje o `Diagnostic::support_block()` (`src/common/diagnostics/diagnostic.rs`, migrado do antigo `diagnostics.rs`) só é gerado em **paths de erro** (`emit`/`emit_warning`). Cenários frequentes ficam descobertos:
+> **Contexto e justificativa:** A skill `diagnostico` (vide `.agents/workflows/diagnostico.md`) espera receber um "bloco de suporte" colado pelo usuário contendo código de erro, mnemônico, parâmetros contextuais e info de sistema. Hoje o `Diagnostic::support_block()` (`src/common/diagnostics/diagnostic.rs`) só é gerado em **paths de erro** (`emit`/`emit_warning`). Cenários frequentes ficam descobertos:
 >
 > - Usuário relata "som baixo" / "dropouts" / "GUI travada" — sem erro tipado, nada para colar.
 > - Usuário em hospedeiro CLAP (Bitwig/Reaper/FL Studio) não tem stderr acessível.
@@ -195,21 +355,21 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > - **Segurança:** redação default de paths absolutos (`$HOME` → `~`); nunca embarcar conteúdo de pesos/áudio; opt-in `--diagnose-full` para incluir paths completos.
 > - **Forward-compat:** o formato textual do bundle preserva contrato consumido pela skill `diagnostico` (Fase 1.1 do workflow). Novos campos são **anexados** em linhas próprias; parsers antigos da IA ignoram silenciosamente.
 
-#### Tarefa S5.T01 — Refatorar `support_block()` para `DiagnosticBundle` desacoplado de erro 💡
+#### Tarefa S9.T01 — Refatorar `support_block()` para `DiagnosticBundle` desacoplado de erro 💡
 
-- **Onde:** `src/common/diagnostics/diagnostic.rs` (atual `support_block` é método privado de `Diagnostic`, migrado de `diagnostics.rs`).
+- **Onde:** `src/common/diagnostics/diagnostic.rs` (atual `support_block` é método privado de `Diagnostic`).
 - **Problema:** `support_block()` é privado e exige um `NamErrorCode` para ser construído. Não há API pública para "gerar bundle em estado nominal".
 - **Solução técnica:**
   1. Extrair `pub struct DiagnosticBundle { system: SystemInfo, runtime: RuntimeSnapshot, error: Option<ErrorContext> }` em `src/common/diagnostics/diagnostic.rs`.
   2. `impl DiagnosticBundle { pub fn capture() -> Self; pub fn capture_with_error(code, params) -> Self; pub fn render(&self) -> String; }`.
-  3. `RuntimeSnapshot` (vazio nesta tarefa — preenchido em S21.D.T04) — placeholder com `Default`.
+  3. `RuntimeSnapshot` (vazio nesta tarefa — preenchido em S9.T04) — placeholder com `Default`.
   4. Refatorar `Diagnostic::support_block` para delegar ao novo `DiagnosticBundle::capture_with_error(...).render()`.
   5. Preservar o cabeçalho textual exato (`──── NAM-rs Diagnostic ...`) para retro-compat com skill `diagnostico`.
 - **Critérios de aceitação:** `Diagnostic::emit` produz string byte-idêntica à anterior em paths de erro existentes. Novo `DiagnosticBundle::capture().render()` retorna bloco sem campo de erro.
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S5.T02 — Comando CLI `--diagnose` no standalone ⚠️
+#### Tarefa S9.T02 — Comando CLI `--diagnose` no standalone ⚠️
 
 - **Onde:** `src/main.rs::parse_args`, `src/main.rs::cli_loop` (comando interativo `:diag`).
 - **Problema:** Usuário do standalone PipeWire não tem como gerar bundle em estado nominal.
@@ -222,11 +382,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S5.T03 — Botão "Copy Diagnostic" na GUI do CLAP ⚠️
+#### Tarefa S9.T03 — Botão "Copy Diagnostic" na GUI do CLAP ⚠️
 
-- **Onde:** `src/clap/gui/ui/mod.rs` (status bar / nova zona "About"); após refactor de S8.T01 o alvo é `src/clap/gui/ui/mod.rs` ou módulo dedicado.
+- **Onde:** `src/clap/gui/ui/mod.rs` (status bar / nova zona "About"). O status bar reside em `ui/mod.rs` (função `draw_ui`), resultado do refactor de UI já concluído em sprint anterior.
 - **Problema:** Usuário do plugin em DAW não tem acesso ao stderr do host. Sem botão na GUI, impossível obter bundle em hosts C++.
-- **Dependência:** S8.T01 já concluído — `ui.rs` foi dividido em `src/clap/gui/ui/` (mod, state, knob, meter, bypass, colors, vsep, simd). O status bar reside em `ui/mod.rs` (função `draw_ui`).
 - **Solução técnica:**
   1. Botão pequeno na status bar (ou ícone "ℹ" abrindo modal "About / Diagnostic").
   2. Click → no **main thread** chamar `DiagnosticBundle::capture().render()` e:
@@ -242,10 +401,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
 
-#### Tarefa S5.T04 — `RuntimeSnapshot` lock-free com estado RT-safe ⚠️
+#### Tarefa S9.T04 — `RuntimeSnapshot` lock-free com estado RT-safe ⚠️
 
 - **Onde:** `src/common/diagnostics/diagnostic.rs` (novo `RuntimeSnapshot`); consumidores em `src/clap/processor/dsp.rs` + `src/clap/processor/events.rs`, `src/standalone/pw_host/rt_callback.rs`, `src/dsp/telemetry.rs`.
-- **Problema:** Bundle atual só tem versão + arch + features estáticos. Falta o **estado dinâmico** crítico para diagnóstico: modelo carregado (arquitetura/CH/RF/path basename), SR efetivo, buffer size, contadores de xrun/drain, RT prio aplicada, scheduler ativo (FIFO/DEADLINE — S16.T01), percentis de latência (HDR — S21.T03), histórico recente de RT_STATUS flags.
+- **Problema:** Bundle atual só tem versão + arch + features estáticos. Falta o **estado dinâmico** crítico para diagnóstico: modelo carregado (arquitetura/CH/RF/path basename), SR efetivo, buffer size, contadores de xrun/drain, RT prio aplicada, scheduler ativo (FIFO/DEADLINE), percentis de latência (HDR histograms em `telemetry.rs`), histórico recente de RT_STATUS flags.
 - **Solução técnica:**
   1. Definir struct `RuntimeSnapshot` com campos:
      - `model: Option<ModelInfo { arch_label, channels, receptive_field, weights_layout, path_basename }>`
@@ -255,7 +414,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
      - `flags_seen: u64` (OR acumulado de RT_STATUS_* já vistos — main thread o mantém em `on_main_thread`)
   2. Coleta via `load(Relaxed)` em atomics já existentes (`AtomicU32`/`AtomicU64` em `telemetry.rs`, `spsc.rs`). Nenhum novo atomic no hotpath.
   3. `RuntimeSnapshot::capture(processor_or_host: &impl HasRuntimeSnapshot)` — trait com 1 método para CLAP processor e standalone host.
-  4. `flags_seen` atualizado **no drain existente** (`on_main_thread` em CLAP, decimação 1-em-16 em standalone — vide S6.T05); zero custo extra.
+  4. `flags_seen` atualizado **no drain existente** (`on_main_thread` em CLAP, decimação 1-em-16 em standalone); zero custo extra.
   5. Renderização preserva contrato textual: cada campo em linha `chave=valor` (parser-friendly).
 - **Critérios de aceitação:**
   - `cargo test --features heap-audit` confirma zero alloc em RT durante captura (toda alloc ocorre no main).
@@ -264,10 +423,10 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S5.T05 — Panic hook persiste `DiagnosticBundle` antes do abort 🔥
+#### Tarefa S9.T05 — Panic hook persiste `DiagnosticBundle` antes do abort 🔥
 
 - **Onde:** `src/main.rs::main` (standalone); `src/clap/plugin/mod.rs` (init do plugin, `DefaultPluginFactory`); novo `src/common/panic_hook.rs`.
-- **Problema:** Em hosts C++ (Bitwig, FL Studio), um panic Rust pode terminar o processo sem flush de `log::error!` — bundle perdido. Adicionalmente, a auditoria do Épico 1 (`window.rs`) eliminou panics em callbacks FFI, mas **qualquer panic residual fora do callback** ainda perde info.
+- **Problema:** Em hosts C++ (Bitwig, FL Studio), um panic Rust pode terminar o processo sem flush de `log::error!` — bundle perdido. Adicionalmente, panics fora de callbacks FFI ainda perdem info.
 - **Solução técnica:**
   1. `pub fn install_panic_hook(component: &'static str)` em `src/common/panic_hook.rs`:
      - Captura `std::panic::PanicHookInfo` (location, message).
@@ -276,7 +435,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
      - Encadeia o hook anterior (não substitui — usa `take_hook` + chain).
   2. Standalone chama `install_panic_hook("standalone")` no início do `main`.
   3. CLAP chama em `DefaultPluginFactory::new` (uma vez por processo; idempotente via `OnceLock`).
-  4. **Não chamar dentro de threads RT** — o hook executa onde o panic ocorreu, e a coleta inclui I/O. Para tasks RT, o panic já é convertido em `set_flag(RT_STATUS_*)` em S2.T01 — hook só é útil para panics fora de `process()`.
+  4. **Não chamar dentro de threads RT** — o hook executa onde o panic ocorreu, e a coleta inclui I/O. Para tasks RT, o panic já é convertido em `set_flag(RT_STATUS_*)` — hook só é útil para panics fora de `process()`.
 - **Critérios de aceitação:**
   - Standalone: `kill -SEGV` durante sessão NÃO dispara o hook (SIGSEGV não passa pelo Rust panic). Panic intencional (`panic!()` em CLI test) cria arquivo `~/.cache/nam-rs/crash-*.txt`.
   - CLAP: panic em GUI thread (não-RT) cria arquivo idem.
@@ -284,7 +443,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 1 dia.
 
-#### Tarefa S5.T06 — Sanitização e política de redação 💡
+#### Tarefa S9.T06 — Sanitização e política de redação 💡
 
 - **Onde:** `src/common/diagnostics/diagnostic.rs` (renderização do bundle).
 - **Problema:** Bundle atual já redige pouco. Paths absolutos podem expor `/home/<user>/...` em logs públicos.
@@ -292,14 +451,14 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   1. Helper `fn redact_path(p: &Path) -> String` substitui prefixo `$HOME` por `~` e `$XDG_RUNTIME_DIR` por `$XDG_RUNTIME_DIR`. Em `--diagnose-full`, retorna path bruto.
   2. `ModelInfo.path_basename` (não path completo) é o default; full path apenas em `--diagnose-full`.
   3. Nunca incluir: conteúdo de pesos, magnitudes de áudio, nomes de usuário/host (já não inclui).
-  4. Documentar política em comentário do struct + em `docs/troubleshooting.md` (S21.D.T07).
+  4. Documentar política em comentário do struct + em `docs/troubleshooting.md` (S9.T07).
 - **Critérios de aceitação:**
-  - Cobertura de redação consolidada em `tests/diagnostic_bundle.rs` (S21.D.T08, caso 3): bundle default não contém substring do `$HOME` real.
+  - Cobertura de redação consolidada em `tests/diagnostic_bundle.rs` (S9.T08, caso 3): bundle default não contém substring do `$HOME` real.
   - `--diagnose-full` inclui paths absolutos quando explicitamente solicitado.
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S5.T07 — Documentação `docs/troubleshooting.md` 💡
+#### Tarefa S9.T07 — Documentação `docs/troubleshooting.md` 💡
 
 - **Onde:** novo `docs/troubleshooting.md`; link em `README.md`.
 - **Problema:** Usuário não sabe como gerar/onde encontrar o bundle.
@@ -308,7 +467,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
      - Standalone: `nam-rs --diagnose` ou `:diag` no shell interativo.
      - CLAP: botão "Copy Diagnostic" / ícone ℹ na GUI.
      - Crash: arquivos em `~/.cache/nam-rs/crash-*.txt`.
-  2. Seção "O que está incluído (e o que NÃO está)" — política de redação (S21.D.T06).
+  2. Seção "O que está incluído (e o que NÃO está)" — política de redação (S9.T06).
   3. Seção "Como reportar":
      - Cole o bloco em issue do GitHub.
      - **Para suporte automatizado:** cole no chat acionando a skill `diagnostico` (referência ao workflow `.agents/workflows/diagnostico.md`).
@@ -318,9 +477,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `documentador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S5.T08 — Testes de integração do pipeline de diagnóstico ⚠️
+#### Tarefa S9.T08 — Testes de integração do pipeline de diagnóstico ⚠️
 
-- **Onde:** `tests/diagnostic_bundle.rs` (novo).
+- **Onde:** novo `tests/diagnostic_bundle.rs`.
 - **Problema:** Sem testes, regressões silenciosas no formato podem quebrar o consumo pela skill `diagnostico`.
 - **Solução técnica:**
   1. Teste 1: `DiagnosticBundle::capture()` em ambiente mínimo (sem áudio ativo) — bundle válido e parseável.
@@ -331,146 +490,3 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Critérios de aceitação:** 5 testes verdes; `cargo test diagnostic_bundle` < 1s.
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
-
----
-
-## Épico 3 — Portabilidade & Arquiteturas de Hardware Especializadas
-
-Objetivo: expandir nam-rs e aproveitar microarquitetura de hardware específica (AMX, AVX10, SVE2, NEON) e plataformas embarcadas ARM64, exigindo setups especiais de build e execução de testes em cloud ou hardware dedicado.
-
-### Sprint S6 — Intel AMX & AVX10.2
-
-#### Tarefa S6.T01 — Abertura do pipeline de build e CI para Intel AMX & AVX10.2 (via Intel SDE / Self-hosted VM) 💡
-
-- **Onde:** `.github/workflows/` (pipelines de build/test/release).
-- **Problema:** Atualmente, não há validação automatizada de compilação ou testes funcionais para as novas instruções Intel AMX e AVX10.2 em CI, aumentando o risco de regressões e quebras de build.
-- **Solução técnica:**
-
-  1. Configurar etapa de download e cache do **Intel Software Development Emulator (Intel SDE)** no pipeline de CI do GitHub Actions (usando ações como `petarpetrovt/setup-sde` ou script customizado).
-
-  2. Executar a suite de testes unitários e de integração de AMX/AVX10.2 envelopando o binário de teste com `sde64 -spr -- cargo test --features amx-nightly`.
-
-  3. Integrar flags de compilação no pipeline.
-- **Critérios de aceitação:**
-  - Pipeline de CI compila e passa nos testes unitários com emulação de CPU Sapphire Rapids (AMX) e Diamond Rapids (AVX10.2) com sucesso.
-- **Especialista:** `implementador` + `pesquisador-inovador`.
-- **Esforço:** 1.5 dia.
-
-#### Tarefa S6.T02 — Backend Intel AMX para LSTM 2-layer e WaveNet Standard (BF16) ✨🔥
-
-- **Onde:** novo módulo `src/math/common/amx_impl.rs`; integração em `src/math/common/dispatch.rs` (novo nível `InstructionSet::Amx_Bf16` acima de `Avx512VnniBf16`, região ~linha 140-163 pós-refatoração).
-- **Problema/Oportunidade:** Sapphire Rapids+ executa **`_tile_dpbf16ps`** (DST = A·Bᵀ + DST) em **um único ciclo de 1024 FMAs BF16** (16×64 BF16 × 64×16 BF16 → 16×16 FP32, ~2 TFLOPS BF16 por core a 2 GHz). Para LSTM `2×16` (matmul 32×80 por amostra) e WaveNet Standard (matmul de 16×16 com kernel-3), AMX entrega potencial **10–20×** speedup sobre AVX-512 VNNI BF16. A referência C++ ainda não usa AMX; nam-rs pode ser o **primeiro engine NAM com AMX nativo**.
-- **Solução técnica:**
-
-  1. **Layout AMX-friendly do encoder:** novo `weights_layout = AmxTile16x64Bf16` que organiza pesos em tiles de 16 linhas × 64 colunas (= 64 BF16 = 1 KB por tile), padding zero quando necessário. Decoder em `src/loader/dispatcher/lstm.rs` e `src/loader/dispatcher/wavenet/` (módulos `standard.rs`, `dynamic.rs`, `layout.rs`) carrega blocos em `AlignedVec<u16>` 64-aligned.
-
-  2. **Trait `AmxBf16Math: SimdMath`** implementando `fused_add_gemv`, `fused_add_gemm_batch`, etc. Cada kernel:
-     - Configurar palette 1 via `_tile_loadconfig()` (uma vez por activate).
-     - `_tile_loadd::<TILE_A, STRIDE>(weights_ptr)` para tile A (16×32 BF16).
-     - `_tile_loadd::<TILE_B, STRIDE>(input_ptr)` para tile B (32×16 BF16).
-     - `_tile_dpbf16ps::<TILE_C, TILE_A, TILE_B>()` — acumula em FP32 no tile C.
-     - `_tile_stored::<TILE_C, STRIDE>(output_ptr)` final.
-
-  3. **AMX state preservation:** primeira chamada em activate emite `arch_prctl(ARCH_REQ_XCOMP_PERM, XFEATURE_XTILEDATA)` para habilitar XTILEDATA no kernel (Linux ≥5.16). Falha graciosa para fallback Avx512VnniBf16.
-
-  4. **`#![feature(x86_amx_intrinsics)]`** requer nightly até estabilização. Gate via `#[cfg(feature = "amx-nightly")]` em Cargo, default off.
-
-  5. Adicionar `RT_STATUS_AMX_ACTIVE` flag.
-- **Pré-requisitos (obrigatórios — herdam invariantes da Parte I):**
-  - **S3.T03** (padrão intercalado `[W_l, bias_l, hidden_init_l, cell_init_l]` por camada) — o layout AMX tile-block deve seguir a mesma disciplina sequencial para evitar o tipo de bug encoder↔decoder corrigido em LSTM.
-  - **S3.T04** (padding implícito do encoder até múltiplos de bloco SIMD) — tiles AMX exigem 16-row blocks; replicar a estratégia do Interleaved-4 (zero-pad até `ceil(N/16)·16`) ao invés de tail-loops independentes.
-  - **S5.T03** (flag `FLAG_HAS_CRC32` explícito) — o novo layout deve setar o flag CRC e nunca confiar em sentinel.
-  - **S5.T07** (spec NAMB) — `docs/namb-spec.md` precisa ganhar seção "AmxTile16x64Bf16" antes da implementação, incluindo exemplos hex.
-  - **S13.T02 (round-trip)** — cobertura obrigatória do novo layout no harness `tests/namb_v2_roundtrip.rs` (extendido) antes do merge.
-  - Decisão: o novo layout dispara **bump explícito de NAMB para v3** (com `FLAG_HAS_AMX_TILE_LAYOUT` no header v3). Documentar em `docs/namb-spec.md` v3.
-- **Critérios de aceitação:**
-  - Em CPU Sapphire Rapids, dispatcher seleciona AMX; benchmark `inference_bench` mostra ≥8× speedup vs AVX-512 BF16 para LSTM 2×16 e ≥4× para WaveNet Standard.
-  - Diferença numérica vs `ScalarRefMath` < 5e-3 (AMX usa BF16 mantissa de 7 bits, tolerância maior justifica-se).
-  - `cargo test --features amx-nightly` passa cobertura golden em 4 modelos canônicos.
-  - **Round-trip encode→decode do layout `AmxTile16x64Bf16` passa bit-perfect** (estende `tests/namb_v2_roundtrip.rs` de S13.T02).
-  - Documentado em `docs/amx-backend.md` (setup XSAVE/permission, palette config, latência/throughput por kernel) e seção dedicada em `docs/namb-spec.md` v3.
-- **Especialista:** `pesquisador-inovador` + revisão `revisor-auditor`.
-- **Esforço:** 4–5 dias.
-
-#### Tarefa S6.T03 — Dispatcher AVX10.2 (Diamond Rapids 2026) ✨⚠️
-
-- **Onde:** `src/math/common/dispatch.rs`; novo `avx10_impl.rs` (opcional, pode reusar `avx512_impl` se ISA-equivalente).
-- **Problema/Oportunidade:** Intel Diamond Rapids 2026 introduz **AVX10.2** unificando AVX-512 com novos data types: **FP16 nativo (FMA hpfp)**, **FP4** para inferência, e melhor scheduling. oneDNN 2026 já entrega `ONEDNN_MAX_CPU_ISA=AVX10_2_512_AMX_2`. Compilers ainda emergentes; estar pronto cedo é vantagem competitiva.
-- **Solução técnica:**
-
-  1. Adicionar `InstructionSet::Avx10_2` ao enum (entre AMX e AVX-512).
-
-  2. Detecção via `is_x86_feature_detected!("avx10.2")` (estabilizar quando intrinsic landar; até lá usar `cpuid` direto).
-
-  3. Substituir `simd_tanh_avx512`/`simd_sigmoid_avx512` por variantes **`_ph` (packed half)** — FMA FP16 nativo elimina 2× conversão F16↔F32 que dominam o hotpath de activations.
-
-  4. Adicionar `dot_4x_fp16_avx10` kernel para Conv1D em WaveNet Feather/Nano (modelos pequenos onde overhead de conversão é proporcionalmente maior).
-- **Critérios de aceitação:**
-  - Dispatcher detecta AVX10.2 (gated em CPU emulado via SDE até hardware estar disponível).
-  - Benchmark FP16 nativo ≥ 2× speedup em activations (sigmoid/tanh) vs AVX-512 BF16 com conversão.
-  - Paridade vs `ScalarRefMath` < 1e-3.
-- **Especialista:** `pesquisador-inovador`.
-- **Esforço:** 2–3 dias.
-
-### Sprint S7 — Portabilidade Linux ARM64 (NEON/SVE2 & Standalone RPi5/Asahi)
-
-#### Tarefa S7.T01 — Abertura do pipeline de build e CI para ARM64 Linux 💡
-
-- **Onde:** `.github/workflows/` (pipelines de build/test/release).
-- **Problema:** Não há automação para compilar e testar nativamente ou via cross-compilation o target Linux ARM64, impedindo o deploy confiável em sistemas como Raspberry Pi 5 e servidores baseados em ARM64.
-- **Solução técnica:**
-
-  1. Adicionar o target `aarch64-unknown-linux-gnu` à matriz de build e testes do GitHub Actions.
-
-  2. Configurar o ambiente com cross-compilers necessários (`gcc-aarch64-linux-gnu`) ou agentes aarch64 nativos.
-
-  3. Executar a suite de testes unitários e de integração via QEMU user mode runner ou agentes nativos no CI.
-- **Critérios de aceitação:**
-  - Pipeline de CI compila e passa nos testes com sucesso para o target `aarch64-unknown-linux-gnu`.
-- **Especialista:** `implementador` + `pesquisador-inovador`.
-- **Esforço:** 1.5 dia.
-
-#### Tarefa S7.T02 — Backend NEON/SVE2 para processadores ARM64 Linux (Ampere, Graviton, Cortex) ✨🔥
-
-- **Onde:** novo módulo `src/math/common/neon_impl.rs` (e `sve2_impl.rs` opcional); integração em `dispatch.rs`.
-- **Problema/Oportunidade:** Ampere Altra/Graviton 4 (servidor ARM Neoverse-V2 com SVE2 256-bit) e processadores ARM64 como Cortex-A76/A78 (Raspberry Pi 5) representam alvos fundamentais para Linux. Hoje, nam-rs em ARM rodaria escalar — **inviável** para produção.
-- **Solução técnica:**
-
-  1. **NEON baseline:** trait `NeonMath` com kernels:
-     - `gemv` usando `vfmaq_f32` (4-lane FMA) com 4 acumuladores.
-     - `dot_product_4x` com layout interleaved-4 (já compatível com encoder atual).
-     - `tanh/sigmoid` via Padé (S7.T09) — NEON ports diretos. **Nota (Auditoria Épico 4):** Constantes Padé [5,4] já estão centralizadas em `src/math/constants.rs` e são portáveis. Usar `vrecpeq_f32` + Newton-Raphson refinement para o recíproco (análogo ao `_mm256_rcp_ps` + `fnmadd` do AVX2).
-     - Conversão F16↔F32 via `vcvt_f16_f32` (ARMv8.2-A FP16).
-
-  2. **SVE2 advanced:** trait `Sve2Math` para Neoverse-V1+/V2 (Ampere, Graviton 4):
-     - Vectores de comprimento variável (128–2048 bits, runtime via `svcntw`).
-     - `svfmla_f32_z` predicado, eliminando tail loops.
-     - `svbfdot_f32` para BF16 dot (ARMv8.6-A) — análogo a `_mm512_dpbf16_ps`.
-
-  3. **Dispatcher:** `#[cfg(target_arch = "aarch64")]` com `std::arch::is_aarch64_feature_detected!("neon")` e `("sve2")`.
-
-  4. **`mirror_buf.rs` portabilidade:** já parcialmente coberto por S1.T04. Em Linux ARM64, `memfd_create` funciona normalmente (fallback `mmap` anônimo para não-Linux já existe em `mirror_buf/fallback.rs`).
-
-  5. **Build matrix CI:** `aarch64-unknown-linux-gnu` em GitHub Actions.
-- **Critérios de aceitação:**
-  - `cargo test --target aarch64-unknown-linux-gnu` passa com emulação QEMU ou nativa.
-  - Paridade numérica `|err| < 5e-4` vs ScalarRefMath.
-- **Especialista:** `pesquisador-inovador` + `implementador`.
-- **Esforço:** 3 dias.
-
-#### Tarefa S7.T03 — Linux ARM64 standalone (Raspberry Pi 5 / Asahi Linux) ✨⚠️
-
-- **Onde:** build matrix CI; `utils/install.sh` para apt+pipewire em Raspbian/Asahi.
-- **Problema/Oportunidade:** Raspberry Pi 5 (Cortex-A76, NEON, FP16) ou Asahi Linux em Apple Silicon entregam plataforma "stomp-box" de baixo custo. Combinado com S24.T02 (NEON backend) e S16.T01 (SCHED_DEADLINE), entrega standalone hardware NAM rivalizando DIMEHEAD/Anagram.
-- **Solução técnica:**
-
-  1. Cross-compile `aarch64-unknown-linux-gnu`.
-
-  2. PipeWire 0.10 disponível em Debian 12/Ubuntu 22.04 ARM.
-
-  3. Smoke test em Raspberry Pi 5 OS (kernel 6.6 PREEMPT_RT custom build).
-
-  4. Documentar tuning em `docs/raspberry-pi-5.md`: GPU bypass, CPU isolcpus, cpufreq performance.
-- **Critérios de aceitação:** RPi5 com guitar interface USB roda nam-rs standalone com latência < 10ms; LSTM 1×16 sem xruns.
-- **Especialista:** `pesquisador-inovador`.
-- **Esforço:** 3 dias.
