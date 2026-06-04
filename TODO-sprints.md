@@ -2277,7 +2277,7 @@ Notas Operacionais — Épico 14
 
 ## Épico 15 — Cross-Validation v2 (Stress Signal & Métricas Perceptuais)
 
-- Segue anexo o resultado da execução do utils/tests-long.sh
+- Segue anexo o resultado da execução do utils/tests-long.sh [DONE]
 - Assegurar boa distribuição dos testes e benchs, conforme determinado em .agents/rules/testing.md
 - Revise e deixe tudo limpo, organizado e funcional.
 
