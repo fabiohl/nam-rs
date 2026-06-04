@@ -10,6 +10,7 @@ use crate::common::spsc::RtStatusFlags;
 use crate::dsp::gate::{DynamicHysteresis, GateState};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::math::common::dispatch_simd;
+#[cfg(feature = "stereo")]
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::math::dsp::stereo::{compute_energy_stereo, compute_max_diff};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
@@ -48,8 +49,15 @@ pub(crate) fn apply_input_stage(
 ) -> GateState {
     // Uses the maximum energy of both channels: any channel with active signal
     // must keep the gate open. Using the fused kernel to reduce cache traffic.
+    #[cfg(feature = "stereo")]
     let energy_ms =
         unsafe { compute_energy_stereo(&samples_l[..n_samples], &samples_r[..n_samples]) };
+    #[cfg(not(feature = "stereo"))]
+    let energy_ms =
+        crate::math::common::dispatch_simd!(compute_energy(&samples_l[..n_samples]));
+
+    #[cfg(not(feature = "stereo"))]
+    let _ = samples_r;
 
     // 1. UPDATE THE NOISE GATE
     // Decides whether the sound is strong enough to pass or should be silenced to save processing.
@@ -66,28 +74,36 @@ pub(crate) fn apply_input_stage(
         return GateState::Closed;
     }
 
-    // 2. MONO SOUND DETECTION (SAME ON BOTH SIDES)
-    // Computes the difference between left and right to check if the sound is the same.
-    let max_diff = unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
+    #[cfg(feature = "stereo")]
+    {
+        // 2. MONO SOUND DETECTION (SAME ON BOTH SIDES)
+        // Computes the difference between left and right to check if the sound is the same.
+        let max_diff = unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
-    ctx.mono_hysteresis.update(
-        max_diff,
-        ctx.gate_params.mono_epsilon,
-        ctx.gate_params.mono_epsilon * 0.9,
-        ctx.gate_params,
-        n_samples,
-    );
+        ctx.mono_hysteresis.update(
+            max_diff,
+            ctx.gate_params.mono_epsilon,
+            ctx.gate_params.mono_epsilon * 0.9,
+            ctx.gate_params,
+            n_samples,
+        );
 
-    // If the sound is identical on both sides (mono), notify the system to process only one side.
-    // This cuts the workload in half without losing quality!
-    *ctx.process_mono = ctx.mono_hysteresis.state() == GateState::Closed
-        || ctx.mono_hysteresis.state() == GateState::FadingOut;
+        // If the sound is identical on both sides (mono), notify the system to process only one side.
+        // This cuts the workload in half without losing quality!
+        *ctx.process_mono = ctx.mono_hysteresis.state() == GateState::Closed
+            || ctx.mono_hysteresis.state() == GateState::FadingOut;
+    }
+    #[cfg(not(feature = "stereo"))]
+    {
+        *ctx.process_mono = true;
+    }
 
     // 3. INPUT VOLUME ADJUSTMENT (GAIN)
     // Applies the initial user-defined gain (volume).
     crate::math::dsp::gain::apply_gain_simd(&mut samples_l[..n_samples], ctx.input_gain_mult);
 
     // Only adjust the right side if the sound is NOT mono (to save processing).
+    #[cfg(feature = "stereo")]
     if !*ctx.process_mono {
         crate::math::dsp::gain::apply_gain_simd(&mut samples_r[..n_samples], ctx.input_gain_mult);
     }
@@ -99,6 +115,7 @@ pub(crate) fn apply_input_stage(
         for i in 0..n_samples {
             *samples_l.get_unchecked_mut(i) += DENORMAL_DITHER_OFFSET;
         }
+        #[cfg(feature = "stereo")]
         if !*ctx.process_mono {
             for i in 0..n_samples {
                 *samples_r.get_unchecked_mut(i) += DENORMAL_DITHER_OFFSET;

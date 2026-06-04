@@ -55,8 +55,9 @@ harness = false
 
 [features]
 default = ["standalone"]
-standalone = ["dep:pipewire"]
+standalone = ["dep:pipewire", "stereo"]
 clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:egui", "dep:egui_glow", "dep:baseview", "baseview/opengl", "dep:rfd", "dep:glow", "dep:keyboard-types"]
+stereo = []
 heap-audit = []
 long_bench = []
 research = []

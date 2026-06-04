@@ -120,6 +120,7 @@ mod tests {
     /// TEST: Direct Sound (Bypass) in Stereo.
     /// Ensures that, if no effects are active, the input sound is exactly equal to the output.
     #[test]
+    #[cfg(feature = "stereo")]
     fn test_bypass_no_resampler_stereo() {
         let n = 64;
         // Creates a test sound for the left (L) and right (R) sides.
@@ -166,6 +167,7 @@ mod tests {
     /// TEST: Direct Sound with Quality Change (Resampling).
     /// Tests whether the sound continues to pass correctly even when the "speed" (Hz rate) changes.
     #[test]
+    #[cfg(feature = "stereo")]
     fn test_bypass_with_resampler_stereo() {
         // Example: Sound enters at 44100Hz (CD) and leaves at 48000Hz (Video).
         let n = 256;

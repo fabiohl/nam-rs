@@ -68,7 +68,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 > **Contexto:** O CLAP plugin opera em modo mono-only (linhas 126-127 de `dsp.rs`: `active_channel_count=1, process_mono=true`). No entanto, o code path processa buffers R completos (memcpy, gain, peak detection) redundantemente. O código stereo deve ser preservado sob `#[cfg(feature = "stereo")]` para futuro suporte, mas o path default deve ser mono-optimizado.
 
-#### Tarefa S2.T01 — Eliminar overhead stereo redundante no input processing do CLAP ⚠️
+#### Tarefa S2.T01 — Eliminar overhead stereo redundante no input processing do CLAP ⚠️ [DONE]
 
 - **Onde:** `src/clap/processor/dsp.rs` — linhas ~156, ~170-213.
 - **Problema:**

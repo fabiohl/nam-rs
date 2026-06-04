@@ -153,6 +153,7 @@ impl<'a> NamClapProcessor<'a> {
 
             // Copy the left channel input to the right channel to ensure the DSP pipeline
             // (which expects valid buffers on both L/R sides) processes the same mono signal.
+            #[cfg(feature = "stereo")]
             self.buf_host_r[..n_samples].copy_from_slice(&self.buf_host_l[..n_samples]);
 
             if let Some(pair) = pair_r {
@@ -169,46 +170,84 @@ impl<'a> NamClapProcessor<'a> {
 
             // 2. Input Gain Application (Sample-Accurate Smoothing)
             let mut input_has_clipped = false;
-            if param_in_changed {
-                for i in 0..n_samples {
-                    let g = self.smoother_in.tick();
-                    self.buf_host_l[i] *= g;
-                    self.buf_host_r[i] *= g;
-                    if self.buf_host_l[i].abs() > 1.0 || self.buf_host_r[i].abs() > 1.0 {
-                        input_has_clipped = true;
+            #[cfg(feature = "stereo")]
+            {
+                if param_in_changed {
+                    for i in 0..n_samples {
+                        let g = self.smoother_in.tick();
+                        self.buf_host_l[i] *= g;
+                        self.buf_host_r[i] *= g;
+                        if self.buf_host_l[i].abs() > 1.0 || self.buf_host_r[i].abs() > 1.0 {
+                            input_has_clipped = true;
+                        }
+                    }
+                } else {
+                    let start = self.smoother_in.peek();
+                    let target = self.smoother_in.target_value();
+                    if (start - target).abs() < 1e-9 {
+                        input_has_clipped = unsafe {
+                            crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
+                                &mut self.buf_host_l[..n_samples],
+                                &mut self.buf_host_r[..n_samples],
+                                start,
+                            )
+                        };
+                    } else {
+                        let step = (target - start) / n_samples as f32;
+                        unsafe {
+                            crate::math::dsp::gain::apply_ramp_stereo(
+                                &mut self.buf_host_l[..n_samples],
+                                &mut self.buf_host_r[..n_samples],
+                                start,
+                                step,
+                            );
+                        }
+                        self.smoother_in.set(start + step * n_samples as f32);
+
+                        let (peak_l, peak_r) = unsafe {
+                            crate::math::dsp::stereo::compute_peak_abs_stereo(
+                                &self.buf_host_l[..n_samples],
+                                &self.buf_host_r[..n_samples],
+                            )
+                        };
+                        if peak_l > 1.0 || peak_r > 1.0 {
+                            input_has_clipped = true;
+                        }
                     }
                 }
-            } else {
-                let start = self.smoother_in.peek();
-                let target = self.smoother_in.target_value();
-                if (start - target).abs() < 1e-9 {
-                    input_has_clipped = unsafe {
-                        crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
-                            &mut self.buf_host_l[..n_samples],
-                            &mut self.buf_host_r[..n_samples],
-                            start,
-                        )
-                    };
-                } else {
-                    let step = (target - start) / n_samples as f32;
-                    unsafe {
-                        crate::math::dsp::gain::apply_ramp_stereo(
-                            &mut self.buf_host_l[..n_samples],
-                            &mut self.buf_host_r[..n_samples],
-                            start,
-                            step,
-                        );
+            }
+            #[cfg(not(feature = "stereo"))]
+            {
+                if param_in_changed {
+                    for i in 0..n_samples {
+                        let g = self.smoother_in.tick();
+                        self.buf_host_l[i] *= g;
+                        if self.buf_host_l[i].abs() > 1.0 {
+                            input_has_clipped = true;
+                        }
                     }
-                    self.smoother_in.set(start + step * n_samples as f32);
+                } else {
+                    let start = self.smoother_in.peek();
+                    let target = self.smoother_in.target_value();
+                    if (start - target).abs() < 1e-9 {
+                        crate::math::dsp::gain::apply_gain_simd(&mut self.buf_host_l[..n_samples], start);
+                        for &sample in &self.buf_host_l[..n_samples] {
+                            if sample.abs() > 1.0 {
+                                input_has_clipped = true;
+                                break;
+                            }
+                        }
+                    } else {
+                        let step = (target - start) / n_samples as f32;
+                        crate::math::dsp::gain::apply_ramp_simd(&mut self.buf_host_l[..n_samples], start, step);
+                        self.smoother_in.set(start + step * n_samples as f32);
 
-                    let (peak_l, peak_r) = unsafe {
-                        crate::math::dsp::stereo::compute_peak_abs_stereo(
-                            &self.buf_host_l[..n_samples],
-                            &self.buf_host_r[..n_samples],
-                        )
-                    };
-                    if peak_l > 1.0 || peak_r > 1.0 {
-                        input_has_clipped = true;
+                        for &sample in &self.buf_host_l[..n_samples] {
+                            if sample.abs() > 1.0 {
+                                input_has_clipped = true;
+                                break;
+                            }
+                        }
                     }
                 }
             }
