@@ -6,8 +6,10 @@
 #
 # Prerequisites:
 #   - cmake >= 3.10, g++ or clang++ with C++20
-#   - python3 (to generate the stress WAV signal)
+#   - cargo (Rust; stress signal generation and WAV→golden conversion are now Rust native)
 #   - git (to clone NeuralAmpModelerCore if needed)
+#
+# Python is no longer required — gen_stress and wav_to_golden replace the inline Python blocks.
 #
 # Usage:
 #   ./tests/fixtures/golden_gen_build.sh
@@ -16,6 +18,7 @@
 #   golden_wavenet_standard.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
 #   golden_lstm_1x16.bin, golden_lstm_2x8.bin
 #   golden_namcore_lstm_1x3.bin, golden_namcore_wn_micro.bin
+#   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
 #
 # These files must be committed so that the Rust golden vector tests
 # run without C++ recompilation.
@@ -34,9 +37,9 @@ FIXTURES_DIR="$SCRIPT_DIR"
 # =============================================================================
 echo "=== Golden Vector Generator (NeuralAmpModelerCore) ==="
 
-for cmd in cmake python3; do
+for cmd in cmake cargo; do
     if ! command -v "$cmd" &>/dev/null; then
-        echo "ERROR: '$cmd' not found. Install with: sudo apt install cmake python3"
+        echo "ERROR: '$cmd' not found. Install with: sudo apt install cmake cargo"
         exit 1
     fi
 done
@@ -59,7 +62,7 @@ echo "  C++ Compiler: $CXX"
 # Clone/update NeuralAmpModelerCore
 # =============================================================================
 echo ""
-echo "[1/5] Setting up NeuralAmpModelerCore..."
+echo "[1/6] Setting up NeuralAmpModelerCore..."
 if [ ! -d "$NAM_CORE_DIR" ]; then
     git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$NAM_CORE_DIR"
 else
@@ -79,7 +82,7 @@ done
 # Build render tool
 # =============================================================================
 echo ""
-echo "[2/5] Building render tool..."
+echo "[2/6] Building render tool..."
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
 RENDER_BIN="$BUILD_DIR/$BUILD_TYPE/render"
@@ -108,83 +111,44 @@ fi
 echo "  Render: $RENDER_BIN"
 
 # =============================================================================
-# Generate stress WAV signal via Python
+# Build Rust tools (gen_stress + wav_to_golden)
 # =============================================================================
 echo ""
-echo "[3/5] Generating stress signal..."
+echo "[3/6] Building Rust tools (gen_stress + wav_to_golden)..."
+
+cargo build --release --bin gen_stress --bin wav_to_golden 2>&1 | tail -3
+GEN_STRESS="$PROJECT_ROOT/target/release/gen_stress"
+WAV_TO_GOLDEN="$PROJECT_ROOT/target/release/wav_to_golden"
+
+if [ ! -f "$GEN_STRESS" ]; then
+    echo "ERROR: Failed to build gen_stress binary."
+    exit 1
+fi
+echo "  gen_stress: $GEN_STRESS"
+echo "  wav_to_golden: $WAV_TO_GOLDEN"
+
+# =============================================================================
+# Generate stress WAV signals
+# =============================================================================
+echo ""
+echo "[4/6] Generating stress signals..."
 
 STRESS_WAV="$FIXTURES_DIR/stress_signal.wav"
+"$GEN_STRESS" --version v1 --output "$STRESS_WAV" 2>&1
+echo "  v1: $STRESS_WAV"
 
-python3 -c "
-import struct, math
-
-SR = 48000.0
-N  = 2048
-T  = N / SR
-PI = math.pi
-
-attack_end  = int(0.002 * SR)    # 96 samples
-release_beg = N - int(0.005 * SR) # 1808 samples
-
-samples = []
-for i in range(N):
-    t = i / SR
-    # Envelope (attack 2ms, sustain, release 5ms)
-    if i < attack_end:
-        env = i / attack_end
-    elif i >= release_beg:
-        env = (N - 1 - i) / (N - release_beg)
-    else:
-        env = 1.0
-
-    # Guitar harmonics (Low-E: 82.41 Hz)
-    guitar = (0.40 * math.sin(2 * PI * 82.41 * t)
-            + 0.25 * math.sin(2 * PI * 164.81 * t)
-            + 0.15 * math.sin(2 * PI * 329.63 * t)
-            + 0.08 * math.sin(2 * PI * 659.25 * t))
-
-    # Linear chirp 220 Hz -> 3520 Hz
-    f0, f1 = 220.0, 3520.0
-    chirp_phase = 2 * PI * (f0 * t + (f1 - f0) * t * t / (2.0 * T))
-    chirp = 0.30 * math.sin(chirp_phase)
-
-    # Impulse at 25%
-    impulse = 0.9 if i == N // 4 else 0.0
-
-    sample = env * (guitar + chirp) + impulse
-    sample = max(-1.0, min(1.0, sample))
-    samples.append(sample)
-
-# Write WAV header + f32 LE samples
-num_samples = len(samples)
-data_size = num_samples * 4
-file_size = 44 + data_size
-
-with open('$STRESS_WAV', 'wb') as f:
-    f.write(b'RIFF')
-    f.write(struct.pack('<I', file_size))
-    f.write(b'WAVE')
-    f.write(b'fmt ')
-    f.write(struct.pack('<I', 16))       # fmt chunk size
-    f.write(struct.pack('<H', 3))        # IEEE float
-    f.write(struct.pack('<H', 1))        # mono
-    f.write(struct.pack('<I', 48000))    # sample rate
-    f.write(struct.pack('<I', 48000*4))  # byte rate
-    f.write(struct.pack('<H', 4))        # block align
-    f.write(struct.pack('<H', 32))       # bits per sample
-    f.write(b'data')
-    f.write(struct.pack('<I', data_size))
-    for s in samples:
-        f.write(struct.pack('<f', s))
-
-print(f'  Stress signal: {num_samples} samples, {file_size} bytes')
-" 2>&1
+# Generate v2 signals for all supported sample rates
+for SR in 44100 48000 88200 96000 192000; do
+    V2_WAV="$FIXTURES_DIR/stress_signal_v2_${SR}.wav"
+    "$GEN_STRESS" --version v2 --sample-rate "$SR" --output "$V2_WAV" 2>&1
+    echo "  v2 ${SR}Hz: $V2_WAV"
+done
 
 # =============================================================================
 # Run render for each model → WAV output → .golden.bin
 # =============================================================================
 echo ""
-echo "[4/5] Running render for each model..."
+echo "[5/6] Running render for each model..."
 
 # Models: (.nam file, golden name, label)
 MODELS=(
@@ -220,45 +184,55 @@ for entry in "${MODELS[@]}"; do
         continue
     fi
 
-    # Convert WAV output → .golden.bin format
-    # Format: [u32 N] [f32×N input] [f32×N output]
-    python3 -c "
-import struct, sys
+    # Convert WAV output → .golden.bin (Rust native replacement for Python block)
+    "$WAV_TO_GOLDEN" \
+        --input "$OUTPUT_WAV" \
+        --reference "$STRESS_WAV" \
+        --output "$GOLDEN_BIN" 2>&1
 
-# Read input from stress WAV
-with open('$STRESS_WAV', 'rb') as f:
-    f.seek(44)
-    inp = f.read()
+done
 
-# Read output from render WAV
-with open('$OUTPUT_WAV', 'rb') as f:
-    f.seek(44)
-    out = f.read()
+# =============================================================================
+# Generate v2 goldens for all SRs × models
+# =============================================================================
+echo ""
+echo "[5a/6] Generating v2 golden vectors (multi-SR)..."
 
-n_bytes = min(len(inp), len(out))
-n_samples = n_bytes // 4
+for SR in 44100 48000 88200 96000 192000; do
+    V2_WAV="$FIXTURES_DIR/stress_signal_v2_${SR}.wav"
 
-# Validate that data header starts at offset 44
-if len(inp) < 44*2 or len(out) < 44*2:
-    print(f'  WARN: WAV files too small', file=sys.stderr)
-    sys.exit(1)
+    for entry in "${MODELS[@]}"; do
+        IFS=':' read -r nam_file golden_name label <<< "$entry"
+        MODEL_PATH="$MODELS_DIR/$nam_file"
+        GOLDEN_NAME_V2="${golden_name}_v2_${SR}k"
+        OUTPUT_WAV="$TEMP_DIR/${GOLDEN_NAME_V2}.wav"
+        GOLDEN_BIN="$FIXTURES_DIR/${GOLDEN_NAME_V2}.bin"
 
-with open('$GOLDEN_BIN', 'wb') as f:
-    f.write(struct.pack('<I', n_samples))
-    f.write(inp[:n_bytes])
-    f.write(out[:n_bytes])
+        if [ ! -f "$MODEL_PATH" ]; then
+            continue
+        fi
 
-file_size = 4 + 2 * n_bytes
-print('  -> $golden_name.bin: {} samples, {} bytes'.format(n_samples, file_size))
-" 2>&1
+        echo "  Processing $label @ ${SR}Hz..."
 
+        "$RENDER_BIN" "$MODEL_PATH" "$V2_WAV" "$OUTPUT_WAV" 2>&1 | tail -1
+
+        if [ ! -f "$OUTPUT_WAV" ]; then
+            echo "  WARN: Render failed for $label @ ${SR}Hz"
+            continue
+        fi
+
+        "$WAV_TO_GOLDEN" \
+            --input "$OUTPUT_WAV" \
+            --reference "$V2_WAV" \
+            --output "$GOLDEN_BIN" 2>&1
+    done
 done
 
 # =============================================================================
 # Cleanup
 # =============================================================================
 echo ""
-echo "[5/5] Cleaning up temporary files..."
+echo "[6/6] Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
 echo ""
@@ -267,6 +241,13 @@ echo "  Files at $FIXTURES_DIR/:"
 for entry in "${MODELS[@]}"; do
     IFS=':' read -r _ golden_name _ <<< "$entry"
     [ -f "$FIXTURES_DIR/${golden_name}.bin" ] && echo "    ${golden_name}.bin"
+done
+for SR in 44100 48000 88200 96000 192000; do
+    for entry in "${MODELS[@]}"; do
+        IFS=':' read -r _ golden_name _ <<< "$entry"
+        GF="$FIXTURES_DIR/${golden_name}_v2_${SR}k.bin"
+        [ -f "$GF" ] && echo "    ${golden_name}_v2_${SR}k.bin"
+    done
 done
 echo ""
 echo "Commit these files so that the Rust golden vector tests work."

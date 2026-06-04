@@ -88,14 +88,17 @@ Para regenerar os golden vectors ou executar a validação cruzada ao vivo contr
 NeuralAmpModelerCore, os seguintes pacotes são necessários:
 
 ```bash
-sudo apt install cmake g++ python3
+sudo apt install cmake g++
 ```
 
 * **cmake** (≥ 3.10): Build system do NeuralAmpModelerCore.
 * **g++** (ou `clang++`, C++20): Compilador C++ para o tool `render`.
-* **python3**: Geração do WAV de teste (sinal de stress).
+* **cargo** (Rust): Geração do WAV de teste (sinal de stress) e conversão WAV→golden — binários nativos `gen_stress` e `wav_to_golden` substituem o bloco Python anterior.
 
 > [!NOTE]
+> Python **não é mais necessário**. Os binários Rust `gen_stress` e `wav_to_golden`
+> substituem as funções Python de geração de sinal e parsing WAV.
+>
 > Estas dependências são **opcionais**. Os golden vectors são pré-commitados no
 > repositório e os testes de validação rodam sem C++ no `cargo test` normal.
 > O C++ é necessário apenas para:

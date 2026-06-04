@@ -9,7 +9,7 @@
 //!
 //! ## Pipeline
 //! 1. Compiles the `render` tool from NeuralAmpModelerCore on-demand (idempotent, cached)
-//! 2. Generates WAV stress signal via `generate_stress_signal()`
+//! 2. Generates WAV stress signal via `generate_stress_signal_v1()` or `generate_stress_signal_v2()`
 //! 3. Writes WAV, executes render via `std::process::Command`
 //! 4. Reads WAV output, compares C++ vs Rust with `report_dsp_fidelity()`
 //!
@@ -17,9 +17,14 @@
 //!
 //! ## Parity Thresholds (Adaptive)
 //!
-//! Thresholds are now computed dynamically by `topology_thresholds()` based on
+//! Thresholds are computed dynamically by `topology_thresholds()` based on
 //! model topology (channels, dilations for WaveNet; num_layers, hidden_size for LSTM).
-//! More complex models get more permissive thresholds; simpler models get tighter ones.
+//!
+//! ## Multi-Sample-Rate Support
+//!
+//! v2 stress signal supports 44.1k, 48k, 96k, and 192k sample rates.
+//! The `#[test]` functions parametrize model × SR combinations via runtime arrays
+//! instead of statically exploding test functions.
 
 mod common;
 use common::*;
@@ -39,13 +44,11 @@ fn render_bin() -> PathBuf {
     bin.push(BUILD_DIR);
     bin.push("Release/render");
     if !bin.exists() {
-        // Fallback: try debug build
         bin = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         bin.push(BUILD_DIR);
         bin.push("Debug/render");
     }
     if !bin.exists() {
-        // Search for render binary anywhere in build dir
         let build_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(BUILD_DIR);
         if let Ok(entries) = std::fs::read_dir(&build_root) {
             for entry in entries.flatten() {
@@ -82,7 +85,6 @@ fn ensure_render_compiled() -> bool {
         return false;
     }
 
-    // Init submodules
     for sub in &["Dependencies/eigen", "Dependencies/AudioDSPTools"] {
         let sub_path = nam_core.join(sub);
         if sub_path.exists() && fs::read_dir(&sub_path).map_or(true, |mut d| d.next().is_none()) {
@@ -141,7 +143,14 @@ fn ensure_render_compiled() -> bool {
     render_bin().exists()
 }
 
-fn run_render_comparison(model_filename: &str, golden_name: &str, label: &str) {
+#[allow(deprecated)]
+fn run_render_comparison(
+    model_filename: &str,
+    golden_name: &str,
+    label: &str,
+    sample_rate: u32,
+    use_v2: bool,
+) {
     if !ensure_render_compiled() {
         eprintln!("SKIP: {label} — render tool not available.");
         return;
@@ -157,11 +166,20 @@ fn run_render_comparison(model_filename: &str, golden_name: &str, label: &str) {
     let temp_dir = project_root.join("tests/fixtures/.temp_live");
     fs::create_dir_all(&temp_dir).ok();
 
-    let stress_wav = temp_dir.join("stress_live.wav");
+    let stress_wav = temp_dir.join(format!("stress_live_{golden_name}.wav"));
 
     // Generate stress signal and write WAV
-    let stress_signal = generate_stress_signal();
-    common::wav::write_wav_f32(&stress_wav, &stress_signal, STRESS_SAMPLE_RATE)
+    let stress_signal = if use_v2 {
+        generate_stress_signal_v2(sample_rate)
+    } else {
+        generate_stress_signal_v1()
+    };
+    let actual_sr = if use_v2 {
+        sample_rate
+    } else {
+        STRESS_SAMPLE_RATE
+    };
+    common::wav::write_wav_f32(&stress_wav, &stress_signal, actual_sr)
         .expect("Failed to write stress WAV");
 
     let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
@@ -197,7 +215,6 @@ fn run_render_comparison(model_filename: &str, golden_name: &str, label: &str) {
     let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
     let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
 
-    // Compute adaptive thresholds based on model topology
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
 
     let mut model = build_model(&model_data).expect("Dispatcher failed");
@@ -211,28 +228,45 @@ fn run_render_comparison(model_filename: &str, golden_name: &str, label: &str) {
         GOLDEN_BLOCK_SIZE,
     );
 
-    // Truncate to the minimum of the two (avoids mismatch if render produces fewer)
     let min_len = cpp_output.len().min(rust_output.len());
     report_dsp_fidelity(
         &cpp_output[..min_len],
         &rust_output[..min_len],
         mse_limit,
         min_snr_db,
+        Some(nam_rs::testing::perceptual::NAM_RS_CPP_PARITY_ESR_MAX),
         label,
+        actual_sr,
     );
 
     // Cleanup
     fs::remove_file(&output_wav).ok();
 }
 
+/// Helper: run v1 comparison (legacy 48 kHz, fast CI).
+fn run_v1(model_filename: &str, golden_name: &str, label: &str) {
+    run_render_comparison(model_filename, golden_name, label, 48000, false);
+}
+
+/// Helper: run v2 comparison × sample rates for one model.
+fn run_v2_multi_sr(model_filename: &str, golden_name: &str, label_base: &str) {
+    for &sr in SUPPORTED_SAMPLE_RATES {
+        let label = format!("{label_base} @ {sr} Hz (v2)");
+        let gname = format!("{golden_name}_v2_{sr}");
+        run_render_comparison(model_filename, &gname, &label, sr, true);
+    }
+}
+
 // =============================================================================
 // Tests — #[ignore] (require C++ toolchain)
 // =============================================================================
 
+// --- v1 (legacy, fast CI) ---
+
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_standard() {
-    run_render_comparison(
+    run_v1(
         "BossWN-standard.nam",
         "wavenet_standard",
         "Live WaveNet Standard",
@@ -242,7 +276,7 @@ fn live_cross_validation_wavenet_standard() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_feather() {
-    run_render_comparison(
+    run_v1(
         "BossWN-feather.nam",
         "wavenet_feather",
         "Live WaveNet Feather",
@@ -252,17 +286,57 @@ fn live_cross_validation_wavenet_feather() {
 #[test]
 #[ignore]
 fn live_cross_validation_wavenet_nano() {
-    run_render_comparison("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano");
+    run_v1("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano");
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_1x16() {
-    run_render_comparison("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16");
+    run_v1("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16");
 }
 
 #[test]
 #[ignore]
 fn live_cross_validation_lstm_2x8() {
-    run_render_comparison("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8");
+    run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8");
+}
+
+// --- v2 (multi-SR, comprehensive) ---
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_standard() {
+    run_v2_multi_sr(
+        "BossWN-standard.nam",
+        "wavenet_standard",
+        "Live WaveNet Standard (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_feather() {
+    run_v2_multi_sr(
+        "BossWN-feather.nam",
+        "wavenet_feather",
+        "Live WaveNet Feather (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_nano() {
+    run_v2_multi_sr("BossWN-nano.nam", "wavenet_nano", "Live WaveNet Nano (v2)");
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_lstm_1x16() {
+    run_v2_multi_sr("BossLSTM-1x16.nam", "lstm_1x16", "Live LSTM 1×16 (v2)");
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_lstm_2x8() {
+    run_v2_multi_sr("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (v2)");
 }

@@ -42,6 +42,8 @@ pub mod loader;
 pub mod math;
 /// Tensor definitions and neural network topologies.
 pub mod models;
+/// Testing utilities (signal generation, perceptual metrics, WAV I/O).
+pub mod testing;
 
 // Backward compatibility with older GLIBC versions (e.g. for Flatpak/Bitwig).
 // Redirects math symbols to the stable GLIBC_2.2.5 version.

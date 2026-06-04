@@ -534,7 +534,15 @@ fn test_golden_vectors_wavenet() {
 
     // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossWN-standard");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossWN-standard",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 /// Test 8: Golden Vectors LSTM 1×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -585,7 +593,15 @@ fn test_golden_vectors_lstm_1x16() {
 
     // 5-metric validation — single-pass fusion
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossLSTM-1x16");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-1x16",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 /// Test 8b: Golden Vectors LSTM 2×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -628,7 +644,15 @@ fn test_golden_vectors_lstm_2x8() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossLSTM-2x8");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossLSTM-2x8",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 /// Test 8c: Golden Vectors WaveNet Feather — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -664,7 +688,15 @@ fn test_golden_vectors_wavenet_feather() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossWN-feather");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossWN-feather",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 /// Test 8d: Golden Vectors WaveNet Nano — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -700,7 +732,15 @@ fn test_golden_vectors_wavenet_nano() {
     process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
 
     let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
-    report_dsp_fidelity(&expected, &output, mse_limit, min_snr_db, "BossWN-nano");
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "BossWN-nano",
+        STRESS_SAMPLE_RATE,
+    );
 }
 
 /// Test 8e: Golden Vectors NAMCore LSTM 1×3 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
@@ -748,7 +788,9 @@ fn test_golden_vectors_namcore_lstm_1x3() {
         &output,
         mse_limit,
         min_snr_db,
+        None,
         "NAMCore-LSTM-1x3",
+        STRESS_SAMPLE_RATE,
     );
 }
 
@@ -797,7 +839,9 @@ fn test_golden_vectors_namcore_wn_micro() {
         &output,
         mse_limit,
         min_snr_db,
+        None,
         "NAMCore-WN-micro",
+        STRESS_SAMPLE_RATE,
     );
 }
 

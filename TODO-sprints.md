@@ -2277,9 +2277,13 @@ Notas Operacionais — Épico 14
 
 ## Épico 15 — Cross-Validation v2 (Stress Signal & Métricas Perceptuais)
 
+- Segue anexo o resultado da execução do utils/tests-long.sh
+- Assegurar boa distribuição dos testes e benchs, conforme determinado em .agents/rules/testing.md
+- Revise e deixe tudo limpo, organizado e funcional.
+
 ### Sprint S28 — Stress Signal Generator v2 (port `t3k-mushra` primitives)
 
-#### Tarefa S28.T01 — Stress Signal v2 (multi-componente, multi-SR, single source of truth, com primitivas portadas do `t3k-mushra`) 🔥✨
+#### Tarefa S28.T01 — Stress Signal v2 (multi-componente, multi-SR, single source of truth, com primitivas portadas do `t3k-mushra`) 🔥✨ [DONE]
 
 - **Onde:** `tests/common/mod.rs::generate_stress_signal` (atual); criar `tests/common/stress2.rs` e `tests/common/mushra_primitives.rs`; binário `src/bin/gen_stress.rs`; atualizar `tests/fixtures/golden_gen_build.sh`, `tests/cpp_parity.rs`, e `tests/common/wav.rs`.
 - **Problema (limites atuais identificados pela auditoria):**
@@ -2447,7 +2451,7 @@ Notas Operacionais — Épico 14
 
 > Esta sprint estabelece a infraestrutura métrica que servirá tanto para Parte I (consolidação de cobertura) quanto para Parte II (validação BF16 em CI quando hardware Sapphire Rapids estiver disponível). É **complementar** a S21.T02 (Parte II) — esta sprint entrega a fundação (ESR + MR-STFT scalar implementations), S21.T02 integra em CI completo com regressão tracking.
 
-#### Tarefa S29.T01 — Implementar ESR (Error-to-Signal Ratio) + MR-STFT calibrados com baselines `A2Esr.tsx` ✨⚠️
+#### Tarefa S29.T01 — Implementar ESR (Error-to-Signal Ratio) + MR-STFT calibrados com baselines `A2Esr.tsx` ✨⚠️ [DONE]
 
 - **Onde:** `tests/common/mod.rs::report_dsp_fidelity`; criar `tests/common/perceptual.rs`; atualizar `docs/perceptual_validation.md` (criado em S28.T01).
 - **Problema:** Métricas atuais (MSE, MAE, SNR, PSNR, equiv. bits) são puramente time-domain L2/L∞. Para modelos não-lineares (saturação, distorção), erro perceptualmente equivalente pode dar MSE muito diferente. ESR e MR-STFT são padrões na pesquisa NAM (Yamamoto et al. 2020 *"Real-Time Modeling of Audio Distortion Circuits with Deep Learning"*; Atkinson 2023 *"NAM A2 Technical Report"*). `rustfft = "6.4.1"` já é dependência (`Cargo.toml:31`).
@@ -2503,7 +2507,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S29.T02 — Adoção de nomenclatura `tone_id` MUSHRA-aligned ✨💡
+#### Tarefa S29.T02 — Adoção de nomenclatura `tone_id` MUSHRA-aligned ✨💡 [DONE]
 
 - **Onde:** `tests/fixtures/README.md`; opcionalmente renomear goldens em sprint subsequente.
 - **Problema:** Goldens atuais (`golden_wavenet_standard`, `golden_lstm_1x16`, etc.) identificam apenas por **modelo**, não por **tone/stimulus**. Quando expandirmos para multi-stimulus (S28.T01), o sufixo do golden precisará incluir tanto modelo quanto tone para evitar colisão e facilitar comparação inter-projetos.
