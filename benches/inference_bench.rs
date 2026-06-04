@@ -232,7 +232,7 @@ fn bench_tanh_pade_div_256(c: &mut Criterion) {
             unsafe {
                 for chunk in buf.chunks_exact_mut(8) {
                     let x = _mm256_loadu_ps(chunk.as_ptr());
-                    let y = nam_rs::math::activations::simd_tanh_pade_div_avx2(x);
+                    let y = nam_rs::math::activations::simd_tanh_avx2(x);
                     _mm256_storeu_ps(chunk.as_mut_ptr(), y);
                 }
             }
@@ -550,7 +550,7 @@ fn bench_tanh_pade_div_avx512_256elem(c: &mut Criterion) {
                 unsafe {
                     for chunk in buf.chunks_exact_mut(16) {
                         let x = _mm512_loadu_ps(chunk.as_ptr());
-                        let y = nam_rs::math::activations::simd_tanh_pade_div_avx512(x);
+                        let y = nam_rs::math::activations::simd_tanh_avx512(x);
                         _mm512_storeu_ps(chunk.as_mut_ptr(), y);
                     }
                 }

@@ -24,27 +24,6 @@
 use crate::math::constants::*;
 use core::arch::x86_64::*;
 
-/// Evaluate odd polynomial `p(t) = t·(c0 + t²·(c1 + c2·t²))` via FMA (AVX2).
-/// Used by the piecewise experimental variant.
-macro_rules! eval_poly {
-    ($c0:expr, $c1:expr, $c2:expr, $t:expr, $t_sq:expr) => {{
-        let inner = _mm256_fmadd_ps($c2, $t_sq, $c1);
-        let poly = _mm256_fmadd_ps(inner, $t_sq, $c0);
-        _mm256_mul_ps($t, poly)
-    }};
-}
-
-/// Evaluate odd polynomial `p(t) = t·(c0 + t²·(c1 + c2·t²))` via FMA (AVX-512).
-/// Used by the piecewise experimental variant (`simd_tanh_piecewise_avx512`).
-#[allow(unused_macros)]
-macro_rules! eval_poly_512 {
-    ($c0:expr, $c1:expr, $c2:expr, $t:expr, $t_sq:expr) => {{
-        let inner = _mm512_fmadd_ps($c2, $t_sq, $c1);
-        let poly = _mm512_fmadd_ps(inner, $t_sq, $c0);
-        _mm512_mul_ps($t, poly)
-    }};
-}
-
 /// Padé [5,4] rational approximant for `tanh(x)` with hardware division (AVX2).
 ///
 /// Production path. ~9 SIMD ops, max absolute error ~2.32e-3.
@@ -252,105 +231,6 @@ pub unsafe fn tanh_slice_avx512(slice: &mut [f32]) {
 // Variants:
 //   - _nr2: double Newton-Raphson on rcp → saturates f32 mantissa (24 bits)
 //   - _div: hardware division → IEEE 754 full precision oracle
-
-/// Branchless 7-segment piecewise minimax odd polynomial for `tanh(x)` (AVX2).
-///
-/// **Experimental.** Higher op count (~28 ops) vs Padé [5,4] (~9 ops).
-/// Causes +16% regression on LSTM prewarm (2048 samples). Max error ~4.90e-3.
-/// Retained for research; not used in production.
-///
-/// # Safety
-/// The caller must guarantee AVX2 and FMA support.
-#[inline]
-#[target_feature(enable = "avx2,fma")]
-#[allow(dead_code)]
-pub unsafe fn simd_tanh_piecewise_avx2(x: __m256) -> __m256 {
-    let clamp_lo = _mm256_set1_ps(-PADE_TANH_CLAMP);
-    let clamp_hi = _mm256_set1_ps(PADE_TANH_CLAMP);
-    let b1 = _mm256_set1_ps(PW_TANH_BOUND_1);
-    let b2 = _mm256_set1_ps(PW_TANH_BOUND_2);
-    let b3 = _mm256_set1_ps(PW_TANH_BOUND_3);
-    let b4 = _mm256_set1_ps(PW_TANH_BOUND_4);
-    let b5 = _mm256_set1_ps(PW_TANH_BOUND_5);
-    let b6 = _mm256_set1_ps(PW_TANH_BOUND_6);
-    let sign_mask = _mm256_set1_ps(-0.0);
-    let one = _mm256_set1_ps(1.0);
-    let neg_one = _mm256_set1_ps(-1.0);
-
-    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
-
-    let abs_x = _mm256_andnot_ps(sign_mask, x);
-    let x_sign = _mm256_and_ps(sign_mask, x);
-    let x_sq = _mm256_mul_ps(abs_x, abs_x);
-
-    let m1 = _mm256_cmp_ps(abs_x, b1, _CMP_LT_OQ);
-    let m2 = _mm256_cmp_ps(abs_x, b2, _CMP_LT_OQ);
-    let m3 = _mm256_cmp_ps(abs_x, b3, _CMP_LT_OQ);
-    let m4 = _mm256_cmp_ps(abs_x, b4, _CMP_LT_OQ);
-    let m5 = _mm256_cmp_ps(abs_x, b5, _CMP_LT_OQ);
-    let m6 = _mm256_cmp_ps(abs_x, b6, _CMP_LT_OQ);
-
-    let r0 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_0),
-        _mm256_set1_ps(PW_TANH_C1_0),
-        _mm256_set1_ps(PW_TANH_C2_0),
-        abs_x,
-        x_sq
-    );
-    let r1 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_1),
-        _mm256_set1_ps(PW_TANH_C1_1),
-        _mm256_set1_ps(PW_TANH_C2_1),
-        abs_x,
-        x_sq
-    );
-    let r2 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_2),
-        _mm256_set1_ps(PW_TANH_C1_2),
-        _mm256_set1_ps(PW_TANH_C2_2),
-        abs_x,
-        x_sq
-    );
-    let r3 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_3),
-        _mm256_set1_ps(PW_TANH_C1_3),
-        _mm256_set1_ps(PW_TANH_C2_3),
-        abs_x,
-        x_sq
-    );
-    let r4 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_4),
-        _mm256_set1_ps(PW_TANH_C1_4),
-        _mm256_set1_ps(PW_TANH_C2_4),
-        abs_x,
-        x_sq
-    );
-    let r5 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_5),
-        _mm256_set1_ps(PW_TANH_C1_5),
-        _mm256_set1_ps(PW_TANH_C2_5),
-        abs_x,
-        x_sq
-    );
-    let r6 = eval_poly!(
-        _mm256_set1_ps(PW_TANH_C0_6),
-        _mm256_set1_ps(PW_TANH_C1_6),
-        _mm256_set1_ps(PW_TANH_C2_6),
-        abs_x,
-        x_sq
-    );
-
-    let mut result = r6;
-    result = _mm256_blendv_ps(result, r5, m6);
-    result = _mm256_blendv_ps(result, r4, m5);
-    result = _mm256_blendv_ps(result, r3, m4);
-    result = _mm256_blendv_ps(result, r2, m3);
-    result = _mm256_blendv_ps(result, r1, m2);
-    result = _mm256_blendv_ps(result, r0, m1);
-    result = _mm256_or_ps(result, x_sign);
-    _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
-}
-
 /// Padé [5,4] rational tanh with double Newton-Raphson (AVX2).
 ///
 /// Reference variant (E8.T04). Double NR saturates f32 mantissa (24 bits);
@@ -396,43 +276,6 @@ pub unsafe fn simd_tanh_pade_nr2_avx2(x: __m256) -> __m256 {
     _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
 }
 
-/// Padé [5,4] rational tanh with hardware division (AVX2) — reference variant.
-///
-/// Now the same algorithm as the production `simd_tanh_avx2`. Retained
-/// under the original name for benchmark continuity.
-///
-/// # Safety
-/// The caller must guarantee AVX2 and FMA support.
-#[inline]
-#[target_feature(enable = "avx2,fma")]
-pub unsafe fn simd_tanh_pade_div_avx2(x: __m256) -> __m256 {
-    let clamp_lo = _mm256_set1_ps(-PADE_TANH_CLAMP);
-    let clamp_hi = _mm256_set1_ps(PADE_TANH_CLAMP);
-    let one = _mm256_set1_ps(1.0);
-    let neg_one = _mm256_set1_ps(-1.0);
-
-    let x = _mm256_max_ps(clamp_lo, _mm256_min_ps(clamp_hi, x));
-
-    let x_sq = _mm256_mul_ps(x, x);
-
-    // Numerator: x * ((x² + 105) * x² + 945)
-    let num_a = _mm256_set1_ps(PADE_TANH_NUM_A);
-    let num_b = _mm256_set1_ps(PADE_TANH_NUM_B);
-    let num = _mm256_add_ps(x_sq, num_a);
-    let num = _mm256_fmadd_ps(num, x_sq, num_b);
-    let num = _mm256_mul_ps(x, num);
-
-    // Denominator: (15 * x² + 420) * x² + 945
-    let den_c4 = _mm256_set1_ps(PADE_TANH_DEN_C4);
-    let den_c2 = _mm256_set1_ps(PADE_TANH_DEN_C2);
-    let den_a = _mm256_set1_ps(PADE_TANH_DEN_A);
-    let den = _mm256_fmadd_ps(x_sq, den_c4, den_c2);
-    let den = _mm256_fmadd_ps(den, x_sq, den_a);
-
-    let result = _mm256_div_ps(num, den);
-    _mm256_max_ps(neg_one, _mm256_min_ps(one, result))
-}
-
 /// Padé [5,4] rational tanh with double Newton-Raphson (AVX-512).
 ///
 /// Reference variant (E8.T04). Double NR saturates f32 mantissa (24 bits);
@@ -472,43 +315,6 @@ pub unsafe fn simd_tanh_pade_nr2_avx512(x: __m512) -> __m512 {
     r = _mm512_mul_ps(r, _mm512_fnmadd_ps(den, r, two));
 
     let result = _mm512_mul_ps(num, r);
-    _mm512_max_ps(neg_one, _mm512_min_ps(one, result))
-}
-
-/// Padé [5,4] rational tanh with hardware division (AVX-512) — reference variant.
-///
-/// Now the same algorithm as the production `simd_tanh_avx512`. Retained
-/// under the original name for benchmark continuity.
-///
-/// # Safety
-/// The caller must guarantee AVX-512F, AVX-512VL, and AVX-512DQ support.
-#[inline]
-#[target_feature(enable = "avx512f,avx512vl,avx512dq")]
-pub unsafe fn simd_tanh_pade_div_avx512(x: __m512) -> __m512 {
-    let clamp_lo = _mm512_set1_ps(-PADE_TANH_CLAMP);
-    let clamp_hi = _mm512_set1_ps(PADE_TANH_CLAMP);
-    let one = _mm512_set1_ps(1.0);
-    let neg_one = _mm512_set1_ps(-1.0);
-
-    let x = _mm512_max_ps(clamp_lo, _mm512_min_ps(clamp_hi, x));
-
-    let x_sq = _mm512_mul_ps(x, x);
-
-    // Numerator: x * ((x² + 105) * x² + 945)
-    let num_a = _mm512_set1_ps(PADE_TANH_NUM_A);
-    let num_b = _mm512_set1_ps(PADE_TANH_NUM_B);
-    let num = _mm512_add_ps(x_sq, num_a);
-    let num = _mm512_fmadd_ps(num, x_sq, num_b);
-    let num = _mm512_mul_ps(x, num);
-
-    // Denominator: (15 * x² + 420) * x² + 945
-    let den_c4 = _mm512_set1_ps(PADE_TANH_DEN_C4);
-    let den_c2 = _mm512_set1_ps(PADE_TANH_DEN_C2);
-    let den_a = _mm512_set1_ps(PADE_TANH_DEN_A);
-    let den = _mm512_fmadd_ps(x_sq, den_c4, den_c2);
-    let den = _mm512_fmadd_ps(den, x_sq, den_a);
-
-    let result = _mm512_div_ps(num, den);
     _mm512_max_ps(neg_one, _mm512_min_ps(one, result))
 }
 

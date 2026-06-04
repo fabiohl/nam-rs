@@ -136,8 +136,10 @@ fn test_tanh_piecewise_odd_symmetry() {
 ///
 /// Measures max absolute error and RMS error of each tanh approximation
 /// against `f32::tanh` over 10M samples in [-4, 4].
+#[cfg(feature = "research")]
 #[test]
 fn test_tanh_precision_analysis_e8t04() {
+    use crate::math::activations::experimental::piecewise_tanh::*;
     use crate::math::constants::*;
     let n = 10_000_001u64;
     let step = 8.0 / (n - 1) as f32;

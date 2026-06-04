@@ -2078,7 +2078,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27.T03 — Cleanup `src/math/activations/tanh.rs` (piecewise dead + Padé duplicates) 💡
+#### Tarefa S27.T03 — Cleanup `src/math/activations/tanh.rs` (piecewise dead + Padé duplicates) 💡 [DONE]
 
 - **Onde:** `src/math/activations/tanh.rs:267-352` (piecewise experimental); funções `simd_tanh_pade_div_*` (duplicatas exatas das de produção em produção pós-Quick Win E8.T02).
 - **Problema:**
