@@ -76,6 +76,7 @@ pub fn capture_dsp_pipeline(
         ctx.output_gain_mult,
         ctx.silence_hysteresis,
         ctx.rt_status,
+        *ctx.process_mono,
     );
 
     // STAGE 4: FINAL DELIVERY (THE BRIDGE)

@@ -604,4 +604,68 @@ mod tests {
         let dropped = bridge.dropped_frames.load(Ordering::Relaxed);
         assert_eq!(dropped, 1, "Should have detected 1 dropped audio packet");
     }
+
+    #[test]
+    fn test_denormal_dither_mono_symmetry() {
+        use super::super::stages::{apply_input_stage, apply_output_stage};
+
+        let n = 64;
+        let mut samples_l = vec![0.0_f32; n];
+        let mut samples_r = vec![0.0_f32; n];
+        let rt_status = RtStatusFlags::default();
+        let mut resampler = NamResampler::new(48000, 48000, n).unwrap();
+        let gate_params = GateParams::new(-70.0, -80.0, 0, 0, 1e-4);
+        let mut silence_hysteresis = DynamicHysteresis::new();
+        let mut mono_hysteresis = DynamicHysteresis::new();
+        let mut process_mono = true;
+
+        let mut ctx = DspPipelineContext {
+            resampler: &mut resampler,
+            active_model_l: &mut None,
+            active_model_r: &mut None,
+            input_gain_mult: 1.0,
+            output_gain_mult: 1.0,
+            gate_params: &gate_params,
+            silence_hysteresis: &mut silence_hysteresis,
+            mono_hysteresis: &mut mono_hysteresis,
+            threshold_open_sq: 0.0,
+            threshold_close_sq: 0.0,
+            process_mono: &mut process_mono,
+            rt_status: &rt_status,
+            bridge_writer: None,
+        };
+
+        // 1. Run input stage (under mono mode, R shouldn't get dither)
+        apply_input_stage(&mut samples_l, &mut samples_r, n, &mut ctx);
+
+        // Sanity check: verify process_mono is indeed true
+        assert!(*ctx.process_mono);
+
+        // Under mono mode, samples_l should have DENORMAL_DITHER_OFFSET, samples_r should not.
+        for &val in &samples_l {
+            assert!((val - 1.0e-11_f32).abs() < 1e-15_f32);
+        }
+        for &val in &samples_r {
+            assert!(val.abs() < 1e-15_f32);
+        }
+
+        // 2. Run output stage (with process_mono = true, R shouldn't have dither subtracted)
+        apply_output_stage(
+            &mut samples_l,
+            &mut samples_r,
+            n,
+            1.0,
+            &mut silence_hysteresis,
+            &rt_status,
+            true,
+        );
+
+        // After output stage, both should be back to exactly 0.0 (or within float epsilon).
+        for &val in &samples_l {
+            assert!(val.abs() < 1e-15_f32, "L channel DC offset is too high: {}", val);
+        }
+        for &val in &samples_r {
+            assert!(val.abs() < 1e-15_f32, "R channel DC offset is too high: {}", val);
+        }
+    }
 }

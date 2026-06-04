@@ -243,6 +243,7 @@ pub(crate) fn apply_output_stage(
     output_gain_mult: f32,
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
+    process_mono: bool,
 ) {
     // 0. DENORMAL SUPPRESSION COMPENSATION: Subtract the injected DC offset
     // Compensates the ultra-low bias added at the input stage. Any residual is
@@ -250,7 +251,11 @@ pub(crate) fn apply_output_stage(
     unsafe {
         for i in 0..n_pw {
             *resamp_out_l.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
-            *resamp_out_r.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
+        }
+        if !process_mono {
+            for i in 0..n_pw {
+                *resamp_out_r.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
+            }
         }
     }
 
@@ -275,6 +280,10 @@ pub(crate) fn apply_output_stage(
     // If the sound "blew past" the limit at any moment, we raise a warning flag in the system.
     if has_clipped {
         rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
+    }
+
+    if process_mono {
+        resamp_out_r[..n_pw].copy_from_slice(&resamp_out_l[..n_pw]);
     }
 }
 

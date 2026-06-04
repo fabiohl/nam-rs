@@ -46,7 +46,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.25 dia.
 
-#### Tarefa S1.T03 — Corrigir compensação assimétrica do denormal dither no output stage 💡
+#### Tarefa S1.T03 — Corrigir compensação assimétrica do denormal dither no output stage 💡 [DONE]
 
 - **Onde:** `src/dsp/pipeline/stages.rs` — `apply_input_stage()` (linhas ~98-107) e `apply_output_stage()` (linhas ~250-255).
 - **Problema:** O input stage adiciona `DENORMAL_DITHER_OFFSET` (1e-11) a `samples_l` sempre, e a `samples_r` **apenas quando `!process_mono`** (correto). Porém, o output stage subtrai o offset de **ambos** `resamp_out_l` e `resamp_out_r` incondicionalmente (loop nas linhas 251-254). Quando `process_mono=true`, o canal R não recebeu o offset na entrada, mas o output subtrai dele, introduzindo um DC residual de -1e-11 no canal R. Embora inaudível (-220 dBFS), viola o princípio de simetria matemática e pode acumular drift em chains longas.

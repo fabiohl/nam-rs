@@ -319,6 +319,7 @@ impl<'a> NamClapProcessor<'a> {
                 1.0, // Applied manually via smoother below
                 ctx.silence_hysteresis,
                 ctx.rt_status,
+                self.process_mono,
             );
 
             // 5. Output Gain Application (Sample-Accurate Smoothing)
