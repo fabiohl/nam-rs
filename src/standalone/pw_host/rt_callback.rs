@@ -166,7 +166,8 @@ pub fn receive_commands(
                         }
 
                         if let Some(v) = item.take() {
-                            rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+                            rt_status_for_process
+                                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
                             gc_overflow_for_process.push(v);
                         }
                     }

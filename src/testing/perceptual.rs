@@ -283,4 +283,3 @@ fn apply_biquad(samples: &[f32], b0: f64, b1: f64, b2: f64, a1: f64, a2: f64) ->
 #[cfg(test)]
 #[path = "perceptual_test.rs"]
 mod perceptual_test;
-

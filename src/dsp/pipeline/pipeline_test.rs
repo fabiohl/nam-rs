@@ -662,10 +662,18 @@ mod tests {
 
         // After output stage, both should be back to exactly 0.0 (or within float epsilon).
         for &val in &samples_l {
-            assert!(val.abs() < 1e-15_f32, "L channel DC offset is too high: {}", val);
+            assert!(
+                val.abs() < 1e-15_f32,
+                "L channel DC offset is too high: {}",
+                val
+            );
         }
         for &val in &samples_r {
-            assert!(val.abs() < 1e-15_f32, "R channel DC offset is too high: {}", val);
+            assert!(
+                val.abs() < 1e-15_f32,
+                "R channel DC offset is too high: {}",
+                val
+            );
         }
     }
 }
