@@ -8,16 +8,16 @@ mod audit_tests {
     use nam_rs::dsp::resampler::NamResampler;
     #[cfg(not(feature = "clap-plugin"))]
     use std::alloc::{GlobalAlloc, Layout, System};
+    use std::sync::atomic::Ordering;
     #[cfg(not(feature = "clap-plugin"))]
     use std::sync::atomic::{AtomicI32, AtomicUsize};
-    use std::sync::atomic::Ordering;
 
     // =============================================================================
     // Counting Allocator for Zero-Allocation Verification
     // =============================================================================
     // Only registered if the library itself doesn't register a global allocator.
     // The library registers it when (clap-plugin + heap-audit) are enabled.
-    
+
     #[cfg(not(feature = "clap-plugin"))]
     static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
     #[cfg(not(feature = "clap-plugin"))]
@@ -89,14 +89,12 @@ mod audit_tests {
     }
 
     fn generate_noise(samples: usize) -> Vec<f32> {
-        (0..samples)
-            .map(|i| (i as f32 * 0.1234).sin())
-            .collect()
+        (0..samples).map(|i| (i as f32 * 0.1234).sin()).collect()
     }
 
     fn run_resampler_audit(pw_rate: u32, nam_rate: u32, chunk_size: usize, is_mono: bool) {
-        let mut resampler = NamResampler::new(pw_rate, nam_rate, chunk_size)
-            .expect("Failed to create resampler");
+        let mut resampler =
+            NamResampler::new(pw_rate, nam_rate, chunk_size).expect("Failed to create resampler");
 
         let in_l = generate_noise(chunk_size);
         let in_r = generate_noise(chunk_size);
@@ -144,13 +142,11 @@ mod audit_tests {
             (48000, 48000, 32, false),
             (48000, 48000, 1024, true),
             (48000, 48000, 1024, false),
-            
             // 96k -> 48k (downsample)
             (96000, 48000, 32, true),
             (96000, 48000, 32, false),
             (96000, 48000, 1024, true),
             (96000, 48000, 1024, false),
-            
             // 44.1k -> 48k (upsample)
             (44100, 48000, 32, true),
             (44100, 48000, 32, false),

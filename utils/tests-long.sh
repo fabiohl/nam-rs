@@ -14,6 +14,7 @@ echo "==================================================="
 echo "🧪 Running Soak Tests (Numerical Stability)..."
 cargo test
 cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 2>&1 | tee target/logs/soak-test.log
+cargo test --release --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 2>&1 | tee target/logs/pipeline-soak.log
 
 echo "==================================================================="
 echo "🧪 Running Property-Based and Parity Tests in Release..."
@@ -61,4 +62,4 @@ cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | te
 
 echo "==================================="
 echo "✅ Audit completed successfully!"
-echo "📄 Logs: soak-test.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log, clap-multi-instance.log"
+echo "📄 Logs: soak-test.log, pipeline-soak.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log, clap-multi-instance.log"

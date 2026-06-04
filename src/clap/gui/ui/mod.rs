@@ -684,8 +684,7 @@ fn update_telemetry_state(state: &mut UiState, shared: &NamClapShared) {
         let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
         state.telem_budget_ns = budget_ns;
         state.telem_cycle_ns = state.telem_cycles;
-        state.telem_load_pct =
-            ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
+        state.telem_load_pct = ((state.telem_cycles as f64 / budget_ns as f64) * 100.0).min(999.0);
     } else {
         state.telem_budget_ns = 0;
         state.telem_cycle_ns = 0;
@@ -860,8 +859,7 @@ fn update_metadata_cache(state: &mut UiState, meta: &crate::clap::plugin::NamMod
             }
             state.metadata_display.push((
                 buf,
-                "Original hardware equipment modeled by this neural network"
-                    .to_string(),
+                "Original hardware equipment modeled by this neural network".to_string(),
             ));
         }
 
@@ -900,19 +898,15 @@ fn draw_metadata_strings(ui: &mut egui::Ui, state: &UiState, accent_color: egui:
     let baseline_font = egui::FontId::proportional(baseline_s);
     let mut sum_widths = 0.0;
     for (text, _) in &state.metadata_display {
-        let galley = ui.painter().layout_no_wrap(
-            text.clone(),
-            baseline_font.clone(),
-            egui::Color32::WHITE,
-        );
+        let galley =
+            ui.painter()
+                .layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
         sum_widths += galley.rect.width();
     }
     let separator_text = " | ".to_string();
-    let sep_galley = ui.painter().layout_no_wrap(
-        separator_text,
-        baseline_font.clone(),
-        egui::Color32::WHITE,
-    );
+    let sep_galley =
+        ui.painter()
+            .layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
     sum_widths += sep_galley.rect.width() * (state.metadata_display.len() - 1) as f32;
 
     let num_gaps = (state.metadata_display.len() * 2 - 2) as f32;

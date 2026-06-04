@@ -2177,7 +2177,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27b.T02 — Pipeline soak test integrado 🔥
+#### Tarefa S27b.T02 — Pipeline soak test integrado 🔥 [DONE]
 
 - **Onde:** Criar `tests/pipeline_soak.rs`.
 - **Problema:** `soak_test.rs` cobre resampler e ring buffer mas **não o pipeline integrado** (Capture → DSP → Bridge → Playback) sob carga prolongada. Pré-requisito empírico para qualquer trabalho de hot-swap (S18.T01 em Parte II).
