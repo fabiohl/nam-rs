@@ -38,7 +38,7 @@ pub fn setup_capture_stream<'c>(
     mut consumer: Consumer<ParamPayload>,
     mut gc_producer: rtrb::Producer<GcItem>,
     gc_overflow: Arc<GcOverflowBuffer>,
-    mut resampler_consumer: Consumer<NamResampler>,
+    mut resampler_consumer: Consumer<Box<NamResampler>>,
     rt_status: Arc<RtStatusFlags>,
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let mut capture_props = properties! {

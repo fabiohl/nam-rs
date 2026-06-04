@@ -89,8 +89,8 @@ pub fn run_pipewire_host(
     consumer: Consumer<ParamPayload>,
     gc_producer: rtrb::Producer<GcItem>,
     gc_overflow: Arc<GcOverflowBuffer>,
-    resampler_consumer: Consumer<NamResampler>,
-    mut resampler_producer: rtrb::Producer<NamResampler>,
+    resampler_consumer: Consumer<Box<NamResampler>>,
+    mut resampler_producer: rtrb::Producer<Box<NamResampler>>,
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
     mut gc_consumer: Consumer<GcItem>,
@@ -189,7 +189,7 @@ pub fn run_pipewire_host(
                             new_rs.is_bypass()
                         );
 
-                        if resampler_producer.push(new_rs).is_err() {
+                        if resampler_producer.push(Box::new(new_rs)).is_err() {
                             crate::common::diagnostics::NamDiagnostic::new(
                                 crate::common::diagnostics::NamErrorCode::ResamplerChannelFull,
                                 &sys,

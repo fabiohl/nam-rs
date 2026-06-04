@@ -23,7 +23,7 @@ use std::sync::atomic::Ordering;
 /// Replaces resamplers without using memory allocation in the critical path.
 #[inline(always)]
 pub fn drain_resamplers(
-    resampler_consumer: &mut Consumer<NamResampler>,
+    resampler_consumer: &mut Consumer<Box<NamResampler>>,
     resampler: &mut Box<NamResampler>,
     gc_producer: &mut rtrb::Producer<GcItem>,
     parking_lot: &mut [Option<GcItem>; 16],
@@ -31,7 +31,7 @@ pub fn drain_resamplers(
     rt_status_for_process: &RtStatusFlags,
 ) {
     while let Ok(new_rs) = resampler_consumer.pop() {
-        let new_rs = Box::new(new_rs);
+        let new_rs = new_rs;
         rt_status_for_process
             .active_rate
             .store(new_rs.pw_rate(), Ordering::Relaxed);
@@ -123,50 +123,52 @@ pub fn receive_commands(
                     *current_nam_rate = 48_000;
                 }
 
-                let mut old_models = Vec::with_capacity(2);
+                let mut old_models: [Option<Box<crate::models::DynamicModel>>; 2] = [None, None];
                 rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
                 if let Some(old) = std::mem::replace(active_model_l, new_model_l) {
-                    old_models.push(old);
+                    old_models[0] = Some(old);
                 }
                 if let Some(model) = active_model_l {
                     model.inject_rt_status(Arc::clone(rt_status_for_process));
                 }
                 if let Some(old) = std::mem::replace(active_model_r, new_model_r) {
-                    old_models.push(old);
+                    old_models[1] = Some(old);
                 }
                 if let Some(model) = active_model_r {
                     model.inject_rt_status(Arc::clone(rt_status_for_process));
                 }
 
-                for m in old_models {
-                    let mut item = Some(GcItem::Model(m));
+                for m_opt in &mut old_models {
+                    if let Some(m) = m_opt.take() {
+                        let mut item = Some(GcItem::Model(m));
 
-                    if let Some(v) = item.take() {
-                        if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(v) {
-                            item = Some(returned);
-                        } else {
-                            continue;
-                        }
-                    }
-
-                    if let Some(v) = item.take() {
-                        let mut parked = false;
-                        let mut v_opt = Some(v);
-                        for slot in parking_lot.iter_mut() {
-                            if slot.is_none() {
-                                *slot = v_opt.take();
-                                parked = true;
-                                break;
+                        if let Some(v) = item.take() {
+                            if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(v) {
+                                item = Some(returned);
+                            } else {
+                                continue;
                             }
                         }
-                        if !parked {
-                            item = v_opt;
-                        }
-                    }
 
-                    if let Some(v) = item.take() {
-                        rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-                        gc_overflow_for_process.push(v);
+                        if let Some(v) = item.take() {
+                            let mut parked = false;
+                            let mut v_opt = Some(v);
+                            for slot in parking_lot.iter_mut() {
+                                if slot.is_none() {
+                                    *slot = v_opt.take();
+                                    parked = true;
+                                    break;
+                                }
+                            }
+                            if !parked {
+                                item = v_opt;
+                            }
+                        }
+
+                        if let Some(v) = item.take() {
+                            rt_status_for_process.set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
+                            gc_overflow_for_process.push(v);
+                        }
                     }
                 }
                 param_changed = true;

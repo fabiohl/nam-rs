@@ -329,9 +329,9 @@ pub struct SpscChannels {
     /// Fallback buffer for GC overflow (overwrite).
     pub gc_overflow: Arc<GcOverflowBuffer>,
     /// Resampler producer: main thread builds and sends to the RT callback.
-    pub resampler_producer: Producer<crate::dsp::resampler::NamResampler>,
+    pub resampler_producer: Producer<Box<crate::dsp::resampler::NamResampler>>,
     /// Resampler consumer: RT callback drains to replace the active resampler.
-    pub resampler_consumer: Consumer<crate::dsp::resampler::NamResampler>,
+    pub resampler_consumer: Consumer<Box<crate::dsp::resampler::NamResampler>>,
     /// Atomic status flags shared between RT and Main (zero I/O in callback).
     pub rt_status: Arc<RtStatusFlags>,
 }

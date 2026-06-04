@@ -15,7 +15,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S1 — Correções RT-Safety Imediatas
 
-#### Tarefa S1.T01 — Eliminar heap allocation no callback RT do PipeWire 🔥
+#### Tarefa S1.T01 — Eliminar heap allocation no callback RT do PipeWire 🔥 [DONE]
 
 - **Onde:** `src/standalone/pw_host/rt_callback.rs` — funções `receive_commands()` (linha ~126) e `drain_resamplers()` (linha ~34).
 - **Problema 1:** `receive_commands()` cria `Vec::with_capacity(2)` para armazenar modelos antigos durante o swap. Isto é uma **violação direta** da regra de zero heap allocation no thread RT. Embora o path de model swap seja frio (executa apenas quando o modelo muda), a alocação pode causar jitter mensurável se o alocador global estiver sob contenção.
