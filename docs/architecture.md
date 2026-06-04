@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # Arquitetura NAM-rs: Cliente Standalone de Inferência Neural
@@ -20,7 +21,7 @@ A arquitetura do NAM-rs é projetada para processamento DSP de baixa latência e
 - **FastMath Activations & Gain LUT:** `simd_tanh` e `simd_sigmoid` usam polinômios Minimax de grau 7 com refinamento Newton-Raphson. Erro máximo < 2e-5, otimizado para o intervalo [-8, 8]. Inclui uma **Gain LUT (Look-Up Table)** interpolada para conversão ultra-rápida dB → Linear no RT, evitando chamadas caras a `powf`.
 - **Gated Activation Fusion (WaveNet A2):** Unificação de `tanh` e `sigmoid` em um único kernel SIMD nativo, reduzindo a pressão de registradores e evitando passagens múltiplas sobre o vetor de ativação.
 - **Dot Product ILP:** Implementação com múltiplos acumuladores independentes (`sum0..sum3` em AVX2, `acc0..acc7` em AVX-512) para saturar o throughput de portas FMA, quebrando cadeias de dependência.
-- **Weight Compression F16C:** Pesos são armazenados em `f16` (Half-Precision) para reduzir o tráfego de memória L1/L2. A descompressão ocorre on-the-fly via `_mm256_cvtph_ps` ou `_mm512_cvtph_ps`.
+- **Weight Compression (F16C/BF16):** Pesos são armazenados em `f16` (Half-Precision) ou `bf16` (Bfloat16) para reduzir o tráfego de memória L1/L2. A seleção de precisão e a respectiva conversão/descompressão on-the-fly (via `_mm256_cvtph_ps`/`_mm512_cvtph_ps` para F16, ou desempacotamento de bits correspondente para BF16) ocorrem em runtime via dispatch dinâmico gerenciado pelo `SimdMathConfig` (inicializado pelo dispatcher com base no conjunto de instruções suportado pela CPU, como AVX2, AVX-512 F16/BF16).
 - **Gate-Major Layout & Fused 4-Gate GEMV (LSTM):** Transposição de pesos para layout `[Gate][Input][Hidden]`. A inferência funde o cálculo das 4 portas em uma única passagem sobre o vetor de estado.
 - **Layer Overlap Pipelining (LSTM 2-Layer):** Paralelismo de grão fino onde a Camada 2 processa o frame `N-1` simultaneamente ao frame `N` da Camada 1, aumentando a vazão em modelos multicamada.
 - **BF16 Nativo (AVX-512 BF16):** Suporte a kernels nativos via `_mm512_dpbf16_ps` (VNNI-BF16) para CPUs Sapphire Rapids e posteriores. Inclui o kernel **Fused 4-Gate GEMV BF16** para LSTM, eliminando o custo de despacho escalar e dobrando o throughput de dot-products em relação ao AVX2.
@@ -97,6 +98,17 @@ graph TD
     class S2,S3,S4,S5 fused;
 ```
 
+### 6.X Mixed-Precision Selective
+
+Para otimizar o compromisso entre latência computacional e precisão tonal, o NAM-rs utiliza precisão mista seletiva (E8.T08). Enquanto a espinha dorsal (backbone) da WaveNet (incluindo convoluções Conv1D, input_mixin e one_by_one) é computada com pesos compactados em F16 ou BF16 para economizar largura de banda de cache, a camada de projeção de saída final (`head_rechannel`) e a projeção final em LSTMs utilizam precisão de ponto flutuante total (`f32`). A inferência do head executa uma GEMV escalar f32 nativa (`process_block_f32_native`), garantindo fidelidade de 24 bits na etapa analiticamente mais sensível da saída.
+
+### 6.Y Numerical Stability (Kahan + Dither)
+
+Para evitar o acúmulo de drift numérico e instabilidades matemáticas em execuções de longa duração:
+
+- **Kahan Summation (E8.T06):** Empregado no loop de acumulação externa de convoluções `conv1d.rs` e nos fallbacks escalares interleaved 4x. Ao manter um registro de compensação de erros para cada canal, reduz o erro relativo de acúmulo de $O(N \cdot \epsilon)$ para $O(\epsilon)$ em convoluções causais profundas.
+- **Deterministic Dither (E8.T05):** Injeção de um offset DC determinístico inaudível de $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) no estágio de entrada (`apply_input_stage` após ganho) com a devida subtração compensatória na saída (`apply_output_stage`). Mantém as ativações neurais (tanh/sigmoid) fora de faixas subnormais (denormais) em trechos de fade-out ou silêncio absoluto, prevenindo estalos e picos de CPU.
+
 ## 3. Gestão e Isolação Temporais (Strict RT)
 
 - **Thread DSP (SCHED_FIFO):** Afixada via Core Affinity (`select_optimal_cpu`) preferindo cores com menor carga de IRQs.
@@ -112,13 +124,13 @@ graph TD
 
 A partir da v1.4, o NAM-rs adota uma estrutura modular clara para suportar múltiplos hosts (Standalone/PipeWire e Plugin/CLAP) sem poluição de dependências:
 
-| Camada                             | Sub-módulos                                            | Responsabilidade                                                                                                       |
-|:---------------------------------- |:------------------------------------------------------ |:---------------------------------------------------------------------------------------------------------------------- |
-| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host`          | Infraestrutura compartilhada, comunicação inter-threads (SPSC) e abstrações agnósticas ao host.                        |
-| **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`                 | Backend nativo Linux. Gerencia o servidor PipeWire, setup de hardware (FIFO/Affinity) e interface de linha de comando. |
-| **CLAP** (`src/clap/`)             | `plugin`, `processor`, `param_smoother`, `extensions/` | Plugin CLAP completo com pipeline DSP, parâmetros, persistência e smoothing anti-zipper.                               |
-| **Math** (`src/math/`)             | `common/`, `activations/`, `gemm/`, `dsp/`...          | Infraestrutura matemática modularizada por domínio, isolando kernels SIMD de baixo nível da lógica de despacho.        |
-| **Core DSP** (`src/`)              | `dsp/`, `models/`, `loader/`                           | O "cérebro" do NAM-rs. Algoritmos de inferência neural e parsing de modelos.                                           |
+| Camada                             | Sub-módulos                                                    | Responsabilidade                                                                                                         |
+|:---------------------------------- |:-------------------------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------ |
+| **Common** (`src/common/`)         | `diagnostics`, `spsc`, `params`, `audio_host`                  | Infraestrutura compartilhada, comunicação inter-threads (SPSC) e abstrações agnósticas ao host.                          |
+| **Standalone** (`src/standalone/`) | `pw_host`, `rt_setup`, `cli`, `colors`                         | Backend nativo Linux. Gerencia o servidor PipeWire, setup de hardware (FIFO/Affinity) e interface de linha de comando.   |
+| **CLAP** (`src/clap/`)             | `plugin`, `processor`, `param_smoother`, `extensions/`, `gui/` | Plugin CLAP completo com pipeline DSP, parâmetros, persistência, interface visual egui/baseview e smoothing anti-zipper. |
+| **Math** (`src/math/`)             | `common/`, `activations/`, `gemm/`, `dsp/`...                  | Infraestrutura matemática modularizada por domínio, isolando kernels SIMD de baixo nível da lógica de despacho.          |
+| **Core DSP** (`src/`)              | `dsp/`, `models/`, `loader/`                                   | O "cérebro" do NAM-rs. Algoritmos de inferência neural e parsing de modelos.                                             |
 
 ### Diagrama de Camadas (Architecture Layers)
 
@@ -310,6 +322,20 @@ A troca de modelos na audio thread é RT-safe:
 O plugin implementa 8 extensões CLAP: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication` e `gui`. O plugin opera estritamente em mono para acomodar os fluxos de trabalho padrão de DAW (mono-in/mono-out), enquanto a GUI utiliza `egui` + `baseview` sobre backend X11 puro (600×260px), com isolamento completo entre UI thread e audio thread via campos atômicos e SPSC.
 
 Para detalhes de cada extensão, stack gráfico e estratégia de windowing, veja [docs/clap_integration.md](file:///home/fabio/nam-rs/docs/clap_integration.md).
+
+### 8.3 Interface Gráfica e Sub-módulos GUI (CLAP GUI)
+
+A interface gráfica foi decomposta de seu estado monolítico original para uma estrutura de módulos legíveis e reutilizáveis localizados em `src/clap/gui/ui/`:
+
+- **`mod.rs`:** Contém o orquestrador principal de desenho. A função principal `draw_ui` foi dividida em 5 funções de zona específicas (`draw_zone1_identity` para carregador de modelo/logo, `draw_zone2_controls` para knobs de controle, `draw_zone3_meters` para VU meters, `draw_zone4_bypass` para a chave de bypass e `draw_zone5_status_bar` para barra de telemetria/CPU).
+- **`bypass.rs`:** Desenho e comportamento interativo da chave de bypass.
+- **`colors.rs`:** Definições HSL da paleta de cores e temas estéticos do plugin.
+- **`knob.rs`:** Widgets de controle rotativo customizados de alta precisão com suporte a gestos de arrasto e reset.
+- **`meter.rs`:** Renderização de VU meters de entrada/saída com decaimento suave.
+- **`state.rs`:** Gerenciamento do estado local e telemetria da GUI.
+- **`simd.rs`:** Componente visual para exibir o conjunto SIMD ativo.
+- **`vsep.rs`:** Separadores verticais no layout.
+- **`test.rs`:** Testes automatizados e mocks de interface egui.
 
 ### Matemática & SIMD — Reorganização Modular
 
