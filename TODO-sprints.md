@@ -1937,7 +1937,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-### Sprint S26 — Architectural Adherence vs `NeuralAmpModelerCore`
+### Sprint S26 — Architectural Adherence vs `NeuralAmpModelerCore` [DONE]
 
 > Foco: alinhar contratos de API (não implementação) com a referência C++ para reduzir custo de futuras paridades. **Sem implementar A2** (escopo PO).
 > Liberar acesso ao espelho do github
@@ -2046,7 +2046,7 @@ Notas Operacionais — Épico 14
 
 > Foco: reduzir tamanho de funções/arquivos grandes que ainda restam após S8/S10/S10b, e fechar o ciclo de safety/whitelist iniciado em S2.
 
-#### Tarefa S27.T01 — Quebrar `draw_ui` em 5 zone-functions ⚠️
+#### Tarefa S27.T01 — Quebrar `draw_ui` em 5 zone-functions ⚠️ [DONE]
 
 - **Onde:** `src/clap/gui/ui/mod.rs:66-958` (função `draw_ui` ≈ 893 LoC).
 - **Problema:** Após S8.T01, sub-widgets foram extraídos (`bypass.rs`, `knob.rs`, `meter.rs`), mas a função orquestradora `draw_ui` ainda contém todo o layout das 5 zonas inline. Complexidade ciclomática alta; impossível revisar uma zona isoladamente.

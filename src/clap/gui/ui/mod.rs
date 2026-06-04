@@ -96,449 +96,584 @@ pub fn draw_ui(
         }
 
         // ── Zone 1: Identity (left) ───────────────────────────
-        ui.allocate_ui(egui::vec2(135.0, 210.0), |ui| {
-            ui.vertical(|ui| {
-                ui.add_space(8.0);
-
-                ui.label(
-                    egui::RichText::new("NAM-rs⚡")
-                        .font(egui::FontId::proportional(24.0))
-                        .strong()
-                        .color(accent_color),
-                );
-
-                ui.label(
-                    egui::RichText::new("Neural Amp Modeler")
-                        .font(egui::FontId::proportional(9.5))
-                        .color(COL_MUTED),
-                );
-
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
-                            .font(egui::FontId::proportional(9.0))
-                            .color(COL_MUTED),
-                    );
-                    ui.add_space(4.0);
-                    let simd = get_simd_badge();
-                    let badge_color = if simd.contains("AVX") {
-                        accent_color
-                    } else {
-                        COL_MUTED
-                    };
-                    let response = ui.label(
-                        egui::RichText::new(simd)
-                            .font(egui::FontId::monospace(8.0))
-                            .strong()
-                            .color(badge_color),
-                    );
-                    response.on_hover_text(format!(
-                        "Active runtime SIMD engine backend: {}.",
-                        crate::math::common::SIMD_MATH.name
-                    ));
-                });
-
-                ui.add_space(14.0);
-
-                ui.label(
-                    egui::RichText::new("MODEL")
-                        .font(egui::FontId::proportional(9.0))
-                        .strong()
-                        .color(COL_MUTED),
-                );
-                ui.add_space(2.0);
-
-                // "Load Model" button
-                let load_btn = ui.add(
-                    egui::Button::new(
-                        egui::RichText::new("📂 Load Model")
-                            .font(egui::FontId::proportional(11.5))
-                            .strong()
-                            .color(COL_TEXT),
-                    )
-                    .fill(COL_PANEL)
-                    .stroke(egui::Stroke::new(1.0, COL_BORDER)),
-                );
-                let btn_id = load_btn.id;
-                load_btn_id = Some(btn_id);
-                ui.memory_mut(|mem| mem.interested_in_focus(btn_id, ui.layer_id()));
-
-                if load_btn.has_focus() {
-                    ui.painter().rect_stroke(
-                        load_btn.rect,
-                        2.0,
-                        egui::Stroke::new(2.0, accent_color),
-                        egui::StrokeKind::Outside,
-                    );
-                }
-
-                let mut load_clicked = load_btn.clicked();
-                if load_btn.has_focus() {
-                    ui.input(|i| {
-                        if i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::Enter) {
-                            load_clicked = true;
-                        }
-                    });
-                }
-
-                if load_clicked && !shared.ui_loading.load(Ordering::Relaxed) {
-                    shared.ui_loading.store(true, Ordering::Relaxed);
-                    let shared_addr = shared as *const NamClapShared as usize;
-                    let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                        unsafe { super::extend_host_lifetime(*host) };
-                    let alive_fence = Arc::clone(&shared.alive_fence);
-                    std::thread::spawn(move || {
-                        let (tx, rx) = std::sync::mpsc::channel();
-
-                        std::thread::spawn(move || {
-                            let path_opt = rfd::FileDialog::new()
-                                .add_filter("NAM Model", &["nam", "namb"])
-                                .pick_file();
-                            let _ = tx.send(path_opt);
-                        });
-
-                        match rx.recv_timeout(std::time::Duration::from_secs(120)) {
-                            Ok(path_opt) => {
-                                if alive_fence.load(Ordering::Relaxed) {
-                                    let shared = unsafe { &*(shared_addr as *const NamClapShared) };
-                                    if let Some(path) = path_opt {
-                                        if let Ok(mut pending_guard) =
-                                            shared.ui_pending_model.lock()
-                                        {
-                                            *pending_guard = Some(path);
-                                            host_static.request_callback();
-                                        }
-                                    } else {
-                                        shared.ui_loading.store(false, Ordering::Relaxed);
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                if alive_fence.load(Ordering::Relaxed) {
-                                    let shared = unsafe { &*(shared_addr as *const NamClapShared) };
-                                    shared.ui_loading.store(false, Ordering::Relaxed);
-
-                                    if let (Some(log), Ok(c_msg)) = (
-                                        host_static
-                                            .get_extension::<clack_extensions::log::HostLog>(),
-                                        std::ffi::CString::new(
-                                            "NAM-rs: File dialog portal timed out after 120s",
-                                        ),
-                                    ) {
-                                        log.log(
-                                            &host_static,
-                                            clack_extensions::log::LogSeverity::Warning,
-                                            &c_msg,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    });
-                }
-
-                ui.add_space(6.0);
-
-                let is_error_active = if let Some(expiration) = state.error_expiration {
-                    if Instant::now() < expiration {
-                        ui.ctx().request_repaint();
-                        true
-                    } else {
-                        state.error_expiration = None;
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                let model_name: &str = if is_error_active {
-                    if state.model_display_name != "⚠ Load failed" {
-                        state.model_display_name.clear();
-                        state.model_display_name.push_str("⚠ Load failed");
-                    }
-                    &state.model_display_name
-                } else if shared.ui_loading.load(Ordering::Relaxed) {
-                    ui.ctx().request_repaint_after(Duration::from_millis(100));
-                    let elapsed = ui.input(|i| i.time);
-                    let frames = ["Loading", "Loading.", "Loading..", "Loading..."];
-                    let idx = (elapsed * 4.0) as usize % frames.len();
-                    state.model_display_name.clear();
-                    state.model_display_name.push_str(frames[idx]);
-                    &state.model_display_name
-                } else {
-                    let name_guard = shared
-                        .ui_model_name
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
-                    if name_guard.is_empty() {
-                        if state.model_display_name != "No model loaded" {
-                            state.model_display_name.clear();
-                            state.model_display_name.push_str("No model loaded");
-                        }
-                        &state.model_display_name
-                    } else {
-                        if *name_guard != state.model_display_name {
-                            state.model_display_name.clear();
-                            state.model_display_name.push_str(&name_guard);
-                        }
-                        &state.model_display_name
-                    }
-                };
-
-                let text_color = if is_error_active {
-                    COL_VU_RED
-                } else {
-                    COL_MUTED
-                };
-
-                let frame_res = egui::Frame::new()
-                    .fill(COL_BG)
-                    .stroke(egui::Stroke::new(
-                        1.0,
-                        if is_error_active {
-                            COL_VU_RED
-                        } else {
-                            COL_BORDER
-                        },
-                    ))
-                    .corner_radius(egui::CornerRadius::same(3))
-                    .inner_margin(egui::Margin::symmetric(6, 4))
-                    .show(ui, |ui| {
-                        ui.set_min_width(120.0);
-                        ui.set_max_width(120.0);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(model_name)
-                                    .font(egui::FontId::proportional(9.5))
-                                    .color(text_color)
-                                    .italics(),
-                            )
-                            .wrap(),
-                        );
-                    });
-
-                if is_error_active {
-                    frame_res.response.on_hover_text(&state.error_msg);
-                } else {
-                    frame_res.response.on_hover_text(model_name);
-                }
-            });
-        });
+        load_btn_id = draw_zone1_identity(ui, shared, host, state, accent_color);
 
         styled_vsep(ui);
 
         // ── Zone 2: Controls (center) ────────────────────
-        ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
-            if current_bypass {
-                ui.disable();
-            }
-            ui.vertical(|ui| {
-                ui.add_space(12.0);
-                let ind_input = shared.param_indication
-                    [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
-                    .load(Ordering::Relaxed);
-                let ind_input_color = resolve_color(
-                    shared.param_indication_color
-                        [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
-                        .load(Ordering::Relaxed),
-                    egui::Color32::from_rgb(94, 129, 172),
-                );
-
-                let ind_output = shared.param_indication
-                    [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
-                    .load(Ordering::Relaxed);
-                let ind_output_color = resolve_color(
-                    shared.param_indication_color
-                        [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
-                        .load(Ordering::Relaxed),
-                    egui::Color32::from_rgb(94, 129, 172),
-                );
-
-                let ind_gate = shared.param_indication
-                    [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
-                    .load(Ordering::Relaxed);
-                let ind_gate_color = resolve_color(
-                    shared.param_indication_color
-                        [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
-                        .load(Ordering::Relaxed),
-                    egui::Color32::from_rgb(94, 129, 172),
-                );
-
-                ui.horizontal(|ui| {
-                    ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
-                        handle_knob(
-                            ui,
-                            ui.make_persistent_id("input_gain_knob"),
-                            "INPUT",
-                            crate::math::constants::GAIN_MIN_DB
-                                ..=crate::math::constants::GAIN_MAX_DB,
-                            0.0,
-                            &shared.param_input_gain,
-                            &shared.gesture_flags,
-                            crate::clap::extensions::params::PARAM_INPUT_GAIN as usize,
-                            accent_color,
-                            accent_color,
-                            host,
-                            egui::vec2(70.0, 70.0),
-                            ind_input,
-                            ind_input_color,
-                            " dB",
-                        );
-                    });
-                    ui.add_space(2.0);
-                    ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
-                        handle_knob(
-                            ui,
-                            ui.make_persistent_id("output_gain_knob"),
-                            "OUTPUT",
-                            crate::math::constants::GAIN_MIN_DB
-                                ..=crate::math::constants::GAIN_MAX_DB,
-                            0.0,
-                            &shared.param_output_gain,
-                            &shared.gesture_flags,
-                            crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize,
-                            accent_color,
-                            accent_color,
-                            host,
-                            egui::vec2(70.0, 70.0),
-                            ind_output,
-                            ind_output_color,
-                            " dB",
-                        );
-                    });
-                    ui.add_space(2.0);
-                    ui.allocate_ui(egui::vec2(70.0, 185.0), |ui| {
-                        handle_knob(
-                            ui,
-                            ui.make_persistent_id("gate_thresh_knob"),
-                            "GATE",
-                            -90.0..=-40.0,
-                            -70.0,
-                            &shared.param_gate_thresh,
-                            &shared.gesture_flags,
-                            crate::clap::extensions::params::PARAM_GATE_THRESH as usize,
-                            COL_AMBER,
-                            accent_color,
-                            host,
-                            egui::vec2(42.0, 42.0),
-                            ind_gate,
-                            ind_gate_color,
-                            " dB (Threshold)",
-                        );
-                    });
-                });
-            });
-        });
+        draw_zone2_controls(ui, shared, host, current_bypass, accent_color);
 
         styled_vsep(ui);
 
         // ── Zone 3: VU Meters (right) ─────────────────────
-        ui.allocate_ui(egui::vec2(80.0, 210.0), |ui| {
-            if current_bypass {
-                ui.disable();
-            }
-            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                ui.add_space(8.0);
-
-                let peak_l =
-                    f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
-                let peak_r =
-                    f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
-
-                let is_stereo = shared.active_channel_count.load(Ordering::Relaxed) >= 2;
-
-                ui.horizontal(|ui| {
-                    if is_stereo {
-                        ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                draw_vertical_meter(
-                                    ui,
-                                    peak_l,
-                                    &mut state.peak_l_hold,
-                                    &mut state.peak_l_hold_time,
-                                    &mut state.clip_l,
-                                    "L",
-                                    state.vu_program,
-                                    state.vu_vao,
-                                    &mut state.vu_l_state,
-                                    &mut state.vu_l_callback,
-                                    Arc::clone(&state.vu_uniforms),
-                                );
-                            });
-                        });
-                        ui.add_space(4.0);
-                        ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                draw_vertical_meter(
-                                    ui,
-                                    peak_r,
-                                    &mut state.peak_r_hold,
-                                    &mut state.peak_r_hold_time,
-                                    &mut state.clip_r,
-                                    "R",
-                                    state.vu_program,
-                                    state.vu_vao,
-                                    &mut state.vu_r_state,
-                                    &mut state.vu_r_callback,
-                                    Arc::clone(&state.vu_uniforms),
-                                );
-                            });
-                        });
-                    } else {
-                        ui.allocate_ui(egui::vec2(76.0, 190.0), |ui| {
-                            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                draw_vertical_meter(
-                                    ui,
-                                    peak_l,
-                                    &mut state.peak_l_hold,
-                                    &mut state.peak_l_hold_time,
-                                    &mut state.clip_l,
-                                    "",
-                                    state.vu_program,
-                                    state.vu_vao,
-                                    &mut state.vu_l_state,
-                                    &mut state.vu_l_callback,
-                                    Arc::clone(&state.vu_uniforms),
-                                );
-                            });
-                        });
-                    }
-                });
-            });
-        });
+        draw_zone3_meters(ui, shared, state, current_bypass);
 
         styled_vsep(ui);
 
         // ── Zone 4: Bypass (far right) ────────────────────
-        ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
-            ui.vertical(|ui| {
-                ui.add_space(18.0);
-                let ind_bypass = shared.param_indication
-                    [crate::clap::extensions::params::PARAM_BYPASS as usize]
-                    .load(Ordering::Relaxed);
-                let ind_bypass_color = resolve_color(
-                    shared.param_indication_color
-                        [crate::clap::extensions::params::PARAM_BYPASS as usize]
-                        .load(Ordering::Relaxed),
-                    egui::Color32::from_rgb(94, 129, 172),
-                );
-                let bypass_id = ui.make_persistent_id("bypass_switch");
-                handle_bypass(
-                    ui,
-                    bypass_id,
-                    &shared.param_bypass,
-                    &shared.gesture_flags,
-                    crate::clap::extensions::params::PARAM_BYPASS as usize,
-                    accent_color,
-                    host,
-                    ind_bypass,
-                    ind_bypass_color,
-                );
-            });
-        });
+        draw_zone4_bypass(ui, shared, host, accent_color);
     });
 
     // ── Zona 5: Status Bar / Footer ──────────────────────────────────────────
+    draw_zone5_status_bar(ui, shared, state, accent_color);
+
+    if state.drag_active {
+        egui::Area::new(egui::Id::new("drop_overlay"))
+            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+            .order(egui::Order::Foreground)
+            .interactable(false)
+            .show(ui.ctx(), |ui| {
+                let screen_rect = ui.ctx().content_rect();
+                let painter = ui.painter();
+                painter.rect_filled(
+                    screen_rect,
+                    0.0,
+                    egui::Color32::from_rgba_unmultiplied(26, 29, 35, 217),
+                );
+                ui.vertical_centered(|ui| {
+                    ui.add_space(screen_rect.height() / 2.0 - 20.0);
+                    ui.label(
+                        egui::RichText::new("Drop NAM Model Here ⬇️")
+                            .font(egui::FontId::proportional(20.0))
+                            .strong()
+                            .color(accent_color),
+                    );
+                });
+            });
+    }
+
+    let load_btn_id = load_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_model_button"));
+    let controls = [
+        ui.make_persistent_id("input_gain_knob"),
+        ui.make_persistent_id("output_gain_knob"),
+        ui.make_persistent_id("gate_thresh_knob"),
+        ui.make_persistent_id("bypass_switch"),
+        load_btn_id,
+    ];
+
+    let mut tab_pressed = false;
+    let mut shift_pressed = false;
+    ui.input_mut(|i| {
+        i.events.retain(|e| {
+            if let egui::Event::Key {
+                key: egui::Key::Tab,
+                pressed: true,
+                modifiers,
+                ..
+            } = e
+            {
+                tab_pressed = true;
+                shift_pressed = modifiers.shift;
+                false
+            } else {
+                true
+            }
+        });
+    });
+
+    if tab_pressed {
+        let focused = ui.memory(|mem| mem.focused());
+        let next_focus = if let Some(curr) = focused {
+            if let Some(idx) = controls.iter().position(|&id| id == curr) {
+                if shift_pressed {
+                    if idx == 0 {
+                        controls[4]
+                    } else {
+                        controls[idx - 1]
+                    }
+                } else {
+                    if idx == 4 {
+                        controls[0]
+                    } else {
+                        controls[idx + 1]
+                    }
+                }
+            } else if shift_pressed {
+                controls[4]
+            } else {
+                controls[0]
+            }
+        } else if shift_pressed {
+            controls[4]
+        } else {
+            controls[0]
+        };
+        ui.memory_mut(|mem| mem.request_focus(next_focus));
+    }
+
+    ui.ctx().request_repaint_after(Duration::from_millis(30));
+}
+
+fn draw_zone1_identity(
+    ui: &mut egui::Ui,
+    shared: &NamClapShared,
+    host: &HostSharedHandle,
+    state: &mut UiState,
+    accent_color: egui::Color32,
+) -> Option<egui::Id> {
+    let mut load_btn_id = None;
+    ui.allocate_ui(egui::vec2(135.0, 210.0), |ui| {
+        ui.vertical(|ui| {
+            ui.add_space(8.0);
+
+            ui.label(
+                egui::RichText::new("NAM-rs⚡")
+                    .font(egui::FontId::proportional(24.0))
+                    .strong()
+                    .color(accent_color),
+            );
+
+            ui.label(
+                egui::RichText::new("Neural Amp Modeler")
+                    .font(egui::FontId::proportional(9.5))
+                    .color(COL_MUTED),
+            );
+
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION")))
+                        .font(egui::FontId::proportional(9.0))
+                        .color(COL_MUTED),
+                );
+                ui.add_space(4.0);
+                let simd = get_simd_badge();
+                let badge_color = if simd.contains("AVX") {
+                    accent_color
+                } else {
+                    COL_MUTED
+                };
+                let response = ui.label(
+                    egui::RichText::new(simd)
+                        .font(egui::FontId::monospace(8.0))
+                        .strong()
+                        .color(badge_color),
+                );
+                response.on_hover_text(format!(
+                    "Active runtime SIMD engine backend: {}.",
+                    crate::math::common::SIMD_MATH.name
+                ));
+            });
+
+            ui.add_space(14.0);
+
+            ui.label(
+                egui::RichText::new("MODEL")
+                    .font(egui::FontId::proportional(9.0))
+                    .strong()
+                    .color(COL_MUTED),
+            );
+            ui.add_space(2.0);
+
+            // "Load Model" button
+            let load_btn = ui.add(
+                egui::Button::new(
+                    egui::RichText::new("📂 Load Model")
+                        .font(egui::FontId::proportional(11.5))
+                        .strong()
+                        .color(COL_TEXT),
+                )
+                .fill(COL_PANEL)
+                .stroke(egui::Stroke::new(1.0, COL_BORDER)),
+            );
+            let btn_id = load_btn.id;
+            load_btn_id = Some(btn_id);
+            ui.memory_mut(|mem| mem.interested_in_focus(btn_id, ui.layer_id()));
+
+            if load_btn.has_focus() {
+                ui.painter().rect_stroke(
+                    load_btn.rect,
+                    2.0,
+                    egui::Stroke::new(2.0, accent_color),
+                    egui::StrokeKind::Outside,
+                );
+            }
+
+            let mut load_clicked = load_btn.clicked();
+            if load_btn.has_focus() {
+                ui.input(|i| {
+                    if i.key_pressed(egui::Key::Space) || i.key_pressed(egui::Key::Enter) {
+                        load_clicked = true;
+                    }
+                });
+            }
+
+            if load_clicked && !shared.ui_loading.load(Ordering::Relaxed) {
+                shared.ui_loading.store(true, Ordering::Relaxed);
+                let shared_addr = shared as *const NamClapShared as usize;
+                let host_static: clack_plugin::host::HostSharedHandle<'static> =
+                    unsafe { super::extend_host_lifetime(*host) };
+                let alive_fence = Arc::clone(&shared.alive_fence);
+                std::thread::spawn(move || {
+                    let (tx, rx) = std::sync::mpsc::channel();
+
+                    std::thread::spawn(move || {
+                        let path_opt = rfd::FileDialog::new()
+                            .add_filter("NAM Model", &["nam", "namb"])
+                            .pick_file();
+                        let _ = tx.send(path_opt);
+                    });
+
+                    match rx.recv_timeout(std::time::Duration::from_secs(120)) {
+                        Ok(path_opt) => {
+                            if alive_fence.load(Ordering::Relaxed) {
+                                let shared = unsafe { &*(shared_addr as *const NamClapShared) };
+                                if let Some(path) = path_opt {
+                                    if let Ok(mut pending_guard) =
+                                        shared.ui_pending_model.lock()
+                                    {
+                                        *pending_guard = Some(path);
+                                        host_static.request_callback();
+                                    }
+                                } else {
+                                    shared.ui_loading.store(false, Ordering::Relaxed);
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            if alive_fence.load(Ordering::Relaxed) {
+                                let shared = unsafe { &*(shared_addr as *const NamClapShared) };
+                                shared.ui_loading.store(false, Ordering::Relaxed);
+
+                                if let (Some(log), Ok(c_msg)) = (
+                                    host_static
+                                        .get_extension::<clack_extensions::log::HostLog>(),
+                                    std::ffi::CString::new(
+                                        "NAM-rs: File dialog portal timed out after 120s",
+                                    ),
+                                ) {
+                                    log.log(
+                                        &host_static,
+                                        clack_extensions::log::LogSeverity::Warning,
+                                        &c_msg,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            ui.add_space(6.0);
+
+            let is_error_active = if let Some(expiration) = state.error_expiration {
+                if Instant::now() < expiration {
+                    ui.ctx().request_repaint();
+                    true
+                } else {
+                    state.error_expiration = None;
+                    false
+                }
+            } else {
+                false
+            };
+
+            let model_name: &str = if is_error_active {
+                if state.model_display_name != "⚠ Load failed" {
+                    state.model_display_name.clear();
+                    state.model_display_name.push_str("⚠ Load failed");
+                }
+                &state.model_display_name
+            } else if shared.ui_loading.load(Ordering::Relaxed) {
+                ui.ctx().request_repaint_after(Duration::from_millis(100));
+                let elapsed = ui.input(|i| i.time);
+                let frames = ["Loading", "Loading.", "Loading..", "Loading..."];
+                let idx = (elapsed * 4.0) as usize % frames.len();
+                state.model_display_name.clear();
+                state.model_display_name.push_str(frames[idx]);
+                &state.model_display_name
+            } else {
+                let name_guard = shared
+                    .ui_model_name
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                if name_guard.is_empty() {
+                    if state.model_display_name != "No model loaded" {
+                        state.model_display_name.clear();
+                        state.model_display_name.push_str("No model loaded");
+                    }
+                    &state.model_display_name
+                } else {
+                    if *name_guard != state.model_display_name {
+                        state.model_display_name.clear();
+                        state.model_display_name.push_str(&name_guard);
+                    }
+                    &state.model_display_name
+                }
+            };
+
+            let text_color = if is_error_active {
+                COL_VU_RED
+            } else {
+                COL_MUTED
+            };
+
+            let frame_res = egui::Frame::new()
+                .fill(COL_BG)
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    if is_error_active {
+                        COL_VU_RED
+                    } else {
+                        COL_BORDER
+                    },
+                ))
+                .corner_radius(egui::CornerRadius::same(3))
+                .inner_margin(egui::Margin::symmetric(6, 4))
+                .show(ui, |ui| {
+                    ui.set_min_width(120.0);
+                    ui.set_max_width(120.0);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(model_name)
+                                .font(egui::FontId::proportional(9.5))
+                                .color(text_color)
+                                .italics(),
+                        )
+                        .wrap(),
+                    );
+                });
+
+            if is_error_active {
+                frame_res.response.on_hover_text(&state.error_msg);
+            } else {
+                frame_res.response.on_hover_text(model_name);
+            }
+        });
+    });
+    load_btn_id
+}
+
+fn draw_zone2_controls(
+    ui: &mut egui::Ui,
+    shared: &NamClapShared,
+    host: &HostSharedHandle,
+    current_bypass: bool,
+    accent_color: egui::Color32,
+) {
+    ui.allocate_ui(egui::vec2(240.0, 210.0), |ui| {
+        if current_bypass {
+            ui.disable();
+        }
+        ui.vertical(|ui| {
+            ui.add_space(12.0);
+            let ind_input = shared.param_indication
+                [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
+                .load(Ordering::Relaxed);
+            let ind_input_color = resolve_color(
+                shared.param_indication_color
+                    [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
+                    .load(Ordering::Relaxed),
+                egui::Color32::from_rgb(94, 129, 172),
+            );
+
+            let ind_output = shared.param_indication
+                [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
+                .load(Ordering::Relaxed);
+            let ind_output_color = resolve_color(
+                shared.param_indication_color
+                    [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
+                    .load(Ordering::Relaxed),
+                egui::Color32::from_rgb(94, 129, 172),
+            );
+
+            let ind_gate = shared.param_indication
+                [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
+                .load(Ordering::Relaxed);
+            let ind_gate_color = resolve_color(
+                shared.param_indication_color
+                    [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
+                    .load(Ordering::Relaxed),
+                egui::Color32::from_rgb(94, 129, 172),
+            );
+
+            ui.horizontal(|ui| {
+                ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
+                    handle_knob(
+                        ui,
+                        ui.make_persistent_id("input_gain_knob"),
+                        "INPUT",
+                        crate::math::constants::GAIN_MIN_DB
+                            ..=crate::math::constants::GAIN_MAX_DB,
+                        0.0,
+                        &shared.param_input_gain,
+                        &shared.gesture_flags,
+                        crate::clap::extensions::params::PARAM_INPUT_GAIN as usize,
+                        accent_color,
+                        accent_color,
+                        host,
+                        egui::vec2(70.0, 70.0),
+                        ind_input,
+                        ind_input_color,
+                        " dB",
+                    );
+                });
+                ui.add_space(2.0);
+                ui.allocate_ui(egui::vec2(78.0, 185.0), |ui| {
+                    handle_knob(
+                        ui,
+                        ui.make_persistent_id("output_gain_knob"),
+                        "OUTPUT",
+                        crate::math::constants::GAIN_MIN_DB
+                            ..=crate::math::constants::GAIN_MAX_DB,
+                        0.0,
+                        &shared.param_output_gain,
+                        &shared.gesture_flags,
+                        crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize,
+                        accent_color,
+                        accent_color,
+                        host,
+                        egui::vec2(70.0, 70.0),
+                        ind_output,
+                        ind_output_color,
+                        " dB",
+                    );
+                });
+                ui.add_space(2.0);
+                ui.allocate_ui(egui::vec2(70.0, 185.0), |ui| {
+                    handle_knob(
+                        ui,
+                        ui.make_persistent_id("gate_thresh_knob"),
+                        "GATE",
+                        -90.0..=-40.0,
+                        -70.0,
+                        &shared.param_gate_thresh,
+                        &shared.gesture_flags,
+                        crate::clap::extensions::params::PARAM_GATE_THRESH as usize,
+                        COL_AMBER,
+                        accent_color,
+                        host,
+                        egui::vec2(42.0, 42.0),
+                        ind_gate,
+                        ind_gate_color,
+                        " dB (Threshold)",
+                    );
+                });
+            });
+        });
+    });
+}
+
+fn draw_zone3_meters(
+    ui: &mut egui::Ui,
+    shared: &NamClapShared,
+    state: &mut UiState,
+    current_bypass: bool,
+) {
+    ui.allocate_ui(egui::vec2(80.0, 210.0), |ui| {
+        if current_bypass {
+            ui.disable();
+        }
+        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+            ui.add_space(8.0);
+
+            let peak_l =
+                f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
+            let peak_r =
+                f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
+
+            let is_stereo = shared.active_channel_count.load(Ordering::Relaxed) >= 2;
+
+            ui.horizontal(|ui| {
+                if is_stereo {
+                    ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                            draw_vertical_meter(
+                                ui,
+                                peak_l,
+                                &mut state.peak_l_hold,
+                                &mut state.peak_l_hold_time,
+                                &mut state.clip_l,
+                                "L",
+                                state.vu_program,
+                                state.vu_vao,
+                                &mut state.vu_l_state,
+                                &mut state.vu_l_callback,
+                                Arc::clone(&state.vu_uniforms),
+                            );
+                        });
+                    });
+                    ui.add_space(4.0);
+                    ui.allocate_ui(egui::vec2(36.0, 190.0), |ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                            draw_vertical_meter(
+                                ui,
+                                peak_r,
+                                &mut state.peak_r_hold,
+                                &mut state.peak_r_hold_time,
+                                &mut state.clip_r,
+                                "R",
+                                state.vu_program,
+                                state.vu_vao,
+                                &mut state.vu_r_state,
+                                &mut state.vu_r_callback,
+                                Arc::clone(&state.vu_uniforms),
+                            );
+                        });
+                    });
+                } else {
+                    ui.allocate_ui(egui::vec2(76.0, 190.0), |ui| {
+                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                            draw_vertical_meter(
+                                ui,
+                                peak_l,
+                                &mut state.peak_l_hold,
+                                &mut state.peak_l_hold_time,
+                                &mut state.clip_l,
+                                "",
+                                state.vu_program,
+                                state.vu_vao,
+                                &mut state.vu_l_state,
+                                &mut state.vu_l_callback,
+                                Arc::clone(&state.vu_uniforms),
+                            );
+                        });
+                    });
+                }
+            });
+        });
+    });
+}
+
+fn draw_zone4_bypass(
+    ui: &mut egui::Ui,
+    shared: &NamClapShared,
+    host: &HostSharedHandle,
+    accent_color: egui::Color32,
+) {
+    ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
+        ui.vertical(|ui| {
+            ui.add_space(18.0);
+            let ind_bypass = shared.param_indication
+                [crate::clap::extensions::params::PARAM_BYPASS as usize]
+                .load(Ordering::Relaxed);
+            let ind_bypass_color = resolve_color(
+                shared.param_indication_color
+                    [crate::clap::extensions::params::PARAM_BYPASS as usize]
+                    .load(Ordering::Relaxed),
+                egui::Color32::from_rgb(94, 129, 172),
+            );
+            let bypass_id = ui.make_persistent_id("bypass_switch");
+            handle_bypass(
+                ui,
+                bypass_id,
+                &shared.param_bypass,
+                &shared.gesture_flags,
+                crate::clap::extensions::params::PARAM_BYPASS as usize,
+                accent_color,
+                host,
+                ind_bypass,
+                ind_bypass_color,
+            );
+        });
+    });
+}
+
+fn draw_zone5_status_bar(
+    ui: &mut egui::Ui,
+    shared: &NamClapShared,
+    state: &mut UiState,
+    accent_color: egui::Color32,
+) {
     ui.with_layout(egui::Layout::top_down(egui::Align::LEFT), |ui| {
         ui.painter().line(
             vec![ui.max_rect().left_top(), ui.max_rect().right_top()],
