@@ -2146,7 +2146,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S27.T08 — Doccomments algoritmicos em `process_dual_frame` 💡
+#### Tarefa S27.T08 — Doccomments algoritmicos em `process_dual_frame` 💡 [DONE]
 
 - **Onde:** `src/models/wavenet/conv1d_dyn.rs:60-90` e variantes BF16.
 - **Problema:** Comentário atual diz "Processes two frames simultaneously" mas não explica o insight central: 2-frame tiling permite reuso de pesos cross-frame, dobrando ILP útil em registradores SIMD.
