@@ -37,8 +37,8 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
 echo "========================================================"
 echo "🔍 Validating plugin with clap-validator and heap-audit..."
 NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/debug/libnam_rs.so --json 2>&1 | tee target/logs/ debug-validation.json
-jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' debug-validation.json
+  clap-validator validate target/clap-test/debug/libnam_rs.so --json 2>target/logs/debug-validation.stderr.log | tee target/logs/debug-validation.json
+jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/debug-validation.json
 
 echo "=========================================="
 echo "🔨 Building in Release mode with heap-audit..."
@@ -48,8 +48,8 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
 echo "==========================================================="
 echo "🔍 Validating plugin with clap-validator in release mode..."
 NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/release/libnam_rs.so --json 2>&1 | tee target/logs/ release-validation.json
-jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' release-validation.json
+  clap-validator validate target/clap-test/release/libnam_rs.so --json 2>target/logs/release-validation.stderr.log | tee target/logs/release-validation.json
+jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/release-validation.json
 
 echo "============================================================"
 echo "🔬 Running CLAP Multi-Instance Stress Test (10 instances)..."

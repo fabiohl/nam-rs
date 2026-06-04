@@ -47,6 +47,10 @@ pub fn write_wav_f32(path: &Path, samples: &[f32], sample_rate: u32) -> io::Resu
 
     #[cfg(target_endian = "little")]
     {
+        // SAFETY: `f32` has no padding bytes and is repr(transparent) over 4 bytes.
+        // On little-endian systems, the in-memory byte order of f32 matches the
+        // WAV format requirement (IEEE 754 LE). The source slice is valid for
+        // `samples.len() * 4` bytes because it was allocated as `&[f32]`.
         let bytes: &[u8] =
             unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 4) };
         buf.extend_from_slice(bytes);
