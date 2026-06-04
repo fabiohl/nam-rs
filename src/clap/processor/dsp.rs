@@ -362,34 +362,56 @@ impl<'a> NamClapProcessor<'a> {
             );
 
             // 5. Output Gain Application (Sample-Accurate Smoothing)
-            if param_out_changed {
-                for i in 0..n_out {
-                    let g = self.smoother_out.tick();
-                    self.buf_out_l[i] *= g;
-                    self.buf_out_r[i] *= g;
-                }
-            } else {
-                let start = self.smoother_out.peek();
-                let target = self.smoother_out.target_value();
-                if (start - target).abs() < 1e-9 {
-                    unsafe {
-                        crate::math::dsp::gain::apply_gain_stereo(
-                            &mut self.buf_out_l[..n_out],
-                            &mut self.buf_out_r[..n_out],
-                            start,
-                        );
+            #[cfg(feature = "stereo")]
+            {
+                if param_out_changed {
+                    for i in 0..n_out {
+                        let g = self.smoother_out.tick();
+                        self.buf_out_l[i] *= g;
+                        self.buf_out_r[i] *= g;
                     }
                 } else {
-                    let step = (target - start) / n_out as f32;
-                    unsafe {
-                        crate::math::dsp::gain::apply_ramp_stereo(
-                            &mut self.buf_out_l[..n_out],
-                            &mut self.buf_out_r[..n_out],
-                            start,
-                            step,
-                        );
+                    let start = self.smoother_out.peek();
+                    let target = self.smoother_out.target_value();
+                    if (start - target).abs() < 1e-9 {
+                        unsafe {
+                            crate::math::dsp::gain::apply_gain_stereo(
+                                &mut self.buf_out_l[..n_out],
+                                &mut self.buf_out_r[..n_out],
+                                start,
+                            );
+                        }
+                    } else {
+                        let step = (target - start) / n_out as f32;
+                        unsafe {
+                            crate::math::dsp::gain::apply_ramp_stereo(
+                                &mut self.buf_out_l[..n_out],
+                                &mut self.buf_out_r[..n_out],
+                                start,
+                                step,
+                            );
+                        }
+                        self.smoother_out.set(start + step * n_out as f32);
                     }
-                    self.smoother_out.set(start + step * n_out as f32);
+                }
+            }
+            #[cfg(not(feature = "stereo"))]
+            {
+                if param_out_changed {
+                    for i in 0..n_out {
+                        let g = self.smoother_out.tick();
+                        self.buf_out_l[i] *= g;
+                    }
+                } else {
+                    let start = self.smoother_out.peek();
+                    let target = self.smoother_out.target_value();
+                    if (start - target).abs() < 1e-9 {
+                        crate::math::dsp::gain::apply_gain_simd(&mut self.buf_out_l[..n_out], start);
+                    } else {
+                        let step = (target - start) / n_out as f32;
+                        crate::math::dsp::gain::apply_ramp_simd(&mut self.buf_out_l[..n_out], start, step);
+                        self.smoother_out.set(start + step * n_out as f32);
+                    }
                 }
             }
 
@@ -404,36 +426,64 @@ impl<'a> NamClapProcessor<'a> {
             let mut len_r = 0;
             if let Some(o_r) = out_r {
                 let n = n_out.min(o_r.len());
+                #[cfg(feature = "stereo")]
                 o_r[..n].copy_from_slice(&self.buf_out_r[..n]);
+                #[cfg(not(feature = "stereo"))]
+                o_r[..n].copy_from_slice(&self.buf_out_l[..n]);
                 len_r = n;
             }
 
-            if len_l > 0 && len_r > 0 {
-                let n = len_l.min(len_r);
-                let (p_l, p_r) = unsafe {
-                    crate::math::dsp::stereo::compute_peak_abs_stereo(
-                        &self.buf_out_l[..n],
-                        &self.buf_out_r[..n],
-                    )
-                };
-                peak_l = p_l;
-                peak_r = p_r;
-            } else if len_l > 0 {
-                let (p_l, _) = unsafe {
-                    crate::math::dsp::stereo::compute_peak_abs_stereo(
-                        &self.buf_out_l[..len_l],
-                        &self.buf_out_l[..len_l],
-                    )
-                };
-                peak_l = p_l;
-            } else if len_r > 0 {
-                let (_, p_r) = unsafe {
-                    crate::math::dsp::stereo::compute_peak_abs_stereo(
-                        &self.buf_out_r[..len_r],
-                        &self.buf_out_r[..len_r],
-                    )
-                };
-                peak_r = p_r;
+            #[cfg(feature = "stereo")]
+            {
+                if len_l > 0 && len_r > 0 {
+                    let n = len_l.min(len_r);
+                    let (p_l, p_r) = unsafe {
+                        crate::math::dsp::stereo::compute_peak_abs_stereo(
+                            &self.buf_out_l[..n],
+                            &self.buf_out_r[..n],
+                        )
+                    };
+                    peak_l = p_l;
+                    peak_r = p_r;
+                } else if len_l > 0 {
+                    let (p_l, _) = unsafe {
+                        crate::math::dsp::stereo::compute_peak_abs_stereo(
+                            &self.buf_out_l[..len_l],
+                            &self.buf_out_l[..len_l],
+                        )
+                    };
+                    peak_l = p_l;
+                } else if len_r > 0 {
+                    let (_, p_r) = unsafe {
+                        crate::math::dsp::stereo::compute_peak_abs_stereo(
+                            &self.buf_out_r[..len_r],
+                            &self.buf_out_r[..len_r],
+                        )
+                    };
+                    peak_r = p_r;
+                }
+            }
+            #[cfg(not(feature = "stereo"))]
+            {
+                if len_l > 0 {
+                    let (p_l, _) = unsafe {
+                        crate::math::dsp::stereo::compute_peak_abs_stereo(
+                            &self.buf_out_l[..len_l],
+                            &self.buf_out_l[..len_l],
+                        )
+                    };
+                    peak_l = p_l;
+                    peak_r = p_l;
+                } else if len_r > 0 {
+                    let (p_l, _) = unsafe {
+                        crate::math::dsp::stereo::compute_peak_abs_stereo(
+                            &self.buf_out_l[..len_r],
+                            &self.buf_out_l[..len_r],
+                        )
+                    };
+                    peak_l = p_l;
+                    peak_r = p_l;
+                }
             }
 
             let current_peak_l = f32::from_bits(self.shared.ui_peak_l.load(Ordering::Relaxed));

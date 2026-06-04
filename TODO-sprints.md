@@ -88,7 +88,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S2.T02 — Eliminar overhead stereo redundante no output processing do CLAP ⚠️
+#### Tarefa S2.T02 — Eliminar overhead stereo redundante no output processing do CLAP ⚠️ [DONE]
 
 - **Onde:** `src/clap/processor/dsp.rs` — linhas ~325-397.
 - **Problema:**
