@@ -31,4 +31,4 @@ fi
 
 # 5. Run basic benchmarks [Usually takes about 9 minutes]
 #At this stage it's more useful to only run them via utils/tests-long.sh
-#cargo bench inference_bench
+#cargo bench --bench inference_bench
