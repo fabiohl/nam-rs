@@ -759,6 +759,9 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
     let num_frames: usize = 64;
     let mut group = c.benchmark_group("head_rechannel_fp32");
 
+    let avx512_supported =
+        std::is_x86_feature_detected!("avx512f") && std::is_x86_feature_detected!("avx512vl");
+
     // ── DenseLayer<16,8> ──
     {
         let in_size: usize = 16;
@@ -774,10 +777,34 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
 
-        group.bench_function("DenseLayer_16x8_64f", |b| {
+        group.bench_function("DenseLayer_16x8_64f_AVX2", |b| {
             b.iter(|| unsafe {
                 layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
                     &input,
+                    &mut output,
+                    num_frames,
+                )
+            });
+        });
+
+        if avx512_supported {
+            group.bench_function("DenseLayer_16x8_64f_AVX512", |b| {
+                b.iter(|| unsafe {
+                    layer.process_block_f32_native::<nam_rs::math::common::Avx512Math>(
+                        &input,
+                        &mut output,
+                        num_frames,
+                    )
+                });
+            });
+        }
+
+        group.bench_function("DenseLayer_16x8_64f_Scalar", |b| {
+            b.iter(|| {
+                nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
+                    &input,
+                    layer.f32_weights.as_ref().unwrap(),
+                    &layer.bias,
                     &mut output,
                     num_frames,
                 )
@@ -800,10 +827,34 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
 
-        group.bench_function("DenseLayer_8x1_64f", |b| {
+        group.bench_function("DenseLayer_8x1_64f_AVX2", |b| {
             b.iter(|| unsafe {
                 layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
                     &input,
+                    &mut output,
+                    num_frames,
+                )
+            });
+        });
+
+        if avx512_supported {
+            group.bench_function("DenseLayer_8x1_64f_AVX512", |b| {
+                b.iter(|| unsafe {
+                    layer.process_block_f32_native::<nam_rs::math::common::Avx512Math>(
+                        &input,
+                        &mut output,
+                        num_frames,
+                    )
+                });
+            });
+        }
+
+        group.bench_function("DenseLayer_8x1_64f_Scalar", |b| {
+            b.iter(|| {
+                nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
+                    &input,
+                    layer.f32_weights.as_ref().unwrap(),
+                    &layer.bias,
                     &mut output,
                     num_frames,
                 )
@@ -826,10 +877,34 @@ fn bench_head_rechannel_fp32(c: &mut Criterion) {
         let input = vec![0.01f32; num_frames * in_size];
         let mut output = vec![0.0f32; num_frames * out_size];
 
-        group.bench_function("DenseLayer_16x1_64f", |b| {
+        group.bench_function("DenseLayer_16x1_64f_AVX2", |b| {
             b.iter(|| unsafe {
                 layer.process_block_f32_native::<nam_rs::math::common::Avx2Math>(
                     &input,
+                    &mut output,
+                    num_frames,
+                )
+            });
+        });
+
+        if avx512_supported {
+            group.bench_function("DenseLayer_16x1_64f_AVX512", |b| {
+                b.iter(|| unsafe {
+                    layer.process_block_f32_native::<nam_rs::math::common::Avx512Math>(
+                        &input,
+                        &mut output,
+                        num_frames,
+                    )
+                });
+            });
+        }
+
+        group.bench_function("DenseLayer_16x1_64f_Scalar", |b| {
+            b.iter(|| {
+                nam_rs::math::common::scalar_ref::gemv_with_bias_f32_fallback(
+                    &input,
+                    layer.f32_weights.as_ref().unwrap(),
+                    &layer.bias,
                     &mut output,
                     num_frames,
                 )

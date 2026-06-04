@@ -2209,7 +2209,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27b.T04 — Benchmark dedicado para `head_rechannel` FP32 ⚠️
+#### Tarefa S27b.T04 — Benchmark dedicado para `head_rechannel` FP32 ✅ [DONE]
 
 - **Dependência:** Executar **antes** ou em paralelo com S25.T01 (precisa baseline).
 - **Onde:** `benches/inference_bench.rs`.
