@@ -279,7 +279,6 @@ impl SimdMath for Avx2Math {
         }
     }
 
-
     #[inline(always)]
     unsafe fn f32_to_bf16(src: &[f32], dest: &mut [u16]) {
         unsafe { f32_to_bf16_fallback(src, dest) }

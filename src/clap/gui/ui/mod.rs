@@ -318,9 +318,7 @@ fn draw_zone1_identity(
                             if alive_fence.load(Ordering::Relaxed) {
                                 let shared = unsafe { &*(shared_addr as *const NamClapShared) };
                                 if let Some(path) = path_opt {
-                                    if let Ok(mut pending_guard) =
-                                        shared.ui_pending_model.lock()
-                                    {
+                                    if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
                                         *pending_guard = Some(path);
                                         host_static.request_callback();
                                     }
@@ -335,8 +333,7 @@ fn draw_zone1_identity(
                                 shared.ui_loading.store(false, Ordering::Relaxed);
 
                                 if let (Some(log), Ok(c_msg)) = (
-                                    host_static
-                                        .get_extension::<clack_extensions::log::HostLog>(),
+                                    host_static.get_extension::<clack_extensions::log::HostLog>(),
                                     std::ffi::CString::new(
                                         "NAM-rs: File dialog portal timed out after 120s",
                                     ),
@@ -492,8 +489,7 @@ fn draw_zone2_controls(
                         ui,
                         ui.make_persistent_id("input_gain_knob"),
                         "INPUT",
-                        crate::math::constants::GAIN_MIN_DB
-                            ..=crate::math::constants::GAIN_MAX_DB,
+                        crate::math::constants::GAIN_MIN_DB..=crate::math::constants::GAIN_MAX_DB,
                         0.0,
                         &shared.param_input_gain,
                         &shared.gesture_flags,
@@ -513,8 +509,7 @@ fn draw_zone2_controls(
                         ui,
                         ui.make_persistent_id("output_gain_knob"),
                         "OUTPUT",
-                        crate::math::constants::GAIN_MIN_DB
-                            ..=crate::math::constants::GAIN_MAX_DB,
+                        crate::math::constants::GAIN_MIN_DB..=crate::math::constants::GAIN_MAX_DB,
                         0.0,
                         &shared.param_output_gain,
                         &shared.gesture_flags,
@@ -566,10 +561,8 @@ fn draw_zone3_meters(
         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(8.0);
 
-            let peak_l =
-                f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
-            let peak_r =
-                f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
+            let peak_l = f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
+            let peak_r = f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
 
             let is_stereo = shared.active_channel_count.load(Ordering::Relaxed) >= 2;
 
@@ -1004,92 +997,6 @@ fn draw_zone5_status_bar(
             }
         });
     });
-
-    if state.drag_active {
-        egui::Area::new(egui::Id::new("drop_overlay"))
-            .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
-            .order(egui::Order::Foreground)
-            .interactable(false)
-            .show(ui.ctx(), |ui| {
-                let screen_rect = ui.ctx().content_rect();
-                let painter = ui.painter();
-                painter.rect_filled(
-                    screen_rect,
-                    0.0,
-                    egui::Color32::from_rgba_unmultiplied(26, 29, 35, 217),
-                );
-                ui.vertical_centered(|ui| {
-                    ui.add_space(screen_rect.height() / 2.0 - 20.0);
-                    ui.label(
-                        egui::RichText::new("Drop NAM Model Here ⬇️")
-                            .font(egui::FontId::proportional(20.0))
-                            .strong()
-                            .color(accent_color),
-                    );
-                });
-            });
-    }
-
-    let load_btn_id = load_btn_id.unwrap_or_else(|| ui.make_persistent_id("load_model_button"));
-    let controls = [
-        ui.make_persistent_id("input_gain_knob"),
-        ui.make_persistent_id("output_gain_knob"),
-        ui.make_persistent_id("gate_thresh_knob"),
-        ui.make_persistent_id("bypass_switch"),
-        load_btn_id,
-    ];
-
-    let mut tab_pressed = false;
-    let mut shift_pressed = false;
-    ui.input_mut(|i| {
-        i.events.retain(|e| {
-            if let egui::Event::Key {
-                key: egui::Key::Tab,
-                pressed: true,
-                modifiers,
-                ..
-            } = e
-            {
-                tab_pressed = true;
-                shift_pressed = modifiers.shift;
-                false
-            } else {
-                true
-            }
-        });
-    });
-
-    if tab_pressed {
-        let focused = ui.memory(|mem| mem.focused());
-        let next_focus = if let Some(curr) = focused {
-            if let Some(idx) = controls.iter().position(|&id| id == curr) {
-                if shift_pressed {
-                    if idx == 0 {
-                        controls[4]
-                    } else {
-                        controls[idx - 1]
-                    }
-                } else {
-                    if idx == 4 {
-                        controls[0]
-                    } else {
-                        controls[idx + 1]
-                    }
-                }
-            } else if shift_pressed {
-                controls[4]
-            } else {
-                controls[0]
-            }
-        } else if shift_pressed {
-            controls[4]
-        } else {
-            controls[0]
-        };
-        ui.memory_mut(|mem| mem.request_focus(next_focus));
-    }
-
-    ui.ctx().request_repaint_after(Duration::from_millis(30));
 }
 
 #[cfg(test)]

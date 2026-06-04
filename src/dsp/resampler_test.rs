@@ -432,7 +432,13 @@ fn test_fixed_point_drift_random_ratios() {
             let frac_u64 = frac_bits as f64 * (1.0 / (1u64 << 40) as f64);
 
             let diff = (frac_f64 - frac_u64).abs();
-            assert!(diff < 1e-7, "Drift exceeds 1e-7: from={}, to={}, diff={}", from, to, diff);
+            assert!(
+                diff < 1e-7,
+                "Drift exceeds 1e-7: from={}, to={}, diff={}",
+                from,
+                to,
+                diff
+            );
 
             accum_f64 += phase_step_f64;
             accum_u64 += phase_step_u64;

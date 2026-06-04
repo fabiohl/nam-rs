@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use crate::loader::nam_json::{NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape};
+use crate::loader::nam_json::{
+    NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape,
+};
 use crate::models::DynamicModel;
 use crate::models::a2::WavenetA2Placeholder;
 use anyhow::bail;
@@ -69,17 +71,26 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
     if res.is_err() && data.is_wavenet_a2() {
         let (channels, shape_matched) = match is_a2_shape(data) {
             Some(ch) => (ch, true),
-            None => (data.config
-                .layers
-                .first()
-                .and_then(|l| l.channels)
-                .map(|c| c as u8)
-                .unwrap_or(0), false),
+            None => (
+                data.config
+                    .layers
+                    .first()
+                    .and_then(|l| l.channels)
+                    .map(|c| c as u8)
+                    .unwrap_or(0),
+                false,
+            ),
         };
         if shape_matched {
-            info!("[Dispatcher] WaveNet A2 model detected (channels={}). Using temporary placeholder...", channels);
+            info!(
+                "[Dispatcher] WaveNet A2 model detected (channels={}). Using temporary placeholder...",
+                channels
+            );
         } else {
-            info!("[Dispatcher] WaveNet A2 model detected (SemVer heuristic, channels={}). Using temporary placeholder...", channels);
+            info!(
+                "[Dispatcher] WaveNet A2 model detected (SemVer heuristic, channels={}). Using temporary placeholder...",
+                channels
+            );
         }
         return Ok(Box::new(DynamicModel::WavenetA2(Box::new(
             WavenetA2Placeholder::new(channels),

@@ -37,7 +37,6 @@ pub struct WavenetProcessContext<'a> {
     pub is_first_layer: bool,
 }
 
-
 /// Manages the buffer memory of a WaveNet cell.
 ///
 /// 64B (cache line) alignment is sufficient because this struct lives exclusively

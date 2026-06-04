@@ -5,15 +5,15 @@ macro_rules! impl_avx512_activations {
     () => {
         #[inline(always)]
         unsafe fn accumulate_head(dest: &mut [f32], src: &[f32]) {
-            unsafe {
-                crate::math::wavenet::accumulate::accumulate_head_avx512(dest, src)
-            }
+            unsafe { crate::math::wavenet::accumulate::accumulate_head_avx512(dest, src) }
         }
 
         #[inline(always)]
         unsafe fn tanh_and_accumulate_block(head_input: &mut [f32], block: &mut [f32]) {
             unsafe {
-                crate::math::wavenet::accumulate::tanh_and_accumulate_block_avx512(head_input, block)
+                crate::math::wavenet::accumulate::tanh_and_accumulate_block_avx512(
+                    head_input, block,
+                )
             }
         }
 
@@ -207,7 +207,6 @@ macro_rules! impl_avx512vnni_bf16_activations {
         }
     };
 }
-
 
 pub(super) use impl_avx512_activations;
 pub(super) use impl_avx512vnni_activations;

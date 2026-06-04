@@ -129,9 +129,7 @@ pub fn get_lstm_topology(data: &NamModelData) -> Option<(usize, usize)> {
 /// captured by the Rust deserialization structs. Once those fields are added,
 /// this function should be extended to match a2_fast.cpp:754-885 exactly.
 pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
-    use crate::models::a2::{
-        A2_DILATIONS, A2_NUM_LAYERS, A2_VALID_CHANNELS,
-    };
+    use crate::models::a2::{A2_DILATIONS, A2_NUM_LAYERS, A2_VALID_CHANNELS};
 
     if data.architecture != "WaveNet" {
         return None;

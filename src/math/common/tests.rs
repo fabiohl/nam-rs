@@ -397,24 +397,14 @@ fn test_convolve_mono_dual_parity() {
     };
 
     let res_avx2 = unsafe {
-        Avx2Math::convolve_mono_dual(
-            coeffs0.as_ptr(),
-            coeffs1.as_ptr(),
-            input.as_ptr(),
-            32,
-        )
+        Avx2Math::convolve_mono_dual(coeffs0.as_ptr(), coeffs1.as_ptr(), input.as_ptr(), 32)
     };
     assert!((res_avx2.0 - expected.0).abs() < 1e-5);
     assert!((res_avx2.1 - expected.1).abs() < 1e-5);
 
     if is_x86_feature_detected!("avx512f") {
         let res_avx512 = unsafe {
-            Avx512Math::convolve_mono_dual(
-                coeffs0.as_ptr(),
-                coeffs1.as_ptr(),
-                input.as_ptr(),
-                32,
-            )
+            Avx512Math::convolve_mono_dual(coeffs0.as_ptr(), coeffs1.as_ptr(), input.as_ptr(), 32)
         };
         assert!((res_avx512.0 - expected.0).abs() < 1e-5);
         assert!((res_avx512.1 - expected.1).abs() < 1e-5);
@@ -594,12 +584,18 @@ fn test_tanh_and_accumulate_block() {
                 assert!(
                     (block[i] - expected_tanh).abs() < 1e-6,
                     "Length {} block[{}] failed: got {}, expected {}",
-                    len, i, block[i], expected_tanh
+                    len,
+                    i,
+                    block[i],
+                    expected_tanh
                 );
                 assert!(
                     (head_input[i] - (1.0 + expected_tanh)).abs() < 1e-6,
                     "Length {} head_input[{}] failed: got {}, expected {}",
-                    len, i, head_input[i], 1.0 + expected_tanh
+                    len,
+                    i,
+                    head_input[i],
+                    1.0 + expected_tanh
                 );
             }
         }
@@ -635,4 +631,3 @@ fn test_gated_activation_and_overwrite_block() {
         test_backend::<Avx512Math>();
     }
 }
-

@@ -281,7 +281,6 @@ pub trait SimdMath {
         ch: usize,
     );
 
-
     /// Computes the maximum energy between two channels (Stereo).
     /// Returns `max(energy_l, energy_r)`.
     ///

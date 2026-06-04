@@ -230,10 +230,7 @@ pub unsafe fn gated_activation_and_overwrite_block_avx2(
             let activated = _mm256_mul_ps(tanh_z1, sig_z2);
 
             _mm256_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
-            _mm256_storeu_ps(
-                head_input.as_mut_ptr().add(head_offset + c),
-                activated,
-            );
+            _mm256_storeu_ps(head_input.as_mut_ptr().add(head_offset + c), activated);
             c += 8;
         }
         while c < ch {
@@ -268,10 +265,7 @@ pub unsafe fn gated_activation_and_overwrite_block_avx512(
             let activated = _mm512_mul_ps(tanh_z1, sig_z2);
 
             _mm512_storeu_ps(block.as_mut_ptr().add(block_offset + c), activated);
-            _mm512_storeu_ps(
-                head_input.as_mut_ptr().add(head_offset + c),
-                activated,
-            );
+            _mm512_storeu_ps(head_input.as_mut_ptr().add(head_offset + c), activated);
             c += 16;
         }
         while c < ch {
@@ -380,5 +374,3 @@ pub unsafe fn tanh_and_overwrite_block_avx512(head_input: &mut [f32], block: &mu
         _mm512_mask_storeu_ps(head_input.as_mut_ptr().add(i), mask, vt);
     }
 }
-
-

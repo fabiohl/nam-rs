@@ -2063,7 +2063,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27.T02 — Quebrar `src/math/common/scalar_ref.rs` (690 LoC) em sub-módulos ⚠️
+#### Tarefa S27.T02 — Quebrar `src/math/common/scalar_ref.rs` (690 LoC) em sub-módulos ⚠️[DONE]
 
 - **Onde:** `src/math/common/scalar_ref.rs` → `src/math/common/scalar_ref/`.
 - **Problema:** Arquivo monolítico com fallbacks escalares de **todas** as famílias (GEMM, GEMV, dot, activations, DSP). Adicionar novos kernels (NEON em S24, AMX em S23) sem split torna o arquivo > 1000 LoC.

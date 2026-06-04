@@ -11,11 +11,11 @@
 use nam_rs::loader::nam_json::{
     NamConfig, NamLayerConfig, NamModelData, WeightsLayout, get_wavenet_topology, is_a2_shape,
 };
+use nam_rs::models::NamModel;
 use nam_rs::models::a2::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
     A2_VALID_CHANNELS, WavenetA2Placeholder,
 };
-use nam_rs::models::NamModel;
 
 // =============================================================================
 // 1. Constants cross-check with a2_fast.h (raw C++ source embedded as string)
@@ -48,7 +48,10 @@ fn test_a2_constants_match_cpp_reference() {
 
     // Cross-check valid channels
     let cpp_valid_channels: [u8; 2] = [3, 8];
-    assert_eq!(A2_VALID_CHANNELS, cpp_valid_channels, "valid channels mismatch");
+    assert_eq!(
+        A2_VALID_CHANNELS, cpp_valid_channels,
+        "valid channels mismatch"
+    );
 }
 
 // =============================================================================
@@ -118,7 +121,10 @@ fn make_a2_data(channels: u8, dilations: Vec<usize>) -> NamModelData {
 fn test_is_a2_shape_accepts_channels_3() {
     let data = make_a2_data(3, A2_DILATIONS.to_vec());
     let result = is_a2_shape(&data);
-    assert!(result.is_some(), "is_a2_shape should accept channels=3 with correct dilations");
+    assert!(
+        result.is_some(),
+        "is_a2_shape should accept channels=3 with correct dilations"
+    );
     assert_eq!(result.unwrap(), 3, "should return channels=3");
 }
 
@@ -126,25 +132,36 @@ fn test_is_a2_shape_accepts_channels_3() {
 fn test_is_a2_shape_accepts_channels_8() {
     let data = make_a2_data(8, A2_DILATIONS.to_vec());
     let result = is_a2_shape(&data);
-    assert!(result.is_some(), "is_a2_shape should accept channels=8 with correct dilations");
+    assert!(
+        result.is_some(),
+        "is_a2_shape should accept channels=8 with correct dilations"
+    );
     assert_eq!(result.unwrap(), 8, "should return channels=8");
 }
 
 #[test]
 fn test_is_a2_shape_rejects_channels_4() {
     let data = make_a2_data(4, A2_DILATIONS.to_vec());
-    assert!(is_a2_shape(&data).is_none(), "channels=4 should not match A2 shape");
+    assert!(
+        is_a2_shape(&data).is_none(),
+        "channels=4 should not match A2 shape"
+    );
 }
 
 #[test]
 fn test_is_a2_shape_rejects_channels_16() {
     let data = make_a2_data(16, A2_DILATIONS.to_vec());
-    assert!(is_a2_shape(&data).is_none(), "channels=16 should not match A2 shape");
+    assert!(
+        is_a2_shape(&data).is_none(),
+        "channels=16 should not match A2 shape"
+    );
 }
 
 #[test]
 fn test_is_a2_shape_rejects_wrong_dilations() {
-    let wrong_dils: Vec<usize> = vec![1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1, 2, 4];
+    let wrong_dils: Vec<usize> = vec![
+        1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1, 2, 4,
+    ];
     let data = make_a2_data(8, wrong_dils);
     assert!(
         is_a2_shape(&data).is_none(),
