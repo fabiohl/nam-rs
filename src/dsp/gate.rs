@@ -146,9 +146,16 @@ impl DynamicHysteresis {
         if value < threshold_close {
             self.hold_counter += n_samples;
             if self.hold_counter >= params.hold_frames {
-                self.state = GateState::FadingOut;
-                self.fade_counter = params.fade_frames;
-                self.ramp_samples = 0;
+                if params.fade_frames == 0 {
+                    self.state = GateState::Closed;
+                    self.current_multiplier = 0.0;
+                    self.fade_counter = 0;
+                    self.ramp_samples = 0;
+                } else {
+                    self.state = GateState::FadingOut;
+                    self.fade_counter = params.fade_frames;
+                    self.ramp_samples = 0;
+                }
             } else {
                 self.ramp_samples = 0;
             }
@@ -199,18 +206,26 @@ impl DynamicHysteresis {
         n_samples: usize,
     ) {
         if value >= threshold_open {
-            self.state = GateState::FadingIn;
-            self.fade_counter = 0;
-            self.hold_counter = 0;
-            if n_samples < params.fade_frames {
-                self.fade_counter += n_samples;
-                self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
-                self.ramp_samples = n_samples;
-            } else {
-                self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+            if params.fade_frames == 0 {
                 self.state = GateState::Open;
                 self.current_multiplier = 1.0;
-                self.fade_counter = params.fade_frames;
+                self.fade_counter = 0;
+                self.hold_counter = 0;
+                self.ramp_samples = 0;
+            } else {
+                self.state = GateState::FadingIn;
+                self.fade_counter = 0;
+                self.hold_counter = 0;
+                if n_samples < params.fade_frames {
+                    self.fade_counter += n_samples;
+                    self.current_multiplier = self.fade_counter as f32 * params.inv_fade_frames;
+                    self.ramp_samples = n_samples;
+                } else {
+                    self.ramp_samples = params.fade_frames.saturating_sub(self.fade_counter);
+                    self.state = GateState::Open;
+                    self.current_multiplier = 1.0;
+                    self.fade_counter = params.fade_frames;
+                }
             }
         } else {
             self.ramp_samples = 0;

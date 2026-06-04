@@ -2159,7 +2159,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `documentador`.
 - **Esforço:** 30 min.
 
-### Sprint S27b — Test Coverage & Documentation Backfill
+### Sprint S27b — Test Coverage & Documentation Backfill [DONE]
 
 > Foco: fechar gaps de cobertura que se acumularam durante Épicos 4–8 e atualizar documentação arquitetural.
 > Importante: Ao criar novos testes, sempre julgar se é um teste que vale a pena rodar a cada "cargo test" ou se pode tranquilamente ser transferido para "utils\tests-long.sh". Testes muito longos são uma tentação para serem pulados. O "cargo test" deveria ser destinado apenas a coisas com riscos de quebras a cada commit, logo que realmente precisam ser verificadas sempre.
@@ -2272,6 +2272,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `documentador`.
 - **Esforço:** 30 min.
 
+---
 ---
 
 ## Épico 15 — Cross-Validation v2 (Stress Signal & Métricas Perceptuais)
