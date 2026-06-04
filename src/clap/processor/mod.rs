@@ -301,6 +301,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                             .set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
                     }
                 }
+                crate::math::common::set_daz_ftz();
             }
         }
 

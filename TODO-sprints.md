@@ -31,7 +31,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S1.T02 — Configurar DAZ/FTZ no primeiro bloco do CLAP audio thread 🔥
+#### Tarefa S1.T02 — Configurar DAZ/FTZ no primeiro bloco do CLAP audio thread 🔥 [DONE]
 
 - **Onde:** `src/clap/processor/mod.rs` — dentro do bloco `if !self.prio_checked` (linhas ~289-305).
 - **Problema:** O standalone chama `crate::math::common::set_daz_ftz()` via `rt_setup::apply_rt_thread_config()` na thread RT. O CLAP plugin **não faz isso**, confiando que o host DAW configura FTZ+DAZ. Hosts como Ardour, Zrythm, Qtractor e hosts menores **não garantem** FTZ/DAZ. Sem essas flags, denormals gerados internamente pelas activations do LSTM/WaveNet (sigmoid/tanh) podem causar penalidade de 50-100x por operação afetada, manifestando-se como xruns esporádicos sob carga.
