@@ -2093,7 +2093,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S27.T04 — Macro-extract `gemv_kernel!` para reduzir duplicação AVX2/AVX-512 ⚠️
+#### Tarefa S27.T04 — Macro-extract `gemv_kernel!` para reduzir duplicação AVX2/AVX-512 ⚠️ [DONE]
 
 - **Onde:** `src/math/gemm/gemv.rs` (641 LoC), `src/math/common/avx512/gemv.rs` (564 LoC).
 - **Problema:** 6 funções (`gemv_overwrite_avx2`, `fused_add_gemv_avx2`, `gemv_overwrite_avx512`, `fused_add_gemv_avx512`, e suas variantes `_small`) com ~100 LoC cada, todas com mesmo padrão: unroll N (4 YMM ou 8 ZMM acumuladores), prefetch, reduce em árvore. Cada fix matemático/perf requer alterar 6 lugares.

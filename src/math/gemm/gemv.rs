@@ -19,6 +19,184 @@
 
 use core::arch::x86_64::*;
 
+macro_rules! gemv_kernel {
+    (
+        4,
+        $is_fused:expr,
+        $out_c:expr,
+        $out_len:expr,
+        $in_frame:expr,
+        $weights:expr,
+        $bias:expr,
+        $out_frame:expr,
+        $do_bias:expr,
+        $setzero:expr,
+        $load_out:expr,
+        $load_bias:expr,
+        $add_ps:expr,
+        $load_weight:expr,
+        $fmadd_ps:expr,
+        $store_ps:expr
+    ) => {
+        let mut acc0 = if $is_fused {
+            let mut acc = $load_out($out_c);
+            if $do_bias {
+                acc = $add_ps(acc, $load_bias($out_c));
+            }
+            acc
+        } else {
+            if $do_bias {
+                $load_bias($out_c)
+            } else {
+                $setzero()
+            }
+        };
+        let mut acc1 = $setzero();
+        let mut acc2 = $setzero();
+        let mut acc3 = $setzero();
+
+        let mut in_c = 0;
+        let in_len = $in_frame.len();
+        while in_c + 4 <= in_len {
+            _mm_prefetch::<_MM_HINT_T0>($in_frame.as_ptr().add(in_c + 32) as *const i8);
+
+            let vs0 = _mm256_set1_ps(*$in_frame.get_unchecked(in_c));
+            let vs1 = _mm256_set1_ps(*$in_frame.get_unchecked(in_c + 1));
+            let vs2 = _mm256_set1_ps(*$in_frame.get_unchecked(in_c + 2));
+            let vs3 = _mm256_set1_ps(*$in_frame.get_unchecked(in_c + 3));
+
+            let w_ptr = $weights.as_ptr().add(in_c * $out_len + $out_c);
+            let w0 = $load_weight(w_ptr);
+            acc0 = $fmadd_ps(vs0, w0, acc0);
+
+            let w1 = $load_weight(w_ptr.add($out_len));
+            acc1 = $fmadd_ps(vs1, w1, acc1);
+
+            let w2 = $load_weight(w_ptr.add(2 * $out_len));
+            acc2 = $fmadd_ps(vs2, w2, acc2);
+
+            let w3 = $load_weight(w_ptr.add(3 * $out_len));
+            acc3 = $fmadd_ps(vs3, w3, acc3);
+
+            in_c += 4;
+        }
+
+        acc0 = $add_ps(acc0, acc1);
+        acc2 = $add_ps(acc2, acc3);
+        acc0 = $add_ps(acc0, acc2);
+
+        while in_c < in_len {
+            let vs = _mm256_set1_ps(*$in_frame.get_unchecked(in_c));
+            let weight_ptr = $weights.as_ptr().add(in_c * $out_len + $out_c);
+            let vw = $load_weight(weight_ptr);
+            acc0 = $fmadd_ps(vs, vw, acc0);
+            in_c += 1;
+        }
+
+        $store_ps($out_c, acc0);
+    };
+
+    (
+        8,
+        $is_fused:expr,
+        $out_c:expr,
+        $out_len:expr,
+        $in_frame:expr,
+        $weights:expr,
+        $bias:expr,
+        $out_frame:expr,
+        $do_bias:expr,
+        $setzero:expr,
+        $load_out:expr,
+        $load_bias:expr,
+        $add_ps:expr,
+        $load_weight:expr,
+        $fmadd_ps:expr,
+        $store_ps:expr
+    ) => {
+        let mut acc0 = if $is_fused {
+            let mut acc = $load_out($out_c);
+            if $do_bias {
+                acc = $add_ps(acc, $load_bias($out_c));
+            }
+            acc
+        } else {
+            if $do_bias {
+                $load_bias($out_c)
+            } else {
+                $setzero()
+            }
+        };
+        let mut acc1 = $setzero();
+        let mut acc2 = $setzero();
+        let mut acc3 = $setzero();
+        let mut acc4 = $setzero();
+        let mut acc5 = $setzero();
+        let mut acc6 = $setzero();
+        let mut acc7 = $setzero();
+
+        let mut in_c = 0;
+        let in_len = $in_frame.len();
+        while in_c + 8 <= in_len {
+            _mm_prefetch::<_MM_HINT_T0>($in_frame.as_ptr().add(in_c + 64) as *const i8);
+
+            let vs0 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c));
+            let vs1 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 1));
+            let vs2 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 2));
+            let vs3 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 3));
+            let vs4 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 4));
+            let vs5 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 5));
+            let vs6 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 6));
+            let vs7 = _mm512_set1_ps(*$in_frame.get_unchecked(in_c + 7));
+
+            let w_ptr = $weights.as_ptr().add(in_c * $out_len + $out_c);
+            let w0 = $load_weight(w_ptr);
+            acc0 = $fmadd_ps(vs0, w0, acc0);
+
+            let w1 = $load_weight(w_ptr.add($out_len));
+            acc1 = $fmadd_ps(vs1, w1, acc1);
+
+            let w2 = $load_weight(w_ptr.add(2 * $out_len));
+            acc2 = $fmadd_ps(vs2, w2, acc2);
+
+            let w3 = $load_weight(w_ptr.add(3 * $out_len));
+            acc3 = $fmadd_ps(vs3, w3, acc3);
+
+            let w4 = $load_weight(w_ptr.add(4 * $out_len));
+            acc4 = $fmadd_ps(vs4, w4, acc4);
+
+            let w5 = $load_weight(w_ptr.add(5 * $out_len));
+            acc5 = $fmadd_ps(vs5, w5, acc5);
+
+            let w6 = $load_weight(w_ptr.add(6 * $out_len));
+            acc6 = $fmadd_ps(vs6, w6, acc6);
+
+            let w7 = $load_weight(w_ptr.add(7 * $out_len));
+            acc7 = $fmadd_ps(vs7, w7, acc7);
+
+            in_c += 8;
+        }
+
+        acc0 = $add_ps(acc0, acc1);
+        acc2 = $add_ps(acc2, acc3);
+        acc4 = $add_ps(acc4, acc5);
+        acc6 = $add_ps(acc6, acc7);
+        acc0 = $add_ps(acc0, acc2);
+        acc4 = $add_ps(acc4, acc6);
+        acc0 = $add_ps(acc0, acc4);
+
+        while in_c < in_len {
+            let vs = _mm512_set1_ps(*$in_frame.get_unchecked(in_c));
+            let weight_ptr = $weights.as_ptr().add(in_c * $out_len + $out_c);
+            let vw = $load_weight(weight_ptr);
+            acc0 = $fmadd_ps(vs, vw, acc0);
+            in_c += 1;
+        }
+
+        $store_ps($out_c, acc0);
+    };
+}
+
 // ── AVX2 ──────────────────────────────────────────────────────────────────────
 
 /// Performs a combined (fused) high-speed mathematical operation: Y = X_res + Bias + W * Z.
@@ -44,52 +222,24 @@ pub unsafe fn fused_add_gemv_avx2(
     unsafe {
         let mut out_c = 0;
         while out_c + 8 <= out_len {
-            let mut acc0 = _mm256_loadu_ps(out_frame.as_ptr().add(out_c));
-            if do_bias {
-                acc0 = _mm256_add_ps(acc0, _mm256_loadu_ps(bias.as_ptr().add(out_c)));
-            }
-            let mut acc1 = _mm256_setzero_ps();
-            let mut acc2 = _mm256_setzero_ps();
-            let mut acc3 = _mm256_setzero_ps();
-
-            let mut in_c = 0;
-            while in_c + 4 <= in_len {
-                _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 32) as *const i8);
-
-                let vs0 = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
-                let vs1 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 1));
-                let vs2 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 2));
-                let vs3 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 3));
-
-                let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
-                acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
-
-                let w1 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
-                acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
-
-                let w2 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
-                acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
-
-                let w3 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
-                acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
-
-                in_c += 4;
-            }
-
-            acc0 = _mm256_add_ps(acc0, acc1);
-            acc2 = _mm256_add_ps(acc2, acc3);
-            acc0 = _mm256_add_ps(acc0, acc2);
-
-            while in_c < in_len {
-                let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
-                let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
-                acc0 = _mm256_fmadd_ps(vs, vw, acc0);
-                in_c += 1;
-            }
-
-            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
+            gemv_kernel!(
+                4,
+                true,
+                out_c,
+                out_len,
+                in_frame,
+                weights,
+                bias,
+                out_frame,
+                do_bias,
+                _mm256_setzero_ps,
+                |oc| _mm256_loadu_ps(out_frame.as_ptr().add(oc)),
+                |oc| _mm256_loadu_ps(bias.as_ptr().add(oc)),
+                _mm256_add_ps,
+                |ptr| _mm256_cvtph_ps(_mm_loadu_si128(ptr as *const __m128i)),
+                _mm256_fmadd_ps,
+                |oc, val| _mm256_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
+            );
             out_c += 8;
         }
 
@@ -122,53 +272,24 @@ pub unsafe fn gemv_overwrite_avx2(
     unsafe {
         let mut out_c = 0;
         while out_c + 8 <= out_len {
-            let mut acc0 = if do_bias {
-                _mm256_loadu_ps(bias.as_ptr().add(out_c))
-            } else {
-                _mm256_setzero_ps()
-            };
-            let mut acc1 = _mm256_setzero_ps();
-            let mut acc2 = _mm256_setzero_ps();
-            let mut acc3 = _mm256_setzero_ps();
-
-            let mut in_c = 0;
-            while in_c + 4 <= in_len {
-                _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 32) as *const i8);
-
-                let vs0 = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
-                let vs1 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 1));
-                let vs2 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 2));
-                let vs3 = _mm256_set1_ps(*in_frame.get_unchecked(in_c + 3));
-
-                let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let w0 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr as *const __m128i));
-                acc0 = _mm256_fmadd_ps(vs0, w0, acc0);
-
-                let w1 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(out_len) as *const __m128i));
-                acc1 = _mm256_fmadd_ps(vs1, w1, acc1);
-
-                let w2 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(2 * out_len) as *const __m128i));
-                acc2 = _mm256_fmadd_ps(vs2, w2, acc2);
-
-                let w3 = _mm256_cvtph_ps(_mm_loadu_si128(w_ptr.add(3 * out_len) as *const __m128i));
-                acc3 = _mm256_fmadd_ps(vs3, w3, acc3);
-
-                in_c += 4;
-            }
-
-            acc0 = _mm256_add_ps(acc0, acc1);
-            acc2 = _mm256_add_ps(acc2, acc3);
-            acc0 = _mm256_add_ps(acc0, acc2);
-
-            while in_c < in_len {
-                let vs = _mm256_set1_ps(*in_frame.get_unchecked(in_c));
-                let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-                let vw = _mm256_cvtph_ps(_mm_loadu_si128(weight_ptr as *const __m128i));
-                acc0 = _mm256_fmadd_ps(vs, vw, acc0);
-                in_c += 1;
-            }
-
-            _mm256_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
+            gemv_kernel!(
+                4,
+                false,
+                out_c,
+                out_len,
+                in_frame,
+                weights,
+                bias,
+                out_frame,
+                do_bias,
+                _mm256_setzero_ps,
+                |oc| _mm256_loadu_ps(out_frame.as_ptr().add(oc)),
+                |oc| _mm256_loadu_ps(bias.as_ptr().add(oc)),
+                _mm256_add_ps,
+                |ptr| _mm256_cvtph_ps(_mm_loadu_si128(ptr as *const __m128i)),
+                _mm256_fmadd_ps,
+                |oc, val| _mm256_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
+            );
             out_c += 8;
         }
 
@@ -307,99 +428,26 @@ pub unsafe fn fused_add_gemv_avx512_small(
     out_frame: &mut [f32],
     do_bias: bool,
 ) {
-    let in_len = in_frame.len();
-
-    let mut acc0 = _mm512_loadu_ps(out_frame.as_ptr());
-    if do_bias {
-        acc0 = _mm512_add_ps(acc0, _mm512_loadu_ps(bias.as_ptr()));
+    unsafe {
+        gemv_kernel!(
+            8,
+            true,
+            0,
+            16,
+            in_frame,
+            weights,
+            bias,
+            out_frame,
+            do_bias,
+            _mm512_setzero_ps,
+            |oc| _mm512_loadu_ps(out_frame.as_ptr().add(oc)),
+            |oc| _mm512_loadu_ps(bias.as_ptr().add(oc)),
+            _mm512_add_ps,
+            |ptr| _mm512_cvtph_ps(_mm256_loadu_si256(ptr as *const __m256i)),
+            _mm512_fmadd_ps,
+            |oc, val| _mm512_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
+        );
     }
-    let mut acc1 = _mm512_setzero_ps();
-    let mut acc2 = _mm512_setzero_ps();
-    let mut acc3 = _mm512_setzero_ps();
-    let mut acc4 = _mm512_setzero_ps();
-    let mut acc5 = _mm512_setzero_ps();
-    let mut acc6 = _mm512_setzero_ps();
-    let mut acc7 = _mm512_setzero_ps();
-
-    let mut in_c = 0;
-    while in_c + 8 <= in_len {
-        _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
-
-        let v_in0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-        let v_in1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
-        let v_in2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
-        let v_in3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
-        let v_in4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
-        let v_in5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
-        let v_in6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
-        let v_in7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
-
-        let w_ptr = weights.as_ptr().add(in_c * 16);
-
-        acc0 = _mm512_fmadd_ps(
-            v_in0,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i)),
-            acc0,
-        );
-        acc1 = _mm512_fmadd_ps(
-            v_in1,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(16) as *const __m256i)),
-            acc1,
-        );
-        acc2 = _mm512_fmadd_ps(
-            v_in2,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(32) as *const __m256i)),
-            acc2,
-        );
-        acc3 = _mm512_fmadd_ps(
-            v_in3,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(48) as *const __m256i)),
-            acc3,
-        );
-        acc4 = _mm512_fmadd_ps(
-            v_in4,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(64) as *const __m256i)),
-            acc4,
-        );
-        acc5 = _mm512_fmadd_ps(
-            v_in5,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(80) as *const __m256i)),
-            acc5,
-        );
-        acc6 = _mm512_fmadd_ps(
-            v_in6,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(96) as *const __m256i)),
-            acc6,
-        );
-        acc7 = _mm512_fmadd_ps(
-            v_in7,
-            _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(112) as *const __m256i)),
-            acc7,
-        );
-        in_c += 8;
-    }
-
-    acc0 = _mm512_add_ps(acc0, acc1);
-    acc2 = _mm512_add_ps(acc2, acc3);
-    acc4 = _mm512_add_ps(acc4, acc5);
-    acc6 = _mm512_add_ps(acc6, acc7);
-    acc0 = _mm512_add_ps(acc0, acc2);
-    acc4 = _mm512_add_ps(acc4, acc6);
-    acc0 = _mm512_add_ps(acc0, acc4);
-
-    while in_c < in_len {
-        let v_in = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-        acc0 = _mm512_fmadd_ps(
-            v_in,
-            _mm512_cvtph_ps(_mm256_loadu_si256(
-                weights.as_ptr().add(in_c * 16) as *const __m256i
-            )),
-            acc0,
-        );
-        in_c += 1;
-    }
-
-    _mm512_storeu_ps(out_frame.as_mut_ptr(), acc0);
 }
 
 // ── AVX-512 General ────────────────────────────────────────────────────────────
@@ -424,91 +472,40 @@ pub unsafe fn gemv_overwrite_avx512(
         return;
     }
 
-    let mut out_c = 0;
-    while out_c + 16 <= out_len {
-        let mut acc0 = if do_bias {
-            _mm512_loadu_ps(bias.as_ptr().add(out_c))
-        } else {
-            _mm512_setzero_ps()
-        };
-        let mut acc1 = _mm512_setzero_ps();
-        let mut acc2 = _mm512_setzero_ps();
-        let mut acc3 = _mm512_setzero_ps();
-        let mut acc4 = _mm512_setzero_ps();
-        let mut acc5 = _mm512_setzero_ps();
-        let mut acc6 = _mm512_setzero_ps();
-        let mut acc7 = _mm512_setzero_ps();
-
-        let mut in_c = 0;
-        while in_c + 8 <= in_len {
-            _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
-
-            let vs0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-            let vs1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
-            let vs2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
-            let vs3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
-            let vs4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
-            let vs5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
-            let vs6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
-            let vs7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
-
-            let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-
-            let w0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
-            acc0 = _mm512_fmadd_ps(vs0, w0, acc0);
-
-            let w1 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
-            acc1 = _mm512_fmadd_ps(vs1, w1, acc1);
-
-            let w2 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
-            acc2 = _mm512_fmadd_ps(vs2, w2, acc2);
-
-            let w3 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
-            acc3 = _mm512_fmadd_ps(vs3, w3, acc3);
-
-            let w4 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
-            acc4 = _mm512_fmadd_ps(vs4, w4, acc4);
-
-            let w5 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
-            acc5 = _mm512_fmadd_ps(vs5, w5, acc5);
-
-            let w6 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
-            acc6 = _mm512_fmadd_ps(vs6, w6, acc6);
-
-            let w7 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
-            acc7 = _mm512_fmadd_ps(vs7, w7, acc7);
-
-            in_c += 8;
+    unsafe {
+        let mut out_c = 0;
+        while out_c + 16 <= out_len {
+            gemv_kernel!(
+                8,
+                false,
+                out_c,
+                out_len,
+                in_frame,
+                weights,
+                bias,
+                out_frame,
+                do_bias,
+                _mm512_setzero_ps,
+                |oc| _mm512_loadu_ps(out_frame.as_ptr().add(oc)),
+                |oc| _mm512_loadu_ps(bias.as_ptr().add(oc)),
+                _mm512_add_ps,
+                |ptr| _mm512_cvtph_ps(_mm256_loadu_si256(ptr as *const __m256i)),
+                _mm512_fmadd_ps,
+                |oc, val| _mm512_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
+            );
+            out_c += 16;
         }
 
-        acc0 = _mm512_add_ps(acc0, acc1);
-        acc2 = _mm512_add_ps(acc2, acc3);
-        acc4 = _mm512_add_ps(acc4, acc5);
-        acc6 = _mm512_add_ps(acc6, acc7);
-        acc0 = _mm512_add_ps(acc0, acc2);
-        acc4 = _mm512_add_ps(acc4, acc6);
-        acc0 = _mm512_add_ps(acc0, acc4);
-
-        while in_c < in_len {
-            let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-            let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
-            acc0 = _mm512_fmadd_ps(vs, vw, acc0);
-            in_c += 1;
+        while out_c < out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            for in_c in 0..in_len {
+                let w =
+                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                sum += *in_frame.get_unchecked(in_c) * w;
+            }
+            *out_frame.get_unchecked_mut(out_c) = sum;
+            out_c += 1;
         }
-
-        _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
-        out_c += 16;
-    }
-
-    while out_c < out_len {
-        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
-        for in_c in 0..in_len {
-            let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
-            sum += *in_frame.get_unchecked(in_c) * w;
-        }
-        *out_frame.get_unchecked_mut(out_c) = sum;
-        out_c += 1;
     }
 }
 
@@ -553,90 +550,40 @@ pub unsafe fn fused_add_gemv_avx512(
         return;
     }
 
-    let mut out_c = 0;
-    while out_c + 16 <= out_len {
-        let mut acc0 = _mm512_loadu_ps(out_frame.as_ptr().add(out_c));
-        if do_bias {
-            acc0 = _mm512_add_ps(acc0, _mm512_loadu_ps(bias.as_ptr().add(out_c)));
-        }
-        let mut acc1 = _mm512_setzero_ps();
-        let mut acc2 = _mm512_setzero_ps();
-        let mut acc3 = _mm512_setzero_ps();
-        let mut acc4 = _mm512_setzero_ps();
-        let mut acc5 = _mm512_setzero_ps();
-        let mut acc6 = _mm512_setzero_ps();
-        let mut acc7 = _mm512_setzero_ps();
-
-        let mut in_c = 0;
-        while in_c + 8 <= in_len {
-            _mm_prefetch::<_MM_HINT_T0>(in_frame.as_ptr().add(in_c + 64) as *const i8);
-
-            let vs0 = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-            let vs1 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 1));
-            let vs2 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 2));
-            let vs3 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 3));
-            let vs4 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 4));
-            let vs5 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 5));
-            let vs6 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 6));
-            let vs7 = _mm512_set1_ps(*in_frame.get_unchecked(in_c + 7));
-
-            let w_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-
-            let w0 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr as *const __m256i));
-            acc0 = _mm512_fmadd_ps(vs0, w0, acc0);
-
-            let w1 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(out_len) as *const __m256i));
-            acc1 = _mm512_fmadd_ps(vs1, w1, acc1);
-
-            let w2 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(2 * out_len) as *const __m256i));
-            acc2 = _mm512_fmadd_ps(vs2, w2, acc2);
-
-            let w3 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(3 * out_len) as *const __m256i));
-            acc3 = _mm512_fmadd_ps(vs3, w3, acc3);
-
-            let w4 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(4 * out_len) as *const __m256i));
-            acc4 = _mm512_fmadd_ps(vs4, w4, acc4);
-
-            let w5 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(5 * out_len) as *const __m256i));
-            acc5 = _mm512_fmadd_ps(vs5, w5, acc5);
-
-            let w6 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(6 * out_len) as *const __m256i));
-            acc6 = _mm512_fmadd_ps(vs6, w6, acc6);
-
-            let w7 = _mm512_cvtph_ps(_mm256_loadu_si256(w_ptr.add(7 * out_len) as *const __m256i));
-            acc7 = _mm512_fmadd_ps(vs7, w7, acc7);
-
-            in_c += 8;
+    unsafe {
+        let mut out_c = 0;
+        while out_c + 16 <= out_len {
+            gemv_kernel!(
+                8,
+                true,
+                out_c,
+                out_len,
+                in_frame,
+                weights,
+                bias,
+                out_frame,
+                do_bias,
+                _mm512_setzero_ps,
+                |oc| _mm512_loadu_ps(out_frame.as_ptr().add(oc)),
+                |oc| _mm512_loadu_ps(bias.as_ptr().add(oc)),
+                _mm512_add_ps,
+                |ptr| _mm512_cvtph_ps(_mm256_loadu_si256(ptr as *const __m256i)),
+                _mm512_fmadd_ps,
+                |oc, val| _mm512_storeu_ps(out_frame.as_mut_ptr().add(oc), val)
+            );
+            out_c += 16;
         }
 
-        acc0 = _mm512_add_ps(acc0, acc1);
-        acc2 = _mm512_add_ps(acc2, acc3);
-        acc4 = _mm512_add_ps(acc4, acc5);
-        acc6 = _mm512_add_ps(acc6, acc7);
-        acc0 = _mm512_add_ps(acc0, acc2);
-        acc4 = _mm512_add_ps(acc4, acc6);
-        acc0 = _mm512_add_ps(acc0, acc4);
-
-        while in_c < in_len {
-            let vs = _mm512_set1_ps(*in_frame.get_unchecked(in_c));
-            let weight_ptr = weights.as_ptr().add(in_c * out_len + out_c);
-            let vw = _mm512_cvtph_ps(_mm256_loadu_si256(weight_ptr as *const __m256i));
-            acc0 = _mm512_fmadd_ps(vs, vw, acc0);
-            in_c += 1;
+        while out_c < out_len {
+            let mut sum = if do_bias { bias[out_c] } else { 0.0 };
+            for in_c in 0..in_len {
+                let w =
+                    half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
+                sum += *in_frame.get_unchecked(in_c) * w;
+            }
+            *out_frame.get_unchecked_mut(out_c) += sum;
+            out_c += 1;
         }
-
-        _mm512_storeu_ps(out_frame.as_mut_ptr().add(out_c), acc0);
-        out_c += 16;
-    }
-
-    while out_c < out_len {
-        let mut sum = if do_bias { bias[out_c] } else { 0.0 };
-        for in_c in 0..in_len {
-            let w = half::f16::from_bits(*weights.get_unchecked(in_c * out_len + out_c)).to_f32();
-            sum += *in_frame.get_unchecked(in_c) * w;
-        }
-        *out_frame.get_unchecked_mut(out_c) += sum;
-        out_c += 1;
     }
 }
 
