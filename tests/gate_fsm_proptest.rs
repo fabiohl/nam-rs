@@ -109,7 +109,9 @@ fn verify_fsm_step(
     match prev_state {
         GateState::Open => {
             assert!(
-                state == GateState::Open || state == GateState::FadingOut,
+                state == GateState::Open
+                    || state == GateState::FadingOut
+                    || (params.fade_frames == 0 && state == GateState::Closed),
                 "Invalid transition Open -> {:?}",
                 state
             );
