@@ -10,6 +10,12 @@ echo "⚠️ It has taken about 20 minutes (assuming a well-populated target/ di
 rm -rf target/logs/
 mkdir -p target/logs/
 
+# Auto-clone NeuralAmpModelerCore if not present (helps in fresh clones)
+if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
+    echo "🌐 Cloning NeuralAmpModelerCore for cross-validation parity..."
+    git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git tests/fixtures/NeuralAmpModelerCore
+fi
+
 echo "==================================================="
 echo "🧪 Running Soak Tests (Numerical Stability)..."
 cargo test
@@ -23,10 +29,14 @@ time cargo test --release --test proptest_math -- --ignored 2>&1 | tee target/lo
 time cargo test --release --test lstm_gate_bf16_parity -- --ignored 2>&1 | tee target/logs/lstm-gate-bf16-parity.log
 time cargo test --release --test lstm_scalar_bf16_parity -- --ignored 2>&1 | tee target/logs/lstm-scalar-bf16-parity.log
 time cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored 2>&1 | tee target/logs/pipeline-block-proptest.log
+time cargo test --release --test gate_fsm_proptest -- --ignored 2>&1 | tee target/logs/gate-fsm-proptest.log
+
+echo "🧪 Running Resampler Heap-Audit tests..."
+cargo test --release --features heap-audit --test resampler_heap_audit 2>&1 | tee target/logs/resampler-heap-audit.log
 
 echo "==================================================================="
-echo "🌐 Running NAM-rs ↔ NeuralAmpModelerCore Cross-Validation..."
-cargo test --test cpp_parity -- --ignored --nocapture 2>&1 | tee target/logs/cpp-parity.log
+echo "🌐 Running NAM-rs ↔ NeuralAmpModelerCore Cross-Validation (Release)..."
+cargo test --release --test cpp_parity -- --ignored --nocapture 2>&1 | tee target/logs/cpp-parity.log
 
 echo "===================================================================="
 echo "🛡️ Running CLAP compliance validation with Heap Alloc Audit..."
@@ -36,9 +46,13 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
 
 echo "========================================================"
 echo "🔍 Validating plugin with clap-validator and heap-audit..."
-NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/debug/libnam_rs.so --json 2>target/logs/debug-validation.stderr.log | tee target/logs/debug-validation.json
-jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/debug-validation.json
+if command -v clap-validator >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    NAM_HEAP_AUDIT=1 \
+      clap-validator validate target/clap-test/debug/libnam_rs.so --json 2>target/logs/debug-validation.stderr.log | tee target/logs/debug-validation.json
+    jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/debug-validation.json
+else
+    echo "⚠️ WARNING: clap-validator or jq not found. Skipping CLAP debug validation."
+fi
 
 echo "=========================================="
 echo "🔨 Building in Release mode with heap-audit..."
@@ -47,9 +61,13 @@ RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
 
 echo "==========================================================="
 echo "🔍 Validating plugin with clap-validator in release mode..."
-NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/release/libnam_rs.so --json 2>target/logs/release-validation.stderr.log | tee target/logs/release-validation.json
-jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/release-validation.json
+if command -v clap-validator >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    NAM_HEAP_AUDIT=1 \
+      clap-validator validate target/clap-test/release/libnam_rs.so --json 2>target/logs/release-validation.stderr.log | tee target/logs/release-validation.json
+    jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/release-validation.json
+else
+    echo "⚠️ WARNING: clap-validator or jq not found. Skipping CLAP release validation."
+fi
 
 echo "============================================================"
 echo "🔬 Running CLAP Multi-Instance Stress Test (10 instances)..."
@@ -62,4 +80,4 @@ cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | te
 
 echo "==================================="
 echo "✅ Audit completed successfully!"
-echo "📄 Logs: soak-test.log, pipeline-soak.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log, clap-multi-instance.log"
+echo "📄 Logs: soak-test.log, pipeline-soak.log, long-bench.log, cpp-parity.log, debug-validation.json, release-validation.json, proptest-parsers.log, proptest-math.log, lstm-gate-bf16-parity.log, lstm-scalar-bf16-parity.log, pipeline-block-proptest.log, clap-multi-instance.log, gate-fsm-proptest.log, resampler-heap-audit.log"

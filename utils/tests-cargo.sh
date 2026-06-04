@@ -19,11 +19,15 @@ CLAP_PLUGIN_PATH="target/clap-test/debug/libnam_rs.so" \
   NAM_HEAP_AUDIT=1 \
   cargo test --test clap_lifecycle_test --features "clap-plugin" --target-dir target/clap-test
 
-# 4. Run the official CLAP validator on the debug binary with heap-audit enabled
+# 4. Run the official CLAP validator on the debug binary with heap-audit enabled if available
 echo "🔍 Validating plugin with clap-validator and heap-audit..."
-CLAP_PLUGIN_PATH="target/clap-test/debug/libnam_rs.so" \
-  NAM_HEAP_AUDIT=1 \
-  clap-validator validate target/clap-test/debug/libnam_rs.so
+if command -v clap-validator >/dev/null 2>&1; then
+  CLAP_PLUGIN_PATH="target/clap-test/debug/libnam_rs.so" \
+    NAM_HEAP_AUDIT=1 \
+    clap-validator validate target/clap-test/debug/libnam_rs.so
+else
+  echo "⚠️ WARNING: clap-validator not found. Skipping CLAP validation."
+fi
 
 # 5. Run basic benchmarks [Usually takes about 9 minutes]
 #At this stage it's more useful to only run them via utils/tests-long.sh
