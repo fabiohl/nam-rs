@@ -2234,7 +2234,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `implementador`.
 - **Esforço:** 30 min.
 
-#### Tarefa S27b.T06 — Atualizar `docs/architecture.md` para refletir S8/S10/S10b/E8 ⚠️
+#### Tarefa S27b.T06 — Atualizar `docs/architecture.md` para refletir S8/S10/S10b/E8 ⚠️ [DONE]
 
 - **Onde:** `docs/architecture.md`.
 - **Problema:**
@@ -2251,7 +2251,7 @@ Notas Operacionais — Épico 14
 - **Especialista:** `documentador`.
 - **Esforço:** 1.0 dia.
 
-#### Tarefa S27b.T07 — Reservar flags futuros em `docs/namb-spec.md` 💡
+#### Tarefa S27b.T07 — Reservar flags futuros em `docs/namb-spec.md` ✅ [DONE]
 
 - **Onde:** `docs/namb-spec.md`.
 - **Problema:** Spec atual cobre v1 (sem flag CRC) e v2 (`FLAG_HAS_CRC32 = 0x01`). Trabalhos futuros (S15.T01 INT8 SmoothQuant, S23.T02 AMX tile, S24.T01 NEON) exigirão novos flags. Reservar pre-emptivamente evita conflito de bits.

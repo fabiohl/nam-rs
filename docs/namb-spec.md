@@ -48,10 +48,14 @@ Valores de `version` diferentes de `1` e `2` são rejeitados com `NambError::Inv
 
 ## 2. Flags
 
-| Bit | Nome             | Valor  | Descrição                                                                                        |
-| --- | ---------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| 0   | `FLAG_HAS_CRC32` | `0x01` | Indica que o campo `crc32` contém um CRC válido que **deve** ser verificado (obrigatório em v2+) |
-| 1-7 | —                | —      | Reservado para uso futuro. **Devem ser 0.**                                                      |
+| Bit | Nome                       | Valor  | Descrição                                                                                        |
+| --- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| 0   | `FLAG_HAS_CRC32`           | `0x01` | Indica que o campo `crc32` contém um CRC válido que **deve** ser verificado (obrigatório em v2+) |
+| 1   | `FLAG_HAS_QUANT_INT8`      | `0x02` | Reservado: Quantização INT8 SmoothQuant (S15.T01)                                                |
+| 2   | `FLAG_HAS_QUANT_INT4`      | `0x04` | Reservado: Quantização INT4 (S15.T02)                                                            |
+| 3   | `FLAG_HAS_AMX_TILE_LAYOUT` | `0x08` | Reservado: Layout AMX tile (S23.T02)                                                             |
+| 4   | `FLAG_HAS_SVE2_LAYOUT`     | `0x10` | Reservado: Layout SVE2 (S24.T02)                                                                 |
+| 5-7 | —                          | —      | Reservado para uso futuro. **Devem ser 0.**                                                      |
 
 ## 3. Layouts de Pesos
 
@@ -387,9 +391,7 @@ são rejeitados com `NamErrorCode::ModelTooLarge` (E1304).
 
 - **Novos `layout_type`**: valores `3..=255` reservados para layouts futuros.
   Valores desconhecidos são tratados como `Original` pelo decodificador.
-- **Novos flags**: bits `1..=7` do campo `flags` reservados. Devem ser `0` em
-  arquivos atuais. Decodificadores futuros podem definir novos bits com
-  fallback para comportamento atual quando não setados.
+- **Novos flags**: bits `1..=4` estão reservados para extensões específicas (INT8, INT4, AMX, SVE2) e bits `5..=7` do campo `flags` reservados para uso futuro geral. Devem ser `0` em arquivos atuais. Decodificadores futuros podem definir novos bits com fallback para comportamento atual quando não setados.
 - **Campos `reserved_*`**: devem ser `0`. Reservados para adição de campos
   sem quebra de compatibilidade binária do cabeçalho.
 - **Novas versões**: versões `>= 3` são reservadas para mudanças estruturais
