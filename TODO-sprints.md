@@ -317,7 +317,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 >    - Para permitir que o `perf record` colete eventos de amostragem de ciclos de CPU sem privilégios de superusuário (root), configure o nível de paranóia de eventos de performance do kernel para `1` ou inferior:
 >      - Comando: `sudo sysctl -w kernel.perf_event_paranoid=1` (temporário) ou adicionando `kernel.perf_event_paranoid=1` em `/etc/sysctl.d/local.conf` (persistente).
 
-#### Tarefa S7.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️
+#### Tarefa S7.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️ [DONE]
 
 - **Onde:** `Cargo.toml`; novo `utils/build-pgo.sh`.
 - **Problema/Oportunidade:** Rustc/LLVM PGO instrumenta build → roda workload representativo → coleta profile → rebuilda com `-Cprofile-use`. Tipicamente entrega 5–15% throughput em hotpath. Já standard em Firefox, Chromium.
@@ -327,6 +327,19 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Critérios de aceitação:** Benchmark inference reduz ≥ 5% latência média em PGO build vs vanilla release.
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.5 dia.
+
+> **Notas da Entrega (2026-06-05):**
+>
+> - **Feature `pgo`** adicionada ao `Cargo.toml`: habilita build PGO-optimized via `cargo build --release --features standalone,pgo` combinado com `RUSTFLAGS="-Cprofile-use=<merged.profdata>"`.
+> - **Script `utils/build-pgo.sh`** implementa o pipeline completo em 4 fases:
+>   1. Build instrumentado (`-Cprofile-generate`) + coleta de profiles via `inference_bench` (short + long soak) e `dot_4x_bench`.
+>   2. Merge com `llvm-profdata` (auto-detectado do sysroot rustup).
+>   3. Rebuild release com `-Cprofile-use`.
+>   - Profile output em `/tmp/nam-rs-pgo-profiles/` (configurável via `PGO_DIR`).
+>   - Merged profile (`merged.profdata`) preservado após cleanup — reutilizável para builds incrementais e como entrada para S7.T02 (BOLT).
+> - **Workload representativo:** `cargo bench --features "standalone,long_bench" --bench inference_bench` cobre WaveNet Standard/Feather/Nano, LSTM 1x8/1x16/2x16/1x40/2x24, FastMath (tanh/sigmoid AVX2+AVX-512), dot products, resampler — todos os hot paths de inferência DSP.
+> - **Pré-requisitos:** `rustup component add llvm-tools-preview`; opcionalmente `sudo sysctl -w kernel.perf_event_paranoid=1` e `sudo apt install linux-tools-generic linux-tools-$(uname -r)` (para S7.T02 via `perf`).
+> - **Validação da latência (critério de aceitação):** executar `cargo bench --features standalone --bench inference_bench` com build vanilla release vs PGO release e comparar médias.
 
 #### Tarefa S7.T02 — BOLT post-link layout optimization ✨💡
 

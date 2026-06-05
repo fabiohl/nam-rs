@@ -61,6 +61,7 @@ stereo = []
 heap-audit = []
 long_bench = []
 research = []
+pgo = []
 
 [[bin]]
 name = "nam-rs"
