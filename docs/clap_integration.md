@@ -1,130 +1,130 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# Estratégia de Integração CLAP (Clever Audio Plug-in)
+# CLAP (Clever Audio Plug-in) Integration Strategy
 
-Este documento descreve a arquitetura e a estratégia para transformar o motor DSP do NAM-rs em um plugin de áudio compatível com o padrão CLAP.
+This document describes the architecture and strategy for transforming the NAM-rs DSP engine into an audio plugin compatible with the CLAP standard.
 
 ## 1. Thread Model
 
-A integração CLAP deve respeitar estritamente a segregação de threads já existente no NAM-rs, mapeando-as para o modelo do host (DAW):
+The CLAP integration must strictly respect the thread segregation already existing in NAM-rs, mapping them to the host's (DAW) model:
 
 - **Main Thread (Host)**:
-  - Responsável pela inicialização do plugin, escaneamento de parâmetros e gerenciamento de estado.
-  - No NAM-rs, esta thread substituirá o loop principal em [src/main.rs](file:///home/fabio/nam-rs/src/main.rs).
-  - Gerencia o carregamento de arquivos `.nam`/`.namb` via [src/loader/](file:///home/fabio/nam-rs/src/loader/).
+  - Responsible for plugin initialization, parameter scanning, and state management.
+  - In NAM-rs, this thread will replace the main loop in [src/main.rs](file:///home/fabio/nam-rs/src/main.rs).
+  - Manages the loading of `.nam`/`.namb` files via [src/loader/](file:///home/fabio/nam-rs/src/loader/).
 - **Audio Thread (Real-time)**:
-  - Chamada pelo host via callback `process()`.
-  - **Requisito Crítico**: Deve manter a política de **ZERO alocações** e **ZERO locks**.
-  - Utilizará [src/dsp/pipeline.rs](file:///home/fabio/nam-rs/src/dsp/pipeline.rs) para o processamento, adaptando os buffers do CLAP para o formato interno.
-  - Diferente do PipeWire (que é dual-stream), o CLAP fornece buffers de entrada e saída em um único contexto, eliminando a necessidade do `DspBridge`.
+  - Called by the host via the `process()` callback.
+  - **Critical Requirement**: Must maintain a policy of **ZERO allocations** and **ZERO locks**.
+  - Will utilize [src/dsp/pipeline.rs](file:///home/fabio/nam-rs/src/dsp/pipeline.rs) for processing, adapting CLAP buffers to the internal format.
+  - Unlike PipeWire (which is dual-stream), CLAP provides input and output buffers in a single context, eliminating the need for `DspBridge`.
 
-## 2. Mapeamento de Parâmetros
+## 2. Parameter Mapping
 
-Os parâmetros expostos ao host serão mapeados a partir da estrutura `NamPluginParams` (veja [src/common/params.rs](file:///home/fabio/nam-rs/src/common/params.rs)):
+Parameters exposed to the host will be mapped from the `NamPluginParams` structure (see [src/common/params.rs](file:///home/fabio/nam-rs/src/common/params.rs)):
 
-| Parâmetro CLAP     | ID                  | Unidade | Descrição                                        |
-|:------------------ |:------------------- |:------- |:------------------------------------------------ |
-| **Input Gain**     | `input_gain_db`     | dB      | Ganho aplicado antes da inferência neural.       |
-| **Output Gain**    | `output_gain_db`    | dB      | Ganho aplicado após a inferência neural.         |
-| **Gate Threshold** | `gate_threshold_db` | dB      | Limiar de abertura do Noise Gate.                |
-| **Bypass**         | `bypass`            | binário | Desativa o processamento neural (Dry/Wet 0/100). |
-| **Active Model**   | `active_model`      | —       | Nome do modelo carregado (somente leitura).      |
+| CLAP Parameter     | ID                  | Unit   | Description                                 |
+|:------------------ |:------------------- |:------ |:------------------------------------------- |
+| **Input Gain**     | `input_gain_db`     | dB     | Gain applied before neural inference.       |
+| **Output Gain**    | `output_gain_db`    | dB     | Gain applied after neural inference.        |
+| **Gate Threshold** | `gate_threshold_db` | dB     | Noise Gate opening threshold.               |
+| **Bypass**         | `bypass`            | binary | Disables neural processing (Dry/Wet 0/100). |
+| **Active Model**   | `active_model`      | —      | Loaded model name (read-only).              |
 
-O caminho do modelo (`model_path`) será tratado como um **State Property**, permitindo que a DAW salve e carregue o modelo correto no projeto.
+The model path (`model_path`) will be treated as a **State Property**, allowing the DAW to save and load the correct model in the project.
 
-## 3. Estratégia de Compilação
+## 3. Compilation Strategy
 
-O projeto utiliza *feature flags* para permitir múltiplos alvos de build:
+The project uses *feature flags* to allow multiple build targets:
 
-- `cargo build --features standalone`: Binário executável com backend PipeWire (padrão).
-- `cargo build --no-default-features --features clap-plugin --lib`: Biblioteca dinâmica (`.clap`) com GUI completa.
+- `cargo build --features standalone`: Executable binary with PipeWire backend (default).
+- `cargo build --no-default-features --features clap-plugin --lib`: Dynamic library (`.clap`) with a complete GUI.
 
-A feature `clap-plugin` omitirá os módulos `pw_host.rs` e `rt_setup.rs`, mantendo o binário final sem dependências de PipeWire.
+The `clap-plugin` feature will omit the `pw_host.rs` and `rt_setup.rs` modules, keeping the final binary free of PipeWire dependencies.
 
 ## 4. Framework: `clack-plugin`
 
-- **Motivo**: Oferece controle granular sobre a implementação sem adicionar overhead desnecessário, permitindo uma integração direta com as estruturas RT-safe do NAM-rs. Ao contrário de frameworks mais opinativos, o `clack` mapeia-se quase 1:1 ao spec CLAP enquanto provê segurança de tipos em Rust.
-- **Frameworks de alto nível**: Descartados por adicionarem suporte forçado a VST3, uma camada de GUI embutida que conflita com nossa escolha de `egui` puro, e abstrações que poderiam mascarar o determinismo temporal exigido pelo motor DSP do NAM-rs.
+- **Reason**: Offers granular control over the implementation without adding unnecessary overhead, allowing direct integration with the RT-safe structures of NAM-rs. Unlike more opinionated frameworks, `clack` maps almost 1:1 to the CLAP spec while providing type safety in Rust.
+- **High-level Frameworks**: Discarded as they force support for VST3, introduce an embedded GUI layer that conflicts with our choice of pure `egui`, and add abstractions that could mask the temporal determinism required by the NAM-rs DSP engine.
 - **Link**: [https://github.com/prokopyl/clack](https://github.com/prokopyl/clack)
 
-## 5. Extensões CLAP Implementadas
+## 5. Implemented CLAP Extensions
 
-A integração utiliza o crate `clack-extensions` para implementar as seguintes extensões do protocolo CLAP:
+The integration uses the `clack-extensions` crate to implement the following extensions of the CLAP protocol:
 
-| Extensão                       | Arquivo                                                                                  | Finalidade                                                                                                              |
+| Extension                      | File                                                                                     | Purpose                                                                                                                 |
 |:------------------------------ |:---------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | Declaração explícita de portas de entrada/saída mono e suporte a processamento in-place                                 |
-| `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | Mapeamento e automação de parâmetros (`input_gain`, `output_gain`, `gate`, `bypass`) com suporte a gesture e `flush()`  |
-| `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistência do estado do plugin (parâmetros e caminho do modelo) no projeto da DAW                                     |
-| `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Reporte dinâmico de latência induzida pelo processamento e resampling ao host                                           |
-| `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Suporte à cor da track do host para adaptar dinamicamente o accent color da GUI                                         |
-| `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Páginas de controle pré-configuradas ("Main" e "Gate") para integração com controladores de hardware e Device Panel     |
-| `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Feedback visual na GUI para indicar parâmetros mapeados, automatizados ou sob override temporário                       |
-| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Interface gráfica nativa baseada em `egui` v0.34 embutida via `baseview` e backend X11/XWayland (`CLAP_WINDOW_API_X11`) |
+| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | Explicit declaration of mono input/output ports and support for in-place processing                                     |
+| `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | Mapping and automation of parameters (`input_gain`, `output_gain`, `gate`, `bypass`) with gesture and `flush()` support |
+| `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistence of plugin state (parameters and model path) in the DAW project                                              |
+| `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Dynamic reporting of latency induced by processing and resampling to the host                                           |
+| `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Support for host track color to dynamically adapt the GUI's accent color                                                |
+| `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Pre-configured control pages ("Main" and "Gate") for hardware controller and Device Panel integration                   |
+| `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
+| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
 
 ## 6. Plugin Descriptor
 
-O descritor de metadados do plugin seguirá o seguinte padrão:
+The plugin metadata descriptor will follow this pattern:
 
 - **Plugin ID**: `br.eti.fabiolima.nam-rs`
-- **Nome**: `NAM-rs`
+- **Name**: `NAM-rs`
 - **Vendor**: `Fabio Lima`
 - **URL**: [https://github.com/fabiohl/nam-rs](https://github.com/fabiohl/nam-rs)
 - **Features**: `["audio-effect", "distortion", "gate", "simulator", "mono"]`
 
 > [!NOTE]
-> O padrão NAM é, por definição, mono. O plugin CLAP funciona estritamente como mono (mono-in/mono-out) para se alinhar aos workflows tradicionais das DAWs, onde o roteamento de canais é gerenciado externamente pelo host. Já no executável Standalone/Pipewire, o processamento estéreo é fornecido como uma conveniência para sinais estéreo nativos.
+> The NAM standard is, by definition, mono. The CLAP plugin works strictly as mono (mono-in/mono-out) to align with traditional DAW workflows where channel routing is managed externally by the host. In contrast, in the Standalone/Pipewire executable, stereo processing is provided as a convenience for native stereo signals.
 
-## 7. DAWs Alvo de Validação
+## 7. Target DAWs for Validation
 
-- **Bitwig Studio**: Plataforma de referência absoluta para conformidade CLAP (co-autora do padrão). Essencial para validar o comportamento de sandboxing e automação sample-accurate.
-- **REAPER**: Validação de compatibilidade com hosts de baixo custo e testes de buffers irregulares.
-  - NOTA: *Descartado* por estar buggy na minha máquina ubuntu linux.
-- **Fender Studio Pro**: Objetivo futuro por exigir modo wayland nativo.
-- **CLAP-info / CLAP-host**: Ferramentas de linha de comando para validação técnica rigorosa do spec.
+- **Bitwig Studio**: Absolute reference platform for CLAP compliance (co-author of the standard). Essential for validating sandboxing behavior and sample-accurate automation.
+- **REAPER**: Validation of compatibility with low-cost hosts and tests of irregular buffer sizes.
+  - NOTE: *Discarded* as it is buggy on my Ubuntu Linux machine.
+- **Fender Studio Pro**: Future target requiring Wayland native mode.
+- **CLAP-info / CLAP-host**: Command-line tools for rigorous technical validation of the spec.
 
-## 8. Interface Gráfica: Estratégia de Windowing e Stack
+## 8. Graphical Interface: Windowing Strategy and Stack
 
-A GUI do plugin CLAP opera em uma thread dedicada (`UI thread`), completamente isolada da `audio thread`. A arquitetura é unificada no backend X11.
+The CLAP plugin GUI operates on a dedicated thread (`UI thread`), completely isolated from the `audio thread`. The architecture is unified on the X11 backend.
 
-### Estratégia de Windowing Unificada (X11 Puro)
+### Unified Windowing Strategy (Pure X11)
 
 ```text
 ┌────────────────────────────────────────────────┐
 │                  NAM-rs GUI                    │
 │              (egui + egui_glow)                │
-│    draw_ui() — Lógica de UI 100% agnóstica    │
+│    draw_ui() — 100% agnostic UI logic          │
 ├────────────────────────────────────────────────┤
 │       NamPluginWindow (WindowHandler)          │
-│   Tradução baseview events → egui::RawInput   │
-│   Renderização via egui_glow::Painter + glow  │
+│   baseview events → egui::RawInput translation │
+│   Rendering via egui_glow::Painter + glow      │
 ├────────────────────────────────────────────────┤
 │                  Backend X11                   │
 │   (baseview - raw-window-handle 0.5 → 0.6)    │
-│           X11 Puro / XWayland nativo           │
+│           Pure X11 / native XWayland           │
 └────────────────────────────────────────────────┘
 ```
 
-- **Backend X11:** O plugin declara suporte exclusivo a `CLAP_WINDOW_API_X11`.
-- **Stack:** `egui v0.34` + `glow v0.17`, com tradução de handles de janela (`raw-window-handle 0.5` do host para `0.6` do `egui`/`baseview`).
-- **Implementação:** `NamPluginWindow` implementa `baseview::WindowHandler`, traduzindo eventos para `egui::RawInput` sem camada intermediária.
+- **X11 Backend:** The plugin declares exclusive support for `CLAP_WINDOW_API_X11`.
+- **Stack:** `egui v0.34` + `glow v0.17`, with window handle translation (`raw-window-handle 0.5` from host to `0.6` for `egui`/`baseview`).
+- **Implementation:** `NamPluginWindow` implements `baseview::WindowHandler`, translating events to `egui::RawInput` without an intermediate layer.
 
-### Stack Tecnológico
+### Technology Stack
 
-| Componente    | Crate/Tecnologia | Papel                                                                                          |
-|:------------- |:---------------- |:---------------------------------------------------------------------------------------------- |
-| GUI Framework | `egui`           | Immediate Mode GUI — sem estado persistente, sem GC, sem alocações no render loop              |
-| Renderizador  | `egui_glow`      | Bridge egui → OpenGL 3.3 via `glow`. Integração manual (sem `egui-baseview`, abandonado ~2021) |
-| Windowing     | `baseview`       | Janela nativa embutida X11 via `RawWindowHandle`. Event loop dedicado                          |
-| File Picker   | `rfd`            | File dialog nativo assíncrono (zenity/xdg-portal). Nunca bloqueia a UI thread                  |
+| Component     | Crate/Technology | Role                                                                                          |
+|:------------- |:---------------- |:--------------------------------------------------------------------------------------------- |
+| GUI Framework | `egui`           | Immediate Mode GUI — no persistent state, no GC, no allocations in the render loop            |
+| Renderer      | `egui_glow`      | Bridge egui → OpenGL 3.3 via `glow`. Manual integration (no `egui-baseview`, abandoned ~2021) |
+| Windowing     | `baseview`       | Native embedded X11 window via `RawWindowHandle`. Dedicated event loop                        |
+| File Picker   | `rfd`            | Native asynchronous file dialog (zenity/xdg-portal). Never blocks the UI thread               |
 
-Todo código de GUI vive em `src/clap/gui/` e é gateado por `#[cfg(feature = "clap-plugin")]`.
+All GUI code lives under `src/clap/gui/` and is gated by `#[cfg(feature = "clap-plugin")]`.
 
-### Isolamento de Threads (UI ↔ Audio)
+### Thread Isolation (UI ↔ Audio)
 
-A UI thread **nunca** acessa diretamente os campos de `NamClapProcessor`. A comunicação é estritamente via:
+The UI thread **never** directly accesses the fields of `NamClapProcessor`. Communication is strictly via:
 
-- **Leitura de telemetria (Audio → UI):** Campos atômicos em `NamClapShared` (`AtomicU32` para peaks, `AtomicBool` para clipping), lidos com `Ordering::Relaxed`.
-- **Envio de comandos (UI → Audio):** Canal SPSC de parâmetros (`ClapParamPayload`) via `param_tx`, drenado no início de cada `process()`.
-- **Metadados (Main → UI):** `Mutex<String>` para nome do modelo — acessado pela UI thread em intervalos de 500ms.
+- **Telemetry Read (Audio → UI):** Atomic fields in `NamClapShared` (`AtomicU32` for peaks, `AtomicBool` for clipping), read with `Ordering::Relaxed`.
+- **Command Dispatch (UI → Audio):** SPSC parameter channel (`ClapParamPayload`) via `param_tx`, drained at the start of each `process()`.
+- **Metadata (Main → UI):** `Mutex<String>` for the model name — accessed by the UI thread at 500ms intervals.

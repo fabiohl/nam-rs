@@ -1,107 +1,107 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
-# Dependências do Projeto NAM-rs
 
-Esta documentação lista e detalha contextualmente as dependências de sistema operacional e de software englobadas no `Cargo.toml`. O objetivo principal é justificar a necessidade destas abstrações frente às rígidas regras de arquitetura e performance (em detrimento de libs mais ricas ou bloated).
+# NAM-rs Project Dependencies
 
-## 1. Dependências do Sistema (Linux)
+This documentation lists and explains system and software dependencies configured in `Cargo.toml`. The primary goal is to justify these abstractions against strict architecture and performance rules (avoiding heavy or bloated libraries).
 
-Os seguintes pacotes devem estar instalados no sistema para viabilizar a compilação e execução do NAM-rs em seus diferentes modos. O comando consolidado para instalação em sistemas baseados em Debian/Ubuntu é:
+## 1. System Dependencies (Linux)
+
+The following packages must be installed on the system to build and run NAM-rs. The consolidated command for Debian/Ubuntu systems is:
 
 ```bash
-sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev \
-                 clang libclang-dev qpwgraph libgtk-3-dev \
-                 libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-                 libxkbcommon-dev libssl-dev git curl linux-tools-generic
+sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22
 ```
 
-### Detalhamento por Função
+### Detailing by Role
 
-* **Ferramentas Base e Build**:
+* **Base Tools and Build**:
 
-  * `build-essential` e `cmake`: Compiladores e utilitários de build fundamentais para o ecossistema C/C++ do qual algumas dependências Rust derivam.
-  * `pkg-config`: Essencial para que o `cargo` localize os caminhos de headers e bibliotecas compartilhadas (`.so`) no sistema.
-  * `clang` e `libclang-dev`: Requisito do *rust-bindgen* para transcrever os headers C do PipeWire para bindings Rust em tempo de compilação.
-  * `libssl-dev`, `git` e `curl`: Necessários para ferramentas de suporte, controle de versão e instalação de componentes do ecossistema Rust.
-  * `linux-tools-generic`: Provê o `perf`, essencial para profiling de baixo nível e otimização do *Hot Path* DSP.
+  * `build-essential` and `cmake`: Essential compilers and build utilities for the C/C++ ecosystem, from which some Rust dependencies derive.
+  * `pkg-config`: Required for `cargo` to locate header paths and shared library (`.so`) paths on the system.
+  * `clang` and `libclang-dev`: Requisite for `rust-bindgen` to translate PipeWire C headers to Rust bindings at compile time.
+  * `libssl-dev`, `git`, and `curl`: Required for utility tools, version control, and installing Rust ecosystem components.
+  * `linux-tools-generic`: Provides `perf`, essential for low-level profiling, optimizing the DSP Hot Path, and gathering profile data for LLVM BOLT.
 
-* **Backend de Áudio e Testes (PipeWire)**:
+* **Compiler-Grade Optimization (PGO + BOLT) (Optional)**:
 
-  * `pipewire` e `libpipewire-0.3-dev`: Headers do core de processamento. Necessários apenas para a feature `standalone`.
-  * `qpwgraph`: Utilitário recomendado para roteamento visual do grafo de áudio (opcional, mas altamente sugerido para usuários).
+  * `bolt-22`: LLVM BOLT post-link optimizer. The version must match the LLVM backend version of the installed Rust compiler (LLVM 22 for `rustc 1.96`).
 
-* **Interface Gráfica e Janelamento**:
+* **Audio Backend and Tests (PipeWire)**:
 
-  * `libgtk-3-dev`, `libxcb-*`, `libxkbcommon-dev`: Bibliotecas de sistema para suporte a janelas nativas, renderização via X11/Wayland e gerenciamento de teclado. Exigidas pelas crates `egui` e `baseview` para a interface do plugin CLAP.
+  * `pipewire` and `libpipewire-0.3-dev`: Core processing headers. Only required for the `standalone` feature.
+  * `qpwgraph`: Recommended utility for visual routing of the audio graph (optional but highly suggested for users).
 
-## 2. Abstrações de Software (Crates - Cargo.toml)
+* **Graphical Interface and Windowing**:
 
-| Crate                          | Versão Fixada | Função Primordial e Justificativa de Arquitetura                                                                                                                                                                                                                                                 | Alternativas Consideradas                                                                                   |
-| ------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| **`anyhow`**                   | `^1.0`        | Transição enxuta das sinalizações de erro nas threads de preparação e CLI, limitando uso de unwrap()/panic() passíveis de falhas fatais.                                                                                                                                                         | Rejeitado erro padronizado *Result* com Enums própios em prol da sintaxe ágil.                              |
-| **`libc`**                     | `^0.2`        | Vinculação à C Standard Library para chamadas POSIX: `pthread_setschedparam` (SCHED_FIFO), `pthread_setaffinity_np` (core affinity), `mlockall`, `prctl` (THP disable), `sigaction` (SIGINT handler). Acesso direto sem wrappers intermediários.                                                 | Crates encapsuladores adicionam overhead de dependência sem benefício para chamadas POSIX bem documentadas. |
-| **`pipewire`**                 | `0.10.x`      | Bindings Rust para `libpipewire 0.3`. Fornece o backend de áudio nativo para Linux moderno (low-latency). **Condicional à feature `standalone`** (padrão). Em builds para plugins (`--features clap-plugin`), esta dependência é totalmente removida do binário final, garantindo portabilidade. | *jack*: preterido para priorizar o ecossistema de áudio nativo do Linux moderno.                            |
-| **`rtrb`**                     | `0.3.x`       | Ring buffer SPSC lock-free para comunicação CLI→DSP (parâmetros, modelos, resamplers). Usado em todo payload que transita entre threads sem travar a thread RT.                                                                                                                                  | *crossbeam*: overhead desnecessário para SPSC puro; *ringbuf*: API menos ergonômica.                        |
-| **`serde`** e **`serde_json`** | `^1.0`        | Deserialização do formato `.nam` (JSON) em startup. Parseia campos aninhados (`config`, `weights`, `metadata`) de forma robusta.                                                                                                                                                                 | Parser manual: rejeitado pela complexidade de manutenção com campos opcionais e matrizes de pesos.          |
-| **`lexopt`**                   | `0.3.x`       | Parser CLI minimalista e zero-alloc. Extrai `--model`, `--input-gain`, `--output-gain`, `--buffer-size` sem macros ou dependências pesadas.                                                                                                                                                      | *clap*: aumenta significativamente o tamanho do binário para uma CLI simples.                               |
-| **`log`**                      | `0.4.x`       | Fachada de logging padrão do ecossistema Rust. Permite `log::info!`, `log::warn!`, `log::error!` com overhead zero quando desativado.                                                                                                                                                            | Logging manual via `eprintln!`: não oferece filtragem por nível (`RUST_LOG`).                               |
-| **`env_logger`**               | `0.11.x`      | Backend de logging configurável via variável de ambiente `RUST_LOG`. Inicializado uma vez no `main()` com padrão `info`. `default-features = false` para minimizar dependências (sem regex, sem formatação de cores nativa).                                                                     | *tracing*: overhead desnecessário para aplicação CLI sem instrumentação distribuída.                        |
-| **`half`**                     | `^2.7`        | Suporte a floats de precisão simples `f16`. Essencial para compressão de pesos (Weight Compression F16C) visando ocupação da Cache L1.                                                                                                                                                           | *f32*: Consome o dobro de memória e causa gargalos de Cache L1 na WaveNet Standard.                         |
-| **`minstant`**                 | `^0.1`        | Telemetria de alta precisão baseada em RDTSC. Utilizado para medir latência por bloco na thread RT com overhead desprezível.                                                                                                                                                                     | `std::time::Instant`: inconsistente no SCHED_FIFO e pode incorrer em syscalls indesejadas.                  |
-| **`rustfft`**                  | `^6.4`        | Algoritmo FFT de alta performance. Utilizado exclusivamente offline (fora da thread RT) no `NamResampler::new()` para transformação de fase mínima via Cepstrum Real.                                                                                                                            | *realfft*: Wrapper sobre rustfft; preferimos rustfft direto com `default-features = false`.                 |
+  * `libgtk-3-dev`, `libxcb-*`, `libxkbcommon-dev`: System libraries for native window support, X11/Wayland rendering, and keyboard management. Required by `egui` and `baseview` crates for the CLAP plugin interface.
 
-## 3. Dependências de Build e Testes Automáticos (Dev-Dependencies)
+## 2. Software Abstractions (Crates - Cargo.toml)
 
-Acessadas secundariamente via `cargo bench` e `cargo test`, não impactam no footprint binário release final:
+| Crate                            | Locked Version | Primary Role and Architectural Justification                                                                                                                                                                                                                                                  | Alternatives Considered                                                                       |
+|:-------------------------------- |:-------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------- |
+| **`anyhow`**                     | `^1.0`         | Lean error signaling in preparation and CLI threads, limiting the use of unwrap()/panic() which can lead to fatal failures.                                                                                                                                                                   | Rejected standard *Result* with custom Enums in favor of quick syntax.                        |
+| **`libc`**                       | `^0.2`         | Binding to the C Standard Library for POSIX calls: `pthread_setschedparam` (SCHED_FIFO), `pthread_setaffinity_np` (core affinity), `mlockall`, `prctl` (THP disable), `sigaction` (SIGINT handler). Direct access without intermediate wrappers.                                              | Wrapper crates add dependency overhead with no benefit for well-documented POSIX calls.       |
+| **`pipewire`**                   | `0.10.x`       | Rust bindings for `libpipewire 0.3`. Provides the native audio backend for modern Linux (low-latency). **Conditional on the `standalone` feature** (default). In builds for plugins (`--features clap-plugin`), this dependency is fully removed from the final binary, ensuring portability. | *jack*: bypassed to prioritize the modern native Linux audio ecosystem.                       |
+| **`rtrb`**                       | `0.3.x`        | Lock-free SPSC ring buffer for CLI→DSP communication (parameters, models, resamplers). Used for all threads-transitioning payloads to avoid blocking the RT thread.                                                                                                                           | *crossbeam*: unnecessary overhead for pure SPSC; *ringbuf*: less ergonomic API.               |
+| **`serde`** and **`serde_json`** | `^1.0`         | Deserialization of the `.nam` (JSON) format at startup. Parses nested fields (`config`, `weights`, `metadata`) robustly.                                                                                                                                                                      | Manual parser: rejected due to maintenance complexity with optional fields and weight arrays. |
+| **`lexopt`**                     | `0.3.x`        | Minimalist and zero-alloc CLI parser. Extracts `--model`, `--input-gain`, `--output-gain`, and `--buffer-size` without macros or heavy dependencies.                                                                                                                                          | *clap*: significantly increases binary size for a simple CLI.                                 |
+| **`log`**                        | `0.4.x`        | Standard logging facade for the Rust ecosystem. Enables `log::info!`, `log::warn!`, and `log::error!` with zero overhead when disabled.                                                                                                                                                       | Manual logging via `eprintln!`: does not offer filtering by level (`RUST_LOG`).               |
+| **`env_logger`**                 | `0.11.x`       | Logging backend configurable via the `RUST_LOG` environment variable. Initialized once in `main()` with `info` as default. `default-features = false` to minimize dependencies (no regex, no native color formatting).                                                                        | *tracing*: unnecessary overhead for a CLI application without distributed instrumentation.    |
+| **`half`**                       | `^2.7`         | Support for `f16` single-precision floats. Essential for weight compression (Weight Compression F16C) to target the L1 Cache.                                                                                                                                                                 | *f32*: consumes double the memory and causes L1 Cache bottlenecks in WaveNet Standard.        |
+| **`minstant`**                   | `^0.1`         | High-precision telemetry based on RDTSC. Used to measure latency per block in the RT thread with negligible overhead.                                                                                                                                                                         | `std::time::Instant`: inconsistent in SCHED_FIFO and may incur unwanted syscalls.             |
+| **`rustfft`**                    | `^6.4`         | High-performance FFT algorithm. Used exclusively offline (outside the RT thread) in `NamResampler::new()` for minimal phase transformation via Real Cepstrum.                                                                                                                                 | *realfft*: Wrapper over rustfft; we prefer direct rustfft with `default-features = false`.    |
 
-| Crate           | Versão Fixada | Função Primordial e Justificativa de Arquitetura                                                                                                                                                                                                                                    |
-| --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`criterion`** | `^0.8`        | Avaliação da performance métrica estatística rigorosa. A flag `html_reports` encontra-se inativa para atenuar tempo de compilação semântica em esteiras iterativas onde avalia-se *FMA Latency per Vector* (inferiores a micro-segundos).                                           |
-| **`proptest`**  | `^1.11`       | Property-based testing para validação exaustiva dos limites algorítmicos das funções FastMath (`simd_tanh`, `simd_sigmoid`). Gera 10.000+ vetores aleatórios por execução para varrer buracos aritméticos causados pelo Newton-Raphson de recíproca quadrática (`_mm256_rsqrt_ps`). |
+## 3. Build and Automated Testing Dependencies (Dev-Dependencies)
 
-## 4. Utilitários Adicionais do Cargo (QA & Dev)
+Accessed secondarily via `cargo bench` and `cargo test`, these do not affect the final release binary footprint:
 
-Estes componentes devem ser instalados via `cargo install` para habilitar rotinas avançadas de manutenção e garantia de qualidade:
+| Crate           | Locked Version | Primary Role and Architectural Justification                                                                                                                                                                                                                        |
+|:--------------- |:-------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`criterion`** | `^0.8`         | Rigorous statistical metric performance evaluation. The `html_reports` flag is inactive to mitigate compile time in iterative stages where *FMA Latency per Vector* is evaluated (under a microsecond).                                                             |
+| **`proptest`**  | `^1.11`        | Property-based testing for exhaustive validation of algorithmic limits in FastMath functions (`simd_tanh`, `simd_sigmoid`). Generates 10,000+ random vectors per run to sweep arithmetic holes caused by reciprocal square root Newton-Raphson (`_mm256_rsqrt_ps`). |
 
-| Utilitário           | Função no Projeto                                                                                                                                                                       |
-| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`cargo-edit`**     | Gerenciamento de dependências. Utilizado no script `utils/mod-update.sh` para o comando `cargo upgrade`, garantindo que as bibliotecas permaneçam seguras e atualizadas.                |
-| **`clippy`**         | Linter estático para Rust. Utilizado no script `utils/lints.sh` para garantir a adesão às melhores práticas e evitar antipadrões que possam comprometer a performance ou segurança.     |
-| **`rustfmt`**        | Formatador de código. Garante consistência visual em todo o repositório, essencial para revisão de código e manutenção por múltiplos colaboradores.                                     |
-| **`clap-validator`** | é a ferramenta de linha de comando oficial da organização `free-audio` para validar conformidade com a especificação CLAP e identificar potenciais problemas ou vazamentos de recursos. |
+## 4. Additional Cargo Utilities & Rustup Components (QA, Dev & Optimization)
 
-## 5. Dependências para Plugin e GUI (CLAP)
+These components must be installed via `cargo install` or `rustup component add` to enable advanced maintenance, quality assurance, and compiler-level optimization routines:
 
-As seguintes dependências estão implementadas para viabilizar o suporte a plugins CLAP e a interface gráfica embarcada:
+| Utility / Component      | Installation Command                      | Role in the Project                                                                                                                                                    |
+|:------------------------ |:----------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`cargo-edit`**         | `cargo install cargo-edit`                | Dependency management. Used in the `utils/mod-update.sh` script for the `cargo upgrade` command, ensuring libraries remain secure and up-to-date.                      |
+| **`clippy`**             | `rustup component add clippy`             | Static linter for Rust. Used in the `utils/lints.sh` script to ensure adherence to best practices and avoid anti-patterns that could compromise performance or safety. |
+| **`rustfmt`**            | `rustup component add rustfmt`            | Code formatter. Ensures visual consistency across the repository, essential for code review and maintenance by multiple contributors.                                  |
+| **`clap-validator`**     | `cargo install clap-validator`            | Official command-line tool from the `free-audio` organization to validate compliance with the CLAP specification and identify potential issues or resource leaks.      |
+| **`llvm-tools-preview`** | `rustup component add llvm-tools-preview` | Provides LLVM tools (like `llvm-profdata`) matching the exact rustc LLVM version, which is required for processing profile data in PGO builds.                         |
+| **`cargo-pgo`**          | `cargo install cargo-pgo`                 | Cargo subcommand for Profile-Guided Optimization (PGO) and BOLT instrumentation and optimization workflow automation.                                                  |
 
-| Crate              | Versão   | Feature Flag  | Status                  | Justificativa                                                                                                                                                   |
-|:------------------ |:-------- |:------------- |:----------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `clack-plugin`     | `0.1`    | `clap-plugin` | Introduzida na Sprint 1 | API Rust para implementação de plugins CLAP. Abstração tipada sobre `clap-sys` sem overhead de runtime. Escolhido sobre `nih-plug` por não forçar VST3 nem GUI. |
-| `clack-extensions` | `0.1`    | `clap-plugin` | Introduzida na Sprint 1 | Extensões do spec CLAP (params, state, gui, latency, track-info, remote-controls, param-indication). Crate separado do `clack-plugin` para modularidade.        |
-| `egui`             | `0.34.2` | `clap-plugin` | Introduzida na Sprint 4 | Framework GUI de modo imediato, puro Rust. Renderização de GPU via OpenGL (`egui_glow` e `glow`).                                                               |
-| `baseview`         | `0.1.1`  | `clap-plugin` | Introduzida na Sprint 4 | Janela nativa multiplataforma para `egui` em contexto de plugin. Publicada e consumida a partir do crates.io.                                                   |
-| `rfd`              | `0.17.2` | `clap-plugin` | Introduzida na Sprint 4 | File Dialog nativo e assíncrono para carregamento de modelos (.nam/.namb) via GUI.                                                                              |
+## 5. Dependencies for Plugin and GUI (CLAP)
 
-## 6. Dependências para Cross-Validation C++ (Opcional)
+The following dependencies are implemented to enable CLAP plugin support and the embedded graphical interface:
 
-Para regenerar os golden vectors ou executar a validação cruzada ao vivo contra o
-NeuralAmpModelerCore, os seguintes pacotes são necessários:
+| Crate              | Version  | Feature Flag  | Status                 | Justification                                                                                                                                                     |
+|:------------------ |:-------- |:------------- |:---------------------- |:----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clack-plugin`     | `0.1`    | `clap-plugin` | Introduced in Sprint 1 | Rust API for implementing CLAP plugins. Typed abstraction over `clap-sys` with no runtime overhead. Chosen over `nih-plug` because it does not force VST3 or GUI. |
+| `clack-extensions` | `0.1`    | `clap-plugin` | Introduced in Sprint 1 | CLAP spec extensions (params, state, gui, latency, track-info, remote-controls, param-indication). Separate crate from `clack-plugin` for modularity.             |
+| `egui`             | `0.34.2` | `clap-plugin` | Introduced in Sprint 4 | Immediate mode GUI framework, pure Rust. GPU rendering via OpenGL (`egui_glow` and `glow`).                                                                       |
+| `baseview`         | `0.1.1`  | `clap-plugin` | Introduced in Sprint 4 | Multiplatform native window for `egui` in a plugin context. Published and consumed from crates.io.                                                                |
+| `rfd`              | `0.17.2` | `clap-plugin` | Introduced in Sprint 4 | Native and asynchronous File Dialog for loading models (.nam/.namb) via GUI.                                                                                      |
+
+## 6. Dependencies for C++ Cross-Validation (Optional)
+
+To regenerate golden vectors or perform live cross-validation against NeuralAmpModelerCore, the following packages are required:
 
 ```bash
 sudo apt install cmake g++
 ```
 
-* **cmake** (≥ 3.10): Build system do NeuralAmpModelerCore.
-* **g++** (ou `clang++`, C++20): Compilador C++ para o tool `render`.
-* **cargo** (Rust): Geração do WAV de teste (sinal de stress) e conversão WAV→golden — binários nativos `gen_stress` e `wav_to_golden` substituem o bloco Python anterior.
+* **cmake** (≥ 3.10): Build system for NeuralAmpModelerCore.
+* **g++** (or `clang++`, C++20 compatible compiler): C++ compiler for the `render` tool.
+* **cargo** (Rust): Test WAV generation (stress signal) and WAV→golden conversion — native binaries `gen_stress` and `wav_to_golden` replace the previous Python script block.
 
 > [!NOTE]
-> Python **não é mais necessário**. Os binários Rust `gen_stress` e `wav_to_golden`
-> substituem as funções Python de geração de sinal e parsing WAV.
+> Python **is no longer required**. The Rust binaries `gen_stress` and `wav_to_golden` replace Python functions for signal generation and WAV parsing.
 >
-> Estas dependências são **opcionais**. Os golden vectors são pré-commitados no
-> repositório e os testes de validação rodam sem C++ no `cargo test` normal.
-> O C++ é necessário apenas para:
+> These dependencies are **optional**. Golden vectors are pre-committed in the repository and validation tests run without C++ in normal `cargo test`. C++ is only required to:
 >
-> * Regenerar goldens: `./tests/fixtures/golden_gen_build.sh`
-> * Validação cruzada ao vivo: `./utils/tests-long.sh`
+> * Regenerate goldens: `./tests/fixtures/golden_gen_build.sh`
+> * Perform live cross-validation: `./utils/tests-long.sh`

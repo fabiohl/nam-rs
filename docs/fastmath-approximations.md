@@ -1,190 +1,189 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# FastMath: Aproximações de Funções Transcendentais
+# FastMath: Transcendental Function Approximations
 
-Decisões arquiteturais, resultados de experimentos e diretrizes normativas para aproximação de `tanh`, `sigmoid` e funções relacionadas no hot-path DSP do NAM-rs.
+Architectural decisions, experiment results, and normative guidelines for approximating `tanh`, `sigmoid`, and related functions in the NAM-rs DSP hot-path.
 
 > [!IMPORTANT]
-> Este documento registra **decisões definitivas** validadas por benchmarks. Não altere as escolhas de produção sem executar `cargo bench` e confirmar que não há regressão estatisticamente significativa (p < 0.05).
+> This document records **definitive decisions** validated by benchmarks. Do not alter production choices without running `cargo bench` and confirming there is no statistically significant regression (p < 0.05).
 
 ---
 
-## 1. Decisão de Produção: Tanh — Padé [5,4] com Divisão de Hardware
+## 1. Production Decision: Tanh — Padé [5,4] with Hardware Division
 
-### Função de produção
+### Production Function
 
 ```text
 tanh(x) ≈ x · (x² + 105) · (x² + 945) / ((15x² + 420) · x² + 945)
 ```
 
-Implementada em `src/math/activations/tanh.rs`:
+Implemented in `src/math/activations/tanh.rs`:
 
 - `simd_tanh_avx2(x: __m256)` — 8 floats, AVX2 + FMA
-- `simd_tanh_dual_avx2(x1, x2: __m256)` — 16 floats, coeficientes broadcast uma vez
+- `simd_tanh_dual_avx2(x1, x2: __m256)` — 16 floats, coefficients broadcast once
 - `simd_tanh_avx512(x: __m512)` — 16 floats, AVX-512
 
-### Características da solução
+### Solution Characteristics
 
-| Propriedade                                   | Valor                                    |
+| Property                                      | Value                                    |
 |:--------------------------------------------- |:---------------------------------------- |
-| Erro máximo absoluto em [-4, 4]               | ~2.32e-3                                 |
-| Equivalência em bits de mantissa              | ~8.7 bits                                |
-| Operações SIMD (AVX2, 8 elem)                 | ~9 ops                                   |
+| Maximum absolute error in [-4, 4]             | ~2.32e-3                                 |
+| Equivalence in mantissa bits                  | ~8.7 bits                                |
+| SIMD operations (AVX2, 8 elem)                | ~9 ops                                   |
 | Throughput `tanh_slice` (256 elem, AVX2)      | **~54 ns**                               |
 | Throughput `tanh_slice` (256 elem, piecewise) | ~~163 ns~~                               |
-| Ganho vs piecewise 7-segmentos (Épico 8)      | **−66.6%**                               |
-| Coeficientes                                  | `PADE_TANH_*` em `src/math/constants.rs` |
+| Gain vs. 7-segment piecewise (Epic 8)         | **−66.6%**                               |
+| Coefficients                                  | `PADE_TANH_*` in `src/math/constants.rs` |
 
-### Por que `_mm256_div_ps` e não iteração Newton-Raphson (NR2)?
+### Why `_mm256_div_ps` and not Newton-Raphson Iteration (NR2)?
 
-Experimento empírico (E8.T04, 10M amostras em [-4, 4]):
+Empirical experiment (E8.T04, 10M samples in [-4, 4]):
 
-| Variante                   | Max Abs Err | RMS Error  | Throughput (256 elem) |
-|:-------------------------- |:----------- |:---------- |:--------------------- |
-| Piecewise 7-seg (E8.T02)   | 4.90e-3     | —          | ~163 ns               |
-| Padé NR2 (rcp + 2× Newton) | 2.32e-3     | ≈ Div      | ~104 ns               |
-| **Padé Div (hw div)**      | **2.32e-3** | **mínimo** | **~63 ns**            |
+| Variant                    | Max Abs Err | RMS Error   | Throughput (256 elem) |
+|:-------------------------- |:----------- |:----------- |:--------------------- |
+| 7-seg Piecewise (E8.T02)   | 4.90e-3     | —           | ~163 ns               |
+| Padé NR2 (rcp + 2× Newton) | 2.32e-3     | ≈ Div       | ~104 ns               |
+| **Padé Div (hw div)**      | **2.32e-3** | **minimum** | **~63 ns**            |
 
-A razão NR2/Div de erro é **1.000×** — a dupla iteração Newton-Raphson **satura completamente** a mantissa f32 (24 bits). O recíproco não contribui nenhum drift mensurável. Logo, `_mm256_div_ps` é a escolha correta: mais simples, mais rápida, e tecnicamente equivalente em precisão a NR2.
+The error ratio between NR2 and Division is **1.000×** — the double Newton-Raphson iteration **fully saturates** the f32 mantissa (24 bits). The reciprocal contributes no measurable drift. Therefore, `_mm256_div_ps` is the correct choice: simpler, faster, and technically equivalent in precision to NR2.
 
 > [!NOTE]
-> A intuição de que `div_ps` é "lento" vem de arquiteturas antigas. Em microarquiteturas modernas (Intel Ice Lake, AMD Zen 3+), `_mm256_div_ps` tem latência de 10-14 ciclos e throughput de 1 por 5 ciclos — inferior a uma cascata de 6 `blendv_ps` que a alternativa piecewise exige.
+> The intuition that `div_ps` is "slow" comes from older architectures. In modern microarchitectures (Intel Ice Lake, AMD Zen 3+), `_mm256_div_ps` has a latency of 10-14 cycles and a throughput of 1 per 5 cycles — lower than a cascade of 6 `blendv_ps` required by the piecewise alternative.
 
 ---
 
-## 2. Experimento Falhou: Piecewise 7 Segmentos para Tanh (E8.T02)
+## 2. Failed Experiment: Piecewise 7-Segment for Tanh (E8.T02)
 
-### O que foi tentado
+### What was tried
 
-Substituição do Padé [5,4] por 7 polinômios de grau 5 com blending branchless via `_mm256_blendv_ps`, cobrindo o domínio [-4, 4] com segmentos de largura variável.
+Replacing the Padé [5,4] with 7 polynomials of degree 5 with branchless blending via `_mm256_blendv_ps`, covering the [-4, 4] domain with variable-width segments.
 
-### Motivação original
+### Original Motivation
 
-Hipótese: segmentos curtos permitem coeficientes com menor erro de Chebyshev por segmento, melhorando a precisão global.
+Hypothesis: short segments allow coefficients with lower Chebyshev error per segment, improving global precision.
 
-### Resultados medidos (Épico 8)
+### Measured Results (Epic 8)
 
-| Métrica                      | Padé [5,4] (baseline) | Piecewise 7-seg (E8.T02)     |
+| Metric                       | Padé [5,4] (baseline) | 7-seg Piecewise (E8.T02)     |
 |:---------------------------- |:--------------------- |:---------------------------- |
-| Operações SIMD               | ~9                    | **~28** (7 polys + 6 blends) |
-| Max erro [-4, 4]             | 2.32e-3               | **4.90e-3** (pior!)          |
+| SIMD operations              | ~9                    | **~28** (7 polys + 6 blends) |
+| Max error [-4, 4]            | 2.32e-3               | **4.90e-3** (worse!)         |
 | Throughput (256 elem)        | 63 ns                 | **163 ns** (+159%)           |
-| `Prewarm_LSTM_2x16_2048samp` | baseline              | **+16%** de regressão        |
+| `Prewarm_LSTM_2x16_2048samp` | baseline              | **+16%** regression          |
 
-### Por que falhou
+### Why it failed
 
-1. **Todos os 7 polinômios são avaliados incondicionalmente** (branchless). O custo não depende do valor de entrada — é sempre 7× o custo de um único polinômio.
-2. **Cascade de 6 `blendv_ps`** serializa Port 5 (shuffle unit), criando uma gargalo de dependência sequencial.
-3. **O tanh tem curvatura máxima em [0, 1]** — segmentos menores nessa região melhoram o erro local, mas os coeficientes obtidos sem `fpminimax` (Sollya) não são ótimos.
-4. **Conclusão:** O piecewise só supera o Padé se tiver ≤3 segmentos E coeficientes recomputados via `fpminimax`. Para f32, o custo de 7 segmentos nunca se paga.
+1. **All 7 polynomials are evaluated unconditionally** (branchless). The cost does not depend on the input value — it is always 7× the cost of a single polynomial.
+2. **Cascade of 6 `blendv_ps`** serializes Port 5 (shuffle unit), creating a sequential dependency bottleneck.
+3. **Tanh has maximum curvature in [0, 1]** — smaller segments in this region improve local error, but coefficients obtained without `fpminimax` (Sollya) are not optimal.
+4. **Conclusion:** Piecewise only outperforms Padé if it has ≤3 segments AND coefficients are recomputed via `fpminimax`. For f32, the cost of 7 segments never pays off.
 
 > [!CAUTION]
-> **Nunca substitua o caminho de produção `simd_tanh_avx2` por uma variante piecewise sem benchmarkar o LSTM prewarm (2048 samples).** A LSTM avalia tanh 4× por célula por timestep — erros de throughput escalam linearmente com profundidade e tamanho de bloco.
+> **Never replace the production `simd_tanh_avx2` path with a piecewise variant without benchmarking the LSTM prewarm (2048 samples).** The LSTM evaluates tanh 4x per cell per timestep — throughput errors scale linearly with depth and block size.
 
-### Status atual
+### Current Status
 
-O piecewise está preservado como `simd_tanh_piecewise_avx2` (`#[allow(dead_code)]`) para pesquisa futura. Se algum dia for retomado, os coeficientes devem ser recomputados via:
+The piecewise implementation is preserved as `simd_tanh_piecewise_avx2` (`#[allow(dead_code)]`) for future research. If resumed, coefficients should be recomputed via:
 
 ```text
 sollya> fpminimax(tanh(x), [|1,3,5|], [|SG...|], [a, b], floating, absolute);
 ```
 
-para cada segmento, onde `[a, b]` é o intervalo do segmento.
+for each segment, where `[a, b]` is the segment interval.
 
 ---
 
-## 3. Decisão de Produção: Sigmoid — Minimax Direto (Grau 17)
+## 3. Production Decision: Sigmoid — Direct Minimax (Degree 17)
 
-### Fundamento
+### Foundation
 
-A implementação anterior usava a identidade `σ(x) = 0.5 + 0.5 · tanh(x/2)`, propagando o erro do tanh e adicionando operações de reescalonamento.
+The previous implementation used the identity `σ(x) = 0.5 + 0.5 · tanh(x/2)`, propagating the tanh error and adding scaling operations.
 
-### Solução adotada (E8.T01)
+### Adopted Solution (E8.T01)
 
-Polinômio ímpar de grau 17 (9 termos) para o domínio [-8, 8], coeficientes obtidos via **algoritmo de Lawson** (minimax ponderado).
+Odd polynomial of degree 17 (9 terms) for the [-8, 8] domain, coefficients obtained via **Lawson's algorithm** (weighted minimax).
 
-| Propriedade               | Identidade tanh (baseline) | Minimax direto (E8.T01)     |
-|:------------------------- |:-------------------------- |:--------------------------- |
-| Max erro absoluto         | ~6.8e-4                    | **~4.09e-4** (1.67× melhor) |
-| Operações SIMD            | 16                         | **15**                      |
-| Throughput escalar (LSTM) | baseline                   | **−20.25%**                 |
+| Property                 | Tanh identity (baseline) | Direct Minimax (E8.T01)     |
+|:------------------------ |:------------------------ |:--------------------------- |
+| Max absolute error       | ~6.8e-4                  | **~4.09e-4** (1.67× better) |
+| SIMD operations          | 16                       | **15**                      |
+| Scalar throughput (LSTM) | baseline                 | **−20.25%**                 |
 
-### Lição aprendida
+### Lesson Learned
 
-Funções simétricas suaves em um domínio compacto (sigmoid em [-8, 8]) são melhor aproximadas por um único polinômio de grau adequado do que por segmentos. A segmentação só compensa quando há descontinuidades ou inflexões abruptas de curvatura.
-
----
-
-## 4. Descoberta: Recíproco Newton-Raphson não Adiciona Drift em f32
-
-O experimento E8.T04 provou empiricamente que **a dupla iteração Newton-Raphson (NR2) na divisão de Padé satura completamente a mantissa de 24 bits do f32**. O erro máximo absoluto de NR2 vs divisão hardware é ratio 1.000× — indistinguível dentro da precisão representável.
-
-**Implicação normativa:** Em qualquer ponto do codebase onde exista `rcp_ps + 2× Newton-Raphson` para aproximar uma divisão de Padé racional, pode-se substituir por `div_ps` sem penalidade de precisão, e com potencial ganho de throughput (menos deps, menor register pressure).
+Smooth symmetric functions on a compact domain (sigmoid in [-8, 8]) are better approximated by a single polynomial of suitable degree than by segments. Segmentation only pays off when there are sharp curvature changes or discontinuities.
 
 ---
 
-## 5. Sobre o Drift WaveNet vs C++ e BF16
+## 4. Discovery: Newton-Raphson Reciprocal Adds No Drift in f32
 
-A comparação de paridade com NeuralAmpModelerCore revelou que o SNR da WaveNet Standard se mantém em **~9.5 dB** independentemente das melhorias de precisão nas ativações. Isso ocorre porque:
+Experiment E8.T04 empirically proved that **the double Newton-Raphson iteration (NR2) in the Padé division fully saturates the 24-bit f32 mantissa**. The maximum absolute error of NR2 vs. hardware division is a 1.000× ratio — indistinguishable within representable precision.
 
-1. **O drift dominante é a quantização de pesos BF16** — os pesos u16 são convertidos para bf16 na carga, introduzindo erro de arredondamento de ~3.9e-3 por peso.
-2. As melhorias em tanh/sigmoid reduzem o drift de **ativação** (segundo plano), mas o drift de **pesos** é estruturalmente maior.
+**Normative implication:** Wherever `rcp_ps + 2× Newton-Raphson` is used in the codebase to approximate a rational Padé division, it can be replaced with `div_ps` with no precision penalty and a potential throughput gain (fewer dependencies, lower register pressure).
 
-### Hierarquia de fontes de drift (maior para menor)
+---
+
+## 5. On WaveNet vs. C++ and BF16 Drift
+
+Parity comparison with NeuralAmpModelerCore revealed that WaveNet Standard SNR remains at **~9.5 dB** regardless of precision improvements in activations. This is because:
+
+1. **The dominant drift is BF16 weight quantization** — u16 weights are converted to bf16 upon loading, introducing a rounding error of ~3.9e-3 per weight.
+2. Improvements in tanh/sigmoid reduce **activation** drift (background), but **weight** drift is structurally larger.
+
+### Hierarchy of Drift Sources (largest to smallest)
 
 ```text
-1. Quantização BF16/F16 dos pesos                    (~3.9e-3 por elemento)
-2. Erro de aproximação da ativação tanh/sigmoid      (~2.3e-3 Padé, ~4.9e-3 piecewise)
-3. Acumulação de ponto flutuante (conv. profunda)    (O(N·ε), mitigado por Kahan)
-4. Recíproco na divisão Padé                        (≈0, saturado em 24 bits)
+1. BF16/F16 weight quantization                      (~3.9e-3 per element)
+2. Tanh/Sigmoid activation approximation error      (~2.3e-3 Padé, ~4.9e-3 piecewise)
+3. Floating-point accumulation (deep conv)           (O(N·ε), mitigated by Kahan)
+4. Reciprocal in Padé division                       (≈0, saturated in 24 bits)
 ```
 
-### Caminho para melhorar SNR
+### Path to Improving SNR
 
-O E8.T03 implementa bias-tuning para BF16 (compensação no load do modelo). O ganho esperado é ≥1.5 dB de SNR em hardware BF16-capable (Intel Sapphire Rapids, AMD Zen 5+). Para validar, é necessário um runner de CI com CPU compatível.
+E8.T03 implements bias-tuning for BF16 (compensation at model load). The expected gain is ≥1.5 dB SNR on BF16-capable hardware (Intel Sapphire Rapids, AMD Zen 5+). To validate, a CI runner with a compatible CPU is required.
 
 ---
 
-## 6. Prevenção Anti-Subnormal com Dither DC (E8.T05)
+## 6. Anti-Subnormal Prevention with DC Dither (E8.T05)
 
-### Problema
+### Problem
 
-Durante fade-out/silêncio, valores próximos de zero nas ativações LSTM/WaveNet entram no território subnormal (< 1.175e-38 para f32). Subnormais têm custo de processamento alto (hardware soft emulation) e podem introduzir artefatos de "estalo digital" no fade.
+During fade-out/silence, near-zero values in LSTM/WaveNet activations enter the subnormal territory (< 1.175e-38 for f32). Subnormals have a high processing cost (hardware soft emulation) and can introduce "digital click" artifacts during fades.
 
-### Solução adotada
+### Adopted Solution
 
-Constante `DENORMAL_DITHER_OFFSET = 1.0e-11` (-220 dBFS) injetada em `apply_input_stage` e removida em `apply_output_stage`.
+The constant `DENORMAL_DITHER_OFFSET = 1.0e-11` (-220 dBFS) is injected in `apply_input_stage` and removed in `apply_output_stage`.
 
-- **76 dB abaixo** do noise floor de um DAC de 24 bits — inaudível.
-- **Zero overhead** de performance (2 loops triviais por frame, eclipsados pelo GEMV).
-- Garantia: nenhum subnormal chega às ativações durante decaimento.
+- **76 dB below** the noise floor of a 24-bit DAC — completely inaudible.
+- **Zero performance overhead** (2 trivial loops per frame, eclipsed by GEMV).
+- Guarantee: no subnormal reaches activations during decay.
 
 > [!TIP]
-> Se um modelo futuro exibir "cliques" ou "estalos" na saída durante silêncio prolongado, verifique primeiro se `DENORMAL_DITHER_OFFSET` está sendo aplicado corretamente no canal afetado.
+> If a future model exhibits "clicks" or "pops" at the output during prolonged silence, first verify that `DENORMAL_DITHER_OFFSET` is being applied correctly to the affected channel.
 
 ---
 
-## 7. Sumário de Regras Normativas (Checklist)
+## 7. Summary of Normative Rules (Checklist)
 
-Para qualquer modificação futura em `src/math/activations/`:
+For any future modification in `src/math/activations/`:
 
-- [ ] **Benchmarke `Prewarm_LSTM_2x16_2048samp`** — sensível a throughput de tanh. Regressão > 5% é inaceitável.
-- [ ] **Benchmarke `FastMath_tanh_AVX2_256elem`** — valida o micro-benchmark do slice path.
-- [ ] **Não use piecewise > 3 segmentos** sem coeficientes recomputados via Sollya `fpminimax`.
-- [ ] **Não substitua `div_ps` por NR2** — ambos têm mesma precisão em f32; NR2 é mais lento.
-- [ ] **Mantenha a separação `single` / `dual`** — o dual deve usar broadcasts compartilhados de coeficientes.
-- [ ] **Verifique a simetria** — tanh é função ímpar. Qualquer implementação deve satisfazer `f(-x) == -f(x)`.
-- [ ] **Tolerância de erro máximo:** ≤ 5e-3 (tanh/sigmoid na inferência LSTM), ≤ 1e-4 (sigmoid na inicialização).
-- [ ] **Execute `cargo test --lib`** — 200 testes devem passar sem falha após qualquer modificação.
+- [ ] **Benchmark `Prewarm_LSTM_2x16_2048samp`** — sensitive to tanh throughput. A regression > 5% is unacceptable.
+- [ ] **Benchmark `FastMath_tanh_AVX2_256elem`** — validates the slice path micro-benchmark.
+- [ ] **Do not use piecewise > 3 segments** without recomputing coefficients via Sollya `fpminimax`.
+- [ ] **Do not replace `div_ps` with NR2** — both have the same precision in f32; NR2 is slower.
+- [ ] **Maintain the `single` / `dual` separation** — dual must use shared coefficient broadcasts.
+- [ ] **Verify symmetry** — tanh is an odd function. Any implementation must satisfy `f(-x) == -f(x)`.
+- [ ] **Maximum error tolerance:** ≤ 5e-3 (tanh/sigmoid in LSTM inference), ≤ 1e-4 (sigmoid in initialization).
+- [ ] **Run `cargo test --lib`** — all tests must pass without failure after any modification.
 
 ---
 
-## Referências
+## References
 
 - Kahan, W. "Further remarks on reducing truncation errors." *CACM*, 1965. (Kahan summation)
-- Muller, J.-M. *Elementary Functions: Algorithms and Implementation*. 3ª ed. Birkhäuser, 2016. (Padé approximants)
-- Intel® Intrinsics Guide — `_mm256_div_ps` latency/throughput por microarquitetura.
-- [Sollya](https://www.sollya.org/) — ferramenta para computar coeficientes `fpminimax` ótimos.
-- `TODO-sprints.md` §Épico 8 — histórico completo de decisões e benchmark data.
+- Muller, J.-M. *Elementary Functions: Algorithms and Implementation*. 3rd ed. Birkhäuser, 2016. (Padé approximants)
+- Intel® Intrinsics Guide — `_mm256_div_ps` latency/throughput per microarchitecture.
+- [Sollya](https://www.sollya.org/) — tool for computing optimal `fpminimax` coefficients.
+- `TODO-sprints.md` §Epic 8 — complete history of decisions and benchmark data.

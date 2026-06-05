@@ -1,145 +1,139 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# Benchmarks de Performance (Criterion)
+# Performance Benchmarks (Criterion)
 
-O projeto NAM-rs utiliza o **Criterion.rs** como sua suíte oficial de benchmarks de performance. Dada a natureza sensível de latência de um motor de áudio em tempo real (DSP), realizar medições com rigor estatístico é fundamental para não ser enganado por variações do sistema operacional (ruído, context switches, flutuações de clock).
+The NAM-rs project uses **Criterion.rs** as its official performance benchmarking suite. Given the latency-sensitive nature of a real-time audio engine (DSP), conducting measurements with statistical rigor is essential to avoid being misled by operating system variations (noise, context switches, clock fluctuations).
 
-## Como rodar os Benchmarks
+## How to Run the Benchmarks
 
-Para executar a suíte de performance:
+To execute the performance suite:
 
 ```bash
 cargo bench --bench inference_bench
 ```
 
-### Benchmarks de Longa Duração (Soak Bench)
+### Long-Duration Benchmarks (Soak Bench)
 
-Para avaliar a performance sob pressão constante e identificar jitter causado por cache misses ou TLB misses em blocos grandes, o projeto oferece uma suíte de benchmarks de longa duração (30s+ por função):
+To evaluate performance under constant pressure and identify jitter caused by cache misses or TLB misses in large blocks, the project offers a long-duration benchmarking suite (30s+ per function):
 
 ```bash
 cargo bench --features long_bench
 ```
 
-Ou via script de disparo manual (recomendado):
+Or via the recommended manual trigger script:
 
 ```bash
 bash utils/tests-long.sh
 ```
 
-Estes benchmarks utilizam blocos de **4096 amostras** (~85ms), reduzindo o peso relativo do overhead de invocação e focando puramente no throughput do motor DSP.
+These benchmarks use blocks of **4096 samples** (~85ms), reducing the relative weight of invocation overhead and focusing purely on the DSP engine's throughput.
 
-## Como interpretar a Saída do Criterion
+## How to Interpret Criterion Output
 
-Quando você roda um benchmark, o Criterion reporta uma saída similar a esta:
+When you run a benchmark, Criterion reports output similar to this:
 
 ```text
 WaveNet_Standard_CH16_64samp_48kHz
                         time:   [107.03 µs 107.32 µs 107.61 µs]
                         change: [−9.3273% −6.2506% −3.5233%] (p = 0.00 < 0.05)
                         Performance has improved.
-Found 5 outliers among 50 measurements (10.00%)
+                        Found 5 outliers among 50 measurements (10.00%)
   ...
 ```
 
-### Entendendo as Métricas
+### Understanding the Metrics
 
-1. **`time: [A B C]` (Intervalo de Confiança)**
-   Mostra o tempo de execução por iteração, expresso através de um **intervalo de confiança de 95%**.
-
-   * O número central (`B`, ex: `107.32 µs`) é a melhor estimativa pontual de tempo médio.
-   * Os números externos (`A` e `C`) definem o limite inferior e superior, garantindo estatisticamente (com 95% de certeza) que a performance verdadeira está dentro dessa margem.
-
-2. **`change: [...]` e `(p = X < 0.05)` (Significância Estatística)**
-
-   * `change` exibe o percentual de diferença em relação ao último teste executado na mesma máquina (valores negativos indicam código mais rápido).
-   * O **p-value** (`p`) indica a probabilidade dessa variação ter ocorrido ao acaso. Se `p < 0.05` (nível de significância de 5%), o Criterion atesta que a variação observada é real e não apenas ruído de sistema operacional.
-
-3. **Conclusões Textuais**
-   Baseado nos cálculos matemáticos, o software sumariará as conclusões:
-
-   * **Performance has improved / regressed**: O p-value confirmou que a alteração no código fonte provocou uma mudança estatística mensurável (positiva ou negativa).
-   * **Change within noise threshold**: O p-value é alto, as margens de erro se interceptam, ou a variação é insignificante. A mudança detectada é ruído.
-
+1. **`time: [A B C]` (Confidence Interval)**
+   Shows the execution time per iteration, expressed through a **95% confidence interval**.
+   * The central number (`B`, e.g., `107.32 µs`) is the best point estimate of the mean time.
+   * The outer numbers (`A` and `C`) define the lower and upper bounds, statistically guaranteeing (with 95% certainty) that the true performance lies within this margin.
+2. **`change: [...]` and `(p = X < 0.05)` (Statistical Significance)**
+   * `change` displays the percentage difference compared to the last run on the same machine (negative values indicate faster code).
+   * The **p-value** (`p`) indicates the probability that this variation occurred by chance. If `p < 0.05` (5% significance level), Criterion certifies that the observed variation is real and not just operating system noise.
+3. **Textual Conclusions**
+   Based on mathematical calculations, the software summarizes the conclusions:
+   * **Performance has improved / regressed**: The p-value confirmed that the source code change caused a measurable statistical difference (positive or negative).
+   * **Change within noise threshold**: The p-value is high, the error margins overlap, or the variation is negligible. The detected change is noise.
 4. **Outliers (Jitter)**
-   As amostras são rodadas centenas de vezes e anomalias são reportadas. Em um sistema de tempo-real crítico como o NAM-rs, ocorrências de `high severe` costumam estar atreladas a *jitter* (falhas de processamento, preempção de thread de áudio pelo kernel, cache misses etc). Executar benchmarks em ambientes blindados (SCHED_FIFO e afinidade de CPU ativados) mitiga outliers.
+   Samples are run hundreds of times, and anomalies are reported. In a critical real-time system like NAM-rs, occurrences of `high severe` are usually linked to *jitter* (processing glitches, audio thread preemption by the OS kernel, cache misses, etc.). Running benchmarks in shielded environments (SCHED_FIFO and CPU affinity enabled) mitigates outliers.
 
-## Histórico Temporal (Baselines)
+## Temporal History (Baselines)
 
-Você não precisa comparar os tempos mentalmente. **O Criterion salva a linha de base (baseline) da sua última execução automaticamente**.
+You do not need to compare times mentally. **Criterion automatically saves the baseline of your last run**.
 
-Todas as métricas históricas de acompanhamento temporal são gravadas em arquivos locais dentro do seu projeto em: `target/criterion/`
+All historical tracking metrics are recorded in local files within your project under: `target/criterion/`
 
-*(Nota: O NAM-rs mantém a geração de relatórios HTML com gráficos temporais propositalmente desativada no arquivo `Cargo.toml` (`default-features = false`) para omitir o download de extensas dependências visuais, limitando a avaliação ao console).*
+*(Note: NAM-rs intentionally disables HTML report generation with temporal charts in `Cargo.toml` (`default-features = false`) to omit downloading extensive visual dependencies, limiting evaluation to the console).*
 
-## Resultados Comparativos: LSTM Escalar vs SIMD (Fused Gates T3)
+## Comparative Results: Scalar LSTM vs. SIMD (Fused Gates T3)
 
-As otimizações introduziram a fusão de portas (*fused gates*) e ativações SIMD (AVX2/AVX-512) no hot-path das redes recorrentes. Abaixo, os ganhos medidos em uma arquitetura x86-64-v3 (AVX2/FMA) para blocos de 64 amostras:
+Optimizations introduced gate fusion and SIMD activations (AVX2/AVX-512) into the recurrent networks' hot-path. Below are the measured gains on an x86-64-v3 (AVX2/FMA) architecture for 64-sample blocks:
 
-| Topologia     | Implementação       | Latência (Média) | Speedup   |
-|:------------- |:------------------- |:---------------- |:--------- |
-| **LSTM 1x8**  | Escalar (Baseline)  | ~22.45 µs        | -         |
-| **LSTM 1x8**  | **SIMD Fused (T3)** | **~6.36 µs**     | **3.53x** |
-| **LSTM 2x16** | Escalar (Baseline)  | ~83.66 µs        | -         |
-| **LSTM 2x16** | **SIMD Fused (T3)** | **~20.29 µs**    | **4.12x** |
+| Topology      | Implementation      | Latency (Average) | Speedup   |
+|:------------- |:------------------- |:----------------- |:--------- |
+| **LSTM 1x8**  | Scalar (Baseline)   | ~22.45 µs         | -         |
+| **LSTM 1x8**  | **SIMD Fused (T3)** | **~6.36 µs**      | **3.53x** |
+| **LSTM 2x16** | Scalar (Baseline)   | ~83.66 µs         | -         |
+| **LSTM 2x16** | **SIMD Fused (T3)** | **~20.29 µs**     | **4.12x** |
 
-### Conclusão Técnica
+### Technical Conclusion
 
-O ganho de performance superior a **4x** em modelos complexos (2x16) valida a estratégia de fusão de kernels. Ao processar as 4 portas LSTM simultaneamente via vetores SIMD e manter os dados em registradores entre as ativações Sigmoid e Tanh, reduzimos drasticamente os ciclos de CPU desperdiçados com *loads/stores* redundantes e latência de memória.
+The performance gain exceeding **4x** on complex models (2x16) validates the kernel fusion strategy. By processing the 4 LSTM gates simultaneously via SIMD vectors and keeping data in registers between the Sigmoid and Tanh activations, we drastically reduce CPU cycles wasted on redundant loads/stores and memory latency.
 
-## Orçamento de Ciclos (WaveNet Hot-Path)
+## Cycle Budget (WaveNet Hot-Path)
 
-Para guiar futuras otimizações, realizamos a instrumentação granular do *hot-path* da WaveNet (`WaveNetLayer::process_block_internal`) utilizando contadores de ciclos de hardware (**RDTSC**). Esta medição identifica onde a CPU gasta a maior parte do tempo durante o processamento de um bloco de áudio.
+To guide future optimizations, we performed granular instrumentation of the WaveNet hot-path (`WaveNetLayer::process_block_internal`) using hardware cycle counters (**RDTSC**). This measurement identifies where the CPU spends most of its time during audio block processing.
 
-### Distribuição de Ciclos por Estágio (Per Layer)
+### Cycle Distribution per Stage (Per Layer)
 
-Abaixo, a distribuição percentual média de ciclos em uma arquitetura x86-64-v3 (AVX2) para um modelo Standard (CH=16):
+Below is the average percentage distribution of cycles on an x86-64-v3 (AVX2) architecture for a Standard model (CH=16):
 
-| Estágio Operacional        | Operações Envolvidas               | Budget (%) | Justificativa Técnica                                             |
-|:-------------------------- |:---------------------------------- |:---------- |:----------------------------------------------------------------- |
-| **Conv1D (SIMD GEMV)**     | Convolução causal, MACs, dilatação | **~45%**   | Fase mais intensa em computação (multiplicação de matriz-vetor).  |
-| **1x1 & Residual (Fused)** | Projeção densa, soma de resíduo    | **~25%**   | Alta pressão de memória (read-modify-write) e projeção de canais. |
-| **Mixin (Conditioning)**   | Injeção de metadados de timbre     | **~15%**   | Operação densa aplicada à entrada de cada camada.                 |
-| **Act & Head (Fused)**     | Tanh/Sigmoid, Skip-Connections     | **~15%**   | Custo das funções transcendentais (aproximadas via SIMD).         |
+| Operational Stage          | Operations Involved                 | Budget (%) | Technical Justification                                              |
+|:-------------------------- |:----------------------------------- |:---------- |:-------------------------------------------------------------------- |
+| **Conv1D (SIMD GEMV)**     | Causal convolution, MACs, dilation  | **~45%**   | Most computationally intensive phase (matrix-vector multiplication). |
+| **1x1 & Residual (Fused)** | Dense projection, residual addition | **~25%**   | High memory pressure (read-modify-write) and channel projection.     |
+| **Mixin (Conditioning)**   | Timbre metadata injection           | **~15%**   | Dense operation applied to the input of each layer.                  |
+| **Act & Head (Fused)**     | Tanh/Sigmoid, Skip-Connections      | **~15%**   | Cost of transcendental functions (approximated via SIMD).            |
 
-### Análise de Fluxo de Dados (Array Level)
+### Data Flow Analysis (Array Level)
 
-No nível da `WaveNetLayerArray`, a cascata de camadas domina o processamento (**>90% do tempo total**). Os estágios de interface (**Rechannel** de entrada e **Head Rechannel** de saída) representam uma sobrecarga fixa negligenciável à medida que o número de camadas aumenta, validando a escalabilidade da arquitetura NAM-rs para modelos complexos.
+At the `WaveNetLayerArray` level, the layer cascade dominates processing (**>90% of total time**). Interface stages (input **Rechannel** and output **Head Rechannel**) represent a negligible fixed overhead as the number of layers increases, validating the scalability of the NAM-rs architecture for complex models.
 
 > [!TIP]
-> A fusão da **Tanh** com o **Head Accumulation** foi a otimização mais impactante do Épico E, reduzindo o budget do estágio de ativação de ~30% para ~15% ao eliminar passagens redundantes pela memória Cache L1.
+> Fusing **Tanh** with **Head Accumulation** was the most impactful optimization of Epic E, reducing the activation stage budget from ~30% to ~15% by eliminating redundant passes through L1 Cache memory.
 
-## Relatório de Experimento: Temporal Tiling (Dual-Frame) na Conv1D
+## Experiment Report: Temporal Tiling (Dual-Frame) on Conv1D
 
-No Épico de otimização de hot-paths, foi projetada e testada uma variante **Temporal Tiling** (processamento "Dual-Frame") para os kernels de `Conv1D`, visando maximizar o reuso dos pesos na Cache L1 ao processar dois frames simultaneamente na inferência da WaveNet.
+In the hot-path optimization Epic, a **Temporal Tiling** variant ("Dual-Frame" processing) was designed and tested for `Conv1D` kernels, aiming to maximize L1 Cache weight reuse by processing two frames simultaneously in WaveNet inference.
 
-### Resultados da Medição (64 samples, 48kHz, CH=16, AVX2)
+### Measurement Results (64 samples, 48kHz, CH=16, AVX2)
 
 * **Single-Frame (Baseline):** ~84 µs
-* **Dual-Frame Tiling:** ~100 µs (Regressão de ~19%)
+* **Dual-Frame Tiling:** ~100 µs (Regression of ~19%)
 
-### Análise e Decisão Arquitetural
+### Analysis and Architectural Decision
 
-Apesar da teoria sugerir que carregar os pesos da memória apenas metade das vezes pouparia largura de banda (L1 cache), na prática a arquitetura x86-64 (AVX2/FMA) revelou-se limitada pelo **Register Pressure** (Pressão de Registradores).
-Para processar dois frames em paralelo:
+Although theory suggested that loading weights from memory half as often would save bandwidth (L1 cache), in practice the x86-64 architecture (AVX2/FMA) proved to be limited by **Register Pressure**.
+To process two frames in parallel:
 
-1. O número de acumuladores SIMD necessários dobrou (de 4 YMM para 8 YMM por canal).
-2. O overhead de instruções no frontend (ex: *broadcasts* e *blends*) superou a economia de *loads*.
-3. O compilador foi forçado a usar *register spilling* ou atingiu gargalos de *execution ports* para instruções de mistura (Port 5).
+1. The number of required SIMD accumulators doubled (from 4 YMM to 8 YMM per channel).
+2. Instruction overhead in the frontend (e.g., broadcasts and blends) outweighed the savings on loads.
+3. The compiler was forced to use register spilling or hit execution port bottlenecks for blend/shuffle instructions (Port 5).
 
-**Conclusão:** O gargalo primário da `Conv1D` no NAM-rs não está atrelado à largura de banda da Cache L1, e sim ao *throughput* computacional e contenção de registradores do backend (FMA). Por causa disto, embora a implementação do kernel tenha sido mantida no trait `SimdMath` para portabilidade e testes em arquiteturas com mais registradores (ex: AVX-512 ou ARM NEON), o loop principal na `WaveNetLayer` permanece utilizando **processamento Single-Frame** para garantir a menor latência e maior estabilidade em tempo real.
+**Conclusion:** The primary bottleneck of `Conv1D` in NAM-rs is not tied to L1 Cache bandwidth, but rather to computational throughput and register contention in the backend (FMA). Because of this, while the kernel implementation has been kept in the `SimdMath` trait for portability and testing on architectures with more registers (e.g., AVX-512 or ARM NEON), the main loop in `WaveNetLayer` continues to use **Single-Frame processing** to ensure the lowest latency and highest real-time stability.
 
-## Relatório de Experimento: Fusão Stereo no Output Stage (T3.2)
+## Experiment Report: Stereo Fusion in the Output Stage (T3.2)
 
-A Tarefa T3.2 visou eliminar passagens redundantes de memória no estágio final de saída, fundindo as operações de ganho (Hysteresis/Gate) dos canais L e R em uma única chamada SIMD stereo.
+Task T3.2 aimed to eliminate redundant memory passes in the final output stage by fusing the gain (Hysteresis/Gate) operations of the L and R channels into a single stereo SIMD call.
 
-### Resultados da Medição (64 samples, 48kHz, AVX2)
+### Measurement Results (64 samples, 48kHz, AVX2)
 
-| Topologia       | Antes da Fusão | Após a Fusão (T3.2) | Ganho (%) |
-|:--------------- |:-------------- |:------------------- |:--------- |
-| **WaveNet Std** | ~107.3 µs      | ~101.4 µs           | **~5.5%** |
-| **LSTM 2x16**   | ~15.4 µs       | ~14.7 µs            | **~4.5%** |
+| Topology        | Before Fusion | After Fusion (T3.2) | Gain (%)  |
+|:--------------- |:------------- |:------------------- |:--------- |
+| **WaveNet Std** | ~107.3 µs     | ~101.4 µs           | **~5.5%** |
+| **LSTM 2x16**   | ~15.4 µs      | ~14.7 µs            | **~4.5%** |
 
-### Conclusão
+### Conclusion
 
-A fusão stereo reduz o tráfego de memória na Cache L1 ao ler os canais L e R simultaneamente e aplicar os pesos de ganho/rampa em um único loop. O ganho é mais pronunciado em blocos menores (ex: 32 samples, onde mediu-se **~8.5%** de melhora), onde o overhead de despacho e os cache misses parciais têm maior peso relativo.
+Stereo fusion reduces memory traffic in the L1 Cache by reading the L and R channels simultaneously and applying the gain/ramp weights in a single loop. The gain is more pronounced in smaller blocks (e.g., 32 samples, where a **~8.5%** improvement was measured), where dispatch overhead and partial cache misses have a higher relative weight.

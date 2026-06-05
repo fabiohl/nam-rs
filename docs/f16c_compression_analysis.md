@@ -1,57 +1,58 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# Análise de Performance: Compressão de Pesos F16C (VNNI-like)
+# Performance Analysis: F16C Weight Compression (VNNI-like)
 
-Este documento detalha as motivações arquiteturais, as vantagens em micro e macro escala, bem como o impacto teórico (e prático nulo) na qualidade sonora derivado da adoção de tensores Half-Precision (`f16/u16`) na máquina de inferência Neural do NAM-rs.
+This document details the architectural motivations, micro- and macro-scale advantages, and the theoretical (and practically null) impact on sound quality derived from adopting Half-Precision (`f16/u16`) tensors in the NAM-rs Neural inference engine.
 
-## 1. O Problema: Memory-Bound e o "Cache Stall"
+## 1. The Problem: Memory-Bound and "Cache Stall"
 
-No âmbito de Processamento Digital de Sinais (DSP) em Tempo Real para simulação de amplificadores e pedais de guitarra sob latências extremas, o gargalo predominante em arquiteturas modernas raramente é a falta de poder de cálculo puro das unidades lógico-aritméticas, mas sim a deficiência na entrega rápida de dados para esses cálculos.
+In the realm of Real-Time Digital Signal Processing (DSP) for simulating guitar amplifiers and pedals under extreme latencies, the prevailing bottleneck in modern architectures is rarely a lack of raw computing power in the logical-arithmetic units, but rather the deficiency in fast delivery of data for those calculations.
 
-A maior topologia preditiva suportada (o *WaveNet Standard*) armazena em seus pesos neurais em torno de 80 KB de dados (flutuantes `f32`). Em microarquiteturas modernas como a linha AMD Zen (Ryzen) ou Intel Core (Skylake e adiante), a **Cache de Dados L1** típica possui apenas **32 KB por núcleo**.
+The largest supported predictive topology (the *WaveNet Standard*) stores around 80 KB of data (`f32` floats) in its neural weights. In modern microarchitectures like the AMD Zen (Ryzen) or Intel Core (Skylake and onward) lines, the typical **L1 Data Cache** is only **32 KB per core**.
 
-Durante o hot-loop da inferência de áudio, quando o motor precisa tocar os ~80 KB de matrizes da CNN, essa discrepância engatilha um fenômeno de "Cache Eviction" (Despejo de Cache): os pesos do modelo excedem a L1, os dados mais vitais são removidos da camada mais rápida e o processador é obrigado a fazer buscas cíclicas na cache **L2** (ou pior, na L3/RAM). Cada `L1 Cache Miss` custa à pipeline superscalar aproximadamente ~14 ciclos de clock ociosos, onde transistores vitais ficam congelados (*stalled*) aguardando a chegada dos tensores da memória secundária. Em uma execução com centenas de milhares de ciclos por segundo, esse "engasgo" deforma os tempos do processamento rítmico do modelo.
+During the audio inference hot-loop, when the engine needs to access the ~80 KB of CNN matrices, this discrepancy triggers a "Cache Eviction" phenomenon: the model weights exceed L1, the most vital data is evicted from the fastest layer, and the processor is forced to perform cyclical lookups in the **L2** cache (or worse, L3/RAM). Each `L1 Cache Miss` costs the superscalar pipeline approximately ~14 idle clock cycles, where vital transistors are frozen (*stalled*) waiting for tensors to arrive from secondary memory. In a run with hundreds of thousands of cycles per second, this "hiccup" deforms the rhythm of the model's processing.
 
-## 2. A Solução: Compactação `f16` (F16C) e o Motor AVX
+## 2. The Solution: `f16` Compression (F16C) and the AVX Engine
 
-A solução arquitetural do NAM-rs para eviscerar as falhas de Cache L1 foi traduzir, antecipadamente no momento da alocação de heap (`loader`), todas as matrizes estruturais estáticas do modelo (Conv1d, DenseLayer e as projeções interfolhadas LSTM) para **Half-Precision (16 bits)**, dividindo pela metade a exigência volumétrica no hardware.
-Com isso, os impressionantes 80 KB do WaveNet Standard caem para meros **40 KB**, adequando-se exponencialmente melhor na franja térmica da Cache L1.
+The architectural solution in NAM-rs to eviscerate L1 Cache misses was to translate all static structural matrices of the model (Conv1d, DenseLayer, and interleaved LSTM projections) to **Half-Precision (16 bits)** beforehand during heap allocation (`loader`), cutting the hardware volumetric requirement in half.
 
-### **"Mas e o custo de descompressão antes do cálculo?"**
+With this, the impressive 80 KB of the WaveNet Standard drops to a mere **40 KB**, fitting exponentially better within the L1 Cache thermal envelope.
 
-A CPU executa uma mágica via *Hardware Dedicado* suportada pelos conjuntos de instruções F16C e as extensões AVX2/AVX-512.
-O processo ocorre durante o carregamento de barramento (load):
+### **"But what about the decompression cost before calculation?"**
 
-- Uma instrução SIMD de leitura `_mm_loadu_si128` carrega 8 tensores (agora compactados em `u16` ocupando 128 bits de banda).
-- Simultaneamente e *on-the-fly*, uma instrução base de downcast de hardware como `_mm256_cvtph_ps` decodifica esses `f16` minúsculos de volta em robustos escalares flutuantes de 32-bits (Single-Precision) espalhados ao longo dos generosos e imensos registradores lógicos de 256 bits (YMM/ZMM).
-- A instrução leva cerca de `~4` a `~5` ciclos operacionais em hardware nativo para upcast. No entanto, por causa das rotinas implacáveis de Out-Of-Order Execution (OoO), a CPU consegue executar outras contas matemáticas cruciais escondendo ou absorvendo quase 100% desta latência intrínseca.
+The CPU performs this magic via *Dedicated Hardware* supported by the F16C instruction sets and AVX2/AVX-512 extensions.
+The process occurs during bus loading:
 
-## 3. Ganhos Computacionais em Macro-Escala (Nível do Usuário Final)
+- A `_mm_loadu_si128` SIMD load instruction loads 8 tensors (now compressed into `u16` occupying 128 bits of bandwidth).
+- Simultaneously and *on-the-fly*, a hardware downcast base instruction such as `_mm256_cvtph_ps` decodes these tiny `f16`s back into robust 32-bit floating-point scalars (Single-Precision) spread across the generous and massive 256-bit logical registers (YMM/ZMM).
+- The instruction takes about `~4` to `~5` operational cycles in native hardware for upcast. However, because of relentless Out-of-Order Execution (OoO) routines, the CPU can execute other crucial mathematical calculations, hiding or absorbing nearly 100% of this intrinsic latency.
 
-O rebatimento que esta micro-otimização entrega diretamente à mesa de mixagem do estúdio musical ou ao amplificador digital ao vivo é transformador:
+## 3. Macro-Scale Computational Gains (End-User Level)
 
-- **Redução Brutal de Latência (*Buffer Size*):** Sem os frequentes repiques térmicos na Cache e estragos nas preempções de loop de DSP, os "chunks" sonoros terminam de ser mastigados absurdamente mais rápido. A regularidade atômica conquistada permite o usuário do sistema despencar as configurações limites de Buffer na interface de Áudio para parâmetros absurdos, chegando a rodar de maneira confortável a buffers de **32 ou 64 amostras** (menos de *1.5 milissegundos* perceptivos da palhetada da guitarra à saída da caixa) de modo inquebrantável (Zero X-Runs ou estalos rítmicos).
-- **Libertação de Margem em "Parallel CPU Loads":** O término precoce do *DSP Pipeline* abre um fôlego incomensurável para inserção de novas *DAW Tracks* repletas de *Delay*, *Reverbs* algorítmicos complexos e osciladores *Synth* estéreos concorrentes. Os núcleos do host respiram livremente e a CPU consome muito menos calor e bateria em contextos de computação móvel.
+The impact that this micro-optimization delivers directly to the studio mixing console or the live digital amplifier is transformative:
 
-## 4. O Custo Sônico: O Que "Perdemos" com a Mantissa?
+- **Brutal Reduction in Latency (*Buffer Size*):** Without frequent Cache thermal spikes and disruption of DSP loop preemptions, audio "chunks" finish being processed absurdly faster. The achieved atomic regularity allows the system user to plummet Buffer configuration limits in the Audio interface to extreme levels, comfortably running at buffers of **32 or 64 samples** (less than *1.5 milliseconds* perceptively from the guitar pick stroke to the speaker output) in an unbreakable manner (Zero XRUNs or rhythmic clicks).
+- **Freeing Margin in "Parallel CPU Loads":** The early completion of the *DSP Pipeline* opens up immense headroom for inserting new *DAW Tracks* filled with *Delays*, complex algorithmic *Reverbs*, and competing stereo *Synth* oscillators. The host cores breathe freely, and the CPU consumes far less heat and battery in mobile computing contexts.
 
-Toda conversão F16 é baseada em sacrificar precisão bruta.
+## 4. The Sonic Cost: What Do We "Lose" with the Mantissa?
 
-Um valor em `f32` (Precisão Simples) nos diz volumes e frações altíssimas com dezenas de casas decimais. Quando fazemos a conversão para `f16` (Meia-Precisão) no carregador e truncamos a **Mantissa** para estritos 10 bits de memória (embora o expoente dinâmico, que capta a intensidade/volume global, seja mantido), nós arrendondamos ligeiramente para cima e para baixo a cauda flutuante dos números originais `(ex: 0.1234567 vira ~0.1234...)`.
+All F16 conversion is based on sacrificing raw precision.
 
-Estatisticamente e na prática de código, este desalinhamento entre o ponto-flutuante original de 32-bits não comprimido reflete-se em um desvio vetorial de Erro Médio Quadrático (*Mean Squared Error*, ou **MSE**) oscilante próximo de `1e-4` nos outputs dos testes integrados.
+An `f32` value (Single Precision) tells us volumes and fractions with high decimal precision. When we perform the conversion to `f16` (Half Precision) in the loader and truncate the **Mantissa** to a strict 10 bits of memory (though the dynamic exponent, which captures global intensity/volume, is kept), we slightly round up and down the floating tail of the original numbers `(e.g., 0.1234567 becomes ~0.1234...)`.
 
-### O Impacto Psicoacústico na Timbragem (Transparência)
+Statistically and in code execution, this misalignment from the original uncompressed 32-bit floating point reflects as a Mean Squared Error (**MSE**) vector deviation oscillating close to `1e-4` in the outputs of integrated tests.
 
-De forma categórica: **É Impossível para a biologia humana, mesmo no cenário auditivo mais crítico, separar um amplificador que emula timbres em `f32` puro contra `f16c` com esta margem de precisão.**
+### The Psychoacoustic Impact on Timbre (Transparency)
 
-O motivo é balizado pela física da gravação de áudio digital:
+Categorically: **It is impossible for human biology, even in the most critical listening scenario, to tell apart an amplifier emulating timbres in pure `f32` versus `f16c` with this precision margin.**
 
-1. **O Chão Analógico (Noise Floor):** Erros quantizados de `1e-4` significam distorções algorítmicas adicionadas ao sinal final próximas de **-80 dB a -100 dBFS**. Literalmente qualquer captador Single-Coil barato, cabo de cobre mediano ou amplificador valvulado saturado possui intrinsecamente pisos de ruído (noise floor), vazamentos passivos (crosstalk) e correntes difusas incrivelmente mais volumosas (às vezes em torno dos respeitáveis `-60 dB`).
-2. **Mascaramento por Distorção de Alto Ganho:** Equipamentos emulados de guitarra baseiam-se eminentemente na indução de saturação severa (Overdrive e Fuzz), cortando o sinal analógico em harmônicas altas que engolem completamente minúsculos espúrios numéricos no limiar de `-80 dB`.
-3. **Paralelo de Produção (*Dithering*):** Sob o ponto de vista de Mixagem, perder 10 bits no cálculo de predição temporal é analiticamente semelhante à injeção da técnica conhecida como de *Dither* orgânico na conversão bit-depth em um Master de Rock clássico muito espesso. As perdas atuam como pequenas imprecisões no piso imperceptível ao longo do transiente, resultando em transparência musical perfeita, mantendo integral a compressão dinâmica e o punch orgânico de transientes (Feel) do amplificador Neural.
+The reason is anchored by the physics of digital audio recording:
 
-## Conclusão
+1. **O Chão Analógico (Noise Floor):** Quantized errors of `1e-4` mean algorithmic distortions added to the final signal close to **-80 dB to -100 dBFS**. Literally any cheap Single-Coil pickup, average copper cable, or saturated tube amplifier intrinsically has noise floors, passive crosstalk, and stray currents that are incredibly louder (sometimes around a respectable `-60 dB`).
+2. **Masking by High-Gain Distortion:** Emulated guitar gear relies heavily on inducing severe saturation (Overdrive and Fuzz), clipping the analog signal into high harmonics that completely swallow tiny numerical artifacts at the `-80 dB` threshold.
+3. **Production Parallel (*Dithering*):** From a mixing perspective, losing 10 bits in the temporal prediction calculation is analytically similar to injecting the technique known as organic *Dither* in bit-depth conversion on a very thick classic rock Master. The losses act as tiny inaccuracies in the imperceptible noise floor along the transient, resulting in perfect musical transparency, keeping the dynamic compression and organic punch of transients (Feel) of the Neural amplifier fully intact.
 
-O NAM-rs atesta o compromisso arquitetônico em fornecer o maior ganho infraestrutural possível, trocando ciclos estagnados numa barreira de silício por processamento sônico massivo de latência-zero, assumindo uma insignificante distorção computacional invisível à biologia.
+## Conclusion
+
+NAM-rs certifies the architectural commitment to provide the greatest infrastructural gain possible, trading stalled cycles in a silicon barrier for massive zero-latency sonic processing, assuming a negligible computational distortion invisible to biology.

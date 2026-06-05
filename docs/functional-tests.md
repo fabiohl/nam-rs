@@ -54,11 +54,11 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ### 2B — Knobs: Range, Fine-Tune, Reset, Glow
 
-| Knob       | Range                   | Default    |
-| ---------- | ----------------------- | ---------- |
-| **INPUT**  | −96.0 to +30.0 dB       | 0.0 dB     |
-| **OUTPUT** | −96.0 to +30.0 dB       | 0.0 dB     |
-| **GATE**   | −90.0 to −40.0 dB       | −70.0 dB   |
+| Knob       | Range             | Default  |
+| ---------- | ----------------- | -------- |
+| **INPUT**  | −96.0 to +30.0 dB | 0.0 dB   |
+| **OUTPUT** | −96.0 to +30.0 dB | 0.0 dB   |
+| **GATE**   | −90.0 to −40.0 dB | −70.0 dB |
 
 - [ ] Drag each knob to extremes → tooltip (hover) shows correct value, limits respected.
 - [ ] Hover over knob → tooltip with 2 decimal places (e.g.: `"3.50 dB"`). INPUT/OUTPUT: `"X.XX dB"`. GATE: `"X.XX dB (Threshold)"`.

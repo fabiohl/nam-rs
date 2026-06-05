@@ -212,6 +212,3 @@ This project builds upon the logic, science, and inspiration of notable works in
 **AI Transparency Note:** The architecture, rigorous engineering decisions, documentation, agent orchestrations, and curation of this project are the intellectual work of the maintainer. However, the source code itself was generated and iterated with the assistance of Artificial Intelligence (*Vibe Coding*), specifically using the Google Antigravity IDE.
 
 This project is licensed under the **Apache License, Version 2.0**. See the `LICENSE` file for details.
-
-> [!NOTE]
-> **Developer Documentation & Code Comments:** Please note that developer comments (`//`, `///`, `//!`) in the source code and reference documentation under the `docs/` folder will remain in Portuguese for now.
