@@ -230,7 +230,10 @@ impl<'a> NamClapProcessor<'a> {
                     let start = self.smoother_in.peek();
                     let target = self.smoother_in.target_value();
                     if (start - target).abs() < 1e-9 {
-                        crate::math::dsp::gain::apply_gain_simd(&mut self.buf_host_l[..n_samples], start);
+                        crate::math::dsp::gain::apply_gain_simd(
+                            &mut self.buf_host_l[..n_samples],
+                            start,
+                        );
                         for &sample in &self.buf_host_l[..n_samples] {
                             if sample.abs() > 1.0 {
                                 input_has_clipped = true;
@@ -239,7 +242,11 @@ impl<'a> NamClapProcessor<'a> {
                         }
                     } else {
                         let step = (target - start) / n_samples as f32;
-                        crate::math::dsp::gain::apply_ramp_simd(&mut self.buf_host_l[..n_samples], start, step);
+                        crate::math::dsp::gain::apply_ramp_simd(
+                            &mut self.buf_host_l[..n_samples],
+                            start,
+                            step,
+                        );
                         self.smoother_in.set(start + step * n_samples as f32);
 
                         for &sample in &self.buf_host_l[..n_samples] {
@@ -406,10 +413,17 @@ impl<'a> NamClapProcessor<'a> {
                     let start = self.smoother_out.peek();
                     let target = self.smoother_out.target_value();
                     if (start - target).abs() < 1e-9 {
-                        crate::math::dsp::gain::apply_gain_simd(&mut self.buf_out_l[..n_out], start);
+                        crate::math::dsp::gain::apply_gain_simd(
+                            &mut self.buf_out_l[..n_out],
+                            start,
+                        );
                     } else {
                         let step = (target - start) / n_out as f32;
-                        crate::math::dsp::gain::apply_ramp_simd(&mut self.buf_out_l[..n_out], start, step);
+                        crate::math::dsp::gain::apply_ramp_simd(
+                            &mut self.buf_out_l[..n_out],
+                            start,
+                            step,
+                        );
                         self.smoother_out.set(start + step * n_out as f32);
                     }
                 }

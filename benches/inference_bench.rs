@@ -352,9 +352,11 @@ fn bench_lstm_2x16_block_sizes(c: &mut Criterion) {
 /// L1 cache locality, crucial for WaveNet dense layers.
 fn bench_dot_product_avx2_256(c: &mut Criterion) {
     let vec_a = AlignedVec::from_vec((0..256).map(|i| (i as f32) * 0.1).collect());
-    let vec_b = AlignedVec::from_vec((0..256)
-        .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
-        .collect());
+    let vec_b = AlignedVec::from_vec(
+        (0..256)
+            .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
+            .collect(),
+    );
 
     c.bench_function("DotProduct_AVX2_256elem", |b| {
         b.iter(|| unsafe {
@@ -372,9 +374,11 @@ fn bench_dot_product_avx2_256(c: &mut Criterion) {
 /// Represents the typical intermediate layer size in lightweight models.
 fn bench_dot_product_avx2_64(c: &mut Criterion) {
     let vec_a = AlignedVec::from_vec((0..64).map(|i| (i as f32) * 0.1).collect());
-    let vec_b = AlignedVec::from_vec((0..64)
-        .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
-        .collect());
+    let vec_b = AlignedVec::from_vec(
+        (0..64)
+            .map(|i| half::f16::from_f32((i as f32) * -0.1).to_bits())
+            .collect(),
+    );
     c.bench_function("DotProduct_AVX2_64elem", |b| {
         b.iter(|| unsafe {
             nam_rs::math::gemm::dot::dot_product_avx2(

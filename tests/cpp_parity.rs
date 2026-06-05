@@ -199,10 +199,12 @@ fn run_render_comparison(
     };
 
     let (input_for_render, input_sr) = if let Some(ref mut rs) = resampler_cpp {
-        let est_len = (stress_signal.len() as f64 * model_sr as f64 / actual_sr as f64).ceil() as usize + 512;
+        let est_len =
+            (stress_signal.len() as f64 * model_sr as f64 / actual_sr as f64).ceil() as usize + 512;
         let mut resampled_in_l = vec![0.0f32; est_len];
         let mut resampled_in_r = vec![0.0f32; est_len];
-        let n_resampled = rs.process_input_mono(&stress_signal, &mut resampled_in_l, &mut resampled_in_r);
+        let n_resampled =
+            rs.process_input_mono(&stress_signal, &mut resampled_in_l, &mut resampled_in_r);
         resampled_in_l.truncate(n_resampled);
         (resampled_in_l, model_sr)
     } else {
@@ -210,10 +212,12 @@ fn run_render_comparison(
     };
 
     let (input_for_rust, _) = if let Some(ref mut rs) = resampler_rust {
-        let est_len = (stress_signal.len() as f64 * model_sr as f64 / actual_sr as f64).ceil() as usize + 512;
+        let est_len =
+            (stress_signal.len() as f64 * model_sr as f64 / actual_sr as f64).ceil() as usize + 512;
         let mut resampled_in_l = vec![0.0f32; est_len];
         let mut resampled_in_r = vec![0.0f32; est_len];
-        let n_resampled = rs.process_input_mono(&stress_signal, &mut resampled_in_l, &mut resampled_in_r);
+        let n_resampled =
+            rs.process_input_mono(&stress_signal, &mut resampled_in_l, &mut resampled_in_r);
         resampled_in_l.truncate(n_resampled);
         (resampled_in_l, model_sr)
     } else {
@@ -253,10 +257,13 @@ fn run_render_comparison(
         common::wav::read_wav_f32(&output_wav).expect("Failed to read render WAV output");
 
     let cpp_output = if let Some(ref mut rs) = resampler_cpp {
-        let est_out_len = (cpp_output_raw.len() as f64 * actual_sr as f64 / model_sr as f64).ceil() as usize + 512;
+        let est_out_len = (cpp_output_raw.len() as f64 * actual_sr as f64 / model_sr as f64).ceil()
+            as usize
+            + 512;
         let mut resampled_out_l = vec![0.0f32; est_out_len];
         let mut resampled_out_r = vec![0.0f32; est_out_len];
-        let n_out_resampled = rs.process_output_mono(&cpp_output_raw, &mut resampled_out_l, &mut resampled_out_r);
+        let n_out_resampled =
+            rs.process_output_mono(&cpp_output_raw, &mut resampled_out_l, &mut resampled_out_r);
         resampled_out_l.truncate(n_out_resampled);
         resampled_out_l
     } else {
@@ -291,10 +298,16 @@ fn run_render_comparison(
     );
 
     let rust_output = if let Some(ref mut rs) = resampler_rust {
-        let est_out_len = (rust_output_model_sr.len() as f64 * actual_sr as f64 / model_sr as f64).ceil() as usize + 512;
+        let est_out_len = (rust_output_model_sr.len() as f64 * actual_sr as f64 / model_sr as f64)
+            .ceil() as usize
+            + 512;
         let mut resampled_out_l = vec![0.0f32; est_out_len];
         let mut resampled_out_r = vec![0.0f32; est_out_len];
-        let n_out_resampled = rs.process_output_mono(&rust_output_model_sr, &mut resampled_out_l, &mut resampled_out_r);
+        let n_out_resampled = rs.process_output_mono(
+            &rust_output_model_sr,
+            &mut resampled_out_l,
+            &mut resampled_out_r,
+        );
         resampled_out_l.truncate(n_out_resampled);
         resampled_out_l
     } else {

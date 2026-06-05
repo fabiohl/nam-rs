@@ -53,8 +53,7 @@ pub(crate) fn apply_input_stage(
     let energy_ms =
         unsafe { compute_energy_stereo(&samples_l[..n_samples], &samples_r[..n_samples]) };
     #[cfg(not(feature = "stereo"))]
-    let energy_ms =
-        crate::math::common::dispatch_simd!(compute_energy(&samples_l[..n_samples]));
+    let energy_ms = crate::math::common::dispatch_simd!(compute_energy(&samples_l[..n_samples]));
 
     #[cfg(not(feature = "stereo"))]
     let _ = samples_r;
@@ -78,7 +77,8 @@ pub(crate) fn apply_input_stage(
     {
         // 2. MONO SOUND DETECTION (SAME ON BOTH SIDES)
         // Computes the difference between left and right to check if the sound is the same.
-        let max_diff = unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
+        let max_diff =
+            unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
 
         ctx.mono_hysteresis.update(
             max_diff,
