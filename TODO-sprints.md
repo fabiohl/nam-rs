@@ -298,6 +298,25 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S7 — Compiler-Grade Optimization (PGO + BOLT)
 
+> **Requisitos do Ambiente de Desenvolvimento:**
+> Para executar esta sprint no Ubuntu Linux (versão mais recente), são necessárias as seguintes dependências no sistema (`apt`), no ecossistema Rust/Cargo (`rustup`/`cargo`) e configurações de privilégios de execução:
+>
+> 1. **Dependências do Sistema (`apt`):**
+>    - `bolt-22`: Otimizador post-link LLVM BOLT. Deve ser instalada a versão 22 para compatibilidade com o LLVM 22.1.2 do `rustc 1.96.0`.
+>      - Comando: `sudo apt install bolt-22` (ou `llvm-bolt` caso aponte para versão compatível).
+>    - `linux-tools-generic` e `linux-tools-$(uname -r)`: Necessários para a ferramenta `perf`, utilizada para capturar os profiles de execução representativos do BOLT.
+>      - Comando: `sudo apt install linux-tools-generic linux-tools-$(uname -r)`
+>
+> 2. **Componentes Rust e utilitários Cargo (`rustup` e `cargo`):**
+>    - `llvm-tools-preview` (via `rustup`): Fornece o `llvm-profdata` da mesma versão exata do LLVM do compilador Rust instalado. Essencial para converter e mesclar os arquivos `.profraw` do PGO.
+>      - Comando: `rustup component add llvm-tools-preview`
+>    - `cargo-pgo` (via `cargo`): Ferramenta recomendada para automatizar o fluxo de Profile-Guided Optimization em Rust.
+>      - Comando: `cargo install cargo-pgo`
+>
+> 3. **Configuração de Permissões de Amostragem (`perf`):**
+>    - Para permitir que o `perf record` colete eventos de amostragem de ciclos de CPU sem privilégios de superusuário (root), configure o nível de paranóia de eventos de performance do kernel para `1` ou inferior:
+>      - Comando: `sudo sysctl -w kernel.perf_event_paranoid=1` (temporário) ou adicionando `kernel.perf_event_paranoid=1` em `/etc/sysctl.d/local.conf` (persistente).
+
 #### Tarefa S7.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️
 
 - **Onde:** `Cargo.toml`; novo `utils/build-pgo.sh`.

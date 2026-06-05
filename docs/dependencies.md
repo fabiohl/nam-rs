@@ -7,10 +7,10 @@ This documentation lists and explains system and software dependencies configure
 
 ## 1. System Dependencies (Linux)
 
-The following packages must be installed on the system to build and run NAM-rs. The consolidated command for Debian/Ubuntu systems is:
+The following packages should be installed on the system to develop and build NAM-rs. The consolidated command for Debian/Ubuntu systems is:
 
 ```bash
-sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22
+sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq
 ```
 
 ### Detailing by Role
@@ -22,6 +22,7 @@ sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev c
   * `clang` and `libclang-dev`: Requisite for `rust-bindgen` to translate PipeWire C headers to Rust bindings at compile time.
   * `libssl-dev`, `git`, and `curl`: Required for utility tools, version control, and installing Rust ecosystem components.
   * `linux-tools-generic`: Provides `perf`, essential for low-level profiling, optimizing the DSP Hot Path, and gathering profile data for LLVM BOLT.
+  * `jq`: Command-line JSON processor, used to validate test output results in developer scripts.
 
 * **Compiler-Grade Optimization (PGO + BOLT) (Optional)**:
 

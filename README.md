@@ -58,12 +58,14 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 * A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 was used during most of the development.
 
 * Development packages:
-  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic`
+  `sudo apt install build-essential cmake g++ pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq`
 
-* Cargo utilities (required for QA):
+* Cargo utilities & Rustup components (required for QA & optimizations):
 
   * `cargo install cargo-edit`
   * `cargo install --git https://github.com/free-audio/clap-validator.git`
+  * `cargo install cargo-pgo`
+  * `rustup component add llvm-tools-preview`
 
 * To ensure the engine runs flawlessly under realistic NAM models (especially "Lite" and "Standard"), it is crucial to grant advanced SCHED policies to the binary. Add your user to the system's `audio` group and edit your limits:
 
