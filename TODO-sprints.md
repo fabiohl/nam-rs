@@ -260,7 +260,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 2 dias.
 
-#### Tarefa S6.T03 — Soft-degrade automático sob CPU pressure (graceful fallback) ✨🔥
+#### Tarefa S6.T03 — Soft-degrade automático sob CPU pressure (graceful fallback) ✨🔥 [DONE]
 
 - **Onde:** novo `src/dsp/adaptive.rs`; integração em `src/clap/processor/dsp.rs` e `src/standalone/pw_host/rt_callback.rs`.
 - **Problema/Oportunidade:** Hoje, quando o host empurra a CPU acima do budget (live performance com 4 plugins + outros tracks, ou laptop em bateria com `cpufreq schedutil` agressivo), o nam-rs **falha hard** com `xrun` audível. **Soft-degrade** = detectar pressão precocemente (p95 do bloco anterior > 70% do budget) e **reduzir graciosamente** a carga (truncate receptive field, skip Conv1D layers profundos, ou desativar oversampling) com **crossfade** transparente. Trade controlado: pequena perda de fidelidade vs glitch audível.

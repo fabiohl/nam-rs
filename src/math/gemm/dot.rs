@@ -112,8 +112,7 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
     let mut compensation = 0.0f32;
     while i < len {
-        let term =
-            *a.get_unchecked(i) * half::f16::from_bits(*b.get_unchecked(i)).to_f32();
+        let term = *a.get_unchecked(i) * half::f16::from_bits(*b.get_unchecked(i)).to_f32();
         (sum, compensation) = crate::math::common::kahan_add(sum, compensation, term);
         i += 1;
     }

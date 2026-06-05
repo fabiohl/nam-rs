@@ -25,10 +25,12 @@ pub const PARAM_GATE_THRESH: u32 = 2;
 pub const PARAM_BYPASS: u32 = 3;
 /// Loaded model name parameter ID (read-only).
 pub const PARAM_ACTIVE_MODEL: u32 = 4;
+/// Adaptive compute mode parameter ID.
+pub const PARAM_ADAPTIVE_COMPUTE: u32 = 5;
 
 impl PluginMainThreadParams for NamClapMainThread<'_> {
     fn count(&mut self) -> u32 {
-        5
+        6
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -95,6 +97,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     default_value: 0.0,
                 });
             }
+            PARAM_ADAPTIVE_COMPUTE => {
+                info.set(&ParamInfo {
+                    id: ClapId::new(PARAM_ADAPTIVE_COMPUTE),
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_STEPPED,
+                    cookie: clack_plugin::utils::Cookie::empty(),
+                    name: b"Adaptive Compute",
+                    module: b"",
+                    min_value: 0.0,
+                    max_value: 2.0,
+                    default_value: 1.0, // Conservative (default for CLAP plugin)
+                });
+            }
             _ => {}
         }
     }
@@ -133,6 +147,11 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     .model_load_counter
                     .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
+            PARAM_ADAPTIVE_COMPUTE => Some(
+                self.shared
+                    .param_adaptive_compute
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64,
+            ),
             _ => None,
         }
     }
@@ -167,6 +186,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 };
                 writer.write_str(&name)
             }
+            PARAM_ADAPTIVE_COMPUTE => match value.round() as i32 {
+                0 => writer.write_str("Off"),
+                1 => writer.write_str("Conservative"),
+                2 => writer.write_str("Aggressive"),
+                _ => writer.write_str("Off"),
+            },
             _ => Ok(()),
         }
     }
@@ -208,6 +233,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     Some(0.0)
                 }
             }
+            PARAM_ADAPTIVE_COMPUTE => match text_str.to_lowercase().as_str() {
+                "off" | "0" => Some(0.0),
+                "conservative" | "1" => Some(1.0),
+                "aggressive" | "2" => Some(2.0),
+                _ => text_str.parse::<f64>().ok(),
+            },
             _ => None,
         }
     }
@@ -256,6 +287,13 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                         if val > 0.5 { 1 } else { 0 },
                         std::sync::atomic::Ordering::Relaxed,
                     );
+                }
+                PARAM_ADAPTIVE_COMPUTE => {
+                    let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
+                    self.params.adaptive_compute = mode;
+                    self.shared
+                        .param_adaptive_compute
+                        .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
                 }
                 _ => continue,
             }
@@ -327,6 +365,13 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                         std::sync::atomic::Ordering::Relaxed,
                     );
                 }
+                PARAM_ADAPTIVE_COMPUTE => {
+                    let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
+                    self.params.adaptive_compute = mode;
+                    self.shared
+                        .param_adaptive_compute
+                        .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
+                }
                 _ => continue,
             }
         }
@@ -370,6 +415,15 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             != 0;
         if shared_bypass != self.params.bypass {
             self.params.bypass = shared_bypass;
+        }
+
+        let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
+            self.shared
+                .param_adaptive_compute
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
+        if shared_adaptive != self.params.adaptive_compute {
+            self.params.adaptive_compute = shared_adaptive;
         }
     }
 }

@@ -75,6 +75,7 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
         // Small allocations: standard allocator, no syscall overhead.
         let layout = Layout::from_size_align(size_bytes, 64)
             .expect("Failed to create layout for huge_alloc (small)");
+        // SAFETY: standard alloc with valid layout.
         let ptr = unsafe { alloc(layout) };
         if ptr.is_null() {
             handle_alloc_error(layout);
@@ -162,7 +163,12 @@ pub unsafe fn deallocate_huge(ptr: *mut u8, info: AllocInfo, size_bytes: usize) 
             // SAFETY: ptr and layout match the original allocation.
             unsafe { dealloc(ptr, layout) };
         }
-        AllocInfo::MmapAnon { size_bytes: mmap_size } | AllocInfo::HugeTlb2M { size_bytes: mmap_size } => {
+        AllocInfo::MmapAnon {
+            size_bytes: mmap_size,
+        }
+        | AllocInfo::HugeTlb2M {
+            size_bytes: mmap_size,
+        } => {
             // SAFETY: ptr and mmap_size match the original mmap.
             unsafe { libc::munmap(ptr as *mut libc::c_void, mmap_size) };
         }

@@ -6,7 +6,7 @@
 
 use super::NamClapProcessor;
 use crate::clap::extensions::params::{
-    PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+    PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
@@ -28,6 +28,8 @@ impl<'a> NamClapProcessor<'a> {
         while let Ok(payload) = self.param_rx.pop() {
             match payload {
                 ClapParamPayload::Params(new_params) => {
+                    let adaptive_changed =
+                        self.params.adaptive_compute != new_params.adaptive_compute;
                     self.params = new_params;
                     self.smoother_in.set_target(
                         lut.db_to_linear(self.params.input_gain_db + self.mod_input_gain),
@@ -37,6 +39,9 @@ impl<'a> NamClapProcessor<'a> {
                         lut.db_to_linear(self.params.output_gain_db + self.mod_output_gain),
                     );
                     self.param_out_changed = true;
+                    if adaptive_changed {
+                        self.adaptive_compute.set_mode(self.params.adaptive_compute);
+                    }
                 }
                 ClapParamPayload::LoadModel(model_pair, new_resampler) => {
                     self.shared
@@ -97,6 +102,14 @@ impl<'a> NamClapProcessor<'a> {
                             .param_bypass
                             .store(if val > 0.5 { 1 } else { 0 }, Ordering::Relaxed);
                     }
+                    PARAM_ADAPTIVE_COMPUTE => {
+                        let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
+                        self.params.adaptive_compute = mode;
+                        self.shared
+                            .param_adaptive_compute
+                            .store(mode as u32, Ordering::Relaxed);
+                        self.adaptive_compute.set_mode(mode);
+                    }
                     _ => {}
                 }
             } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
@@ -152,6 +165,14 @@ impl<'a> NamClapProcessor<'a> {
         let shared_bypass = self.shared.param_bypass.load(Ordering::Relaxed) != 0;
         if shared_bypass != self.params.bypass {
             self.params.bypass = shared_bypass;
+        }
+
+        let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
+            self.shared.param_adaptive_compute.load(Ordering::Relaxed) as f32,
+        );
+        if shared_adaptive != self.params.adaptive_compute {
+            self.params.adaptive_compute = shared_adaptive;
+            self.adaptive_compute.set_mode(shared_adaptive);
         }
 
         // Dynamic latency monitoring on the Audio Thread

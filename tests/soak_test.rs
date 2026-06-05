@@ -120,6 +120,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations.len(),
     };
 
     // Array 2: Final spectral refinement (CH=8, K=3)
@@ -154,6 +155,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         })
         .collect();
 
+    let layers_2_len = layers_2.len();
     let array2 = WaveNetLayerArray::<16, 1, 8, 3, 1> {
         layers: layers_2,
         states: states_2,
@@ -178,6 +180,7 @@ fn build_soak_wavenet() -> WaveNetModel<16, 3, 8> {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: layers_2_len,
     };
 
     WaveNetModel {

@@ -10,6 +10,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub use crate::dsp::adaptive::AdaptiveComputeMode;
+
 const GATE_THRESHOLD_DB_DEFAULT: f32 = -70.0;
 
 /// Global processing parameters for the plugin/application.
@@ -41,6 +43,10 @@ pub struct NamPluginParams {
     /// Bypass state (if `true`, audio passes without neural processing).
     #[serde(default)]
     pub bypass: bool,
+    /// Adaptive compute mode for soft-degrade under CPU pressure.
+    /// Default: `Off` for standalone; `Conservative` for CLAP plugin.
+    #[serde(default)]
+    pub adaptive_compute: AdaptiveComputeMode,
 }
 
 fn default_gate_threshold_db() -> f32 {
@@ -57,6 +63,7 @@ impl Default for NamPluginParams {
             model_basename: None,
             model_search_paths: Vec::new(),
             bypass: false,
+            adaptive_compute: AdaptiveComputeMode::Off,
         }
     }
 }

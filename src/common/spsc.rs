@@ -52,6 +52,12 @@ pub const RT_STATUS_RESAMP_SWAP_PENDING: u64 = 1 << 10;
 /// Flag indicating that at least one huge-page allocation succeeded
 /// (set by main thread after alloc, checked by telemetry for logging).
 pub const RT_STATUS_HUGEPAGE_OK: u64 = 1 << 11;
+/// Soft-degrade: model running in Reduced mode
+/// (fewer WaveNet layers or LSTM single-layer).
+pub const RT_STATUS_DEGRADE_REDUCED: u64 = 1 << 12;
+/// Soft-degrade: model running in Minimal mode
+/// (maximum reduction — passthrough for LSTM, half-WaveNet).
+pub const RT_STATUS_DEGRADE_MINIMAL: u64 = 1 << 13;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -75,6 +81,8 @@ pub const RT_STATUS_HUGEPAGE_OK: u64 = 1 << 11;
 /// | 9 | `A2_PLACEHOLDER` | A2 placeholder model active (silent bypass) |
 /// | 10 | `RESAMP_SWAP_PENDING` | RT callback paused awaiting resampler swap |
 /// | 11 | `HUGEPAGE_OK` | Huge-page allocation confirmed active |
+/// | 12 | `DEGRADE_REDUCED` | Soft-degrade active — Reduced mode |
+/// | 13 | `DEGRADE_MINIMAL` | Soft-degrade active — Minimal mode |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.
@@ -112,6 +120,9 @@ pub struct RtStatusFlags {
     /// Latency histogram for statistical analysis (P50, P95, P99).
     pub latency_hist: crate::dsp::telemetry::LatencyHistogram,
 
+    /// Total degradation transitions that have occurred (Full↔Reduced↔Minimal).
+    pub degrade_transitions_total: AtomicU32,
+
     /// Atomic bitmask containing binary states (needs_rebuild, clipped, silent, etc).
     /// Reduces Cache Bouncing by condensing multiple states into a single cache line.
     pub status_bits: AtomicU64,
@@ -131,6 +142,7 @@ impl RtStatusFlags {
             dsp_cycle_time: AtomicU64::new(0),
             last_n_samples: AtomicU32::new(0),
             latency_hist: crate::dsp::telemetry::LatencyHistogram::new(),
+            degrade_transitions_total: AtomicU32::new(0),
             status_bits: AtomicU64::new(0),
         }
     }

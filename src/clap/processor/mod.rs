@@ -14,6 +14,7 @@ use crate::clap::param_smoother::ParamSmoother;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
 use crate::common::params::NamPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
+use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::DynamicHysteresis;
 use crate::dsp::resampler::NamResampler;
 use crate::math::common::AlignedVec;
@@ -62,6 +63,8 @@ pub struct NamClapProcessor<'a> {
 
     /// Status flags for RT telemetry.
     rt_status: Arc<RtStatusFlags>,
+    /// Adaptive compute FSM for soft-degrade under CPU pressure.
+    adaptive_compute: AdaptiveCompute,
     /// Reference to shared state (to return channels on deactivate).
     pub(crate) shared: &'a NamClapShared,
     /// Smoothers for input and output gains.
@@ -230,6 +233,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             mono_hyst,
             process_mono: true,
             rt_status: Arc::clone(&shared.rt_status),
+            adaptive_compute: AdaptiveCompute::new(
+                crate::common::params::AdaptiveComputeMode::Conservative,
+            ),
             shared,
             smoother_in,
             smoother_out,

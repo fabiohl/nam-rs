@@ -7,6 +7,8 @@
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::common::spsc::RtStatusFlags;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::gate::{DynamicHysteresis, GateState};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::math::common::dispatch_simd;
@@ -127,6 +129,71 @@ pub(crate) fn apply_input_stage(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// Updates model effective layers for soft-degrade based on the adaptive FSM state.
+/// Returns `true` if the LSTM model should be fully bypassed (Minimal passthrough).
+#[inline(always)]
+fn configure_adaptive_model(
+    model_l: &mut Option<Box<crate::models::DynamicModel>>,
+    model_r: &mut Option<Box<crate::models::DynamicModel>>,
+    adaptive: &AdaptiveCompute,
+) -> bool {
+    if adaptive.mode() == crate::dsp::adaptive::AdaptiveComputeMode::Off {
+        return false;
+    }
+
+    // Hold effective layers at the previous level while crossfading.
+    // The model structural change is deferred until the crossfade completes,
+    // preventing audible discontinuities from abrupt layer count changes.
+    if adaptive.is_crossfading() {
+        return false;
+    }
+
+    match adaptive.state() {
+        AdaptiveState::Full => {
+            if let Some(m) = model_l {
+                let layers = m.layer_count();
+                m.set_effective_layers(layers);
+            }
+            if let Some(m) = model_r {
+                let layers = m.layer_count();
+                m.set_effective_layers(layers);
+            }
+            false
+        }
+        AdaptiveState::Reduced => {
+            if let Some(m) = model_l.as_mut().filter(|m| m.is_wavenet()) {
+                let layers = m.layer_count();
+                let effective = adaptive.wavenet_effective_layers(layers);
+                m.set_effective_layers(effective);
+            }
+            if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
+                let layers = m.layer_count();
+                let effective = adaptive.wavenet_effective_layers(layers);
+                m.set_effective_layers(effective);
+            }
+            false
+        }
+        AdaptiveState::Minimal => {
+            let lstm_skip = model_l.as_ref().is_some_and(|m| m.is_lstm());
+            if lstm_skip {
+                return true;
+            }
+            if let Some(m) = model_l.as_mut().filter(|m| m.is_wavenet()) {
+                let layers = m.layer_count();
+                let effective = adaptive.wavenet_effective_layers(layers);
+                m.set_effective_layers(effective);
+            }
+            if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
+                let layers = m.layer_count();
+                let effective = adaptive.wavenet_effective_layers(layers);
+                m.set_effective_layers(effective);
+            }
+            false
+        }
+    }
+}
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Unified helper for mono/stereo processing of neural models.
 ///
 /// Processes the L channel model (_always_) and decides whether the R channel is a mono copy
@@ -175,6 +242,10 @@ pub(crate) fn run_inference(
     let is_resamp_bypass = ctx.resampler.is_bypass();
     let n = n_samples.min(MAX_RESAMP_BUF);
 
+    // Soft-degrade: configure model layers based on CPU pressure
+    let lstm_passthrough =
+        configure_adaptive_model(ctx.active_model_l, ctx.active_model_r, ctx.adaptive);
+
     // PATH A: Quality adjustment off (Resampler in Bypass).
     if is_resamp_bypass {
         let model_in_l = &samples_l[..n];
@@ -186,15 +257,21 @@ pub(crate) fn run_inference(
         let m_out_l = &mut resamp_out_l[..n];
         let m_out_r = &mut resamp_out_r[..n];
 
-        run_stereo_or_mono(
-            ctx.active_model_l,
-            ctx.active_model_r,
-            model_in_l,
-            model_in_r,
-            m_out_l,
-            m_out_r,
-            *ctx.process_mono,
-        );
+        if lstm_passthrough {
+            // LSTM Minimal: passthrough input with gain compensation
+            m_out_l.copy_from_slice(model_in_l);
+            m_out_r.copy_from_slice(model_in_r);
+        } else {
+            run_stereo_or_mono(
+                ctx.active_model_l,
+                ctx.active_model_r,
+                model_in_l,
+                model_in_r,
+                m_out_l,
+                m_out_r,
+                *ctx.process_mono,
+            );
+        }
 
         n
     } else {
@@ -222,15 +299,20 @@ pub(crate) fn run_inference(
         let m_out_r = &mut model_out_r[..n_48k];
 
         // 2. Applies the amplifier simulation (Neural Model).
-        run_stereo_or_mono(
-            ctx.active_model_l,
-            ctx.active_model_r,
-            model_in_l,
-            model_in_r,
-            m_out_l,
-            m_out_r,
-            *ctx.process_mono,
-        );
+        if lstm_passthrough {
+            m_out_l.copy_from_slice(model_in_l);
+            m_out_r.copy_from_slice(model_in_r);
+        } else {
+            run_stereo_or_mono(
+                ctx.active_model_l,
+                ctx.active_model_r,
+                model_in_l,
+                model_in_r,
+                m_out_l,
+                m_out_r,
+                *ctx.process_mono,
+            );
+        }
 
         // 3. Translates the sound back to the original frequency of your sound card.
         if *ctx.process_mono {
@@ -251,8 +333,9 @@ pub(crate) fn run_inference(
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-/// Stage 3: Output Gain, Fading, and Clipping Detection.
+/// Stage 3: Output Gain, Fading, Clipping Detection, and Degrade Crossfade.
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_output_stage(
     resamp_out_l: &mut [f32],
     resamp_out_r: &mut [f32],
@@ -261,6 +344,8 @@ pub(crate) fn apply_output_stage(
     silence_hysteresis: &mut DynamicHysteresis,
     rt_status: &RtStatusFlags,
     process_mono: bool,
+    adaptive: &mut AdaptiveCompute,
+    sample_rate: u32,
 ) {
     // 0. DENORMAL SUPPRESSION COMPENSATION: Subtract the injected DC offset
     // Compensates the ultra-low bias added at the input stage. Any residual is
@@ -302,6 +387,15 @@ pub(crate) fn apply_output_stage(
     if process_mono {
         resamp_out_r[..n_pw].copy_from_slice(&resamp_out_l[..n_pw]);
     }
+
+    // ── Degrade Crossfade ──
+    // Advances the crossfade timer. During active crossfade,
+    // effective model layers are held at their previous configuration
+    // (see configure_adaptive_model), avoiding discontinuities
+    // from abrupt structural changes. The crossfade timer acts as a
+    // deferral mechanism — when it completes, the model switches to
+    // the new degradation level in a single block transition.
+    adaptive.crossfade_multiplier(sample_rate, n_pw);
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]

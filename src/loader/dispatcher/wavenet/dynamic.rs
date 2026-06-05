@@ -185,6 +185,7 @@ pub(crate) fn build_wavenet_array_dyn(
     let receptive_field_size: usize = dilations.iter().map(|&d| (k - 1) * d).sum();
 
     let block_size = if gated { 2 * ch } else { ch };
+    let num_layers = layers.len();
 
     Ok(WaveNetLayerArrayDyn {
         layers,
@@ -202,5 +203,6 @@ pub(crate) fn build_wavenet_array_dyn(
         last_condition: AlignedVec::new(cond_size, 0.0),
         last_condition_bf16: AlignedVec::new(cond_size, 0),
         condition_init: false,
+        effective_layers: num_layers,
     })
 }

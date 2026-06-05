@@ -28,6 +28,8 @@
 //! Run `tests/fixtures/golden_gen_build.sh` with NeuralAmpModelerCore.
 //! The resulting `.golden.bin` files should be committed in `tests/fixtures/`.
 
+use nam_rs::common::params::AdaptiveComputeMode;
+use nam_rs::dsp::adaptive::AdaptiveCompute;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
@@ -249,6 +251,7 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations_1.len(),
     };
 
     // Array2: IN=16(=CH), COND=1, CH=8(=HEAD1), HEAD2=1, HasHeadBias=true
@@ -291,6 +294,7 @@ fn build_synthetic_wavenet_standard() -> WaveNetStandard {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations_2.len(),
     };
 
     WaveNetStandard {
@@ -1729,6 +1733,8 @@ fn test_zero_alloc_capture_pipeline() {
     let mut opt_model_l = Some(model_l);
     let mut opt_model_r = Some(model_r);
 
+    let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
     let ctx = DspPipelineContext {
         resampler: &mut resampler,
         active_model_l: &mut opt_model_l,
@@ -1742,6 +1748,7 @@ fn test_zero_alloc_capture_pipeline() {
         threshold_close_sq: 0.0,
         process_mono: &mut process_mono,
         rt_status: &rt_status,
+        adaptive: &mut adaptive,
         bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
     };
 
@@ -1756,7 +1763,7 @@ fn test_zero_alloc_capture_pipeline() {
 
     {
         let _guard = TrackingGuard::new();
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
     }
 
     let count = get_alloc_count();

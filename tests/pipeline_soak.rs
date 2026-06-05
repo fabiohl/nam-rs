@@ -16,7 +16,9 @@ mod tests {
     use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
     use std::time::Instant;
 
+    use nam_rs::common::params::AdaptiveComputeMode;
     use nam_rs::common::spsc::RtStatusFlags;
+    use nam_rs::dsp::adaptive::AdaptiveCompute;
     use nam_rs::dsp::gate::{DynamicHysteresis, GateParams};
     use nam_rs::dsp::pipeline::{
         BridgeBuffer, DspBridge, DspBridgeWriter, DspBuffers, DspPipelineContext, MAX_BRIDGE_BUF,
@@ -140,6 +142,7 @@ mod tests {
         let mut processed_frames = 0;
 
         // Perform warm-up to stabilize memory allocation before initial RSS snapshot
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
         for _ in 0..1000 {
             for j in 0..block_size {
                 samples_l[j] = pcg.next_f32();
@@ -158,6 +161,7 @@ mod tests {
                 threshold_close_sq: 0.0,
                 process_mono: &mut process_mono,
                 rt_status: &rt_status,
+                adaptive: &mut adaptive,
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
                 },
@@ -170,7 +174,14 @@ mod tests {
                 model_out_l: &mut model_out_l,
                 model_out_r: &mut model_out_r,
             };
-            capture_dsp_pipeline(&mut samples_l, &mut samples_r, block_size, ctx, bufs);
+            capture_dsp_pipeline(
+                &mut samples_l,
+                &mut samples_r,
+                block_size,
+                ctx,
+                bufs,
+                output_sr,
+            );
         }
 
         let initial_rss = get_rss_bytes();
@@ -213,6 +224,7 @@ mod tests {
                 threshold_close_sq: -80.0f32.powf(10.0 / 20.0), // ~-80dB close threshold
                 process_mono: &mut process_mono,
                 rt_status: &rt_status,
+                adaptive: &mut adaptive,
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
                 },
@@ -227,7 +239,14 @@ mod tests {
                 model_out_r: &mut model_out_r,
             };
 
-            capture_dsp_pipeline(&mut samples_l, &mut samples_r, block_size, ctx, bufs);
+            capture_dsp_pipeline(
+                &mut samples_l,
+                &mut samples_r,
+                block_size,
+                ctx,
+                bufs,
+                output_sr,
+            );
 
             let elapsed_cycle_ns = start_cycle.elapsed().as_nanos() as u64;
             rt_status.latency_hist.record(elapsed_cycle_ns);

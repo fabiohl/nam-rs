@@ -5,7 +5,9 @@
 mod tests {
     use super::super::test_util::infra::{ALLOC_COUNT, TrackingGuard};
     use super::super::*;
+    use crate::common::params::AdaptiveComputeMode;
     use crate::common::spsc::RtStatusFlags;
+    use crate::dsp::adaptive::AdaptiveCompute;
     use crate::dsp::gate::{DynamicHysteresis, GateParams};
     use crate::dsp::resampler::NamResampler;
 
@@ -66,6 +68,8 @@ mod tests {
         let mut samples_l = input_l.to_vec();
         let mut samples_r = input_r.to_vec();
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         // Combines all settings into a single "Instruction Manual" (Context).
         let ctx = DspPipelineContext {
             resampler: &mut resampler,
@@ -80,6 +84,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
@@ -95,7 +100,7 @@ mod tests {
         // TURNS ON THE MEMORY WATCHDOG.
         let _guard = TrackingGuard::new();
         // RUNS THE REAL SOUND PROCESSING.
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
         // Checks if the watchdog caught any forbidden memory request.
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
@@ -266,6 +271,8 @@ mod tests {
         let mut samples_l = input_l.clone();
         let mut samples_r = input_r.clone();
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         // We group everything into the "Context" for processing.
         let ctx = DspPipelineContext {
             resampler: &mut resampler,
@@ -280,6 +287,7 @@ mod tests {
             threshold_close_sq: 0.01,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
@@ -295,7 +303,7 @@ mod tests {
         // Memory allocation watchdog.
         let _guard = TrackingGuard::new();
         // We run the audio orchestra (Pipeline).
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -371,6 +379,8 @@ mod tests {
         let mut samples_l = vec![0.0; n];
         let mut samples_r = vec![0.0; n];
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         let ctx = DspPipelineContext {
             resampler: &mut resampler,
             active_model_l: &mut None,
@@ -384,6 +394,7 @@ mod tests {
             threshold_close_sq: 0.01,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
@@ -397,7 +408,7 @@ mod tests {
         };
 
         let _guard = TrackingGuard::new();
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -457,6 +468,8 @@ mod tests {
         let mut samples_l = input_l.clone();
         let mut samples_r = input_r.clone();
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         let ctx = DspPipelineContext {
             resampler: &mut resampler,
             active_model_l: &mut None,
@@ -470,6 +483,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
@@ -483,7 +497,7 @@ mod tests {
         };
 
         let _guard = TrackingGuard::new();
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -538,6 +552,8 @@ mod tests {
         let mut samples_l = vec![1.0; n];
         let mut samples_r = vec![1.0; n];
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         let ctx = DspPipelineContext {
             resampler: &mut resampler,
             active_model_l: &mut None,
@@ -551,6 +567,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
@@ -562,7 +579,7 @@ mod tests {
             model_out_l: &mut model_out_l,
             model_out_r: &mut model_out_r,
         };
-        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+        capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
 
         // Second pass: The system tries to process more sound, but sees that the bridge is still occupied
         // with the sound from the previous pass that nobody read.
@@ -582,6 +599,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono2,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
         };
 
@@ -596,7 +614,7 @@ mod tests {
 
         let _guard = TrackingGuard::new();
         // Here the system should be forced to discard this new sound packet.
-        capture_dsp_pipeline(&mut samples_l2, &mut samples_r2, n, ctx2, bufs2);
+        capture_dsp_pipeline(&mut samples_l2, &mut samples_r2, n, ctx2, bufs2, 48000);
         let allocs = ALLOC_COUNT.load(Ordering::Relaxed);
         drop(_guard);
 
@@ -621,6 +639,8 @@ mod tests {
         let mut mono_hysteresis = DynamicHysteresis::new();
         let mut process_mono = true;
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         let mut ctx = DspPipelineContext {
             resampler: &mut resampler,
             active_model_l: &mut None,
@@ -634,6 +654,7 @@ mod tests {
             threshold_close_sq: 0.0,
             process_mono: &mut process_mono,
             rt_status: &rt_status,
+            adaptive: &mut adaptive,
             bridge_writer: None,
         };
 
@@ -660,6 +681,8 @@ mod tests {
             &mut silence_hysteresis,
             &rt_status,
             true,
+            &mut adaptive,
+            48000,
         );
 
         // After output stage, both should be back to exactly 0.0 (or within float epsilon).

@@ -109,6 +109,87 @@ impl DynamicModel {
             m.inject_rt_status(rt_status);
         }
     }
+
+    /// Sets the effective number of layers for soft-degrade.
+    /// Only applies to WaveNet variants. LSTM handles reduction at the pipeline level.
+    #[inline(always)]
+    pub fn set_effective_layers(&mut self, n: usize) {
+        match self {
+            Self::WavenetStandard(m) => m.set_effective_layers(n),
+            Self::WavenetLite(m) => m.set_effective_layers(n),
+            Self::WavenetFeather(m) => m.set_effective_layers(n),
+            Self::WavenetNano(m) => m.set_effective_layers(n),
+            Self::WavenetDyn(m) => m.set_effective_layers(n),
+            // LSTM and A2: no-op — reduction handled at pipeline level
+            Self::WavenetA2(_)
+            | Self::Lstm1x8(_)
+            | Self::Lstm1x12(_)
+            | Self::Lstm1x16(_)
+            | Self::Lstm1x24(_)
+            | Self::Lstm2x8(_)
+            | Self::Lstm2x12(_)
+            | Self::Lstm2x16(_)
+            | Self::Lstm1x40(_)
+            | Self::Lstm2x24(_)
+            | Self::LstmDyn(_) => {}
+        }
+    }
+
+    /// Returns the total number of layers for the model (0 for non-WaveNet).
+    /// Used by the adaptive FSM to compute how many to keep.
+    #[inline(always)]
+    pub fn layer_count(&self) -> usize {
+        match self {
+            Self::WavenetStandard(m) => m.array1.layers.len(),
+            Self::WavenetLite(m) => m.array1.layers.len(),
+            Self::WavenetFeather(m) => m.array1.layers.len(),
+            Self::WavenetNano(m) => m.array1.layers.len(),
+            Self::WavenetDyn(m) => m.array1.layers.len(),
+            Self::WavenetA2(_) => 0,
+            Self::Lstm2x8(_)
+            | Self::Lstm2x12(_)
+            | Self::Lstm2x16(_)
+            | Self::Lstm2x24(_)
+            | Self::LstmDyn(_) => 2,
+            Self::Lstm1x8(_)
+            | Self::Lstm1x12(_)
+            | Self::Lstm1x16(_)
+            | Self::Lstm1x24(_)
+            | Self::Lstm1x40(_) => 1,
+        }
+    }
+
+    /// Returns `true` if this is an LSTM model.
+    #[inline(always)]
+    pub fn is_lstm(&self) -> bool {
+        matches!(
+            self,
+            Self::Lstm1x8(_)
+                | Self::Lstm1x12(_)
+                | Self::Lstm1x16(_)
+                | Self::Lstm1x24(_)
+                | Self::Lstm2x8(_)
+                | Self::Lstm2x12(_)
+                | Self::Lstm2x16(_)
+                | Self::Lstm1x40(_)
+                | Self::Lstm2x24(_)
+                | Self::LstmDyn(_)
+        )
+    }
+
+    /// Returns `true` if this is a WaveNet model.
+    #[inline(always)]
+    pub fn is_wavenet(&self) -> bool {
+        matches!(
+            self,
+            Self::WavenetStandard(_)
+                | Self::WavenetLite(_)
+                | Self::WavenetFeather(_)
+                | Self::WavenetNano(_)
+                | Self::WavenetDyn(_)
+                | Self::WavenetA2(_)
+        )
+    }
 }
 
 impl NamModel for DynamicModel {

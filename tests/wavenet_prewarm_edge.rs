@@ -140,6 +140,7 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations_1.len(),
     };
 
     let layers_2: Vec<WaveNetLayer<1, 2, 3>> =
@@ -172,6 +173,7 @@ fn build_large_rf_wavenet() -> WaveNetModel<4, 3, 2> {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations_2.len(),
     };
 
     WaveNetModel {
@@ -368,6 +370,7 @@ fn test_prewarm_zero_rf() {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: 1,
     };
 
     let layers2: Vec<WaveNetLayer<1, 1, 3>> = vec![make_layer(1)];
@@ -399,6 +402,7 @@ fn test_prewarm_zero_rf() {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: 1,
     };
 
     let mut model = WaveNetModel::<1, 3, 1> {
@@ -540,6 +544,7 @@ fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations_1.len(),
     };
 
     let layers_2: Vec<WaveNetLayer<1, 2, 5>> =
@@ -572,6 +577,7 @@ fn build_k5_large_rf_wavenet() -> WaveNetModel<4, 5, 2> {
         last_condition: [0.0; 1],
         last_condition_bf16: [0; 1],
         condition_init: false,
+        effective_layers: dilations_2.len(),
     };
 
     WaveNetModel {

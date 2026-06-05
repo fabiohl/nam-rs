@@ -50,9 +50,8 @@ pub(crate) unsafe fn create_huge_backing_fd() -> std::io::Result<(libc::c_int, B
     // Strategy 1: try MFD_HUGETLB for explicit 2 MB huge pages (Linux 5.14+).
     const MFD_HUGETLB: libc::c_uint = 0x0004;
     // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-    let fd = unsafe {
-        libc::memfd_create(c"mirror_buf_huge".as_ptr(), libc::MFD_CLOEXEC | MFD_HUGETLB)
-    };
+    let fd =
+        unsafe { libc::memfd_create(c"mirror_buf_huge".as_ptr(), libc::MFD_CLOEXEC | MFD_HUGETLB) };
     if fd != -1 {
         return Ok((fd, BackingFdKind::HugetlbMemfd));
     }

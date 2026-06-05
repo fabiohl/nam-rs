@@ -201,11 +201,20 @@ pub struct WaveNetLayerArray<
     pub last_condition: [f32; COND],
     /// Flag for first cache initialization.
     pub condition_init: bool,
+    /// Active number of layers for soft-degrade. Set to `layers.len()` by default.
+    pub effective_layers: usize,
 }
 
 impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const HEAD: usize>
     WaveNetLayerArray<IN, COND, CH, K, HEAD>
 {
+    /// Sets the effective number of layers for soft-degrade.
+    /// Clamped to [1, layers.len()].
+    #[inline(always)]
+    pub fn set_effective_layers(&mut self, n: usize) {
+        self.effective_layers = n.min(self.layers.len()).max(1);
+    }
+
     /// Array's central processing. Fully shielded against allocations.
     ///
     /// # Safety
@@ -255,11 +264,14 @@ impl<const IN: usize, const COND: usize, const CH: usize, const K: usize, const 
                 );
             }
 
-            let num_layers = self.layers.len();
+            let num_layers = self.effective_layers;
             let last_layer = num_layers - 1;
 
             // [STEP 4: Layer Inference Cascade]
             for (i, layer) in self.layers.iter().enumerate() {
+                if i >= num_layers {
+                    break;
+                }
                 let current_state = &mut *states_ptr.add(i);
 
                 if PREWARM {
@@ -416,6 +428,13 @@ pub struct WaveNetModel<const CH: usize, const K: usize, const HEAD: usize> {
 }
 
 impl<const CH: usize, const K: usize, const HEAD: usize> WaveNetModel<CH, K, HEAD> {
+    /// Sets the effective number of layers on both arrays for soft-degrade.
+    #[inline(always)]
+    pub fn set_effective_layers(&mut self, n: usize) {
+        self.array1.set_effective_layers(n);
+        self.array2.set_effective_layers(n);
+    }
+
     /// Resolves the full forward pass and produces waveform samples in zero allocation (DSP).
     ///
     /// Combines the outputs of both arrays: `sum(head1) + sum(head2)` × `head_scale`.

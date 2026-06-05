@@ -104,26 +104,14 @@ pub unsafe fn dot_product_4x_avx2(
 
         while i < len {
             let sw = state[i];
-            (s0, c0) = crate::math::common::kahan_add(
-                s0,
-                c0,
-                half::f16::from_bits(w0[i]).to_f32() * sw,
-            );
-            (s1, c1) = crate::math::common::kahan_add(
-                s1,
-                c1,
-                half::f16::from_bits(w1[i]).to_f32() * sw,
-            );
-            (s2, c2) = crate::math::common::kahan_add(
-                s2,
-                c2,
-                half::f16::from_bits(w2[i]).to_f32() * sw,
-            );
-            (s3, c3) = crate::math::common::kahan_add(
-                s3,
-                c3,
-                half::f16::from_bits(w3[i]).to_f32() * sw,
-            );
+            (s0, c0) =
+                crate::math::common::kahan_add(s0, c0, half::f16::from_bits(w0[i]).to_f32() * sw);
+            (s1, c1) =
+                crate::math::common::kahan_add(s1, c1, half::f16::from_bits(w1[i]).to_f32() * sw);
+            (s2, c2) =
+                crate::math::common::kahan_add(s2, c2, half::f16::from_bits(w2[i]).to_f32() * sw);
+            (s3, c3) =
+                crate::math::common::kahan_add(s3, c3, half::f16::from_bits(w3[i]).to_f32() * sw);
             i += 1;
         }
 

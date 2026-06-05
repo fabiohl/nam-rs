@@ -6,8 +6,8 @@
 
 //! SIMD utilities for reductions and horizontal operations.
 
-use core::arch::x86_64::*;
 use super::kahan::kahan_add;
+use core::arch::x86_64::*;
 
 /// Horizontal sum of an AVX2 (256-bit) register to scalar f32.
 ///

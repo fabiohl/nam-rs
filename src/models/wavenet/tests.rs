@@ -126,9 +126,11 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         .map(|i| WaveNetLayerState::new(4, rf1, i).expect("Failed to create WaveNetLayerState"))
         .collect();
 
+    let num_layers_1 = layers_1.len();
     let array1 = WaveNetLayerArray::<1, 1, 4, 3, 2> {
         layers: layers_1,
         states: states_1,
+        effective_layers: num_layers_1,
         // Rechannel: Projects raw input (Mono/Stereo) to the internal dimension (Channels).
         rechannel: DenseLayer {
             f32_weights: None,
@@ -164,9 +166,11 @@ fn build_tiny_wavenet() -> WaveNetModel<4, 3, 2> {
         .map(|i| WaveNetLayerState::new(2, rf2, i).expect("Failed to create WaveNetLayerState"))
         .collect();
 
+    let num_layers_2 = layers_2.len();
     let array2 = WaveNetLayerArray::<4, 1, 2, 3, 1> {
         layers: layers_2,
         states: states_2,
+        effective_layers: num_layers_2,
         // Projects Array 1 output (HEAD1=2) to Array 2 dimension (CH2=2).
         rechannel: DenseLayer {
             f32_weights: None,
@@ -915,6 +919,7 @@ fn test_wavenet_layer_array_dyn_block_size_gated() {
         last_condition: AlignedVec::from_vec(vec![0.0; 1]),
         last_condition_bf16: AlignedVec::from_vec(vec![0u16; 1]),
         condition_init: false,
+        effective_layers: 1,
     };
 
     // Crucial verification: if the buffer doesn't have 2*ch, gated processing would cause

@@ -684,6 +684,7 @@ mod huge_alloc_tests {
         let (ptr, info, status) = allocate_huge_pages(1024);
         assert_eq!(status, HugePageStatus::Heap);
         assert!(!ptr.is_null());
+        // SAFETY: ptr is validly allocated via allocate_huge_pages above, and layout matches.
         unsafe { deallocate_huge(ptr, info, 1024) };
     }
 
@@ -692,6 +693,7 @@ mod huge_alloc_tests {
         let size = 2 * 1024 * 1024;
         let (ptr, info, _status) = allocate_huge_pages(size);
         assert!(!ptr.is_null());
+        // SAFETY: ptr is validly allocated via allocate_huge_pages above, and layout matches size.
         unsafe {
             std::ptr::write(ptr, 0x42u8);
             assert_eq!(std::ptr::read(ptr), 0x42u8);

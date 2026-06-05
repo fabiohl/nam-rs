@@ -294,6 +294,7 @@ impl<'a> NamClapProcessor<'a> {
                 threshold_close_sq: self.cached_threshold_close_sq,
                 process_mono: &mut self.process_mono,
                 rt_status: &self.rt_status,
+                adaptive: &mut self.adaptive_compute,
                 bridge_writer: None,
             };
 
@@ -366,6 +367,8 @@ impl<'a> NamClapProcessor<'a> {
                 ctx.silence_hysteresis,
                 ctx.rt_status,
                 *ctx.process_mono,
+                ctx.adaptive,
+                self.shared.sample_rate.load(Ordering::Relaxed),
             );
 
             // 5. Output Gain Application (Sample-Accurate Smoothing)
@@ -539,6 +542,12 @@ impl<'a> NamClapProcessor<'a> {
                 if elapsed_nanos > threshold_ns {
                     self.rt_status.dsp_overloads.fetch_add(1, Ordering::Relaxed);
                 }
+
+                // Feed adaptive compute FSM
+                let latency_us = elapsed_nanos / 1000;
+                let budget_us = budget_ns / 1000;
+                self.adaptive_compute
+                    .update(latency_us, budget_us, sample_rate, &self.rt_status);
             }
         }
 

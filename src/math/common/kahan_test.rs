@@ -183,12 +183,10 @@ fn test_horizontal_sum_drift_reduction() {
 
     // Kahan-based horizontal_sum_fallback
     let mut data = vec![base];
-    data.extend(std::iter::repeat(tiny).take(n));
+    data.extend(std::iter::repeat_n(tiny, n));
+    // SAFETY: data points to a valid slice of floats and data.len() is its length.
     let kahan_sum = unsafe {
-        crate::math::common::scalar_ref::utility::horizontal_sum_fallback(
-            data.as_ptr(),
-            data.len(),
-        )
+        crate::math::common::scalar_ref::utility::horizontal_sum_fallback(data.as_ptr(), data.len())
     };
 
     let plain_err = ((plain_sum as f64 - f64_ref).abs()) / f64_ref.abs();
@@ -196,14 +194,8 @@ fn test_horizontal_sum_drift_reduction() {
     let improvement_ratio = plain_err / kahan_err.max(1e-30);
 
     eprintln!("1M-sample Kahan drift test (f64 ref = {:.12}):", f64_ref);
-    eprintln!(
-        "  Plain f32: {:.12} (err={:.3e})",
-        plain_sum, plain_err
-    );
-    eprintln!(
-        "  Kahan f32: {:.12} (err={:.3e})",
-        kahan_sum, kahan_err
-    );
+    eprintln!("  Plain f32: {:.12} (err={:.3e})", plain_sum, plain_err);
+    eprintln!("  Kahan f32: {:.12} (err={:.3e})", kahan_sum, kahan_err);
     eprintln!("  Improvement ratio: {:.1}×", improvement_ratio);
 
     assert!(

@@ -365,9 +365,17 @@ pub struct WaveNetLayerArrayDyn {
     pub last_condition_bf16: AlignedVec<u16>,
     /// Cache initialization flag.
     pub condition_init: bool,
+    /// Active number of layers for soft-degrade. Set to `layers.len()` by default.
+    pub effective_layers: usize,
 }
 
 impl WaveNetLayerArrayDyn {
+    /// Sets the effective number of layers for soft-degrade.
+    #[inline(always)]
+    pub fn set_effective_layers(&mut self, n: usize) {
+        self.effective_layers = n.min(self.layers.len()).max(1);
+    }
+
     /// INFERENCE ORCHESTRATOR (Cascade Process):
     /// Performs synchronous inference of all layers of the Array in cascade.
     ///
@@ -437,7 +445,7 @@ impl WaveNetLayerArrayDyn {
                 num_frames,
             );
 
-            let num_layers = self.layers.len();
+            let num_layers = self.effective_layers;
             let last_layer = num_layers - 1;
             let block_size = self.block_size;
 
@@ -532,6 +540,13 @@ pub struct WaveNetDynModel {
 }
 
 impl WaveNetDynModel {
+    /// Sets the effective number of layers on both arrays for soft-degrade.
+    #[inline(always)]
+    pub fn set_effective_layers(&mut self, n: usize) {
+        self.array1.set_effective_layers(n);
+        self.array2.set_effective_layers(n);
+    }
+
     /// Processes the audio block in the causal matrix.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {

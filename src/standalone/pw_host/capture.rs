@@ -6,6 +6,7 @@
 
 use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags};
+use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::pipeline::{
     BridgeRef, DspBridgeWriter, DspBuffers, DspPipelineContext, MAX_RESAMP_BUF,
@@ -98,6 +99,8 @@ pub fn setup_capture_stream<'c>(
     let mut silence_hysteresis = DynamicHysteresis::new();
     let mut mono_hysteresis = DynamicHysteresis::new();
     let mut process_mono = false;
+    let mut adaptive_compute =
+        AdaptiveCompute::new(crate::common::params::AdaptiveComputeMode::Off);
 
     let lut = crate::math::dsp::gain_lut::get_gain_lut();
     let open_lin = lut.db_to_linear(gate_params.threshold_open_db);
@@ -243,6 +246,7 @@ pub fn setup_capture_stream<'c>(
                     threshold_close_sq,
                     process_mono: &mut process_mono,
                     rt_status: &rt_status_for_process,
+                    adaptive: &mut adaptive_compute,
                     bridge_writer: DspBridgeWriter::from_ref(bridge_ptr),
                 },
                 DspBuffers {
@@ -257,6 +261,28 @@ pub fn setup_capture_stream<'c>(
                 &mut frame_count,
                 &rt_status_for_process,
             );
+
+            // Feed adaptive compute FSM with telemetry data after pipeline finishes.
+            // process_dsp_buffer increments frame_count after measuring, so we check
+            // the pre-increment value to align with the measurement frame.
+            if (frame_count.wrapping_sub(1) & 0xF) == 0 {
+                let elapsed_nanos = rt_status_for_process.dsp_cycle_time.load(Ordering::Relaxed);
+                if elapsed_nanos > 0 {
+                    let n_samples =
+                        rt_status_for_process.last_n_samples.load(Ordering::Relaxed) as u64;
+                    if n_samples > 0 && current_pw_rate > 0 {
+                        let budget_ns = n_samples * 1_000_000_000 / current_pw_rate as u64;
+                        let latency_us = elapsed_nanos / 1000;
+                        let budget_us = budget_ns / 1000;
+                        adaptive_compute.update(
+                            latency_us,
+                            budget_us,
+                            current_pw_rate,
+                            &rt_status_for_process,
+                        );
+                    }
+                }
+            }
         })
         .register()?;
 

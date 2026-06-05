@@ -43,8 +43,8 @@
 //! Status is tracked via `MIRROR_BUF_HUGEPAGE_ACTIVE` global to avoid inflating the
 //! struct layout (which would affect hot-path cache performance).
 use libc::{
-    MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_HUGETLB, MAP_HUGE_2MB, MAP_PRIVATE, MAP_SHARED,
-    MADV_HUGEPAGE, PROT_NONE, PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
+    MADV_HUGEPAGE, MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_HUGE_2MB, MAP_HUGETLB, MAP_PRIVATE,
+    MAP_SHARED, PROT_NONE, PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
 };
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
@@ -161,7 +161,8 @@ impl<T> MirroredBuffer<T> {
         };
 
         if total_chunk >= HUGE_PAGE_2M {
-            if let Ok(buf) = Self::try_new_huge(requested_bytes, HUGE_PAGE_2M) {
+            let huge_res = Self::try_new_huge(requested_bytes, HUGE_PAGE_2M);
+            if let Ok(buf) = huge_res {
                 MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
                 return Ok(buf);
             }
@@ -323,16 +324,7 @@ impl<T> MirroredBuffer<T> {
         // 3. Reserve 2x virtual space with MAP_HUGETLB
         let mmap_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB;
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-        let base_ptr = unsafe {
-            mmap(
-                ptr::null_mut(),
-                total_size,
-                PROT_NONE,
-                mmap_flags,
-                -1,
-                0,
-            )
-        };
+        let base_ptr = unsafe { mmap(ptr::null_mut(), total_size, PROT_NONE, mmap_flags, -1, 0) };
         if base_ptr == MAP_FAILED {
             let err = std::io::Error::last_os_error();
             // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
@@ -344,7 +336,14 @@ impl<T> MirroredBuffer<T> {
         let map_flags = MAP_FIXED | MAP_SHARED;
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr1 = unsafe {
-            mmap(base_ptr, size_bytes, PROT_READ | PROT_WRITE, map_flags, fd, 0)
+            mmap(
+                base_ptr,
+                size_bytes,
+                PROT_READ | PROT_WRITE,
+                map_flags,
+                fd,
+                0,
+            )
         };
         if ptr1 != base_ptr {
             let err = std::io::Error::last_os_error();

@@ -5,7 +5,9 @@
 mod block_tests {
     use super::super::test_util::infra::{ALLOC_COUNT, TrackingGuard};
     use super::super::*;
+    use crate::common::params::AdaptiveComputeMode;
     use crate::common::spsc::RtStatusFlags;
+    use crate::dsp::adaptive::AdaptiveCompute;
     use crate::dsp::gate::{DynamicHysteresis, GateParams};
     use crate::dsp::resampler::NamResampler;
     use crate::loader::dispatcher::build_model;
@@ -110,6 +112,8 @@ mod block_tests {
 
         let _guard = TrackingGuard::new();
 
+        let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
+
         for _ in 0..iterations {
             // The Context (ctx) groups all the tools the pipeline needs to work.
             let ctx = DspPipelineContext {
@@ -125,6 +129,7 @@ mod block_tests {
                 threshold_close_sq: 0.0,
                 process_mono: &mut process_mono,
                 rt_status: &rt_status,
+                adaptive: &mut adaptive,
                 // BridgeRef is a safe pointer to the audio bridge.
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
@@ -141,7 +146,7 @@ mod block_tests {
             };
 
             // We run the main pipeline that orchestrates all NAM-rs DSP.
-            capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs);
+            capture_dsp_pipeline(&mut samples_l, &mut samples_r, n, ctx, bufs, 48000);
         }
 
         // We check how many allocations occurred during processing.

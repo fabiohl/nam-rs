@@ -80,6 +80,8 @@ pub struct NamClapShared {
     pub param_gate_thresh: AtomicU32,
     /// Latest Bypass parameter value (0 = false, 1 = true).
     pub param_bypass: AtomicU32,
+    /// Latest Adaptive Compute mode parameter value (0=Off, 1=Conservative, 2=Aggressive).
+    pub param_adaptive_compute: AtomicU32,
     /// True Peak L level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
     pub ui_peak_l: AtomicU32,
     /// True Peak R level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
@@ -104,11 +106,11 @@ pub struct NamClapShared {
     pub active_channel_count: AtomicU32,
     /// Dynamic accent color based on DAW track color (packed ARGB).
     pub track_accent_color: AtomicU32,
-    /// Parameter indication (mapping, automation, and override) for the 5 parameters.
+    /// Parameter indication (mapping, automation, and override) for the 6 parameters.
     /// Bit 0: Mapped, Bit 1: Automating, Bit 2: Override.
-    pub param_indication: [std::sync::atomic::AtomicU8; 5],
+    pub param_indication: [std::sync::atomic::AtomicU8; 6],
     /// Indicated/mapped parameter colors (packed ARGB).
-    pub param_indication_color: [std::sync::atomic::AtomicU32; 5],
+    pub param_indication_color: [std::sync::atomic::AtomicU32; 6],
     /// Model load counter (incremented on each successful model load).
     pub model_load_counter: AtomicU32,
     /// Lifetime fence: true while the plugin exists. Checked by the File Picker thread.
@@ -164,13 +166,14 @@ impl NamClapShared {
     /// into the host's output event queue.
     pub fn write_gui_events(&self, output: &mut OutputEvents) {
         use crate::clap::extensions::params::{
-            PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+            PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
+            PARAM_OUTPUT_GAIN,
         };
         use clack_plugin::events::event_types::{
             ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
         };
 
-        let params: [(u32, u32, &AtomicU32); 4] = [
+        let params: [(u32, u32, &AtomicU32); 5] = [
             (
                 PARAM_INPUT_GAIN,
                 Self::param_index(PARAM_INPUT_GAIN) as u32,
@@ -190,6 +193,11 @@ impl NamClapShared {
                 PARAM_BYPASS,
                 Self::param_index(PARAM_BYPASS) as u32,
                 &self.param_bypass,
+            ),
+            (
+                PARAM_ADAPTIVE_COMPUTE,
+                Self::param_index(PARAM_ADAPTIVE_COMPUTE) as u32,
+                &self.param_adaptive_compute,
             ),
         ];
 

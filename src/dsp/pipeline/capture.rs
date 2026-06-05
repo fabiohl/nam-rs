@@ -21,6 +21,7 @@ pub fn capture_dsp_pipeline(
     n_samples: usize,
     mut ctx: DspPipelineContext<'_>,
     bufs: DspBuffers<'_>,
+    sample_rate: u32,
 ) {
     if ctx.bridge_writer.is_none() {
         return;
@@ -77,6 +78,8 @@ pub fn capture_dsp_pipeline(
         ctx.silence_hysteresis,
         ctx.rt_status,
         *ctx.process_mono,
+        ctx.adaptive,
+        sample_rate,
     );
 
     // STAGE 4: FINAL DELIVERY (THE BRIDGE)

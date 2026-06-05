@@ -160,6 +160,7 @@ pub(crate) fn build_wavenet_array<
 
     let block_size = CH;
     let block_buffer = AlignedVec::new(block_size * WAVENET_MAX_NUM_FRAMES, 0.0);
+    let num_layers = layers.len();
 
     Ok(WaveNetLayerArray {
         layers,
@@ -175,6 +176,7 @@ pub(crate) fn build_wavenet_array<
         last_condition: [0.0; COND],
         last_condition_bf16: [0; COND],
         condition_init: false,
+        effective_layers: num_layers,
     })
 }
 

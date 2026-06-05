@@ -4,6 +4,7 @@
 //! Digital Signal Processing (DSP) module for generic operations
 //! before and after the neural engine in NAM-rs.
 
+pub mod adaptive;
 pub mod gate;
 pub mod mirror_buf;
 pub mod pipeline;

@@ -290,7 +290,14 @@ pub fn process_dsp_buffer(
                         0
                     };
 
-                    capture_dsp_pipeline(samples_l, samples_r, n_samples, context, buffers);
+                    capture_dsp_pipeline(
+                        samples_l,
+                        samples_r,
+                        n_samples,
+                        context,
+                        buffers,
+                        current_pw_rate,
+                    );
 
                     if should_measure {
                         let elapsed_nanos = rt_setup::rdtsc_nanos().wrapping_sub(start_nanos);

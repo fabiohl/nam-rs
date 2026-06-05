@@ -25,6 +25,7 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
         param_output_gain: AtomicU32::new(0.0f32.to_bits()),
         param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
         param_bypass: AtomicU32::new(0),
+        param_adaptive_compute: AtomicU32::new(1),
         ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
         ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
         ui_clipped: std::sync::atomic::AtomicBool::new(false),
@@ -44,8 +45,10 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
             std::sync::atomic::AtomicU8::new(0),
             std::sync::atomic::AtomicU8::new(0),
             std::sync::atomic::AtomicU8::new(0),
+            std::sync::atomic::AtomicU8::new(0),
         ],
         param_indication_color: [
+            std::sync::atomic::AtomicU32::new(0),
             std::sync::atomic::AtomicU32::new(0),
             std::sync::atomic::AtomicU32::new(0),
             std::sync::atomic::AtomicU32::new(0),

@@ -283,6 +283,7 @@ mod tests {
                     model_basename: None,
                     model_search_paths: Vec::new(),
                     bypass: false,
+                    adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
                 };
                 let state_bytes = serde_json::to_vec(&params).unwrap();
                 let mut handle = plugin_instance.plugin_handle();
@@ -606,6 +607,7 @@ mod tests {
             model_basename: None,
             model_search_paths: Vec::new(),
             bypass: false,
+            adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();
         let mut handle = plugin_instance.plugin_handle();
@@ -992,6 +994,7 @@ mod tests {
             model_basename: None,
             model_search_paths: Vec::new(),
             bypass: false,
+            adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();
         let mut handle = plugin_instance.plugin_handle();
