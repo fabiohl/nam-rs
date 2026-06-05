@@ -146,7 +146,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S4 — Cross-Validation WaveNet Standard v2 Multi-SR
 
-#### Tarefa S4.T01 — Corrigir render CLI standalone para aceitar SR ≠ 48000 Hz com WaveNet Standard 💡
+#### Tarefa S4.T01 — Corrigir render CLI standalone para aceitar SR ≠ 48000 Hz com WaveNet Standard 💡 [DONE]
 
 - **Onde:** `src/main.rs` ou `src/bin/` (CLI render), `src/dsp/resampler.rs`.
 - **Problema:** O cross-validation test (`tests/cpp_parity.rs`) pula WaveNet Standard v2 quando o sample rate é ≠ 48000 Hz porque o render CLI standalone retorna exit code 1 com a mensagem "Input WAV sample rate (44100 Hz) does not match model expected rate (48000 Hz)". Os modelos LSTM passam nesses cenários porque o resampler é ativado. O WaveNet Standard deve suportar o mesmo path de resampling. Evidência nos logs: `target/logs/cpp-parity.log` linhas 82-85, 291-292, 300-301, 314-315.

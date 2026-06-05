@@ -241,7 +241,21 @@ fn partition_polyphase(proto: &[f32]) -> PolyphaseBank {
         let phase = n % NUM_PHASES;
         let tap = n / NUM_PHASES;
         if tap < taps {
-            coeffs[phase * taps + tap] = coeff * gain;
+            coeffs[phase * taps + (taps - 1 - tap)] = coeff * gain;
+        }
+    }
+
+    // Normalize each phase sub-filter individually to ensure flat DC gain
+    for phase in 0..NUM_PHASES {
+        let start = phase * taps;
+        let mut sum = 0.0f32;
+        for tap in 0..taps {
+            sum += coeffs[start + tap];
+        }
+        if sum.abs() > 1e-9 {
+            for tap in 0..taps {
+                coeffs[start + tap] /= sum;
+            }
         }
     }
 

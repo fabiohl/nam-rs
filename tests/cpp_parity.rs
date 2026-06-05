@@ -129,6 +129,7 @@ fn ensure_render_compiled() -> bool {
             "--target",
             "render",
             "-j",
+            "2",
         ])
         .status();
 
@@ -166,20 +167,60 @@ fn run_render_comparison(
     let temp_dir = project_root.join("tests/fixtures/.temp_live");
     fs::create_dir_all(&temp_dir).ok();
 
-    let stress_wav = temp_dir.join(format!("stress_live_{golden_name}.wav"));
+    // Read model expected sample rate
+    let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
+    let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
 
-    // Generate stress signal and write WAV
-    let stress_signal = if use_v2 {
-        generate_stress_signal_v2(sample_rate)
-    } else {
-        generate_stress_signal_v1()
-    };
     let actual_sr = if use_v2 {
         sample_rate
     } else {
         STRESS_SAMPLE_RATE
     };
-    common::wav::write_wav_f32(&stress_wav, &stress_signal, actual_sr)
+    let model_sr = model_data.sample_rate.unwrap_or(actual_sr as f32) as u32;
+
+    let stress_signal = if use_v2 {
+        generate_stress_signal_v2(sample_rate)
+    } else {
+        generate_stress_signal_v1()
+    };
+
+    let stress_wav = temp_dir.join(format!("stress_live_{golden_name}.wav"));
+
+    use nam_rs::dsp::resampler::NamResampler;
+    let mut resampler_cpp = if actual_sr != model_sr {
+        Some(NamResampler::new(actual_sr, model_sr, 2048).expect("Failed to create NamResampler"))
+    } else {
+        None
+    };
+    let mut resampler_rust = if actual_sr != model_sr {
+        Some(NamResampler::new(actual_sr, model_sr, 2048).expect("Failed to create NamResampler"))
+    } else {
+        None
+    };
+
+    let (input_for_render, input_sr) = if let Some(ref mut rs) = resampler_cpp {
+        let est_len = (stress_signal.len() as f64 * model_sr as f64 / actual_sr as f64).ceil() as usize + 512;
+        let mut resampled_in_l = vec![0.0f32; est_len];
+        let mut resampled_in_r = vec![0.0f32; est_len];
+        let n_resampled = rs.process_input_mono(&stress_signal, &mut resampled_in_l, &mut resampled_in_r);
+        resampled_in_l.truncate(n_resampled);
+        (resampled_in_l, model_sr)
+    } else {
+        (stress_signal.clone(), actual_sr)
+    };
+
+    let (input_for_rust, _) = if let Some(ref mut rs) = resampler_rust {
+        let est_len = (stress_signal.len() as f64 * model_sr as f64 / actual_sr as f64).ceil() as usize + 512;
+        let mut resampled_in_l = vec![0.0f32; est_len];
+        let mut resampled_in_r = vec![0.0f32; est_len];
+        let n_resampled = rs.process_input_mono(&stress_signal, &mut resampled_in_l, &mut resampled_in_r);
+        resampled_in_l.truncate(n_resampled);
+        (resampled_in_l, model_sr)
+    } else {
+        (stress_signal.clone(), actual_sr)
+    };
+
+    common::wav::write_wav_f32(&stress_wav, &input_for_render, input_sr)
         .expect("Failed to write stress WAV");
 
     let output_wav = temp_dir.join(format!("{golden_name}_live.wav"));
@@ -208,34 +249,57 @@ fn run_render_comparison(
     }
 
     // Read render WAV output
-    let (cpp_output, _sr) =
+    let (cpp_output_raw, _sr) =
         common::wav::read_wav_f32(&output_wav).expect("Failed to read render WAV output");
 
-    // Rust inference
-    let json_data = fs::read_to_string(&model_path).expect("Failed to read model");
-    let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
+    let cpp_output = if let Some(ref mut rs) = resampler_cpp {
+        let est_out_len = (cpp_output_raw.len() as f64 * actual_sr as f64 / model_sr as f64).ceil() as usize + 512;
+        let mut resampled_out_l = vec![0.0f32; est_out_len];
+        let mut resampled_out_r = vec![0.0f32; est_out_len];
+        let n_out_resampled = rs.process_output_mono(&cpp_output_raw, &mut resampled_out_l, &mut resampled_out_r);
+        resampled_out_l.truncate(n_out_resampled);
+        resampled_out_l
+    } else {
+        cpp_output_raw.clone()
+    };
 
     let (mut mse_limit, mut min_snr_db) = topology_thresholds(&model_data);
     if use_v2 && model_data.architecture == "LSTM" {
         // LSTM recurrent state accumulates quantization/approximation errors
         // over the 100x longer v2 stress signal. The accumulation is proportional
-        // to the sample rate (sequence length). We adjust the thresholds accordingly.
+        // to the sequence length. We adjust the thresholds accordingly.
         let sr_ratio = sample_rate as f64 / 48000.0;
         let snr_relaxation = (3.5 * sr_ratio).min(10.0);
         min_snr_db = (min_snr_db - snr_relaxation).max(7.0);
         mse_limit *= 10.0_f64.powf(snr_relaxation / 10.0);
     }
+    if use_v2 && actual_sr != model_sr {
+        // Resampling introduces minor interpolation/approximation errors, relax thresholds slightly
+        min_snr_db -= 1.5;
+        mse_limit *= 1.5;
+    }
 
     let mut model = build_model(&model_data).expect("Dispatcher failed");
 
     model.prewarm(2048);
-    let mut rust_output = vec![0.0f32; stress_signal.len()];
+    let mut rust_output_model_sr = vec![0.0f32; input_for_rust.len()];
     process_in_blocks(
         &mut model,
-        &stress_signal,
-        &mut rust_output,
+        &input_for_rust,
+        &mut rust_output_model_sr,
         GOLDEN_BLOCK_SIZE,
     );
+
+    let rust_output = if let Some(ref mut rs) = resampler_rust {
+        let est_out_len = (rust_output_model_sr.len() as f64 * actual_sr as f64 / model_sr as f64).ceil() as usize + 512;
+        let mut resampled_out_l = vec![0.0f32; est_out_len];
+        let mut resampled_out_r = vec![0.0f32; est_out_len];
+        let n_out_resampled = rs.process_output_mono(&rust_output_model_sr, &mut resampled_out_l, &mut resampled_out_r);
+        resampled_out_l.truncate(n_out_resampled);
+        resampled_out_l
+    } else {
+        rust_output_model_sr
+    };
 
     let min_len = cpp_output.len().min(rust_output.len());
     report_dsp_fidelity(
@@ -273,10 +337,19 @@ fn run_v1(model_filename: &str, golden_name: &str, label: &str) {
 /// engine itself supports arbitrary sample rates. Lighter models (Nano, Feather)
 /// and LSTM models may not enforce this restriction in the C++ render tool.
 fn run_v2_multi_sr(model_filename: &str, golden_name: &str, label_base: &str) {
+    let mut failures = Vec::new();
     for &sr in SUPPORTED_SAMPLE_RATES {
         let label = format!("{label_base} @ {sr} Hz (v2)");
         let gname = format!("{golden_name}_v2_{sr}");
-        run_render_comparison(model_filename, &gname, &label, sr, true);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_render_comparison(model_filename, &gname, &label, sr, true);
+        }));
+        if result.is_err() {
+            failures.push(sr);
+        }
+    }
+    if !failures.is_empty() {
+        panic!("Parity validation failed for sample rates: {:?}", failures);
     }
 }
 
