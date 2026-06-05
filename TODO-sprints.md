@@ -9,7 +9,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > - `Sx.Ty` sem anotação refere-se a uma tarefa **neste documento**.
 > - `Sx.Ty (anterior)` refere-se a trabalho já concluído em sprints passadas, cujo código já está no repositório.
 
-## Épico 1 — Quick Wins: Determinismo RT e Performance Mono/Stereo
+## Épico 1 — Quick Wins: Determinismo RT e Performance Mono/Stereo [DONE]
 
 > **Contexto:** Auditoria completa em 2026-06-04 revelou violações RT-safety no PipeWire callback, ausência de DAZ/FTZ no CLAP, overhead stereo redundante no plugin mono-only, e regressões de benchmark. Todas as tarefas deste épico são cirúrgicas — sem mudança arquitetural — e devem ser executadas **antes** dos épicos seguintes para assegurar uma base sólida.
 
