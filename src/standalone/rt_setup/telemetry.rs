@@ -73,6 +73,23 @@ pub fn poll_rt_status(
         );
     }
 
+    // 3.5 HUGE PAGE STATUS:
+    // Sync from mirror buffer global and log once.
+    {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static HUGEPAGE_SYNCED: AtomicBool = AtomicBool::new(false);
+        if !HUGEPAGE_SYNCED.load(Ordering::Relaxed) {
+            crate::dsp::mirror_buf::sync_huge_page_flag(rt_status);
+            HUGEPAGE_SYNCED.store(true, Ordering::Relaxed);
+        }
+    }
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK) {
+        log::info!(
+            "{} Huge pages (2MB) active — reduced TLB pressure on DSP thread.",
+            "✅".green()
+        );
+    }
+
     // 4. REAL-TIME PRIORITY:
     // Checks whether Linux allowed NAM-rs to run with "maximum priority".
     // This prevents other programs (like the browser) from causing audio interruptions.

@@ -6,12 +6,17 @@
 //! Ensures that dynamic buffers (weights, accumulators) respect cache line
 //! boundaries and AVX2/AVX-512 requirements, avoiding unaligned load/store
 //! penalties.
+//!
+//! For huge-page-backed allocations (> 1 MiB), see `huge_alloc::HugePageVec`.
 
 use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
 /// A 64-byte aligned buffer (Cache Line / AVX-512).
+///
+/// Layout (16 bytes): pointer + length. Zero overhead for standard allocations.
+/// For huge-page-backed variants, use `huge_alloc::HugePageVec` instead.
 #[derive(Debug)]
 pub struct AlignedVec<T> {
     ptr: NonNull<T>,

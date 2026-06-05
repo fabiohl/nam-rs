@@ -36,13 +36,20 @@
 //! 2. **Zero-Copy**: Eliminates the need to copy data to temporary buffers to linearize them.
 //! 3. **SIMD Performance**: Enables vector instructions (AVX/SSE) to process data across the buffer boundary without logic interruptions.
 //! 4. **Branch-Free**: Removes modulo (`%`) operations and `if` conditions, optimizing processor branch prediction.
+//!
+//! ## Huge Page Support
+//! Attempts 2 MB huge pages (MAP_HUGETLB / MFD_HUGETLB) for the mirror buffer to reduce
+//! TLB pressure in the DSP hot-path. Falls back to regular pages + `madvise(MADV_HUGEPAGE)`.
+//! Status is tracked via `MIRROR_BUF_HUGEPAGE_ACTIVE` global to avoid inflating the
+//! struct layout (which would affect hot-path cache performance).
 use libc::{
-    _SC_PAGESIZE, MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_PRIVATE, MAP_SHARED, PROT_NONE,
-    PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
+    MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_HUGETLB, MAP_HUGE_2MB, MAP_PRIVATE, MAP_SHARED,
+    MADV_HUGEPAGE, PROT_NONE, PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
 };
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
+use std::sync::atomic::AtomicBool;
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -50,20 +57,51 @@ mod linux;
 #[cfg(not(target_os = "linux"))]
 mod fallback;
 
+thread_local! {
+    pub(crate) static SIMULATE_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Global flag: set to `true` when any MirroredBuffer successfully uses huge pages.
+/// The main thread reads this to set `RT_STATUS_HUGEPAGE_OK`.
+static MIRROR_BUF_HUGEPAGE_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Synchronizes the mirror buffer huge-page status to the RT status flag.
+/// Call once during main-thread initialization.
+pub fn sync_huge_page_flag(rt_status: &crate::common::spsc::RtStatusFlags) {
+    if MIRROR_BUF_HUGEPAGE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
+        rt_status.set_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK);
+    }
+}
+
+/// Tracks whether huge pages were successfully activated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MirrorHugePageStatus {
+    /// Explicit 2 MB huge pages via MAP_HUGETLB | MFD_HUGETLB.
+    Explicit2MB,
+    /// Transparent huge pages via madvise(MADV_HUGEPAGE) hint.
+    Transparent,
+    /// Standard 4 KB pages (fallback).
+    Standard,
+}
+
+/// Returns whether any mirror buffer has huge pages active.
+pub fn is_huge_page_active() -> bool {
+    MIRROR_BUF_HUGEPAGE_ACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// A Mirrored Buffer that uses mirrored memory mapping.
 ///
 /// This structure maps the same physical content twice consecutively in the virtual
 /// address space. This allows accesses that would "cross" the end of the buffer
 /// to be performed linearly and contiguously, eliminating the need for "rewind"
 /// or "copy_within" operations in the DSP hot-path.
+///
+/// Struct layout (16 bytes): optimized for cache — the hot-path Deref
+/// accesses only the first two fields.
 pub struct MirroredBuffer<T> {
     ptr: *mut T,
     size_elements: usize,
     _marker: PhantomData<T>,
-}
-
-thread_local! {
-    pub(crate) static SIMULATE_FAIL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Sets whether the next `MirroredBuffer` creation calls should simulate
@@ -73,14 +111,14 @@ pub fn set_simulate_fail(fail: bool) {
 }
 
 impl<T> MirroredBuffer<T> {
-    /// Creates a new mirrored buffer.
+    /// Creates a new mirrored buffer with huge-page preference.
     ///
     /// The `requested_size` (in elements) will be rounded up to the next
-    /// multiple of the system page size.
+    /// multiple of the system page size (2 MB for huge pages, 4 KB for standard).
     #[cold]
     pub fn new(requested_size: usize) -> std::io::Result<Self> {
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-        let page_size = unsafe { sysconf(_SC_PAGESIZE) } as usize;
+        let page_size = unsafe { sysconf(libc::_SC_PAGESIZE) } as usize;
         let element_size = std::mem::size_of::<T>();
 
         // Ensure the element size is not zero (e.g., ZST)
@@ -108,7 +146,28 @@ impl<T> MirroredBuffer<T> {
             }
         };
 
-        // Rounds to page multiple
+        // Page size for huge-page alignment (2 MB on x86-64).
+        const HUGE_PAGE_2M: usize = 2 * 1024 * 1024;
+
+        // Try huge-page path if the total size (2x) is at least 2 MB.
+        let total_chunk = match requested_bytes.checked_mul(2) {
+            Some(val) => val,
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "requested_bytes * 2 overflowed",
+                ));
+            }
+        };
+
+        if total_chunk >= HUGE_PAGE_2M {
+            if let Ok(buf) = Self::try_new_huge(requested_bytes, HUGE_PAGE_2M) {
+                MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+                return Ok(buf);
+            }
+        }
+
+        // Standard path (4 KB pages)
         let page_mask = page_size - 1;
         let size_bytes = match requested_bytes.checked_add(page_mask) {
             Some(val) => val & !page_mask,
@@ -144,17 +203,7 @@ impl<T> MirroredBuffer<T> {
         }
 
         // 3. Reserve contiguous virtual space (2x size)
-        let total_size = match size_bytes.checked_mul(2) {
-            Some(val) => val,
-            None => {
-                // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-                unsafe { libc::close(fd) };
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "total_size (size_bytes * 2) overflowed",
-                ));
-            }
-        };
+        let total_size = size_bytes * 2;
 
         // Ensure required invariant before mmap
         assert!(
@@ -230,7 +279,106 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
+        // Hint THP promotion for the data regions.
+        // SAFETY: base_ptr and size_bytes are valid mapped regions.
+        unsafe {
+            libc::madvise(base_ptr, size_bytes, MADV_HUGEPAGE);
+        }
+        MIRROR_BUF_HUGEPAGE_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+
         // The FD is no longer needed after mmap (it holds a reference to the file)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        unsafe { libc::close(fd) };
+
+        Ok(Self {
+            ptr: base_ptr as *mut T,
+            size_elements,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Attempts creation with explicit 2 MB huge pages.
+    fn try_new_huge(requested_bytes: usize, huge_page_size: usize) -> std::io::Result<Self> {
+        let element_size = std::mem::size_of::<T>();
+
+        let huge_mask = huge_page_size - 1;
+        let size_bytes = (requested_bytes + huge_mask) & !huge_mask;
+        let size_elements = size_bytes / element_size;
+
+        // 1. Create HugeTLB-backed memfd (falls back to regular memfd)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        let (fd, _fd_kind) = unsafe { linux::create_huge_backing_fd()? };
+
+        // 2. Set file size (must be huge-page-aligned for HugeTLB memfd).
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
+            let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+            unsafe { libc::close(fd) };
+            return Err(err);
+        }
+
+        let total_size = size_bytes * 2;
+
+        // 3. Reserve 2x virtual space with MAP_HUGETLB
+        let mmap_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB;
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        let base_ptr = unsafe {
+            mmap(
+                ptr::null_mut(),
+                total_size,
+                PROT_NONE,
+                mmap_flags,
+                -1,
+                0,
+            )
+        };
+        if base_ptr == MAP_FAILED {
+            let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+            unsafe { libc::close(fd) };
+            return Err(err);
+        }
+
+        // 4. Map the first half
+        let map_flags = MAP_FIXED | MAP_SHARED;
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        let ptr1 = unsafe {
+            mmap(base_ptr, size_bytes, PROT_READ | PROT_WRITE, map_flags, fd, 0)
+        };
+        if ptr1 != base_ptr {
+            let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+            unsafe {
+                munmap(base_ptr, total_size);
+                libc::close(fd);
+            }
+            return Err(err);
+        }
+
+        // 5. Map the second half (mirror)
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        let ptr2 = unsafe {
+            mmap(
+                (base_ptr as *mut u8).add(size_bytes) as *mut c_void,
+                size_bytes,
+                PROT_READ | PROT_WRITE,
+                map_flags,
+                fd,
+                0,
+            )
+        };
+        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+        if ptr2 != unsafe { (base_ptr as *mut u8).add(size_bytes) as *mut c_void } {
+            let err = std::io::Error::last_os_error();
+            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
+            unsafe {
+                munmap(base_ptr, total_size);
+                libc::close(fd);
+            }
+            return Err(err);
+        }
+
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         unsafe { libc::close(fd) };
 

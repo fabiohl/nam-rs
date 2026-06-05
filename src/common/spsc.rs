@@ -49,6 +49,9 @@ pub const RT_STATUS_A2_PLACEHOLDER: u64 = 1 << 9;
 /// Flag indicating that the RT callback should pause DSP processing until
 /// the resampler is replaced (during hot-plug or sample rate change).
 pub const RT_STATUS_RESAMP_SWAP_PENDING: u64 = 1 << 10;
+/// Flag indicating that at least one huge-page allocation succeeded
+/// (set by main thread after alloc, checked by telemetry for logging).
+pub const RT_STATUS_HUGEPAGE_OK: u64 = 1 << 11;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -71,6 +74,7 @@ pub const RT_STATUS_RESAMP_SWAP_PENDING: u64 = 1 << 10;
 /// | 8 | `HEAP_ALLOC` | Heap allocation detected on RT thread |
 /// | 9 | `A2_PLACEHOLDER` | A2 placeholder model active (silent bypass) |
 /// | 10 | `RESAMP_SWAP_PENDING` | RT callback paused awaiting resampler swap |
+/// | 11 | `HUGEPAGE_OK` | Huge-page allocation confirmed active |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

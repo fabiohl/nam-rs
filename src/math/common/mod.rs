@@ -17,6 +17,8 @@
 
 pub mod aligned;
 pub mod avx2_impl;
+pub mod huge_alloc;
+pub use huge_alloc::HugePageVec;
 pub mod avx512;
 pub mod dispatch;
 pub mod kahan;

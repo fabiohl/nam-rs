@@ -245,7 +245,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + `pesquisador-inovador`.
 - **Esforço:** 2 dias.
 
-#### Tarefa S6.T02 — Huge Pages (THP / MAP_HUGETLB) para weights e mirror buffer ✨⚠️
+#### Tarefa S6.T02 — Huge Pages (THP / MAP_HUGETLB) para weights e mirror buffer ✨⚠️ [DONE]
 
 - **Onde:** `src/loader/mod.rs` (alocação de `AlignedVec<u16>` para pesos dinâmicos); `src/dsp/mirror_buf.rs` + `src/dsp/mirror_buf/linux.rs`.
 - **Problema/Oportunidade:** Modelos WaveNet Standard alocam ~80 KB de pesos contíguos. Em páginas de 4 KB, esses pesos consomem ~20 entradas TLB; em **2 MiB huge pages**, **1 entrada TLB**. TLB miss em hotpath custa ~100 ciclos. Para audio de 32 spl @ 96k = 333 µs, eliminar TLB misses pode reduzir p99 em 5–15%.

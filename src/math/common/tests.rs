@@ -673,3 +673,47 @@ fn test_gated_activation_and_overwrite_block() {
         test_backend::<Avx512Math>();
     }
 }
+
+mod huge_alloc_tests {
+    use crate::math::common::huge_alloc::{
+        HugePageStatus, HugePageVec, allocate_huge_pages, deallocate_huge,
+    };
+
+    #[test]
+    fn test_allocate_small_uses_heap() {
+        let (ptr, info, status) = allocate_huge_pages(1024);
+        assert_eq!(status, HugePageStatus::Heap);
+        assert!(!ptr.is_null());
+        unsafe { deallocate_huge(ptr, info, 1024) };
+    }
+
+    #[test]
+    fn test_allocate_large_falls_back_gracefully() {
+        let size = 2 * 1024 * 1024;
+        let (ptr, info, _status) = allocate_huge_pages(size);
+        assert!(!ptr.is_null());
+        unsafe {
+            std::ptr::write(ptr, 0x42u8);
+            assert_eq!(std::ptr::read(ptr), 0x42u8);
+            deallocate_huge(ptr, info, size);
+        }
+    }
+
+    #[test]
+    fn test_huge_page_vec_fallback() {
+        let len = 3 * 1024 * 1024 / 4;
+        let (vec, status) = HugePageVec::<f32>::new(len, 0.0);
+        assert_eq!(vec.len(), len);
+        for &val in vec.iter() {
+            assert_eq!(val, 0.0);
+        }
+        let _ = status;
+        drop(vec);
+    }
+
+    #[test]
+    fn test_huge_page_vec_with_capacity() {
+        let (vec, _status) = HugePageVec::<f32>::with_capacity(128);
+        assert_eq!(vec.len(), 0);
+    }
+}

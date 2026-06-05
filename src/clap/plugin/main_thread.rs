@@ -43,6 +43,16 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         // Drain obsolete models to free memory outside RT.
         drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
 
+        // Sync huge page status from mirror buffer (one-shot).
+        {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static HUGEPAGE_SYNCED: AtomicBool = AtomicBool::new(false);
+            if !HUGEPAGE_SYNCED.load(Ordering::Relaxed) {
+                crate::dsp::mirror_buf::sync_huge_page_flag(&self.shared.rt_status);
+                HUGEPAGE_SYNCED.store(true, Ordering::Relaxed);
+            }
+        }
+
         // Check if there is a pending model sent by the UI
         let pending_model = if let Ok(mut pending_guard) = self.shared.ui_pending_model.lock() {
             pending_guard.take()
@@ -140,6 +150,18 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                 )
                 .unwrap_or_default();
                 log.log(&shared, LogSeverity::Error, &msg);
+            }
+
+            if self
+                .shared
+                .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK)
+            {
+                let msg = CString::new(
+                    "NAM-rs: Huge pages (2MB) active — reduced TLB pressure on DSP thread.",
+                )
+                .unwrap_or_default();
+                log.log(&shared, LogSeverity::Info, &msg);
             }
         }
 
