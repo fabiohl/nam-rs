@@ -219,13 +219,17 @@ pub unsafe fn dot_product_batch_4x_avx2(
         let mut s1 = crate::math::common::utility::hsum_avx2(sum1);
         let mut s2 = crate::math::common::utility::hsum_avx2(sum2);
         let mut s3 = crate::math::common::utility::hsum_avx2(sum3);
+        let mut c0 = 0.0f32;
+        let mut c1 = 0.0f32;
+        let mut c2 = 0.0f32;
+        let mut c3 = 0.0f32;
 
         while i < len {
             let w = half::f16::from_bits(weights[i]).to_f32();
-            s0 += w * h0[i];
-            s1 += w * h1[i];
-            s2 += w * h2[i];
-            s3 += w * h3[i];
+            (s0, c0) = crate::math::common::kahan_add(s0, c0, w * h0[i]);
+            (s1, c1) = crate::math::common::kahan_add(s1, c1, w * h1[i]);
+            (s2, c2) = crate::math::common::kahan_add(s2, c2, w * h2[i]);
+            (s3, c3) = crate::math::common::kahan_add(s3, c3, w * h3[i]);
             i += 1;
         }
 

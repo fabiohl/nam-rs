@@ -80,10 +80,13 @@ pub unsafe fn dot_product_avx2(a: &[f32], b: &[u16]) -> f32 {
 
         // Horizontal Sum: Merges the 8 partial values from the SIMD register into a single final number.
         let mut scalar_sum = crate::math::common::utility::hsum_avx2(sum);
+        let mut compensation = 0.0f32;
 
         // Final Cleanup: Processes the very few leftover items (fewer than 8).
         while i < len {
-            scalar_sum += a[i] * half::f16::from_bits(b[i]).to_f32();
+            let term = a[i] * half::f16::from_bits(b[i]).to_f32();
+            (scalar_sum, compensation) =
+                crate::math::common::kahan_add(scalar_sum, compensation, term);
             i += 1;
         }
 
@@ -107,8 +110,11 @@ pub unsafe fn dot_product_avx512(a: &[f32], b: &[u16]) -> f32 {
     }
     // Sum the results within the register and add the remainder.
     let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
+    let mut compensation = 0.0f32;
     while i < len {
-        sum += *a.get_unchecked(i) * half::f16::from_bits(*b.get_unchecked(i)).to_f32();
+        let term =
+            *a.get_unchecked(i) * half::f16::from_bits(*b.get_unchecked(i)).to_f32();
+        (sum, compensation) = crate::math::common::kahan_add(sum, compensation, term);
         i += 1;
     }
     sum
@@ -134,11 +140,12 @@ pub unsafe fn dot_product_bf16_avx512(a: &[u16], b: &[u16]) -> f32 {
         i += 32;
     }
     let mut sum = crate::math::common::utility::hsum_avx512(sum_v);
+    let mut compensation = 0.0f32;
     // Handle leftovers manually.
     while i < len {
         let fa = f32::from_bits((*a.get_unchecked(i) as u32) << 16);
         let fb = f32::from_bits((*b.get_unchecked(i) as u32) << 16);
-        sum += fa * fb;
+        (sum, compensation) = crate::math::common::kahan_add(sum, compensation, fa * fb);
         i += 1;
     }
     sum

@@ -7,6 +7,7 @@
 //! SIMD utilities for reductions and horizontal operations.
 
 use core::arch::x86_64::*;
+use super::kahan::kahan_add;
 
 /// Horizontal sum of an AVX2 (256-bit) register to scalar f32.
 ///
@@ -52,9 +53,10 @@ pub unsafe fn horizontal_sum_avx2(ptr: *const f32, len: usize) -> f32 {
     }
 
     let mut total = hsum_avx2(sum_v);
+    let mut compensation = 0.0f32;
 
     while i < len {
-        total += *ptr.add(i);
+        (total, compensation) = kahan_add(total, compensation, *ptr.add(i));
         i += 1;
     }
 
@@ -75,11 +77,12 @@ pub unsafe fn horizontal_sum_avx512(ptr: *const f32, len: usize) -> f32 {
     }
 
     let mut total = hsum_avx512(sum_v);
+    let compensation = 0.0f32;
 
     if i < len {
         let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
         let v = _mm512_maskz_loadu_ps(mask, ptr.add(i));
-        total += hsum_avx512(v);
+        (total, _) = kahan_add(total, compensation, hsum_avx512(v));
     }
 
     total

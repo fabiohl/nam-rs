@@ -97,12 +97,33 @@ pub unsafe fn dot_product_4x_avx2(
         let mut s1: f32 = crate::math::common::utility::hsum_avx2(sum1);
         let mut s2: f32 = crate::math::common::utility::hsum_avx2(sum2);
         let mut s3: f32 = crate::math::common::utility::hsum_avx2(sum3);
+        let mut c0 = 0.0f32;
+        let mut c1 = 0.0f32;
+        let mut c2 = 0.0f32;
+        let mut c3 = 0.0f32;
 
         while i < len {
-            s0 += half::f16::from_bits(w0[i]).to_f32() * state[i];
-            s1 += half::f16::from_bits(w1[i]).to_f32() * state[i];
-            s2 += half::f16::from_bits(w2[i]).to_f32() * state[i];
-            s3 += half::f16::from_bits(w3[i]).to_f32() * state[i];
+            let sw = state[i];
+            (s0, c0) = crate::math::common::kahan_add(
+                s0,
+                c0,
+                half::f16::from_bits(w0[i]).to_f32() * sw,
+            );
+            (s1, c1) = crate::math::common::kahan_add(
+                s1,
+                c1,
+                half::f16::from_bits(w1[i]).to_f32() * sw,
+            );
+            (s2, c2) = crate::math::common::kahan_add(
+                s2,
+                c2,
+                half::f16::from_bits(w2[i]).to_f32() * sw,
+            );
+            (s3, c3) = crate::math::common::kahan_add(
+                s3,
+                c3,
+                half::f16::from_bits(w3[i]).to_f32() * sw,
+            );
             i += 1;
         }
 

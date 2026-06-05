@@ -153,3 +153,62 @@ fn test_kahan_deep_convolution_drift() {
         improvement_db
     );
 }
+
+/// Verifies that Kahan-based horizontal_sum reduces drift by ≥ 100×
+/// compared to plain f32 sum for LSTM-scale accumulation (1M samples).
+///
+/// Uses the classic Kahan pathological pattern: adding 1e-8 to 1.0
+/// repeated 1M times. In plain f32, all 1e-8 terms are lost against
+/// the magnitude of 1.0 (precision floor ≈ 1.2e-7). Kahan captures
+/// the lost bits in the compensation register.
+///
+/// This is the S5.T03 acceptance criterion: drift reduction ≥ 100×.
+#[test]
+fn test_horizontal_sum_drift_reduction() {
+    let n: usize = 1_000_000;
+    let base = 1.0f32;
+    let tiny = 1e-8f32;
+
+    // f64 reference
+    let f64_ref = base as f64 + n as f64 * tiny as f64;
+
+    // Plain f32 sum: the tiny terms are lost against the base
+    let plain_sum: f32 = {
+        let mut s = base;
+        for _ in 0..n {
+            s += tiny;
+        }
+        s
+    };
+
+    // Kahan-based horizontal_sum_fallback
+    let mut data = vec![base];
+    data.extend(std::iter::repeat(tiny).take(n));
+    let kahan_sum = unsafe {
+        crate::math::common::scalar_ref::utility::horizontal_sum_fallback(
+            data.as_ptr(),
+            data.len(),
+        )
+    };
+
+    let plain_err = ((plain_sum as f64 - f64_ref).abs()) / f64_ref.abs();
+    let kahan_err = ((kahan_sum as f64 - f64_ref).abs()) / f64_ref.abs();
+    let improvement_ratio = plain_err / kahan_err.max(1e-30);
+
+    eprintln!("1M-sample Kahan drift test (f64 ref = {:.12}):", f64_ref);
+    eprintln!(
+        "  Plain f32: {:.12} (err={:.3e})",
+        plain_sum, plain_err
+    );
+    eprintln!(
+        "  Kahan f32: {:.12} (err={:.3e})",
+        kahan_sum, kahan_err
+    );
+    eprintln!("  Improvement ratio: {:.1}×", improvement_ratio);
+
+    assert!(
+        improvement_ratio >= 100.0,
+        "Kahan improvement ratio ({:.1}×) < 100×",
+        improvement_ratio
+    );
+}

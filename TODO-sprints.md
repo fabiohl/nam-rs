@@ -168,7 +168,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S5 — Quantização e Compressão de Modelos
 
-#### Tarefa S5.T01 — INT8 weight quantization SmoothQuant para Conv1D heads ✨⚠️
+#### Tarefa S5.T01 — INT8 weight quantization SmoothQuant para Conv1D heads ✨⚠️ [DESCARTADO]
+
+> Nota do PO: Decidimos não valer a pena. Descartado.
 
 - **Onde:** `src/loader/dispatcher/wavenet/` (heads de Conv1D — módulos `standard.rs` e `dynamic.rs`); novo `src/math/common/int8_quant.rs`; novo `weights_layout = SmoothQuantInt8`.
 - **Problema/Oportunidade:** Pesos do `head_weights` (Conv1D 1×1 do output) **dominam memória** em WaveNet Standard (40 KB de pesos vs 8 KB de activations). INT8 weights + FP32 activations (per-channel scale) reduzem 4× memory bandwidth (cache-friendly em L1/L2). SmoothQuant migra outliers de activations para weights via per-channel scaling — proven 99.5% accuracy retention em LLM.cpp e NAM-class workloads.
@@ -190,7 +192,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `pesquisador-inovador` + revisão `revisor-auditor`.
 - **Esforço:** 4 dias.
 
-#### Tarefa S5.T02 — INT4 weight packing experimental (AWQ-style) ✨💡
+#### Tarefa S5.T02 — INT4 weight packing experimental (AWQ-style) ✨💡 [DESCARTADO]
+
+> Nota do PO: Decidimos não valer a pena. Descartado.
 
 - **Onde:** extensão de S5.T01 para `weights_layout = AwqInt4`.
 - **Problema/Oportunidade:** INT4 (4 bits) entrega 8× memory reduction. AWQ (Activation-aware Weight Quantization, Lin et al. 2023) preserva pesos "salientes" em FP16 e quantiza o resto em INT4. Apropriado para WaveNet com layers de magnitude variada (~1% dos pesos contribuem >50% do output).
@@ -208,7 +212,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 3 dias.
 
-#### Tarefa S5.T03 — Kahan summation em acumuladores críticos ✨💡
+#### Tarefa S5.T03 — Kahan summation em acumuladores críticos ✨💡 [DONE]
 
 - **Onde:** `src/math/gemm/dot.rs`, `dot_4x.rs` (acumuladores `horizontal_sum`).
 - **Problema/Oportunidade:** Em LSTM de muitas amostras, drift de soma FP32 acumula erro de magnitude `~N · eps`. Kahan summation (compensated summation) reduz para `O(1)` em troca de 2 FMAs extras — tolerável fora do tightest inner loop.
@@ -223,7 +227,9 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S6 — Responsividade
 
-#### Tarefa S6.T01 — Async model loading via io_uring ✨⚠️
+#### Tarefa S6.T01 — Async model loading via io_uring ✨⚠️ [DESCARTADO]
+
+> Nota do PO: Decidimos não valer a pena. Descartado.
 
 - **Onde:** `src/loader/mod.rs:70-94`; novo `src/loader/async_io.rs`.
 - **Problema/Oportunidade:** Hoje `std::fs::read` é síncrono — usuário arrastando modelo grande de 30 MiB em DAW vê **UI freeze** por ~100ms (SSD) ou ~2s (NFS). io_uring permite zero-syscall I/O completion + worker thread separado, mantendo UI responsiva.

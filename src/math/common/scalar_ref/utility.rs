@@ -30,11 +30,20 @@ pub unsafe fn sigmoid_slice_fallback(slice: &mut [f32]) {
 }
 
 /// Sums all numbers in a list and returns a single final value.
+/// Uses Kahan compensated summation for bounded error O(ε) instead of O(N·ε).
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 pub unsafe fn horizontal_sum_fallback(ptr: *const f32, len: usize) -> f32 {
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
-    slice.iter().sum()
+    let mut sum = 0.0f32;
+    let mut compensation = 0.0f32;
+    for &x in slice {
+        let y = x - compensation;
+        let t = sum + y;
+        compensation = (t - sum) - y;
+        sum = t;
+    }
+    sum
 }
 
 /// Applies a volume (gain) by multiplying each sample by the desired value.
