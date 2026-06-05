@@ -5,7 +5,7 @@
     "build": {
         "dockerfile": "Dockerfile"
     },
-    "initializeCommand": "mkdir -p ~/.gnupg && touch ~/.gitconfig || true",
+    "initializeCommand": "mkdir -p ~/.gnupg ~/.config/kilo ~/.gemini && touch ~/.gitconfig || true",
     "customizations": {
         "vscode": {
             "settings": {
@@ -39,13 +39,16 @@
                 "rust-lang.rust-analyzer",
                 "vadimcn.vscode-lldb",
                 "davidanson.vscode-markdownlint",
-                "tamasfe.even-better-toml"
+                "tamasfe.even-better-toml",
+                "kilocode.kilo-code"
             ]
         }
     },
     "remoteUser": "vscode",
     "runArgs": [
         "--cap-add=SYS_NICE",
+        "--cap-add=SYS_ADMIN",
+        "--cap-add=SYS_PTRACE",
         "--security-opt",
         "seccomp=unconfined",
         "--ipc=host",
@@ -58,11 +61,18 @@
         "source=${localEnv:XDG_RUNTIME_DIR:/run/user/1000}/pulse/native,target=/tmp/pulse/native,type=bind,consistency=cached",
         "source=/etc/machine-id,target=/etc/machine-id,type=bind,readonly",
         "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached,readonly",
-        "source=${localEnv:HOME}/.gnupg,target=/home/vscode/.gnupg,type=bind,consistency=cached"
+        "source=${localEnv:HOME}/.gnupg,target=/home/vscode/.gnupg,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.config/kilo,target=/home/vscode/.config/kilo,type=bind,consistency=cached",
+        "source=${localEnv:HOME}/.gemini,target=/home/vscode/.gemini,type=bind,consistency=cached"
     ],
     "containerEnv": {
         "PIPEWIRE_RUNTIME_DIR": "/tmp",
-        "PULSE_SERVER": "unix:/tmp/pulse/native"
+        "PULSE_SERVER": "unix:/tmp/pulse/native",
+        "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
+        "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}",
+        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+        "DEEPSEEK_API_KEY": "${localEnv:DEEPSEEK_API_KEY}",
+        "GROQ_API_KEY": "${localEnv:GROQ_API_KEY}"
     },
     "postCreateCommand": "cargo fetch && chmod a+x utils/*"
 }
