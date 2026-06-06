@@ -664,3 +664,7 @@ impl DiagnosticBundle {
         block
     }
 }
+
+#[cfg(test)]
+#[path = "diagnostic_test.rs"]
+mod diagnostic_test;

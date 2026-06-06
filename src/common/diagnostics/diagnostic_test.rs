@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use crate::common::diagnostics::{NamErrorCode, SystemSnapshot};
 
 static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -46,7 +47,7 @@ fn test_all_codes_have_unique_numeric() {
         InvalidGainValue,
         UnknownCommand,
         CtrlCHandlerFailed,
-        DeadlineExceeded, // Added as per T17
+        DeadlineExceeded,
     ];
 
     let codes: Vec<&str> = all.iter().map(|c| c.code()).collect();

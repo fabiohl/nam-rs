@@ -17,9 +17,6 @@
 pub mod diagnostic;
 pub mod error_codes;
 pub mod system_info;
-
-#[cfg(test)]
-pub(crate) use diagnostic::days_to_date;
 pub use diagnostic::{
     ACTIVE_MODEL_INFO, ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, AudioInfo, DiagnosticBundle,
     ErrorContext, HasRuntimeSnapshot, ModelInfo, NamDiagnostic, RtInfo, RuntimeSnapshot,
@@ -27,7 +24,3 @@ pub use diagnostic::{
 };
 pub use error_codes::NamErrorCode;
 pub use system_info::SystemSnapshot;
-
-#[cfg(test)]
-#[path = "../diagnostics_test.rs"]
-mod diagnostics_test;
