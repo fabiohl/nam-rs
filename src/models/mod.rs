@@ -190,6 +190,33 @@ impl DynamicModel {
                 | Self::WavenetA2(_)
         )
     }
+
+    /// Returns the number of channels inside the model.
+    pub fn channels(&self) -> usize {
+        match self {
+            Self::WavenetStandard(_) => 16,
+            Self::WavenetLite(_) => 12,
+            Self::WavenetFeather(_) => 8,
+            Self::WavenetNano(_) => 4,
+            Self::WavenetDyn(m) => m.array1.layers.first().map(|l| l.ch).unwrap_or(0),
+            Self::WavenetA2(_) => 0,
+            Self::Lstm1x8(_) | Self::Lstm2x8(_) => 8,
+            Self::Lstm1x12(_) | Self::Lstm2x12(_) => 12,
+            Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
+            Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
+            Self::Lstm1x40(_) => 40,
+            Self::LstmDyn(m) => m.layers.first().map(|l| l.hidden_size).unwrap_or(0),
+        }
+    }
+
+    /// Returns the receptive field size of the model (or 0 for LSTM).
+    pub fn receptive_field(&self) -> usize {
+        if self.is_lstm() {
+            0
+        } else {
+            self.prewarm_samples()
+        }
+    }
 }
 
 impl NamModel for DynamicModel {

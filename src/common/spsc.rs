@@ -126,6 +126,19 @@ pub struct RtStatusFlags {
     /// Atomic bitmask containing binary states (needs_rebuild, clipped, silent, etc).
     /// Reduces Cache Bouncing by condensing multiple states into a single cache line.
     pub status_bits: AtomicU64,
+
+    /// Confirmed RT priority.
+    pub confirmed_priority: AtomicI32,
+    /// Confirmed RT scheduling policy.
+    pub rt_policy: AtomicI32,
+    /// Pinned physical CPU core (or -1 if not pinned).
+    pub rt_cpu: AtomicI32,
+    /// Accumulated OR of all RT_STATUS_* flags ever seen since startup.
+    pub flags_seen: AtomicU64,
+    /// Total count of virtual XRUNs/overloads.
+    pub xruns: AtomicU32,
+    /// Total count of GC items successfully drained.
+    pub drains: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -144,6 +157,12 @@ impl RtStatusFlags {
             latency_hist: crate::dsp::telemetry::LatencyHistogram::new(),
             degrade_transitions_total: AtomicU32::new(0),
             status_bits: AtomicU64::new(0),
+            confirmed_priority: AtomicI32::new(-1),
+            rt_policy: AtomicI32::new(-1),
+            rt_cpu: AtomicI32::new(-1),
+            flags_seen: AtomicU64::new(0),
+            xruns: AtomicU32::new(0),
+            drains: AtomicU32::new(0),
         }
     }
 
@@ -169,7 +188,12 @@ impl RtStatusFlags {
     /// Returns `true` if the flag was active.
     #[inline(always)]
     pub fn check_and_clear_flag(&self, flag: u64) -> bool {
-        (self.status_bits.fetch_and(!flag, Ordering::Relaxed) & flag) != 0
+        let old = self.status_bits.fetch_and(!flag, Ordering::Relaxed);
+        let active = (old & flag) != 0;
+        if active {
+            self.flags_seen.fetch_or(flag, Ordering::Relaxed);
+        }
+        active
     }
 }
 
@@ -388,16 +412,25 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
 /// This function should be called periodically by the main thread (CLI/UI)
 /// or by the host event loop (PipeWire, CLAP). It executes `drop()`
 /// on obsolete objects (models, resamplers) outside the RT thread.
-pub fn drain_gc_channels(gc_consumer: &mut Consumer<GcItem>, gc_overflow: &GcOverflowBuffer) {
+///
+/// Returns the total number of GC items dropped during this call.
+pub fn drain_gc_channels(
+    gc_consumer: &mut Consumer<GcItem>,
+    gc_overflow: &GcOverflowBuffer,
+) -> usize {
+    let mut count = 0;
     // 1. Drain the main SPSC channel (Drop-Delegation)
     while let Ok(item) = gc_consumer.pop() {
         drop(item);
+        count += 1;
     }
 
     // 2. Drain the overflow buffer (overwrite ring buffer)
     for item in gc_overflow.drain() {
         drop(item);
+        count += 1;
     }
+    count
 }
 
 #[cfg(test)]

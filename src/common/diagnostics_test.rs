@@ -3,6 +3,8 @@
 
 use super::*;
 
+static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Validates the visual formatting and consistency of the error code and its mnemonic.
 #[test]
 fn test_error_code_display() {
@@ -71,6 +73,7 @@ fn test_system_snapshot_capture() {
 /// mnemonic, contextual parameters, and copy instructions.
 #[test]
 fn test_diagnostic_support_block_contains_code() {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let snap = SystemSnapshot::capture();
     let diag = NamDiagnostic::new(NamErrorCode::NambCrc32Mismatch, &snap)
         .message("Corrupted file")
@@ -152,6 +155,7 @@ fn test_emit_irq_advisory_safety() {
 /// Verifies that DiagnosticBundle::capture().render() yields a nominal block without error fields.
 #[test]
 fn test_diagnostic_bundle_nominal() {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let bundle = DiagnosticBundle::capture();
     let rendered = bundle.render();
 
@@ -175,6 +179,7 @@ fn test_diagnostic_bundle_nominal() {
 /// Verifies that DiagnosticBundle::capture_with_error() matches NamDiagnostic::support_block() output.
 #[test]
 fn test_diagnostic_bundle_with_error_matches() {
+    let _guard = TEST_MUTEX.lock().unwrap();
     let snap = SystemSnapshot::capture();
     let code = NamErrorCode::NambCrc32Mismatch;
     let params = vec![
@@ -207,6 +212,7 @@ fn test_diagnostic_bundle_with_error_matches() {
 /// Verifies that active model name path redaction works properly based on the `full` flag.
 #[test]
 fn test_diagnostic_bundle_redaction() {
+    let _guard = TEST_MUTEX.lock().unwrap();
     // Populate the active session statics
     if let Ok(mut name) = ACTIVE_MODEL_NAME.write() {
         *name = "/home/user/my_secret_path/model.nam".to_string();

@@ -215,6 +215,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         shared
             .sample_rate
             .store(audio_config.sample_rate as u32, Ordering::Relaxed);
+        shared
+            .buffer_size
+            .store(audio_config.max_frames_count, Ordering::Relaxed);
 
         Ok(Self {
             model_l: None,
@@ -302,11 +305,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
                     self.rt_status
                         .rt_priority
                         .store(param.sched_priority, Ordering::Relaxed);
+                    self.rt_status
+                        .confirmed_priority
+                        .store(param.sched_priority, Ordering::Relaxed);
+                    self.rt_status.rt_policy.store(policy, Ordering::Relaxed);
                     if policy == libc::SCHED_FIFO || policy == libc::SCHED_RR {
                         self.rt_status
                             .set_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
                     }
                 }
+                let cpu = libc::sched_getcpu();
+                self.rt_status.rt_cpu.store(cpu, Ordering::Relaxed);
                 crate::math::common::set_daz_ftz();
             }
         }

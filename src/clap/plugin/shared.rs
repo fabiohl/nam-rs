@@ -113,6 +113,10 @@ pub struct NamClapShared {
     pub param_indication_color: [std::sync::atomic::AtomicU32; 6],
     /// Model load counter (incremented on each successful model load).
     pub model_load_counter: AtomicU32,
+    /// Host buffer size.
+    pub buffer_size: AtomicU32,
+    /// Dynamic model info for diagnostics.
+    pub ui_model_info: Mutex<Option<crate::common::diagnostics::ModelInfo>>,
     /// Lifetime fence: true while the plugin exists. Checked by the File Picker thread.
     pub alive_fence: Arc<std::sync::atomic::AtomicBool>,
 
@@ -223,5 +227,39 @@ impl NamClapShared {
                 let _ = output.try_push(ev);
             }
         }
+    }
+}
+
+impl crate::common::diagnostics::HasRuntimeSnapshot for NamClapShared {
+    fn model_info(&self) -> Option<crate::common::diagnostics::ModelInfo> {
+        if let Ok(info_guard) = self.ui_model_info.lock() {
+            info_guard.clone()
+        } else {
+            None
+        }
+    }
+
+    fn audio_info(&self) -> crate::common::diagnostics::AudioInfo {
+        let sr = self.sample_rate.load(Ordering::Relaxed);
+        let buffer_size = self.buffer_size.load(Ordering::Relaxed) as usize;
+        let channel_count = self.active_channel_count.load(Ordering::Relaxed) as usize;
+        crate::common::diagnostics::AudioInfo {
+            sample_rate: sr,
+            buffer_size,
+            channel_count,
+            host_name: "CLAP".to_string(),
+        }
+    }
+
+    fn rt_info(&self) -> crate::common::diagnostics::RtInfo {
+        self.rt_status.rt_info()
+    }
+
+    fn telemetry_snapshot(&self) -> crate::common::diagnostics::TelemetrySnapshot {
+        self.rt_status.telemetry_snapshot()
+    }
+
+    fn flags_seen(&self) -> u64 {
+        self.rt_status.flags_seen()
     }
 }

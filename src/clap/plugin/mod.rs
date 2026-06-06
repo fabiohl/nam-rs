@@ -96,6 +96,8 @@ impl DefaultPluginFactory for NamClapPlugin {
                 std::sync::atomic::AtomicU32::new(0),
             ],
             model_load_counter: AtomicU32::new(0),
+            buffer_size: AtomicU32::new(0),
+            ui_model_info: Mutex::new(None),
             alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             gesture_flags: AtomicU32::new(0),
         })

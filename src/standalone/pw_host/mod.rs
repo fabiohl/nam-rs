@@ -243,7 +243,10 @@ pub fn run_pipewire_host(
             unsafe { &*(bridge_ptr.as_ptr()) },
         );
 
-        crate::common::spsc::drain_gc_channels(&mut gc_consumer, &gc_overflow);
+        let drained = crate::common::spsc::drain_gc_channels(&mut gc_consumer, &gc_overflow);
+        rt_status
+            .drains
+            .fetch_add(drained as u32, Ordering::Relaxed);
 
         std::thread::sleep(std::time::Duration::from_millis(100));
     }

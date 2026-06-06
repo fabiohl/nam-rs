@@ -44,6 +44,8 @@ pub struct LoadedModelPair {
     pub topology: String,
     /// Optional model metadata.
     pub metadata: Option<crate::loader::nam_json::NamMetadata>,
+    /// Weights layout format.
+    pub weights_layout: String,
 }
 
 impl std::fmt::Debug for LoadedModelPair {
@@ -57,6 +59,7 @@ impl std::fmt::Debug for LoadedModelPair {
             .field("architecture", &self.architecture)
             .field("topology", &self.topology)
             .field("metadata", &self.metadata)
+            .field("weights_layout", &self.weights_layout)
             .finish()
     }
 }
@@ -234,6 +237,13 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         "Unknown".to_string()
     };
     let metadata = model_data.metadata.clone();
+    let weights_layout_str = match model_data.weights_layout {
+        crate::loader::nam_json::WeightsLayout::Original => "Original".to_string(),
+        crate::loader::nam_json::WeightsLayout::GateMajorLstm => "GateMajorLstm".to_string(),
+        crate::loader::nam_json::WeightsLayout::Interleaved4WaveNet => {
+            "Interleaved4WaveNet".to_string()
+        }
+    };
 
     Ok(LoadedModelPair {
         model_l,
@@ -244,5 +254,6 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
         architecture,
         topology,
         metadata,
+        weights_layout: weights_layout_str,
     })
 }

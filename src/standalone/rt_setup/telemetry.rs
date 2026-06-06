@@ -28,6 +28,11 @@ pub fn poll_rt_status(
     _tsc_anchor: &Anchor,
     bridge: &crate::dsp::pipeline::DspBridge,
 ) -> (bool, bool) {
+    let current_bits = rt_status.status_bits.load(Ordering::Relaxed);
+    rt_status
+        .flags_seen
+        .fetch_or(current_bits, Ordering::Relaxed);
+
     // 1. MEMORY MANAGEMENT (Garbage Collection):
     // If the cleanup channel is full, it means we are swapping neural models
     // faster than the system can discard old ones. We prioritize audio
@@ -125,6 +130,7 @@ pub fn poll_rt_status(
     // the neural network before the next audio block is needed.
     let overloads = rt_status.dsp_overloads.swap(0, Ordering::Relaxed);
     if overloads > 0 {
+        rt_status.xruns.fetch_add(overloads, Ordering::Relaxed);
         log::warn!(
             "{} CPU overload ({} buffers). Consider using a lighter model or a faster processor.",
             "🚨".red(),

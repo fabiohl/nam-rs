@@ -104,6 +104,8 @@ fn main() -> anyhow::Result<()> {
                 input_mult_adj,
                 output_mult_adj,
                 sample_rate,
+                architecture,
+                weights_layout,
                 ..
             }) => {
                 // Populate active model path and sample rate
@@ -111,6 +113,21 @@ fn main() -> anyhow::Result<()> {
                     *name = path.to_string_lossy().into_owned();
                 }
                 nam_rs::diagnostics::ACTIVE_SAMPLE_RATE.store(sample_rate, Ordering::Relaxed);
+
+                let model_info = nam_rs::diagnostics::ModelInfo {
+                    arch_label: architecture.clone(),
+                    channels: model_l.as_ref().map(|m| m.channels()).unwrap_or(0),
+                    receptive_field: model_l.as_ref().map(|m| m.receptive_field()).unwrap_or(0),
+                    weights_layout: weights_layout.clone(),
+                    path_basename: path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("")
+                        .to_string(),
+                };
+                if let Ok(mut info_guard) = nam_rs::diagnostics::ACTIVE_MODEL_INFO.write() {
+                    *info_guard = Some(model_info);
+                }
 
                 let _ = producer.push(ParamPayload::LoadModel {
                     model_l,
@@ -144,7 +161,8 @@ fn main() -> anyhow::Result<()> {
     rt_setup::configure_process_wide();
 
     // Spawn interactive CLI command thread
-    std::thread::spawn(cli_loop);
+    let rt_status_cli = rt_status.clone();
+    std::thread::spawn(move || cli_loop(rt_status_cli));
 
     // Run the PipeWire host (blocking)
     pw_host::run_pipewire_host(
@@ -170,7 +188,7 @@ fn main() -> anyhow::Result<()> {
 
 /// Interactive CLI loop that runs in a background thread.
 /// It reads commands from stdin and prints the diagnostic bundle to stdout.
-fn cli_loop() {
+fn cli_loop(rt_status: std::sync::Arc<nam_rs::common::spsc::RtStatusFlags>) {
     use std::io::{self, BufRead};
 
     let stdin = io::stdin();
@@ -195,10 +213,13 @@ fn cli_loop() {
         }
 
         if trimmed == ":diag" || trimmed == ":support" {
-            let bundle = nam_rs::diagnostics::DiagnosticBundle::capture();
+            let bundle =
+                nam_rs::diagnostics::DiagnosticBundle::capture_with_runtime(rt_status.as_ref());
             println!("{}", bundle.render());
         } else if trimmed == ":diag --full" || trimmed == ":support --full" {
-            let bundle = nam_rs::diagnostics::DiagnosticBundle::capture().with_full(true);
+            let bundle =
+                nam_rs::diagnostics::DiagnosticBundle::capture_with_runtime(rt_status.as_ref())
+                    .with_full(true);
             println!("{}", bundle.render());
         } else if trimmed.starts_with(':') {
             println!(

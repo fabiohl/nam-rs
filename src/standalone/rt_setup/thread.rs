@@ -106,6 +106,7 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             libc::pthread_getschedparam(thread_id, &mut actual_policy, &mut actual_param);
 
         let actual_cpu = libc::sched_getcpu();
+        rt_status.rt_cpu.store(actual_cpu, Ordering::Relaxed);
 
         if ret_getsched == 0 {
             let reset_on_fork_flag = 0x40000000i32;
@@ -143,6 +144,10 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             rt_status
                 .rt_priority
                 .store(actual_param.sched_priority, Ordering::Relaxed);
+            rt_status
+                .confirmed_priority
+                .store(actual_param.sched_priority, Ordering::Relaxed);
+            rt_status.rt_policy.store(base_policy, Ordering::Relaxed);
 
             // Inline log in the cold-path (one time only, before the RT deadline) — acceptable.
             let reset_info = if has_reset_on_fork {
@@ -161,6 +166,8 @@ pub fn configure_realtime_thread(target_cpu: usize, rt_status: Arc<RtStatusFlags
             // Publishes verification failure sentinel
             rt_status.clear_flag(crate::common::spsc::RT_STATUS_RT_IS_FIFO);
             rt_status.rt_priority.store(0, Ordering::Relaxed);
+            rt_status.confirmed_priority.store(-1, Ordering::Relaxed);
+            rt_status.rt_policy.store(-1, Ordering::Relaxed);
 
             log::error!(
                 "  [E2303 | RT_GETSCHED_FAILED] pthread_getschedparam failed (ret={}).\n",

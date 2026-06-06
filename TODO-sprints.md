@@ -434,7 +434,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
 
-#### Tarefa S9.T04 — `RuntimeSnapshot` lock-free com estado RT-safe ⚠️
+#### Tarefa S9.T04 — `RuntimeSnapshot` lock-free com estado RT-safe ⚠️ [DONE]
 
 - **Onde:** `src/common/diagnostics/diagnostic.rs` (novo `RuntimeSnapshot`); consumidores em `src/clap/processor/dsp.rs` + `src/clap/processor/events.rs`, `src/standalone/pw_host/rt_callback.rs`, `src/dsp/telemetry.rs`.
 - **Problema:** Bundle atual só tem versão + arch + features estáticos. Falta o **estado dinâmico** crítico para diagnóstico: modelo carregado (arquitetura/CH/RF/path basename), SR efetivo, buffer size, contadores de xrun/drain, RT prio aplicada, scheduler ativo (FIFO/DEADLINE), percentis de latência (HDR histograms em `telemetry.rs`), histórico recente de RT_STATUS flags.

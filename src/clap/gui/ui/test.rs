@@ -56,6 +56,8 @@ fn make_test_shared(track_color: u32) -> NamClapShared {
             std::sync::atomic::AtomicU32::new(0),
         ],
         model_load_counter: AtomicU32::new(0),
+        buffer_size: AtomicU32::new(0),
+        ui_model_info: Mutex::new(None),
         gesture_flags: AtomicU32::new(0),
     }
 }

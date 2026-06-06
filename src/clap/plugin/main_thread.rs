@@ -41,7 +41,17 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     /// Here we can drain the GC channel.
     fn on_main_thread(&mut self) {
         // Drain obsolete models to free memory outside RT.
-        drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
+        let drained = drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
+        self.shared
+            .rt_status
+            .drains
+            .fetch_add(drained as u32, Ordering::Relaxed);
+
+        let current_bits = self.shared.rt_status.status_bits.load(Ordering::Relaxed);
+        self.shared
+            .rt_status
+            .flags_seen
+            .fetch_or(current_bits, Ordering::Relaxed);
 
         // Sync huge page status from mirror buffer (one-shot).
         {
@@ -245,6 +255,29 @@ impl<'a> NamClapMainThread<'a> {
                     })
                     .filter(|s| !s.is_empty()),
             });
+        }
+
+        let model_info = crate::common::diagnostics::ModelInfo {
+            arch_label: model_pair.architecture.clone(),
+            channels: model_pair
+                .model_l
+                .as_ref()
+                .map(|m| m.channels())
+                .unwrap_or(0),
+            receptive_field: model_pair
+                .model_l
+                .as_ref()
+                .map(|m| m.receptive_field())
+                .unwrap_or(0),
+            weights_layout: model_pair.weights_layout.clone(),
+            path_basename: path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string(),
+        };
+        if let Ok(mut info_guard) = self.shared.ui_model_info.lock() {
+            *info_guard = Some(model_info);
         }
 
         // Update model sample rate

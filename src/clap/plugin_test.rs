@@ -59,6 +59,8 @@ fn test_gui_gestures_and_parameter_flow() {
             std::sync::atomic::AtomicU32::new(0),
         ],
         model_load_counter: AtomicU32::new(0),
+        buffer_size: AtomicU32::new(0),
+        ui_model_info: Mutex::new(None),
         gesture_flags: AtomicU32::new(0),
     };
 
@@ -182,6 +184,8 @@ fn test_file_picker_alive_fence_and_timeout() {
             std::sync::atomic::AtomicU32::new(0),
         ],
         model_load_counter: AtomicU32::new(0),
+        buffer_size: AtomicU32::new(0),
+        ui_model_info: Mutex::new(None),
         gesture_flags: AtomicU32::new(0),
     });
 

@@ -21,8 +21,9 @@ pub mod system_info;
 #[cfg(test)]
 pub(crate) use diagnostic::days_to_date;
 pub use diagnostic::{
-    ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, DiagnosticBundle, ErrorContext, NamDiagnostic,
-    RuntimeSnapshot,
+    ACTIVE_MODEL_INFO, ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, AudioInfo, DiagnosticBundle,
+    ErrorContext, HasRuntimeSnapshot, ModelInfo, NamDiagnostic, RtInfo, RuntimeSnapshot,
+    TelemetrySnapshot,
 };
 pub use error_codes::NamErrorCode;
 pub use system_info::SystemSnapshot;
