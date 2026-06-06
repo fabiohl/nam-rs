@@ -26,7 +26,7 @@ fn test_clap_lifecycle() {
     let path = if let Ok(custom_path) = env::var("CLAP_PLUGIN_PATH") {
         PathBuf::from(custom_path)
     } else {
-        // Try to load from the default install location used by build-clap.sh
+        // Try to load from the default install location used by build-release.sh/tests-cargo.sh
         let mut p = PathBuf::from(env::var("HOME").expect("HOME env var not set"));
         p.push(".clap/nam-rs.clap");
 

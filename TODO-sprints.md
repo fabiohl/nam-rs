@@ -310,63 +310,43 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > 2. **Componentes Rust e utilitários Cargo (`rustup` e `cargo`):**
 >    - `llvm-tools-preview` (via `rustup`): Fornece o `llvm-profdata` da mesma versão exata do LLVM do compilador Rust instalado. Essencial para converter e mesclar os arquivos `.profraw` do PGO.
 >      - Comando: `rustup component add llvm-tools-preview`
->    - `cargo-pgo` (via `cargo`): Ferramenta recomendada para automatizar o fluxo de Profile-Guided Optimization em Rust.
->      - Comando: `cargo install cargo-pgo`
->
-> 3. **Configuração de Permissões de Amostragem (`perf`):**
->    - Para permitir que o `perf record` colete eventos de amostragem de ciclos de CPU sem privilégios de superusuário (root), configure o nível de paranóia de eventos de performance do kernel para `1` ou inferior:
->      - Comando: `sudo sysctl -w kernel.perf_event_paranoid=1` (temporário) ou adicionando `kernel.perf_event_paranoid=1` em `/etc/sysctl.d/local.conf` (persistente).
+>    - `cargo-pgo` (via `#### Tarefa S7.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️ [DONE]
 
-#### Tarefa S7.T01 — Profile-Guided Optimization (PGO) build pipeline ✨⚠️ [DONE]
-
-- **Onde:** `Cargo.toml`; novo `utils/build-pgo.sh`.
+- **Onde:** `Cargo.toml`; novo `utils/build-release.sh` (consolidando scripts anteriores).
 - **Problema/Oportunidade:** Rustc/LLVM PGO instrumenta build → roda workload representativo → coleta profile → rebuilda com `-Cprofile-use`. Tipicamente entrega 5–15% throughput em hotpath. Já standard em Firefox, Chromium.
 - **Solução técnica:**
-  1. Script multi-passo: build instrumented, roda `inference_bench` + `bench` real de modelos canônicos, coleta `.profraw`, merge, rebuilda release.
-  2. Release shipped com PGO opcional via `cargo build --release --features pgo`.
+  1. Script de release unificado `./utils/build-release.sh` realiza o pipeline PGO de forma transparente e robusta.
+  2. Preserva as flags de arquitetura e tempo real de `.cargo/config.toml` (extraídas via python de forma inteligente).
+  3. Compila tanto o executável standalone (`nam-rs`) quanto o plugin CLAP (`nam-rs.clap`).
 - **Critérios de aceitação:** Benchmark inference reduz ≥ 5% latência média em PGO build vs vanilla release.
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1.5 dia.
 
 > **Notas da Entrega (2026-06-05):**
 >
-> - **Feature `pgo`** adicionada ao `Cargo.toml`: habilita build PGO-optimized via `cargo build --release --features standalone,pgo` combinado com `RUSTFLAGS="-Cprofile-use=<merged.profdata>"`.
-> - **Script `utils/build-pgo.sh`** implementa o pipeline completo em 4 fases:
->   1. Build instrumentado (`-Cprofile-generate`) + coleta de profiles via `inference_bench` (short + long soak) e `dot_4x_bench`.
->   2. Merge com `llvm-profdata` (auto-detectado do sysroot rustup).
->   3. Rebuild release com `-Cprofile-use`.
->   - Profile output em `/tmp/nam-rs-pgo-profiles/` (configurável via `PGO_DIR`).
->   - Merged profile (`merged.profdata`) preservado após cleanup — reutilizável para builds incrementais e como entrada para S7.T02 (BOLT).
-> - **Workload representativo:** `cargo bench --features "standalone,long_bench" --bench inference_bench` cobre WaveNet Standard/Feather/Nano, LSTM 1x8/1x16/2x16/1x40/2x24, FastMath (tanh/sigmoid AVX2+AVX-512), dot products, resampler — todos os hot paths de inferência DSP.
-> - **Pré-requisitos:** `rustup component add llvm-tools-preview`; opcionalmente `sudo sysctl -w kernel.perf_event_paranoid=1` e `sudo apt install linux-tools-generic linux-tools-$(uname -r)` (para S7.T02 via `perf`).
-> - **Validação da latência (critério de aceitação):** executar `cargo bench --features standalone --bench inference_bench` com build vanilla release vs PGO release e comparar médias.
+> - **Feature `pgo`** adicionada ao `Cargo.toml`.
+> - **Script unificado `utils/build-release.sh`** consolida todo o pipeline em fases automatizadas e robustas.
+> - **Workload representativo:** `cargo bench` cobre WaveNet Standard/Feather/Nano, LSTM 1x8/1x16/2x16/1x40/2x24, FastMath, dot products, e resampler.
+> - **Preservação de Otimizações:** As flags de `.cargo/config.toml` (como `-Ctarget-cpu=x86-64-v3` e `-Clink-arg=-Wl,-z,now`) são extraídas e preservadas ativamente.
 
 #### Tarefa S7.T02 — BOLT post-link layout optimization ✨💡 [DONE]
 
-- **Onde:** novo `utils/build-bolt.sh`.
+- **Onde:** `utils/build-release.sh` (integrando o fluxo pós-link anterior).
 - **Problema/Oportunidade:** LLVM BOLT é a "última gota": reordena basic blocks no binário linkado para que hot paths fiquem em sequência (melhor L1i utilização). Combinado com PGO, mais 3–8%.
 - **Solução técnica:**
-  1. Após PGO build, coletar `perf record` em workload representativo.
-  2. `llvm-bolt nam-rs -o nam-rs.bolt -data=perf.data --reorder-blocks=cache+ --reorder-functions=hfsort`.
-  3. Distribuir binário `.bolt` para release.
+  1. Integrado em `./utils/build-release.sh` de forma automatizada.
+  2. Coleta dados de CPU cycles via amostragem de áudio real do PipeWire (se ativo) ou fallback automático para os benchmarks.
+  3. Gera o executável final otimizado com BOLT em `~/.local/bin/nam-rs` e valida o SONAME/símbolos do CLAP `~/.clap/nam-rs.clap`.
 - **Critérios de aceitação:** L1i miss rate (`perf stat`) reduz ≥ 20%; latency média -3-8%.
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1 dia.
 
 > **Notas da Implementação (2026-06-05):**
 >
-> - **Script `utils/build-bolt.sh`** implementa o pipeline BOLT pós-link em 7 fases:
->   1. Build PGO-optimized (reusa `build-pgo.sh` ou build inline com `-Cprofile-use`).
->   2. Build dos benchmarks (`inference_bench` + `dot_4x_bench`) e coleta de `perf record` com LBR branch sampling (`-j any,u`) quando disponível.
->   3. Conversão `perf2bolt` com fallbacks (`--itrace`, `--basic-events`).
->   4. Aplicação do BOLT ao benchmark binary (`--reorder-blocks=cache+ --reorder-functions=hfsort --split-functions --split-all-cold --relocs --lite`).
->   5. Validação com `perf stat` (L1-icache-load-misses) e cálculo automático da redução da L1i miss rate.
->   6. Profile + BOLT do binário `nam-rs` via PipeWire (auto-detecta `pw-cli`, usa `pw-play --target` para roteamento de áudio, gera sinal senoidal de 10s via ffmpeg ou python3).
->   7. Sumário e cleanup.
-> - **Variáveis de ambiente:** `BOLT_DIR` (default `/tmp/nam-rs-bolt`), `SKIP_PGO=1`, `SKIP_PW=1` (pula profile PipeWire), `SKIP_CLEANUP=1`.
-> - **Estratégia de validação:** benchmark binary BOLTed vs original — comparação de L1i misses e latência via `perf stat` + `cargo bench`. O `nam-rs.bolt` é produzido como artefato de release via profile PipeWire.
+> - **Script unificado `utils/build-release.sh`** implementa todo o fluxo BOLT em fases sequenciais com fallbacks elegantes, garantindo entrega automática para `~/.local/bin/nam-rs` e `~/.clap/nam-rs.clap`.
+> - **Amostragem PipeWire & Benchmark:** Realiza amostragem de áudio PipeWire se ativo, com fallback gracioso para os benchmarks se necessário.
+> - **Auditoria de Validabilidade:** Executa checks automáticos de ELF 64-bit, SONAME e símbolo `clap_entry` antes da entrega final dos binários compilados em `--release`.
 > - **Pré-requisitos:** `sudo apt install llvm-22-tools` (provê `llvm-bolt` + `perf2bolt`), `linux-tools-generic` (provê `perf`), `sysctl kernel.perf_event_paranoid=1`.
-> - **LLVM BOLT:** auto-detecta em `/usr/lib/llvm-2{2,1,0,9,8}/bin/llvm-bolt` e `/usr/bin/llvm-bolt*`.
 
 ---
 
