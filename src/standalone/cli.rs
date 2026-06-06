@@ -33,6 +33,8 @@ pub fn print_help() {
     println!(
         "  -b, --buffer-size <SAMPLES> Fixed block size (e.g. 64, 256, 512). Use 0 for auto [default: 256]"
     );
+    println!("      --diagnose          Print technical support block and exit");
+    println!("      --diagnose-full     Print technical support block with raw paths and exit");
     println!("  -h, --help              Show this help message and exit");
 }
 
@@ -43,21 +45,37 @@ pub fn exit_with_error(msg: impl std::fmt::Display) -> ! {
     std::process::exit(1);
 }
 
+/// Parsed command line arguments.
+#[derive(Debug, Clone)]
+pub struct CliArgs {
+    /// Path to the neural model file.
+    pub model_path: Option<PathBuf>,
+    /// Input gain in dB.
+    pub input_gain: f32,
+    /// Output gain in dB.
+    pub output_gain: f32,
+    /// Desired buffer size.
+    pub buffer_size: u32,
+    /// Immediate diagnostic flag.
+    pub diagnose: bool,
+    /// Immediate diagnostic flag with full (unredacted) paths.
+    pub diagnose_full: bool,
+}
+
 /// Parses command-line arguments.
-///
-/// Returns a tuple containing:
-/// - Optional path to the model (`PathBuf`)
-/// - Input gain in dB (`f32`)
-/// - Output gain in dB (`f32`)
-/// - Desired buffer size (`u32`)
-pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
+pub fn parse_args() -> CliArgs {
+    parse_args_from(lexopt::Parser::from_env())
+}
+
+/// Helper parsing function that accepts any lexopt::Parser to facilitate testing.
+pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
     let mut model_path = None;
     let mut input_gain = 0.0;
     let mut output_gain = 0.0;
     let mut buffer_size = 256;
+    let mut diagnose = false;
+    let mut diagnose_full = false;
     let mut has_args = false;
-
-    let mut parser = lexopt::Parser::from_env();
 
     while let Some(arg) = parser.next().unwrap_or_else(|e| exit_with_error(e)) {
         has_args = true;
@@ -65,6 +83,12 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
             Short('h') | Long("help") => {
                 print_help();
                 std::process::exit(0);
+            }
+            Long("diagnose") => {
+                diagnose = true;
+            }
+            Long("diagnose-full") => {
+                diagnose_full = true;
             }
             Short('m') | Long("model") => {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
@@ -143,5 +167,58 @@ pub fn parse_args() -> (Option<PathBuf>, f32, f32, u32) {
         std::process::exit(0);
     }
 
-    (model_path, input_gain, output_gain, buffer_size)
+    CliArgs {
+        model_path,
+        input_gain,
+        output_gain,
+        buffer_size,
+        diagnose,
+        diagnose_full,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_args_diagnose() {
+        let args = vec!["nam-rs", "--diagnose"];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert!(cli_args.diagnose);
+        assert!(!cli_args.diagnose_full);
+    }
+
+    #[test]
+    fn test_parse_args_diagnose_full() {
+        let args = vec!["nam-rs", "--diagnose-full"];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert!(!cli_args.diagnose);
+        assert!(cli_args.diagnose_full);
+    }
+
+    #[test]
+    fn test_parse_args_model_and_gains() {
+        let args = vec![
+            "nam-rs",
+            "-m",
+            "my_model.nam",
+            "-i",
+            "6.0",
+            "-o",
+            "-3.5",
+            "-b",
+            "512",
+        ];
+        let parser = lexopt::Parser::from_iter(args);
+        let cli_args = parse_args_from(parser);
+        assert_eq!(cli_args.model_path, Some(PathBuf::from("my_model.nam")));
+        assert_eq!(cli_args.input_gain, 6.0);
+        assert_eq!(cli_args.output_gain, -3.5);
+        assert_eq!(cli_args.buffer_size, 512);
+        assert!(!cli_args.diagnose);
+        assert!(!cli_args.diagnose_full);
+    }
 }

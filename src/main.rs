@@ -35,7 +35,20 @@ fn main() -> anyhow::Result<()> {
 
     // 1. READ CONFIGURATIONS: The system starts by reading what you typed in the terminal.
     // It figures out which "amplifier" file (.nam) you want to use and the initial volumes.
-    let (model_path, initial_in_gain, initial_out_gain, buffer_size) = cli::parse_args();
+    let args = cli::parse_args();
+
+    // 1.1. IMMEDIATE DIAGNOSTIC EXITS: If the user requested an immediate diagnostic dump,
+    // we print it to stdout and exit immediately with code 0 (without initializing audio).
+    if args.diagnose || args.diagnose_full {
+        let bundle = nam_rs::diagnostics::DiagnosticBundle::capture().with_full(args.diagnose_full);
+        println!("{}", bundle.render());
+        std::process::exit(0);
+    }
+
+    let model_path = args.model_path;
+    let initial_in_gain = args.input_gain;
+    let initial_out_gain = args.output_gain;
+    let buffer_size = args.buffer_size;
 
     // 2. KNOW THE COMPUTER: Captures a "snapshot" of your processor's capabilities.
     // This helps NAM-rs choose the fastest way to process the audio math.
@@ -82,9 +95,9 @@ fn main() -> anyhow::Result<()> {
 
     // 6. LOAD THE SOUND: If you said "use amplifier X",
     // this is where the computer opens that file and prepares the math (Neural Networks).
-    if let Some(path) = model_path {
+    if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
-        match loader::load_and_build_model(&path, &sys) {
+        match loader::load_and_build_model(path, &sys) {
             Ok(nam_rs::loader::LoadedModelPair {
                 model_l,
                 model_r,
@@ -93,6 +106,12 @@ fn main() -> anyhow::Result<()> {
                 sample_rate,
                 ..
             }) => {
+                // Populate active model path and sample rate
+                if let Ok(mut name) = nam_rs::diagnostics::ACTIVE_MODEL_NAME.write() {
+                    *name = path.to_string_lossy().into_owned();
+                }
+                nam_rs::diagnostics::ACTIVE_SAMPLE_RATE.store(sample_rate, Ordering::Relaxed);
+
                 let _ = producer.push(ParamPayload::LoadModel {
                     model_l,
                     model_r,
@@ -124,6 +143,9 @@ fn main() -> anyhow::Result<()> {
     // syscalls that would cause jitter at the critical moment of the first audio delivery.
     rt_setup::configure_process_wide();
 
+    // Spawn interactive CLI command thread
+    std::thread::spawn(cli_loop);
+
     // Run the PipeWire host (blocking)
     pw_host::run_pipewire_host(
         consumer,
@@ -144,4 +166,49 @@ fn main() -> anyhow::Result<()> {
         pipewire::deinit();
     }
     Ok(())
+}
+
+/// Interactive CLI loop that runs in a background thread.
+/// It reads commands from stdin and prints the diagnostic bundle to stdout.
+fn cli_loop() {
+    use std::io::{self, BufRead};
+
+    let stdin = io::stdin();
+    let mut reader = stdin.lock();
+    let mut line = String::new();
+
+    // Visual helper/prompt
+    println!(
+        "{}",
+        "💡 Interactive console started. Type ':diag' or ':support' for diagnostics.".cyan()
+    );
+
+    loop {
+        line.clear();
+        if reader.read_line(&mut line).is_err() {
+            break;
+        }
+
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if trimmed == ":diag" || trimmed == ":support" {
+            let bundle = nam_rs::diagnostics::DiagnosticBundle::capture();
+            println!("{}", bundle.render());
+        } else if trimmed == ":diag --full" || trimmed == ":support --full" {
+            let bundle = nam_rs::diagnostics::DiagnosticBundle::capture().with_full(true);
+            println!("{}", bundle.render());
+        } else if trimmed.starts_with(':') {
+            println!(
+                "{}",
+                format!(
+                    "Unknown command: '{}'. Try ':diag' or ':diag --full'.",
+                    trimmed
+                )
+                .red()
+            );
+        }
+    }
 }

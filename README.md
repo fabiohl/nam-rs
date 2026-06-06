@@ -141,6 +141,7 @@ Every 10 seconds, NAM-rs prints a performance report in the terminal to monitor 
 * [tests/fixtures/README.md](tests/fixtures/README.md) — Golden vector format, stress signal design, and regeneration instructions
 * [docs/benchmarks.md](docs/benchmarks.md) — How to interpret Criterion performance metrics
 * [docs/clap_integration.md](docs/clap_integration.md) — CLAP (Clever Audio Plug-in) integration strategy
+* [docs/troubleshooting.md](docs/troubleshooting.md) — Technical troubleshooting and diagnostics support
 
 ---
 

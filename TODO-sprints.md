@@ -402,7 +402,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S9.T02 — Comando CLI `--diagnose` no standalone ⚠️
+#### Tarefa S9.T02 — Comando CLI `--diagnose` no standalone ⚠️ [DONE]
 
 - **Onde:** `src/main.rs::parse_args`, `src/main.rs::cli_loop` (comando interativo `:diag`).
 - **Problema:** Usuário do standalone PipeWire não tem como gerar bundle em estado nominal.
@@ -491,7 +491,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S9.T07 — Documentação `docs/troubleshooting.md` 💡
+#### Tarefa S9.T07 — Documentação `docs/troubleshooting.md` 💡 [DONE]
 
 - **Onde:** novo `docs/troubleshooting.md`; link em `README.md`.
 - **Problema:** Usuário não sabe como gerar/onde encontrar o bundle.

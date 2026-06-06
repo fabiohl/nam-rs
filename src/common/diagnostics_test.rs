@@ -155,10 +155,19 @@ fn test_diagnostic_bundle_nominal() {
     let bundle = DiagnosticBundle::capture();
     let rendered = bundle.render();
 
-    assert!(rendered.contains("NAM-rs Diagnostic"), "Must contain standard header");
-    assert!(rendered.contains(&format!("nam-rs v{}", bundle.system.version)), "Must contain version");
+    assert!(
+        rendered.contains("NAM-rs Diagnostic"),
+        "Must contain standard header"
+    );
+    assert!(
+        rendered.contains(&format!("nam-rs v{}", bundle.system.version)),
+        "Must contain version"
+    );
     assert!(!rendered.contains("E1"), "Must not contain error codes");
-    assert!(!rendered.contains("CRC32"), "Must not contain error mnemonics");
+    assert!(
+        !rendered.contains("CRC32"),
+        "Must not contain error mnemonics"
+    );
     assert!(rendered.contains("arch="), "Must contain system info");
     assert!(rendered.contains("os="), "Must contain system info");
 }
@@ -168,7 +177,10 @@ fn test_diagnostic_bundle_nominal() {
 fn test_diagnostic_bundle_with_error_matches() {
     let snap = SystemSnapshot::capture();
     let code = NamErrorCode::NambCrc32Mismatch;
-    let params = vec![("expected", "0xDEADBEEF".to_string()), ("computed", "0x12345678".to_string())];
+    let params = vec![
+        ("expected", "0xDEADBEEF".to_string()),
+        ("computed", "0x12345678".to_string()),
+    ];
 
     let diag = NamDiagnostic::new(code, &snap)
         .param("expected", "0xDEADBEEF")
@@ -180,8 +192,58 @@ fn test_diagnostic_bundle_with_error_matches() {
     let block_bundle = bundle.render();
 
     // Strip timestamp lines to prevent flaky failures on second boundaries
-    let lines_diag: Vec<&str> = block_diag.lines().filter(|l| !l.starts_with("timestamp=")).collect();
-    let lines_bundle: Vec<&str> = block_bundle.lines().filter(|l| !l.starts_with("timestamp=")).collect();
+    let lines_diag: Vec<&str> = block_diag
+        .lines()
+        .filter(|l| !l.starts_with("timestamp="))
+        .collect();
+    let lines_bundle: Vec<&str> = block_bundle
+        .lines()
+        .filter(|l| !l.starts_with("timestamp="))
+        .collect();
 
     assert_eq!(lines_diag, lines_bundle);
+}
+
+/// Verifies that active model name path redaction works properly based on the `full` flag.
+#[test]
+fn test_diagnostic_bundle_redaction() {
+    // Populate the active session statics
+    if let Ok(mut name) = ACTIVE_MODEL_NAME.write() {
+        *name = "/home/user/my_secret_path/model.nam".to_string();
+    }
+    ACTIVE_SAMPLE_RATE.store(44100, std::sync::atomic::Ordering::Relaxed);
+
+    // Default/Redacted mode: should only render basename
+    let bundle_redacted = DiagnosticBundle::capture();
+    let rendered_redacted = bundle_redacted.render();
+    assert!(
+        rendered_redacted.contains("model=model.nam"),
+        "Should render only basename in redacted mode"
+    );
+    assert!(
+        !rendered_redacted.contains("my_secret_path"),
+        "Should not expose path details in redacted mode"
+    );
+    assert!(
+        rendered_redacted.contains("sample_rate=44100"),
+        "Should render active sample rate"
+    );
+
+    // Full/Unredacted mode: should render full absolute path
+    let bundle_full = DiagnosticBundle::capture().with_full(true);
+    let rendered_full = bundle_full.render();
+    assert!(
+        rendered_full.contains("model=/home/user/my_secret_path/model.nam"),
+        "Should render full path in full mode"
+    );
+    assert!(
+        rendered_full.contains("sample_rate=44100"),
+        "Should render active sample rate"
+    );
+
+    // Cleanup/restore statics for other tests
+    if let Ok(mut name) = ACTIVE_MODEL_NAME.write() {
+        *name = String::new();
+    }
+    ACTIVE_SAMPLE_RATE.store(0, std::sync::atomic::Ordering::Relaxed);
 }

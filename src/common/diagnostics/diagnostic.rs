@@ -9,7 +9,15 @@
 use super::error_codes::NamErrorCode;
 use super::system_info::SystemSnapshot;
 use std::fmt;
+use std::sync::RwLock;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::SystemTime;
+
+/// Thread-safe global storage for the currently active sample rate (populated in active standalone session).
+pub static ACTIVE_SAMPLE_RATE: AtomicU32 = AtomicU32::new(0);
+
+/// Thread-safe global storage for the currently active model path/name (populated in active standalone session).
+pub static ACTIVE_MODEL_NAME: RwLock<String> = RwLock::new(String::new());
 
 /// Structured diagnostic for NAM-rs errors and warnings.
 ///
@@ -84,11 +92,12 @@ impl NamDiagnostic {
     pub(crate) fn support_block(&self) -> String {
         DiagnosticBundle {
             system: self.system.clone(),
-            runtime: RuntimeSnapshot::default(),
+            runtime: RuntimeSnapshot,
             error: Some(ErrorContext {
                 code: self.code,
                 params: self.params.clone(),
             }),
+            full: false,
         }
         .render()
     }
@@ -178,6 +187,27 @@ pub struct DiagnosticBundle {
     pub runtime: RuntimeSnapshot,
     /// Error context if captured due to an error.
     pub error: Option<ErrorContext>,
+    /// Whether to print absolute paths unredacted.
+    pub full: bool,
+}
+
+/// Helper function to format model paths.
+/// Default (not full): only prints file basename.
+/// Full: prints the raw absolute path.
+fn format_model_path(path_str: &str, full: bool) -> String {
+    if path_str.is_empty() {
+        return String::new();
+    }
+    if full {
+        path_str.to_string()
+    } else {
+        let path = std::path::Path::new(path_str);
+        if let Some(file_name) = path.file_name() {
+            file_name.to_string_lossy().into_owned()
+        } else {
+            path_str.to_string()
+        }
+    }
 }
 
 impl DiagnosticBundle {
@@ -185,8 +215,9 @@ impl DiagnosticBundle {
     pub fn capture() -> Self {
         Self {
             system: SystemSnapshot::capture(),
-            runtime: RuntimeSnapshot::default(),
+            runtime: RuntimeSnapshot,
             error: None,
+            full: false,
         }
     }
 
@@ -194,9 +225,16 @@ impl DiagnosticBundle {
     pub fn capture_with_error(code: NamErrorCode, params: Vec<(&'static str, String)>) -> Self {
         Self {
             system: SystemSnapshot::capture(),
-            runtime: RuntimeSnapshot::default(),
+            runtime: RuntimeSnapshot,
             error: Some(ErrorContext { code, params }),
+            full: false,
         }
+    }
+
+    /// Builder method to specify whether to use full (unredacted) paths.
+    pub fn with_full(mut self, full: bool) -> Self {
+        self.full = full;
+        self
     }
 
     /// Renders the support block as a formatted string.
@@ -219,16 +257,32 @@ impl DiagnosticBundle {
         };
 
         // Contextual parameters
-        if let Some(ref err) = self.error {
-            if !err.params.is_empty() {
-                let param_line: String = err
-                    .params
-                    .iter()
-                    .map(|(k, v)| format!("{k}={v}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                block.push_str(&param_line);
-                block.push('\n');
+        if let Some(err) = self.error.as_ref().filter(|e| !e.params.is_empty()) {
+            let param_line: String = err
+                .params
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            block.push_str(&param_line);
+            block.push('\n');
+        }
+
+        // Runtime State
+        let model_name = ACTIVE_MODEL_NAME
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let active_rate = ACTIVE_SAMPLE_RATE.load(Ordering::Relaxed);
+
+        if !model_name.is_empty() || active_rate != 0 {
+            block.push_str("──── Runtime State ─────────────────────────────\n");
+            if !model_name.is_empty() {
+                let formatted = format_model_path(&model_name, self.full);
+                block.push_str(&format!("model={}\n", formatted));
+            }
+            if active_rate != 0 {
+                block.push_str(&format!("sample_rate={}\n", active_rate));
             }
         }
 

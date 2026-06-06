@@ -171,6 +171,11 @@ pub fn run_pipewire_host(
     let mut was_silent = false;
     let mut was_fading = false;
     while !SHUTDOWN.load(Ordering::Relaxed) {
+        let active = rt_status.active_rate.load(Ordering::Relaxed);
+        if active != 0 {
+            crate::common::diagnostics::ACTIVE_SAMPLE_RATE.store(active, Ordering::Relaxed);
+        }
+
         if rt_status.check_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD) {
             let target_pw_rate = rt_status.requested_pw_rate.load(Ordering::Relaxed);
             let target_nam_rate = rt_status.requested_nam_rate.load(Ordering::Relaxed);
