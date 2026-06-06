@@ -415,7 +415,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S9.T03 — Botão "Copy Diagnostic" na GUI do CLAP ⚠️
+#### Tarefa S9.T03 — Botão "Copy Diagnostic" na GUI do CLAP ⚠️ [DONE]
 
 - **Onde:** `src/clap/gui/ui/mod.rs` (status bar / nova zona "About"). O status bar reside em `ui/mod.rs` (função `draw_ui`), resultado do refactor de UI já concluído em sprint anterior.
 - **Problema:** Usuário do plugin em DAW não tem acesso ao stderr do host. Sem botão na GUI, impossível obter bundle em hosts C++.

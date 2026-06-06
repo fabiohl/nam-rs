@@ -736,7 +736,12 @@ fn update_telemetry_state(state: &mut UiState, shared: &NamClapShared) {
     state.last_telem_update = now;
 }
 
-fn draw_telemetry_strings(ui: &mut egui::Ui, state: &UiState) {
+fn draw_telemetry_strings(
+    ui: &mut egui::Ui,
+    state: &mut UiState,
+    shared: &NamClapShared,
+    accent_color: egui::Color32,
+) {
     ui.horizontal(|ui| {
         let dsp_color = if state.telem_load_pct < 50.0 {
             COL_VU_GREEN
@@ -771,7 +776,8 @@ fn draw_telemetry_strings(ui: &mut egui::Ui, state: &UiState) {
         let num_gaps = (state.status_strings.len() * 2 - 2) as f32;
         let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
 
-        let target_width = available_width - total_gap_width - 8.0;
+        // Reserve 22.0 px for the "ℹ" button on the far right.
+        let target_width = available_width - total_gap_width - 8.0 - 22.0;
         let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
             let scale = target_width / sum_widths;
             (baseline_s * scale).clamp(6.0, 14.0)
@@ -799,6 +805,77 @@ fn draw_telemetry_strings(ui: &mut egui::Ui, state: &UiState) {
             );
             label.on_hover_text(state.status_tooltips[i]);
         }
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let info_btn = ui.add(
+                egui::Button::new(
+                    egui::RichText::new("ℹ")
+                        .font(egui::FontId::proportional(11.0))
+                        .color(accent_color)
+                        .strong(),
+                )
+                .frame(false),
+            );
+            let info_btn =
+                info_btn.on_hover_text("Copy Diagnostic info to clipboard and ~/.cache/nam-rs/");
+
+            if info_btn.clicked() {
+                // Synchronize global active model name and active sample rate
+                if let (Ok(name), Ok(mut active_name)) = (
+                    shared.ui_model_name.lock(),
+                    crate::common::diagnostics::ACTIVE_MODEL_NAME.write(),
+                ) {
+                    *active_name = name.clone();
+                }
+                crate::common::diagnostics::ACTIVE_SAMPLE_RATE.store(
+                    shared.sample_rate.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+
+                // Capture diagnostic bundle
+                let bundle = crate::common::diagnostics::DiagnosticBundle::capture();
+                let diagnostic_content = bundle.render();
+
+                // (a) Copy to clipboard
+                ui.ctx().copy_text(diagnostic_content.clone());
+
+                // (b) Save to file
+                if let Some(home_dir) = std::env::var_os("HOME") {
+                    let mut cache_dir = std::path::PathBuf::from(home_dir);
+                    cache_dir.push(".cache/nam-rs");
+                    if std::fs::create_dir_all(&cache_dir).is_ok() {
+                        #[cfg(unix)]
+                        {
+                            use std::fs::Permissions;
+                            use std::os::unix::fs::PermissionsExt;
+                            let _ =
+                                std::fs::set_permissions(&cache_dir, Permissions::from_mode(0o700));
+                        }
+                        let unix_ts = std::time::SystemTime::now()
+                            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        let file_path = cache_dir.join(format!("diagnostic-{unix_ts}.txt"));
+
+                        use std::fs::OpenOptions;
+                        let mut options = OpenOptions::new();
+                        options.write(true).create(true).truncate(true);
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::fs::OpenOptionsExt;
+                            options.mode(0o600);
+                        }
+                        if let Ok(mut file) = options.open(&file_path) {
+                            use std::io::Write;
+                            let _ = file.write_all(diagnostic_content.as_bytes());
+                        }
+                    }
+                }
+
+                // (c) Trigger toast notification
+                state.toast_expiration = Some(Instant::now() + Duration::from_secs(3));
+            }
+        });
     });
 }
 
@@ -964,15 +1041,34 @@ fn draw_zone5_status_bar(
 
         let a2_placeholder = shared.rt_status.check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
 
+        let is_toast_active = if let Some(expiration) = state.toast_expiration {
+            if Instant::now() < expiration {
+                ui.ctx().request_repaint();
+                true
+            } else {
+                state.toast_expiration = None;
+                false
+            }
+        } else {
+            false
+        };
+
         let available_h = ui.available_height();
         let has_meta = model_meta_opt.is_some();
         let line_height = 11.5;
         let spacing = 3.0;
-        let content_height = match (has_meta, a2_placeholder) {
-            (true, true) => 3.0 * line_height + 2.0 * spacing,
-            (true, false) | (false, true) => 2.0 * line_height + spacing,
-            (false, false) => line_height,
-        };
+
+        let mut lines = 1; // Telemetry is always present
+        if a2_placeholder {
+            lines += 1;
+        }
+        if has_meta {
+            lines += 1;
+        }
+        if is_toast_active {
+            lines += 1;
+        }
+        let content_height = lines as f32 * line_height + (lines - 1) as f32 * spacing;
 
         let extra_space = (available_h - content_height).max(0.0);
         let top_space = extra_space * 0.55;
@@ -983,7 +1079,7 @@ fn draw_zone5_status_bar(
             ui.spacing_mut().interact_size.y = 10.0;
 
             update_telemetry_state(state, shared);
-            draw_telemetry_strings(ui, state);
+            draw_telemetry_strings(ui, state, shared, accent_color);
 
             if a2_placeholder {
                 ui.horizontal(|ui| {
@@ -1001,6 +1097,41 @@ fn draw_zone5_status_bar(
                             .font(warn_font)
                             .color(COL_AMBER),
                     );
+                });
+            }
+
+            if is_toast_active {
+                ui.horizontal(|ui| {
+                    let toast_font = egui::FontId::proportional(9.0);
+                    ui.label(
+                        egui::RichText::new("Diagnostic copiado · arquivo em ~/.cache/nam-rs/")
+                            .font(toast_font.clone())
+                            .color(accent_color)
+                            .strong(),
+                    );
+                    #[cfg(target_os = "linux")]
+                    {
+                        ui.add_space(4.0);
+                        let open_btn = ui.add(
+                            egui::Button::new(
+                                egui::RichText::new("Open Folder")
+                                    .font(egui::FontId::proportional(8.5))
+                                    .color(COL_TEXT),
+                            )
+                            .fill(COL_PANEL)
+                            .stroke(egui::Stroke::new(0.5, COL_BORDER)),
+                        );
+                        if open_btn.clicked() {
+                            let home_dir = std::env::var_os("HOME");
+                            if let Some(home) = home_dir {
+                                let mut cache_dir = std::path::PathBuf::from(home);
+                                cache_dir.push(".cache/nam-rs");
+                                let _ = std::process::Command::new("xdg-open")
+                                    .arg(cache_dir)
+                                    .spawn();
+                            }
+                        }
+                    }
                 });
             }
 

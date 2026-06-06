@@ -21,6 +21,7 @@ Objective: first impression — layout, loading, sound, basic controls.
 - [ ] Zone 3 (right): **adaptive** VU meter — 1 centered bar (no label) 16px wide (mono).
 - [ ] Zone 4 (far right): **BYPASS** toggle with LED and `"ACTIVE"`/`"BYPASSED"` label.
 - [ ] Zone 5 (footer): status bar with RT telemetry (sample rate, latency, DSP load, CPU cycles, last N samples, RT priority, overruns/overloads, flags) and bottom line with model metadata (if loaded).
+- [ ] Zone 5 (footer) far right: small "ℹ" button/icon on the telemetry line for copying diagnostics.
 - [ ] 3 thin vertical separators visible between zones 1–4.
 
 ### 1.2 First load and sound
@@ -162,6 +163,17 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
+### 2L — Diagnostics & Copy Support Block
+
+- [ ] Status bar displays a small info button `"ℹ"` on the far right of the telemetry line.
+- [ ] Hover over `"ℹ"` button → shows tooltip: `"Copy Diagnostic info to clipboard and ~/.cache/nam-rs/"`.
+- [ ] Click `"ℹ"` button → visual toast confirmation `"Diagnostic copiado · arquivo em ~/.cache/nam-rs/"` appears in the status bar for 3 seconds.
+- [ ] Paste (Ctrl+V) anywhere → diagnostic support block is successfully pasted, containing system info (version, arch, os, kernel, features) and runtime state (model, sample rate).
+- [ ] Verify that a diagnostic file was created under `~/.cache/nam-rs/diagnostic-<unix_ts>.txt` with exact permission `0o600` (read/write by owner only).
+- [ ] While toast is visible, click `"Open Folder"` button next to it → file manager opens at `~/.cache/nam-rs/` via `xdg-open`.
+
+---
+
 ## Block 3 — Stress & Pedantry
 
 Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
@@ -249,5 +261,5 @@ Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
 **Buffer/Sample Rate:** <e.g.: 128 samples @ 48 kHz>
 **Expected:** <behavior described in the roadmap>
 **Observed:** <what actually happened>
-**Attachments:** GUI screenshot/video, DAW log, XRUNs from pw-top, RT telemetry from status bar.
+**Attachments:** GUI screenshot/video, DAW log, XRUNs from pw-top, Diagnostic support block (copied via "ℹ" button in the status bar).
 ```

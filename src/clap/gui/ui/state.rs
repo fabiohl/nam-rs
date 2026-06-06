@@ -102,12 +102,14 @@ pub struct UiState {
     pub telem_load_pct: f64,
     /// Damped cycle time in nanoseconds.
     pub telem_cycle_ns: u64,
-    /// Maximum time buffer in nanoseconds.
+    /// Maximum time budget in nanoseconds.
     pub telem_budget_ns: u64,
     /// Expiration of the visual error loading banner (None if not active).
     pub error_expiration: Option<Instant>,
     /// Short/summary error message.
     pub error_msg: String,
+    /// Expiration of the visual toast notification banner (None if not active).
+    pub toast_expiration: Option<Instant>,
     /// Cached status bar strings (SR, Lat, DSP%, Cycles, Last N, RT Prio, Overloads, Flags).
     pub status_strings: [String; 8],
     /// Corresponding tooltips for each status bar item.
@@ -187,6 +189,7 @@ impl Default for UiState {
             telem_budget_ns: 0,
             error_expiration: None,
             error_msg: String::new(),
+            toast_expiration: None,
             status_strings: Default::default(),
             status_tooltips: [
                 "Host DAW Sample Rate.\nThe neural model runs internally at 48 kHz. High quality resampling is automatically active if rates differ.",
