@@ -25,6 +25,9 @@ use std::sync::atomic::Ordering;
 
 /// Entry point for NAM-rs.
 fn main() -> anyhow::Result<()> {
+    // Install panic hook to capture crash diagnostics
+    nam_rs::common::panic_hook::install_panic_hook("standalone");
+
     // Initialize the logging backend (respects RUST_LOG; default: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -165,7 +168,7 @@ fn main() -> anyhow::Result<()> {
     std::thread::spawn(move || cli_loop(rt_status_cli));
 
     // Run the PipeWire host (blocking)
-    pw_host::run_pipewire_host(
+    let res = pw_host::run_pipewire_host(
         consumer,
         gc_producer,
         gc_overflow,
@@ -178,11 +181,15 @@ fn main() -> anyhow::Result<()> {
             sys,
         },
         gc_consumer,
-    )?;
+    );
+
+    // Signal shutdown to bypass panic hook during cleanup
+    nam_rs::common::panic_hook::set_shutdown_in_progress();
 
     unsafe {
         pipewire::deinit();
     }
+    res?;
     Ok(())
 }
 

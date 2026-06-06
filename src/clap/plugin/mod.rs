@@ -50,6 +50,11 @@ impl DefaultPluginFactory for NamClapPlugin {
     }
 
     fn new_shared(_host: HostSharedHandle<'_>) -> Result<Self::Shared<'_>, PluginError> {
+        static INIT_PANIC_HOOK: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        INIT_PANIC_HOOK.get_or_init(|| {
+            crate::common::panic_hook::install_panic_hook("clap");
+        });
+
         let (param_tx, param_rx) = RingBuffer::new(8);
         let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
 

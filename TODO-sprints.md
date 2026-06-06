@@ -456,7 +456,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 1.5 dia.
 
-#### Tarefa S9.T05 — Panic hook persiste `DiagnosticBundle` antes do abort 🔥
+#### Tarefa S9.T05 — Panic hook persiste `DiagnosticBundle` antes do abort 🔥 [DONE]
 
 - **Onde:** `src/main.rs::main` (standalone); `src/clap/plugin/mod.rs` (init do plugin, `DefaultPluginFactory`); novo `src/common/panic_hook.rs`.
 - **Problema:** Em hosts C++ (Bitwig, FL Studio), um panic Rust pode terminar o processo sem flush de `log::error!` — bundle perdido. Adicionalmente, panics fora de callbacks FFI ainda perdem info.

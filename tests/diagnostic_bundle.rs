@@ -151,3 +151,131 @@ fn test_rt_status_flags_provider_populated() {
     assert_eq!(snapshot.telemetry.drains, 7);
     assert_eq!(snapshot.flags_seen, 0x4b);
 }
+
+#[test]
+fn test_panic_hook_behavior() {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let home = match std::env::var_os("HOME") {
+        Some(h) => PathBuf::from(h),
+        None => return,
+    };
+    let cache_dir = home.join(".cache/nam-rs");
+    let _ = fs::create_dir_all(&cache_dir);
+
+    // Part 1: Test persistence when shutdown is NOT in progress.
+    let component_name = "test-panic-persistence";
+
+    // Clear old files
+    if let Ok(entries) = fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let is_target = path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|name| name.contains(component_name))
+                    .unwrap_or(false);
+            if is_target {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+
+    let prev_hook = std::panic::take_hook();
+    nam_rs::common::panic_hook::install_panic_hook(component_name);
+
+    let result = std::panic::catch_unwind(|| {
+        panic!("Controlled testing panic message");
+    });
+    assert!(result.is_err());
+
+    std::panic::set_hook(prev_hook);
+
+    // Verify report
+    let mut found_report = None;
+    if let Ok(entries) = fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let is_target = path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|name| name.contains(component_name) && name.ends_with(".txt"))
+                    .unwrap_or(false);
+            if is_target {
+                found_report = Some(path);
+                break;
+            }
+        }
+    }
+
+    let report_path = found_report.expect("Crash report file should be created");
+    let content = fs::read_to_string(&report_path).expect("Should read report content");
+
+    assert!(content.contains("NAM-rs CRASH REPORT"));
+    assert!(content.contains(&format!("Component: {}", component_name)));
+    assert!(content.contains("Location:"));
+    assert!(content.contains("Message: Controlled testing panic message"));
+    assert!(content.contains("──── Runtime State ─────────────────────────────"));
+    assert!(content.contains("arch="));
+    assert!(content.contains("os="));
+
+    let _ = fs::remove_file(report_path);
+
+    // Part 2: Test bypass when shutdown IS in progress.
+    let component_bypass = "test-panic-bypass";
+
+    // Clear old files
+    if let Ok(entries) = fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let is_target = path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|name| name.contains(component_bypass))
+                    .unwrap_or(false);
+            if is_target {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+
+    nam_rs::common::panic_hook::set_shutdown_in_progress();
+    assert!(nam_rs::common::panic_hook::is_shutdown_in_progress());
+
+    let prev_hook = std::panic::take_hook();
+    nam_rs::common::panic_hook::install_panic_hook(component_bypass);
+
+    let result = std::panic::catch_unwind(|| {
+        panic!("Controlled panic during shutdown");
+    });
+    assert!(result.is_err());
+
+    std::panic::set_hook(prev_hook);
+
+    // Verify NO report was created
+    let mut found_bypass_report = false;
+    if let Ok(entries) = fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let is_target = path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|f| f.to_str())
+                    .map(|name| name.contains(component_bypass))
+                    .unwrap_or(false);
+            if is_target {
+                found_bypass_report = true;
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+
+    assert!(
+        !found_bypass_report,
+        "No report should be written if shutdown is in progress"
+    );
+}

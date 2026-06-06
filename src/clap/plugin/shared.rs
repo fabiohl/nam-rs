@@ -133,6 +133,7 @@ impl<'a> PluginShared<'a> for NamClapShared {}
 impl Drop for NamClapShared {
     fn drop(&mut self) {
         self.alive_fence.store(false, Ordering::Relaxed);
+        crate::common::panic_hook::set_shutdown_in_progress();
     }
 }
 
