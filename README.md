@@ -2,11 +2,11 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
-# 🎸 NAM-rs 1.6.0
+# 🎸 NAM-rs 1.7.0
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
 
-> ⚠️ **Standalone PipeWire:** STABLE | **CLAP Plugin:** BETA (GUI completa, 8 extensões)
+> ⚠️ **Standalone PipeWire:** STABLE | **CLAP Plugin:** Release Candidate (GUI completa, 8 extensões)
 
 **NAM-rs** is a cutting-edge, high-fidelity real-time [Neural Amp Modeler (NAM)](https://www.neuralampmodeler.com/) client designed for simulating guitar amplifiers, pedals, and studio gear with absolute precision. Powered by custom minimum-phase polyphase FIR resamplers and hand-crafted SIMD vectorized kernels (AVX2/AVX-512 delivering up to 45x speedups over scalar baselines), it guarantees **absolute real-time safety** with zero heap allocations on the audio thread. Sonically, it maintains uncompromising fidelity: rigorous cross-validation (Cross-Validation v2) using multi-component stress signals and advanced perceptual metrics—such as Error-to-Signal Ratio (ESR) and Multi-Resolution STFT—confirms that the generated audio achieves mathematical and auditory parity with the canonical C++ reference implementation under any sample rate.
 
