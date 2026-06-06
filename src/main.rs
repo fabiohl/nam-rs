@@ -122,11 +122,7 @@ fn main() -> anyhow::Result<()> {
                     channels: model_l.as_ref().map(|m| m.channels()).unwrap_or(0),
                     receptive_field: model_l.as_ref().map(|m| m.receptive_field()).unwrap_or(0),
                     weights_layout: weights_layout.clone(),
-                    path_basename: path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("")
-                        .to_string(),
+                    path_basename: path.to_string_lossy().into_owned(),
                 };
                 if let Ok(mut info_guard) = nam_rs::diagnostics::ACTIVE_MODEL_INFO.write() {
                     *info_guard = Some(model_info);

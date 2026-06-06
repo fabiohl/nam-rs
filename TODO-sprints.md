@@ -476,7 +476,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 1 dia.
 
-#### Tarefa S9.T06 — Sanitização e política de redação 💡
+#### Tarefa S9.T06 — Sanitização e política de redação 💡 [DONE]
 
 - **Onde:** `src/common/diagnostics/diagnostic.rs` (renderização do bundle).
 - **Problema:** Bundle atual já redige pouco. Paths absolutos podem expor `/home/<user>/...` em logs públicos.

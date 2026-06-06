@@ -381,6 +381,13 @@ impl HasRuntimeSnapshot for crate::common::spsc::RtStatusFlags {
 }
 
 /// Decoupled diagnostic bundle containing system information, runtime state, and optional error.
+///
+/// # Privacy & Redaction Policy
+/// To protect user privacy when sharing support blocks publicly:
+/// - By default (when `full` is false), absolute path prefixes like `$HOME` are replaced with `~`,
+///   and `$XDG_RUNTIME_DIR` are replaced with `$XDG_RUNTIME_DIR`. Basenames of model files are shown instead of full paths.
+/// - When `full` is true (e.g. `--diagnose-full` or interactive `:diag --full`), paths are shown unredacted (bruto).
+/// - Weights content, audio signals, and user/host names are never captured or included.
 #[derive(Debug, Clone)]
 pub struct DiagnosticBundle {
     /// System snapshot (OS, kernel, etc).
@@ -391,6 +398,32 @@ pub struct DiagnosticBundle {
     pub error: Option<ErrorContext>,
     /// Whether to print absolute paths unredacted.
     pub full: bool,
+}
+
+/// Helper function to redact paths by replacing `$HOME` with `~` and `$XDG_RUNTIME_DIR` with `$XDG_RUNTIME_DIR`.
+/// Returns the raw (unredacted) path if `full` is true.
+fn redact_path(p: &std::path::Path, full: bool) -> String {
+    if full {
+        return p.to_string_lossy().into_owned();
+    }
+
+    // Check XDG_RUNTIME_DIR prefix
+    if let Some(xdg_runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let xdg_path = std::path::Path::new(&xdg_runtime_dir);
+        if let Ok(stripped) = p.strip_prefix(xdg_path) {
+            return format!("$XDG_RUNTIME_DIR/{}", stripped.to_string_lossy());
+        }
+    }
+
+    // Check HOME prefix
+    if let Some(home_dir) = std::env::var_os("HOME") {
+        let home_path = std::path::Path::new(&home_dir);
+        if let Ok(stripped) = p.strip_prefix(home_path) {
+            return format!("~/{}", stripped.to_string_lossy());
+        }
+    }
+
+    p.to_string_lossy().into_owned()
 }
 
 /// Helper function to format model paths.
@@ -487,7 +520,17 @@ impl DiagnosticBundle {
             let param_line: String = err
                 .params
                 .iter()
-                .map(|(k, v)| format!("{k}={v}"))
+                .map(|(k, v)| {
+                    let v_redacted = {
+                        let path = std::path::Path::new(v);
+                        if path.is_absolute() {
+                            redact_path(path, self.full)
+                        } else {
+                            v.clone()
+                        }
+                    };
+                    format!("{k}={v_redacted}")
+                })
                 .collect::<Vec<_>>()
                 .join(" ");
             block.push_str(&param_line);
@@ -529,6 +572,16 @@ impl DiagnosticBundle {
         }
 
         if let Some(ref model) = self.runtime.model {
+            let path_val = if self.full {
+                model.path_basename.clone()
+            } else {
+                let path = std::path::Path::new(&model.path_basename);
+                if let Some(file_name) = path.file_name() {
+                    file_name.to_string_lossy().into_owned()
+                } else {
+                    model.path_basename.clone()
+                }
+            };
             block.push_str(&format!(
                 "model.arch={}\n\
                  model.channels={}\n\
@@ -539,7 +592,7 @@ impl DiagnosticBundle {
                 model.channels,
                 model.receptive_field,
                 model.weights_layout,
-                model.path_basename
+                path_val
             ));
             model_printed = true;
         }

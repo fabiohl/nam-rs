@@ -279,3 +279,105 @@ fn test_panic_hook_behavior() {
         "No report should be written if shutdown is in progress"
     );
 }
+
+#[test]
+fn test_diagnostic_bundle_path_redaction() {
+    // Save current env vars to restore later if modified, or just use them.
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/home/mockuser".to_string());
+    let xdg = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/user/1000".to_string());
+
+    // We override standard env vars if they are empty for the test
+    if std::env::var("HOME").is_err() {
+        unsafe {
+            std::env::set_var("HOME", &home);
+        }
+    }
+    if std::env::var("XDG_RUNTIME_DIR").is_err() {
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", &xdg);
+        }
+    }
+
+    let home_path = format!("{}/nam-rs/models/test_model.nam", home);
+    let xdg_path = format!("{}/pipewire-0", xdg);
+
+    // Mock provider with a full path in model.path_basename
+    let provider = MockSnapshotProvider {
+        model: Some(ModelInfo {
+            arch_label: "WaveNet".to_string(),
+            channels: 16,
+            receptive_field: 2048,
+            weights_layout: "Interleaved4WaveNet".to_string(),
+            path_basename: home_path.clone(),
+        }),
+        audio: AudioInfo {
+            sample_rate: 48000,
+            buffer_size: 256,
+            channel_count: 2,
+            host_name: "CLAP".to_string(),
+        },
+        rt: RtInfo {
+            thread_priority: 90,
+            scheduler: "FIFO".to_string(),
+            cpu_pinned: Some(3),
+            huge_pages_active: true,
+        },
+        telemetry: TelemetrySnapshot::default(),
+        flags: 0,
+    };
+
+    // Case A: Default capture (redacted)
+    let bundle_default = DiagnosticBundle::capture_with_runtime(&provider);
+    let rendered_default = bundle_default.render();
+
+    // Verifications for default capture
+    // 1. Should NOT contain raw HOME path
+    assert!(!rendered_default.contains(&home_path));
+    // 2. model.path_basename should be formatted to just the basename
+    assert!(rendered_default.contains("model.path_basename=test_model.nam"));
+    // 3. model should also print only the basename
+    assert!(rendered_default.contains("model=test_model.nam"));
+
+    // Now test parameter redaction. Let's capture with an error containing paths
+    let params = vec![
+        ("model_path", home_path.clone()),
+        ("socket_path", xdg_path.clone()),
+    ];
+    let bundle_err = DiagnosticBundle::capture_with_error(
+        nam_rs::common::diagnostics::NamErrorCode::ModelBuildFailed,
+        params,
+    );
+    let rendered_err_default = bundle_err.render();
+
+    // Verifications for default error parameters
+    assert!(rendered_err_default.contains("model_path=~/nam-rs/models/test_model.nam"));
+    assert!(rendered_err_default.contains("socket_path=$XDG_RUNTIME_DIR/pipewire-0"));
+    assert!(!rendered_err_default.contains(&home_path));
+    assert!(!rendered_err_default.contains(&xdg_path));
+
+    // Case B: Full capture (unredacted / bruto)
+    let bundle_full = DiagnosticBundle::capture_with_runtime(&provider).with_full(true);
+    let rendered_full = bundle_full.render();
+
+    // Verifications for full capture
+    // 1. Should contain raw HOME path
+    assert!(rendered_full.contains(&home_path));
+    // 2. model.path_basename should print full path
+    assert!(rendered_full.contains(&format!("model.path_basename={}", home_path)));
+    // 3. model should print full path
+    assert!(rendered_full.contains(&format!("model={}", home_path)));
+
+    // Full error parameters
+    let bundle_err_full = DiagnosticBundle::capture_with_error(
+        nam_rs::common::diagnostics::NamErrorCode::ModelBuildFailed,
+        vec![
+            ("model_path", home_path.clone()),
+            ("socket_path", xdg_path.clone()),
+        ],
+    )
+    .with_full(true);
+    let rendered_err_full = bundle_err_full.render();
+
+    assert!(rendered_err_full.contains(&format!("model_path={}", home_path)));
+    assert!(rendered_err_full.contains(&format!("socket_path={}", xdg_path)));
+}
