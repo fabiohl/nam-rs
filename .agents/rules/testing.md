@@ -36,14 +36,25 @@ Unit tests should test the internal logic of each module.
 ## 2. Integration Tests
 
 Tests that exercise the crate's public API or multiple integrated modules should be placed in the root `tests/` directory.
-Important: When creating new tests, always judge whether a test is worth running with every `cargo test` or if it can be moved to `utils/tests-long.sh`. Very long tests are a temptation to skip. `cargo test` should be reserved only for things with a risk of breaking on every commit, which truly need to be verified always.
+
+- **Standard/Fast Integration Tests:** Should be run as part of the daily developer verification flow via `utils/tests-cargo.sh` (which runs all unit, integration, CLAP/heap-audit tests, and `clap-validator` in under 1.5 minutes).
+- **Long-Duration Stress/Soak Tests:** Slow or heavy tests (such as soak/endurance checks, property-based parsing/math sweeps, C++ parity verifications) should be marked with `#[ignore]` and run exclusively via the decoupled long-duration audit suite `utils/tests-long.sh` (± 30 minutes).
 
 ## 3. Benchmarks
 
 Performance benchmarks using the `criterion` framework should be placed in the root `benches/` directory.
-Important: When creating new benchmarks, always judge whether a benchmark is worth running with every `cargo bench` or if it can be moved to `utils/tests-long.sh`. Very long benchmarks are a temptation to skip. `cargo bench` should be reserved only for things with a risk of breaking on every commit, which truly need to be verified always.
 
-## 4. Code Requirements
+- **Fast Benchmarks:** Run as part of standard iterations.
+- **Long-Running / Throughput Benchmarks:** Benchmarks requiring long measurement times (e.g. 30s+ with the `long_bench` feature enabled) should be deferred to `utils/tests-long.sh` to keep normal workflows fast.
+
+## 4. Test Verification Scripts
+
+Developers should use the following scripts under `utils/` before pushing commits:
+
+- `utils/tests-cargo.sh`: Runs the standard unit and integration tests (with `--test-threads=1`), builds the debug CLAP library with heap audits, and performs strict validation.
+- `utils/tests-long.sh`: Runs the decoupled 5-phase long-duration audit (Soak, Proptests, Parity/Heap-Audits, Release CLAP Validation, and Long Benchmarks), logging execution output to `target/logs/`.
+
+## 5. Code Requirements
 
 - All new test files must include the Copyright and License header.
 - Tests must not perform heap allocations if testing hot-path DSP code (use `CountingAllocator` when necessary).

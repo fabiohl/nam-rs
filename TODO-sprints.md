@@ -354,7 +354,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ### Sprint S8 — DSP Suplementar
 
-#### Tarefa S8.T01 — IR cabsim convolution (uniformly-partitioned FFT) ✨🔥
+#### Tarefa S8.T01 — IR cabsim convolution (uniformly-partitioned FFT) ✨🔥 [ADIADO]
 
 - **Onde:** novo `src/dsp/ir_cab.rs`.
 - **Problema/Oportunidade:** Workflow NAM é "amp + cabinet". Hoje, usuário precisa de plugin separado (Topaz, NadIR). Integrar cabsim com convolução IR (impulse response, .wav de 4096–8192 spl) **elimina um plugin do chain** e habilita workflow "amp+cab presets" únicos.

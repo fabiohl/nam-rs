@@ -3,11 +3,10 @@
 # Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 #
 # Intensive long-duration verification suite for nam-rs.
-# Serves as a continuation of utils/tests-cargo.sh. First runs standard tests,
-# then proceeds with numerical soak tests, proptest fuzzing, NeuralAmpModelerCore parity checks,
+# Performs numerical soak tests, proptest fuzzing, NeuralAmpModelerCore parity checks,
 # CLAP release compliance, multi-instance stress tests, and long-running performance benchmarks.
 
-set -euo pipefail
+set -uo pipefail
 
 # Style helpers
 RED='\033[0;31m'
@@ -17,21 +16,16 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "${BLUE}${BOLD}================================================================${NC}"
-echo -e "${BLUE}${BOLD}          nam-rs Long-Duration Stress & Audit Suite             ${NC}"
-echo -e "${BLUE}${BOLD}================================================================${NC}"
+echo -e "${BLUE}${BOLD}===============================================================${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 30 minutos)   ${NC}"
+echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
-# 1. Run standard test suite first (continuation pattern)
-echo -e "\n${BLUE}${BOLD}[Phase 1/7] Iniciando a suíte de testes padrão (tests-cargo.sh)...${NC}"
-./utils/tests-cargo.sh
-
-# 2. Soak/Stress tests setup
-echo -e "\n${BLUE}${BOLD}[Phase 2/7] Configurando testes de Soak e Estresse...${NC}"
+# Setup target logs
 rm -rf target/logs/
 mkdir -p target/logs/
 
@@ -41,72 +35,143 @@ if [ ! -d "tests/fixtures/NeuralAmpModelerCore" ]; then
     git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git tests/fixtures/NeuralAmpModelerCore
 fi
 
-# 3. Soak Tests (Numerical Stability)
-echo -e "\n${BLUE}${BOLD}[Phase 3/7] Executando testes de estabilidade numérica (Soak)...${NC}"
-cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 2>&1 | tee target/logs/soak-test.log
-cargo test --release --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1 2>&1 | tee target/logs/pipeline-soak.log
+# Trackers for the final summary
+declare -a PHASE_NAMES
+declare -a PHASE_COMMANDS
+declare -a PHASE_STATUS
+declare -a PHASE_DURATIONS
+PHASE_COUNT=0
 
-# 4. Property-Based and Parity Tests in Release
-echo -e "\n${BLUE}${BOLD}[Phase 4/7] Executando testes baseados em propriedades (Proptests)...${NC}"
-cargo test --release --test proptest_parsers -- --ignored 2>&1 | tee target/logs/proptest-parsers.log
-cargo test --release --test proptest_math -- --ignored 2>&1 | tee target/logs/proptest-math.log
-cargo test --release --test lstm_gate_bf16_parity -- --ignored 2>&1 | tee target/logs/lstm-gate-bf16-parity.log
-cargo test --release --test lstm_scalar_bf16_parity -- --ignored 2>&1 | tee target/logs/lstm-scalar-bf16-parity.log
-cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored 2>&1 | tee target/logs/pipeline-block-proptest.log
-cargo test --release --test gate_fsm_proptest -- --ignored 2>&1 | tee target/logs/gate-fsm-proptest.log
+run_phase() {
+    local name="$1"
+    local cmd="$2"
+    local log_file="$3"
 
-# 5. Resampler Heap-Audit and C++ Parity
-echo -e "\n${BLUE}${BOLD}[Phase 5/7] Executando auditoria do resampler e paridade C++...${NC}"
-cargo test --release --features heap-audit --test resampler_heap_audit 2>&1 | tee target/logs/resampler-heap-audit.log
-cargo test --release --test cpp_parity -- --ignored --nocapture 2>&1 | tee target/logs/cpp-parity.log
+    echo -e "\n${BLUE}${BOLD}[Phase $((PHASE_COUNT+1))] $name...${NC}"
+    echo -e "Executando: ${YELLOW}$cmd${NC}"
+    echo -e "Log em: ${YELLOW}target/logs/$log_file${NC}"
 
-# 6. CLAP Release Validation with Heap Alloc Audit
-echo -e "\n${BLUE}${BOLD}[Phase 6/7] Validando conformidade CLAP em modo Release...${NC}"
-RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
-  cargo build --release --target-dir target/clap-test --no-default-features --features "clap-plugin,heap-audit" --lib
+    local start_time=$(date +%s)
 
-RELEASE_CLAP_BIN="target/clap-test/release/libnam_rs.so"
-if [ ! -f "$RELEASE_CLAP_BIN" ]; then
-    echo -e "${RED}Erro: Falha ao encontrar biblioteca CLAP Release em $RELEASE_CLAP_BIN!${NC}"
+    # Run command and capture output/status
+    eval "$cmd" > "target/logs/$log_file" 2>&1
+    local status=$?
+
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    PHASE_NAMES[$PHASE_COUNT]="$name"
+    PHASE_COMMANDS[$PHASE_COUNT]="$cmd"
+    PHASE_DURATIONS[$PHASE_COUNT]="$duration"
+
+    if [ $status -eq 0 ]; then
+        echo -e "${GREEN}✓ Sucesso (${duration}s)${NC}"
+        PHASE_STATUS[$PHASE_COUNT]="PASSED"
+    else
+        echo -e "${RED}❌ Falha (${duration}s) - Status: $status${NC}"
+        PHASE_STATUS[$PHASE_COUNT]="FAILED"
+    fi
+
+    PHASE_COUNT=$((PHASE_COUNT + 1))
+    return $status
+}
+
+# --- Phase 1: Soak/Stress tests (Numerical Stability) ---
+run_phase \
+    "Soak Tests (Numerical Stability)" \
+    "cargo test --release --features standalone --test soak_test -- --ignored --nocapture --test-threads=1 && cargo test --release --features standalone --test pipeline_soak -- --ignored --nocapture --test-threads=1" \
+    "phase1-soak.log"
+
+# --- Phase 2: Property-Based and Parity Tests in Release ---
+run_phase \
+    "Property-Based & Parity Tests in Release" \
+    "cargo test --release --test proptest_parsers -- --ignored && cargo test --release --test proptest_math -- --ignored && cargo test --release --test lstm_gate_bf16_parity -- --ignored && cargo test --release --test lstm_scalar_bf16_parity -- --ignored && cargo test --release --lib -- dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest --ignored && cargo test --release --test gate_fsm_proptest -- --ignored" \
+    "phase2-proptests.log"
+
+# --- Phase 3: Resampler Heap-Audit and C++ Parity ---
+run_phase \
+    "Resampler Heap-Audit & C++ Parity" \
+    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture" \
+    "phase3-parity-audit.log"
+
+# --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---
+run_clap_audit_local() {
+    echo "  Limpando diretório target do CLAP..."
+    cargo clean --target-dir target/clap-test
+
+    echo "  Compilando CLAP Plugin em modo Release..."
+    RUSTFLAGS="-Clink-arg=-Wl,-soname,nam-rs.clap" \
+      cargo build --release --target-dir target/clap-test --no-default-features --features "clap-plugin,heap-audit" --lib
+
+    local RELEASE_CLAP_BIN="target/clap-test/release/libnam_rs.so"
+    if [ ! -f "$RELEASE_CLAP_BIN" ]; then
+        echo "Erro: libnam_rs.so de release não encontrado." >&2
+        return 1
+    fi
+
+    echo "  Auditando SONAME e símbolos exportados..."
+    if ! readelf -d "$RELEASE_CLAP_BIN" | grep -q SONAME; then
+        echo "Erro: SONAME ausente no binário de Release!" >&2
+        return 1
+    fi
+    if ! nm -D "$RELEASE_CLAP_BIN" | grep -q "clap_entry"; then
+        echo "Erro: Símbolo 'clap_entry' ausente no binário de Release!" >&2
+        return 1
+    fi
+
+    if command -v clap-validator >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+        echo "  Executando clap-validator estrito..."
+        NAM_HEAP_AUDIT=1 clap-validator validate "$RELEASE_CLAP_BIN" --json > target/logs/release-validation.json 2> target/logs/release-validation.stderr
+        if ! jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/release-validation.json >/dev/null; then
+            echo "Erro: Falha ou avisos detectados pelo clap-validator!" >&2
+            return 1
+        fi
+    else
+        echo "  Aviso: clap-validator ou jq indisponíveis. Pulando auditoria externa."
+    fi
+
+    echo "  Executando testes de concorrência com instâncias múltiplas..."
+    cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture
+}
+
+run_phase \
+    "CLAP Release Validation & Concurrency" \
+    "run_clap_audit_local" \
+    "phase4-clap-validation.log"
+
+# --- Phase 5: Long Benchmarks (Performance) ---
+run_phase \
+    "Long Performance Benchmarks" \
+    "cargo bench && cargo bench --features standalone,long_bench --bench inference_bench" \
+    "phase5-benchmarks.log"
+
+# --- Print beautifully structured summary ---
+echo -e "\n${BLUE}${BOLD}================================================================${NC}"
+echo -e "${BLUE}${BOLD}                  AUDIT SUMMARY REPORT                          ${NC}"
+echo -e "${BLUE}${BOLD}================================================================${NC}"
+printf " | %-45s | %-10s | %-10s |\n" "Phase Name" "Duration" "Status"
+printf " |-%-45s-|-%-10s-|-%-10s-|\n" "---------------------------------------------" "----------" "----------"
+
+ANY_FAILED=0
+for ((i=0; i<PHASE_COUNT; i++)); do
+    name="${PHASE_NAMES[$i]}"
+    duration="${PHASE_DURATIONS[$i]}s"
+    status="${PHASE_STATUS[$i]}"
+
+    if [ "$status" = "PASSED" ]; then
+        status_colored="${GREEN}${status}${NC}"
+    else
+        status_colored="${RED}${status}${NC}"
+        ANY_FAILED=1
+    fi
+    printf " | %-45s | %-10s | %-19b |\n" "$name" "$duration" "$status_colored"
+done
+echo -e "${BLUE}${BOLD}================================================================${NC}"
+
+if [ $ANY_FAILED -eq 0 ]; then
+    echo -e "${GREEN}${BOLD}✓ Todos os estágios da auditoria passaram com sucesso!${NC}"
+    exit 0
+else
+    echo -e "${RED}${BOLD}❌ Algum estágio da auditoria falhou. Verifique os logs em target/logs/${NC}"
     exit 1
 fi
-
-# Audit release binary properties
-echo -e "  Auditando propriedades do binário de Release..."
-if readelf -d "$RELEASE_CLAP_BIN" | grep -q SONAME; then
-    echo -e "    ${GREEN}✓${NC} SONAME presente."
-else
-    echo -e "${RED}    ❌ Erro: SONAME ausente!${NC}"
-    exit 1
-fi
-
-if nm -D "$RELEASE_CLAP_BIN" | grep -q "clap_entry"; then
-    echo -e "    ${GREEN}✓${NC} Símbolo 'clap_entry' presente."
-else
-    echo -e "${RED}    ❌ Erro: Símbolo 'clap_entry' ausente!${NC}"
-    exit 1
-fi
-
-# Run clap-validator on release binary
-if command -v clap-validator >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    NAM_HEAP_AUDIT=1 \
-      clap-validator validate "$RELEASE_CLAP_BIN" --json 2>target/logs/release-validation.stderr.log | tee target/logs/release-validation.json
-    jq -e '[.. | objects | select(.code? == "failure" or .code? == "warning")] | length == 0' target/logs/release-validation.json >/dev/null
-    echo -e "    ${GREEN}✓${NC} Validação clap-validator sem avisos/falhas."
-else
-    echo -e "${YELLOW}    Aviso: clap-validator ou jq não instalados. Pulando validação estrita.${NC}"
-fi
-
-# Multi-instance stress tests
-echo -e "  Executando teste de concorrência com instâncias múltiplas..."
-cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture 2>&1 | tee target/logs/clap-multi-instance.log
-
-# 7. Long Benchmarks (Performance)
-echo -e "\n${BLUE}${BOLD}[Phase 7/7] Executando benchmarks de performance longos...${NC}"
-cargo bench
-cargo bench --features "standalone,long_bench" --bench inference_bench 2>&1 | tee target/logs/long-bench.log
-
-echo -e "\n${GREEN}${BOLD}================================================================${NC}"
-echo -e "${GREEN}${BOLD}          Auditoria de Longa Duração Concluída com Sucesso!     ${NC}"
-echo -e "${GREEN}${BOLD}================================================================${NC}"
-echo -e "  Logs persistidos em: ${YELLOW}target/logs/${NC}"

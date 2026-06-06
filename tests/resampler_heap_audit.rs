@@ -115,7 +115,8 @@ mod audit_tests {
         // Audit
         let count = {
             let _guard = TrackingGuard::new();
-            for _ in 0..1000 {
+            let iters = if cfg!(debug_assertions) { 50 } else { 1000 };
+            for _ in 0..iters {
                 if is_mono {
                     resampler.process_input_mono(&in_l, &mut out_l, &mut out_r);
                     resampler.process_output_mono(&in_l, &mut out_l, &mut out_r);

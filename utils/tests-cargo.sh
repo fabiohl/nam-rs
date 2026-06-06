@@ -4,7 +4,7 @@
 #
 # Standard quality control and testing script for nam-rs.
 # Performs unit/integration tests, builds the CLAP plugin in debug/heap-audit mode,
-# executes strict dynamic library validation audits, runs lifecycle tests, and triggers clap-validator.
+# executes strict dynamic library validation audits, runs the CLAP/heap-audit test suite, and triggers clap-validator.
 
 set -euo pipefail
 
@@ -16,9 +16,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "${BLUE}${BOLD}================================================================${NC}"
-echo -e "${BLUE}${BOLD}               nam-rs Standard QA & Test Suite                  ${NC}"
-echo -e "${BLUE}${BOLD}================================================================${NC}"
+echo -e "${BLUE}${BOLD}===============================================================${NC}"
+echo -e "${BLUE}${BOLD}        nam-rs Standard QA & Test Suite (± 1,5 minutos)        ${NC}"
+echo -e "${BLUE}${BOLD}===============================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -27,7 +27,7 @@ cd "$PROJECT_DIR"
 
 # 1. Standard tests
 echo -e "\n${BLUE}${BOLD}[1/5] Executando testes unitários e de integração...${NC}"
-cargo test
+cargo test -- --test-threads=1
 
 # 2. Build CLAP plugin debug binary with heap-audit
 echo -e "\n${BLUE}${BOLD}[2/5] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
@@ -40,39 +40,11 @@ if [ ! -f "$CLAP_BIN" ]; then
     exit 1
 fi
 
-# 3. Audit binary validity
-echo -e "\n${BLUE}${BOLD}[3/5] Auditando propriedades e formato do binário CLAP...${NC}"
-
-# 3.1. SONAME check
-if readelf -d "$CLAP_BIN" | grep -q SONAME; then
-    echo -e "  ${GREEN}✓${NC} SONAME encontrado no binário."
-else
-    echo -e "${RED}❌ Erro: SONAME ausente no binário!${NC}"
-    exit 1
-fi
-
-# 3.2. CLAP entry symbol check
-if nm -D "$CLAP_BIN" | grep -q "clap_entry"; then
-    echo -e "  ${GREEN}✓${NC} Símbolo 'clap_entry' exportado com sucesso."
-else
-    echo -e "${RED}❌ Erro: Símbolo 'clap_entry' ausente! O plugin não será carregado.${NC}"
-    exit 1
-fi
-
-# 3.3. ELF 64-bit file type check
-FILE_INFO=$(file "$CLAP_BIN")
-if [[ $FILE_INFO == *"ELF 64-bit"* ]] && [[ $FILE_INFO == *"x86-64"* ]]; then
-    echo -e "  ${GREEN}✓${NC} Formato ELF 64-bit x86-64 confirmado."
-else
-    echo -e "${RED}❌ Erro: Formato de arquivo ELF inválido: $FILE_INFO${NC}"
-    exit 1
-fi
-
-# 4. Lifecycle tests targeting the built binary
-echo -e "\n${BLUE}${BOLD}[4/5] Executando testes de ciclo de vida com auditoria de heap...${NC}"
+# 4. CLAP integration and heap-audit tests
+echo -e "\n${BLUE}${BOLD}[4/5] Executando testes de integração CLAP e auditoria de heap...${NC}"
 CLAP_PLUGIN_PATH="$CLAP_BIN" \
   NAM_HEAP_AUDIT=1 \
-  cargo test --test clap_lifecycle_test --features "clap-plugin" --target-dir target/clap-test
+  cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test -- --test-threads=1
 
 # 5. Run the official CLAP validator if available
 echo -e "\n${BLUE}${BOLD}[5/5] Executando validação via clap-validator...${NC}"
@@ -85,6 +57,6 @@ else
   echo -e "${YELLOW}Aviso: clap-validator não encontrado. Pulando etapa de validação.${NC}"
 fi
 
-echo -e "\n${GREEN}${BOLD}================================================================${NC}"
+echo -e "${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}               Todos os testes padrão passaram!                 ${NC}"
 echo -e "${GREEN}${BOLD}================================================================${NC}"

@@ -160,16 +160,16 @@ Two levels of parsing operations are provided:
 
 ## 🧪 Tests & Validation
 
-NAM-rs maintains a suite of approximately **230 automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. To simplify development and QA flows, use the scripts located under `utils/`:
+NAM-rs maintains a suite of approximately **350+ automated checks** anchored against the canonical [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) implementation. To simplify development and QA flows, use the scripts located under `utils/`:
 
 ```bash
 # 1. Lint & Quality (Formatting + Clippy + Feature Matrix)
 utils/lints.sh
 
-# 2. Standard Suite (Unit + Integration + Fast Benchmarks)
+# 2. Standard QA Suite (Unit/Integration Tests + CLAP Plugin Build/Heap-Audit + CLAP Validator)
 utils/tests-cargo.sh
 
-# 3. Soak, Stress & Cross-Validation Tests (Long-duration + C++ parity)
+# 3. Long-Duration Stress & Audit Suite (Soak + Proptests + Heap-Audit/Parity + CLAP Release Validation + Benchmarks)
 utils/tests-long.sh
 ```
 

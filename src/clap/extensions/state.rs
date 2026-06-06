@@ -77,6 +77,11 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             .param_bypass
             .load(std::sync::atomic::Ordering::Relaxed)
             != 0;
+        self.params.adaptive_compute = crate::common::params::AdaptiveComputeMode::from_f32(
+            self.shared
+                .param_adaptive_compute
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
 
         let envelope = StateEnvelope {
             version: CURRENT_STATE_VERSION,
