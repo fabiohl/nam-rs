@@ -5,6 +5,13 @@
 //! neural inference, output gain/clipping, and bridge writing.
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+/// Global control to disable the noise gate/silence bypass during profiling/benchmarks.
+pub static DISABLE_GATE: AtomicBool = AtomicBool::new(false);
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::common::spsc::RtStatusFlags;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
@@ -72,7 +79,12 @@ pub(crate) fn apply_input_stage(
 
     // If the gate is fully closed (absolute silence), we stop here to save battery/CPU.
     if ctx.silence_hysteresis.state() == GateState::Closed {
-        return GateState::Closed;
+        if DISABLE_GATE.load(Ordering::Relaxed) {
+            // Keep running the model, return FadingIn or Open so the pipeline runs neural inference
+            return GateState::Open;
+        } else {
+            return GateState::Closed;
+        }
     }
 
     #[cfg(feature = "stereo")]

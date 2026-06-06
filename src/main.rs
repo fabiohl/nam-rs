@@ -28,6 +28,11 @@ fn main() -> anyhow::Result<()> {
     // Initialize the logging backend (respects RUST_LOG; default: info)
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
+    if std::env::var("NAM_DISABLE_GATE").is_ok() {
+        nam_rs::dsp::pipeline::DISABLE_GATE.store(true, Ordering::Relaxed);
+        log::info!("⚡ Noise gate disabled via NAM_DISABLE_GATE environment variable.");
+    }
+
     // 1. READ CONFIGURATIONS: The system starts by reading what you typed in the terminal.
     // It figures out which "amplifier" file (.nam) you want to use and the initial volumes.
     let (model_path, initial_in_gain, initial_out_gain, buffer_size) = cli::parse_args();

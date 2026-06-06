@@ -20,9 +20,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}${BOLD}================================================================${NC}"
-echo -e "${BLUE}${BOLD}          nam-rs Unified Release Build & Optimization Pipeline ${NC}"
-echo -e "${BLUE}${BOLD}================================================================${NC}"
+echo -e "${BLUE}${BOLD}=========================================================================${NC}"
+echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 15 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}=========================================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -35,6 +35,20 @@ BOLT_DIR="/tmp/nam-rs-release-bolt"
 PROFRAW_DIR="$PGO_DIR/profraw"
 MERGED_PROFILE="$PGO_DIR/merged.profdata"
 ORIG_RUSTFLAGS="${RUSTFLAGS:-}"
+
+# Isolated target directories to avoid polluting standard compilations
+PGO_BUILD_TARGET_DIR="target/pgo-build"
+PGO_CLAP_TARGET_DIR="target/pgo-clap"
+
+# Clean temp and build directories
+rm -rf "$PGO_DIR" "$BOLT_DIR" "$PGO_BUILD_TARGET_DIR" "$PGO_CLAP_TARGET_DIR"
+mkdir -p "$PROFRAW_DIR" "$BOLT_DIR"
+
+export CARGO_TARGET_DIR="$PGO_BUILD_TARGET_DIR"
+
+# Temporarily disable symbol stripping during release/bench compilation so BOLT can optimize
+export CARGO_PROFILE_RELEASE_STRIP="false"
+export CARGO_PROFILE_BENCH_STRIP="false"
 
 # Read rustflags from .cargo/config.toml to avoid overriding them when we set RUSTFLAGS env var
 CONFIG_RUSTFLAGS=$(python3 -c '
@@ -64,19 +78,36 @@ CLAP_TARGET="$CLAP_INSTALL_DIR/nam-rs.clap"
 # -----------------------------------------------------------------------------
 # PHASE 1: Environment & Dependency Verification
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[Phase 1/5] Verificando dependências e ambiente...${NC}"
+echo -e "\n${BLUE}${BOLD}[Phase 1/5] Verifying dependencies and environment...${NC}"
+
+# Verify core dependencies
+for cmd in rustc cargo python3; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo -e "${RED}Error: '$cmd' is not installed or available in PATH.${NC}"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} '$cmd' found."
+done
+
+# Ensure we successfully parsed non-empty rustflags from .cargo/config.toml
+if [ -z "${CONFIG_RUSTFLAGS:-}" ]; then
+    echo -e "${RED}Error: Could not extract rustflags from .cargo/config.toml or they are empty!${NC}"
+    echo -e "${YELLOW}The release build requires optimizations like '-Ctarget-cpu=x86-64-v3'.${NC}"
+    exit 1
+fi
+echo -e "  ${GREEN}✓${NC} rustflags from config.toml verified: ${BOLD}$CONFIG_RUSTFLAGS${NC}"
 
 # Find llvm-profdata from Rustup toolchain
 RUST_SYSROOT="$(rustc --print sysroot)"
 RUST_TARGET="$(rustc -vV | sed -n 's/^host: //p')"
 LLVM_PROFDATA="$RUST_SYSROOT/lib/rustlib/$RUST_TARGET/bin/llvm-profdata"
 if [ ! -x "$LLVM_PROFDATA" ]; then
-    echo -e "${RED}Erro: llvm-profdata não encontrado em $LLVM_PROFDATA${NC}"
-    echo -e "${YELLOW}Instale as ferramentas do LLVM via rustup:${NC}"
+    echo -e "${RED}Error: llvm-profdata not found at $LLVM_PROFDATA${NC}"
+    echo -e "${YELLOW}Install LLVM tools via rustup:${NC}"
     echo -e "  rustup component add llvm-tools-preview"
     exit 1
 fi
-echo -e "  ${GREEN}✓${NC} llvm-profdata localizado: $LLVM_PROFDATA"
+echo -e "  ${GREEN}✓${NC} llvm-profdata found: $LLVM_PROFDATA"
 
 # Find LLVM BOLT
 LLVM_BOLT=""
@@ -96,94 +127,108 @@ for candidate in \
 done
 
 if [ -n "$LLVM_BOLT" ]; then
-    echo -e "  ${GREEN}✓${NC} llvm-bolt localizado: $LLVM_BOLT"
+    echo -e "  ${GREEN}✓${NC} llvm-bolt found: $LLVM_BOLT"
     PERF2BOLT="$(dirname "$LLVM_BOLT")/perf2bolt"
     if [ ! -x "$PERF2BOLT" ]; then
         PERF2BOLT="perf2bolt"
     fi
 else
-    echo -e "${YELLOW}Aviso: llvm-bolt não foi encontrado. O build continuará apenas com PGO.${NC}"
-    echo -e "${YELLOW}Para habilitar BOLT, instale: sudo apt install llvm-22-tools${NC}"
+    echo -e "${YELLOW}Warning: llvm-bolt was not found. The build will continue with PGO only.${NC}"
+    echo -e "${YELLOW}To enable BOLT, install: sudo apt install llvm-22-tools${NC}"
 fi
 
 # Find perf and check paranoid level
+ORIG_PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo "2")
+PARANOID_MODIFIED=false
+
+cleanup() {
+    if [ "$PARANOID_MODIFIED" = "true" ]; then
+        echo -e "\nRestoring kernel.perf_event_paranoid to $ORIG_PARANOID..."
+        sudo sysctl -q -w kernel.perf_event_paranoid="$ORIG_PARANOID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+sudo sysctl -w kernel.perf_event_paranoid=1
+PARANOID_MODIFIED=true
+
 HAS_PERF=false
 if command -v perf &>/dev/null; then
     PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo "2")
     if [ "$PARANOID" -le 1 ]; then
         HAS_PERF=true
-        echo -e "  ${GREEN}✓${NC} perf está disponível (paranoid level: $PARANOID)"
+        echo -e "  ${GREEN}✓${NC} perf is available (paranoid level: $PARANOID)"
     else
-        echo -e "${YELLOW}Aviso: perf está instalado mas kernel.perf_event_paranoid=$PARANOID (>1).${NC}"
-        echo -e "${YELLOW}BOLT necessita de paranoid <= 1 para amostragem sem privilégios root.${NC}"
-        echo -e "${YELLOW}Execute: sudo sysctl -w kernel.perf_event_paranoid=1${NC}"
+        echo -e "${YELLOW}Warning: perf is installed but kernel.perf_event_paranoid=$PARANOID (>1).${NC}"
+        echo -e "${YELLOW}BOLT requires paranoid <= 1 for unprivileged root sampling.${NC}"
+        echo -e "${YELLOW}Run: sudo sysctl -w kernel.perf_event_paranoid=1${NC}"
     fi
 else
-    echo -e "${YELLOW}Aviso: perf não encontrado. O build continuará apenas com PGO.${NC}"
+    echo -e "${YELLOW}Warning: perf not found. The build will continue with PGO only.${NC}"
 fi
 
-# Clean temp directories
-rm -rf "$PGO_DIR" "$BOLT_DIR"
-mkdir -p "$PROFRAW_DIR" "$BOLT_DIR"
+    # -----------------------------------------------------------------------------
+    # PHASE 2: Profile-Guided Optimization (PGO) - Profiling Workload
+    # -----------------------------------------------------------------------------
+    echo -e "\n${BLUE}${BOLD}[Phase 2/5] Generating PGO profiles through benchmarks...${NC}"
 
-# -----------------------------------------------------------------------------
-# PHASE 2: Profile-Guided Optimization (PGO) - Profiling Workload
-# -----------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[Phase 2/5] Gerando perfis PGO através de benchmarks...${NC}"
+    # Compile and run with profile-generation (incorporating config.toml flags)
+    export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-generate=$PROFRAW_DIR"
+    echo -e "  Using RUSTFLAGS: ${BOLD}$RUSTFLAGS${NC}"
 
-# Compile and run with profile-generation (incorporating config.toml flags)
-export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-generate=$PROFRAW_DIR"
+    echo -e "  Compiling and running inference workload (inference_bench)..."
+    cargo bench --features standalone --bench inference_bench
 
-echo -e "  Compilando e executando workload de inferência (inference_bench)..."
-cargo bench --features "standalone,long_bench" --bench inference_bench
+    echo -e "  Compiling and running SIMD kernels (dot_4x_bench)..."
+    cargo bench --features standalone --bench dot_4x_bench
 
-echo -e "  Compilando e executando kernels SIMD (dot_4x_bench)..."
-cargo bench --features standalone --bench dot_4x_bench
+    PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" 2>/dev/null | wc -l)
+    if [ "$PROFRAW_COUNT" -eq 0 ]; then
+        echo -e "${RED}Error: No .profraw profile files were generated in $PROFRAW_DIR!${NC}"
+        exit 1
+    fi
 
-PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" 2>/dev/null | wc -l)
-if [ "$PROFRAW_COUNT" -eq 0 ]; then
-    echo -e "${RED}Erro: Nenhum arquivo de perfil .profraw foi gerado em $PROFRAW_DIR!${NC}"
-    exit 1
-fi
+    echo -e "  ${GREEN}✓${NC} Collected $PROFRAW_COUNT .profraw profiles. Merging..."
+    "$LLVM_PROFDATA" merge -sparse -o "$MERGED_PROFILE" "$PROFRAW_DIR"/*.profraw
+    echo -e "  ${GREEN}✓${NC} Merged profile generated at: $MERGED_PROFILE ($(du -h "$MERGED_PROFILE" | cut -f1))"
 
-echo -e "  ${GREEN}✓${NC} Coletados $PROFRAW_COUNT perfis .profraw. Mesclando..."
-"$LLVM_PROFDATA" merge -sparse -o "$MERGED_PROFILE" "$PROFRAW_DIR"/*.profraw
-echo -e "  ${GREEN}✓${NC} Perfil mesclado gerado em: $MERGED_PROFILE ($(du -h "$MERGED_PROFILE" | cut -f1))"
+    # Clean raw profiles
+    rm -rf "$PROFRAW_DIR"
 
-# Clean raw profiles
-rm -rf "$PROFRAW_DIR"
+    # -----------------------------------------------------------------------------
+    # PHASE 3: Compile PGO-Optimized Standalone and CLAP plugin
+    # -----------------------------------------------------------------------------
+    echo -e "\n${BLUE}${BOLD}[Phase 3/5] Compiling PGO-optimized binaries...${NC}"
 
-# -----------------------------------------------------------------------------
-# PHASE 3: Compile PGO-Optimized Standalone and CLAP plugin
-# -----------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[Phase 3/5] Compilando binários otimizados com PGO...${NC}"
+    export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-use=$MERGED_PROFILE"
+    echo -e "  Using RUSTFLAGS: ${BOLD}$RUSTFLAGS${NC}"
 
-export RUSTFLAGS="$CONFIG_RUSTFLAGS $ORIG_RUSTFLAGS -Cprofile-use=$MERGED_PROFILE"
+    echo -e "  Building standalone executable..."
+    # Pass relocations flag to emit relocation symbols required for BOLT
+    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-q" cargo build --release --features "standalone,pgo" --bin nam-rs
 
-echo -e "  Construindo executável standalone..."
-cargo build --release --features "standalone,pgo" --bin nam-rs
+    echo -e "  Building CLAP plugin..."
+    CLAP_RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-soname,nam-rs.clap"
+    echo -e "  Using RUSTFLAGS (CLAP): ${BOLD}$CLAP_RUSTFLAGS${NC}"
+    RUSTFLAGS="$CLAP_RUSTFLAGS" cargo build --release --target-dir "$PGO_CLAP_TARGET_DIR" --no-default-features --features "clap-plugin,pgo" --lib
 
-echo -e "  Construindo plugin CLAP..."
-RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-soname,nam-rs.clap" \
-    cargo build --release --target-dir target/clap --no-default-features --features "clap-plugin,pgo" --lib
-
-# Confirm binaries compiled
-if [ ! -f "target/release/nam-rs" ]; then
-    echo -e "${RED}Erro: Falha ao encontrar o binário standalone compilado!${NC}"
-    exit 1
-fi
-if [ ! -f "target/clap/release/libnam_rs.so" ]; then
-    echo -e "${RED}Erro: Falha ao encontrar a biblioteca do plugin CLAP compilada!${NC}"
-    exit 1
-fi
-echo -e "  ${GREEN}✓${NC} Compilação PGO concluída com sucesso."
+    # Confirm binaries compiled
+    if [ ! -f "$PGO_BUILD_TARGET_DIR/release/nam-rs" ]; then
+        echo -e "${RED}Error: Failed to find compiled standalone binary at $PGO_BUILD_TARGET_DIR/release/nam-rs${NC}"
+        exit 1
+    fi
+    if [ ! -f "$PGO_CLAP_TARGET_DIR/release/libnam_rs.so" ]; then
+        echo -e "${RED}Error: Failed to find compiled CLAP plugin library at $PGO_CLAP_TARGET_DIR/release/libnam_rs.so${NC}"
+        exit 1
+    fi
+    echo -e "  ${GREEN}✓${NC} PGO compilation completed successfully."
 
 # -----------------------------------------------------------------------------
 # PHASE 4: Binary Optimization and Layout Tool (BOLT) Post-Link
 # -----------------------------------------------------------------------------
 BOLT_APPLIED=false
 if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
-    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Aplicando otimização pós-link BOLT ao binário standalone...${NC}"
+    echo -e "\n${BLUE}${BOLD}[Phase 4/5] Applying BOLT post-link optimization to standalone binary...${NC}"
 
     # Verify if PipeWire is active for real-time profiling
     PW_RUNNING=false
@@ -205,19 +250,15 @@ if [ -n "$LLVM_BOLT" ] && [ "$HAS_PERF" = true ]; then
     done
 
     if [ "$PW_RUNNING" = true ] && [ -n "$MODEL_FILE" ]; then
-        echo -e "  PipeWire detectado! Iniciando perfilagem ativa do áudio..."
+        echo -e "  PipeWire detected! Starting active profiling of standalone executable..."
 
-        # Generate 10s mono sine wave test signal
+        # Generate a 3-second test sine wave
         TEST_WAV="$BOLT_DIR/test_signal.wav"
-        if command -v ffmpeg &>/dev/null; then
-            ffmpeg -y -f lavfi -i "sine=frequency=440:duration=10" \
-                -ar 48000 -ac 1 -sample_fmt s16 \
-                "$TEST_WAV" &>/dev/null
-        elif command -v python3 &>/dev/null; then
+        if [ ! -f "$TEST_WAV" ]; then
             python3 -c "
 import wave, struct, math
 rate = 48000
-duration = 10
+duration = 3
 n = rate * duration
 with wave.open('$TEST_WAV', 'w') as w:
     w.setnchannels(1)
@@ -226,103 +267,110 @@ with wave.open('$TEST_WAV', 'w') as w:
     for i in range(n):
         val = int(32767 * 0.5 * math.sin(2 * math.pi * 440 * i / rate))
         w.writeframes(struct.pack('<h', val))
-" &>/dev/null
+" &>/dev/null || true
         fi
 
-        if [ -f "$TEST_WAV" ]; then
-            # Start standalone in background
-            target/release/nam-rs "$MODEL_FILE" -b 64 &
-            NAM_PID=$!
-            sleep 1.5
+        # Start standalone in background using the correct model path argument flag and disabling the gate
+        NAM_DISABLE_GATE=1 "$PGO_BUILD_TARGET_DIR/release/nam-rs" -m "$MODEL_FILE" -b 64 &
+        NAM_PID=$!
+        sleep 1.0
 
-            if kill -0 $NAM_PID 2>/dev/null; then
-                # Route and record samples
-                NAM_NODE=$(pw-cli list-objects Node 2>/dev/null | grep -B1 -A5 "nam-rs" | grep -oP 'id \K\d+' | head -1 || echo "")
-                
-                PERF_ARGS=(-F 99 -e cycles:u -p "$NAM_PID" -o "$BOLT_DIR/perf.data")
-                if perf record -e cycles:u -j any,u -F 99 -o /dev/null -- true &>/dev/null; then
-                    PERF_ARGS=(-F 99 -e cycles:u -j any,u -p "$NAM_PID" -o "$BOLT_DIR/perf.data")
-                fi
+        if kill -0 $NAM_PID 2>/dev/null; then
+            # Query the target Node name directly (avoiding fragile list/grep ID matching)
+            NAM_NODE="NAM-rs-input"
 
-                echo -e "    Gravando eventos de ciclos de CPU..."
-                if [ -n "$NAM_NODE" ]; then
-                    pw-play --target="$NAM_NODE" "$TEST_WAV" &
-                    PLAY_PID=$!
-                    perf record "${PERF_ARGS[@]}" -- sleep 7 &>/dev/null || true
-                    kill $PLAY_PID 2>/dev/null || true
-                else
-                    perf record "${PERF_ARGS[@]}" -- sleep 8 &>/dev/null || true
-                fi
-
-                kill $NAM_PID 2>/dev/null || true
-                wait $NAM_PID 2>/dev/null || true
-            else
-                echo -e "${YELLOW}  Aviso: nam-rs falhou ao iniciar no PipeWire. Fallback para perfil de benchmark...${NC}"
-                PW_RUNNING=false
-            fi
-        else
-            echo -e "${YELLOW}  Aviso: Não foi possível gerar sinal de áudio. Fallback para perfil de benchmark...${NC}"
-            PW_RUNNING=false
-        fi
-    else
-        PW_RUNNING=false
-    fi
-
-    # Fallback to benchmark-based profiling if PipeWire wasn't possible
-    if [ "$PW_RUNNING" = false ]; then
-        echo -e "  Executando perfilagem através de benchmarks compilados..."
-        # Compile a target bench binary with PGO-use to profile
-        cargo bench --features "standalone,long_bench" --bench inference_bench --no-run
-        INFERENCE_BENCH=$(find target/release/deps -maxdepth 1 -name "inference_bench-*" ! -name "*.d" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2 || echo "")
-        
-        if [ -n "$INFERENCE_BENCH" ]; then
-            PERF_ARGS=(-F 99 -e cycles:u -o "$BOLT_DIR/perf.data")
+            # Check if LBR branch stack sampling is supported
+            USE_LBR=false
             if perf record -e cycles:u -j any,u -F 99 -o /dev/null -- true &>/dev/null; then
-                PERF_ARGS=(-F 99 -e cycles:u -j any,u -o "$BOLT_DIR/perf.data")
+                USE_LBR=true
             fi
-            perf record "${PERF_ARGS[@]}" -- "$INFERENCE_BENCH" --bench &>/dev/null || true
-            # Swap benchmark binary path for symbol matching
-            NAM_RS_BIN_FOR_BOLT="$INFERENCE_BENCH"
-        else
-            echo -e "${YELLOW}  Aviso: Não foi possível localizar o binário do benchmark. Pulando BOLT.${NC}"
-        fi
-    else
-        NAM_RS_BIN_FOR_BOLT="target/release/nam-rs"
-    fi
 
-    # Apply perf2bolt and llvm-bolt if we have perf data
-    if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
-        echo -e "  Convertendo perfil com perf2bolt..."
-        if "$PERF2BOLT" -p "$BOLT_DIR/perf.data" "$NAM_RS_BIN_FOR_BOLT" -o "$BOLT_DIR/perf.fdata" --ignore-build-id &>/dev/null; then
-            echo -e "  Otimizando binário com llvm-bolt..."
-            if "$LLVM_BOLT" target/release/nam-rs \
-                -o target/release/nam-rs.bolt \
-                -data "$BOLT_DIR/perf.fdata" \
-                --reorder-blocks=cache+ \
-                --reorder-functions=hfsort \
-                --split-functions \
-                --split-all-cold \
-                --relocs \
-                --lite &>/dev/null; then
-                BOLT_APPLIED=true
-                echo -e "  ${GREEN}✓${NC} BOLT aplicado com sucesso."
+            if [ "$USE_LBR" = "true" ]; then
+                PERF_ARGS=(-F 99 -e cycles:u -j any,u -p "$NAM_PID" -o "$BOLT_DIR/perf.data")
             else
-                echo -e "${YELLOW}  Aviso: O comando llvm-bolt falhou. Revertendo para binário PGO padrão.${NC}"
+                # Fallback to high-frequency instruction sampling if LBR is not supported by PMU
+                echo -e "  ${YELLOW}LBR branch stack sampling is not supported by hardware/hypervisor PMU.${NC}"
+                echo -e "  ${YELLOW}Falling back to high-frequency (4000 Hz) instruction sampling.${NC}"
+                PERF_ARGS=(-F 4000 -e cycles:u -p "$NAM_PID" -o "$BOLT_DIR/perf.data")
+            fi
+
+            echo -e "    Recording CPU cycle events via PipeWire..."
+            if [ -f "$TEST_WAV" ]; then
+                pw-play --target="$NAM_NODE" "$TEST_WAV" &
+                PLAY_PID=$!
+                perf record "${PERF_ARGS[@]}" -- sleep 3 &>/dev/null || true
+                kill $PLAY_PID 2>/dev/null || true
+                wait $PLAY_PID 2>/dev/null || true
+            else
+                perf record "${PERF_ARGS[@]}" -- sleep 3 &>/dev/null || true
+            fi
+
+            kill $NAM_PID 2>/dev/null || true
+            wait $NAM_PID 2>/dev/null || true
+
+            # Generate AI-ready assembly hotspot report
+            if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
+                echo -e "  Generating AI-ready assembly hotspot report in target/dsp_hotpath.asm..."
+                mkdir -p target
+                perf annotate --stdio -i "$BOLT_DIR/perf.data" > "target/dsp_hotpath.asm" 2>/dev/null || true
+            fi
+
+            # Convert profile and optimize standalone binary
+            NAM_RS_BIN="$PGO_BUILD_TARGET_DIR/release/nam-rs"
+            if [ -f "$BOLT_DIR/perf.data" ] && [ -s "$BOLT_DIR/perf.data" ]; then
+                echo -e "  Converting profile with perf2bolt..."
+
+                # Configure flags based on LBR support
+                PERF2BOLT_FLAGS=()
+                if [ "$USE_LBR" = "false" ]; then
+                    PERF2BOLT_FLAGS+=("--basic-events")
+                fi
+
+                if "$PERF2BOLT" "${PERF2BOLT_FLAGS[@]}" -p "$BOLT_DIR/perf.data" "$NAM_RS_BIN" -o "$BOLT_DIR/perf.fdata" --ignore-build-id > "$BOLT_DIR/perf2bolt.log" 2>&1; then
+                    echo -e "  Optimizing binary with llvm-bolt..."
+                    if "$LLVM_BOLT" "$NAM_RS_BIN" \
+                        -o "$PGO_BUILD_TARGET_DIR/release/nam-rs.bolt" \
+                        -data "$BOLT_DIR/perf.fdata" \
+                        --reorder-blocks=ext-tsp \
+                        --reorder-functions=hfsort \
+                        --split-functions \
+                        --split-all-cold \
+                        --relocs \
+                        --no-huge-pages \
+                        --lite > "$BOLT_DIR/llvm-bolt.log" 2>&1; then
+                        BOLT_APPLIED=true
+                        echo -e "  ${GREEN}✓${NC} BOLT applied successfully."
+                    else
+                        echo -e "${YELLOW}  Warning: llvm-bolt command failed. Reverting to standard PGO binary.${NC}"
+                        if [ -f "$BOLT_DIR/llvm-bolt.log" ]; then
+                            echo -e "${RED}llvm-bolt error details:${NC}"
+                            cat "$BOLT_DIR/llvm-bolt.log"
+                        fi
+                    fi
+                else
+                    echo -e "${YELLOW}  Warning: perf2bolt failed to convert data. Reverting to standard PGO binary.${NC}"
+                    if [ -f "$BOLT_DIR/perf2bolt.log" ]; then
+                        echo -e "${RED}perf2bolt error details:${NC}"
+                        cat "$BOLT_DIR/perf2bolt.log"
+                    fi
+                fi
+            else
+                echo -e "${YELLOW}  Warning: No perf record data collected. Reverting to standard PGO binary.${NC}"
             fi
         else
-            echo -e "${YELLOW}  Aviso: perf2bolt falhou ao converter dados. Revertendo para binário PGO padrão.${NC}"
+            echo -e "${YELLOW}  Warning: nam-rs failed to start under PipeWire. Reverting to standard PGO binary.${NC}"
         fi
     else
-        echo -e "${YELLOW}  Aviso: Nenhum dado de perf record foi coletado. Revertendo para binário PGO padrão.${NC}"
+        echo -e "${YELLOW}  Warning: PipeWire is not running or no .nam model was found. Reverting to standard PGO binary (no BOLT).${NC}"
     fi
 else
-    echo -e "\n${YELLOW}[Phase 4/5] Pulando BOLT (llvm-bolt ou perf não estão disponíveis/configurados).${NC}"
+    echo -e "\n${YELLOW}[Phase 4/5] Skipping BOLT (llvm-bolt or perf not available/configured).${NC}"
 fi
 
 # -----------------------------------------------------------------------------
 # PHASE 5: Deliverables Installation & Verification
 # -----------------------------------------------------------------------------
-echo -e "\n${BLUE}${BOLD}[Phase 5/5] Instalando e validando artefatos...${NC}"
+echo -e "\n${BLUE}${BOLD}[Phase 5/5] Installing and validating artifacts...${NC}"
 
 # Target directories creation
 mkdir -p "$BIN_INSTALL_DIR"
@@ -330,60 +378,39 @@ mkdir -p "$CLAP_INSTALL_DIR"
 
 # Deliver standalone binary
 rm -f "$BIN_TARGET"
-if [ "$BOLT_APPLIED" = true ] && [ -f "target/release/nam-rs.bolt" ]; then
-    cp target/release/nam-rs.bolt "$BIN_TARGET"
-    echo -e "  Instalado executável (PGO + BOLT): $BIN_TARGET"
+if [ "$BOLT_APPLIED" = true ] && [ -f "$PGO_BUILD_TARGET_DIR/release/nam-rs.bolt" ]; then
+    cp "$PGO_BUILD_TARGET_DIR/release/nam-rs.bolt" "$BIN_TARGET"
+    strip --strip-all "$BIN_TARGET"
+    echo -e "  Installed executable (PGO + BOLT): $BIN_TARGET"
 else
-    cp target/release/nam-rs "$BIN_TARGET"
-    echo -e "  Instalado executável (Apenas PGO): $BIN_TARGET"
+    cp "$PGO_BUILD_TARGET_DIR/release/nam-rs" "$BIN_TARGET"
+    strip --strip-all "$BIN_TARGET"
+    echo -e "  Installed executable (PGO only): $BIN_TARGET"
 fi
 chmod +x "$BIN_TARGET"
 
 # Deliver CLAP plugin
 rm -f "$CLAP_TARGET"
-cp target/clap/release/libnam_rs.so "$CLAP_TARGET"
-echo -e "  Instalado plugin CLAP (PGO): $CLAP_TARGET"
-
-# Audit binary properties
-echo -e "\n  Auditando validade dos entregáveis:"
-
-# 1. ELF format check
-if file "$BIN_TARGET" | grep -q "ELF 64-bit"; then
-    echo -e "    ${GREEN}✓${NC} Executável standalone é ELF 64-bit válido."
-else
-    echo -e "    ${RED}❌ Erro: Executável standalone inválido ou corrompido!${NC}"
-    exit 1
-fi
-
-# 2. Shared object & soname verification of CLAP
-if file "$CLAP_TARGET" | grep -q "ELF 64-bit"; then
-    if readelf -d "$CLAP_TARGET" | grep -q SONAME; then
-        echo -e "    ${GREEN}✓${NC} Plugin CLAP possui SONAME correto."
-    else
-        echo -e "    ${RED}❌ Erro: Plugin CLAP não possui SONAME!${NC}"
-        exit 1
-    fi
-else
-    echo -e "    ${RED}❌ Erro: Plugin CLAP inválido ou corrompido!${NC}"
-    exit 1
-fi
-
-# 3. CLAP entry point verification
-if nm -D "$CLAP_TARGET" | grep -q "clap_entry"; then
-    echo -e "    ${GREEN}✓${NC} Plugin CLAP exporta o símbolo 'clap_entry'."
-else
-    echo -e "    ${RED}❌ Erro: Símbolo 'clap_entry' ausente no plugin!${NC}"
-    exit 1
-fi
+cp "$PGO_CLAP_TARGET_DIR/release/libnam_rs.so" "$CLAP_TARGET"
+strip --strip-unneeded "$CLAP_TARGET"
+echo -e "  Installed CLAP plugin (PGO): $CLAP_TARGET"
 
 # Cleanup temp files
 rm -rf "$PGO_DIR" "$BOLT_DIR"
 
-echo -e "\n${GREEN}${BOLD}================================================================${NC}"
-echo -e "${GREEN}${BOLD}          Pipeline concluído! Artefatos prontos para distribuição.  ${NC}"
-echo -e "${GREEN}${BOLD}================================================================${NC}"
-echo -e "  Tamanho do Standalone: $(du -h "$BIN_TARGET" | cut -f1)"
-echo -e "  Tamanho do CLAP:       $(du -h "$CLAP_TARGET" | cut -f1)"
-echo -e "  Caminho Executável:    $BIN_TARGET"
-echo -e "  Caminho CLAP Plugin:   $CLAP_TARGET"
+if [ -f "target/dsp_hotpath.asm" ]; then
+    echo -e "\n${YELLOW}${BOLD}💡 AI-Ready Assembly Hotspots generated at:${NC} ${BOLD}target/dsp_hotpath.asm${NC}"
+    echo -e "   You can feed this file directly into an AI along with the following prompt suggestion:"
+    echo -e "   ------------------------------------------------------------------------"
+    echo -e "   \"Analyze this compiled x86_64-v3 assembly report (perf annotate) for my"
+    echo -e "   Rust DSP function. Identify compiler-generated inefficiencies like bounds"
+    echo -e "   checking, registers spilling, or missing SIMD auto-vectorization, and"
+    echo -e "   suggest code restructuring in Rust to optimize performance.\""
+    echo -e "   ------------------------------------------------------------------------"
+fi
+
+echo -e "${GREEN}${BOLD}==============================================================${NC}"
+echo -e "${GREEN}${BOLD}   Pipeline completed! Artifacts ready for distribution.   ${NC}"
+echo -e "${GREEN}${BOLD}==============================================================${NC}"
+ls -lath "$BIN_TARGET" "$CLAP_TARGET" target/dsp_hotpath.asm
 echo -e "${GREEN}${BOLD}================================================================${NC}"

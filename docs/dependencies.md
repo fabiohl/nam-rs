@@ -10,7 +10,7 @@ This documentation lists and explains system and software dependencies configure
 The following packages should be installed on the system to develop and build NAM-rs. The consolidated command for Debian/Ubuntu systems is:
 
 ```bash
-sudo apt install build-essential cmake g++ python3 pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find
+sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find
 ```
 
 ### Detailing by Role
@@ -21,7 +21,23 @@ sudo apt install build-essential cmake g++ python3 pkg-config pipewire libpipewi
   * `pkg-config`: Required for `cargo` to locate header paths and shared library (`.so`) paths on the system.
   * `clang` and `libclang-dev`: Requisite for `rust-bindgen` to translate PipeWire C headers to Rust bindings at compile time.
   * `libssl-dev`, `git`, and `curl`: Required for utility tools, version control, and installing Rust ecosystem components.
-  * `linux-tools-generic`: Provides `perf`, essential for low-level profiling, optimizing the DSP Hot Path, and gathering profile data for LLVM BOLT.
+  * `linux-tools-common`, `linux-tools-generic`, `linux-tools-$(uname -r)`: Provides `perf`, essential for low-level profiling, optimizing the DSP Hot Path, and gathering profile data for LLVM BOLT.
+    > [!IMPORTANT]
+    > **Unprivileged Profiling Configuration:**
+    > BOLT requires unprivileged CPU cycle recording. To enable this, the system's `perf_event_paranoid` must be set to `1` or lower.
+    > Temporarily set via command line:
+    >
+    > ```bash
+    > sudo sysctl -w kernel.perf_event_paranoid=1
+    > ```
+    >
+    > To make this configuration persistent across reboots, write it to a sysctl configuration file:
+    >
+    > ```bash
+    > echo "kernel.perf_event_paranoid = 1" | sudo tee /etc/sysctl.d/99-perf.conf
+    > sudo sysctl --system
+    > ```
+
   * `jq`: Command-line JSON processor, used to validate test output results in developer scripts.
   * `ripgrep` and `fd-find`: Fast search utilities (`rg` and `fd`/`fdfind`) used by developers and agentic AI assistants to navigate and search the codebase efficiently.
 

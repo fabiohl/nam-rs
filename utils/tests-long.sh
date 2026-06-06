@@ -16,9 +16,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "${BLUE}${BOLD}===============================================================${NC}"
-echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 30 minutos)   ${NC}"
-echo -e "${BLUE}${BOLD}===============================================================${NC}"
+echo -e "${BLUE}${BOLD}==========================================================================${NC}"
+echo -e "${BLUE}${BOLD}    nam-rs Long-Duration Stress & Audit Suite (± 30 minutes - cold run)   ${NC}"
+echo -e "${BLUE}${BOLD}==========================================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
