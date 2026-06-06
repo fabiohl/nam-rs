@@ -381,3 +381,270 @@ fn test_diagnostic_bundle_path_redaction() {
     assert!(rendered_err_full.contains(&format!("model_path={}", home_path)));
     assert!(rendered_err_full.contains(&format!("socket_path={}", xdg_path)));
 }
+
+#[test]
+fn test_diagnostic_bundle_capture_nominal() {
+    let bundle = DiagnosticBundle::capture();
+    let rendered = bundle.render();
+
+    // Test 1: Verify it is a valid diagnostic block
+    assert!(rendered.contains("NAM-rs Diagnostic"));
+    assert!(rendered.contains("nam-rs v"));
+    assert!(rendered.contains("arch="));
+    assert!(rendered.contains("os="));
+    assert!(rendered.contains("kernel="));
+    assert!(rendered.contains("timestamp="));
+
+    // Verify nominal state does not contain error fields or runtime model
+    assert!(!rendered.contains("model.arch="));
+    assert!(!rendered.contains("error_code="));
+    assert!(!rendered.contains("mnemonic="));
+    // Since no model is active, it should show model=none
+    assert!(rendered.contains("model=none"));
+}
+
+#[test]
+fn test_diagnostic_bundle_mandatory_fields() {
+    let params = vec![("test_key", "test_value".to_string())];
+    let bundle = DiagnosticBundle::capture_with_error(
+        nam_rs::common::diagnostics::NamErrorCode::ModelBuildFailed,
+        params,
+    );
+    let rendered = bundle.render();
+
+    // Test 2: Verify all mandatory fields from the contract are present:
+    // 1. Error details
+    assert!(rendered.contains("MODEL_BUILD_FAILED"));
+    assert!(rendered.contains("E1303"));
+
+    // 2. System and metadata fields
+    assert!(rendered.contains("arch="));
+    assert!(rendered.contains("os="));
+    assert!(rendered.contains("kernel="));
+    assert!(rendered.contains("features="));
+    assert!(rendered.contains("timestamp="));
+}
+
+#[test]
+fn test_diagnostic_bundle_regex_roundtrip() {
+    let provider = MockSnapshotProvider {
+        model: Some(ModelInfo {
+            arch_label: "LSTM".to_string(),
+            channels: 8,
+            receptive_field: 0,
+            weights_layout: "GateMajorLstm".to_string(),
+            path_basename: "test.nam".to_string(),
+        }),
+        audio: AudioInfo {
+            sample_rate: 96000,
+            buffer_size: 128,
+            channel_count: 1,
+            host_name: "PipeWire".to_string(),
+        },
+        rt: RtInfo {
+            thread_priority: 95,
+            scheduler: "FIFO".to_string(),
+            cpu_pinned: Some(1),
+            huge_pages_active: false,
+        },
+        telemetry: TelemetrySnapshot {
+            p50_us: 10,
+            p99_us: 20,
+            p999_us: 30,
+            max_us: 100,
+            total_blocks: 500,
+            xruns: 0,
+            drains: 0,
+        },
+        flags: 0x01,
+    };
+
+    let bundle = DiagnosticBundle::capture_with_runtime(&provider);
+    let rendered = bundle.render();
+
+    // Test 4: Custom parsing helper to check key=value lines
+    let mut keys = std::collections::HashMap::new();
+    for line in rendered.lines() {
+        if let Some(pos) = line.find('=') {
+            let key = line[..pos].trim();
+            let val = line[pos + 1..].trim();
+            keys.insert(key.to_string(), val.to_string());
+        }
+    }
+
+    // Verify key-value round-trip matches input data
+    assert_eq!(keys.get("model.arch").map(|s| s.as_str()), Some("LSTM"));
+    assert_eq!(keys.get("model.channels").map(|s| s.as_str()), Some("8"));
+    assert_eq!(
+        keys.get("model.receptive_field").map(|s| s.as_str()),
+        Some("0")
+    );
+    assert_eq!(
+        keys.get("model.weights_layout").map(|s| s.as_str()),
+        Some("GateMajorLstm")
+    );
+    assert_eq!(
+        keys.get("model.path_basename").map(|s| s.as_str()),
+        Some("test.nam")
+    );
+
+    assert_eq!(keys.get("audio.sr").map(|s| s.as_str()), Some("96000"));
+    assert_eq!(
+        keys.get("audio.buffer_size").map(|s| s.as_str()),
+        Some("128")
+    );
+    assert_eq!(
+        keys.get("audio.channel_count").map(|s| s.as_str()),
+        Some("1")
+    );
+    assert_eq!(
+        keys.get("audio.host_name").map(|s| s.as_str()),
+        Some("PipeWire")
+    );
+
+    assert_eq!(keys.get("rt.prio").map(|s| s.as_str()), Some("95"));
+    assert_eq!(keys.get("rt.scheduler").map(|s| s.as_str()), Some("FIFO"));
+    assert_eq!(keys.get("rt.cpu_pinned").map(|s| s.as_str()), Some("1"));
+    assert_eq!(
+        keys.get("rt.huge_pages_active").map(|s| s.as_str()),
+        Some("false")
+    );
+
+    assert_eq!(keys.get("telemetry.p50_us").map(|s| s.as_str()), Some("10"));
+    assert_eq!(keys.get("telemetry.p99_us").map(|s| s.as_str()), Some("20"));
+    assert_eq!(
+        keys.get("telemetry.p999_us").map(|s| s.as_str()),
+        Some("30")
+    );
+    assert_eq!(
+        keys.get("telemetry.max_us").map(|s| s.as_str()),
+        Some("100")
+    );
+    assert_eq!(
+        keys.get("telemetry.total_blocks").map(|s| s.as_str()),
+        Some("500")
+    );
+    assert_eq!(keys.get("telemetry.xruns").map(|s| s.as_str()), Some("0"));
+    assert_eq!(keys.get("telemetry.drains").map(|s| s.as_str()), Some("0"));
+    assert_eq!(keys.get("flags_seen").map(|s| s.as_str()), Some("0x1"));
+
+    // Check formatting and presence of other dynamic system fields
+    assert!(
+        rendered
+            .lines()
+            .any(|l| l.contains("os=") && l.contains("kernel="))
+    );
+    assert!(rendered.lines().any(|l| l.starts_with("arch=")));
+    assert!(rendered.lines().any(|l| l.starts_with("features=")));
+    assert!(rendered.lines().any(|l| l.starts_with("timestamp=")));
+}
+
+#[cfg(feature = "heap-audit")]
+mod audit_tests {
+    use nam_rs::common::spsc::RtStatusFlags;
+    use std::sync::atomic::Ordering;
+
+    #[cfg(not(feature = "clap-plugin"))]
+    use std::alloc::{GlobalAlloc, Layout, System};
+    #[cfg(not(feature = "clap-plugin"))]
+    use std::sync::atomic::{AtomicI32, AtomicUsize};
+
+    #[cfg(not(feature = "clap-plugin"))]
+    static ALLOC_COUNT: AtomicUsize = AtomicUsize::new(0);
+    #[cfg(not(feature = "clap-plugin"))]
+    static TRACKING_THREAD: AtomicI32 = AtomicI32::new(0);
+
+    #[cfg(not(feature = "clap-plugin"))]
+    struct CountingAllocator;
+
+    #[cfg(not(feature = "clap-plugin"))]
+    unsafe impl GlobalAlloc for CountingAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+            if tid == TRACKING_THREAD.load(Ordering::Relaxed) {
+                ALLOC_COUNT.fetch_add(1, Ordering::Relaxed);
+            }
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+    }
+
+    #[cfg(not(feature = "clap-plugin"))]
+    #[global_allocator]
+    static GLOBAL: CountingAllocator = CountingAllocator;
+
+    struct TrackingGuard {
+        #[cfg(feature = "clap-plugin")]
+        _inner: nam_rs::clap::heap_audit::TrackingGuard,
+    }
+
+    impl TrackingGuard {
+        fn new() -> Self {
+            #[cfg(feature = "clap-plugin")]
+            {
+                Self {
+                    _inner: nam_rs::clap::heap_audit::TrackingGuard::new(),
+                }
+            }
+            #[cfg(not(feature = "clap-plugin"))]
+            {
+                let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
+                TRACKING_THREAD.store(tid, Ordering::Relaxed);
+                ALLOC_COUNT.store(0, Ordering::Relaxed);
+                Self {}
+            }
+        }
+    }
+
+    impl Drop for TrackingGuard {
+        fn drop(&mut self) {
+            #[cfg(not(feature = "clap-plugin"))]
+            {
+                TRACKING_THREAD.store(0, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn get_alloc_count() -> usize {
+        #[cfg(feature = "clap-plugin")]
+        {
+            nam_rs::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed)
+        }
+        #[cfg(not(feature = "clap-plugin"))]
+        {
+            ALLOC_COUNT.load(Ordering::Relaxed)
+        }
+    }
+
+    #[test]
+    fn test_diagnostic_bundle_heap_audit() {
+        let rt_status = RtStatusFlags::new();
+
+        // Warmup status flags and telemetry
+        rt_status.set_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
+        rt_status.latency_hist.record(150);
+
+        let allocs = {
+            let _guard = TrackingGuard::new();
+
+            // Test 5: Verify typical RT thread status & telemetry updates do not allocate
+            rt_status.set_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
+            rt_status.clear_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
+            let _ = rt_status.check_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
+            let _ = rt_status.check_and_clear_flag(nam_rs::common::spsc::RT_STATUS_HAS_CLIPPED);
+
+            rt_status.latency_hist.record(500);
+            rt_status.xruns.fetch_add(1, Ordering::Relaxed);
+            rt_status.drains.fetch_add(1, Ordering::Relaxed);
+
+            get_alloc_count()
+        };
+
+        assert_eq!(
+            allocs, 0,
+            "RT status/telemetry operations triggered heap allocations!"
+        );
+    }
+}

@@ -510,7 +510,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `documentador`.
 - **Esforço:** 0.5 dia.
 
-#### Tarefa S9.T08 — Testes de integração do pipeline de diagnóstico ⚠️
+#### Tarefa S9.T08 — Testes de integração do pipeline de diagnóstico ⚠️ [DONE]
 
 - **Onde:** novo `tests/diagnostic_bundle.rs`.
 - **Problema:** Sem testes, regressões silenciosas no formato podem quebrar o consumo pela skill `diagnostico`.
