@@ -388,7 +388,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > - **Segurança:** redação default de paths absolutos (`$HOME` → `~`); nunca embarcar conteúdo de pesos/áudio; opt-in `--diagnose-full` para incluir paths completos.
 > - **Forward-compat:** o formato textual do bundle preserva contrato consumido pela skill `diagnostico` (Fase 1.1 do workflow). Novos campos são **anexados** em linhas próprias; parsers antigos da IA ignoram silenciosamente.
 
-#### Tarefa S9.T01 — Refatorar `support_block()` para `DiagnosticBundle` desacoplado de erro 💡
+#### Tarefa S9.T01 — Refatorar `support_block()` para `DiagnosticBundle` desacoplado de erro 💡 [DONE]
 
 - **Onde:** `src/common/diagnostics/diagnostic.rs` (atual `support_block` é método privado de `Diagnostic`).
 - **Problema:** `support_block()` é privado e exige um `NamErrorCode` para ser construído. Não há API pública para "gerar bundle em estado nominal".

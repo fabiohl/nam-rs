@@ -148,3 +148,40 @@ fn test_emit_irq_advisory_safety() {
     snap.emit_irq_advisory(64); // Should return via guard without panic
     snap.emit_irq_advisory(128); // Extreme case
 }
+
+/// Verifies that DiagnosticBundle::capture().render() yields a nominal block without error fields.
+#[test]
+fn test_diagnostic_bundle_nominal() {
+    let bundle = DiagnosticBundle::capture();
+    let rendered = bundle.render();
+
+    assert!(rendered.contains("NAM-rs Diagnostic"), "Must contain standard header");
+    assert!(rendered.contains(&format!("nam-rs v{}", bundle.system.version)), "Must contain version");
+    assert!(!rendered.contains("E1"), "Must not contain error codes");
+    assert!(!rendered.contains("CRC32"), "Must not contain error mnemonics");
+    assert!(rendered.contains("arch="), "Must contain system info");
+    assert!(rendered.contains("os="), "Must contain system info");
+}
+
+/// Verifies that DiagnosticBundle::capture_with_error() matches NamDiagnostic::support_block() output.
+#[test]
+fn test_diagnostic_bundle_with_error_matches() {
+    let snap = SystemSnapshot::capture();
+    let code = NamErrorCode::NambCrc32Mismatch;
+    let params = vec![("expected", "0xDEADBEEF".to_string()), ("computed", "0x12345678".to_string())];
+
+    let diag = NamDiagnostic::new(code, &snap)
+        .param("expected", "0xDEADBEEF")
+        .param("computed", "0x12345678");
+
+    let bundle = DiagnosticBundle::capture_with_error(code, params);
+
+    let block_diag = diag.support_block();
+    let block_bundle = bundle.render();
+
+    // Strip timestamp lines to prevent flaky failures on second boundaries
+    let lines_diag: Vec<&str> = block_diag.lines().filter(|l| !l.starts_with("timestamp=")).collect();
+    let lines_bundle: Vec<&str> = block_bundle.lines().filter(|l| !l.starts_with("timestamp=")).collect();
+
+    assert_eq!(lines_diag, lines_bundle);
+}

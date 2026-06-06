@@ -18,7 +18,7 @@ pub mod diagnostic;
 pub mod error_codes;
 pub mod system_info;
 
-pub use diagnostic::NamDiagnostic;
+pub use diagnostic::{DiagnosticBundle, ErrorContext, NamDiagnostic, RuntimeSnapshot};
 #[cfg(test)]
 pub(crate) use diagnostic::days_to_date;
 pub use error_codes::NamErrorCode;

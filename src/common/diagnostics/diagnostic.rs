@@ -82,49 +82,15 @@ impl NamDiagnostic {
 
     /// Generates the formatted technical support block for copying.
     pub(crate) fn support_block(&self) -> String {
-        let separator = "────────────────────────────────────────────────";
-        let mut block = format!(
-            "──── NAM-rs Diagnostic {separator}\n\
-             nam-rs v{} | {} | {}\n",
-            self.system.version,
-            self.code.code(),
-            self.code.mnemonic(),
-        );
-
-        // Contextual parameters
-        if !self.params.is_empty() {
-            let param_line: String = self
-                .params
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect::<Vec<_>>()
-                .join(" ");
-            block.push_str(&param_line);
-            block.push('\n');
+        DiagnosticBundle {
+            system: self.system.clone(),
+            runtime: RuntimeSnapshot::default(),
+            error: Some(ErrorContext {
+                code: self.code,
+                params: self.params.clone(),
+            }),
         }
-
-        // System information
-        block.push_str(&format!(
-            "arch={}\n\
-             os={} kernel={}\n\
-             pipewire={}\n\
-             features={}\n\
-             timestamp={}\n\
-             {separator}\n\
-             Copy the block above when opening a support ticket.",
-            self.system.arch,
-            self.system.os,
-            self.system.kernel,
-            self.system.pipewire_version.as_deref().unwrap_or("N/A"),
-            if self.system.features.is_empty() {
-                "none (baseline x86-64-v3 only)".to_string()
-            } else {
-                self.system.features.join(", ")
-            },
-            Self::timestamp(),
-        ));
-
-        block
+        .render()
     }
 
     /// Prints the complete diagnostic to stderr (user-friendly message + support block).
@@ -186,4 +152,107 @@ pub(crate) fn days_to_date(days: u64) -> (u64, u64, u64) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if m <= 2 { y + 1 } else { y };
     (year, m, d)
+}
+
+/// Context of the error for the diagnostic bundle.
+#[derive(Debug, Clone)]
+pub struct ErrorContext {
+    /// Typed error code.
+    pub code: NamErrorCode,
+    /// Contextual parameters (key=value).
+    pub params: Vec<(&'static str, String)>,
+}
+
+/// Snapshot of the dynamic runtime state, captured on-demand.
+///
+/// Placeholder for this task (empty struct, implementing Default, Clone, Debug).
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeSnapshot;
+
+/// Decoupled diagnostic bundle containing system information, runtime state, and optional error.
+#[derive(Debug, Clone)]
+pub struct DiagnosticBundle {
+    /// System snapshot (OS, kernel, etc).
+    pub system: SystemSnapshot,
+    /// Runtime snapshot (buffers, samplerate, etc).
+    pub runtime: RuntimeSnapshot,
+    /// Error context if captured due to an error.
+    pub error: Option<ErrorContext>,
+}
+
+impl DiagnosticBundle {
+    /// Captures a nominal diagnostic bundle without error context.
+    pub fn capture() -> Self {
+        Self {
+            system: SystemSnapshot::capture(),
+            runtime: RuntimeSnapshot::default(),
+            error: None,
+        }
+    }
+
+    /// Captures a diagnostic bundle with the given error code and parameters.
+    pub fn capture_with_error(code: NamErrorCode, params: Vec<(&'static str, String)>) -> Self {
+        Self {
+            system: SystemSnapshot::capture(),
+            runtime: RuntimeSnapshot::default(),
+            error: Some(ErrorContext { code, params }),
+        }
+    }
+
+    /// Renders the support block as a formatted string.
+    pub fn render(&self) -> String {
+        let separator = "────────────────────────────────────────────────";
+        let mut block = if let Some(ref err) = self.error {
+            format!(
+                "──── NAM-rs Diagnostic {separator}\n\
+                 nam-rs v{} | {} | {}\n",
+                self.system.version,
+                err.code.code(),
+                err.code.mnemonic(),
+            )
+        } else {
+            format!(
+                "──── NAM-rs Diagnostic {separator}\n\
+                 nam-rs v{}\n",
+                self.system.version,
+            )
+        };
+
+        // Contextual parameters
+        if let Some(ref err) = self.error {
+            if !err.params.is_empty() {
+                let param_line: String = err
+                    .params
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                block.push_str(&param_line);
+                block.push('\n');
+            }
+        }
+
+        // System information
+        block.push_str(&format!(
+            "arch={}\n\
+             os={} kernel={}\n\
+             pipewire={}\n\
+             features={}\n\
+             timestamp={}\n\
+             {separator}\n\
+             Copy the block above when opening a support ticket.",
+            self.system.arch,
+            self.system.os,
+            self.system.kernel,
+            self.system.pipewire_version.as_deref().unwrap_or("N/A"),
+            if self.system.features.is_empty() {
+                "none (baseline x86-64-v3 only)".to_string()
+            } else {
+                self.system.features.join(", ")
+            },
+            NamDiagnostic::timestamp(),
+        ));
+
+        block
+    }
 }
