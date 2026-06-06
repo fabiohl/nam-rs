@@ -23,17 +23,17 @@ If the user pasted only the friendly message (without the technical block), ask 
 
 ### 1.2. Source Code Location
 
-1. Locate the corresponding `NamErrorCode` in `src/diagnostics.rs`.
+1. Locate the corresponding `NamErrorCode` in `src/common/diagnostics/error_codes.rs`.
 
 2. Use the range table to direct the investigation:
 
-   | Range  | Where to investigate                                    |
-   | ------ | ------------------------------------------------------- |
-   | `E1xxx` | `src/loader/`, `src/main.rs::load_and_send_model()`    |
-   | `E2xxx` | `src/pw_host.rs`, `src/dsp/resampler.rs`               |
-   | `E3xxx` | `src/spsc.rs`, `src/main.rs::cli_loop()`               |
-   | `E4xxx` | `src/main.rs::cli_loop()`, `src/main.rs::parse_args()` |
-   | `E5xxx` | `src/main.rs::main()`                                  |
+   | Range   | Where to investigate                                                  |
+   | ------- | --------------------------------------------------------------------- |
+   | `E1xxx` | `src/loader/`, `src/loader/mod.rs` (`load_and_build_model`)           |
+   | `E2xxx` | `src/standalone/pw_host/`, `src/dsp/resampler.rs`                     |
+   | `E3xxx` | `src/common/spsc.rs`, `src/main.rs` (`cli_loop`)                      |
+   | `E4xxx` | `src/main.rs` (`cli_loop`), `src/standalone/cli.rs` (`parse_args`)    |
+   | `E5xxx` | `src/main.rs` (`main`)                                                |
 
 3. Read the module and function in the source code where the message is emitted to understand the context of the situation.
 

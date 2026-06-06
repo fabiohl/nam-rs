@@ -17,7 +17,7 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 ## 2. Inference & Microarchitecture (SIMD x86-64-v3/v4)
 
 - **Multiversioning via `dispatch_simd!` Macro:** Dynamic dispatch at model load time that selects the best SIMD kernel v-table (`Avx2Math`, `Avx512Math`, etc.). The use of macros for monomorphization ensures that the compiler emits native intrinsics without v-table overhead in the inference hot-path.
-- **FastMath Activations & Gain LUT:** `simd_tanh` and `simd_sigmoid` use degree-7 Minimax polynomials with Newton-Raphson refinement. Maximum error < 2e-5, optimized for the [-8, 8] range. Includes an interpolated **Gain LUT (Look-Up Table)** for ultra-fast dB → Linear conversion in RT, avoiding expensive calls to `powf`.
+- **FastMath Activations & Gain LUT:** `simd_tanh` uses a **Padé [5,4]** rational approximant with hardware `_mm256_div_ps`; `simd_sigmoid` uses a direct **Minimax degree-17** polynomial. Maximum error: tanh ~2.32e-3 on [-4, 4], sigmoid ~4.09e-4 on [-8, 8] (see `docs/fastmath-approximations.md`). Includes an interpolated **Gain LUT (Look-Up Table)** for ultra-fast dB → Linear conversion in RT, avoiding expensive calls to `powf`.
 - **Gated Activation Fusion (WaveNet A2):** Unification of `tanh` and `sigmoid` into a single native SIMD kernel, reducing register pressure and avoiding multiple passes over the activation vector.
 - **Dot Product ILP:** Implementation with multiple independent accumulators (`sum0..sum3` in AVX2, `acc0..acc7` in AVX-512) to saturate FMA port throughput, breaking dependency chains.
 - **Weight Compression (F16C/BF16):** Weights are stored in `f16` (Half-Precision) or `bf16` (Bfloat16) to reduce L1/L2 memory traffic. Precision selection and the corresponding on-the-fly conversion/decompression (via `_mm256_cvtph_ps`/`_mm512_cvtph_ps` for F16, or corresponding bit-unpacking for BF16) occur at runtime via dynamic dispatch managed by `SimdMathConfig` (initialized by the dispatcher based on the CPU's supported instruction set, such as AVX2, AVX-512 F16/BF16).
@@ -31,15 +31,15 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 
 ### Technical Decision: FastMath Precision vs. Performance
 
-> **Decision:** The activation functions `tanh` and `sigmoid` use SIMD polynomial approximations (Minimax + double Newton-Raphson) instead of calls to the IEEE-754 compliant libm.
+> **Decision:** `tanh` uses a Padé [5,4] rational approximant (`_mm256_div_ps`); `sigmoid` uses a direct Minimax degree-17 polynomial — both replacing IEEE-754 `libm` in the hot-path.
 >
-> **Trade-off:** ~4–5 decimal places of precision for ~10–20× throughput (4–8 cycles/activation vs. 20–60 cycles/activation in scalar libm).
-> Maximum error: **tanh < 2e-5**, **sigmoid < 5e-6** (sweep of 32,768 points in [-8, 8]).
+> **Trade-off:** ~2–3 decimal places of precision for ~10–20× throughput vs. scalar `libm`.
+> Maximum error: **tanh ~2.32e-3** on [-4, 4], **sigmoid ~4.09e-4** on [-8, 8].
 > The divergence vs. C++ is perceptually inaudible (below the 16-bit PCM quantization floor).
 >
 > **Validation:** Deterministic sweep, proptest (10k inputs), golden vectors cross-validation against NeuralAmpModelerCore (7 models).
 >
-> **References:** `src/math/fastmath.rs` (docstring for `simd_tanh_avx2`), `tests/nam_infer_test.rs` (docstring for `test_golden_vectors_wavenet`).
+> **References:** `src/math/activations/tanh.rs`, `src/math/activations/sigmoid.rs`, `docs/fastmath-approximations.md`, `tests/nam_infer_test.rs`.
 
 ### Technical Decision: Portability and Virtual Allocation of `MirroredBuffer`
 
@@ -94,11 +94,11 @@ graph TD
     class S2,S3,S4,S5 fused;
 ```
 
-### 6.X Mixed-Precision Selective
+### 6.1 Mixed-Precision Selective
 
 To optimize the trade-off between computational latency and tonal accuracy, NAM-rs uses selective mixed precision (E8.T08). While the WaveNet backbone (including Conv1D convolutions, input_mixin, and one_by_one) is computed with weights compressed in F16 or BF16 to save cache bandwidth, the final output projection layer (`head_rechannel`) and the final projection in LSTMs use full floating-point precision (`f32`). Head inference executes a native f32 scalar GEMV (`process_block_f32_native`), ensuring 24-bit fidelity in the analytically most sensitive stage of the output.
 
-### 6.Y Numerical Stability (Kahan + Dither)
+### 6.2 Numerical Stability (Kahan + Dither)
 
 To prevent the accumulation of numerical drift and mathematical instabilities in long-duration runs:
 
@@ -242,7 +242,7 @@ The project follows a strict hierarchy to ensure internal logic and the public A
 
 NAM-rs v1.4 introduces the scaffolding necessary for the next generation of models (A2), maintaining absolute parity with existing A1 models, but without real implementation. We just leave things ready for when "the time comes".
 
-- **Forward-Compatible Loader:** The dispatcher (`src/loader/dispatcher/wavenet.rs`) identifies A2 models via version metadata or non-Tanh activations, redirecting them to a `WavenetA2Placeholder`.
+- **Forward-Compatible Loader:** The dispatcher (`src/loader/dispatcher/wavenet/mod.rs`) identifies A2 models via version metadata or non-Tanh activations, redirecting them to a `WavenetA2Placeholder`.
 - **Placeholder with Detection Contract:** The `WavenetA2Placeholder` stores the detected number of channels (3 = nano, 8 = standard) and reports this information via a warning log. Detection uses two independent pathways: `is_wavenet_a2()` (SemVer based on version ≥ 0.6.0 or non-Tanh activations) and `is_a2_shape()` (verification of the architectural signature: 1 layer array, channels ∈ {3,8}, dilations identical to `a2_fast.h`). The placeholder does not support actual inference — it emits silence — but maintains the detection contract to prevent conflicts when actual A2 implementation is integrated.
 - **Activation Extensibility:** Support for 11 variants of activation functions (HardTanh, SiLU, LeakyReLU, etc.) via the `ActivationFn` trait, ready for future SIMD implementation.
 - **Flexible Parametrization:** Inclusion of structures for FiLM, dynamic Gating, and activation Blending, allowing the parser to accept new file formats without panics.
@@ -256,10 +256,6 @@ The architecture of NAM-rs supports the decoupling necessary for execution as a 
 - **`AudioHost` Trait:** Defines the agnostic communication interface between the DSP engine and the host. Located in `src/common/audio_host.rs`.
 - **Feature Flags:** Build is controlled by flags (`standalone` vs `clap-plugin`), ensuring system dependencies (such as `pipewire`) are removed in the plugin binary for maximum portability.
 - **Agnostic Parameters:** `NamPluginParams` (in `src/common/params.rs`) centralizes plugin state (`input_gain_db`, `output_gain_db`, `gate_threshold_db`, `model_path`), facilitating mapping for DAW automation and state persistence (save/load).
-
-## 8.2 Architectural Decisions
-
-Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](file:///home/fabio/nam-rs/docs/clap_integration.md).
 
 ## 8.1 CLAP Architecture: Threads and Lifecycle
 
@@ -317,7 +313,11 @@ Model switching in the audio thread is RT-safe:
 
 The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×260px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
 
-For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](file:///home/fabio/nam-rs/docs/clap_integration.md).
+For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](docs/clap_integration.md).
+
+## 8.2 Architectural Decisions
+
+Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](docs/clap_integration.md).
 
 ### 8.3 Graphical Interface and GUI Sub-modules (CLAP GUI)
 
@@ -340,11 +340,25 @@ The graphical interface was decomposed from its original monolithic state into a
 - **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs.
 - **Design Debt (Dual Dispatch):** The system uses a "Dual Dispatch" structure where the `loader` dispatches to the `model`, which in turn uses the `SimdMath` trait. We identified that the dispatch abstraction in `math/common/dispatch.rs` is a design debt point that will be unified in Epic 8 (V-Table Unification).
 
-## 9. References
+## 9. Error Catalog (NamErrorCode)
+
+Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`.
+
+| Range   | Category                   | Examples                                                  |
+|:------- |:-------------------------- |:--------------------------------------------------------- |
+| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1201` NAMB_CRC32_MISMATCH       |
+| `E2xxx` | PipeWire / Audio           | `E2100` PIPEWIRE_INIT_FAILED, `E2300` SCHED_FIFO_DENIED   |
+| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW           |
+| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND       |
+| `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*            |
+
+Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see `.agents/workflows/diagnostico.md`).
+
+## 10. References
 
 The following repositories and specifications are the primary references for NAM-rs:
 
 - [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) - Reference implementation of NAM.
 - [CLAP (CLever Audio Plug-in)](https://cleveraudio.org/) - Specification of the CLAP plugin format.
-- [Clack Framework](https://github.com/prokopyl/clack) - New plugin implementation infrastructure in Rust.
-- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) - Historical reference; the original golden vectors were migrated to anchor on NeuralAmpModelerCore (see ADR §6).
+- [Clack Framework](https://github.com/prokopyl/clack) - Rust infrastructure for implementing CLAP plugins.
+- [NeuralAudio](https://github.com/mikeoliphant/NeuralAudio) - Historical reference; original golden vectors migrated to anchor on NeuralAmpModelerCore (see §6).

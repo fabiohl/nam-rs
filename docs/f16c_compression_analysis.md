@@ -1,58 +1,56 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
-# Performance Analysis: F16C Weight Compression (VNNI-like)
+# Performance Analysis: F16C Weight Compression
 
-This document details the architectural motivations, micro- and macro-scale advantages, and the theoretical (and practically null) impact on sound quality derived from adopting Half-Precision (`f16/u16`) tensors in the NAM-rs Neural inference engine.
+This document details the architectural motivation, performance benefits, and sonic impact of storing neural network weights in half-precision (`f16`/`u16`) in NAM-rs.
 
-## 1. The Problem: Memory-Bound and "Cache Stall"
+## 1. The Problem: Cache-Bound Inference
 
-In the realm of Real-Time Digital Signal Processing (DSP) for simulating guitar amplifiers and pedals under extreme latencies, the prevailing bottleneck in modern architectures is rarely a lack of raw computing power in the logical-arithmetic units, but rather the deficiency in fast delivery of data for those calculations.
+The largest supported topology (WaveNet Standard) stores approximately **80 KB** of weights as `f32` floats. Modern CPU L1 data caches are typically **32 KB per core** (AMD Zen / Intel Core).
 
-The largest supported predictive topology (the *WaveNet Standard*) stores around 80 KB of data (`f32` floats) in its neural weights. In modern microarchitectures like the AMD Zen (Ryzen) or Intel Core (Skylake and onward) lines, the typical **L1 Data Cache** is only **32 KB per core**.
+During the inference hot-loop, those 80 KB exceed L1 capacity. The processor is forced to fetch weights from L2 (and in some cases L3), incurring approximately **14 idle cycles per L1 miss**. At hundreds of thousands of invocations per second, this stall is a meaningful bottleneck.
 
-During the audio inference hot-loop, when the engine needs to access the ~80 KB of CNN matrices, this discrepancy triggers a "Cache Eviction" phenomenon: the model weights exceed L1, the most vital data is evicted from the fastest layer, and the processor is forced to perform cyclical lookups in the **L2** cache (or worse, L3/RAM). Each `L1 Cache Miss` costs the superscalar pipeline approximately ~14 idle clock cycles, where vital transistors are frozen (*stalled*) waiting for tensors to arrive from secondary memory. In a run with hundreds of thousands of cycles per second, this "hiccup" deforms the rhythm of the model's processing.
+## 2. The Solution: `f16` Compression via F16C Hardware
 
-## 2. The Solution: `f16` Compression (F16C) and the AVX Engine
+NAM-rs converts all static weight matrices (Conv1d, DenseLayer, LSTM projections) to **half-precision (16-bit)** during model loading. This halves the in-memory footprint:
 
-The architectural solution in NAM-rs to eviscerate L1 Cache misses was to translate all static structural matrices of the model (Conv1d, DenseLayer, and interleaved LSTM projections) to **Half-Precision (16 bits)** beforehand during heap allocation (`loader`), cutting the hardware volumetric requirement in half.
+- WaveNet Standard: 80 KB → **40 KB** (fits comfortably in L1)
 
-With this, the impressive 80 KB of the WaveNet Standard drops to a mere **40 KB**, fitting exponentially better within the L1 Cache thermal envelope.
+### Decompression Cost
 
-### **"But what about the decompression cost before calculation?"**
+Decompression from `f16` to `f32` is performed by dedicated hardware via F16C + AVX2/AVX-512 instructions:
 
-The CPU performs this magic via *Dedicated Hardware* supported by the F16C instruction sets and AVX2/AVX-512 extensions.
-The process occurs during bus loading:
+1. `_mm_loadu_si128` loads 8 compressed `u16` values (128 bits).
+2. `_mm256_cvtph_ps` converts them to 8 `f32` values in a 256-bit YMM register.
+3. The instruction takes ~4–5 cycles, but modern Out-of-Order CPUs hide this latency almost entirely behind concurrent FMA operations.
 
-- A `_mm_loadu_si128` SIMD load instruction loads 8 tensors (now compressed into `u16` occupying 128 bits of bandwidth).
-- Simultaneously and *on-the-fly*, a hardware downcast base instruction such as `_mm256_cvtph_ps` decodes these tiny `f16`s back into robust 32-bit floating-point scalars (Single-Precision) spread across the generous and massive 256-bit logical registers (YMM/ZMM).
-- The instruction takes about `~4` to `~5` operational cycles in native hardware for upcast. However, because of relentless Out-of-Order Execution (OoO) routines, the CPU can execute other crucial mathematical calculations, hiding or absorbing nearly 100% of this intrinsic latency.
+## 3. Practical Impact
 
-## 3. Macro-Scale Computational Gains (End-User Level)
+Eliminating L1 cache misses in the weight fetch path enables:
 
-The impact that this micro-optimization delivers directly to the studio mixing console or the live digital amplifier is transformative:
+- **Lower buffer sizes without XRUNs:** the audio thread finishes each block faster and more predictably. Running at 32–64 samples (~0.7–1.3 ms) becomes viable even on mid-range hardware.
+- **Lower CPU utilization:** leaves headroom for other DAW tracks and processing.
 
-- **Brutal Reduction in Latency (*Buffer Size*):** Without frequent Cache thermal spikes and disruption of DSP loop preemptions, audio "chunks" finish being processed absurdly faster. The achieved atomic regularity allows the system user to plummet Buffer configuration limits in the Audio interface to extreme levels, comfortably running at buffers of **32 or 64 samples** (less than *1.5 milliseconds* perceptively from the guitar pick stroke to the speaker output) in an unbreakable manner (Zero XRUNs or rhythmic clicks).
-- **Freeing Margin in "Parallel CPU Loads":** The early completion of the *DSP Pipeline* opens up immense headroom for inserting new *DAW Tracks* filled with *Delays*, complex algorithmic *Reverbs*, and competing stereo *Synth* oscillators. The host cores breathe freely, and the CPU consumes far less heat and battery in mobile computing contexts.
+## 4. Precision Trade-off
 
-## 4. The Sonic Cost: What Do We "Lose" with the Mantissa?
+Converting `f32` → `f16` truncates the mantissa to 10 bits (vs. 23 bits in f32), introducing quantization error per weight of approximately **~3.9e-3** (the dominant drift source — see `docs/fastmath-approximations.md` §5).
 
-All F16 conversion is based on sacrificing raw precision.
+### Psychoacoustic Assessment
 
-An `f32` value (Single Precision) tells us volumes and fractions with high decimal precision. When we perform the conversion to `f16` (Half Precision) in the loader and truncate the **Mantissa** to a strict 10 bits of memory (though the dynamic exponent, which captures global intensity/volume, is kept), we slightly round up and down the floating tail of the original numbers `(e.g., 0.1234567 becomes ~0.1234...)`.
+The quantization error sits at approximately **−80 to −100 dBFS** — well below:
 
-Statistically and in code execution, this misalignment from the original uncompressed 32-bit floating point reflects as a Mean Squared Error (**MSE**) vector deviation oscillating close to `1e-4` in the outputs of integrated tests.
+- The noise floor of any typical single-coil pickup (~−60 dB).
+- The output distortion of any high-gain amplifier emulation.
+- The 16-bit digital noise floor (~−96 dBFS).
 
-### The Psychoacoustic Impact on Timbre (Transparency)
+Cross-validation against NeuralAmpModelerCore (7 reference models) confirms that WaveNet SNR with BF16/F16 weights remains in the **−43 to −50 dB** range vs. the C++ reference — perceptually indistinguishable from the `f32` path.
 
-Categorically: **It is impossible for human biology, even in the most critical listening scenario, to tell apart an amplifier emulating timbres in pure `f32` versus `f16c` with this precision margin.**
+## 5. BF16 vs F16 Selection
 
-The reason is anchored by the physics of digital audio recording:
+At runtime, the dispatcher (`src/math/common/dispatch.rs`) selects between:
 
-1. **O Chão Analógico (Noise Floor):** Quantized errors of `1e-4` mean algorithmic distortions added to the final signal close to **-80 dB to -100 dBFS**. Literally any cheap Single-Coil pickup, average copper cable, or saturated tube amplifier intrinsically has noise floors, passive crosstalk, and stray currents that are incredibly louder (sometimes around a respectable `-60 dB`).
-2. **Masking by High-Gain Distortion:** Emulated guitar gear relies heavily on inducing severe saturation (Overdrive and Fuzz), clipping the analog signal into high harmonics that completely swallow tiny numerical artifacts at the `-80 dB` threshold.
-3. **Production Parallel (*Dithering*):** From a mixing perspective, losing 10 bits in the temporal prediction calculation is analytically similar to injecting the technique known as organic *Dither* in bit-depth conversion on a very thick classic rock Master. The losses act as tiny inaccuracies in the imperceptible noise floor along the transient, resulting in perfect musical transparency, keeping the dynamic compression and organic punch of transients (Feel) of the Neural amplifier fully intact.
+- **F16 (`_mm256_cvtph_ps`):** 10-bit mantissa, ~3.9e-3 error. Used on AVX2 hardware.
+- **BF16 (`_mm512_dpbf16_ps`):** 7-bit mantissa, ~8× larger error, but enables native VNNI dot-product on Sapphire Rapids+ without a separate conversion step.
 
-## Conclusion
-
-NAM-rs certifies the architectural commitment to provide the greatest infrastructural gain possible, trading stalled cycles in a silicon barrier for massive zero-latency sonic processing, assuming a negligible computational distortion invisible to biology.
+See `docs/architecture.md §2` and `src/math/common/dispatch.rs` for dispatch logic.

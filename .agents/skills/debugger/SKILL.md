@@ -15,7 +15,7 @@ Also triggered by the `diagnostico` workflow when the user pastes a support bloc
 
 ### Primary References
 
-* Error codes `Exxxx` and support block format: `src/diagnostics.rs` (`NamErrorCode`, `emit_diagnostic()`).
+* Error codes `Exxxx` and support block format: `src/common/diagnostics/error_codes.rs` (`NamErrorCode`), `src/common/diagnostics/diagnostic.rs` (`NamDiagnostic`).
 * RT-safe and DSP guidelines: `.agents/rules/rust.md`.
 * General architecture: `docs/architecture.md`.
 

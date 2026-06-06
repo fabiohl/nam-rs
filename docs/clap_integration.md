@@ -11,17 +11,17 @@ The CLAP integration must strictly respect the thread segregation already existi
 
 - **Main Thread (Host)**:
   - Responsible for plugin initialization, parameter scanning, and state management.
-  - In NAM-rs, this thread will replace the main loop in [src/main.rs](file:///home/fabio/nam-rs/src/main.rs).
-  - Manages the loading of `.nam`/`.namb` files via [src/loader/](file:///home/fabio/nam-rs/src/loader/).
+  - In NAM-rs, this thread manages the CLAP lifecycle via `src/clap/plugin/main_thread.rs`.
+  - Manages the loading of `.nam`/`.namb` files via `src/loader/`.
 - **Audio Thread (Real-time)**:
   - Called by the host via the `process()` callback.
   - **Critical Requirement**: Must maintain a policy of **ZERO allocations** and **ZERO locks**.
-  - Will utilize [src/dsp/pipeline.rs](file:///home/fabio/nam-rs/src/dsp/pipeline.rs) for processing, adapting CLAP buffers to the internal format.
+  - Uses `src/dsp/pipeline/` for processing, adapting CLAP buffers to the internal format.
   - Unlike PipeWire (which is dual-stream), CLAP provides input and output buffers in a single context, eliminating the need for `DspBridge`.
 
 ## 2. Parameter Mapping
 
-Parameters exposed to the host will be mapped from the `NamPluginParams` structure (see [src/common/params.rs](file:///home/fabio/nam-rs/src/common/params.rs)):
+Parameters exposed to the host will be mapped from the `NamPluginParams` structure (see `src/common/params.rs`):
 
 | CLAP Parameter     | ID                  | Unit   | Description                                 |
 |:------------------ |:------------------- |:------ |:------------------------------------------- |
@@ -40,7 +40,7 @@ The project uses *feature flags* to allow multiple build targets:
 - `cargo build --features standalone`: Executable binary with PipeWire backend (default).
 - `cargo build --no-default-features --features clap-plugin --lib`: Dynamic library (`.clap`) with a complete GUI.
 
-The `clap-plugin` feature will omit the `pw_host.rs` and `rt_setup.rs` modules, keeping the final binary free of PipeWire dependencies.
+The `clap-plugin` feature will omit the entire `src/standalone/` module (PipeWire host, RT setup, and CLI), keeping the final binary free of PipeWire dependencies.
 
 ## 4. Framework: `clack-plugin`
 
@@ -52,16 +52,16 @@ The `clap-plugin` feature will omit the `pw_host.rs` and `rt_setup.rs` modules, 
 
 The integration uses the `clack-extensions` crate to implement the following extensions of the CLAP protocol:
 
-| Extension                      | File                                                                                     | Purpose                                                                                                                 |
-|:------------------------------ |:---------------------------------------------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | [audio_ports.rs](file:///home/fabio/nam-rs/src/clap/extensions/audio_ports.rs)           | Explicit declaration of mono input/output ports and support for in-place processing                                     |
-| `clap_plugin_params`           | [params.rs](file:///home/fabio/nam-rs/src/clap/extensions/params.rs)                     | Mapping and automation of parameters (`input_gain`, `output_gain`, `gate`, `bypass`) with gesture and `flush()` support |
-| `clap_plugin_state`            | [state.rs](file:///home/fabio/nam-rs/src/clap/extensions/state.rs)                       | Persistence of plugin state (parameters and model path) in the DAW project                                              |
-| `clap_plugin_latency`          | [latency.rs](file:///home/fabio/nam-rs/src/clap/extensions/latency.rs)                   | Dynamic reporting of latency induced by processing and resampling to the host                                           |
-| `clap_plugin_track_info`       | [track_info.rs](file:///home/fabio/nam-rs/src/clap/extensions/track_info.rs)             | Support for host track color to dynamically adapt the GUI's accent color                                                |
-| `clap_plugin_remote_controls`  | [remote_controls.rs](file:///home/fabio/nam-rs/src/clap/extensions/remote_controls.rs)   | Pre-configured control pages ("Main" and "Gate") for hardware controller and Device Panel integration                   |
-| `clap_plugin_param_indication` | [param_indication.rs](file:///home/fabio/nam-rs/src/clap/extensions/param_indication.rs) | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
-| `clap_plugin_gui`              | [gui.rs](file:///home/fabio/nam-rs/src/clap/extensions/gui.rs)                           | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
+| Extension                      | File                                               | Purpose                                                                                                                 |
+|:------------------------------ |:-------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`               | Explicit declaration of mono input/output ports and support for in-place processing                                     |
+| `clap_plugin_params`           | `src/clap/extensions/params.rs`                    | Mapping and automation of parameters (`input_gain`, `output_gain`, `gate`, `bypass`) with gesture and `flush()` support |
+| `clap_plugin_state`            | `src/clap/extensions/state.rs`                     | Persistence of plugin state (parameters and model path) in the DAW project                                              |
+| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`                   | Dynamic reporting of latency induced by processing and resampling to the host                                           |
+| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`                | Support for host track color to dynamically adapt the GUI's accent color                                                |
+| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`           | Pre-configured control pages ("Main" and "Gate") for hardware controller and Device Panel integration                   |
+| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs`          | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
+| `clap_plugin_gui`              | `src/clap/extensions/gui.rs`                       | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
 
 ## 6. Plugin Descriptor
 
@@ -79,8 +79,7 @@ The plugin metadata descriptor will follow this pattern:
 ## 7. Target DAWs for Validation
 
 - **Bitwig Studio**: Absolute reference platform for CLAP compliance (co-author of the standard). Essential for validating sandboxing behavior and sample-accurate automation.
-- **REAPER**: Validation of compatibility with low-cost hosts and tests of irregular buffer sizes.
-  - NOTE: *Discarded* as it is buggy on my Ubuntu Linux machine.
+- **REAPER**: *Not actively tested* — known issues with the Linux PipeWire backend on Debian/Ubuntu-based systems make reproducible validation impractical. Bitwig Studio is the primary CI target.
 - **Fender Studio Pro**: Future target requiring Wayland native mode.
 - **CLAP-info / CLAP-host**: Command-line tools for rigorous technical validation of the spec.
 
