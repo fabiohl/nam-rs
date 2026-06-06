@@ -341,7 +341,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 > - **Pré-requisitos:** `rustup component add llvm-tools-preview`; opcionalmente `sudo sysctl -w kernel.perf_event_paranoid=1` e `sudo apt install linux-tools-generic linux-tools-$(uname -r)` (para S7.T02 via `perf`).
 > - **Validação da latência (critério de aceitação):** executar `cargo bench --features standalone --bench inference_bench` com build vanilla release vs PGO release e comparar médias.
 
-#### Tarefa S7.T02 — BOLT post-link layout optimization ✨💡
+#### Tarefa S7.T02 — BOLT post-link layout optimization ✨💡 [DONE]
 
 - **Onde:** novo `utils/build-bolt.sh`.
 - **Problema/Oportunidade:** LLVM BOLT é a "última gota": reordena basic blocks no binário linkado para que hot paths fiquem em sequência (melhor L1i utilização). Combinado com PGO, mais 3–8%.
@@ -352,6 +352,21 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Critérios de aceitação:** L1i miss rate (`perf stat`) reduz ≥ 20%; latency média -3-8%.
 - **Especialista:** `pesquisador-inovador`.
 - **Esforço:** 1 dia.
+
+> **Notas da Implementação (2026-06-05):**
+>
+> - **Script `utils/build-bolt.sh`** implementa o pipeline BOLT pós-link em 7 fases:
+>   1. Build PGO-optimized (reusa `build-pgo.sh` ou build inline com `-Cprofile-use`).
+>   2. Build dos benchmarks (`inference_bench` + `dot_4x_bench`) e coleta de `perf record` com LBR branch sampling (`-j any,u`) quando disponível.
+>   3. Conversão `perf2bolt` com fallbacks (`--itrace`, `--basic-events`).
+>   4. Aplicação do BOLT ao benchmark binary (`--reorder-blocks=cache+ --reorder-functions=hfsort --split-functions --split-all-cold --relocs --lite`).
+>   5. Validação com `perf stat` (L1-icache-load-misses) e cálculo automático da redução da L1i miss rate.
+>   6. Profile + BOLT do binário `nam-rs` via PipeWire (auto-detecta `pw-cli`, usa `pw-play --target` para roteamento de áudio, gera sinal senoidal de 10s via ffmpeg ou python3).
+>   7. Sumário e cleanup.
+> - **Variáveis de ambiente:** `BOLT_DIR` (default `/tmp/nam-rs-bolt`), `SKIP_PGO=1`, `SKIP_PW=1` (pula profile PipeWire), `SKIP_CLEANUP=1`.
+> - **Estratégia de validação:** benchmark binary BOLTed vs original — comparação de L1i misses e latência via `perf stat` + `cargo bench`. O `nam-rs.bolt` é produzido como artefato de release via profile PipeWire.
+> - **Pré-requisitos:** `sudo apt install llvm-22-tools` (provê `llvm-bolt` + `perf2bolt`), `linux-tools-generic` (provê `perf`), `sysctl kernel.perf_event_paranoid=1`.
+> - **LLVM BOLT:** auto-detecta em `/usr/lib/llvm-2{2,1,0,9,8}/bin/llvm-bolt` e `/usr/bin/llvm-bolt*`.
 
 ---
 
