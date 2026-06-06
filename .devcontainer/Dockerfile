@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install NAM-rs dependencies (native Pipewire audio and graphical interface) and utility tools
 RUN apt update && apt -y full-upgrade && apt -y install --no-install-recommends \
-    build-essential cmake g++ pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find \
+    build-essential cmake g++ python3 pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find \
     && ln -s /usr/bin/fdfind /usr/local/bin/fd || true \
     && apt clean \
     && rm -rf /var/lib/apt/lists/*

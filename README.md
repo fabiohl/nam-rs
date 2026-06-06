@@ -58,7 +58,7 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
 * A recent Rust toolchain (`rustup`/`cargo`). Version 1.94 was used during most of the development.
 
 * Development packages:
-  `sudo apt install build-essential cmake g++ pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find`
+  `sudo apt install build-essential cmake g++ python3 pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find`
 
 * Cargo utilities & Rustup components (required for QA & optimizations):
 

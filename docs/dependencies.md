@@ -10,7 +10,7 @@ This documentation lists and explains system and software dependencies configure
 The following packages should be installed on the system to develop and build NAM-rs. The consolidated command for Debian/Ubuntu systems is:
 
 ```bash
-sudo apt install build-essential cmake pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find
+sudo apt install build-essential cmake g++ python3 pkg-config pipewire libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-generic bolt-22 jq ripgrep fd-find
 ```
 
 ### Detailing by Role
