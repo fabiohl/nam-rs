@@ -82,7 +82,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ### Sprint 1.A — GEMM/GEMV (kernels grandes)
 
-#### S1.T01 — Dividir `src/math/gemm/gemv.rs` (1138 LOC) por precisão+ISA
+#### S1.T01 — Dividir `src/math/gemm/gemv.rs` (1138 LOC) por precisão+ISA (CONCLUÍDO ✅)
 
 - **Problema:** maior arquivo do crate; mistura 2 famílias de precisão (f16, f32
   nativo) e 2 ISAs (AVX2, AVX-512), além de uma macro de kernel compartilhada.
@@ -104,7 +104,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   prefetch pareados ao passo do loop.
 - **DoD:** padrão §0.2.
 
-#### S1.T02 — Dividir `src/math/gemm/gemm_batch.rs` (528 LOC) por ISA
+#### S1.T02 — Dividir `src/math/gemm/gemm_batch.rs` (528 LOC) por ISA (CONCLUÍDO ✅)
 
 - **Split:** criar `gemm_batch/`:
   - `gemm_batch/avx2.rs` ← `fused_add_gemm_batch_avx2`,
