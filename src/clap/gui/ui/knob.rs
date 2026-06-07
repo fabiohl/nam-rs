@@ -146,10 +146,10 @@ pub fn knob_widget(
         }
     }
     if point_count > 1 {
-        painter.add(egui::Shape::line(
-            points_buf[..point_count].to_vec(),
-            egui::Stroke::new(3.5, active_arc_color),
-        ));
+        let arc_stroke = egui::Stroke::new(3.5, active_arc_color);
+        for w in points_buf[..point_count].windows(2) {
+            painter.line_segment([w[0], w[1]], arc_stroke);
+        }
         if response.dragged() {
             let glow_color = egui::Color32::from_rgba_unmultiplied(
                 active_arc_color.r(),
@@ -157,10 +157,10 @@ pub fn knob_widget(
                 active_arc_color.b(),
                 60,
             );
-            painter.add(egui::Shape::line(
-                points_buf[..point_count].to_vec(),
-                egui::Stroke::new(7.0, glow_color),
-            ));
+            let glow_stroke = egui::Stroke::new(7.0, glow_color);
+            for w in points_buf[..point_count].windows(2) {
+                painter.line_segment([w[0], w[1]], glow_stroke);
+            }
         }
     }
 

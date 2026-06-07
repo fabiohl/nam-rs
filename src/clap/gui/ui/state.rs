@@ -120,6 +120,20 @@ pub struct UiState {
     pub metadata_display: Vec<(String, String)>,
     /// Cached model name for display.
     pub model_display_name: String,
+    /// Memoized font size for the telemetry status bar (recomputed on content/width change).
+    pub telem_cached_font_size: Option<f32>,
+    /// Last available width used to compute telem_cached_font_size.
+    pub telem_cached_width: f32,
+    /// Instant when the telemetry font size was last computed.
+    pub telem_last_font_instant: Instant,
+    /// Memoized font size for the metadata bar (recomputed on content/width change).
+    pub metadata_cached_font_size: Option<f32>,
+    /// Last available width used to compute metadata_cached_font_size.
+    pub metadata_cached_width: f32,
+    /// Version counter incremented when metadata_display is rebuilt.
+    pub metadata_display_version: u64,
+    /// The metadata_display_version used for the last font size computation.
+    pub metadata_last_font_version: u64,
 }
 
 impl std::fmt::Debug for UiState {
@@ -204,6 +218,13 @@ impl Default for UiState {
             cached_metadata: None,
             metadata_display: Vec::new(),
             model_display_name: String::new(),
+            telem_cached_font_size: None,
+            telem_cached_width: 0.0,
+            telem_last_font_instant: now,
+            metadata_cached_font_size: None,
+            metadata_cached_width: 0.0,
+            metadata_display_version: 0,
+            metadata_last_font_version: 0,
         }
     }
 }

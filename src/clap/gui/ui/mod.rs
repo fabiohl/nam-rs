@@ -771,35 +771,46 @@ fn draw_telemetry_strings(
             [None, None, Some(dsp_color), None, None, None, None, None];
 
         let available_width = ui.available_width();
-        let baseline_s = 10.0;
-        let baseline_font = egui::FontId::proportional(baseline_s);
-        let mut sum_widths = 0.0;
-        for text in &state.status_strings {
-            let galley = ui.painter().layout_no_wrap(
-                text.clone(),
-                baseline_font.clone(),
-                egui::Color32::WHITE,
-            );
-            sum_widths += galley.rect.width();
-        }
-        let separator_text = " | ".to_string();
-        let sep_galley = ui.painter().layout_no_wrap(
-            separator_text,
-            baseline_font.clone(),
-            egui::Color32::WHITE,
-        );
-        sum_widths += sep_galley.rect.width() * (state.status_strings.len() - 1) as f32;
+        let width_changed = (available_width - state.telem_cached_width).abs() > 1.0;
+        let content_stale = state.telem_last_font_instant < state.last_telem_update;
 
-        let num_gaps = (state.status_strings.len() * 2 - 2) as f32;
-        let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+        let calculated_font_size = match state.telem_cached_font_size {
+            Some(sz) if !width_changed && !content_stale => sz,
+            _ => {
+                let baseline_s = 10.0;
+                let baseline_font = egui::FontId::proportional(baseline_s);
+                let mut sum_widths = 0.0;
+                for text in &state.status_strings {
+                    let galley = ui.painter().layout_no_wrap(
+                        text.clone(),
+                        baseline_font.clone(),
+                        egui::Color32::WHITE,
+                    );
+                    sum_widths += galley.rect.width();
+                }
+                let separator_text = " | ".to_string();
+                let sep_galley = ui.painter().layout_no_wrap(
+                    separator_text,
+                    baseline_font,
+                    egui::Color32::WHITE,
+                );
+                sum_widths += sep_galley.rect.width() * (state.status_strings.len() - 1) as f32;
 
-        // Reserve 22.0 px for the "ℹ" button on the far right.
-        let target_width = available_width - total_gap_width - 8.0 - 22.0;
-        let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
-            let scale = target_width / sum_widths;
-            (baseline_s * scale).clamp(6.0, 14.0)
-        } else {
-            8.5
+                let num_gaps = (state.status_strings.len() * 2 - 2) as f32;
+                let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+
+                let target_width = available_width - total_gap_width - 8.0 - 22.0;
+                let sz = if sum_widths > 0.0 && target_width > 0.0 {
+                    let scale = target_width / sum_widths;
+                    (baseline_s * scale).clamp(6.0, 14.0)
+                } else {
+                    8.5
+                };
+                state.telem_cached_font_size = Some(sz);
+                state.telem_cached_width = available_width;
+                state.telem_last_font_instant = Instant::now();
+                sz
+            }
         };
         let font_size = egui::FontId::proportional(calculated_font_size);
 
@@ -980,38 +991,53 @@ fn update_metadata_cache(state: &mut UiState, meta: &crate::clap::plugin::NamMod
         }
 
         state.cached_metadata = Some(meta.clone());
+        state.metadata_display_version = state.metadata_display_version.wrapping_add(1);
     }
 }
 
-fn draw_metadata_strings(ui: &mut egui::Ui, state: &UiState, accent_color: egui::Color32) {
+fn draw_metadata_strings(ui: &mut egui::Ui, state: &mut UiState, accent_color: egui::Color32) {
     if state.metadata_display.is_empty() {
         return;
     }
     let available_width = ui.available_width();
-    let baseline_s = 10.0;
-    let baseline_font = egui::FontId::proportional(baseline_s);
-    let mut sum_widths = 0.0;
-    for (text, _) in &state.metadata_display {
-        let galley =
-            ui.painter()
-                .layout_no_wrap(text.clone(), baseline_font.clone(), egui::Color32::WHITE);
-        sum_widths += galley.rect.width();
-    }
-    let separator_text = " | ".to_string();
-    let sep_galley =
-        ui.painter()
-            .layout_no_wrap(separator_text, baseline_font.clone(), egui::Color32::WHITE);
-    sum_widths += sep_galley.rect.width() * (state.metadata_display.len() - 1) as f32;
+    let width_changed = (available_width - state.metadata_cached_width).abs() > 1.0;
+    let content_stale = state.metadata_last_font_version != state.metadata_display_version;
 
-    let num_gaps = (state.metadata_display.len() * 2 - 2) as f32;
-    let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+    let calculated_font_size = match state.metadata_cached_font_size {
+        Some(sz) if !width_changed && !content_stale => sz,
+        _ => {
+            let baseline_s = 10.0;
+            let baseline_font = egui::FontId::proportional(baseline_s);
+            let mut sum_widths = 0.0;
+            for (text, _) in &state.metadata_display {
+                let galley = ui.painter().layout_no_wrap(
+                    text.clone(),
+                    baseline_font.clone(),
+                    egui::Color32::WHITE,
+                );
+                sum_widths += galley.rect.width();
+            }
+            let separator_text = " | ".to_string();
+            let sep_galley =
+                ui.painter()
+                    .layout_no_wrap(separator_text, baseline_font, egui::Color32::WHITE);
+            sum_widths += sep_galley.rect.width() * (state.metadata_display.len() - 1) as f32;
 
-    let target_width = available_width - total_gap_width - 8.0;
-    let calculated_font_size = if sum_widths > 0.0 && target_width > 0.0 {
-        let scale = target_width / sum_widths;
-        (baseline_s * scale).clamp(9.0, 10.0)
-    } else {
-        9.0
+            let num_gaps = (state.metadata_display.len() * 2 - 2) as f32;
+            let total_gap_width = num_gaps * ui.spacing().item_spacing.x;
+
+            let target_width = available_width - total_gap_width - 8.0;
+            let sz = if sum_widths > 0.0 && target_width > 0.0 {
+                let scale = target_width / sum_widths;
+                (baseline_s * scale).clamp(9.0, 10.0)
+            } else {
+                9.0
+            };
+            state.metadata_cached_font_size = Some(sz);
+            state.metadata_cached_width = available_width;
+            state.metadata_last_font_version = state.metadata_display_version;
+            sz
+        }
     };
     let font_size = egui::FontId::proportional(calculated_font_size);
 

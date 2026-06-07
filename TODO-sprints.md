@@ -186,7 +186,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
 
-### Tarefa G3.T04 — Reduzir alocações e medições por frame na GUI 🧹
+### Tarefa G3.T04 — Reduzir alocações e medições por frame na GUI 🧹✅ CONCLUÍDA
 
 - **Onde:** `src/clap/gui/ui/knob.rs:148-165` (`points_buf[..n].to_vec()` por frame, 2× ao arrastar); `src/clap/gui/ui/mod.rs:760-774` e `:976-987` (`layout_no_wrap` + `text.clone()` por frame para auto-ajuste de fonte da status bar e metadata).
 - **Problema:** A cada frame a GUI: (a) aloca um `Vec<Pos2>` por knob (até 6 allocs/frame) para `egui::Shape::line`; (b) refaz o *layout* de 8 strings de telemetria + separador (com `String::clone`) só para medir larguras e calcular o tamanho de fonte; (c) idem para metadata. Não é RT, mas pressiona o alocador e a CPU continuamente (ainda mais relevante após G3.T01, que torna idle barato).
