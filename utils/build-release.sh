@@ -20,9 +20,9 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}${BOLD}=========================================================================${NC}"
-echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 15 minutes)   ${NC}"
-echo -e "${BLUE}${BOLD}=========================================================================${NC}"
+echo -e "${BLUE}${BOLD}========================================================================${NC}"
+echo -e "${BLUE}${BOLD}   nam-rs Unified Release Build & Optimization Pipeline (± 6 minutes)   ${NC}"
+echo -e "${BLUE}${BOLD}========================================================================${NC}"
 
 # Ensure we are in the project root directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -177,10 +177,24 @@ fi
     echo -e "  Using RUSTFLAGS: ${BOLD}$RUSTFLAGS${NC}"
 
     echo -e "  Compiling and running inference workload (inference_bench)..."
-    cargo bench --features standalone --bench inference_bench
+    # To keep PGO profile generation fast yet highly representative, we run:
+    # 1. Standard end-to-end models at 64 samples buffer size (filter: "64samp")
+    # 2. Vectorized SIMD/FastMath kernels (filter: "AVX")
+    # 3. Resampler configurations (filter: "Resampler")
+    # Using "--profile-time 1" avoids slow statistical analysis and plots.
+    cargo bench --features clap-plugin --bench inference_bench -- --profile-time 1 "64samp"
+    cargo bench --features clap-plugin --bench inference_bench -- --profile-time 1 "AVX"
+    cargo bench --features clap-plugin --bench inference_bench -- --profile-time 1 "Resampler"
 
     echo -e "  Compiling and running SIMD kernels (dot_4x_bench)..."
-    cargo bench --features standalone --bench dot_4x_bench
+    # Profile only the active SIMD lanes, skipping the fallback scalar paths.
+    # Note: Criterion filters by substring match. Since the group name contains "avx512",
+    # filtering by "avx" matches "fallback" as well. We filter specifically by "avx2",
+    # and if the host CPU supports AVX-512, we also profile "avx512".
+    cargo bench --features clap-plugin --bench dot_4x_bench -- --profile-time 1 "avx2"
+    if grep -q "avx512" /proc/cpuinfo; then
+        cargo bench --features clap-plugin --bench dot_4x_bench -- --profile-time 1 "avx512"
+    fi
 
     PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" 2>/dev/null | wc -l)
     if [ "$PROFRAW_COUNT" -eq 0 ]; then
