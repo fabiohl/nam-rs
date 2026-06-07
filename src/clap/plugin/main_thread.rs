@@ -298,12 +298,17 @@ impl<'a> NamClapMainThread<'a> {
             .model_sample_rate
             .store(model_pair.sample_rate, Ordering::Relaxed);
 
+        // Extract models from model_pair to pass directly to RT thread
+        let model_l = model_pair.model_l;
+        let model_r = model_pair.model_r;
+
         // 2. Send to RT thread via SPSC channel
         self.param_tx
-            .push(ClapParamPayload::LoadModel(
-                Box::new(model_pair),
+            .push(ClapParamPayload::LoadModel {
+                model_l,
+                model_r,
                 new_resampler,
-            ))
+            })
             .map_err(|_| {
                 Box::new(
                     NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)

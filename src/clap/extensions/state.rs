@@ -9,7 +9,7 @@
 //! - v1 (current): envelope `StateEnvelope { version: 1, params: {...} }`.
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
-use crate::common::params::NamPluginParams;
+use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
 use clack_extensions::log::{HostLog, LogSeverity};
 use clack_extensions::params::{HostParams, ParamRescanFlags};
@@ -202,9 +202,9 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             }
         }
 
-        let _ = self
-            .param_tx
-            .push(ClapParamPayload::Params(self.params.clone()));
+        let _ = self.param_tx.push(ClapParamPayload::Params(
+            RtPluginParams::from_plugin_params(&self.params),
+        ));
 
         if let Some(params_ext) = self.host.get_extension::<HostParams>() {
             params_ext.rescan(&mut self.host, ParamRescanFlags::VALUES);

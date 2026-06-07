@@ -5,6 +5,7 @@
 
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::clap::processor::NamClapProcessor;
+use crate::common::params::RtPluginParams;
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 use clack_extensions::params::{
     ParamDisplayWriter, ParamInfo, ParamInfoFlags, ParamInfoWriter, PluginAudioProcessorParams,
@@ -310,9 +311,9 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             }
 
             // Sync with the RT thread (only if called on the offline main thread, but harmless)
-            let _ = self
-                .param_tx
-                .push(ClapParamPayload::Params(self.params.clone()));
+            let _ = self.param_tx.push(ClapParamPayload::Params(
+                RtPluginParams::from_plugin_params(&self.params),
+            ));
         }
     }
 }

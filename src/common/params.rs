@@ -68,6 +68,47 @@ impl Default for NamPluginParams {
     }
 }
 
+/// Simplified parameter snapshot for the Real-Time audio thread.
+/// Contains no heap-allocated fields (like PathBuf or String) to guarantee RT-safety when dropped.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RtPluginParams {
+    /// Input gain in decibels (dB).
+    pub input_gain_db: f32,
+    /// Output gain in decibels (dB).
+    pub output_gain_db: f32,
+    /// Noise Gate threshold in decibels (dB).
+    pub gate_threshold_db: f32,
+    /// Bypass state.
+    pub bypass: bool,
+    /// Adaptive compute mode.
+    pub adaptive_compute: AdaptiveComputeMode,
+}
+
+impl RtPluginParams {
+    /// Extract the RT-safe parameters from a full NamPluginParams.
+    pub fn from_plugin_params(params: &NamPluginParams) -> Self {
+        Self {
+            input_gain_db: params.input_gain_db,
+            output_gain_db: params.output_gain_db,
+            gate_threshold_db: params.gate_threshold_db,
+            bypass: params.bypass,
+            adaptive_compute: params.adaptive_compute,
+        }
+    }
+}
+
+impl Default for RtPluginParams {
+    fn default() -> Self {
+        Self {
+            input_gain_db: 0.0,
+            output_gain_db: 0.0,
+            gate_threshold_db: GATE_THRESHOLD_DB_DEFAULT,
+            bypass: false,
+            adaptive_compute: AdaptiveComputeMode::Off,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

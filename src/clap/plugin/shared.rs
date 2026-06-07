@@ -3,10 +3,10 @@
 
 //! Lock-free shared state between the audio thread and the main thread.
 
-use crate::common::params::NamPluginParams;
+use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::resampler::NamResampler;
-use crate::loader::LoadedModelPair;
+use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::path::PathBuf;
@@ -16,9 +16,16 @@ use std::sync::{Arc, Mutex};
 /// Main -> RT communication payload for the CLAP plugin.
 pub enum ClapParamPayload {
     /// Parameter update (gain, gate, bypass).
-    Params(NamPluginParams),
-    /// Loading of a new model pair with calibration metadata and its resampler.
-    LoadModel(Box<LoadedModelPair>, Box<NamResampler>),
+    Params(RtPluginParams),
+    /// Loading of a new model pair (transferred/constructed outside RT) and its resampler.
+    LoadModel {
+        /// The encapsulated model for neural inference (Left Channel)
+        model_l: Option<Box<DynamicModel>>,
+        /// The encapsulated model for neural inference (Right Channel)
+        model_r: Option<Box<DynamicModel>>,
+        /// Polyphase sinc resampler
+        new_resampler: Box<NamResampler>,
+    },
 }
 
 /// Model metadata for display in the GUI.

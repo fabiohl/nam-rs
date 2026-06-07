@@ -12,7 +12,7 @@ mod events;
 
 use crate::clap::param_smoother::ParamSmoother;
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
-use crate::common::params::NamPluginParams;
+use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::DynamicHysteresis;
@@ -36,7 +36,7 @@ pub struct NamClapProcessor<'a> {
     /// Held in Box for RT-safe disposal without allocation.
     resampler: Box<NamResampler>,
     /// Current parameters on the audio thread (snapshotted from SPSC at each process()).
-    pub(crate) params: NamPluginParams,
+    pub(crate) params: RtPluginParams,
 
     /// Intermediate buffers pre-allocated in activate() — ZERO alloc in process().
     /// 1. Copy of host input (variable sample_rate)
@@ -228,7 +228,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         Ok(Self {
             model_l: None,
             resampler,
-            params: NamPluginParams::default(),
+            params: RtPluginParams::default(),
             buf_host_l,
             buf_host_r,
             buf_mid_l,

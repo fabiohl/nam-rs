@@ -6,7 +6,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Sprint G1 — Threading CLAP (RT, latência e responsividade)
+## Sprint G1 — Threading CLAP (RT, latência e responsividade) ✅ CONCLUÍDA
 
 ### Tarefa G1.T01 — Eliminar False Sharing em `NamClapShared` (segregação por padrão de acesso) 🔥⚠️ ✅ CONCLUÍDA
 
