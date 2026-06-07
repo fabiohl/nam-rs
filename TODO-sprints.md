@@ -159,7 +159,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + UX (revisão de fluidez).
 - **Esforço:** 2 dias.
 
-### Tarefa G3.T02 — Cleanup determinístico de recursos OpenGL no fechamento da janela 🧹⚠️
+### Tarefa G3.T02 — Cleanup determinístico de recursos OpenGL no fechamento da janela 🧹⚠️✅ CONCLUÍDA
 
 - **Onde:** `src/clap/gui/window/mod.rs` (ausência de `impl Drop`/hook de fechamento) e `src/clap/extensions/gui.rs:38-43` (`destroy`).
 - **Problema:** `NamPluginWindow` cria `egui_glow::Painter`, `vu_program` e `vu_vao` (`window/mod.rs:109-126`) mas **nunca** os libera explicitamente. `egui_glow::Painter` exige `destroy()` com o contexto GL *current* (caso contrário emite warning "Resources will be leaked!"); o `program`/`vao` customizados também ficam sem `delete_program`/`delete_vertex_array`. Embora o teardown do contexto pelo baseview mitigue vazamento de processo, o padrão é incorreto, gera ruído de log e é frágil se o contexto sobreviver à janela.

@@ -210,18 +210,62 @@ impl NamPluginWindow {
             None
         }
     }
+
+    /// Destroys all OpenGL resources created by this window.
+    ///
+    /// Must be called with the GL context *current*. Idempotent — safe to call
+    /// multiple times.
+    fn destroy_gl_resources(&mut self) {
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
+        // Clone the Arc so the glow context remains alive after painter.destroy().
+        let gl = std::sync::Arc::clone(self.painter.gl());
+        self.painter.destroy();
+
+        // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
+        // take() ensures idempotency — second call is a no-op.
+        unsafe {
+            if let Some(vu_vao) = self.state.vu_vao.take() {
+                gl.delete_vertex_array(vu_vao);
+            }
+            if let Some(vu_program) = self.state.vu_program.take() {
+                gl.delete_program(vu_program);
+            }
+        }
+    }
+}
+
+/// Best-effort GL resource cleanup — `destroy()` checks an internal
+/// idempotency flag, so it is safe even when `destroy_gl_resources` was
+/// already called in `on_frame`. The GL context may not be current here;
+/// without a current context, OpenGL delete operations become no-ops or
+/// silently fail (no panics).
+impl Drop for NamPluginWindow {
+    fn drop(&mut self) {
+        self.painter.destroy();
+    }
 }
 
 impl WindowHandler for NamPluginWindow {
     fn on_frame(&mut self, window: &mut Window) {
+        // Unlike `new()`, `on_frame()` is called repeatedly by the baseview
+        // rendering loop (C ABI). A panic here would cross the FFI boundary and
+        // cause UB in C++ hosts. We use a silent early-return as a safe fallback.
         if self.close_signal.load(Ordering::Relaxed) {
+            if let Some(gl_ctx) = window.gl_context() {
+                // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
+                unsafe {
+                    gl_ctx.make_current();
+                }
+                self.destroy_gl_resources();
+                // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
+                unsafe {
+                    gl_ctx.make_not_current();
+                }
+            }
             window.close();
             return;
         }
 
-        // Unlike `new()`, `on_frame()` is called repeatedly by the baseview
-        // rendering loop (C ABI). A panic here would cross the FFI boundary and
-        // cause UB in C++ hosts. We use a silent early-return as a safe fallback.
         let Some(gl_ctx) = window.gl_context() else {
             return;
         };

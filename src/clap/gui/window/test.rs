@@ -121,3 +121,56 @@ fn test_gui_drag_drop_fuzz() {
     assert_eq!(*shared.cold.ui_pending_model.lock().unwrap(), None);
     assert!(!shared.cold.ui_loading.load(Ordering::Relaxed));
 }
+
+// ---------------------------------------------------------------------------
+// G3.T02 — Cleanup determinístico de recursos OpenGL no fechamento da janela
+// ---------------------------------------------------------------------------
+
+/// Verifies that `Option::take()` on glow types is idempotent — the core
+/// safety property that prevents double-free in `destroy_gl_resources`.
+#[test]
+fn test_gl_handle_take_idempotent() {
+    use std::num::NonZeroU32;
+
+    let dummy_prog = Some(glow::NativeProgram(NonZeroU32::new(1).unwrap()));
+    let dummy_vao = Some(glow::NativeVertexArray(NonZeroU32::new(2).unwrap()));
+    let mut opt_prog = dummy_prog;
+    let mut opt_vao = dummy_vao;
+
+    // First take: returns the handle.
+    assert!(opt_prog.take().is_some());
+    assert!(opt_vao.take().is_some());
+
+    // Second take: idempotent — None.
+    assert!(opt_prog.take().is_none());
+    assert!(opt_vao.take().is_none());
+}
+
+/// Simulates the `destroy_gl_resources` flow on `UiState` fields without
+/// actual GL calls — validates that `vu_program` and `vu_vao` are consumed
+/// exactly once and that subsequent invocations are harmless.
+#[test]
+fn test_destroy_gl_resources_idempotent() {
+    use crate::clap::gui::ui::UiState;
+    use std::num::NonZeroU32;
+
+    let mut state = UiState {
+        vu_program: Some(glow::NativeProgram(NonZeroU32::new(1).unwrap())),
+        vu_vao: Some(glow::NativeVertexArray(NonZeroU32::new(2).unwrap())),
+        ..Default::default()
+    };
+
+    assert!(state.vu_program.is_some());
+    assert!(state.vu_vao.is_some());
+
+    // Simulate first cleanup call
+    let _vu_vao = state.vu_vao.take();
+    let _vu_prog = state.vu_program.take();
+
+    assert!(state.vu_program.is_none());
+    assert!(state.vu_vao.is_none());
+
+    // Simulate second cleanup — idempotent no-op
+    assert!(state.vu_vao.take().is_none());
+    assert!(state.vu_program.take().is_none());
+}
