@@ -130,7 +130,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   caminho vetorial.
 - **DoD:** padrão.
 
-#### S1.T04 — `src/math/gemm/dot_4x/avx512_bf16.rs` (471 LOC): split leve + correção de doc
+#### S1.T04 — `src/math/gemm/dot_4x/avx512_bf16.rs` (471 LOC): split leve + correção de doc (CONCLUÍDO ✅)
 
 - **Split (opcional, recomendado p/ consistência):** criar `avx512_bf16/`:
   - `helpers.rs` ← `bf16x4_to_f32x4`, `bf16x16_to_f32x16` (L23–36).

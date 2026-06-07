@@ -7,7 +7,7 @@
 //! - `avx2` / `avx2_dual`: kernels AVX2 com F16C.
 //! - `avx512` / `avx512_dual`: kernels AVX-512 com permutexvar.
 //! - `scalar`: reference scalar implementations.
-//! - `avx512_bf16`: placeholder para VNNI BF16 (`vdpbf16ps`).
+//! - `avx512_bf16`: kernel BF16 com acúmulo em f32 via `_mm512_fmadd_ps`.
 
 pub mod avx2;
 pub mod avx2_dual;
