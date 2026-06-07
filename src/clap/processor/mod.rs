@@ -103,8 +103,6 @@ pub struct NamClapProcessor<'a> {
     host: HostAudioProcessorHandle<'a>,
     /// Per-instance flag for one-time RT priority query on the first block.
     prio_checked: bool,
-    pub(crate) param_in_changed: bool,
-    pub(crate) param_out_changed: bool,
     /// Monotonic generation counter for GUI param synchronization.
     /// Guard: only load atomics from UiToRt when generation differs.
     pub(crate) last_seen_generation: u32,
@@ -263,8 +261,6 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             cycles_since_telemetry: 0,
             host,
             prio_checked: false,
-            param_in_changed: false,
-            param_out_changed: false,
             last_seen_generation: 0,
             max_frames_count: audio_config.max_frames_count as usize,
         })

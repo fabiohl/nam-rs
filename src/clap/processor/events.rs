@@ -34,11 +34,9 @@ impl<'a> NamClapProcessor<'a> {
                     self.smoother_in.set_target(
                         lut.db_to_linear(self.params.input_gain_db + self.mod_input_gain),
                     );
-                    self.param_in_changed = true;
                     self.smoother_out.set_target(
                         lut.db_to_linear(self.params.output_gain_db + self.mod_output_gain),
                     );
-                    self.param_out_changed = true;
                     if adaptive_changed {
                         self.adaptive_compute.set_mode(self.params.adaptive_compute);
                     }
@@ -80,7 +78,6 @@ impl<'a> NamClapProcessor<'a> {
                             .store(val.to_bits(), Ordering::Relaxed);
                         self.smoother_in
                             .set_target(lut.db_to_linear(val + self.mod_input_gain));
-                        self.param_in_changed = true;
                     }
                     PARAM_OUTPUT_GAIN => {
                         self.params.output_gain_db = val;
@@ -90,7 +87,6 @@ impl<'a> NamClapProcessor<'a> {
                             .store(val.to_bits(), Ordering::Relaxed);
                         self.smoother_out
                             .set_target(lut.db_to_linear(val + self.mod_output_gain));
-                        self.param_out_changed = true;
                     }
                     PARAM_GATE_THRESH => {
                         self.params.gate_threshold_db = val;
@@ -128,13 +124,11 @@ impl<'a> NamClapProcessor<'a> {
                         self.mod_input_gain = amount;
                         self.smoother_in
                             .set_target(lut.db_to_linear(self.params.input_gain_db + amount));
-                        self.param_in_changed = true;
                     }
                     PARAM_OUTPUT_GAIN => {
                         self.mod_output_gain = amount;
                         self.smoother_out
                             .set_target(lut.db_to_linear(self.params.output_gain_db + amount));
-                        self.param_out_changed = true;
                     }
                     PARAM_GATE_THRESH => {
                         self.mod_gate_thresh = amount;
@@ -166,7 +160,6 @@ impl<'a> NamClapProcessor<'a> {
                 self.params.input_gain_db = shared_in_db;
                 self.smoother_in
                     .set_target(lut.db_to_linear(shared_in_db + self.mod_input_gain));
-                self.param_in_changed = true;
             }
 
             let shared_out_db = f32::from_bits(
@@ -179,7 +172,6 @@ impl<'a> NamClapProcessor<'a> {
                 self.params.output_gain_db = shared_out_db;
                 self.smoother_out
                     .set_target(lut.db_to_linear(shared_out_db + self.mod_output_gain));
-                self.param_out_changed = true;
             }
 
             let shared_gate_db = f32::from_bits(

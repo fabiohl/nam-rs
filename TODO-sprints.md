@@ -49,7 +49,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
 
-### Tarefa G1.T03 — Evitar captura de `Instant::now()` em blocos sem medição (decimação completa) 🧹
+### Tarefa G1.T03 — Evitar captura de `Instant::now()` em blocos sem medição (decimação completa) 🧹✅ CONCLUÍDA
 
 - **Onde:** `src/clap/processor/mod.rs:295` (`let start_time = minstant::Instant::now();`) e `src/clap/processor/dsp.rs:523-552`.
 - **Problema:** `minstant::Instant::now()` (RDTSC) é capturado em **todo** bloco, embora a telemetria só seja registrada 1-em-16 (`cycles_since_telemetry & 0xF == 0`). É barato, mas é trabalho determinístico desnecessário no hotpath em 15 de cada 16 blocos.
@@ -63,7 +63,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 0.5 dia.
 
-### Tarefa G1.T04 — Vetorizar o caminho "parâmetro alterado" do ganho (remover loop escalar por amostra) 🧹
+### Tarefa G1.T04 — Vetorizar o caminho "parâmetro alterado" do ganho (remover loop escalar por amostra) 🧹✅ CONCLUÍDA
 
 - **Onde:** `src/clap/processor/dsp.rs:175-183` e `:221-228` (ramo `param_*_changed` aplicando `smoother.tick()` amostra-a-amostra).
 - **Problema:** Quando um parâmetro de ganho muda no bloco, o código cai num **loop escalar por amostra** (`self.smoother_in.tick()`), enquanto o caminho estacionário usa kernels SIMD (`apply_gain_simd`/`apply_ramp_simd`/`*_stereo`). O ramo escalar contraria a diretriz §3 (auto-vetorização) e é o pior caso justamente sob automação intensa.
