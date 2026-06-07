@@ -12,3 +12,4 @@ description: Documentation (markdown) and source code comments (rust) reviewer
 * Ensure internal links in Markdown documents work perfectly (using the absolute `file://` scheme and correct references).
 * In Rust files (`.rs`), ensure correct usage of `///` to document public items and `//` for internal structural comments.
 * Orient yourself by the highest standards of the `documentador` skill (.agents/skills/documentador/SKILL.md).
+* Trigger the `planejador-arquiteto` skill to transform the raised ideas into granular, very well-written and detailed sprints and technical tasks, in `TODO-sprints.md` (pt-BR).
