@@ -7,6 +7,7 @@ pub mod audio_ports;
 pub mod latency;
 pub mod param_indication;
 pub mod params;
+pub mod preset_load;
 pub mod remote_controls;
 pub mod state;
 pub mod track_info;

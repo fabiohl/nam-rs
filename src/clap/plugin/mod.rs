@@ -40,6 +40,7 @@ impl Plugin for NamClapPlugin {
         builder.register::<crate::clap::extensions::track_info::NamPluginTrackInfo>();
         builder.register::<crate::clap::extensions::remote_controls::NamPluginRemoteControls>();
         builder.register::<crate::clap::extensions::param_indication::NamPluginParamIndication>();
+        builder.register::<clack_extensions::preset_discovery::PluginPresetLoad>();
 
         #[cfg(feature = "clap-plugin")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();

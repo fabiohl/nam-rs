@@ -80,7 +80,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint G2 — CLAP Features (extensões corretas e idiomáticas)
 
-### Tarefa G2.T01 — Preset Discovery Factory + `clap.preset-load` (modelos .nam/.namb como presets) 🔥✨
+### Tarefa G2.T01 — Preset Discovery Factory + `clap.preset-load` (modelos .nam/.namb como presets) 🔥✨✅ CONCLUÍDA
 
 - **Onde:** novo módulo `src/clap/factory/preset_discovery.rs` e `src/clap/extensions/preset_load.rs`; registro em `src/clap/mod.rs` e `src/clap/plugin/mod.rs` (`declare_extensions`).
 - **Problema/Oportunidade:** Para um amp modeler, os "presets" **são** os arquivos de modelo (`.nam`/`.namb`). Hoje o carregamento só ocorre via diálogo próprio/drag-drop (`gui/mod.rs`). Implementar a **Preset Discovery Factory** (`clap_preset_discovery_factory`) + a extensão **`clap.preset-load`** permite que o browser de presets do host (Bitwig, Reaper) indexe diretórios de modelos e dispare carregamento — fluxo idiomático e de altíssimo valor percebido.

@@ -6,18 +6,24 @@
 //! Activated via the `clap-plugin` feature flag. Completely isolated from PipeWire.
 
 pub mod descriptor;
+pub mod entry;
 pub mod extensions;
+pub mod factory;
 #[cfg(feature = "heap-audit")]
 pub mod heap_audit;
 pub mod param_smoother;
 pub mod plugin;
 pub mod processor;
 
-/// Module containing the graphical user interface (GUI) implementation.
 #[cfg(feature = "clap-plugin")]
 pub mod gui;
 
-use clack_plugin::prelude::*;
-use plugin::NamClapPlugin;
+pub use plugin::NamClapPlugin;
 
-clack_export_entry!(SinglePluginEntry<NamClapPlugin>);
+use clack_plugin::clack_export_entry;
+
+clack_export_entry!(entry::NamEntry);
+
+#[cfg(test)]
+#[path = "preset_discovery_test.rs"]
+mod preset_discovery_test;

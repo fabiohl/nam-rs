@@ -174,6 +174,20 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
+### 2M — Preset Discovery Browser
+
+> **Host:** Bitwig Studio, Reaper (or any host with CLAP preset browser support).
+> **Preparation:** At least 2 `.nam` files present in `~/.nam/models/` (or the directories declared by the plugin).
+
+- [ ] Open the host's preset browser for NAM-rs → the plugin's preset entries appear, listing `.nam`/`.namb` files by name (basename).
+- [ ] Preset metadata: name, creator (modeled_by), and gear model are displayed (if available in the model file's metadata).
+- [ ] Select a preset in the host's browser → the model is loaded into the plugin (verified by `Active Model` parameter update and audible model change).
+- [ ] The `model_load_counter` increments on each successful preset load.
+- [ ] Loading an invalid/corrupt `.nam` file via the preset browser → error is reported in the host log without crashing.
+- [ ] Preset-load is RT-safe: model I/O and building happen on the Main Thread (no allocations in the audio processing thread).
+
+---
+
 ## Block 3 — Stress & Pedantry
 
 Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
