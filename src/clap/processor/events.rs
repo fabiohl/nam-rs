@@ -217,5 +217,33 @@ impl<'a> NamClapProcessor<'a> {
                 .store(effective_latency, Ordering::Relaxed);
             self.host.request_callback();
         }
+
+        // Honor render mode override: in offline mode, force adaptive compute to Off
+        // for deterministic maximum-quality output. The Main Thread writes render_mode
+        // with Release ordering via `clap.render.set()`.
+        let render_mode = self.shared.cold.render_mode.load(Ordering::Acquire);
+        if render_mode != self.last_render_mode {
+            self.last_render_mode = render_mode;
+            if render_mode == crate::clap::plugin::RENDER_MODE_OFFLINE {
+                self.adaptive_compute
+                    .set_mode(crate::common::params::AdaptiveComputeMode::Off);
+            } else {
+                let user_mode = crate::common::params::AdaptiveComputeMode::from_f32(
+                    self.shared
+                        .ui_to_rt
+                        .param_adaptive_compute
+                        .load(Ordering::Relaxed) as f32,
+                );
+                self.adaptive_compute.set_mode(user_mode);
+            }
+        }
+        // Also guard against user changing adaptive compute while offline (via host events
+        // or SPSC, which may have bypassed the offline constraint in this same block).
+        if render_mode == crate::clap::plugin::RENDER_MODE_OFFLINE
+            && self.adaptive_compute.mode() != crate::common::params::AdaptiveComputeMode::Off
+        {
+            self.adaptive_compute
+                .set_mode(crate::common::params::AdaptiveComputeMode::Off);
+        }
     }
 }

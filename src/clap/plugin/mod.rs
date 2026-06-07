@@ -5,7 +5,8 @@
 
 mod shared;
 pub use shared::{
-    ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata, RtToUi, UiToRt,
+    ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata,
+    RENDER_MODE_OFFLINE, RENDER_MODE_REALTIME, RtToUi, UiToRt,
 };
 
 mod main_thread;
@@ -41,6 +42,8 @@ impl Plugin for NamClapPlugin {
         builder.register::<crate::clap::extensions::remote_controls::NamPluginRemoteControls>();
         builder.register::<crate::clap::extensions::param_indication::NamPluginParamIndication>();
         builder.register::<clack_extensions::preset_discovery::PluginPresetLoad>();
+        builder.register::<crate::clap::extensions::render::NamPluginRender>();
+        builder.register::<crate::clap::extensions::state_context::NamPluginStateContext>();
 
         #[cfg(feature = "clap-plugin")]
         builder.register::<crate::clap::extensions::gui::NamPluginGui>();
@@ -114,6 +117,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 ui_load_error_msg: Mutex::new(String::new()),
                 ui_model_info: Mutex::new(None),
                 alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                render_mode: AtomicU32::new(0),
             },
         })
     }

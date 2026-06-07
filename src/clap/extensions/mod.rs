@@ -9,7 +9,9 @@ pub mod param_indication;
 pub mod params;
 pub mod preset_load;
 pub mod remote_controls;
+pub mod render;
 pub mod state;
+pub mod state_context;
 pub mod track_info;
 
 #[cfg(feature = "clap-plugin")]

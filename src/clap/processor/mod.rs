@@ -108,6 +108,8 @@ pub struct NamClapProcessor<'a> {
     pub(crate) last_seen_generation: u32,
     /// Host audio buffer size, used for model buffer realocation on load.
     max_frames_count: usize,
+    /// Last seen render mode for transition detection (0 = Realtime, 1 = Offline).
+    last_render_mode: u32,
 }
 
 impl<'a> NamClapProcessor<'a> {
@@ -263,6 +265,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             prio_checked: false,
             last_seen_generation: 0,
             max_frames_count: audio_config.max_frames_count as usize,
+            last_render_mode: 0,
         })
     }
 

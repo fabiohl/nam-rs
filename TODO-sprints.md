@@ -125,7 +125,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `revisor-auditor`.
 - **Esforço:** 0.25 dia.
 
-### Tarefa G2.T04 — Extensões `render` (offline determinístico) e `state-context` ✨
+### Tarefa G2.T04 — Extensões `render` (offline determinístico) e `state-context` ✨✅ CONCLUÍDA
 
 - **Onde:** novos `src/clap/extensions/render.rs` e `src/clap/extensions/state_context.rs`; registro em `plugin/mod.rs`.
 - **Problema/Oportunidade:** (a) NAM é **determinístico e causal** — declarar `clap.render` permite ao host sinalizar render offline/realtime, útil para bounce/export consistente. (b) `clap.state-context` permite distinguir save para **preset** vs **projeto** vs **duplicação**, evitando, por exemplo, persistir paths absolutos em contexto de preset portável.

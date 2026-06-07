@@ -145,6 +145,9 @@ pub struct ColdShared {
     pub ui_model_info: Mutex<Option<crate::common::diagnostics::ModelInfo>>,
     /// Lifetime fence: true while the plugin exists. Checked by the File Picker thread.
     pub alive_fence: Arc<AtomicBool>,
+    /// Render mode as set by the host via `clap.render`: 0 = Realtime, 1 = Offline.
+    /// Written by the Main Thread, read by the RT thread at low frequency (transitions only).
+    pub render_mode: AtomicU32,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +185,12 @@ impl Drop for NamClapShared {
         crate::common::panic_hook::set_shutdown_in_progress();
     }
 }
+
+/// Render mode constants for `ColdShared::render_mode`.
+/// Render mode: realtime (normal processing).
+pub const RENDER_MODE_REALTIME: u32 = 0;
+/// Render mode: offline (export/bounce, max quality, no soft-degrade).
+pub const RENDER_MODE_OFFLINE: u32 = 1;
 
 impl NamClapShared {
     /// Bitmask for the parameter in the `gesture_flags` field.
@@ -379,6 +388,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             ui_load_error_msg: Mutex::new(String::new()),
             ui_model_info: Mutex::new(None),
             alive_fence: Arc::new(AtomicBool::new(true)),
+            render_mode: AtomicU32::new(RENDER_MODE_REALTIME),
         },
     }
 }
