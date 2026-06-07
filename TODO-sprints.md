@@ -117,7 +117,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   comportamento — apenas registrar como risco latente herdado).
 - **DoD:** padrão.
 
-#### S1.T03 — Dividir `src/math/gemm/gemv_4gate.rs` (401 LOC) por ISA/feature
+#### S1.T03 — Dividir `src/math/gemm/gemv_4gate.rs` (401 LOC) por ISA/feature (CONCLUÍDO ✅)
 
 - **Split:** criar `gemv_4gate/`:
   - `gemv_4gate/avx2.rs` ← `gemv_4gate_avx2` (L20–133).
