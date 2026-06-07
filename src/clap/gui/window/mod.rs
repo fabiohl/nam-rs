@@ -70,6 +70,12 @@ pub struct NamPluginWindow {
     /// Close signal for floating windows. When set to true, the window event
     /// loop will exit gracefully.
     close_signal: Arc<AtomicBool>,
+    /// Instant of the last completed paint cycle (tessellate + paint + swap).
+    /// Used for frame throttle and idle detection.
+    last_paint_time: Instant,
+    /// Set to `true` by `on_event` when any input event arrives; cleared after
+    /// each paint cycle. Prevents frame-skipping when the user is interacting.
+    dirty: bool,
 }
 
 impl NamPluginWindow {
@@ -190,6 +196,8 @@ impl NamPluginWindow {
             state,
             last_mouse_pos: egui::Pos2::ZERO,
             close_signal,
+            last_paint_time: Instant::now(),
+            dirty: true,
         }
     }
 
@@ -237,27 +245,61 @@ impl WindowHandler for NamPluginWindow {
                 info.native_pixels_per_point = Some(self.scale);
             }
 
+            // Snapshot peak-hold values before run_ui to detect active decay.
+            let hold_l_before = self.state.peak_l_hold;
+            let hold_r_before = self.state.peak_r_hold;
+
             let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
                 egui::CentralPanel::default().show_inside(ui, |ui| {
                     crate::clap::gui::ui::draw_ui(ui, shared, &self.host, &mut self.state);
                 });
             });
 
-            let clipped_primitives = self
-                .egui_ctx
-                .tessellate(full_output.shapes, full_output.pixels_per_point);
+            // Determine whether a full paint cycle is needed. Skip when all of:
+            // (a) egui requested a long (or no) repaint delay — no pending animations,
+            // (b) no input events arrived since last paint (`dirty` is false),
+            // (c) peak-hold meters are not in active decay.
+            let repaint_delay = full_output
+                .viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .map(|vo| vo.repaint_delay);
 
-            let screen_size = [self.width, self.height];
-            // Background color: #1A1D23 (approved dark mode palette — T4.0.2)
-            self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
-            self.painter.paint_and_update_textures(
-                screen_size,
-                full_output.pixels_per_point,
-                &clipped_primitives,
-                &full_output.textures_delta,
-            );
+            let has_short_repaint = repaint_delay.is_some_and(|d| d.as_secs_f64() < 0.050);
 
-            gl_ctx.swap_buffers();
+            // Hold values change when audio is playing (hold tracks peak) or when
+            // hold decays after >2 s of silence. Static hold means true idle.
+            let hold_changed =
+                self.state.peak_l_hold != hold_l_before || self.state.peak_r_hold != hold_r_before;
+
+            // Throttle: minimum interval between paint cycles to honour the
+            // ~30–45 fps target when active (original 30 ms intent).
+            let time_since_paint = self.last_paint_time.elapsed();
+
+            let should_skip = !self.dirty
+                && !has_short_repaint
+                && !hold_changed
+                && time_since_paint < std::time::Duration::from_millis(22);
+
+            if !should_skip {
+                let clipped_primitives = self
+                    .egui_ctx
+                    .tessellate(full_output.shapes, full_output.pixels_per_point);
+
+                let screen_size = [self.width, self.height];
+                // Background color: #1A1D23 (approved dark mode palette — T4.0.2)
+                self.painter.clear(screen_size, [0.102, 0.114, 0.137, 1.0]);
+                self.painter.paint_and_update_textures(
+                    screen_size,
+                    full_output.pixels_per_point,
+                    &clipped_primitives,
+                    &full_output.textures_delta,
+                );
+
+                gl_ctx.swap_buffers();
+                self.last_paint_time = std::time::Instant::now();
+            }
+
+            self.dirty = false;
         }
 
         // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
@@ -273,6 +315,8 @@ impl WindowHandler for NamPluginWindow {
     /// with `NamClapShared` to enqueue loading via `ui_pending_model`.
     fn on_event(&mut self, _window: &mut Window, event: Event) -> EventStatus {
         const SCROLL_LINES_TO_POINTS: f32 = input_map::SCROLL_LINES_TO_POINTS;
+
+        self.dirty = true;
 
         match event {
             Event::Window(WindowEvent::Resized(window_info)) => {

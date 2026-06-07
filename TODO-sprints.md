@@ -78,7 +78,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ---
 
-## Sprint G2 — CLAP Features (extensões corretas e idiomáticas)
+## Sprint G2 — CLAP Features (extensões corretas e idiomáticas) ✅ CONCLUÍDA
 
 ### Tarefa G2.T01 — Preset Discovery Factory + `clap.preset-load` (modelos .nam/.namb como presets) 🔥✨✅ CONCLUÍDA
 
@@ -143,7 +143,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint G3 — GUI (eficiência, limpeza e robustez)
 
-### Tarefa G3.T01 — Renderização condicional / idle (honrar o agendamento de repaint do egui) 🔥
+### Tarefa G3.T01 — Renderização condicional / idle (honrar o agendamento de repaint do egui) 🔥✅ CONCLUÍDA
 
 - **Onde:** `src/clap/gui/window/mod.rs:202-256` (`on_frame`) e `src/clap/gui/ui/mod.rs:204` (`request_repaint_after(30ms)`).
 - **Problema:** Em integração manual baseview, `on_frame` é dirigido pelo loop do baseview e roda **incondicionalmente** a cada frame; os `ui.ctx().request_repaint_after(...)` espalhados (ex.: `ui/mod.rs:204`) **não estão conectados** a nenhum sinal de repaint e são efetivamente *no-ops*. Resultado: o plugin executa `run_ui` + `tessellate` + paint GL + `swap_buffers` **todo frame** (tipicamente 60 fps com VSync) mesmo ocioso, desperdiçando CPU/GPU enquanto o editor está aberto.
