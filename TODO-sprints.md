@@ -3,12 +3,9 @@
 
 # TODO-sprints — Refatoração Estrutural (Rust) do nam-rs
 
-> **Objetivo do plano:** decompor os arquivos-fonte grandes (≥ 300 linhas) em
-> módulos menores, atômicos, modulares e bem organizados — **sem alterar lógica
-> nem algoritmos** — preservando rigorosamente a **segurança de tempo real
-> (RT-Safety)** e a performance SIMD. Cada tarefa abaixo foi escrita para ser
-> executada **isoladamente por um agente de IA**, sem dependência de contexto de
-> outras tarefas.
+> **Objetivo do plano:** decompor os arquivos-fonte grandes (≥ 300 linhas) em módulos menores, atômicos, modulares e bem organizados — **sem alterar lógica
+> nem algoritmos** — preservando rigorosamente a **segurança de tempo real (RT-Safety)** e a performance SIMD. Cada tarefa abaixo foi escrita para ser
+> executada **isoladamente por um agente de IA**, sem dependência de contexto de outras tarefas.
 
 ---
 
@@ -27,51 +24,34 @@ Cada **Tarefa Técnica** é autocontida e define:
 
 Consulte `.agents/rules/rust.md` e `.agents/rules/testing.md`. Resumo vinculante:
 
-1. **Zero mudança de lógica.** É uma refatoração *estrutural*. Nenhum algoritmo,
-   constante numérica, ordem de acumulação (Kahan), `Ordering` atômico,
-   `target_feature`, `#[inline(always)]`/`#[cold]` ou `#[repr(align(128))]` pode
-   ser alterado. Regressões são proibidas.
-2. **Mover, não reescrever.** Ao migrar um item para um novo arquivo, copie o
-   corpo **verbatim** (incluindo comentários `// SAFETY:` e doc-comments).
-3. **Preservar a superfície pública.** Os caminhos `crate::...` usados por outros
-   módulos não podem quebrar. Use `pub use` / `pub(crate) use` em `mod.rs` para
-   re-exportar os símbolos movidos e manter os imports existentes funcionando.
-4. **Convenção de testes (`testing.md`).** Todo novo arquivo `_test.rs` recebe o
-   cabeçalho SPDX/Copyright. Arquivos de produção ≥ 300 linhas mantêm os testes
-   em `*_test.rs` via `#[cfg(test)] #[path = "x_test.rs"] mod x_test;`.
-5. **RT-Safety inviolável.** Em qualquer caminho hot (`process`, kernels SIMD,
-   callback RT): proibido heap alloc, `Box`/`Vec`/`Arc` saindo de escopo, locks,
-   `println!`/`format!`, I/O, ou `panic!`/`unwrap!`/`expect!`. Mantenha alocações
-   apenas em caminhos `#[cold]` (setup/`activate`/`new`/load).
-6. **Validação final (gate de conclusão).** A tarefa só está concluída quando os
-   dois scripts rodam **sem warnings nem erros**:
+1. **Zero mudança de lógica.** É uma refatoração *estrutural*. Nenhum algoritmo, constante numérica, ordem de acumulação (Kahan), `Ordering` atômico, `target_feature`, `#[inline(always)]`/`#[cold]` ou `#[repr(align(128))]` pode ser alterado. Regressões são proibidas.
+2. **Mover, não reescrever.** Ao migrar um item para um novo arquivo, copie o corpo **verbatim** (incluindo comentários `// SAFETY:` e doc-comments).
+3. **Preservar a superfície pública.** Os caminhos `crate::...` usados por outros módulos não podem quebrar. Use `pub use` / `pub(crate) use` em `mod.rs` para re-exportar os símbolos movidos e manter os imports existentes funcionando.
+4. **Convenção de testes (`testing.md`).** Todo novo arquivo `_test.rs` recebe o cabeçalho SPDX/Copyright. Arquivos de produção ≥ 300 linhas mantêm os testes em `*_test.rs` via `#[cfg(test)] #[path = "x_test.rs"] mod x_test;`.
+5. **RT-Safety inviolável.** Em qualquer caminho hot (`process`, kernels SIMD, callback RT): proibido heap alloc, `Box`/`Vec`/`Arc` saindo de escopo, locks, `println!`/`format!`, I/O, ou `panic!`/`unwrap!`/`expect!`. Mantenha alocações apenas em caminhos `#[cold]` (setup/`activate`/`new`/load).
+6. **Validação final (gate de conclusão).** A tarefa só está concluída quando os dois scripts rodam **sem warnings nem erros**:
 
    ```bash
    bash utils/lints.sh
    bash utils/tests-cargo.sh
    ```
 
-   `lints.sh` cobre `cargo fmt` + `cargo check`/`clippy -D warnings` em 4 perfis
-   de features (standalone, pure-core, clap-plugin, all-features).
+   `lints.sh` cobre `cargo fmt` + `cargo check`/`clippy -D warnings` em 4 perfis de features (standalone, pure-core, clap-plugin, all-features).
 
 ### 0.2 Definition of Done (DoD) padrão por tarefa
 
 - [ ] Split aplicado conforme o plano; arquivos novos com cabeçalho SPDX.
 - [ ] Re-exports em `mod.rs` mantêm todos os caminhos de import inalterados.
-- [ ] Nenhum arquivo de produção resultante ≥ 300 linhas (ou justificativa de
-      coesão registrada na própria tarefa quando o split é desaconselhado).
+- [ ] Nenhum arquivo de produção resultante ≥ 300 linhas (ou justificativa de coesão registrada na própria tarefa quando o split é desaconselhado).
 - [ ] `git diff` não revela mudança semântica (apenas movimentação + re-export).
 - [ ] `bash utils/lints.sh` verde.
 - [ ] `bash utils/tests-cargo.sh` verde.
 
 ### 0.3 Paralelismo e coordenação
 
-As Sprints 1–4 atuam em subsistemas independentes (`math/`, `models/`, `clap/`,
-`dsp`+`loader`+`common`+`standalone`) e **podem ser executadas em paralelo** por
-agentes distintos. **Conflito a evitar:** dentro de um mesmo subsistema, várias
-tarefas editam o mesmo `mod.rs` (re-exports). Recomenda-se que, por subsistema,
-as tarefas sejam serializadas **ou** que cada agente toque apenas o bloco de
-re-export do símbolo que moveu.
+As Sprints 1–4 atuam em subsistemas independentes (`math/`, `models/`, `clap/`, `dsp`+`loader`+`common`+`standalone`) e **podem ser executadas em paralelo** por agentes distintos.
+**Conflito a evitar:** dentro de um mesmo subsistema, várias tarefas editam o mesmo `mod.rs` (re-exports).
+Recomenda-se que, por subsistema, as tarefas sejam serializadas **ou** que cada agente toque apenas o bloco de re-export do símbolo que moveu.
 
 ---
 
@@ -81,13 +61,13 @@ re-export do símbolo que moveu.
 > blocos `#[cfg(test)] mod tests { ... }` inline para arquivos `*_test.rs`
 > (exigência de `testing.md` para arquivos ≥ 300 linhas).
 
-| ID | Arquivo | Ação | Status |
-|----|---------|------|--------|
-| S0.T01 | `src/dsp/adaptive.rs` (647→329) | Testes → `adaptive_test.rs` | ✅ |
-| S0.T02 | `src/loader/namb.rs` (497→342) | Testes → `namb_test.rs` | ✅ |
-| S0.T03 | `src/models/a2/activations.rs` (339→162) | Testes → `activations_test.rs` | ✅ |
-| S0.T04 | `src/clap/factory/preset_discovery.rs` (309→254) | Testes → `preset_discovery_test.rs` | ✅ |
-| S0.T05 | `src/clap/plugin/shared.rs` (425→336) | `make_test_shared` + `layout_tests` → `shared_test.rs` (com re-export `#[cfg(test)]`) | ✅ |
+| ID     | Arquivo                                          | Ação                                                                                  | Status |
+| ------ | ------------------------------------------------ | ------------------------------------------------------------------------------------- | ------ |
+| S0.T01 | `src/dsp/adaptive.rs` (647→329)                  | Testes → `adaptive_test.rs`                                                           | ✅     |
+| S0.T02 | `src/loader/namb.rs` (497→342)                   | Testes → `namb_test.rs`                                                               | ✅     |
+| S0.T03 | `src/models/a2/activations.rs` (339→162)         | Testes → `activations_test.rs`                                                        | ✅     |
+| S0.T04 | `src/clap/factory/preset_discovery.rs` (309→254) | Testes → `preset_discovery_test.rs`                                                   | ✅     |
+| S0.T05 | `src/clap/plugin/shared.rs` (425→336)            | `make_test_shared` + `layout_tests` → `shared_test.rs` (com re-export `#[cfg(test)]`) | ✅     |
 
 Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
@@ -249,7 +229,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 - **DoD:** padrão.
 
 #### S1.T10 — Limpeza dos arquivos Math coesos (sem split)
->
+
 > Estes arquivos **não devem ser divididos** (justificativa de coesão). A tarefa
 > é apenas remover comentários obsoletos/duplicados e dead code seguro.
 
@@ -273,7 +253,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 > `WaveNetModel` etc. com os mesmos caminhos). Padrão de testes já é compliant
 > (`#[path="tests.rs"]`).
 
-#### S2.T01 — Dividir `src/models/wavenet/model_dyn.rs` (626 LOC)
+### S2.T01 — Dividir `src/models/wavenet/model_dyn.rs` (626 LOC)
 
 - **Split** (espelha o lado estático que já tem `dense.rs`/`model.rs`):
   - `dense_dyn.rs` ← `DenseLayerDyn` + impl (L11–138).
@@ -737,7 +717,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 > Tarefas independentes, sem split. Cada uma é pequena e isolada. **Não** mudar
 > lógica. Útil para um agente "faxina".
 
-#### S5.T01 — Padronização de idioma em comentários/mensagens
+### S5.T01 — Padronização de idioma em comentários/mensagens
 
 - Substituir comentários/mensagens soltas em PT por EN (ou vice-versa, conforme
   padrão do arquivo) nos pontos identificados: `conv1d_dyn.rs` (L280/L432),
@@ -769,36 +749,19 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ## Anexo A — Matriz de priorização e paralelização
 
-| Sprint | Subsistema | Tarefas | Split? | Risco | Paralelizável com |
-|--------|-----------|---------|--------|-------|-------------------|
-| 1.A | math/gemm | S1.T01–T04 | Sim (por ISA) | Médio | 2, 3, 4 |
-| 1.B | math/dsp,wavenet,common | S1.T05–T08 | Sim | Médio | 2, 3, 4 |
-| 1.C | math/common (macros) | S1.T09–T10 | Sim/Coeso | Baixo | 2, 3, 4 |
-| 2 | models | S2.T01–T07 | Maioria | Médio | 1, 3, 4 |
-| 3.A | clap/gui | S3.T01–T04 | Sim | Baixo (UI) | 1, 2, 4 |
-| 3.B | clap/processor,plugin | S3.T05–T09 | Sim/Coeso | **Alto (RT)** | 1, 2, 4 |
-| 4.A | common | S4.T01–T02 | Sim | Médio | 1, 2, 3 |
-| 4.B | dsp | S4.T03–T05 | Sim/Coeso | **Alto (RT)** | 1, 2, 3 |
-| 4.C | loader | S4.T06–T09 | Sim | Baixo | 1, 2, 3 |
-| 4.D | standalone | S4.T10–T11 | Sim/Parcial | **Alto (RT)** | 1, 2, 3 |
-| 4.E | testing | S4.T12 | Coeso | Baixo | todos |
-| 5 | transversal | S5.T01–T03 | Não | Baixo–Médio | após 1–4 |
+| Sprint | Subsistema              | Tarefas    | Split?        | Risco         | Paralelizável com |
+| ------ | ----------------------- | ---------- | ------------- | ------------- | ----------------- |
+| 1.A    | math/gemm               | S1.T01–T04 | Sim (por ISA) | Médio         | 2, 3, 4           |
+| 1.B    | math/dsp,wavenet,common | S1.T05–T08 | Sim           | Médio         | 2, 3, 4           |
+| 1.C    | math/common (macros)    | S1.T09–T10 | Sim/Coeso     | Baixo         | 2, 3, 4           |
+| 2      | models                  | S2.T01–T07 | Maioria       | Médio         | 1, 3, 4           |
+| 3.A    | clap/gui                | S3.T01–T04 | Sim           | Baixo (UI)    | 1, 2, 4           |
+| 3.B    | clap/processor,plugin   | S3.T05–T09 | Sim/Coeso     | **Alto (RT)** | 1, 2, 4           |
+| 4.A    | common                  | S4.T01–T02 | Sim           | Médio         | 1, 2, 3           |
+| 4.B    | dsp                     | S4.T03–T05 | Sim/Coeso     | **Alto (RT)** | 1, 2, 3           |
+| 4.C    | loader                  | S4.T06–T09 | Sim           | Baixo         | 1, 2, 3           |
+| 4.D    | standalone              | S4.T10–T11 | Sim/Parcial   | **Alto (RT)** | 1, 2, 3           |
+| 4.E    | testing                 | S4.T12     | Coeso         | Baixo         | todos             |
+| 5      | transversal             | S5.T01–T03 | Não           | Baixo–Médio   | após 1–4          |
 
-**Tarefas de maior risco (RT hot-path):** S3.T05 (processor/dsp), S3.T06/T07
-(processor/params), S4.T03 (pipeline/stages), S4.T10 (rt_callback), S4.T11
-(capture). Exigem revisão manual de RT-safety no diff e, quando possível,
-verificação de não-regressão em `benches/`.
-
-## Anexo B — Checklist rápido por tarefa (copiar para o PR/commit)
-
-```
-[ ] Split conforme plano; arquivos novos com cabeçalho SPDX/Copyright
-[ ] Corpos movidos verbatim (sem reescrita de lógica/constantes/Ordering)
-[ ] mod.rs re-exporta símbolos; nenhum caminho de import quebrado
-[ ] #[inline(always)]/#[cold]/#[repr(align(128))]/#[target_feature] preservados
-[ ] Nenhum arquivo de produção >= 300 linhas (ou justificativa de coesão)
-[ ] Testes inline -> *_test.rs quando aplicável (testing.md)
-[ ] RT-safety: sem alloc/lock/panic/log novos em caminho hot
-[ ] bash utils/lints.sh  -> verde
-[ ] bash utils/tests-cargo.sh -> verde
-```
+**Tarefas de maior risco (RT hot-path):** S3.T05 (processor/dsp), S3.T06/T07 (processor/params), S4.T03 (pipeline/stages), S4.T10 (rt_callback), S4.T11 (capture). Exigem revisão manual de RT-safety no diff e, quando possível, verificação de não-regressão em `benches/`.
