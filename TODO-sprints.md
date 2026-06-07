@@ -111,7 +111,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 1.5 dia.
 
-### Tarefa G2.T03 — Revisão das feature strings do descriptor 🧹
+### Tarefa G2.T03 — Revisão das feature strings do descriptor 🧹✅ CONCLUÍDA
 
 - **Onde:** `src/clap/descriptor.rs:15-21`.
 - **Problema:** A lista declara `c"simulator"`, que **não** é uma feature padrão definida em `clap/plugin-features.h` (as padronizadas relevantes são `audio-effect`, `distortion`, `gate`, `mono`). Strings não-padrão são ignoradas pela maioria dos hosts e podem prejudicar categorização/busca.

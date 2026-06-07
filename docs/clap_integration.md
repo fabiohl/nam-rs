@@ -71,7 +71,7 @@ The plugin metadata descriptor will follow this pattern:
 - **Name**: `NAM-rs`
 - **Vendor**: `Fabio Lima`
 - **URL**: [https://github.com/fabiohl/nam-rs](https://github.com/fabiohl/nam-rs)
-- **Features**: `["audio-effect", "distortion", "gate", "simulator", "mono"]`
+- **Features**: `["audio-effect", "distortion", "gate", "mono"]` (CLAP 1.2.2 standard features — validated against `include/clap/plugin-features.h`)
 
 > [!NOTE]
 > The NAM standard is, by definition, mono. The CLAP plugin works strictly as mono (mono-in/mono-out) to align with traditional DAW workflows where channel routing is managed externally by the host. In contrast, in the Standalone/Pipewire executable, stereo processing is provided as a convenience for native stereo signals.
