@@ -199,3 +199,18 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
   - Aparência idêntica (pixel-diff dentro de tolerância de antialiasing).
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
+
+### Tarefa G3.T05 — Hardening de testes de integração (render + state-context + preset-load) 🧹
+
+- **Onde:** `src/clap/preset_discovery_test.rs`, `src/clap/processor_test.rs`, e novos blocos de teste nos arquivos de extensão.
+- **Problema:** A auditoria do Sprint G2 identificou gaps de cobertura em testes de integração com `clack-host`: (a) `PluginPresetLoadImpl::load_from_location()` não tem teste direto via `PluginInstance` real; (b) transições de render mode (Realtime↔Offline) não são testadas com `PluginInstance`; (c) round-trips de `state-context` (`ForPreset` vs `ForProject`) não têm teste via `PluginInstance`. Os pipelines são testados indiretamente (via GUI, `plugin_test.rs`, `processor_test.rs`), mas a ausência de testes diretos deixa os call-sites CLAP sem cobertura.
+- **Solução técnica:**
+  1. **preset-load:** Teste que instancia `PluginInstance<TestHost>`, obtém a extensão `PluginPresetLoad`, chama `load_from_location(LocationKind::File, path, "")`, e verifica `model_load_counter` incrementado + parâmetro `Active Model` atualizado.
+  2. **render:** Teste que instancia `PluginInstance<TestHost>`, ativa processamento, transiciona `Realtime→Offline→Realtime`, e verifica `adaptive_compute` forçado a `Off` durante offline e restaurado ao retornar. Verificar flag `RT_STATUS_DEGRADE_*` limpa em offline.
+  3. **state-context:** Teste que instancia `PluginInstance<TestHost>`, salva em contexto `ForPreset`, verifica JSON sem `model_path`; salva em `ForProject`, verifica `model_path` presente. Teste de load: `ForPreset` restaura apenas parâmetros de áudio; `ForProject` restaura estado completo.
+- **Critérios de aceitação:**
+  - Todos os 3 testes passam com `cargo test --features clap-plugin`.
+  - Nenhuma alocação/IO no RT durante os testes de render e preset-load.
+  - Cobertura dos call-sites CLAP previamente não testados.
+- **Especialista:** `implementador`.
+- **Esforço:** 0.5 dia.
