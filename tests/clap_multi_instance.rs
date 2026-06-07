@@ -150,7 +150,7 @@ fn test_multi_instance_rt_priority() {
     // The ONCE_PRIO flag is per-instance, so each instance should detect its own rt priority.
     for (i, shared_ptr) in shared_refs.iter().enumerate() {
         let shared = unsafe { &**shared_ptr };
-        let priority = shared.rt_status.rt_priority.load(Ordering::Relaxed);
+        let priority = shared.cold.rt_status.rt_priority.load(Ordering::Relaxed);
         assert_ne!(
             priority, -1,
             "Instance {}: rt_priority is still at sentinel value (-1). \

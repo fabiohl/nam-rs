@@ -628,7 +628,7 @@ mod tests {
 
         // Check model name basename was updated
         {
-            let name_guard = shared.ui_model_name.lock().unwrap();
+            let name_guard = shared.cold.ui_model_name.lock().unwrap();
             assert_eq!(*name_guard, "BossWN-nano.nam");
         }
 
@@ -637,9 +637,15 @@ mod tests {
         let mut started_processor = stopped_processor.start_processing().unwrap();
 
         // Let's reset the peaks
-        shared.ui_peak_l.store(0.0f32.to_bits(), Ordering::Relaxed);
-        shared.ui_peak_r.store(0.0f32.to_bits(), Ordering::Relaxed);
-        shared.ui_clipped.store(false, Ordering::Relaxed);
+        shared
+            .rt_to_ui
+            .ui_peak_l
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        shared
+            .rt_to_ui
+            .ui_peak_r
+            .store(0.0f32.to_bits(), Ordering::Relaxed);
+        shared.rt_to_ui.ui_clipped.store(false, Ordering::Relaxed);
 
         let n = 512;
         // Signal with peaks at 1.5 (left - clipping) and 0.5 (right)
@@ -681,13 +687,13 @@ mod tests {
             .unwrap();
 
         // Verify peaks are greater than 0.0
-        let peak_l = f32::from_bits(shared.ui_peak_l.load(Ordering::Relaxed));
-        let peak_r = f32::from_bits(shared.ui_peak_r.load(Ordering::Relaxed));
+        let peak_l = f32::from_bits(shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
+        let peak_r = f32::from_bits(shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
         assert!(peak_l > 0.0, "peak_l was: {}", peak_l);
         assert!(peak_r > 0.0, "peak_r was: {}", peak_r);
 
         // Verify that clipping occurred because input left was 1.5
-        let clipped = shared.ui_clipped.load(Ordering::Relaxed);
+        let clipped = shared.rt_to_ui.ui_clipped.load(Ordering::Relaxed);
         assert!(
             clipped,
             "ui_clipped should be true since input left was 1.5"
@@ -1056,6 +1062,7 @@ mod tests {
 
         // Resets the status flag to ensure it is clean before
         shared
+            .cold
             .rt_status
             .clear_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
 
@@ -1082,6 +1089,7 @@ mod tests {
         // Checks if the RT_STATUS_HEAP_ALLOC flag was set in the status flags
         assert!(
             shared
+                .cold
                 .rt_status
                 .check_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)
         );
@@ -1116,15 +1124,15 @@ mod tests {
         let shared = unsafe { &*shared_ptr };
 
         let path_with_null = PathBuf::from("invalid_model\0name.nam");
-        if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+        if let Ok(mut pending_guard) = shared.cold.ui_pending_model.lock() {
             *pending_guard = Some(path_with_null);
         }
-        shared.ui_loading.store(true, Ordering::Relaxed);
+        shared.cold.ui_loading.store(true, Ordering::Relaxed);
 
         plugin_instance.call_on_main_thread_callback();
 
-        assert!(!shared.ui_loading.load(Ordering::Relaxed));
-        assert!(shared.ui_load_error.load(Ordering::Relaxed));
+        assert!(!shared.cold.ui_loading.load(Ordering::Relaxed));
+        assert!(shared.cold.ui_load_error.load(Ordering::Relaxed));
     }
 
     #[test]

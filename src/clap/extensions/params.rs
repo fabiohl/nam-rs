@@ -117,22 +117,26 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
         match id.get() {
             PARAM_INPUT_GAIN => Some(f32::from_bits(
                 self.shared
+                    .ui_to_rt
                     .param_input_gain
                     .load(std::sync::atomic::Ordering::Relaxed),
             ) as f64),
             PARAM_OUTPUT_GAIN => Some(f32::from_bits(
                 self.shared
+                    .ui_to_rt
                     .param_output_gain
                     .load(std::sync::atomic::Ordering::Relaxed),
             ) as f64),
             PARAM_GATE_THRESH => Some(f32::from_bits(
                 self.shared
+                    .ui_to_rt
                     .param_gate_thresh
                     .load(std::sync::atomic::Ordering::Relaxed),
             ) as f64),
             PARAM_BYPASS => Some(
                 if self
                     .shared
+                    .ui_to_rt
                     .param_bypass
                     .load(std::sync::atomic::Ordering::Relaxed)
                     != 0
@@ -144,11 +148,13 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
             ),
             PARAM_ACTIVE_MODEL => Some(
                 self.shared
+                    .cold
                     .model_load_counter
                     .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
             PARAM_ADAPTIVE_COMPUTE => Some(
                 self.shared
+                    .ui_to_rt
                     .param_adaptive_compute
                     .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
@@ -175,7 +181,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 }
             }
             PARAM_ACTIVE_MODEL => {
-                let name = if let Ok(guard) = self.shared.ui_model_name.lock() {
+                let name = if let Ok(guard) = self.shared.cold.ui_model_name.lock() {
                     if guard.is_empty() {
                         "None".to_string()
                     } else {
@@ -210,7 +216,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 _ => None,
             },
             PARAM_ACTIVE_MODEL => {
-                let current_name = if let Ok(guard) = self.shared.ui_model_name.lock() {
+                let current_name = if let Ok(guard) = self.shared.cold.ui_model_name.lock() {
                     if guard.is_empty() {
                         "None".to_string()
                     } else {
@@ -223,6 +229,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 if text_str == current_name {
                     Some(
                         self.shared
+                            .cold
                             .model_load_counter
                             .load(std::sync::atomic::Ordering::Relaxed)
                             as f64,
@@ -266,24 +273,27 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 PARAM_INPUT_GAIN => {
                     self.params.input_gain_db = val;
                     self.shared
+                        .ui_to_rt
                         .param_input_gain
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_OUTPUT_GAIN => {
                     self.params.output_gain_db = val;
                     self.shared
+                        .ui_to_rt
                         .param_output_gain
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_GATE_THRESH => {
                     self.params.gate_threshold_db = val;
                     self.shared
+                        .ui_to_rt
                         .param_gate_thresh
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_BYPASS => {
                     self.params.bypass = val > 0.5;
-                    self.shared.param_bypass.store(
+                    self.shared.ui_to_rt.param_bypass.store(
                         if val > 0.5 { 1 } else { 0 },
                         std::sync::atomic::Ordering::Relaxed,
                     );
@@ -292,6 +302,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
                     self.params.adaptive_compute = mode;
                     self.shared
+                        .ui_to_rt
                         .param_adaptive_compute
                         .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -343,24 +354,27 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                 PARAM_INPUT_GAIN => {
                     self.params.input_gain_db = val;
                     self.shared
+                        .ui_to_rt
                         .param_input_gain
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_OUTPUT_GAIN => {
                     self.params.output_gain_db = val;
                     self.shared
+                        .ui_to_rt
                         .param_output_gain
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_GATE_THRESH => {
                     self.params.gate_threshold_db = val;
                     self.shared
+                        .ui_to_rt
                         .param_gate_thresh
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_BYPASS => {
                     self.params.bypass = val > 0.5;
-                    self.shared.param_bypass.store(
+                    self.shared.ui_to_rt.param_bypass.store(
                         if val > 0.5 { 1 } else { 0 },
                         std::sync::atomic::Ordering::Relaxed,
                     );
@@ -369,6 +383,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                     let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
                     self.params.adaptive_compute = mode;
                     self.shared
+                        .ui_to_rt
                         .param_adaptive_compute
                         .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -383,6 +398,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
         // This ensures that the next `process()` call uses updated values.
         let shared_in_db = f32::from_bits(
             self.shared
+                .ui_to_rt
                 .param_input_gain
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
@@ -392,6 +408,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
 
         let shared_out_db = f32::from_bits(
             self.shared
+                .ui_to_rt
                 .param_output_gain
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
@@ -401,6 +418,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
 
         let shared_gate_db = f32::from_bits(
             self.shared
+                .ui_to_rt
                 .param_gate_thresh
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
@@ -410,6 +428,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
 
         let shared_bypass = self
             .shared
+            .ui_to_rt
             .param_bypass
             .load(std::sync::atomic::Ordering::Relaxed)
             != 0;
@@ -419,6 +438,7 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
 
         let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
             self.shared
+                .ui_to_rt
                 .param_adaptive_compute
                 .load(std::sync::atomic::Ordering::Relaxed) as f32,
         );

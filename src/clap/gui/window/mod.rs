@@ -169,7 +169,7 @@ impl NamPluginWindow {
         };
 
         // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
-        let alive_fence = unsafe { &*shared.0 }.alive_fence.clone();
+        let alive_fence = unsafe { &*shared.0 }.cold.alive_fence.clone();
 
         Self {
             egui_ctx,
@@ -352,9 +352,10 @@ impl WindowHandler for NamPluginWindow {
                         if let Some(path) = get_valid_model_file(&data) {
                             #[allow(clippy::collapsible_if)]
                             if let Some(shared) = self.safe_shared() {
-                                if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+                                if let Ok(mut pending_guard) = shared.cold.ui_pending_model.lock() {
                                     *pending_guard = Some(path);
                                     shared
+                                        .cold
                                         .ui_loading
                                         .store(true, std::sync::atomic::Ordering::Relaxed);
                                     self.host.request_callback();

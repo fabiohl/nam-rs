@@ -45,13 +45,14 @@ impl<'a> NamClapProcessor<'a> {
                 }
                 ClapParamPayload::LoadModel(model_pair, new_resampler) => {
                     self.shared
+                        .cold
                         .rt_status
                         .clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
                     if let Some(old_l) = std::mem::replace(&mut self.model_l, model_pair.model_l) {
                         self.push_to_gc(GcItem::Model(old_l));
                     }
                     if let Some(ref mut model) = self.model_l {
-                        model.inject_rt_status(std::sync::Arc::clone(&self.shared.rt_status));
+                        model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
                         model.set_max_buffer_size(self.max_frames_count);
                     }
                     if let Some(model_r) = model_pair.model_r {
@@ -74,6 +75,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_INPUT_GAIN => {
                         self.params.input_gain_db = val;
                         self.shared
+                            .ui_to_rt
                             .param_input_gain
                             .store(val.to_bits(), Ordering::Relaxed);
                         self.smoother_in
@@ -83,6 +85,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_OUTPUT_GAIN => {
                         self.params.output_gain_db = val;
                         self.shared
+                            .ui_to_rt
                             .param_output_gain
                             .store(val.to_bits(), Ordering::Relaxed);
                         self.smoother_out
@@ -92,6 +95,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_GATE_THRESH => {
                         self.params.gate_threshold_db = val;
                         self.shared
+                            .ui_to_rt
                             .param_gate_thresh
                             .store(val.to_bits(), Ordering::Relaxed);
                         self.gate_dirty = true;
@@ -99,6 +103,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_BYPASS => {
                         self.params.bypass = val > 0.5;
                         self.shared
+                            .ui_to_rt
                             .param_bypass
                             .store(if val > 0.5 { 1 } else { 0 }, Ordering::Relaxed);
                     }
@@ -106,6 +111,7 @@ impl<'a> NamClapProcessor<'a> {
                         let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
                         self.params.adaptive_compute = mode;
                         self.shared
+                            .ui_to_rt
                             .param_adaptive_compute
                             .store(mode as u32, Ordering::Relaxed);
                         self.adaptive_compute.set_mode(mode);
@@ -140,7 +146,12 @@ impl<'a> NamClapProcessor<'a> {
         }
 
         // Sync parameters changed via GUI that were not echoed as input events by the host.
-        let shared_in_db = f32::from_bits(self.shared.param_input_gain.load(Ordering::Relaxed));
+        let shared_in_db = f32::from_bits(
+            self.shared
+                .ui_to_rt
+                .param_input_gain
+                .load(Ordering::Relaxed),
+        );
         if shared_in_db != self.params.input_gain_db {
             self.params.input_gain_db = shared_in_db;
             self.smoother_in
@@ -148,7 +159,12 @@ impl<'a> NamClapProcessor<'a> {
             self.param_in_changed = true;
         }
 
-        let shared_out_db = f32::from_bits(self.shared.param_output_gain.load(Ordering::Relaxed));
+        let shared_out_db = f32::from_bits(
+            self.shared
+                .ui_to_rt
+                .param_output_gain
+                .load(Ordering::Relaxed),
+        );
         if shared_out_db != self.params.output_gain_db {
             self.params.output_gain_db = shared_out_db;
             self.smoother_out
@@ -156,19 +172,27 @@ impl<'a> NamClapProcessor<'a> {
             self.param_out_changed = true;
         }
 
-        let shared_gate_db = f32::from_bits(self.shared.param_gate_thresh.load(Ordering::Relaxed));
+        let shared_gate_db = f32::from_bits(
+            self.shared
+                .ui_to_rt
+                .param_gate_thresh
+                .load(Ordering::Relaxed),
+        );
         if shared_gate_db != self.params.gate_threshold_db {
             self.params.gate_threshold_db = shared_gate_db;
             self.gate_dirty = true;
         }
 
-        let shared_bypass = self.shared.param_bypass.load(Ordering::Relaxed) != 0;
+        let shared_bypass = self.shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
         if shared_bypass != self.params.bypass {
             self.params.bypass = shared_bypass;
         }
 
         let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
-            self.shared.param_adaptive_compute.load(Ordering::Relaxed) as f32,
+            self.shared
+                .ui_to_rt
+                .param_adaptive_compute
+                .load(Ordering::Relaxed) as f32,
         );
         if shared_adaptive != self.params.adaptive_compute {
             self.params.adaptive_compute = shared_adaptive;
@@ -176,11 +200,12 @@ impl<'a> NamClapProcessor<'a> {
         }
 
         // Dynamic latency monitoring on the Audio Thread
-        let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let effective_latency = self.resampler.latency_samples(host_rate);
-        if effective_latency != self.shared.current_latency.load(Ordering::Relaxed) {
+        if effective_latency != self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed) {
             self.shared
+                .rt_to_ui
                 .current_latency
                 .store(effective_latency, Ordering::Relaxed);
             self.host.request_callback();

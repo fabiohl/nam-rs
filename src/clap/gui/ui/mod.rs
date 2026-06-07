@@ -69,16 +69,16 @@ pub fn draw_ui(
     host: &HostSharedHandle,
     state: &mut UiState,
 ) {
-    if shared.ui_load_error.swap(false, Ordering::Relaxed) {
+    if shared.cold.ui_load_error.swap(false, Ordering::Relaxed) {
         state.error_expiration = Some(Instant::now() + Duration::from_secs(3));
-        if let Ok(msg_guard) = shared.ui_load_error_msg.lock() {
+        if let Ok(msg_guard) = shared.cold.ui_load_error_msg.lock() {
             state.error_msg = msg_guard.clone();
         } else {
             state.error_msg = "Load failed".to_string();
         }
     }
 
-    let current_bypass = shared.param_bypass.load(Ordering::Relaxed) != 0;
+    let current_bypass = shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
     let accent_color = resolve_accent(shared);
     let mut load_btn_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
@@ -297,13 +297,13 @@ fn draw_zone1_identity(
                 });
             }
 
-            if load_clicked && !shared.ui_loading.load(Ordering::Relaxed) {
-                shared.ui_loading.store(true, Ordering::Relaxed);
+            if load_clicked && !shared.cold.ui_loading.load(Ordering::Relaxed) {
+                shared.cold.ui_loading.store(true, Ordering::Relaxed);
                 let shared_addr = shared as *const NamClapShared as usize;
                 let host_static: clack_plugin::host::HostSharedHandle<'static> =
                     // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                     unsafe { super::extend_host_lifetime(*host) };
-                let alive_fence = Arc::clone(&shared.alive_fence);
+                let alive_fence = Arc::clone(&shared.cold.alive_fence);
                 std::thread::spawn(move || {
                     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -320,12 +320,14 @@ fn draw_zone1_identity(
                                 // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                                 let shared = unsafe { &*(shared_addr as *const NamClapShared) };
                                 if let Some(path) = path_opt {
-                                    if let Ok(mut pending_guard) = shared.ui_pending_model.lock() {
+                                    if let Ok(mut pending_guard) =
+                                        shared.cold.ui_pending_model.lock()
+                                    {
                                         *pending_guard = Some(path);
                                         host_static.request_callback();
                                     }
                                 } else {
-                                    shared.ui_loading.store(false, Ordering::Relaxed);
+                                    shared.cold.ui_loading.store(false, Ordering::Relaxed);
                                 }
                             }
                         }
@@ -333,7 +335,7 @@ fn draw_zone1_identity(
                             if alive_fence.load(Ordering::Relaxed) {
                                 // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                                 let shared = unsafe { &*(shared_addr as *const NamClapShared) };
-                                shared.ui_loading.store(false, Ordering::Relaxed);
+                                shared.cold.ui_loading.store(false, Ordering::Relaxed);
 
                                 if let (Some(log), Ok(c_msg)) = (
                                     host_static.get_extension::<clack_extensions::log::HostLog>(),
@@ -373,7 +375,7 @@ fn draw_zone1_identity(
                     state.model_display_name.push_str("⚠ Load failed");
                 }
                 &state.model_display_name
-            } else if shared.ui_loading.load(Ordering::Relaxed) {
+            } else if shared.cold.ui_loading.load(Ordering::Relaxed) {
                 ui.ctx().request_repaint_after(Duration::from_millis(100));
                 let elapsed = ui.input(|i| i.time);
                 let frames = ["Loading", "Loading.", "Loading..", "Loading..."];
@@ -383,6 +385,7 @@ fn draw_zone1_identity(
                 &state.model_display_name
             } else {
                 let name_guard = shared
+                    .cold
                     .ui_model_name
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
@@ -456,31 +459,31 @@ fn draw_zone2_controls(
         }
         ui.vertical(|ui| {
             ui.add_space(12.0);
-            let ind_input = shared.param_indication
+            let ind_input = shared.cold.param_indication
                 [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
                 .load(Ordering::Relaxed);
             let ind_input_color = resolve_color(
-                shared.param_indication_color
+                shared.cold.param_indication_color
                     [crate::clap::extensions::params::PARAM_INPUT_GAIN as usize]
                     .load(Ordering::Relaxed),
                 egui::Color32::from_rgb(94, 129, 172),
             );
 
-            let ind_output = shared.param_indication
+            let ind_output = shared.cold.param_indication
                 [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
                 .load(Ordering::Relaxed);
             let ind_output_color = resolve_color(
-                shared.param_indication_color
+                shared.cold.param_indication_color
                     [crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize]
                     .load(Ordering::Relaxed),
                 egui::Color32::from_rgb(94, 129, 172),
             );
 
-            let ind_gate = shared.param_indication
+            let ind_gate = shared.cold.param_indication
                 [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
                 .load(Ordering::Relaxed);
             let ind_gate_color = resolve_color(
-                shared.param_indication_color
+                shared.cold.param_indication_color
                     [crate::clap::extensions::params::PARAM_GATE_THRESH as usize]
                     .load(Ordering::Relaxed),
                 egui::Color32::from_rgb(94, 129, 172),
@@ -494,8 +497,8 @@ fn draw_zone2_controls(
                         "INPUT",
                         crate::math::constants::GAIN_MIN_DB..=crate::math::constants::GAIN_MAX_DB,
                         0.0,
-                        &shared.param_input_gain,
-                        &shared.gesture_flags,
+                        &shared.ui_to_rt.param_input_gain,
+                        &shared.ui_to_rt.gesture_flags,
                         crate::clap::extensions::params::PARAM_INPUT_GAIN as usize,
                         accent_color,
                         accent_color,
@@ -514,8 +517,8 @@ fn draw_zone2_controls(
                         "OUTPUT",
                         crate::math::constants::GAIN_MIN_DB..=crate::math::constants::GAIN_MAX_DB,
                         0.0,
-                        &shared.param_output_gain,
-                        &shared.gesture_flags,
+                        &shared.ui_to_rt.param_output_gain,
+                        &shared.ui_to_rt.gesture_flags,
                         crate::clap::extensions::params::PARAM_OUTPUT_GAIN as usize,
                         accent_color,
                         accent_color,
@@ -534,8 +537,8 @@ fn draw_zone2_controls(
                         "GATE",
                         -90.0..=-40.0,
                         -70.0,
-                        &shared.param_gate_thresh,
-                        &shared.gesture_flags,
+                        &shared.ui_to_rt.param_gate_thresh,
+                        &shared.ui_to_rt.gesture_flags,
                         crate::clap::extensions::params::PARAM_GATE_THRESH as usize,
                         COL_AMBER,
                         accent_color,
@@ -564,10 +567,20 @@ fn draw_zone3_meters(
         ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(8.0);
 
-            let peak_l = f32::from_bits(shared.ui_peak_l.swap(0.0f32.to_bits(), Ordering::Relaxed));
-            let peak_r = f32::from_bits(shared.ui_peak_r.swap(0.0f32.to_bits(), Ordering::Relaxed));
+            let peak_l = f32::from_bits(
+                shared
+                    .rt_to_ui
+                    .ui_peak_l
+                    .swap(0.0f32.to_bits(), Ordering::Relaxed),
+            );
+            let peak_r = f32::from_bits(
+                shared
+                    .rt_to_ui
+                    .ui_peak_r
+                    .swap(0.0f32.to_bits(), Ordering::Relaxed),
+            );
 
-            let is_stereo = shared.active_channel_count.load(Ordering::Relaxed) >= 2;
+            let is_stereo = shared.rt_to_ui.active_channel_count.load(Ordering::Relaxed) >= 2;
 
             ui.horizontal(|ui| {
                 if is_stereo {
@@ -639,11 +652,11 @@ fn draw_zone4_bypass(
     ui.allocate_ui(egui::vec2(60.0, 210.0), |ui| {
         ui.vertical(|ui| {
             ui.add_space(18.0);
-            let ind_bypass = shared.param_indication
+            let ind_bypass = shared.cold.param_indication
                 [crate::clap::extensions::params::PARAM_BYPASS as usize]
                 .load(Ordering::Relaxed);
             let ind_bypass_color = resolve_color(
-                shared.param_indication_color
+                shared.cold.param_indication_color
                     [crate::clap::extensions::params::PARAM_BYPASS as usize]
                     .load(Ordering::Relaxed),
                 egui::Color32::from_rgb(94, 129, 172),
@@ -652,8 +665,8 @@ fn draw_zone4_bypass(
             handle_bypass(
                 ui,
                 bypass_id,
-                &shared.param_bypass,
-                &shared.gesture_flags,
+                &shared.ui_to_rt.param_bypass,
+                &shared.ui_to_rt.gesture_flags,
                 crate::clap::extensions::params::PARAM_BYPASS as usize,
                 accent_color,
                 host,
@@ -672,13 +685,13 @@ fn update_telemetry_state(state: &mut UiState, shared: &NamClapShared) {
         return;
     }
 
-    state.telem_cycles = shared.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
-    state.telem_last_n = shared.rt_status.last_n_samples.load(Ordering::Relaxed);
-    state.telem_prio = shared.rt_status.rt_priority.load(Ordering::Relaxed);
-    state.telem_overloads = shared.rt_status.dsp_overloads.load(Ordering::Relaxed);
+    state.telem_cycles = shared.cold.rt_status.dsp_cycle_time.load(Ordering::Relaxed);
+    state.telem_last_n = shared.cold.rt_status.last_n_samples.load(Ordering::Relaxed);
+    state.telem_prio = shared.cold.rt_status.rt_priority.load(Ordering::Relaxed);
+    state.telem_overloads = shared.cold.rt_status.dsp_overloads.load(Ordering::Relaxed);
 
-    let sr = shared.sample_rate.load(Ordering::Relaxed);
-    let lat = shared.current_latency.load(Ordering::Relaxed);
+    let sr = shared.cold.sample_rate.load(Ordering::Relaxed);
+    let lat = shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
 
     if sr > 0 && state.telem_last_n > 0 {
         let budget_ns = (state.telem_last_n as u64 * 1_000_000_000) / sr as u64;
@@ -729,7 +742,7 @@ fn update_telemetry_state(state: &mut UiState, shared: &NamClapShared) {
         state.telem_overloads
     );
 
-    let status_bits = shared.rt_status.status_bits.load(Ordering::Relaxed);
+    let status_bits = shared.cold.rt_status.status_bits.load(Ordering::Relaxed);
     state.status_strings[7].clear();
     let _ = write!(state.status_strings[7], "Flags: {:#X}", status_bits);
 
@@ -822,13 +835,13 @@ fn draw_telemetry_strings(
             if info_btn.clicked() {
                 // Synchronize global active model name and active sample rate
                 if let (Ok(name), Ok(mut active_name)) = (
-                    shared.ui_model_name.lock(),
+                    shared.cold.ui_model_name.lock(),
                     crate::common::diagnostics::ACTIVE_MODEL_NAME.write(),
                 ) {
                     *active_name = name.clone();
                 }
                 crate::common::diagnostics::ACTIVE_SAMPLE_RATE.store(
-                    shared.sample_rate.load(Ordering::Relaxed),
+                    shared.cold.sample_rate.load(Ordering::Relaxed),
                     Ordering::Relaxed,
                 );
 
@@ -1033,13 +1046,16 @@ fn draw_zone5_status_bar(
             egui::Stroke::new(0.5, COL_BORDER),
         );
 
-        let model_meta_opt = if let Ok(guard) = shared.ui_model_metadata.lock() {
+        let model_meta_opt = if let Ok(guard) = shared.cold.ui_model_metadata.lock() {
             guard.clone()
         } else {
             None
         };
 
-        let a2_placeholder = shared.rt_status.check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
+        let a2_placeholder = shared
+            .cold
+            .rt_status
+            .check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
 
         let is_toast_active = if let Some(expiration) = state.toast_expiration {
             if Instant::now() < expiration {

@@ -9,7 +9,8 @@ use crate::dsp::resampler::NamResampler;
 use crate::loader::LoadedModelPair;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// Main -> RT communication payload for the CLAP plugin.
@@ -48,14 +49,49 @@ pub struct NamClapSharedRef(pub *const NamClapShared);
 unsafe impl Send for NamClapSharedRef {}
 unsafe impl Sync for NamClapSharedRef {}
 
-/// Lock-free shared state between the audio thread and the main thread.
-///
-/// Uses 128-byte alignment to mitigate False Sharing.
-/// SPSC channels are wrapped in Mutex<Option<...>> only to allow
-/// them to be "extracted" by their respective threads during initialization,
-/// satisfying the `Sync` requirement of the `PluginShared` trait.
+// ---------------------------------------------------------------------------
+// Cache-line-isolated sub-structs grouped by access pattern
+// ---------------------------------------------------------------------------
+
+/// Fields written every block by the RT thread, read by the UI thread.
 #[repr(align(128))]
-pub struct NamClapShared {
+pub struct RtToUi {
+    /// True Peak L level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
+    pub ui_peak_l: AtomicU32,
+    /// True Peak R level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
+    pub ui_peak_r: AtomicU32,
+    /// Flag indicating whether clipping has occurred since the last UI frame. Read/reset by the UI thread.
+    pub ui_clipped: AtomicBool,
+    /// Current latency reported to the host (in samples).
+    pub current_latency: AtomicU32,
+    /// Number of active channels: 1 = mono, 2 = stereo.
+    pub active_channel_count: AtomicU32,
+}
+
+/// Fields written by the UI/Main thread, read every block by the RT thread.
+#[repr(align(128))]
+pub struct UiToRt {
+    /// Latest Input Gain parameter value (f32 as bits).
+    pub param_input_gain: AtomicU32,
+    /// Latest Output Gain parameter value (f32 as bits).
+    pub param_output_gain: AtomicU32,
+    /// Latest Gate Threshold parameter value (f32 as bits).
+    pub param_gate_thresh: AtomicU32,
+    /// Latest Bypass parameter value (0 = false, 1 = true).
+    pub param_bypass: AtomicU32,
+    /// Latest Adaptive Compute mode parameter value (0=Off, 1=Conservative, 2=Aggressive).
+    pub param_adaptive_compute: AtomicU32,
+    /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
+    /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
+    ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
+    ///   bit (param_index * 3 + 1) = Gesture Begin
+    ///   bit (param_index * 3 + 2) = Gesture End
+    pub gesture_flags: AtomicU32,
+}
+
+/// Fields accessed at low frequency by both threads (init, shutdown, rare events).
+#[repr(align(128))]
+pub struct ColdShared {
     /// SPSC channel: Main Thread -> Audio Thread (New parameters/models).
     pub param_tx: Mutex<Option<Producer<ClapParamPayload>>>,
     /// SPSC channel: Main Thread -> Audio Thread (Consumer).
@@ -68,71 +104,71 @@ pub struct NamClapShared {
     pub gc_overflow: Arc<GcOverflowBuffer>,
     /// Atomic status flags (RT->Main telemetry).
     pub rt_status: Arc<RtStatusFlags>,
-    /// Current latency reported to the host (in samples).
-    pub current_latency: AtomicU32,
     /// Native sample rate required by the actively loaded model.
     pub model_sample_rate: AtomicU32,
-    /// Latest Input Gain parameter value (f32 as bits).
-    pub param_input_gain: AtomicU32,
-    /// Latest Output Gain parameter value (f32 as bits).
-    pub param_output_gain: AtomicU32,
-    /// Latest Gate Threshold parameter value (f32 as bits).
-    pub param_gate_thresh: AtomicU32,
-    /// Latest Bypass parameter value (0 = false, 1 = true).
-    pub param_bypass: AtomicU32,
-    /// Latest Adaptive Compute mode parameter value (0=Off, 1=Conservative, 2=Aggressive).
-    pub param_adaptive_compute: AtomicU32,
-    /// True Peak L level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
-    pub ui_peak_l: AtomicU32,
-    /// True Peak R level set by the audio thread (f32 bits via f32::to_bits()). Read by the UI thread.
-    pub ui_peak_r: AtomicU32,
-    /// Flag indicating whether clipping has occurred since the last UI frame. Read/reset by the UI thread.
-    pub ui_clipped: std::sync::atomic::AtomicBool,
+    /// Detected host sample rate.
+    pub sample_rate: AtomicU32,
+    /// Host buffer size.
+    pub buffer_size: AtomicU32,
+    /// Dynamic accent color based on DAW track color (packed ARGB).
+    pub track_accent_color: AtomicU32,
+    /// Parameter indication (mapping, automation, and override) for the 6 parameters.
+    /// Bit 0: Mapped, Bit 1: Automating, Bit 2: Override.
+    pub param_indication: [AtomicU8; 6],
+    /// Indicated/mapped parameter colors (packed ARGB).
+    pub param_indication_color: [AtomicU32; 6],
+    /// Model load counter (incremented on each successful model load).
+    pub model_load_counter: AtomicU32,
     /// Loaded model name (path basename). Written by the main thread, read by the UI thread.
     pub ui_model_name: Mutex<String>,
     /// Loaded model metadata for UI display.
     pub ui_model_metadata: Mutex<Option<NamModelMetadata>>,
     /// Pending model path to be loaded by the Main Thread. Written by the UI thread.
-    pub ui_pending_model: Mutex<Option<std::path::PathBuf>>,
+    pub ui_pending_model: Mutex<Option<PathBuf>>,
     /// Indicates whether the GUI is in the middle of an asynchronous model load.
-    pub ui_loading: std::sync::atomic::AtomicBool,
+    pub ui_loading: AtomicBool,
     /// Flag signaling that a model loading error occurred.
-    pub ui_load_error: std::sync::atomic::AtomicBool,
+    pub ui_load_error: AtomicBool,
     /// Detailed error message for the GUI.
     pub ui_load_error_msg: Mutex<String>,
-    /// Detected host sample rate.
-    pub sample_rate: AtomicU32,
-    /// Number of active channels: 1 = mono, 2 = stereo.
-    pub active_channel_count: AtomicU32,
-    /// Dynamic accent color based on DAW track color (packed ARGB).
-    pub track_accent_color: AtomicU32,
-    /// Parameter indication (mapping, automation, and override) for the 6 parameters.
-    /// Bit 0: Mapped, Bit 1: Automating, Bit 2: Override.
-    pub param_indication: [std::sync::atomic::AtomicU8; 6],
-    /// Indicated/mapped parameter colors (packed ARGB).
-    pub param_indication_color: [std::sync::atomic::AtomicU32; 6],
-    /// Model load counter (incremented on each successful model load).
-    pub model_load_counter: AtomicU32,
-    /// Host buffer size.
-    pub buffer_size: AtomicU32,
     /// Dynamic model info for diagnostics.
     pub ui_model_info: Mutex<Option<crate::common::diagnostics::ModelInfo>>,
     /// Lifetime fence: true while the plugin exists. Checked by the File Picker thread.
-    pub alive_fence: Arc<std::sync::atomic::AtomicBool>,
+    pub alive_fence: Arc<AtomicBool>,
+}
 
-    /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
-    /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
-    ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
-    ///   bit (param_index * 3 + 1) = Gesture Begin
-    ///   bit (param_index * 3 + 2) = Gesture End
-    pub gesture_flags: AtomicU32,
+// ---------------------------------------------------------------------------
+// Outer shared struct
+// ---------------------------------------------------------------------------
+
+/// Lock-free shared state between the audio thread and the main thread.
+///
+/// Fields are segregated into cache-line-isolated sub-structs grouped by
+/// access pattern to eliminate False Sharing.  Each sub-struct has its own
+/// `#[repr(align(128))]` so that no two sub-structs share a 128-byte cache
+/// line, preventing cache-line bouncing between RT↔UI hotpath writes/reads.
+///
+/// SPSC channels are wrapped in Mutex<Option<...>> only to allow
+/// them to be "extracted" by their respective threads during initialization,
+/// satisfying the `Sync` requirement of the `PluginShared` trait.
+///
+/// - `rt_to_ui`: written every block by RT, read by UI.
+/// - `ui_to_rt`: written by UI/Main, read every block by RT.
+/// - `cold`: low-frequency access by both threads.
+pub struct NamClapShared {
+    /// Cache-line-isolated sub-struct: written every block by RT, read by UI.
+    pub rt_to_ui: RtToUi,
+    /// Cache-line-isolated sub-struct: written by UI/Main, read every block by RT.
+    pub ui_to_rt: UiToRt,
+    /// Cache-line-isolated sub-struct: low-frequency access by both threads.
+    pub cold: ColdShared,
 }
 
 impl<'a> PluginShared<'a> for NamClapShared {}
 
 impl Drop for NamClapShared {
     fn drop(&mut self) {
-        self.alive_fence.store(false, Ordering::Relaxed);
+        self.cold.alive_fence.store(false, Ordering::Relaxed);
         crate::common::panic_hook::set_shutdown_in_progress();
     }
 }
@@ -153,18 +189,23 @@ impl NamClapShared {
     /// Sets a gesture flag for the parameter (store = true).
     pub fn set_gesture(&self, param_index: usize, flag_shift: u32) {
         let bit = 1u32 << (param_index as u32 * Self::GESTURE_BITS_PER_PARAM + flag_shift);
-        self.gesture_flags.fetch_or(bit, Ordering::Relaxed);
+        self.ui_to_rt.gesture_flags.fetch_or(bit, Ordering::Relaxed);
     }
 
     /// Reads and clears a gesture flag (swap to false), returns the previous value.
     pub fn take_gesture(&self, param_index: usize, flag_shift: u32) -> bool {
         let bit = 1u32 << (param_index as u32 * Self::GESTURE_BITS_PER_PARAM + flag_shift);
-        (self.gesture_flags.fetch_and(!bit, Ordering::Relaxed) & bit) != 0
+        (self
+            .ui_to_rt
+            .gesture_flags
+            .fetch_and(!bit, Ordering::Relaxed)
+            & bit)
+            != 0
     }
 
     /// Zeros out all gesture flags.
     pub fn clear_gestures(&self) {
-        self.gesture_flags.store(0, Ordering::Relaxed);
+        self.ui_to_rt.gesture_flags.store(0, Ordering::Relaxed);
     }
 
     /// Flushes gestures and parameter updates initiated by the GUI
@@ -182,27 +223,27 @@ impl NamClapShared {
             (
                 PARAM_INPUT_GAIN,
                 Self::param_index(PARAM_INPUT_GAIN) as u32,
-                &self.param_input_gain,
+                &self.ui_to_rt.param_input_gain,
             ),
             (
                 PARAM_OUTPUT_GAIN,
                 Self::param_index(PARAM_OUTPUT_GAIN) as u32,
-                &self.param_output_gain,
+                &self.ui_to_rt.param_output_gain,
             ),
             (
                 PARAM_GATE_THRESH,
                 Self::param_index(PARAM_GATE_THRESH) as u32,
-                &self.param_gate_thresh,
+                &self.ui_to_rt.param_gate_thresh,
             ),
             (
                 PARAM_BYPASS,
                 Self::param_index(PARAM_BYPASS) as u32,
-                &self.param_bypass,
+                &self.ui_to_rt.param_bypass,
             ),
             (
                 PARAM_ADAPTIVE_COMPUTE,
                 Self::param_index(PARAM_ADAPTIVE_COMPUTE) as u32,
-                &self.param_adaptive_compute,
+                &self.ui_to_rt.param_adaptive_compute,
             ),
         ];
 
@@ -233,7 +274,7 @@ impl NamClapShared {
 
 impl crate::common::diagnostics::HasRuntimeSnapshot for NamClapShared {
     fn model_info(&self) -> Option<crate::common::diagnostics::ModelInfo> {
-        if let Ok(info_guard) = self.ui_model_info.lock() {
+        if let Ok(info_guard) = self.cold.ui_model_info.lock() {
             info_guard.clone()
         } else {
             None
@@ -241,9 +282,9 @@ impl crate::common::diagnostics::HasRuntimeSnapshot for NamClapShared {
     }
 
     fn audio_info(&self) -> crate::common::diagnostics::AudioInfo {
-        let sr = self.sample_rate.load(Ordering::Relaxed);
-        let buffer_size = self.buffer_size.load(Ordering::Relaxed) as usize;
-        let channel_count = self.active_channel_count.load(Ordering::Relaxed) as usize;
+        let sr = self.cold.sample_rate.load(Ordering::Relaxed);
+        let buffer_size = self.cold.buffer_size.load(Ordering::Relaxed) as usize;
+        let channel_count = self.rt_to_ui.active_channel_count.load(Ordering::Relaxed) as usize;
         crate::common::diagnostics::AudioInfo {
             sample_rate: sr,
             buffer_size,
@@ -253,14 +294,107 @@ impl crate::common::diagnostics::HasRuntimeSnapshot for NamClapShared {
     }
 
     fn rt_info(&self) -> crate::common::diagnostics::RtInfo {
-        self.rt_status.rt_info()
+        self.cold.rt_status.rt_info()
     }
 
     fn telemetry_snapshot(&self) -> crate::common::diagnostics::TelemetrySnapshot {
-        self.rt_status.telemetry_snapshot()
+        self.cold.rt_status.telemetry_snapshot()
     }
 
     fn flags_seen(&self) -> u64 {
-        self.rt_status.flags_seen()
+        self.cold.rt_status.flags_seen()
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn make_test_shared() -> NamClapShared {
+    use crate::common::spsc::{GcOverflowBuffer, RtStatusFlags};
+    use rtrb::RingBuffer;
+    use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32};
+    use std::sync::{Arc, Mutex};
+
+    let (param_tx, param_rx) = RingBuffer::new(8);
+    let (gc_tx, gc_rx) = RingBuffer::new(32);
+
+    NamClapShared {
+        rt_to_ui: RtToUi {
+            ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
+            ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
+            ui_clipped: AtomicBool::new(false),
+            current_latency: AtomicU32::new(0),
+            active_channel_count: AtomicU32::new(1),
+        },
+        ui_to_rt: UiToRt {
+            param_input_gain: AtomicU32::new(0.0f32.to_bits()),
+            param_output_gain: AtomicU32::new(0.0f32.to_bits()),
+            param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
+            param_bypass: AtomicU32::new(0),
+            param_adaptive_compute: AtomicU32::new(1),
+            gesture_flags: AtomicU32::new(0),
+        },
+        cold: ColdShared {
+            param_tx: Mutex::new(Some(param_tx)),
+            param_rx: Mutex::new(Some(param_rx)),
+            gc_tx: Mutex::new(Some(gc_tx)),
+            gc_rx: Mutex::new(Some(gc_rx)),
+            gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
+            rt_status: Arc::new(RtStatusFlags::new()),
+            model_sample_rate: AtomicU32::new(48000),
+            sample_rate: AtomicU32::new(44100),
+            buffer_size: AtomicU32::new(0),
+            track_accent_color: AtomicU32::new(0),
+            param_indication: [
+                AtomicU8::new(0),
+                AtomicU8::new(0),
+                AtomicU8::new(0),
+                AtomicU8::new(0),
+                AtomicU8::new(0),
+                AtomicU8::new(0),
+            ],
+            param_indication_color: [
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+                AtomicU32::new(0),
+            ],
+            model_load_counter: AtomicU32::new(0),
+            ui_model_name: Mutex::new(String::new()),
+            ui_model_metadata: Mutex::new(None),
+            ui_pending_model: Mutex::new(None),
+            ui_loading: AtomicBool::new(false),
+            ui_load_error: AtomicBool::new(false),
+            ui_load_error_msg: Mutex::new(String::new()),
+            ui_model_info: Mutex::new(None),
+            alive_fence: Arc::new(AtomicBool::new(true)),
+        },
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    #[test]
+    fn rt_to_ui_and_ui_to_rt_in_separate_cache_lines() {
+        let off_rt = std::mem::offset_of!(NamClapShared, rt_to_ui);
+        let off_ui = std::mem::offset_of!(NamClapShared, ui_to_rt);
+        let distance = off_ui.wrapping_sub(off_rt);
+        assert!(
+            distance >= 128,
+            "RtToUi and UiToRt must not share a 128-byte cache line: offset(RtToUi)={off_rt}, offset(UiToRt)={off_ui}, distance={distance}"
+        );
+    }
+
+    #[test]
+    fn ui_to_rt_and_cold_in_separate_cache_lines() {
+        let off_ui = std::mem::offset_of!(NamClapShared, ui_to_rt);
+        let off_cold = std::mem::offset_of!(NamClapShared, cold);
+        let distance = off_cold.wrapping_sub(off_ui);
+        assert!(
+            distance >= 128,
+            "UiToRt and Cold must not share a 128-byte cache line: offset(UiToRt)={off_ui}, offset(Cold)={off_cold}, distance={distance}"
+        );
     }
 }

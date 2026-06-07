@@ -21,10 +21,14 @@ impl<'a> PluginTrackInfoImpl for NamClapMainThread<'a> {
                 if let Some(color) = info.color() {
                     let packed = pack_argb(color.alpha, color.red, color.green, color.blue);
                     self.shared
+                        .cold
                         .track_accent_color
                         .store(packed, Ordering::Relaxed);
                 } else {
-                    self.shared.track_accent_color.store(0, Ordering::Relaxed);
+                    self.shared
+                        .cold
+                        .track_accent_color
+                        .store(0, Ordering::Relaxed);
                 }
             }
         }

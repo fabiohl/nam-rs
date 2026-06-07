@@ -15,7 +15,7 @@ impl<'a> PluginLatencyImpl for NamClapMainThread<'a> {
     /// The value is read from the shared state, which is updated by `NamClapProcessor`
     /// whenever the algorithmic latency changes (e.g., model activation or swap).
     fn get(&mut self) -> u32 {
-        self.shared.current_latency.load(Ordering::Relaxed)
+        self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed)
     }
 }
 

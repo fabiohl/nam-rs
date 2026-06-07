@@ -4,7 +4,9 @@
 //! NAM-rs plugin definition and its CLAP lifecycle components.
 
 mod shared;
-pub use shared::{ClapParamPayload, NamClapShared, NamClapSharedRef, NamModelMetadata};
+pub use shared::{
+    ClapParamPayload, ColdShared, NamClapShared, NamClapSharedRef, NamModelMetadata, RtToUi, UiToRt,
+};
 
 mod main_thread;
 pub use main_thread::NamClapMainThread;
@@ -59,52 +61,58 @@ impl DefaultPluginFactory for NamClapPlugin {
         let (gc_tx, gc_rx) = RingBuffer::new(32); // Increased capacity for the plugin
 
         Ok(NamClapShared {
-            param_tx: Mutex::new(Some(param_tx)),
-            param_rx: Mutex::new(Some(param_rx)),
-            gc_tx: Mutex::new(Some(gc_tx)),
-            gc_rx: Mutex::new(Some(gc_rx)),
-            gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
-            rt_status: Arc::new(RtStatusFlags::new()),
-            current_latency: AtomicU32::new(0),
-            model_sample_rate: AtomicU32::new(48000),
-            param_input_gain: AtomicU32::new(0.0f32.to_bits()),
-            param_output_gain: AtomicU32::new(0.0f32.to_bits()),
-            param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
-            param_bypass: AtomicU32::new(0),
-            param_adaptive_compute: AtomicU32::new(1), // Conservative by default in CLAP plugin
-            ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
-            ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
-            ui_clipped: std::sync::atomic::AtomicBool::new(false),
-            ui_model_name: Mutex::new(String::new()),
-            ui_model_metadata: Mutex::new(None),
-            ui_pending_model: Mutex::new(None),
-            ui_loading: std::sync::atomic::AtomicBool::new(false),
-            ui_load_error: std::sync::atomic::AtomicBool::new(false),
-            ui_load_error_msg: Mutex::new(String::new()),
-            sample_rate: AtomicU32::new(0),
-            active_channel_count: AtomicU32::new(1),
-            track_accent_color: AtomicU32::new(0),
-            param_indication: [
-                std::sync::atomic::AtomicU8::new(0),
-                std::sync::atomic::AtomicU8::new(0),
-                std::sync::atomic::AtomicU8::new(0),
-                std::sync::atomic::AtomicU8::new(0),
-                std::sync::atomic::AtomicU8::new(0),
-                std::sync::atomic::AtomicU8::new(0),
-            ],
-            param_indication_color: [
-                std::sync::atomic::AtomicU32::new(0),
-                std::sync::atomic::AtomicU32::new(0),
-                std::sync::atomic::AtomicU32::new(0),
-                std::sync::atomic::AtomicU32::new(0),
-                std::sync::atomic::AtomicU32::new(0),
-                std::sync::atomic::AtomicU32::new(0),
-            ],
-            model_load_counter: AtomicU32::new(0),
-            buffer_size: AtomicU32::new(0),
-            ui_model_info: Mutex::new(None),
-            alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-            gesture_flags: AtomicU32::new(0),
+            rt_to_ui: RtToUi {
+                ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
+                ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
+                ui_clipped: std::sync::atomic::AtomicBool::new(false),
+                current_latency: AtomicU32::new(0),
+                active_channel_count: AtomicU32::new(1),
+            },
+            ui_to_rt: UiToRt {
+                param_input_gain: AtomicU32::new(0.0f32.to_bits()),
+                param_output_gain: AtomicU32::new(0.0f32.to_bits()),
+                param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
+                param_bypass: AtomicU32::new(0),
+                param_adaptive_compute: AtomicU32::new(1), // Conservative by default in CLAP plugin
+                gesture_flags: AtomicU32::new(0),
+            },
+            cold: ColdShared {
+                param_tx: Mutex::new(Some(param_tx)),
+                param_rx: Mutex::new(Some(param_rx)),
+                gc_tx: Mutex::new(Some(gc_tx)),
+                gc_rx: Mutex::new(Some(gc_rx)),
+                gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
+                rt_status: Arc::new(RtStatusFlags::new()),
+                model_sample_rate: AtomicU32::new(48000),
+                sample_rate: AtomicU32::new(0),
+                buffer_size: AtomicU32::new(0),
+                track_accent_color: AtomicU32::new(0),
+                param_indication: [
+                    std::sync::atomic::AtomicU8::new(0),
+                    std::sync::atomic::AtomicU8::new(0),
+                    std::sync::atomic::AtomicU8::new(0),
+                    std::sync::atomic::AtomicU8::new(0),
+                    std::sync::atomic::AtomicU8::new(0),
+                    std::sync::atomic::AtomicU8::new(0),
+                ],
+                param_indication_color: [
+                    std::sync::atomic::AtomicU32::new(0),
+                    std::sync::atomic::AtomicU32::new(0),
+                    std::sync::atomic::AtomicU32::new(0),
+                    std::sync::atomic::AtomicU32::new(0),
+                    std::sync::atomic::AtomicU32::new(0),
+                    std::sync::atomic::AtomicU32::new(0),
+                ],
+                model_load_counter: AtomicU32::new(0),
+                ui_model_name: Mutex::new(String::new()),
+                ui_model_metadata: Mutex::new(None),
+                ui_pending_model: Mutex::new(None),
+                ui_loading: std::sync::atomic::AtomicBool::new(false),
+                ui_load_error: std::sync::atomic::AtomicBool::new(false),
+                ui_load_error_msg: Mutex::new(String::new()),
+                ui_model_info: Mutex::new(None),
+                alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            },
         })
     }
 
@@ -127,12 +135,16 @@ impl DefaultPluginFactory for NamClapPlugin {
                     color.green,
                     color.blue,
                 );
-                shared.track_accent_color.store(packed, Ordering::Relaxed);
+                shared
+                    .cold
+                    .track_accent_color
+                    .store(packed, Ordering::Relaxed);
             }
         }
 
         // Extracts the Main Thread's exclusive channels from shared state
         let param_tx = shared
+            .cold
             .param_tx
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -140,6 +152,7 @@ impl DefaultPluginFactory for NamClapPlugin {
             .ok_or(PluginError::Message("param_tx producer already taken"))?;
 
         let gc_rx = shared
+            .cold
             .gc_rx
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -162,6 +175,9 @@ impl DefaultPluginFactory for NamClapPlugin {
         Ok(main_thread)
     }
 }
+
+#[cfg(test)]
+pub(crate) use shared::make_test_shared;
 
 #[cfg(test)]
 #[path = "../plugin_test.rs"]

@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::clap::extensions::params::PARAM_INPUT_GAIN;
+use crate::clap::plugin::make_test_shared;
 use clack_host::prelude::EventBuffer;
 use clack_plugin::events::event_types::{
     ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
@@ -12,57 +13,7 @@ use std::sync::atomic::Ordering;
 
 #[test]
 fn test_gui_gestures_and_parameter_flow() {
-    let (param_tx, _) = RingBuffer::new(8);
-    let (gc_tx, _) = RingBuffer::new(32);
-
-    let shared = NamClapShared {
-        param_tx: Mutex::new(Some(param_tx)),
-        param_rx: Mutex::new(None),
-        gc_tx: Mutex::new(Some(gc_tx)),
-        gc_rx: Mutex::new(None),
-        gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
-        rt_status: Arc::new(RtStatusFlags::new()),
-        current_latency: AtomicU32::new(0),
-        model_sample_rate: AtomicU32::new(48000),
-        param_input_gain: AtomicU32::new(0.0f32.to_bits()),
-        param_output_gain: AtomicU32::new(0.0f32.to_bits()),
-        param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
-        param_bypass: AtomicU32::new(0),
-        param_adaptive_compute: AtomicU32::new(1),
-        ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
-        ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
-        ui_clipped: std::sync::atomic::AtomicBool::new(false),
-        ui_model_name: Mutex::new(String::new()),
-        ui_model_metadata: Mutex::new(None),
-        ui_pending_model: Mutex::new(None),
-        ui_loading: std::sync::atomic::AtomicBool::new(false),
-        ui_load_error: std::sync::atomic::AtomicBool::new(false),
-        ui_load_error_msg: Mutex::new(String::new()),
-        alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-        sample_rate: AtomicU32::new(44100),
-        active_channel_count: AtomicU32::new(1),
-        track_accent_color: AtomicU32::new(0),
-        param_indication: [
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-        ],
-        param_indication_color: [
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-        ],
-        model_load_counter: AtomicU32::new(0),
-        buffer_size: AtomicU32::new(0),
-        ui_model_info: Mutex::new(None),
-        gesture_flags: AtomicU32::new(0),
-    };
+    let shared = make_test_shared();
 
     // Simulates gesture begin, value change, and gesture end for input gain
     let input_idx = PARAM_INPUT_GAIN as usize;
@@ -72,15 +23,19 @@ fn test_gui_gestures_and_parameter_flow() {
     const END_SHIFT: u32 = 2;
     let offset = input_idx as u32 * BITS_PER_PARAM;
     shared
+        .ui_to_rt
         .gesture_flags
         .fetch_or(1 << (offset + BEGIN_SHIFT), Ordering::Relaxed);
     shared
+        .ui_to_rt
         .gesture_flags
         .fetch_or(1 << (offset + CHANGED_SHIFT), Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_input_gain
         .store(1.5f32.to_bits(), Ordering::Relaxed);
     shared
+        .ui_to_rt
         .gesture_flags
         .fetch_or(1 << (offset + END_SHIFT), Ordering::Relaxed);
 
@@ -117,7 +72,7 @@ fn test_gui_gestures_and_parameter_flow() {
     assert!(end_received, "Should receive ParamGestureEndEvent");
 
     // Verifies that the flags were cleared
-    let flags = shared.gesture_flags.load(Ordering::Relaxed);
+    let flags = shared.ui_to_rt.gesture_flags.load(Ordering::Relaxed);
     assert_eq!(
         flags & (1 << (offset + BEGIN_SHIFT)),
         0,
@@ -137,62 +92,12 @@ fn test_gui_gestures_and_parameter_flow() {
 
 #[test]
 fn test_file_picker_alive_fence_and_timeout() {
-    let (param_tx, _) = RingBuffer::new(8);
-    let (gc_tx, _) = RingBuffer::new(32);
-
-    let shared = Arc::new(NamClapShared {
-        param_tx: Mutex::new(Some(param_tx)),
-        param_rx: Mutex::new(None),
-        gc_tx: Mutex::new(Some(gc_tx)),
-        gc_rx: Mutex::new(None),
-        gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
-        rt_status: Arc::new(RtStatusFlags::new()),
-        current_latency: AtomicU32::new(0),
-        model_sample_rate: AtomicU32::new(48000),
-        param_input_gain: AtomicU32::new(0.0f32.to_bits()),
-        param_output_gain: AtomicU32::new(0.0f32.to_bits()),
-        param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
-        param_bypass: AtomicU32::new(0),
-        param_adaptive_compute: AtomicU32::new(1),
-        ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
-        ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
-        ui_clipped: std::sync::atomic::AtomicBool::new(false),
-        ui_model_name: Mutex::new(String::new()),
-        ui_model_metadata: Mutex::new(None),
-        ui_pending_model: Mutex::new(None),
-        ui_loading: std::sync::atomic::AtomicBool::new(false),
-        ui_load_error: std::sync::atomic::AtomicBool::new(false),
-        ui_load_error_msg: Mutex::new(String::new()),
-        alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-        sample_rate: AtomicU32::new(44100),
-        active_channel_count: AtomicU32::new(1),
-        track_accent_color: AtomicU32::new(0),
-        param_indication: [
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-        ],
-        param_indication_color: [
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-        ],
-        model_load_counter: AtomicU32::new(0),
-        buffer_size: AtomicU32::new(0),
-        ui_model_info: Mutex::new(None),
-        gesture_flags: AtomicU32::new(0),
-    });
+    let shared = Arc::new(make_test_shared());
 
     // 1. Success Case: alive_fence is true and we receive the path before timeout
     {
-        shared.ui_loading.store(true, Ordering::Relaxed);
-        let alive_fence = Arc::clone(&shared.alive_fence);
+        shared.cold.ui_loading.store(true, Ordering::Relaxed);
+        let alive_fence = Arc::clone(&shared.cold.alive_fence);
         let shared_addr = &*shared as *const NamClapShared as usize;
 
         let (tx, rx) = std::sync::mpsc::channel();
@@ -205,7 +110,7 @@ fn test_file_picker_alive_fence_and_timeout() {
                 if alive_fence.load(Ordering::Relaxed) {
                     let shared_ref = unsafe { &*(shared_addr as *const NamClapShared) };
                     if let Some(path) = path_opt
-                        && let Ok(mut pending_guard) = shared_ref.ui_pending_model.lock()
+                        && let Ok(mut pending_guard) = shared_ref.cold.ui_pending_model.lock()
                     {
                         *pending_guard = Some(path);
                     }
@@ -215,18 +120,18 @@ fn test_file_picker_alive_fence_and_timeout() {
         }
 
         assert_eq!(
-            *shared.ui_pending_model.lock().unwrap(),
+            *shared.cold.ui_pending_model.lock().unwrap(),
             Some(std::path::PathBuf::from("/tmp/model.nam"))
         );
     }
 
     // Clears the state
-    *shared.ui_pending_model.lock().unwrap() = None;
+    *shared.cold.ui_pending_model.lock().unwrap() = None;
 
     // 2. Case alive_fence is false: the plugin was destroyed before the picker returned
     {
-        shared.ui_loading.store(true, Ordering::Relaxed);
-        let alive_fence = Arc::clone(&shared.alive_fence);
+        shared.cold.ui_loading.store(true, Ordering::Relaxed);
+        let alive_fence = Arc::clone(&shared.cold.alive_fence);
         let shared_addr = &*shared as *const NamClapShared as usize;
 
         // Sets the alive fence to false (simulating plugin/GUI destruction)
@@ -242,7 +147,7 @@ fn test_file_picker_alive_fence_and_timeout() {
                     // If it entered here, it would be an error (illegal access to freed address)
                     let shared_ref = unsafe { &*(shared_addr as *const NamClapShared) };
                     if let Some(path) = path_opt
-                        && let Ok(mut pending_guard) = shared_ref.ui_pending_model.lock()
+                        && let Ok(mut pending_guard) = shared_ref.cold.ui_pending_model.lock()
                     {
                         *pending_guard = Some(path);
                     }
@@ -252,15 +157,15 @@ fn test_file_picker_alive_fence_and_timeout() {
         }
 
         // Must remain None because alive_fence was false and prevented accessing shared_addr
-        assert_eq!(*shared.ui_pending_model.lock().unwrap(), None);
+        assert_eq!(*shared.cold.ui_pending_model.lock().unwrap(), None);
     }
 
     // 3. Timeout Case: rx.recv_timeout fails due to timeout, resetting ui_loading
     {
         // Restores alive_fence to true
-        shared.alive_fence.store(true, Ordering::Relaxed);
-        shared.ui_loading.store(true, Ordering::Relaxed);
-        let alive_fence = Arc::clone(&shared.alive_fence);
+        shared.cold.alive_fence.store(true, Ordering::Relaxed);
+        shared.cold.ui_loading.store(true, Ordering::Relaxed);
+        let alive_fence = Arc::clone(&shared.cold.alive_fence);
         let shared_addr = &*shared as *const NamClapShared as usize;
 
         let (_tx, rx) = std::sync::mpsc::channel::<Option<std::path::PathBuf>>();
@@ -272,12 +177,12 @@ fn test_file_picker_alive_fence_and_timeout() {
                 // Timeout occurred
                 if alive_fence.load(Ordering::Relaxed) {
                     let shared_ref = unsafe { &*(shared_addr as *const NamClapShared) };
-                    shared_ref.ui_loading.store(false, Ordering::Relaxed);
+                    shared_ref.cold.ui_loading.store(false, Ordering::Relaxed);
                 }
             }
         }
 
         // ui_loading must be reset to false
-        assert!(!shared.ui_loading.load(Ordering::Relaxed));
+        assert!(!shared.cold.ui_loading.load(Ordering::Relaxed));
     }
 }

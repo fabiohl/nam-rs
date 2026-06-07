@@ -78,6 +78,7 @@ fn test_integration_v0_legacy_load() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_input_gain
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -86,6 +87,7 @@ fn test_integration_v0_legacy_load() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_output_gain
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -94,6 +96,7 @@ fn test_integration_v0_legacy_load() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_gate_thresh
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -101,6 +104,7 @@ fn test_integration_v0_legacy_load() {
     );
     assert_eq!(
         shared
+            .ui_to_rt
             .param_bypass
             .load(std::sync::atomic::Ordering::Relaxed),
         1
@@ -127,15 +131,19 @@ fn test_integration_v1_round_trip() {
     let shared = unsafe { &*shared_ptr };
 
     shared
+        .ui_to_rt
         .param_input_gain
         .store(1.5f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_output_gain
         .store((-2.0f32).to_bits(), std::sync::atomic::Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_gate_thresh
         .store((-65.0f32).to_bits(), std::sync::atomic::Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_bypass
         .store(0, std::sync::atomic::Ordering::Relaxed);
 
@@ -150,15 +158,19 @@ fn test_integration_v1_round_trip() {
 
     // 3. Reset atomic values in the plugin
     shared
+        .ui_to_rt
         .param_input_gain
         .store(0.0f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_output_gain
         .store(0.0f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_gate_thresh
         .store(0.0f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
     shared
+        .ui_to_rt
         .param_bypass
         .store(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -174,6 +186,7 @@ fn test_integration_v1_round_trip() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_input_gain
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -182,6 +195,7 @@ fn test_integration_v1_round_trip() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_output_gain
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -190,6 +204,7 @@ fn test_integration_v1_round_trip() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_gate_thresh
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -197,6 +212,7 @@ fn test_integration_v1_round_trip() {
     );
     assert_eq!(
         shared
+            .ui_to_rt
             .param_bypass
             .load(std::sync::atomic::Ordering::Relaxed),
         0
@@ -247,6 +263,7 @@ fn test_integration_forward_v1_to_v2() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_input_gain
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -255,6 +272,7 @@ fn test_integration_forward_v1_to_v2() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_output_gain
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -263,6 +281,7 @@ fn test_integration_forward_v1_to_v2() {
     assert_eq!(
         f32::from_bits(
             shared
+                .ui_to_rt
                 .param_gate_thresh
                 .load(std::sync::atomic::Ordering::Relaxed)
         ),
@@ -270,6 +289,7 @@ fn test_integration_forward_v1_to_v2() {
     );
     assert_eq!(
         shared
+            .ui_to_rt
             .param_bypass
             .load(std::sync::atomic::Ordering::Relaxed),
         0

@@ -41,14 +41,21 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
     /// Here we can drain the GC channel.
     fn on_main_thread(&mut self) {
         // Drain obsolete models to free memory outside RT.
-        let drained = drain_gc_channels(&mut self.gc_rx, &self.shared.gc_overflow);
+        let drained = drain_gc_channels(&mut self.gc_rx, &self.shared.cold.gc_overflow);
         self.shared
+            .cold
             .rt_status
             .drains
             .fetch_add(drained as u32, Ordering::Relaxed);
 
-        let current_bits = self.shared.rt_status.status_bits.load(Ordering::Relaxed);
+        let current_bits = self
+            .shared
+            .cold
+            .rt_status
+            .status_bits
+            .load(Ordering::Relaxed);
         self.shared
+            .cold
             .rt_status
             .flags_seen
             .fetch_or(current_bits, Ordering::Relaxed);
@@ -58,20 +65,21 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             use std::sync::atomic::{AtomicBool, Ordering};
             static HUGEPAGE_SYNCED: AtomicBool = AtomicBool::new(false);
             if !HUGEPAGE_SYNCED.load(Ordering::Relaxed) {
-                crate::dsp::mirror_buf::sync_huge_page_flag(&self.shared.rt_status);
+                crate::dsp::mirror_buf::sync_huge_page_flag(&self.shared.cold.rt_status);
                 HUGEPAGE_SYNCED.store(true, Ordering::Relaxed);
             }
         }
 
         // Check if there is a pending model sent by the UI
-        let pending_model = if let Ok(mut pending_guard) = self.shared.ui_pending_model.lock() {
+        let pending_model = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock()
+        {
             pending_guard.take()
         } else {
             None
         };
         if let Some(path) = pending_model {
             let res = self.load_model(&path);
-            self.shared.ui_loading.store(false, Ordering::Relaxed);
+            self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
             match res {
                 Ok(_) => {}
                 Err(e) => {
@@ -92,10 +100,13 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
                         NamErrorCode::ModelTooLarge => "Model file too large",
                         _ => "Internal error",
                     };
-                    if let Ok(mut msg_guard) = self.shared.ui_load_error_msg.lock() {
+                    if let Ok(mut msg_guard) = self.shared.cold.ui_load_error_msg.lock() {
                         *msg_guard = err_msg.to_string();
                     }
-                    self.shared.ui_load_error.store(true, Ordering::Relaxed);
+                    self.shared
+                        .cold
+                        .ui_load_error
+                        .store(true, Ordering::Relaxed);
 
                     if let Some(log) = self.host.get_extension::<HostLog>() {
                         let shared = self.host.shared();
@@ -123,6 +134,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
             // - These calls are on the main thread, outside any RT hotpath or FFI audio.
             if self
                 .shared
+                .cold
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED)
             {
@@ -132,6 +144,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 
             if self
                 .shared
+                .cold
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW)
             {
@@ -142,6 +155,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 
             if self
                 .shared
+                .cold
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED)
             {
@@ -152,6 +166,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 
             if self
                 .shared
+                .cold
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)
             {
@@ -164,6 +179,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
 
             if self
                 .shared
+                .cold
                 .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_HUGEPAGE_OK)
             {
@@ -176,7 +192,7 @@ impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {
         }
 
         // 2. Latency Monitoring: Notify the host if the value changed
-        let current_latency = self.shared.current_latency.load(Ordering::Relaxed);
+        let current_latency = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
         if current_latency != self.last_reported_latency {
             self.last_reported_latency = current_latency;
             if let Some(latency_ext) = self
@@ -206,7 +222,7 @@ impl<'a> NamClapMainThread<'a> {
         })?;
 
         // Build new resampler for host and model rates
-        let host_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+        let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
         let new_resampler = Box::new(
             NamResampler::new(host_rate, model_pair.sample_rate, 0).map_err(|e| {
@@ -235,7 +251,7 @@ impl<'a> NamClapMainThread<'a> {
         let metadata = model_pair.metadata.clone();
         let architecture = model_pair.architecture.clone();
         let topology = model_pair.topology.clone();
-        if let Ok(mut meta_guard) = self.shared.ui_model_metadata.lock() {
+        if let Ok(mut meta_guard) = self.shared.cold.ui_model_metadata.lock() {
             *meta_guard = Some(NamModelMetadata {
                 architecture,
                 topology,
@@ -272,12 +288,13 @@ impl<'a> NamClapMainThread<'a> {
             weights_layout: model_pair.weights_layout.clone(),
             path_basename: path.to_string_lossy().into_owned(),
         };
-        if let Ok(mut info_guard) = self.shared.ui_model_info.lock() {
+        if let Ok(mut info_guard) = self.shared.cold.ui_model_info.lock() {
             *info_guard = Some(model_info);
         }
 
         // Update model sample rate
         self.shared
+            .cold
             .model_sample_rate
             .store(model_pair.sample_rate, Ordering::Relaxed);
 
@@ -301,10 +318,11 @@ impl<'a> NamClapMainThread<'a> {
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_string();
-        if let Ok(mut name_guard) = self.shared.ui_model_name.lock() {
+        if let Ok(mut name_guard) = self.shared.cold.ui_model_name.lock() {
             *name_guard = basename;
         }
         self.shared
+            .cold
             .model_load_counter
             .fetch_add(1, Ordering::Relaxed);
 

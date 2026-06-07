@@ -95,20 +95,27 @@ impl<'a> NamClapProcessor<'a> {
                     }
                 }
 
-                let current_peak_l = f32::from_bits(self.shared.ui_peak_l.load(Ordering::Relaxed));
+                let current_peak_l =
+                    f32::from_bits(self.shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
                 if peak_l > current_peak_l {
                     self.shared
+                        .rt_to_ui
                         .ui_peak_l
                         .store(peak_l.to_bits(), Ordering::Relaxed);
                 }
-                let current_peak_r = f32::from_bits(self.shared.ui_peak_r.load(Ordering::Relaxed));
+                let current_peak_r =
+                    f32::from_bits(self.shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
                 if peak_r > current_peak_r {
                     self.shared
+                        .rt_to_ui
                         .ui_peak_r
                         .store(peak_r.to_bits(), Ordering::Relaxed);
                 }
                 if peak_l > 1.0 || peak_r > 1.0 {
-                    self.shared.ui_clipped.store(true, Ordering::Relaxed);
+                    self.shared
+                        .rt_to_ui
+                        .ui_clipped
+                        .store(true, Ordering::Relaxed);
                 }
                 continue;
             }
@@ -123,7 +130,10 @@ impl<'a> NamClapProcessor<'a> {
 
             // Since the plugin operates strictly in mono, we set the channel count to 1
             // and process_mono to true. We do not run any active stereo detection.
-            self.shared.active_channel_count.store(1, Ordering::Relaxed);
+            self.shared
+                .rt_to_ui
+                .active_channel_count
+                .store(1, Ordering::Relaxed);
             self.process_mono = true;
 
             let mut out_l: Option<&mut [f32]> = None;
@@ -259,7 +269,10 @@ impl<'a> NamClapProcessor<'a> {
                 }
             }
             if input_has_clipped {
-                self.shared.ui_clipped.store(true, Ordering::Relaxed);
+                self.shared
+                    .rt_to_ui
+                    .ui_clipped
+                    .store(true, Ordering::Relaxed);
             }
 
             let lut = get_gain_lut();
@@ -368,7 +381,7 @@ impl<'a> NamClapProcessor<'a> {
                 ctx.rt_status,
                 *ctx.process_mono,
                 ctx.adaptive,
-                self.shared.sample_rate.load(Ordering::Relaxed),
+                self.shared.cold.sample_rate.load(Ordering::Relaxed),
             );
 
             // 5. Output Gain Application (Sample-Accurate Smoothing)
@@ -503,20 +516,27 @@ impl<'a> NamClapProcessor<'a> {
                 }
             }
 
-            let current_peak_l = f32::from_bits(self.shared.ui_peak_l.load(Ordering::Relaxed));
+            let current_peak_l =
+                f32::from_bits(self.shared.rt_to_ui.ui_peak_l.load(Ordering::Relaxed));
             if peak_l > current_peak_l {
                 self.shared
+                    .rt_to_ui
                     .ui_peak_l
                     .store(peak_l.to_bits(), Ordering::Relaxed);
             }
-            let current_peak_r = f32::from_bits(self.shared.ui_peak_r.load(Ordering::Relaxed));
+            let current_peak_r =
+                f32::from_bits(self.shared.rt_to_ui.ui_peak_r.load(Ordering::Relaxed));
             if peak_r > current_peak_r {
                 self.shared
+                    .rt_to_ui
                     .ui_peak_r
                     .store(peak_r.to_bits(), Ordering::Relaxed);
             }
             if peak_l > 1.0 || peak_r > 1.0 {
-                self.shared.ui_clipped.store(true, Ordering::Relaxed);
+                self.shared
+                    .rt_to_ui
+                    .ui_clipped
+                    .store(true, Ordering::Relaxed);
             }
         }
 
@@ -534,7 +554,7 @@ impl<'a> NamClapProcessor<'a> {
             self.rt_status.latency_hist.record(elapsed_nanos);
 
             // If processing exceeded 85% of the block time budget, increment dsp_overloads
-            let sample_rate = self.shared.sample_rate.load(Ordering::Relaxed);
+            let sample_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
             let last_n_samples = self.rt_status.last_n_samples.load(Ordering::Relaxed);
             if sample_rate > 0 && last_n_samples > 0 {
                 let budget_ns = (last_n_samples as u64 * 1_000_000_000) / sample_rate as u64;

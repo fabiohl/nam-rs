@@ -77,66 +77,14 @@ fn test_get_valid_model_file_multiple_mixed() {
 #[test]
 fn test_gui_drag_drop_fuzz() {
     use crate::clap::plugin::NamClapShared;
-    use crate::common::spsc::{GcOverflowBuffer, RtStatusFlags};
-    use rtrb::RingBuffer;
-    use std::sync::atomic::AtomicU32;
+    use crate::clap::plugin::make_test_shared;
+    use std::sync::Arc;
     use std::sync::atomic::Ordering;
-    use std::sync::{Arc, Mutex};
 
-    let (param_tx, _) = RingBuffer::new(8);
-    let (gc_tx, _) = RingBuffer::new(32);
-
-    let shared = Arc::new(NamClapShared {
-        param_tx: Mutex::new(Some(param_tx)),
-        param_rx: Mutex::new(None),
-        gc_tx: Mutex::new(Some(gc_tx)),
-        gc_rx: Mutex::new(None),
-        gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
-        rt_status: Arc::new(RtStatusFlags::new()),
-        current_latency: AtomicU32::new(0),
-        model_sample_rate: AtomicU32::new(48000),
-        param_input_gain: AtomicU32::new(0.0f32.to_bits()),
-        param_output_gain: AtomicU32::new(0.0f32.to_bits()),
-        param_gate_thresh: AtomicU32::new((-70.0f32).to_bits()),
-        param_bypass: AtomicU32::new(0),
-        param_adaptive_compute: AtomicU32::new(1),
-        ui_peak_l: AtomicU32::new(0.0f32.to_bits()),
-        ui_peak_r: AtomicU32::new(0.0f32.to_bits()),
-        ui_clipped: std::sync::atomic::AtomicBool::new(false),
-        ui_model_name: Mutex::new(String::new()),
-        ui_model_metadata: Mutex::new(None),
-        ui_pending_model: Mutex::new(None),
-        ui_loading: std::sync::atomic::AtomicBool::new(false),
-        ui_load_error: std::sync::atomic::AtomicBool::new(false),
-        ui_load_error_msg: Mutex::new(String::new()),
-        alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
-        sample_rate: AtomicU32::new(44100),
-        active_channel_count: AtomicU32::new(1),
-        track_accent_color: AtomicU32::new(0),
-        param_indication: [
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-            std::sync::atomic::AtomicU8::new(0),
-        ],
-        param_indication_color: [
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-            std::sync::atomic::AtomicU32::new(0),
-        ],
-        model_load_counter: AtomicU32::new(0),
-        buffer_size: AtomicU32::new(0),
-        ui_model_info: Mutex::new(None),
-        gesture_flags: AtomicU32::new(0),
-    });
+    let shared = Arc::new(make_test_shared());
 
     let shared_ref = NamClapSharedRef(&*shared as *const NamClapShared);
-    let alive_fence = Arc::clone(&shared.alive_fence);
+    let alive_fence = Arc::clone(&shared.cold.alive_fence);
 
     // Simulates the safe_shared helper logic for drag-drop:
     let check_and_drop =
@@ -144,9 +92,9 @@ fn test_gui_drag_drop_fuzz() {
             if alive.load(Ordering::Relaxed) {
                 // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
                 let s = unsafe { &*s_ref.0 };
-                if let Ok(mut pending_guard) = s.ui_pending_model.lock() {
+                if let Ok(mut pending_guard) = s.cold.ui_pending_model.lock() {
                     *pending_guard = Some(path);
-                    s.ui_loading.store(true, Ordering::Relaxed);
+                    s.cold.ui_loading.store(true, Ordering::Relaxed);
                 }
                 true
             } else {
@@ -157,11 +105,11 @@ fn test_gui_drag_drop_fuzz() {
     // 1. Alive case: should set the pending model
     let path = PathBuf::from("model.nam");
     assert!(check_and_drop(&alive_fence, shared_ref, path.clone()));
-    assert_eq!(*shared.ui_pending_model.lock().unwrap(), Some(path));
+    assert_eq!(*shared.cold.ui_pending_model.lock().unwrap(), Some(path));
 
     // Reset
-    *shared.ui_pending_model.lock().unwrap() = None;
-    shared.ui_loading.store(false, Ordering::Relaxed);
+    *shared.cold.ui_pending_model.lock().unwrap() = None;
+    shared.cold.ui_loading.store(false, Ordering::Relaxed);
 
     // 2. Dead case (fence false): should not access or change anything
     alive_fence.store(false, Ordering::Relaxed);
@@ -170,6 +118,6 @@ fn test_gui_drag_drop_fuzz() {
         shared_ref,
         PathBuf::from("another.nam")
     ));
-    assert_eq!(*shared.ui_pending_model.lock().unwrap(), None);
-    assert!(!shared.ui_loading.load(Ordering::Relaxed));
+    assert_eq!(*shared.cold.ui_pending_model.lock().unwrap(), None);
+    assert!(!shared.cold.ui_loading.load(Ordering::Relaxed));
 }

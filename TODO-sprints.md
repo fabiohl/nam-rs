@@ -8,7 +8,15 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 
 ## Sprint G1 — Threading CLAP (RT, latência e responsividade)
 
-### Tarefa G1.T01 — Eliminar False Sharing em `NamClapShared` (segregação por padrão de acesso) 🔥⚠️
+### Tarefa G1.T01 — Eliminar False Sharing em `NamClapShared` (segregação por padrão de acesso) 🔥⚠️ ✅ CONCLUÍDA
+
+- **Status:** Implementada. `NamClapShared` agora contém 3 sub-structs com `#[repr(align(128))]` isoladas:
+  - `rt_to_ui: RtToUi` — `ui_peak_l`, `ui_peak_r`, `ui_clipped`, `current_latency`, `active_channel_count`
+  - `ui_to_rt: UiToRt` — `param_input_gain`, `param_output_gain`, `param_gate_thresh`, `param_bypass`, `param_adaptive_compute`, `gesture_flags`
+  - `cold: ColdShared` — demais campos (SPSC, rt_status, model info, etc.)
+- **Teste de layout:** `offset_of!(NamClapShared, ui_to_rt) - offset_of!(NamClapShared, rt_to_ui) >= 128`, idem para cold.
+- **Nota para G1.T02:** O sub-struct `UiToRt` está pronto para receber `gui_param_generation: AtomicU32`.
+- **Nota para G1.T03/G1.T04:** Sem alterações necessárias nos acessos de `current_latency`/`sample_rate` (agora via `rt_to_ui`/`cold`).
 
 - **Onde:** `src/clap/plugin/shared.rs:57-129` (struct `NamClapShared`).
 - **Problema:** A struct é anotada com `#[repr(align(128))]`, mas isso só alinha o **início** da struct — os campos atômicos individuais permanecem empacotados, compartilhando linhas de cache. No hotpath, o audio thread **escreve a cada bloco** em `ui_peak_l`, `ui_peak_r`, `ui_clipped` (`dsp.rs:98-112,506-520`) e **lê a cada bloco** `param_input_gain`, `param_output_gain`, `param_gate_thresh`, `param_bypass`, `param_adaptive_compute` (`events.rs:143-176`). A GUI/Main escreve nesses mesmos `param_*`. Com os campos misturados na mesma(s) linha(s) de cache, ocorre **cache-line bouncing** (a escrita de peak pelo RT invalida a linha onde estão params lidos no mesmo bloco e escritos pela GUI), violando a diretriz §4 de `.agents/rules/rust.md` ("False Sharing: isolar linhas de cache").

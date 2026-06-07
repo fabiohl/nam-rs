@@ -159,6 +159,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         }
         // 1. SPSC channel extraction from Shared (ownership transfer)
         let param_rx = shared
+            .cold
             .param_rx
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -166,6 +167,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             .ok_or_else(|| PluginError::Message("param_rx consumer has already been extracted"))?;
 
         let gc_tx = shared
+            .cold
             .gc_tx
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -187,7 +189,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let buf_out_r = AlignedVec::new(buf_capacity, 0.0f32);
 
         // 3. DSP component initialization
-        let model_rate = shared.model_sample_rate.load(Ordering::Relaxed);
+        let model_rate = shared.cold.model_sample_rate.load(Ordering::Relaxed);
         let model_rate = if model_rate == 0 { 48000 } else { model_rate };
         let resampler = Box::new(
             NamResampler::new(audio_config.sample_rate as u32, model_rate, buf_capacity).map_err(
@@ -208,14 +210,16 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let smoother_out = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
 
         // 5. Report initial latency to shared state
-        shared.current_latency.store(
+        shared.rt_to_ui.current_latency.store(
             resampler.latency_samples(audio_config.sample_rate as u32),
             Ordering::Relaxed,
         );
         shared
+            .cold
             .sample_rate
             .store(audio_config.sample_rate as u32, Ordering::Relaxed);
         shared
+            .cold
             .buffer_size
             .store(audio_config.max_frames_count, Ordering::Relaxed);
 
@@ -235,7 +239,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             active_model_r: None,
             mono_hyst,
             process_mono: true,
-            rt_status: Arc::clone(&shared.rt_status),
+            rt_status: Arc::clone(&shared.cold.rt_status),
             adaptive_compute: AdaptiveCompute::new(
                 crate::common::params::AdaptiveComputeMode::Conservative,
             ),
@@ -244,7 +248,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             smoother_out,
             param_rx,
             gc_tx,
-            gc_overflow: Arc::clone(&shared.gc_overflow),
+            gc_overflow: Arc::clone(&shared.cold.gc_overflow),
             parking_lot: Default::default(),
             mod_input_gain: 0.0,
             mod_output_gain: 0.0,
@@ -264,12 +268,18 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     fn deactivate(self, _main_thread: &mut NamClapMainThread<'a>) {
         let mut param_rx_guard = self
             .shared
+            .cold
             .param_rx
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         *param_rx_guard = Some(self.param_rx);
 
-        let mut gc_tx_guard = self.shared.gc_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let mut gc_tx_guard = self
+            .shared
+            .cold
+            .gc_tx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         *gc_tx_guard = Some(self.gc_tx);
     }
 

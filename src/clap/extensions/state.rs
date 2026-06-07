@@ -59,26 +59,31 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
     fn save(&mut self, output: &mut OutputStream) -> Result<(), PluginError> {
         self.params.input_gain_db = f32::from_bits(
             self.shared
+                .ui_to_rt
                 .param_input_gain
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
         self.params.output_gain_db = f32::from_bits(
             self.shared
+                .ui_to_rt
                 .param_output_gain
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
         self.params.gate_threshold_db = f32::from_bits(
             self.shared
+                .ui_to_rt
                 .param_gate_thresh
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
         self.params.bypass = self
             .shared
+            .ui_to_rt
             .param_bypass
             .load(std::sync::atomic::Ordering::Relaxed)
             != 0;
         self.params.adaptive_compute = crate::common::params::AdaptiveComputeMode::from_f32(
             self.shared
+                .ui_to_rt
                 .param_adaptive_compute
                 .load(std::sync::atomic::Ordering::Relaxed) as f32,
         );
@@ -106,19 +111,19 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
         let new_params = load_state(&buffer)?;
 
         self.params = new_params;
-        self.shared.param_input_gain.store(
+        self.shared.ui_to_rt.param_input_gain.store(
             self.params.input_gain_db.to_bits(),
             std::sync::atomic::Ordering::Relaxed,
         );
-        self.shared.param_output_gain.store(
+        self.shared.ui_to_rt.param_output_gain.store(
             self.params.output_gain_db.to_bits(),
             std::sync::atomic::Ordering::Relaxed,
         );
-        self.shared.param_gate_thresh.store(
+        self.shared.ui_to_rt.param_gate_thresh.store(
             self.params.gate_threshold_db.to_bits(),
             std::sync::atomic::Ordering::Relaxed,
         );
-        self.shared.param_bypass.store(
+        self.shared.ui_to_rt.param_bypass.store(
             if self.params.bypass { 1 } else { 0 },
             std::sync::atomic::Ordering::Relaxed,
         );

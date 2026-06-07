@@ -34,7 +34,7 @@ use std::sync::atomic::Ordering;
 /// `track_accent_color` as packed ARGB). If `alpha == 0` (sentinel for
 /// "no color"), returns `COL_ACCENT` (default turquoise).
 pub fn resolve_accent(shared: &NamClapShared) -> egui::Color32 {
-    let packed = shared.track_accent_color.load(Ordering::Relaxed);
+    let packed = shared.cold.track_accent_color.load(Ordering::Relaxed);
     let alpha = (packed >> 24) as u8;
     if alpha == 0 {
         COL_ACCENT
