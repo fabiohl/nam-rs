@@ -172,6 +172,10 @@ impl DefaultPluginFactory for NamClapPlugin {
             last_reported_latency: 0,
             #[cfg(feature = "clap-plugin")]
             window_handle: None,
+            #[cfg(feature = "clap-plugin")]
+            floating_thread_handle: None,
+            #[cfg(feature = "clap-plugin")]
+            floating_close_signal: None,
         };
 
         Ok(main_thread)

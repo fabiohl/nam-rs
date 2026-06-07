@@ -525,7 +525,7 @@ mod tests {
                 is_floating: false,
             }
         ));
-        assert!(!gui_ext.is_api_supported(
+        assert!(gui_ext.is_api_supported(
             &mut handle,
             GuiConfiguration {
                 api_type: GuiApiType::X11,

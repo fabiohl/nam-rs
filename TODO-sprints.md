@@ -97,7 +97,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + `pesquisador-inovador`; revisão `revisor-auditor`.
 - **Esforço:** 3–4 dias.
 
-### Tarefa G2.T02 — Fallback de GUI flutuante e robustez de API gráfica ✨
+### Tarefa G2.T02 — Fallback de GUI flutuante e robustez de API gráfica ✨✅ CONCLUÍDA
 
 - **Onde:** `src/clap/extensions/gui.rs:17-27` (`is_api_supported`/`get_preferred_api`).
 - **Problema:** A GUI aceita **somente** X11 embutido e **rejeita** modo flutuante (`!configuration.is_floating`). Hosts que só oferecem janelas flutuantes (ou ambientes onde o embedding X11 falha) ficam sem GUI. Embedding continua sendo o preferido; falta apenas um fallback.

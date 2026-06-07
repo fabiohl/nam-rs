@@ -7,6 +7,7 @@ use baseview::{
 };
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use glow::HasContext;
@@ -66,6 +67,9 @@ pub struct NamPluginWindow {
     state: crate::clap::gui::ui::UiState,
     /// Last known mouse position.
     last_mouse_pos: egui::Pos2,
+    /// Close signal for floating windows. When set to true, the window event
+    /// loop will exit gracefully.
+    close_signal: Arc<AtomicBool>,
 }
 
 impl NamPluginWindow {
@@ -81,6 +85,7 @@ impl NamPluginWindow {
         window: &mut Window,
         shared: NamClapSharedRef,
         host: clack_plugin::host::HostSharedHandle<'static>,
+        close_signal: Arc<AtomicBool>,
     ) -> Self {
         if let (true, Some(log), Ok(c_msg)) = (
             std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland"),
@@ -184,6 +189,7 @@ impl NamPluginWindow {
             host,
             state,
             last_mouse_pos: egui::Pos2::ZERO,
+            close_signal,
         }
     }
 
@@ -200,6 +206,11 @@ impl NamPluginWindow {
 
 impl WindowHandler for NamPluginWindow {
     fn on_frame(&mut self, window: &mut Window) {
+        if self.close_signal.load(Ordering::Relaxed) {
+            window.close();
+            return;
+        }
+
         // Unlike `new()`, `on_frame()` is called repeatedly by the baseview
         // rendering loop (C ABI). A panic here would cross the FFI boundary and
         // cause UB in C++ hosts. We use a silent early-return as a safe fallback.

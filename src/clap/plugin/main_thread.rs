@@ -14,7 +14,9 @@ use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::ffi::CString;
 use std::path::Path;
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::JoinHandle;
 
 /// Main thread exclusive state (model loading, state save/load).
 pub struct NamClapMainThread<'a> {
@@ -31,9 +33,15 @@ pub struct NamClapMainThread<'a> {
     pub gc_rx: Consumer<GcItem>,
     /// Cached last latency reported to the host to avoid redundant notifications.
     pub last_reported_latency: u32,
-    /// Baseview window handle for GUI lifecycle control.
+    /// Baseview window handle for GUI lifecycle control (embedded mode).
     #[cfg(feature = "clap-plugin")]
     pub window_handle: Option<baseview::WindowHandle>,
+    /// Thread handle for the floating window event loop.
+    #[cfg(feature = "clap-plugin")]
+    pub floating_thread_handle: Option<JoinHandle<()>>,
+    /// Close signal for the floating window.
+    #[cfg(feature = "clap-plugin")]
+    pub floating_close_signal: Option<Arc<AtomicBool>>,
 }
 
 impl<'a> PluginMainThread<'a, NamClapShared> for NamClapMainThread<'a> {

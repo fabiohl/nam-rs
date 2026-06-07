@@ -8,17 +8,68 @@ use crate::clap::plugin::NamClapMainThread;
 use clack_extensions::gui::{
     GuiApiType, GuiConfiguration, GuiSize, PluginGui, PluginGuiImpl, Window,
 };
+use clack_extensions::log::{HostLog, LogSeverity};
 use clack_plugin::plugin::PluginError;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[cfg(feature = "clap-plugin")]
+impl<'a> NamClapMainThread<'a> {
+    /// Closes all active GUI windows (embedded and floating).
+    /// Idempotent — safe to call even when no windows are open.
+    fn teardown_gui_resources(&mut self) {
+        if let Some(signal) = self.floating_close_signal.take() {
+            signal.store(true, Ordering::Relaxed);
+        }
+        if let Some(handle) = self.floating_thread_handle.take() {
+            let _ = handle.join();
+        }
+        if let Some(mut window_handle) = self.window_handle.take() {
+            window_handle.close();
+        }
+    }
+
+    /// Returns the static host handle and shared pointer needed by window callbacks.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the window is closed before the plugin is destroyed.
+    /// See `crate::clap::gui::extend_host_lifetime` for details on the transmute.
+    fn host_static_and_shared(
+        &self,
+    ) -> (
+        clack_plugin::host::HostSharedHandle<'static>,
+        crate::clap::plugin::NamClapSharedRef,
+    ) {
+        let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
+        let host_shared = self.host.shared();
+        let host_static: clack_plugin::host::HostSharedHandle<'static> =
+            unsafe { crate::clap::gui::extend_host_lifetime(host_shared) };
+        (host_static, shared_ptr)
+    }
+
+    /// Builds the common `baseview::WindowOpenOptions` for both embedded and floating windows.
+    fn window_options(title: &str) -> baseview::WindowOpenOptions {
+        baseview::WindowOpenOptions {
+            title: title.to_string(),
+            size: baseview::Size::new(GUI_WIDTH as f64, GUI_HEIGHT as f64),
+            scale: baseview::WindowScalePolicy::SystemScaleFactor,
+            gl_config: Some(baseview::gl::GlConfig::default()),
+        }
+    }
+}
 
 impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
     /// Indicates whether the given graphics API configuration and floating mode is supported.
     ///
-    /// For Linux (X11 via XWayland), we strictly accept the embedded X11 API.
+    /// Accepts X11 both embedded (preferred) and floating (fallback) modes,
+    /// so hosts that only offer floating windows are still usable.
     fn is_api_supported(&mut self, configuration: GuiConfiguration) -> bool {
-        configuration.api_type == GuiApiType::X11 && !configuration.is_floating
+        configuration.api_type == GuiApiType::X11
     }
 
     /// Returns the preferred graphics configuration for the plugin (embedded X11).
+    /// Falls back to floating only when the host does not offer embedded mode.
     fn get_preferred_api(&mut self) -> Option<GuiConfiguration<'_>> {
         Some(GuiConfiguration {
             api_type: GuiApiType::X11,
@@ -31,15 +82,24 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         if !self.is_api_supported(configuration) {
             return Err(PluginError::Message("GUI configuration not supported"));
         }
+        let mode = if configuration.is_floating {
+            "floating"
+        } else {
+            "embedded"
+        };
+        if let Some(log) = self.host.get_extension::<HostLog>() {
+            let shared = self.host.shared();
+            let msg = std::ffi::CString::new(format!("NAM-rs: GUI mode selected = {mode}"))
+                .unwrap_or_default();
+            log.log(&shared, LogSeverity::Info, &msg);
+        }
         Ok(())
     }
 
     /// Frees the resources allocated for the graphical interface.
     fn destroy(&mut self) {
         #[cfg(feature = "clap-plugin")]
-        if let Some(mut window_handle) = self.window_handle.take() {
-            window_handle.close();
-        }
+        self.teardown_gui_resources();
     }
 
     /// Sets the absolute scale factor for the GUI.
@@ -76,29 +136,14 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
                 old_handle.close();
             }
 
-            let options = baseview::WindowOpenOptions {
-                // Empty title: the host (Bitwig) already displays the plugin name in the window frame.
-                // Using a title here would cause duplication: "NAM-rs / NAM-rs Neural Amp Modeler".
-                title: String::new(),
-                size: baseview::Size::new(GUI_WIDTH as f64, GUI_HEIGHT as f64),
-                scale: baseview::WindowScalePolicy::SystemScaleFactor,
-                gl_config: Some(baseview::gl::GlConfig::default()),
-            };
+            let options = Self::window_options("");
+            let (host_static, shared_ptr) = self.host_static_and_shared();
 
-            let shared_ptr = crate::clap::plugin::NamClapSharedRef(self.shared);
-            let host_shared = self.host.shared();
-            // SAFETY: `host_shared` is a shared handle of the CLAP host whose real lifetime
-            // is that of the plugin instance itself, which lives as long as the plugin is loaded.
-            // The closure passed to `open_parented` requires `'static` to satisfy the baseview
-            // threading API (`Send + 'static`), but the host is guaranteed to be valid for the
-            // entire lifetime of the window (the window is closed before the plugin is destroyed via
-            // `destroy()`). This transmute is the accepted pattern for integrating CLAP plugins with
-            // windowing libraries that require `'static` closures.
-            let host_static: clack_plugin::host::HostSharedHandle<'static> =
-                unsafe { crate::clap::gui::extend_host_lifetime(host_shared) };
+            let close_signal = Arc::new(AtomicBool::new(false));
+            let cs = Arc::clone(&close_signal);
 
             let window_handle = baseview::Window::open_parented(&_window, options, move |win| {
-                NamPluginWindow::new(win, shared_ptr, host_static)
+                NamPluginWindow::new(win, shared_ptr, host_static, cs)
             });
 
             self.window_handle = Some(window_handle);
@@ -106,9 +151,56 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
         Ok(())
     }
 
-    /// Configures the window to float above the specified window (not supported).
+    /// Configures the window to float above the host window (floating fallback mode).
+    ///
+    /// NOTE: The `_window` parameter provides the host window for a transient-for
+    /// stacking relationship (WM_TRANSIENT_FOR). baseview 0.1.1's `open_blocking` API
+    /// does not expose transient window support, so the floating window opens as an
+    /// independent top-level window. Tracked for future improvement when baseview adds
+    /// transient window capabilities.
     fn set_transient(&mut self, _window: Window) -> Result<(), PluginError> {
-        Err(PluginError::Message("Floating mode is not supported"))
+        #[cfg(feature = "clap-plugin")]
+        {
+            use crate::clap::gui::window::NamPluginWindow;
+
+            self.teardown_gui_resources();
+
+            let options = Self::window_options("NAM-rs");
+            let (host_static, shared_ptr) = self.host_static_and_shared();
+
+            let close_signal = Arc::new(AtomicBool::new(false));
+            let cs = Arc::clone(&close_signal);
+            let window_ready = Arc::new(AtomicBool::new(false));
+            let ready = Arc::clone(&window_ready);
+
+            let handle = std::thread::spawn(move || {
+                baseview::Window::open_blocking(options, move |win| {
+                    let window = NamPluginWindow::new(win, shared_ptr, host_static, cs);
+                    ready.store(true, Ordering::Relaxed);
+                    window
+                });
+            });
+
+            // Wait for the window thread to confirm initialization (up to 2 seconds).
+            // If NamPluginWindow::new panics or the X11 connection fails,
+            // `ready` will never be set and we report the error to the host.
+            let start = std::time::Instant::now();
+            while !window_ready.load(Ordering::Relaxed) {
+                if start.elapsed() > std::time::Duration::from_secs(2) {
+                    close_signal.store(true, Ordering::Relaxed);
+                    self.floating_thread_handle = Some(handle);
+                    self.floating_close_signal = Some(close_signal);
+                    return Err(PluginError::Message(
+                        "Floating window creation failed: initialization timed out",
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+
+            self.floating_thread_handle = Some(handle);
+            self.floating_close_signal = Some(close_signal);
+        }
+        Ok(())
     }
 
     /// Makes the GUI window visible.
