@@ -156,10 +156,21 @@ impl NamPluginWindow {
 
         let width = super::GUI_WIDTH;
         let height = super::GUI_HEIGHT;
-        // TODO(HiDPI): baseview::Window does not expose the current scale_factor() / WindowScalePolicy
-        // in its public API. The scale will be correctly updated on the first WindowEvent::Resized event.
-        // Tracking: nam-rs issue / task "Tarefa 1.5.4" in TODO-sprints.md
-        let scale = 1.0f32;
+        let scale = {
+            // SAFETY: shared.0 is valid during window construction — the plugin
+            // outlives the GUI thread (enforced by extend_host_lifetime).
+            let stored = unsafe {
+                (*shared.0)
+                    .cold
+                    .gui_scale_factor
+                    .load(std::sync::atomic::Ordering::Relaxed)
+            };
+            if stored == 0 {
+                1.0f32
+            } else {
+                f32::from_bits(stored)
+            }
+        };
 
         let mut raw_input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(

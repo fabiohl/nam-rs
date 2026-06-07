@@ -103,7 +103,12 @@ impl<'a> PluginGuiImpl for NamClapMainThread<'a> {
     }
 
     /// Sets the absolute scale factor for the GUI.
-    fn set_scale(&mut self, _scale: f64) -> Result<(), PluginError> {
+    fn set_scale(&mut self, scale: f64) -> Result<(), PluginError> {
+        use std::sync::atomic::Ordering;
+        self.shared
+            .cold
+            .gui_scale_factor
+            .store((scale as f32).to_bits(), Ordering::Relaxed);
         Ok(())
     }
 

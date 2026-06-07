@@ -148,6 +148,9 @@ pub struct ColdShared {
     /// Render mode as set by the host via `clap.render`: 0 = Realtime, 1 = Offline.
     /// Written by the Main Thread, read by the RT thread at low frequency (transitions only).
     pub render_mode: AtomicU32,
+    /// Current GUI scale factor (f32 bits). Written by `gui.set_scale` on the Main Thread,
+    /// read by the window handler for HiDPI rendering before the first Resized event.
+    pub gui_scale_factor: AtomicU32,
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +392,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             ui_model_info: Mutex::new(None),
             alive_fence: Arc::new(AtomicBool::new(true)),
             render_mode: AtomicU32::new(RENDER_MODE_REALTIME),
+            gui_scale_factor: AtomicU32::new(0),
         },
     }
 }

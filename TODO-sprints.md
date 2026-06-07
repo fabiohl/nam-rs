@@ -172,7 +172,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 1 dia.
 
-### Tarefa G3.T03 — HiDPI: obter o scale factor inicial correto ✨
+### Tarefa G3.T03 — HiDPI: obter o scale factor inicial correto ✨✅ CONCLUÍDA
 
 - **Onde:** `src/clap/gui/window/mod.rs:148-151` (TODO já documentado; `scale = 1.0` fixo até o primeiro `Resized`).
 - **Problema:** O fator de escala inicia em `1.0` e só é corrigido no primeiro `WindowEvent::Resized`. Em telas HiDPI, os primeiros frames renderizam em escala errada (UI pequena/borrada até o resize).
