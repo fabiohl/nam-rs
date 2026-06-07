@@ -20,7 +20,7 @@ impl<'a> NamClapProcessor<'a> {
     pub(super) fn process_dsp_audio(
         &mut self,
         audio: &mut Audio,
-        start_time: Instant,
+        start_time: Option<Instant>,
     ) -> Result<ProcessStatus, PluginError> {
         let param_in_changed = self.param_in_changed;
         let param_out_changed = self.param_out_changed;
@@ -540,13 +540,9 @@ impl<'a> NamClapProcessor<'a> {
             }
         }
 
-        // Telemetry Decimation: Saves cycles by measuring only 1 out of every 16 frames.
-        // SHARED ALGORITHM: Same decimation logic as src/standalone/pw_host.rs (line ~978).
-        // Any change here must also trigger a review in pw_host.rs.
-        let should_measure = self.cycles_since_telemetry & 0xF == 0;
-        self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
-
-        if should_measure {
+        // Telemetry: measures only when start_time is captured (1-in-16 decimation,
+        // controlled by cycles_since_telemetry in process()).
+        if let Some(start_time) = start_time {
             let elapsed_nanos = start_time.elapsed().as_nanos() as u64;
             self.rt_status
                 .dsp_cycle_time

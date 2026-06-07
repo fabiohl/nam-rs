@@ -20,6 +20,7 @@ use crate::dsp::resampler::NamResampler;
 use crate::math::common::AlignedVec;
 use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
+use minstant::Instant;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -306,7 +307,13 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             None
         };
 
-        let start_time = minstant::Instant::now();
+        let should_measure = self.cycles_since_telemetry & 0xF == 0;
+        self.cycles_since_telemetry = self.cycles_since_telemetry.wrapping_add(1);
+        let start_time = if should_measure {
+            Some(Instant::now())
+        } else {
+            None
+        };
 
         // One-time thread priority query on the first processed block
         if !self.prio_checked {
