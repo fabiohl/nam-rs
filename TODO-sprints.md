@@ -200,7 +200,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador`.
 - **Esforço:** 1 dia.
 
-### Tarefa G3.T05 — Hardening de testes de integração (render + state-context + preset-load) 🧹
+### Tarefa G3.T05 — Hardening de testes de integração (render + state-context + preset-load) 🧹✅ CONCLUÍDA
 
 - **Onde:** `src/clap/preset_discovery_test.rs`, `src/clap/processor_test.rs`, e novos blocos de teste nos arquivos de extensão.
 - **Problema:** A auditoria do Sprint G2 identificou gaps de cobertura em testes de integração com `clack-host`: (a) `PluginPresetLoadImpl::load_from_location()` não tem teste direto via `PluginInstance` real; (b) transições de render mode (Realtime↔Offline) não são testadas com `PluginInstance`; (c) round-trips de `state-context` (`ForPreset` vs `ForProject`) não têm teste via `PluginInstance`. Os pipelines são testados indiretamente (via GUI, `plugin_test.rs`, `processor_test.rs`), mas a ausência de testes diretos deixa os call-sites CLAP sem cobertura.

@@ -1144,4 +1144,385 @@ mod tests {
         let msg = CString::new(sanitized_err);
         assert!(msg.is_ok(), "Sanitized CString creation should succeed");
     }
+
+    // ---------------------------------------------------------------------------
+    // G3.T05 — Hardening de testes de integração (render + state-context + preset-load)
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn test_preset_load_integration() {
+        use clack_extensions::preset_discovery::prelude::*;
+        use std::ffi::CString;
+
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Failed to load PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Failed to instantiate plugin");
+
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Failed to get plugin wrapper")
+        };
+        let shared = unsafe { &*shared_ptr };
+
+        let preset_load_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginPresetLoad>()
+            .expect("PluginPresetLoad extension not found");
+
+        let mut model_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        model_path.push("tests/fixtures/models/BossWN-nano.nam");
+        let path_str = model_path.to_str().expect("Invalid model path");
+        let path_cstr = CString::new(path_str).expect("Invalid CString");
+
+        let counter_before = shared.cold.model_load_counter.load(Ordering::Relaxed);
+        assert_eq!(counter_before, 0, "model_load_counter should start at 0");
+
+        let mut handle = plugin_instance.plugin_handle();
+        preset_load_ext
+            .load_from_location(&mut handle, Location::File { path: &path_cstr }, None)
+            .expect("load_from_location should succeed");
+
+        plugin_instance.call_on_main_thread_callback();
+
+        let counter_after = shared.cold.model_load_counter.load(Ordering::Relaxed);
+        assert!(
+            counter_after > counter_before,
+            "model_load_counter should increment after preset load (was {}, now {})",
+            counter_before,
+            counter_after
+        );
+
+        let model_name = shared.cold.ui_model_name.lock().unwrap();
+        assert!(
+            !model_name.is_empty(),
+            "ui_model_name should be set after preset load"
+        );
+    }
+
+    #[test]
+    fn test_render_mode_transitions() {
+        use clack_extensions::render::{PluginRender, RenderMode};
+
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Failed to load PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Failed to instantiate plugin");
+
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Failed to get plugin wrapper")
+        };
+        let shared = unsafe { &*shared_ptr };
+
+        let render_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginRender>()
+            .expect("PluginRender extension not found");
+
+        assert!(
+            !render_ext.has_realtime_requirement(&mut plugin_instance.plugin_handle()),
+            "NAM should not have hard realtime requirement"
+        );
+
+        let audio_config = PluginAudioConfiguration {
+            sample_rate: 48000.0,
+            min_frames_count: 512,
+            max_frames_count: 512,
+        };
+
+        let stopped_processor = plugin_instance.activate(|_, _| (), audio_config).unwrap();
+        let mut started_processor = stopped_processor.start_processing().unwrap();
+
+        let render_mode = shared.cold.render_mode.load(Ordering::Acquire);
+        assert_eq!(
+            render_mode,
+            crate::clap::plugin::RENDER_MODE_REALTIME,
+            "should start in realtime mode"
+        );
+
+        let mut handle = plugin_instance.plugin_handle();
+        render_ext
+            .set(&mut handle, RenderMode::Offline)
+            .expect("set RenderMode::Offline should succeed");
+
+        let render_mode = shared.cold.render_mode.load(Ordering::Acquire);
+        assert_eq!(
+            render_mode,
+            crate::clap::plugin::RENDER_MODE_OFFLINE,
+            "render_mode should be OFFLINE after set"
+        );
+
+        let n = 512;
+        let mut in_l = vec![0.1f32; n];
+        let mut out_l = vec![0.0f32; n];
+        let mut input_ports = AudioPorts::with_capacity(1, 1);
+        let mut output_ports = AudioPorts::with_capacity(1, 1);
+        let mut input_channels = [in_l.as_mut_slice()];
+        let input_audio = input_ports.with_input_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_input_only(
+                input_channels.iter_mut().map(InputChannel::constant),
+            ),
+        }]);
+        let output_channels = [out_l.as_mut_slice()];
+        let mut output_audio = output_ports.with_output_buffers([AudioPortBuffer {
+            latency: 0,
+            channels: AudioPortBufferType::f32_output_only(output_channels.into_iter()),
+        }]);
+        let input_events = InputEvents::empty();
+        let mut output_events_buffer = EventBuffer::new();
+        let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
+
+        // Process a few blocks in offline mode — degradation flags should stay clear
+        for _ in 0..4 {
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("process should succeed in offline mode");
+        }
+
+        assert!(
+            !shared
+                .cold
+                .rt_status
+                .check_flag(crate::common::spsc::RT_STATUS_DEGRADE_REDUCED),
+            "DEGRADE_REDUCED should be clear in offline mode"
+        );
+        assert!(
+            !shared
+                .cold
+                .rt_status
+                .check_flag(crate::common::spsc::RT_STATUS_DEGRADE_MINIMAL),
+            "DEGRADE_MINIMAL should be clear in offline mode"
+        );
+
+        let mut handle = plugin_instance.plugin_handle();
+        render_ext
+            .set(&mut handle, RenderMode::Realtime)
+            .expect("set RenderMode::Realtime should succeed");
+
+        let render_mode = shared.cold.render_mode.load(Ordering::Acquire);
+        assert_eq!(
+            render_mode,
+            crate::clap::plugin::RENDER_MODE_REALTIME,
+            "render_mode should be back to REALTIME"
+        );
+
+        // Process blocks in realtime mode
+        for _ in 0..2 {
+            started_processor
+                .process(
+                    &input_audio,
+                    &mut output_audio,
+                    &input_events,
+                    &mut output_events,
+                    None,
+                    None,
+                )
+                .expect("process should succeed in realtime mode");
+        }
+
+        // Verify output is not silent (bypass off by default)
+        assert!(
+            out_l.iter().any(|s| *s != 0.0),
+            "Output should not be silent (bypass is off)"
+        );
+    }
+
+    #[test]
+    fn test_state_context_roundtrip() {
+        use clack_extensions::state::PluginState;
+        use clack_extensions::state_context::{PluginStateContext, StateContextType};
+
+        let entry = PluginEntry::load_from_clack::<
+            clack_plugin::entry::SinglePluginEntry<NamClapPlugin>,
+        >(c"/test")
+        .expect("Failed to load PluginEntry");
+
+        let host_info = HostInfo::new("Test", "Test", "Test", "0.1.0").unwrap();
+
+        let mut plugin_instance = PluginInstance::<TestHost>::new(
+            |_| TestHostShared,
+            |_| (),
+            &entry,
+            c"br.eti.fabiolima.nam-rs",
+            &host_info,
+        )
+        .expect("Failed to instantiate plugin");
+
+        let state_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginState>()
+            .expect("PluginState extension not found");
+
+        let state_ctx_ext = plugin_instance
+            .plugin_handle()
+            .get_extension::<PluginStateContext>()
+            .expect("PluginStateContext extension not found");
+
+        let raw_plugin_ptr = plugin_instance.plugin_handle().as_raw_ptr();
+        let shared_ptr = unsafe {
+            clack_plugin::extensions::wrapper::PluginWrapper::<NamClapPlugin>::handle(
+                raw_plugin_ptr,
+                |wrapper| Ok(wrapper.shared() as *const crate::clap::plugin::NamClapShared),
+            )
+            .expect("Failed to get plugin wrapper")
+        };
+        let shared = unsafe { &*shared_ptr };
+
+        let mut model_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        model_path.push("tests/fixtures/models/BossWN-nano.nam");
+
+        let params = NamPluginParams {
+            model_path: Some(model_path.clone()),
+            input_gain_db: 3.5,
+            output_gain_db: -4.0,
+            gate_threshold_db: -45.0,
+            model_basename: Some("BossWN-nano.nam".to_string()),
+            model_search_paths: vec![],
+            bypass: false,
+            adaptive_compute: crate::common::params::AdaptiveComputeMode::Conservative,
+        };
+        let state_bytes = serde_json::to_vec(&params).unwrap();
+        let mut handle = plugin_instance.plugin_handle();
+        state_ext
+            .load(&mut handle, &mut state_bytes.as_slice())
+            .expect("Failed to load model via PluginState");
+
+        let model_counter = shared.cold.model_load_counter.load(Ordering::Relaxed);
+        assert!(model_counter > 0, "Model should have been loaded");
+
+        // --- Save: ForPreset context ---
+        let mut preset_buffer = Vec::new();
+        let mut handle = plugin_instance.plugin_handle();
+        state_ctx_ext
+            .save(&mut handle, &mut preset_buffer, StateContextType::ForPreset)
+            .expect("save ForPreset should succeed");
+
+        let preset_json: NamPluginParams =
+            serde_json::from_slice(&preset_buffer).expect("preset buffer should be valid JSON");
+        assert!(
+            preset_json.model_path.is_none(),
+            "ForPreset save should omit model_path"
+        );
+        assert!(
+            preset_json.model_basename.is_some(),
+            "ForPreset save should preserve model_basename"
+        );
+        assert!(
+            (preset_json.input_gain_db - 3.5).abs() < f32::EPSILON,
+            "ForPreset save should preserve input_gain_db"
+        );
+
+        // --- Save: ForProject context ---
+        let mut project_buffer = Vec::new();
+        let mut handle = plugin_instance.plugin_handle();
+        state_ctx_ext
+            .save(
+                &mut handle,
+                &mut project_buffer,
+                StateContextType::ForProject,
+            )
+            .expect("save ForProject should succeed");
+
+        let project_json: NamPluginParams =
+            serde_json::from_slice(&project_buffer).expect("project buffer should be valid JSON");
+        assert!(
+            project_json.model_path.is_some(),
+            "ForProject save should preserve model_path"
+        );
+        assert!(
+            (project_json.input_gain_db - 3.5).abs() < f32::EPSILON,
+            "ForProject save should preserve input_gain_db"
+        );
+
+        // --- Load: ForPreset context (only audio params restored, model_path unchanged) ---
+        let preset_json_str = r#"{"input_gain_db":1.5,"output_gain_db":-2.0,"gate_threshold_db":-40.0,"model_path":null,"model_basename":null,"model_search_paths":[],"bypass":false,"adaptive_compute":"Off"}"#;
+        let mut handle = plugin_instance.plugin_handle();
+        state_ctx_ext
+            .load(
+                &mut handle,
+                &mut preset_json_str.as_bytes(),
+                StateContextType::ForPreset,
+            )
+            .expect("load ForPreset should succeed");
+
+        let gain_in = shared.ui_to_rt.param_input_gain.load(Ordering::Relaxed);
+        assert!(
+            (f32::from_bits(gain_in) - 1.5).abs() < 0.01,
+            "input gain should be restored from preset"
+        );
+        let gain_out = shared.ui_to_rt.param_output_gain.load(Ordering::Relaxed);
+        assert!(
+            (f32::from_bits(gain_out) - (-2.0)).abs() < 0.01,
+            "output gain should be restored from preset"
+        );
+
+        // --- Load: ForProject context (full state, with model_path) ---
+        let project_with_path = format!(
+            r#"{{"input_gain_db":5.0,"output_gain_db":-8.0,"gate_threshold_db":-60.0,"model_path":"{}","model_basename":"BossWN-nano.nam","model_search_paths":[],"bypass":true,"adaptive_compute":"Aggressive"}}"#,
+            model_path.to_str().unwrap()
+        );
+        let mut handle = plugin_instance.plugin_handle();
+        state_ctx_ext
+            .load(
+                &mut handle,
+                &mut project_with_path.as_bytes(),
+                StateContextType::ForProject,
+            )
+            .expect("load ForProject should succeed");
+
+        let gain_in = shared.ui_to_rt.param_input_gain.load(Ordering::Relaxed);
+        assert!(
+            (f32::from_bits(gain_in) - 5.0).abs() < 0.01,
+            "input gain should reflect full project state restoration"
+        );
+        let bypass_val = shared.ui_to_rt.param_bypass.load(Ordering::Relaxed);
+        assert_eq!(bypass_val, 1, "bypass should be enabled from project state");
+        let adaptive_mode = shared
+            .ui_to_rt
+            .param_adaptive_compute
+            .load(Ordering::Relaxed);
+        assert_eq!(
+            adaptive_mode, 2,
+            "adaptive_compute should be Aggressive from project state"
+        );
+    }
 }
