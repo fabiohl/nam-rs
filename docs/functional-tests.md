@@ -123,6 +123,7 @@ Each section testable after touching the corresponding feature. Self-contained, 
 - [ ] Drag `.wav` → overlay appears but ignored on drop. (Windows only).
 - [ ] Status bar: `"DSP: XX.X%"` indicator present in telemetry (green <50%, amber 50-80%, red >80%).
 - [ ] Hover on DSP Load → tooltip describes real-time usage percentage.
+- [ ] **Telemetry cadence:** With steady signal, observe status bar for ≥20s. Telemetry values (sample rate, latency, DSP load) update at a visible interval (~1 Hz) — they do not flicker or update every frame. (G1.T03)
 
 ---
 
@@ -153,6 +154,8 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 - [ ] LFO on `input_gain_db` at 1–5 Hz, ±6 dB → arc oscillates smoothly, audio without zipper noise.
 - [ ] LFO at 20 Hz → audio modulates like a fast tremolo without artifacts or CPU spikes.
+- [ ] **Manual gain sweep:** Draw an automation ramp for `input_gain_db` from −60 dB to +12 dB over ~1s → audio transition is smooth, no audible click or zipper noise. (G1.T04)
+- [ ] **Repeat gain sweep** with `output_gain_db` — same smoothness, no zipper noise. (G1.T04)
 
 ---
 
@@ -188,6 +191,46 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
+### 2N — Floating GUI Fallback Window (G2.T02)
+
+> **Host:** Bitwig Studio and Fender Studio Pro.
+> **Context:** If the host does not support GUI embedding (X11 parented), the plugin should open as a floating top-level window.
+
+- [ ] **Embedding preference:** On hosts that support X11 parented embedding (Bitwig, Reaper), NAM-rs opens GUI embedded in the host window — not as a separate floating window.
+- [ ] **Floating fallback:** On a host that requests floating mode → NAM-rs opens as an independent top-level window. GUI is fully interactive (knobs, bypass, load button all work).
+- [ ] **Repeated open/close:** Open and close the floating GUI 10+ times → no crash, no zombie windows, no growing memory.
+- [ ] **Playback stability:** Open/close the floating GUI while audio is playing → playback continues, no XRUNs.
+- [ ] **Mode logged:** After opening the GUI, check the host log (e.g. `~/.bitwig-studio/log/engine.log`) → message `"NAM-rs: GUI mode selected = embedded"` (or `"floating"`) appears at Info level.
+- [ ] **No regression:** On hosts that always used embedded GUI, behavior is identical to before — no visual change, sizing unchanged.
+
+---
+
+### 2O — Plugin Categorization in Host Browser (G2.T03)
+
+> **Host:** Bitwig Studio (browser sidebar).
+> **Context:** The CLAP feature strings determine where the plugin appears in the host's category tree.
+
+- [ ] Open Bitwig's plugin browser → NAM-rs appears under **Audio FX** → **Distortion** category.
+- [ ] In the search/filter bar, typing `"distortion"`, `"gate"`, or `"mono"` finds NAM-rs.
+- [ ] The plugin does **not** show up under categories like "Instrument", "Synth", "Delay", or "Reverb".
+- [ ] Check: no non-standard category such as `"simulator"` appears (if the host exposes raw features).
+
+---
+
+### 2P — Preset Portability via State-Context (G2.T04)
+
+> **Host:** Bitwig Studio (supports `clap.state-context`). Reaper may also work.
+> **Preparation:** A `.nam` model loaded, parameters set to non-default values.
+
+- [ ] **Save as device preset:** In Bitwig, right-click NAM-rs → *"Save as Device Preset..."* → enter name → save.
+- [ ] **Preset portability:** Move the `.nam` model file to a **different directory**. Delete it from the original location.
+- [ ] **Reload preset:** Insert a new NAM-rs instance → load the saved device preset. The model loads from the **new location** (via search paths + basename). Audio parameters (INPUT, OUTPUT, GATE, BYPASS) are restored.
+- [ ] **Save project:** Set parameters + model → save DAW project → close → reopen. All state preserved (model loads from absolute path).
+- [ ] **Model missing on project load:** Move the model file from its absolute path → reopen project → `"No model loaded"` appears in status bar. No crash.
+- [ ] **DSP load meter and telemetry status bar** continue updating correctly after preset/project load.
+
+---
+
 ## Block 3 — Stress & Pedantry
 
 Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
@@ -213,6 +256,7 @@ Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
 
 - [ ] (Bitwig) LFO at 20–100 Hz modulating `input_gain_db` for ≥5 min with 128 sample buffer. Zero zipper noise, zero XRUNs.
 - [ ] (Fender) Channel envelopes/LFOs modulating parameters for ≥5 min.
+- [ ] **Simultaneous automation:** Modulate `input_gain_db` AND `output_gain_db` with independent LFOs (different rates, e.g. 5 Hz and 13 Hz) for ≥2 min at 128 sample buffer. Zero XRUNs in `pw-top`. Audio remains clean. (G1.T01)
 
 ---
 
@@ -252,6 +296,45 @@ Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.
 
 - [ ] With active processing, offline bounce 2 consecutive times.
 - [ ] WAV files identical bit-by-bit (`cmp`). **Use offline bounce, not real-time.**
+- [ ] Status bar during offline bounce: DSP flags (in diagnostic info) remain clean — no `DEGRADE` warning. Adaptive compute stays at maximum quality.
+
+---
+
+### 3.9 GUI Idle CPU Reduction — Conditional Render (G3.T01)
+
+> **Prerequisite:** Close all other DAW plugin GUIs. Monitor CPU usage (e.g., `htop` or system monitor) for the DAW process.
+
+- [ ] **Baseline:** Open NAM-rs editor → play audio for 30s → stop audio. After 5s of silence, note CPU% of the DAW process with editor open and idle.
+- [ ] **Idle behavior:** Wait another 30s with editor open, no audio, no mouse/keyboard interaction. CPU% drops noticeably from active state.
+- [ ] **Interaction resumes rendering:** Move the mouse over the editor, click any control → GUI updates immediately. No "frozen frame" or delay.
+- [ ] **Peak-hold animation:** Play a loud transient, then stop → VU meter peak-hold decays smoothly even in idle mode. Does not "freeze" the peak dot.
+- [ ] **Automation pulse:** With active LFO modulation (see 2J), the knob arc animation pulses continuously without drops.
+- [ ] **Toast/loading animation:** Trigger a model load → `"Loading..."` animation runs smoothly frame-by-frame despite idle-capable render.
+- [ ] **No flicker:** Alternate between moving knobs rapidly and stopping → no screen flicker or tearing when transitioning between active/idle render.
+
+---
+
+### 3.10 GUI Open/Close Stress — No OpenGL Leaks (G3.T02)
+
+> **Prerequisite:** Build NAM-rs with debug logging visible (check DAW logs or run from terminal to see stderr).
+
+- [ ] **Rapid open/close:** Open and close the NAM-rs editor 30+ times in <60s, with audio playing continuously.
+- [ ] **No leak warnings:** Check DAW logs/terminal output → no `egui_glow` messages containing `"Resources will be leaked!"` or `"leaked"`.
+- [ ] **Memory stability:** After 30 cycles of open/close, DAW process RSS memory is stable (growth < 5 MB from before the test).
+- [ ] **GL resource check:** Open editor → close it → open again → VU meter, knob arcs, and text all render correctly. No "black window" or missing graphics.
+- [ ] **No crash/panic:** After the 30-cycle stress, continue using the plugin normally (load model, adjust knobs) → everything works, no crash.
+
+---
+
+### 3.11 HiDPI First-Frame Scale Correctness (G3.T03)
+
+> **Host:** Test on a HiDPI display (scale factor 1.5 or 2.0, e.g. 4K monitor with 150% or 200% scaling).
+> **Also test on a 1.0x display (standard 1080p).**
+
+- [ ] **HiDPI first frame:** Set system/host to HiDPI scale (≥1.5). Insert NAM-rs → open editor for the **first time**. The GUI renders at correct size — not tiny/blurry. Text is sharp, knobs are proportionate.
+- [ ] **No resize artifact:** The GUI does **not** visibly "jump" or resize itself moments after opening (no late scale correction).
+- [ ] **1.0x regression check:** On a standard 1080p display (scale 1.0), the GUI appears identical to before — same size, same layout, no distortion.
+- [ ] **Manual resize:** After opening, resize the host window (drag corner) → GUI adapts to new size without artifacts.
 
 ---
 
