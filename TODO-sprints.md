@@ -34,7 +34,7 @@ Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights 
 - **Especialista:** `implementador` + revisão `revisor-auditor`.
 - **Esforço:** 1.5 dia.
 
-### Tarefa G1.T02 — Sincronização GUI→RT por geração única (substituir 5 loads+compares por bloco) 🔥
+### Tarefa G1.T02 — Sincronização GUI→RT por geração única (substituir 5 loads+compares por bloco) 🔥✅ CONCLUÍDA
 
 - **Onde:** `src/clap/processor/events.rs:142-176` e bloco espelhado em `src/clap/extensions/params.rs:379-427` (`PluginAudioProcessorParams::flush`).
 - **Problema:** A cada `process()` o RT executa **cinco** pares load-atômico + comparação contra o mirror local (`shared_in_db != self.params.input_gain_db`, etc.) apenas para detectar mudanças vindas da GUI que o host não ecoou como evento. No caso comum (nenhuma mudança de GUI), isso é trabalho 100% desperdiçado no hotpath, repetido por bloco.

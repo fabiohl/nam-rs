@@ -213,6 +213,7 @@ pub fn handle_knob(
     default_value: f32,
     atomic_val: &std::sync::atomic::AtomicU32,
     gesture_flags: &std::sync::atomic::AtomicU32,
+    gui_param_generation: &std::sync::atomic::AtomicU32,
     param_index: usize,
     color: egui::Color32,
     accent_color: egui::Color32,
@@ -277,6 +278,7 @@ pub fn handle_knob(
                 gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
             }
             atomic_val.store(final_val.to_bits(), Ordering::Relaxed);
+            gui_param_generation.fetch_add(1, Ordering::Release);
             gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
             if is_discrete {
                 gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);

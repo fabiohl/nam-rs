@@ -394,56 +394,65 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
         // ── GUI → Audio Thread Synchronization ───────────────────────────────────
         // The GUI writes directly to `NamClapShared` atomics (e.g., `param_input_gain`).
         // The host may not echo these changes as input events in this cycle.
-        // Here, we read the atomics and update `self.params` if there is any divergence.
-        // This ensures that the next `process()` call uses updated values.
-        let shared_in_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_input_gain
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        if shared_in_db != self.params.input_gain_db {
-            self.params.input_gain_db = shared_in_db;
-        }
-
-        let shared_out_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_output_gain
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        if shared_out_db != self.params.output_gain_db {
-            self.params.output_gain_db = shared_out_db;
-        }
-
-        let shared_gate_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_gate_thresh
-                .load(std::sync::atomic::Ordering::Relaxed),
-        );
-        if shared_gate_db != self.params.gate_threshold_db {
-            self.params.gate_threshold_db = shared_gate_db;
-        }
-
-        let shared_bypass = self
+        // A single Acquire load of the generation counter avoids 5 Relaxed loads
+        // when no GUI change occurred since the last reconciliation.
+        let generation = self
             .shared
             .ui_to_rt
-            .param_bypass
-            .load(std::sync::atomic::Ordering::Relaxed)
-            != 0;
-        if shared_bypass != self.params.bypass {
-            self.params.bypass = shared_bypass;
-        }
+            .gui_param_generation
+            .load(std::sync::atomic::Ordering::Acquire);
+        if generation != self.last_seen_generation {
+            self.last_seen_generation = generation;
 
-        let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
-            self.shared
+            let shared_in_db = f32::from_bits(
+                self.shared
+                    .ui_to_rt
+                    .param_input_gain
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
+            if shared_in_db != self.params.input_gain_db {
+                self.params.input_gain_db = shared_in_db;
+            }
+
+            let shared_out_db = f32::from_bits(
+                self.shared
+                    .ui_to_rt
+                    .param_output_gain
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
+            if shared_out_db != self.params.output_gain_db {
+                self.params.output_gain_db = shared_out_db;
+            }
+
+            let shared_gate_db = f32::from_bits(
+                self.shared
+                    .ui_to_rt
+                    .param_gate_thresh
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
+            if shared_gate_db != self.params.gate_threshold_db {
+                self.params.gate_threshold_db = shared_gate_db;
+            }
+
+            let shared_bypass = self
+                .shared
                 .ui_to_rt
-                .param_adaptive_compute
-                .load(std::sync::atomic::Ordering::Relaxed) as f32,
-        );
-        if shared_adaptive != self.params.adaptive_compute {
-            self.params.adaptive_compute = shared_adaptive;
+                .param_bypass
+                .load(std::sync::atomic::Ordering::Relaxed)
+                != 0;
+            if shared_bypass != self.params.bypass {
+                self.params.bypass = shared_bypass;
+            }
+
+            let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
+                self.shared
+                    .ui_to_rt
+                    .param_adaptive_compute
+                    .load(std::sync::atomic::Ordering::Relaxed) as f32,
+            );
+            if shared_adaptive != self.params.adaptive_compute {
+                self.params.adaptive_compute = shared_adaptive;
+            }
         }
     }
 }

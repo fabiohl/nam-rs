@@ -146,58 +146,69 @@ impl<'a> NamClapProcessor<'a> {
         }
 
         // Sync parameters changed via GUI that were not echoed as input events by the host.
-        let shared_in_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_input_gain
-                .load(Ordering::Relaxed),
-        );
-        if shared_in_db != self.params.input_gain_db {
-            self.params.input_gain_db = shared_in_db;
-            self.smoother_in
-                .set_target(lut.db_to_linear(shared_in_db + self.mod_input_gain));
-            self.param_in_changed = true;
-        }
+        // Single Acquire load of the generation counter avoids 5 Relaxed loads per block
+        // in the common case where no GUI change occurred.
+        let generation = self
+            .shared
+            .ui_to_rt
+            .gui_param_generation
+            .load(Ordering::Acquire);
+        if generation != self.last_seen_generation {
+            self.last_seen_generation = generation;
 
-        let shared_out_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_output_gain
-                .load(Ordering::Relaxed),
-        );
-        if shared_out_db != self.params.output_gain_db {
-            self.params.output_gain_db = shared_out_db;
-            self.smoother_out
-                .set_target(lut.db_to_linear(shared_out_db + self.mod_output_gain));
-            self.param_out_changed = true;
-        }
+            let shared_in_db = f32::from_bits(
+                self.shared
+                    .ui_to_rt
+                    .param_input_gain
+                    .load(Ordering::Relaxed),
+            );
+            if shared_in_db != self.params.input_gain_db {
+                self.params.input_gain_db = shared_in_db;
+                self.smoother_in
+                    .set_target(lut.db_to_linear(shared_in_db + self.mod_input_gain));
+                self.param_in_changed = true;
+            }
 
-        let shared_gate_db = f32::from_bits(
-            self.shared
-                .ui_to_rt
-                .param_gate_thresh
-                .load(Ordering::Relaxed),
-        );
-        if shared_gate_db != self.params.gate_threshold_db {
-            self.params.gate_threshold_db = shared_gate_db;
-            self.gate_dirty = true;
-        }
+            let shared_out_db = f32::from_bits(
+                self.shared
+                    .ui_to_rt
+                    .param_output_gain
+                    .load(Ordering::Relaxed),
+            );
+            if shared_out_db != self.params.output_gain_db {
+                self.params.output_gain_db = shared_out_db;
+                self.smoother_out
+                    .set_target(lut.db_to_linear(shared_out_db + self.mod_output_gain));
+                self.param_out_changed = true;
+            }
 
-        let shared_bypass = self.shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
-        if shared_bypass != self.params.bypass {
-            self.params.bypass = shared_bypass;
-        }
+            let shared_gate_db = f32::from_bits(
+                self.shared
+                    .ui_to_rt
+                    .param_gate_thresh
+                    .load(Ordering::Relaxed),
+            );
+            if shared_gate_db != self.params.gate_threshold_db {
+                self.params.gate_threshold_db = shared_gate_db;
+                self.gate_dirty = true;
+            }
 
-        let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
-            self.shared
-                .ui_to_rt
-                .param_adaptive_compute
-                .load(Ordering::Relaxed) as f32,
-        );
-        if shared_adaptive != self.params.adaptive_compute {
-            self.params.adaptive_compute = shared_adaptive;
-            self.adaptive_compute.set_mode(shared_adaptive);
-        }
+            let shared_bypass = self.shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
+            if shared_bypass != self.params.bypass {
+                self.params.bypass = shared_bypass;
+            }
+
+            let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
+                self.shared
+                    .ui_to_rt
+                    .param_adaptive_compute
+                    .load(Ordering::Relaxed) as f32,
+            );
+            if shared_adaptive != self.params.adaptive_compute {
+                self.params.adaptive_compute = shared_adaptive;
+                self.adaptive_compute.set_mode(shared_adaptive);
+            }
+        } // generation guard
 
         // Dynamic latency monitoring on the Audio Thread
         let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);

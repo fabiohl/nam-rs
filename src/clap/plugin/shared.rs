@@ -87,6 +87,9 @@ pub struct UiToRt {
     ///   bit (param_index * 3 + 1) = Gesture Begin
     ///   bit (param_index * 3 + 2) = Gesture End
     pub gesture_flags: AtomicU32,
+    /// Monotonic generation counter bumped (Release) by GUI on any param write.
+    /// Read (Acquire) by RT to detect un-echoed GUI changes in a single load.
+    pub gui_param_generation: AtomicU32,
 }
 
 /// Fields accessed at low frequency by both threads (init, shutdown, rare events).
@@ -331,6 +334,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             param_bypass: AtomicU32::new(0),
             param_adaptive_compute: AtomicU32::new(1),
             gesture_flags: AtomicU32::new(0),
+            gui_param_generation: AtomicU32::new(0),
         },
         cold: ColdShared {
             param_tx: Mutex::new(Some(param_tx)),

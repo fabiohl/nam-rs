@@ -75,6 +75,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 param_bypass: AtomicU32::new(0),
                 param_adaptive_compute: AtomicU32::new(1), // Conservative by default in CLAP plugin
                 gesture_flags: AtomicU32::new(0),
+                gui_param_generation: AtomicU32::new(0),
             },
             cold: ColdShared {
                 param_tx: Mutex::new(Some(param_tx)),

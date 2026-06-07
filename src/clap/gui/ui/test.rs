@@ -322,6 +322,7 @@ fn test_bypass_keyboard_trigger() {
     let id = egui::Id::new("test_bypass");
     let atomic_val = std::sync::atomic::AtomicU32::new(0); // initial: bypass off
     let gesture_flags = std::sync::atomic::AtomicU32::new(0);
+    let gui_param_generation = std::sync::atomic::AtomicU32::new(0);
     let dummy = 42i32;
     // SAFETY: FFI call, host pointer transmute, or raw graphics context access with verified lifetimes.
     let host: HostSharedHandle = unsafe { std::mem::transmute(&dummy as *const i32) };
@@ -341,6 +342,7 @@ fn test_bypass_keyboard_trigger() {
                 id,
                 &atomic_val,
                 &gesture_flags,
+                &gui_param_generation,
                 BYPASS_INDEX,
                 egui::Color32::GREEN,
                 &host,
@@ -367,6 +369,7 @@ fn test_bypass_keyboard_trigger() {
                 id,
                 &atomic_val,
                 &gesture_flags,
+                &gui_param_generation,
                 BYPASS_INDEX,
                 egui::Color32::GREEN,
                 &host,

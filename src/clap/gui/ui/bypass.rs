@@ -15,6 +15,7 @@ pub fn handle_bypass(
     id: egui::Id,
     atomic_val: &std::sync::atomic::AtomicU32,
     gesture_flags: &std::sync::atomic::AtomicU32,
+    gui_param_generation: &std::sync::atomic::AtomicU32,
     param_index: usize,
     accent_color: egui::Color32,
     host: &HostSharedHandle,
@@ -57,6 +58,7 @@ pub fn handle_bypass(
         let new_bypass = !current_bypass;
         gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
         atomic_val.store(if new_bypass { 1 } else { 0 }, Ordering::Relaxed);
+        gui_param_generation.fetch_add(1, Ordering::Release);
         gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
         gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);
         if let Some(params_ext) = host.get_extension::<clack_extensions::params::HostParams>() {
