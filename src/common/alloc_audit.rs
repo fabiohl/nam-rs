@@ -20,8 +20,8 @@ pub static AUDIT_THREAD: AtomicI32 = AtomicI32::new(0);
 
 /// The "Memory Watchdog": intercepts all memory requests from the program.
 ///
-/// Each consumer registers its own `#[global_allocator]` with a local wrapper
-/// that delegates to `CountingAllocator::alloc` / `CountingAllocator::dealloc`.
+/// Implements `GlobalAlloc` directly — register as `#[global_allocator]`
+/// with `static GLOBAL: CountingAllocator = CountingAllocator;`.
 pub struct CountingAllocator;
 
 impl CountingAllocator {
@@ -47,6 +47,15 @@ impl CountingAllocator {
     /// with the same `layout`.
     pub unsafe fn dealloc(ptr: *mut u8, layout: Layout) {
         unsafe { System.dealloc(ptr, layout) }
+    }
+}
+
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        unsafe { Self::alloc(layout) }
+    }
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        unsafe { Self::dealloc(ptr, layout) }
     }
 }
 

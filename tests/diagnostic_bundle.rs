@@ -577,7 +577,7 @@ mod audit_tests {
 
     struct TrackingGuard {
         #[cfg(feature = "clap-plugin")]
-        _inner: nam_rs::clap::heap_audit::TrackingGuard,
+        _inner: nam_rs::common::alloc_audit::TrackingGuard,
     }
 
     impl TrackingGuard {
@@ -585,7 +585,7 @@ mod audit_tests {
             #[cfg(feature = "clap-plugin")]
             {
                 Self {
-                    _inner: nam_rs::clap::heap_audit::TrackingGuard::new(),
+                    _inner: nam_rs::common::alloc_audit::TrackingGuard::new(),
                 }
             }
             #[cfg(not(feature = "clap-plugin"))]
@@ -610,7 +610,7 @@ mod audit_tests {
     fn get_alloc_count() -> usize {
         #[cfg(feature = "clap-plugin")]
         {
-            nam_rs::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed)
+            nam_rs::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed)
         }
         #[cfg(not(feature = "clap-plugin"))]
         {

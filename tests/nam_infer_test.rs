@@ -81,7 +81,7 @@ static GLOBAL: CountingAllocator = CountingAllocator;
 // Guard to safely enable/disable counting (even in panics).
 struct TrackingGuard {
     #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
-    _inner: nam_rs::clap::heap_audit::TrackingGuard,
+    _inner: nam_rs::common::alloc_audit::TrackingGuard,
 }
 
 impl TrackingGuard {
@@ -89,7 +89,7 @@ impl TrackingGuard {
         #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
         {
             Self {
-                _inner: nam_rs::clap::heap_audit::TrackingGuard::new(),
+                _inner: nam_rs::common::alloc_audit::TrackingGuard::new(),
             }
         }
         #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
@@ -115,7 +115,7 @@ impl Drop for TrackingGuard {
 fn get_alloc_count() -> usize {
     #[cfg(all(feature = "heap-audit", feature = "clap-plugin"))]
     {
-        nam_rs::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed)
+        nam_rs::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed)
     }
     #[cfg(any(not(feature = "heap-audit"), not(feature = "clap-plugin")))]
     {

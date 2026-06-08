@@ -42,7 +42,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         #[cfg(feature = "heap-audit")]
         {
             if std::env::var("NAM_HEAP_AUDIT").is_ok() {
-                crate::clap::heap_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
+                crate::common::alloc_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
             }
         }
         // 1. SPSC channel extraction from Shared (ownership transfer)
@@ -178,11 +178,11 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         events: Events,
     ) -> Result<ProcessStatus, PluginError> {
         #[cfg(feature = "heap-audit")]
-        let _guard = if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
+        let _guard = if crate::common::alloc_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            let audit_thread = crate::clap::heap_audit::AUDIT_THREAD.load(Ordering::Relaxed);
+            let audit_thread = crate::common::alloc_audit::AUDIT_THREAD.load(Ordering::Relaxed);
             if audit_thread == 0 || audit_thread == tid {
-                Some(crate::clap::heap_audit::TrackingGuard::new())
+                Some(crate::common::alloc_audit::TrackingGuard::new())
             } else {
                 None
             }

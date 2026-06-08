@@ -148,11 +148,11 @@ impl<'a> NamClapProcessor<'a> {
         self.process_telemetry(start_time);
 
         #[cfg(feature = "heap-audit")]
-        if crate::clap::heap_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
+        if crate::common::alloc_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-            let audit_thread = crate::clap::heap_audit::AUDIT_THREAD.load(Ordering::Relaxed);
+            let audit_thread = crate::common::alloc_audit::AUDIT_THREAD.load(Ordering::Relaxed);
             if audit_thread == 0 || audit_thread == tid {
-                let allocs = crate::clap::heap_audit::ALLOC_COUNT.load(Ordering::Relaxed);
+                let allocs = crate::common::alloc_audit::ALLOC_COUNT.load(Ordering::Relaxed);
                 if allocs > 0 {
                     self.rt_status
                         .set_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);

@@ -1057,8 +1057,8 @@ mod tests {
 
         // Activates heap audit and forces the counter to simulate allocation
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
-        crate::clap::heap_audit::AUDIT_THREAD.store(tid, Ordering::Relaxed);
-        crate::clap::heap_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
+        crate::common::alloc_audit::AUDIT_THREAD.store(tid, Ordering::Relaxed);
+        crate::common::alloc_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
 
         // Resets the status flag to ensure it is clean before
         shared
@@ -1079,9 +1079,9 @@ mod tests {
             .expect("process failed in heap allocation simulation");
 
         // Disables heap audit to avoid interfering with other tests
-        crate::clap::heap_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
-        crate::clap::heap_audit::AUDIT_THREAD.store(0, Ordering::Relaxed);
-        crate::clap::heap_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
+        crate::common::alloc_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
+        crate::common::alloc_audit::AUDIT_THREAD.store(0, Ordering::Relaxed);
+        crate::common::alloc_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
 
         // Verifies that the returned status is Sleep
         assert!(matches!(status, ProcessStatus::Sleep));

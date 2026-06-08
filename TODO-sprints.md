@@ -1220,7 +1220,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   sem alloc.
 - **DoD:** padrão.
 
-#### S6.T20 — Consolidar `src/clap/heap_audit.rs` em `src/common/alloc_audit.rs`
+#### S6.T20 — Consolidar `src/clap/heap_audit.rs` em `src/common/alloc_audit.rs` [DONE]
 
 - **Problema:** `heap_audit.rs` é infraestrutura de auditoria de alocação RT
   (genérica), mas reside no diretório CLAP.
