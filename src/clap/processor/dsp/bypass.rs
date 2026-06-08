@@ -15,7 +15,16 @@ impl<'a> NamClapProcessor<'a> {
         if !self.params.bypass {
             return Ok(false);
         }
+        self.process_bypass_cold(port_pair, n_samples)
+    }
 
+    #[cold]
+    #[inline(never)]
+    fn process_bypass_cold(
+        &self,
+        port_pair: &mut PortPair<'_>,
+        n_samples: usize,
+    ) -> Result<bool, PluginError> {
         let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
             return Ok(true);
         };

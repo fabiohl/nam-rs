@@ -16,7 +16,7 @@
 
 ### Sprint 1.1: Otimizações de Hot-Path — Orquestrador e Bypass
 
-#### TT-1.1.1: Aplicar `#[cold]` ao corpo da função `process_bypass`
+#### TT-1.1.1: Aplicar `#[cold]` ao corpo da função `process_bypass` [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/bypass.rs`
 - **Descrição:** Atualmente `process_bypass` inteira tem `#[inline(always)]`, mas apenas o early-return `if !self.params.bypass { return Ok(false); }` é hot. O restante do corpo (bypass ativo) é cold. Separar em: (a) inline fast-path check + (b) `#[cold] #[inline(never)]` para `process_bypass_cold`.
