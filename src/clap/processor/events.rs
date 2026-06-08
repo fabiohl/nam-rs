@@ -44,24 +44,7 @@ impl<'a> NamClapProcessor<'a> {
                     model_l,
                     model_r,
                     new_resampler,
-                } => {
-                    self.shared
-                        .cold
-                        .rt_status
-                        .clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
-                    if let Some(old_l) = std::mem::replace(&mut self.model_l, model_l) {
-                        self.push_to_gc(GcItem::Model(old_l));
-                    }
-                    if let Some(ref mut model) = self.model_l {
-                        model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
-                        model.set_max_buffer_size(self.max_frames_count);
-                    }
-                    if let Some(model_r) = model_r {
-                        self.push_to_gc(GcItem::Model(model_r));
-                    }
-                    let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
-                    self.push_to_gc(GcItem::Resampler(old_resampler));
-                }
+                } => self.cold_load_model(model_l, model_r, new_resampler),
             }
         }
 
@@ -244,5 +227,30 @@ impl<'a> NamClapProcessor<'a> {
             self.adaptive_compute
                 .set_mode(crate::common::params::AdaptiveComputeMode::Off);
         }
+    }
+
+    #[cold]
+    fn cold_load_model(
+        &mut self,
+        model_l: Option<Box<crate::models::DynamicModel>>,
+        model_r: Option<Box<crate::models::DynamicModel>>,
+        new_resampler: Box<crate::dsp::resampler::NamResampler>,
+    ) {
+        self.shared
+            .cold
+            .rt_status
+            .clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
+        if let Some(old_l) = std::mem::replace(&mut self.model_l, model_l) {
+            self.push_to_gc(GcItem::Model(old_l));
+        }
+        if let Some(ref mut model) = self.model_l {
+            model.inject_rt_status(std::sync::Arc::clone(&self.shared.cold.rt_status));
+            model.set_max_buffer_size(self.max_frames_count);
+        }
+        if let Some(model_r) = model_r {
+            self.push_to_gc(GcItem::Model(model_r));
+        }
+        let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
+        self.push_to_gc(GcItem::Resampler(old_resampler));
     }
 }

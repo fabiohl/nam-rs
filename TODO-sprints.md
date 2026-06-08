@@ -94,7 +94,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Garante inline no hot-path, evitando call overhead para função pequena.
 
-#### TT-1.3.2: Aplicar `#[cold]` nos caminhos de erro de `process_events`
+#### TT-1.3.2: Aplicar `#[cold]` nos caminhos de erro de `process_events` [DONE]
 
 - **Arquivo:** `src/clap/processor/events.rs`
 - **Descrição:** O bloco de eventos SPSC (linhas 28-67) processa `ClapParamPayload::LoadModel` que é raro. Separar o processamento de `LoadModel` em função `#[cold]`.
