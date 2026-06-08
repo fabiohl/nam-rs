@@ -73,7 +73,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ---
 
-## ÉPICO 1 — Subsistema Math (`src/math/`)
+## ÉPICO 1 — Subsistema Math (`src/math/`) (CONCLUÍDO ✅)
 
 > Princípio: **agrupar kernels SIMD por ISA** (AVX2 / AVX-512 / AVX-512BF16) e
 > isolar fallbacks escalares. Macros geradoras de v-table (boilerplate) separadas
@@ -208,7 +208,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 - **DoD:** padrão. Split é opcional — se mantido coeso, entregar só as correções
   de doc.
 
-### Sprint 1.C — V-tables (macros) e definições (coesos)
+### Sprint 1.C — V-tables (macros) e definições (coesos) (CONCLUÍDO ✅)
 
 #### S1.T09 — Dividir macros de v-table AVX-512: `avx512/gemv.rs` (717) e `avx512/dsp.rs` (358) (CONCLUÍDO ✅)
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
 use super::helpers::{bf16x4_to_f32x4, bf16x16_to_f32x16};
 use core::arch::x86_64::*;
 
