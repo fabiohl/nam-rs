@@ -228,7 +228,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `Avx512Math`) — **não** deduplicar agora (mudaria lógica); apenas registrar.
 - **DoD:** padrão.
 
-#### S1.T10 — Limpeza dos arquivos Math coesos (sem split)
+#### S1.T10 — Limpeza dos arquivos Math coesos (sem split) (CONCLUÍDO ✅)
 
 > Estes arquivos **não devem ser divididos** (justificativa de coesão). A tarefa
 > é apenas remover comentários obsoletos/duplicados e dead code seguro.

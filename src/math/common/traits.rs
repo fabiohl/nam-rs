@@ -449,11 +449,6 @@ pub trait SimdMath {
     ///
     /// # Safety
     /// Buffers must be valid and have sizes compatible with HEAD and num_frames.
-    /// Specialized kernel for WaveNet Head sum.
-    /// Vectorizes the horizontal summation of head1 projections (batch), adds head2, and final scaling.
-    ///
-    /// # Safety
-    /// Buffers must be valid and have sizes compatible with HEAD and num_frames.
     unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
         head1: &[f32],
         head2: &[f32],
