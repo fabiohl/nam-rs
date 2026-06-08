@@ -860,7 +860,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   OK; sem mudança de lógica.
 - **DoD:** padrão §0.2.
 
-#### S6.T02 — Extrair implementação de `src/standalone/pw_host/mod.rs` (264 LOC → ~28 LOC)
+#### S6.T02 — Extrair implementação de `src/standalone/pw_host/mod.rs` (264 LOC → ~28 LOC) [DONE]
 
 - **Problema:** 173 linhas de `run_pipewire_host` vs 15 linhas de declarações.
 - **Split:**
