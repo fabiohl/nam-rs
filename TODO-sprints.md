@@ -304,7 +304,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `_mm_prefetch`; sem locks.
 - **DoD:** padrão.
 
-#### S2.T04 — `src/models/lstm/layer.rs` (426 LOC): extrair utilitário + gate de referência
+#### S2.T04 — `src/models/lstm/layer.rs` (426 LOC): extrair utilitário + gate de referência (CONCLUÍDO ✅)
 
 - **Split:**
   - `aligned.rs` (preferir mover para `src/math/common/` ou `src/common/`) ←
@@ -320,6 +320,12 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   panics no caminho SIMD.
 - **DoD:** padrão. Atenção: mover `Aligned64` muda caminho de import — ajustar
   re-exports e os `use` nos consumidores.
+- **Nota (S2.T04 executada):** `scalar_minimax_sigmoid` **não** foi movido para
+  `#[cfg(test)]` porque o caminho escalar é usado por benchmarks
+  (`benches/inference_bench.rs`) e testes de integração
+  (`tests/lstm_scalar_bf16_parity.rs`). `Aligned64` foi movido para
+  `src/math/common/aligned.rs` e re-exportado via `src/math/common/mod.rs`.
+- **LOC final:** `layer.rs` ~371 LOC (antes: 426).
 
 #### S2.T05 — Dividir `src/models/mod.rs` (331 LOC)
 

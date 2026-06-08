@@ -13,6 +13,37 @@ use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 
+/// Wrapper to guarantee 64-byte alignment (Cache Line / AVX-512).
+///
+/// Stack-allocated counterpart to `AlignedVec`. Use this for fixed-size
+/// const-generic buffers on struct fields; use `AlignedVec` for dynamic
+/// heap-allocated buffers.
+#[repr(align(64))]
+#[derive(Clone, Copy, Debug)]
+pub struct Aligned64<T>(pub T);
+
+impl<T> Deref for Aligned64<T> {
+    type Target = T;
+    #[inline(always)]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for Aligned64<T> {
+    #[inline(always)]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T: Default> Default for Aligned64<T> {
+    #[inline(always)]
+    fn default() -> Self {
+        Aligned64(T::default())
+    }
+}
+
 /// A 64-byte aligned buffer (Cache Line / AVX-512).
 ///
 /// Layout (16 bytes): pointer + length. Zero overhead for standard allocations.

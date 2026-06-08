@@ -36,34 +36,7 @@ fn scalar_minimax_sigmoid(x: f32) -> f32 {
     result.clamp(0.0, 1.0)
 }
 
-use std::ops::{Deref, DerefMut};
-
-/// Wrapper to guarantee 64-byte alignment (Cache Line / AVX-512).
-#[repr(align(64))]
-#[derive(Clone, Copy, Debug)]
-pub struct Aligned64<T>(pub T);
-
-impl<T> Deref for Aligned64<T> {
-    type Target = T;
-    #[inline(always)]
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T> DerefMut for Aligned64<T> {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl<T: Default> Default for Aligned64<T> {
-    #[inline(always)]
-    fn default() -> Self {
-        Aligned64(T::default())
-    }
-}
+use crate::math::common::Aligned64;
 
 /// An individual LSTM model layer optimized for SIMD.
 pub struct LstmLayer<const I: usize, const H: usize, const IH: usize, const H4: usize> {

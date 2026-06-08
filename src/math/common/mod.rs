@@ -30,6 +30,7 @@ pub mod tests;
 pub mod traits;
 pub mod utility;
 
+pub use aligned::Aligned64;
 pub use aligned::AlignedVec;
 pub use avx2_impl::{Avx2Math, Avx2VnniMath};
 pub use avx512::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
