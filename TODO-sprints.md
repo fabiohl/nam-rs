@@ -253,7 +253,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 > `WaveNetModel` etc. com os mesmos caminhos). Padrão de testes já é compliant
 > (`#[path="tests.rs"]`).
 
-### S2.T01 — Dividir `src/models/wavenet/model_dyn.rs` (626 LOC)
+### S2.T01 — Dividir `src/models/wavenet/model_dyn.rs` (626 LOC) (CONCLUÍDO ✅)
 
 - **Split** (espelha o lado estático que já tem `dense.rs`/`model.rs`):
   - `dense_dyn.rs` ← `DenseLayerDyn` + impl (L11–138).

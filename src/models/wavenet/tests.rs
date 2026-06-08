@@ -683,6 +683,8 @@ fn test_dense_layer_rectangular() {
 
 use crate::models::wavenet::common::WavenetProcessContext;
 use crate::models::wavenet::conv1d_dyn::Conv1dDyn;
+use crate::models::wavenet::dense_dyn::DenseLayerDyn;
+use crate::models::wavenet::layer_dyn::WaveNetLayerDyn;
 use crate::models::wavenet::model_dyn::*;
 
 /// Builds a minimal `Conv1dDyn` with `kernel=1`, `dilation=1`.

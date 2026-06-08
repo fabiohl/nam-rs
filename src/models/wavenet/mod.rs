@@ -27,6 +27,10 @@ pub mod conv1d_dual;
 pub mod conv1d_dyn;
 /// Static 1x1 dense layer (`DenseLayer<IN, OUT>`).
 pub mod dense;
+/// Dynamic 1x1 dense layer (`DenseLayerDyn`).
+pub mod dense_dyn;
+/// Dynamic WaveNet layer (`WaveNetLayerDyn`).
+pub mod layer_dyn;
 /// Static model (`WaveNetModel`, `WaveNetLayerArray`, `WaveNetLayer`).
 pub mod model;
 pub mod model_dyn;
@@ -107,8 +111,10 @@ pub use common::{
 pub use conv1d::Conv1d;
 pub use conv1d_dyn::{Conv1dDyn, MAX_KERNEL};
 pub use dense::DenseLayer;
+pub use dense_dyn::DenseLayerDyn;
+pub use layer_dyn::WaveNetLayerDyn;
 pub use model::{WaveNetLayer, WaveNetLayerArray, WaveNetModel};
-pub use model_dyn::{DenseLayerDyn, WaveNetDynModel, WaveNetLayerArrayDyn, WaveNetLayerDyn};
+pub use model_dyn::{WaveNetDynModel, WaveNetLayerArrayDyn};
 
 #[cfg(test)]
 #[path = "tests.rs"]
