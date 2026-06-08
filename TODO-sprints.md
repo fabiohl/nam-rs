@@ -1454,7 +1454,7 @@ verdes. DoD §0.2 atendido para todas as tarefas.
   peak-hold.
 - **DoD:** padrão.
 
-#### S7.T08 — Extrair implementação de `src/clap/gui/ui/status_bar/mod.rs` (140 LOC → ~18 LOC)
+#### S7.T08 — Extrair implementação de `src/clap/gui/ui/status_bar/mod.rs` (140 LOC → ~18 LOC) [DONE]
 
 - **Problema:** `pub(crate) fn draw_zone5_status_bar` (~123 linhas) é um
   orquestrador que faz dispatch para `metadata`/`telemetry`/`toast`/`warnings`.
