@@ -627,7 +627,8 @@ mod tests {
 
     #[test]
     fn test_denormal_dither_mono_symmetry() {
-        use super::super::stages::{apply_input_stage, apply_output_stage};
+        use super::super::stage_input::apply_input_stage;
+        use super::super::stage_output::apply_output_stage;
 
         let n = 64;
         let mut samples_l = vec![0.0_f32; n];

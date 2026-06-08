@@ -610,7 +610,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ### Sprint 4.B — DSP (hot-path) e pipeline
 
-#### S4.T03 — Dividir `src/dsp/pipeline/stages.rs` (425 LOC) por estágio
+#### S4.T03 — Dividir `src/dsp/pipeline/stages.rs` (425 LOC) por estágio (CONCLUÍDO ✅)
 
 - **Split** (alinhado aos Stages 1–4 documentados): criar `pipeline/stages/`:
   - `stages/input.rs` ← `handle_silence_bypass`, `apply_input_stage`,
