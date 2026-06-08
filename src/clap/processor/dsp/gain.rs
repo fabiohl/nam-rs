@@ -13,6 +13,8 @@ impl<'a> NamClapProcessor<'a> {
             let start = self.smoother_in.peek();
             let target = self.smoother_in.target_value();
             if (start - target).abs() < 1e-9 {
+                // SAFETY: both slices have identical length `n_samples`
+                // and are valid mutable references to self-owned buffers.
                 input_has_clipped = unsafe {
                     crate::math::dsp::gain::apply_gain_and_detect_clipping_stereo(
                         &mut self.buf_host_l[..n_samples],
@@ -22,6 +24,8 @@ impl<'a> NamClapProcessor<'a> {
                 };
             } else {
                 let step = (target - start) / n_samples as f32;
+                // SAFETY: both slices have identical length `n_samples`
+                // and are valid mutable references to self-owned buffers.
                 unsafe {
                     crate::math::dsp::gain::apply_ramp_stereo(
                         &mut self.buf_host_l[..n_samples],
@@ -31,6 +35,8 @@ impl<'a> NamClapProcessor<'a> {
                     );
                 }
                 self.smoother_in.set(target);
+                // SAFETY: both slices have identical length `n_samples` (the
+                // stereo buffers are always kept in sync by the caller).
                 let (peak_l, peak_r) = unsafe {
                     crate::math::dsp::stereo::compute_peak_abs_stereo(
                         &self.buf_host_l[..n_samples],
@@ -47,6 +53,8 @@ impl<'a> NamClapProcessor<'a> {
             let start = self.smoother_in.peek();
             let target = self.smoother_in.target_value();
             if (start - target).abs() < 1e-9 {
+                // SAFETY: the slice references a valid self-owned buffer
+                // and its length `n_samples` is within bounds.
                 input_has_clipped = unsafe {
                     crate::math::dsp::gain::apply_gain_and_detect_clipping_mono(
                         &mut self.buf_host_l[..n_samples],
@@ -84,6 +92,8 @@ impl<'a> NamClapProcessor<'a> {
             let start = self.smoother_out.peek();
             let target = self.smoother_out.target_value();
             if (start - target).abs() < 1e-9 {
+                // SAFETY: both output slices have identical length `n_out`
+                // and are valid mutable references to self-owned buffers.
                 unsafe {
                     crate::math::dsp::gain::apply_gain_stereo(
                         &mut self.buf_out_l[..n_out],
@@ -93,6 +103,8 @@ impl<'a> NamClapProcessor<'a> {
                 }
             } else {
                 let step = (target - start) / n_out as f32;
+                // SAFETY: both output slices have identical length `n_out`
+                // and are valid mutable references to self-owned buffers.
                 unsafe {
                     crate::math::dsp::gain::apply_ramp_stereo(
                         &mut self.buf_out_l[..n_out],

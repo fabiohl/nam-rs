@@ -101,7 +101,7 @@
 - **Prioridade:** Baixa
 - **Impacto esperado:** Melhora I-cache no caminho comum (sem eventos).
 
-#### TT-1.3.3: Garantir `#[inline]` em `ParamSmoother::peek()` e `set()`
+#### TT-1.3.3: Garantir `#[inline]` em `ParamSmoother::peek()` e `set()` [DONE]
 
 - **Arquivo:** `src/dsp/smoother.rs`
 - **Descrição:** `peek()` (linha 91) e `set()` (linha 97) já têm `#[inline]`. `current_value()` (linha 79) também. Verificar se `target_value()` (linha 85) deve ter `#[inline]` — é chamado em gain.rs linhas 14, 48, 80, 104.
@@ -118,7 +118,7 @@
 
 ### Sprint 2.1: Documentação de Blocos `unsafe`
 
-#### TT-2.1.1: Documentar blocos `unsafe` em `gain.rs`
+#### TT-2.1.1: Documentar blocos `unsafe` em `gain.rs` [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/gain.rs`
 - **Descrição:** As chamadas `unsafe` nas linhas 16-22, 25-32, 35-39, 82-87, 91-97 precisam de comentários `// SAFETY:` documentando as pré-condições garantidas pelo caller.
