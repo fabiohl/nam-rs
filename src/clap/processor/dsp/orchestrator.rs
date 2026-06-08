@@ -7,7 +7,6 @@ use crate::dsp::gate::GateState;
 use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
 };
-use crate::math::dsp::gain_lut::get_gain_lut;
 use clack_plugin::prelude::*;
 use minstant::Instant;
 use std::sync::atomic::Ordering;
@@ -46,13 +45,13 @@ impl<'a> NamClapProcessor<'a> {
 
             self.apply_input_gain(n_samples);
 
-            let lut = get_gain_lut();
-
             if self.gate_dirty {
                 let modulated_gate_db = self.params.gate_threshold_db + self.mod_gate_thresh;
                 let close_db = modulated_gate_db - 6.0;
-                self.cached_threshold_open_sq = lut.db_to_linear(modulated_gate_db).powi(2);
-                self.cached_threshold_close_sq = lut.db_to_linear(close_db).powi(2);
+                self.cached_threshold_open_sq =
+                    self.gain_lut.db_to_linear(modulated_gate_db).powi(2);
+                self.cached_threshold_close_sq =
+                    self.gain_lut.db_to_linear(close_db).powi(2);
                 self.cached_gate_params.threshold_open_db = modulated_gate_db;
                 self.cached_gate_params.threshold_close_db = close_db;
                 self.gate_dirty = false;
