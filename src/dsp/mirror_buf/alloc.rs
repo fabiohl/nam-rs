@@ -4,6 +4,7 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
 
 use super::{MIRROR_BUF_HUGEPAGE_ACTIVE, MirroredBuffer, SIMULATE_FAIL};
+use crate::math::common::huge_alloc::HUGE_PAGE_2M;
 use libc::{
     MADV_HUGEPAGE, MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_HUGE_2MB, MAP_HUGETLB, MAP_PRIVATE,
     MAP_SHARED, PROT_NONE, PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
@@ -46,9 +47,6 @@ impl<T> MirroredBuffer<T> {
                 ));
             }
         };
-
-        // Page size for huge-page alignment (2 MB on x86-64).
-        const HUGE_PAGE_2M: usize = 2 * 1024 * 1024;
 
         // Try huge-page path if the total size (2x) is at least 2 MB.
         let total_chunk = match requested_bytes.checked_mul(2) {

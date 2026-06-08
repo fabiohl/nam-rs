@@ -1468,7 +1468,7 @@ verdes. DoD §0.2 atendido para todas as tarefas.
   `ui_peak_l/r`, `current_latency`, `rt_status`.
 - **DoD:** padrão.
 
-#### S7.T09 — Unificar constante `PAGE_2M` / `HUGE_PAGE_2M` duplicada
+#### S7.T09 — Unificar constante `PAGE_2M` / `HUGE_PAGE_2M` duplicada [DONE]
 
 - **Problema:** `2 * 1024 * 1024` (2 MB) definido em dois locais:
   - `src/math/common/huge_alloc.rs:57`: `const PAGE_2M: usize = 2 * 1024 * 1024;`

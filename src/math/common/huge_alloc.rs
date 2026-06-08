@@ -54,7 +54,7 @@ pub const HUGE_PAGE_THRESHOLD: usize = 1 << 20; // 1 MiB
 const PAGE_4K: usize = 4096;
 
 /// Huge page size (2 MB on x86-64). Must divide evenly into the allocation size.
-const PAGE_2M: usize = 2 * 1024 * 1024;
+pub const HUGE_PAGE_2M: usize = 2 * 1024 * 1024;
 
 /// Rounds `size` up to the next multiple of `alignment`.
 const fn align_up(size: usize, alignment: usize) -> usize {
@@ -83,7 +83,7 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
         return (ptr, AllocInfo::Heap, HugePageStatus::Heap);
     }
 
-    let huge_2m_size = align_up(size_bytes, PAGE_2M);
+    let huge_2m_size = align_up(size_bytes, HUGE_PAGE_2M);
 
     // Strategy 1: explicit 2 MB huge pages via MAP_HUGETLB.
     // SAFETY: mmap with validated size, no aliasing violations.
