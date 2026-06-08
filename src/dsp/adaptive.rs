@@ -137,6 +137,7 @@ impl AdaptiveCompute {
     }
 
     /// Sets the user-facing adaptive compute mode.
+    #[inline]
     pub fn set_mode(&mut self, mode: AdaptiveComputeMode) {
         self.mode = mode;
         if mode == AdaptiveComputeMode::Off {

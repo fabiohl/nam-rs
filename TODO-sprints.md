@@ -87,7 +87,7 @@
 
 ### Sprint 1.3: Atributos de Otimização e Layout
 
-#### TT-1.3.1: Adicionar `#[inline]` a `AdaptiveCompute::set_mode()`
+#### TT-1.3.1: Adicionar `#[inline]` a `AdaptiveCompute::set_mode()` [DONE]
 
 - **Arquivo:** `src/dsp/adaptive.rs`
 - **Descrição:** `set_mode()` (linha 140) é chamado do hot-path em `process_events` (events.rs:117, 205, 229, 237, 245). Atualmente sem `#[inline]`, o compilador pode decidir não inlinear.
