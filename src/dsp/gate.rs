@@ -108,6 +108,12 @@ impl DynamicHysteresis {
         self.current_multiplier
     }
 
+    /// Returns `true` when the gate is in a steady state (no active fade ramp).
+    #[inline]
+    pub fn is_steady(&self) -> bool {
+        self.ramp_samples == 0
+    }
+
     /// Decides whether the noise gate should open, close, or remain as is,
     /// based on the current audio volume.
     ///

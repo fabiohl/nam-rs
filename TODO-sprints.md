@@ -69,7 +69,7 @@
 - **Prioridade:** Média
 - **Impacto esperado:** 4-8× mais rápido (dependendo do ISA), aproveitando L1 cache bandwidth.
 
-#### TT-1.2.3: Fundir `apply_output_stage`: ganho+clipping + gate fade em um passe
+#### TT-1.2.3: Fundir `apply_output_stage`: ganho+clipping + gate fade em um passe [DONE]
 
 - **Arquivo:** `src/dsp/pipeline/stages/output.rs`
 - **Descrição:** `apply_output_stage` chama `dispatch_simd!` duas vezes (linhas 48-52 para gain+clipping, 56-62 para gate fade), cada uma tocando os mesmos buffers stereo. Avaliar fusão em um único passe SIMD que aplica ganho, detecta clipping, e aplica fade do gate simultaneamente.

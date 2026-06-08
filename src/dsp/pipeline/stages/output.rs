@@ -43,27 +43,46 @@ pub(crate) fn apply_output_stage(
         );
     }
 
-    // 1. FINAL VOLUME ADJUSTMENT AND CLIPPING PROTECTION
-    // Applies output volume and checks if the sound has "blown past" the digital limit.
-    let has_clipped = crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
-        &mut resamp_out_l[..n_pw],
-        &mut resamp_out_r[..n_pw],
-        output_gain_mult
-    ));
+    // 1. FINAL VOLUME ADJUSTMENT, CLIPPING PROTECTION, AND NOISE GATE (FUSED WHEN POSSIBLE)
+    // When the gate is in a steady state (not actively fading), gain and gate
+    // are applied in a single pass, halving L1 traffic in the output stage.
+    if silence_hysteresis.is_steady() {
+        let gate_mult = silence_hysteresis.multiplier();
+        if gate_mult == 0.0 {
+            resamp_out_l[..n_pw].fill(0.0);
+            resamp_out_r[..n_pw].fill(0.0);
+        } else {
+            let fused_gain = output_gain_mult * gate_mult;
+            let has_clipped =
+                crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
+                    &mut resamp_out_l[..n_pw],
+                    &mut resamp_out_r[..n_pw],
+                    fused_gain
+                ));
+            if has_clipped {
+                rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
+            }
+        }
+    } else {
+        // Gate is ramping — two-pass fallback.
+        let has_clipped =
+            crate::math::common::dispatch_simd!(apply_gain_and_detect_clipping_stereo(
+                &mut resamp_out_l[..n_pw],
+                &mut resamp_out_r[..n_pw],
+                output_gain_mult
+            ));
 
-    // 2. NOISE GATE SMOOTHING (FADING)
-    // Applies smooth opening/closing of the sound (fade) to avoid pops or clicks.
-    dispatch_simd!(
-        silence_hysteresis,
-        apply_gain_rt_stereo,
-        &mut resamp_out_l[..n_pw],
-        &mut resamp_out_r[..n_pw],
-        n_pw
-    );
+        dispatch_simd!(
+            silence_hysteresis,
+            apply_gain_rt_stereo,
+            &mut resamp_out_l[..n_pw],
+            &mut resamp_out_r[..n_pw],
+            n_pw
+        );
 
-    // If the sound "blew past" the limit at any moment, we raise a warning flag in the system.
-    if has_clipped {
-        rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
+        if has_clipped {
+            rt_status.set_flag(crate::common::spsc::RT_STATUS_HAS_CLIPPED);
+        }
     }
 
     if process_mono {
