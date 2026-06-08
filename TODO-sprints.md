@@ -412,7 +412,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   (`ui_model_name`, etc.). **Não** mover nada disto para o processor.
 - **DoD:** padrão.
 
-#### S3.T02 — Dividir `src/clap/gui/window/mod.rs` (515 LOC)
+#### S3.T02 — Dividir `src/clap/gui/window/mod.rs` (515 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `lifecycle.rs` ← `NamPluginWindow::new`, `safe_shared`,

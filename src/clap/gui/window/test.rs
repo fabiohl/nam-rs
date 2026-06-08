@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use super::*;
+use super::drag_drop::get_valid_model_file;
+use crate::clap::plugin::NamClapSharedRef;
 use baseview::DropData;
 use std::path::PathBuf;
 
