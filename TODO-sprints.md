@@ -1127,7 +1127,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **DoD:** padrão + verificar que testes de heap audit (CLAP `heap-audit` feature)
   continuam funcionando.
 
-#### S6.T15 — Unificar gate flag state triplicado: usar `report_gate_flags()` canônico
+#### S6.T15 — Unificar gate flag state triplicado: usar `report_gate_flags()` canônico [DONE]
 
 - **Problema:** a mesma lógica de mapeamento `GateState → RT_STATUS_IS_SILENT/IS_FADING`
   aparece em 3 lugares:

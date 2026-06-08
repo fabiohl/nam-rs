@@ -30,11 +30,11 @@ pub(crate) const DENORMAL_DITHER_OFFSET: f32 = 1.0e-11;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Silence Bypass: signals silence and zeros the bridge so that playback emits silence.
+/// Delegates gate-flag reporting to the canonical `report_gate_flags`.
 #[cold]
 #[inline(never)]
 pub fn handle_silence_bypass(bridge: Option<DspBridgeWriter>, rt_status: &RtStatusFlags) {
-    rt_status.set_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
-    rt_status.clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
+    crate::dsp::gate_flags::report_gate_flags(rt_status, crate::dsp::gate::GateState::Closed);
 
     if let Some(writer) = bridge {
         writer.write_silence();

@@ -7,9 +7,7 @@
 use crate::dsp::gate::GateState;
 
 use super::context::{DspBuffers, DspPipelineContext};
-use super::stages::{
-    apply_input_stage, apply_output_stage, handle_silence_bypass, run_inference, write_bridge,
-};
+use super::stages::{apply_input_stage, apply_output_stage, run_inference, write_bridge};
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Full DSP Pipeline (Aggregator).
@@ -30,26 +28,15 @@ pub fn capture_dsp_pipeline(
     let gate_state = apply_input_stage(samples_l, samples_r, n_samples, &mut ctx);
 
     // STATE MANAGEMENT (SILENCE vs SOUND)
-    match gate_state {
-        GateState::Closed => {
-            // If the gate is closed (total silence), notify the system to save CPU.
-            handle_silence_bypass(ctx.bridge_writer, ctx.rt_status);
-            return;
+    // Report gate state to real-time status flags via the canonical function.
+    crate::dsp::gate_flags::report_gate_flags(ctx.rt_status, gate_state);
+
+    if gate_state == GateState::Closed {
+        // If the gate is closed (total silence), zero the bridge to save CPU.
+        if let Some(writer) = ctx.bridge_writer {
+            writer.write_silence();
         }
-        GateState::FadingIn | GateState::FadingOut => {
-            // Indicates that the sound is smoothly appearing or vanishing.
-            ctx.rt_status
-                .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
-            ctx.rt_status
-                .set_flag(crate::common::spsc::RT_STATUS_IS_FADING);
-        }
-        GateState::Open => {
-            // Sound is passing normally at full volume.
-            ctx.rt_status
-                .clear_flag(crate::common::spsc::RT_STATUS_IS_SILENT);
-            ctx.rt_status
-                .clear_flag(crate::common::spsc::RT_STATUS_IS_FADING);
-        }
+        return;
     }
 
     // STAGE 2: THE "BRAIN" (AMP/PEDAL SIMULATION)

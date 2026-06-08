@@ -6,6 +6,7 @@
 
 pub mod adaptive;
 pub mod gate;
+pub mod gate_flags;
 pub mod mirror_buf;
 pub mod pipeline;
 pub mod resampler;
