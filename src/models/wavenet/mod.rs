@@ -26,7 +26,9 @@ pub mod common;
 pub mod conv1d;
 pub mod conv1d_dual;
 pub mod conv1d_dyn;
-/// Kernel implementations for Conv1dDyn (generic processing loops).
+/// Dual-frame kernel for Conv1dDyn (Temporal-Tiling dual-frame processing).
+pub mod conv1d_dyn_dual;
+/// Kernel implementations for Conv1dDyn (single-frame and block processing loops).
 pub mod conv1d_dyn_kernels;
 /// ConvInput trait shared by conv1d, conv1d_dual, and conv1d_dyn.
 pub mod conv_input;

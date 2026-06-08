@@ -1037,7 +1037,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   Buffers de pilha `[0.0f32; 1024]`; `_mm_prefetch`; `const { assert! }` guards.
 - **DoD:** padrão.
 
-#### S6.T11 — `src/models/wavenet/conv1d_dyn_kernels.rs` (336 LOC): split dual-frame × single-frame × block
+#### S6.T11 — `src/models/wavenet/conv1d_dyn_kernels.rs` (336 LOC): split dual-frame × single-frame × block [DONE]
 
 - **Problema:** 3 kernels genéricos (`process_dual_frame_generic`,
   `process_single_frame_generic`, `process_block_generic`) compartilham a mesma
