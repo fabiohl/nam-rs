@@ -11,11 +11,12 @@
 //!
 //! ```text
 //! lstm/
-//! ├── mod.rs        # Re-exports, type aliases, NamModel impls, LstmLike trait
+//! ├── mod.rs        # Re-exports, type aliases, NamModel impls
 //! ├── layer.rs      # LstmLayer + per-sample SIMD processing macros
 //! ├── model1.rs     # LstmModel1 + define_lstm1_process! macro
 //! ├── model2.rs     # LstmModel2 + define_lstm2_process_pipelined! macro
 //! ├── model_dyn.rs  # LstmDynLayer + LstmDynModel (dynamic fallback)
+//! ├── prewarm.rs    # LstmLike trait + lstm_prewarm_common
 //! └── tests.rs      # Unit and SIMD vs scalar parity tests
 //! ```
 

@@ -901,15 +901,16 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **Problema:** pior infrator — 367 linhas de implementação vs 9 linhas de
   declarações. É `mod.rs` de testes, mas o mesmo princípio se aplica.
 - **Split:**
-  - `tests/common/metrics.rs` ← `compute_mse`, `compute_max_abs_error`, consts
-    `GOLDEN_NUM_SAMPLES`, `GOLDEN_BLOCK_SIZE`, `TEST_BLOCK_SIZE`, `TEST_NUM_BLOCKS`,
-    `STRESS_SAMPLE_RATE`.
-  - `tests/common/fidelity.rs` ← `report_dsp_fidelity`, `topology_thresholds`.
+  - `tests/common/constants.rs` ← `GOLDEN_NUM_SAMPLES`, `GOLDEN_BLOCK_SIZE`,
+    `TEST_BLOCK_SIZE`, `TEST_NUM_BLOCKS`, `STRESS_SAMPLE_RATE`.
+  - `tests/common/metrics.rs` ← `compute_mse`, `compute_max_abs_error`.
+  - `tests/common/validation.rs` ← `report_dsp_fidelity`, `topology_thresholds`.
   - `tests/common/signals.rs` ← `generate_stress_signal` (deprecated),
     `generate_sine_440hz`.
-  - `tests/common/golden.rs` ← `read_golden_bin`.
-  - `tests/common/mod.rs` (mantém) ← `model_path`, `process_in_blocks`,
-    `pub mod` decls + re-exports de todos os símbolos movidos.
+  - `tests/common/io_helpers.rs` ← `read_golden_bin`, `model_path`,
+    `process_in_blocks`.
+  - `tests/common/mod.rs` (mantém) ← `pub mod` decls + re-exports de todos os
+    símbolos movidos.
 - **Consumidores:** TODOS os arquivos em `tests/` importam de
   `tests/common/mod.rs` → preservar via `pub use` no `mod.rs`.
 - **RT-Safety:** funções de teste (não-RT). Sem restrições.
