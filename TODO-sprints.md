@@ -896,7 +896,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   ou escopo.
 - **DoD:** padrão + revisão RT.
 
-#### S6.T04 — Extrair implementação de `tests/common/mod.rs` (413 LOC → ~30 LOC)
+#### S6.T04 — Extrair implementação de `tests/common/mod.rs` (413 LOC → ~30 LOC) [DONE]
 
 - **Problema:** pior infrator — 367 linhas de implementação vs 9 linhas de
   declarações. É `mod.rs` de testes, mas o mesmo princípio se aplica.
