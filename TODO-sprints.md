@@ -671,7 +671,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   (`MAX_WEIGHTS`, profundidade, tamanho) contra DoS.
 - **DoD:** padrão.
 
-#### S4.T07 — Dividir `src/loader/namb.rs` (342 LOC)
+#### S4.T07 — Dividir `src/loader/namb.rs` (342 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `namb.rs` (mantém) ← `parse_namb` + re-exports + include
