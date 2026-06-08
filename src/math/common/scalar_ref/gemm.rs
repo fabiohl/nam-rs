@@ -5,6 +5,7 @@
 /// GEMM stands for "General Matrix Multiplication". It's the heart of neural networks.
 /// This function processes multiple audio "frames" at once.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn fused_add_gemm_batch_fallback(
     in_frames: &[f32],
     weights: &[u16],
@@ -39,6 +40,7 @@ pub unsafe fn fused_add_gemm_batch_fallback(
 /// Matrix-Vector Multiplication (GEMV) that ADDS to the existing result.
 /// Think of it as injecting a new processing layer on top of what was already there.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn fused_add_gemv_fallback(
     in_frame: &[f32],
     weights: &[u16],
@@ -76,6 +78,7 @@ pub unsafe fn fused_add_gemv_fallback(
 /// Matrix-Vector Multiplication (GEMV) that OVERWRITES the result.
 /// Unlike the previous one, this erases what was in the output and places the new value.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn gemv_overwrite_fallback(
     in_frame: &[f32],
     weights: &[u16],
@@ -107,6 +110,7 @@ pub unsafe fn gemv_overwrite_fallback(
 /// In "Residual" neural networks, we add the processing result to the original signal.
 /// It's like saying: "Change the sound just a little bit relative to what it was."
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn fused_gemm_residual_batch_fallback(
     in_frames: &[f32],
     weights: &[u16],
@@ -142,6 +146,7 @@ pub unsafe fn fused_gemm_residual_batch_fallback(
 
 /// Matrix-Vector Multiplication (Overwrite) using BF16 input and weights.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn gemv_overwrite_bf16_fallback(
     in_frame: &[u16],
     weights: &[u16],
@@ -180,6 +185,7 @@ pub unsafe fn gemv_overwrite_bf16_fallback(
 ///
 /// Always initialises the accumulator with the bias.
 /// This is the scalar reference oracle for the SIMD kernels.
+#[inline]
 pub fn gemv_with_bias_f32_fallback(
     in_frames: &[f32],
     weights: &[f32],
@@ -212,6 +218,7 @@ pub fn gemv_with_bias_f32_fallback(
 ///
 /// Does not add bias; pure overwrite.
 /// This is the scalar reference oracle for the SIMD kernels.
+#[inline]
 pub fn gemv_no_bias_f32_fallback(
     in_frames: &[f32],
     weights: &[f32],

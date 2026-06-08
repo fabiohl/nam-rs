@@ -10,6 +10,7 @@ use crate::math::common::kahan_add;
 /// - `a`: List of decimal numbers (f32).
 /// - `b`: List of "weights" stored in compact form (u16/f16).
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_fallback(a: &[f32], b: &[u16]) -> f32 {
     // We pick the size of the smaller list to ensure we won't "run over" memory.
     let len = core::cmp::min(a.len(), b.len());
@@ -35,6 +36,7 @@ pub unsafe fn dot_product_fallback(a: &[f32], b: &[u16]) -> f32 {
 /// This is a decimal number format widely used in AI because
 /// it takes half the space but preserves the "scale" of large numbers.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_bf16_fallback(a: &[u16], b: &[u16]) -> f32 {
     let len = core::cmp::min(a.len(), b.len());
     let mut sum = 0.0f32;
@@ -76,6 +78,7 @@ pub fn dot_product_f32_native(a: &[f32], b: &[f32]) -> f32 {
 /// using the same input data but different weights.
 /// Useful when a sound (state) affects 4 different "channels" or "neurons".
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &[f32]) -> [f32; 4] {
     let len = core::cmp::min(weights.len(), state.len());
     let mut sum = [0.0f32; 4];
@@ -111,6 +114,7 @@ pub unsafe fn dot_product_4x_interleaved_fallback(weights: &[[u16; 4]], state: &
 
 /// Same logic as above (4 sums at once), but using the compact BF16 format.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
     weights: &[[u16; 4]],
     state: &[u16],
@@ -152,6 +156,7 @@ pub unsafe fn dot_product_4x_interleaved_bf16_fallback(
 /// audio frame AND 4 sums for the second frame, all in a single loop.
 /// This saves time because we read the weights from memory only once.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
     weights: &[[u16; 4]],
     state_f0: &[f32], // First audio frame (e.g.: current sample)
@@ -213,6 +218,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_fallback(
 
 /// Same "Dual Frame" logic as above, but everything in BF16 format.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
     weights: &[[u16; 4]],
     state_f0: &[u16],
@@ -272,6 +278,7 @@ pub unsafe fn dot_product_4x_interleaved_dual_frame_bf16_fallback(
 /// Computes 4 dot products at once for BF16.
 /// This is a shortcut to call the single-line function 4 times.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn dot_product_bf16_4x_fallback(
     w0: &[u16],
     w1: &[u16],

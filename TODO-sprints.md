@@ -769,6 +769,20 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   intencionais — manter ou anotar.
 - **DoD:** verdes; sem mudança de sequência de PRNG.
 
+### Nota de auditoria pós-Épico 4 (08/06/2026)
+
+- **S4.T03 (stages):** corrigido — arquivos movidos de `pipeline/stage_*.rs` para
+  `pipeline/stages/` conforme o plano original (commit `c09d83f`).
+- **Regressão de benchmark:** splits de módulo do `scalar_ref` (5 sub-módulos)
+  causaram perda de inlining cross-module, resultando em +5–8% nos benchmarks
+  `head_rechannel_fp32/*_Scalar` e +2–4% nos LSTM SIMD.
+  - **Correção:** 29 `#[inline]` adicionados a todas as fns públicas de
+    `scalar_ref/{gemm,dot,lstm,convolution,utility}.rs`. Regressões recuperadas
+    (head_rechannel −5%, LSTM −4%).
+  - **Prewarm_WaveNet (+4.7%):** cold path (`#[cold]`), sem ação — esperado.
+- **Impacto em Épico 5:** o `scalar_ref` agora tem `#[inline]` em todas as fns;
+  S5.T03 (dead code) deve preservar essas anotações ao remover/`#[cfg(test)]`.
+
 ---
 
 ## ÉPICO 5 — Limpeza transversal (opcional, baixa prioridade)

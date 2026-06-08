@@ -8,6 +8,7 @@ use super::gemm::{gemv_overwrite_bf16_fallback, gemv_overwrite_fallback};
 /// Used directly by `avx512.rs` and `avx2.rs` for non-vectorized operations.
 #[allow(clippy::too_many_arguments)]
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn gemv_4gate_fallback(
     in_frame: &[f32],
     w0: &[u16],
@@ -56,6 +57,7 @@ pub unsafe fn gemv_4gate_fallback(
 /// BF16 version for the 4 LSTM gates.
 #[allow(clippy::too_many_arguments)]
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
 pub unsafe fn gemv_4gate_bf16_fallback(
     in_frame: &[u16],
     w0: &[u16],
