@@ -23,7 +23,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Redução de I-cache pressure no caminho comum (bypass desligado).
 
-#### TT-1.1.2: Substituir loop escalar de pico no bypass por SIMD
+#### TT-1.1.2: Substituir loop escalar de pico no bypass por SIMD [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/bypass.rs`
 - **Descrição:** As linhas 31-36, 40-45, 55-60, 64-69 usam loops escalares para calcular picos no caminho de bypass. Substituir por chamada a `compute_peak_abs_stereo` (já existente em `src/math/dsp/stereo/`).

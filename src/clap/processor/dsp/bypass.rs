@@ -3,6 +3,7 @@
 
 use super::super::NamClapProcessor;
 use crate::clap::processor::dsp::peaks;
+use crate::math::dsp::stereo::compute_peak_abs_stereo;
 use clack_plugin::{prelude::*, process::audio::PortPair};
 
 impl<'a> NamClapProcessor<'a> {
@@ -37,21 +38,13 @@ impl<'a> NamClapProcessor<'a> {
                 ChannelPair::InputOutput(i, o) => {
                     let n = n_samples.min(o.len());
                     o[..n].copy_from_slice(&i[..n]);
-                    for &sample in &o[..n] {
-                        let abs_val = sample.abs();
-                        if abs_val > peak_l {
-                            peak_l = abs_val;
-                        }
-                    }
+                    let (p, _) = unsafe { compute_peak_abs_stereo(&o[..n], &o[..n]) };
+                    peak_l = p;
                 }
                 ChannelPair::InPlace(io) => {
                     let n = n_samples.min(io.len());
-                    for &sample in &io[..n] {
-                        let abs_val = sample.abs();
-                        if abs_val > peak_l {
-                            peak_l = abs_val;
-                        }
-                    }
+                    let (p, _) = unsafe { compute_peak_abs_stereo(&io[..n], &io[..n]) };
+                    peak_l = p;
                 }
                 ChannelPair::InputOnly(_) | ChannelPair::OutputOnly(_) => {}
             }
@@ -61,21 +54,13 @@ impl<'a> NamClapProcessor<'a> {
                 ChannelPair::InputOutput(i, o) => {
                     let n = n_samples.min(o.len());
                     o[..n].copy_from_slice(&i[..n]);
-                    for &sample in &o[..n] {
-                        let abs_val = sample.abs();
-                        if abs_val > peak_r {
-                            peak_r = abs_val;
-                        }
-                    }
+                    let (p, _) = unsafe { compute_peak_abs_stereo(&o[..n], &o[..n]) };
+                    peak_r = p;
                 }
                 ChannelPair::InPlace(io) => {
                     let n = n_samples.min(io.len());
-                    for &sample in &io[..n] {
-                        let abs_val = sample.abs();
-                        if abs_val > peak_r {
-                            peak_r = abs_val;
-                        }
-                    }
+                    let (p, _) = unsafe { compute_peak_abs_stereo(&io[..n], &io[..n]) };
+                    peak_r = p;
                 }
                 ChannelPair::InputOnly(_) | ChannelPair::OutputOnly(_) => {}
             }
