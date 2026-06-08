@@ -25,9 +25,17 @@ pub struct DspPipelineContext<'a> {
     pub active_model_l: &'a mut Option<Box<DynamicModel>>,
     /// Active model for the right channel.
     pub active_model_r: &'a mut Option<Box<DynamicModel>>,
-    /// Input gain multiplier.
+    /// Input gain multiplier applied in `apply_input_stage` (pipeline-level).
+    /// In the CLAP plugin this is always `1.0` because input gain is applied
+    /// separately via `NamClapProcessor::apply_input_gain` (which uses the
+    /// smoothed user-configured gain). In standalone mode this reflects the
+    /// combined user + model gain multiplier.
     pub input_gain_mult: f32,
-    /// Output gain multiplier.
+    /// Output gain multiplier applied in `apply_output_stage` (pipeline-level).
+    /// In the CLAP plugin this is always `1.0` because output gain is applied
+    /// separately via `NamClapProcessor::apply_output_gain` (which uses the
+    /// smoothed user-configured gain). In standalone mode this reflects the
+    /// combined user + model gain multiplier.
     pub output_gain_mult: f32,
     /// Noise Gate parameters.
     pub gate_params: &'a GateParams,

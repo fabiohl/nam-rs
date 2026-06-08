@@ -44,7 +44,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Elimina construção de struct + 4 atribuições por bloco.
 
-#### TT-1.1.5: Cache de `DspPipelineContext` parcial
+#### TT-1.1.5: Cache de `DspPipelineContext` parcial [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/orchestrator.rs`
 - **Descrição:** `DspPipelineContext` (linhas 65-80) tem 16 campos, dos quais `resampler`, `active_model_l/r`, `silence_hysteresis`, `mono_hysteresis`, `process_mono`, `rt_status`, `adaptive`, `bridge_writer` são referências mutáveis que precisam ser atualizadas. Campos como `input_gain_mult: 1.0` e `output_gain_mult: 1.0` são constantes (o ganho é aplicado separadamente no CLAP via `apply_input_gain`/`apply_output_gain`). Documentar ou explicitar que esses valores constantes são intencionais.

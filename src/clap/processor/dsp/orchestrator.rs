@@ -58,6 +58,10 @@ impl<'a> NamClapProcessor<'a> {
                 self.gate_dirty = false;
             }
 
+            // In the CLAP plugin, input/output gain is applied separately via
+            // `apply_input_gain`/`apply_output_gain` (which use smoothed
+            // user-configured gains from `smoother_in`/`smoother_out`), so the
+            // pipeline-level multipliers are always 1.0.
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
                 active_model_l: &mut self.model_l,
