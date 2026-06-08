@@ -439,7 +439,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `'static`/`Send` via `Arc`.
 - **DoD:** padrão.
 
-#### S3.T04 — `src/clap/gui/ui/knob.rs` (314 LOC): COESO (split opcional)
+#### S3.T04 — `src/clap/gui/ui/knob.rs` (314 LOC): COESO (split opcional)(CONCLUÍDO ✅)
 
 - **Ação:** preferir **manter coeso** (duas fns: `knob_widget` render puro +
   `handle_knob` wiring). Se atomicidade for priorizada: `knob/widget.rs` +

@@ -40,8 +40,6 @@ use std::time::{Duration, Instant};
 #[allow(unused_imports)]
 use self::bypass::handle_bypass;
 use self::focus::handle_focus_navigation;
-#[allow(unused_imports)]
-use self::knob::knob_widget;
 use self::status_bar::draw_zone5_status_bar;
 use self::vsep::styled_vsep;
 use self::zones::{draw_zone1_identity, draw_zone2_controls, draw_zone3_meters, draw_zone4_bypass};
