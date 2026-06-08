@@ -843,7 +843,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 > se o `mod.rs` tem mais implementação do que declarações, a implementação deve
 > ser extraída.
 
-#### S6.T01 — Extrair implementação de `src/loader/mod.rs` (260 LOC → ~21 LOC)
+#### S6.T01 — Extrair implementação de `src/loader/mod.rs` (260 LOC → ~21 LOC) [DONE]
 
 - **Problema:** 239 linhas de implementação (`LoadedModelPair` struct + Debug impl
   - 4 consts + `load_and_build_model` fn) vs 10 linhas de declarações.
