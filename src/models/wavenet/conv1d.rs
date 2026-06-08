@@ -10,6 +10,7 @@
 //! Kahan accumulators.
 
 pub(crate) use super::conv_input::ConvInput;
+use super::conv_input::init_accum_with_bias_mixin;
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath, kahan_add};
 
 /// Dilated Causal Convolution (WaveNet Conv1D).
@@ -102,19 +103,31 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin: Option<&[f32]>,
     ) {
         // [STEP 1: Accumulator Initialization]
-        if let Some(m) = mixin {
-            if self.do_bias {
-                out_frame.copy_from_slice(&self.bias[0..OUT]);
-                unsafe {
-                    M::accumulate_head(out_frame, m);
-                }
-            } else {
-                out_frame.copy_from_slice(m);
+        let full_blocks = OUT & !3;
+        for i in (0..full_blocks).step_by(4) {
+            let acc: &mut [f32; 4] = (&mut out_frame[i..i + 4]).try_into().unwrap();
+            unsafe {
+                init_accum_with_bias_mixin::<M>(acc, &self.bias, mixin, i, self.do_bias);
             }
-        } else if self.do_bias {
-            out_frame.copy_from_slice(&self.bias[0..OUT]);
-        } else {
-            out_frame.fill(0.0);
+        }
+        let rem = OUT & 3;
+        if rem > 0 {
+            let i = full_blocks;
+            let rem_slice = &mut out_frame[i..OUT];
+            if let Some(m) = mixin {
+                if self.do_bias {
+                    rem_slice.copy_from_slice(&self.bias[i..OUT]);
+                    unsafe {
+                        M::accumulate_head(rem_slice, &m[i..OUT]);
+                    }
+                } else {
+                    rem_slice.copy_from_slice(&m[i..OUT]);
+                }
+            } else if self.do_bias {
+                rem_slice.copy_from_slice(&self.bias[i..OUT]);
+            } else {
+                rem_slice.fill(0.0);
+            }
         }
 
         // [STEP 2: Kernel Iteration (Receptive Field)]

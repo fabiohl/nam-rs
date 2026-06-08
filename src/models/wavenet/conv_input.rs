@@ -3,6 +3,37 @@
 
 use crate::math::common::SimdMath;
 
+/// Initializes a block of 4 accumulator registers from bias and mixin vectors.
+///
+/// Unifies the 4-case initialization pattern (Some(mixin)+bias, Some(mixin) only,
+/// bias only, zeros) shared between single-frame and dual-frame convolution kernels.
+///
+/// # Safety
+/// `out_offset + 4` must not exceed the lengths of `bias` and `mixin` (when provided).
+#[inline(always)]
+pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(
+    acc: &mut [f32; 4],
+    bias: &[f32],
+    mixin: Option<&[f32]>,
+    out_offset: usize,
+    do_bias: bool,
+) {
+    if let Some(m) = mixin {
+        if do_bias {
+            acc.copy_from_slice(&bias[out_offset..out_offset + 4]);
+            unsafe {
+                M::accumulate_head(acc, &m[out_offset..out_offset + 4]);
+            }
+        } else {
+            acc.copy_from_slice(&m[out_offset..out_offset + 4]);
+        }
+    } else if do_bias {
+        acc.copy_from_slice(&bias[out_offset..out_offset + 4]);
+    } else {
+        acc.fill(0.0);
+    }
+}
+
 /// Data Bridge (ConvInput):
 /// This trait is a bridge that allows NAM-rs to use exactly the same code
 /// for two number types: regular floats (f32) and compact numbers (u16/BF16).

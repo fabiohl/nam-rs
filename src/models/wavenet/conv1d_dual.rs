@@ -18,6 +18,7 @@
 //! structural benefit, as no sub-component is independently reusable or
 //! testable in isolation.
 
+use super::conv_input::init_accum_with_bias_mixin;
 use super::conv1d::{Conv1d, ConvInput};
 use crate::math::common::{SimdMath, kahan_add};
 
@@ -100,24 +101,40 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         mixin_f1: Option<&[f32]>,
     ) {
         // --- 1. Setup (Bias and Mixin) ---
-        if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
-            if self.do_bias {
-                out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
-                out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
-                unsafe {
-                    M::accumulate_head(out_frame_f0, m0);
-                    M::accumulate_head(out_frame_f1, m1);
-                }
-            } else {
-                out_frame_f0.copy_from_slice(m0);
-                out_frame_f1.copy_from_slice(m1);
+        let full_blocks = OUT & !3;
+        for i in (0..full_blocks).step_by(4) {
+            let acc_f0: &mut [f32; 4] = (&mut out_frame_f0[i..i + 4]).try_into().unwrap();
+            let acc_f1: &mut [f32; 4] = (&mut out_frame_f1[i..i + 4]).try_into().unwrap();
+            unsafe {
+                init_accum_with_bias_mixin::<M>(acc_f0, &self.bias, mixin_f0, i, self.do_bias);
+                init_accum_with_bias_mixin::<M>(acc_f1, &self.bias, mixin_f1, i, self.do_bias);
             }
-        } else if self.do_bias {
-            out_frame_f0.copy_from_slice(&self.bias[0..OUT]);
-            out_frame_f1.copy_from_slice(&self.bias[0..OUT]);
-        } else {
-            out_frame_f0.fill(0.0);
-            out_frame_f1.fill(0.0);
+        }
+        let rem = OUT & 3;
+        if rem > 0 {
+            let i = full_blocks;
+            // f0 remainder
+            let rem_slice_f0 = &mut out_frame_f0[i..OUT];
+            let rem_slice_f1 = &mut out_frame_f1[i..OUT];
+            if let (Some(m0), Some(m1)) = (mixin_f0, mixin_f1) {
+                if self.do_bias {
+                    rem_slice_f0.copy_from_slice(&self.bias[i..OUT]);
+                    rem_slice_f1.copy_from_slice(&self.bias[i..OUT]);
+                    unsafe {
+                        M::accumulate_head(rem_slice_f0, &m0[i..OUT]);
+                        M::accumulate_head(rem_slice_f1, &m1[i..OUT]);
+                    }
+                } else {
+                    rem_slice_f0.copy_from_slice(&m0[i..OUT]);
+                    rem_slice_f1.copy_from_slice(&m1[i..OUT]);
+                }
+            } else if self.do_bias {
+                rem_slice_f0.copy_from_slice(&self.bias[i..OUT]);
+                rem_slice_f1.copy_from_slice(&self.bias[i..OUT]);
+            } else {
+                rem_slice_f0.fill(0.0);
+                rem_slice_f1.fill(0.0);
+            }
         }
 
         // --- 2. Look into the Past (Dilation) ---

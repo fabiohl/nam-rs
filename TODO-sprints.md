@@ -1387,7 +1387,7 @@ verdes. DoD §0.2 atendido para todas as tarefas.
   performance** (rodar `benches/inference_bench.rs` antes/depois se possível).
 - **DoD:** padrão + verificação de não-regressão de benchmark.
 
-#### S7.T05 — Unificar inicialização bias+mixin em arquivos de convolução WaveNet
+#### S7.T05 — Unificar inicialização bias+mixin em arquivos de convolução WaveNet [DONE]
 
 - Aviso: Tarefa de maior risco (RT hot-path):** , Exigem verificação de não-regressão de benchmark e bit-exatidão (O dev humano fará à parte).
 - **Problema:** o padrão de inicialização de 4 acumuladores (bias + mixin) é
