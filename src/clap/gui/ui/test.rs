@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use super::bypass::handle_bypass;
 use super::knob::knob_widget;
 use super::*;
 use crate::clap::plugin::make_test_shared;

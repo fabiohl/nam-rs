@@ -32,17 +32,14 @@ pub use colors::{
 pub use colors::{resolve_accent, resolve_color};
 pub use state::{UiState, VuMeterSharedState, VuUniforms};
 
-use crate::clap::plugin::NamClapShared;
-use clack_plugin::host::HostSharedHandle;
-use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
-
-#[allow(unused_imports)]
-use self::bypass::handle_bypass;
 use self::focus::handle_focus_navigation;
 use self::status_bar::draw_zone5_status_bar;
 use self::vsep::styled_vsep;
 use self::zones::{draw_zone1_identity, draw_zone2_controls, draw_zone3_meters, draw_zone4_bypass};
+use crate::clap::plugin::NamClapShared;
+use clack_plugin::host::HostSharedHandle;
+use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 
 /// Draws the components and 5-zone layout of the NAM-rs graphical interface.
 ///

@@ -1257,7 +1257,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** sem mudança de lógica. Apenas rename.
 - **DoD:** padrão.
 
-#### S6.T22 — Auditoria final: varredura de dead code e comentários obsoletos residuais
+#### S6.T22 — Auditoria final: varredura de dead code e comentários obsoletos residuais [DONE]
 
 - **Ação:** varrer TODO-sprints.md e confirmar que TODOS os itens de dead code
   e comentários obsoletos foram executados (S5.T01–T03). Verificar:
