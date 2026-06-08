@@ -789,12 +789,12 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 > Tarefas independentes, sem split. Cada uma é pequena e isolada. **Não** mudar lógica. Útil para um agente "faxina".
 
-### S5.T01 — Padronização de idioma em comentários/mensagens
+### S5.T01 — Padronização de idioma em comentários/mensagens (CONCLUÍDO ✅)
 
 - Substituir comentários/mensagens soltas em PT por EN nos pontos identificados: `conv1d_dyn.rs` (L280/L432), `spsc.rs` (L271), `params.rs` (L210), `diagnostic.rs` (L155), `gui/ui/mod.rs` (L58–64/L117/L1153), `dispatcher/lstm.rs` comentários informais.
 - **DoD:** verdes; diff só comentários/strings de log/panic não-funcionais.
 
-#### S5.T02 — Remoção de doc-comments obsoletos/duplicados
+#### S5.T02 — Remoção de doc-comments obsoletos/duplicados (CONCLUÍDO ✅)
 
 - `traits.rs` doc duplicado (L447–456); `accumulate.rs` nota "Task 3.4"
   (L11–12); `model.rs` breadcrumbs "wavenet_common.rs" (L21/L165); `conv1d.rs`

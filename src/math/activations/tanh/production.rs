@@ -10,16 +10,9 @@
 //! ```
 //!
 //! - Max absolute error: ~2.32e-3 vs `f32::tanh` on [-4, 4].
-//! - Throughput: ~9 SIMD ops (vs ~28 for the 7-segment piecewise alternative).
-//! - Benchmark data (E8.T04): ~62 ns/256-elem AVX2 vs ~156 ns for piecewise.
+//! - Throughput: ~9 SIMD ops.
 //!
 //! Coefficients in `crate::math::constants` (`PADE_TANH_*`).
-//!
-//! **Experimental / reference path:** Piecewise 7-segment minimax polynomial
-//! (`simd_tanh_piecewise_avx2`) is retained for future optimization. It achieved
-//! ~4.90e-3 max error with a +16% throughput regression on LSTM prewarm (2048
-//! samples) — see E8.T02 analysis in TODO-sprints.md. Pending: recompute
-//! coefficients via [Sollya](https://www.sollya.org/) `fpminimax`.
 
 use crate::math::constants::*;
 use core::arch::x86_64::*;

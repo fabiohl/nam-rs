@@ -2,10 +2,6 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 //! Static Causal CNN Mesh for WaveNet Inference (Data-Oriented Design, SoA).
-//!
-//! All structures use `Const Generics` for mathematical dimensions and pre-allocated vectors
-//! ensuring a strict instantiation policy (Zero-Allocation during processing).
-//! Dynamic loops resolve computations in deterministic FMA sequences via AVX2.
 
 pub(crate) use super::conv_input::ConvInput;
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath, kahan_add};

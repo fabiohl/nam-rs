@@ -8,7 +8,6 @@
 
 //! WaveNet Head Sum (Batch) kernels — AVX2, AVX-512 and dynamic dispatch.
 //!
-//! Extracted from `simd/avx2.rs` and `simd/avx512.rs` during Task 3.4.
 //! Depends on `common::utility::horizontal_sum_avx2` and `common::utility::horizontal_sum_avx512`
 //! for the horizontal sum operations.
 

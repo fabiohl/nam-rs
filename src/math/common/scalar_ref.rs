@@ -22,7 +22,7 @@
 //! The implementations here are faithful scalar translations of that reference code,
 //! used exclusively for internal validation.
 
-// Re-exports of Wavenet fallbacks (Task 3.4 — maintains path compatibility)
+// Re-exports of Wavenet fallbacks.
 pub use crate::math::wavenet::accumulate::{
     accumulate_head_fallback, gated_activation_and_accumulate_block_fallback,
     gated_activation_and_overwrite_block_fallback, tanh_and_accumulate_block_fallback,
