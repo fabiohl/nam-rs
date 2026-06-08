@@ -145,7 +145,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 - **DoD:** padrão. Se o split for considerado desnecessário, registrar
   justificativa de coesão e entregar **apenas** a correção de doc.
 
-### Sprint 1.B — DSP/Ativações/Acumulação (Math)
+### Sprint 1.B — DSP/Ativações/Acumulação (Math) (CONCLUÍDO ✅)
 
 #### S1.T05 — Dividir `src/math/dsp/gain.rs` (420 LOC) por camada/ISA (CONCLUÍDO ✅)
 
@@ -210,7 +210,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ### Sprint 1.C — V-tables (macros) e definições (coesos)
 
-#### S1.T09 — Dividir macros de v-table AVX-512: `avx512/gemv.rs` (717) e `avx512/dsp.rs` (358)
+#### S1.T09 — Dividir macros de v-table AVX-512: `avx512/gemv.rs` (717) e `avx512/dsp.rs` (358) (CONCLUÍDO ✅)
 
 - **`avx512/gemv.rs`** → criar `avx512/gemv/`:
   - `base.rs` ← `impl_avx512_gemv` (L4–260).
