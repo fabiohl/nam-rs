@@ -36,7 +36,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             param_rx: Mutex::new(Some(param_rx)),
             gc_tx: Mutex::new(Some(gc_tx)),
             gc_rx: Mutex::new(Some(gc_rx)),
-            gc_overflow: Arc::new(GcOverflowBuffer::new(64)),
+            gc_overflow: Arc::new(GcOverflowBuffer::new(crate::common::spsc::SPSC_CAPACITY)),
             rt_status: Arc::new(RtStatusFlags::new()),
             model_sample_rate: AtomicU32::new(48000),
             sample_rate: AtomicU32::new(44100),
