@@ -4,10 +4,10 @@
 #![warn(clippy::undocumented_unsafe_blocks)]
 
 use super::{MIRROR_BUF_HUGEPAGE_ACTIVE, MirroredBuffer, SIMULATE_FAIL};
-use crate::math::common::huge_alloc::HUGE_PAGE_2M;
+use crate::math::common::huge_alloc::{HUGE_PAGE_2M, create_backing_fd, try_mmap_huge};
 use libc::{
-    MADV_HUGEPAGE, MAP_ANONYMOUS, MAP_FAILED, MAP_FIXED, MAP_HUGE_2MB, MAP_HUGETLB, MAP_PRIVATE,
-    MAP_SHARED, PROT_NONE, PROT_READ, PROT_WRITE, c_void, ftruncate, mmap, munmap, sysconf,
+    MADV_HUGEPAGE, MAP_FAILED, MAP_FIXED, MAP_SHARED, PROT_READ, PROT_WRITE, c_void, mmap, munmap,
+    sysconf,
 };
 use std::marker::PhantomData;
 use std::ptr;
@@ -85,24 +85,15 @@ impl<T> MirroredBuffer<T> {
         let fd = unsafe {
             #[cfg(target_os = "linux")]
             {
-                super::linux::create_backing_fd()?
+                if SIMULATE_FAIL.with(|f| f.get()) {
+                    *libc::__errno_location() = libc::ENOMEM;
+                    return Err(std::io::Error::last_os_error());
+                }
             }
-            #[cfg(not(target_os = "linux"))]
-            {
-                super::fallback::create_backing_fd()?
-            }
+            create_backing_fd(size_bytes, false)?
         };
 
-        // 2. Set file size
-        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-        if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
-            let err = std::io::Error::last_os_error();
-            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-            unsafe { libc::close(fd) };
-            return Err(err);
-        }
-
-        // 3. Reserve contiguous virtual space (2x size)
+        // 2. Reserve contiguous virtual space (2x size)
         let total_size = size_bytes * 2;
 
         // Ensure required invariant before mmap
@@ -117,14 +108,7 @@ impl<T> MirroredBuffer<T> {
                 *libc::__errno_location() = libc::ENOMEM;
                 MAP_FAILED
             } else {
-                mmap(
-                    ptr::null_mut(),
-                    total_size,
-                    PROT_NONE,
-                    MAP_PRIVATE | MAP_ANONYMOUS,
-                    -1,
-                    0,
-                )
+                try_mmap_huge(ptr::null_mut(), total_size, -1, 0, false)
             }
         };
         if base_ptr == MAP_FAILED {
@@ -134,7 +118,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // 4. Map the first half
+        // 3. Map the first half
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr1 = unsafe {
             mmap(
@@ -156,7 +140,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // 5. Map the second half (mirror)
+        // 4. Map the second half (mirror)
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr2 = unsafe {
             mmap(
@@ -208,23 +192,19 @@ impl<T> MirroredBuffer<T> {
 
         // 1. Create HugeTLB-backed memfd (falls back to regular memfd)
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-        let (fd, _fd_kind) = unsafe { super::linux::create_huge_backing_fd()? };
-
-        // 2. Set file size (must be huge-page-aligned for HugeTLB memfd).
-        // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-        if unsafe { ftruncate(fd, size_bytes as libc::off_t) } == -1 {
-            let err = std::io::Error::last_os_error();
-            // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-            unsafe { libc::close(fd) };
-            return Err(err);
-        }
+        let fd = unsafe {
+            if SIMULATE_FAIL.with(|f| f.get()) {
+                *libc::__errno_location() = libc::ENOMEM;
+                return Err(std::io::Error::last_os_error());
+            }
+            create_backing_fd(size_bytes, true)?
+        };
 
         let total_size = size_bytes * 2;
 
-        // 3. Reserve 2x virtual space with MAP_HUGETLB
-        let mmap_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB;
+        // 2. Reserve 2x virtual space with MAP_HUGETLB
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
-        let base_ptr = unsafe { mmap(ptr::null_mut(), total_size, PROT_NONE, mmap_flags, -1, 0) };
+        let base_ptr = unsafe { try_mmap_huge(ptr::null_mut(), total_size, -1, 0, true) };
         if base_ptr == MAP_FAILED {
             let err = std::io::Error::last_os_error();
             // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
@@ -232,7 +212,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // 4. Map the first half
+        // 3. Map the first half
         let map_flags = MAP_FIXED | MAP_SHARED;
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr1 = unsafe {
@@ -255,7 +235,7 @@ impl<T> MirroredBuffer<T> {
             return Err(err);
         }
 
-        // 5. Map the second half (mirror)
+        // 4. Map the second half (mirror)
         // SAFETY: Low-level virtual memory manipulation (mmap/ftruncate) with checked parameters.
         let ptr2 = unsafe {
             mmap(

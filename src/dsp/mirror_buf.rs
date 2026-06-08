@@ -47,12 +47,6 @@ use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::AtomicBool;
 
-#[cfg(target_os = "linux")]
-mod linux;
-
-#[cfg(not(target_os = "linux"))]
-mod fallback;
-
 mod alloc;
 
 thread_local! {

@@ -86,17 +86,8 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
     let huge_2m_size = align_up(size_bytes, HUGE_PAGE_2M);
 
     // Strategy 1: explicit 2 MB huge pages via MAP_HUGETLB.
-    // SAFETY: mmap with validated size, no aliasing violations.
-    let ptr = unsafe {
-        libc::mmap(
-            ptr::null_mut(),
-            huge_2m_size,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS | libc::MAP_HUGETLB | libc::MAP_HUGE_2MB,
-            -1,
-            0,
-        )
-    };
+    // SAFETY: try_mmap_huge with validated size, no aliasing violations.
+    let ptr = unsafe { try_mmap_huge(ptr::null_mut(), huge_2m_size, -1, 0, true) };
 
     if ptr != libc::MAP_FAILED {
         return (
@@ -110,17 +101,8 @@ pub fn allocate_huge_pages(size_bytes: usize) -> (*mut u8, AllocInfo, HugePageSt
 
     // Strategy 2: anonymous mmap + madvise(MADV_HUGEPAGE) for transparent THP.
     let thp_size = align_up(size_bytes, PAGE_4K);
-    // SAFETY: mmap with validated size.
-    let ptr = unsafe {
-        libc::mmap(
-            ptr::null_mut(),
-            thp_size,
-            libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
-            -1,
-            0,
-        )
-    };
+    // SAFETY: try_mmap_huge with validated size.
+    let ptr = unsafe { try_mmap_huge(ptr::null_mut(), thp_size, -1, 0, false) };
 
     if ptr != libc::MAP_FAILED {
         // Hint the kernel to promote these pages to huge pages.
@@ -172,6 +154,105 @@ pub unsafe fn deallocate_huge(ptr: *mut u8, info: AllocInfo, size_bytes: usize) 
             // SAFETY: ptr and mmap_size match the original mmap.
             unsafe { libc::munmap(ptr as *mut libc::c_void, mmap_size) };
         }
+    }
+}
+
+// ── Shared helpers for fd-backed huge-page allocation ────────────────────────
+
+/// Creates a backing file descriptor for huge-page or standard allocation.
+///
+/// Uses `memfd_create` with optional `MFD_HUGETLB` (Linux 5.14+) flag.
+/// When `use_huge` is true, first attempts MFD_HUGETLB, falling back to
+/// regular memfd if huge pages are unavailable. The file is truncated
+/// to `size` bytes.
+///
+/// Returns the file descriptor on success, or an IO error.
+#[cfg(target_os = "linux")]
+pub(crate) unsafe fn create_backing_fd(
+    size: usize,
+    use_huge: bool,
+) -> std::io::Result<std::os::raw::c_int> {
+    if use_huge {
+        const MFD_HUGETLB: libc::c_uint = 0x0004;
+        // SAFETY: C string pointer is valid and null-terminated; MFD_CLOEXEC flag is valid.
+        let fd = unsafe {
+            libc::memfd_create(c"nam_huge_buf".as_ptr(), libc::MFD_CLOEXEC | MFD_HUGETLB)
+        };
+        if fd != -1 {
+            // SAFETY: fd is a valid file descriptor from a successful memfd_create above.
+            if unsafe { libc::ftruncate(fd, size as libc::off_t) } != -1 {
+                return Ok(fd);
+            }
+            let err = std::io::Error::last_os_error();
+            // SAFETY: fd is valid and no longer needed after ftruncate failure.
+            unsafe { libc::close(fd) };
+            return Err(err);
+        }
+        // Fall through to regular memfd
+    }
+
+    // SAFETY: C string pointer is valid and null-terminated; MFD_CLOEXEC flag is valid.
+    let fd = unsafe { libc::memfd_create(c"nam_buf".as_ptr(), libc::MFD_CLOEXEC) };
+    if fd == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: fd is a valid file descriptor from a successful memfd_create above.
+    if unsafe { libc::ftruncate(fd, size as libc::off_t) } == -1 {
+        let err = std::io::Error::last_os_error();
+        // SAFETY: fd is valid and no longer needed after ftruncate failure.
+        unsafe { libc::close(fd) };
+        return Err(err);
+    }
+    Ok(fd)
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) unsafe fn create_backing_fd(
+    _size: usize,
+    _use_huge: bool,
+) -> std::io::Result<std::os::raw::c_int> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "create_backing_fd is only supported on Linux",
+    ))
+}
+
+/// mmap with optional huge-page flags (MAP_HUGETLB | MAP_HUGE_2MB).
+///
+/// When `fd == -1`, uses `MAP_PRIVATE | MAP_ANONYMOUS` (anonymous mapping).
+/// When `fd != -1`, uses `MAP_SHARED` (file-backed mapping).
+/// When `use_huge` is true, adds `MAP_HUGETLB | MAP_HUGE_2MB` to the flags.
+///
+/// Uses `PROT_READ | PROT_WRITE` protection.
+///
+/// Returns `MAP_FAILED` on failure (caller checks against `libc::MAP_FAILED`).
+pub(crate) unsafe fn try_mmap_huge(
+    addr: *mut libc::c_void,
+    len: usize,
+    fd: std::os::raw::c_int,
+    offset: libc::off_t,
+    use_huge: bool,
+) -> *mut libc::c_void {
+    let mut flags = if fd == -1 {
+        libc::MAP_PRIVATE | libc::MAP_ANONYMOUS
+    } else {
+        libc::MAP_SHARED
+    };
+
+    if use_huge {
+        flags |= libc::MAP_HUGETLB | libc::MAP_HUGE_2MB;
+    }
+
+    // SAFETY: caller guarantees addr/len/fd/offset are valid for the requested mapping.
+    unsafe {
+        libc::mmap(
+            addr,
+            len,
+            libc::PROT_READ | libc::PROT_WRITE,
+            flags,
+            fd,
+            offset,
+        )
     }
 }
 

@@ -1482,7 +1482,7 @@ verdes. DoD §0.2 atendido para todas as tarefas.
 - **RT-Safety:** constante de compilação. Sem impacto.
 - **DoD:** padrão.
 
-#### S7.T10 — Unificar estratégia de huge-page allocation entre `huge_alloc.rs` e `mirror_buf/alloc.rs`
+#### S7.T10 — Unificar estratégia de huge-page allocation entre `huge_alloc.rs` e `mirror_buf/alloc.rs` [DONE]
 
 - **Problema:** ambos implementam a mesma estratégia de 3 níveis de fallback
   para alocação de huge pages (MAP_HUGETLB → THP via `madvise` → fallback
