@@ -24,6 +24,7 @@ use super::NamModel;
 use super::sealed;
 
 pub mod layer;
+pub mod layer_kernels;
 pub mod model1;
 pub mod model2;
 pub mod model_dyn;

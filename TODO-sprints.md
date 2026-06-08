@@ -991,7 +991,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 > acima do limiar de 300 linhas **sem** justificativa de coesão registrada.
 > Cada tarefa abaixo decide: split ou justificativa explícita.
 
-#### S6.T09 — `src/models/lstm/layer.rs` (399 LOC): split por responsabilidade
+#### S6.T09 — `src/models/lstm/layer.rs` (399 LOC): split por responsabilidade [DONE]
 
 - **Problema:** `define_lstm_process!` macro + 6 instâncias SIMD + fallback
   escalar + `scalar_minimax_sigmoid` + `LstmLayer` struct + impl + acessores
@@ -1010,6 +1010,14 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** hot-path de inferência. Preservar `#[inline(always)]`,
   `#[target_feature]`, `_mm_prefetch`, `Aligned64<[f32;N]>` na pilha.
 - **DoD:** padrão. Se opção B, registrar justificativa inline no arquivo.
+- **Nota (S6.T09 executada):** Opção A aplicada.
+  - `lstm/layer.rs` (71 LOC): struct `LstmLayer`, `impl` (new, acessores,
+    reset_input_slot, reset_states), `Default`.
+  - `lstm/layer_kernels.rs` (337 LOC): `scalar_minimax_sigmoid` (pub),
+    `define_lstm_process!` macro, 6 instâncias SIMD, fallback escalar.
+  - `lstm/mod.rs`: adicionado `pub mod layer_kernels`.
+  - `scalar_minimax_sigmoid` tornado `pub` em `layer_kernels.rs` (acessível
+    via `crate::models::lstm::layer_kernels::scalar_minimax_sigmoid`).
 
 #### S6.T10 — `src/models/wavenet/model.rs` (397 LOC): split de `WaveNetLayerArray` + `WaveNetModel`
 
