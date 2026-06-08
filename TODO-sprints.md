@@ -591,7 +591,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   `RwLock` OK — **nunca** chamar `render()`/`emit()` dentro do callback RT.
 - **DoD:** padrão.
 
-#### S4.T02 — Dividir `src/common/spsc.rs` (438 LOC)
+#### S4.T02 — Dividir `src/common/spsc.rs` (438 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `status.rs` ← `SHUTDOWN`, consts `RT_STATUS_*` (L30–60), `RtStatusFlags`.
