@@ -915,7 +915,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** funções de teste (não-RT). Sem restrições.
 - **DoD:** padrão.
 
-#### S6.T05 — Extrair implementação de `src/loader/dispatcher/mod.rs` (112 LOC → ~30 LOC)
+#### S6.T05 — Extrair implementação de `src/loader/dispatcher/mod.rs` (112 LOC → ~30 LOC) [DONE]
 
 - **Problema:** 100 linhas de implementação (`WeightCursor` struct + impl +
   `build_model`) vs 5 linhas de declarações.
