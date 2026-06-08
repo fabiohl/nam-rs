@@ -96,9 +96,9 @@ divergences, and the sprint/task that established each equivalence.
 
 ### 4.3 Scalar Parity Reference
 
-| C++ (`NeuralAmpModelerCore/`)           | Rust (`src/`)                                     | Notes                    |
-| --------------------------------------- | ------------------------------------------------- | ------------------------ |
-| LSTM scalar minimax sigmoid (degree-17) | `models/lstm/layer.rs` — `scalar_minimax_sigmoid` | For C++ parity test only |
+| C++ (`NeuralAmpModelerCore/`)           | Rust (`src/`)                                            | Notes                    |
+| --------------------------------------- | -------------------------------------------------------- | ------------------------ |
+| LSTM scalar minimax sigmoid (degree-17) | `math/activations/sigmoid.rs` — `scalar_minimax_sigmoid` | For C++ parity test only |
 
 ### 4.4 LSTM Configurations
 

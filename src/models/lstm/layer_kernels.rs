@@ -6,37 +6,7 @@
 use core::arch::x86_64::*;
 
 use super::layer::LstmLayer;
-
-/// Scalar direct minimax sigmoid (degree 17, 9 odd terms).
-/// Mirrors the SIMD kernel in `src/math/activations/sigmoid.rs` for parity tests.
-#[inline]
-#[allow(clippy::excessive_precision)]
-pub fn scalar_minimax_sigmoid(x: f32) -> f32 {
-    let c0 = 2.4885319190e-01_f32;
-    let c1 = -1.9318685012e-02_f32;
-    let c2 = 1.4623214305e-03_f32;
-    let c3 = -7.9953400187e-05_f32;
-    let c4 = 2.9140652422e-06_f32;
-    let c5 = -6.8000246432e-08_f32;
-    let c6 = 9.6897239158e-10_f32;
-    let c7 = -7.6498626314e-12_f32;
-    let c8 = 2.5585471676e-14_f32;
-
-    let x_clamped = x.clamp(-8.0, 8.0);
-    let x2 = x_clamped * x_clamped;
-
-    let p = c8.mul_add(x2, c7);
-    let p = p.mul_add(x2, c6);
-    let p = p.mul_add(x2, c5);
-    let p = p.mul_add(x2, c4);
-    let p = p.mul_add(x2, c3);
-    let p = p.mul_add(x2, c2);
-    let p = p.mul_add(x2, c1);
-    let p = p.mul_add(x2, c0);
-
-    let result = x_clamped.mul_add(p, 0.5);
-    result.clamp(0.0, 1.0)
-}
+use crate::math::activations::scalar_minimax_sigmoid;
 
 macro_rules! define_lstm_process {
     (

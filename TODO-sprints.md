@@ -1328,7 +1328,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   Sem mudança de lógica.
 - **DoD:** padrão.
 
-#### S7.T03 — Mover `scalar_minimax_sigmoid` de `src/models/lstm/layer_kernels.rs` para `src/math/activations/sigmoid.rs`
+#### S7.T03 — Mover `scalar_minimax_sigmoid` de `src/models/lstm/layer_kernels.rs` para `src/math/activations/sigmoid.rs` [DONE]
 
 - Aviso: Tarefas que altera assinaturas/imports públicos: Exigem atualização de todos os consumidores com `grep` global antes de concluir.
 - **Problema:** `scalar_minimax_sigmoid` (L14–39 em `layer_kernels.rs`) é uma
