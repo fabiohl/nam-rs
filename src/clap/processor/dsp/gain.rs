@@ -47,7 +47,12 @@ impl<'a> NamClapProcessor<'a> {
             let start = self.smoother_in.peek();
             let target = self.smoother_in.target_value();
             if (start - target).abs() < 1e-9 {
-                crate::math::dsp::gain::apply_gain_simd(&mut self.buf_host_l[..n_samples], start);
+                input_has_clipped = unsafe {
+                    crate::math::dsp::gain::apply_gain_and_detect_clipping_mono(
+                        &mut self.buf_host_l[..n_samples],
+                        start,
+                    )
+                };
             } else {
                 let step = (target - start) / n_samples as f32;
                 crate::math::dsp::gain::apply_ramp_simd(
@@ -56,11 +61,11 @@ impl<'a> NamClapProcessor<'a> {
                     step,
                 );
                 self.smoother_in.set(target);
-            }
-            for &sample in &self.buf_host_l[..n_samples] {
-                if sample.abs() > 1.0 {
-                    input_has_clipped = true;
-                    break;
+                for &sample in &self.buf_host_l[..n_samples] {
+                    if sample.abs() > 1.0 {
+                        input_has_clipped = true;
+                        break;
+                    }
                 }
             }
         }

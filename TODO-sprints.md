@@ -55,7 +55,7 @@
 
 ### Sprint 1.2: Otimizações SIMD e Fusão de Passes
 
-#### TT-1.2.1: Fundir ganho + detecção de clipping no caminho mono (não-stereo)
+#### TT-1.2.1: Fundir ganho + detecção de clipping no caminho mono (não-stereo) [DONE]
 
 - **Arquivos:** `src/clap/processor/dsp/gain.rs`, `src/math/dsp/gain/`
 - **Descrição:** No caminho `#[cfg(not(feature = "stereo"))]` de `apply_input_gain` (linhas 46-65), o ganho é aplicado via SIMD e depois um loop escalar detecta clipping. O caminho stereo já tem `apply_gain_and_detect_clipping_stereo` que faz ambos em um único passe. Criar `apply_gain_and_detect_clipping_mono` equivalente.

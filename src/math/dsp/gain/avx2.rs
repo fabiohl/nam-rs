@@ -26,6 +26,40 @@ pub unsafe fn apply_gain_avx2(data: &mut [f32], gain: f32) {
     }
 }
 
+/// Applies gain and detects clipping in mono in a single pass using AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_gain_and_detect_clipping_mono_avx2(data: &mut [f32], gain: f32) -> bool {
+    let len = data.len();
+    let mut i = 0;
+    let vg = _mm256_set1_ps(gain);
+    let limit = _mm256_set1_ps(1.0);
+    let sign_mask = _mm256_set1_ps(-0.0f32);
+    let mut any_clip = _mm256_setzero_ps();
+
+    while i + 8 <= len {
+        let p = data.as_mut_ptr().add(i);
+        let v = _mm256_loadu_ps(p);
+        let g = _mm256_mul_ps(v, vg);
+        _mm256_storeu_ps(p, g);
+        let abs = _mm256_andnot_ps(sign_mask, g);
+        let cmp = _mm256_cmp_ps(abs, limit, _CMP_GT_OQ);
+        any_clip = _mm256_or_ps(any_clip, cmp);
+        i += 8;
+    }
+
+    let mut clipped = _mm256_movemask_ps(any_clip) != 0;
+
+    while i < len {
+        let v = *data.get_unchecked(i) * gain;
+        *data.get_unchecked_mut(i) = v;
+        if !clipped && v.abs() > 1.0 {
+            clipped = true;
+        }
+        i += 1;
+    }
+    clipped
+}
+
 /// Applies gain and detects clipping in stereo in a single pass using AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_gain_and_detect_clipping_stereo_avx2(

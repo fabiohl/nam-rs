@@ -409,6 +409,13 @@ pub trait SimdMath {
         taps: usize,
     ) -> (f32, f32);
 
+    /// Applies gain and detects clipping in mono in a single pass.
+    /// Returns `true` if any resulting sample has `|x| > 1.0`.
+    ///
+    /// # Safety
+    /// The buffer must be valid.
+    unsafe fn apply_gain_and_detect_clipping_mono(data: &mut [f32], gain: f32) -> bool;
+
     /// Applies gain and detects clipping in stereo in a single pass.
     /// Returns `true` if any resulting sample has `|x| > 1.0`.
     ///

@@ -57,6 +57,15 @@ macro_rules! impl_avx512_dsp {
 
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn apply_gain_and_detect_clipping_mono(data: &mut [f32], gain: f32) -> bool {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe {
+                crate::math::dsp::gain::apply_gain_and_detect_clipping_mono_avx512(data, gain)
+            }
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn apply_gain_and_detect_clipping_stereo(
             left: &mut [f32],
             right: &mut [f32],

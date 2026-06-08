@@ -71,6 +71,9 @@ pub struct SimdMathConfig {
     /// Horizontal sum of a buffer.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub horizontal_sum: unsafe fn(*const f32, usize) -> f32,
+    /// Applies gain and detects clipping in mono.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub apply_gain_and_detect_clipping_mono: unsafe fn(&mut [f32], f32) -> bool,
     /// Applies gain and detects clipping in stereo.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_gain_and_detect_clipping_stereo: unsafe fn(&mut [f32], &mut [f32], f32) -> bool,

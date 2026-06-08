@@ -50,8 +50,7 @@ impl<'a> NamClapProcessor<'a> {
                 let close_db = modulated_gate_db - 6.0;
                 self.cached_threshold_open_sq =
                     self.gain_lut.db_to_linear(modulated_gate_db).powi(2);
-                self.cached_threshold_close_sq =
-                    self.gain_lut.db_to_linear(close_db).powi(2);
+                self.cached_threshold_close_sq = self.gain_lut.db_to_linear(close_db).powi(2);
                 self.cached_gate_params.threshold_open_db = modulated_gate_db;
                 self.cached_gate_params.threshold_close_db = close_db;
                 self.gate_dirty = false;

@@ -27,6 +27,40 @@ pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {
     }
 }
 
+/// Applies gain and detects clipping in mono in a single pass using AVX-512.
+#[target_feature(enable = "avx512f,avx512vl")]
+pub unsafe fn apply_gain_and_detect_clipping_mono_avx512(data: &mut [f32], gain: f32) -> bool {
+    let len = data.len();
+    let mut i = 0;
+    let v_gain = _mm512_set1_ps(gain);
+    let v_limit = _mm512_set1_ps(1.0);
+    let sign_mask = _mm512_set1_ps(-0.0f32);
+    let mut k_clip = 0u16;
+
+    while i + 16 <= len {
+        let p = data.as_mut_ptr().add(i);
+        let v = _mm512_loadu_ps(p);
+        let g = _mm512_mul_ps(v, v_gain);
+        _mm512_storeu_ps(p, g);
+        let abs = _mm512_andnot_ps(sign_mask, g);
+        let k = _mm512_cmp_ps_mask(abs, v_limit, _CMP_GT_OQ);
+        k_clip |= k;
+        i += 16;
+    }
+
+    let mut clipped = k_clip != 0;
+
+    while i < len {
+        let v = *data.get_unchecked(i) * gain;
+        *data.get_unchecked_mut(i) = v;
+        if !clipped && v.abs() > 1.0 {
+            clipped = true;
+        }
+        i += 1;
+    }
+    clipped
+}
+
 /// Applies gain and detects clipping in stereo in a single pass using AVX-512.
 #[target_feature(enable = "avx512f,avx512vl")]
 pub unsafe fn apply_gain_and_detect_clipping_stereo_avx512(

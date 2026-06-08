@@ -488,6 +488,13 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn apply_gain_and_detect_clipping_mono(data: &mut [f32], gain: f32) -> bool {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { super::super::dsp::gain::apply_gain_and_detect_clipping_mono_avx2(data, gain) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn apply_gain_and_detect_clipping_stereo(
         left: &mut [f32],
         right: &mut [f32],

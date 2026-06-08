@@ -40,6 +40,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
+                apply_gain_and_detect_clipping_mono:
+                    Avx512VnniBf16Math::apply_gain_and_detect_clipping_mono,
                 apply_gain_and_detect_clipping_stereo:
                     Avx512VnniBf16Math::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx512VnniBf16Math::apply_gain_stereo,
@@ -77,6 +79,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
+                apply_gain_and_detect_clipping_mono:
+                    Avx512VnniMath::apply_gain_and_detect_clipping_mono,
                 apply_gain_and_detect_clipping_stereo:
                     Avx512VnniMath::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx512VnniMath::apply_gain_stereo,
@@ -114,6 +118,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx512(ptr, len)
                 },
+                apply_gain_and_detect_clipping_mono:
+                    Avx512Math::apply_gain_and_detect_clipping_mono,
                 apply_gain_and_detect_clipping_stereo:
                     Avx512Math::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx512Math::apply_gain_stereo,
@@ -151,6 +157,8 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx2(ptr, len)
                 },
+                apply_gain_and_detect_clipping_mono:
+                    Avx2VnniMath::apply_gain_and_detect_clipping_mono,
                 apply_gain_and_detect_clipping_stereo:
                     Avx2VnniMath::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx2VnniMath::apply_gain_stereo,
@@ -189,6 +197,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 horizontal_sum: |ptr, len| unsafe {
                     crate::math::common::utility::horizontal_sum_avx2(ptr, len)
                 },
+                apply_gain_and_detect_clipping_mono: Avx2Math::apply_gain_and_detect_clipping_mono,
                 apply_gain_and_detect_clipping_stereo:
                     Avx2Math::apply_gain_and_detect_clipping_stereo,
                 apply_gain_stereo: Avx2Math::apply_gain_stereo,
