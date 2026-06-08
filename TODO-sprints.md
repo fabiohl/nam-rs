@@ -877,7 +877,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   `Relaxed` — preservar `Ordering`s.
 - **DoD:** padrão.
 
-#### S6.T03 — Extrair implementação de `src/standalone/pw_host/capture/mod.rs` (230 LOC → ~33 LOC)
+#### S6.T03 — Extrair implementação de `src/standalone/pw_host/capture/mod.rs` (230 LOC → ~33 LOC) [DONE]
 
 - **Problema:** 197 linhas de `setup_capture_stream` (com 3 closures) vs 18 linhas
   de declarações.
