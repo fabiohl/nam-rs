@@ -175,7 +175,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   caudas; máscaras AVX-512; `.exp()`/`.tanh()` permanecem apenas na cauda escalar.
 - **DoD:** padrão.
 
-#### S1.T07 — Dividir `src/math/common/dispatch.rs` (378 LOC)
+#### S1.T07 — Dividir `src/math/common/dispatch.rs` (378 LOC) (CONCLUÍDO ✅)
 
 - **Split:** criar `dispatch/`:
   - `dispatch/instruction_set.rs` ← `enum InstructionSet` (L16–27).

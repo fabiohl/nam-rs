@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Dynamic dispatch system for SIMD kernels.
+
+/// V-table `SimdMathConfig` struct and its methods.
+pub mod config;
+/// CPU feature detection and global `SIMD_MATH` initialization.
+pub mod detect;
+/// `InstructionSet` enum for supported x86-64 ISA variants.
+pub mod instruction_set;
+
+pub use config::SimdMathConfig;
+pub use detect::SIMD_MATH;
+pub use instruction_set::InstructionSet;
