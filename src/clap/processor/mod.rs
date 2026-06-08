@@ -24,6 +24,7 @@ use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
+use crate::math::dsp::gain_lut::get_gain_lut;
 use clack_plugin::prelude::*;
 use minstant::Instant;
 use std::sync::Arc;
@@ -150,6 +151,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             last_seen_generation: 0,
             max_frames_count: audio_config.max_frames_count as usize,
             last_render_mode: 0,
+            gain_lut: get_gain_lut(),
         })
     }
 

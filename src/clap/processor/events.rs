@@ -10,7 +10,6 @@ use crate::clap::extensions::params::{
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
-use crate::math::dsp::gain_lut::get_gain_lut;
 use crate::models::NamModel;
 use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
@@ -23,7 +22,7 @@ impl<'a> NamClapProcessor<'a> {
         self.shared.write_gui_events(events.output);
 
         // 1. Event Processing (Main Thread SPSC)
-        let lut = get_gain_lut();
+        let lut = self.gain_lut;
 
         while let Ok(payload) = self.param_rx.pop() {
             match payload {

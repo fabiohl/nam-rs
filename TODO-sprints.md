@@ -30,7 +30,7 @@
 - **Prioridade:** Média
 - **Impacto esperado:** 2-3× mais rápido no cálculo de pico em bypass (caminho menos frequente, mas ainda relevante).
 
-#### TT-1.1.3: Hoist `get_gain_lut()` no `process_events`
+#### TT-1.1.3: Hoist `get_gain_lut()` no `process_events` [DONE]
 
 - **Arquivo:** `src/clap/processor/events.rs`
 - **Descrição:** `get_gain_lut()` (linha 26) é chamada em todo bloco de áudio, independentemente de haver eventos. A referência deve ser armazenada no `NamClapProcessor` em `activate()` e reutilizada.

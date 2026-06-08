@@ -11,6 +11,7 @@ use crate::dsp::gate::DynamicHysteresis;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
+use crate::math::dsp::gain_lut::GainLUT;
 use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
@@ -101,4 +102,6 @@ pub struct NamClapProcessor<'a> {
     pub(crate) max_frames_count: usize,
     /// Last seen render mode for transition detection (0 = Realtime, 1 = Offline).
     pub(crate) last_render_mode: u32,
+    /// Pre-resolved gain LUT reference, hoisted from process_events hot-path.
+    pub(crate) gain_lut: &'static GainLUT,
 }
