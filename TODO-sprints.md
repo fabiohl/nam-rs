@@ -125,7 +125,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Conformidade com `#![warn(clippy::undocumented_unsafe_blocks)]`, auditabilidade.
 
-#### TT-2.1.2: Documentar blocos `unsafe` em `peaks.rs`
+#### TT-2.1.2: Documentar blocos `unsafe` em `peaks.rs` [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/peaks.rs`
 - **Descrição:** Linhas 38-42, 47-51, 55-59, 67-72, 76-82.
