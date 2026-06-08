@@ -161,7 +161,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `(1u32 << (len-i)) - 1`; sem panics.
 - **DoD:** padrão.
 
-#### S1.T06 — Reorganizar `src/math/wavenet/accumulate.rs` (376 LOC) por ISA
+#### S1.T06 — Reorganizar `src/math/wavenet/accumulate.rs` (376 LOC) por ISA (CONCLUÍDO ✅)
 
 - **Problema:** ordenação confusa (AVX-512 dividido em duas regiões L98 e L315).
 - **Split:** criar `accumulate/`:

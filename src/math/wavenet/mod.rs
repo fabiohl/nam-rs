@@ -11,8 +11,6 @@
 //! - **Gated Activation**: Fusion of `tanh` and `sigmoid` in a single SIMD kernel.
 //! - **Dilated Conv Fetches**: Data fetch optimization for delay lines.
 //!
-//! Extracted from `simd/avx2.rs`, `simd/avx512.rs` and `common/scalar_ref.rs`
-//! during Task 3.4.
 
 pub mod accumulate;
 pub mod head;
