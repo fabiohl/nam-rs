@@ -27,6 +27,8 @@ pub mod conv1d_dual;
 pub mod conv1d_dyn;
 /// Kernel implementations for Conv1dDyn (generic processing loops).
 pub mod conv1d_dyn_kernels;
+/// ConvInput trait shared by conv1d, conv1d_dual, and conv1d_dyn.
+pub mod conv_input;
 /// Static 1x1 dense layer (`DenseLayer<IN, OUT>`).
 pub mod dense;
 /// Dynamic 1x1 dense layer (`DenseLayerDyn`).

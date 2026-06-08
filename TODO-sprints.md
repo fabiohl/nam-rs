@@ -339,7 +339,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `set_effective_layers`, `layer_count`, `is_lstm`, `is_wavenet`.
 - **DoD:** padrão.
 
-#### S2.T06 — `src/models/wavenet/conv1d.rs` (391 LOC): split opcional + gate de API test-only
+#### S2.T06 — `src/models/wavenet/conv1d.rs` (391 LOC): split opcional + gate de API test-only (CONCLUÍDO ✅)
 
 - **Split opcional:**
   - `conv_input.rs` ← trait `ConvInput` + os 2 `impl ConvInput` (L30–100). É

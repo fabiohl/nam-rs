@@ -7,8 +7,7 @@
 //! ensuring a strict instantiation policy (Zero-Allocation during processing).
 //! Dynamic loops resolve computations in deterministic FMA sequences via AVX2.
 
-//! WaveNet Inference Module (Dilated Causal Architecture).
-
+pub(crate) use super::conv_input::ConvInput;
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath, kahan_add};
 
 /// Dilated Causal Convolution (WaveNet Conv1D).
@@ -27,78 +26,6 @@ pub struct Conv1d<const IN: usize, const OUT: usize, const K: usize> {
     pub prefetch_fn: PrefetchFn,
 }
 
-/// Data Bridge (ConvInput):
-/// This trait is a bridge that allows NAM-rs to use exactly the same code
-/// for two number types: regular floats (f32) and compact numbers (u16/BF16).
-/// This avoids duplicating complex logic and facilitates maintenance.
-pub(crate) trait ConvInput: Copy + Default {
-    /// 4x version: Computes 4 channels at once.
-    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state: &[Self],
-    ) -> [f32; 4];
-
-    /// Dual Frame version: Computes 4 channels of TWO frames simultaneously.
-    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state_f0: &[Self],
-        state_f1: &[Self],
-    ) -> ([f32; 4], [f32; 4]);
-
-    /// Pointer Adjustment: Ensures the memory address follows the correct format.
-    fn cast_ptr(ptr: *const Self) -> *const f32;
-}
-
-// 1. Full Precision Mode (f32):
-// Used on computers that prioritize absolute sound fidelity.
-impl ConvInput for f32 {
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state: &[Self],
-    ) -> [f32; 4] {
-        unsafe { M::dot_product_4x_interleaved(weights, state) }
-    }
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state_f0: &[Self],
-        state_f1: &[Self],
-    ) -> ([f32; 4], [f32; 4]) {
-        unsafe { M::dot_product_4x_interleaved_dual_frame(weights, state_f0, state_f1) }
-    }
-    #[inline(always)]
-    fn cast_ptr(ptr: *const Self) -> *const f32 {
-        ptr
-    }
-}
-
-// 2. 'Turbo' Mode (u16/BF16):
-// Used to gain speed. The BF16 format cuts the data size in half,
-// allowing the processor to compute much faster with a quality loss
-// imperceptible to the human ear.
-impl ConvInput for u16 {
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state: &[Self],
-    ) -> [f32; 4] {
-        unsafe { M::dot_product_4x_interleaved_bf16(weights, state) }
-    }
-    #[inline(always)]
-    unsafe fn dot_product_4x_interleaved_dual_frame<M: SimdMath>(
-        weights: &[[u16; 4]],
-        state_f0: &[Self],
-        state_f1: &[Self],
-    ) -> ([f32; 4], [f32; 4]) {
-        unsafe { M::dot_product_4x_interleaved_dual_frame_bf16(weights, state_f0, state_f1) }
-    }
-    #[inline(always)]
-    fn cast_ptr(ptr: *const Self) -> *const f32 {
-        ptr as *const f32
-    }
-}
-
 impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Executes causal convolution over a flat bidirectional array (`layer_buffer`).
     ///
@@ -115,6 +42,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     /// Dynamically depends on the `SimdMath` trait provided.
     ///
     /// Processes a single frame applying convolution to the ring buffer (optimized via FMA 4x).
+    #[cfg(test)]
     #[inline(always)]
     pub unsafe fn process_single_frame<M: SimdMath>(
         &self,
@@ -127,8 +55,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Fused variant that adds a Mixin vector (conditioning) directly to the accumulator.
     #[inline(always)]
+    /// Fused variant that adds a Mixin vector (conditioning) directly to the accumulator.
     /// Sums the mixin and processes Conv1D for a single frame.
     ///
     /// # Safety
@@ -330,8 +258,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         }
     }
 
-    /// Fused BF16 variant that adds a Mixin vector directly to the accumulator.
     #[inline(always)]
+    /// Fused BF16 variant that adds a Mixin vector directly to the accumulator.
     /// Sums the mixin and processes Conv1D (BF16) for a single frame.
     ///
     /// # Safety
@@ -372,6 +300,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
     ///
     /// # Safety
     /// Pointer must be valid and num_frames must fit within the layer_buffer bounds.
+    #[cfg(test)]
     pub unsafe fn process_block<M: SimdMath>(
         &self,
         layer_buffer: &[f32],
