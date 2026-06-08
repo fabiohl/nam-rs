@@ -1099,7 +1099,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 > **Atenção:** estas tarefas envolvem mudança de imports e, em alguns casos, leve
 > alteração de assinatura — risco moderado de regressão.
 
-#### S6.T14 — Unificar `CountingAllocator` duplicado em `src/common/alloc_audit.rs`
+#### S6.T14 — Unificar `CountingAllocator` duplicado em `src/common/alloc_audit.rs` [DONE]
 
 - **Problema:** `CountingAllocator` + `TrackingGuard` implementados **identicamente**
   em dois locais:

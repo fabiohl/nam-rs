@@ -3,6 +3,7 @@
 
 //! Modules shared between the standalone version and plugin.
 
+pub mod alloc_audit;
 pub mod audio_host;
 pub mod diagnostics;
 pub mod panic_hook;
