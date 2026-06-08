@@ -474,17 +474,23 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 - **DoD:** padrão **+** verificação de que o diff é movimentação pura (sem
   alterar contas de gain/clip/peak/dither).
 
-#### S3.T06 — Dividir `src/clap/processor/mod.rs` (353 LOC)
+#### S3.T06 — Dividir `src/clap/processor/mod.rs` (353 LOC)(CONCLUÍDO ✅)
 
 - **Split:**
   - `state.rs` ← `struct NamClapProcessor` (L32–113).
   - `gc.rs` ← `push_to_gc` (L115–149).
-  - `lifecycle.rs` ← `activate` + `deactivate` (L152–288).
-  - `mod.rs` (mantém) ← `process` (L290–349) + wiring + include
+  - `mod.rs` (mantém) ← `activate` + `deactivate` + `process` + wiring + include
     `#[path="../processor_test.rs"]`.
+    Nota: `activate`/`deactivate` permanecem em `mod.rs` (não em `lifecycle.rs`)
+    porque Rust E0119 proíbe split de `impl PluginAudioProcessor` entre módulos.
 - **Dead code:** investigar campos `mod_input_gain`/`mod_output_gain` (L84–86) —
   aparentemente não consumidos no DSP (apenas `mod_gate_thresh`). **Não remover
   sem auditoria** (pode ser feature incompleta); registrar achado.
+  - ✅ **Achado (S3.T06 concluído):** `mod_input_gain` e `mod_output_gain` NÃO são
+    dead code — são consumidos ativamente em `events.rs` (param modulation CLAP):
+    aplicados via `lut.db_to_linear(db + mod_*)` nas linhas 35, 38, 84, 93, 128,
+    133, 166, 178. O campo `mod_gate_thresh` também é usado (não apenas ele).
+    Nenhum campo removido.
 - **⚠️ RT-Safety:** `activate` é o **único** local de alocação — manter fora de
   `process`. Em `process`: `pthread_getschedparam`/`sched_getcpu`/`set_daz_ftz`
   rodam **uma vez** (guardado por `prio_checked`) — preservar one-shot.

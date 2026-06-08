@@ -6,149 +6,33 @@
 //! Submodules:
 //! - `events`: SPSC event drainage (Main Thread → Audio Thread) and host events.
 //! - `dsp`: DSP block proper (gate, inference, resampling, output).
+//! - `state`: Processor struct definition.
+//! - `gc`: Garbage collection (safe disposal from audio thread).
 
 mod dsp;
 mod events;
+mod gc;
+mod state;
+
+pub(crate) use state::NamClapProcessor;
 
 use crate::clap::param_smoother::ParamSmoother;
-use crate::clap::plugin::{ClapParamPayload, NamClapMainThread, NamClapShared};
+use crate::clap::plugin::{NamClapMainThread, NamClapShared};
 use crate::common::params::RtPluginParams;
-use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::DynamicHysteresis;
+use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::math::common::AlignedVec;
-use crate::models::DynamicModel;
 use clack_plugin::prelude::*;
 use minstant::Instant;
-use rtrb::{Consumer, Producer};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-/// RT-safe audio processor. Runs on the host's audio thread.
-///
-/// Holds pre-allocated buffers and mutable inference state.
-/// Created in `activate()` and destroyed in `deactivate()`.
-pub struct NamClapProcessor<'a> {
-    /// Active model for the left channel (None = bypass).
-    model_l: Option<Box<DynamicModel>>,
-    /// Polyphase sinc resampler (bypass when sample_rate == 48000).
-    /// Held in Box for RT-safe disposal without allocation.
-    resampler: Box<NamResampler>,
-    /// Current parameters on the audio thread (snapshotted from SPSC at each process()).
-    pub(crate) params: RtPluginParams,
-
-    /// Intermediate buffers pre-allocated in activate() — ZERO alloc in process().
-    /// 1. Copy of host input (variable sample_rate)
-    buf_host_l: AlignedVec<f32>,
-    buf_host_r: AlignedVec<f32>,
-    /// 2. Post-resampler input / Pre-model (f32 @ 48kHz)
-    pub(crate) buf_mid_l: AlignedVec<f32>,
-    pub(crate) buf_mid_r: AlignedVec<f32>,
-    /// 3. Post-model / Pre-resampler output (f32 @ 48kHz)
-    pub(crate) buf_model_l: AlignedVec<f32>,
-    pub(crate) buf_model_r: AlignedVec<f32>,
-    /// 4. Post-resampler output / Final (variable sample_rate)
-    pub(crate) buf_out_l: AlignedVec<f32>,
-    pub(crate) buf_out_r: AlignedVec<f32>,
-
-    /// Hysteresis for absolute silence detection.
-    silence_hyst: DynamicHysteresis,
-    /// Active model for the right channel (None = process as mono or bypass).
-    active_model_r: Option<Box<DynamicModel>>,
-    /// Hysteresis for mono signal detection. Persistent field to avoid
-    /// re-initialization on every port_pair iteration.
-    mono_hyst: DynamicHysteresis,
-    /// Flag indicating whether we are processing in mono (for optimization).
-    process_mono: bool,
-
-    /// Status flags for RT telemetry.
-    rt_status: Arc<RtStatusFlags>,
-    /// Adaptive compute FSM for soft-degrade under CPU pressure.
-    adaptive_compute: AdaptiveCompute,
-    /// Reference to shared state (to return channels on deactivate).
-    pub(crate) shared: &'a NamClapShared,
-    /// Smoothers for input and output gains.
-    smoother_in: ParamSmoother,
-    /// Smoothers for input and output gains.
-    smoother_out: ParamSmoother,
-    /// Parking lot for model/resampler disposal if the GC channel is full.
-    parking_lot: [Option<GcItem>; 16],
-    /// SPSC channel: Main Thread -> Audio Thread (Consumer).
-    param_rx: Consumer<ClapParamPayload>,
-    /// GC channel: Audio Thread -> Main Thread (Producer).
-    gc_tx: Producer<GcItem>,
-    /// Fallback buffer for GC overflow (overwrite).
-    gc_overflow: Arc<GcOverflowBuffer>,
-    /// Modulation offsets (CLAP Parameter Modulation).
-    mod_input_gain: f32,
-    /// Modulation offsets (CLAP Parameter Modulation).
-    mod_output_gain: f32,
-    /// Modulation offsets (CLAP Parameter Modulation).
-    mod_gate_thresh: f32,
-    /// Pre-computed thresholds (linear²) — invalidated only when
-    /// gate_threshold_db or mod_gate_thresh changes (see S6.T04).
-    /// SHARED ALGORITHM: Any change to the cache/invalidation logic
-    /// here must be mirrored in src/standalone/pw_host.rs (threshold_open_sq
-    /// and threshold_close_sq), and vice-versa. Both pre-calculate thresholds in
-    /// linear² via LUT to avoid lookups on the RT hotpath.
-    cached_threshold_open_sq: f32,
-    cached_threshold_close_sq: f32,
-    gate_dirty: bool,
-    /// Telemetry decimation: 1-in-16. Cycle counter since last measurement.
-    /// SHARED ALGORITHM: Same decimation strategy as `src/standalone/pw_host.rs` (frame_count & 0xF).
-    /// Any change to the decimation logic here must be mirrored in pw_host.rs, and vice-versa.
-    cycles_since_telemetry: u32,
-    /// Host handle for calls on the audio thread.
-    host: HostAudioProcessorHandle<'a>,
-    /// Per-instance flag for one-time RT priority query on the first block.
-    prio_checked: bool,
-    /// Monotonic generation counter for GUI param synchronization.
-    /// Guard: only load atomics from UiToRt when generation differs.
-    pub(crate) last_seen_generation: u32,
-    /// Host audio buffer size, used for model buffer realocation on load.
-    max_frames_count: usize,
-    /// Last seen render mode for transition detection (0 = Realtime, 1 = Offline).
-    last_render_mode: u32,
-}
-
-impl<'a> NamClapProcessor<'a> {
-    /// Attempts to send an item for safe disposal (GC).
-    /// If the main channel is full, falls back to the parking lot and then the overflow buffer.
-    fn push_to_gc(&mut self, item: GcItem) {
-        let mut item = Some(item);
-
-        // 1. Try the main channel (SPSC)
-        if let Some(i) = item.take() {
-            if let Err(rtrb::PushError::Full(returned)) = self.gc_tx.push(i) {
-                item = Some(returned);
-            } else {
-                return; // Success!
-            }
-        }
-
-        // 2. If that failed, try the Parking Lot (Array stack-based)
-        if let Some(i) = item.take() {
-            let mut i_opt = Some(i);
-            for slot in self.parking_lot.iter_mut() {
-                if slot.is_none() {
-                    *slot = i_opt.take();
-                    return; // Successfully parked!
-                }
-            }
-            item = i_opt;
-        }
-
-        // 3. If even the Parking Lot failed, use the Overflow Buffer (overwrite/controlled leak)
-        if let Some(i) = item.take() {
-            self.rt_status
-                .set_flag(crate::common::spsc::RT_STATUS_GC_OVERFLOW);
-            self.gc_overflow.push(i);
-        }
-    }
-}
-
+/// Note: the entire `PluginAudioProcessor` impl must live in a single block
+/// (Rust E0119 — trait impls cannot be split across modules).
 impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamClapProcessor<'a> {
+    /// `activate` is the ONLY allocation site — kept out of `process`.
     fn activate(
         host: HostAudioProcessorHandle<'a>,
         _main_thread: &mut NamClapMainThread<'a>,
@@ -180,7 +64,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         // 2. Intermediate buffer pre-allocation (Disjoint Stages)
         let buf_capacity = (audio_config.max_frames_count as usize)
-            .max(crate::dsp::pipeline::MAX_RESAMP_BUF)
+            .max(MAX_RESAMP_BUF)
             .max(1024)
             * 2;
         let buf_host_l = AlignedVec::new(buf_capacity, 0.0f32);
