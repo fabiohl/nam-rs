@@ -5,6 +5,18 @@
 //!
 //! Extension of `Conv1d` with methods that process two frames simultaneously
 //! (Temporal Tiling), maximizing weight reuse in registers.
+//!
+//! ## Coesion justification (S2.T07 — no split)
+//!
+//! This file is a cohesive unit: a single `impl Conv1d` block extending the
+//! static convolution with dual-frame (Temporal Tiling) processing. The
+//! structure is 3 methods — two thin public wrappers (`process_dual_frame_with_mixin`,
+//! `process_dual_frame_bf16_with_mixin`) plus one dominant generic kernel
+//! (`process_dual_frame_generic`) that is the central computation engine shared
+//! by all paths. The internal dispatchers are trivial routing methods.
+//! Splitting would fragment this tightly coupled unit without meaningful
+//! structural benefit, as no sub-component is independently reusable or
+//! testable in isolation.
 
 use super::conv1d::{Conv1d, ConvInput};
 use crate::math::common::SimdMath;

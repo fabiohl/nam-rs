@@ -354,7 +354,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   tap na pilha; `from_raw_parts` + `get_unchecked`; `prefetch_fn`.
 - **DoD:** padrão.
 
-#### S2.T07 — `src/models/wavenet/conv1d_dual.rs` (312 LOC): COESO (sem split)
+#### S2.T07 — `src/models/wavenet/conv1d_dual.rs` (312 LOC): COESO (sem split) (CONCLUÍDO ✅)
 
 - **Ação:** **não dividir** — unidade única (extensão dual-frame Temporal-Tiling
   do `Conv1d`); wrappers finos + 1 kernel dominante. Registrar justificativa.
