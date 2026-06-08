@@ -25,6 +25,8 @@ pub mod common;
 pub mod conv1d;
 pub mod conv1d_dual;
 pub mod conv1d_dyn;
+/// Kernel implementations for Conv1dDyn (generic processing loops).
+pub mod conv1d_dyn_kernels;
 /// Static 1x1 dense layer (`DenseLayer<IN, OUT>`).
 pub mod dense;
 /// Dynamic 1x1 dense layer (`DenseLayerDyn`).
@@ -106,10 +108,11 @@ impl NamModel for model_dyn::WaveNetDynModel {
 // =============================================================================
 
 pub use common::{
-    LAYER_ARRAY_BUFFER_PADDING, WAVENET_MAX_NUM_FRAMES, WaveNetLayerState, WavenetProcessContext,
+    LAYER_ARRAY_BUFFER_PADDING, MAX_KERNEL, WAVENET_MAX_NUM_FRAMES, WaveNetLayerState,
+    WavenetProcessContext,
 };
 pub use conv1d::Conv1d;
-pub use conv1d_dyn::{Conv1dDyn, MAX_KERNEL};
+pub use conv1d_dyn::Conv1dDyn;
 pub use dense::DenseLayer;
 pub use dense_dyn::DenseLayerDyn;
 pub use layer_dyn::WaveNetLayerDyn;

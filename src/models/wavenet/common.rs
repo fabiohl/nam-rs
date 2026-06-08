@@ -9,6 +9,8 @@ use crate::dsp::mirror_buf::MirroredBuffer;
 pub const WAVENET_MAX_NUM_FRAMES: usize = 64;
 /// Circular temporal padding of memory buffers in the Ring Buffers framework.
 pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
+/// Maximum supported kernel size.
+pub const MAX_KERNEL: usize = 16;
 
 /// Processing context to optimize parameter passing on the WaveNet hot-path.
 /// Unifies the needs of static (const generic) and dynamic models.

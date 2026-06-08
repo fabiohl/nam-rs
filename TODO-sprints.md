@@ -271,7 +271,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `AlignedVec` pré-alocados; `set_max_buffer_size` é o único alocador (off-hot).
 - **DoD:** padrão.
 
-#### S2.T02 — Dividir `src/models/wavenet/conv1d_dyn.rs` (584 LOC)
+#### S2.T02 — Dividir `src/models/wavenet/conv1d_dyn.rs` (584 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `conv1d_dyn.rs` (mantém) ← struct `Conv1dDyn` + wrappers públicos +
