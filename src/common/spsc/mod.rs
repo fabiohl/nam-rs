@@ -27,6 +27,12 @@ pub use gc::*;
 pub use payload::*;
 pub use status::*;
 
+/// Default capacity for the main SPSC parameter channel.
+///
+/// 64 was chosen empirically: it provides enough headroom for rapid CLI control
+/// commands while keeping memory usage negligible (64 × sizeof(ParamPayload) ≈ 2 KiB).
+pub const SPSC_CAPACITY: usize = 64;
+
 /// SPSC initialization result: parameter channels, model GC,
 /// RT-safe resampler channel, and atomic status flags.
 pub struct SpscChannels {

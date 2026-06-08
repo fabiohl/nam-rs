@@ -1182,7 +1182,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** diagnóstico (não-RT). Sem impacto.
 - **DoD:** padrão.
 
-#### S6.T18 — Definir constante `SPSC_CAPACITY` centralizada
+#### S6.T18 — Definir constante `SPSC_CAPACITY` centralizada[DONE]
 
 - **Problema:** capacidade do SPSC (`64`) hardcoded em:
   - `src/main.rs` (L89): `spsc::setup_spsc(64)`.

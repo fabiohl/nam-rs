@@ -86,7 +86,7 @@ fn main() -> anyhow::Result<()> {
     // 5. COMMUNICATION CHANNELS: Creates ultra-fast "pipes" for communication.
     // Imagine the Interface (you) and the Sound Engine (audio) live in separate rooms.
     // These channels allow sending commands (e.g. "increase volume") without ever making the sound "glitch".
-    let channels = spsc::setup_spsc(64);
+    let channels = spsc::setup_spsc(spsc::SPSC_CAPACITY);
     let mut producer = channels.param_producer;
     let consumer = channels.param_consumer;
     let gc_producer = channels.gc_producer;
