@@ -930,7 +930,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   sobre slice `&[f32]`; sem alocação própria. Sem mudança de lógica.
 - **DoD:** padrão.
 
-#### S6.T06 — Extrair implementação de `src/models/a2/mod.rs` (119 LOC → ~28 LOC)
+#### S6.T06 — Extrair implementação de `src/models/a2/mod.rs` (119 LOC → ~28 LOC) [DONE]
 
 - **Problema:** `WavenetA2Placeholder` (struct + 3 impl blocks, ~72 linhas)
   polui o `mod.rs` que deveria ser apenas declarações + re-exports.
