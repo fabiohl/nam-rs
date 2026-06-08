@@ -626,7 +626,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   denormal** entre input e output.
 - **DoD:** padrão.
 
-#### S4.T04 — `src/dsp/mirror_buf.rs` (459 LOC): isolar alocação cold
+#### S4.T04 — `src/dsp/mirror_buf.rs` (459 LOC): isolar alocação cold (CONCLUÍDO ✅)
 
 - **Split:**
   - `mirror_buf.rs` (mantém) ← struct + traits (`Deref`/`DerefMut`/`Drop`/
