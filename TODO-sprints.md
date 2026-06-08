@@ -1438,7 +1438,7 @@ verdes. DoD §0.2 atendido para todas as tarefas.
 
 ### Sprint 7C
 
-#### S7.T07 — Extrair implementação de `src/clap/gui/ui/meter/mod.rs` (171 LOC → ~22 LOC)
+#### S7.T07 — Extrair implementação de `src/clap/gui/ui/meter/mod.rs` (171 LOC → ~22 LOC) [DONE]
 
 - **Problema:** `pub fn draw_vertical_meter` (~150 linhas) é um orquestrador que
   faz dispatch para `glow`/`cpu`/`readout`. Os submódulos já existem (S3.T03);
@@ -2274,5 +2274,754 @@ fabio@notebook:~/nam-rs$
 ### DEPOIS: Logo na conclusão da Sprint 7B
 
 ```bash
+fabio@notebook:~/nam-rs$ time cargo bench
+   Compiling nam-rs v1.7.0 (/home/fabio/nam-rs)
+    Finished `bench` profile [optimized] target(s) in 1m 07s
+     Running unittests src/lib.rs (target/release/deps/nam_rs-1f534ba60e6b1c11)
 
+running 256 tests
+test common::audio_host::tests::test_mock_host_error ... ignored
+test common::audio_host::tests::test_mock_host_traits ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_all_codes_have_unique_numeric ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_days_to_date_epoch ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_days_to_date_known ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_diagnostic_bundle_nominal ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_diagnostic_bundle_redaction ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_diagnostic_bundle_with_error_matches ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_diagnostic_display ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_diagnostic_support_block_contains_code ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_emit_irq_advisory_safety ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_error_code_display ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_system_snapshot_capture ... ignored
+test common::diagnostics::diagnostic::diagnostic_test::test_timestamp_format ... ignored
+test common::params::tests::test_params_default ... ignored
+test common::spsc::spsc_test::test_gc_overflow_overwrite ... ignored
+test common::spsc::spsc_test::test_gc_stress_no_leak ... ignored
+test common::spsc::spsc_test::test_spsc_concurrency ... ignored
+test common::spsc::spsc_test::test_spsc_full_empty ... ignored
+test dsp::adaptive::adaptive_test::tests::aggressive_full_to_reduced_lower_threshold ... ignored
+test dsp::adaptive::adaptive_test::tests::aggressive_reduced_to_minimal ... ignored
+test dsp::adaptive::adaptive_test::tests::conservative_full_stays_full_if_not_consecutive ... ignored
+test dsp::adaptive::adaptive_test::tests::conservative_full_to_reduced ... ignored
+test dsp::adaptive::adaptive_test::tests::conservative_reduced_recovers_to_full ... ignored
+test dsp::adaptive::adaptive_test::tests::conservative_reduced_recovery_resets_on_intermediate ... ignored
+test dsp::adaptive::adaptive_test::tests::conservative_reduced_to_minimal ... ignored
+test dsp::adaptive::adaptive_test::tests::crossfade_completes ... ignored
+test dsp::adaptive::adaptive_test::tests::crossfade_starts_on_transition ... ignored
+test dsp::adaptive::adaptive_test::tests::lstm_effective_layers ... ignored
+test dsp::adaptive::adaptive_test::tests::minimal_recovers_to_reduced ... ignored
+test dsp::adaptive::adaptive_test::tests::mode_off_no_transitions ... ignored
+test dsp::adaptive::adaptive_test::tests::set_mode_resets_state ... ignored
+test dsp::adaptive::adaptive_test::tests::wavenet_effective_layers_full ... ignored
+test dsp::adaptive::adaptive_test::tests::wavenet_effective_layers_minimal ... ignored
+test dsp::adaptive::adaptive_test::tests::wavenet_effective_layers_reduced ... ignored
+test dsp::gate::gate_test::tests::test_gate_params_default ... ignored
+test dsp::gate::gate_test::tests::test_hysteresis_apply_gain_ramp ... ignored
+test dsp::gate::gate_test::tests::test_hysteresis_basic_transitions ... ignored
+test dsp::gate::gate_test::tests::test_hysteresis_interrupted_fade ... ignored
+test dsp::gate::gate_test::tests::test_sub_block_granularity ... ignored
+test dsp::gate::gate_test::tests::test_unit_block_processing ... ignored
+test dsp::mirror_buf::mirror_buf_test::test_mirror_buf_clone ... ignored
+test dsp::mirror_buf::mirror_buf_test::test_mirror_buf_debug ... ignored
+test dsp::mirror_buf::mirror_buf_test::test_mirror_buf_large_allocation ... ignored
+test dsp::mirror_buf::mirror_buf_test::test_mirror_buf_mirroring ... ignored
+test dsp::mirror_buf::mirror_buf_test::test_mirror_buf_page_alignment ... ignored
+test dsp::mirror_buf::mirror_buf_test::test_mirror_buf_zst_error ... ignored
+test dsp::pipeline::pipeline_block_test::block_tests::test_random_block_sizes_proptest ... ignored
+test dsp::pipeline::pipeline_block_test::block_tests::test_unconventional_block_sizes_lstm ... ignored
+test dsp::pipeline::pipeline_block_test::block_tests::test_unconventional_block_sizes_wavenet ... ignored
+test dsp::pipeline::pipeline_block_test::block_tests::test_zero_alloc_edge_cases ... ignored
+test dsp::pipeline::pipeline_block_test::block_tests::test_zero_alloc_stress_edge_cases ... ignored
+test dsp::pipeline::pipeline_test::tests::test_bypass_no_resampler_mono ... ignored
+test dsp::pipeline::pipeline_test::tests::test_bypass_no_resampler_stereo ... ignored
+test dsp::pipeline::pipeline_test::tests::test_bypass_with_resampler_mono ... ignored
+test dsp::pipeline::pipeline_test::tests::test_bypass_with_resampler_stereo ... ignored
+test dsp::pipeline::pipeline_test::tests::test_denormal_dither_mono_symmetry ... ignored
+test dsp::pipeline::pipeline_test::tests::test_hotpath_clipping_detection ... ignored
+test dsp::pipeline::pipeline_test::tests::test_hotpath_dropped_frames ... ignored
+test dsp::pipeline::pipeline_test::tests::test_hotpath_gate_closed_and_silence ... ignored
+test dsp::pipeline::pipeline_test::tests::test_hotpath_gate_fading ... ignored
+test dsp::resampler::resampler_test::test_bypass_48k ... ignored
+test dsp::resampler::resampler_test::test_downsample_96k_to_48k ... ignored
+test dsp::resampler::resampler_test::test_fixed_point_drift_random_ratios ... ignored
+test dsp::resampler::resampler_test::test_impulse_response_input ... ignored
+test dsp::resampler::resampler_test::test_impulse_response_output ... ignored
+test dsp::resampler::resampler_test::test_latency_calculation ... ignored
+test dsp::resampler::resampler_test::test_output_upsample_48k_to_96k ... ignored
+test dsp::resampler::resampler_test::test_phase_accum_underflow_guard ... ignored
+test dsp::resampler::resampler_test::test_resampler_micro_soak ... ignored
+test dsp::resampler::resampler_test::test_resampler_mono_equivalence ... ignored
+test dsp::resampler::resampler_test::test_roundtrip_96k ... ignored
+test dsp::resampler::resampler_test::test_upsample_44k_to_48k ... ignored
+test dsp::sinc_kernel::sinc_kernel_test::test_aligned_coeffs_alignment ... ignored
+test dsp::sinc_kernel::sinc_kernel_test::test_bessel_i0_known_values ... ignored
+test dsp::sinc_kernel::sinc_kernel_test::test_minimum_phase_causal ... ignored
+test dsp::sinc_kernel::sinc_kernel_test::test_minimum_phase_energy_concentration ... ignored
+test dsp::sinc_kernel::sinc_kernel_test::test_polyphase_bank_dimensions ... ignored
+test dsp::sinc_kernel::sinc_kernel_test::test_sinc_kaiser_dc_unity ... ignored
+test dsp::smoother::tests::test_smoother_convergence ... ignored
+test dsp::smoother::tests::test_smoother_convergence_high_gain ... ignored
+test dsp::smoother::tests::test_smoother_denormal_prevention ... ignored
+test dsp::smoother::tests::test_smoother_relative_threshold ... ignored
+test dsp::smoother::tests::test_smoother_snap ... ignored
+test dsp::telemetry::tests::test_histogram_mapping ... ignored
+test dsp::telemetry::tests::test_percentiles ... ignored
+test loader::dispatcher::wavenet::bias_tune::tests::test_apply_bias_compensation ... ignored
+test loader::dispatcher::wavenet::bias_tune::tests::test_dense_compensation_nonzero_bf16 ... ignored
+test loader::dispatcher::wavenet::bias_tune::tests::test_dequantize_bf16_roundtrip ... ignored
+test loader::dispatcher::wavenet::bias_tune::tests::test_dequantize_f16_roundtrip ... ignored
+test loader::nam_json::nam_json_test::test_forward_compat_unknown_field_at_root ... ignored
+test loader::nam_json::nam_json_test::test_forward_compat_unknown_field_in_config ... ignored
+test loader::nam_json::nam_json_test::test_forward_compat_unknown_field_in_metadata ... ignored
+test loader::nam_json::nam_json_test::test_is_wavenet_a2_versions ... ignored
+test loader::nam_json::nam_json_test::test_parse_empty_weights ... ignored
+test loader::nam_json::nam_json_test::test_parse_feather_wavenet ... ignored
+test loader::nam_json::nam_json_test::test_parse_lstm ... ignored
+test loader::nam_json::nam_json_test::test_parse_malformed_config ... ignored
+test loader::nam_json::nam_json_test::test_parse_missing_architecture ... ignored
+test loader::nam_json::nam_json_test::test_parse_missing_weights ... ignored
+test loader::nam_json::nam_json_test::test_parse_semver ... ignored
+test loader::nam_json::nam_json_test::test_parse_truncated_json ... ignored
+test loader::nam_json::nam_json_test::test_reject_deeply_nested_training ... ignored
+test loader::nam_json::nam_json_test::test_topology_invalid_channels ... ignored
+test loader::nam_json::nam_json_test::test_topology_lite ... ignored
+test loader::nam_json::nam_json_test::test_topology_nano ... ignored
+test loader::nam_json::nam_json_test::test_topology_standard ... ignored
+test loader::nam_json::nam_json_test::test_weights_exceed_limit_fast_rejection ... ignored
+test loader::nam_json::nam_json_test::test_weights_within_limit ... ignored
+test loader::namb::namb_test::tests::test_parse_namb_v1 ... ignored
+test loader::namb::namb_test::tests::test_parse_namb_v2_gate_major ... ignored
+test loader::namb::namb_test::tests::test_reject_magic_bman ... ignored
+test loader::namb::namb_test::tests::test_v1_crc32_zero_warns_but_passes ... ignored
+test loader::namb::namb_test::tests::test_v2_crc32_zero_legitimate_passes ... ignored
+test loader::namb::namb_test::tests::test_v2_missing_crc32_flag_rejected ... ignored
+test math::activations::tests::test_fused_sigmoid_relu_slice_dispatch_smoke ... ignored
+test math::activations::tests::test_prelu_scalar ... ignored
+test math::activations::tests::test_prelu_slice_dispatch_smoke ... ignored
+test math::activations::tests::test_relu_scalar ... ignored
+test math::activations::tests::test_relu_slice_dispatch_smoke ... ignored
+test math::activations::tests::test_sigmoid_direct_minimax_boundary ... ignored
+test math::activations::tests::test_sigmoid_pade_proptest_100k ... ignored
+test math::activations::tests::test_sigmoid_scalar_equivalences ... ignored
+test math::activations::tests::test_sigmoid_slice_dispatch_smoke ... ignored
+test math::activations::tests::test_silu_scalar ... ignored
+test math::activations::tests::test_silu_slice_dispatch_smoke ... ignored
+test math::activations::tests::test_softsign_scalar ... ignored
+test math::activations::tests::test_softsign_slice_dispatch_smoke ... ignored
+test math::activations::tests::test_tanh_pade_proptest_100k ... ignored
+test math::activations::tests::test_tanh_piecewise_boundaries ... ignored
+test math::activations::tests::test_tanh_piecewise_odd_symmetry ... ignored
+test math::activations::tests::test_tanh_piecewise_proptest_50k ... ignored
+test math::activations::tests::test_tanh_piecewise_saturation ... ignored
+test math::activations::tests::test_tanh_scalar_equivalences ... ignored
+test math::activations::tests::test_tanh_slice_dispatch_smoke ... ignored
+test math::common::kahan::kahan_test::test_horizontal_sum_drift_reduction ... ignored
+test math::common::kahan::kahan_test::test_kahan4_independent_channels ... ignored
+test math::common::kahan::kahan_test::test_kahan_accuracy_advantage ... ignored
+test math::common::kahan::kahan_test::test_kahan_deep_convolution_drift ... ignored
+test math::common::kahan::kahan_test::test_kahan_struct_vs_inline ... ignored
+test math::common::tests::huge_alloc_tests::test_allocate_large_falls_back_gracefully ... ignored
+test math::common::tests::huge_alloc_tests::test_allocate_small_uses_heap ... ignored
+test math::common::tests::huge_alloc_tests::test_huge_page_vec_fallback ... ignored
+test math::common::tests::huge_alloc_tests::test_huge_page_vec_with_capacity ... ignored
+test math::common::tests::test_accumulate_head ... ignored
+test math::common::tests::test_compute_energy_avx2 ... ignored
+test math::common::tests::test_compute_energy_parity ... ignored
+test math::common::tests::test_compute_energy_stereo_parity ... ignored
+test math::common::tests::test_compute_max_diff_avx2 ... ignored
+test math::common::tests::test_compute_max_diff_parity ... ignored
+test math::common::tests::test_compute_peak_abs_stereo_parity ... ignored
+test math::common::tests::test_convolve_mono_dual_parity ... ignored
+test math::common::tests::test_convolve_mono_parity ... ignored
+test math::common::tests::test_convolve_stereo_dual_parity ... ignored
+test math::common::tests::test_dot_product_avx2_fma ... ignored
+test math::common::tests::test_dot_product_avx512 ... ignored
+test math::common::tests::test_dot_product_bf16_avx512_regression ... ignored
+test math::common::tests::test_f32_to_bf16_avx2_parity ... ignored
+test math::common::tests::test_f32_to_bf16_avx512_regression ... ignored
+test math::common::tests::test_gated_activation_and_overwrite_block ... ignored
+test math::common::tests::test_gemv_overwrite_bf16_avx512_regression ... ignored
+test math::common::tests::test_horizontal_sum ... ignored
+test math::common::tests::test_set_daz_ftz ... ignored
+test math::common::tests::test_store_bf16_avx2 ... ignored
+test math::common::tests::test_store_bf16_avx512 ... ignored
+test math::common::tests::test_tanh_and_accumulate_block ... ignored
+test math::common::tests::test_tanh_and_overwrite_block ... ignored
+test math::dsp::gain::gain_test::test_apply_gain_simd ... ignored
+test math::dsp::gain::gain_test::test_apply_ramp_simd ... ignored
+test math::dsp::gain::gain_test::test_combined_gain_staging ... ignored
+test math::dsp::gain::gain_test::test_extreme_gain_values ... ignored
+test math::dsp::gain::gain_test::test_gain_roundtrip_6db ... ignored
+test math::dsp::gain::gain_test::test_gain_true_bypass ... ignored
+test math::dsp::gain_lut::tests::test_gain_lut_clamping ... ignored
+test math::dsp::gain_lut::tests::test_gain_lut_initialization ... ignored
+test math::dsp::gain_lut::tests::test_gain_lut_interpolation ... ignored
+test math::gemm::dot_4x::dot_4x_test::test_dot_4x_interleaved_avx512_stress ... ignored
+test math::gemm::dot_4x::dot_4x_test::test_dot_4x_interleaved_avx512_vs_avx2 ... ignored
+test math::gemm::dot_4x::dot_4x_test::test_dot_4x_interleaved_avx512_vs_fallback ... ignored
+test math::gemm::dot_4x::dot_4x_test::test_dot_4x_interleaved_dual_frame_avx512_stress ... ignored
+test math::gemm::dot_4x::dot_4x_test::test_dot_4x_interleaved_dual_frame_avx512_vs_avx2 ... ignored
+test math::gemm::dot_4x::dot_4x_test::test_dot_4x_interleaved_dual_frame_avx512_vs_fallback ... ignored
+test models::a2::activations::activations_test::tests::test_activation_fast_tanh ... ignored
+test models::a2::activations::activations_test::tests::test_activation_hard_swish ... ignored
+test models::a2::activations::activations_test::tests::test_activation_hard_tanh ... ignored
+test models::a2::activations::activations_test::tests::test_activation_leaky_hardtanh ... ignored
+test models::a2::activations::activations_test::tests::test_activation_leaky_relu ... ignored
+test models::a2::activations::activations_test::tests::test_activation_prelu ... ignored
+test models::a2::activations::activations_test::tests::test_activation_relu ... ignored
+test models::a2::activations::activations_test::tests::test_activation_sigmoid ... ignored
+test models::a2::activations::activations_test::tests::test_activation_silu ... ignored
+test models::a2::activations::activations_test::tests::test_activation_softsign ... ignored
+test models::a2::activations::activations_test::tests::test_activation_tanh ... ignored
+test models::a2::activations::activations_test::tests::test_prelu_cycle ... ignored
+test models::a2::activations::activations_test::tests::test_prelu_empty_slopes ... ignored
+test models::a2::film::tests::test_film_config_custom ... ignored
+test models::a2::film::tests::test_film_config_default ... ignored
+test models::a2::gating::tests::test_config_construction ... ignored
+test models::a2::gating::tests::test_gating_mode_default ... ignored
+test models::a2::params::tests::test_head_params_construction ... ignored
+test models::a2::params::tests::test_layer_array_params_a2_construction ... ignored
+test models::a2::params::tests::test_layer_params_a2_construction ... ignored
+test models::a2::tests::tests_placeholder::test_wavenet_a2_placeholder_silence ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_gate_order_consistency ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_model1_allocation ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_model1_process_zeros ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_model2_allocation ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_model2_pipelining_parity ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_model2_process_deterministic ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_reset_on_prewarm ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_state_evolution ... ignored
+test models::lstm::lstm_tests::tests::test_lstm_variable_block_sizes ... ignored
+test models::wavenet::tests::test_conv1d_dilation ... ignored
+test models::wavenet::tests::test_conv1d_dyn_large_kernel_no_segfault ... ignored
+test models::wavenet::tests::test_conv1d_dyn_padding_non_multiple_of_4 ... ignored
+test models::wavenet::tests::test_conv1d_identity_kernel ... ignored
+test models::wavenet::tests::test_conv1d_known_output ... ignored
+test models::wavenet::tests::test_conv1d_with_bias ... ignored
+test models::wavenet::tests::test_conv1d_zero_input ... ignored
+test models::wavenet::tests::test_dense_layer_identity ... ignored
+test models::wavenet::tests::test_dense_layer_rectangular ... ignored
+test models::wavenet::tests::test_dense_layer_with_bias ... ignored
+test models::wavenet::tests::test_gated_layer_dyn_process ... ignored
+test models::wavenet::tests::test_non_gated_layer_dyn_process ... ignored
+test models::wavenet::tests::test_read_conv1d_weights_dyn_limits ... ignored
+test models::wavenet::tests::test_wavenet_layer_array_dyn_block_size_gated ... ignored
+test models::wavenet::tests::test_wavenet_model_allocation ... ignored
+test models::wavenet::tests::test_wavenet_prewarm_no_nan ... ignored
+test models::wavenet::tests::test_wavenet_process_deterministic ... ignored
+test models::wavenet::tests::test_wavenet_process_zeros ... ignored
+test standalone::cli::tests::test_parse_args_diagnose ... ignored
+test standalone::cli::tests::test_parse_args_diagnose_full ... ignored
+test standalone::cli::tests::test_parse_args_model_and_gains ... ignored
+test standalone::pw_host::pw_host_test::test_dsp_bridge_concurrent_access ... ignored
+test standalone::rt_setup::rt_setup_test::test_get_allowed_cpus_not_empty ... ignored
+test standalone::rt_setup::rt_setup_test::test_parse_interrupts_basic ... ignored
+test standalone::rt_setup::rt_setup_test::test_rdtsc_nanos_monotonic ... ignored
+test standalone::rt_setup::rt_setup_test::test_rdtsc_nanos_significant ... ignored
+test standalone::rt_setup::rt_setup_test::test_select_optimal_cpu_returns_something ... ignored
+test testing::mushra::tests::test_fnv1a32_known_vector ... ignored
+test testing::mushra::tests::test_mulberry32_determinism ... ignored
+test testing::mushra::tests::test_mulberry32_range ... ignored
+test testing::mushra::tests::test_soft_clip_identity ... ignored
+test testing::perceptual::perceptual_test::test_esr_all_zero_test ... ignored
+test testing::perceptual::perceptual_test::test_esr_identical_is_zero ... ignored
+test testing::perceptual::perceptual_test::test_esr_invariant_to_sample_rate ... ignored
+test testing::perceptual::perceptual_test::test_lufs_empty ... ignored
+test testing::perceptual::perceptual_test::test_lufs_sine ... ignored
+test testing::perceptual::perceptual_test::test_mr_stft_different_signals ... ignored
+test testing::perceptual::perceptual_test::test_mr_stft_empty ... ignored
+test testing::perceptual::perceptual_test::test_mr_stft_identical_is_zero ... ignored
+test testing::stress::stress_test::test_v1_deterministic ... ignored
+test testing::stress::stress_test::test_v1_not_silent ... ignored
+test testing::stress::stress_test::test_v2_deterministic ... ignored
+test testing::stress::stress_test::test_v2_non_silent_segments ... ignored
+test testing::stress::stress_test::test_v2_valid_sizes ... ignored
+
+test result: ok. 0 passed; 0 failed; 256 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/gen_stress.rs (target/release/deps/gen_stress-3126d0d93485f8ad)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/release/deps/nam_rs-9ca32a8a155732f7)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/wav_to_golden.rs (target/release/deps/wav_to_golden-834a03ae0d22c12c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches/dot_4x_bench.rs (target/release/deps/dot_4x_bench-5417e22bc074b1b0)
+dot_4x_interleaved_avx512/fallback_16
+                        time:   [23.027 ns 23.035 ns 23.046 ns]
+                        change: [+0.0191% +0.0976% +0.1810%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Found 10 outliers among 100 measurements (10.00%)
+  3 (3.00%) high mild
+  7 (7.00%) high severe
+dot_4x_interleaved_avx512/avx2_16
+                        time:   [6.4808 ns 6.4874 ns 6.4956 ns]
+                        change: [−1.0971% −0.8797% −0.6193%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 15 outliers among 100 measurements (15.00%)
+  4 (4.00%) high mild
+  11 (11.00%) high severe
+dot_4x_interleaved_avx512/fallback_64
+                        time:   [157.23 ns 157.48 ns 157.79 ns]
+                        change: [+0.1021% +0.2573% +0.4551%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 13 outliers among 100 measurements (13.00%)
+  2 (2.00%) high mild
+  11 (11.00%) high severe
+dot_4x_interleaved_avx512/avx2_64
+                        time:   [23.159 ns 23.211 ns 23.291 ns]
+                        change: [−0.5163% +0.0060% +0.4520%] (p = 0.98 > 0.05)
+                        No change in performance detected.
+Found 13 outliers among 100 measurements (13.00%)
+  5 (5.00%) high mild
+  8 (8.00%) high severe
+dot_4x_interleaved_avx512/fallback_256
+                        time:   [689.46 ns 689.63 ns 689.87 ns]
+                        change: [+0.0102% +0.0350% +0.0623%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) low severe
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+dot_4x_interleaved_avx512/avx2_256
+                        time:   [89.789 ns 89.884 ns 90.001 ns]
+                        change: [−0.2646% +0.0605% +0.3889%] (p = 0.73 > 0.05)
+                        No change in performance detected.
+Found 11 outliers among 100 measurements (11.00%)
+  2 (2.00%) high mild
+  9 (9.00%) high severe
+dot_4x_interleaved_avx512/fallback_1024
+                        time:   [2.8190 µs 2.8193 µs 2.8197 µs]
+                        change: [−0.0045% +0.0292% +0.0666%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 100 measurements (8.00%)
+  2 (2.00%) low mild
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+dot_4x_interleaved_avx512/avx2_1024
+                        time:   [360.49 ns 360.54 ns 360.61 ns]
+                        change: [−0.8564% −0.4210% −0.1042%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 10 outliers among 100 measurements (10.00%)
+  5 (5.00%) high mild
+  5 (5.00%) high severe
+dot_4x_interleaved_avx512/fallback_4096
+                        time:   [11.338 µs 11.345 µs 11.357 µs]
+                        change: [−0.9926% −0.5325% −0.1597%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 100 measurements (7.00%)
+  1 (1.00%) low mild
+  1 (1.00%) high mild
+  5 (5.00%) high severe
+dot_4x_interleaved_avx512/avx2_4096
+                        time:   [1.4269 µs 1.4280 µs 1.4295 µs]
+                        change: [+0.0057% +0.1197% +0.2593%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 11 outliers among 100 measurements (11.00%)
+  1 (1.00%) high mild
+  10 (10.00%) high severe
+
+dot_4x_dual_frame_avx512/fallback_16
+                        time:   [29.305 ns 29.339 ns 29.383 ns]
+                        change: [+0.0496% +0.1936% +0.3674%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 14 outliers among 100 measurements (14.00%)
+  3 (3.00%) low mild
+  4 (4.00%) high mild
+  7 (7.00%) high severe
+dot_4x_dual_frame_avx512/avx2_16
+                        time:   [11.561 ns 11.569 ns 11.579 ns]
+                        change: [−1.9680% −0.9899% −0.3021%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 14 outliers among 100 measurements (14.00%)
+  1 (1.00%) low mild
+  4 (4.00%) high mild
+  9 (9.00%) high severe
+dot_4x_dual_frame_avx512/fallback_64
+                        time:   [161.36 ns 161.53 ns 161.75 ns]
+                        change: [+0.0184% +0.0736% +0.1432%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 12 outliers among 100 measurements (12.00%)
+  3 (3.00%) low mild
+  4 (4.00%) high mild
+  5 (5.00%) high severe
+dot_4x_dual_frame_avx512/avx2_64
+                        time:   [40.698 ns 40.711 ns 40.729 ns]
+                        change: [−3.1836% −1.7801% −0.6413%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 10 outliers among 100 measurements (10.00%)
+  2 (2.00%) high mild
+  8 (8.00%) high severe
+dot_4x_dual_frame_avx512/fallback_256
+                        time:   [697.14 ns 697.27 ns 697.42 ns]
+                        change: [−0.2660% −0.1824% −0.1087%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+dot_4x_dual_frame_avx512/avx2_256
+                        time:   [157.24 ns 157.30 ns 157.38 ns]
+                        change: [+0.0945% +0.9040% +1.8821%] (p = 0.05 < 0.05)
+                        Change within noise threshold.
+Found 16 outliers among 100 measurements (16.00%)
+  16 (16.00%) high severe
+dot_4x_dual_frame_avx512/fallback_1024
+                        time:   [2.8376 µs 2.8383 µs 2.8391 µs]
+                        change: [+0.1187% +0.2817% +0.5165%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 9 outliers among 100 measurements (9.00%)
+  2 (2.00%) low mild
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+dot_4x_dual_frame_avx512/avx2_1024
+                        time:   [627.80 ns 627.93 ns 628.09 ns]
+                        change: [−0.9199% −0.3225% +0.0176%] (p = 0.25 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 100 measurements (7.00%)
+  3 (3.00%) high mild
+  4 (4.00%) high severe
+dot_4x_dual_frame_avx512/fallback_4096
+                        time:   [11.441 µs 11.444 µs 11.448 µs]
+                        change: [+0.0698% +0.1130% +0.1603%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 22 outliers among 100 measurements (22.00%)
+  1 (1.00%) low severe
+  6 (6.00%) low mild
+  13 (13.00%) high mild
+  2 (2.00%) high severe
+dot_4x_dual_frame_avx512/avx2_4096
+                        time:   [2.4947 µs 2.4983 µs 2.5026 µs]
+                        change: [+0.0349% +0.2704% +0.5380%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+Found 16 outliers among 100 measurements (16.00%)
+  1 (1.00%) high mild
+  15 (15.00%) high severe
+
+     Running benches/inference_bench.rs (target/release/deps/inference_bench-e43b2715150e016e)
+WaveNet_Standard_CH16_64samp_48kHz
+                        time:   [99.731 µs 99.760 µs 99.800 µs]
+                        change: [−0.7201% −0.5535% −0.4138%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 50 measurements (6.00%)
+  2 (4.00%) high mild
+  1 (2.00%) high severe
+
+WaveNet_Standard_CH16_32samp_48kHz
+                        time:   [51.025 µs 51.040 µs 51.053 µs]
+                        change: [−1.7953% −1.3052% −0.9994%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+
+WaveNet_Standard_CH16_128samp_48kHz
+                        time:   [199.52 µs 199.75 µs 200.04 µs]
+                        change: [−1.0285% −0.8193% −0.6311%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 50 measurements (16.00%)
+  4 (8.00%) high mild
+  4 (8.00%) high severe
+
+WaveNet_Standard_CH16_256samp_48kHz
+                        time:   [399.39 µs 400.04 µs 400.94 µs]
+                        change: [−0.9348% −0.5870% −0.2477%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 50 measurements (8.00%)
+  3 (6.00%) high mild
+  1 (2.00%) high severe
+
+WaveNet_Standard_CH16_512samp_48kHz
+                        time:   [799.46 µs 801.08 µs 802.83 µs]
+                        change: [−0.7897% −0.5578% −0.3163%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 50 measurements (6.00%)
+  2 (4.00%) high mild
+  1 (2.00%) high severe
+
+LSTM_2x16_64samp_48kHz  time:   [11.303 µs 11.319 µs 11.337 µs]
+                        change: [+4.1392% +4.6253% +5.0801%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 5 outliers among 50 measurements (10.00%)
+  1 (2.00%) low severe
+  3 (6.00%) high mild
+  1 (2.00%) high severe
+
+LSTM_2x16_32samp_48kHz  time:   [5.4129 µs 5.4212 µs 5.4329 µs]
+                        change: [−7.8529% −6.8996% −5.9632%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+LSTM_2x16_128samp_48kHz time:   [21.622 µs 21.659 µs 21.710 µs]
+                        change: [−7.7960% −6.8586% −5.9225%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+LSTM_2x16_256samp_48kHz time:   [43.478 µs 43.548 µs 43.636 µs]
+                        change: [−7.6678% −6.7275% −5.7340%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+LSTM_2x16_512samp_48kHz time:   [86.566 µs 86.731 µs 86.954 µs]
+                        change: [−8.0666% −7.1168% −6.1816%] (p = 0.00 < 0.05)
+                        Performance has improved.
+
+LSTM_1x8_Comparison/SIMD_Fused_T3
+                        time:   [2.2745 µs 2.2778 µs 2.2816 µs]
+                        change: [−6.3436% −5.8478% −5.4810%] (p = 0.00 < 0.05)
+                        Performance has improved.
+LSTM_1x8_Comparison/Scalar_Baseline
+                        time:   [44.703 µs 44.713 µs 44.723 µs]
+                        change: [−0.0894% −0.0238% +0.0365%] (p = 0.46 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 50 measurements (16.00%)
+  2 (4.00%) low mild
+  2 (4.00%) high mild
+  4 (8.00%) high severe
+
+LSTM_2x16_Comparison/SIMD_Fused_T3
+                        time:   [11.268 µs 11.279 µs 11.292 µs]
+                        change: [+1.4811% +1.7125% +1.9408%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+LSTM_2x16_Comparison/Scalar_Baseline
+                        time:   [45.422 µs 45.478 µs 45.536 µs]
+                        change: [−0.5271% −0.2692% −0.0408%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 50 measurements (4.00%)
+  1 (2.00%) low mild
+  1 (2.00%) high severe
+
+LSTM_1x40_64samp_48kHz  time:   [18.662 µs 18.669 µs 18.676 µs]
+                        change: [−0.6106% −0.4021% −0.1748%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 50 measurements (6.00%)
+  1 (2.00%) low mild
+  2 (4.00%) high severe
+
+LSTM_2x24_64samp_48kHz  time:   [20.472 µs 20.483 µs 20.494 µs]
+                        change: [−2.2383% −2.0426% −1.8647%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 50 measurements (10.00%)
+  5 (10.00%) high severe
+
+LSTM_1x40_Comparison/SIMD_Fused_T3
+                        time:   [18.592 µs 18.601 µs 18.612 µs]
+                        change: [−0.2577% −0.0839% +0.0370%] (p = 0.33 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+LSTM_1x40_Comparison/Scalar_Baseline
+                        time:   [853.64 µs 853.77 µs 853.90 µs]
+                        change: [−0.1157% −0.0446% +0.0042%] (p = 0.16 > 0.05)
+                        No change in performance detected.
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high severe
+
+LSTM_2x24_Comparison/SIMD_Fused_T3
+                        time:   [20.476 µs 20.483 µs 20.490 µs]
+                        change: [−0.2827% −0.1167% +0.0022%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+LSTM_2x24_Comparison/Scalar_Baseline
+                        time:   [645.99 µs 646.06 µs 646.13 µs]
+                        change: [−0.1188% −0.0491% +0.0069%] (p = 0.14 > 0.05)
+                        No change in performance detected.
+Found 8 outliers among 50 measurements (16.00%)
+  2 (4.00%) low mild
+  3 (6.00%) high mild
+  3 (6.00%) high severe
+
+FastMath_tanh_AVX2_256elem
+                        time:   [54.907 ns 54.948 ns 54.988 ns]
+                        change: [−2.8257% −2.7216% −2.6212%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 50 measurements (10.00%)
+  3 (6.00%) low mild
+  2 (4.00%) high mild
+
+FastMath_tanh_PadeNR2_AVX2_256elem
+                        time:   [101.77 ns 101.87 ns 101.96 ns]
+                        change: [+2.8291% +3.0508% +3.2320%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 6 outliers among 50 measurements (12.00%)
+  4 (8.00%) low severe
+  2 (4.00%) low mild
+
+FastMath_tanh_PadeDiv_AVX2_256elem
+                        time:   [60.709 ns 60.919 ns 61.264 ns]
+                        change: [−0.9936% −0.6628% −0.1705%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high severe
+
+FastMath_sigmoid_AVX2_256elem
+                        time:   [97.766 ns 97.816 ns 97.873 ns]
+                        change: [−2.6174% −2.3189% −2.1369%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 50 measurements (10.00%)
+  1 (2.00%) low mild
+  3 (6.00%) high mild
+  1 (2.00%) high severe
+
+WaveNet_Dynamic_Standard_64samp_48kHz
+                        time:   [125.85 µs 125.96 µs 126.09 µs]
+                        change: [+0.6099% +0.7351% +0.8545%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 8 outliers among 50 measurements (16.00%)
+  6 (12.00%) high mild
+  2 (4.00%) high severe
+
+LSTM_Dynamic_1x16_64samp_48kHz
+                        time:   [4.8181 µs 4.8237 µs 4.8313 µs]
+                        change: [−0.6252% −0.3284% −0.0318%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+
+DotProduct_AVX2_256elem time:   [9.3681 ns 9.3828 ns 9.3981 ns]
+                        change: [−1.7814% −0.5052% +0.2678%] (p = 0.50 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+
+DotProduct_AVX2_64elem  time:   [4.1428 ns 4.1531 ns 4.1629 ns]
+                        change: [−0.7588% −0.3897% −0.0381%] (p = 0.04 < 0.05)
+                        Change within noise threshold.
+
+Resampler_44100_to_48000_256samp/process_input
+                        time:   [4.8110 µs 4.8117 µs 4.8126 µs]
+                        change: [−0.3579% −0.3312% −0.3050%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 50 measurements (14.00%)
+  1 (2.00%) low mild
+  4 (8.00%) high mild
+  2 (4.00%) high severe
+Resampler_44100_to_48000_256samp/process_input_mono
+                        time:   [3.6844 µs 3.6856 µs 3.6872 µs]
+                        change: [−2.0235% −1.9873% −1.9398%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 4 outliers among 50 measurements (8.00%)
+  1 (2.00%) high mild
+  3 (6.00%) high severe
+Resampler_44100_to_48000_256samp/process_output
+                        time:   [4.2902 µs 4.2912 µs 4.2922 µs]
+                        change: [+0.1688% +0.2365% +0.2970%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+Resampler_44100_to_48000_256samp/process_output_mono
+                        time:   [3.3260 µs 3.3264 µs 3.3267 µs]
+                        change: [+0.0982% +0.1279% +0.1558%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high severe
+
+Resampler_96000_to_48000_256samp/process_input
+                        time:   [2.6035 µs 2.6043 µs 2.6051 µs]
+                        change: [−0.0384% +0.0526% +0.1319%] (p = 0.23 > 0.05)
+                        No change in performance detected.
+Found 7 outliers among 50 measurements (14.00%)
+  4 (8.00%) low mild
+  3 (6.00%) high mild
+Resampler_96000_to_48000_256samp/process_input_mono
+                        time:   [2.0489 µs 2.0498 µs 2.0507 µs]
+                        change: [+0.0359% +0.0819% +0.1311%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+Resampler_96000_to_48000_256samp/process_output
+                        time:   [6.1404 µs 6.1431 µs 6.1460 µs]
+                        change: [−0.5399% −0.3683% −0.2309%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) low mild
+Resampler_96000_to_48000_256samp/process_output_mono
+                        time:   [4.5655 µs 4.5702 µs 4.5750 µs]
+                        change: [+0.0857% +0.2850% +0.4804%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+
+Resampler_48000_bypass_256samp
+                        time:   [19.438 ns 19.441 ns 19.444 ns]
+                        change: [−3.2659% −3.0721% −2.8789%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 50 measurements (10.00%)
+  1 (2.00%) low mild
+  4 (8.00%) high severe
+
+bench_record_64calls    time:   [247.46 ns 247.49 ns 247.51 ns]
+                        change: [+0.0404% +0.0730% +0.1096%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+
+Prewarm_WaveNet_Standard_2048samp
+                        time:   [206.91 µs 207.52 µs 208.23 µs]
+                        change: [−2.8973% −1.6600% −0.6745%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 7 outliers among 50 measurements (14.00%)
+  1 (2.00%) low severe
+  2 (4.00%) low mild
+  4 (8.00%) high mild
+
+Prewarm_LSTM_2x16_2048samp
+                        time:   [345.75 µs 345.89 µs 346.00 µs]
+                        change: [−4.5645% −4.4163% −4.2112%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high mild
+
+head_rechannel_fp32/DenseLayer_16x8_64f_AVX2
+                        time:   [319.71 ns 319.87 ns 320.04 ns]
+                        change: [−0.7686% −0.5932% −0.4378%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 3 outliers among 50 measurements (6.00%)
+  2 (4.00%) high mild
+  1 (2.00%) high severe
+head_rechannel_fp32/DenseLayer_16x8_64f_Scalar
+                        time:   [5.1870 µs 5.2171 µs 5.2648 µs]
+                        change: [+5.1224% +9.0330% +13.690%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 5 outliers among 50 measurements (10.00%)
+  5 (10.00%) high severe
+head_rechannel_fp32/DenseLayer_8x1_64f_AVX2
+                        time:   [152.12 ns 152.22 ns 152.33 ns]
+                        change: [−1.5031% −1.2932% −1.1397%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 8 outliers among 50 measurements (16.00%)
+  1 (2.00%) low mild
+  4 (8.00%) high mild
+  3 (6.00%) high severe
+head_rechannel_fp32/DenseLayer_8x1_64f_Scalar
+                        time:   [338.01 ns 338.76 ns 339.92 ns]
+                        change: [−0.9835% −0.6678% −0.3103%] (p = 0.00 < 0.05)
+                        Change within noise threshold.
+Found 4 outliers among 50 measurements (8.00%)
+  2 (4.00%) high mild
+  2 (4.00%) high severe
+head_rechannel_fp32/DenseLayer_16x1_64f_AVX2
+                        time:   [176.74 ns 177.04 ns 177.40 ns]
+                        change: [−2.2273% −2.0362% −1.8166%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 50 measurements (4.00%)
+  2 (4.00%) high mild
+head_rechannel_fp32/DenseLayer_16x1_64f_Scalar
+                        time:   [630.60 ns 631.89 ns 633.03 ns]
+                        change: [−0.1898% +0.0051% +0.2152%] (p = 0.96 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 50 measurements (2.00%)
+  1 (2.00%) high severe
+
+
+real    12m6,993s
+user    14m14,813s
+sys     0m11,023s
+fabio@notebook:~/nam-rs$
 ```
