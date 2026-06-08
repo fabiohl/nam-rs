@@ -1268,26 +1268,230 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   "HACK" no código-fonte — apenas itens legítimos restantes.
 
 ---
+---
 
-### Anexo B — Matriz de priorização do Épico 6
+## ÉPICO 7 — Residual: Otimização Máxima (Última Onda)
 
-| Sprint | Subsistema                      | Tarefas     | Risco         | Dependências        |
-| ------ | ------------------------------- | ----------- | ------------- | ------------------- |
-| 6.A    | mod.rs inflados                 | S6.T01–T08  | Baixo–Médio   | nenhuma             |
-| 6.B    | Arquivos > 300 LOC residuais    | S6.T09–T13  | Médio         | nenhuma             |
-| 6.C    | Deduplicação                    | S6.T14–T18  | Médio–Alto    | S6.T01 (S6.T16)     |
-| 6.D    | Realocação                      | S6.T19–T20  | Médio         | S6.T14 (S6.T20)     |
-| 6.E    | Limpezas pontuais               | S6.T21–T22  | Baixo         | nenhuma             |
+> **Objetivo:** esgotar as **últimas** oportunidades de melhoria estrutural
+> identificadas na auditoria final do código (2026-06-08). Abrange: (A) `mod.rs`
+> residuais com implementação, (B) split dos últimos arquivos > 300 LOC sem
+> justificativa, (C) deduplicação de código entre subsistemas, (D) realocação de
+> símbolos em diretórios corretos, (E) registros de débito técnico e achados de
+> auditoria.
+>
+> **Após este épico, TODAS as oportunidades de melhoria conforme `refatora-rust.md`
+> estarão esgotadas.**
 
-**Paralelização:** Sprints 6.A e 6.B podem ser executadas em paralelo (subsistemas
-distintos). Sprints 6.C e 6.D devem ser serializadas (dependências internas). Sprint
-6.E pode ser executada a qualquer momento.
+---
 
-**Tarefas de maior risco (RT hot-path):** S6.T08 (processor/dsp/channels),
-S6.T15 (gate flags), S6.T19 (param_smoother relocation). Exigem revisão manual de
-RT-safety e verificação de não-regressão de benchmark quando aplicável.
+### Sprint 7.A — Extrair implementação de mod.rs residuais
 
-**Tarefas que alteram assinaturas/imports públicos:** S6.T01 (loader),
-S6.T14 (alloc_audit), S6.T16 (LoadedModelPair), S6.T17 (NamErrorCode),
-S6.T19 (ParamSmoother), S6.T21 (playback→output_pw). Exigem atualização de
-todos os consumidores com `grep` global antes de concluir.
+> **Critério:** `mod.rs` deve conter apenas `mod`, `pub mod`, `pub use` e includes
+> de teste. Funções, structs e `impl` blocks substanciais devem ser extraídos
+> para submódulos nomeados.
+
+#### S7.T01 — Extrair implementação de `src/clap/gui/window/mod.rs` (240 LOC → ~25 LOC)
+
+- Aviso: Tarefas que altera assinaturas/imports públicos: Exigem atualização de todos os consumidores com `grep` global antes de concluir.
+- **Problema:** `struct NamPluginWindow` (24 linhas) + 4 blocos `impl` — `new()`,
+  `safe_shared()`, `destroy_gl_resources()`, `Drop` — ocupam ~200 linhas. É o
+  maior `mod.rs` com implementação ainda não justificado.
+- **Split:**
+  - `window/state.rs` ← `struct NamPluginWindow` + `impl NamClapWindow` com
+    `new()`, `safe_shared()`, `destroy_gl_resources()`, `#[cfg(test)]
+    impl NamClapWindow` (método `test_init`).
+  - `window/lifecycle.rs` ← `impl Drop for NamClapWindow`.
+  - `window/mod.rs` (mantém) ← `pub mod` decls (`handler`, `drag_drop`, `shaders`,
+    `input_map`, `state`, `lifecycle`) + `pub(crate) use` re-exports +
+    `#[cfg(test)] #[path="window_test.rs"] mod window_test;`.
+- **Consumidores afetados:** `gui/mod.rs`, `gui/ui/mod.rs` (importam
+  `crate::clap::gui::window::NamPluginWindow`). Preservar via `pub use
+  state::NamPluginWindow;`.
+- **RT-Safety:** thread de UI (não-RT). Preservar checagem de `alive_fence` em
+  `safe_shared()` e pareamento `make_current`/`make_not_current` nos
+  early-returns.
+- **DoD:** padrão §0.2.
+
+#### S7.T02 — Extrair implementação de `src/loader/namb/mod.rs` (147 LOC → ~30 LOC)
+
+- Aviso: Tarefas que altera assinaturas/imports públicos: Exigem atualização de todos os consumidores com `grep` global antes de concluir.
+- **Problema:** `pub fn parse_namb()` (corpo de ~125 linhas) é a única
+  implementação no `mod.rs`. S4.T07 extraiu `error.rs`, `header.rs`, `fallback.rs`
+  mas a função principal permaneceu.
+- **Split:**
+  - `namb/parse.rs` ← `pub fn parse_namb` (corpo completo, versão verbatim) +
+    imports de `crate::loader::nam_json::NamModelData` e submódulos locais.
+  - `namb/mod.rs` (mantém) ← `pub mod error; pub mod header; pub mod fallback;
+    pub mod parse;` + `pub use error::NambError; pub use header::NambHeader;
+    pub use parse::parse_namb;` + include `#[path="namb_test.rs"]`.
+- **Consumidores:** `loader/dispatcher/wavenet/mod.rs`, `loader/loaded_model_pair.rs`,
+  `loader/build.rs`, `standalone/pw_host/capture/state.rs`, `clap/plugin/main_thread/load.rs`,
+  `clap/factory/preset_discovery.rs`. Preservar `crate::loader::namb::parse_namb`
+  via re-export.
+- **RT-Safety:** loader (não-RT). Cast `unsafe` de header é bounds-checked.
+  Sem mudança de lógica.
+- **DoD:** padrão.
+
+#### S7.T03 — Mover `scalar_minimax_sigmoid` de `src/models/lstm/layer_kernels.rs` para `src/math/activations/sigmoid.rs`
+
+- Aviso: Tarefas que altera assinaturas/imports públicos: Exigem atualização de todos os consumidores com `grep` global antes de concluir.
+- **Problema:** `scalar_minimax_sigmoid` (L14–39 em `layer_kernels.rs`) é uma
+  função matemática pura (aproximação Minimax de sigmoid) sem dependência de
+  `LstmLayer`. Ela espelha o kernel SIMD em `src/math/activations/sigmoid.rs`.
+  Residir em `models/lstm/` é incorreto — é uma primitiva matemática.
+- **Ação:**
+  - Mover `pub fn scalar_minimax_sigmoid(x: f32) -> f32` para
+    `src/math/activations/sigmoid.rs` (adicionar ao final do arquivo, com
+    doc-comment: "Scalar reference implementation for testing and benchmarks.
+    Mirrors the SIMD kernel.").
+  - Atualizar `src/math/activations/mod.rs`: `pub use sigmoid::scalar_minimax_sigmoid;`.
+  - Em `src/models/lstm/layer_kernels.rs`: substituir definição por
+    `use crate::math::activations::scalar_minimax_sigmoid;`.
+  - Atualizar consumidores que importam de
+    `crate::models::lstm::layer_kernels::scalar_minimax_sigmoid`:
+    - `benches/inference_bench.rs` (4 call sites via `process_sample_scalar`).
+    - `tests/lstm_scalar_bf16_parity.rs` (3 call sites).
+    - `src/models/lstm/tests.rs` (1 call site).
+    Atualizar imports para `crate::math::activations::scalar_minimax_sigmoid`.
+- **RT-Safety:** função escalar pura (sem alocação, sem SIMD). Usada apenas em
+  benchmarks e parity tests (não no hot-path de produção).
+- **DoD:** padrão + confirmar que benchmarks compilam e parity tests passam.
+
+---
+
+#### S7.T04 — Extrair implementação de `src/clap/processor/dsp/mod.rs` (171 LOC → ~19 LOC)
+
+- Aviso: Tarefa de maior risco (RT hot-path):** , Exigem verificação de não-regressão de benchmark e bit-exatidão (O dev humano fará à parte).
+- **Problema:** `process_dsp_audio` (orquestrador do loop de DSP, ~152 linhas após
+  S6.T08) permanece no `mod.rs`. Os helpers já foram extraídos (S3.T05,
+  S6.T08). O orquestrador deve seguir o mesmo padrão.
+- **Split:**
+  - `processor/dsp/orchestrator.rs` ← `impl NamClapProcessor::process_dsp_audio`
+    (corpo completo, verbatim, com todas as seções: preâmbulo de extração de
+    canais, bypass, input gain, dispatch do modelo, output gain, peaks,
+    telemetry, heap-audit).
+  - `processor/dsp/mod.rs` (mantém) ← `pub mod bypass; pub mod gain; pub mod
+    peaks; pub mod gate_flags; pub mod telemetry; pub mod channels; pub mod
+    orchestrator;` + `pub(crate) use orchestrator::process_dsp_audio;`.
+- **⚠️ RT-Safety (CRÍTICO):** `process_dsp_audio` é o **hot-path principal** do
+  plugin. `#[inline(always)]` deve ser preservado no orquestrador. Sem
+  alloc/lock/panic; manter `Ordering::Relaxed`; bloco `heap-audit` permanece
+  sob `#[cfg(feature="heap-audit")]`. **Validar ausência de regressão de
+  performance** (rodar `benches/inference_bench.rs` antes/depois se possível).
+- **DoD:** padrão + verificação de não-regressão de benchmark.
+
+#### S7.T05 — Unificar inicialização bias+mixin em arquivos de convolução WaveNet
+
+- Aviso: Tarefa de maior risco (RT hot-path):** , Exigem verificação de não-regressão de benchmark e bit-exatidão (O dev humano fará à parte).
+- **Problema:** o padrão de inicialização de 4 acumuladores (bias + mixin) é
+  duplicado entre:
+  - `src/models/wavenet/conv1d.rs` (L104–118) — single-frame.
+  - `src/models/wavenet/conv1d_dual.rs` (L102–121) — dual-frame (f0/f1).
+  A lógica é idêntica (4 casos: Some(mixin)+bias, Some(mixin) only,
+  bias only, zeros). A variante dual repete o bloco para `_f0`/`_f1`.
+- **Ação:**
+  - Criar helper `fn init_accum_with_bias_mixin(acc: &mut [f32; 4], bias: &[f32],
+    mixin: Option<&[f32]>, out_offset: usize, do_bias: bool)` em
+    `src/models/wavenet/conv_input.rs` (onde já reside `trait ConvInput`).
+    Corpo extraído verbatim do single-frame, generalizado para aceitar slice
+    mutável de 4 acumuladores.
+  - Em `conv1d.rs`: substituir bloco inline por chamada ao helper.
+  - Em `conv1d_dual.rs`: substituir os dois blocos (f0/f1) por duas chamadas
+    ao helper (para `acc_f0` e `acc_f1`).
+- **RT-Safety:** hot-path. `#[inline(always)]` no helper. Manter Kahan
+  initialization exatamente como está. Sem alloc/lock/panic.
+- **DoD:** padrão + verificar que o diff é movimentação pura (testes de
+  convolução existentes em `wavenet/tests.rs` garantem equivalência).
+
+#### S7.T06 — Unificar load/store de 4 acumuladores em arquivos de convolução WaveNet
+
+- Aviso: Tarefa de maior risco (RT hot-path):** , Exigem verificação de não-regressão de benchmark e bit-exatidão (O dev humano fará à parte).
+- **Problema:** o padrão de carregar 4 acumuladores com fallback para OUT não
+  múltiplo de 4 é duplicado entre:
+  - `src/models/wavenet/conv1d.rs` (L163–187 load, L222–242 write-back).
+  - `src/models/wavenet/conv1d_dual.rs` (L159–205 load, L231–263 write-back).
+  O dual-frame aplica o mesmo padrão para `_f0`/`_f1`.
+- **Ação:**
+  - Criar helper(s) em `conv_input.rs` (ver S7.T09):
+    - `fn load_4_accums(out: &[f32], idx: usize) -> [f32; 4]` — carrega 4
+      amostras com fallback (extraído verbatim do bloco de load do single-frame).
+    - `fn store_kahan_4_accums(out: &mut [f32], idx: usize, r: [f32; 4],
+      c: [f32; 4])` — write-back com Kahan (extraído verbatim do single-frame).
+  - Em `conv1d.rs`: substituir blocos inline por chamadas.
+  - Em `conv1d_dual.rs`: substituir blocos `_f0`/`_f1` por chamadas.
+- **⚠️ RT-Safety (CRÍTICO):** hot-path de inferência. `#[inline(always)]` nos
+  helpers. Preservar acumuladores Kahan **bit-a-bit** (a ordem de acumulação
+  não pode mudar). `unsafe` `get_unchecked` deve permanecer nos helpers.
+  **Validar bit-exatidão com testes existentes.**
+- **Risco:** MÉDIO — manipulação de `unsafe` e Kahan. Se o compilador não
+  inlinear corretamente, pode haver regressão de precisão.
+- **DoD:** padrão + diff bit-exato nos testes de convolução.
+
+---
+
+#### S7.T07 — Extrair implementação de `src/clap/gui/ui/meter/mod.rs` (171 LOC → ~22 LOC)
+
+- **Problema:** `pub fn draw_vertical_meter` (~150 linhas) é um orquestrador que
+  faz dispatch para `glow`/`cpu`/`readout`. Os submódulos já existem (S3.T03);
+  a função orquestradora deve seguir o mesmo padrão.
+- **Split:**
+  - `meter/orchestrator.rs` ← `pub(crate) fn draw_vertical_meter` (corpo
+    completo: label, LED, interação, peak-hold/dB, dispatch condicional para
+    `render_glow`/`render_cpu`/texto de readout).
+  - `meter/mod.rs` (mantém) ← `pub mod glow; pub mod cpu; pub mod readout;
+    pub mod orchestrator;` + `pub(crate) use orchestrator::draw_vertical_meter;`.
+- **RT-Safety:** thread de UI. Closure `CallbackFn` no caminho GL mantém
+  marshalling atômico `Relaxed` e `Arc` `'static`/`Send`. Preservar padrão de
+  peak-hold.
+- **DoD:** padrão.
+
+#### S7.T08 — Extrair implementação de `src/clap/gui/ui/status_bar/mod.rs` (140 LOC → ~18 LOC)
+
+- **Problema:** `pub(crate) fn draw_zone5_status_bar` (~123 linhas) é um
+  orquestrador que faz dispatch para `metadata`/`telemetry`/`toast`/`warnings`.
+  Os submódulos já existem (S3.T01); a função deve ser extraída.
+- **Split:**
+  - `status_bar/orchestrator.rs` ← `pub(crate) fn draw_zone5_status_bar` (corpo
+    completo com subseções de metadata, telemetry, toast, warning-area).
+  - `status_bar/mod.rs` (mantém) ← `pub mod telemetry; pub mod metadata;
+    pub mod orchestrator;` + `pub(crate) use orchestrator::draw_zone5_status_bar;`.
+- **RT-Safety:** thread de UI. Preservar leituras atômicas `Relaxed` de
+  `ui_peak_l/r`, `current_latency`, `rt_status`.
+- **DoD:** padrão.
+
+#### S7.T09 — Unificar constante `PAGE_2M` / `HUGE_PAGE_2M` duplicada
+
+- **Problema:** `2 * 1024 * 1024` (2 MB) definido em dois locais:
+  - `src/math/common/huge_alloc.rs:57`: `const PAGE_2M: usize = 2 * 1024 * 1024;`
+  - `src/dsp/mirror_buf/alloc.rs:51`: `const HUGE_PAGE_2M: usize = 2 * 1024 * 1024;`
+- **Ação:**
+  - Criar `pub const HUGE_PAGE_2M: usize = 2 * 1024 * 1024;` em
+    `src/math/common/huge_alloc.rs` (ou em `src/common/` se preferir
+    infraestrutura compartilhada).
+  - Em `mirror_buf/alloc.rs`: remover definição local, importar de
+    `crate::math::common::huge_alloc::HUGE_PAGE_2M`.
+- **RT-Safety:** constante de compilação. Sem impacto.
+- **DoD:** padrão.
+
+#### S7.T10 — Unificar estratégia de huge-page allocation entre `huge_alloc.rs` e `mirror_buf/alloc.rs`
+
+- **Problema:** ambos implementam a mesma estratégia de 3 níveis de fallback
+  para alocação de huge pages (MAP_HUGETLB → THP via `madvise` → fallback
+  padrão), com ~80% de similaridade estrutural.
+  - `src/math/common/huge_alloc.rs:73-149` — `allocate_huge_pages()`.
+  - `src/dsp/mirror_buf/alloc.rs:20-291` — `MirroredBuffer::new()` +
+    `try_new_huge()`.
+- **Ação (opção conservadora — recomendada):**
+  - Extrair `fn create_backing_fd(size: usize, use_huge: bool) -> RawFd` e
+    `fn try_mmap_huge(addr, len, fd, offset, use_huge) -> *mut c_void` como
+    helpers em `src/math/common/huge_alloc.rs` (torná-los `pub(crate)`).
+  - Em `mirror_buf/alloc.rs`: substituir blocos inline de `memfd_create`,
+    `fcntl(F_ADD_SEALS)`, `ftruncate`, e `mmap(MAP_HUGETLB)` por chamadas
+    aos helpers compartilhados.
+  - **Não** unificar a lógica de mirroring (duplo `mmap(MAP_FIXED)`) — é
+    específica do `MirroredBuffer` e diferente do `HugePageVec`.
+- **RT-Safety:** ambos os arquivos são cold-path (alocação, nunca na thread de
+  áudio). `mmap`/`munmap` OK.
+- **Risco:** MÉDIO — manipulação de `unsafe` mmap. Validar com testes de
+  `mirror_buf` e `huge_alloc` existentes.
+- **DoD:** padrão + testes de integridade de huge pages (se disponíveis no CI).
