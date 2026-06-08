@@ -18,7 +18,8 @@
 //! | `conv1d`      | Static causal 1D convolution (`Conv1d`) + `ConvInput` trait             |
 //! | `conv1d_dyn`  | Dynamic causal 1D convolution (`Conv1dDyn`)                             |
 //! | `dense`       | Static 1x1 dense layer (`DenseLayer`)                                   |
-//! | `model`       | Complete static model (`WaveNetModel`, `WaveNetLayerArray`)             |
+//! | `layer_array` | Static WaveNet layer array (`WaveNetLayerArray`)                        |
+//! | `model`       | Complete static model (`WaveNetModel`)                                  |
 //! | `model_dyn`   | Dynamic model with runtime dimensions (`WaveNetDynModel`)               |
 
 pub mod common;
@@ -35,9 +36,11 @@ pub mod dense;
 pub mod dense_dyn;
 /// Static WaveNet layer (`WaveNetLayer`).
 pub mod layer;
+/// Static WaveNet layer array (`WaveNetLayerArray`).
+pub mod layer_array;
 /// Dynamic WaveNet layer (`WaveNetLayerDyn`).
 pub mod layer_dyn;
-/// Static model (`WaveNetModel`, `WaveNetLayerArray`).
+/// Static model (`WaveNetModel`).
 pub mod model;
 pub mod model_dyn;
 
@@ -120,8 +123,9 @@ pub use conv1d_dyn::Conv1dDyn;
 pub use dense::DenseLayer;
 pub use dense_dyn::DenseLayerDyn;
 pub use layer::WaveNetLayer;
+pub use layer_array::WaveNetLayerArray;
 pub use layer_dyn::WaveNetLayerDyn;
-pub use model::{WaveNetLayerArray, WaveNetModel};
+pub use model::WaveNetModel;
 pub use model_dyn::{WaveNetDynModel, WaveNetLayerArrayDyn};
 
 #[cfg(test)]

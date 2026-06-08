@@ -1019,7 +1019,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   - `scalar_minimax_sigmoid` tornado `pub` em `layer_kernels.rs` (acessível
     via `crate::models::lstm::layer_kernels::scalar_minimax_sigmoid`).
 
-#### S6.T10 — `src/models/wavenet/model.rs` (397 LOC): split de `WaveNetLayerArray` + `WaveNetModel`
+#### S6.T10 — `src/models/wavenet/model.rs` (397 LOC): split de `WaveNetLayerArray` + `WaveNetModel` [DONE]
 
 - **Problema:** `WaveNetLayerArray` + `WaveNetModel` (métodos `process`,
   `prewarm`, `prewarm_avx512`, `prewarm_avx2`, `new`, `layer_count`, etc.)
