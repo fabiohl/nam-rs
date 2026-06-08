@@ -946,7 +946,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   `AtomicBool::compare_exchange` one-shot para warning e `Relaxed` em `heap_audit`.
 - **DoD:** padrão.
 
-#### S6.T07 — Extrair boilerplate de prewarm de `src/models/lstm/mod.rs` (202 LOC → ~162 LOC)
+#### S6.T07 — Extrair boilerplate de prewarm de `src/models/lstm/mod.rs` (202 LOC → ~162 LOC) [DONE]
 
 - **Problema:** `LstmLike` trait + 2 impls + `lstm_prewarm_common` fn (~40 linhas)
   representam lógica de prewarm que pode ser isolada.
