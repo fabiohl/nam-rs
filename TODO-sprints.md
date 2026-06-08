@@ -327,7 +327,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `src/math/common/aligned.rs` e re-exportado via `src/math/common/mod.rs`.
 - **LOC final:** `layer.rs` ~371 LOC (antes: 426).
 
-#### S2.T05 — Dividir `src/models/mod.rs` (331 LOC)
+#### S2.T05 — Dividir `src/models/mod.rs` (331 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `mod.rs` (mantém) ← decls de módulo, `sealed`, trait `NamModel`, enum
