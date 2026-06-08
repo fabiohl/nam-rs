@@ -379,7 +379,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ---
 
-## ÉPICO 3 — Subsistema CLAP (`src/clap/`)
+## ÉPICO 3 — Subsistema CLAP (`src/clap/`) (CONCLUÍDO ✅)
 
 > ⚠️ `processor/dsp.rs` e `processor/mod.rs` contêm o **hot-path de áudio do
 > plugin**. Os demais (`gui/`, `plugin/main_thread.rs`) rodam na thread de UI/
@@ -411,6 +411,11 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   (`ui_peak_l/r`, `current_latency`, `rt_status`) e locks de UI
   (`ui_model_name`, etc.). **Não** mover nada disto para o processor.
 - **DoD:** padrão.
+- ✅ **Auditoria (ÉPICO 3):** `focus.rs` implementado em `gui/ui/focus.rs` (não
+  `gui/ui/zones/focus.rs`) — correto, pois é cross-cutting concern operando sobre
+  todas as 4 zonas. `knob_widget` removido. `#[allow(unused_imports)]` mantido
+  sobre `use self::bypass::handle_bypass` em `mod.rs:40-41` (necessário para o
+  `test.rs` acessar via `use super::*`).
 
 #### S3.T02 — Dividir `src/clap/gui/window/mod.rs` (515 LOC) (CONCLUÍDO ✅)
 
@@ -424,6 +429,11 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   cada deref de `*self.shared.0`** (L162–167, L194, L215–223); manter
   pareamento `make_current`/`make_not_current` apesar dos early-returns.
 - **DoD:** padrão.
+- ✅ **Auditoria (ÉPICO 3):** Decomposição real difere da planejada — adotou
+  `handler.rs` (on_frame + on_event), `drag_drop.rs` (get_valid_model_file),
+  `shaders.rs`, `input_map.rs` e `mod.rs` (struct + lifecycle + Drop).
+  Funcionalmente equivalente. `alive_fence` via `safe_shared()` OK; pareamento
+  `make_current`/`make_not_current` preservado em todos os early-returns.
 
 #### S3.T03 — Dividir `src/clap/gui/ui/meter.rs` (358 LOC) por backend de render (CONCLUÍDO ✅)
 
@@ -513,6 +523,12 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   reconcilia quando a geração difere". `write_gui_events` usa `try_push`
   (bounded) — manter (nunca `push`/alloc).
 - **DoD:** padrão.
+- ✅ **Auditoria (ÉPICO 3):** Arquivos implementados como `main.rs`,
+  `audio.rs` e `mod.rs` (nomes simplificados vs `main_thread.rs`/
+  `audio_thread.rs` planejados). `info.rs` opcional não criado — tabela
+  `get_info` reside em `main.rs:25-103`. RT-Safety preservada: `Acquire` no
+  generation-guard pareado com `Release` das writes GUI; gate de geração
+  funcional; `try_push` mantido.
 
 #### S3.T08 — Dividir `src/clap/plugin/main_thread.rs` (371 LOC)(CONCLUÍDO ✅)
 
@@ -531,7 +547,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   aproximar `load_and_build_model`/`NamResampler::new` do RT.
 - **DoD:** padrão.
 
-#### S3.T09 — `src/clap/plugin/shared.rs` (336 LOC): COESO (sem split) + verificação
+#### S3.T09 — `src/clap/plugin/shared.rs` (336 LOC): COESO (sem split) + verificação (CONCLUÍDO ✅)
 
 - **Ação:** **não dividir** — módulo de definição de estado compartilhado, bem
   seccionado. Já conforme em testes (S0.T05). Verificar apenas.
@@ -540,6 +556,14 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `write_gui_events` só `Relaxed` + `try_push`; `Mutex` de `ColdShared` apenas em
   cold-path; `Drop` seta `alive_fence=false` (ordem preservada).
 - **DoD:** `lints.sh` + `tests-cargo.sh` verdes.
+
+✅ **Auditoria ÉPICO 3 (2026-06-08):** Todas as 9 tasks verificadas. RT-safety
+preservada em todos os hot-paths (`#[inline(always)]`, `Relaxed`/`Acquire`,
+`try_push`, `alive_fence`, `make_current`/`make_not_current`). Três desvios
+documentados nos respectivos tasks: S3.T01 (posição de `focus.rs` + `allow`
+mantido sobre `handle_bypass`), S3.T02 (decomposição real diferente da planejada,
+funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
+`main.rs`). Nenhum dead code novo. Testes e lints verdes.
 
 ---
 
@@ -550,7 +574,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ### Sprint 4.A — Common & Diagnostics
 
-#### S4.T01 — Dividir `src/common/diagnostics/diagnostic.rs` (670 LOC)
+#### S4.T01 — Dividir `src/common/diagnostics/diagnostic.rs` (670 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `diagnostic.rs` (mantém) ← `NamDiagnostic` + `Display` + `Error` + `emit*`

@@ -14,13 +14,18 @@
 //! non-RT threads (CLI, PipeWire main loop). The `process()` callback
 //! continues using atomic flags (`RtStatusFlags`) for silent signaling.
 
+pub mod bundle;
 pub mod diagnostic;
 pub mod error_codes;
+pub mod format;
+pub mod snapshot;
 pub mod system_info;
-pub use diagnostic::{
-    ACTIVE_MODEL_INFO, ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, AudioInfo, DiagnosticBundle,
-    ErrorContext, HasRuntimeSnapshot, ModelInfo, NamDiagnostic, RtInfo, RuntimeSnapshot,
-    TelemetrySnapshot,
-};
+
+pub use bundle::{DiagnosticBundle, ErrorContext};
+pub use diagnostic::NamDiagnostic;
 pub use error_codes::NamErrorCode;
+pub use snapshot::{
+    ACTIVE_MODEL_INFO, ACTIVE_MODEL_NAME, ACTIVE_SAMPLE_RATE, AudioInfo, HasRuntimeSnapshot,
+    ModelInfo, RtInfo, RuntimeSnapshot, TelemetrySnapshot,
+};
 pub use system_info::SystemSnapshot;
