@@ -802,17 +802,28 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   `tanh.rs` refs piecewise/`_div_` (L18–22/L224); `diagnostic.rs` L388.
 - **DoD:** verdes; diff só comentários.
 
-#### S5.T03 — Auditoria e gating/remoção de dead code (executar com CUIDADO)
+#### S5.T03 — Auditoria e gating/remoção de dead code (CONCLUÍDO ✅)
 
-- Remover (após `grep` global confirmando 0 chamadores, incluindo `benches/` e
-  `tests/`): `DenseLayerDyn::process_acc_block`, `DenseLayerDyn::process_fused`.
-- Aplicar `#[cfg(test)]` (não remover) às APIs test-only: `Conv1dDyn::
-  process_block`/`_bf16`; cadeia test-only de `Conv1d` (`process_block` +
-  `process_single_frame` no-mixin + `_internal`); `scalar_minimax_sigmoid`.
-- Investigar (sem remover) campos `mod_input_gain`/`mod_output_gain`
-  (`processor/mod.rs` + `dsp.rs`) — possível feature incompleta; registrar
-  decisão.
-- **DoD:** verdes; cada remoção/gating acompanhada da evidência de `grep`.
+- **`DenseLayerDyn::process_acc_block` / `process_fused` — já removidos em S2.T01.** `dense_dyn.rs` (97 LOC) não contém esses métodos.
+- **`Conv1dDyn::process_block` / `process_block_bf16` — já gatilhados com `#[cfg(test)]` em S2.T02.**
+  `conv1d_dyn.rs:142` e `:167`.
+- **Cadeia test-only de `Conv1d` — já gatiada em S2.T06.**
+  `process_single_frame` (no-mixin) em `conv1d.rs:41` e `process_block` em
+  `:299` com `#[cfg(test)]`. `process_single_frame_internal` não pode ser
+  gatiado (usado por `process_single_frame_with_mixin` em produção).
+- **`scalar_minimax_sigmoid` — NÃO gatiado (usado por benchmarks).**
+  Confirmado: `benches/inference_bench.rs` (4 call sites via
+  `process_sample_scalar`), `tests/lstm_scalar_bf16_parity.rs` (3),
+  `src/models/lstm/tests.rs` (1). Mesma decisão de S2.T04. `#[cfg(test)]`
+  quebraria benchmarks.
+- **`mod_input_gain` / `mod_output_gain` — NÃO é dead code.**
+  Confirmado em S3.T06: consumidos ativamente por `processor/events.rs` para
+  modulação CLAP de parâmetros.
+- **Remoção adicional: `DenseLayer<IN,OUT>::process_fused`,
+  `process_acc_single_frame`, `process_fused_block`, `process_acc_block`
+  (aliases mortos).** 0 chamadores confirmados via `grep` em `src/` +
+  `benches/` + `tests/`. Removidos de `dense.rs` (204→139 LOC).
+- **DoD:** `lints.sh` verde; `tests-cargo.sh` verde (568 pass, 0 fail).
 
 ---
 

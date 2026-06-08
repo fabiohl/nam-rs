@@ -21,35 +21,9 @@ pub struct DenseLayer<const IN: usize, const OUT: usize> {
 }
 
 impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
-    /// Fused Processing:
-    /// Multiplies, applies bias, and sums to the result, all in a single mathematical step.
-    /// This is the most efficient way to process a single audio frame.
-    ///
-    /// # Safety
-    /// The caller must guarantee that `in_frame` and `out_frame` have sizes compatible with `IN` and `OUT`.
-    #[inline(always)]
-    pub unsafe fn process_fused<M: SimdMath>(&self, in_frame: &[f32], out_frame: &mut [f32]) {
-        unsafe {
-            M::fused_add_gemv(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
-        }
-    }
-
-    /// Alias for `process_fused`.
-    ///
-    /// # Safety
-    /// Depends on buffer validity and the `SimdMath` trait.
-    #[inline(always)]
-    pub unsafe fn process_acc_single_frame<M: SimdMath>(
-        &self,
-        in_frame: &[f32],
-        out_frame: &mut [f32],
-    ) {
-        unsafe { self.process_fused::<M>(in_frame, out_frame) }
-    }
-
-    /// 'Clean' Processing (Overwrite):
-    /// Similar to fused, but replaces what's in the output buffer
-    /// instead of adding to the existing value.
+    /// Overwrite Processing (single-frame):
+    /// Multiplies and applies bias, replacing the output buffer content
+    /// instead of accumulating into the existing value.
     ///
     /// # Safety
     /// The caller must guarantee that `in_frame` and `out_frame` have sizes compatible with `IN` and `OUT`.
@@ -62,45 +36,6 @@ impl<const IN: usize, const OUT: usize> DenseLayer<IN, OUT> {
         unsafe {
             M::gemv_overwrite(in_frame, &self.weights, &self.bias, out_frame, self.do_bias);
         }
-    }
-
-    /// Fused Block Processing:
-    /// Optimized version to process multiple samples (batches) at once,
-    /// gaining significant speed on modern processors.
-    ///
-    /// # Safety
-    /// The caller must guarantee that `input` and `output` have sizes compatible with `IN`, `OUT`, and `num_frames`.
-    #[inline(always)]
-    pub unsafe fn process_fused_block<M: SimdMath>(
-        &self,
-        input: &[f32],
-        output: &mut [f32],
-        num_frames: usize,
-    ) {
-        unsafe {
-            M::fused_add_gemm_batch(
-                input,
-                &self.weights,
-                &self.bias,
-                output,
-                num_frames,
-                self.do_bias,
-            );
-        }
-    }
-
-    /// Alias for `process_fused_block`.
-    ///
-    /// # Safety
-    /// Depends on buffer validity and the `SimdMath` trait.
-    #[inline(always)]
-    pub unsafe fn process_acc_block<M: SimdMath>(
-        &self,
-        input: &[f32],
-        output: &mut [f32],
-        num_frames: usize,
-    ) {
-        unsafe { self.process_fused_block::<M>(input, output, num_frames) }
     }
 
     /// Residual Sum (The Final 'Shortcut'):
