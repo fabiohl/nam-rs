@@ -6,6 +6,24 @@
 //! Monitors DSP block latency and gracefully reduces model complexity
 //! when CPU pressure is detected, preventing audible xruns.
 //!
+//! ## Cohesion justification (S6.T12)
+//!
+//! This file is intentionally kept as a single module (not split) because:
+//!
+//! - `AdaptiveState` and `CrossfadePhase` are internal implementation details of
+//!   the hysteresis FSM — exposing them in separate modules would break
+//!   encapsulation of the adaptive compute unit.
+//! - `AdaptiveComputeMode` is the sole user-facing configuration type driving the
+//!   FSM behavior; it has zero consumers outside the adaptive degradation pipeline.
+//! - All threshold constants (`THRESHOLD_*`, `DEGRADE_CONSECUTIVE`,
+//!   `RECOVER_CONSECUTIVE`, `CROSSFADE_DURATION_MS`) are private and tightly
+//!   coupled to `AdaptiveCompute::update()`.
+//! - The entire module forms a single algorithmic unit (hysteresis FSM +
+//!   crossfade + layer reduction) with no independent consumers for any
+//!   sub-component.
+//! - Splitting would create artificial module boundaries that increase cognitive
+//!   overhead without enabling reuse, test isolation, or independent compilation.
+//!
 //! ## Hysteresis FSM
 //!
 //! - **Full → Reduced**: 3 consecutive blocks with `latency > 0.70 * budget` (Conservative)

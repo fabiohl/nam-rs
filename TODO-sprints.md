@@ -1053,7 +1053,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   indireto via `prefetch_fn`; `debug_assert!` apenas.
 - **DoD:** padrão.
 
-#### S6.T12 — `src/dsp/adaptive.rs` (329 LOC): split ou justificativa de coesão
+#### S6.T12 — `src/dsp/adaptive.rs` (329 LOC): split ou justificativa de coesão [DONE]
 
 - **Problema:** `AdaptiveCompute` (estado + lógica de adaptação de qualidade +
   timeslicer + métricas). S0.T01 extraiu testes (647→329), mas permanece > 300
