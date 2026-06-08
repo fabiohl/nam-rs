@@ -190,7 +190,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 - **DoD:** padrão. (Macro p/ deduplicar os 5 literais de config é *fora de
   escopo* — apenas anotar como oportunidade.)
 
-#### S1.T08 — `src/math/activations/tanh.rs` (325 LOC): split leve produção×referência
+#### S1.T08 — `src/math/activations/tanh.rs` (325 LOC): split leve produção×referência (CONCLUÍDO ✅)
 
 - **Split:** criar `tanh/`:
   - `tanh/production.rs` ← `simd_tanh_avx2`, `simd_tanh_dual_avx2`,
