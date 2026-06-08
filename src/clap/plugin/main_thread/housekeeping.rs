@@ -1,0 +1,96 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Main thread housekeeping: GC drain, status-flags sync, pending model load, latency.
+
+use super::NamClapMainThread;
+use super::load::error_code_to_str;
+use crate::common::spsc::drain_gc_channels;
+use clack_extensions::log::{HostLog, LogSeverity};
+use std::ffi::CString;
+use std::sync::atomic::Ordering;
+
+impl<'a> NamClapMainThread<'a> {
+    /// GC drain, status flag mirroring, hugepage sync, pending model load, latency notification.
+    pub(crate) fn housekeeping(&mut self) {
+        // Drain obsolete models to free memory outside RT.
+        let drained = drain_gc_channels(&mut self.gc_rx, &self.shared.cold.gc_overflow);
+        self.shared
+            .cold
+            .rt_status
+            .drains
+            .fetch_add(drained as u32, Ordering::Relaxed);
+
+        let current_bits = self
+            .shared
+            .cold
+            .rt_status
+            .status_bits
+            .load(Ordering::Relaxed);
+        self.shared
+            .cold
+            .rt_status
+            .flags_seen
+            .fetch_or(current_bits, Ordering::Relaxed);
+
+        // Sync huge page status from mirror buffer (one-shot).
+        {
+            use std::sync::atomic::{AtomicBool, Ordering};
+            static HUGEPAGE_SYNCED: AtomicBool = AtomicBool::new(false);
+            if !HUGEPAGE_SYNCED.load(Ordering::Relaxed) {
+                crate::dsp::mirror_buf::sync_huge_page_flag(&self.shared.cold.rt_status);
+                HUGEPAGE_SYNCED.store(true, Ordering::Relaxed);
+            }
+        }
+
+        // Check if there is a pending model sent by the UI
+        let pending_model = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_model.lock()
+        {
+            pending_guard.take()
+        } else {
+            None
+        };
+        if let Some(path) = pending_model {
+            let res = self.load_model(&path);
+            self.shared.cold.ui_loading.store(false, Ordering::Relaxed);
+            match res {
+                Ok(_) => {}
+                Err(e) => {
+                    let err_msg = error_code_to_str(e.error_code());
+                    if let Ok(mut msg_guard) = self.shared.cold.ui_load_error_msg.lock() {
+                        *msg_guard = err_msg.to_string();
+                    }
+                    self.shared
+                        .cold
+                        .ui_load_error
+                        .store(true, Ordering::Relaxed);
+
+                    if let Some(log) = self.host.get_extension::<HostLog>() {
+                        let shared = self.host.shared();
+                        let err_str = format!("NAM-rs: Failed to load model from GUI: {:?}", e);
+                        let sanitized_err = err_str.replace('\0', " ");
+                        let msg = CString::new(sanitized_err).unwrap_or_else(|_| {
+                            CString::new(
+                                "NAM-rs: Failed to load model from GUI due to invalid characters",
+                            )
+                            .unwrap_or_default()
+                        });
+                        log.log(&shared, LogSeverity::Error, &msg);
+                    }
+                }
+            }
+        }
+
+        // Latency Monitoring: Notify the host if the value changed
+        let current_latency = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
+        if current_latency != self.last_reported_latency {
+            self.last_reported_latency = current_latency;
+            if let Some(latency_ext) = self
+                .host
+                .get_extension::<clack_extensions::latency::HostLatency>()
+            {
+                latency_ext.changed(&mut self.host);
+            }
+        }
+    }
+}

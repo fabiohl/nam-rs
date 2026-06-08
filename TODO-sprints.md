@@ -514,7 +514,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   (bounded) — manter (nunca `push`/alloc).
 - **DoD:** padrão.
 
-#### S3.T08 — Dividir `src/clap/plugin/main_thread.rs` (371 LOC)
+#### S3.T08 — Dividir `src/clap/plugin/main_thread.rs` (371 LOC)(CONCLUÍDO ✅)
 
 - **Split:** criar `plugin/main_thread/`:
   - `main_thread/mod.rs` ← `struct NamClapMainThread` + shell do

@@ -1,0 +1,180 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Model loading (main thread only) and error-code mapping.
+
+use super::super::shared::{ClapParamPayload, NamModelMetadata};
+use super::NamClapMainThread;
+use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
+use crate::dsp::resampler::NamResampler;
+use crate::loader::load_and_build_model;
+use clack_extensions::log::{HostLog, LogSeverity};
+use std::path::Path;
+use std::sync::atomic::Ordering;
+
+/// Maps an internal `NamErrorCode` to a human-readable string for the GUI.
+pub(crate) fn error_code_to_str(code: NamErrorCode) -> &'static str {
+    match code {
+        NamErrorCode::FileNotFound => "File not found",
+        NamErrorCode::FileReadError => "File read error",
+        NamErrorCode::UnknownExtension => "Unknown extension",
+        NamErrorCode::NamJsonParseError => "Invalid JSON format",
+        NamErrorCode::NambCrc32Mismatch => "CRC32 checksum mismatch",
+        NamErrorCode::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
+        NamErrorCode::NambInvalidMagic => "Invalid signature",
+        NamErrorCode::NambUnsupportedVersion => "Unsupported version",
+        NamErrorCode::NambTruncated => "Corrupted/truncated file",
+        NamErrorCode::UnsupportedArchitecture => "Unsupported architecture",
+        NamErrorCode::TopologyDetectionFailed => "Topology detection failed",
+        NamErrorCode::WeightCountMismatch => "Weight count mismatch",
+        NamErrorCode::ModelBuildFailed => "Model build failed",
+        NamErrorCode::ModelTooLarge => "Model file too large",
+        _ => "Internal error",
+    }
+}
+
+impl<'a> NamClapMainThread<'a> {
+    /// Loads a new neural model from the specified path.
+    ///
+    /// This method performs I/O and memory allocations, being safe to execute
+    /// only on the main thread. The loaded model is sent to the RT thread
+    /// via a lock-free channel.
+    pub fn load_model(&mut self, path: &Path) -> Result<(), Box<NamDiagnostic>> {
+        let model_pair = load_and_build_model(path, &self.sys).map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
+                    .message(format!("Failed to load model: {:?}", path))
+                    .param("error", e.to_string()),
+            )
+        })?;
+
+        let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
+        let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+        let new_resampler = Box::new(
+            NamResampler::new(host_rate, model_pair.sample_rate, 0).map_err(|e| {
+                Box::new(
+                    NamDiagnostic::new(NamErrorCode::ModelBuildFailed, &self.sys)
+                        .message("Failed to build resampler")
+                        .param("error", e.to_string()),
+                )
+            })?,
+        );
+
+        self.params.model_path = Some(path.to_path_buf());
+        self.params.model_basename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        if let Some(parent) = path.parent() {
+            let parent_buf = parent.to_path_buf();
+            if !self.params.model_search_paths.contains(&parent_buf) {
+                self.params.model_search_paths.push(parent_buf);
+            }
+        }
+
+        let metadata = model_pair.metadata.clone();
+        let architecture = model_pair.architecture.clone();
+        let topology = model_pair.topology.clone();
+        if let Ok(mut meta_guard) = self.shared.cold.ui_model_metadata.lock() {
+            *meta_guard = Some(NamModelMetadata {
+                architecture,
+                topology,
+                modeled_by: metadata.as_ref().and_then(|m| m.modeled_by.clone()),
+                gear_make: metadata.as_ref().and_then(|m| m.gear_make.clone()),
+                gear_model: metadata.as_ref().and_then(|m| m.gear_model.clone()),
+                gear_type: metadata.as_ref().and_then(|m| m.gear_type.clone()),
+                tone_type: metadata.as_ref().and_then(|m| m.tone_type.clone()),
+                date: metadata
+                    .as_ref()
+                    .and_then(|m| m.date.as_ref())
+                    .map(|d| match (d.year, d.month, d.day) {
+                        (Some(y), Some(m), Some(d)) => format!("{:04}-{:02}-{:02}", y, m, d),
+                        (Some(y), Some(m), None) => format!("{:04}-{:02}", y, m),
+                        (Some(y), None, None) => format!("{:04}", y),
+                        _ => String::new(),
+                    })
+                    .filter(|s| !s.is_empty()),
+            });
+        }
+
+        let model_info = crate::common::diagnostics::ModelInfo {
+            arch_label: model_pair.architecture.clone(),
+            channels: model_pair
+                .model_l
+                .as_ref()
+                .map(|m| m.channels())
+                .unwrap_or(0),
+            receptive_field: model_pair
+                .model_l
+                .as_ref()
+                .map(|m| m.receptive_field())
+                .unwrap_or(0),
+            weights_layout: model_pair.weights_layout.clone(),
+            path_basename: path.to_string_lossy().into_owned(),
+        };
+        if let Ok(mut info_guard) = self.shared.cold.ui_model_info.lock() {
+            *info_guard = Some(model_info);
+        }
+
+        self.shared
+            .cold
+            .model_sample_rate
+            .store(model_pair.sample_rate, Ordering::Relaxed);
+
+        let model_l = model_pair.model_l;
+        let model_r = model_pair.model_r;
+
+        self.param_tx
+            .push(ClapParamPayload::LoadModel {
+                model_l,
+                model_r,
+                new_resampler,
+            })
+            .map_err(|_| {
+                Box::new(
+                    NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)
+                        .message("The communication channel with the audio thread is full.")
+                        .hint("Please try loading the model again in a few moments."),
+                )
+            })?;
+
+        let basename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string();
+        if let Ok(mut name_guard) = self.shared.cold.ui_model_name.lock() {
+            *name_guard = basename;
+        }
+        self.shared
+            .cold
+            .model_load_counter
+            .fetch_add(1, Ordering::Relaxed);
+
+        if let Some(params_ext) = self
+            .host
+            .get_extension::<clack_extensions::params::HostParams>()
+        {
+            params_ext.rescan(
+                &mut self.host,
+                clack_extensions::params::ParamRescanFlags::VALUES,
+            );
+        }
+
+        if let Some(log) = self.host.get_extension::<HostLog>() {
+            let msg = format!("NAM-rs: model loaded ({:?})", path);
+            if let Ok(c_msg) = std::ffi::CString::new(msg) {
+                log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
+            }
+        }
+
+        if let Some(mut state_ext) = self
+            .host
+            .get_extension::<clack_extensions::state::HostState>()
+        {
+            state_ext.mark_dirty(&self.host);
+        }
+
+        Ok(())
+    }
+}
