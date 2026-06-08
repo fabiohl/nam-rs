@@ -5,6 +5,7 @@
 //! resampling, output gain, peaks, and telemetry.
 
 mod bypass;
+mod channels;
 mod gain;
 mod gate_flags;
 mod peaks;
@@ -39,59 +40,17 @@ impl<'a> NamClapProcessor<'a> {
                 continue;
             }
 
-            let Some(channel_pairs) = port_pair.channels()?.into_f32() else {
+            let Some((mut out_l, mut out_r)) = channels::extract_channels(
+                &mut port_pair,
+                &mut self.buf_host_l,
+                &mut self.buf_host_r,
+                &self.shared.rt_to_ui.active_channel_count,
+                &mut self.process_mono,
+                n_samples,
+            )?
+            else {
                 continue;
             };
-
-            let mut channel_iter = channel_pairs.into_iter();
-            let pair_l = channel_iter.next();
-            let pair_r = channel_iter.next();
-
-            self.shared
-                .rt_to_ui
-                .active_channel_count
-                .store(1, Ordering::Relaxed);
-            self.process_mono = true;
-
-            let mut out_l: Option<&mut [f32]> = None;
-            let mut out_r: Option<&mut [f32]> = None;
-
-            if let Some(pair) = pair_l {
-                match pair {
-                    ChannelPair::InputOutput(i, o) => {
-                        self.buf_host_l[..n_samples].copy_from_slice(&i[..n_samples]);
-                        out_l = Some(o);
-                    }
-                    ChannelPair::InPlace(io) => {
-                        self.buf_host_l[..n_samples].copy_from_slice(&io[..n_samples]);
-                        out_l = Some(io);
-                    }
-                    ChannelPair::InputOnly(i) => {
-                        self.buf_host_l[..n_samples].copy_from_slice(&i[..n_samples]);
-                    }
-                    ChannelPair::OutputOnly(o) => {
-                        self.buf_host_l[..n_samples].fill(0.0);
-                        out_l = Some(o);
-                    }
-                }
-            } else {
-                self.buf_host_l[..n_samples].fill(0.0);
-            }
-
-            #[cfg(feature = "stereo")]
-            self.buf_host_r[..n_samples].copy_from_slice(&self.buf_host_l[..n_samples]);
-
-            if let Some(pair) = pair_r {
-                match pair {
-                    ChannelPair::InputOutput(_, o) | ChannelPair::OutputOnly(o) => {
-                        out_r = Some(o);
-                    }
-                    ChannelPair::InPlace(io) => {
-                        out_r = Some(io);
-                    }
-                    ChannelPair::InputOnly(_) => {}
-                }
-            }
 
             self.apply_input_gain(n_samples);
 

@@ -963,7 +963,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   `process` subjacente.
 - **DoD:** padrão.
 
-#### S6.T08 — Extrair channel extraction de `src/clap/processor/dsp/mod.rs` (212 LOC → ~163 LOC)
+#### S6.T08 — Extrair channel extraction de `src/clap/processor/dsp/mod.rs` (212 LOC → ~163 LOC) [DONE]
 
 - **Problema:** `process_dsp_audio` (190 linhas) contém lógica de extração de
   canais (L46–94, ~49 linhas) com matching complexo de `AudioBufferType` que é
