@@ -452,7 +452,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ### Sprint 3.B — Processor (hot-path) e Plugin
 
-#### S3.T05 — Dividir `src/clap/processor/dsp.rs` (540 LOC) — HOT-PATH
+#### S3.T05 — Dividir `src/clap/processor/dsp.rs` (540 LOC) — HOT-PATH(CONCLUÍDO ✅)
 
 - **Problema:** `process_dsp_audio` é uma única fn gigante (L17–539) com forte
   duplicação `#[cfg(feature="stereo")]` / `not(stereo)`.
