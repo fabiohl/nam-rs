@@ -3,13 +3,13 @@
 
 //! Processor state (struct definition).
 
-use crate::clap::param_smoother::ParamSmoother;
 use crate::clap::plugin::{ClapParamPayload, NamClapShared};
 use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::DynamicHysteresis;
 use crate::dsp::resampler::NamResampler;
+use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
 use crate::models::DynamicModel;
 use clack_plugin::prelude::*;

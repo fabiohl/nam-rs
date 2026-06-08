@@ -16,13 +16,13 @@ mod state;
 
 pub(crate) use state::NamClapProcessor;
 
-use crate::clap::param_smoother::ParamSmoother;
 use crate::clap::plugin::{NamClapMainThread, NamClapShared};
 use crate::common::params::RtPluginParams;
 use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::DynamicHysteresis;
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
+use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
 use clack_plugin::prelude::*;
 use minstant::Instant;

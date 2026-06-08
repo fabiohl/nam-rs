@@ -11,7 +11,7 @@ pub mod extensions;
 pub mod factory;
 #[cfg(feature = "heap-audit")]
 pub mod heap_audit;
-pub mod param_smoother;
+
 pub mod plugin;
 pub mod processor;
 

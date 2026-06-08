@@ -1201,7 +1201,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 > Arquivos cujo propósito é geral, mas residem em diretório específico de
 > subsistema, ou vice-versa.
 
-#### S6.T19 — Mover `src/clap/param_smoother.rs` → `src/dsp/smoother.rs`
+#### S6.T19 — Mover `src/clap/param_smoother.rs` → `src/dsp/smoother.rs` [DONE]
 
 - **Problema:** `ParamSmoother` é um filtro IIR de 1-polo para suavização de
   parâmetros de áudio (ganho, gate threshold). É utilitário DSP genérico, não
