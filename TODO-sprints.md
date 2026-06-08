@@ -697,7 +697,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** ferramenta offline (nunca RT).
 - **DoD:** padrão.
 
-#### S4.T09 — Dividir `src/loader/dispatcher/lstm.rs` (328 LOC)
+#### S4.T09 — Dividir `src/loader/dispatcher/lstm.rs` (328 LOC) (CONCLUÍDO ✅)
 
 - **Split:** criar `dispatcher/lstm/`:
   - `lstm/dispatch.rs` ← `build_lstm` (tabela de match de topologia).
