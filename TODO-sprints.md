@@ -1242,7 +1242,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ### Sprint 6.E — Constantes e limpezas pontuais
 
-#### S6.T21 — Corrigir nome ambíguo `src/dsp/pipeline/playback.rs`
+#### S6.T21 — Corrigir nome ambíguo `src/dsp/pipeline/playback.rs` [DONE]
 
 - **Problema:** o arquivo `playback.rs` em `dsp/pipeline/` contém lógica de
   saída PipeWire (`PipewireHostConfig`, `AppState`) e é gated com

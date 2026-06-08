@@ -16,7 +16,7 @@ mod capture;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 mod context;
 #[cfg(feature = "standalone")]
-mod playback;
+mod output_pw;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 mod stages;
 
@@ -45,11 +45,11 @@ pub use stages::{DISABLE_GATE, handle_silence_bypass};
 pub use capture::capture_dsp_pipeline;
 
 #[cfg(feature = "standalone")]
-pub(crate) use playback::AppState;
+pub(crate) use output_pw::AppState;
 #[cfg(feature = "standalone")]
-pub use playback::PipewireHostConfig;
+pub use output_pw::PipewireHostConfig;
 #[cfg(feature = "standalone")]
-pub(crate) use playback::{build_spa_format_pod, playback_dsp_cycle};
+pub(crate) use output_pw::{build_spa_format_pod, playback_dsp_cycle};
 
 #[cfg(test)]
 pub(crate) mod test_util;
