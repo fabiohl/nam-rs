@@ -253,6 +253,21 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 > `WaveNetModel` etc. com os mesmos caminhos). Padrão de testes já é compliant
 > (`#[path="tests.rs"]`).
 
+> **Nota de auditoria (2026-06-07):** Épico auditado. Lints + testes verdes. Splits
+> estruturais executados conforme plano. Dead code removido (S2.T01), test-only
+> gating aplicado (S2.T02, S2.T06), Aligned64 migrado para `math/common/` (S2.T04).
+> **LOC residual acima do limiar de 300 em 4 arquivos — sem justificativa de coesão
+> registrada:**
+>
+> - `conv1d_dyn_kernels.rs` = 336 (S2.T02)
+> - `model.rs` = 397 (S2.T03)
+> - `layer.rs` (lstm) = 399 (S2.T04)
+> - `conv1d.rs` = 320 (S2.T06 — split opcional, coesão implícita)
+>
+> Recomendação: adicionar justificativa de coesão (inline doc) nesses arquivos,
+> similar ao padrão de `conv1d_dual.rs` (S2.T07), ou registrar como risco aceito.
+> Não bloqueia os épicos seguintes.
+
 ### S2.T01 — Dividir `src/models/wavenet/model_dyn.rs` (626 LOC) (CONCLUÍDO ✅)
 
 - **Split** (espelha o lado estático que já tem `dense.rs`/`model.rs`):
