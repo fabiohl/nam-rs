@@ -252,7 +252,6 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 > Re-exportar via `wavenet/mod.rs` (mantém `Conv1d`, `Conv1dDyn`, `DenseLayer`,
 > `WaveNetModel` etc. com os mesmos caminhos). Padrão de testes já é compliant
 > (`#[path="tests.rs"]`).
-
 > **Nota de auditoria (2026-06-07):** Épico auditado. Lints + testes verdes. Splits
 > estruturais executados conforme plano. Dead code removido (S2.T01), test-only
 > gating aplicado (S2.T02, S2.T06), Aligned64 migrado para `math/common/` (S2.T04).
@@ -389,7 +388,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ### Sprint 3.A — GUI (maiores)
 
-#### S3.T01 — Dividir `src/clap/gui/ui/mod.rs` (1194 LOC) — maior arquivo CLAP
+#### S3.T01 — Dividir `src/clap/gui/ui/mod.rs` (1194 LOC) — maior arquivo CLAP (CONCLUÍDO ✅)
 
 - **Split (por zona/concern):** criar `gui/ui/zones/` e `gui/ui/status_bar/`:
   - `zones/identity.rs` ← `draw_zone1_identity` (L207–447) + helper
