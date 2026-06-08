@@ -34,6 +34,74 @@ pub(crate) unsafe fn init_accum_with_bias_mixin<M: SimdMath>(
     }
 }
 
+/// Loads 4 accumulator values from the output buffer with fallback for non‑multiple‑of‑4
+/// OUT sizes. Extracted verbatim from single‑frame convolution kernel.
+///
+/// # Safety
+/// `out_c` must be < `out.len()`. On the fast path (`out_n` multiple of 4 or
+/// `out_c + 3 < out_n`), `out_c + 3` must be < `out.len()`.
+#[inline(always)]
+pub(crate) unsafe fn load_4_accums(out: &[f32], out_c: usize, out_n: usize) -> [f32; 4] {
+    let r0 = unsafe { *out.get_unchecked(out_c) };
+    if out_n.is_multiple_of(4) || out_c + 3 < out_n {
+        let r1 = unsafe { *out.get_unchecked(out_c + 1) };
+        let r2 = unsafe { *out.get_unchecked(out_c + 2) };
+        let r3 = unsafe { *out.get_unchecked(out_c + 3) };
+        [r0, r1, r2, r3]
+    } else {
+        let r1 = if out_c + 1 < out_n {
+            unsafe { *out.get_unchecked(out_c + 1) }
+        } else {
+            0.0
+        };
+        let r2 = if out_c + 2 < out_n {
+            unsafe { *out.get_unchecked(out_c + 2) }
+        } else {
+            0.0
+        };
+        let r3 = if out_c + 3 < out_n {
+            unsafe { *out.get_unchecked(out_c + 3) }
+        } else {
+            0.0
+        };
+        [r0, r1, r2, r3]
+    }
+}
+
+/// Stores 4 Kahan‑compensated accumulator values back to the output buffer with
+/// bounds‑check elision for the hot path. Extracted verbatim from single‑frame
+/// convolution kernel.
+///
+/// # Safety
+/// `out_c` must be < `out.len()`. On the fast path (`out_n` multiple of 4 or
+/// `out_c + 3 < out_n`), `out_c + 3` must be < `out.len()`.
+#[inline(always)]
+pub(crate) unsafe fn store_kahan_4_accums(
+    out: &mut [f32],
+    out_c: usize,
+    r: [f32; 4],
+    out_n: usize,
+) {
+    unsafe { *out.get_unchecked_mut(out_c) = r[0] };
+    if out_n.is_multiple_of(4) || out_c + 3 < out_n {
+        unsafe {
+            *out.get_unchecked_mut(out_c + 1) = r[1];
+            *out.get_unchecked_mut(out_c + 2) = r[2];
+            *out.get_unchecked_mut(out_c + 3) = r[3];
+        }
+    } else {
+        if out_c + 1 < out_n {
+            unsafe { *out.get_unchecked_mut(out_c + 1) = r[1] };
+        }
+        if out_c + 2 < out_n {
+            unsafe { *out.get_unchecked_mut(out_c + 2) = r[2] };
+        }
+        if out_c + 3 < out_n {
+            unsafe { *out.get_unchecked_mut(out_c + 3) = r[3] };
+        }
+    }
+}
+
 /// Data Bridge (ConvInput):
 /// This trait is a bridge that allows NAM-rs to use exactly the same code
 /// for two number types: regular floats (f32) and compact numbers (u16/BF16).

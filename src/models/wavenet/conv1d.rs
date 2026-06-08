@@ -10,7 +10,7 @@
 //! Kahan accumulators.
 
 pub(crate) use super::conv_input::ConvInput;
-use super::conv_input::init_accum_with_bias_mixin;
+use super::conv_input::{init_accum_with_bias_mixin, load_4_accums, store_kahan_4_accums};
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath, kahan_add};
 
 /// Dilated Causal Convolution (WaveNet Conv1D).
@@ -168,36 +168,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
         let mut out_c = 0;
 
         for b in 0..num_blocks {
-            let mut r0;
-            let mut r1;
-            let mut r2;
-            let mut r3;
-
             // Load the 4 temporary accumulators from the current output frame.
-            unsafe {
-                r0 = *out_frame.get_unchecked(out_c);
-                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
-                    r1 = *out_frame.get_unchecked(out_c + 1);
-                    r2 = *out_frame.get_unchecked(out_c + 2);
-                    r3 = *out_frame.get_unchecked(out_c + 3);
-                } else {
-                    r1 = if out_c + 1 < OUT {
-                        *out_frame.get_unchecked(out_c + 1)
-                    } else {
-                        0.0
-                    };
-                    r2 = if out_c + 2 < OUT {
-                        *out_frame.get_unchecked(out_c + 2)
-                    } else {
-                        0.0
-                    };
-                    r3 = if out_c + 3 < OUT {
-                        *out_frame.get_unchecked(out_c + 3)
-                    } else {
-                        0.0
-                    };
-                }
-            }
+            let [mut r0, mut r1, mut r2, mut r3] = unsafe { load_4_accums(out_frame, out_c, OUT) };
 
             // Kahan compensation variables: track lost low-order bits per channel
             // to bound the per-tap accumulation error to O(eps) instead of O(K·eps).
@@ -233,24 +205,7 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
             }
 
             // Write back the 4 processed accumulators to the output buffer in-place.
-            unsafe {
-                *out_frame.get_unchecked_mut(out_c) = r0;
-                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
-                    *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                    *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                    *out_frame.get_unchecked_mut(out_c + 3) = r3;
-                } else {
-                    if out_c + 1 < OUT {
-                        *out_frame.get_unchecked_mut(out_c + 1) = r1;
-                    }
-                    if out_c + 2 < OUT {
-                        *out_frame.get_unchecked_mut(out_c + 2) = r2;
-                    }
-                    if out_c + 3 < OUT {
-                        *out_frame.get_unchecked_mut(out_c + 3) = r3;
-                    }
-                }
-            }
+            unsafe { store_kahan_4_accums(out_frame, out_c, [r0, r1, r2, r3], OUT) };
             out_c += 4;
         }
     }

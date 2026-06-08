@@ -18,7 +18,7 @@
 //! structural benefit, as no sub-component is independently reusable or
 //! testable in isolation.
 
-use super::conv_input::init_accum_with_bias_mixin;
+use super::conv_input::{init_accum_with_bias_mixin, load_4_accums, store_kahan_4_accums};
 use super::conv1d::{Conv1d, ConvInput};
 use crate::math::common::{SimdMath, kahan_add};
 
@@ -166,60 +166,10 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
 
         // --- 3. Central Computation Loop (4-Blocks) ---
         for b in 0..num_blocks {
-            let mut r0_f0;
-            let mut r1_f0;
-            let mut r2_f0;
-            let mut r3_f0;
-            let mut r0_f1;
-            let mut r1_f1;
-            let mut r2_f1;
-            let mut r3_f1;
-
-            unsafe {
-                r0_f0 = *out_frame_f0.get_unchecked(out_c);
-                r0_f1 = *out_frame_f1.get_unchecked(out_c);
-                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
-                    r1_f0 = *out_frame_f0.get_unchecked(out_c + 1);
-                    r2_f0 = *out_frame_f0.get_unchecked(out_c + 2);
-                    r3_f0 = *out_frame_f0.get_unchecked(out_c + 3);
-
-                    r1_f1 = *out_frame_f1.get_unchecked(out_c + 1);
-                    r2_f1 = *out_frame_f1.get_unchecked(out_c + 2);
-                    r3_f1 = *out_frame_f1.get_unchecked(out_c + 3);
-                } else {
-                    r1_f0 = if out_c + 1 < OUT {
-                        *out_frame_f0.get_unchecked(out_c + 1)
-                    } else {
-                        0.0
-                    };
-                    r2_f0 = if out_c + 2 < OUT {
-                        *out_frame_f0.get_unchecked(out_c + 2)
-                    } else {
-                        0.0
-                    };
-                    r3_f0 = if out_c + 3 < OUT {
-                        *out_frame_f0.get_unchecked(out_c + 3)
-                    } else {
-                        0.0
-                    };
-
-                    r1_f1 = if out_c + 1 < OUT {
-                        *out_frame_f1.get_unchecked(out_c + 1)
-                    } else {
-                        0.0
-                    };
-                    r2_f1 = if out_c + 2 < OUT {
-                        *out_frame_f1.get_unchecked(out_c + 2)
-                    } else {
-                        0.0
-                    };
-                    r3_f1 = if out_c + 3 < OUT {
-                        *out_frame_f1.get_unchecked(out_c + 3)
-                    } else {
-                        0.0
-                    };
-                }
-            }
+            let [mut r0_f0, mut r1_f0, mut r2_f0, mut r3_f0] =
+                unsafe { load_4_accums(out_frame_f0, out_c, OUT) };
+            let [mut r0_f1, mut r1_f1, mut r2_f1, mut r3_f1] =
+                unsafe { load_4_accums(out_frame_f1, out_c, OUT) };
 
             let mut c0_f0 = 0.0f32;
             let mut c1_f0 = 0.0f32;
@@ -270,39 +220,8 @@ impl<const IN: usize, const OUT: usize, const K: usize> Conv1d<IN, OUT, K> {
                 c3_f1 = c;
             }
 
-            unsafe {
-                *out_frame_f0.get_unchecked_mut(out_c) = r0_f0;
-                *out_frame_f1.get_unchecked_mut(out_c) = r0_f1;
-                if OUT.is_multiple_of(4) || out_c + 3 < OUT {
-                    *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                    *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                    *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
-
-                    *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                    *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                    *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
-                } else {
-                    if out_c + 1 < OUT {
-                        *out_frame_f0.get_unchecked_mut(out_c + 1) = r1_f0;
-                    }
-                    if out_c + 2 < OUT {
-                        *out_frame_f0.get_unchecked_mut(out_c + 2) = r2_f0;
-                    }
-                    if out_c + 3 < OUT {
-                        *out_frame_f0.get_unchecked_mut(out_c + 3) = r3_f0;
-                    }
-
-                    if out_c + 1 < OUT {
-                        *out_frame_f1.get_unchecked_mut(out_c + 1) = r1_f1;
-                    }
-                    if out_c + 2 < OUT {
-                        *out_frame_f1.get_unchecked_mut(out_c + 2) = r2_f1;
-                    }
-                    if out_c + 3 < OUT {
-                        *out_frame_f1.get_unchecked_mut(out_c + 3) = r3_f1;
-                    }
-                }
-            }
+            unsafe { store_kahan_4_accums(out_frame_f0, out_c, [r0_f0, r1_f0, r2_f0, r3_f0], OUT) };
+            unsafe { store_kahan_4_accums(out_frame_f1, out_c, [r0_f1, r1_f1, r2_f1, r3_f1], OUT) };
             out_c += 4;
         }
     }

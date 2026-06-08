@@ -1410,7 +1410,7 @@ verdes. DoD §0.2 atendido para todas as tarefas.
 - **DoD:** padrão + verificar que o diff é movimentação pura (testes de
   convolução existentes em `wavenet/tests.rs` garantem equivalência).
 
-#### S7.T06 — Unificar load/store de 4 acumuladores em arquivos de convolução WaveNet
+#### S7.T06 — Unificar load/store de 4 acumuladores em arquivos de convolução WaveNet [DONE]
 
 - Aviso: Tarefa de maior risco (RT hot-path):** , Exigem verificação de não-regressão de benchmark e bit-exatidão (O dev humano fará à parte).
 - **Problema:** o padrão de carregar 4 acumuladores com fallback para OUT não
