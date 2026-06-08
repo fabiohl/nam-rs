@@ -711,7 +711,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ### Sprint 4.D — Standalone (PipeWire)
 
-#### S4.T10 — Dividir `src/standalone/pw_host/rt_callback.rs` (325 LOC) — RT CRÍTICO
+#### S4.T10 — Dividir `src/standalone/pw_host/rt_callback.rs` (325 LOC) — RT CRÍTICO (CONCLUÍDO ✅)
 
 - **Split** (alinhado às sub-etapas 5.1.1–5.1.4): criar `pw_host/rt_callback/`:
   - `rt_callback/resampler_swap.rs` ← `drain_resamplers` (L25–78).
