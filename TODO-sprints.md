@@ -80,7 +80,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 > por variante. `mod.rs` re-exporta para preservar caminhos
 > `crate::math::gemm::*` / `crate::math::common::*`.
 
-### Sprint 1.A — GEMM/GEMV (kernels grandes)
+### Sprint 1.A — GEMM/GEMV (kernels grandes) (CONCLUÍDO ✅)
 
 #### S1.T01 — Dividir `src/math/gemm/gemv.rs` (1138 LOC) por precisão+ISA (CONCLUÍDO ✅)
 
@@ -147,7 +147,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
 
 ### Sprint 1.B — DSP/Ativações/Acumulação (Math)
 
-#### S1.T05 — Dividir `src/math/dsp/gain.rs` (420 LOC) por camada/ISA
+#### S1.T05 — Dividir `src/math/dsp/gain.rs` (420 LOC) por camada/ISA (CONCLUÍDO ✅)
 
 - **Split:** criar `dsp/gain/`:
   - `gain/mod.rs` ← wrappers de dispatch + wrappers seguros
