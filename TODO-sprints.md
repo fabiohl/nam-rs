@@ -425,7 +425,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   pareamento `make_current`/`make_not_current` apesar dos early-returns.
 - **DoD:** padrão.
 
-#### S3.T03 — Dividir `src/clap/gui/ui/meter.rs` (358 LOC) por backend de render
+#### S3.T03 — Dividir `src/clap/gui/ui/meter.rs` (358 LOC) por backend de render (CONCLUÍDO ✅)
 
 - **Split:** criar `gui/ui/meter/`:
   - `meter/mod.rs` ← orquestrador `draw_vertical_meter` (label, LED, interação,
