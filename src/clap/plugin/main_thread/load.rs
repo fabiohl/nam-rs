@@ -97,21 +97,7 @@ impl<'a> NamClapMainThread<'a> {
             });
         }
 
-        let model_info = crate::common::diagnostics::ModelInfo {
-            arch_label: model_pair.architecture.clone(),
-            channels: model_pair
-                .model_l
-                .as_ref()
-                .map(|m| m.channels())
-                .unwrap_or(0),
-            receptive_field: model_pair
-                .model_l
-                .as_ref()
-                .map(|m| m.receptive_field())
-                .unwrap_or(0),
-            weights_layout: model_pair.weights_layout.clone(),
-            path_basename: path.to_string_lossy().into_owned(),
-        };
+        let model_info = model_pair.model_info(path);
         if let Ok(mut info_guard) = self.shared.cold.ui_model_info.lock() {
             *info_guard = Some(model_info);
         }

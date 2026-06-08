@@ -1152,7 +1152,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **DoD:** padrão + confirmar que o comportamento de flags é idêntico
   (testes de gate existentes em `dsp/gate.rs` e `clap/processor_test.rs`).
 
-#### S6.T16 — Unificar `ModelInfo` construction: método `LoadedModelPair::model_info()`
+#### S6.T16 — Unificar `ModelInfo` construction: método `LoadedModelPair::model_info()` [DONE]
 
 - **Problema:** construção de `ModelInfo` duplicada entre:
   - `src/main.rs` (L120–126): `ModelInfo { arch_label, channels, receptive_field,

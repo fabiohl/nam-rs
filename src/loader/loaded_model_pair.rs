@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use crate::common::diagnostics::ModelInfo;
 use crate::models::DynamicModel;
+use std::path::Path;
 
 /// Default input level in dBu for models that do not specify metadata.
 pub(crate) const DEFAULT_INPUT_LEVEL_DBU: f32 = 12.0;
@@ -32,6 +34,23 @@ pub struct LoadedModelPair {
     pub metadata: Option<crate::loader::nam_json::NamMetadata>,
     /// Weights layout format.
     pub weights_layout: String,
+}
+
+impl LoadedModelPair {
+    /// Builds a [`ModelInfo`] snapshot from this loaded pair and the source file path.
+    pub fn model_info(&self, path: &Path) -> ModelInfo {
+        ModelInfo {
+            arch_label: self.architecture.clone(),
+            channels: self.model_l.as_ref().map(|m| m.channels()).unwrap_or(0),
+            receptive_field: self
+                .model_l
+                .as_ref()
+                .map(|m| m.receptive_field())
+                .unwrap_or(0),
+            weights_layout: self.weights_layout.clone(),
+            path_basename: path.to_string_lossy().into_owned(),
+        }
+    }
 }
 
 impl std::fmt::Debug for LoadedModelPair {

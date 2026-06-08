@@ -101,39 +101,25 @@ fn main() -> anyhow::Result<()> {
     if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
         match loader::load_and_build_model(path, &sys) {
-            Ok(nam_rs::loader::LoadedModelPair {
-                model_l,
-                model_r,
-                input_mult_adj,
-                output_mult_adj,
-                sample_rate,
-                architecture,
-                weights_layout,
-                ..
-            }) => {
+            Ok(loaded) => {
                 // Populate active model path and sample rate
                 if let Ok(mut name) = nam_rs::diagnostics::ACTIVE_MODEL_NAME.write() {
                     *name = path.to_string_lossy().into_owned();
                 }
-                nam_rs::diagnostics::ACTIVE_SAMPLE_RATE.store(sample_rate, Ordering::Relaxed);
+                nam_rs::diagnostics::ACTIVE_SAMPLE_RATE
+                    .store(loaded.sample_rate, Ordering::Relaxed);
 
-                let model_info = nam_rs::diagnostics::ModelInfo {
-                    arch_label: architecture.clone(),
-                    channels: model_l.as_ref().map(|m| m.channels()).unwrap_or(0),
-                    receptive_field: model_l.as_ref().map(|m| m.receptive_field()).unwrap_or(0),
-                    weights_layout: weights_layout.clone(),
-                    path_basename: path.to_string_lossy().into_owned(),
-                };
+                let model_info = loaded.model_info(path);
                 if let Ok(mut info_guard) = nam_rs::diagnostics::ACTIVE_MODEL_INFO.write() {
                     *info_guard = Some(model_info);
                 }
 
                 let _ = producer.push(ParamPayload::LoadModel {
-                    model_l,
-                    model_r,
-                    input_mult_adj,
-                    output_mult_adj,
-                    sample_rate,
+                    model_l: loaded.model_l,
+                    model_r: loaded.model_r,
+                    input_mult_adj: loaded.input_mult_adj,
+                    output_mult_adj: loaded.output_mult_adj,
+                    sample_rate: loaded.sample_rate,
                 });
             }
             Err(e) => cli::exit_with_error(format!("Model load failed: {}", e)),
