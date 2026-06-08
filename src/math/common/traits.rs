@@ -311,6 +311,13 @@ pub trait SimdMath {
     /// The buffers must be valid and have the same length.
     unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32);
 
+    /// Computes the peak absolute value of a single channel.
+    /// Returns `max(|x_i|)`
+    ///
+    /// # Safety
+    /// The buffer must be valid.
+    unsafe fn compute_peak_abs_mono(data: &[f32]) -> f32;
+
     /// Applies Tanh to a slice.
     ///
     /// # Safety

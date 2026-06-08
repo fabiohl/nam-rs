@@ -137,3 +137,101 @@ pub fn compute_peak_abs_stereo_scalar(left: &[f32], right: &[f32]) -> (f32, f32)
     }
     (peak_l, peak_r)
 }
+
+/// Mono peak absolute value via AVX2.
+/// Returns `max(|x_i|)`
+///
+/// # Safety
+/// The `data` slice must be valid.
+#[inline]
+#[target_feature(enable = "avx2")]
+pub unsafe fn compute_peak_abs_mono_avx2(data: &[f32]) -> f32 {
+    let len = data.len();
+    if len == 0 {
+        return 0.0;
+    }
+    if len < 8 {
+        return compute_peak_abs_mono_scalar(data);
+    }
+
+    let mut i = 0;
+    let mut max_v = _mm256_setzero_ps();
+    let sign_mask = _mm256_set1_ps(-0.0f32);
+
+    while i + 8 <= len {
+        let v = _mm256_loadu_ps(data.as_ptr().add(i));
+        let abs_v = _mm256_andnot_ps(sign_mask, v);
+        max_v = _mm256_max_ps(max_v, abs_v);
+        i += 8;
+    }
+
+    let hi = _mm256_extractf128_ps(max_v, 1);
+    let lo = _mm256_castps256_ps128(max_v);
+    let m128 = _mm_max_ps(lo, hi);
+    let shuf = _mm_shuffle_ps(m128, m128, 0xEE);
+    let m64 = _mm_max_ps(m128, shuf);
+    let shuf2 = _mm_shuffle_ps(m64, m64, 0x55);
+    let m32 = _mm_max_ps(m64, shuf2);
+    let mut peak = 0.0f32;
+    _mm_store_ss(&mut peak, m32);
+
+    while i < len {
+        let a = data[i].abs();
+        if a > peak {
+            peak = a;
+        }
+        i += 1;
+    }
+
+    peak
+}
+
+/// Mono peak absolute value via AVX-512.
+#[inline]
+#[target_feature(enable = "avx512f")]
+pub unsafe fn compute_peak_abs_mono_avx512(data: &[f32]) -> f32 {
+    let len = data.len();
+    if len == 0 {
+        return 0.0;
+    }
+    if len < 16 {
+        return compute_peak_abs_mono_scalar(data);
+    }
+
+    let mut i = 0;
+    let mut max_v = _mm512_setzero_ps();
+    let sign_mask = _mm512_set1_ps(-0.0f32);
+
+    while i + 16 <= len {
+        let v = _mm512_loadu_ps(data.as_ptr().add(i));
+        let abs_v = _mm512_andnot_ps(sign_mask, v);
+        max_v = _mm512_max_ps(max_v, abs_v);
+        i += 16;
+    }
+
+    let mut peak = _mm512_reduce_max_ps(max_v);
+
+    while i < len {
+        let a = data[i].abs();
+        if a > peak {
+            peak = a;
+        }
+        i += 1;
+    }
+
+    peak
+}
+
+/// Mono peak absolute scalar fallback.
+#[cold]
+#[inline(never)]
+fn compute_peak_abs_mono_scalar(data: &[f32]) -> f32 {
+    let mut peak = 0.0f32;
+    for &x in data {
+        let a = x.abs();
+        if a > peak {
+            peak = a;
+        }
+    }
+    peak
+}

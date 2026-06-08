@@ -76,7 +76,7 @@
 - **Prioridade:** Média
 - **Impacto esperado:** Reduz tráfego L1 em ~50% no estágio de saída, elimina um dispatch branch.
 
-#### TT-1.2.4: Otimizar `compute_output_peaks` no modo mono
+#### TT-1.2.4: Otimizar `compute_output_peaks` no modo mono [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/peaks.rs`
 - **Descrição:** No caminho `#[cfg(not(feature = "stereo"))]` (linhas 64-85), o cálculo de pico chama `compute_peak_abs_stereo` com o mesmo buffer duplicado. Criar `compute_peak_abs_mono` que opera em um único canal.

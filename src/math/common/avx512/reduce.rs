@@ -37,6 +37,13 @@ macro_rules! impl_avx512_reduce {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { crate::math::dsp::stereo::compute_peak_abs_stereo_avx512(left, right) }
         }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn compute_peak_abs_mono(data: &[f32]) -> f32 {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe { crate::math::dsp::stereo::compute_peak_abs_mono_avx512(data) }
+        }
     };
 }
 
@@ -74,6 +81,13 @@ macro_rules! impl_avx512vnni_reduce {
         unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32) {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { Avx512Math::compute_peak_abs_stereo(left, right) }
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn compute_peak_abs_mono(data: &[f32]) -> f32 {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe { Avx512Math::compute_peak_abs_mono(data) }
         }
     };
 }
@@ -114,6 +128,13 @@ macro_rules! impl_avx512vnni_bf16_reduce {
         unsafe fn compute_peak_abs_stereo(left: &[f32], right: &[f32]) -> (f32, f32) {
             // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
             unsafe { Avx512Math::compute_peak_abs_stereo(left, right) }
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn compute_peak_abs_mono(data: &[f32]) -> f32 {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe { Avx512Math::compute_peak_abs_mono(data) }
         }
     };
 }

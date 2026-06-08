@@ -113,6 +113,9 @@ pub struct SimdMathConfig {
     /// Computes the peak absolute value of both stereo channels.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub compute_peak_abs_stereo: unsafe fn(&[f32], &[f32]) -> (f32, f32),
+    /// Computes the peak absolute value of a single channel.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub compute_peak_abs_mono: unsafe fn(&[f32]) -> f32,
     /// Applies Tanh activation to a slice.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub tanh_slice: unsafe fn(&mut [f32]),

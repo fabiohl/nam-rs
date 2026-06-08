@@ -64,23 +64,17 @@ impl<'a> NamClapProcessor<'a> {
         #[cfg(not(feature = "stereo"))]
         {
             if len_l > 0 {
-                let (p_l, _) = unsafe {
-                    crate::math::dsp::stereo::compute_peak_abs_stereo(
-                        &self.buf_out_l[..len_l],
-                        &self.buf_out_l[..len_l],
-                    )
+                let p = unsafe {
+                    crate::math::dsp::stereo::compute_peak_abs_mono(&self.buf_out_l[..len_l])
                 };
-                peak_l = p_l;
-                peak_r = p_l;
+                peak_l = p;
+                peak_r = p;
             } else if len_r > 0 {
-                let (p_l, _) = unsafe {
-                    crate::math::dsp::stereo::compute_peak_abs_stereo(
-                        &self.buf_out_l[..len_r],
-                        &self.buf_out_l[..len_r],
-                    )
+                let p = unsafe {
+                    crate::math::dsp::stereo::compute_peak_abs_mono(&self.buf_out_l[..len_r])
                 };
-                peak_l = p_l;
-                peak_r = p_l;
+                peak_l = p;
+                peak_r = p;
             }
         }
 
