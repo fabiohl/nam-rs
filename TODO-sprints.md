@@ -1077,7 +1077,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **DoD:** padrão. Recomendação: opção B (justificativa de coesão) é preferível
   a expor internals.
 
-#### S6.T13 — `src/models/wavenet/conv1d.rs` (316 LOC): justificativa explícita de coesão
+#### S6.T13 — `src/models/wavenet/conv1d.rs` (316 LOC): justificativa explícita de coesão [DONE]
 
 - **Problema:** S2.T06 declarou "split opcional" e a auditoria registrou "coesão
   implícita", mas não há justificativa formal no arquivo.
