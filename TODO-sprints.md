@@ -1284,13 +1284,9 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ---
 
-### Sprint 7.A — Extrair implementação de mod.rs residuais
+### Sprint 7.A
 
-> **Critério:** `mod.rs` deve conter apenas `mod`, `pub mod`, `pub use` e includes
-> de teste. Funções, structs e `impl` blocks substanciais devem ser extraídos
-> para submódulos nomeados.
-
-#### S7.T01 — Extrair implementação de `src/clap/gui/window/mod.rs` (240 LOC → ~25 LOC)
+#### S7.T01 — Extrair implementação de `src/clap/gui/window/mod.rs` (240 LOC → ~25 LOC) [DONE]
 
 - Aviso: Tarefas que altera assinaturas/imports públicos: Exigem atualização de todos os consumidores com `grep` global antes de concluir.
 - **Problema:** `struct NamPluginWindow` (24 linhas) + 4 blocos `impl` — `new()`,
@@ -1358,6 +1354,8 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **DoD:** padrão + confirmar que benchmarks compilam e parity tests passam.
 
 ---
+
+### Sprint 7B
 
 #### S7.T04 — Extrair implementação de `src/clap/processor/dsp/mod.rs` (171 LOC → ~19 LOC)
 
@@ -1428,6 +1426,8 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **DoD:** padrão + diff bit-exato nos testes de convolução.
 
 ---
+
+### Sprint 7C
 
 #### S7.T07 — Extrair implementação de `src/clap/gui/ui/meter/mod.rs` (171 LOC → ~22 LOC)
 
