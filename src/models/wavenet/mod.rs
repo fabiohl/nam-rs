@@ -31,9 +31,11 @@ pub mod conv1d_dyn_kernels;
 pub mod dense;
 /// Dynamic 1x1 dense layer (`DenseLayerDyn`).
 pub mod dense_dyn;
+/// Static WaveNet layer (`WaveNetLayer`).
+pub mod layer;
 /// Dynamic WaveNet layer (`WaveNetLayerDyn`).
 pub mod layer_dyn;
-/// Static model (`WaveNetModel`, `WaveNetLayerArray`, `WaveNetLayer`).
+/// Static model (`WaveNetModel`, `WaveNetLayerArray`).
 pub mod model;
 pub mod model_dyn;
 
@@ -115,8 +117,9 @@ pub use conv1d::Conv1d;
 pub use conv1d_dyn::Conv1dDyn;
 pub use dense::DenseLayer;
 pub use dense_dyn::DenseLayerDyn;
+pub use layer::WaveNetLayer;
 pub use layer_dyn::WaveNetLayerDyn;
-pub use model::{WaveNetLayer, WaveNetLayerArray, WaveNetModel};
+pub use model::{WaveNetLayerArray, WaveNetModel};
 pub use model_dyn::{WaveNetDynModel, WaveNetLayerArrayDyn};
 
 #[cfg(test)]

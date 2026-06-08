@@ -5,6 +5,7 @@ use crate::math::common::{AlignedVec, SimdMathConfig};
 use crate::models::wavenet::common::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
 use crate::models::wavenet::conv1d::Conv1d;
 use crate::models::wavenet::dense::DenseLayer;
+use crate::models::wavenet::layer::WaveNetLayer;
 use crate::models::wavenet::model::*;
 
 /// Builds a minimal WaveNetModel<4, 3, 2> for tests with static, controlled data.

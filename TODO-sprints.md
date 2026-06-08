@@ -290,7 +290,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `prefetch_fn`.
 - **DoD:** padrão.
 
-#### S2.T03 — Dividir `src/models/wavenet/model.rs` (554 LOC)
+#### S2.T03 — Dividir `src/models/wavenet/model.rs` (554 LOC) (CONCLUÍDO ✅)
 
 - **Split** (paralelo a S2.T01 p/ simetria):
   - `layer.rs` ← `WaveNetLayer` + `process_block_internal` (L11–163).
