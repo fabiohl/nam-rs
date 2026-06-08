@@ -9,6 +9,24 @@
 
 use core::arch::x86_64::*;
 
+/// Adds a broadcast constant to every element of a mono buffer using AVX-512.
+#[target_feature(enable = "avx512f")]
+pub unsafe fn apply_dither_add_avx512(data: &mut [f32], offset: f32) {
+    let len = data.len();
+    let voffset = _mm512_set1_ps(offset);
+    let mut i = 0;
+    while i + 16 <= len {
+        let p = data.as_mut_ptr().add(i);
+        _mm512_storeu_ps(p, _mm512_add_ps(_mm512_loadu_ps(p), voffset));
+        i += 16;
+    }
+    if i < len {
+        let mask = _cvtu32_mask16((1u32 << (len - i)) - 1);
+        let v = _mm512_maskz_loadu_ps(mask, data.as_ptr().add(i));
+        _mm512_mask_storeu_ps(data.as_mut_ptr().add(i), mask, _mm512_add_ps(v, voffset));
+    }
+}
+
 /// Applies constant gain to a mono buffer using AVX-512.
 #[target_feature(enable = "avx512f")]
 pub unsafe fn apply_gain_avx512(data: &mut [f32], gain: f32) {

@@ -165,6 +165,23 @@ pub unsafe fn apply_ramp_stereo_avx2(left: &mut [f32], right: &mut [f32], start:
     }
 }
 
+/// Adds a broadcast constant to every element of a mono buffer using AVX2.
+#[target_feature(enable = "avx2")]
+pub unsafe fn apply_dither_add_avx2(data: &mut [f32], offset: f32) {
+    let len = data.len();
+    let voffset = _mm256_set1_ps(offset);
+    let mut i = 0;
+    while i + 8 <= len {
+        let p = data.as_mut_ptr().add(i);
+        _mm256_storeu_ps(p, _mm256_add_ps(_mm256_loadu_ps(p), voffset));
+        i += 8;
+    }
+    while i < len {
+        *data.get_unchecked_mut(i) += offset;
+        i += 1;
+    }
+}
+
 /// Applies linear gain ramp to a mono buffer via AVX2.
 #[target_feature(enable = "avx2")]
 pub unsafe fn apply_ramp_avx2(buffer: &mut [f32], start: f32, step: f32) {

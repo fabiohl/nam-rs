@@ -32,15 +32,15 @@ pub(crate) fn apply_output_stage(
     // 0. DENORMAL SUPPRESSION COMPENSATION: Subtract the injected DC offset
     // Compensates the ultra-low bias added at the input stage. Any residual is
     // far below the DAC noise floor and inaudible.
-    unsafe {
-        for i in 0..n_pw {
-            *resamp_out_l.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
-        }
-        if !process_mono {
-            for i in 0..n_pw {
-                *resamp_out_r.get_unchecked_mut(i) -= DENORMAL_DITHER_OFFSET;
-            }
-        }
+    crate::math::dsp::gain::apply_dither_add_simd(
+        &mut resamp_out_l[..n_pw],
+        -DENORMAL_DITHER_OFFSET,
+    );
+    if !process_mono {
+        crate::math::dsp::gain::apply_dither_add_simd(
+            &mut resamp_out_r[..n_pw],
+            -DENORMAL_DITHER_OFFSET,
+        );
     }
 
     // 1. FINAL VOLUME ADJUSTMENT AND CLIPPING PROTECTION

@@ -451,6 +451,12 @@ pub trait SimdMath {
     /// Buffers must be valid.
     unsafe fn apply_ramp_stereo(left: &mut [f32], right: &mut [f32], start: f32, step: f32);
 
+    /// Adds a broadcast constant (dither offset) to every element of a mono buffer.
+    ///
+    /// # Safety
+    /// The buffer must be valid.
+    unsafe fn apply_dither_add(data: &mut [f32], offset: f32);
+
     /// Specialized kernel for WaveNet Head sum.
     ///
     /// # Safety

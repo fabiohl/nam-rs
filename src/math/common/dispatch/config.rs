@@ -89,6 +89,9 @@ pub struct SimdMathConfig {
     /// Applies a linear gain ramp in stereo.
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub apply_ramp_stereo: unsafe fn(&mut [f32], &mut [f32], f32, f32),
+    /// Adds a broadcast constant (dither offset) to every element of a mono buffer.
+    // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
+    pub apply_dither_add: unsafe fn(&mut [f32], f32),
     /// Stereo convolution (used in the resampler).
     // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
     pub convolve_stereo: unsafe fn(*const f32, *const f32, *const f32, usize) -> (f32, f32),

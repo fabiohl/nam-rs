@@ -119,16 +119,17 @@ pub(crate) fn apply_input_stage(
     // 4. DENORMAL SUPPRESSION: Inject ultra-low DC offset
     // Prevents subnormal floats from reaching neural network activations
     // during fade-out/silence, ensuring smooth decay without digital artifacts.
-    unsafe {
-        for i in 0..n_samples {
-            *samples_l.get_unchecked_mut(i) += DENORMAL_DITHER_OFFSET;
-        }
-        #[cfg(feature = "stereo")]
-        if !*ctx.process_mono {
-            for i in 0..n_samples {
-                *samples_r.get_unchecked_mut(i) += DENORMAL_DITHER_OFFSET;
-            }
-        }
+    crate::math::dsp::gain::apply_dither_add_simd(
+        &mut samples_l[..n_samples],
+        DENORMAL_DITHER_OFFSET,
+    );
+
+    #[cfg(feature = "stereo")]
+    if !*ctx.process_mono {
+        crate::math::dsp::gain::apply_dither_add_simd(
+            &mut samples_r[..n_samples],
+            DENORMAL_DITHER_OFFSET,
+        );
     }
 
     ctx.silence_hysteresis.state()

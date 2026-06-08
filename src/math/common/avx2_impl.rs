@@ -552,6 +552,13 @@ impl SimdMath for Avx2Math {
 
     #[inline(always)]
     // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+    unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe { super::super::dsp::gain::apply_dither_add_avx2(data, offset) }
+    }
+
+    #[inline(always)]
+    // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
     unsafe fn gemv_overwrite_batch(
         in_frames: &[f32],
         weights: &[u16],

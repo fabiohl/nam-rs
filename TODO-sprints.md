@@ -62,7 +62,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Elimina um scan O(n) adicional por bloco no modo mono.
 
-#### TT-1.2.2: Substituir loop escalar de dither por SIMD
+#### TT-1.2.2: Substituir loop escalar de dither por SIMD [DONE]
 
 - **Arquivos:** `src/dsp/pipeline/stages/input.rs`, `src/dsp/pipeline/stages/output.rs`
 - **Descrição:** As linhas 122-132 (input.rs) e 35-44 (output.rs) usam `unsafe { for i in 0..n_samples { *ptr.add(i) += CONST; } }` para injeção/compensação de dither. Substituir por broadcast SIMD + vector add, usando `apply_gain_simd` com offset ou kernel dedicado.

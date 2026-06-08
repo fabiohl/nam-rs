@@ -50,6 +50,15 @@ pub unsafe fn horizontal_sum_fallback(ptr: *const f32, len: usize) -> f32 {
     sum
 }
 
+/// Adds a broadcast constant to every element of a mono buffer (fallback).
+// SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+#[inline]
+pub unsafe fn apply_dither_add_fallback(data: &mut [f32], offset: f32) {
+    for x in data.iter_mut() {
+        *x += offset;
+    }
+}
+
 /// Applies a volume (gain) by multiplying each sample by the desired value.
 // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
 #[inline]

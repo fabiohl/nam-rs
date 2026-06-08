@@ -125,6 +125,13 @@ macro_rules! impl_avx512_dsp {
 
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
+            // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+            unsafe { crate::math::dsp::gain::apply_dither_add_avx512(data, offset) }
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn batch_wavenet_head_sum_dyn(
             head1: &[f32],
             head2: &[f32],

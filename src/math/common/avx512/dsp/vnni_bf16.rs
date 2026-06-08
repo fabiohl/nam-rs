@@ -89,6 +89,12 @@ macro_rules! impl_avx512vnni_bf16_dsp {
 
         #[inline(always)]
         // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
+        unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
+            Avx512Math::apply_dither_add(data, offset)
+        }
+
+        #[inline(always)]
+        // SAFETY: Preconditions (alignment, bounds, size) are guaranteed by caller of this SIMD/unsafe function.
         unsafe fn batch_wavenet_head_sum<const HEAD: usize>(
             head1: &[f32],
             head2: &[f32],

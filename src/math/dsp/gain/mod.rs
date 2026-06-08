@@ -88,6 +88,19 @@ pub fn apply_ramp_simd(buffer: &mut [f32], start: f32, step: f32) {
     unsafe { apply_ramp(buffer, start, step) };
 }
 
+/// Adds a broadcast constant (dither offset) to every element of a mono buffer.
+///
+/// # Safety
+/// The buffer must be valid.
+pub unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
+    crate::math::common::dispatch_simd!(apply_dither_add(data, offset))
+}
+
+/// Safe wrapper for dither offset addition via SIMD broadcast + vector add.
+pub fn apply_dither_add_simd(buffer: &mut [f32], offset: f32) {
+    unsafe { apply_dither_add(buffer, offset) };
+}
+
 #[cfg(test)]
 #[path = "../gain_test.rs"]
 mod gain_test;
