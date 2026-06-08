@@ -642,7 +642,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   tratar como morto.
 - **DoD:** padrão.
 
-#### S4.T05 — DSP coesos (sem split): `resampler.rs`, `gate.rs`
+#### S4.T05 — DSP coesos (sem split): `resampler.rs`, `gate.rs` (CONCLUÍDO ✅)
 
 - **`src/dsp/resampler.rs` (469):** **não dividir** (DelayLine→ResamplerCore→
   NamResampler = unidade algorítmica única). Apenas confirmar verde.
@@ -656,7 +656,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ### Sprint 4.C — Loader & Encoder
 
-#### S4.T06 — Dividir `src/loader/nam_json/data.rs` (454 LOC)
+#### S4.T06 — Dividir `src/loader/nam_json/data.rs` (454 LOC) (CONCLUÍDO ✅)
 
 - **Split:**
   - `model.rs` ← schema: `NamDate`, `NamMetadata`, `NamLayerConfig`, `NamConfig`,

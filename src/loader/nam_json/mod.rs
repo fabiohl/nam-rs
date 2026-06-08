@@ -6,8 +6,11 @@
 //! Loads tensors and metadata outside the RT path.
 
 pub mod data;
+pub mod error;
+pub mod model;
 pub mod parse;
 pub mod topology;
+mod validation;
 
 pub use data::{
     JsonError, NamConfig, NamDate, NamLayerConfig, NamMetadata, NamModelData, WeightsLayout,
