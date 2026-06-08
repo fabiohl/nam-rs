@@ -98,6 +98,8 @@ pub unsafe fn apply_dither_add(data: &mut [f32], offset: f32) {
 
 /// Safe wrapper for dither offset addition via SIMD broadcast + vector add.
 pub fn apply_dither_add_simd(buffer: &mut [f32], offset: f32) {
+    // SAFETY: `buffer` is a valid mutable reference provided by the caller;
+    // `offset` is a finite f32 constant (DENORMAL_DITHER_OFFSET or its negative).
     unsafe { apply_dither_add(buffer, offset) };
 }
 

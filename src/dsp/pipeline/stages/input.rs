@@ -53,6 +53,8 @@ pub(crate) fn apply_input_stage(
     // Uses the maximum energy of both channels: any channel with active signal
     // must keep the gate open. Using the fused kernel to reduce cache traffic.
     #[cfg(feature = "stereo")]
+    // SAFETY: both slices are valid references of identical length — `n_samples`
+    // is within bounds for both channel buffers, guaranteed by the audio bridge.
     let energy_ms =
         unsafe { compute_energy_stereo(&samples_l[..n_samples], &samples_r[..n_samples]) };
     #[cfg(not(feature = "stereo"))]
@@ -85,6 +87,8 @@ pub(crate) fn apply_input_stage(
     {
         // 2. MONO SOUND DETECTION (SAME ON BOTH SIDES)
         // Computes the difference between left and right to check if the sound is the same.
+        // SAFETY: both slices are valid references of identical length — `n_samples`
+        // is within bounds for both channel buffers, guaranteed by the audio bridge.
         let max_diff =
             unsafe { compute_max_diff(&samples_l[..n_samples], &samples_r[..n_samples]) };
 

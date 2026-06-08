@@ -131,7 +131,7 @@
 - **Descrição:** Linhas 38-42, 47-51, 55-59, 67-72, 76-82.
 - **Prioridade:** Alta
 
-#### TT-2.1.3: Documentar blocos `unsafe` em `input.rs` e `output.rs`
+#### TT-2.1.3: Documentar blocos `unsafe` em `input.rs` e `output.rs` [DONE]
 
 - **Arquivos:** `src/dsp/pipeline/stages/input.rs`, `src/dsp/pipeline/stages/output.rs`
 - **Descrição:** `get_unchecked_mut` nos loops de dither (input.rs:122-132, output.rs:35-44).
