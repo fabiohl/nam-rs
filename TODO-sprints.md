@@ -1353,9 +1353,18 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   benchmarks e parity tests (não no hot-path de produção).
 - **DoD:** padrão + confirmar que benchmarks compilam e parity tests passam.
 
+**Auditoria Sprint 7.A (2026-06-08):** S7.T01 estava sem o bloco `#[cfg(test)]
+impl NamPluginWindow` com método `test_init` previsto no split plan. Implementado
+em `window/state.rs` (valida `size_of` ≤ 4096 + alinhamento 8-byte). S7.T02 e
+S7.T03 íntegros — apenas desvios de estilo (mod privado vs pub mod; wildcard
+re-export vs explícito), sem impacto funcional. `lints.sh` e `tests-cargo.sh`
+verdes. DoD §0.2 atendido para todas as tarefas.
+
 ---
 
 ### Sprint 7B
+
+- Para validar a não-regressão de performance, estou rodando um "cargo bench" no começo e no final da sprint (para fechamento). Não rode em segundo plano!
 
 #### S7.T04 — Extrair implementação de `src/clap/processor/dsp/mod.rs` (171 LOC → ~19 LOC)
 

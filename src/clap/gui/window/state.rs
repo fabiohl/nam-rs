@@ -218,3 +218,21 @@ impl NamPluginWindow {
         }
     }
 }
+
+#[cfg(test)]
+impl NamPluginWindow {
+    pub(crate) fn test_init() {
+        assert!(core::mem::size_of::<Self>() <= 4096);
+        assert_eq!(core::mem::align_of::<Self>() % 8, 0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_init() {
+        NamPluginWindow::test_init();
+    }
+}
