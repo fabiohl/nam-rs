@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
+
+//! Main parser for `.namb` binary files.
+
+use super::super::nam_json::{NamMetadata, NamModelData};
+use super::error::NambError;
+use super::fallback::make_fallback_model_data;
+use super::header::{FLAG_HAS_CRC32, NambHeader, check_crc};
+use anyhow::Result;
+use log::info;
+
+/// Loads a model in the `.namb` binary format.
+pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
+    let header_size = std::mem::size_of::<NambHeader>();
+    if data.len() < header_size {
+        return Err(NambError::Truncated {
+            got: data.len(),
+            need: header_size,
+        }
+        .into());
+    }
+
+    // 1. Reads the header
+    let header = unsafe { &*data.as_ptr().cast::<NambHeader>() };
+    header.validate()?;
+
+    // 2. Reads the JSON metadata section (optional in .namb, but common)
+    // If weights_offset > header_size, there is a JSON between them.
+    let weights_offset = header.weights_offset as usize;
+    if weights_offset > data.len() {
+        return Err(NambError::WeightsOffsetOutOfBounds {
+            offset: weights_offset,
+            file_len: data.len(),
+        }
+        .into());
+    }
+    if weights_offset < header_size {
+        return Err(NambError::InvalidWeightsOffset {
+            offset: weights_offset,
+            header_size,
+        }
+        .into());
+    }
+
+    let mut model_data = if weights_offset > header_size {
+        let json_bytes = &data[header_size..weights_offset];
+        // Truncate nulls if present (the NAMB buffer is usually padded)
+        let actual_json = if let Some(pos) = json_bytes.iter().position(|&b| b == 0) {
+            &json_bytes[..pos]
+        } else {
+            json_bytes
+        };
+
+        if !actual_json.is_empty() {
+            crate::loader::nam_json::parse_nam_json(std::str::from_utf8(actual_json)?)?
+        } else {
+            make_fallback_model_data()
+        }
+    } else {
+        make_fallback_model_data()
+    };
+
+    // 3. Integrity Validation (CRC32)
+    let version = header.version;
+    let crc32_header = header.crc32;
+    if version >= 2 {
+        if header.flags & FLAG_HAS_CRC32 == 0 {
+            return Err(NambError::CrcMissing { version }.into());
+        }
+        check_crc(data, weights_offset, crc32_header)?;
+    } else if crc32_header != 0 {
+        check_crc(data, weights_offset, crc32_header)?;
+    } else {
+        log::warn!("CRC32 missing in NAMB v1 file (crc32=0 sentinel) — skipping integrity check");
+    }
+
+    // 4. Reads the binary weights
+    let pesos_raw = &data[weights_offset..];
+    let float_count = pesos_raw.len() / 4;
+    let mut weights = Vec::with_capacity(float_count);
+
+    for chunk in pesos_raw.chunks_exact(4) {
+        weights.push(f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+
+    // Populates header metadata into the final NamModelData
+    let sample_rate_header = header.sample_rate;
+    let input_level_header = header.input_level_dbu;
+    let output_level_header = header.output_level_dbu;
+    let version_header = header.version;
+
+    model_data.weights = weights;
+    model_data.sample_rate = Some(sample_rate_header);
+    model_data.weights_layout = header.get_layout();
+
+    // Updates metadata if it exists
+    if let Some(ref mut metadata) = model_data.metadata {
+        metadata.input_level_dbu = Some(input_level_header);
+        metadata.output_level_dbu = Some(output_level_header);
+    } else {
+        model_data.metadata = Some(NamMetadata {
+            date: None,
+            name: None,
+            modeled_by: None,
+            gear_make: None,
+            gear_model: None,
+            gear_type: None,
+            tone_type: None,
+            training: None,
+            input_level_dbu: Some(input_level_header),
+            output_level_dbu: Some(output_level_header),
+            loudness: Some(-18.0),
+        });
+    }
+
+    // If the version is null (fallback), gets it from the header string
+    if model_data.version.is_none() {
+        let end_idx = header
+            .version_str
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(32);
+        let version_str = String::from_utf8_lossy(&header.version_str[..end_idx]).into_owned();
+        model_data.version = Some(version_str);
+    }
+
+    info!(
+        "[Loader] .namb v{} loaded ({} weights, layout={:?})",
+        version_header, float_count, model_data.weights_layout
+    );
+
+    Ok(model_data)
+}

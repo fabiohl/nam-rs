@@ -1308,7 +1308,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
   early-returns.
 - **DoD:** padrão §0.2.
 
-#### S7.T02 — Extrair implementação de `src/loader/namb/mod.rs` (147 LOC → ~30 LOC)
+#### S7.T02 — Extrair implementação de `src/loader/namb/mod.rs` (147 LOC → ~30 LOC) [DONE]
 
 - Aviso: Tarefas que altera assinaturas/imports públicos: Exigem atualização de todos os consumidores com `grep` global antes de concluir.
 - **Problema:** `pub fn parse_namb()` (corpo de ~125 linhas) é a única
