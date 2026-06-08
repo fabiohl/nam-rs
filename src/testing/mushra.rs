@@ -184,7 +184,7 @@ pub struct MushraVariant {
 /// good        → lowpass(9 kHz) + noise(0.002)
 /// fair        → lowpass(5 kHz) + softclip(drive=1.6)
 /// poor        → lowpass(2.5 kHz) + gain(0.9) + noise(0.01)
-/// anchor      → lowpass(3.5 kHz)  [MUSHRA anchor canônico]
+/// anchor      → lowpass(3.5 kHz)  [MUSHRA canonical anchor]
 /// ```
 pub fn build_mushra_variants(reference: &[f32], sr: u32) -> [MushraVariant; 6] {
     let mut rng = Mulberry32::new(fnv1a32(b"nam-rs-mushra-variants"));
@@ -233,7 +233,7 @@ pub fn build_mushra_variants(reference: &[f32], sr: u32) -> [MushraVariant; 6] {
         let lp = low_pass_1pole(reference, 3500.0, sr);
         MushraVariant {
             label: MushraVariantLabel::Anchor,
-            description: "lowpass(3.5kHz) [MUSHRA anchor canônico]",
+            description: "lowpass(3.5kHz) [MUSHRA canonical anchor]",
             samples: lp,
         }
     };

@@ -17,7 +17,7 @@ mod capture;
 mod context;
 #[cfg(feature = "standalone")]
 mod playback;
-    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 mod stages;
 
 // Re-exports — preserve the same visibility as the original pipeline.rs.
@@ -30,16 +30,16 @@ pub use bridge::{MAX_BRIDGE_BUF, MAX_RESAMP_BUF};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 pub use context::{DspBuffers, DspPipelineContext};
 
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-pub use stages::write_bridge;
-#[cfg(feature = "clap-plugin")]
-pub(crate) use stages::run_inference;
 #[cfg(feature = "clap-plugin")]
 pub(crate) use stages::apply_input_stage;
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-pub use stages::{DISABLE_GATE, handle_silence_bypass};
 #[cfg(feature = "clap-plugin")]
 pub(crate) use stages::apply_output_stage;
+#[cfg(feature = "clap-plugin")]
+pub(crate) use stages::run_inference;
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+pub use stages::write_bridge;
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+pub use stages::{DISABLE_GATE, handle_silence_bypass};
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 pub use capture::capture_dsp_pipeline;

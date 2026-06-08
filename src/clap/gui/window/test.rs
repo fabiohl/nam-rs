@@ -124,7 +124,7 @@ fn test_gui_drag_drop_fuzz() {
 }
 
 // ---------------------------------------------------------------------------
-// G3.T02 — Cleanup determinístico de recursos OpenGL no fechamento da janela
+// G3.T02 — Deterministic cleanup of OpenGL resources on window close
 // ---------------------------------------------------------------------------
 
 /// Verifies that `Option::take()` on glow types is idempotent — the core

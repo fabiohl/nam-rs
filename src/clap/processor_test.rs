@@ -1146,7 +1146,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------
-    // G3.T05 — Hardening de testes de integração (render + state-context + preset-load)
+    // G3.T05 — Integration test hardening (render + state-context + preset-load)
     // ---------------------------------------------------------------------------
 
     #[test]

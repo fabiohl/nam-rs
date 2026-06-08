@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Bias-Tuning: compensação de viés de arredondamento nos pesos quantizados.
+//! Bias-Tuning: rounding bias compensation in quantized weights.
 //!
-//! Durante a carga do modelo, executa-se uma inferência simulada com sinal
-//! sintético DC=1.0 para medir o drift por canal introduzido pela quantização
-//! BF16/FP16 dos pesos. O vetor de desvios compensatórios é adicionado
-//! diretamente aos coeficientes de bias FP32, resultando em zero overhead
-//! computacional na thread RT.
+//! During model loading, a simulated inference runs with a synthetic
+//! DC=1.0 signal to measure the per-channel drift introduced by
+//! BF16/FP16 weight quantization. The compensatory offset vector is added
+//! directly to the FP32 bias coefficients, resulting in zero
+//! computational overhead on the RT thread.
 
 #[cfg(test)]
 use crate::math::common::quantize_weight;
 
-/// Reverte `quantize_weight`: reconstrói um f32 aproximado a partir do u16.
+/// Reverses `quantize_weight`: reconstructs an approximate f32 from u16.
 #[inline(always)]
 fn dequantize_weight(w: u16, is_bf16: bool) -> f32 {
     if is_bf16 {
@@ -22,15 +22,15 @@ fn dequantize_weight(w: u16, is_bf16: bool) -> f32 {
     }
 }
 
-/// Calcula a compensação de bias por canal para uma camada Dense.
+/// Computes per-channel bias compensation for a Dense layer.
 ///
-/// Usa a premissa de sinal DC=1.0 em todos os canais de entrada.
-/// Para cada canal de saída `i`:
+/// Uses the premise of DC=1.0 signal on all input channels.
+/// For each output channel `i`:
 ///   compensation[i] = Σⱼ (W_fp32[i,j] - W_quant[i,j])
 ///
-/// * `raw_f32` — pesos originais no layout pós-leitura do cursor.
-/// * `quant_u16` — pesos já quantizados e transpostos.
-/// * `is_interleaved` — se true, raw_f32 e quant_u16 estão no mesmo layout interleaved.
+/// * `raw_f32` — original weights in post-cursor-read layout.
+/// * `quant_u16` — already quantized and transposed weights.
+/// * `is_interleaved` — if true, raw_f32 and quant_u16 are in the same interleaved layout.
 pub fn compute_dense_bias_compensation(
     raw_f32: &[f32],
     quant_u16: &[u16],
@@ -65,10 +65,10 @@ pub fn compute_dense_bias_compensation(
     compensation
 }
 
-/// Calcula a compensação de bias por canal para uma camada Conv1D.
+/// Computes per-channel bias compensation for a Conv1D layer.
 ///
-/// Usa a premissa de sinal DC=1.0 em todos os canais de entrada e taps.
-/// Para cada canal de saída `i`:
+/// Uses the premise of DC=1.0 signal on all input channels and taps.
+/// For each output channel `i`:
 ///   compensation[i] = Σ_{k,cin} (W_fp32[i,cin,k] - W_quant[i,cin,k])
 pub fn compute_conv1d_bias_compensation(
     raw_f32: &[f32],
@@ -126,7 +126,7 @@ pub fn compute_conv1d_bias_compensation(
     compensation
 }
 
-/// Aplica o vetor de compensação ao bias, somando elemento a elemento.
+/// Applies the compensation vector to the bias, adding element-wise.
 pub fn apply_bias_compensation(bias: &mut [f32], compensation: &[f32]) {
     for i in 0..bias.len() {
         bias[i] += compensation[i];

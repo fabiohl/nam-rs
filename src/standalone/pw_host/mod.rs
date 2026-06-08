@@ -187,7 +187,7 @@ pub fn run_pipewire_host(
                             .clear_flag(crate::common::spsc::RT_STATUS_RESAMPLER_REBUILD_FAILED);
 
                         log::info!(
-                            "{} Sample rate atualizado: PW={} Hz, NAM={} Hz (bypass={})",
+                            "{} Sample rate updated: PW={} Hz, NAM={} Hz (bypass={})",
                             "🔄".cyan(),
                             target_pw_rate,
                             target_nam_rate,

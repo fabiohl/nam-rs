@@ -4,10 +4,10 @@
 //! Kernels de Dot Product 4x (ILP interleaved, dual frame, batch) — AVX2 e AVX-512.
 //!
 //! Organized into submodules by ISA and variant:
-//! - `avx2` / `avx2_dual`: kernels AVX2 com F16C.
-//! - `avx512` / `avx512_dual`: kernels AVX-512 com permutexvar.
+//! - `avx2` / `avx2_dual`: AVX2 kernels with F16C.
+//! - `avx512` / `avx512_dual`: AVX-512 kernels with permutexvar.
 //! - `scalar`: reference scalar implementations.
-//! - `avx512_bf16`: kernel BF16 com acúmulo em f32 via `_mm512_fmadd_ps`.
+//! - `avx512_bf16`: BF16 kernel with f32 accumulation via `_mm512_fmadd_ps`.
 
 pub mod avx2;
 pub mod avx2_dual;
