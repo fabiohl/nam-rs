@@ -4,7 +4,6 @@
 //! Main thread housekeeping: GC drain, status-flags sync, pending model load, latency.
 
 use super::NamClapMainThread;
-use super::load::error_code_to_str;
 use crate::common::spsc::drain_gc_channels;
 use clack_extensions::log::{HostLog, LogSeverity};
 use std::ffi::CString;
@@ -56,7 +55,7 @@ impl<'a> NamClapMainThread<'a> {
             match res {
                 Ok(_) => {}
                 Err(e) => {
-                    let err_msg = error_code_to_str(e.error_code());
+                    let err_msg = e.error_code().message();
                     if let Ok(mut msg_guard) = self.shared.cold.ui_load_error_msg.lock() {
                         *msg_guard = err_msg.to_string();
                     }

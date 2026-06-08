@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Model loading (main thread only) and error-code mapping.
+//! Model loading (main thread only).
 
 use super::super::shared::{ClapParamPayload, NamModelMetadata};
 use super::NamClapMainThread;
@@ -11,27 +11,6 @@ use crate::loader::load_and_build_model;
 use clack_extensions::log::{HostLog, LogSeverity};
 use std::path::Path;
 use std::sync::atomic::Ordering;
-
-/// Maps an internal `NamErrorCode` to a human-readable string for the GUI.
-pub(crate) fn error_code_to_str(code: NamErrorCode) -> &'static str {
-    match code {
-        NamErrorCode::FileNotFound => "File not found",
-        NamErrorCode::FileReadError => "File read error",
-        NamErrorCode::UnknownExtension => "Unknown extension",
-        NamErrorCode::NamJsonParseError => "Invalid JSON format",
-        NamErrorCode::NambCrc32Mismatch => "CRC32 checksum mismatch",
-        NamErrorCode::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
-        NamErrorCode::NambInvalidMagic => "Invalid signature",
-        NamErrorCode::NambUnsupportedVersion => "Unsupported version",
-        NamErrorCode::NambTruncated => "Corrupted/truncated file",
-        NamErrorCode::UnsupportedArchitecture => "Unsupported architecture",
-        NamErrorCode::TopologyDetectionFailed => "Topology detection failed",
-        NamErrorCode::WeightCountMismatch => "Weight count mismatch",
-        NamErrorCode::ModelBuildFailed => "Model build failed",
-        NamErrorCode::ModelTooLarge => "Model file too large",
-        _ => "Internal error",
-    }
-}
 
 impl<'a> NamClapMainThread<'a> {
     /// Loads a new neural model from the specified path.

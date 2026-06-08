@@ -126,6 +126,41 @@ impl NamErrorCode {
         }
     }
 
+    /// Returns a human-readable message for GUI display.
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::FileNotFound => "File not found",
+            Self::FileReadError => "File read error",
+            Self::UnknownExtension => "Unknown extension",
+            Self::NamJsonParseError => "Invalid JSON format",
+            Self::NamJsonWeightsExceedLimit => "JSON weights exceed limit",
+            Self::NamJsonTrainingTooLarge => "Training metadata too large",
+            Self::NamJsonTrainingTooDeep => "Training metadata too deeply nested",
+            Self::NambCrc32Mismatch => "CRC32 checksum mismatch",
+            Self::NambCrc32Missing => "CRC32 integrity flag missing (v2+)",
+            Self::NambInvalidMagic => "Invalid signature",
+            Self::NambUnsupportedVersion => "Unsupported version",
+            Self::NambTruncated => "Corrupted/truncated file",
+            Self::UnsupportedArchitecture => "Unsupported architecture",
+            Self::TopologyDetectionFailed => "Topology detection failed",
+            Self::WeightCountMismatch => "Weight count mismatch",
+            Self::ModelBuildFailed => "Model build failed",
+            Self::ModelTooLarge => "Model file too large",
+            Self::PipewireInitFailed => "PipeWire initialization failed",
+            Self::StreamConnectFailed => "Stream connection failed",
+            Self::ResamplerBuildFailed => "Resampler build failed",
+            Self::ResamplerChannelFull => "Resampler channel full",
+            Self::SchedFifoDenied => "SCHED_FIFO denied",
+            Self::CpuAffinityFailed => "CPU affinity setting failed",
+            Self::DeadlineExceeded => "Processing deadline exceeded",
+            Self::ParamChannelFull => "Parameter channel full",
+            Self::GcOverflow => "Garbage collection overflow",
+            Self::InvalidGainValue => "Invalid gain value",
+            Self::UnknownCommand => "Unknown command",
+            Self::CtrlCHandlerFailed => "Ctrl-C handler setup failed",
+        }
+    }
+
     /// Returns the human-readable mnemonic name (SCREAMING_SNAKE_CASE) of the code.
     pub fn mnemonic(self) -> &'static str {
         match self {

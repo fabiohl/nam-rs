@@ -1168,7 +1168,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** caminho de loader (não-RT). Alocação de `String` OK.
 - **DoD:** padrão.
 
-#### S6.T17 — Mover `error_code_to_str` para método de `NamErrorCode`
+#### S6.T17 — Mover `error_code_to_str` para método de `NamErrorCode`[DONE]
 
 - **Problema:** `src/clap/plugin/main_thread/load.rs` (L16–33) define
   `fn error_code_to_str(code: NamErrorCode) -> &'static str` como free function.
