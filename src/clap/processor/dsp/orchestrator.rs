@@ -3,7 +3,7 @@
 
 use super::super::NamClapProcessor;
 use crate::clap::processor::dsp::{channels, gate_flags, peaks};
-use crate::dsp::gate::{GateParams, GateState};
+use crate::dsp::gate::GateState;
 use crate::dsp::pipeline::{
     DspPipelineContext, apply_input_stage, apply_output_stage, run_inference,
 };
@@ -47,20 +47,16 @@ impl<'a> NamClapProcessor<'a> {
             self.apply_input_gain(n_samples);
 
             let lut = get_gain_lut();
-            let modulated_gate_db = self.params.gate_threshold_db + self.mod_gate_thresh;
-            let close_db = modulated_gate_db - 6.0;
 
             if self.gate_dirty {
+                let modulated_gate_db = self.params.gate_threshold_db + self.mod_gate_thresh;
+                let close_db = modulated_gate_db - 6.0;
                 self.cached_threshold_open_sq = lut.db_to_linear(modulated_gate_db).powi(2);
                 self.cached_threshold_close_sq = lut.db_to_linear(close_db).powi(2);
+                self.cached_gate_params.threshold_open_db = modulated_gate_db;
+                self.cached_gate_params.threshold_close_db = close_db;
                 self.gate_dirty = false;
             }
-
-            let gate_params = GateParams {
-                threshold_open_db: modulated_gate_db,
-                threshold_close_db: close_db,
-                ..Default::default()
-            };
 
             let mut ctx = DspPipelineContext {
                 resampler: &mut self.resampler,
@@ -68,7 +64,7 @@ impl<'a> NamClapProcessor<'a> {
                 active_model_r: &mut self.active_model_r,
                 input_gain_mult: 1.0,
                 output_gain_mult: 1.0,
-                gate_params: &gate_params,
+                gate_params: &self.cached_gate_params,
                 silence_hysteresis: &mut self.silence_hyst,
                 mono_hysteresis: &mut self.mono_hyst,
                 threshold_open_sq: self.cached_threshold_open_sq,

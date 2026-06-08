@@ -19,7 +19,7 @@ pub(crate) use state::NamClapProcessor;
 use crate::clap::plugin::{NamClapMainThread, NamClapShared};
 use crate::common::params::RtPluginParams;
 use crate::dsp::adaptive::AdaptiveCompute;
-use crate::dsp::gate::DynamicHysteresis;
+use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
@@ -144,6 +144,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             mod_gate_thresh: 0.0,
             cached_threshold_open_sq: 0.0,
             cached_threshold_close_sq: 0.0,
+            cached_gate_params: GateParams::default(),
             gate_dirty: true,
             cycles_since_telemetry: 0,
             host,

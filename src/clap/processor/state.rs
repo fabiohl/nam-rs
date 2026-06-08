@@ -7,7 +7,7 @@ use crate::clap::plugin::{ClapParamPayload, NamClapShared};
 use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
-use crate::dsp::gate::DynamicHysteresis;
+use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
@@ -86,6 +86,7 @@ pub struct NamClapProcessor<'a> {
     /// linear² via LUT to avoid lookups on the RT hotpath.
     pub(crate) cached_threshold_open_sq: f32,
     pub(crate) cached_threshold_close_sq: f32,
+    pub(crate) cached_gate_params: GateParams,
     pub(crate) gate_dirty: bool,
     /// Telemetry decimation: 1-in-16. Cycle counter since last measurement.
     /// SHARED ALGORITHM: Same decimation strategy as `src/standalone/pw_host.rs` (frame_count & 0xF).

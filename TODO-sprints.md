@@ -37,7 +37,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Elimina chamada de função por bloco. `get_gain_lut()` retorna `&'static GainLut` — custo é baixo, mas a eliminação de qualquer branch/call no hot-path é desejável.
 
-#### TT-1.1.4: Cache de `GateParams` no `NamClapProcessor`
+#### TT-1.1.4: Cache de `GateParams` no `NamClapProcessor` [DONE]
 
 - **Arquivo:** `src/clap/processor/dsp/orchestrator.rs`
 - **Descrição:** `GateParams` (linhas 59-63) é reconstruído a cada iteração `port_pair`. Os campos `hold_frames`, `fade_frames`, `inv_fade_frames`, `mono_epsilon` são constantes. Mover para campo cache no `NamClapProcessor`, invalidado via `gate_dirty`.
