@@ -16,6 +16,7 @@ pub mod dispatcher;
 pub mod nam_json;
 pub mod namb;
 pub mod namb_encoder;
+pub mod transpose;
 
 /// Default input level in dBu for models that do not specify metadata.
 const DEFAULT_INPUT_LEVEL_DBU: f32 = 12.0;

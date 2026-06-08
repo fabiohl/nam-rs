@@ -684,7 +684,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **RT-Safety:** loader (não-RT); cast `unsafe` de header é bounds-checked.
 - **DoD:** padrão.
 
-#### S4.T08 — Dividir `src/loader/namb_encoder.rs` (348 LOC)
+#### S4.T08 — Dividir `src/loader/namb_encoder.rs` (348 LOC)(CONCLUÍDO ✅)
 
 - **Split:** criar `loader/transpose/`:
   - `namb_encoder.rs` (mantém) ← `encode_namb`, `transpose_weights` (dispatch),
