@@ -3,10 +3,6 @@
 
 # TODO-sprints — Refatoração Estrutural (Rust) do nam-rs
 
-> **Objetivo do plano:** decompor os arquivos-fonte grandes (≥ 300 linhas) em módulos menores, atômicos, modulares e bem organizados — **sem alterar lógica
-> nem algoritmos** — preservando rigorosamente a **segurança de tempo real (RT-Safety)** e a performance SIMD. Cada tarefa abaixo foi escrita para ser
-> executada **isoladamente por um agente de IA**, sem dependência de contexto de outras tarefas.
-
 ---
 
 ## 0. Como usar este documento
@@ -826,22 +822,463 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 - **DoD:** `lints.sh` verde; `tests-cargo.sh` verde (568 pass, 0 fail).
 
 ---
+---
 
-## Anexo A — Matriz de priorização e paralelização
+## ÉPICO 6 — Residual: Otimização Máxima
 
-| Sprint | Subsistema              | Tarefas    | Split?        | Risco         | Paralelizável com |
-| ------ | ----------------------- | ---------- | ------------- | ------------- | ----------------- |
-| 1.A    | math/gemm               | S1.T01–T04 | Sim (por ISA) | Médio         | 2, 3, 4           |
-| 1.B    | math/dsp,wavenet,common | S1.T05–T08 | Sim           | Médio         | 2, 3, 4           |
-| 1.C    | math/common (macros)    | S1.T09–T10 | Sim/Coeso     | Baixo         | 2, 3, 4           |
-| 2      | models                  | S2.T01–T07 | Maioria       | Médio         | 1, 3, 4           |
-| 3.A    | clap/gui                | S3.T01–T04 | Sim           | Baixo (UI)    | 1, 2, 4           |
-| 3.B    | clap/processor,plugin   | S3.T05–T09 | Sim/Coeso     | **Alto (RT)** | 1, 2, 4           |
-| 4.A    | common                  | S4.T01–T02 | Sim           | Médio         | 1, 2, 3           |
-| 4.B    | dsp                     | S4.T03–T05 | Sim/Coeso     | **Alto (RT)** | 1, 2, 3           |
-| 4.C    | loader                  | S4.T06–T09 | Sim           | Baixo         | 1, 2, 3           |
-| 4.D    | standalone              | S4.T10–T11 | Sim/Parcial   | **Alto (RT)** | 1, 2, 3           |
-| 4.E    | testing                 | S4.T12     | Coeso         | Baixo         | todos             |
-| 5      | transversal             | S5.T01–T03 | Não           | Baixo–Médio   | após 1–4          |
+> **Objetivo:** esgotar TODAS as oportunidades residuais de melhoria estrutural conforme
+> `refatora-rust.md`. Abrange: (A) extração de implementação de `mod.rs` inflados,
+> (B) split ou justificativa de arquivos residuais > 300 LOC, (C) deduplicação de
+> código entre subsistemas, (D) realocação de arquivos em diretórios incorretos,
+> (E) constantes e limpezas pontuais.
+>
+> **Foco estritamente residual.** Ao final deste épico, **nenhuma** oportunidade de
+> melhoria conforme `refatora-rust.md` permanece em aberto.
 
-**Tarefas de maior risco (RT hot-path):** S3.T05 (processor/dsp), S3.T06/T07 (processor/params), S4.T03 (pipeline/stages), S4.T10 (rt_callback), S4.T11 (capture). Exigem revisão manual de RT-safety no diff e, quando possível, verificação de não-regressão em `benches/`.
+### Sprint 6.A — Extrair implementação de mod.rs inflados
+
+> **Problema geral:** `mod.rs` deve ser agregador de submódulos (declarações `mod`,
+> `pub mod`, `pub use`). Vários `mod.rs` contêm funções, structs e impl blocks
+> substanciais que devem ser extraídos para submódulos nomeados. O critério é:
+> se o `mod.rs` tem mais implementação do que declarações, a implementação deve
+> ser extraída.
+
+#### S6.T01 — Extrair implementação de `src/loader/mod.rs` (260 LOC → ~21 LOC)
+
+- **Problema:** 239 linhas de implementação (`LoadedModelPair` struct + Debug impl
+  - 4 consts + `load_and_build_model` fn) vs 10 linhas de declarações.
+- **Split:**
+  - `loader/loaded_model_pair.rs` ← struct `LoadedModelPair`, `impl Debug`,
+    4 `const`s (`DEFAULT_*`, `MAX_MODEL_BYTES`), imports.
+  - `loader/build.rs` ← `pub fn load_and_build_model` (corpo completo, ~190 linhas).
+  - `loader/mod.rs` (mantém) ← `pub mod` decls + re-export
+    `pub use loaded_model_pair::*` + `pub use build::load_and_build_model`.
+- **Consumidores afetados:** `main.rs`, `clap/plugin/main_thread/load.rs`,
+  `clap/factory/preset_discovery.rs`, `benches/inference_bench.rs` — preservar
+  caminhos via re-export.
+- **RT-Safety:** caminho de loader (cold, não-RT). Alocação de `Vec<u8>` + `Box`
+  OK; sem mudança de lógica.
+- **DoD:** padrão §0.2.
+
+#### S6.T02 — Extrair implementação de `src/standalone/pw_host/mod.rs` (264 LOC → ~28 LOC)
+
+- **Problema:** 173 linhas de `run_pipewire_host` vs 15 linhas de declarações.
+- **Split:**
+  - `pw_host/run.rs` ← `pub fn run_pipewire_host` (corpo completo, seções 1–7).
+  - `pw_host/mod.rs` (mantém) ← `mod` decls + re-export
+    `pub use run::run_pipewire_host`.
+  - (Opcional) dividir seções internas de `run_pipewire_host`:
+    `pw_host/run.rs` ← seção 1 (loop init, bridge alloc, CPU affinity),
+    `pw_host/control_loop.rs` ← seções 5–7 (main loop, GC drain, shutdown).
+    Recomendação: split único primeiro; se ainda > 150 LOC, split adicional.
+- **Consumidores:** `main.rs` — preservar `crate::standalone::pw_host::run_pipewire_host`.
+- **RT-Safety:** função contém tanto cold (setup) quanto hot (loop com atômicos).
+  Manter `#[cold]` hints nos blocos de setup; o loop principal usa SPSC/atômicos
+  `Relaxed` — preservar `Ordering`s.
+- **DoD:** padrão.
+
+#### S6.T03 — Extrair implementação de `src/standalone/pw_host/capture/mod.rs` (230 LOC → ~33 LOC)
+
+- **Problema:** 197 linhas de `setup_capture_stream` (com 3 closures) vs 18 linhas
+  de declarações.
+- **Split:**
+  - `pw_host/capture/setup.rs` ← `pub fn setup_capture_stream` (corpo completo
+    com closures `state_changed`, `param_changed`, `process`).
+  - `pw_host/capture/mod.rs` (mantém) ← `mod state; mod listeners; mod setup;` +
+    re-export `pub use setup::setup_capture_stream`.
+  - (Opcional) extrair closure `process` (~123 linhas) para
+    `pw_host/rt_callback/capture_process.rs` — cuidado: a closure captura ~30
+    locais por `move`; extrair quebraria as capturas. **Não extrair** a closure
+    `process`; apenas mover `setup_capture_stream` inteira para `setup.rs`.
+- **RT-Safety:** a closure `process` é entrada RT do PipeWire. Manter todos os
+  buffers como arrays de pilha capturados por `move`; `parking_lot: [Option<GcItem>;16]`
+  pré-alocado; `configure_realtime_thread` one-shot. Nenhuma mudança de captura
+  ou escopo.
+- **DoD:** padrão + revisão RT.
+
+#### S6.T04 — Extrair implementação de `tests/common/mod.rs` (413 LOC → ~30 LOC)
+
+- **Problema:** pior infrator — 367 linhas de implementação vs 9 linhas de
+  declarações. É `mod.rs` de testes, mas o mesmo princípio se aplica.
+- **Split:**
+  - `tests/common/metrics.rs` ← `compute_mse`, `compute_max_abs_error`, consts
+    `GOLDEN_NUM_SAMPLES`, `GOLDEN_BLOCK_SIZE`, `TEST_BLOCK_SIZE`, `TEST_NUM_BLOCKS`,
+    `STRESS_SAMPLE_RATE`.
+  - `tests/common/fidelity.rs` ← `report_dsp_fidelity`, `topology_thresholds`.
+  - `tests/common/signals.rs` ← `generate_stress_signal` (deprecated),
+    `generate_sine_440hz`.
+  - `tests/common/golden.rs` ← `read_golden_bin`.
+  - `tests/common/mod.rs` (mantém) ← `model_path`, `process_in_blocks`,
+    `pub mod` decls + re-exports de todos os símbolos movidos.
+- **Consumidores:** TODOS os arquivos em `tests/` importam de
+  `tests/common/mod.rs` → preservar via `pub use` no `mod.rs`.
+- **RT-Safety:** funções de teste (não-RT). Sem restrições.
+- **DoD:** padrão.
+
+#### S6.T05 — Extrair implementação de `src/loader/dispatcher/mod.rs` (112 LOC → ~30 LOC)
+
+- **Problema:** 100 linhas de implementação (`WeightCursor` struct + impl +
+  `build_model`) vs 5 linhas de declarações.
+- **Split:**
+  - `dispatcher/weight_cursor.rs` ← `WeightCursor` struct + `impl` (new,
+    is_interleaved4, is_gate_major_lstm, read_slice, read_f32, verify_exhausted)
+    - use imports do `super::nam_json::WeightsLayout`.
+  - `dispatcher/mod.rs` (mantém) ← `pub mod lstm; pub mod wavenet;` +
+    `mod weight_cursor; pub(crate) use weight_cursor::WeightCursor;` +
+    `pub fn build_model(data)` (7 linhas de dispatch, permanece).
+- **RT-Safety:** caminho de loader (não-RT). `WeightCursor` é forward-only reader
+  sobre slice `&[f32]`; sem alocação própria. Sem mudança de lógica.
+- **DoD:** padrão.
+
+#### S6.T06 — Extrair implementação de `src/models/a2/mod.rs` (119 LOC → ~28 LOC)
+
+- **Problema:** `WavenetA2Placeholder` (struct + 3 impl blocks, ~72 linhas)
+  polui o `mod.rs` que deveria ser apenas declarações + re-exports.
+- **Split:**
+  - `a2/placeholder.rs` ← struct `WavenetA2Placeholder` + `impl WavenetA2Placeholder`
+    (new, inject_rt_status) + `impl sealed::Sealed` + `impl NamModel` (process,
+    prewarm).
+  - `a2/mod.rs` (mantém) ← `pub mod` decls + `pub use` re-exports + `pub use
+    placeholder::WavenetA2Placeholder`.
+  - (Opcional) o bloco `#[cfg(test)] mod tests` (L106–119) pode ser extraído para
+    `a2/tests.rs` — mas como é < 300 linhas, permanece inline (regra `testing.md`).
+- **RT-Safety:** `process` é placeholder (silencia saída, sem DSP real). Preservar
+  `AtomicBool::compare_exchange` one-shot para warning e `Relaxed` em `heap_audit`.
+- **DoD:** padrão.
+
+#### S6.T07 — Extrair boilerplate de prewarm de `src/models/lstm/mod.rs` (202 LOC → ~162 LOC)
+
+- **Problema:** `LstmLike` trait + 2 impls + `lstm_prewarm_common` fn (~40 linhas)
+  representam lógica de prewarm que pode ser isolada.
+- **Split:**
+  - `lstm/prewarm.rs` ← trait `LstmLike` (com `reset_input_slots`) + impls para
+    `LstmModel1`/`LstmModel2` + `pub(super) fn lstm_prewarm_common`.
+  - `lstm/mod.rs` (mantém) ← type aliases + sealed impls + NamModel impls +
+    `mod prewarm;`. Os `NamModel::prewarm` chamam `lstm_prewarm_common(self, ...)`
+    via `use self::prewarm::*`.
+- **Consumidores:** apenas `mod.rs` consome `lstm_prewarm_common` — sem quebra
+  de API pública.
+- **RT-Safety:** cold path (prewarm). `lstm_prewarm_common` processa chunks de 512
+  samples com `model.process(buf, ...)` — preservar `#[inline(always)]` no
+  `process` subjacente.
+- **DoD:** padrão.
+
+#### S6.T08 — Extrair channel extraction de `src/clap/processor/dsp/mod.rs` (212 LOC → ~163 LOC)
+
+- **Problema:** `process_dsp_audio` (190 linhas) contém lógica de extração de
+  canais (L46–94, ~49 linhas) com matching complexo de `AudioBufferType` que é
+  autocontida e candidata natural a extração.
+- **Split:**
+  - `processor/dsp/channels.rs` ← fn privada `extract_channels(audio) ->
+    (Option<&mut [f32]>, Option<&mut [f32]>)` contendo o match
+    `InputOutput`/`InPlace`/`InputOnly`/`OutputOnly` para L e R, com
+    `#[cfg(feature="stereo")]` gating.
+  - `processor/dsp/mod.rs` (mantém) ← `process_dsp_audio` chama
+    `extract_channels` no lugar do bloco extraído.
+- **⚠️ RT-Safety (CRÍTICO):** `process_dsp_audio` é HOT-PATH. `extract_channels`
+  deve ser `#[inline(always)]` para o otimizador reproduzir o inlining atual.
+  Sem alloc/panic; apenas slicing de referências. Preservar o padrão stereo
+  feature gate `#[cfg(feature="stereo")]` / `#[cfg(not(feature="stereo"))]`.
+- **DoD:** padrão + verificação de não-regressão de benchmark (rodar
+  `benches/inference_bench.rs` antes/depois se possível).
+
+---
+
+### Sprint 6.B — Arquivos residuais > 300 LOC sem justificativa de coesão
+
+> Auditoria do Épico 2 (linhas 258–268) identificou 4 arquivos que permanecem
+> acima do limiar de 300 linhas **sem** justificativa de coesão registrada.
+> Cada tarefa abaixo decide: split ou justificativa explícita.
+
+#### S6.T09 — `src/models/lstm/layer.rs` (399 LOC): split por responsabilidade
+
+- **Problema:** `define_lstm_process!` macro + 6 instâncias SIMD + fallback
+  escalar + `scalar_minimax_sigmoid` + `LstmLayer` struct + impl + acessores
+  — tudo em um arquivo.
+- **Split (opção A — recomendado):**
+  - `lstm/layer.rs` (mantém) ← struct `LstmLayer`, `impl` (new, gate dispatch,
+    acessores), `#[cfg(test)] mod layer_test`.
+  - `lstm/layer_kernels.rs` ← `scalar_minimax_sigmoid` (pub, usado por benches
+    e parity tests) + `define_lstm_process!` macro + as 6 instâncias SIMD
+    (`process_sample` x 6) + fallback escalar.
+  - `lstm/mod.rs` ← `pub use layer::LstmLayer;`.
+- **Split (opção B — alternativo):** manter coeso e registrar justificativa:
+  "unidade única de kernel LSTM — macro `define_lstm_process!` gera 6 instâncias
+  que compartilham o mesmo corpo; separar quebraria a localidade da macro e
+  poluiria o namespace com 7 fns públicas."
+- **RT-Safety:** hot-path de inferência. Preservar `#[inline(always)]`,
+  `#[target_feature]`, `_mm_prefetch`, `Aligned64<[f32;N]>` na pilha.
+- **DoD:** padrão. Se opção B, registrar justificativa inline no arquivo.
+
+#### S6.T10 — `src/models/wavenet/model.rs` (397 LOC): split de `WaveNetLayerArray` + `WaveNetModel`
+
+- **Problema:** `WaveNetLayerArray` + `WaveNetModel` (métodos `process`,
+  `prewarm`, `prewarm_avx512`, `prewarm_avx2`, `new`, `layer_count`, etc.)
+  no mesmo arquivo.
+- **Split:**
+  - `wavenet/model.rs` (mantém) ← struct `WaveNetModel<CH, K, HEAD>` + `impl`
+    (new, process, prewarm, prewarm_avx512/avx2, prewarm_samples, layer_count,
+    set_max_buffer_size, set_effective_layers) + imports.
+  - `wavenet/layer_array.rs` ← struct `WaveNetLayerArray<CH, K, HEAD>` + `impl`
+    (new, layer_count, set_effective_layers, get_layer) + `WavenetProcessContext`
+    - `WavenetProcessParams`.
+  - `wavenet/mod.rs` ← atualizar re-exports.
+- **RT-Safety:** `process` é hot-path. `WaveNetLayerArray` é acessado via
+  `self.layers[*]` em `process` — preservar `#[inline(always)]` nos wrappers.
+  Buffers de pilha `[0.0f32; 1024]`; `_mm_prefetch`; `const { assert! }` guards.
+- **DoD:** padrão.
+
+#### S6.T11 — `src/models/wavenet/conv1d_dyn_kernels.rs` (336 LOC): split dual-frame × single-frame × block
+
+- **Problema:** 3 kernels genéricos (`process_dual_frame_generic`,
+  `process_single_frame_generic`, `process_block_generic`) compartilham a mesma
+  assinatura de `PrefetchFn` e `unsafe` contracts, mas são funcionalmente
+  independentes.
+- **Split:**
+  - `wavenet/conv1d_dyn_kernels.rs` (mantém) ← `process_single_frame_generic` +
+    `process_block_generic`.
+  - `wavenet/conv1d_dyn_dual.rs` ← `process_dual_frame_generic` (~130 linhas,
+    kernel dual-frame Temporal-Tiling).
+  - `wavenet/mod.rs` ← sem re-export adicional (kernels são `pub(crate)`).
+- **RT-Safety:** hot-path. Preservar `from_raw_parts` + `get_unchecked` + prefetch
+  indireto via `prefetch_fn`; `debug_assert!` apenas.
+- **DoD:** padrão.
+
+#### S6.T12 — `src/dsp/adaptive.rs` (329 LOC): split ou justificativa de coesão
+
+- **Problema:** `AdaptiveCompute` (estado + lógica de adaptação de qualidade +
+  timeslicer + métricas). S0.T01 extraiu testes (647→329), mas permanece > 300
+  sem justificativa.
+- **Análise:** o módulo tem 3 responsabilidades:
+  - `AdaptiveCompute` struct + `new()` + `update()` (máquina de estados).
+  - `AdaptiveTimeslicer` struct + `should_yield()`.
+  - `AdaptiveMetrics` struct + `report_frame()` + reset.
+- **Split (opção A):**
+  - `adaptive.rs` (mantém) ← `AdaptiveCompute` struct + `new` + `update`.
+  - `adaptive/timeslicer.rs` ← `AdaptiveTimeslicer`.
+  - `adaptive/metrics.rs` ← `AdaptiveMetrics`.
+- **Justificativa de coesão (opção B):** `AdaptiveTimeslicer` e `AdaptiveMetrics`
+  são usados exclusivamente por `AdaptiveCompute::update` como componentes
+  internos; separar exporia detalhes de implementação e quebraria o encapsulamento
+  da unidade de adaptação. São 2 structs pequenas (~40 + ~60 linhas) com zero
+  consumidores externos.
+- **RT-Safety:** `update()` roda no hot-path (chamado após cada frame de
+  processamento). `Relaxed` atômicos; sem alloc/lock. `should_yield` usa
+  `Instant::now()` (RT-safe, apenas leitura de TSC).
+- **DoD:** padrão. Recomendação: opção B (justificativa de coesão) é preferível
+  a expor internals.
+
+#### S6.T13 — `src/models/wavenet/conv1d.rs` (316 LOC): justificativa explícita de coesão
+
+- **Problema:** S2.T06 declarou "split opcional" e a auditoria registrou "coesão
+  implícita", mas não há justificativa formal no arquivo.
+- **Ação:** **não dividir.** Adicionar justificativa de coesão no topo do arquivo:
+  "Unidade única de convolução 1D estática: trait `ConvInput` + struct `Conv1d` +
+  kernel single-frame + wrappers com mixin formam uma unidade algorítmica coesa.
+  `ConvInput` foi extraído para `conv_input.rs` (S2.T06). Split adicional do
+  kernel single-frame quebraria a localidade dos contratos `unsafe` de aliasing
+  e acumuladores Kahan."
+- **RT-Safety:** preservar acumuladores Kahan bit-a-bit; buffers de tap na pilha;
+  `from_raw_parts` + `get_unchecked`; `prefetch_fn`.
+- **DoD:** `lints.sh` + `tests-cargo.sh` verdes; diff apenas adição de comentário.
+
+---
+
+### Sprint 6.C — Deduplicação e compartilhamento de código
+
+> Código duplicado entre subsistemas que deve ser unificado em local compartilhado.
+> **Atenção:** estas tarefas envolvem mudança de imports e, em alguns casos, leve
+> alteração de assinatura — risco moderado de regressão.
+
+#### S6.T14 — Unificar `CountingAllocator` duplicado em `src/common/alloc_audit.rs`
+
+- **Problema:** `CountingAllocator` + `TrackingGuard` implementados **identicamente**
+  em dois locais:
+  - `src/dsp/pipeline/test_util.rs` (L15–51) — `#[cfg(test)] pub(crate)`.
+  - `src/clap/heap_audit.rs` (L19–61) — runtime + test, feature `heap-audit`.
+- **Ação:**
+  - Criar `src/common/alloc_audit.rs`:
+    - `pub(crate) static ALLOC_COUNT: AtomicU64`
+    - `pub(crate) static TRACKING_THREAD: AtomicI32`
+    - `pub(crate) struct CountingAllocator` (sem `unsafe impl GlobalAlloc` —
+      cada consumer registra seu próprio `#[global_allocator]`).
+    - `pub(crate) struct TrackingGuard` + `new()` + `Drop`.
+    - `pub(crate) static AUDIT_ENABLED: AtomicBool`
+    - `pub(crate) static AUDIT_THREAD: AtomicI32`
+  - Atualizar `src/dsp/pipeline/test_util.rs`: remover definições duplicadas,
+    importar de `crate::common::alloc_audit`.
+  - Atualizar `src/clap/heap_audit.rs`: remover definições duplicadas, importar
+    de `crate::common::alloc_audit`. Manter `#[global_allocator]` registration
+    local (específico do CLAP).
+  - Atualizar `src/common/mod.rs`: `pub(crate) mod alloc_audit;`.
+- **RT-Safety:** `CountingAllocator` é `#[global_allocator]` — roda em **todas**
+  as threads. Manter `libc::syscall(libc::SYS_gettid)` e `compare_exchange`
+  exatamente como estão. `TrackingGuard::drop` decrementa `ALLOC_COUNT` — preservar
+  `Relaxed`. Nenhuma mudança de lógica.
+- **DoD:** padrão + verificar que testes de heap audit (CLAP `heap-audit` feature)
+  continuam funcionando.
+
+#### S6.T15 — Unificar gate flag state triplicado: usar `report_gate_flags()` canônico
+
+- **Problema:** a mesma lógica de mapeamento `GateState → RT_STATUS_IS_SILENT/IS_FADING`
+  aparece em 3 lugares:
+  - `src/clap/processor/dsp/gate_flags.rs` — `report_gate_flags(rt_status, gate_state)` (canônico).
+  - `src/dsp/pipeline/capture.rs` (L33–52) — bloco `match` inline.
+  - `src/dsp/pipeline/stages/input.rs` (L35–42) — `handle_silence_bypass()` (parcial, só `Closed`).
+- **Ação:**
+  - Mover `report_gate_flags` para `src/dsp/gate_flags.rs` (ao lado de `gate.rs`)
+    ou mantê-lo em `src/clap/processor/dsp/gate_flags.rs` mas torná-lo
+    `pub(crate)`.
+  - Substituir o `match` inline em `dsp/pipeline/capture.rs` por chamada a
+    `report_gate_flags(rt_status, state)`.
+  - Em `dsp/pipeline/stages/input.rs`, unificar `handle_silence_bypass` para
+    chamar `report_gate_flags` (hoje só seta `IS_SILENT`, mas deveria também
+    limpar `IS_FADING` como as outras variantes fazem — verificar se a diferença
+    é intencional).
+  - Se `handle_silence_bypass` for mantido separado, documentar a razão da
+    divergência.
+- **⚠️ RT-Safety (CRÍTICO):** `report_gate_flags` usa `store(Relaxed)` e
+  `fetch_or(Relaxed)` em `RtStatusFlags`. Ambos os call sites estão no hot-path.
+  Preservar `#[inline(always)]` e `Ordering::Relaxed`.
+- **DoD:** padrão + confirmar que o comportamento de flags é idêntico
+  (testes de gate existentes em `dsp/gate.rs` e `clap/processor_test.rs`).
+
+#### S6.T16 — Unificar `ModelInfo` construction: método `LoadedModelPair::model_info()`
+
+- **Problema:** construção de `ModelInfo` duplicada entre:
+  - `src/main.rs` (L120–126): `ModelInfo { arch_label, channels, receptive_field,
+    weights_layout, path_basename }`.
+  - `src/clap/plugin/main_thread/load.rs` (L100–117): mesma estrutura, mesmos
+    campos.
+- **Ação:**
+  - Adicionar `pub fn model_info(&self) -> ModelInfo` em `impl LoadedModelPair`
+    (em `src/loader/loaded_model_pair.rs` se S6.T01 executado, ou em
+    `src/loader/mod.rs`).
+  - Substituir os dois call sites por `loaded.model_info()`.
+  - `path_basename` já usa `PathBuf` — manter `to_string_lossy().to_string()`.
+- **RT-Safety:** caminho de loader (não-RT). Alocação de `String` OK.
+- **DoD:** padrão.
+
+#### S6.T17 — Mover `error_code_to_str` para método de `NamErrorCode`
+
+- **Problema:** `src/clap/plugin/main_thread/load.rs` (L16–33) define
+  `fn error_code_to_str(code: NamErrorCode) -> &'static str` como free function.
+  `NamErrorCode` (em `src/common/diagnostics/error_codes.rs`) já tem `code()`
+  (numérico) e `mnemonic()` (screaming snake), mas não `message()`.
+- **Ação:**
+  - Adicionar `pub fn message(&self) -> &'static str` em `impl NamErrorCode`
+    (em `error_codes.rs`).
+  - Substituir chamada em `load.rs` por `code.message()`.
+  - Remover free function `error_code_to_str` de `load.rs`.
+- **RT-Safety:** diagnóstico (não-RT). Sem impacto.
+- **DoD:** padrão.
+
+#### S6.T18 — Definir constante `SPSC_CAPACITY` centralizada
+
+- **Problema:** capacidade do SPSC (`64`) hardcoded em:
+  - `src/main.rs` (L89): `spsc::setup_spsc(64)`.
+  - Possivelmente em `src/clap/plugin/mod.rs` (verificar).
+- **Ação:**
+  - Adicionar `pub const SPSC_CAPACITY: usize = 64;` em
+    `src/common/spsc/mod.rs`.
+  - Substituir literais `64` nos call sites pela constante.
+- **RT-Safety:** sem impacto (constante de compilação).
+- **DoD:** padrão.
+
+---
+
+### Sprint 6.D — Realocação de arquivos em diretórios incorretos
+
+> Arquivos cujo propósito é geral, mas residem em diretório específico de
+> subsistema, ou vice-versa.
+
+#### S6.T19 — Mover `src/clap/param_smoother.rs` → `src/dsp/smoother.rs`
+
+- **Problema:** `ParamSmoother` é um filtro IIR de 1-polo para suavização de
+  parâmetros de áudio (ganho, gate threshold). É utilitário DSP genérico, não
+  específico do CLAP. O standalone aplica ganho sem smoothing — poderia
+  beneficiar-se.
+- **Ação:**
+  - Mover `src/clap/param_smoother.rs` → `src/dsp/smoother.rs`.
+  - Atualizar `src/clap/mod.rs`: remover `mod param_smoother`.
+  - Atualizar `src/dsp/mod.rs`: adicionar `pub mod smoother;`.
+  - Atualizar imports nos consumidores CLAP (`processor/dsp/mod.rs`,
+    `processor/dsp/gain.rs`, `processor/dsp/gate_flags.rs`):
+    `crate::clap::param_smoother::ParamSmoother` →
+    `crate::dsp::smoother::ParamSmoother`.
+- **RT-Safety:** `ParamSmoother::process` é chamado no hot-path do processor.
+  Manter `#[inline(always)]` nos métodos; struct é `Copy` (campos `f32` na pilha);
+  sem alloc.
+- **DoD:** padrão.
+
+#### S6.T20 — Consolidar `src/clap/heap_audit.rs` em `src/common/alloc_audit.rs`
+
+- **Problema:** `heap_audit.rs` é infraestrutura de auditoria de alocação RT
+  (genérica), mas reside no diretório CLAP.
+- **Ação (depende de S6.T14):**
+  - Após S6.T14 (unificação do `CountingAllocator`), o conteúdo remanescente de
+    `heap_audit.rs` (global allocator registration + feature gate) é pequeno e
+    pode ser movido para `src/common/alloc_audit.rs` ou mantido como
+    `src/clap/heap_audit.rs` com apenas o `#[global_allocator]` registration
+    específico do CLAP.
+  - Se o standalone futuramente precisar de heap audit, a infra compartilhada
+    já estará em `common`.
+- **Decisão:** se `heap_audit.rs` após S6.T14 contiver APENAS
+  `#[global_allocator] static GLOBAL: CountingAllocator = ...` + feature gate,
+  manter em `clap/` com justificativa: "registro de global_allocator é específico
+  do binary crate CLAP". Caso contrário, mover integralmente.
+- **DoD:** padrão.
+
+---
+
+### Sprint 6.E — Constantes e limpezas pontuais
+
+#### S6.T21 — Corrigir nome ambíguo `src/dsp/pipeline/playback.rs`
+
+- **Problema:** o arquivo `playback.rs` em `dsp/pipeline/` contém lógica de
+  saída PipeWire (`PipewireHostConfig`, `AppState`) e é gated com
+  `#[cfg(feature = "standalone")]`. O nome "playback" é enganoso — não é
+  playback genérico, é saída PipeWire standalone.
+- **Ação:**
+  - Renomear `src/dsp/pipeline/playback.rs` → `src/dsp/pipeline/output_pw.rs`
+    (ou `pw_output.rs`).
+  - Atualizar `src/dsp/pipeline/mod.rs`: `mod playback` → `mod output_pw` +
+    re-exports correspondentes.
+  - Atualizar consumidores em `standalone/pw_host/`.
+- **RT-Safety:** sem mudança de lógica. Apenas rename.
+- **DoD:** padrão.
+
+#### S6.T22 — Auditoria final: varredura de dead code e comentários obsoletos residuais
+
+- **Ação:** varrer TODO-sprints.md e confirmar que TODOS os itens de dead code
+  e comentários obsoletos foram executados (S5.T01–T03). Verificar:
+  - `src/dsp/pipeline/capture.rs`: comentários de "5.1.x" obsoletos.
+  - `src/loader/dispatcher/lstm.rs`: comentários PT informais.
+  - Qualquer `#[allow(unused)]` residual que possa ser removido.
+- **DoD:** `lints.sh` + `tests-cargo.sh` verdes; grep por "TODO", "FIXME",
+  "HACK" no código-fonte — apenas itens legítimos restantes.
+
+---
+
+### Anexo B — Matriz de priorização do Épico 6
+
+| Sprint | Subsistema                      | Tarefas     | Risco         | Dependências        |
+| ------ | ------------------------------- | ----------- | ------------- | ------------------- |
+| 6.A    | mod.rs inflados                 | S6.T01–T08  | Baixo–Médio   | nenhuma             |
+| 6.B    | Arquivos > 300 LOC residuais    | S6.T09–T13  | Médio         | nenhuma             |
+| 6.C    | Deduplicação                    | S6.T14–T18  | Médio–Alto    | S6.T01 (S6.T16)     |
+| 6.D    | Realocação                      | S6.T19–T20  | Médio         | S6.T14 (S6.T20)     |
+| 6.E    | Limpezas pontuais               | S6.T21–T22  | Baixo         | nenhuma             |
+
+**Paralelização:** Sprints 6.A e 6.B podem ser executadas em paralelo (subsistemas
+distintos). Sprints 6.C e 6.D devem ser serializadas (dependências internas). Sprint
+6.E pode ser executada a qualquer momento.
+
+**Tarefas de maior risco (RT hot-path):** S6.T08 (processor/dsp/channels),
+S6.T15 (gate flags), S6.T19 (param_smoother relocation). Exigem revisão manual de
+RT-safety e verificação de não-regressão de benchmark quando aplicável.
+
+**Tarefas que alteram assinaturas/imports públicos:** S6.T01 (loader),
+S6.T14 (alloc_audit), S6.T16 (LoadedModelPair), S6.T17 (NamErrorCode),
+S6.T19 (ParamSmoother), S6.T21 (playback→output_pw). Exigem atualização de
+todos os consumidores com `grep` global antes de concluir.
