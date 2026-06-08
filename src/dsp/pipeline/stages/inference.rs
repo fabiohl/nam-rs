@@ -8,8 +8,8 @@ use crate::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::models::{DynamicModel, NamModel};
 
-use super::bridge::MAX_RESAMP_BUF;
-use super::context::DspPipelineContext;
+use super::super::bridge::MAX_RESAMP_BUF;
+use super::super::context::DspPipelineContext;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Updates model effective layers for soft-degrade based on the adaptive FSM state.

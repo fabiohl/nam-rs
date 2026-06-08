@@ -4,7 +4,7 @@
 //! Stage 4: Write to DspBridge.
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-use super::bridge::DspBridgeWriter;
+use super::super::bridge::DspBridgeWriter;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Stage 4: Write to DspBridge.

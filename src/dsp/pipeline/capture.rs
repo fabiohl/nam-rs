@@ -7,11 +7,7 @@
 use crate::dsp::gate::GateState;
 
 use super::context::{DspBuffers, DspPipelineContext};
-use super::stage_bridge::write_bridge;
-use super::stage_inference::run_inference;
-#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-use super::stage_input::{apply_input_stage, handle_silence_bypass};
-use super::stage_output::apply_output_stage;
+use super::stages::{apply_input_stage, apply_output_stage, handle_silence_bypass, run_inference, write_bridge};
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Full DSP Pipeline (Aggregator).

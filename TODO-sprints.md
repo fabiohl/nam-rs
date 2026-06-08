@@ -567,7 +567,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ---
 
-## ÉPICO 4 — DSP / Loader / Common / Standalone
+## ÉPICO 4 — DSP / Loader / Common / Standalone (CONCLUÍDO ✅)
 
 > Mistura caminhos hot (RT) e cold (loader/encoder/diagnóstico). Marcações de RT
 > abaixo são vinculantes.
@@ -619,7 +619,10 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
     `run_inference`.
   - `stages/output.rs` ← `apply_output_stage`, `write_bridge`.
   - `stages/mod.rs` ← re-export + colocar `DENORMAL_DITHER_OFFSET` em local
-    compartilhado (usado por input **e** output).
+     compartilhado (usado por input **e** output).
+- **Nota de correção (08/06/2026):** arquivos corrigidos de `pipeline/stage_*.rs`
+   para `pipeline/stages/{input,inference,output,bridge}.rs` conforme o plano
+   original. Re-exports via `stages/mod.rs`; `pipeline/mod.rs` usa `mod stages`.
 - **⚠️ RT-Safety:** hot-path puro. Manter `#[inline(always)]` em todos os
   estágios e `#[cold]#[inline(never)]` no silence-bypass; `get_unchecked_mut`
   para dither; `dispatch_simd!`; **preservar a simetria inject/compensate de
@@ -757,7 +760,7 @@ funcionalmente equivalente), S3.T07 (nomes simplificados, `info.rs` opcional em
 
 ### Sprint 4.E — Testing util (coeso)
 
-#### S4.T12 — `src/testing/stress.rs` (314 LOC): COESO (sem split)
+#### S4.T12 — `src/testing/stress.rs` (314 LOC): COESO (sem split) (CONCLUÍDO ✅)
 
 - **Ação:** **não dividir.** A v2 (`generate_stress_signal_v2`) é uma fn única com
   6 blocos sequenciais que **compartilham o estado `out`/`rng`** — separar

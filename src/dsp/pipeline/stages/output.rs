@@ -12,7 +12,7 @@ use crate::dsp::gate::DynamicHysteresis;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::math::common::dispatch_simd;
 
-use super::stage_input::DENORMAL_DITHER_OFFSET;
+use super::input::DENORMAL_DITHER_OFFSET;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Stage 3: Output Gain, Fading, Clipping Detection, and Degrade Crossfade.

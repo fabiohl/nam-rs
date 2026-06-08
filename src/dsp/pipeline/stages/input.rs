@@ -15,8 +15,8 @@ use crate::dsp::gate::GateState;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::math::dsp::stereo::{compute_energy_stereo, compute_max_diff};
 
-use super::bridge::DspBridgeWriter;
-use super::context::DspPipelineContext;
+use super::super::bridge::DspBridgeWriter;
+use super::super::context::DspPipelineContext;
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 /// Global control to disable the noise gate/silence bypass during profiling/benchmarks.
