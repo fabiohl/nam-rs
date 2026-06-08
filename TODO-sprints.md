@@ -497,7 +497,7 @@ Baseline `lints.sh` + `tests-cargo.sh` confirmados verdes antes e depois.
   `push_to_gc` deve permanecer alloc/lock-free (array parking-lot + overflow).
 - **DoD:** padrão.
 
-#### S3.T07 — Dividir `src/clap/extensions/params.rs` (459 LOC) por trait
+#### S3.T07 — Dividir `src/clap/extensions/params.rs` (459 LOC) por trait(CONCLUÍDO ✅)
 
 - **Split:** criar `extensions/params/`:
   - `params/mod.rs` ← consts `PARAM_*` (L20–30) + decls + nota de duplicação
