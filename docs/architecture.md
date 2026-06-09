@@ -212,6 +212,7 @@ To guarantee xrun-free operation in real-time audio threads under high CPU utili
   - **Recovery:** Upgrades to the previous state only after 5 consecutive blocks remain safely below recovery thresholds (`0.35 * budget` for Conservative, `0.275 * budget` for Aggressive).
 - **Linear Crossfade:** Integrates a 32 ms linear parameter crossfade between active layers to guarantee smooth, click-free structural transitions.
 - **Deterministic Offline Bounce:** During offline rendering/export (`RenderMode::Offline` in CLAP), the host DAW does not operate under real-time constraints. To guarantee deterministic, maximum-quality output, the render mode transition forces `AdaptiveCompute` to `Off` (which resets the FSM state to `Full`), clears all active degradation status flags (`RT_STATUS_DEGRADE_REDUCED`, `RT_STATUS_DEGRADE_MINIMAL`), and ignores all block deadline measurements.
+- **Planned — A2 slimmable degradation:** for A2 models delivered as a `SlimmableContainer`, this same FSM will drive the runtime **A2-Full → A2-Lite** switch (selecting the lighter submodel under CPU pressure) instead of layer-skipping, reusing the crossfade machinery. See §7 and [TODO-sprints.md](/TODO-sprints.md) (Epic 3).
 
 ## 6. Testing Strategy & Quality
 
@@ -239,27 +240,42 @@ The project follows a strict hierarchy to ensure internal logic and the public A
 | **Fuzz Testing (`proptest`)** | `tests/proptest_parsers.rs`                      | —                                 | ~45,000 adversarial inputs against JSON/.namb parsers to prevent vulnerabilities and panics.                     |
 | **Soak Test (Endurance)**     | `tests/soak_test.rs`                             | —                                 | Long-duration numerical stability (10M+ frames). `#[ignore]` in CI; run via `bash utils/tests-long.sh`           |
 
-### Architecture Decision: Removal of Parity Tests with Fixed Inputs and Self-Referential Goldens
+### Validation Pyramid: Complementary Roles of Scalar Reference and Golden Vectors
 
-> Tests that compared SIMD kernels against `ScalarRefMath` with fixed inputs were removed — they were circular (validation against themselves) and redundant with PropTests (10k random inputs with independent `f64`/`f32::tanh()` references). The `ScalarRefMath` struct was eliminated; the `_fallback` functions in `src/math/common/scalar_ref.rs` remain as scalar delegates.
+Two validation layers capture **different classes of bug** and are deliberately not redundant:
+
+- **Scalar reference (`src/math/common/scalar_ref.rs`) — tight-band oracle.** SIMD↔scalar parity must hold to `~1e-6` (only floating-point reassociation differs). Driven by **PropTests** over a wide random input space (10k+ cases with independent `f64`/`f32::tanh()` references), it localizes kernel bugs, sweeps edge cases the golden never exercises (remainder lengths `n % 8`, denormals, alignment boundaries), runs in the **fast hermetic lane** (`cargo test`, no C++ toolchain), and is the shared **cross-ISA invariant** when new SIMD paths (e.g., AVX-512) are added.
+  - **Not a production fallback.** There is no scalar runtime path for non-AVX2 CPUs: detection (`src/math/common/dispatch/detect.rs`) **fail-fasts** because x86-64-v3 (AVX2+FMA) is the mandatory baseline. In production, the `_fallback` functions act only as the **tail/remainder and small-N handlers inside the SIMD kernels** (and as the native-`f32` path for select LSTM head ops).
+- **Golden Vectors vs. NeuralAmpModelerCore — loose-band external truth.** By design (see [docs/perceptual_validation.md](/docs/perceptual_validation.md)), goldens are **not bit-exact** with the C++ reference: divergence is dominated by the FastMath approximations (see [docs/fastmath-approximations.md](/docs/fastmath-approximations.md)), so they are validated against an adaptive **tolerance band** (SNR/ESR/MR-STFT). They anchor the *algorithm/spec* against canonical truth, end-to-end, in the slow lane (`#[ignore]`, `utils/tests-long.sh`).
+
+> **Why both?** A kernel bug small enough to stay inside the loose golden band but large enough to break the tight scalar parity is caught only by the scalar oracle. Conversely, a spec error shared by both scalar and SIMD implementations is caught only by the external golden. Removing either layer leaves a corresponding blind spot.
 >
-> The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (Steven Atkinson) — the canonical source of `.nam` models. Seven reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) calculated in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](/tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](/docs/dependencies.md#L108).
+> **History:** Earlier *fixed-input* parity tests against a `ScalarRefMath` struct were removed (circular — validating against themselves) in favor of the PropTest approach above; the `ScalarRefMath` struct was eliminated while the scalar delegates remained. The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore). Reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) computed in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](/tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](/docs/dependencies.md#L108).
 
 ### Benchmarks and Performance
 
 - **Criterion Benches:** `benches/inference_bench.rs` measures inference latency per model and SIMD architecture.
 - **Long Run Benchmarks:** `Long_Run_*` group in `benches/inference_bench.rs` activated via `long_bench` feature, with 4096-sample blocks and `measurement_time(30s)` to measure real throughput in continuous operation. Activated via `bash utils/tests-long.sh`.
 
-## 7. Preparation for A2 Architecture
+## 7. A2 Architecture: Current State & Roadmap
 
-NAM-rs v1.4 introduces the scaffolding necessary for the next generation of models (A2), maintaining absolute parity with existing A1 models, but without real implementation. We just leave things ready for when "the time comes".
+A2 is NAM's officially-released next-generation architecture (NeuralAmpModelerCore v0.5.2+). NAM-rs currently ships the **scaffolding and detection contract**; full A2 inference is the active porting effort planned in [TODO-sprints.md](/TODO-sprints.md).
+
+### Current state (implemented)
 
 - **Forward-Compatible Loader:** The dispatcher (`src/loader/dispatcher/wavenet/mod.rs`) identifies A2 models via version metadata or non-Tanh activations, redirecting them to a `WavenetA2Placeholder`.
-- **Placeholder with Detection Contract:** The `WavenetA2Placeholder` stores the detected number of channels (3 = nano, 8 = standard) and reports this information via a warning log. Detection uses two independent pathways: `is_wavenet_a2()` (SemVer based on version ≥ 0.6.0 or non-Tanh activations) and `is_a2_shape()` (verification of the architectural signature: 1 layer array, channels ∈ {3,8}, dilations identical to `a2_fast.h`). The placeholder does not support actual inference — it emits silence — but maintains the detection contract to prevent conflicts when actual A2 implementation is integrated.
-- **Activation Extensibility:** Support for 11 variants of activation functions (HardTanh, SiLU, LeakyReLU, etc.) via the `ActivationFn` trait, ready for future SIMD implementation.
-- **Flexible Parametrization:** Inclusion of structures for FiLM, dynamic Gating, and activation Blending, allowing the parser to accept new file formats without panics.
+- **Placeholder with Detection Contract:** The `WavenetA2Placeholder` stores the detected number of channels (3 = nano, 8 = standard) and reports it via a warning log. Detection uses two independent pathways: `is_wavenet_a2()` (SemVer ≥ 0.6.0 or non-Tanh activations) and `is_a2_shape()` (architectural signature: 1 layer array, channels ∈ {3,8}, dilations identical to `a2_fast.h`). The placeholder emits silence but maintains the detection contract to prevent conflicts when real inference is integrated.
+- **Constants mirror the reference:** `src/models/a2/params.rs` mirrors `a2_fast.h` byte-for-byte (`A2_NUM_LAYERS`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_LEAKY_SLOPE`).
 
-We are tracking the progress of [Steven Atkinson's](https://github.com/sdatkinson) work and will perform a full port from [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) when it is ready.
+### Scope & roadmap (decided — see [TODO-sprints.md](/TODO-sprints.md))
+
+The reference is now available under `tests/fixtures/NeuralAmpModelerCore/` (source of truth). The agreed scope, intentionally narrow for a fast, safe delivery:
+
+- **A2 engine = fixed fast-path only.** Port of `NAM/wavenet/a2_fast.cpp` for the two production shapes: **A2-Full** (8 channels) and **A2-Lite** (3 channels) — a single 23-layer array, kernels 6/15, fixed dilations, `LeakyReLU(0.01)`, head conv `k=16`, `layer1x1` active. The general A2 engine (FiLM, GATED/BLENDED gating, `condition_dsp`, `bottleneck ≠ channels`, grouped conv, `head1x1`) is **out of scope** — it is exercised only by the `wavenet_a2_max.nam` test model, not by production models. The reserved structs for FiLM/Gating/Blending in `src/models/a2/` are kept as forward-compat parser surface, not wired into the fast-path.
+- **Slimmable delivery:** `SlimmableContainer` (bundle of an A2-Full + A2-Lite submodel — the official distribution format) is planned now; `SlimmableWavenet` (single-network channel slicing, arXiv 2511.07470) is an official format deferred to a later epic — both planned, neither discarded.
+- **Runtime Full↔Lite selection** integrates with the Adaptive Compute FSM (§5.1): auto Full→Lite under CPU pressure plus a manual override.
+- **Burden reduction (planned):** retirement of `WavenetA2Placeholder` once real inference lands; removal of the dynamic model paths (see §3.3 of [docs/cpp_parity_map.md](/docs/cpp_parity_map.md)) and the dead VNNI aliases (§8.3.2).
+- **Anti-degradation safety:** every porting step is anchored by A2-Full/Lite golden vectors generated from the C++ reference (the validation pyramid of §6).
 
 ## 8. DAW Integration (CLAP Integration)
 
@@ -451,7 +467,7 @@ The graphical interface is decomposed from its original monolithic state into a 
 
 - **Decision:** Fragmentation of the monolithic mathematical infrastructure into domain-specific modules (`activations/`, `gemm/`, `dsp/`, `lstm/`, `wavenet/`).
 - **Justification:** Reduces cognitive noise in files with 2000+ lines, allows isolated unit testing per kernel, and facilitates compiler inlining audits.
-- **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs.
+- **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs. *(Planned: the remaining alias and the now-dead `Avx2Vnni`/`Avx512Vnni` `InstructionSet` variants are slated for full removal — see [TODO-sprints.md](/TODO-sprints.md) T0.1.)*
 - **Design Debt (Dual Dispatch):** The system uses a "Dual Dispatch" structure where the `loader` dispatches to the `model`, which in turn uses the `SimdMath` trait. We identified that the dispatch abstraction in `math/common/dispatch.rs` is a design debt point that will be unified in Epic 8 (V-Table Unification).
 
 ### 8.3.3 GUI Conditional Rendering (Idle Reduce)

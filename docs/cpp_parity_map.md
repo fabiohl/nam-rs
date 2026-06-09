@@ -1,4 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # C++ ↔ Rust Parity Map — NeuralAmpModelerCore × NAM-rs
@@ -54,6 +55,8 @@ divergences, and the sprint/task that established each equivalence.
 | BF16 layer state caching                               | `models/wavenet/common.rs` — `u16` mirrored buffer variant         | —                  |
 
 ### 3.3 Dynamic WaveNet (fallback)
+
+> **Planned for removal** (see [TODO-sprints.md](/TODO-sprints.md), Sprint 1.5). The dynamic paths (`WaveNetDynModel`/`LstmDynModel`) load arbitrary, non-catalogued geometries. None of the four focus models (A2-Full/Lite, A1-Standard/Nano) nor the A2 `SlimmableContainer` depend on them. Once removed, non-catalogued `.nam` files will fail to load with a clear diagnostic error, and the NAMCore micro-model cross-validation goldens (`golden_namcore_*`) will be retired with them.
 
 | C++ (`NeuralAmpModelerCore/`)         | Rust (`src/`)                                     | Parity established |
 | ------------------------------------- | ------------------------------------------------- | ------------------ |
@@ -117,17 +120,21 @@ divergences, and the sprint/task that established each equivalence.
 
 ---
 
-## 5. A2 Architecture (Placeholder Stage)
+## 5. A2 Architecture (Placeholder → fixed fast-path port)
 
-| C++ (`NeuralAmpModelerCore/`)                         | Rust (`src/`)                                                                                                     | Parity established |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `NAM/wavenet/a2_fast.h` — architectural constants     | `models/a2/params.rs` — `A2_NUM_LAYERS`, `A2_LEAKY_SLOPE`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_VALID_CHANNELS` | S26.T01            |
-| `a2_fast.cpp:754-885` — `is_a2_shape()`               | `loader/nam_json/topology.rs` — `is_a2_shape()`                                                                   | S26.T01            |
-| `NAM/activations.h:L111-122` — `fast_tanh`            | `models/a2/activations.rs` — `fast_tanh()`                                                                        | S26.T01            |
-| `GatingActivation` class                              | `models/a2/gating.rs` — `GatingActivationConfig`                                                                  | S26.T01            |
-| `BlendingActivation` class                            | `models/a2/gating.rs` — `BlendingActivationConfig`                                                                | S26.T01            |
-| `_FiLMParams` struct (Feature-wise Linear Modulation) | `models/a2/film.rs` — `FiLMConfig`                                                                                | S26.T01            |
-| A2 model inference (full)                             | `models/a2/mod.rs` — `WavenetA2Placeholder` (silent output, pending reference stabilization)                      | —                  |
+> **Roadmap:** A2 inference is being ported as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](/TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope and exercised solely by the `wavenet_a2_max.nam` test model. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
+
+| C++ (`NeuralAmpModelerCore/`)                            | Rust (`src/`)                                                                                                     | Parity established |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `NAM/wavenet/a2_fast.h` — architectural constants        | `models/a2/params.rs` — `A2_NUM_LAYERS`, `A2_LEAKY_SLOPE`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_VALID_CHANNELS` | S26.T01            |
+| `a2_fast.cpp:754-885` — `is_a2_shape()`                  | `loader/nam_json/topology.rs` — `is_a2_shape()`                                                                   | S26.T01            |
+| `NAM/activations.h:L111-122` — `fast_tanh`               | `models/a2/activations.rs` — `fast_tanh()`                                                                        | S26.T01            |
+| `GatingActivation` class *(parser surface, not wired)*   | `models/a2/gating.rs` — `GatingActivationConfig`                                                                  | S26.T01            |
+| `BlendingActivation` class *(parser surface, not wired)* | `models/a2/gating.rs` — `BlendingActivationConfig`                                                                | S26.T01            |
+| `_FiLMParams` struct *(parser surface, not wired)*       | `models/a2/film.rs` — `FiLMConfig`                                                                                | S26.T01            |
+| **A2-Full / A2-Lite inference (fixed fast-path)**        | `models/a2/` — port of `A2FastModel<8>` / `A2FastModel<3>` *(planned — TODO-sprints.md Epic 1)*                   | *(planned)*        |
+| A2 inference (current state)                             | `models/a2/mod.rs` — `WavenetA2Placeholder` (silent output; to be retired post-Epic 1)                            | —                  |
+| `NAM/container.{h,cpp}` — `SlimmableContainer`           | `models/container.rs` + `loader/dispatcher/container/` *(planned — TODO-sprints.md Epic 3)*                       | *(planned)*        |
 
 ---
 
@@ -210,25 +217,27 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 9. A1 Topology Table
 
-| C++ NAM topology    | Rust module / type                                               |
-| ------------------- | ---------------------------------------------------------------- |
-| WaveNet Standard 16 | `models::wavenet::WaveNetModel<16, 3, 8>`                        |
-| WaveNet Lite 12     | `models::wavenet::WaveNetModel<12, 3, 6>`                        |
-| WaveNet Feather 8   | `models::wavenet::WaveNetModel<8, 3, 4>`                         |
-| WaveNet Nano 4      | `models::wavenet::WaveNetModel<4, 3, 2>`                         |
-| WaveNet Dyn (any)   | `models::wavenet::WaveNetDynModel`                               |
-| LSTM 1×8            | `models::lstm::LstmModel1<8, 9, 32>`                             |
-| LSTM 1×12           | `models::lstm::LstmModel1<12, 13, 48>`                           |
-| LSTM 1×16           | `models::lstm::LstmModel1<16, 17, 64>`                           |
-| LSTM 1×24           | `models::lstm::LstmModel1<24, 25, 96>`                           |
-| LSTM 1×40           | `models::lstm::LstmModel1<40, 41, 160>`                          |
-| LSTM 2×8            | `models::lstm::LstmModel2<8, 9, 16, 32>`                         |
-| LSTM 2×12           | `models::lstm::LstmModel2<12, 13, 24, 48>`                       |
-| LSTM 2×16           | `models::lstm::LstmModel2<16, 17, 32, 64>`                       |
-| LSTM 2×24           | `models::lstm::LstmModel2<24, 25, 48, 96>`                       |
-| LSTM Dyn (any)      | `models::lstm::LstmDynModel`                                     |
-| A2 Standard (8 ch)  | `models::a2::WavenetA2Placeholder` (placeholder — emits silence) |
-| A2 Nano (3 ch)      | `models::a2::WavenetA2Placeholder` (placeholder — emits silence) |
+| C++ NAM topology    | Rust module / type                                                                                                     |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| WaveNet Standard 16 | `models::wavenet::WaveNetModel<16, 3, 8>`                                                                              |
+| WaveNet Lite 12     | `models::wavenet::WaveNetModel<12, 3, 6>`                                                                              |
+| WaveNet Feather 8   | `models::wavenet::WaveNetModel<8, 3, 4>`                                                                               |
+| WaveNet Nano 4      | `models::wavenet::WaveNetModel<4, 3, 2>`                                                                               |
+| WaveNet Dyn (any)   | `models::wavenet::WaveNetDynModel`                                                                                     |
+| LSTM 1×8            | `models::lstm::LstmModel1<8, 9, 32>`                                                                                   |
+| LSTM 1×12           | `models::lstm::LstmModel1<12, 13, 48>`                                                                                 |
+| LSTM 1×16           | `models::lstm::LstmModel1<16, 17, 64>`                                                                                 |
+| LSTM 1×24           | `models::lstm::LstmModel1<24, 25, 96>`                                                                                 |
+| LSTM 1×40           | `models::lstm::LstmModel1<40, 41, 160>`                                                                                |
+| LSTM 2×8            | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                                               |
+| LSTM 2×12           | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                                             |
+| LSTM 2×16           | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                                             |
+| LSTM 2×24           | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                                             |
+| LSTM Dyn (any)      | `models::lstm::LstmDynModel`                                                                                           |
+| A2-Full (8 ch)      | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
+| A2-Lite (3 ch)      | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
+
+> Rows marked **Dyn** above (`WaveNetDynModel`/`LstmDynModel`) are planned for removal — see §3.3 and [TODO-sprints.md](/TODO-sprints.md) Sprint 1.5.
 
 ---
 

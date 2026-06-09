@@ -145,8 +145,8 @@ Every 10 seconds, NAM-rs prints a performance report in the terminal to monitor 
 
 ## 🧠 Supported Models
 
-NAM-rs natively supports Neural Amp Modeler (.nam or .namb) files. Impulse Response (.wav) files are not supported.
-Currently, the "A1 Architecture" of NAM is fully supported. "A2 Architecture" support is in **staging** (scaffolding and loader are ready).
+NAM-rs natively supports Neural Amp Modeler (.nam or .namb) files. Impulse Response (.wav) files are not yet supported (planned — see roadmap).
+Currently, the "A1 Architecture" of NAM is fully supported. "A2 Architecture" support is in **staging** (scaffolding and loader are ready). The active porting plan targets the A2 fixed fast-path (**A2-Full** 8 ch / **A2-Lite** 3 ch), an `IR cabsim (.wav)` stage, and the removal of the legacy *Dynamic Mode* — see [TODO-sprints.md](TODO-sprints.md) and [docs/architecture.md §7](docs/architecture.md).
 
 Two levels of parsing operations are provided:
 
