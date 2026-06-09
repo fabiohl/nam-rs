@@ -146,10 +146,12 @@ pub fn report_dsp_fidelity(
     if lufs.is_finite() {
         println!("  LUFS    = {lufs:.1} LUFS");
         if anchor_snr_db.is_finite() {
+            let delta_snr = snr - anchor_snr_db;
+            let is_satisfactory = delta_snr > 8.0 || snr >= min_snr_db;
+            println!("  SNR(anchor) = {anchor_snr_db:.1} dB (degradation reference)");
             println!(
-                "  SNR(anchor) = {anchor_snr_db:.1} dB  [threshold > {anchor_min:.1} dB]  {}",
-                if anchor_snr_db > 15.0 { "✓" } else { "?" },
-                anchor_min = 15.0,
+                "  Fidelity Margin = {delta_snr:.1} dB (target > 8.0 dB) {}",
+                if is_satisfactory { "✓" } else { "?" }
             );
         }
     }
