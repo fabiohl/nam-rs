@@ -127,3 +127,47 @@ The UI thread **never** directly accesses the fields of `NamClapProcessor`. Comm
 - **Telemetry Read (Audio → UI):** Atomic fields in `NamClapShared` (`AtomicU32` for peaks, `AtomicBool` for clipping), read with `Ordering::Relaxed`.
 - **Command Dispatch (UI → Audio):** SPSC parameter channel (`ClapParamPayload`) via `param_tx`, drained at the start of each `process()`.
 - **Metadata (Main → UI):** `Mutex<String>` for the model name — accessed by the UI thread at 500ms intervals.
+
+## 9. Lock-Free Communication & Cache-Line Optimization
+
+To achieve absolute real-time safety, high throughput, and low latency on the audio thread, the CLAP integration avoids mutexes or any blocking operations in the processing hot-path. Communication and synchronization between the GUI/Main thread and the Audio (RT) thread rely on cache-aligned atomic structures and Single-Producer Single-Consumer (SPSC) channels.
+
+### Cache-Line Isolation (False Sharing Prevention)
+
+Modern CPUs transfer data between cores in cache lines (typically 64 or 128 bytes). If two threads on different cores frequently write to different variables that reside on the same cache line, the cache line bounces between cores (False Sharing), degrading performance.
+
+To prevent this, `NamClapShared` segregates fields into three sub-structs based on access pattern, each isolated using `#[repr(align(128))]` to ensure they never share a cache line:
+
+1. **`RtToUi` (`#[repr(align(128))]`)**:
+   - **Access Pattern**: Written every audio block by the RT thread, read at the GUI refresh rate by the UI thread.
+   - **Data**: Peak levels (`ui_peak_l`, `ui_peak_r`), clipping flag (`ui_clipped`), reported latency (`current_latency`), and active channel count.
+2. **`UiToRt` (`#[repr(align(128))]`)**:
+   - **Access Pattern**: Written by the UI thread when controls are adjusted, read every block by the RT thread.
+   - **Data**: Target parameters (`param_input_gain`, `param_output_gain`, `param_gate_thresh`, `param_bypass`, `param_adaptive_compute`), gesture modification flags, and the synchronization counter (`gui_param_generation`).
+3. **`ColdShared` (`#[repr(align(128))]`)**:
+   - **Access Pattern**: Low-frequency access by both threads (e.g., initialization, model loading, DAW track changes).
+   - **Data**: SPSC queues (`param_rx`/`param_tx`, `gc_rx`/`gc_tx`), sample rates, model metadata, track accent colors, parameter indications, and UI loading states.
+
+### Parameter Synchronization Protocol (`gui_param_generation`)
+
+During standard processing, loading multiple atomic parameters from `UiToRt` (such as gains, gate, and bypass) in every single audio block introduces unnecessary atomic read overhead, even when parameters are stationary.
+
+To minimize hot-path atomic overhead, the synchronization uses a generation-counter protocol:
+
+- **UI Thread Update**: When a GUI control (e.g., a knob) is modified, the GUI thread writes the new value to the corresponding atomic parameter in `UiToRt` and increments `gui_param_generation` using `Release` ordering.
+- **RT Thread Check**: At the start of `process_events()`, the RT thread reads `gui_param_generation` using a single `Acquire` load.
+  - If the loaded value matches the cached `last_seen_generation`, no GUI parameters have changed. The RT thread skips reading the individual atomic parameter fields, reducing the block overhead to a single atomic check.
+  - If the value differs, the RT thread updates its `last_seen_generation` and performs `Relaxed` loads on each parameter inside `UiToRt` to synchronize its internal state.
+
+### SPSC Queues & RT-Safe Resource Management
+
+Since loading neural network models and resamplers requires disk access, parsing, and heap allocation, these tasks are offloaded to the Main/UI thread. The CLAP plugin uses lock-free SPSC queues (implemented via `rtrb`) for cross-thread transfers:
+
+1. **Model/Parameter Transfer (`param_tx` / `param_rx`)**:
+   - The Main thread packages new parameters or fully loaded models (and resamplers) into a `ClapParamPayload` enum and sends them via the queue.
+   - The RT thread drains this queue non-blockingly at the start of `process_events()`.
+2. **RT-Safe Garbage Collection (`gc_tx` / `gc_rx`)**:
+   - The RT thread must never drop heap-allocated objects (such as `Box<DynamicModel>` or `Box<NamResampler>`), as dropping can trigger system deallocations and block the audio thread.
+   - When a new model is loaded, the RT thread replaces the active model/resampler and pushes the obsolete instances into `gc_tx` as `GcItem` variants.
+   - The Main thread periodically drains `gc_rx` and safely drops the resources.
+   - If `gc_tx` is full during a burst of swaps, the RT thread places the items in a fixed-capacity `parking_lot` array (capacity of 16), which is subsequently drained to `gc_tx` in later blocks.
