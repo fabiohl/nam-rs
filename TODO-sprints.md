@@ -66,11 +66,11 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ---
 
-## ÉPICO 0 — Fundação e Higiene 🧹
+## ÉPICO 0 — Fundação e Higiene 🧹 [DONE]
 
 > Objetivo: reduzir burden e preparar o terreno antes de adicionar A2. Entrega rápida, baixo risco, mantém a suíte 100% verde.
 
-### Sprint 0.1 — Limpeza e alinhamento
+### Sprint 0.1 — Limpeza e alinhamento [DONE]
 
 - **[T0.1] Remover aliases VNNI mortos.** [DONE]
   - Remover `Avx2VnniMath` (alias em `src/math/common/avx2_impl.rs:670`) e as variantes `Avx2Vnni`/`Avx512Vnni` de `src/math/common/dispatch/instruction_set.rs` e do v-table (`src/math/common/dispatch/config.rs`, `detect.rs`).
@@ -94,7 +94,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 1.1 — Primitivas compartilhadas
 
-- **[T1.1] Kernel `LeakyReLU(0.01)` SIMD (AVX2/FMA).**
+- **[T1.1] Kernel `LeakyReLU(0.01)` SIMD (AVX2/FMA).** [DONE]
   - Implementar `leaky_relu_slice` em `src/math/activations/` (in-place, `chunks_exact(8)`, *branchless* via máscara/blend). Adicionar a **referência escalar (oráculo de teste + tratamento de cauda/remainder)** em `src/math/common/scalar_ref/` — **não** é fallback de produção para CPU sem AVX2 (o `detect.rs` faz *fail-fast*); serve como oráculo de paridade apertada (`~1e-6`, via `proptest`), bisseção de bugs, cobertura de edge cases (`n % 8`, denormais) e invariante cross-ISA para o futuro AVX-512.
   - **Fonte de verdade:** `NAM/activations.h` (`LeakyReLU`) e nota de uso em `NAM/wavenet/a2_fast.cpp:49-51` (`LeakyReLU(0.01) em todas as camadas`).
   - **Critério de aceite:** teste de paridade `< 1e-6` vs referência escalar; `#[cfg(test)]` inline ou `_test.rs`. Heap-audit zero.

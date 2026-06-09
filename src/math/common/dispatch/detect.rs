@@ -63,6 +63,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 prelu_slice: crate::math::activations::prelu_slice_avx512,
                 softsign_slice: crate::math::activations::softsign_slice_avx512,
                 silu_slice: crate::math::activations::silu_slice_avx512,
+                leaky_relu_slice: crate::math::activations::leaky_relu_slice_avx512,
             };
         }
         // 2. Basic AVX-512 Foundation (512-bit).
@@ -104,6 +105,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 prelu_slice: crate::math::activations::prelu_slice_avx512,
                 softsign_slice: crate::math::activations::softsign_slice_avx512,
                 silu_slice: crate::math::activations::silu_slice_avx512,
+                leaky_relu_slice: crate::math::activations::leaky_relu_slice_avx512,
             };
         }
         // 3. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
@@ -145,6 +147,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 prelu_slice: crate::math::activations::prelu_slice_avx2,
                 softsign_slice: crate::math::activations::softsign_slice_avx2,
                 silu_slice: crate::math::activations::silu_slice_avx2,
+                leaky_relu_slice: crate::math::activations::leaky_relu_slice_avx2,
             };
         }
     }
