@@ -215,9 +215,11 @@ mod tests {
         assert_eq!(adaptive.state(), AdaptiveState::Minimal);
 
         // Set mode to Off → resets
-        adaptive.set_mode(AdaptiveComputeMode::Off);
+        adaptive.set_mode(AdaptiveComputeMode::Off, &flags);
         assert_eq!(adaptive.state(), AdaptiveState::Full);
         assert!(!adaptive.is_crossfading());
+        assert!(!flags.check_flag(RT_STATUS_DEGRADE_REDUCED));
+        assert!(!flags.check_flag(RT_STATUS_DEGRADE_MINIMAL));
     }
 
     #[test]

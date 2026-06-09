@@ -201,6 +201,18 @@ PipeWire Input (Nk Hz)
     ▼ DspBridge (Lock-Free Write) → Playback Stream (Read) → Hardware
 ```
 
+## 5.1 Adaptive Compute: Graceful CPU Fallback
+
+To guarantee xrun-free operation in real-time audio threads under high CPU utilization, NAM-rs includes a dynamic **Adaptive Compute** sub-system.
+
+- **Objective:** Gracefully lower the computational footprint of neural model inference when the audio thread approaches its deadline budget, preventing audible dropouts (xruns) at the cost of a transient, imperceptible decrease in model complexity.
+- **Hysteresis FSM:** Prevents rapid toggling ("chattering") between states by using asymmetric thresholds and consecutive confirmation blocks:
+  - **Full → Reduced:** Triggered after 3 consecutive blocks exceeding `0.70 * budget` (Conservative) or `0.55 * budget` (Aggressive). In WaveNet, skips 25% of layers; in LSTM, reduces to 1 layer.
+  - **Reduced → Minimal:** Triggered after 3 consecutive blocks exceeding `0.85 * budget` (Conservative) or `0.70 * budget` (Aggressive). In WaveNet, skips 50% of layers; in LSTM, transitions to direct passthrough.
+  - **Recovery:** Upgrades to the previous state only after 5 consecutive blocks remain safely below recovery thresholds (`0.35 * budget` for Conservative, `0.275 * budget` for Aggressive).
+- **Linear Crossfade:** Integrates a 32 ms linear parameter crossfade between active layers to guarantee smooth, click-free structural transitions.
+- **Deterministic Offline Bounce:** During offline rendering/export (`RenderMode::Offline` in CLAP), the host DAW does not operate under real-time constraints. To guarantee deterministic, maximum-quality output, the render mode transition forces `AdaptiveCompute` to `Off` (which resets the FSM state to `Full`), clears all active degradation status flags (`RT_STATUS_DEGRADE_REDUCED`, `RT_STATUS_DEGRADE_MINIMAL`), and ignores all block deadline measurements.
+
 ## 6. Testing Strategy & Quality
 
 The testing philosophy of NAM-rs prioritizes **quality over quantity**: we maintain only the layers that provide high-confidence signals, without circular redundancies.

@@ -234,7 +234,7 @@
 - **Descrição:** Validar que o sistema de 3 tiers (channel → parking_lot → overflow) não perde memória sob swaps rápidos sem drenagem do main thread.
 - **Prioridade:** Média
 
-#### TT-3.2.2: Teste de `RenderMode::Offline` forçando `AdaptiveCompute::Off`
+#### TT-3.2.2: Teste de `RenderMode::Offline` forçando `AdaptiveCompute::Off` [DONE]
 
 - **Arquivo:** `src/clap/processor_test.rs`
 - **Descrição:** Verificar que mesmo com `AdaptiveCompute::Aggressive` configurado, o modo offline força `Off` e não há degrade durante bounce.

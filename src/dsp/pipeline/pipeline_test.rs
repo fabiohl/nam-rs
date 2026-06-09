@@ -711,7 +711,9 @@ mod tests {
         use crate::math::common::scalar_ref::apply_dither_add_fallback;
         use crate::math::dsp::gain::apply_dither_add_simd;
 
-        let lengths = [0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 256, 512, 1024];
+        let lengths = [
+            0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 256, 512, 1024,
+        ];
         let offsets = [1.0e-11_f32, -1.0e-11_f32, 0.5_f32, -0.5_f32];
 
         for &len in &lengths {
@@ -751,4 +753,3 @@ mod tests {
         }
     }
 }
-

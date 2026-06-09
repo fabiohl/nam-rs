@@ -60,7 +60,7 @@ impl<'a> NamClapProcessor<'a> {
             .ui_to_rt
             .param_adaptive_compute
             .store(mode as u32, Ordering::Relaxed);
-        self.adaptive_compute.set_mode(mode);
+        self.adaptive_compute.set_mode(mode, &self.rt_status);
     }
 
     // ── Modulation helpers ────────────────────────────────────────
@@ -100,7 +100,8 @@ impl<'a> NamClapProcessor<'a> {
                 .db_to_linear(self.params.output_gain_db + self.mod_output_gain),
         );
         if adaptive_changed {
-            self.adaptive_compute.set_mode(self.params.adaptive_compute);
+            self.adaptive_compute
+                .set_mode(self.params.adaptive_compute, &self.rt_status);
         }
     }
 
@@ -164,7 +165,8 @@ impl<'a> NamClapProcessor<'a> {
         );
         if shared_adaptive != self.params.adaptive_compute {
             self.params.adaptive_compute = shared_adaptive;
-            self.adaptive_compute.set_mode(shared_adaptive);
+            self.adaptive_compute
+                .set_mode(shared_adaptive, &self.rt_status);
         }
     }
 }

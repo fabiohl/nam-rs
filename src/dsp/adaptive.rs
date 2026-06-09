@@ -138,7 +138,7 @@ impl AdaptiveCompute {
 
     /// Sets the user-facing adaptive compute mode.
     #[inline]
-    pub fn set_mode(&mut self, mode: AdaptiveComputeMode) {
+    pub fn set_mode(&mut self, mode: AdaptiveComputeMode, rt_status: &RtStatusFlags) {
         self.mode = mode;
         if mode == AdaptiveComputeMode::Off {
             self.state = AdaptiveState::Full;
@@ -146,6 +146,8 @@ impl AdaptiveCompute {
             self.recovery_counter = 0;
             self.crossfade = CrossfadePhase::Idle;
             self.crossfade_elapsed = 0;
+            rt_status.clear_flag(crate::common::spsc::RT_STATUS_DEGRADE_REDUCED);
+            rt_status.clear_flag(crate::common::spsc::RT_STATUS_DEGRADE_MINIMAL);
         }
     }
 

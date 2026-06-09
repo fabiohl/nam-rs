@@ -106,8 +106,10 @@ impl<'a> NamClapProcessor<'a> {
         if render_mode != self.last_render_mode {
             self.last_render_mode = render_mode;
             if render_mode == crate::clap::plugin::RENDER_MODE_OFFLINE {
-                self.adaptive_compute
-                    .set_mode(crate::common::params::AdaptiveComputeMode::Off);
+                self.adaptive_compute.set_mode(
+                    crate::common::params::AdaptiveComputeMode::Off,
+                    &self.rt_status,
+                );
             } else {
                 let user_mode = crate::common::params::AdaptiveComputeMode::from_f32(
                     self.shared
@@ -115,7 +117,7 @@ impl<'a> NamClapProcessor<'a> {
                         .param_adaptive_compute
                         .load(Ordering::Relaxed) as f32,
                 );
-                self.adaptive_compute.set_mode(user_mode);
+                self.adaptive_compute.set_mode(user_mode, &self.rt_status);
             }
         }
         // Also guard against user changing adaptive compute while offline (via host events
@@ -123,8 +125,10 @@ impl<'a> NamClapProcessor<'a> {
         if render_mode == crate::clap::plugin::RENDER_MODE_OFFLINE
             && self.adaptive_compute.mode() != crate::common::params::AdaptiveComputeMode::Off
         {
-            self.adaptive_compute
-                .set_mode(crate::common::params::AdaptiveComputeMode::Off);
+            self.adaptive_compute.set_mode(
+                crate::common::params::AdaptiveComputeMode::Off,
+                &self.rt_status,
+            );
         }
     }
 
