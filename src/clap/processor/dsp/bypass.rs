@@ -38,11 +38,17 @@ impl<'a> NamClapProcessor<'a> {
                 ChannelPair::InputOutput(i, o) => {
                     let n = n_samples.min(o.len());
                     o[..n].copy_from_slice(&i[..n]);
+                    // SAFETY: both slices reference the same valid buffer `o`
+                    // with identical length `n`, satisfying the equal-length
+                    // requirement of `compute_peak_abs_stereo`.
                     let (p, _) = unsafe { compute_peak_abs_stereo(&o[..n], &o[..n]) };
                     peak_l = p;
                 }
                 ChannelPair::InPlace(io) => {
                     let n = n_samples.min(io.len());
+                    // SAFETY: both slices reference the same valid buffer `io`
+                    // with identical length `n`, satisfying the equal-length
+                    // requirement of `compute_peak_abs_stereo`.
                     let (p, _) = unsafe { compute_peak_abs_stereo(&io[..n], &io[..n]) };
                     peak_l = p;
                 }
@@ -54,11 +60,17 @@ impl<'a> NamClapProcessor<'a> {
                 ChannelPair::InputOutput(i, o) => {
                     let n = n_samples.min(o.len());
                     o[..n].copy_from_slice(&i[..n]);
+                    // SAFETY: both slices reference the same valid buffer `o`
+                    // with identical length `n`, satisfying the equal-length
+                    // requirement of `compute_peak_abs_stereo`.
                     let (p, _) = unsafe { compute_peak_abs_stereo(&o[..n], &o[..n]) };
                     peak_r = p;
                 }
                 ChannelPair::InPlace(io) => {
                     let n = n_samples.min(io.len());
+                    // SAFETY: both slices reference the same valid buffer `io`
+                    // with identical length `n`, satisfying the equal-length
+                    // requirement of `compute_peak_abs_stereo`.
                     let (p, _) = unsafe { compute_peak_abs_stereo(&io[..n], &io[..n]) };
                     peak_r = p;
                 }

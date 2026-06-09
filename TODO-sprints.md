@@ -178,6 +178,26 @@
 
 ---
 
+### Sprint 2.4: Documentação de Blocos `unsafe` — Residuais (pós-auditoria)
+
+> Identificado na auditoria do Épico 2 em 2026-06-08. Blocos `unsafe` que escaparam do escopo original do Sprint 2.1.
+
+#### TT-2.4.1: Documentar blocos `unsafe` em `bypass.rs` [DONE]
+
+- **Arquivo:** `src/clap/processor/dsp/bypass.rs`
+- **Descrição:** As chamadas `unsafe` nas linhas 41, 46, 57, 62 (`compute_peak_abs_stereo` com buffer duplicado) precisam de comentários `// SAFETY:` documentando que ambos os slices referenciam o mesmo buffer válido com comprimento idêntico.
+- **Prioridade:** Média
+- **Impacto esperado:** Conformidade com `#![warn(clippy::undocumented_unsafe_blocks)]`, auditabilidade.
+
+#### TT-2.4.2: Documentar blocos `unsafe` no `process()` do processador [DONE]
+
+- **Arquivo:** `src/clap/processor/mod.rs`
+- **Descrição:** As chamadas `unsafe` nas linhas 186 (`libc::syscall`) e 208-216 (`libc::pthread_getschedparam`) precisam de comentários `// SAFETY:` documentando as pré-condições — são chamadas de sistema POSIX inofensivas e sem pré-condições de memória.
+- **Prioridade:** Baixa
+- **Impacto esperado:** Completude da documentação de segurança em todo o módulo CLAP processor.
+
+---
+
 ## Épico 3: Cobertura de Testes — CLAP Plugin
 
 **Objetivo:** Garantir que as otimizações dos Épicos 1 e 2 não introduzam regressões, com testes adicionais de borda.

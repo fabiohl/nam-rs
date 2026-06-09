@@ -183,6 +183,8 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
     ) -> Result<ProcessStatus, PluginError> {
         #[cfg(feature = "heap-audit")]
         let _guard = if crate::common::alloc_audit::AUDIT_ENABLED.load(Ordering::Relaxed) {
+            // SAFETY: `SYS_gettid` is a POSIX syscall that reads the kernel
+            // thread ID — it has no memory safety preconditions.
             let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
             let audit_thread = crate::common::alloc_audit::AUDIT_THREAD.load(Ordering::Relaxed);
             if audit_thread == 0 || audit_thread == tid {
@@ -205,6 +207,9 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         // One-time thread priority query on the first processed block
         if !self.prio_checked {
             self.prio_checked = true;
+            // SAFETY: `pthread_self()` returns a valid thread handle for the
+            // calling thread. `pthread_getschedparam()` reads scheduling
+            // attributes into stack-local variables using FFI defined by POSIX.
             unsafe {
                 let thread_id = libc::pthread_self();
                 let mut policy = 0i32;
