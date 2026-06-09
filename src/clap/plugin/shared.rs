@@ -230,6 +230,14 @@ impl NamClapShared {
         self.ui_to_rt.gesture_flags.store(0, Ordering::Relaxed);
     }
 
+    /// Bumps the GUI parameter generation counter (Release ordering).
+    /// Signals to the RT thread that GUI-initiated parameter values may have changed.
+    pub fn bump_generation(&self) {
+        self.ui_to_rt
+            .gui_param_generation
+            .fetch_add(1, Ordering::Release);
+    }
+
     /// Flushes gestures and parameter updates initiated by the GUI
     /// into the host's output event queue.
     pub fn write_gui_events(&self, output: &mut OutputEvents) {

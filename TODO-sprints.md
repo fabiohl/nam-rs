@@ -154,7 +154,7 @@
 - **Descrição:** A conversão `val > 0.5` / `if bypass { 1 } else { 0 }` aparece em 4+ locais. Criar constantes `BYPASS_OFF: u32 = 0` e `BYPASS_ON: u32 = 1` com helper functions.
 - **Prioridade:** Média
 
-#### TT-2.2.3: Unificar duplicação `shared.ui_to_rt.gui_param_generation.fetch_add(1, Release)`
+#### TT-2.2.3: Unificar duplicação `shared.ui_to_rt.gui_param_generation.fetch_add(1, Release)` [DONE]
 
 - **Arquivos:** `src/clap/gui/ui/zones/controls.rs`, `src/clap/extensions/state.rs`
 - **Descrição:** O bump da geração de parâmetros GUI é feito manualmente em vários locais. Centralizar em `NamClapShared::bump_generation()`.

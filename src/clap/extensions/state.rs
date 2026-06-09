@@ -132,10 +132,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             self.params.adaptive_compute as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
-        self.shared
-            .ui_to_rt
-            .gui_param_generation
-            .fetch_add(1, std::sync::atomic::Ordering::Release);
+        self.shared.bump_generation();
 
         if let Some(path) = self.params.model_path.clone() {
             if path.exists() {
