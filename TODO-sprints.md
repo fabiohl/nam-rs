@@ -198,7 +198,7 @@
 
 ---
 
-## Épico 3: Cobertura de Testes — CLAP Plugin
+## Épico 3: Cobertura de Testes — CLAP Plugin [DONE]
 
 **Objetivo:** Garantir que as otimizações dos Épicos 1 e 2 não introduzam regressões, com testes adicionais de borda.
 
