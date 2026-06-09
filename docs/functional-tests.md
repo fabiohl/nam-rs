@@ -70,9 +70,9 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
-### 2C — VU Metering, Peak Hold & Clipping (Mono)
+### 2C — VU Metering, Peak Hold & Clipping (Mono/Stereo Adaptive)
 
-> **Adaptive meter behavior:** The CLAP plugin processes audio in mono (DSP is always mono). Zone 3 reflects the *host channel configuration* of the inserted track: on a mono track it shows **1 centered bar (no label, 76px wide)**; on a stereo track it shows **2 bars labeled L and R (36px each)**. VU meters do **not** change color when the accent color changes.
+> **Adaptive meter behavior:** The CLAP plugin processes audio in mono (DSP is always mono, duplicating the Left processed output to the Right channel when inserted on a stereo track). Zone 3 dynamically adapts to the *host track channel configuration* at runtime: on a mono track, it shows **1 centered bar (no label, 76px wide)**; on a stereo track, it shows **2 bars labeled L and R (36px each, separated by 4px)**. The active layout is determined by the presence of a right channel buffer in the audio ports passed by the host during processing. VU meters do **not** change color when the accent color changes.
 
 - [ ] Insert NAM-rs on a **mono DAW track** → Zone 3 displays **1 centered bar without a label** (~76px wide).
 - [ ] Insert NAM-rs on a **stereo DAW track** → Zone 3 displays **2 bars labeled L and R** (~36px each, separated by 4px).

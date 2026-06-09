@@ -63,6 +63,13 @@ The integration uses the `clack-extensions` crate to implement the following ext
 | `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs`          | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
 | `clap_plugin_gui`              | `src/clap/extensions/gui.rs`                       | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
 
+> [!NOTE]
+> **Adaptive VU Metering Contract:** While the core DSP processing (neural network inference and noise gate) is mono, the VU meter dynamically adapts to the host's track channel configuration.
+>
+> - **Host Configuration & Dynamic Detection:** During the FFI `process()` callback, the plugin inspects the host's `Audio` port buffers inside the real-time thread (`src/clap/processor/dsp/channels.rs`).
+> - **Shared State Update:** If the host provides $\ge 2$ channel buffers (indicating a stereo routing context), the audio thread dynamically stores `2` in the atomic field `shared.rt_to_ui.active_channel_count` (with `Ordering::Relaxed`). Otherwise, it stores `1`.
+> - **UI Layout Adaptation:** The GUI/UI thread reads this atomic variable inside the layout logic (`src/clap/gui/ui/zones/meters.rs`) and adapts the VU meter rendering at runtime: showing two separate L and R bars (36px wide each) or a single centered bar (76px wide).
+
 ## 6. Plugin Descriptor
 
 The plugin metadata descriptor will follow this pattern:
@@ -74,7 +81,7 @@ The plugin metadata descriptor will follow this pattern:
 - **Features**: `["audio-effect", "distortion", "gate", "mono"]` (CLAP 1.2.2 standard features — validated against `include/clap/plugin-features.h`)
 
 > [!NOTE]
-> The NAM standard is, by definition, mono. The CLAP plugin works strictly as mono (mono-in/mono-out) to align with traditional DAW workflows where channel routing is managed externally by the host. In contrast, in the Standalone/Pipewire executable, stereo processing is provided as a convenience for native stereo signals.
+> The NAM standard is, by definition, mono. The CLAP plugin's core DSP processing works strictly as mono (mono-in/mono-out) to align with traditional DAW workflows where channel routing is managed externally by the host. However, the VU meter in Zone 3 is adaptive: it displays a single centered bar when running in a mono track configuration, or two independent L/R bars when the host configures a stereo track (providing $\ge 2$ channels). In contrast, in the Standalone/Pipewire executable, full stereo processing is provided as a convenience for native stereo signals.
 
 ## 7. Target DAWs for Validation
 

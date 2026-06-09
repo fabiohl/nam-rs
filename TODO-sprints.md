@@ -44,7 +44,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ---
 
-#### Tarefa D1.T03 — Documentar o comportamento adaptativo do VU meter (mono/stereo) em `docs/functional-tests.md` e `docs/clap_integration.md`
+#### Tarefa D1.T03 — Documentar o comportamento adaptativo do VU meter (mono/stereo) em `docs/functional-tests.md` e `docs/clap_integration.md` [DONE]
 
 - **Onde:** [`docs/functional-tests.md`](docs/functional-tests.md) §2C; [`docs/clap_integration.md`](docs/clap_integration.md) §5 nota sobre mono.
 - **Problema:** O meter da Zone 3 é adaptativo: exibe 1 barra centrada (mono) ou 2 barras L/R (stereo) com base em `active_channel_count` do host. A nota em `clap_integration.md` §5 ainda afirma que o plugin "opera estritamente em mono" sem mencionar que o meter reflete a contagem de canais do host.
