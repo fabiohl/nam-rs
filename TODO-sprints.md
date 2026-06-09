@@ -246,7 +246,7 @@
 
 **Objetivo:** Atualizar documentação para refletir as otimizações aplicadas e arquitetura atual.
 
-### TT-4.0.1: Atualizar `docs/architecture.md` com detalhes da pipeline CLAP
+### TT-4.0.1: Atualizar `docs/architecture.md` com detalhes da pipeline CLAP [DONE]
 
 - **Descrição:** Adicionar seção sobre a pipeline DSP CLAP (Orquestrador → Eventos → DSP → Picos → Telemetria) e o fluxo de parâmetros (Main Thread → SPSC/Atomics → RT Thread).
 - **Prioridade:** Baixa

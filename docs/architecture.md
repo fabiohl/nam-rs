@@ -327,11 +327,94 @@ The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `late
 
 For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](docs/clap_integration.md).
 
-## 8.2 Architectural Decisions
+## 8.2 CLAP DSP Pipeline and Parameter Flow
+
+The CLAP plugin's audio processing engine is designed for zero-jitter, low-latency, real-time audio operations. The host DAW invokes the `process()` callback inside [PluginAudioProcessor::process](file:///home/fabio/nam-rs/src/clap/processor/mod.rs#L178-L242), executing a sequential pipeline of event handling, DSP, and telemetry compilation.
+
+### CLAP DSP Pipeline Diagram
+
+The following Mermaid diagram traces the detailed layout of parameter updates, event queues, DSP processing, and real-time safe cleanup steps inside the audio processing thread:
+
+```mermaid
+graph TD
+    %% Parameter Flow
+    subgraph ParameterFlow ["Parameter Flow (Main/GUI -> RT)"]
+        GUI["GUI Knobs (egui)"] -- "atomic writes +\nbump generation (Release)" --> Atomics["Shared ui_to_rt atomics"]
+        HostState["Host Preset / State Load"] -- "Load Model / Params" --> SPSC_Tx["SPSC param_tx (Main Thread)"]
+        DAW_Auto["DAW Automation / MIDI"] -- "Sample-Accurate Queue" --> HostEvents["Events Input Queue"]
+    end
+
+    %% Audio Thread Callback
+    subgraph RTThread ["RT Audio Thread (process)"]
+        Entry["PluginAudioProcessor::process()"] --> Prio["Priority & DAZ/FTZ Setup\n(first block)"]
+        Prio --> PE["process_events()"]
+
+        %% Event Draining in process_events
+        subgraph EvDraining ["process_events() details"]
+            SPSC_Rx["Drain param_rx"] --> |LoadModel| SwapModel["Swap Model & Resampler\nPush old to gc_tx"]
+            HostEventsD["Drain Host Events\n(ParamValue/Mod)"] --> UpdateTgt["Update local parameter targets"]
+            GenGuard{"generation != last_seen?"} -->|Yes| SyncAtomics["Sync from Shared Atomics"]
+            SyncAtomics --> UpdateTgt
+        end
+
+        PE --> EvDraining
+        EvDraining --> DSPProc["process_dsp_audio()"]
+
+        %% DSP Processing in process_dsp_audio
+        subgraph DSPPipeline ["process_dsp_audio() Pipeline"]
+            AudioPorts["Iterate Audio Ports"] --> BypassCh{"Bypass active?"}
+            BypassCh -->|Yes| RunBypass["process_bypass() (copy / zero)"]
+            BypassCh -->|No| ChanExt["extract_channels()"]
+            ChanExt --> InputGain["Apply Input Gain\n(SIMD + Smoother)"]
+            InputGain --> InputStage["apply_input_stage()\n(Dither & Gate)"]
+            InputStage --> GateCh{"Gate open?"}
+            GateCh -->|No| ZeroOut["Fill output with 0.0"]
+            GateCh -->|Yes| Infer["run_inference()\n- NamResampler (Up)\n- NamModel::process()\n- NamResampler (Down)"]
+            Infer --> OutputStage["apply_output_stage()\n(Dither comp & Gate fade\n& Adaptive Compute check)"]
+            ZeroOut --> OutputStage
+            OutputStage --> OutputGain["Apply Output Gain\n(SIMD + Smoother)"]
+            OutputGain --> OutputPeaks["compute_output_peaks()\nStore peaks in Shared"]
+        end
+
+        DSPProc --> DSPPipeline
+        DSPPipeline --> Telemetry["process_telemetry()\n- Read TSC cycles\n- Heap-audit assert"]
+    end
+
+    %% GC Drop
+    SwapModel -.-> |gc_tx| SPSC_Gc["SPSC gc_rx"]
+    SPSC_Gc -.-> |drop()| GcDrop["Main Thread GC Drain"]
+```
+
+### 8.2.1 Pipeline Execution Flow
+
+The processing execution pathway inside [process_dsp_audio](file:///home/fabio/nam-rs/src/clap/processor/dsp/orchestrator.rs#L16-L161) consists of the following consecutive stages:
+
+1. **Bypass Evaluation:** Evaluates whether active bypass is requested via [process_bypass](file:///home/fabio/nam-rs/src/clap/processor/dsp/bypass.rs). If bypass is active, the pipeline copies input samples directly to the output ports, writes zero/clipping telemetry, and short-circuits the downstream DSP/inference modules.
+2. **Channel Extraction:** Calls [extract_channels](file:///home/fabio/nam-rs/src/clap/processor/dsp/channels.rs) to map host audio ports (which might be mono or stereo depending on the DAW configuration) to thread-local aligned input buffers.
+3. **Input Gain Stage:** Multiplies the input samples by the configured input gain using SIMD operations, driven by a sample-accurate [ParamSmoother](file:///home/fabio/nam-rs/src/dsp/smoother.rs) to prevent zipper noise.
+4. **Gate Parameter Refresh:** If gate parameters have been marked dirty, the pipeline dynamically computes the linear squared thresholds for opening and closing the gate.
+5. **Input Pipeline Stage (Dither & Gate):** Calls [apply_input_stage](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/input.rs). This function injects a deterministic $-220\text{ dBFS}$ dither offset to avoid denormal numbers (preventing CPU performance degradation) and evaluates the Noise Gate state machine ([GateState](file:///home/fabio/nam-rs/src/dsp/gate.rs)). If the gate is closed, the processing skips inference and proceeds to immediately fill the output buffers with silence.
+6. **Model Inference:** If the gate is open, calls [run_inference](file:///home/fabio/nam-rs/src/dsp/pipeline/mod.rs) to run the neural net. If the host sample rate differs from the model's native rate, the [NamResampler](file:///home/fabio/nam-rs/src/dsp/resampler.rs) up-samples the buffer. Next, the active neural model runs inference (`NamModel::process`), and the resampler down-samples the result back to the host rate.
+7. **Output Pipeline Stage (Dither compensation & Gate Fade):** Calls [apply_output_stage](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs). This stage subtracts the compensatory dither offset, applies linear fade-in/out transitions when the gate opens or closes, and measures block execution time to run the **Adaptive Compute** FSM.
+8. **Output Gain Stage:** Multiplies the output by the output gain, smoothed via [ParamSmoother](file:///home/fabio/nam-rs/src/dsp/smoother.rs).
+9. **VU Peaks Telemetry:** Computes the output peaks via [compute_output_peaks](file:///home/fabio/nam-rs/src/clap/processor/dsp/peaks.rs) and stores them in shared memory for the GUI using [store_peaks](file:///home/fabio/nam-rs/src/clap/processor/dsp/peaks.rs).
+10. **High-Precision Telemetry:** Reads CPU cycle metrics at the end of the block via `minstant::Instant` in [process_telemetry](file:///home/fabio/nam-rs/src/clap/processor/dsp/telemetry.rs) to compute the actual DSP load without system call overhead.
+
+### 8.2.2 Parameter Flow and Synchronization
+
+Parameters (e.g., gain, gate threshold, bypass state, and neural model files) are synchronized across threads via a lock-free protocol in [process_events](file:///home/fabio/nam-rs/src/clap/processor/events.rs#L21-L133). Synchronization handles three incoming paths:
+
+- **SPSC Queue (`param_rx`):** The Main Thread processes expensive operations (like loading models from disk or allocating memory) and transfers the results via [ClapParamPayload](file:///home/fabio/nam-rs/src/clap/plugin/mod.rs) to the RT thread. If loading a model, [cold_load_model](file:///home/fabio/nam-rs/src/clap/processor/events.rs#L136-L159) replaces the active pointers on the RT thread and pushes the old instances to `gc_tx` so the Main Thread can safely drop them outside the RT context.
+- **Host DAW Events Queue:** The host DAW feeds sample-accurate automation and MIDI events into the processing block's input queue. The RT thread reads these events sequentially to update local parameter targets.
+- **GUI Atomics Sync:** GUI controls (e.g., egui knobs) write parameter updates to atomic variables in `NamClapShared::ui_to_rt` and increment `gui_param_generation` using `Release` ordering. The RT thread performs an `Acquire` check of the generation count; if they differ, it pulls the updated atomic values and aligns local targets.
+
+---
+
+## 8.3 Architectural Decisions
 
 Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](docs/clap_integration.md).
 
-### 8.3 Graphical Interface and GUI Sub-modules (CLAP GUI)
+### 8.3.1 Graphical Interface and GUI Sub-modules (CLAP GUI)
 
 The graphical interface was decomposed from its original monolithic state into a structure of readable and reusable modules located in `src/clap/gui/ui/`:
 
@@ -345,7 +428,7 @@ The graphical interface was decomposed from its original monolithic state into a
 - **`vsep.rs`:** Vertical separators in the layout.
 - **`test.rs`:** Automated tests and egui interface mocks.
 
-### Math & SIMD — Modular Reorganization
+### 8.3.2 Math & SIMD — Modular Reorganization
 
 - **Decision:** Fragmentation of the monolithic mathematical infrastructure into domain-specific modules (`activations/`, `gemm/`, `dsp/`, `lstm/`, `wavenet/`).
 - **Justification:** Reduces cognitive noise in files with 2000+ lines, allows isolated unit testing per kernel, and facilitates compiler inlining audits.
