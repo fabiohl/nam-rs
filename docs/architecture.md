@@ -412,11 +412,11 @@ Parameters (e.g., gain, gate threshold, bypass state, and neural model files) ar
 
 ## 8.3 Architectural Decisions
 
-Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](/docs/clap_integration.md).
+Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](/docs/clap_integration.md). A comprehensive guide to the graphical user interface architecture, rendering lifecycle, and thread synchronization is available in [docs/gui-architecture.md](/docs/gui-architecture.md).
 
 ### 8.3.1 Graphical Interface and GUI Sub-modules (CLAP GUI)
 
-The graphical interface was decomposed from its original monolithic state into a structure of readable and reusable modules located in `src/clap/gui/ui/`:
+The graphical interface is decomposed from its original monolithic state into a structure of readable and reusable modules located in [src/clap/gui/ui/](/src/clap/gui/ui/) (see the detailed [docs/gui-architecture.md](/docs/gui-architecture.md) for full architectural mapping):
 
 - **`mod.rs`:** Main drawing orchestrator. The `draw_ui` function delegates to 5 zone functions: `draw_zone1_identity`, `draw_zone2_controls`, `draw_zone3_meters`, `draw_zone4_bypass`, and `draw_zone5_status_bar`.
 - **`zones/`:** One file per GUI zone — `identity.rs` (Zone 1 logo + model loader), `controls.rs` (Zone 2 knobs), `meters.rs` (Zone 3 adaptive VU meters), `bypass_zone.rs` (Zone 4 bypass toggle).

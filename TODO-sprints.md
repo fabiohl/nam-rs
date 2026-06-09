@@ -58,7 +58,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ---
 
-#### Tarefa D1.T04 — Criar `docs/gui-architecture.md`: guia detalhado da arquitetura GUI
+#### Tarefa D1.T04 — Criar `docs/gui-architecture.md`: guia detalhado da arquitetura GUI [DONE]
 
 - **Onde:** novo arquivo `docs/gui-architecture.md`.
 - **Problema:** O módulo `src/clap/gui/` cresceu significativamente (11 módulos, 3 submódulos, GPU shaders, status bar modular) e hoje está documentado apenas de forma superficial em `architecture.md` §8.3.1. Falta uma referência arquitetural dedicada que oriente contribuidores na estrutura da GUI.

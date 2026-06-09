@@ -92,7 +92,7 @@ The plugin metadata descriptor will follow this pattern:
 
 ## 8. Graphical Interface: Windowing Strategy and Stack
 
-The CLAP plugin GUI operates on a dedicated thread (`UI thread`), completely isolated from the `audio thread`. The architecture is unified on the X11 backend.
+The CLAP plugin GUI operates on a dedicated thread (`UI thread`), completely isolated from the `audio thread`. The architecture is unified on the X11 backend. For a detailed guide on the GUI architecture, drawing sub-modules, frame rendering pipeline lifecycle, synchronization state variables, GPU shaders, CPU fallback path, and keyboard accessibility focus logic, see the dedicated [docs/gui-architecture.md](/docs/gui-architecture.md) document.
 
 ### Unified Windowing Strategy (Pure X11)
 
