@@ -206,7 +206,7 @@
 
 ### Sprint 3.1: Testes de Regressão para Otimizações
 
-#### TT-3.1.1: Teste de clipping detection em caminho mono não-stereo
+#### TT-3.1.1: Teste de clipping detection em caminho mono não-stereo [DONE]
 
 - **Arquivo:** `src/clap/processor_test.rs` ou teste inline
 - **Descrição:** Após TT-1.2.1, adicionar teste que injeta sinal acima de 0 dBFS e verifica flag `HAS_CLIPPED`.
