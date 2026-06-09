@@ -80,6 +80,11 @@ Each section testable after touching the corresponding feature. Self-contained, 
 - [ ] Fast transients (pick attack) → bar responds without visual delay (~33 fps).
 - [ ] Cause a peak and stop signal → peak hold mark stays ~2s, then decays smoothly.
 - [ ] Saturate output (>0 dBFS) → red LED at the top of the meter **persists**. Click on the LED or bar → resets.
+- [ ] Feed signal **only to the Left (L) channel** (e.g. hard-panned L or L-only generator) → L meter moves dynamically, R meter remains completely at minimum.
+- [ ] Feed signal **only to the Right (R) channel** (e.g. hard-panned R or R-only generator) → R meter moves dynamically, L meter remains completely at minimum.
+- [ ] Feed a **symmetric / in-phase signal** (equal level on L and R) → L and R meters move symmetrically (equal peaks and decay).
+- [ ] Feed an **asymmetric / panned signal** (different levels on L and R) → L and R meters move independently.
+- [ ] **How to fail (reprovação):** The test is failed if meters show identical activity even with asymmetric input (e.g. signal on L-only still moves both meters), or if layout fails to adapt to track configuration.
 
 ---
 

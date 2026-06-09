@@ -82,7 +82,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ### Sprint D2 — Melhoria de cobertura dos testes funcionais
 
-#### Tarefa D2.T01 — Adicionar seção de teste para o VU meter stereo em `docs/functional-tests.md`
+#### Tarefa D2.T01 — Adicionar seção de teste para o VU meter stereo em `docs/functional-tests.md` [DONE]
 
 - **Onde:** [`docs/functional-tests.md`](docs/functional-tests.md) §2C.
 - **Problema (levantado no /refatora-doc):** O §2C agora cobre o comportamento adaptativo (mono/stereo), mas não existe um roteiro de teste específico para inserir o plugin em uma faixa stereo e verificar os dois medidores L e R independentemente (sinal no L, silêncio no R; e vice-versa).
