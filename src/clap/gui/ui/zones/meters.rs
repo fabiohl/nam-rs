@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
-//! Zone 3 (right): Stereo VU meters with peak hold and clipping LEDs.
+//! Zone 3 (right): Adaptive VU meter(s) with peak hold and clipping LEDs.
+//!
+//! Renders 1 centered bar (mono, 76px) when `active_channel_count < 2`, or
+//! 2 labeled bars L/R (36px each) when the host reports ≥2 channels.
 
 use crate::clap::plugin::NamClapShared;
 use std::sync::Arc;

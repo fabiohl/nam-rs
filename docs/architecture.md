@@ -323,7 +323,7 @@ Model switching in the audio thread is RT-safe:
 
 ### CLAP Extensions and Graphical Interface
 
-The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×260px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
+The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×275px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
 
 For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](docs/clap_integration.md).
 
@@ -418,15 +418,18 @@ Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `base
 
 The graphical interface was decomposed from its original monolithic state into a structure of readable and reusable modules located in `src/clap/gui/ui/`:
 
-- **`mod.rs`:** Contains the main drawing orchestrator. The main `draw_ui` function was split into 5 specific zone functions (`draw_zone1_identity` for model loader/logo, `draw_zone2_controls` for control knobs, `draw_zone3_meters` for VU meters, `draw_zone4_bypass` for the bypass switch, and `draw_zone5_status_bar` for telemetry/CPU status bar).
-- **`bypass.rs`:** Interactive design and behavior of the bypass switch.
-- **`colors.rs`:** HSL definitions for the plugin color palette and aesthetic themes.
-- **`knob.rs`:** Custom high-precision rotary control widgets with drag gesture and reset support.
-- **`meter.rs`:** Rendering of input/output VU meters with smooth decay.
-- **`state.rs`:** Management of local state and GUI telemetry.
-- **`simd.rs`:** Visual component to display the active SIMD set.
-- **`vsep.rs`:** Vertical separators in the layout.
-- **`test.rs`:** Automated tests and egui interface mocks.
+- **`mod.rs`:** Main drawing orchestrator. The `draw_ui` function delegates to 5 zone functions: `draw_zone1_identity`, `draw_zone2_controls`, `draw_zone3_meters`, `draw_zone4_bypass`, and `draw_zone5_status_bar`.
+- **`zones/`:** One file per GUI zone — `identity.rs` (Zone 1 logo + model loader), `controls.rs` (Zone 2 knobs), `meters.rs` (Zone 3 adaptive VU meters), `bypass_zone.rs` (Zone 4 bypass toggle).
+- **`status_bar/`:** Zone 5 footer — `orchestrator.rs` (layout + toast + A2 warning), `telemetry.rs` (DSP load, sample rate, latency strings), `metadata.rs` (model metadata line).
+- **`meter/`:** GPU-accelerated VU meter rendering — `glow.rs` (OpenGL GLSL shaders), `orchestrator.rs` (draw entry point), `cpu.rs` (software fallback), `readout.rs` (peak readout labels).
+- **`bypass.rs`:** Interactive design and behavior of the bypass toggle switch.
+- **`colors.rs`:** HSL definitions for the plugin color palette and accent color resolution.
+- **`focus.rs`:** Keyboard focus cycle management (Tab/Shift+Tab navigation).
+- **`knob.rs`:** Custom high-precision rotary control widgets with drag gesture, fine-tune, and reset support.
+- **`simd.rs`:** Visual component displaying the active SIMD instruction set badge.
+- **`state.rs`:** Local persistent GUI state, VU peak-hold, telemetry cache, toast and error expiration.
+- **`vsep.rs`:** Styled vertical separator lines between zones.
+- **`test.rs`:** Automated egui interface tests and mocks.
 
 ### 8.3.2 Math & SIMD — Modular Reorganization
 

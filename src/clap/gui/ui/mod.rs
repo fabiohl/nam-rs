@@ -7,7 +7,7 @@
 //!
 //! - **Zone 1** (left): Identity — logo, version, SIMD badge, model load button
 //! - **Zone 2** (center): Controls — Input Gain, Output Gain and Gate Threshold knobs
-//! - **Zone 3** (right): Stereo VU meters with peak hold and clipping LEDs
+//! - **Zone 3** (right): Adaptive VU meter(s) — mono (1 centered bar) or stereo (L/R bars) based on host track config
 //! - **Zone 4** (far right): Bypass toggle with status LED
 //! - **Zone 5** (footer): Status bar with sample rate, latency, DSP load and telemetry
 //!
@@ -51,13 +51,13 @@ use std::time::{Duration, Instant};
 /// # Layout
 ///
 /// ```text
-/// ┌─────────┬────────────────┬───────┬──────┐
-/// │  Zone 1  │    Zone 2        │ Zone 3  │ Zone 4 │
-/// │  Logo    │  Input  Out Gate │  VU L R │ Bypass │
-/// │  Model   │  Knobs           │  Meters │ Switch │
-/// ├─────────┴────────────────┴───────┴──────┤
-/// │            Zone 5: Status Bar              │
-/// └─────────────────────────────────────────┘
+/// ┌─────────┬──────────────────┬──────────┬────────┐
+/// │  Zone 1 │    Zone 2        │ Zone 3   │ Zone 4 │
+/// │  Logo   │  Input  Out Gate │  VU mono │ Bypass │
+/// │  Model  │  Knobs           │  or L/R  │ Switch │
+/// ├─────────┴──────────────────┴──────────┴────────┤
+/// │               Zone 5: Status Bar               │
+/// └────────────────────────────────────────────────┘
 /// ```
 pub fn draw_ui(
     ui: &mut egui::Ui,

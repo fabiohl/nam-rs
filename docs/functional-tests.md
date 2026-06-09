@@ -18,7 +18,7 @@ Objective: first impression — layout, loading, sound, basic controls.
 - [ ] Open NAM-rs GUI → fixed window **600×275 px** (no host decoration).
 - [ ] Zone 1 (left): turquoise logo `"NAM-rs⚡"`, subtitle `"Neural Amp Modeler"`, version + SIMD badge, `[📂 Load Model]` button, model box with dark background.
 - [ ] Zone 2 (center): 3 knobs — **INPUT** (70px, turquoise), **OUTPUT** (70px, turquoise), **GATE** (42px, amber).
-- [ ] Zone 3 (right): **adaptive** VU meter — 1 centered bar (no label) 16px wide (mono).
+- [ ] Zone 3 (right): **adaptive** VU meter — 1 centered bar (no label) 76px wide when plugin is on a mono track; 2 bars labeled **L** / **R** (36px each) when on a stereo track.
 - [ ] Zone 4 (far right): **BYPASS** toggle with LED and `"ACTIVE"`/`"BYPASSED"` label.
 - [ ] Zone 5 (footer): status bar with RT telemetry (sample rate, latency, DSP load, CPU cycles, last N samples, RT priority, overruns/overloads, flags) and bottom line with model metadata (if loaded).
 - [ ] Zone 5 (footer) far right: small "ℹ" button/icon on the telemetry line for copying diagnostics.
@@ -72,13 +72,14 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ### 2C — VU Metering, Peak Hold & Clipping (Mono)
 
-> **Plugin mono behavior:** The CLAP plugin operates strictly in mono (1 channel). Consequently, Zone 3 always displays a single centered meter without a label, regardless of whether it is inserted on a mono or stereo DAW track (where stereo routing/processing is managed by the host).
+> **Adaptive meter behavior:** The CLAP plugin processes audio in mono (DSP is always mono). Zone 3 reflects the *host channel configuration* of the inserted track: on a mono track it shows **1 centered bar (no label, 76px wide)**; on a stereo track it shows **2 bars labeled L and R (36px each)**. VU meters do **not** change color when the accent color changes.
 
-- [ ] Insert NAM-rs in the DAW → Zone 3 displays **1 centered meter without a label** (16px wide) in an ~76px zone.
-- [ ] Feed with dynamic signal → single VU bar with tricolor gradient: green (−60 to −12 dB) → yellow (−12 to −3 dB) → red (−3 to +6 dB).
+- [ ] Insert NAM-rs on a **mono DAW track** → Zone 3 displays **1 centered bar without a label** (~76px wide).
+- [ ] Insert NAM-rs on a **stereo DAW track** → Zone 3 displays **2 bars labeled L and R** (~36px each, separated by 4px).
+- [ ] Feed with dynamic signal → VU bar(s) show tricolor gradient: green (−60 to −12 dB) → yellow (−12 to −3 dB) → red (−3 to +6 dB).
 - [ ] Fast transients (pick attack) → bar responds without visual delay (~33 fps).
 - [ ] Cause a peak and stop signal → peak hold mark stays ~2s, then decays smoothly.
-- [ ] Saturate output (>0 dBFS) → red LED at the top of the single meter **persists**. Click on the LED or bar → resets.
+- [ ] Saturate output (>0 dBFS) → red LED at the top of the meter **persists**. Click on the LED or bar → resets.
 
 ---
 
@@ -170,7 +171,7 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 - [ ] Status bar displays a small info button `"ℹ"` on the far right of the telemetry line.
 - [ ] Hover over `"ℹ"` button → shows tooltip: `"Copy Diagnostic info to clipboard and ~/.cache/nam-rs/"`.
-- [ ] Click `"ℹ"` button → visual toast confirmation `"Diagnostic copiado · arquivo em ~/.cache/nam-rs/"` appears in the status bar for 3 seconds.
+- [ ] Click `"ℹ"` button → visual toast confirmation `"Diagnostic copied · file in ~/.cache/nam-rs/"` appears in the status bar for 3 seconds.
 - [ ] Paste (Ctrl+V) anywhere → diagnostic support block is successfully pasted, containing system info (version, arch, os, kernel, features) and runtime state (model, sample rate).
 - [ ] Verify that a diagnostic file was created under `~/.cache/nam-rs/diagnostic-<unix_ts>.txt` with exact permission `0o600` (read/write by owner only).
 - [ ] While toast is visible, click `"Open Folder"` button next to it → file manager opens at `~/.cache/nam-rs/` via `xdg-open`.
@@ -191,7 +192,7 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
-### 2N — Floating GUI Fallback Window (G2.T02)
+### 2N — Floating GUI Fallback Window
 
 > **Host:** Bitwig Studio and Fender Studio Pro.
 > **Context:** If the host does not support GUI embedding (X11 parented), the plugin should open as a floating top-level window.
@@ -205,7 +206,7 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
-### 2O — Plugin Categorization in Host Browser (G2.T03)
+### 2O — Plugin Categorization in Host Browser
 
 > **Host:** Bitwig Studio (browser sidebar).
 > **Context:** The CLAP feature strings determine where the plugin appears in the host's category tree.
@@ -217,7 +218,7 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
-### 2P — Preset Portability via State-Context (G2.T04)
+### 2P — Preset Portability via State-Context
 
 > **Host:** Bitwig Studio (supports `clap.state-context`). Reaper may also work.
 > **Preparation:** A `.nam` model loaded, parameters set to non-default values.
