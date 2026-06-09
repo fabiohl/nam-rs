@@ -111,7 +111,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ---
 
-#### Tarefa D2.T03 — Adicionar número de seção explícito a todos os itens de checklist de `functional-tests.md`
+#### Tarefa D2.T03 — Adicionar número de seção explícito a todos os itens de checklist de `functional-tests.md` [DONE]
 
 - **Onde:** [`docs/functional-tests.md`](docs/functional-tests.md) — todos os blocos.
 - **Problema:** O template de bug report (§ ao final) pede `<ID, e.g.: 2C.4>`, mas os checklists não têm numeração explícita nos itens. Isso torna difícil reportar um bug específico.
