@@ -18,3 +18,26 @@ pub const PARAM_BYPASS: u32 = 3;
 pub const PARAM_ACTIVE_MODEL: u32 = 4;
 /// Adaptive compute mode parameter ID.
 pub const PARAM_ADAPTIVE_COMPUTE: u32 = 5;
+
+/// Bypass atomic value: off.
+pub const BYPASS_OFF: u32 = 0;
+/// Bypass atomic value: on.
+pub const BYPASS_ON: u32 = 1;
+
+/// Convert a `u32` atomic bypass value to a `bool`.
+#[inline]
+pub fn bypass_u32_to_bool(val: u32) -> bool {
+    val != 0
+}
+
+/// Convert a `bool` bypass to its `u32` atomic representation.
+#[inline]
+pub fn bypass_bool_to_u32(b: bool) -> u32 {
+    if b { BYPASS_ON } else { BYPASS_OFF }
+}
+
+/// Convert a `f32` CLAP parameter value to a `bool` bypass.
+#[inline]
+pub fn bypass_f32_to_bool(val: f32) -> bool {
+    val > 0.5
+}

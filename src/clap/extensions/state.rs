@@ -8,6 +8,7 @@
 //! - v0 (legacy, CLAP v1.5.x): plain JSON `NamPluginParams`, without a `version` field.
 //! - v1 (current): envelope `StateEnvelope { version: 1, params: {...} }`.
 
+use crate::clap::extensions::params::{bypass_bool_to_u32, bypass_u32_to_bool};
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
@@ -75,12 +76,12 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 .param_gate_thresh
                 .load(std::sync::atomic::Ordering::Relaxed),
         );
-        self.params.bypass = self
-            .shared
-            .ui_to_rt
-            .param_bypass
-            .load(std::sync::atomic::Ordering::Relaxed)
-            != 0;
+        self.params.bypass = bypass_u32_to_bool(
+            self.shared
+                .ui_to_rt
+                .param_bypass
+                .load(std::sync::atomic::Ordering::Relaxed),
+        );
         self.params.adaptive_compute = crate::common::params::AdaptiveComputeMode::from_f32(
             self.shared
                 .ui_to_rt
@@ -124,7 +125,7 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
             std::sync::atomic::Ordering::Relaxed,
         );
         self.shared.ui_to_rt.param_bypass.store(
-            if self.params.bypass { 1 } else { 0 },
+            bypass_bool_to_u32(self.params.bypass),
             std::sync::atomic::Ordering::Relaxed,
         );
         self.shared.ui_to_rt.param_adaptive_compute.store(

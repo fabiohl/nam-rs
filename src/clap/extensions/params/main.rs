@@ -5,7 +5,7 @@
 
 use super::{
     PARAM_ACTIVE_MODEL, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-    PARAM_OUTPUT_GAIN,
+    PARAM_OUTPUT_GAIN, bypass_bool_to_u32, bypass_f32_to_bool,
 };
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::RtPluginParams;
@@ -123,17 +123,10 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     .load(std::sync::atomic::Ordering::Relaxed),
             ) as f64),
             PARAM_BYPASS => Some(
-                if self
-                    .shared
+                self.shared
                     .ui_to_rt
                     .param_bypass
-                    .load(std::sync::atomic::Ordering::Relaxed)
-                    != 0
-                {
-                    1.0
-                } else {
-                    0.0
-                },
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
             PARAM_ACTIVE_MODEL => Some(
                 self.shared
@@ -163,7 +156,7 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 writer.write_fmt(format_args!("{:.1} dB", value))
             }
             PARAM_BYPASS => {
-                if value > 0.5 {
+                if bypass_f32_to_bool(value as f32) {
                     writer.write_str("Bypassed")
                 } else {
                     writer.write_str("Active")
@@ -274,9 +267,9 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_BYPASS => {
-                    self.params.bypass = val > 0.5;
+                    self.params.bypass = bypass_f32_to_bool(val);
                     self.shared.ui_to_rt.param_bypass.store(
-                        if val > 0.5 { 1 } else { 0 },
+                        bypass_bool_to_u32(self.params.bypass),
                         std::sync::atomic::Ordering::Relaxed,
                     );
                 }

@@ -36,6 +36,7 @@ use self::focus::handle_focus_navigation;
 use self::status_bar::draw_zone5_status_bar;
 use self::vsep::styled_vsep;
 use self::zones::{draw_zone1_identity, draw_zone2_controls, draw_zone3_meters, draw_zone4_bypass};
+use crate::clap::extensions::params::bypass_u32_to_bool;
 use crate::clap::plugin::NamClapShared;
 use clack_plugin::host::HostSharedHandle;
 use std::sync::atomic::Ordering;
@@ -73,7 +74,7 @@ pub fn draw_ui(
         }
     }
 
-    let current_bypass = shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
+    let current_bypass = bypass_u32_to_bool(shared.ui_to_rt.param_bypass.load(Ordering::Relaxed));
     let accent_color = resolve_accent(shared);
     let mut load_btn_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);

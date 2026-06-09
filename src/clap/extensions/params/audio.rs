@@ -5,6 +5,7 @@
 
 use super::{
     PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+    bypass_bool_to_u32, bypass_f32_to_bool, bypass_u32_to_bool,
 };
 use crate::clap::processor::NamClapProcessor;
 use clack_extensions::params::PluginAudioProcessorParams;
@@ -66,9 +67,9 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                         .store(val.to_bits(), std::sync::atomic::Ordering::Relaxed);
                 }
                 PARAM_BYPASS => {
-                    self.params.bypass = val > 0.5;
+                    self.params.bypass = bypass_f32_to_bool(val);
                     self.shared.ui_to_rt.param_bypass.store(
-                        if val > 0.5 { 1 } else { 0 },
+                        bypass_bool_to_u32(self.params.bypass),
                         std::sync::atomic::Ordering::Relaxed,
                     );
                 }
@@ -122,12 +123,12 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                 self.params.gate_threshold_db = shared_gate_db;
             }
 
-            let shared_bypass = self
-                .shared
-                .ui_to_rt
-                .param_bypass
-                .load(std::sync::atomic::Ordering::Relaxed)
-                != 0;
+            let shared_bypass = bypass_u32_to_bool(
+                self.shared
+                    .ui_to_rt
+                    .param_bypass
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
             if shared_bypass != self.params.bypass {
                 self.params.bypass = shared_bypass;
             }

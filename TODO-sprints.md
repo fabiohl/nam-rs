@@ -148,7 +148,7 @@
 - **Prioridade:** Alta
 - **Impacto esperado:** Elimina ~80 linhas duplicadas, reduz risco de divergência de comportamento entre caminhos.
 
-#### TT-2.2.2: Unificar conversão `bool` ↔ `u32` para `param_bypass`
+#### TT-2.2.2: Unificar conversão `bool` ↔ `u32` para `param_bypass` [DONE]
 
 - **Arquivos:** `src/clap/processor/events.rs`, `src/clap/extensions/params/main.rs`, `src/clap/extensions/state.rs`
 - **Descrição:** A conversão `val > 0.5` / `if bypass { 1 } else { 0 }` aparece em 4+ locais. Criar constantes `BYPASS_OFF: u32 = 0` e `BYPASS_ON: u32 = 1` com helper functions.

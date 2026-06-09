@@ -9,6 +9,7 @@
 //!
 //! See: `clap/ext/state-context.h`
 
+use crate::clap::extensions::params::bypass_bool_to_u32;
 use crate::clap::plugin::NamClapMainThread;
 use crate::common::params::{NamPluginParams, RtPluginParams};
 use clack_common::stream::{InputStream, OutputStream};
@@ -113,7 +114,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             std::sync::atomic::Ordering::Relaxed,
         );
         self.shared.ui_to_rt.param_bypass.store(
-            if self.params.bypass { 1 } else { 0 },
+            bypass_bool_to_u32(self.params.bypass),
             std::sync::atomic::Ordering::Relaxed,
         );
         self.shared.ui_to_rt.param_adaptive_compute.store(

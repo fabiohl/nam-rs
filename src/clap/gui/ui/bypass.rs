@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 //! Bypass Rocker Switch toggle with LED, glow and automation halo.
 
+use crate::clap::extensions::params::{bypass_bool_to_u32, bypass_u32_to_bool};
 use clack_plugin::host::HostSharedHandle;
 use std::sync::atomic::Ordering;
 
@@ -28,7 +29,7 @@ pub fn handle_bypass(
     const GESTURE_END_SHIFT: u32 = 2;
 
     let offset = param_index as u32 * GESTURE_BITS_PER_PARAM;
-    let current_bypass = atomic_val.load(Ordering::Relaxed) != 0;
+    let current_bypass = bypass_u32_to_bool(atomic_val.load(Ordering::Relaxed));
     let button_size = egui::vec2(32.0, 56.0);
 
     let response = ui
@@ -57,7 +58,7 @@ pub fn handle_bypass(
     if toggle_bypass {
         let new_bypass = !current_bypass;
         gesture_flags.fetch_or(1 << (offset + GESTURE_BEGIN_SHIFT), Ordering::Relaxed);
-        atomic_val.store(if new_bypass { 1 } else { 0 }, Ordering::Relaxed);
+        atomic_val.store(bypass_bool_to_u32(new_bypass), Ordering::Relaxed);
         gui_param_generation.fetch_add(1, Ordering::Release);
         gesture_flags.fetch_or(1 << (offset + GESTURE_CHANGED_SHIFT), Ordering::Relaxed);
         gesture_flags.fetch_or(1 << (offset + GESTURE_END_SHIFT), Ordering::Relaxed);

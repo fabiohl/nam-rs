@@ -8,6 +8,7 @@
 //! three event-processing paths (SPSC, Host Events, GUI sync).
 
 use super::NamClapProcessor;
+use crate::clap::extensions::params::{bypass_bool_to_u32, bypass_f32_to_bool, bypass_u32_to_bool};
 use crate::common::params::RtPluginParams;
 use std::sync::atomic::Ordering;
 
@@ -44,12 +45,12 @@ impl<'a> NamClapProcessor<'a> {
     }
 
     pub(super) fn set_bypass(&mut self, val: f32) {
-        let bypass = val > 0.5;
+        let bypass = bypass_f32_to_bool(val);
         self.params.bypass = bypass;
         self.shared
             .ui_to_rt
             .param_bypass
-            .store(if bypass { 1 } else { 0 }, Ordering::Relaxed);
+            .store(bypass_bool_to_u32(bypass), Ordering::Relaxed);
     }
 
     pub(super) fn set_adaptive_compute(&mut self, val: f32) {
@@ -147,7 +148,8 @@ impl<'a> NamClapProcessor<'a> {
     }
 
     pub(super) fn sync_bypass_from_gui(&mut self) {
-        let shared_bypass = self.shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
+        let shared_bypass =
+            bypass_u32_to_bool(self.shared.ui_to_rt.param_bypass.load(Ordering::Relaxed));
         if shared_bypass != self.params.bypass {
             self.params.bypass = shared_bypass;
         }
