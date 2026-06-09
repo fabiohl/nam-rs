@@ -17,7 +17,7 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 ## 2. Inference & Microarchitecture (SIMD x86-64-v3/v4)
 
 - **Multiversioning via `dispatch_simd!` Macro:** Dynamic dispatch at model load time that selects the best SIMD kernel v-table (`Avx2Math`, `Avx512Math`, etc.). The use of macros for monomorphization ensures that the compiler emits native intrinsics without v-table overhead in the inference hot-path.
-- **FastMath Activations & Gain LUT:** `simd_tanh` uses a **Padé [5,4]** rational approximant with hardware `_mm256_div_ps`; `simd_sigmoid` uses a direct **Minimax degree-17** polynomial. Maximum error: tanh ~2.32e-3 on [-4, 4], sigmoid ~4.09e-4 on [-8, 8] (see `docs/fastmath-approximations.md`). Includes an interpolated **Gain LUT (Look-Up Table)** for ultra-fast dB → Linear conversion in RT, avoiding expensive calls to `powf`.
+- **FastMath Activations & Gain LUT:** `simd_tanh` uses a **Padé [5,4]** rational approximant with hardware `_mm256_div_ps`; `simd_sigmoid` uses a direct **Minimax degree-17** polynomial. Maximum error: tanh ~2.32e-3 on [-4, 4], sigmoid ~4.09e-4 on [-8, 8] (see [docs/fastmath-approximations.md](docs/fastmath-approximations.md)). Includes an interpolated **Gain LUT (Look-Up Table)** for ultra-fast dB → Linear conversion in RT, avoiding expensive calls to `powf`.
 - **Gated Activation Fusion (WaveNet A2):** Unification of `tanh` and `sigmoid` into a single native SIMD kernel, reducing register pressure and avoiding multiple passes over the activation vector.
 - **Dot Product ILP:** Implementation with multiple independent accumulators (`sum0..sum3` in AVX2, `acc0..acc7` in AVX-512) to saturate FMA port throughput, breaking dependency chains.
 - **Weight Compression (F16C/BF16):** Weights are stored in `f16` (Half-Precision) or `bf16` (Bfloat16) to reduce L1/L2 memory traffic. Precision selection and the corresponding on-the-fly conversion/decompression (via `_mm256_cvtph_ps`/`_mm512_cvtph_ps` for F16, or corresponding bit-unpacking for BF16) occur at runtime via dynamic dispatch managed by `SimdMathConfig` (initialized by the dispatcher based on the CPU's supported instruction set, such as AVX2, AVX-512 F16/BF16).
@@ -39,7 +39,7 @@ The architecture of NAM-rs is designed for low-latency DSP processing and neural
 >
 > **Validation:** Deterministic sweep, proptest (10k inputs), golden vectors cross-validation against NeuralAmpModelerCore (7 models).
 >
-> **References:** `src/math/activations/tanh.rs`, `src/math/activations/sigmoid.rs`, `docs/fastmath-approximations.md`, `tests/nam_infer_test.rs`.
+> **References:** [src/math/activations/tanh.rs](/src/math/activations/tanh.rs), [src/math/activations/sigmoid.rs](/src/math/activations/sigmoid.rs), [docs/fastmath-approximations.md](/docs/fastmath-approximations.md), [tests/nam_infer_test.rs](/tests/nam_infer_test.rs).
 
 ### Technical Decision: Portability and Virtual Allocation of `MirroredBuffer`
 
@@ -102,8 +102,8 @@ To optimize the trade-off between computational latency and tonal accuracy, NAM-
 
 To prevent the accumulation of numerical drift and mathematical instabilities in long-duration runs:
 
-- **Kahan Summation (E8.T06):** Employed in the outer accumulation loop of `conv1d.rs` convolutions and in the interleaved 4x scalar fallbacks. By maintaining an error compensation register for each channel, it reduces the relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$ in deep causal convolutions.
-- **Deterministic Dither (E8.T05):** Injection of an inaudible deterministic DC offset of $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) at the input stage (`apply_input_stage` after gain) with corresponding compensatory subtraction at the output (`apply_output_stage`). Keeps neural activations (tanh/sigmoid) out of subnormal (denormal) ranges during fade-outs or absolute silence, preventing pops and CPU spikes.
+- **Kahan Summation (E8.T06):** Employed in the outer accumulation loop of [conv1d.rs](/src/models/wavenet/conv1d.rs) convolutions and in the interleaved 4x scalar fallbacks. By maintaining an error compensation register for each channel, it reduces the relative accumulation error from $O(N \cdot \epsilon)$ to $O(\epsilon)$ in deep causal convolutions.
+- **Deterministic Dither (E8.T05):** Injection of an inaudible deterministic DC offset of $-220\text{ dBFS}$ ($1.0 \times 10^{-11}$) at the input stage ([apply_input_stage](/src/dsp/pipeline/stages/input.rs#L47) after gain) with corresponding compensatory subtraction at the output ([apply_output_stage](/src/dsp/pipeline/stages/output.rs#L21)). Keeps neural activations (tanh/sigmoid) out of subnormal (denormal) ranges during fade-outs or absolute silence, preventing pops and CPU spikes.
 
 ## 3. Time Management and Isolation (Strict RT)
 
@@ -243,7 +243,7 @@ The project follows a strict hierarchy to ensure internal logic and the public A
 
 > Tests that compared SIMD kernels against `ScalarRefMath` with fixed inputs were removed — they were circular (validation against themselves) and redundant with PropTests (10k random inputs with independent `f64`/`f32::tanh()` references). The `ScalarRefMath` struct was eliminated; the `_fallback` functions in `src/math/common/scalar_ref.rs` remain as scalar delegates.
 >
-> The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (Steven Atkinson) — the canonical source of `.nam` models. Seven reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) calculated in a single-pass fusion. See `tests/fixtures/golden_gen_build.sh` and `docs/dependencies.md §6`.
+> The self-referential goldens (NeuralAudio, `tests/regression_goldens.rs`, `tests/golden/`) were replaced with external anchoring to [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) (Steven Atkinson) — the canonical source of `.nam` models. Seven reference models cover WaveNet (Standard/Feather/Nano/Micro) and LSTM (1×16/2×8/1×3), with 5 accuracy metrics (MSE, MAE, SNR, PSNR, equiv. bits) calculated in a single-pass fusion. See [tests/fixtures/golden_gen_build.sh](/tests/fixtures/golden_gen_build.sh) and [docs/dependencies.md §6](/docs/dependencies.md#L108).
 
 ### Benchmarks and Performance
 
@@ -325,11 +325,11 @@ Model switching in the audio thread is RT-safe:
 
 The plugin implements 8 CLAP extensions: `audio_ports`, `params`, `state`, `latency`, `track_info`, `remote_controls`, `param_indication`, and `gui`. The plugin operates strictly in mono to accommodate standard DAW workflows (mono-in/mono-out), while the GUI uses `egui` + `baseview` over a pure X11 backend (600×275px), with complete isolation between the UI thread and audio thread via atomic fields and SPSC.
 
-For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](docs/clap_integration.md).
+For details on each extension, graphical stack, and windowing strategy, see [docs/clap_integration.md](/docs/clap_integration.md).
 
 ## 8.2 CLAP DSP Pipeline and Parameter Flow
 
-The CLAP plugin's audio processing engine is designed for zero-jitter, low-latency, real-time audio operations. The host DAW invokes the `process()` callback inside [PluginAudioProcessor::process](file:///home/fabio/nam-rs/src/clap/processor/mod.rs#L178-L242), executing a sequential pipeline of event handling, DSP, and telemetry compilation.
+The CLAP plugin's audio processing engine is designed for zero-jitter, low-latency, real-time audio operations. The host DAW invokes the `process()` callback inside [PluginAudioProcessor::process](/src/clap/processor/mod.rs#L178), executing a sequential pipeline of event handling, DSP, and telemetry compilation.
 
 ### CLAP DSP Pipeline Diagram
 
@@ -387,24 +387,24 @@ graph TD
 
 ### 8.2.1 Pipeline Execution Flow
 
-The processing execution pathway inside [process_dsp_audio](file:///home/fabio/nam-rs/src/clap/processor/dsp/orchestrator.rs#L16-L161) consists of the following consecutive stages:
+The processing execution pathway inside [process_dsp_audio](/src/clap/processor/dsp/orchestrator.rs#L16) consists of the following consecutive stages:
 
-1. **Bypass Evaluation:** Evaluates whether active bypass is requested via [process_bypass](file:///home/fabio/nam-rs/src/clap/processor/dsp/bypass.rs). If bypass is active, the pipeline copies input samples directly to the output ports, writes zero/clipping telemetry, and short-circuits the downstream DSP/inference modules.
-2. **Channel Extraction:** Calls [extract_channels](file:///home/fabio/nam-rs/src/clap/processor/dsp/channels.rs) to map host audio ports (which might be mono or stereo depending on the DAW configuration) to thread-local aligned input buffers.
-3. **Input Gain Stage:** Multiplies the input samples by the configured input gain using SIMD operations, driven by a sample-accurate [ParamSmoother](file:///home/fabio/nam-rs/src/dsp/smoother.rs) to prevent zipper noise.
+1. **Bypass Evaluation:** Evaluates whether active bypass is requested via [process_bypass](/src/clap/processor/dsp/bypass.rs#L11). If bypass is active, the pipeline copies input samples directly to the output ports, writes zero/clipping telemetry, and short-circuits the downstream DSP/inference modules.
+2. **Channel Extraction:** Calls [extract_channels](/src/clap/processor/dsp/channels.rs#L10) to map host audio ports (which might be mono or stereo depending on the DAW configuration) to thread-local aligned input buffers.
+3. **Input Gain Stage:** Multiplies the input samples by the configured input gain using SIMD operations, driven by a sample-accurate [ParamSmoother](/src/dsp/smoother.rs#L12) to prevent zipper noise.
 4. **Gate Parameter Refresh:** If gate parameters have been marked dirty, the pipeline dynamically computes the linear squared thresholds for opening and closing the gate.
-5. **Input Pipeline Stage (Dither & Gate):** Calls [apply_input_stage](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/input.rs). This function injects a deterministic $-220\text{ dBFS}$ dither offset to avoid denormal numbers (preventing CPU performance degradation) and evaluates the Noise Gate state machine ([GateState](file:///home/fabio/nam-rs/src/dsp/gate.rs)). If the gate is closed, the processing skips inference and proceeds to immediately fill the output buffers with silence.
-6. **Model Inference:** If the gate is open, calls [run_inference](file:///home/fabio/nam-rs/src/dsp/pipeline/mod.rs) to run the neural net. If the host sample rate differs from the model's native rate, the [NamResampler](file:///home/fabio/nam-rs/src/dsp/resampler.rs) up-samples the buffer. Next, the active neural model runs inference (`NamModel::process`), and the resampler down-samples the result back to the host rate.
-7. **Output Pipeline Stage (Dither compensation & Gate Fade):** Calls [apply_output_stage](file:///home/fabio/nam-rs/src/dsp/pipeline/stages/output.rs). This stage subtracts the compensatory dither offset, applies linear fade-in/out transitions when the gate opens or closes, and measures block execution time to run the **Adaptive Compute** FSM.
-8. **Output Gain Stage:** Multiplies the output by the output gain, smoothed via [ParamSmoother](file:///home/fabio/nam-rs/src/dsp/smoother.rs).
-9. **VU Peaks Telemetry:** Computes the output peaks via [compute_output_peaks](file:///home/fabio/nam-rs/src/clap/processor/dsp/peaks.rs) and stores them in shared memory for the GUI using [store_peaks](file:///home/fabio/nam-rs/src/clap/processor/dsp/peaks.rs).
-10. **High-Precision Telemetry:** Reads CPU cycle metrics at the end of the block via `minstant::Instant` in [process_telemetry](file:///home/fabio/nam-rs/src/clap/processor/dsp/telemetry.rs) to compute the actual DSP load without system call overhead.
+5. **Input Pipeline Stage (Dither & Gate):** Calls [apply_input_stage](/src/dsp/pipeline/stages/input.rs#L47). This function injects a deterministic $-220\text{ dBFS}$ dither offset to avoid denormal numbers (preventing CPU performance degradation) and evaluates the Noise Gate state machine ([GateState](/src/dsp/gate.rs#L60)). If the gate is closed, the processing skips inference and proceeds to immediately fill the output buffers with silence.
+6. **Model Inference:** If the gate is open, calls [run_inference](/src/dsp/pipeline/stages/inference.rs#L113) to run the neural net. If the host sample rate differs from the model's native rate, the [NamResampler](/src/dsp/resampler.rs#L283) up-samples the buffer. Next, the active neural model runs inference (`NamModel::process`), and the resampler down-samples the result back to the host rate.
+7. **Output Pipeline Stage (Dither compensation & Gate Fade):** Calls [apply_output_stage](/src/dsp/pipeline/stages/output.rs#L21). This stage subtracts the compensatory dither offset, applies linear fade-in/out transitions when the gate opens or closes, and measures block execution time to run the **Adaptive Compute** FSM.
+8. **Output Gain Stage:** Multiplies the output by the output gain, smoothed via [ParamSmoother](/src/dsp/smoother.rs#L12).
+9. **VU Peaks Telemetry:** Computes the output peaks via [compute_output_peaks](/src/clap/processor/dsp/peaks.rs#L10) and stores them in shared memory for the GUI using [store_peaks](/src/clap/processor/dsp/peaks.rs#L95).
+10. **High-Precision Telemetry:** Reads CPU cycle metrics at the end of the block via `minstant::Instant` in [process_telemetry](/src/clap/processor/dsp/telemetry.rs#L10) to compute the actual DSP load without system call overhead.
 
 ### 8.2.2 Parameter Flow and Synchronization
 
-Parameters (e.g., gain, gate threshold, bypass state, and neural model files) are synchronized across threads via a lock-free protocol in [process_events](file:///home/fabio/nam-rs/src/clap/processor/events.rs#L21-L133). Synchronization handles three incoming paths:
+Parameters (e.g., gain, gate threshold, bypass state, and neural model files) are synchronized across threads via a lock-free protocol in [process_events](/src/clap/processor/events.rs#L21). Synchronization handles three incoming paths:
 
-- **SPSC Queue (`param_rx`):** The Main Thread processes expensive operations (like loading models from disk or allocating memory) and transfers the results via [ClapParamPayload](file:///home/fabio/nam-rs/src/clap/plugin/mod.rs) to the RT thread. If loading a model, [cold_load_model](file:///home/fabio/nam-rs/src/clap/processor/events.rs#L136-L159) replaces the active pointers on the RT thread and pushes the old instances to `gc_tx` so the Main Thread can safely drop them outside the RT context.
+- **SPSC Queue (`param_rx`):** The Main Thread processes expensive operations (like loading models from disk or allocating memory) and transfers the results via [ClapParamPayload](/src/clap/plugin/shared.rs#L17) to the RT thread. If loading a model, [cold_load_model](/src/clap/processor/events.rs#L136) replaces the active pointers on the RT thread and pushes the old instances to `gc_tx` so the Main Thread can safely drop them outside the RT context.
 - **Host DAW Events Queue:** The host DAW feeds sample-accurate automation and MIDI events into the processing block's input queue. The RT thread reads these events sequentially to update local parameter targets.
 - **GUI Atomics Sync:** GUI controls (e.g., egui knobs) write parameter updates to atomic variables in `NamClapShared::ui_to_rt` and increment `gui_param_generation` using `Release` ordering. The RT thread performs an `Acquire` check of the generation count; if they differ, it pulls the updated atomic values and aligns local targets.
 
@@ -412,7 +412,7 @@ Parameters (e.g., gain, gate threshold, bypass state, and neural model files) ar
 
 ## 8.3 Architectural Decisions
 
-Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](docs/clap_integration.md).
+Detailed decisions regarding the framework (`clack-plugin`), GUI (`egui` + `baseview`), and target DAWs are documented in [docs/clap_integration.md](/docs/clap_integration.md).
 
 ### 8.3.1 Graphical Interface and GUI Sub-modules (CLAP GUI)
 
@@ -450,7 +450,7 @@ Typed error codes for structured diagnostics. Defined in `src/common/diagnostics
 | `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND       |
 | `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*            |
 
-Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see `.agents/workflows/diagnostico.md`).
+Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see [diagnostico.md](/.agents/workflows/diagnostico.md)).
 
 ## 10. References
 
