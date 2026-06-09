@@ -97,7 +97,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ---
 
-#### Tarefa D2.T02 — Incluir checklist de teste para o "Open Folder" button no toast (§2L)
+#### Tarefa D2.T02 — Incluir checklist de teste para o "Open Folder" button no toast (§2L) [DONE]
 
 - **Onde:** [`docs/functional-tests.md`](docs/functional-tests.md) §2L.
 - **Problema:** O §2L já menciona o botão "Open Folder", mas o roteiro não cobre o caso de falha (e.g.: `xdg-open` indisponível ou `HOME` não definido).

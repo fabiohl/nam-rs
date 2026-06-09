@@ -180,6 +180,8 @@ Each section testable after touching the corresponding feature. Self-contained, 
 - [ ] Paste (Ctrl+V) anywhere → diagnostic support block is successfully pasted, containing system info (version, arch, os, kernel, features) and runtime state (model, sample rate).
 - [ ] Verify that a diagnostic file was created under `~/.cache/nam-rs/diagnostic-<unix_ts>.txt` with exact permission `0o600` (read/write by owner only).
 - [ ] While toast is visible, click `"Open Folder"` button next to it → file manager opens at `~/.cache/nam-rs/` via `xdg-open`.
+- [ ] **Failure Scenario (`xdg-open` missing / `HOME` unset):** Simulate absence of `xdg-open` (e.g. temporary PATH modification) or unset `HOME` env variable → clicking `"Open Folder"` degrades gracefully without crashing the plugin or host (silent fallback or friendly warning).
+- [ ] **Headless / Server Environment:** In a headless desktop environment (e.g. running the DAW on a Linux server via SSH without an active X11/Wayland display server or D-Bus session) → clicking the button does not cause a crash or UI freeze, failing gracefully.
 
 ---
 
