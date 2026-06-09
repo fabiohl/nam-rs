@@ -141,7 +141,7 @@
 
 ### Sprint 2.2: Redução de Duplicação
 
-#### TT-2.2.1: Extrair lógica de sincronização de parâmetros
+#### TT-2.2.1: Extrair lógica de sincronização de parâmetros [DONE]
 
 - **Arquivos:** `src/clap/processor/events.rs`, `src/clap/extensions/params/main.rs`
 - **Descrição:** A lógica de atualizar `self.shared.ui_to_rt.*` + `self.params.*` + `smoother` + `gate_dirty` está triplicada nos três caminhos de eventos (SPSC, Host Events, GUI sync) e na `flush()` dos params. Extrair para métodos privados no `NamClapProcessor`.

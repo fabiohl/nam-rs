@@ -12,6 +12,7 @@
 mod dsp;
 mod events;
 mod gc;
+mod params;
 mod state;
 
 pub(crate) use state::NamClapProcessor;

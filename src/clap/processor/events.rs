@@ -22,23 +22,11 @@ impl<'a> NamClapProcessor<'a> {
         self.shared.write_gui_events(events.output);
 
         // 1. Event Processing (Main Thread SPSC)
-        let lut = self.gain_lut;
 
         while let Ok(payload) = self.param_rx.pop() {
             match payload {
                 ClapParamPayload::Params(new_params) => {
-                    let adaptive_changed =
-                        self.params.adaptive_compute != new_params.adaptive_compute;
-                    self.params = new_params;
-                    self.smoother_in.set_target(
-                        lut.db_to_linear(self.params.input_gain_db + self.mod_input_gain),
-                    );
-                    self.smoother_out.set_target(
-                        lut.db_to_linear(self.params.output_gain_db + self.mod_output_gain),
-                    );
-                    if adaptive_changed {
-                        self.adaptive_compute.set_mode(self.params.adaptive_compute);
-                    }
+                    self.apply_params_from_spsc(new_params);
                 }
                 ClapParamPayload::LoadModel {
                     model_l,
@@ -56,48 +44,11 @@ impl<'a> NamClapProcessor<'a> {
                 };
                 let val = param_event.value() as f32;
                 match clap_id.get() {
-                    PARAM_INPUT_GAIN => {
-                        self.params.input_gain_db = val;
-                        self.shared
-                            .ui_to_rt
-                            .param_input_gain
-                            .store(val.to_bits(), Ordering::Relaxed);
-                        self.smoother_in
-                            .set_target(lut.db_to_linear(val + self.mod_input_gain));
-                    }
-                    PARAM_OUTPUT_GAIN => {
-                        self.params.output_gain_db = val;
-                        self.shared
-                            .ui_to_rt
-                            .param_output_gain
-                            .store(val.to_bits(), Ordering::Relaxed);
-                        self.smoother_out
-                            .set_target(lut.db_to_linear(val + self.mod_output_gain));
-                    }
-                    PARAM_GATE_THRESH => {
-                        self.params.gate_threshold_db = val;
-                        self.shared
-                            .ui_to_rt
-                            .param_gate_thresh
-                            .store(val.to_bits(), Ordering::Relaxed);
-                        self.gate_dirty = true;
-                    }
-                    PARAM_BYPASS => {
-                        self.params.bypass = val > 0.5;
-                        self.shared
-                            .ui_to_rt
-                            .param_bypass
-                            .store(if val > 0.5 { 1 } else { 0 }, Ordering::Relaxed);
-                    }
-                    PARAM_ADAPTIVE_COMPUTE => {
-                        let mode = crate::common::params::AdaptiveComputeMode::from_f32(val);
-                        self.params.adaptive_compute = mode;
-                        self.shared
-                            .ui_to_rt
-                            .param_adaptive_compute
-                            .store(mode as u32, Ordering::Relaxed);
-                        self.adaptive_compute.set_mode(mode);
-                    }
+                    PARAM_INPUT_GAIN => self.set_input_gain(val),
+                    PARAM_OUTPUT_GAIN => self.set_output_gain(val),
+                    PARAM_GATE_THRESH => self.set_gate_threshold(val),
+                    PARAM_BYPASS => self.set_bypass(val),
+                    PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
                     _ => {}
                 }
             } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
@@ -106,20 +57,9 @@ impl<'a> NamClapProcessor<'a> {
                 };
                 let amount = mod_event.amount() as f32;
                 match clap_id.get() {
-                    PARAM_INPUT_GAIN => {
-                        self.mod_input_gain = amount;
-                        self.smoother_in
-                            .set_target(lut.db_to_linear(self.params.input_gain_db + amount));
-                    }
-                    PARAM_OUTPUT_GAIN => {
-                        self.mod_output_gain = amount;
-                        self.smoother_out
-                            .set_target(lut.db_to_linear(self.params.output_gain_db + amount));
-                    }
-                    PARAM_GATE_THRESH => {
-                        self.mod_gate_thresh = amount;
-                        self.gate_dirty = true;
-                    }
+                    PARAM_INPUT_GAIN => self.set_mod_input_gain(amount),
+                    PARAM_OUTPUT_GAIN => self.set_mod_output_gain(amount),
+                    PARAM_GATE_THRESH => self.set_mod_gate_thresh(amount),
                     _ => {}
                 }
             }
@@ -136,56 +76,11 @@ impl<'a> NamClapProcessor<'a> {
         if generation != self.last_seen_generation {
             self.last_seen_generation = generation;
 
-            let shared_in_db = f32::from_bits(
-                self.shared
-                    .ui_to_rt
-                    .param_input_gain
-                    .load(Ordering::Relaxed),
-            );
-            if shared_in_db != self.params.input_gain_db {
-                self.params.input_gain_db = shared_in_db;
-                self.smoother_in
-                    .set_target(lut.db_to_linear(shared_in_db + self.mod_input_gain));
-            }
-
-            let shared_out_db = f32::from_bits(
-                self.shared
-                    .ui_to_rt
-                    .param_output_gain
-                    .load(Ordering::Relaxed),
-            );
-            if shared_out_db != self.params.output_gain_db {
-                self.params.output_gain_db = shared_out_db;
-                self.smoother_out
-                    .set_target(lut.db_to_linear(shared_out_db + self.mod_output_gain));
-            }
-
-            let shared_gate_db = f32::from_bits(
-                self.shared
-                    .ui_to_rt
-                    .param_gate_thresh
-                    .load(Ordering::Relaxed),
-            );
-            if shared_gate_db != self.params.gate_threshold_db {
-                self.params.gate_threshold_db = shared_gate_db;
-                self.gate_dirty = true;
-            }
-
-            let shared_bypass = self.shared.ui_to_rt.param_bypass.load(Ordering::Relaxed) != 0;
-            if shared_bypass != self.params.bypass {
-                self.params.bypass = shared_bypass;
-            }
-
-            let shared_adaptive = crate::common::params::AdaptiveComputeMode::from_f32(
-                self.shared
-                    .ui_to_rt
-                    .param_adaptive_compute
-                    .load(Ordering::Relaxed) as f32,
-            );
-            if shared_adaptive != self.params.adaptive_compute {
-                self.params.adaptive_compute = shared_adaptive;
-                self.adaptive_compute.set_mode(shared_adaptive);
-            }
+            self.sync_input_gain_from_gui();
+            self.sync_output_gain_from_gui();
+            self.sync_gate_thresh_from_gui();
+            self.sync_bypass_from_gui();
+            self.sync_adaptive_compute_from_gui();
         } // generation guard
 
         // Dynamic latency monitoring on the Audio Thread
