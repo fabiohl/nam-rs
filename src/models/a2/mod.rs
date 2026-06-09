@@ -21,6 +21,7 @@ pub mod conv1d;
 pub mod conv1d_fallback;
 pub mod film;
 pub mod gating;
+pub mod head;
 pub mod params;
 pub mod placeholder;
 
@@ -29,6 +30,7 @@ pub use activations::{ActivationFn, ActivationType};
 pub use conv1d::A2Conv1d;
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
+pub use head::{A2HeadConv, a2_head_block_scalar_ref, a2_head_single_frame_scalar_ref};
 pub use params::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
     A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,

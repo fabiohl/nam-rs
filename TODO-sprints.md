@@ -104,7 +104,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `a2_fast.cpp:417-690` (`_layer_forward_k`), `NAM/wavenet/detail.h` (`Layer`/`LayerArray`), `docs/wavenet_walkthrough.rst:47-214`.
   - **Critério de aceite:** convolução isolada bate com referência escalar em micro-teste; RT-safe.
 
-- **[T1.3] *Head conv* A2 (`k=16`, bias, `head_scale`).**
+- **[T1.3] *Head conv* A2 (`k=16`, bias, `head_scale`).** [DONE]
   - Implementar a convolução de cabeça: `Conv1D(bottleneck→1, K=16, bias)` lida de ring com *tail-mirror*, seguida de multiplicação por `head_scale`.
   - **Fonte de verdade:** `a2_fast.cpp:119-124` (`_head_w`/`_head_b`/`_head_scale`), `a2_fast.cpp:722-743` (`_head_forward`).
   - **Critério de aceite:** saída do head bate com referência em micro-teste.
