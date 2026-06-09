@@ -170,7 +170,7 @@
 - **Descrição:** Já existe `debug_assert!(pos < TAPS_PER_PHASE)` na linha 67. Verificar se `pos` não excede `DELAY_LINE_LEN` em `window_ptr`.
 - **Prioridade:** Baixa
 
-#### TT-2.3.2: Verificar bounds check no `parking_lot` de GC
+#### TT-2.3.2: Verificar bounds check no `parking_lot` de GC [DONE]
 
 - **Arquivo:** `src/clap/processor/gc.rs`
 - **Descrição:** A capacidade do `parking_lot` é fixa em 16 (state.rs:67). Durante modelo de 2 canais + resampler em swap rápido, 3 slots são consumidos. Se houver múltiplos swaps sem drenagem pelo main thread, pode estourar. Verificar se 16 é suficiente ou adicionar métrica de saturação.

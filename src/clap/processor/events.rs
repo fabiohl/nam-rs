@@ -21,6 +21,10 @@ impl<'a> NamClapProcessor<'a> {
     pub(super) fn process_events(&mut self, events: Events) {
         self.shared.write_gui_events(events.output);
 
+        // 0. Drain parking lot: re-try items parked during previous swaps
+        //    when the GC SPSC channel was full.
+        self.drain_parking_lot();
+
         // 1. Event Processing (Main Thread SPSC)
 
         while let Ok(payload) = self.param_rx.pop() {
