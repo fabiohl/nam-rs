@@ -431,6 +431,22 @@ The graphical interface is decomposed from its original monolithic state into a 
 - **`vsep.rs`:** Styled vertical separator lines between zones.
 - **`test.rs`:** Automated egui interface tests and mocks.
 
+#### Technical Decision: Adaptive VU Meter Layout (Mono vs. Stereo)
+
+> **Decision:** The Zone 3 VU meter uses a dynamic layout to display either a single centered mono meter or dual L/R stereo meters based on the host routing context [active_channel_count](/src/clap/plugin/shared.rs#L75), rather than being locked to a mono meter to match the DSP engine's mono processing.
+>
+> **Motivation:** Inform the user of the signal level present on the processed channel and detect routing imbalances or mismatch configurations in the host DAW.
+>
+> **Implementation:**
+>
+> 1. The audio processing thread determines the active host output channel count in [extract_channels](/src/clap/processor/dsp/channels.rs#L10).
+> 2. It updates the atomic variable [active_channel_count](/src/clap/plugin/shared.rs#L75) in [shared.rs](/src/clap/plugin/shared.rs) via relaxed memory ordering (`Ordering::Relaxed`).
+> 3. The GUI thread dynamically loads the count and checks if the count is $\ge 2$ in [meters.rs](/src/clap/gui/ui/zones/meters.rs#L40). If so, it renders dual visual meters (L and R); otherwise, it falls back to a single centered mono meter.
+>
+> **Trade-off:** Displaying a stereo VU meter with a mono DSP engine introduces no real-time performance overhead. Only the left channel (L) is processed by the neural model, and the right channel (R) is mapped to the peak value of either a bypass buffer (if stereo bypass mode is supported) or a copy of the same buffer, without running redundant neural inference.
+>
+> **References:** [channels.rs](/src/clap/processor/dsp/channels.rs), [meters.rs](/src/clap/gui/ui/zones/meters.rs), [shared.rs](/src/clap/plugin/shared.rs).
+
 ### 8.3.2 Math & SIMD — Modular Reorganization
 
 - **Decision:** Fragmentation of the monolithic mathematical infrastructure into domain-specific modules (`activations/`, `gemm/`, `dsp/`, `lstm/`, `wavenet/`).

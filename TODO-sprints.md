@@ -128,7 +128,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ### Sprint D3 — Rastreabilidade de decisões arquiteturais
 
-#### Tarefa D3.T01 — Documentar a decisão arquitetural do meter adaptativo em `docs/architecture.md`
+#### Tarefa D3.T01 — Documentar a decisão arquitetural do meter adaptativo em `docs/architecture.md` [DONE]
 
 - **Onde:** [`docs/architecture.md`](docs/architecture.md) §8.3.1.
 - **Problema:** A decisão de exibir L/R no VU meter com base em `active_channel_count` (em vez de fixar em mono, alinhado ao DSP mono) é uma decisão de UX/arquitetura não documentada. Sem contexto, futuros desenvolvedores podem "corrigir" isso e regredir a feature.
