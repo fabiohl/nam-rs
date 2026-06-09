@@ -131,7 +131,9 @@ run_clap_audit_local() {
     fi
 
     echo "  Executando testes de concorrência com instâncias múltiplas..."
-    cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture
+    cargo test --no-default-features --features "clap-plugin" --test clap_multi_instance -- --ignored --nocapture && \
+      echo "  Executando teste de stress do GC com 1000 swaps..." && \
+      cargo test --no-default-features --features "clap-plugin" --lib -- clap::processor::processor_test::tests::test_gc_stress_1000_swaps -- --ignored --nocapture
 }
 
 run_phase \

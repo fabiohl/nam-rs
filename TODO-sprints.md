@@ -218,7 +218,7 @@
 - **Descrição:** Após TT-1.2.2, garantir que a saída com dither SIMD é bit-exact com a versão escalar.
 - **Prioridade:** Média
 
-#### TT-3.1.3: Teste de convergência de `ParamSmoother` com `#[inline]` em `target_value()`
+#### TT-3.1.3: Teste de convergência de `ParamSmoother` com `#[inline]` em `target_value()` [DONE]
 
 - **Arquivo:** `src/dsp/smoother.rs` (testes já existem)
 - **Descrição:** Após TT-1.3.3, verificar que os testes existentes continuam passando.
@@ -228,7 +228,7 @@
 
 ### Sprint 3.2: Cobertura de Cenários Extremos
 
-#### TT-3.2.1: Teste de stress de GC com 1000 model swaps
+#### TT-3.2.1: Teste de stress de GC com 1000 model swaps [DONE]
 
 - **Arquivo:** `src/clap/processor_test.rs`
 - **Descrição:** Validar que o sistema de 3 tiers (channel → parking_lot → overflow) não perde memória sob swaps rápidos sem drenagem do main thread.
