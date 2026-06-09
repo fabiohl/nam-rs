@@ -4,7 +4,7 @@
 use super::config::SimdMathConfig;
 use super::instruction_set::InstructionSet;
 use crate::math::common::traits::SimdMath;
-use crate::math::common::{Avx2Math, Avx2VnniMath, Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
+use crate::math::common::{Avx2Math, Avx512Math, Avx512VnniBf16Math};
 use std::sync::LazyLock;
 
 /// Global SIMD configuration instance, detected at system boot.
@@ -65,48 +65,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 silu_slice: crate::math::activations::silu_slice_avx512,
             };
         }
-        // 2. AVX-512 with VNNI support only.
-        // Intel Cascade Lake/Ice Lake processors and similar. Accelerates integer/float multiplication and accumulation.
-        if is_x86_feature_detected!("avx512vnni") {
-            return SimdMathConfig {
-                instruction_set: InstructionSet::Avx512Vnni,
-                name: "AVX-512 (VNNI)",
-                is_avx512: true,
-                fused_add_gemv: Avx512VnniMath::fused_add_gemv,
-                fused_add_gemm_batch: Avx512VnniMath::fused_add_gemm_batch,
-                fused_gemm_residual_batch: Avx512VnniMath::fused_gemm_residual_batch,
-                gemv_overwrite: Avx512VnniMath::gemv_overwrite,
-                accumulate_head: Avx512VnniMath::accumulate_head,
-                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
-                horizontal_sum: |ptr, len| unsafe {
-                    crate::math::common::utility::horizontal_sum_avx512(ptr, len)
-                },
-                apply_gain_and_detect_clipping_mono:
-                    Avx512VnniMath::apply_gain_and_detect_clipping_mono,
-                apply_gain_and_detect_clipping_stereo:
-                    Avx512VnniMath::apply_gain_and_detect_clipping_stereo,
-                apply_gain_stereo: Avx512VnniMath::apply_gain_stereo,
-                apply_gain: Avx512VnniMath::apply_gain,
-                apply_ramp: Avx512VnniMath::apply_ramp,
-                apply_ramp_stereo: Avx512VnniMath::apply_ramp_stereo,
-                apply_dither_add: Avx512VnniMath::apply_dither_add,
-                convolve_stereo: Avx512VnniMath::convolve_stereo,
-                convolve_mono: Avx512VnniMath::convolve_mono,
-                convolve_mono_dual: Avx512VnniMath::convolve_mono_dual,
-                compute_energy_stereo: Avx512VnniMath::compute_energy_stereo,
-                compute_energy: Avx512VnniMath::compute_energy,
-                compute_max_diff: Avx512VnniMath::compute_max_diff,
-                compute_peak_abs_stereo: Avx512VnniMath::compute_peak_abs_stereo,
-                compute_peak_abs_mono: Avx512VnniMath::compute_peak_abs_mono,
-                tanh_slice: crate::math::activations::tanh_slice_avx512,
-                sigmoid_slice: crate::math::activations::sigmoid_slice_avx512,
-                relu_slice: crate::math::activations::relu_slice_avx512,
-                prelu_slice: crate::math::activations::prelu_slice_avx512,
-                softsign_slice: crate::math::activations::softsign_slice_avx512,
-                silu_slice: crate::math::activations::silu_slice_avx512,
-            };
-        }
-        // 3. Basic AVX-512 Foundation (512-bit).
+        // 2. Basic AVX-512 Foundation (512-bit).
         // Common Intel Skylake-X/Zen4 CPUs. Allows processing 16 32-bit floats in a single CPU instruction.
         if is_x86_feature_detected!("avx512f") {
             return SimdMathConfig {
@@ -147,48 +106,7 @@ fn detect_best_simd() -> SimdMathConfig {
                 silu_slice: crate::math::activations::silu_slice_avx512,
             };
         }
-        // 4. AVX2 with VNNI support (AVX-VNNI).
-        // Modern CPUs that support VNNI neural network acceleration on 256-bit YMM registers (e.g.: Intel Alder Lake).
-        if is_x86_feature_detected!("avxvnni") {
-            return SimdMathConfig {
-                instruction_set: InstructionSet::Avx2Vnni,
-                name: "AVX2 (VNNI)",
-                is_avx512: false,
-                fused_add_gemv: Avx2VnniMath::fused_add_gemv,
-                fused_add_gemm_batch: Avx2VnniMath::fused_add_gemm_batch,
-                fused_gemm_residual_batch: Avx2VnniMath::fused_gemm_residual_batch,
-                gemv_overwrite: Avx2VnniMath::gemv_overwrite,
-                accumulate_head: Avx2VnniMath::accumulate_head,
-                // SAFETY: Inner safety guarantees are upheld by caller invariants or the execution environment.
-                horizontal_sum: |ptr, len| unsafe {
-                    crate::math::common::utility::horizontal_sum_avx2(ptr, len)
-                },
-                apply_gain_and_detect_clipping_mono:
-                    Avx2VnniMath::apply_gain_and_detect_clipping_mono,
-                apply_gain_and_detect_clipping_stereo:
-                    Avx2VnniMath::apply_gain_and_detect_clipping_stereo,
-                apply_gain_stereo: Avx2VnniMath::apply_gain_stereo,
-                apply_gain: Avx2VnniMath::apply_gain,
-                apply_ramp: Avx2VnniMath::apply_ramp,
-                apply_ramp_stereo: Avx2VnniMath::apply_ramp_stereo,
-                apply_dither_add: Avx2VnniMath::apply_dither_add,
-                convolve_stereo: Avx2VnniMath::convolve_stereo,
-                convolve_mono: Avx2VnniMath::convolve_mono,
-                convolve_mono_dual: Avx2VnniMath::convolve_mono_dual,
-                compute_energy_stereo: Avx2VnniMath::compute_energy_stereo,
-                compute_energy: Avx2VnniMath::compute_energy,
-                compute_max_diff: Avx2VnniMath::compute_max_diff,
-                compute_peak_abs_stereo: Avx2VnniMath::compute_peak_abs_stereo,
-                compute_peak_abs_mono: Avx2VnniMath::compute_peak_abs_mono,
-                tanh_slice: crate::math::activations::tanh_slice_avx2,
-                sigmoid_slice: crate::math::activations::sigmoid_slice_avx2,
-                relu_slice: crate::math::activations::relu_slice_avx2,
-                prelu_slice: crate::math::activations::prelu_slice_avx2,
-                softsign_slice: crate::math::activations::softsign_slice_avx2,
-                silu_slice: crate::math::activations::silu_slice_avx2,
-            };
-        }
-        // 5. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
+        // 3. Standard 256-bit AVX2 with FMA (Floating-Point Multiply-Add).
         // The absolute minimum required to run NAM-rs (x86-64-v3 specification).
         // Intel Haswell (2013) or AMD Excavator (2015) processors and newer.
         if is_x86_feature_detected!("avx2") {

@@ -9,8 +9,8 @@
 
 //! AVX-512 implementations of the `SimdMath` trait.
 //!
-//! Contains `Avx512Math`, `Avx512VnniMath`, and `Avx512VnniBf16Math`.
-//! `Avx512VnniMath` has real implementations (native BF16 dot product via `_mm512_dpbf16_ps`).
+//! Contains `Avx512Math` and `Avx512VnniBf16Math`.
+//! `Avx512VnniBf16Math` has real implementations (native BF16 dot product via `_mm512_dpbf16_ps`).
 //! Methods delegate to kernel functions in `math::gemm`, `math::wavenet`,
 //! `math::lstm`, `math::dsp`, `math::common::ops`, and `math::common::utility`.
 //!
@@ -35,11 +35,6 @@ use core::arch::x86_64::*;
 /// This struct groups all mathematical functions optimized for processors that support AVX-512.
 pub struct Avx512Math;
 
-/// Static implementation for AVX-512 with VNNI (Vector Neural Instructions) support.
-/// It is even faster for computing neural networks on modern Intel processors (e.g.: Cascade Lake and newer),
-/// as it has specialized instructions to "crunch" neural network numbers more efficiently.
-pub struct Avx512VnniMath;
-
 /// Static implementation for AVX-512 with VNNI and BF16 (Brain Float 16) support.
 /// This is the "Ferrari" of audio processing, available on very recent Intel CPUs (e.g.: Sapphire Rapids).
 /// The BF16 format allows the chip to process twice the numbers with almost the same precision as the original f32.
@@ -55,18 +50,6 @@ impl SimdMath for Avx512Math {
     bf16::impl_avx512_bf16!();
     reduce::impl_avx512_reduce!();
     dsp::impl_avx512_dsp!();
-}
-
-// ── Avx512VnniMath ──
-
-impl SimdMath for Avx512VnniMath {
-    type V = __m512;
-
-    gemv::impl_avx512vnni_gemv!();
-    activations::impl_avx512vnni_activations!();
-    bf16::impl_avx512vnni_bf16!();
-    reduce::impl_avx512vnni_reduce!();
-    dsp::impl_avx512vnni_dsp!();
 }
 
 // ── Avx512VnniBf16Math ──

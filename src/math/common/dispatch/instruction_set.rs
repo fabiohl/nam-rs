@@ -10,12 +10,8 @@
 pub enum InstructionSet {
     /// AVX2 + FMA (x86-64-v3).
     Avx2,
-    /// AVX2 + VNNI (Alder Lake+, Zen 4+).
-    Avx2Vnni,
     /// AVX-512 Foundation (Skylake-X+, Zen 4+).
     Avx512,
-    /// AVX-512 VNNI.
-    Avx512Vnni,
     /// AVX-512 VNNI + BF16.
     Avx512VnniBf16,
 }

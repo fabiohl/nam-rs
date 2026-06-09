@@ -9,7 +9,7 @@
 
 //! AVX2 implementations of the `SimdMath` trait.
 //!
-//! This module contains the `Avx2Math` and `Avx2VnniMath` structs (type alias)
+//! This module contains the `Avx2Math` struct.
 //! that implement the `SimdMath` trait using AVX2/FMA instructions.
 //! Methods delegate to kernel functions in `math::gemm`, `math::wavenet`,
 //! `math::lstm`, `math::dsp`, and `math::common::utility`.
@@ -659,12 +659,3 @@ impl SimdMath for Avx2Math {
         }
     }
 }
-
-/// AVX2 + VNNI: the `VPDPBUSD` instruction operates on 8-bit integers,
-/// with no measurable benefit for NAM-rs float kernels.
-/// Full delegation to `Avx2Math` — type alias eliminates ~300 dead lines.
-///
-/// Kept as alias (not removed) to preserve compatibility with
-/// `InstructionSet::Avx2Vnni` and the `dispatch_simd!` macro.
-/// Future: also remove from the enum when the v-table is unified.
-pub type Avx2VnniMath = Avx2Math;

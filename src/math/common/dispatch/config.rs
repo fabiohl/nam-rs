@@ -16,7 +16,7 @@ use super::instruction_set::InstructionSet;
 //      DSP (`gate.rs`, `resampler.rs`)
 //    - Example: `self.process::<Avx2Math>(args)` → monomorphized at compile time
 //    - Advantage: zero v-table overhead, aggressive inlining
-//    - Disadvantage: generates duplicate code for each ISA (Avx2, Avx512, Avx512Vnni...)
+//    - Disadvantage: generates duplicate code for each ISA (Avx2, Avx512, Avx512VnniBf16)
 //
 // 2. V-table `SimdMathConfig` (this struct)
 //    - Dynamic dispatch via function pointers

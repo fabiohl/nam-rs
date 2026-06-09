@@ -499,7 +499,6 @@ fn test_fused_sigmoid_relu_slice_dispatch_smoke() {
     unsafe {
         match crate::math::common::SIMD_MATH.instruction_set {
             crate::math::common::InstructionSet::Avx512
-            | crate::math::common::InstructionSet::Avx512Vnni
             | crate::math::common::InstructionSet::Avx512VnniBf16 => {
                 fused::fused_sigmoid_relu_slice_avx512(&mut data);
             }

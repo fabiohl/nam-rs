@@ -121,22 +121,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     );
 
     define_lstm2_process_pipelined!(
-        process_avx2vnni,
-        target_feature(enable = "avxvnni"),
-        process_sample_avx2vnni,
-        crate::math::gemm::dot_product_avx2,
-        get_hidden_state
-    );
-
-    define_lstm2_process_pipelined!(
-        process_avx512vnni,
-        target_feature(enable = "avx512f,avx512vl,avx512vnni"),
-        process_sample_avx512vnni,
-        crate::math::gemm::dot_product_avx512,
-        get_hidden_state
-    );
-
-    define_lstm2_process_pipelined!(
         process_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),
         process_sample_avx512_vnni_bf16,
@@ -147,11 +131,9 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize>
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         unsafe {
             crate::math::common::dispatch_simd!(
-                self,
+                @self,
                 process_avx512_vnni_bf16,
-                process_avx512vnni,
                 process_avx512,
-                process_avx2vnni,
                 process_avx2,
                 input,
                 output

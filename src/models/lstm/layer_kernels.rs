@@ -197,47 +197,7 @@ impl<const I: usize, const H: usize, const IH: usize, const H4: usize> LstmLayer
         false
     );
 
-    // 3. AVX2 VNNI (Vector Neural Network Instructions) Specialization:
-    // Targeted at neural network processing on CPUs that support VNNI acceleration
-    // over 256-bit registers, optimizing arithmetic throughput.
-    define_lstm_process!(
-        process_sample_avx2vnni,
-        target_feature(enable = "avxvnni"),
-        crate::math::common::Avx2Math,
-        crate::math::gemm::gemv_4gate_avx2,
-        crate::math::common::gemv_4gate_bf16_fallback,
-        8,
-        _mm256_loadu_ps,
-        _mm256_storeu_ps,
-        _mm256_add_ps,
-        _mm256_mul_ps,
-        crate::math::activations::simd_tanh_avx2,
-        crate::math::activations::simd_sigmoid_avx2,
-        crate::math::lstm::fused_lstm_gates_avx2,
-        false
-    );
-
-    // 4. AVX-512 VNNI Specialization:
-    // Combines the 512-bit register width (16 floats) with VNNI hardware acceleration
-    // for massive throughput gains in GEMV operations.
-    define_lstm_process!(
-        process_sample_avx512vnni,
-        target_feature(enable = "avx512f,avx512vl,avx512vnni"),
-        crate::math::common::Avx512VnniMath,
-        crate::math::gemm::gemv_4gate_avx512,
-        crate::math::common::gemv_4gate_bf16_fallback,
-        16,
-        _mm512_loadu_ps,
-        _mm512_storeu_ps,
-        _mm512_add_ps,
-        _mm512_mul_ps,
-        crate::math::activations::simd_tanh_avx512,
-        crate::math::activations::simd_sigmoid_avx512,
-        crate::math::lstm::fused_lstm_gates_avx512,
-        false
-    );
-
-    // The pinnacle of optimization: Using native BF16 for extreme speed.
+    // 2. AVX-512 (F/VL) Specialization:
     define_lstm_process!(
         process_sample_avx512_vnni_bf16,
         target_feature(enable = "avx512f,avx512vl,avx512bf16"),

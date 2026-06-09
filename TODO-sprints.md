@@ -72,7 +72,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 0.1 — Limpeza e alinhamento
 
-- **[T0.1] Remover aliases VNNI mortos.**
+- **[T0.1] Remover aliases VNNI mortos.** [DONE]
   - Remover `Avx2VnniMath` (alias em `src/math/common/avx2_impl.rs:670`) e as variantes `Avx2Vnni`/`Avx512Vnni` de `src/math/common/dispatch/instruction_set.rs` e do v-table (`src/math/common/dispatch/config.rs`, `detect.rs`).
   - **Critério de aceite:** `cargo build` em todas as features; matriz de detecção de ISA reduzida a `Avx2`, `Avx512`, `Avx512VnniBf16` (este último mantido para BF16 nativo). Nenhuma regressão de golden/bench.
   - **Riscos:** garantir que nenhum *call-site* referencie os símbolos removidos.

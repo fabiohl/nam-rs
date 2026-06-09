@@ -32,8 +32,8 @@ pub mod utility;
 
 pub use aligned::Aligned64;
 pub use aligned::AlignedVec;
-pub use avx2_impl::{Avx2Math, Avx2VnniMath};
-pub use avx512::{Avx512Math, Avx512VnniBf16Math, Avx512VnniMath};
+pub use avx2_impl::Avx2Math;
+pub use avx512::{Avx512Math, Avx512VnniBf16Math};
 pub use dispatch::{InstructionSet, SIMD_MATH, SimdMathConfig};
 pub use kahan::{Kahan4F32, KahanF32, kahan_add};
 pub use ops::*;
@@ -45,14 +45,12 @@ pub use utility::*;
 #[macro_export]
 macro_rules! dispatch_simd {
     // Mode 2: Dispatch to specific methods of an object (e.g.: lstm.rs)
-    ($target:expr, $m512bf16:ident, $m512vnni:ident, $m512:ident, $m256vnni:ident, $m256:ident $(, $arg:expr)*) => {
+    (@ $target:expr, $m512bf16:ident, $m512:ident, $m256:ident $(, $arg:expr)*) => {
         {
             use $crate::math::common::{SIMD_MATH, InstructionSet};
             match SIMD_MATH.instruction_set {
                 InstructionSet::Avx512VnniBf16 => $target.$m512bf16($($arg),*),
-                InstructionSet::Avx512Vnni => $target.$m512vnni($($arg),*),
                 InstructionSet::Avx512 => $target.$m512($($arg),*),
-                InstructionSet::Avx2Vnni => $target.$m256vnni($($arg),*),
                 InstructionSet::Avx2 => $target.$m256($($arg),*),
             }
         }
@@ -66,14 +64,8 @@ macro_rules! dispatch_simd {
                 InstructionSet::Avx512VnniBf16 => {
                     $target.$method::<$crate::math::common::Avx512VnniBf16Math>($($arg),*)
                 }
-                InstructionSet::Avx512Vnni => {
-                    $target.$method::<$crate::math::common::Avx512VnniMath>($($arg),*)
-                }
                 InstructionSet::Avx512 => {
                     $target.$method::<$crate::math::common::Avx512Math>($($arg),*)
-                }
-                InstructionSet::Avx2Vnni => {
-                    $target.$method::<$crate::math::common::Avx2VnniMath>($($arg),*)
                 }
                 InstructionSet::Avx2 => {
                     $target.$method::<$crate::math::common::Avx2Math>($($arg),*)
