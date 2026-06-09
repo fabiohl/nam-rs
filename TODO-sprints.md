@@ -212,7 +212,7 @@
 - **Descrição:** Após TT-1.2.1, adicionar teste que injeta sinal acima de 0 dBFS e verifica flag `HAS_CLIPPED`.
 - **Prioridade:** Alta
 
-#### TT-3.1.2: Teste de dither via SIMD vs escalar
+#### TT-3.1.2: Teste de dither via SIMD vs escalar [DONE]
 
 - **Arquivo:** `src/dsp/pipeline/pipeline_test.rs`
 - **Descrição:** Após TT-1.2.2, garantir que a saída com dither SIMD é bit-exact com a versão escalar.

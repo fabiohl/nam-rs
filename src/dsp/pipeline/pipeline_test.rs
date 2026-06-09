@@ -701,4 +701,54 @@ mod tests {
             );
         }
     }
+
+    /// TEST: Dither addition SIMD vs Scalar parity.
+    /// Ensures that the SIMD-optimized dither implementation is bit-exact with the
+    /// scalar reference implementation, across various buffer sizes and offsets,
+    /// and performs zero heap allocations (RT-safe).
+    #[test]
+    fn test_dither_simd_vs_scalar_bit_exact() {
+        use crate::math::common::scalar_ref::apply_dither_add_fallback;
+        use crate::math::dsp::gain::apply_dither_add_simd;
+
+        let lengths = [0, 1, 2, 3, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 127, 256, 512, 1024];
+        let offsets = [1.0e-11_f32, -1.0e-11_f32, 0.5_f32, -0.5_f32];
+
+        for &len in &lengths {
+            for &offset in &offsets {
+                let mut buf_simd: Vec<f32> = (0..len).map(|i| (i as f32 * 0.01).sin()).collect();
+                let mut buf_scalar = buf_simd.clone();
+
+                // Track allocations to ensure RT-safety of dither operations.
+                let _guard = TrackingGuard::new();
+                let start_allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+
+                // Apply SIMD-dispatched dither.
+                apply_dither_add_simd(&mut buf_simd, offset);
+
+                // Apply scalar reference dither.
+                // SAFETY: buffer is valid for its lifetime, size is matching.
+                unsafe {
+                    apply_dither_add_fallback(&mut buf_scalar, offset);
+                }
+
+                let end_allocs = ALLOC_COUNT.load(Ordering::Relaxed);
+                drop(_guard);
+
+                assert_eq!(
+                    end_allocs - start_allocs,
+                    0,
+                    "Allocation detected in dither hot-path for len {}",
+                    len
+                );
+
+                assert_eq!(
+                    buf_simd, buf_scalar,
+                    "Dither SIMD output is not bit-exact with scalar reference for len {} and offset {}",
+                    len, offset
+                );
+            }
+        }
+    }
 }
+
