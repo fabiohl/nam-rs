@@ -164,7 +164,7 @@
 
 ### Sprint 2.3: Sanidade e Segurança
 
-#### TT-2.3.1: Adicionar `debug_assert!` nas pré-condições do `DelayLine::push`
+#### TT-2.3.1: Adicionar `debug_assert!` nas pré-condições do `DelayLine::push` [DONE]
 
 - **Arquivo:** `src/dsp/resampler.rs`
 - **Descrição:** Já existe `debug_assert!(pos < TAPS_PER_PHASE)` na linha 67. Verificar se `pos` não excede `DELAY_LINE_LEN` em `window_ptr`.

@@ -78,6 +78,8 @@ impl DelayLine {
     /// Returns a pointer to TAPS_PER_PHASE contiguous samples (most recent first).
     #[inline(always)]
     fn window_ptr(&self) -> *const f32 {
+        debug_assert!(self.pos < TAPS_PER_PHASE);
+        debug_assert!(self.pos + TAPS_PER_PHASE <= DELAY_LINE_LEN);
         unsafe { self.buf.as_ptr().add(self.pos) }
     }
 }
