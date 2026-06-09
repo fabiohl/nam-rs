@@ -144,7 +144,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ---
 
-#### Tarefa D3.T02 — Adicionar ADR (Architecture Decision Record) para a estratégia de renderização condicional da GUI (G3.T01 idle reduce)
+#### Tarefa D3.T02 — Adicionar ADR (Architecture Decision Record) para a estratégia de renderização condicional da GUI (G3.T01 idle reduce) [DONE]
 
 - **Onde:** [`docs/architecture.md`](docs/architecture.md) §8.3.1 ou nova seção §8.3.3.
 - **Problema:** A estratégia de renderização condicional (skip frame quando idle, `should_skip` em `window/handler.rs`) é complexa e afeta: peak-hold decay, animações de toast, pulso de automação. Não está documentada como decisão arquitetural.

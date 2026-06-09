@@ -454,6 +454,34 @@ The graphical interface is decomposed from its original monolithic state into a 
 - **Elimination of Redundancy (VNNI):** The `Avx2VnniMath` struct was eliminated and replaced with a type alias for `Avx2Math` in `common/avx2_impl.rs`. The `VPDPBUSD` (VNNI-Int8) instruction offers no gains for the floating-point kernels of NAM-rs.
 - **Design Debt (Dual Dispatch):** The system uses a "Dual Dispatch" structure where the `loader` dispatches to the `model`, which in turn uses the `SimdMath` trait. We identified that the dispatch abstraction in `math/common/dispatch.rs` is a design debt point that will be unified in Epic 8 (V-Table Unification).
 
+### 8.3.3 GUI Conditional Rendering (Idle Reduce)
+
+> **Decision:** Implement a conditional frame-skipping strategy inside the GUI event loop (`WindowHandler::on_frame` in `window/handler.rs`) to avoid redundant paint operations and minimize CPU usage when the interface is idle.
+>
+> **Motivation:** Immediate-mode GUIs (like `egui`) execute the layout and drawing code on every frame. Since baseview runs a continuous rendering loop (typically targeting ~30–45 FPS via a 30 ms interval), multiple active instances of the plugin in a host DAW would consume excessive CPU cycles even when displaying static information, which is a common source of user complaints in DAW environments.
+>
+> **Implementation:**
+> Inside the baseview paint handler (`on_frame`), we snapshot the VU meter peak-hold states (`peak_l_hold`/`peak_r_hold`) and run egui's layout phase. We then evaluate a skip condition before executing the expensive tessellation and OpenGL paint commands:
+>
+> ```rust
+> let should_skip = !self.dirty
+>     && !has_short_repaint
+>     && !hold_changed
+>     && time_since_paint < std::time::Duration::from_millis(22);
+> ```
+>
+> - `!self.dirty`: Evaluates to true if no user input events (mouse move, click, keystroke, window resize) have been registered since the last paint cycle.
+> - `!has_short_repaint`: Bypasses the skip check if egui requests a repaint delay of less than 50 ms. This ensures active animations (e.g., toast alerts, warning timeouts, or loading indicators) remain fluid.
+> - `!hold_changed`: Bypasses the skip check if the peak-hold levels are decaying. Once hold levels decay and stabilize at zero, they stop forcing repaints.
+> - `time_since_paint < 22ms`: Throttles the UI rendering rate to a maximum of ~45 FPS when the UI is actively being painted, ensuring fluid visual feedback while capping maximum CPU load.
+>
+> **Consequences:**
+>
+> - **Toast/Loading Animations:** Visual elements that animate or fade out cannot rely solely on the host scheduling frame ticks or on passive repaint flags. Instead, they must actively call `request_repaint()` on the `egui::Context` during their active duration.
+> - **Reduced Idle CPU:** CPU utilization drops to virtually 0% when the UI is open but static (no audio playing and no user interaction).
+>
+> **References:** [handler.rs](/src/clap/gui/window/handler.rs), [gui-architecture.md](/docs/gui-architecture.md#L154-L172).
+
 ## 9. Error Catalog (NamErrorCode)
 
 Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`.
