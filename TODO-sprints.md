@@ -99,7 +99,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `NAM/activations.h` (`LeakyReLU`) e nota de uso em `NAM/wavenet/a2_fast.cpp:49-51` (`LeakyReLU(0.01) em todas as camadas`).
   - **Critério de aceite:** teste de paridade `< 1e-6` vs referência escalar; `#[cfg(test)]` inline ou `_test.rs`. Heap-audit zero.
 
-- **[T1.2] Conv1D dilatada para A2 (kernels 6 e 15) sobre `mirror_buf`.**
+- **[T1.2] Conv1D dilatada para A2 (kernels 6 e 15) sobre `mirror_buf`.** [DONE]
   - Avaliar reuso de `src/models/wavenet/conv1d_dyn.rs` + `src/dsp/mirror_buf.rs`. A2 usa apenas `kernel_size ∈ {6,15}` e dilations fixas (`A2_DILATIONS`), com 1 canal de entrada na 1ª camada e `CH` canais nas demais. Garantir histórico via ring/mirror sem alloc.
   - **Fonte de verdade:** `a2_fast.cpp:417-690` (`_layer_forward_k`), `NAM/wavenet/detail.h` (`Layer`/`LayerArray`), `docs/wavenet_walkthrough.rst:47-214`.
   - **Critério de aceite:** convolução isolada bate com referência escalar em micro-teste; RT-safe.

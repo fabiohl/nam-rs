@@ -17,6 +17,8 @@
 //! `WavenetA2Placeholder` será aposentado ao final do Épico 1 (T1.9).
 
 pub mod activations;
+pub mod conv1d;
+pub mod conv1d_fallback;
 pub mod film;
 pub mod gating;
 pub mod params;
@@ -24,6 +26,7 @@ pub mod placeholder;
 
 /// Public re-exports for easy access.
 pub use activations::{ActivationFn, ActivationType};
+pub use conv1d::A2Conv1d;
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
 pub use params::{
