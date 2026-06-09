@@ -27,10 +27,6 @@ pub mod silu;
 pub mod softsign;
 pub mod tanh;
 
-/// Experimental activation functions module.
-#[cfg(all(test, feature = "research"))]
-pub mod experimental;
-
 #[cfg(test)]
 mod tests;
 

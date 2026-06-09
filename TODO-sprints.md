@@ -77,7 +77,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Critério de aceite:** `cargo build` em todas as features; matriz de detecção de ISA reduzida a `Avx2`, `Avx512`, `Avx512VnniBf16` (este último mantido para BF16 nativo). Nenhuma regressão de golden/bench.
   - **Riscos:** garantir que nenhum *call-site* referencie os símbolos removidos.
 
-- **[T0.2] Remover `experimental/piecewise_tanh`.**
+- **[T0.2] Remover `experimental/piecewise_tanh`.** [DONE]
   - Remover `src/math/activations/experimental/` (gated por `test+research`) e a feature `research` do `Cargo.toml:63` se não houver outro consumidor.
   - **Critério de aceite:** `cargo check --all-features` limpo; sem referências órfãs; `utils/lints.sh` verde.
 

@@ -60,7 +60,6 @@ clap-plugin = ["dep:clack-plugin", "dep:clack-extensions", "dep:egui", "dep:egui
 stereo = []
 heap-audit = []
 long_bench = []
-research = []
 pgo = []
 
 [[bin]]

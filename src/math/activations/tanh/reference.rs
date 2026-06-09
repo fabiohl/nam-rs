@@ -2,11 +2,8 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Experimental / Reference Variants — Piecewise and Padé NR2
+// Reference Variant — Padé NR2
 // ══════════════════════════════════════════════════════════════════════════════
-//
-// Piecewise (E8.T02): 7-segment branchless, experimental. Higher op count
-// causes +16% regression on LSTM prewarm. Retained for future research.
 //
 // Padé NR2 (E8.T04): reference showing double Newton-Raphson saturates
 // f32 mantissa; error ratio NR2/Div = 1.000×. Retained for documentation.
