@@ -6,12 +6,15 @@
 //! FiLM enables the model to adapt its behavior based on external
 //! conditioning signals, applying per-channel scale and shift.
 //!
-//! IMPORTANT: A2 architecture support is in "placeholder" stage
-//! pending stabilization of the reference implementation.
+//! NOTE: reservado p/ motor A2 geral (futuro). O fast-path A2-Full/Lite (a2_fast.cpp)
+//! não utiliza FiLM — toda modulação condicional está fora de escopo no momento.
 
 /// Configuration for a FiLM layer or operation.
 ///
 /// Corresponds to the `_FiLMParams` struct in C++.
+///
+/// NOTE: reservado p/ motor A2 geral (futuro). O fast-path A2-Full/Lite
+/// não utiliza FiLM.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FiLMConfig {
     /// Whether FiLM is active at this location.
@@ -35,6 +38,8 @@ impl Default for FiLMConfig {
 /// Trait for implementing FiLM layers.
 ///
 /// Defines the interface for feature-based linear modulation processing.
+///
+/// NOTE: reservado p/ motor A2 geral (futuro).
 pub trait FiLMLayer {
     /// Processes FiLM modulation over the input buffer.
     ///

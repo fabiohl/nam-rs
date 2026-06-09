@@ -7,37 +7,56 @@
 //! used in Neural Amp Modeler models, ensuring parity with the
 //! original C++ implementation.
 //!
-//! IMPORTANT: A2 architecture support is in "placeholder" stage
-//! pending stabilization of the reference implementation.
+//! ## Escopo atual (fast-path A2-Full/Lite)
+//!
+//! Apenas `LeakyReLU { negative_slope: 0.01 }` é utilizada pelo fast-path
+//! (`a2_fast.cpp`), aplicada de forma homogênea em todas as 23 camadas.
+//!
+//! ## Reservado p/ motor A2 geral (futuro)
+//!
+//! Todas as demais variantes de `ActivationType` são preservadas para suporte
+//! futuro ao motor A2 completo (ativações heterogêneas por camada, FiLM, gating).
 
 /// Activation types supported by NAM A2.
+///
+/// Apenas `LeakyReLU` é exercitada pelo fast-path A2-Full/Lite.
+/// Demais variantes: reservadas p/ motor A2 geral (futuro).
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActivationType {
     /// Hyperbolic Tangent (standard).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     Tanh,
     /// Hyperbolic Tangent with hard saturation within [-1, 1].
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     HardTanh,
     /// Fast rational approximation for Tanh.
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     FastTanh,
     /// Rectified Linear Unit: max(0, x).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     ReLU,
-    /// Leaky ReLU with fixed negative slope.
+    /// Leaky ReLU with fixed negative slope (fast-path A2-Full/Lite: slope = 0.01).
     LeakyReLU {
         /// Slope applied when x < 0.
         negative_slope: f32,
     },
     /// Parametric ReLU with per-channel or global negative slope.
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     PReLU {
         /// Vector of slopes for negative values.
         negative_slopes: Vec<f32>,
     },
     /// Logistic Sigmoid function: 1 / (1 + exp(-x)).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     Sigmoid,
     /// Sigmoid Linear Unit: x * sigmoid(x).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     SiLU,
     /// Efficient version of the Swish function.
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     HardSwish,
     /// HardTanh with configurable slopes for saturation regions.
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     LeakyHardTanh {
         /// Minimum value for linear saturation.
         min_val: f32,
@@ -49,6 +68,7 @@ pub enum ActivationType {
         max_slope: f32,
     },
     /// Softsign: x / (1 + |x|).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     Softsign,
 }
 

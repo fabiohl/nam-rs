@@ -81,7 +81,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Remover `src/math/activations/experimental/` (gated por `test+research`) e a feature `research` do `Cargo.toml:63` se não houver outro consumidor.
   - **Critério de aceite:** `cargo check --all-features` limpo; sem referências órfãs; `utils/lints.sh` verde.
 
-- **[T0.3] Consolidar o scaffolding A2 existente.**
+- **[T0.3] Consolidar o scaffolding A2 existente.** [DONE]
   - Auditar `src/models/a2/{params,activations,film,gating}.rs`. `params.rs` já espelha `a2_fast.h` (constantes `A2_NUM_LAYERS=23`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_LEAKY_SLOPE`). Marcar como *fora de escopo agora* (sem remover) os structs de FiLM/gating/`head1x1`/`bottleneck` que não serão usados pelo fast-path, documentando com `//! NOTE: reservado p/ motor A2 geral (futuro)`.
   - **Fonte de verdade:** `NAM/wavenet/a2_fast.h:30-43`.
   - **Critério de aceite:** documentação inline coerente; nada removido que a suíte A2 (T1.x) vá precisar.

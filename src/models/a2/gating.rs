@@ -6,28 +6,36 @@
 //! This module defines the operation modes and configuration structures for
 //! WaveNet A2 layers that use gating or blending mechanisms.
 //!
-//! IMPORTANT: A2 architecture support is in "placeholder" stage
-//! pending stabilization of the reference implementation.
+//! NOTE: o fast-path A2-Full/Lite (a2_fast.cpp) utiliza apenas `GatingMode::None`.
+//! As variantes `Gated`, `Blended` e as configurações associadas estão reservadas
+//! para o motor A2 geral (futuro) e não fazem parte do escopo atual.
 
 use super::activations::ActivationType;
 
 /// Gating modes for WaveNet layers.
 ///
 /// Determines how the layer processes duplicated bottleneck channels.
+///
+/// NOTE: apenas `None` é utilizado pelo fast-path A2-Full/Lite.
+/// `Gated` e `Blended` estão reservados p/ motor A2 geral (futuro).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GatingMode {
-    /// No gating or blending - standard activation.
+    /// No gating or blending - standard activation (fast-path A2).
     #[default]
     None,
     /// Traditional gating (element-wise multiplication).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     Gated,
     /// Blending (weighted average between activated and pre-activated values).
+    /// NOTE: reservado p/ motor A2 geral (futuro).
     Blended,
 }
 
 /// Configuration for Gating-type activation.
 ///
 /// Corresponds to the `GatingActivation` class in C++.
+///
+/// NOTE: reservado p/ motor A2 geral (futuro).
 #[derive(Debug, Clone, PartialEq)]
 pub struct GatingActivationConfig {
     /// Activation function for input channels.
@@ -39,6 +47,8 @@ pub struct GatingActivationConfig {
 /// Configuration for Blending-type activation.
 ///
 /// Corresponds to the `BlendingActivation` class in C++.
+///
+/// NOTE: reservado p/ motor A2 geral (futuro).
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlendingActivationConfig {
     /// Activation function for input channels.

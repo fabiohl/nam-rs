@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! A2 Architecture (Staging and Placeholder).
+//! A2 Architecture.
 //!
-//! This module isolates components of the A2 architecture (v0.6+), including
-//! stubs for activations, FiLM, gating, and parameters.
+//! Este módulo isola componentes da arquitetura A2 (v0.6+), incluindo
+//! ativações, FiLM, gating, parâmetros e o placeholder atual.
+//!
+//! ## Status
+//!
+//! O scaffolding existente inclui a definição completa de parâmetros e
+//! constantes arquiteturais (espelhando `a2_fast.h`). O fast-path
+//! A2-Full/Lite (`Épico 1`) utilizará um subconjunto destes structs;
+//! os campos de FiLM, gating (`Gated`/`Blended`), `head1x1`, `bottleneck ≠ channels`
+//! e ativações heterogêneas estão reservados para o motor A2 geral (futuro).
+//!
+//! `WavenetA2Placeholder` será aposentado ao final do Épico 1 (T1.9).
 
 pub mod activations;
 pub mod film;
