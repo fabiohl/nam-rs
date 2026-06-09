@@ -78,9 +78,9 @@ The plugin metadata descriptor will follow this pattern:
 
 ## 7. Target DAWs for Validation
 
-- **Bitwig Studio**: Absolute reference platform for CLAP compliance (co-author of the standard). Essential for validating sandboxing behavior and sample-accurate automation.
-- **REAPER**: *Not actively tested* — known issues with the Linux PipeWire backend on Debian/Ubuntu-based systems make reproducible validation impractical. Bitwig Studio is the primary CI target.
-- **Fender Studio Pro**: Future target requiring Wayland native mode.
+- **Bitwig Studio**: Active validation target. The absolute reference platform for CLAP compliance (co-author of the standard). Essential for validating sandboxing behavior, dynamic parameters, state persistence, and sample-accurate automation.
+- **REAPER**: *Not actively tested* — known issues with the Linux PipeWire backend on Debian/Ubuntu-based systems make reproducible validation impractical. Bitwig Studio remains the primary CI target.
+- **Fender Studio Pro 8+**: Active validation target. Since the host runs as a native Wayland client on Linux and the plugin GUI is currently built exclusively for X11 (`CLAP_WINDOW_API_X11`), native embedding is not supported. The plugin instead runs in floating fallback mode (opening as an independent top-level window) or via host-provided generic sliders, verifying DSP, parameter automation sync, and host stability without freezing. Native Wayland GUI support (`CLAP_WINDOW_API_WAYLAND`) is planned for a future release.
 - **CLAP-info / CLAP-host**: Command-line tools for rigorous technical validation of the spec.
 
 ## 8. Graphical Interface: Windowing Strategy and Stack

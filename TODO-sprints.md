@@ -15,7 +15,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ### Sprint D1 — Sincronização docs ↔ código (prioridade imediata)
 
-#### Tarefa D1.T01 — Verificar e atualizar referências de `file://` em `docs/architecture.md`
+#### Tarefa D1.T01 — Verificar e atualizar referências de `file://` em `docs/architecture.md` [DONE]
 
 - **Onde:** [`docs/architecture.md`](docs/architecture.md) — seções §8.2.1 e §8.2.2.
 - **Problema:** Os links de código em `architecture.md` (e.g. `[PluginAudioProcessor::process](file:///home/fabio/nam-rs/src/clap/processor/mod.rs#L178-L242)`) usam caminhos absolutos à máquina do desenvolvedor. Em outros ambientes, os números de linha podem estar desatualizados.
@@ -30,7 +30,7 @@ Objetivo: garantir que toda a documentação do projeto (docs/*.md, comentários
 
 ---
 
-#### Tarefa D1.T02 — Auditar e corrigir `docs/clap_integration.md` — §7 Target DAWs
+#### Tarefa D1.T02 — Auditar e corrigir `docs/clap_integration.md` — §7 Target DAWs [DONE]
 
 - **Onde:** [`docs/clap_integration.md`](docs/clap_integration.md) — §7 "Target DAWs for Validation".
 - **Problema:** O documento menciona "Fender Studio Pro" como alvo futuro requerendo "Wayland native mode". Verificar se esse DAW ainda é alvo ativo ou se a nomenclatura/estratégia mudou.
