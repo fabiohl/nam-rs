@@ -148,7 +148,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 1.4 — Golden Tests A2 (seguro anti-degradação) 🧪
 
-- **[T1.10] Gerador de fixtures A2-Full/Lite.**
+- **[T1.10] Gerador de fixtures A2-Full/Lite.** [DONE]
   - Adaptar/derivar de `generate_weights_a2.py` um gerador determinístico (seed fixa) que emita `wavenet_a2_full.nam` (CH=8) e `wavenet_a2_lite.nam` (CH=3) com o esqueleto fixo (23 camadas, kernels/dilations canônicos, `LeakyReLU`, `head_scale`). Salvar em `tests/fixtures/models/`.
   - **Fonte de verdade:** `generate_weights_a2.py`, `a2_fast.h:30-43`.
   - **Critério de aceite:** arquivos carregam tanto no C++ `render` quanto no loader Rust (T1.7).
