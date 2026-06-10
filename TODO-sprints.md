@@ -119,7 +119,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `a2_fast.cpp` (classe `A2FastModel`), `detail.h` (`LayerArray::Process`), `docs/wavenet_walkthrough.rst:278-351`.
   - **Critério de aceite:** compila; `receptive_field` confere com soma de `(kernel-1)*dilation` + head; sem alloc no hot-path.
 
-- **[T1.5] Camada A2 (`A2Layer`).**
+- **[T1.5] Camada A2 (`A2Layer`).** [DONE]
   - Sequência: dilated conv (T1.2) → soma com `input_mixin` (`Conv1x1 condition→CH`, sem bias) → `LeakyReLU` (T1.1) → acumula no *head* → `layer1x1` (`Conv1x1 CH→CH`, bias) → conexão residual `out = input + layer1x1_out`.
   - **Fonte de verdade:** `a2_fast.cpp:514` (sequência conv→mixin→LeakyReLU→head →layer1x1 residual), `detail.h` (`Layer`), `docs/wavenet_walkthrough.rst:103-214`.
   - **Critério de aceite:** paridade camada-a-camada vs referência em micro-teste sintético.
