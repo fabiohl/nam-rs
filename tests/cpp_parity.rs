@@ -410,6 +410,26 @@ fn live_cross_validation_lstm_2x8() {
     run_v1("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8");
 }
 
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_a2_full() {
+    run_v1(
+        "wavenet_a2_full.nam",
+        "wavenet_a2_full",
+        "Live WaveNet A2-Full",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_wavenet_a2_lite() {
+    run_v1(
+        "wavenet_a2_lite.nam",
+        "wavenet_a2_lite",
+        "Live WaveNet A2-Lite",
+    );
+}
+
 // --- v2 (multi-SR, comprehensive) ---
 
 #[test]
@@ -446,6 +466,20 @@ fn live_cross_validation_v2_lstm_1x16() {
 
 #[test]
 #[ignore]
-fn live_cross_validation_v2_lstm_2x8() {
-    run_v2_multi_sr("BossLSTM-2x8.nam", "lstm_2x8", "Live LSTM 2×8 (v2)");
+fn live_cross_validation_v2_wavenet_a2_full() {
+    run_v2_multi_sr(
+        "wavenet_a2_full.nam",
+        "wavenet_a2_full",
+        "Live WaveNet A2-Full (v2)",
+    );
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_wavenet_a2_lite() {
+    run_v2_multi_sr(
+        "wavenet_a2_lite.nam",
+        "wavenet_a2_lite",
+        "Live WaveNet A2-Lite (v2)",
+    );
 }

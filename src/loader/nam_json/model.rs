@@ -69,12 +69,65 @@ pub struct NamLayerConfig {
     pub kernel_size: Option<usize>,
     /// Optional: Array of dilation factors.
     pub dilations: Option<Vec<usize>>,
-    /// Optional: Activation function (e.g. "Tanh").
+    /// Optional: Activation function (e.g. "Tanh" for A1, array of objects for A2 LeakyReLU).
+    #[serde(default, deserialize_with = "deser_activation")]
     pub activation: Option<String>,
     /// Optional: Whether the architecture uses gating.
     pub gated: Option<bool>,
     /// Optional: Whether the processing head has bias.
     pub head_bias: Option<bool>,
+}
+
+/// Custom deserializer for the `activation` field.
+///
+/// Accepts:
+/// - A plain string (A1/WaveNet): `"Tanh"`, `"ReLU"`, etc.
+/// - An array of objects (A2): `[{"type": "LeakyReLU", ...}, ...]` → returns `None`
+/// - Absent/null → returns `None`
+fn deser_activation<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct ActivationVisitor;
+    impl<'de> de::Visitor<'de> for ActivationVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a string or an array of activation objects")
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+            Ok(Some(v))
+        }
+
+        fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            while let Ok(Some(_)) = seq.next_element::<serde::de::IgnoredAny>() {}
+            Ok(None)
+        }
+
+        fn visit_none<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E: de::Error>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D2: serde::Deserializer<'de>>(
+            self,
+            deser: D2,
+        ) -> Result<Self::Value, D2::Error> {
+            deser.deserialize_any(self)
+        }
+    }
+
+    deserializer.deserialize_any(ActivationVisitor)
 }
 
 /// Weight layout options supported in the `.namb` format.

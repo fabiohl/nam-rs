@@ -96,7 +96,7 @@ def build_layer_config(ch: int) -> dict:
         },
         "kernel_sizes": list(KERNEL_SIZES),
         "dilations": list(DILATIONS),
-        "activation": "LeakyReLU",
+        "activation": [{"type": "LeakyReLU", "negative_slope": 0.01}] * NUM_LAYERS,
         "gating_mode": ["none"] * NUM_LAYERS,
         "head1x1": {"active": False, "out_channels": ch, "groups": 1},
         "layer1x1": {"active": True, "groups": 1},

@@ -60,3 +60,4 @@ mutants.out.old/
 /tests/fixtures/.temp_golden/
 /tests/fixtures/.temp_live/
 /tests/fixtures/stress_signal.wav
+/tests/fixtures/stress_signal_v2_*.wav

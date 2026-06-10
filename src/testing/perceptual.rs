@@ -26,6 +26,14 @@ pub const A2ESR_A2_FULL_MEDIAN: f64 = 0.00334;
 pub const A2ESR_A2_FULL_Q1: f64 = 0.00114;
 /// A2-Full Q3 ESR baseline
 pub const A2ESR_A2_FULL_Q3: f64 = 0.00913;
+/// A2-Lite median ESR baseline (preliminary — pending t3k-mushra publication).
+/// A2-Lite shares the A2-Full architecture with rank-reduced weights; ESR is
+/// expected to be in the same order of magnitude as A2-Full (≤ 0.005).
+pub const A2ESR_A2_LITE_MEDIAN: f64 = 0.005;
+/// A2-Lite Q1 ESR baseline (preliminary)
+pub const A2ESR_A2_LITE_Q1: f64 = 0.0015;
+/// A2-Lite Q3 ESR baseline (preliminary)
+pub const A2ESR_A2_LITE_Q3: f64 = 0.012;
 /// Conservative ESR gate for nam-rs vs C++ implementation parity (no training error).
 pub const NAM_RS_CPP_PARITY_ESR_MAX: f64 = 1e-3;
 

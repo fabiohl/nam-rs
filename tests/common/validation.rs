@@ -131,9 +131,10 @@ pub fn report_dsp_fidelity(
     }
     if esr_linear.is_finite() {
         println!(
-            "  ESR     = {esr_linear:.2e}       ({esr_db:.1} dB)   [baseline A1-Std: {a1std:.2e}, A2-Full: {a2full:.2e}]",
+            "  ESR     = {esr_linear:.2e}       ({esr_db:.1} dB)   [baseline A1-Std: {a1std:.2e}, A2-Full: {a2full:.2e}, A2-Lite: {a2lite:.2e}]",
             a1std = nam_rs::testing::perceptual::A2ESR_A1_STANDARD_MEDIAN,
             a2full = nam_rs::testing::perceptual::A2ESR_A2_FULL_MEDIAN,
+            a2lite = nam_rs::testing::perceptual::A2ESR_A2_LITE_MEDIAN,
         );
     } else {
         println!("  ESR     = ∞  (identical)");

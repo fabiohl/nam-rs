@@ -4,6 +4,7 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use nam_rs::models::NamModel;
@@ -69,6 +70,32 @@ pub fn read_golden_bin(path: &Path) -> Option<(Vec<f32>, Vec<f32>)> {
         .collect();
 
     Some((input, output))
+}
+
+/// Writes a `.golden.bin` file with the standard binary format:
+///
+/// ```text
+/// [u32 num_samples LE]
+/// [f32×N input samples LE]
+/// [f32×N expected output LE]
+/// ```
+pub fn write_golden_bin(path: &Path, input: &[f32], output: &[f32]) -> std::io::Result<()> {
+    assert_eq!(
+        input.len(),
+        output.len(),
+        "write_golden_bin: input and output must have same length"
+    );
+    let mut file = std::fs::File::create(path)?;
+    let num_samples = input.len() as u32;
+    file.write_all(&num_samples.to_le_bytes())?;
+    for sample in input {
+        file.write_all(&sample.to_le_bytes())?;
+    }
+    for sample in output {
+        file.write_all(&sample.to_le_bytes())?;
+    }
+    file.flush()?;
+    Ok(())
 }
 
 /// Resolves the path to a test model in `tests/fixtures/models/`.

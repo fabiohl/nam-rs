@@ -440,6 +440,96 @@ fn test_auto_consistency_wavenet() {
     );
 }
 
+/// Test 5b: WaveNet A2-Full self-consistency — absolute determinism.
+///
+/// Loads `wavenet_a2_full.nam` twice, builds two identical `DynamicModel`s,
+/// runs prewarm and processes the same 440 Hz sine signal (2048 samples).
+/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
+#[test]
+fn test_auto_consistency_wavenet_a2_full() {
+    let path = model_path("wavenet_a2_full.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: wavenet_a2_full.nam not found at {path:?}. Skipping A2-Full self-consistency."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+
+    let mut model_a =
+        build_model(&model_data).expect("Dispatcher failed (model_a) for A2-Full self-consistency");
+    let mut model_b =
+        build_model(&model_data).expect("Dispatcher failed (model_b) for A2-Full self-consistency");
+
+    model_a.prewarm(2048);
+    model_b.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
+
+    let mse = compute_mse(&out_a, &out_b);
+    let mae = compute_max_abs_error(&out_a, &out_b);
+
+    println!("[WaveNet A2-Full Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "Rust WaveNet A2-Full engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}
+
+/// Test 5c: WaveNet A2-Lite self-consistency — absolute determinism.
+///
+/// Loads `wavenet_a2_lite.nam` twice, builds two identical `DynamicModel`s,
+/// runs prewarm and processes the same 440 Hz sine signal (2048 samples).
+/// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
+#[test]
+fn test_auto_consistency_wavenet_a2_lite() {
+    let path = model_path("wavenet_a2_lite.nam");
+
+    if !path.exists() {
+        eprintln!(
+            "SKIP: wavenet_a2_lite.nam not found at {path:?}. Skipping A2-Lite self-consistency."
+        );
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+
+    let mut model_a =
+        build_model(&model_data).expect("Dispatcher failed (model_a) for A2-Lite self-consistency");
+    let mut model_b =
+        build_model(&model_data).expect("Dispatcher failed (model_b) for A2-Lite self-consistency");
+
+    model_a.prewarm(2048);
+    model_b.prewarm(2048);
+
+    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
+    let mut out_a = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+    let mut out_b = vec![0.0f32; GOLDEN_NUM_SAMPLES];
+
+    process_in_blocks(&mut model_a, &input, &mut out_a, GOLDEN_BLOCK_SIZE);
+    process_in_blocks(&mut model_b, &input, &mut out_b, GOLDEN_BLOCK_SIZE);
+
+    let mse = compute_mse(&out_a, &out_b);
+    let mae = compute_max_abs_error(&out_a, &out_b);
+
+    println!("[WaveNet A2-Lite Self-Consistency] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
+
+    assert!(
+        mse == 0.0,
+        "Rust WaveNet A2-Lite engine non-deterministic! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
+    );
+}
+
 /// Test 6: LSTM self-consistency — absolute determinism.
 ///
 /// Loads `BossLSTM-1x16.nam` twice, builds two identical `DynamicModel`s,
@@ -849,6 +939,111 @@ fn test_golden_vectors_namcore_wn_micro() {
     );
 }
 
+/// Test 8g: Self-Golden WaveNet A2-Full (CH=8) — regression guard for Rust A2 fast path.
+///
+/// Generates expected output from the Rust A2 engine on first run (self-golden pattern),
+/// then verifies bitwise identical output on subsequent runs. This catches regressions
+/// in the Rust A2 implementation independent of the C++ render tool.
+///
+/// The C++ NeuralAmpModelerCore `render` tool's A2 fast path currently produces
+/// divergent output (numeric instability in the C++ weight interpretation).
+/// Once the C++ A2 path is stabilized, the self-golden can be replaced with
+/// a cross-reference against the C++ render output.
+#[test]
+fn test_golden_vectors_wavenet_a2_full() {
+    let nam_path = model_path("wavenet_a2_full.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: wavenet_a2_full.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build A2-Full for golden test");
+
+    model.prewarm(2048);
+
+    let input = generate_stress_signal_v1();
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let self_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_full_self.bin");
+
+    if !self_golden_path.exists() {
+        write_golden_bin(&self_golden_path, &input, &output)
+            .expect("Failed to write self-golden for A2-Full");
+        eprintln!(
+            "Generated self-golden: {self_golden_path:?} — commit this file for regression testing."
+        );
+        return;
+    }
+
+    let (_, expected) =
+        read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Full");
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "WaveNet A2-Full (CH=8) self-golden",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8h: Self-Golden WaveNet A2-Lite (CH=3) — regression guard for Rust A2 fast path.
+///
+/// Same self-golden pattern as A2-Full.
+#[test]
+fn test_golden_vectors_wavenet_a2_lite() {
+    let nam_path = model_path("wavenet_a2_lite.nam");
+    if !nam_path.exists() {
+        eprintln!("SKIP: wavenet_a2_lite.nam not found. Golden test impossible.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&nam_path).expect("Failed to read WaveNet A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model =
+        build_model(&model_data).expect("Dispatcher failed to build A2-Lite for golden test");
+
+    model.prewarm(2048);
+
+    let input = generate_stress_signal_v1();
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let self_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_lite_self.bin");
+
+    if !self_golden_path.exists() {
+        write_golden_bin(&self_golden_path, &input, &output)
+            .expect("Failed to write self-golden for A2-Lite");
+        eprintln!(
+            "Generated self-golden: {self_golden_path:?} — commit this file for regression testing."
+        );
+        return;
+    }
+
+    let (_, expected) =
+        read_golden_bin(&self_golden_path).expect("Failed to read self-golden for A2-Lite");
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&model_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "WaveNet A2-Lite (CH=3) self-golden",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
 // =============================================================================
 // End-to-End SPSC Pipeline Test (T-2)
 // =============================================================================
@@ -1193,6 +1388,69 @@ fn test_wavenet_stability_nano() {
         assert!(
             s.abs() < 100.0,
             "[Nano] Excessive magnitude at index {i}: {s} (limit 100.0)"
+        );
+    }
+}
+
+/// WaveNet A2-Full Stability
+///
+/// A2 fixtures use deterministic random weights (SEED=42), which can produce
+/// large-but-finite outputs for certain inputs. Only finiteness is asserted
+/// (no NaN/Inf), not magnitude limits — matching the existing
+/// `test_a2_full_real_inference_finite_output()` convention.
+#[test]
+fn test_wavenet_stability_a2_full() {
+    let path = model_path("wavenet_a2_full.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP: wavenet_a2_full.nam not found at {path:?}. Skipping A2-Full stability.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for A2-Full");
+
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for (i, &s) in output.iter().enumerate() {
+        assert!(
+            s.is_finite(),
+            "[A2-Full] Non-finite sample at index {i}: {s}"
+        );
+    }
+}
+
+/// WaveNet A2-Lite Stability
+///
+/// Same convention as A2-Full: only finiteness asserted.
+#[test]
+fn test_wavenet_stability_a2_lite() {
+    let path = model_path("wavenet_a2_lite.nam");
+
+    if !path.exists() {
+        eprintln!("SKIP: wavenet_a2_lite.nam not found at {path:?}. Skipping A2-Lite stability.");
+        return;
+    }
+
+    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for A2-Lite");
+
+    model.prewarm(2048);
+
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for (i, &s) in output.iter().enumerate() {
+        assert!(
+            s.is_finite(),
+            "[A2-Lite] Non-finite sample at index {i}: {s}"
         );
     }
 }

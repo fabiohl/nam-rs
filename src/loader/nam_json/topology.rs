@@ -54,9 +54,7 @@ impl NamModelData {
         }
 
         for layer in &self.config.layers {
-            if let Some(ref act) = layer.activation
-                && act != "Tanh"
-            {
+            if layer.activation.as_deref().is_some_and(|a| a != "Tanh") {
                 return true;
             }
         }
