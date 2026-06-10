@@ -135,8 +135,8 @@ impl<'a> NamClapProcessor<'a> {
     #[cold]
     fn cold_load_model(
         &mut self,
-        model_l: Option<Box<crate::models::DynamicModel>>,
-        model_r: Option<Box<crate::models::DynamicModel>>,
+        model_l: Option<Box<crate::models::StaticModel>>,
+        model_r: Option<Box<crate::models::StaticModel>>,
         new_resampler: Box<crate::dsp::resampler::NamResampler>,
     ) {
         if let Some(old_l) = std::mem::replace(&mut self.model_l, model_l) {

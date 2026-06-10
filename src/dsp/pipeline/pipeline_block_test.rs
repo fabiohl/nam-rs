@@ -12,7 +12,7 @@ mod block_tests {
     use crate::dsp::resampler::NamResampler;
     use crate::loader::dispatcher::build_model;
     use crate::loader::nam_json::parse_nam_json;
-    use crate::models::DynamicModel;
+    use crate::models::StaticModel;
     use proptest::prelude::*;
     use std::fs;
     use std::path::PathBuf;
@@ -27,7 +27,7 @@ mod block_tests {
     }
 
     /// Helper to load a NAM model for testing.
-    fn load_test_model(name: &str) -> Box<DynamicModel> {
+    fn load_test_model(name: &str) -> Box<StaticModel> {
         let path = get_test_model_path(name);
         let json_data = fs::read_to_string(path).expect("Failed to read model file");
         let model_data = parse_nam_json(&json_data).expect("Failed to process model JSON");

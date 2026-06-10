@@ -28,7 +28,7 @@ divergences, and the sprint/task that established each equivalence.
 
 | C++ (`NeuralAmpModelerCore/`)                           | Rust (`src/`)                                            | Parity established |
 | ------------------------------------------------------- | -------------------------------------------------------- | ------------------ |
-| `NAM/dsp.cpp` — `GetDSP` factory (dynamic dispatch)     | `models/mod.rs` — `DynamicModel` enum + manual `match`   | —                  |
+| `NAM/dsp.cpp` — `GetDSP` factory (dynamic dispatch)     | `models/mod.rs` — `StaticModel` enum + manual `match`    | —                  |
 | `NeuralModel.cpp:L155-218` — WaveNet topology detection | `loader/nam_json/topology.rs` — `get_wavenet_topology()` | S4.T01–T03         |
 
 ---
@@ -249,7 +249,7 @@ divergences, and the sprint/task that established each equivalence.
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **No `DspBridge` in CLAP mode**               | CLAP plugin receives both input and output in a single `process()` call. Bridge only needed standalone (PipeWire dual-thread topology).                                                     |
 | **MirroredBuffer (`memfd_create`)**           | Linux-specific virtual memory mirroring for O(1) linear access in WaveNet delay lines. C++ uses modulo-based circular access.                                                               |
-| **Static const-generic dispatch (no vtable)** | Static `match` on `DynamicModel` enum avoids vtable overhead. C++ `GetDSP` returns a pointer to a virtual base class.                                                                       |
+| **Static const-generic dispatch (no vtable)** | Static `match` on `StaticModel` enum avoids vtable overhead. C++ `GetDSP` returns a pointer to a virtual base class.                                                                        |
 | **Reset does NOT prewarm on load**            | `reset()` is a public API for explicit state clearing. Loader calls `prewarm()` separately to preserve LSTM initial states loaded from file (S4.T05). C++ `Reset` always calls `prewarm()`. |
 | **Prewarm hardcoded to 2048 samples**         | C++ `PrewarmSamples()` returns `receptive_field`. NAM-rs uses 2048 as a safe upper bound covering all models.                                                                               |
 | **`WavenetA2Placeholder` (silent output)**    | A2 inference is not yet implemented. The placeholder satisfies the interface contract without producing audio, while signaling A2 presence via `RtStatusFlags`.                             |

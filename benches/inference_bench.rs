@@ -148,7 +148,7 @@ fn bench_lstm_1x8_comparison(c: &mut Criterion) {
     // Explicit scalar path to measure theoretical speedup
     #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
-        nam_rs::models::DynamicModel::Lstm1x8(m) => {
+        nam_rs::models::StaticModel::Lstm1x8(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
         _ => panic!("Model is not Lstm1x8"),
@@ -176,7 +176,7 @@ fn bench_lstm_2x16_comparison(c: &mut Criterion) {
 
     #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
-        nam_rs::models::DynamicModel::Lstm2x16(m) => {
+        nam_rs::models::StaticModel::Lstm2x16(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
         _ => panic!("Model is not Lstm2x16"),
@@ -669,7 +669,7 @@ fn bench_lstm_1x40_comparison(c: &mut Criterion) {
 
     #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
-        nam_rs::models::DynamicModel::Lstm1x40(m) => {
+        nam_rs::models::StaticModel::Lstm1x40(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
         _ => panic!("Model is not Lstm1x40"),
@@ -696,7 +696,7 @@ fn bench_lstm_2x24_comparison(c: &mut Criterion) {
 
     #[cfg(any(test, feature = "long_bench"))]
     group.bench_function("Scalar_Baseline", |b| match &mut *model_scalar {
-        nam_rs::models::DynamicModel::Lstm2x24(m) => {
+        nam_rs::models::StaticModel::Lstm2x24(m) => {
             b.iter(|| m.process_scalar(&input, &mut output));
         }
         _ => panic!("Model is not Lstm2x24"),

@@ -12,7 +12,7 @@ use crate::dsp::gate::{DynamicHysteresis, GateParams};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::resampler::NamResampler;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-use crate::models::DynamicModel;
+use crate::models::StaticModel;
 
 use super::bridge::DspBridgeWriter;
 
@@ -22,9 +22,9 @@ pub struct DspPipelineContext<'a> {
     /// Active resampler for sample rate conversion.
     pub resampler: &'a mut NamResampler,
     /// Active model for the left channel.
-    pub active_model_l: &'a mut Option<Box<DynamicModel>>,
+    pub active_model_l: &'a mut Option<Box<StaticModel>>,
     /// Active model for the right channel.
-    pub active_model_r: &'a mut Option<Box<DynamicModel>>,
+    pub active_model_r: &'a mut Option<Box<StaticModel>>,
     /// Input gain multiplier applied in `apply_input_stage` (pipeline-level).
     /// In the CLAP plugin this is always `1.0` because input gain is applied
     /// separately via `NamClapProcessor::apply_input_gain` (which uses the

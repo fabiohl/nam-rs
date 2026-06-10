@@ -152,8 +152,9 @@ Two levels of parsing operations are provided:
 
 * **Static Mode (Ultra Performance):** *Const Generics* structures sized at compile time.
   * **WaveNet:** Standard (16×8), Lite (12×6), Feather (8×4), and Nano (4×2)
-  * **LSTM:** 1 and 2 Layers (Hidden Size 8 to 24: `1×8`, `1×12`, `1×16`, `1×24`, `2×8`, `2×12`, `2×16`)
-* **Dynamic Mode (Absolute Flexibility):** Fallback activated automatically when loading `.nam` arrangements with uncatalogued geometries (arbitrary `num_layers` and `channels`), operating without *loop unrolling*. This includes NAMCore upstream models (`lstm.nam` H=3, `wavenet.nam` CH=3/2) used in cross-validation.
+  * **WaveNet A2:** Full (8 channels) and Lite (3 channels)
+  * **LSTM:** 1 and 2 Layers (Hidden Size 8 to 40: `1×8`, `1×12`, `1×16`, `1×24`, `1×40`, `2×8`, `2×12`, `2×16`, `2×24`)
+  * Non-catalogued geometries fail to load with a clear diagnostic error.
 
 ---
 

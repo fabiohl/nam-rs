@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::common::diagnostics::ModelInfo;
-use crate::models::DynamicModel;
+use crate::models::StaticModel;
 use std::path::Path;
 
 /// Default input level in dBu for models that do not specify metadata.
@@ -17,9 +17,9 @@ pub(crate) const MAX_MODEL_BYTES: u64 = 256 * 1024 * 1024;
 /// Pair of loaded models with calibration metadata.
 pub struct LoadedModelPair {
     /// Model for the left channel.
-    pub model_l: Option<Box<DynamicModel>>,
+    pub model_l: Option<Box<StaticModel>>,
     /// Model for the right channel.
-    pub model_r: Option<Box<DynamicModel>>,
+    pub model_r: Option<Box<StaticModel>>,
     /// Input gain adjustment multiplier.
     pub input_mult_adj: f32,
     /// Output gain adjustment multiplier.
@@ -57,8 +57,8 @@ impl LoadedModelPair {
 impl std::fmt::Debug for LoadedModelPair {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LoadedModelPair")
-            .field("model_l", &self.model_l.as_ref().map(|_| "DynamicModel"))
-            .field("model_r", &self.model_r.as_ref().map(|_| "DynamicModel"))
+            .field("model_l", &self.model_l.as_ref().map(|_| "StaticModel"))
+            .field("model_r", &self.model_r.as_ref().map(|_| "StaticModel"))
             .field("input_mult_adj", &self.input_mult_adj)
             .field("output_mult_adj", &self.output_mult_adj)
             .field("sample_rate", &self.sample_rate)

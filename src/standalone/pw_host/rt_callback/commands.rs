@@ -18,8 +18,8 @@ pub fn receive_commands(
     model_input_mult_adj: &mut f32,
     model_output_mult_adj: &mut f32,
     current_nam_rate: &mut u32,
-    active_model_l: &mut Option<Box<crate::models::DynamicModel>>,
-    active_model_r: &mut Option<Box<crate::models::DynamicModel>>,
+    active_model_l: &mut Option<Box<crate::models::StaticModel>>,
+    active_model_r: &mut Option<Box<crate::models::StaticModel>>,
     gc_producer: &mut rtrb::Producer<GcItem>,
     parking_lot: &mut [Option<GcItem>; 16],
     gc_overflow_for_process: &GcOverflowBuffer,
@@ -52,7 +52,7 @@ pub fn receive_commands(
                     *current_nam_rate = 48_000;
                 }
 
-                let mut old_models: [Option<Box<crate::models::DynamicModel>>; 2] = [None, None];
+                let mut old_models: [Option<Box<crate::models::StaticModel>>; 2] = [None, None];
                 if let Some(old) = std::mem::replace(active_model_l, model_l) {
                     old_models[0] = Some(old);
                 }

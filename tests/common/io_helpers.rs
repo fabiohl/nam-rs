@@ -108,7 +108,7 @@ pub fn model_path(filename: &str) -> PathBuf {
 
 /// Processes an input block through the model in chunks of `block_size`.
 pub fn process_in_blocks(
-    model: &mut nam_rs::models::DynamicModel,
+    model: &mut nam_rs::models::StaticModel,
     input: &[f32],
     output: &mut [f32],
     block_size: usize,

@@ -12,7 +12,7 @@ use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
 use crate::math::common::AlignedVec;
 use crate::math::dsp::gain_lut::GainLUT;
-use crate::models::DynamicModel;
+use crate::models::StaticModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::sync::Arc;
@@ -23,7 +23,7 @@ use std::sync::Arc;
 /// Created in `activate()` and destroyed in `deactivate()`.
 pub struct NamClapProcessor<'a> {
     /// Active model for the left channel (None = bypass).
-    pub(crate) model_l: Option<Box<DynamicModel>>,
+    pub(crate) model_l: Option<Box<StaticModel>>,
     /// Polyphase sinc resampler (bypass when sample_rate == 48000).
     /// Held in Box for RT-safe disposal without allocation.
     pub(crate) resampler: Box<NamResampler>,
@@ -47,7 +47,7 @@ pub struct NamClapProcessor<'a> {
     /// Hysteresis for absolute silence detection.
     pub(crate) silence_hyst: DynamicHysteresis,
     /// Active model for the right channel (None = process as mono or bypass).
-    pub(crate) active_model_r: Option<Box<DynamicModel>>,
+    pub(crate) active_model_r: Option<Box<StaticModel>>,
     /// Hysteresis for mono signal detection. Persistent field to avoid
     /// re-initialization on every port_pair iteration.
     pub(crate) mono_hyst: DynamicHysteresis,

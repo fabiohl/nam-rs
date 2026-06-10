@@ -10,7 +10,7 @@ pub mod a2;
 pub mod lstm;
 pub mod wavenet;
 
-mod dynamic_model;
+mod static_model;
 
 // =============================================================================
 // Sealed Pattern — Prevents external implementations of NamModel
@@ -63,7 +63,10 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
 
 /// Wrapper enum for trained model variants.
 /// Enables static dispatch of DSP calls to the concrete variant, avoiding vtable overhead.
-pub enum DynamicModel {
+///
+/// Named `StaticModel` because all variants are compile-time-fixed geometries.
+/// The legacy "Dynamic" mode (arbitrary geometry at runtime) has been retired.
+pub enum StaticModel {
     /// WaveNet Standard (16 channels, kernel 3, dilation 8).
     WavenetStandard(Box<wavenet::WaveNetModel<16, 3, 8>>),
     /// WaveNet Lite (12 channels, kernel 3, dilation 6).
@@ -96,4 +99,4 @@ pub enum DynamicModel {
     Lstm2x24(Box<lstm::Lstm2x24>),
 }
 
-impl sealed::Sealed for DynamicModel {}
+impl sealed::Sealed for StaticModel {}

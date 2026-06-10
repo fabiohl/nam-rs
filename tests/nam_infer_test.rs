@@ -394,7 +394,7 @@ fn test_wavenet_computational_stability() {
 
 /// Test 5: WaveNet self-consistency — absolute determinism.
 ///
-/// Loads `BossWN-standard.nam` twice, builds two identical `DynamicModel`s,
+/// Loads `BossWN-standard.nam` twice, builds two identical `StaticModel`s,
 /// runs prewarm and processes the same 440 Hz sine signal (512 samples).
 /// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
 ///
@@ -442,7 +442,7 @@ fn test_auto_consistency_wavenet() {
 
 /// Test 5b: WaveNet A2-Full self-consistency — absolute determinism.
 ///
-/// Loads `wavenet_a2_full.nam` twice, builds two identical `DynamicModel`s,
+/// Loads `wavenet_a2_full.nam` twice, builds two identical `StaticModel`s,
 /// runs prewarm and processes the same 440 Hz sine signal (2048 samples).
 /// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
 #[test]
@@ -487,7 +487,7 @@ fn test_auto_consistency_wavenet_a2_full() {
 
 /// Test 5c: WaveNet A2-Lite self-consistency — absolute determinism.
 ///
-/// Loads `wavenet_a2_lite.nam` twice, builds two identical `DynamicModel`s,
+/// Loads `wavenet_a2_lite.nam` twice, builds two identical `StaticModel`s,
 /// runs prewarm and processes the same 440 Hz sine signal (2048 samples).
 /// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
 #[test]
@@ -532,7 +532,7 @@ fn test_auto_consistency_wavenet_a2_lite() {
 
 /// Test 6: LSTM self-consistency — absolute determinism.
 ///
-/// Loads `BossLSTM-1x16.nam` twice, builds two identical `DynamicModel`s,
+/// Loads `BossLSTM-1x16.nam` twice, builds two identical `StaticModel`s,
 /// runs prewarm and processes the same 440 Hz sine signal (512 samples).
 /// The MSE between the two outputs must be exactly 0.0 (bitwise identical).
 #[test]
@@ -579,7 +579,7 @@ fn test_auto_consistency_lstm() {
 
 /// Test 7: Golden Vectors WaveNet — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Reads `tests/fixtures/golden_wavenet_standard.bin`, builds the `DynamicModel`
+/// Reads `tests/fixtures/golden_wavenet_standard.bin`, builds the `StaticModel`
 /// from `BossWN-standard.nam`, runs prewarm + processing,
 /// and compares the output against the C++ reference (NeuralAmpModelerCore).
 ///
@@ -641,7 +641,7 @@ fn test_golden_vectors_wavenet() {
 
 /// Test 8: Golden Vectors LSTM 1×16 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Reads `tests/fixtures/golden_lstm_1x16.bin`, builds the `DynamicModel`
+/// Reads `tests/fixtures/golden_lstm_1x16.bin`, builds the `StaticModel`
 /// from `BossLSTM-1x16.nam`, runs prewarm + processing,
 /// and compares the output against the C++ reference (NeuralAmpModelerCore).
 ///
@@ -700,7 +700,7 @@ fn test_golden_vectors_lstm_1x16() {
 
 /// Test 8b: Golden Vectors LSTM 2×8 — cross-reference NeuralAmpModelerCore ↔ NAM-rs.
 ///
-/// Reads `tests/fixtures/golden_lstm_2x8.bin`, builds the `DynamicModel`
+/// Reads `tests/fixtures/golden_lstm_2x8.bin`, builds the `StaticModel`
 /// from `BossLSTM-2x8.nam`. Exercises 2-layer LSTM.
 ///
 /// ## Thresholds
@@ -949,7 +949,7 @@ fn test_golden_vectors_wavenet_a2_lite() {
 /// Test 9: End-to-End Pipeline CLI→SPSC→DSP without PipeWire.
 ///
 /// Validates the full lock-free communication chain that would be used in production:
-/// 1. Parses `BossWN-standard.nam` and builds `DynamicModel` via dispatcher
+/// 1. Parses `BossWN-standard.nam` and builds `StaticModel` via dispatcher
 /// 2. Sends the model through the SPSC queue (`rtrb::RingBuffer`) as `ParamPayload::LoadModel`
 /// 3. On the consumer side (simulated DSP thread), drains the model and runs inference
 /// 4. Verifies that the output is finite and of reasonable magnitude
@@ -1023,7 +1023,7 @@ fn test_end_to_end_spsc_pipeline() {
 ///
 /// Builds a valid synthetic `.namb` buffer (via `build_valid_namb()`), parses
 /// with `parse_namb()`, dispatches to `build_model()` and runs prewarm + processing.
-/// Verifies that the output is finite and that the complete `.namb → NamModelData → DynamicModel`
+/// Verifies that the output is finite and that the complete `.namb → NamModelData → StaticModel`
 /// chain is functional end-to-end.
 ///
 /// The synthetic NAMB carries zeroed-out weights (0.01) that form a degraded but
@@ -1075,7 +1075,7 @@ fn test_namb_roundtrip_dispatcher_e2e() {
     assert_eq!(model_data.architecture, "WaveNet");
     assert_eq!(model_data.weights.len(), total_weights);
 
-    // 2. Dispatcher: build DynamicModel
+    // 2. Dispatcher: build StaticModel
     let mut model = build_model(&model_data).expect("Dispatcher failed in E2E NAMB");
 
     // 3. Prewarm and processing
@@ -1493,7 +1493,7 @@ fn test_denormal_stability_silence() {
 /// 4. Verify finiteness and reasonable magnitude of outputs
 ///
 /// The previous model is discarded (dropped) when replaced — validating
-/// that ownership transfer via `Box<DynamicModel>` works without leak.
+/// that ownership transfer via `Box<StaticModel>` works without leak.
 #[test]
 fn test_rapid_hot_swap_spsc() {
     let models_to_load = [
@@ -1540,7 +1540,7 @@ fn test_rapid_hot_swap_spsc() {
 
     // 2. Pop and sequential processing (simulates DSP thread receiving swaps)
     let input = generate_sine_440hz(64);
-    let mut active_model: Option<Box<nam_rs::models::DynamicModel>> = None;
+    let mut active_model: Option<Box<nam_rs::models::StaticModel>> = None;
 
     for (idx, (_filename, label)) in models_to_load.iter().enumerate() {
         let received = consumer

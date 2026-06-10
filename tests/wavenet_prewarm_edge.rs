@@ -623,7 +623,7 @@ fn test_prewarm_k5_large_rf_no_undeflow() {
 }
 
 /// Tests prewarm via trait NamModel::prewarm(num_samples=2048) with K=5 model.
-/// WaveNet ignores num_samples internally, but DynamicModel dispatch passes it through.
+/// WaveNet ignores num_samples internally, but StaticModel dispatch passes it through.
 #[test]
 fn test_prewarm_k5_large_rf_trait_num_samples() {
     use nam_rs::models::NamModel;

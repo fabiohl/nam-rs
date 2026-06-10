@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicU32;
 
 pub struct CaptureState {
-    pub active_model_l: Option<Box<crate::models::DynamicModel>>,
-    pub active_model_r: Option<Box<crate::models::DynamicModel>>,
+    pub active_model_l: Option<Box<crate::models::StaticModel>>,
+    pub active_model_r: Option<Box<crate::models::StaticModel>>,
     pub resampler: Box<NamResampler>,
     pub current_nam_rate: u32,
     pub resamp_mid_l: [f32; MAX_RESAMP_BUF],

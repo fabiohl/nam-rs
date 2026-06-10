@@ -14,9 +14,9 @@ pub enum ParamPayload {
     /// The pointer ensures zero-allocation (no-heap) and deterministic initialization.
     LoadModel {
         /// The encapsulated model for neural inference (Left Channel)
-        model_l: Option<Box<crate::models::DynamicModel>>,
+        model_l: Option<Box<crate::models::StaticModel>>,
         /// The encapsulated model for neural inference (Right Channel)
-        model_r: Option<Box<crate::models::DynamicModel>>,
+        model_r: Option<Box<crate::models::StaticModel>>,
         /// Expected input gain adjustment as a linear multiplier.
         input_mult_adj: f32,
         /// Expected output gain adjustment as a linear multiplier.

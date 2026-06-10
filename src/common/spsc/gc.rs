@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU8, AtomicU64, Ordering};
 /// Dropping these items may involve heavy memory deallocations.
 pub enum GcItem {
     /// A dynamic model (LSTM or WaveNet).
-    Model(Box<crate::models::DynamicModel>),
+    Model(Box<crate::models::StaticModel>),
     /// A resampler (boxed to ensure RT-safety on drop).
     Resampler(Box<crate::dsp::resampler::NamResampler>),
     /// Test variant for integrity and stress validation.
@@ -34,7 +34,7 @@ impl GcItem {
     /// The pointer must have been generated via `Box::into_raw` of an object of the corresponding type.
     unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Self {
         match type_id {
-            1 => GcItem::Model(unsafe { Box::from_raw(ptr as *mut crate::models::DynamicModel) }),
+            1 => GcItem::Model(unsafe { Box::from_raw(ptr as *mut crate::models::StaticModel) }),
             2 => GcItem::Resampler(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::resampler::NamResampler)
             }),

@@ -6,7 +6,7 @@
 use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::resampler::NamResampler;
-use crate::models::DynamicModel;
+use crate::models::StaticModel;
 use clack_plugin::prelude::*;
 use rtrb::{Consumer, Producer};
 use std::path::PathBuf;
@@ -20,9 +20,9 @@ pub enum ClapParamPayload {
     /// Loading of a new model pair (transferred/constructed outside RT) and its resampler.
     LoadModel {
         /// The encapsulated model for neural inference (Left Channel)
-        model_l: Option<Box<DynamicModel>>,
+        model_l: Option<Box<StaticModel>>,
         /// The encapsulated model for neural inference (Right Channel)
-        model_r: Option<Box<DynamicModel>>,
+        model_r: Option<Box<StaticModel>>,
         /// Polyphase sinc resampler
         new_resampler: Box<NamResampler>,
     },

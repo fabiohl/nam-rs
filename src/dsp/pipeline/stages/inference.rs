@@ -6,7 +6,7 @@
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-use crate::models::{DynamicModel, NamModel};
+use crate::models::{NamModel, StaticModel};
 
 use super::super::bridge::MAX_RESAMP_BUF;
 use super::super::context::DspPipelineContext;
@@ -16,8 +16,8 @@ use super::super::context::DspPipelineContext;
 /// Returns `true` if the LSTM model should be fully bypassed (Minimal passthrough).
 #[inline(always)]
 fn configure_adaptive_model(
-    model_l: &mut Option<Box<crate::models::DynamicModel>>,
-    model_r: &mut Option<Box<crate::models::DynamicModel>>,
+    model_l: &mut Option<Box<crate::models::StaticModel>>,
+    model_r: &mut Option<Box<crate::models::StaticModel>>,
     adaptive: &AdaptiveCompute,
 ) -> bool {
     if adaptive.mode() == crate::dsp::adaptive::AdaptiveComputeMode::Off {
@@ -83,8 +83,8 @@ fn configure_adaptive_model(
 /// or independent processing via the active R model.
 #[inline(always)]
 fn run_stereo_or_mono(
-    active_model_l: &mut Option<Box<DynamicModel>>,
-    active_model_r: &mut Option<Box<DynamicModel>>,
+    active_model_l: &mut Option<Box<StaticModel>>,
+    active_model_r: &mut Option<Box<StaticModel>>,
     model_in_l: &[f32],
     model_in_r: &[f32],
     m_out_l: &mut [f32],

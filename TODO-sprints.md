@@ -184,10 +184,9 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Remover os modelos/goldens NAMCore micro (`tests/fixtures/models/{lstm,wavenet}.nam`, `golden_namcore_lstm_1x3.bin`, `golden_namcore_wn_micro.bin`) e os testes que os exercitam (`tests/dynamic_parity.rs` e casos correspondentes em `cpp_parity.rs`/`nam_infer_test.rs`). Atualizar `tests/fixtures/README.md` e o script `golden_gen_build.sh`.
   - **Critério de aceite:** suíte verde sem referências órfãs; `utils/tests-cargo.sh` e `utils/tests-long.sh` passam.
 
-- **[T1.17] Simplificar enum/dispatch e documentar.**
-  - Reduzir `DynamicModel` (`src/models/mod.rs`) e `dynamic_model.rs` às variantes estáticas remanescentes (A1 estáticos + A2-Full/Lite + LSTM estáticos).
-  - Considerar renomear o enum (ex.: `StaticModel`) se "Dynamic" deixar de fazer sentido.
-  - Atualizar `docs/architecture.md` e o `README.md` (seção de modelos suportados — remover a menção a "Dynamic Mode (Absolute Flexibility)").
+- **[T1.17] Simplificar enum/dispatch e documentar.** [DONE]
+  - Renomear `DynamicModel` → `StaticModel` (e `dynamic_model.rs` → `static_model.rs`), atualizando todos os 22 arquivos `.rs` e 3 arquivos `.md`.
+  - Remover do README.md a seção "Dynamic Mode (Absolute Flexibility)".
   - **Critério de aceite:** API coerente; documentação alinhada; sem *dead code*.
 
 ---

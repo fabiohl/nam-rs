@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-use super::{DynamicModel, NamModel};
+use super::{NamModel, StaticModel};
 use std::sync::Arc;
 
-impl DynamicModel {
+impl StaticModel {
     /// Injects `RtStatusFlags` into the model so it can signal its state
     /// to the UI via atomic flags.
     pub fn inject_rt_status(&mut self, _rt_status: Arc<crate::common::spsc::RtStatusFlags>) {}
@@ -110,7 +110,7 @@ impl DynamicModel {
     }
 }
 
-impl NamModel for DynamicModel {
+impl NamModel for StaticModel {
     #[inline(always)]
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
         match self {

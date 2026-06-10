@@ -4,7 +4,7 @@
 use crate::loader::nam_json::{
     NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape,
 };
-use crate::models::DynamicModel;
+use crate::models::StaticModel;
 use crate::models::a2::WaveNetA2;
 use anyhow::bail;
 use log::info;
@@ -43,7 +43,7 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
 // =============================================================================
 
 /// Detects the WaveNet topology and branches to the correct const-generic builder.
-pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
+pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
     // ── A2: first-class branch (detected by shape, not fallback) ──
     if let Some(ch) = is_a2_shape(data) {
         return match ch {
@@ -56,7 +56,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
                     "[Dispatcher] WaveNet A2-Lite built — CH=3, layers=23, weights={}",
                     data.weights.len()
                 );
-                Ok(Box::new(DynamicModel::WavenetA2Lite(Box::new(model))))
+                Ok(Box::new(StaticModel::WavenetA2Lite(Box::new(model))))
             }
             8 => {
                 let mut model = WaveNetA2::<8>::new();
@@ -67,7 +67,7 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
                     "[Dispatcher] WaveNet A2-Full built — CH=8, layers=23, weights={}",
                     data.weights.len()
                 );
-                Ok(Box::new(DynamicModel::WavenetA2Full(Box::new(model))))
+                Ok(Box::new(StaticModel::WavenetA2Full(Box::new(model))))
             }
             _ => unreachable!("is_a2_shape only returns 3 or 8"),
         };
@@ -79,19 +79,19 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
     match topo_opt {
         Some(NamWavenetTopology::Standard) => {
             let model = standard::build_wavenet_standard(data)?;
-            Ok(Box::new(DynamicModel::WavenetStandard(Box::new(model))))
+            Ok(Box::new(StaticModel::WavenetStandard(Box::new(model))))
         }
         Some(NamWavenetTopology::Lite) => {
             let model = lite::build_wavenet_lite(data)?;
-            Ok(Box::new(DynamicModel::WavenetLite(Box::new(model))))
+            Ok(Box::new(StaticModel::WavenetLite(Box::new(model))))
         }
         Some(NamWavenetTopology::Feather) => {
             let model = feather::build_wavenet_feather(data)?;
-            Ok(Box::new(DynamicModel::WavenetFeather(Box::new(model))))
+            Ok(Box::new(StaticModel::WavenetFeather(Box::new(model))))
         }
         Some(NamWavenetTopology::Nano) => {
             let model = nano::build_wavenet_nano(data)?;
-            Ok(Box::new(DynamicModel::WavenetNano(Box::new(model))))
+            Ok(Box::new(StaticModel::WavenetNano(Box::new(model))))
         }
         None => {
             let layer_info: Vec<(usize, usize)> = data
