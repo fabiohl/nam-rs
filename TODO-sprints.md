@@ -153,7 +153,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `generate_weights_a2.py`, `a2_fast.h:30-43`.
   - **Critério de aceite:** arquivos carregam tanto no C++ `render` quanto no loader Rust (T1.7).
 
-- **[T1.11] Estender `golden_gen_build.sh` para A2.**
+- **[T1.11] Estender `golden_gen_build.sh` para A2.** [DONE]
   - Gerar `tests/fixtures/golden_wavenet_a2_full.bin` e `..._a2_lite.bin` (v1 e variantes v2 multi-SR) renderizando com o `render` do C++ (caminho genérico `WaveNet` = verdade; o `a2_fast` produz saída idêntica).
   - **Fonte de verdade:** `tests/fixtures/golden_gen_build.sh`, `src/bin/wav_to_golden.rs`, `src/bin/gen_stress.rs`.
   - **Critério de aceite:** novos `.golden.bin` no formato `[u32 N][f32×N in][f32×N out]`; documentado em `tests/fixtures/README.md`.
@@ -325,7 +325,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Skill `refatora-doc.md`
 
 - **[T99.2] Rodadas de correção**
-  - `revisor-auditor` Muito focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si esteja em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar' prontos para cumprir o seu papel de "seguro" ainda erro/degradação;
+  - `revisor-auditor` Muito focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação impecavelmente correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si esteja em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar prontos para cumprir o seu papel de "seguro" contra erro/degradação. Então seja muito rigoroso em assegurar sua qualidade.
   - `refatora-rust.md`
   - `refatora-doc.md`
 

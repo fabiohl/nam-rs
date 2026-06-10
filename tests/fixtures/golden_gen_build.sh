@@ -18,6 +18,7 @@
 #   golden_wavenet_standard.bin, golden_wavenet_feather.bin, golden_wavenet_nano.bin
 #   golden_lstm_1x16.bin, golden_lstm_2x8.bin
 #   golden_namcore_lstm_1x3.bin, golden_namcore_wn_micro.bin
+#   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
 #
 # These files must be committed so that the Rust golden vector tests
@@ -159,6 +160,8 @@ MODELS=(
     "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
     "lstm.nam:golden_namcore_lstm_1x3:NAMCore LSTM 1×3"
     "wavenet.nam:golden_namcore_wn_micro:NAMCore WN Micro"
+    "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
+    "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
 )
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"

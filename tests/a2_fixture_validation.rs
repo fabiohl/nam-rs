@@ -18,7 +18,7 @@ fn test_a2_full_fixture_loads() {
         .expect("Failed to parse wavenet_a2_full.nam");
 
     assert_eq!(data.architecture, "WaveNet");
-    assert_eq!(data.weights.len(), 12154);
+    assert_eq!(data.weights.len(), 12146);
 
     let ch =
         nam_rs::loader::nam_json::is_a2_shape(&data).expect("Should be recognized as A2 shape");
@@ -35,7 +35,7 @@ fn test_a2_lite_fixture_loads() {
         .expect("Failed to parse wavenet_a2_lite.nam");
 
     assert_eq!(data.architecture, "WaveNet");
-    assert_eq!(data.weights.len(), 2342);
+    assert_eq!(data.weights.len(), 1871);
 
     let ch =
         nam_rs::loader::nam_json::is_a2_shape(&data).expect("Should be recognized as A2 shape");

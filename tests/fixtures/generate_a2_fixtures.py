@@ -12,7 +12,6 @@ the Rust WaveNetA2::set_weights() in src/models/a2/model.rs.
 
 import json
 import random
-import math
 from pathlib import Path
 from typing import List
 
@@ -40,21 +39,15 @@ def gen_weights(n: int, rng: random.Random) -> List[float]:
     return [rng.uniform(-1.0, 1.0) for _ in range(n)]
 
 
-def num_blocks(ch: int) -> int:
-    return math.ceil(ch / 4)
-
-
 def count_weights(ch: int) -> int:
-    nblk = num_blocks(ch)
     count = 0
-    count += ch          # rechannel_w
-    count += ch          # rechannel_b
+    count += ch          # rechannel_w (no bias — matches C++ A2FastModel)
     for k in KERNEL_SIZES:
-        count += nblk * 4 * ch * k  # conv_w (padded interleaved 4-wide)
-        count += ch                 # conv_b
-        count += ch                 # mixin_w
-        count += ch * ch            # l1x1_w
-        count += ch                 # l1x1_b
+        count += ch * ch * k  # conv_w (CH × CH × K)
+        count += ch           # conv_b
+        count += ch           # mixin_w
+        count += ch * ch      # l1x1_w
+        count += ch           # l1x1_b
     count += HEAD_KERNEL_SIZE * ch  # head_w
     count += 1                      # head_b
     count += 1                      # head_scale
@@ -62,22 +55,20 @@ def count_weights(ch: int) -> int:
 
 
 def generate_weights(ch: int, rng: random.Random) -> List[float]:
-    nblk = num_blocks(ch)
     weights: List[float] = []
 
-    # 1. Rechannel: weights (CH) + bias (CH)
-    weights.extend(gen_weights(ch, rng))
+    # 1. Rechannel: weights (CH) — no bias (matches C++ A2FastModel)
     weights.extend(gen_weights(ch, rng))
 
     # 2. Per-layer
     for k in KERNEL_SIZES:
-        # conv_w: ceil(CH/4) * 4 * CH * K
-        weights.extend(gen_weights(nblk * 4 * ch * k, rng))
+        # conv_w: CH × CH × K
+        weights.extend(gen_weights(ch * ch * k, rng))
         # conv_b: CH
         weights.extend(gen_weights(ch, rng))
         # mixin_w: CH
         weights.extend(gen_weights(ch, rng))
-        # l1x1_w: CH * CH
+        # l1x1_w: CH × CH
         weights.extend(gen_weights(ch * ch, rng))
         # l1x1_b: CH
         weights.extend(gen_weights(ch, rng))
@@ -107,7 +98,7 @@ def build_layer_config(ch: int) -> dict:
         "dilations": list(DILATIONS),
         "activation": "LeakyReLU",
         "gating_mode": ["none"] * NUM_LAYERS,
-        "head1x1": {"active": False},
+        "head1x1": {"active": False, "out_channels": ch, "groups": 1},
         "layer1x1": {"active": True, "groups": 1},
         "groups_input": 1,
         "groups_input_mixin": 1,

@@ -49,11 +49,8 @@ pub struct WaveNetA2<const CH: usize> {
     /// 23 A2 layers (one per layer index). Populated by `set_weights` (T1.6).
     pub layers: Vec<A2Layer>,
 
-    /// Input rechannel weights: `Conv1x1(1 → CH)`, u16 quantized.
+    /// Input rechannel weights: `Conv1x1(1 → CH)` (no bias), u16 quantized.
     pub rechannel_w: AlignedVec<u16>,
-
-    /// Input rechannel bias, f32.
-    pub rechannel_b: AlignedVec<f32>,
 
     /// Head convolution (K=16 over skip-connection accumulator, bias, head_scale).
     pub head_conv: Option<A2HeadConv>,
@@ -127,7 +124,6 @@ impl<const CH: usize> WaveNetA2<CH> {
         Self {
             layers: Vec::with_capacity(A2_NUM_LAYERS),
             rechannel_w: AlignedVec::new(CH, 0u16),
-            rechannel_b: AlignedVec::new(CH, 0.0f32),
             head_conv: None,
             head_accum: AlignedVec::new(head_ring_size * CH, 0.0f32),
             head_write_pos: rf,
@@ -368,9 +364,9 @@ impl<const CH: usize> WaveNetA2<CH> {
     ///
     /// ## Weight order (mirrors `a2_fast.cpp:196-282`)
     ///
-    /// 1. `_rechannel`: weights `CH` f32 (quantized to u16) + bias `CH` f32
+    /// 1. `_rechannel`: weights `CH` f32 (quantized to u16, no bias — matches C++ A2FastModel)
     /// 2. Per layer 0..22:
-    ///    - `_conv`: weights `ceil(CH/4)*4*CH*K` f32 (quantized to u16) + bias `CH` f32
+    ///    - `_conv`: weights `CH*CH*K` f32 (quantized to u16) + bias `CH` f32
     ///    - `_input_mixin`: weights `CH` f32 (no bias)
     ///    - `_layer1x1`: weights `CH*CH` f32 (col-major) + bias `CH` f32
     /// 3. `_head_rechannel`: conv k=16 weights `16*CH` f32 + head_bias `1` f32
@@ -385,36 +381,32 @@ impl<const CH: usize> WaveNetA2<CH> {
         let mut pos: usize = 0;
         let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
 
-        // ── 1. Rechannel: Conv1x1(1 → CH) ─────────────────────────────────
+        // ── 1. Rechannel: Conv1x1(1 → CH) (no bias) ─────────────────────
         let rw_f32 = read_slice(weights, &mut pos, CH, total, "rechannel_w")?;
         let mut rechannel_w = AlignedVec::new(CH, 0u16);
         for (i, &v) in rw_f32.iter().enumerate() {
             rechannel_w[i] = quantize_weight(v, is_bf16);
         }
-        let rb = read_slice(weights, &mut pos, CH, total, "rechannel_b")?;
-        let mut rechannel_b = AlignedVec::new(CH, 0.0f32);
-        for (i, &v) in rb.iter().enumerate() {
-            rechannel_b[i] = v;
-        }
 
         // ── 2. Per-layer weights ──────────────────────────────────────────
-        let num_blocks = CH.div_ceil(4);
         let mut layers = Vec::with_capacity(A2_NUM_LAYERS);
 
         for i in 0..A2_NUM_LAYERS {
             let ksize = A2_KERNEL_SIZES[i];
             let dilation = A2_DILATIONS[i];
-            let padded_total = num_blocks * 4 * CH * ksize;
+            let conv_w_count = CH * CH * ksize;
+            let num_blocks = CH.div_ceil(4);
+            let conv_w_padded = num_blocks * 4 * CH * ksize;
 
-            // 2a. Dilated conv weights (quantized u16, interleaved 4-wide).
+            // 2a. Dilated conv weights: read CH×CH×K, store padded interleaved 4-wide (quantized u16).
             let conv_w_f32 = read_slice(
                 weights,
                 &mut pos,
-                padded_total,
+                conv_w_count,
                 total,
                 &format!("layer[{i}].conv_w"),
             )?;
-            let mut conv_w = AlignedVec::new(padded_total, 0u16);
+            let mut conv_w = AlignedVec::new(conv_w_padded, 0u16);
             transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, CH, CH, ksize, is_bf16);
 
             // 2b. Conv bias.
@@ -491,7 +483,6 @@ impl<const CH: usize> WaveNetA2<CH> {
 
         // ── 6. Commit to self (all-or-nothing) ──────────────────────────────
         self.rechannel_w = rechannel_w;
-        self.rechannel_b = rechannel_b;
         self.layers = layers;
         self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, CH));
 
@@ -708,7 +699,6 @@ mod tests {
         assert!(!model.head_accum.is_empty());
         assert!(!model.layer_buffer.is_empty());
         assert_eq!(model.rechannel_w.len(), 3);
-        assert_eq!(model.rechannel_b.len(), 3);
         assert_eq!(model.layer_offsets.len(), A2_NUM_LAYERS);
         assert_eq!(model.layer_ring_capacities.len(), A2_NUM_LAYERS);
         assert_eq!(model.layer_lookbacks.len(), A2_NUM_LAYERS);
@@ -728,11 +718,9 @@ mod tests {
     // ── set_weights tests (T1.6) ───────────────────────────────────────
 
     fn expected_weight_count(ch: usize) -> usize {
-        let num_blocks = ch.div_ceil(4);
         let mut count = ch; // rechannel_w
-        count += ch; // rechannel_b
         for &k in &A2_KERNEL_SIZES {
-            count += num_blocks * 4 * ch * k; // conv_w
+            count += ch * ch * k; // conv_w
             count += ch; // conv_b
             count += ch; // mixin_w
             count += ch * ch; // l1x1_w
@@ -758,7 +746,7 @@ mod tests {
     fn test_set_weights_exact_count_ch3() {
         let mut model = WaveNetA2::<3>::new();
         let count = expected_weight_count(3);
-        assert_eq!(count, 2342); // sanity-check known count
+        assert_eq!(count, 1871); // sanity-check known count
         let weights = make_test_weights(count, 42);
         assert!(model.set_weights(&weights).is_ok());
         assert!(model.has_weights());
@@ -770,7 +758,7 @@ mod tests {
     fn test_set_weights_exact_count_ch8() {
         let mut model = WaveNetA2::<8>::new();
         let count = expected_weight_count(8);
-        assert_eq!(count, 12154); // sanity-check known count
+        assert_eq!(count, 12146); // sanity-check known count
         let weights = make_test_weights(count, 77);
         assert!(model.set_weights(&weights).is_ok());
         assert!(model.has_weights());
