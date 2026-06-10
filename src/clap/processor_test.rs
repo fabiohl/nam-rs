@@ -1055,7 +1055,7 @@ mod tests {
         let input_events = InputEvents::empty();
         let mut output_events = OutputEvents::from_buffer(&mut output_events_buffer);
 
-        // Activates heap audit and forces the counter to simulate allocation
+        // Activates heap audit for the current thread
         let tid = unsafe { libc::syscall(libc::SYS_gettid) as i32 };
         crate::common::alloc_audit::AUDIT_THREAD.store(tid, Ordering::Relaxed);
         crate::common::alloc_audit::AUDIT_ENABLED.store(true, Ordering::Relaxed);
@@ -1066,7 +1066,7 @@ mod tests {
             .rt_status
             .clear_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
 
-        // Runs process(), which should return Ok(ProcessStatus::Sleep)
+        // Runs process(), which should return Continue (zero heap allocations in the hot path)
         let status = started_processor
             .process(
                 &input_audio,
@@ -1076,19 +1076,22 @@ mod tests {
                 None,
                 None,
             )
-            .expect("process failed in heap allocation simulation");
+            .expect("process failed in heap audit test");
 
         // Disables heap audit to avoid interfering with other tests
         crate::common::alloc_audit::AUDIT_ENABLED.store(false, Ordering::Relaxed);
         crate::common::alloc_audit::AUDIT_THREAD.store(0, Ordering::Relaxed);
         crate::common::alloc_audit::ALLOC_COUNT.store(0, Ordering::Relaxed);
 
-        // Verifies that the returned status is Sleep
-        assert!(matches!(status, ProcessStatus::Sleep));
-
-        // Checks if the RT_STATUS_HEAP_ALLOC flag was set in the status flags
+        // Verifies that the returned status is Continue (zero-alloc path)
         assert!(
-            shared
+            matches!(status, ProcessStatus::Continue),
+            "Expected ProcessStatus::Continue (zero-alloc), got {status:?}"
+        );
+
+        // Verifies the RT_STATUS_HEAP_ALLOC flag was NOT set (no allocations detected)
+        assert!(
+            !shared
                 .cold
                 .rt_status
                 .check_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC)

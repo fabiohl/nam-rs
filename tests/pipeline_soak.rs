@@ -66,21 +66,21 @@ mod tests {
         0
     }
 
-    /// Integration Soak Test for the integrated DSP pipeline.
-    ///
-    /// Este soak roda em Boss WN-Nano (real-time factor ~5-10x em CPU moderno).
-    /// Para cobertura de Standard, criar teste separado em tests-long.sh com budget 15-min.
-    #[test]
-    #[ignore]
-    fn test_pipeline_soak_integrated() {
-        let model_file = "BossWN-nano.nam";
+    fn run_pipeline_soak_core(
+        model_file: &str,
+        total_frames: usize,
+        budget_mult: f64,
+        label: &str,
+    ) {
         let path = model_path(model_file);
         if !path.exists() {
             eprintln!("SKIP: {} not found at {:?}", model_file, path);
             return;
         }
 
-        let json_data = fs::read_to_string(&path).expect("Failed to read BossWN-nano.nam");
+        println!("--- {} Pipeline Soak ({} frames) ---", label, total_frames);
+
+        let json_data = fs::read_to_string(&path).expect("Failed to read model file");
         let model_data = parse_nam_json(&json_data).expect("Failed to parse JSON");
         let mut model_l = build_model(&model_data).expect("Failed to build model (L)");
         let mut model_r = build_model(&model_data).expect("Failed to build model (R)");
@@ -88,7 +88,6 @@ mod tests {
         model_l.prewarm(2048);
         model_r.prewarm(2048);
 
-        // Parameters
         let input_sr = 96000;
         let output_sr = 48000;
         let block_size = 64;
@@ -137,11 +136,8 @@ mod tests {
 
         let mut pcg = SimplePcg::new(42);
 
-        // Run parameters: 10 million input frames
-        let total_frames = 10_000_000;
         let mut processed_frames = 0;
 
-        // Perform warm-up to stabilize memory allocation before initial RSS snapshot
         let mut adaptive = AdaptiveCompute::new(AdaptiveComputeMode::Off);
         for _ in 0..1000 {
             for j in 0..block_size {
@@ -190,11 +186,9 @@ mod tests {
         let audio_duration_s = total_frames as f64 / input_sr as f64;
         let start_time = Instant::now();
 
-        // 10M frames run
         let mut generation_counter: u64 = bridge.generation.load(Ordering::Relaxed);
 
         while processed_frames < total_frames {
-            // Alternate between noise and silence every 50,000 frames (~520 ms)
             let is_noise = (processed_frames / 50_000) % 2 == 0;
 
             if is_noise {
@@ -220,8 +214,8 @@ mod tests {
                 gate_params: &gate_params,
                 silence_hysteresis: &mut silence_hysteresis,
                 mono_hysteresis: &mut mono_hysteresis,
-                threshold_open_sq: -60.0f32.powf(10.0 / 20.0), // ~-60dB open threshold
-                threshold_close_sq: -80.0f32.powf(10.0 / 20.0), // ~-80dB close threshold
+                threshold_open_sq: -60.0f32.powf(10.0 / 20.0),
+                threshold_close_sq: -80.0f32.powf(10.0 / 20.0),
                 process_mono: &mut process_mono,
                 rt_status: &rt_status,
                 adaptive: &mut adaptive,
@@ -251,7 +245,6 @@ mod tests {
             let elapsed_cycle_ns = start_cycle.elapsed().as_nanos() as u64;
             rt_status.latency_hist.record(elapsed_cycle_ns);
 
-            // Verify outputs for finiteness
             for &s in &resamp_out_l[..block_size / 2] {
                 assert!(s.is_finite(), "NaN/Inf detected in resamp_out_l!");
             }
@@ -259,7 +252,6 @@ mod tests {
                 assert!(s.is_finite(), "NaN/Inf detected in resamp_out_r!");
             }
 
-            // Verify DspBridge generation counter is monotonic
             let new_generation = bridge.generation.load(Ordering::Relaxed);
             assert!(
                 new_generation >= generation_counter,
@@ -278,20 +270,18 @@ mod tests {
             elapsed, audio_duration_s
         );
 
-        // Parametric time budget verification
         assert!(
-            elapsed < 2.5 * audio_duration_s,
+            elapsed < budget_mult * audio_duration_s,
             "Real-time processing took too long: {:.3}s (allowed: {:.3}s)",
             elapsed,
-            2.5 * audio_duration_s
+            budget_mult * audio_duration_s
         );
 
-        // Verify RSS memory stability
         let final_rss = get_rss_bytes();
         println!("Final RSS: {} bytes", final_rss);
         if initial_rss > 0 && final_rss > 0 {
             let rss_diff = (final_rss as isize - initial_rss as isize).unsigned_abs();
-            let limit = 10 * 1024 * 1024; // 10 MB
+            let limit = 10 * 1024 * 1024;
             println!("Memory variation: {} bytes", rss_diff);
             assert!(
                 rss_diff < limit,
@@ -300,7 +290,6 @@ mod tests {
             );
         }
 
-        // Verify latency_hist telemetry is populated
         let count = rt_status.latency_hist.total_count();
         assert!(count > 0, "Telemetry latency_hist was never populated!");
         println!("Telemetry total count: {}", count);
@@ -316,5 +305,26 @@ mod tests {
             "Telemetry P99 latency: {} ns",
             rt_status.latency_hist.get_percentile(0.99)
         );
+    }
+
+    /// Integration Soak Test for the integrated DSP pipeline (A1 Nano).
+    #[test]
+    #[ignore]
+    fn test_pipeline_soak_integrated() {
+        run_pipeline_soak_core("BossWN-nano.nam", 10_000_000, 2.5, "A1-Nano");
+    }
+
+    /// Integration Soak Test for A2-Full (CH=8) through the full DSP pipeline.
+    #[test]
+    #[ignore]
+    fn test_pipeline_soak_a2_full() {
+        run_pipeline_soak_core("wavenet_a2_full.nam", 2_000_000, 10.0, "A2-Full");
+    }
+
+    /// Integration Soak Test for A2-Lite (CH=3) through the full DSP pipeline.
+    #[test]
+    #[ignore]
+    fn test_pipeline_soak_a2_lite() {
+        run_pipeline_soak_core("wavenet_a2_lite.nam", 5_000_000, 5.0, "A2-Lite");
     }
 }

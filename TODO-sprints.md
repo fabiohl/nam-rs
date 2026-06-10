@@ -146,7 +146,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Remover `src/models/a2/placeholder.rs`, a variante `WavenetA2` placeholder e o flag `RT_STATUS_A2_PLACEHOLDER`. Atualizar `tests/loader_a2_compat.rs` e `tests/a2_placeholder_interface.rs` para validar **inferência real**.
   - **Critério de aceite:** suíte verde sem o placeholder; nenhum caminho emite silêncio para A2 válido.
 
-### Sprint 1.4 — Golden Tests A2 (seguro anti-degradação) 🧪
+### Sprint 1.4 — Golden Tests A2 (seguro anti-degradação) 🧪 [DONE]
 
 - **[T1.10] Gerador de fixtures A2-Full/Lite.** [DONE]
   - Adaptar/derivar de `generate_weights_a2.py` um gerador determinístico (seed fixa) que emita `wavenet_a2_full.nam` (CH=8) e `wavenet_a2_lite.nam` (CH=3) com o esqueleto fixo (23 camadas, kernels/dilations canônicos, `LeakyReLU`, `head_scale`). Salvar em `tests/fixtures/models/`.

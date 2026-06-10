@@ -26,11 +26,11 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 # 1. Standard tests
-echo -e "\n${BLUE}${BOLD}[1/5] Executando testes unitários e de integração...${NC}"
+echo -e "\n${BLUE}${BOLD}[1/4] Executando testes unitários e de integração...${NC}"
 cargo test -- --test-threads=1
 
 # 2. Build CLAP plugin debug binary with heap-audit
-echo -e "\n${BLUE}${BOLD}[2/5] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
+echo -e "\n${BLUE}${BOLD}[2/4] Compilando plugin CLAP (Debug + heap-audit)...${NC}"
 RUSTFLAGS="${RUSTFLAGS:-} -Clink-arg=-Wl,-soname,nam-rs.clap" \
   cargo build --target-dir target/clap-test --no-default-features --features "clap-plugin,heap-audit" --lib
 
@@ -40,14 +40,14 @@ if [ ! -f "$CLAP_BIN" ]; then
     exit 1
 fi
 
-# 4. CLAP integration and heap-audit tests
-echo -e "\n${BLUE}${BOLD}[4/5] Executando testes de integração CLAP e auditoria de heap...${NC}"
+# 3. CLAP integration and heap-audit tests
+echo -e "\n${BLUE}${BOLD}[3/4] Executando testes de integração CLAP e auditoria de heap...${NC}"
 CLAP_PLUGIN_PATH="$CLAP_BIN" \
   NAM_HEAP_AUDIT=1 \
   cargo test --features "clap-plugin,heap-audit" --target-dir target/clap-test -- --test-threads=1
 
-# 5. Run the official CLAP validator if available
-echo -e "\n${BLUE}${BOLD}[5/5] Executando validação via clap-validator...${NC}"
+# 4. Run the official CLAP validator if available
+echo -e "\n${BLUE}${BOLD}[4/4] Executando validação via clap-validator...${NC}"
 if command -v clap-validator >/dev/null 2>&1; then
   CLAP_PLUGIN_PATH="$CLAP_BIN" \
     NAM_HEAP_AUDIT=1 \
