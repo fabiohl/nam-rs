@@ -176,7 +176,17 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
             Some(nam_json::NamWavenetTopology::Lite) => "Lite".to_string(),
             Some(nam_json::NamWavenetTopology::Feather) => "Feather".to_string(),
             Some(nam_json::NamWavenetTopology::Nano) => "Nano".to_string(),
-            None => "Custom".to_string(),
+            None => {
+                if let Some(ch) = nam_json::is_a2_shape(&model_data) {
+                    match ch {
+                        3 => "A2-Lite".to_string(),
+                        8 => "A2-Full".to_string(),
+                        _ => "A2-Custom".to_string(),
+                    }
+                } else {
+                    "Custom".to_string()
+                }
+            }
         }
     } else if architecture == "LSTM" {
         match nam_json::get_lstm_topology(&model_data) {

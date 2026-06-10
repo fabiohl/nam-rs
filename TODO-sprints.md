@@ -137,7 +137,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `a2_fast.cpp:849-990` (`is_a2_shape`/`create_a2_fast_config`), `topology.rs:131-163`.
   - **Critério de aceite:** carregar um `.nam` A2-Full/Lite produz inferência real (não silêncio); `mock_a2.nam` ainda reconhecido.
 
-- **[T1.8] Metadados e par de modelos.**
+- **[T1.8] Metadados e par de modelos.** [DONE]
   - Atualizar `src/loader/loaded_model_pair.rs` (topologia/`weights_layout`) e `src/loader/build.rs` (calibração de ganhos via `input_level_dbu`/`loudness`, prewarm ≥ 2048 amostras) para A2.
   - **Critério de aceite:** `--model A2.nam` no standalone roda com telemetria; ganhos calibrados.
 
