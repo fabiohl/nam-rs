@@ -23,7 +23,14 @@ pub use layout::transpose_conv1d_interleaved_4wide;
 // Validation
 // =============================================================================
 
-/// Validates the `activation` field in all layers of a WaveNet model.
+/// Validates the `activation` field in all layers of a WaveNet A1 model.
+///
+/// **Scope: A1 topologies only** (Standard, Lite, Feather, Nano). A2 models use
+/// `LeakyReLU` (not `Tanh`) and are dispatched by `is_a2_shape` before this branch
+/// is ever reached — so this function is never called for A2.
+///
+/// Called from `build_wavenet_typed` (which backs all A1 builders).
+/// Returns an error if any layer declares an unsupported activation function.
 pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<()> {
     for (idx, layer) in data.config.layers.iter().enumerate() {
         let act = layer.activation.as_deref().unwrap_or("Tanh");

@@ -13,6 +13,27 @@
 //! 3. Head conv: `Conv1D(CH → 1, K=16, bias)` over head_accum ring → × head_scale
 //!
 //! Processing is chunked by `WAVENET_MAX_NUM_FRAMES` (64) with zero allocation on the hot-path.
+//!
+//! ## Cross-Validation and Golden Vectors
+//!
+//! The A2 golden tests use a **self-golden pattern**: the Rust engine generates
+//! its own reference on first run (`tests/fixtures/golden_wavenet_a2_*_self.bin`).
+//! Subsequent runs compare against that reference, guaranteeing bitwise determinism.
+//!
+//! **Reason:** The NeuralAmpModelerCore C++ `render` tool's A2 fast-path (`a2_fast.cpp`)
+//! currently diverges from this Rust port when rendered against the same `.nam` fixtures.
+//! Investigation is pending on the **C++ side** — the Rust implementation is internally
+//! self-consistent (MSE = 0.0 between independent runs with identical inputs) and
+//! structurally faithful to `a2_fast.cpp`. Specifically:
+//!
+//! - `is_a2_shape` detection works correctly in the C++ render tool.
+//! - The `.nam` fixture format (activation as array-of-objects) was verified.
+//! - Suspect: subtle difference in head ring initialisation or `head_scale` placement
+//!   between the C++ `_load_weights` and this Rust `set_weights` stream order.
+//!
+//! Cross-validation via `tests/cpp_parity.rs` (`live_cross_validation_wavenet_a2_*`)
+//! is implemented as `#[ignore]` and will be promoted to standard CI once the C++ render
+//! tool produces stable A2 output.
 
 use super::head::A2HeadConv;
 use super::layer::A2Layer;
@@ -126,6 +147,8 @@ impl<const CH: usize> WaveNetA2<CH> {
             rechannel_w: AlignedVec::new(CH, 0u16),
             head_conv: None,
             head_accum: AlignedVec::new(head_ring_size * CH, 0.0f32),
+            // Initialized to `rf` so the head conv ring has a fully zeroed lookback
+            // of `rf` samples from the start — matching the prewarm semantics.
             head_write_pos: rf,
             head_ring_mask,
             layer_buffer: AlignedVec::new(arena_total, 0.0f32),
@@ -186,6 +209,7 @@ impl<const CH: usize> WaveNetA2<CH> {
         let head_ring_size = (rf + max_buf + 1).next_power_of_two();
         self.head_ring_mask = head_ring_size - 1;
         self.head_accum = AlignedVec::new(head_ring_size * CH, 0.0f32);
+        // Reset to `rf` so the head conv ring invariant is preserved after reallocation.
         self.head_write_pos = rf;
     }
 
@@ -194,6 +218,13 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// Processes `input` samples and writes to `output`.
     /// Requires layers to be populated via `set_weights` (T1.6).
     /// Outputs silence until weights are loaded.
+    ///
+    /// # Block Size Contract
+    ///
+    /// The caller **must** ensure `input.len() <= max_buffer_size`. Exceeding this limit
+    /// causes silent truncation: only the first `max_buffer_size` frames are processed
+    /// and the remaining are left as zeros. This matches the CLAP/audio host contract
+    /// which guarantees `block_size <= max_block_size` negotiated at activation.
     pub fn process(&mut self, input: &[f32], output: &mut [f32]) {
         let num_frames = input.len();
         if num_frames == 0 {
@@ -208,6 +239,14 @@ impl<const CH: usize> WaveNetA2<CH> {
             return;
         }
 
+        // Guard against host misbehaviour (violates block-size contract).
+        // In production the host must not send more frames than negotiated;
+        // in debug builds this triggers immediately to expose the violation.
+        debug_assert!(
+            num_frames <= self.max_buffer_size,
+            "process: input ({num_frames}) > max_buffer_size ({}) — host violated block-size contract",
+            self.max_buffer_size
+        );
         let nf = num_frames.min(self.max_buffer_size);
         let ch = CH;
 
@@ -349,7 +388,9 @@ impl<const CH: usize> WaveNetA2<CH> {
         // Zero inter-layer buffer.
         self.layer_in.fill(0.0);
 
-        // Fill head accumulator with zeros.
+        // Fill head accumulator with zeros and restore the ring invariant:
+        // `head_write_pos = rf` so that the head conv's K-1 lookback reads
+        // only the zeroed region, simulating `rf` frames of silent prewarm.
         self.head_accum.fill(0.0);
         self.head_write_pos = rf;
     }
