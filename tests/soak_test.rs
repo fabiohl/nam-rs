@@ -9,6 +9,9 @@
 //!
 //! Execution: `cargo test --release -- --ignored --nocapture`
 
+use nam_rs::common::params::AdaptiveComputeMode;
+use nam_rs::common::spsc::{RT_STATUS_DEGRADE_MINIMAL, RT_STATUS_DEGRADE_REDUCED, RtStatusFlags};
+use nam_rs::dsp::adaptive::{AdaptiveCompute, AdaptiveState};
 use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
@@ -17,6 +20,7 @@ use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2};
 use nam_rs::models::lstm::*;
 use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 /// Simple deterministic PRNG (Linear Congruential Generator - LCG).
@@ -753,4 +757,273 @@ fn test_a2_lite_noise_soak() {
     println!("Frames processed: {}", processed);
     println!("Min output: {}", min_val);
     println!("Max output: {}", max_val);
+}
+
+// =============================================================================
+// Adaptive Compute FSM Endurance Soak
+// =============================================================================
+
+/// Soak Test: Adaptive Compute FSM endurance.
+///
+/// Forces millions of alternating overload/recovery cycles to stress the
+/// hysteresis FSM, crossfade logic, and telemetry (RtStatusFlags).
+/// Verifies that transitions are deterministic, the FSM never locks up,
+/// and the degrade_transitions_total counter is consistent.
+///
+/// Runs with both Conservative and Aggressive modes under randomized
+/// latency patterns.
+#[test]
+#[ignore]
+fn test_adaptive_fsm_endurance() {
+    const NUM_CYCLES: usize = 2_000_000;
+    const SAMPLE_RATE: u32 = 48000;
+    const BLOCK_SIZE: usize = 64;
+
+    let mut pcg = SimplePcg::new(12345);
+
+    for (mode, label) in [
+        (AdaptiveComputeMode::Conservative, "Conservative"),
+        (AdaptiveComputeMode::Aggressive, "Aggressive"),
+    ] {
+        let rt_status = RtStatusFlags::default();
+        let mut adaptive = AdaptiveCompute::new(mode);
+
+        let (full_to_reduced, reduced_to_minimal) = match mode {
+            AdaptiveComputeMode::Conservative => (0.70, 0.85),
+            AdaptiveComputeMode::Aggressive => (0.55, 0.70),
+            AdaptiveComputeMode::Off => unreachable!(),
+        };
+
+        let recovery_reduced = full_to_reduced * 0.5;
+        let recovery_minimal = reduced_to_minimal * 0.5;
+
+        let start = Instant::now();
+
+        for i in 0..NUM_CYCLES {
+            let budget_us = 1000 + (pcg.next_f32().abs() * 9000.0) as u64;
+            let ratio = match i % 12 {
+                0..=3 => full_to_reduced * 1.2,    // Overload zone (degrade trigger)
+                4..=6 => recovery_reduced * 0.8,   // Recovery zone
+                7..=8 => reduced_to_minimal * 1.2, // Extreme overload (minimal trigger)
+                9..=11 => recovery_minimal * 0.8,  // Deep recovery
+                _ => unreachable!(),
+            };
+
+            let latency_us = ((budget_us as f64) * ratio as f64).ceil() as u64;
+            let latency_us = std::hint::black_box(latency_us);
+
+            adaptive.update(latency_us, budget_us, SAMPLE_RATE, &rt_status);
+
+            // Advance crossfade if active
+            if adaptive.is_crossfading() {
+                let mult = adaptive.crossfade_multiplier(SAMPLE_RATE, BLOCK_SIZE);
+                assert!(
+                    (0.0..=1.0).contains(&mult),
+                    "Crossfade multiplier {} out of [0, 1]",
+                    mult
+                );
+            }
+
+            // State and flags consistency
+            let state = adaptive.state();
+            let is_reduced = rt_status.check_flag(RT_STATUS_DEGRADE_REDUCED);
+            let is_minimal = rt_status.check_flag(RT_STATUS_DEGRADE_MINIMAL);
+
+            match state {
+                AdaptiveState::Full => {
+                    assert!(
+                        !is_reduced && !is_minimal,
+                        "{}: Full state but flags set (R={}, M={}) at cycle {}",
+                        label,
+                        is_reduced,
+                        is_minimal,
+                        i
+                    );
+                }
+                AdaptiveState::Reduced => {
+                    assert!(
+                        is_reduced && !is_minimal,
+                        "{}: Reduced state but flags wrong (R={}, M={}) at cycle {}",
+                        label,
+                        is_reduced,
+                        is_minimal,
+                        i
+                    );
+                }
+                AdaptiveState::Minimal => {
+                    assert!(
+                        is_reduced && is_minimal,
+                        "{}: Minimal state but flags wrong (R={}, M={}) at cycle {}",
+                        label,
+                        is_reduced,
+                        is_minimal,
+                        i
+                    );
+                }
+            }
+
+            // slimmable_size() bounds
+            let sz = adaptive.slimmable_size();
+            assert!(
+                (0.0..=1.0).contains(&sz),
+                "{}: slimmable_size {} out of [0, 1] at cycle {}",
+                label,
+                sz,
+                i
+            );
+
+            // wavenet_effective_layers bounds
+            let el = adaptive.wavenet_effective_layers(8);
+            assert!(
+                (1..=8).contains(&el),
+                "{}: wavenet_effective_layers(8) = {} out of [1, 8] at cycle {}",
+                label,
+                el,
+                i
+            );
+        }
+
+        let duration = start.elapsed();
+        let transitions = rt_status.degrade_transitions_total.load(Ordering::Relaxed);
+
+        println!("--- Adaptive FSM Endurance ({}) ---", label);
+        println!("Duration: {:?}", duration);
+        println!("Cycles: {}", NUM_CYCLES);
+        println!("Total transitions: {}", transitions);
+
+        // Under such aggressive jitter, transitions MUST have occurred
+        assert!(
+            transitions > 0,
+            "{}: No transitions occurred under aggressive jitter in {} cycles",
+            label,
+            NUM_CYCLES
+        );
+
+        // Transitions should be reasonable (not stuck in infinite loop)
+        assert!(
+            transitions < NUM_CYCLES as u32 / 3,
+            "{}: Excessive transitions {} detected — possible FSM oscillation",
+            label,
+            transitions
+        );
+    }
+}
+
+/// Soak Test: Adaptive Compute FSM deterministic transition endurance.
+///
+/// Forces repeated complete degradation cycles (Full→Reduced→Minimal→Reduced→Full)
+/// to stress the full hysteresis FSM, crossfade logic, and flag consistency under
+/// a known deterministic pattern. Each cycle produces 4 transitions.
+#[test]
+#[ignore]
+fn test_adaptive_fsm_transition_cycles() {
+    const CYCLES: usize = 50_000;
+    const SAMPLE_RATE: u32 = 48000;
+    const BLOCK_SIZE: usize = 64;
+    const BUDGET_US: u64 = 1000;
+
+    for (mode, label) in [
+        (AdaptiveComputeMode::Conservative, "Conservative"),
+        (AdaptiveComputeMode::Aggressive, "Aggressive"),
+    ] {
+        let rt_status = RtStatusFlags::default();
+        let mut adaptive = AdaptiveCompute::new(mode);
+
+        let (full_to_reduced, reduced_to_minimal) = match mode {
+            AdaptiveComputeMode::Conservative => (0.70, 0.85),
+            AdaptiveComputeMode::Aggressive => (0.55, 0.70),
+            AdaptiveComputeMode::Off => unreachable!(),
+        };
+
+        let recovery_reduced = full_to_reduced * 0.5;
+        let recovery_minimal = reduced_to_minimal * 0.5;
+
+        let overload_reduced = BUDGET_US as f64 * full_to_reduced * 1.1;
+        let overload_minimal = BUDGET_US as f64 * reduced_to_minimal * 1.1;
+        let undervolt_reduced = BUDGET_US as f64 * recovery_reduced * 0.9;
+        let undervolt_minimal = BUDGET_US as f64 * recovery_minimal * 0.9;
+
+        let start = Instant::now();
+
+        for _cycle in 0..CYCLES {
+            // Phase 1: Degrade Full → Reduced (3 overloads)
+            for _ in 0..3 {
+                adaptive.update(
+                    overload_reduced.ceil() as u64,
+                    BUDGET_US,
+                    SAMPLE_RATE,
+                    &rt_status,
+                );
+                if adaptive.is_crossfading() {
+                    let _ = adaptive.crossfade_multiplier(SAMPLE_RATE, BLOCK_SIZE);
+                }
+            }
+
+            // Phase 2: Degrade Reduced → Minimal (3 overloads)
+            for _ in 0..3 {
+                adaptive.update(
+                    overload_minimal.ceil() as u64,
+                    BUDGET_US,
+                    SAMPLE_RATE,
+                    &rt_status,
+                );
+                if adaptive.is_crossfading() {
+                    let _ = adaptive.crossfade_multiplier(SAMPLE_RATE, BLOCK_SIZE);
+                }
+            }
+
+            // Phase 3: Recover Minimal → Reduced (5 undervolts)
+            for _ in 0..5 {
+                adaptive.update(
+                    undervolt_minimal.floor() as u64,
+                    BUDGET_US,
+                    SAMPLE_RATE,
+                    &rt_status,
+                );
+                if adaptive.is_crossfading() {
+                    let _ = adaptive.crossfade_multiplier(SAMPLE_RATE, BLOCK_SIZE);
+                }
+            }
+
+            // Phase 4: Recover Reduced → Full (5 undervolts)
+            for _ in 0..5 {
+                adaptive.update(
+                    undervolt_reduced.floor() as u64,
+                    BUDGET_US,
+                    SAMPLE_RATE,
+                    &rt_status,
+                );
+                if adaptive.is_crossfading() {
+                    let _ = adaptive.crossfade_multiplier(SAMPLE_RATE, BLOCK_SIZE);
+                }
+            }
+
+            // Verify invariants at end of each cycle
+            let state = adaptive.state();
+            assert_eq!(
+                state,
+                AdaptiveState::Full,
+                "{}: expected Full at end of cycle {}, got {:?}",
+                label,
+                _cycle,
+                state
+            );
+        }
+
+        let duration = start.elapsed();
+        let transitions = rt_status.degrade_transitions_total.load(Ordering::Relaxed);
+
+        // 4 transitions per cycle
+        let expected = CYCLES as u32 * 4;
+        assert_eq!(
+            transitions, expected,
+            "{}: expected {} transitions, got {}",
+            label, expected, transitions
+        );
+
+        println!("--- Adaptive FSM Transition Cycles ({}) ---", label);
+        println!("Duration: {:?}", duration);
+        println!("Cycles: {}", CYCLES);
+        println!("Transitions: {} (expected {})", transitions, expected);
+    }
 }

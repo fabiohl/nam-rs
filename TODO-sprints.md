@@ -264,9 +264,10 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Flag de CLI (`src/standalone/cli.rs`) e parâmetro CLAP para fixar/forçar nível (Auto/Full/Lite). Manual sobrepõe a FSM.
   - **Critério de aceite:** `--slim auto|full|lite` funciona; param CLAP exposto; documentado.
 
-- **[T3.6] Telemetria e testes de transição.**
-  - Sinalizar nível ativo via `RtStatusFlags` (atômico) → log na main thread.
-  - Testes de FSM (estilo `tests/gate_fsm_proptest.rs`) e soak de transições.
+- **[T3.6] Telemetria e testes de transição.** [DONE]
+  - Sinalização de nível ativo via `RtStatusFlags` (atômico) já implementada em `transition_to()` (flags `DEGRADE_REDUCED`/`DEGRADE_MINIMAL`, contador `degrade_transitions_total`).
+  - Testes de FSM estilo proptest em `tests/adaptive_fsm_proptest.rs` (adversariais, valores de fronteira, jitter, invariantes de telemetria).
+  - Soak de transições em `tests/soak_test.rs`: `test_adaptive_fsm_endurance` (2M ciclos de jitter) e `test_adaptive_fsm_transition_cycles` (50k ciclos determinísticos Full→Reduced→Minimal→Full, 200k transições verificadas).
   - **Critério de aceite:** transições determinísticas e estáveis sob soak.
 
 ---
