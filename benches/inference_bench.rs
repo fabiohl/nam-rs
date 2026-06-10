@@ -13,6 +13,8 @@
 //! | --------------------------------------- | --------------------------------------- | ---------------------------------------- |
 //! | `WaveNet_Standard_CH16_64samp_48kHz`    | Complete WaveNet Standard inference     | ~284 KB model, 10+10 dilated layers      |
 //! | `LSTM_2x16_64samp_48kHz`                | LSTM 2 layers × 16 hidden inference     | Heaviest supported recurrent network     |
+//! | `A2Full_CH8_64samp_48kHz`               | A2-Full (CH=8) inference                | AVX2 col-major T=4 broadcast-FMA         |
+//! | `A2Lite_CH3_64samp_48kHz`               | A2-Lite (CH=3) inference                | u16 interleaved GEMV, CPU-efficient      |
 //! | `FastMath_tanh_AVX2_256elem`            | Padé×rsqrt tanh activation over 256 f32 | Kernel called N×layers/block in WaveNet  |
 //! | `FastMath_sigmoid_AVX2_256elem`         | Sigmoid activation derived from tanh    | Kernel called N×gates/block in LSTM      |
 //! | `WaveNet_Dynamic_Standard_64samp_48kHz` | WaveNet Dynamic inference (fallback)    | Measures overhead of path without const generics |
@@ -513,6 +515,198 @@ fn bench_tanh_pade_div_avx512_256elem(c: &mut Criterion) {
             });
         });
     }
+}
+
+// ── A2-Full (CH=8) inference benchmarks ──
+
+/// Measures the processing time of an A2-Full (CH=8) WaveNet model.
+/// A2-Full is the high-fidelity Criterion variant with 8 channels,
+/// using AVX2 T=4 broadcast-FMA convolution for maximum throughput.
+fn bench_a2_full_process(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_full.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for A2-Full benchmark");
+    model.prewarm(2048);
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("A2Full_CH8_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+/// Measures A2-Full (CH=8) scaling across different DSP buffer sizes.
+/// A2 benefit from SIMD col-major layout which keeps 8 weights
+/// contiguous per (tap, input) pair, maximizing L1 cache locality.
+fn bench_a2_full_block_sizes(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_full.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
+    model.prewarm(2048);
+
+    for &size in &[32, 128, 256, 512] {
+        let input = generate_sine_440hz(size);
+        let mut output = vec![0.0f32; size];
+        c.bench_function(&format!("A2Full_CH8_{}samp_48kHz", size), |b| {
+            b.iter(|| {
+                model.process(&input, &mut output);
+            });
+        });
+    }
+}
+
+/// Measures A2-Full (CH=8) prewarm cost.
+/// Prewarm fills the causal history buffers — essential to measure
+/// so model switching latency is known for live performance.
+fn bench_prewarm_a2_full(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_full.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    c.bench_function("Prewarm_A2Full_CH8_2048samp", |b| {
+        b.iter_with_setup(
+            || build_model(&model_data).expect("Dispatcher failed"),
+            |mut model| {
+                model.prewarm(std::hint::black_box(2048));
+            },
+        );
+    });
+}
+
+// ── A2-Lite (CH=3) inference benchmarks ──
+
+/// Measures the processing time of an A2-Lite (CH=3) WaveNet model.
+/// A2-Lite is the CPU-efficient variant with 3 channels, designed
+/// for reduced computational load while preserving timbre character.
+fn bench_a2_lite_process(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed for A2-Lite benchmark");
+    model.prewarm(2048);
+    let input = generate_sine_440hz(64);
+    let mut output = vec![0.0f32; 64];
+
+    c.bench_function("A2Lite_CH3_64samp_48kHz", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+}
+
+/// Measures A2-Lite (CH=3) scaling across different DSP buffer sizes.
+/// With fewer channels and the u16 interleaved kernel path, A2-Lite
+/// targets minimal CPU usage for low-power / high-polyphony scenarios.
+fn bench_a2_lite_block_sizes(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
+    model.prewarm(2048);
+
+    for &size in &[32, 128, 256, 512] {
+        let input = generate_sine_440hz(size);
+        let mut output = vec![0.0f32; size];
+        c.bench_function(&format!("A2Lite_CH3_{}samp_48kHz", size), |b| {
+            b.iter(|| {
+                model.process(&input, &mut output);
+            });
+        });
+    }
+}
+
+/// Measures A2-Lite (CH=3) prewarm cost.
+fn bench_prewarm_a2_lite(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    c.bench_function("Prewarm_A2Lite_CH3_2048samp", |b| {
+        b.iter_with_setup(
+            || build_model(&model_data).expect("Dispatcher failed"),
+            |mut model| {
+                model.prewarm(std::hint::black_box(2048));
+            },
+        );
+    });
+}
+
+// ── A2 long-run soak benchmarks ──
+
+#[cfg(feature = "long_bench")]
+fn bench_a2_full_long_run(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_full.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Full model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
+    model.prewarm(4096);
+    let size = 4096;
+    let input = generate_sine_440hz(size);
+    let mut output = vec![0.0f32; size];
+    let mut group = c.benchmark_group("Long_Run_A2Full");
+    group.measurement_time(std::time::Duration::from_secs(35));
+    group.sample_size(100);
+    group.bench_function("Long_A2Full_CH8_4096samp", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+    group.finish();
+}
+
+#[cfg(feature = "long_bench")]
+fn bench_a2_lite_long_run(c: &mut Criterion) {
+    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("tests/fixtures/models/wavenet_a2_lite.nam");
+    if !path.exists() {
+        return;
+    }
+    let json_data = std::fs::read_to_string(&path).expect("Failed to read A2-Lite model");
+    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
+    let mut model = build_model(&model_data).expect("Dispatcher failed");
+    model.prewarm(4096);
+    let size = 4096;
+    let input = generate_sine_440hz(size);
+    let mut output = vec![0.0f32; size];
+    let mut group = c.benchmark_group("Long_Run_A2Lite");
+    group.measurement_time(std::time::Duration::from_secs(35));
+    group.sample_size(100);
+    group.bench_function("Long_A2Lite_CH3_4096samp", |b| {
+        b.iter(|| {
+            model.process(&input, &mut output);
+        });
+    });
+    group.finish();
 }
 
 /// Measures the time spent in the `prewarm` function.
@@ -1080,8 +1274,14 @@ criterion_group!(
     bench_tanh_pade_nr2_avx512_256elem,
     bench_tanh_pade_div_avx512_256elem,
     bench_sigmoid_avx512_256elem,
+    bench_a2_full_process,
+    bench_a2_full_block_sizes,
+    bench_a2_lite_process,
+    bench_a2_lite_block_sizes,
     bench_prewarm_wavenet_standard,
     bench_prewarm_lstm_2x16,
+    bench_prewarm_a2_full,
+    bench_prewarm_a2_lite,
     bench_head_rechannel_fp32,
     bench_clap_process_block_64samp
 );
@@ -1091,7 +1291,7 @@ criterion_group!(
 criterion_group!(
     name = long_benches;
     config = Criterion::default();
-    targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run
+    targets = bench_wavenet_long_run, bench_lstm_long_run, bench_resampler_long_run, bench_a2_full_long_run, bench_a2_lite_long_run
 );
 
 // Conditional entry point depending on stress feature activation

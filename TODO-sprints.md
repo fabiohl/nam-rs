@@ -197,7 +197,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 > Objetivo: aplicar otimizações *on-the-fly* fiéis ao `a2_fast.cpp`, **protegidas pelos golden vectors** do Épico 1 (nenhuma quebra de correção).
 
-### Sprint 2.1 — Kernels otimizados
+### Sprint 2.1 — Kernels otimizados [DONE]
 
 - **[T2.1] Caminho CH=3 (A2-Lite): GEMV totalmente desenrolado.** ✅ [DONE]
   - Portar a estratégia escalar/SIMD desenrolada para 3 canais.
@@ -224,9 +224,9 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Critério de aceite:** golden verde; carga sem custo no hot-path.
   - **Status:** ✅ Implementado junto com T2.2. `A2Conv1dCh8::new` faz a permutação na carga. Layout final: `w[k * 64 + in * 8 + out]` — 8 pesos de saída contíguos por `(tap, input)`.
 
-### Sprint 2.2 — Validação de performance
+### Sprint 2.2 — Validação de performance [DONE]
 
-- **[T2.5] Benchmarks Criterion A2-Full/Lite.**
+- **[T2.5] Benchmarks Criterion A2-Full/Lite.** [DONE]
   - Adicionar casos em `benches/inference_bench.rs` (e `dot_4x_bench.rs` se aplicável).
   - Medir µs/bloco a 48 kHz, buffers 64/128/256.
   - **Critério de aceite:** relatório de ganho documentado em `docs/benchmarks.md`; **zero regressão** em modelos A1; golden 100% verde.

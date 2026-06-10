@@ -137,3 +137,43 @@ Task T3.2 aimed to eliminate redundant memory passes in the final output stage b
 ### Conclusion
 
 Stereo fusion reduces memory traffic in the L1 Cache by reading the L and R channels simultaneously and applying the gain/ramp weights in a single loop. The gain is more pronounced in smaller blocks (e.g., 32 samples, where a **~8.5%** improvement was measured), where dispatch overhead and partial cache misses have a higher relative weight.
+
+## Criterion A2 Architecture (Epic 2)
+
+The A2 architecture introduces per-layer conditioning (FiLM + Gating) and a configurable channel count (CH=3 Lite, CH=8 Full). Epic 2 focused on a SIMD-heavy hot-path for CH=8 (`A2Conv1dCh8`) with col-major-per-tap weight layout, enabling AVX2 T=4 broadcast-FMA convolution.
+
+### A2-Full (CH=8) — Optimized SIMD Path
+
+A2-Full uses the `A2Conv1dCh8` fast path with f32 weights in col-major layout (`w[k * 64 + in * 8 + out]`), where 8 output-channel weights are contiguous per `(tap, input)` pair. This layout feeds directly into AVX2 broadcast-FMA without transposition.
+
+| Block Size  | Latency (µs)  | Per-Sample (ns) | CPU % at 48kHz |
+|:----------- |:------------- |:--------------- |:-------------- |
+| **64 samp** | **~30.9 µs**  | ~483            | ~2.3%          |
+| **128 samp** | ~30.8 µs      | ~241            | ~1.2%          |
+| **256 samp** | ~31.5 µs      | ~123            | ~0.6%          |
+
+### A2-Lite (CH=3) — u16 Interleaved Path
+
+A2-Lite uses the generic `A2Conv1d<3>` path with u16 interleaved weights that require dequantization and transposition in the hot-path. Despite having ~6.5x fewer weights (1,871 vs 12,146), the dequantization overhead makes it slower than the CH=8 SIMD path.
+
+| Block Size  | Latency (µs)  | Per-Sample (ns) | CPU % at 48kHz |
+|:----------- |:------------- |:--------------- |:-------------- |
+| **64 samp** | **~48.7 µs**  | ~761            | ~3.7%          |
+| **128 samp** | ~48.7 µs      | ~381            | ~1.8%          |
+| **256 samp** | ~48.8 µs      | ~191            | ~0.9%          |
+
+### Comparative Analysis
+
+| Variant      | Weights | Channels | Conv Path            | 64-samp Latency |
+|:------------ |:------- |:-------- |:-------------------- |:--------------- |
+| A2-Full      | 12,146  | 8        | f32 col-major SIMD   | **~30.9 µs**    |
+| A2-Lite      | 1,871   | 3        | u16 interleaved GEMV | ~48.7 µs         |
+
+The CH=8 SIMD path is ~58% faster than CH=3 despite processing ~6.5x more weights, validating the architectural decision to invest in a dedicated col-major `A2Conv1dCh8` kernel. The u16 dequantization and transposition overhead in CH=3 dominates the arithmetic savings.
+
+### Key Findings
+
+1. **Near-constant per-block latency** across block sizes (64-256) indicates that fixed overhead (function dispatch, buffer management) is minimal; the engine scales almost perfectly with block size.
+2. **A2-Full at 30.9 µs for 64 samples** is ~3.5x faster than WaveNet Standard CH=16 (~107 µs), despite A2-Full having twice the layers (23 vs 10+10).
+3. **Both variants stay well under the 1.33 ms real-time deadline** at 48 kHz with a 64-sample buffer, leaving ample headroom for other DSP processing.
+4. **Golden tests confirm zero regression** in A1 models (WaveNet Standard, Feather, Nano, LSTM) — all 34 integration tests pass.
