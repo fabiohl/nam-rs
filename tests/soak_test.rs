@@ -13,6 +13,7 @@ use nam_rs::dsp::gate::*;
 use nam_rs::dsp::mirror_buf::*;
 use nam_rs::dsp::resampler::*;
 use nam_rs::math::common::AlignedVec;
+use nam_rs::models::a2::{A2_KERNEL_SIZES, WaveNetA2};
 use nam_rs::models::lstm::*;
 use nam_rs::models::wavenet::*;
 use nam_rs::models::wavenet::{WAVENET_MAX_NUM_FRAMES, WaveNetLayerState};
@@ -544,4 +545,212 @@ fn test_gate_fsm_endurance() {
     println!("--- Gate FSM Endurance ---");
     println!("Duration: {:?}", duration);
     println!("Alternations: {}", num_alternations);
+}
+
+// =============================================================================
+// A2 Architecture Soak Tests — WaveNetA2 numerical stability
+// =============================================================================
+
+/// Computes total A2 weight count.
+const fn a2_total_weights<const CH: usize>() -> usize {
+    let mut total = CH;
+    let mut i = 0;
+    while i < 23 {
+        let k = A2_KERNEL_SIZES[i];
+        total += CH * CH * k + CH + CH + CH * CH + CH;
+        i += 1;
+    }
+    total += 16 * CH + 2;
+    total
+}
+
+/// Assembles synthetic A2 weight stream.
+fn a2_synth_weights<const CH: usize>(weight_val: f32) -> Vec<f32> {
+    let num = a2_total_weights::<CH>();
+    let mut w = Vec::with_capacity(num);
+    w.extend(std::iter::repeat_n(weight_val, CH));
+    for &k in &A2_KERNEL_SIZES {
+        w.extend(std::iter::repeat_n(weight_val, CH * CH * k));
+        w.extend(std::iter::repeat_n(0.0f32, CH));
+        w.extend(std::iter::repeat_n(weight_val, CH));
+        w.extend(std::iter::repeat_n(weight_val, CH * CH));
+        w.extend(std::iter::repeat_n(0.0f32, CH));
+    }
+    w.extend(std::iter::repeat_n(weight_val, 16 * CH));
+    w.push(0.0);
+    w.push(0.02);
+    assert_eq!(w.len(), num);
+    w
+}
+
+/// Builds a synthetically-weighted A2 model.
+fn build_soak_a2<const CH: usize>(weight_val: f32) -> WaveNetA2<CH> {
+    let weights = a2_synth_weights::<CH>(weight_val);
+    let mut model = WaveNetA2::<CH>::new();
+    model.set_weights(&weights).expect("A2 set_weights failed");
+    model
+}
+
+/// Soak Test: A2-Full silence processing — 10M frames.
+#[test]
+#[ignore]
+fn test_a2_full_silence_soak() {
+    let mut model = build_soak_a2::<8>(0.01);
+    model.prewarm();
+    let input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    let num_frames = 10_000_000;
+    let mut processed = 0;
+    let mut min_val = 0.0f32;
+    let mut max_val = 0.0f32;
+
+    let start = Instant::now();
+    while processed < num_frames {
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
+        for &v in &output {
+            assert!(v.is_finite(), "A2-Full NaN/Inf after {} frames", processed);
+            assert!(
+                (-2.0..=2.0).contains(&v),
+                "A2-Full diverged: {} after {} frames",
+                v,
+                processed
+            );
+            min_val = min_val.min(v);
+            max_val = max_val.max(v);
+        }
+        processed += 64;
+    }
+    let duration = start.elapsed();
+    println!("--- A2-Full Silence Soak ---");
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
+    println!("Min output: {}", min_val);
+    println!("Max output: {}", max_val);
+}
+
+/// Soak Test: A2-Lite silence processing — 10M frames.
+#[test]
+#[ignore]
+fn test_a2_lite_silence_soak() {
+    let mut model = build_soak_a2::<3>(0.01);
+    model.prewarm();
+    let input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    let num_frames = 10_000_000;
+    let mut processed = 0;
+    let mut min_val = 0.0f32;
+    let mut max_val = 0.0f32;
+
+    let start = Instant::now();
+    while processed < num_frames {
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
+        for &v in &output {
+            assert!(v.is_finite(), "A2-Lite NaN/Inf after {} frames", processed);
+            assert!(
+                (-2.0..=2.0).contains(&v),
+                "A2-Lite diverged: {} after {} frames",
+                v,
+                processed
+            );
+            min_val = min_val.min(v);
+            max_val = max_val.max(v);
+        }
+        processed += 64;
+    }
+    let duration = start.elapsed();
+    println!("--- A2-Lite Silence Soak ---");
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
+    println!("Min output: {}", min_val);
+    println!("Max output: {}", max_val);
+}
+
+/// Soak Test: A2-Full white noise processing — 10M frames.
+#[test]
+#[ignore]
+fn test_a2_full_noise_soak() {
+    let mut model = build_soak_a2::<8>(0.01);
+    model.prewarm();
+    let mut input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    let mut pcg = SimplePcg::new(42);
+    let num_frames = 10_000_000;
+    let mut processed = 0;
+    let mut min_val = 0.0f32;
+    let mut max_val = 0.0f32;
+
+    let start = Instant::now();
+    while processed < num_frames {
+        for v in &mut input {
+            *v = pcg.next_f32();
+        }
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
+        for &v in &output {
+            assert!(
+                v.is_finite(),
+                "A2-Full NaN/Inf under noise after {} frames",
+                processed
+            );
+            min_val = min_val.min(v);
+            max_val = max_val.max(v);
+        }
+        processed += 64;
+    }
+    let duration = start.elapsed();
+    println!("--- A2-Full Noise Soak ---");
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
+    println!("Min output: {}", min_val);
+    println!("Max output: {}", max_val);
+}
+
+/// Soak Test: A2-Lite white noise processing — 10M frames.
+#[test]
+#[ignore]
+fn test_a2_lite_noise_soak() {
+    let mut model = build_soak_a2::<3>(0.01);
+    model.prewarm();
+    let mut input = vec![0.0f32; 64];
+    let mut output = vec![0.0f32; 64];
+    let mut pcg = SimplePcg::new(1337);
+    let num_frames = 10_000_000;
+    let mut processed = 0;
+    let mut min_val = 0.0f32;
+    let mut max_val = 0.0f32;
+
+    let start = Instant::now();
+    while processed < num_frames {
+        for v in &mut input {
+            *v = pcg.next_f32();
+        }
+        model.process(
+            std::hint::black_box(&input),
+            std::hint::black_box(&mut output),
+        );
+        for &v in &output {
+            assert!(
+                v.is_finite(),
+                "A2-Lite NaN/Inf under noise after {} frames",
+                processed
+            );
+            min_val = min_val.min(v);
+            max_val = max_val.max(v);
+        }
+        processed += 64;
+    }
+    let duration = start.elapsed();
+    println!("--- A2-Lite Noise Soak ---");
+    println!("Duration: {:?}", duration);
+    println!("Frames processed: {}", processed);
+    println!("Min output: {}", min_val);
+    println!("Max output: {}", max_val);
 }

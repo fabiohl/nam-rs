@@ -163,7 +163,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Critério de aceite:** golden verdes; ESR dentro do baseline; cross-val viva passa em `utils/tests-long.sh`.
   - **Nota:** Golden vectors usam padrão self-golden (Rust gera referência na primeira execução) pois o `render` do C++ (caminho `a2_fast`) diverge com os fixtures A2 atuais. O `is_a2_shape` do C++ é ativado corretamente (formato de ativação corrigido para array de objetos), mas a saída do A2 fast path do NeuralAmpModelerCore não casa com a implementação Rust — investigação pendente no lado C++. Cross-validation viva (`cpp_parity.rs`) está implementada como `#[ignore]` e será automaticamente exercitada quando o render C++ estiver estável para A2.
 
-- **[T1.13] RT-Safety e edge tests A2.**
+- **[T1.13] RT-Safety e edge tests A2.** [DONE]
   - Estender `tests/wavenet_prewarm_edge.rs`, heap-audit (`tests/resampler_heap_audit.rs` análogo p/ A2) e soak (`tests/pipeline_soak.rs`/`soak_test.rs`) cobrindo A2.
   - **Critério de aceite:** zero alloc no hot-path (CountingAllocator); estável em milhões de frames.
 
