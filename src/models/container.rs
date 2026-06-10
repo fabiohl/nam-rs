@@ -11,11 +11,20 @@
 //! This implements the official NAM `SlimmableContainer` architecture
 //! (registered since file version 0.7.0). It is the format used by the
 //! mainstream A2 distribution (nano + standard bundle).
+//!
+//! ## Crossfade
+//!
+//! Submodel switching uses a linear crossfade (32 ms) to prevent audible
+//! clicks. During the transition, input is processed through both submodels
+//! and outputs are blended linearly. The scratch buffer is pre-allocated
+//! (set_max_buffer_size) for zero alloc on the hot path.
 
 use std::cmp::Ordering;
 
 use super::slimmable::SlimmableModel;
 use super::{NamModel, StaticModel};
+
+const CROSSFADE_DURATION_MS: f32 = 32.0;
 
 /// A bundle of pre-trained submodels selected by a quality threshold.
 ///
@@ -30,6 +39,10 @@ use super::{NamModel, StaticModel};
 pub struct ContainerModel {
     submodels: Vec<(f32, Box<StaticModel>)>,
     active_index: usize,
+    pending_index: Option<usize>,
+    crossfade_elapsed: usize,
+    crossfade_duration: usize,
+    scratch_buffer: Vec<f32>,
     sample_rate: u32,
     max_buffer_size: usize,
 }
@@ -62,12 +75,19 @@ impl ContainerModel {
         }
 
         let active_index = submodels.len() - 1;
+        let crossfade_duration =
+            (CROSSFADE_DURATION_MS / 1000.0 * sample_rate as f32).round() as usize;
+        let default_buf = 4096usize;
 
         let mut container = Self {
             submodels,
             active_index,
+            pending_index: None,
+            crossfade_elapsed: 0,
+            crossfade_duration: crossfade_duration.max(1),
+            scratch_buffer: vec![0.0f32; default_buf],
             sample_rate,
-            max_buffer_size: 0,
+            max_buffer_size: default_buf,
         };
 
         container.prewarm(4096);
@@ -80,9 +100,32 @@ impl ContainerModel {
         &self.submodels
     }
 
+    /// Mutable access to submodels (for testing purposes only).
+    pub fn submodels_mut(&mut self) -> &mut [(f32, Box<StaticModel>)] {
+        &mut self.submodels
+    }
+
     /// Returns the index of the currently active submodel.
     pub fn active_index(&self) -> usize {
         self.active_index
+    }
+
+    /// Sets the active submodel index directly, bypassing crossfade (testing only).
+    pub fn set_active_index(&mut self, idx: usize) {
+        assert!(idx < self.submodels.len());
+        self.active_index = idx;
+        self.pending_index = None;
+        self.crossfade_elapsed = 0;
+    }
+
+    /// Returns the index of the pending submodel during crossfade, if any.
+    pub fn pending_index(&self) -> Option<usize> {
+        self.pending_index
+    }
+
+    /// Returns `true` if a crossfade is in progress.
+    pub fn is_crossfading(&self) -> bool {
+        self.pending_index.is_some()
     }
 
     /// Returns the sample rate used to validate submodels.
@@ -93,16 +136,36 @@ impl ContainerModel {
     pub(crate) fn active(&self) -> &StaticModel {
         &self.submodels[self.active_index].1
     }
-
-    pub(crate) fn active_mut(&mut self) -> &mut StaticModel {
-        &mut self.submodels[self.active_index].1
-    }
 }
 
 impl NamModel for ContainerModel {
     #[inline(always)]
     fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        self.active_mut().process(input, output);
+        let n = input.len();
+
+        if let Some(pending_idx) = self.pending_index {
+            let active_idx = self.active_index;
+
+            self.submodels[pending_idx]
+                .1
+                .process(input, &mut self.scratch_buffer[..n]);
+            self.submodels[active_idx].1.process(input, output);
+
+            let t = (self.crossfade_elapsed as f32 / self.crossfade_duration as f32).min(1.0);
+            let one_minus_t = 1.0 - t;
+            for (o, &s) in output.iter_mut().zip(self.scratch_buffer[..n].iter()) {
+                *o = *o * one_minus_t + s * t;
+            }
+
+            self.crossfade_elapsed += n;
+            if self.crossfade_elapsed >= self.crossfade_duration {
+                self.active_index = pending_idx;
+                self.pending_index = None;
+                self.crossfade_elapsed = 0;
+            }
+        } else {
+            self.submodels[self.active_index].1.process(input, output);
+        }
     }
 
     fn prewarm(&mut self, num_samples: usize) {
@@ -114,6 +177,9 @@ impl NamModel for ContainerModel {
     fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) {
         self.sample_rate = sample_rate;
         self.max_buffer_size = max_buffer_size;
+        self.scratch_buffer.resize(max_buffer_size, 0.0);
+        self.crossfade_duration =
+            (CROSSFADE_DURATION_MS / 1000.0 * sample_rate as f32).round() as usize;
         for (_, model) in &mut self.submodels {
             model.reset(sample_rate, max_buffer_size);
         }
@@ -121,6 +187,7 @@ impl NamModel for ContainerModel {
 
     fn set_max_buffer_size(&mut self, max_buf: usize) {
         self.max_buffer_size = max_buf;
+        self.scratch_buffer.resize(max_buf, 0.0);
         for (_, model) in &mut self.submodels {
             model.set_max_buffer_size(max_buf);
         }
@@ -142,14 +209,26 @@ impl SlimmableModel for ContainerModel {
             }
         }
 
-        if next == self.active_index {
+        if next == self.active_index && self.pending_index.is_none() {
+            return;
+        }
+
+        if self.pending_index == Some(next) {
             return;
         }
 
         self.submodels[next]
             .1
             .reset(self.sample_rate, self.max_buffer_size);
-        self.active_index = next;
+
+        self.scratch_buffer.resize(self.max_buffer_size, 0.0);
+
+        if let Some(idx) = self.pending_index {
+            self.active_index = idx;
+        }
+
+        self.pending_index = Some(next);
+        self.crossfade_elapsed = 0;
     }
 }
 

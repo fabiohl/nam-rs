@@ -255,7 +255,8 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Mapear os estados de `src/dsp/adaptive.rs` (Full→Reduced→Minimal) para a seleção de submodelo (A2-Full ↔ A2-Lite), usando os limiares de P99/budget já monitorados pela telemetria (`src/dsp/telemetry.rs`).
   - **Critério de aceite:** sob carga simulada, o engine migra Full→Lite e retorna por histerese, sem realocar.
 
-- **[T3.4] *Crossfade* sem cliques na troca.**
+- **[T3.4] *Crossfade* sem cliques na troca.** [DONE]
+  - Implementado crossfade linear de 32 ms no `ContainerModel::process` com blend progressivo entre saídas dos submodelos ativo e pendente. Buffer scratch pré-alocado (zero alloc no hot-path). `configure_adaptive_model` atualizado para sempre chamar `set_slimmable_size` (defer só para `set_effective_layers`). Teste de continuidade confirma redução de 60% no step relativo vs troca abrupta.
   - Reusar `src/dsp/smoother.rs`/lógica de *crossfade* da `adaptive.rs` para transição suave entre submodelos.
   - **Critério de aceite:** ausência de descontinuidade audível (teste de energia/continuidade no ponto de troca).
 

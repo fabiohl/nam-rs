@@ -24,23 +24,22 @@ fn configure_adaptive_model(
         return false;
     }
 
-    // Hold effective layers at the previous level while crossfading.
-    // The model structural change is deferred until the crossfade completes,
-    // preventing audible discontinuities from abrupt layer count changes.
-    if adaptive.is_crossfading() {
-        return false;
-    }
+    let hold_layers = adaptive.is_crossfading();
 
     match adaptive.state() {
         AdaptiveState::Full => {
             if let Some(m) = model_l {
                 let layers = m.layer_count();
-                m.set_effective_layers(layers);
+                if !hold_layers {
+                    m.set_effective_layers(layers);
+                }
                 m.set_slimmable_size(adaptive.slimmable_size());
             }
             if let Some(m) = model_r {
                 let layers = m.layer_count();
-                m.set_effective_layers(layers);
+                if !hold_layers {
+                    m.set_effective_layers(layers);
+                }
                 m.set_slimmable_size(adaptive.slimmable_size());
             }
             false
@@ -49,7 +48,9 @@ fn configure_adaptive_model(
             if let Some(m) = model_l.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
                 let effective = adaptive.wavenet_effective_layers(layers);
-                m.set_effective_layers(effective);
+                if !hold_layers {
+                    m.set_effective_layers(effective);
+                }
             }
             if let Some(m) = model_l {
                 m.set_slimmable_size(adaptive.slimmable_size());
@@ -57,7 +58,9 @@ fn configure_adaptive_model(
             if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
                 let effective = adaptive.wavenet_effective_layers(layers);
-                m.set_effective_layers(effective);
+                if !hold_layers {
+                    m.set_effective_layers(effective);
+                }
             }
             if let Some(m) = model_r {
                 m.set_slimmable_size(adaptive.slimmable_size());
@@ -72,7 +75,9 @@ fn configure_adaptive_model(
             if let Some(m) = model_l.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
                 let effective = adaptive.wavenet_effective_layers(layers);
-                m.set_effective_layers(effective);
+                if !hold_layers {
+                    m.set_effective_layers(effective);
+                }
             }
             if let Some(m) = model_l {
                 m.set_slimmable_size(adaptive.slimmable_size());
@@ -80,7 +85,9 @@ fn configure_adaptive_model(
             if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
                 let effective = adaptive.wavenet_effective_layers(layers);
-                m.set_effective_layers(effective);
+                if !hold_layers {
+                    m.set_effective_layers(effective);
+                }
             }
             if let Some(m) = model_r {
                 m.set_slimmable_size(adaptive.slimmable_size());
