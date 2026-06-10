@@ -141,7 +141,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Atualizar `src/loader/loaded_model_pair.rs` (topologia/`weights_layout`) e `src/loader/build.rs` (calibração de ganhos via `input_level_dbu`/`loudness`, prewarm ≥ 2048 amostras) para A2.
   - **Critério de aceite:** `--model A2.nam` no standalone roda com telemetria; ganhos calibrados.
 
-- **[T1.9] Aposentar `WavenetA2Placeholder`.**
+- **[T1.9] Aposentar `WavenetA2Placeholder`.** [DONE]
   - Remover `src/models/a2/placeholder.rs`, a variante `WavenetA2` placeholder e o flag `RT_STATUS_A2_PLACEHOLDER`. Atualizar `tests/loader_a2_compat.rs` e `tests/a2_placeholder_interface.rs` para validar **inferência real**.
   - **Critério de aceite:** suíte verde sem o placeholder; nenhum caminho emite silêncio para A2 válido.
 

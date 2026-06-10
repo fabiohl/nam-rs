@@ -139,10 +139,6 @@ impl<'a> NamClapProcessor<'a> {
         model_r: Option<Box<crate::models::DynamicModel>>,
         new_resampler: Box<crate::dsp::resampler::NamResampler>,
     ) {
-        self.shared
-            .cold
-            .rt_status
-            .clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
         if let Some(old_l) = std::mem::replace(&mut self.model_l, model_l) {
             self.push_to_gc(GcItem::Model(old_l));
         }

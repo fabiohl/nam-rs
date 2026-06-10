@@ -48,14 +48,6 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
-    // 1.5. A2 PLACEHOLDER MODEL
-    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER) {
-        log::info!(
-            "{} A2 model unsupported — bypass active. The actual implementation is under development.",
-            "⚠️".yellow()
-        );
-    }
-
     // 2. RATE CHANGE (Sample Rate):
     // Warns when the audio server (PipeWire) changes the sampling frequency
     // (e.g. changed from 44.100 to 48.000 beats per second).

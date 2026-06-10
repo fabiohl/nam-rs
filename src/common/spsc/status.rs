@@ -25,8 +25,6 @@ pub const RT_STATUS_IS_FADING: u64 = 1 << 6;
 pub const RT_STATUS_MODEL_LOAD_FAILED: u64 = 1 << 7;
 /// Flag indicating that a heap allocation occurred on the RT thread (detected by heap-audit).
 pub const RT_STATUS_HEAP_ALLOC: u64 = 1 << 8;
-/// Flag indicating that an A2 placeholder model is active (silent bypass).
-pub const RT_STATUS_A2_PLACEHOLDER: u64 = 1 << 9;
 /// Flag indicating that the RT callback should pause DSP processing until
 /// the resampler is replaced (during hot-plug or sample rate change).
 pub const RT_STATUS_RESAMP_SWAP_PENDING: u64 = 1 << 10;
@@ -59,7 +57,7 @@ pub const RT_STATUS_DEGRADE_MINIMAL: u64 = 1 << 13;
 /// | 6 | `IS_FADING` | Gate transitioning (Fading In/Out) |
 /// | 7 | `MODEL_LOAD_FAILED` | Model load failure on RT thread |
 /// | 8 | `HEAP_ALLOC` | Heap allocation detected on RT thread |
-/// | 9 | `A2_PLACEHOLDER` | A2 placeholder model active (silent bypass) |
+/// | 9 | ... | ... |
 /// | 10 | `RESAMP_SWAP_PENDING` | RT callback paused awaiting resampler swap |
 /// | 11 | `HUGEPAGE_OK` | Huge-page allocation confirmed active |
 /// | 12 | `DEGRADE_REDUCED` | Soft-degrade active — Reduced mode |

@@ -2081,14 +2081,12 @@ fn test_reject_keras_legacy_format() {
     println!("Keras Legacy format correctly rejected via build_model().");
 }
 
-/// Architectural Fallback Validation: Non-Tanh Activation in WaveNet → A2 Fallback.
+/// Architectural Validation: Non-Tanh Activation in WaveNet with unrecognized shape.
 ///
-/// Historically, NAM supported only Tanh. The emergence of custom activations
-/// (ReLU, SiLU) in community models requires the engine to identify these variants
-/// as "WaveNet A2" (or future v0.6+). This test ensures the dispatcher does not break
-/// when encountering "ReLU", redirecting to the compatibility placeholder.
+/// Models with non-Tanh activations that do not match any known A2 or A1 topology
+/// must return a clear error (not a silent bypass or panic).
 #[test]
-fn test_accept_a2_activation_with_fallback() {
+fn test_reject_unrecognized_activation_with_clear_error() {
     let synthetic_json = r#"{
         "version": "0.5.0",
         "architecture": "WaveNet",
@@ -2110,17 +2108,16 @@ fn test_accept_a2_activation_with_fallback() {
     }"#;
 
     let model_data = parse_nam_json(synthetic_json).expect("Failed to parse synthetic JSON");
-
-    // The dispatcher must NO LONGER fail, but instead return WavenetA2 variant via fallback
-    let model = build_model(&model_data)
-        .expect("Dispatcher failed to load model with ReLU (should have fallen back to A2)");
-
+    let result = build_model(&model_data);
     assert!(
-        matches!(*model, nam_rs::models::DynamicModel::WavenetA2(_)),
-        "Expected DynamicModel::WavenetA2 due to ReLU activation"
+        result.is_err(),
+        "Unrecognized shape with non-Tanh activation must return error"
     );
-
-    println!("Non-Tanh activation (ReLU) correctly routed to A2 fallback.");
+    let err = format!("{}", result.err().unwrap());
+    assert!(
+        err.contains("not recognized"),
+        "Error should mention topology not being recognized: {err}",
+    );
 }
 
 /// Test 18: LSTM 1x40 and 2x24 parity — static vs dynamic with synthetic models.

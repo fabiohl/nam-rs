@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! A2 Placeholder Interface Tests.
+//! A2 Interface Tests.
 //!
 //! Validates that the Rust A2 constants mirror `a2_fast.h` exactly,
-//! that `WavenetA2Placeholder` stores and reports channels correctly,
 //! and that `is_a2_shape` accepts valid A2 topologies while rejecting
 //! non-A2 shapes.
+//!
+//! Real A2 inference is validated by golden tests (see Sprint 1.4).
 
 use nam_rs::loader::nam_json::{
     NamConfig, NamLayerConfig, NamModelData, WeightsLayout, get_wavenet_topology, is_a2_shape,
 };
-use nam_rs::models::NamModel;
 use nam_rs::models::a2::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
-    A2_VALID_CHANNELS, WavenetA2Placeholder,
+    A2_VALID_CHANNELS,
 };
 
 // =============================================================================
@@ -55,37 +55,7 @@ fn test_a2_constants_match_cpp_reference() {
 }
 
 // =============================================================================
-// 2. WavenetA2Placeholder stores and reports channels correctly
-// =============================================================================
-
-#[test]
-fn test_placeholder_stores_channels() {
-    let model8 = WavenetA2Placeholder::new(8);
-    assert_eq!(model8.channels, 8);
-
-    let model3 = WavenetA2Placeholder::new(3);
-    assert_eq!(model3.channels, 3);
-}
-
-#[test]
-fn test_placeholder_default_channels_zero() {
-    let model = WavenetA2Placeholder::default();
-    assert_eq!(model.channels, 0);
-}
-
-#[test]
-fn test_placeholder_outputs_silence() {
-    let mut model = WavenetA2Placeholder::new(8);
-    let input = [1.0f32; 64];
-    let mut output = [1.0f32; 64];
-    model.process(&input, &mut output);
-    for &s in output.iter() {
-        assert_eq!(s, 0.0, "A2 placeholder must output silence");
-    }
-}
-
-// =============================================================================
-// 3. is_a2_shape accepts valid A2 topologies, rejects others
+// 2. is_a2_shape accepts valid A2 topologies, rejects others
 // =============================================================================
 
 /// Helper: creates NamModelData for testing is_a2_shape.

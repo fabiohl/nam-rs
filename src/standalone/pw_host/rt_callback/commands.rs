@@ -53,7 +53,6 @@ pub fn receive_commands(
                 }
 
                 let mut old_models: [Option<Box<crate::models::DynamicModel>>; 2] = [None, None];
-                rt_status_for_process.clear_flag(crate::common::spsc::RT_STATUS_A2_PLACEHOLDER);
                 if let Some(old) = std::mem::replace(active_model_l, model_l) {
                     old_models[0] = Some(old);
                 }

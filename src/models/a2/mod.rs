@@ -4,7 +4,7 @@
 //! A2 Architecture.
 //!
 //! Este módulo isola componentes da arquitetura A2 (v0.6+), incluindo
-//! ativações, FiLM, gating, parâmetros e o placeholder atual.
+//! ativações, FiLM, gating, parâmetros e os modelos A2.
 //!
 //! ## Status
 //!
@@ -13,8 +13,6 @@
 //! A2-Full/Lite (`Épico 1`) utilizará um subconjunto destes structs;
 //! os campos de FiLM, gating (`Gated`/`Blended`), `head1x1`, `bottleneck ≠ channels`
 //! e ativações heterogêneas estão reservados para o motor A2 geral (futuro).
-//!
-//! `WavenetA2Placeholder` será aposentado ao final do Épico 1 (T1.9).
 
 pub mod activations;
 pub mod conv1d;
@@ -25,8 +23,6 @@ pub mod head;
 pub mod layer;
 pub mod model;
 pub mod params;
-pub mod placeholder;
-
 /// Public re-exports for easy access.
 pub use activations::{ActivationFn, ActivationType};
 pub use conv1d::A2Conv1d;
@@ -39,7 +35,6 @@ pub use params::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
     A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,
 };
-pub use placeholder::WavenetA2Placeholder;
 
 use crate::models::NamModel;
 use crate::models::sealed;

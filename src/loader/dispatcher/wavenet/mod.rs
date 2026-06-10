@@ -5,7 +5,7 @@ use crate::loader::nam_json::{
     NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape,
 };
 use crate::models::DynamicModel;
-use crate::models::a2::{WaveNetA2, WavenetA2Placeholder};
+use crate::models::a2::WaveNetA2;
 use anyhow::bail;
 use log::info;
 
@@ -96,25 +96,21 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
             Ok(Box::new(DynamicModel::WavenetNano(Box::new(model))))
         }
         None => {
-            // ── A2 heuristic fallback (SemVer / activation-based) ──
             if data.is_wavenet_a2() {
-                let channels = data
-                    .config
-                    .layers
-                    .first()
-                    .and_then(|l| l.channels)
-                    .map(|c| c as u8)
-                    .unwrap_or(0);
-                info!(
-                    "[Dispatcher] WaveNet A2 model detected (SemVer heuristic, channels={}). Using temporary placeholder...",
-                    channels
+                bail!(
+                    "WaveNet A2 model detected (v{}) but architecture shape not recognized — \
+                         channels or dilations do not match any known A2 or A1 topology. \
+                         Real A2 inference requires channels=3 (Lite) or 8 (Full) with the \
+                         canonical 23-layer dilation pattern.",
+                    data.config
+                        .layers
+                        .first()
+                        .and_then(|l| l.channels)
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "?".to_string())
                 );
-                return Ok(Box::new(DynamicModel::WavenetA2(Box::new(
-                    WavenetA2Placeholder::new(channels),
-                ))));
             }
 
-            // ── Dynamic fallback (pending Sprint 1.5 removal) ──
             dynamic::build_wavenet_dynamic(data)
         }
     }

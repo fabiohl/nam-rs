@@ -4,13 +4,12 @@
 
 use std::time::Instant;
 
-use super::super::colors::{COL_AMBER, COL_BORDER, COL_PANEL, COL_TEXT};
+use super::super::colors::{COL_BORDER, COL_PANEL, COL_TEXT};
 use super::super::state::UiState;
 use super::metadata::{draw_metadata_strings, update_metadata_cache};
 use super::telemetry::{draw_telemetry_strings, update_telemetry_state};
 
 use crate::clap::plugin::NamClapShared;
-use crate::common::spsc;
 
 pub(crate) fn draw_zone5_status_bar(
     ui: &mut egui::Ui,
@@ -30,11 +29,6 @@ pub(crate) fn draw_zone5_status_bar(
             None
         };
 
-        let a2_placeholder = shared
-            .cold
-            .rt_status
-            .check_flag(spsc::RT_STATUS_A2_PLACEHOLDER);
-
         let is_toast_active = if let Some(expiration) = state.toast_expiration {
             if Instant::now() < expiration {
                 ui.ctx().request_repaint();
@@ -53,9 +47,6 @@ pub(crate) fn draw_zone5_status_bar(
         let spacing = 3.0;
 
         let mut lines = 1;
-        if a2_placeholder {
-            lines += 1;
-        }
         if has_meta {
             lines += 1;
         }
@@ -74,25 +65,6 @@ pub(crate) fn draw_zone5_status_bar(
 
             update_telemetry_state(state, shared);
             draw_telemetry_strings(ui, state, shared, accent_color);
-
-            if a2_placeholder {
-                ui.horizontal(|ui| {
-                    let warn_font = egui::FontId::proportional(9.0);
-                    let galley = ui.painter().layout_no_wrap(
-                        "⚠ A2 model not supported — bypass active".to_string(),
-                        warn_font.clone(),
-                        COL_AMBER,
-                    );
-                    let available_width = ui.available_width();
-                    let x_center = (available_width - galley.rect.width()).max(0.0) / 2.0;
-                    ui.add_space(x_center);
-                    ui.label(
-                        egui::RichText::new("⚠ A2 model not supported — bypass active")
-                            .font(warn_font)
-                            .color(COL_AMBER),
-                    );
-                });
-            }
 
             if is_toast_active {
                 ui.horizontal(|ui| {

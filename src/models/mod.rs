@@ -76,8 +76,6 @@ pub enum DynamicModel {
     WavenetNano(Box<wavenet::WaveNetModel<4, 3, 2>>),
     /// WaveNet Dynamic (used as fallback for non-standard architectures).
     WavenetDyn(Box<wavenet::WaveNetDynModel>),
-    /// WaveNet A2 (Placeholder — will be retired in T1.9).
-    WavenetA2(Box<a2::WavenetA2Placeholder>),
     /// WaveNet A2 Full (8 channels, real inference).
     WavenetA2Full(Box<a2::WaveNetA2<8>>),
     /// WaveNet A2 Lite (3 channels, real inference).

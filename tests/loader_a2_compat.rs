@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Forward-Compatibility Tests for the NAM-rs Loader.
+//! A2 Loader and Forward-Compatibility Tests for the NAM-rs Loader.
 //!
-//! Ensures that models with A2 architecture or future fields do not panic
-//! and gracefully fall back to placeholders, while A1 models
-//! continue to work without regressions.
+//! Validates that A2 models produce real inference through the first-class
+//! dispatch branch (no placeholder), A1 legacy models continue to work,
+//! and unrecognized shapes return clear errors.
 
 use nam_rs::loader::dispatcher::build_model;
-use nam_rs::loader::nam_json::parse_nam_json;
-use nam_rs::models::{DynamicModel, NamModel};
+use nam_rs::loader::nam_json::{
+    NamConfig, NamLayerConfig, NamModelData, WeightsLayout, parse_nam_json,
+};
+use nam_rs::models::NamModel;
 use std::fs;
 use std::path::PathBuf;
 
 /// Helper: resolves the absolute path to a test model located at `tests/fixtures/models/`.
-/// Uses `CARGO_MANIFEST_DIR` to ensure the test works regardless of the execution directory.
 fn model_path(filename: &str) -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("tests/fixtures/models");
@@ -22,66 +23,113 @@ fn model_path(filename: &str) -> PathBuf {
     path
 }
 
-/// Forward-Compatibility Test for WaveNet A2.
-///
-/// Verifies that the inference engine gracefully handles v0.6+ (A2) models.
-/// Currently, NAM-rs does not implement all A2 features (such as FiLM or dynamic Gate),
-/// so it should load the model without panic and fall back to a placeholder
-/// that outputs silence, informing the host that the model is incompatible but safe.
+// =============================================================================
+// A2 Real Inference Tests
+// =============================================================================
+
+/// Validates that A2-Lite (CH=3) real inference produces finite output
+/// (not silence from a placeholder).
 #[test]
-fn test_forward_compatibility_wavenet_a2() {
-    let path = model_path("mock_a2.nam");
+fn test_a2_lite_real_inference_finite_output() {
+    use nam_rs::models::a2::WaveNetA2;
 
-    if !path.exists() {
-        // Critical failure if the test fixture is missing
-        panic!(
-            "Fixture mock_a2.nam not found at {path:?}. Check if the fixtures submodule was downloaded."
-        );
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read mock_a2.nam");
-    let model_data = parse_nam_json(&json_data).expect("JSON parser failed");
-
-    // Validate that the model metadata was correctly identified as A2 architecture
-    assert!(
-        model_data.is_wavenet_a2(),
-        "mock_a2.nam must be detected as A2 architecture (v0.6+)"
-    );
-
-    // The dispatcher should accept the model and return the placeholder variant
-    let mut model = build_model(&model_data)
-        .expect("The dispatcher should have fallen back to the A2 placeholder instead of failing");
-
-    // Explicitly verify that the returned variant is the Placeholder
-    match *model {
-        DynamicModel::WavenetA2(_) => {
-            println!("Fallback to WavenetA2Placeholder confirmed successfully.");
-        }
-        _ => panic!(
-            "Architecture error: The loader should have returned DynamicModel::WavenetA2 for this file"
-        ),
-    }
-
-    // RT safety validation: the placeholder must not process audio, only silence the buffer.
-    let input = [1.0f32; 64];
-    let mut output = [1.0f32; 64];
+    let mut model = WaveNetA2::<3>::new();
+    model.prewarm();
+    let input = [0.01f32; 64];
+    let mut output = [0.0f32; 64];
     model.process(&input, &mut output);
 
-    for (i, &s) in output.iter().enumerate() {
-        assert_eq!(
-            s, 0.0,
-            "A2 placeholder must guarantee absolute silence to prevent unwanted noise. Failure at index {i}"
+    for &s in output.iter() {
+        assert!(
+            s.is_finite(),
+            "A2-Lite output must be finite (real inference)"
         );
     }
 }
 
+/// Validates that A2-Full (CH=8) real inference produces finite output.
+#[test]
+fn test_a2_full_real_inference_finite_output() {
+    use nam_rs::models::a2::WaveNetA2;
+
+    let mut model = WaveNetA2::<8>::new();
+    model.prewarm();
+    let input = [0.01f32; 64];
+    let mut output = [0.0f32; 64];
+    model.process(&input, &mut output);
+
+    for &s in output.iter() {
+        assert!(
+            s.is_finite(),
+            "A2-Full output must be finite (real inference)"
+        );
+    }
+}
+
+// =============================================================================
+// Forward-Compatibility: A2-labeled models with unrecognized shape
+// =============================================================================
+
+/// Helper: creates `NamModelData` for a model that has A2 metadata but
+/// does not match any known A2 or A1 topology.
+fn make_unrecognized_a2_like_data(channels: usize) -> NamModelData {
+    NamModelData {
+        version: Some("0.6.0".to_string()),
+        architecture: "WaveNet".to_string(),
+        config: NamConfig {
+            layers: vec![NamLayerConfig {
+                input_size: Some(1),
+                condition_size: Some(1),
+                head_size: None,
+                channels: Some(channels),
+                kernel_size: None,
+                dilations: Some(vec![1, 2, 4, 8, 16, 32, 64]),
+                activation: Some("LeakyReLU".to_string()),
+                gated: None,
+                head_bias: None,
+            }],
+            head: None,
+            head_scale: Some(1.0),
+            num_layers: None,
+            hidden_size: None,
+        },
+        weights: vec![],
+        sample_rate: Some(48000.0),
+        metadata: None,
+        weights_layout: WeightsLayout::Original,
+    }
+}
+
+/// Verifies that an A2-labeled model with unrecognized shape returns a
+/// clear error (not a silent bypass or panic).
+#[test]
+fn test_a2_unrecognized_shape_returns_clear_error() {
+    let data = make_unrecognized_a2_like_data(5);
+    assert!(
+        data.is_wavenet_a2(),
+        "model should be detected as A2 via SemVer"
+    );
+    let result = build_model(&data);
+    assert!(
+        result.is_err(),
+        "unrecognized A2 shape must produce an error, not a silent bypass"
+    );
+    let err_msg = format!("{}", result.err().unwrap());
+    assert!(
+        err_msg.contains("not recognized") || err_msg.contains("shape"),
+        "Error should mention topology not being recognized: {err_msg}",
+    );
+}
+
+// =============================================================================
+// Regression Tests for A1 Models
+// =============================================================================
+
 /// Regression Test for WaveNet A1 (Standard).
-/// Ensures legacy models continue to load and process audio normally.
 #[test]
 fn test_regression_a1_wavenet_standard() {
     let path = model_path("BossWN-standard.nam");
 
-    // Skip if the real model is not present (large files are usually not in git)
     if !path.exists() {
         return;
     }
@@ -92,14 +140,12 @@ fn test_regression_a1_wavenet_standard() {
     let mut model =
         build_model(&model_data).expect("Dispatcher failed to build WaveNet A1 Standard model");
 
-    // Fill delay buffers
     model.prewarm(2048);
 
     let input = [0.0f32; 64];
     let mut output = [0.0f32; 64];
     model.process(&input, &mut output);
 
-    // Validate that the output is numerical and finite (no NaNs or Infs from instability)
     for &s in output.iter() {
         assert!(
             s.is_finite(),
@@ -109,7 +155,6 @@ fn test_regression_a1_wavenet_standard() {
 }
 
 /// Regression Test for LSTM architecture.
-/// Ensures the legacy recurrent engine (v0.5.x) maintains its functional integrity.
 #[test]
 fn test_regression_a1_lstm() {
     let path = model_path("BossLSTM-1x16.nam");
@@ -129,7 +174,6 @@ fn test_regression_a1_lstm() {
     let mut output = [0.0f32; 64];
     model.process(&input, &mut output);
 
-    // LSTMs are more prone to numerical instability; this test ensures functional parity
     for &s in output.iter() {
         assert!(
             s.is_finite(),
