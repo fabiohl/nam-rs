@@ -795,12 +795,15 @@ fn test_a2_full_prewarm_no_undeflow() {
 
     let rf = a2_rf();
     // Verify no NaN/Inf in internal buffers after prewarm.
-    for &v in model.layer_buffer.iter() {
-        assert!(
-            v.is_finite(),
-            "NaN/Inf in A2-Full layer_buffer after prewarm (RF={})",
-            rf
-        );
+    for buf in &model.layer_buffers {
+        let len = buf.size();
+        for &v in buf[..len].iter() {
+            assert!(
+                v.is_finite(),
+                "NaN/Inf in A2-Full layer_buffer after prewarm (RF={})",
+                rf
+            );
+        }
     }
     for &v in model.head_accum.iter() {
         assert!(
@@ -818,12 +821,15 @@ fn test_a2_lite_prewarm_no_undeflow() {
     model.prewarm();
 
     let rf = a2_rf();
-    for &v in model.layer_buffer.iter() {
-        assert!(
-            v.is_finite(),
-            "NaN/Inf in A2-Lite layer_buffer after prewarm (RF={})",
-            rf
-        );
+    for buf in &model.layer_buffers {
+        let len = buf.size();
+        for &v in buf[..len].iter() {
+            assert!(
+                v.is_finite(),
+                "NaN/Inf in A2-Lite layer_buffer after prewarm (RF={})",
+                rf
+            );
+        }
     }
     for &v in model.head_accum.iter() {
         assert!(

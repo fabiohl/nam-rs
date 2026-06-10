@@ -39,6 +39,7 @@ use super::conv1d_ch8::A2Conv1dCh8;
 use super::head::A2HeadConv;
 use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
+use crate::dsp::mirror_buf::MirroredBuffer;
 use crate::math::common::{
     AlignedVec, InstructionSet, PrefetchFn, SimdMathConfig, quantize_weight,
 };
@@ -63,6 +64,18 @@ pub const fn a2_receptive_field() -> usize {
 ///
 /// `CH` = channel count (3 for Lite/Nano, 8 for Full/Standard).
 ///
+/// ## Ring buffer architecture (T2.3)
+///
+/// Each layer's history is a power-of-2 `MirroredBuffer<f32>` that provides
+/// branchless reads via virtual-memory mirroring. The `buffer_start` pointer
+/// advances through the 2× virtual mapping; when it approaches the 2× boundary,
+/// it rewinds by subtracting `ring_size`. Reads at `buffer_start - offset` are
+/// always valid because the mirrored mapping maps `[S, 2S)` → `[0, S)`.
+///
+/// The head accumulator uses a plain `AlignedVec` with pow2 mask (`& ring_mask`)
+/// for branchless ring access — no MirroredBuffer needed since the head reads
+/// are already mask-based.
+///
 /// ## Source of truth
 /// - `a2_fast.cpp`: class `A2FastModel` (members, process, prewarm, reset)
 /// - `detail.h`: `LayerArray::Process` (per-layer sequence)
@@ -77,7 +90,7 @@ pub struct WaveNetA2<const CH: usize> {
     /// Head convolution (K=16 over skip-connection accumulator, bias, head_scale).
     pub head_conv: Option<A2HeadConv>,
 
-    /// Head accumulator ring buffer (skip-connection sum, column-major).
+    /// Head accumulator ring buffer (skip-connection sum, column-major, pow2 size).
     pub head_accum: AlignedVec<f32>,
 
     /// Write position in `head_accum` (in columns, wraps via `head_ring_mask`).
@@ -86,20 +99,18 @@ pub struct WaveNetA2<const CH: usize> {
     /// Ring mask for `head_accum` (pow2 ring, mask = capacity - 1).
     pub head_ring_mask: usize,
 
-    /// Combined history arena for all 23 layers' linear ring buffers (column-major).
-    pub layer_buffer: AlignedVec<f32>,
+    /// Per-layer history buffers: one MirroredBuffer per layer (23 total).
+    /// Each buffer provides 2× virtual mapping for branchless ring access (T2.3).
+    pub layer_buffers: Vec<MirroredBuffer<f32>>,
 
-    /// Offsets into `layer_buffer` for each layer's ring (byte-based for direct slicing).
-    pub layer_offsets: Vec<usize>,
+    /// Per-layer ring sizes in elements (pow2 page-aligned). For rewind: `start -= ring_size`.
+    pub layer_ring_sizes: Vec<usize>,
 
-    /// Per-layer linear ring capacities (in columns).
-    pub layer_ring_capacities: Vec<usize>,
-
-    /// Per-layer max lookback = (kernel-1)*dilation.
+    /// Per-layer maximum dilation lookback = (kernel-1) * dilation.
     pub layer_lookbacks: Vec<usize>,
 
-    /// Per-layer write positions in their ring buffers (in columns).
-    pub layer_write_poses: Vec<usize>,
+    /// Per-layer buffer starts (advanced with each written frame, rewound near 2× boundary).
+    pub layer_buffer_starts: Vec<usize>,
 
     /// Inter-layer data buffer: `CH × max_buffer_size` f32, reused across layers.
     /// Each layer reads from it, then writes its l1x1 residual back (in-place update).
@@ -115,32 +126,31 @@ pub struct WaveNetA2<const CH: usize> {
 impl<const CH: usize> WaveNetA2<CH> {
     /// Creates a new uninitialized WaveNet A2 model.
     ///
-    /// Allocates ring buffers sized for the architecture and computes
-    /// the receptive field. Weight-bearing fields start empty and are
-    /// populated by the weight loader (T1.6).
+    /// Allocates ring buffers (MirroredBuffer per layer, pow2 head accumulator)
+    /// sized for the architecture and computes the receptive field.
+    /// Weight-bearing fields start empty and are populated by the weight loader (T1.6).
     pub fn new() -> Self {
         let rf = a2_receptive_field();
         let max_buf = WAVENET_MAX_NUM_FRAMES;
 
-        // Head ring buffer: powers-of-2 above total (for efficient wrapping).
         let head_ring_size = (rf + max_buf + 1).next_power_of_two();
         let head_ring_mask = head_ring_size - 1;
 
-        // Compute per-layer linear ring sizes and total arena.
-        let mut layer_offsets = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut layer_ring_capacities = Vec::with_capacity(A2_NUM_LAYERS);
+        let mut layer_buffers = Vec::with_capacity(A2_NUM_LAYERS);
+        let mut layer_ring_sizes = Vec::with_capacity(A2_NUM_LAYERS);
         let mut layer_lookbacks = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut layer_write_poses = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut arena_total = 0usize;
+        let mut layer_buffer_starts = Vec::with_capacity(A2_NUM_LAYERS);
+
         for i in 0..A2_NUM_LAYERS {
             let max_lookback = (A2_KERNEL_SIZES[i] - 1) * A2_DILATIONS[i];
-            // Linear ring: 2*max_lookback + max_buffer_size columns (RING_MODE == 0).
-            let cap = 2 * max_lookback + max_buf;
-            layer_offsets.push(arena_total);
-            layer_ring_capacities.push(cap);
-            layer_lookbacks.push(max_lookback);
-            layer_write_poses.push(max_lookback); // initial write_pos = max_lookback
-            arena_total += CH * cap;
+            let cap = max_lookback + max_buf + 1;
+            let mb = MirroredBuffer::<f32>::new(cap * CH)
+                .expect("MirroredBuffer allocation for A2 layer ring failed");
+            let ring_size = mb.size();
+            layer_buffers.push(mb);
+            layer_ring_sizes.push(ring_size);
+            layer_lookbacks.push(max_lookback * CH);
+            layer_buffer_starts.push(ring_size);
         }
 
         Self {
@@ -148,15 +158,12 @@ impl<const CH: usize> WaveNetA2<CH> {
             rechannel_w: AlignedVec::new(CH, 0u16),
             head_conv: None,
             head_accum: AlignedVec::new(head_ring_size * CH, 0.0f32),
-            // Initialized to `rf` so the head conv ring has a fully zeroed lookback
-            // of `rf` samples from the start — matching the prewarm semantics.
             head_write_pos: rf,
             head_ring_mask,
-            layer_buffer: AlignedVec::new(arena_total, 0.0f32),
-            layer_offsets,
-            layer_ring_capacities,
+            layer_buffers,
+            layer_ring_sizes,
             layer_lookbacks,
-            layer_write_poses,
+            layer_buffer_starts,
             layer_in: AlignedVec::new(CH * max_buf, 0.0f32),
             receptive_field_size: rf,
             max_buffer_size: max_buf,
@@ -183,34 +190,28 @@ impl<const CH: usize> WaveNetA2<CH> {
         self.max_buffer_size = max_buf;
         let rf = self.receptive_field_size;
 
-        // Recompute per-layer linear ring sizes.
-        let mut layer_offsets = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut layer_ring_capacities = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut layer_lookbacks = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut layer_write_poses = Vec::with_capacity(A2_NUM_LAYERS);
-        let mut arena_total = 0usize;
+        self.layer_buffers.clear();
+        self.layer_ring_sizes.clear();
+        self.layer_lookbacks.clear();
+        self.layer_buffer_starts.clear();
+
         for i in 0..A2_NUM_LAYERS {
             let max_lookback = (A2_KERNEL_SIZES[i] - 1) * A2_DILATIONS[i];
-            let cap = 2 * max_lookback + max_buf;
-            layer_offsets.push(arena_total);
-            layer_ring_capacities.push(cap);
-            layer_lookbacks.push(max_lookback);
-            layer_write_poses.push(max_lookback);
-            arena_total += CH * cap;
+            let cap = max_lookback + max_buf + 1;
+            let mb = MirroredBuffer::<f32>::new(cap * CH)
+                .expect("MirroredBuffer reallocation for A2 layer ring failed");
+            let ring_size = mb.size();
+            self.layer_buffers.push(mb);
+            self.layer_ring_sizes.push(ring_size);
+            self.layer_lookbacks.push(max_lookback * CH);
+            self.layer_buffer_starts.push(ring_size);
         }
-
-        self.layer_buffer = AlignedVec::new(arena_total, 0.0f32);
-        self.layer_offsets = layer_offsets;
-        self.layer_ring_capacities = layer_ring_capacities;
-        self.layer_lookbacks = layer_lookbacks;
-        self.layer_write_poses = layer_write_poses;
 
         self.layer_in = AlignedVec::new(CH * max_buf, 0.0f32);
 
         let head_ring_size = (rf + max_buf + 1).next_power_of_two();
         self.head_ring_mask = head_ring_size - 1;
         self.head_accum = AlignedVec::new(head_ring_size * CH, 0.0f32);
-        // Reset to `rf` so the head conv ring invariant is preserved after reallocation.
         self.head_write_pos = rf;
     }
 
@@ -219,6 +220,18 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// Processes `input` samples and writes to `output`.
     /// Requires layers to be populated via `set_weights` (T1.6).
     /// Outputs silence until weights are loaded.
+    ///
+    /// ## Ring buffer architecture (T2.3)
+    ///
+    /// Layer history uses `MirroredBuffer<f32>` with power-of-2 sizes.
+    /// Writes go to unmasked positions in the 2× virtual mapping; reads are
+    /// branchless because the mirror maps `[S, 2S)` → `[0, S)`. When
+    /// `buffer_start` approaches the 2× boundary, it rewinds by subtracting
+    /// `ring_size`. No `copy_within` / memmove on the hot path.
+    ///
+    /// Head accumulator uses a plain `AlignedVec` with pow2 mask (`& ring_mask`).
+    /// A pre-write memmove preserves `K-1` tail samples when the ring is about
+    /// to overflow, keeping the write-positions unmasked for vectorized stores.
     ///
     /// # Block Size Contract
     ///
@@ -234,15 +247,11 @@ impl<const CH: usize> WaveNetA2<CH> {
 
         output[..num_frames].fill(0.0);
 
-        // If layers/history haven't been loaded yet (pre-T1.6), just track positions.
         if self.layers.is_empty() {
             self.head_write_pos += num_frames;
             return;
         }
 
-        // Guard against host misbehaviour (violates block-size contract).
-        // In production the host must not send more frames than negotiated;
-        // in debug builds this triggers immediately to expose the violation.
         debug_assert!(
             num_frames <= self.max_buffer_size,
             "process: input ({num_frames}) > max_buffer_size ({}) — host violated block-size contract",
@@ -251,18 +260,14 @@ impl<const CH: usize> WaveNetA2<CH> {
         let nf = num_frames.min(self.max_buffer_size);
         let ch = CH;
 
-        // 1. Rechannel and prepare cond buffer from input.
-        // layer_in[c + f*CH] = rechannel_w[c] * input[f]
-        let rechannel = &self.rechannel_w;
         for (f, x) in input.iter().take(nf).enumerate() {
             let base = f * ch;
             for c in 0..ch {
-                let rw = half::f16::from_bits(rechannel[c]).to_f32();
+                let rw = half::f16::from_bits(self.rechannel_w[c]).to_f32();
                 self.layer_in[base + c] = rw * x;
             }
         }
 
-        // 2. Head ring management: rewind if overflow.
         let head_keep = A2_HEAD_KERNEL_SIZE - 1;
         let head_cap = self.head_ring_mask + 1;
         if self.head_write_pos + nf > head_cap {
@@ -274,42 +279,33 @@ impl<const CH: usize> WaveNetA2<CH> {
         }
         let head_wp = self.head_write_pos;
 
-        // 3. Per-layer forward pass.
         for li in 0..A2_NUM_LAYERS {
             let is_first = li == 0;
             let is_last = li == A2_NUM_LAYERS - 1;
-            let cap = self.layer_ring_capacities[li];
+            let ring_size = self.layer_ring_sizes[li];
             let lookback = self.layer_lookbacks[li];
-            let wp = self.layer_write_poses[li];
-            let offset = self.layer_offsets[li];
+            let max_lookback_cols = lookback / ch;
+            let bs = self.layer_buffer_starts[li];
 
-            // Linear ring rewind if overflow (RING_MODE == 0).
-            let wp = if wp + nf > cap {
-                let keep = lookback;
-                let keep_bytes = keep * ch;
-                let src_start = offset + (wp - keep) * ch;
-                // memmove the last `keep` columns to the start of this layer's ring.
-                self.layer_buffer
-                    .copy_within(src_start..src_start + keep_bytes, offset);
-                lookback
-            } else {
-                wp
-            };
+            debug_assert!(bs >= lookback);
+            debug_assert!(bs + nf * ch <= ring_size * 2);
 
-            // Ring-write: copy layer_in into this layer's ring at wp.
-            let ring_dst = offset + wp * ch;
-            self.layer_buffer[ring_dst..ring_dst + nf * ch]
-                .copy_from_slice(&self.layer_in[..nf * ch]);
-
-            self.layer_write_poses[li] = wp + nf;
-
-            // Phase B: process frames (immutable borrow of layer_buffer).
             {
-                let history = &self.layer_buffer[offset..offset + (wp + nf) * ch];
+                let buf = &mut self.layer_buffers[li];
+                buf[bs..bs + nf * ch].copy_from_slice(&self.layer_in[..nf * ch]);
+            }
+
+            if bs + nf * ch + self.max_buffer_size * ch > ring_size * 2 {
+                self.layer_buffer_starts[li] = bs + nf * ch - ring_size;
+            } else {
+                self.layer_buffer_starts[li] = bs + nf * ch;
+            }
+
+            {
+                let history = &self.layer_buffers[li][bs - lookback..bs + nf * ch];
                 let layer = &self.layers[li];
 
                 if let Some(ch8_conv) = &layer.ch8_conv {
-                    // ── CH=8 optimized path: T=4 tiled tap-major with broadcast-FMA (T2.2) ──
                     unsafe {
                         super::conv1d_ch8::layer_forward_ch8_block(
                             ch8_conv,
@@ -317,7 +313,7 @@ impl<const CH: usize> WaveNetA2<CH> {
                             &layer.l1x1_w,
                             &layer.l1x1_b,
                             history,
-                            wp, // frame_start = wp (first frame of this block after ring-write)
+                            max_lookback_cols,
                             nf,
                             &input[..nf],
                             &mut self.head_accum,
@@ -330,15 +326,13 @@ impl<const CH: usize> WaveNetA2<CH> {
                     continue;
                 }
 
-                // ── Default path: frame-by-frame (CH=3 A2-Lite and fallback) ──
                 for (f, x) in input.iter().take(nf).enumerate() {
                     let head_col = head_wp + f;
                     let lin_slice = &mut self.layer_in[f * ch..(f + 1) * ch];
                     let mut frame_z = [0.0f32; 8];
                     let z_slice = &mut frame_z[..ch];
 
-                    // frame_idx = wp + f (post-ring-write, so wp points to the start of this block).
-                    let frame_idx = wp + f;
+                    let frame_idx = max_lookback_cols + f;
 
                     unsafe {
                         layer
@@ -380,10 +374,8 @@ impl<const CH: usize> WaveNetA2<CH> {
             }
         }
 
-        // 4. Advance head write position.
         self.head_write_pos = (head_wp + nf) & self.head_ring_mask;
 
-        // 5. Head convolution → output.
         if let Some(ref head) = self.head_conv {
             head.process(
                 &self.head_accum,
@@ -398,25 +390,16 @@ impl<const CH: usize> WaveNetA2<CH> {
     /// Pre-warms the model by filling the receptive field with silence.
     #[cold]
     pub fn prewarm(&mut self) {
-        let rf = self.receptive_field_size;
-
-        // Zero the entire layer history arena.
-        self.layer_buffer.fill(0.0);
-
-        // Reset each layer's write position to max_lookback.
-        for i in 0..A2_NUM_LAYERS {
-            let max_lookback = (A2_KERNEL_SIZES[i] - 1) * A2_DILATIONS[i];
-            self.layer_write_poses[i] = max_lookback;
+        for buf in &mut self.layer_buffers {
+            let len = buf.size();
+            buf[..len].fill(0.0);
         }
-
-        // Zero inter-layer buffer.
+        for i in 0..A2_NUM_LAYERS {
+            self.layer_buffer_starts[i] = self.layer_ring_sizes[i];
+        }
         self.layer_in.fill(0.0);
-
-        // Fill head accumulator with zeros and restore the ring invariant:
-        // `head_write_pos = rf` so that the head conv's K-1 lookback reads
-        // only the zeroed region, simulating `rf` frames of silent prewarm.
         self.head_accum.fill(0.0);
-        self.head_write_pos = rf;
+        self.head_write_pos = self.receptive_field_size;
     }
 
     /// Resets internal state for a new sample rate and max buffer size.
@@ -721,13 +704,18 @@ mod tests {
     #[test]
     fn test_wavenet_a2_prewarm_fills_buffers() {
         let mut model = WaveNetA2::<3>::new();
-        // Pre-fill with non-zero to verify overwrite.
-        model.layer_buffer.fill(0.5);
+        for buf in &mut model.layer_buffers {
+            let len = buf.size();
+            buf[..len].fill(0.5);
+        }
         model.head_accum.fill(0.5);
         model.layer_in.fill(0.5);
         model.prewarm();
-        for v in model.layer_buffer.iter() {
-            assert!(v.abs() < 1e-9, "layer_buffer not zeroed");
+        for buf in &model.layer_buffers {
+            let len = buf.size();
+            for &v in buf[..len].iter() {
+                assert!(v.abs() < 1e-9, "layer_buffer not zeroed");
+            }
         }
         for v in model.head_accum.iter() {
             assert!(v.abs() < 1e-9, "head_accum not zeroed");
@@ -741,39 +729,48 @@ mod tests {
     #[test]
     fn test_wavenet_a2_reset_reallocates_and_prewarms() {
         let mut model = WaveNetA2::<3>::new();
-        let orig_layer_len = model.layer_buffer.len();
+        let orig_rings: Vec<usize> = model.layer_ring_sizes.clone();
         model.reset(48000, 128);
-        assert!(model.layer_buffer.len() > orig_layer_len);
-        assert_eq!(model.max_buffer_size, 128);
-        for v in model.layer_buffer.iter() {
-            assert!(v.abs() < 1e-9, "reset layer_buffer not zeroed");
+        assert!(model.max_buffer_size == 128);
+        for (i, &size) in model.layer_ring_sizes.iter().enumerate() {
+            assert!(size >= orig_rings[i], "layer ring {} shrank", i);
+        }
+        for buf in &model.layer_buffers {
+            let len = buf.size();
+            for &v in buf[..len].iter() {
+                assert!(v.abs() < 1e-9, "reset layer_buffer not zeroed");
+            }
         }
     }
 
     #[test]
     fn test_wavenet_a2_set_max_buffer_size_noop_on_smaller() {
         let mut model = WaveNetA2::<3>::new();
-        let orig_len = model.layer_buffer.len();
+        let orig_sizes: Vec<usize> = model.layer_ring_sizes.clone();
         model.set_max_buffer_size(32);
-        assert_eq!(model.layer_buffer.len(), orig_len);
+        assert_eq!(model.layer_ring_sizes, orig_sizes);
         assert_eq!(model.max_buffer_size, WAVENET_MAX_NUM_FRAMES);
     }
 
     #[test]
     fn test_wavenet_a2_set_max_buffer_size_grows() {
         let mut model = WaveNetA2::<8>::new();
-        let orig_len = model.layer_buffer.len();
+        let orig_sizes: Vec<usize> = model.layer_ring_sizes.clone();
         model.set_max_buffer_size(256);
-        assert!(model.layer_buffer.len() > orig_len);
-        assert_eq!(model.max_buffer_size, 256);
-        // Verify per-layer offsets increase monotonically.
-        assert_eq!(model.layer_offsets.len(), A2_NUM_LAYERS);
-        for i in 1..A2_NUM_LAYERS {
-            assert!(model.layer_offsets[i] > model.layer_offsets[i - 1]);
-        }
-        assert_eq!(model.layer_ring_capacities.len(), A2_NUM_LAYERS);
+        assert!(model.max_buffer_size == 256);
+        assert_eq!(model.layer_ring_sizes.len(), A2_NUM_LAYERS);
+        assert_eq!(model.layer_buffers.len(), A2_NUM_LAYERS);
         assert_eq!(model.layer_lookbacks.len(), A2_NUM_LAYERS);
-        assert_eq!(model.layer_write_poses.len(), A2_NUM_LAYERS);
+        assert_eq!(model.layer_buffer_starts.len(), A2_NUM_LAYERS);
+        // At least one ring should have grown.
+        let any_grew = orig_sizes
+            .iter()
+            .zip(model.layer_ring_sizes.iter())
+            .any(|(a, b)| b > a);
+        assert!(
+            any_grew,
+            "at least one ring should grow with larger max_buffer_size"
+        );
     }
 
     #[test]
@@ -782,12 +779,12 @@ mod tests {
         assert_eq!(model.channels(), 3);
         assert!(model.receptive_field_size > 0);
         assert!(!model.head_accum.is_empty());
-        assert!(!model.layer_buffer.is_empty());
+        assert!(!model.layer_buffers.is_empty());
         assert_eq!(model.rechannel_w.len(), 3);
-        assert_eq!(model.layer_offsets.len(), A2_NUM_LAYERS);
-        assert_eq!(model.layer_ring_capacities.len(), A2_NUM_LAYERS);
+        assert_eq!(model.layer_buffers.len(), A2_NUM_LAYERS);
+        assert_eq!(model.layer_ring_sizes.len(), A2_NUM_LAYERS);
         assert_eq!(model.layer_lookbacks.len(), A2_NUM_LAYERS);
-        assert_eq!(model.layer_write_poses.len(), A2_NUM_LAYERS);
+        assert_eq!(model.layer_buffer_starts.len(), A2_NUM_LAYERS);
         assert_eq!(model.layer_in.len(), 3 * model.max_buffer_size);
     }
 

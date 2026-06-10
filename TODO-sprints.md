@@ -212,10 +212,11 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Critério de aceite:** golden A2-Full verde; ganho mensurável.
   - **Status:** ✅ Implementado em `src/models/a2/conv1d_ch8.rs`. Layout col-major-per-tap (`A2Conv1dCh8`). Processamento em blocos com SIMD para conv, bias, mixin, LeakyReLU, head e l1x1. T=4 tiles com vfmadd231ps (broadcast-FMA). Golden A2-Full self regenerado e verde (MSE=0.0 entre runs). Testes de paridade AVX2 vs escalar para K=6, K=15, layer forward completo, edge cases (1 frame, T=4 tail). O peso também foi permutado na carga (T2.4).
 
-- **[T2.3] Ring `pow2` + *tail-mirror* para dilations e head.**
+- **[T2.3] Ring `pow2` + *tail-mirror* para dilations e head.** ✅ [DONE]
   - Consolidar buffers de histórico com máscara `pow2` e espelhamento de cauda (leitura *branchless*), reusando/estendendo `src/dsp/mirror_buf.rs`.
   - **Fonte de verdade:** `a2_fast.cpp:335-344,771-798` (ring pow2 + memmove rewind).
   - **Critério de aceite:** sem ramos no caminho de leitura; golden verde.
+  - **Status:** ✅ Per-layer `MirroredBuffer<f32>` substitui o arena plano `AlignedVec`. Cada buffer de camada usa mapeamento virtual 2× para acesso sem ramos (`buffer_start - lookback` sempre válido). O `copy_within` (memmove) no hot-path foi eliminado; a posição de escrita avança e retrocede subtraindo `ring_size` quando se aproxima do limite 2×. Head já usava anel pow2 com `& ring_mask` (leitura sem ramos); o memmove do head (preserva K-1 amostras da cauda) foi mantido para permitir escritas vetorizadas sem máscara. Golden A2-Lite e A2-Full self verde (MSE=0.0, bitwise idêntico). 319 testes lib + integração passam.
 
 - **[T2.4] Permutação de pesos para layout SIMD.** ✅ [DONE — incluso em T2.2]
   - No `set_weights` (T1.6), permutar Conv1D de *row-major-per-tap* para *col-major-per-tap* (acesso amigável a SIMD), feito **uma vez** na carga.
