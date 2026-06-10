@@ -31,6 +31,7 @@ pub struct ContainerModel {
     submodels: Vec<(f32, Box<StaticModel>)>,
     active_index: usize,
     sample_rate: u32,
+    max_buffer_size: usize,
 }
 
 impl ContainerModel {
@@ -62,11 +63,16 @@ impl ContainerModel {
 
         let active_index = submodels.len() - 1;
 
-        Ok(Self {
+        let mut container = Self {
             submodels,
             active_index,
             sample_rate,
-        })
+            max_buffer_size: 0,
+        };
+
+        container.prewarm(4096);
+
+        Ok(container)
     }
 
     /// Returns the list of `(max_value, StaticModel ref)` for diagnostics.
@@ -100,19 +106,28 @@ impl NamModel for ContainerModel {
     }
 
     fn prewarm(&mut self, num_samples: usize) {
-        self.active_mut().prewarm(num_samples);
+        for (_, model) in &mut self.submodels {
+            model.prewarm(num_samples);
+        }
     }
 
     fn reset(&mut self, sample_rate: u32, max_buffer_size: usize) {
-        self.active_mut().reset(sample_rate, max_buffer_size);
+        self.sample_rate = sample_rate;
+        self.max_buffer_size = max_buffer_size;
+        for (_, model) in &mut self.submodels {
+            model.reset(sample_rate, max_buffer_size);
+        }
     }
 
     fn set_max_buffer_size(&mut self, max_buf: usize) {
-        self.active_mut().set_max_buffer_size(max_buf);
+        self.max_buffer_size = max_buf;
+        for (_, model) in &mut self.submodels {
+            model.set_max_buffer_size(max_buf);
+        }
     }
 
     fn prewarm_samples(&self) -> usize {
-        0
+        self.active().prewarm_samples()
     }
 }
 
@@ -131,7 +146,9 @@ impl SlimmableModel for ContainerModel {
             return;
         }
 
-        self.submodels[next].1.reset(self.sample_rate, 4096);
+        self.submodels[next]
+            .1
+            .reset(self.sample_rate, self.max_buffer_size);
         self.active_index = next;
     }
 }

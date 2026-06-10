@@ -244,7 +244,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `NAM/slimmable.h`, `NAM/container.h:18-64`, `NAM/container.cpp:149` (registro/parser).
   - **Critério de aceite:** `slimmable_container.nam` (exemplo) carrega; ordena submodelos por `max_value` ascendente; último cobre `>= 1.0`.
 
-- **[T3.2] `ContainerModel` (despacho por threshold).**
+- **[T3.2] `ContainerModel` (despacho por threshold).** [DONE]
   - Criar `src/models/container.rs`: guarda N submodelos pré-construídos; `set_slimmable_size(val)` seleciona índice por threshold e chama `reset()` no submodelo ativo; `process()` despacha ao ativo. **Todos** os submodelos pré-alocados/prewarmed na carga (zero alloc no switch).
   - **Fonte de verdade:** `NAM/container.cpp` (dispatch + seleção).
   - **Critério de aceite:** RT-safe na troca; golden por submodelo (A2-Full e A2-Lite) reaproveitando fixtures do Épico 1.
@@ -296,30 +296,6 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Critério de aceite:** golden verde; zero alloc; bench documentado.
 
 ---
-
-## ÉPICO 6 (FUTURO) — `SlimmableWavenet` (channel slicing de rede única) 🔮
-
-> **Adiado por sequenciamento, não descartado.**
-> É arquitetura **oficial** do NAMCore (registrada, file version 0.7.0) e direção declarada da NAM ("uma captura que se escala sozinha, sem versão *lite* separada").
-> Será priorizado quando modelos `.nam` com o campo `"slimmable"` (rede única) tornarem-se comuns na distribuição mainstream — hoje o A2 mainstream usa o `SlimmableContainer`.
-
-- **[T6.1] Parser `slimmable` por *layer-array*.**
-  - Ler o campo `"slimmable": {"method": "slice_channels_uniform", "kwargs": {"allowed_channels": [...]}}`.
-  - **Fonte de verdade:** `NAM/wavenet/slimmable.cpp` (`SlimmableWavenetConfig`),
-    `example_models/slimmable_wavenet.nam`.
-
-- **[T6.2] Extração de subconjunto de pesos por contagem de canais.**
-  - Portar `extract_conv1d`/`extract_conv1x1`/`compute_slim_bottleneck` (mapeamento ratio→canais, fatiamento das primeiras `slim_out×slim_in` linhas/colunas).
-  - **Fonte de verdade:** `NAM/wavenet/slimmable.cpp:21-90` (helpers de extração).
-
-- **[T6.3] *Staging* RT-safe de troca de modelo.**
-  - Reconstrução do WaveNet no *off-thread* e publicação via slot atômico (`Acquire`/`Release`), instalado antes do DSP — análogo ao `std::atomic<shared_ptr>` do C++, usando o padrão SPSC/GC do nam-rs (sem alloc/drop na audio thread).
-  - **Fonte de verdade:** `NAM/wavenet/slimmable.h:64-92` (staging atômico).
-
-- **[T6.4] Golden + parity.**
-  - Gerar fixtures slimmable (`allowed_channels`) e validar cada ponto de operação contra o C++ (`cpp_parity`, `#[ignore]`).
-  - **Critério de aceite:** golden verde em todos os níveis de canal; troca RT-safe (heap-audit zero) sob soak.
-
 ---
 
 ## ÉPICO 99 — Documentação e Fechamento 📚
@@ -340,6 +316,31 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - `pesquisador-inovador.md`
   - `refatora-rust.md`
   - `refatora-doc.md`
+
+---
+
+## ÉPICO 100 (FUTURO) — `SlimmableWavenet` (channel slicing de rede única) 🔮
+
+> **Adiado por sequenciamento, não descartado.**
+> É arquitetura **oficial** do NAMCore (registrada, file version 0.7.0) e direção declarada da NAM ("uma captura que se escala sozinha, sem versão *lite* separada").
+> Será priorizado quando modelos `.nam` com o campo `"slimmable"` (rede única) tornarem-se comuns na distribuição mainstream — hoje o A2 mainstream usa o `SlimmableContainer`.
+
+- **[T100.1] Parser `slimmable` por *layer-array*.**
+  - Ler o campo `"slimmable": {"method": "slice_channels_uniform", "kwargs": {"allowed_channels": [...]}}`.
+  - **Fonte de verdade:** `NAM/wavenet/slimmable.cpp` (`SlimmableWavenetConfig`),
+    `example_models/slimmable_wavenet.nam`.
+
+- **[T100.2] Extração de subconjunto de pesos por contagem de canais.**
+  - Portar `extract_conv1d`/`extract_conv1x1`/`compute_slim_bottleneck` (mapeamento ratio→canais, fatiamento das primeiras `slim_out×slim_in` linhas/colunas).
+  - **Fonte de verdade:** `NAM/wavenet/slimmable.cpp:21-90` (helpers de extração).
+
+- **[T100.3] *Staging* RT-safe de troca de modelo.**
+  - Reconstrução do WaveNet no *off-thread* e publicação via slot atômico (`Acquire`/`Release`), instalado antes do DSP — análogo ao `std::atomic<shared_ptr>` do C++, usando o padrão SPSC/GC do nam-rs (sem alloc/drop na audio thread).
+  - **Fonte de verdade:** `NAM/wavenet/slimmable.h:64-92` (staging atômico).
+
+- **[T100.4] Golden + parity.**
+  - Gerar fixtures slimmable (`allowed_channels`) e validar cada ponto de operação contra o C++ (`cpp_parity`, `#[ignore]`).
+  - **Critério de aceite:** golden verde em todos os níveis de canal; troca RT-safe (heap-audit zero) sob soak.
 
 ---
 

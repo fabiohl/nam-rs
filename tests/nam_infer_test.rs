@@ -33,7 +33,8 @@ use nam_rs::dsp::adaptive::AdaptiveCompute;
 use nam_rs::loader::dispatcher::build_model;
 use nam_rs::loader::nam_json::{NamWavenetTopology, get_wavenet_topology, parse_nam_json};
 use nam_rs::math::common::AlignedVec;
-use nam_rs::models::{NamModel, wavenet};
+use nam_rs::models::slimmable::SlimmableModel;
+use nam_rs::models::{NamModel, StaticModel, wavenet};
 use std::fs;
 use std::path::PathBuf;
 
@@ -940,6 +941,204 @@ fn test_golden_vectors_wavenet_a2_lite() {
         "WaveNet A2-Lite (CH=3) self-golden",
         STRESS_SAMPLE_RATE,
     );
+}
+
+// =============================================================================
+// ContainerModel Golden Tests — T3.2
+// =============================================================================
+
+/// Test 8i: Container Golden — A2-Full submodel matches standalone self-golden.
+///
+/// Builds a `ContainerModel` with A2-Full and A2-Lite as submodels,
+/// selects the A2-Full submodel via `set_slimmable_size(0.75)`,
+/// and verifies the output matches the standalone A2-Full self-golden.
+#[test]
+fn test_golden_vectors_container_a2_full() {
+    let full_nam_path = model_path("wavenet_a2_full.nam");
+    let lite_nam_path = model_path("wavenet_a2_lite.nam");
+    if !full_nam_path.exists() || !lite_nam_path.exists() {
+        eprintln!("SKIP: A2 model files not found. Container golden test impossible.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_nam_path).expect("Failed to read A2-Full model");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_nam_path).expect("Failed to read A2-Lite model");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let container = nam_rs::models::container::ContainerModel::new(
+        vec![(0.5, lite_model), (1.0, full_model)],
+        sample_rate,
+    )
+    .expect("Failed to create ContainerModel");
+
+    let mut model = StaticModel::Container(Box::new(container));
+
+    let full_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_full_self.bin");
+
+    if !full_golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_wavenet_a2_full_self.bin not found. Run A2-Full golden test first."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&full_golden_path).expect("Failed to read self-golden for A2-Full");
+
+    if let StaticModel::Container(ref mut c) = model {
+        c.set_slimmable_size(0.75);
+    } else {
+        unreachable!("Expected Container variant");
+    }
+
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&full_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "Container A2-Full (CH=8) self-golden",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8j: Container Golden — A2-Lite submodel matches standalone self-golden.
+///
+/// Builds a `ContainerModel` with A2-Full and A2-Lite as submodels,
+/// selects the A2-Lite submodel via `set_slimmable_size(0.25)`,
+/// and verifies the output matches the standalone A2-Lite self-golden.
+#[test]
+fn test_golden_vectors_container_a2_lite() {
+    let full_nam_path = model_path("wavenet_a2_full.nam");
+    let lite_nam_path = model_path("wavenet_a2_lite.nam");
+    if !full_nam_path.exists() || !lite_nam_path.exists() {
+        eprintln!("SKIP: A2 model files not found. Container golden test impossible.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_nam_path).expect("Failed to read A2-Full model");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_nam_path).expect("Failed to read A2-Lite model");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = lite_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let container = nam_rs::models::container::ContainerModel::new(
+        vec![(0.5, lite_model), (1.0, full_model)],
+        sample_rate,
+    )
+    .expect("Failed to create ContainerModel");
+
+    let mut model = StaticModel::Container(Box::new(container));
+
+    let lite_golden_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/golden_wavenet_a2_lite_self.bin");
+
+    if !lite_golden_path.exists() {
+        eprintln!(
+            "SKIP: golden_wavenet_a2_lite_self.bin not found. Run A2-Lite golden test first."
+        );
+        return;
+    }
+
+    let (input, expected) =
+        read_golden_bin(&lite_golden_path).expect("Failed to read self-golden for A2-Lite");
+
+    if let StaticModel::Container(ref mut c) = model {
+        c.set_slimmable_size(0.25);
+    } else {
+        unreachable!("Expected Container variant");
+    }
+
+    let mut output = vec![0.0f32; input.len()];
+    process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+
+    let (mse_limit, min_snr_db) = topology_thresholds(&lite_data);
+    report_dsp_fidelity(
+        &expected,
+        &output,
+        mse_limit,
+        min_snr_db,
+        None,
+        "Container A2-Lite (CH=3) self-golden",
+        STRESS_SAMPLE_RATE,
+    );
+}
+
+/// Test 8k: ContainerModel switch produces finite output (RT-safety).
+///
+/// Validates that switching between submodels via `set_slimmable_size`
+/// produces finite output (no NaN/Inf) and that the container does not panic
+/// or produce degenerate output after repeated switches.
+#[test]
+fn test_container_switch_rt_safety() {
+    let full_nam_path = model_path("wavenet_a2_full.nam");
+    let lite_nam_path = model_path("wavenet_a2_lite.nam");
+    if !full_nam_path.exists() || !lite_nam_path.exists() {
+        eprintln!("SKIP: A2 model files not found. Container switch test impossible.");
+        return;
+    }
+
+    let full_json = fs::read_to_string(&full_nam_path).expect("Failed to read A2-Full");
+    let full_data = parse_nam_json(&full_json).expect("Failed to parse A2-Full");
+    let full_model = build_model(&full_data).expect("Dispatcher failed for A2-Full");
+
+    let lite_json = fs::read_to_string(&lite_nam_path).expect("Failed to read A2-Lite");
+    let lite_data = parse_nam_json(&lite_json).expect("Failed to parse A2-Lite");
+    let lite_model = build_model(&lite_data).expect("Dispatcher failed for A2-Lite");
+
+    let sample_rate = full_data.sample_rate.map(|s| s as u32).unwrap_or(48000);
+
+    let container = nam_rs::models::container::ContainerModel::new(
+        vec![(0.5, lite_model), (1.0, full_model)],
+        sample_rate,
+    )
+    .expect("Failed to create ContainerModel");
+
+    let mut model = StaticModel::Container(Box::new(container));
+
+    let input = generate_stress_signal_v1();
+    let mut output = vec![0.0f32; input.len()];
+
+    for _ in 0..10 {
+        if let StaticModel::Container(ref mut c) = model {
+            c.set_slimmable_size(0.25);
+        }
+        process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                s.is_finite(),
+                "[Container switch] Non-finite sample after Lite switch at index {i}: {s}"
+            );
+        }
+
+        if let StaticModel::Container(ref mut c) = model {
+            c.set_slimmable_size(0.75);
+        }
+        process_in_blocks(&mut model, &input, &mut output, GOLDEN_BLOCK_SIZE);
+        for (i, &s) in output.iter().enumerate() {
+            assert!(
+                s.is_finite(),
+                "[Container switch] Non-finite sample after Full switch at index {i}: {s}"
+            );
+        }
+    }
+
+    eprintln!("Container switch RT-safety OK — 10 cycles, no NaN/Inf.");
 }
 
 // =============================================================================
