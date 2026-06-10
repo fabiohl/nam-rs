@@ -47,8 +47,6 @@ pub trait NamModel: Send + Sync + sealed::Sealed {
     /// Reallocates internal buffers to support the given maximum block size.
     ///
     /// Models with fixed (const-generic) buffer sizes can use the default no-op.
-    /// Dynamic models (e.g., `WaveNetDynModel`) should reallocate `block_buffer`
-    /// and `head_accum` when `max_buf` exceeds the current capacity.
     ///
     /// Default: no-op (suitable for static models and LSTM).
     fn set_max_buffer_size(&mut self, _max_buf: usize) {}
@@ -74,8 +72,6 @@ pub enum DynamicModel {
     WavenetFeather(Box<wavenet::WaveNetModel<8, 3, 4>>),
     /// WaveNet Nano (4 channels, kernel 3, dilation 2).
     WavenetNano(Box<wavenet::WaveNetModel<4, 3, 2>>),
-    /// WaveNet Dynamic (used as fallback for non-standard architectures).
-    WavenetDyn(Box<wavenet::WaveNetDynModel>),
     /// WaveNet A2 Full (8 channels, real inference).
     WavenetA2Full(Box<a2::WaveNetA2<8>>),
     /// WaveNet A2 Lite (3 channels, real inference).

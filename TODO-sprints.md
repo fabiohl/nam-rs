@@ -171,7 +171,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 > Executar **após** A2 e os 4 modelos-foco estarem validados (Sprints 1.1-1.4), garantindo que nenhum caminho de produção dependa do *fallback* dynamic.
 
-- **[T1.14] Remover WaveNet dynamic.**
+- **[T1.14] Remover WaveNet dynamic.** [DONE]
   - Remover `src/models/wavenet/{model_dyn,layer_dyn,conv1d_dyn,conv1d_dyn_dual,dense_dyn}.rs` (e correlatos), a variante `DynamicModel::WavenetDyn` e `src/loader/dispatcher/wavenet/dynamic.rs` (`build_wavenet_dynamic`).
   - Ajustar `dispatcher/wavenet/mod.rs:68` para retornar **erro de load** em geometria não-catalogada (sem panic, mensagem diagnóstica via `NamDiagnostic`).
   - **Critério de aceite:** `cargo build` limpo; modelos A1-Standard/Lite/Feather/Nano e A2-Full/Lite seguem carregando; `.nam` fora do catálogo falha com erro claro.

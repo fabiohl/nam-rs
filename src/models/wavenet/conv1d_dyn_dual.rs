@@ -7,6 +7,7 @@ use super::conv1d_dyn::Conv1dDyn;
 use crate::math::common::SimdMath;
 
 impl Conv1dDyn {
+    #[cfg(test)]
     #[inline(always)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) unsafe fn process_dual_frame_generic<M: SimdMath, T: ConvInput>(

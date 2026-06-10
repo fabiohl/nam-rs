@@ -255,31 +255,6 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
-/// Measures the overhead of the WaveNet "Dynamic" implementation.
-/// While the standard version uses const generics for fixed sizes, the dynamic
-/// version allows loading any layer configuration at runtime,
-/// serving as a fallback for non-standard models.
-fn bench_wavenet_dynamic_standard(c: &mut Criterion) {
-    use nam_rs::loader::dispatcher::build_wavenet_dynamic;
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossWN-standard.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read WaveNet model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_wavenet_dynamic(&model_data).expect("Dynamic builder failed");
-    model.prewarm(2048);
-    let input = generate_sine_440hz(64);
-    let mut output = vec![0.0f32; 64];
-    c.bench_function("WaveNet_Dynamic_Standard_64samp_48kHz", |b| {
-        b.iter(|| {
-            // Expected to have slightly higher latency than the static version
-            model.process(&input, &mut output);
-        });
-    });
-}
-
 /// Measures the performance of the 1x16 Dynamic LSTM.
 /// Useful for validating the engine in custom training scenarios with
 /// hidden state dimensions outside the standard 8, 16, or 32.
@@ -1118,7 +1093,6 @@ criterion_group!(
     bench_tanh_pade_nr2_256,
     bench_tanh_pade_div_256,
     bench_sigmoid_slice_256,
-    bench_wavenet_dynamic_standard,
     bench_lstm_dynamic_1x16,
     bench_dot_product_avx2_256,
     bench_dot_product_avx2_64,

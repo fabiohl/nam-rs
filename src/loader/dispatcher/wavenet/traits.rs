@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::math::common::{AlignedVec, PrefetchFn};
+use crate::models::wavenet::Conv1dDyn;
 use crate::models::wavenet::{Conv1d, DenseLayer};
-use crate::models::wavenet::{Conv1dDyn, DenseLayerDyn};
 
 /// Output type for convolution weights, unifying `Conv1d<IN,OUT,K>` and `Conv1dDyn`.
 pub(crate) trait ConvWeightsOutput: Sized {
@@ -68,7 +68,7 @@ impl ConvWeightsOutput for Conv1dDyn {
     }
 }
 
-/// Output type for dense layer weights, unifying `DenseLayer<IN,OUT>` and `DenseLayerDyn`.
+/// Output type for dense layer weights, unifying `DenseLayer<IN,OUT>`.
 pub(crate) trait DenseWeightsOutput: Sized {
     fn from_parts(
         weights: AlignedVec<u16>,
@@ -119,44 +119,6 @@ impl<const IN: usize, const OUT: usize> DenseWeightsOutput for DenseLayer<IN, OU
             bias,
             do_bias,
             f32_weights: Some(f32_weights),
-        }
-    }
-}
-
-impl DenseWeightsOutput for DenseLayerDyn {
-    #[inline(always)]
-    fn from_parts(
-        weights: AlignedVec<u16>,
-        bias: AlignedVec<f32>,
-        do_bias: bool,
-        in_size: usize,
-        out_size: usize,
-    ) -> Self {
-        DenseLayerDyn {
-            weights,
-            bias,
-            do_bias,
-            in_size,
-            out_size,
-        }
-    }
-
-    #[inline(always)]
-    fn from_parts_head(
-        weights: AlignedVec<u16>,
-        bias: AlignedVec<f32>,
-        do_bias: bool,
-        in_size: usize,
-        out_size: usize,
-        f32_weights: AlignedVec<f32>,
-    ) -> Self {
-        let _ = f32_weights;
-        DenseLayerDyn {
-            weights,
-            bias,
-            do_bias,
-            in_size,
-            out_size,
         }
     }
 }

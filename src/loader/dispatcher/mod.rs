@@ -35,5 +35,4 @@ pub mod wavenet;
 pub mod weight_cursor;
 
 pub use lstm::build_lstm_dynamic;
-pub use wavenet::build_wavenet_dynamic;
 pub(crate) use weight_cursor::WeightCursor;

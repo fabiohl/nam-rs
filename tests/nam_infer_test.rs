@@ -1181,71 +1181,6 @@ fn test_parity_lstm_static_vs_dynamic() {
     );
 }
 
-/// Test 11: WaveNet parity — static Nano vs dynamic Nano.
-///
-/// Loads `BossWN-nano.nam` (CH=4, K=3, HEAD=2 → Nano profile), builds a
-/// `DynamicModel` via the normal dispatcher (which matches the static Nano topology)
-/// and another forcing the dynamic builder (`build_wavenet_dynamic`).
-/// Both process the same 440 Hz sine wave after prewarm.
-///
-/// **Criterion:** MSE = 0.0 (bitwise identical).
-/// Equivalence is guaranteed because both paths read weights in the same
-/// order (WeightCursor forward-only) and apply the same Conv1d transposition.
-#[test]
-fn test_parity_wavenet_static_vs_dynamic() {
-    use nam_rs::loader::dispatcher::build_wavenet_dynamic;
-
-    let path = model_path("BossWN-nano.nam");
-
-    if !path.exists() {
-        eprintln!("SKIP: BossWN-nano.nam not found at {path:?}. Skipping WaveNet parity.");
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read WaveNet Nano model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-
-    // Static: dispatcher matches Nano → WaveNetModel<4, 3, 2>
-    let mut model_static =
-        build_model(&model_data).expect("Dispatcher failed (static) for WaveNet parity");
-
-    // Dynamic: force dynamic fallback explicitly
-    let mut model_dynamic =
-        build_wavenet_dynamic(&model_data).expect("Dynamic builder failed for WaveNet parity");
-
-    model_static.prewarm(2048);
-    model_dynamic.prewarm(2048);
-
-    let input = generate_sine_440hz(GOLDEN_NUM_SAMPLES);
-    let mut out_static = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-    let mut out_dynamic = vec![0.0f32; GOLDEN_NUM_SAMPLES];
-
-    process_in_blocks(
-        &mut model_static,
-        &input,
-        &mut out_static,
-        GOLDEN_BLOCK_SIZE,
-    );
-    process_in_blocks(
-        &mut model_dynamic,
-        &input,
-        &mut out_dynamic,
-        GOLDEN_BLOCK_SIZE,
-    );
-
-    let mse = compute_mse(&out_static, &out_dynamic);
-    let mae = compute_max_abs_error(&out_static, &out_dynamic);
-
-    println!("[DEBUG] static={:?}", &out_static[0..5]);
-    println!("[DEBUG] dynamic={:?}", &out_dynamic[0..5]);
-    println!("[WaveNet Nano Parity] MSE={mse:.2e}, MaxAbsErr={mae:.2e}");
-
-    assert!(
-        mse <= 1e-7,
-        "WaveNet static vs dynamic — numerical divergence! MSE={mse:.6e}, MaxAbsErr={mae:.6e}"
-    );
-}
-
 // =============================================================================
 // NAMB Parser → Dispatcher E2E Test (T-2)
 // =============================================================================
@@ -2141,67 +2076,6 @@ fn test_lstm_variable_block_sizes() {
             assert!(
                 mse < 1e-7,
                 "Block invariance failed for LSTM: Divergence between bs=1 and bs={} (MSE={})",
-                bs,
-                mse
-            );
-        }
-    }
-}
-
-/// Verifies Block Size independence in the Dynamic WaveNet implementation.
-///
-/// Ensures that dynamic dispatch (which uses flexible memory layouts) maintains
-/// internal state correctly between blocks, allowing the engine to handle
-/// any buffer size (from 1 to 1024 samples) without phase artifacts.
-#[test]
-fn test_wavenet_dynamic_variable_block_sizes() {
-    use nam_rs::loader::dispatcher::build_wavenet_dynamic;
-
-    let path = model_path("BossWN-standard.nam");
-    if !path.exists() {
-        eprintln!("SKIP: BossWN-standard.nam not found.");
-        return;
-    }
-
-    let json_data = fs::read_to_string(&path).expect("Failed to read JSON");
-    let model_data = parse_nam_json(&json_data).expect("Failed in parser");
-
-    let block_sizes = [1, 16, 32, 64, 128, 256, 512];
-    let input = generate_sine_440hz(512);
-    let mut ref_output = vec![0.0f32; 512];
-
-    for &bs in &block_sizes {
-        let mut model =
-            build_wavenet_dynamic(&model_data).expect("Failed to build dynamic WaveNet");
-        model.prewarm(2048);
-
-        let mut output = vec![0.0f32; 512];
-        process_in_blocks(&mut model, &input, &mut output, bs);
-
-        let mut tot_energy = 0.0f64;
-        for &s in &output {
-            assert!(
-                s.is_finite(),
-                "Dynamic WaveNet Block size {} produced non-finite output (NaN/Inf)",
-                bs
-            );
-            tot_energy += (s as f64) * (s as f64);
-        }
-        let rms = (tot_energy / 512.0).sqrt();
-        assert!(
-            rms <= 10.0,
-            "Dynamic WaveNet Block size {} has high RMS: {}",
-            bs,
-            rms
-        );
-
-        if bs == 1 {
-            ref_output.copy_from_slice(&output);
-        } else {
-            let mse = compute_mse(&ref_output, &output);
-            assert!(
-                mse < 1e-7,
-                "Dynamic WaveNet: Divergence between block_size=1 and block_size={} (MSE={})",
                 bs,
                 mse
             );
