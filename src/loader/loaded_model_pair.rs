@@ -41,6 +41,7 @@ impl LoadedModelPair {
     pub fn model_info(&self, path: &Path) -> ModelInfo {
         ModelInfo {
             arch_label: self.architecture.clone(),
+            topology: self.topology.clone(),
             channels: self.model_l.as_ref().map(|m| m.channels()).unwrap_or(0),
             receptive_field: self
                 .model_l

@@ -129,7 +129,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `a2_fast.cpp:196-282` (documenta a ordem), `a2_fast.cpp:264-275` (head + `head_scale` trailing), `generate_weights_a2.py:18-90` (contagem de pesos por bloco).
   - **Critério de aceite:** contagem de pesos consumidos == `weights.len()` (asserção); erro claro (sem panic em runtime RT) se divergir.
 
-### Sprint 1.3 — Loader, dispatch e aposentadoria do placeholder
+### Sprint 1.3 — Loader, dispatch e aposentadoria do placeholder [DONE]
 
 - **[T1.7] Dispatch A2 no loader.** [DONE]
   - Em `src/loader/dispatcher/wavenet/mod.rs`, tornar a A2 um **branch de primeira classe** (não mais *fallback*-após-falha): detectar a forma via `is_a2_shape()` (`src/loader/nam_json/topology.rs:131`) **antes** do match de topologias A1 e construir `WaveNetA2<3>`/`WaveNetA2<8>`. Registrar novas variantes no enum `DynamicModel` (`src/models/mod.rs`) e no dispatch (`src/models/dynamic_model.rs`).
@@ -140,6 +140,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 - **[T1.8] Metadados e par de modelos.** [DONE]
   - Atualizar `src/loader/loaded_model_pair.rs` (topologia/`weights_layout`) e `src/loader/build.rs` (calibração de ganhos via `input_level_dbu`/`loudness`, prewarm ≥ 2048 amostras) para A2.
   - **Critério de aceite:** `--model A2.nam` no standalone roda com telemetria; ganhos calibrados.
+  - **⚠️ Nota pós-auditoria da Sprint 1.3:** O dispatch A2 (`src/loader/dispatcher/wavenet/mod.rs:54-56,66-68`) ignora `data.weights_layout` — usa sempre `set_weights` com transposição interna. Baixo risco: `.nam` sempre usa layout `Original`. Caso `.namb` armazene A2 em `Interleaved4WaveNet`, haveria dupla-transposição. Adiar para quando `.namb` for suportado para A2.
 
 - **[T1.9] Aposentar `WavenetA2Placeholder`.** [DONE]
   - Remover `src/models/a2/placeholder.rs`, a variante `WavenetA2` placeholder e o flag `RT_STATUS_A2_PLACEHOLDER`. Atualizar `tests/loader_a2_compat.rs` e `tests/a2_placeholder_interface.rs` para validar **inferência real**.

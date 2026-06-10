@@ -45,6 +45,7 @@ fn test_diagnostic_bundle_with_mock_provider() {
     let provider = MockSnapshotProvider {
         model: Some(ModelInfo {
             arch_label: "WaveNet".to_string(),
+            topology: "Standard".to_string(),
             channels: 16,
             receptive_field: 2048,
             weights_layout: "Interleaved4WaveNet".to_string(),
@@ -305,6 +306,7 @@ fn test_diagnostic_bundle_path_redaction() {
     let provider = MockSnapshotProvider {
         model: Some(ModelInfo {
             arch_label: "WaveNet".to_string(),
+            topology: "Standard".to_string(),
             channels: 16,
             receptive_field: 2048,
             weights_layout: "Interleaved4WaveNet".to_string(),
@@ -430,6 +432,7 @@ fn test_diagnostic_bundle_regex_roundtrip() {
     let provider = MockSnapshotProvider {
         model: Some(ModelInfo {
             arch_label: "LSTM".to_string(),
+            topology: "1x8".to_string(),
             channels: 8,
             receptive_field: 0,
             weights_layout: "GateMajorLstm".to_string(),

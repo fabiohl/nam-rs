@@ -20,6 +20,8 @@ pub static ACTIVE_MODEL_INFO: RwLock<Option<ModelInfo>> = RwLock::new(None);
 pub struct ModelInfo {
     /// Neural network architecture type (e.g. "WaveNet" or "LSTM").
     pub arch_label: String,
+    /// Model topology variant (e.g. "Standard", "A2-Lite", "1x12").
+    pub topology: String,
     /// Number of channels inside the model.
     pub channels: usize,
     /// Receptive field size of the model.

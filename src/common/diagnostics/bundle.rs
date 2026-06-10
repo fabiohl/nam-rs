@@ -179,11 +179,13 @@ impl DiagnosticBundle {
             };
             block.push_str(&format!(
                 "model.arch={}\n\
+                 model.topology={}\n\
                  model.channels={}\n\
                  model.receptive_field={}\n\
                  model.weights_layout={}\n\
                  model.path_basename={}\n",
                 model.arch_label,
+                model.topology,
                 model.channels,
                 model.receptive_field,
                 model.weights_layout,
