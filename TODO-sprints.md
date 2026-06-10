@@ -92,17 +92,19 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 > Objetivo: porte direto e **correto** do `a2_fast.cpp` (baseline, sem micro-opt agressiva), ancorado por *golden vectors*. Este épico entrega A2-Full e A2-Lite funcionais e validados.
 
-### Sprint 1.1 — Primitivas compartilhadas
+### Sprint 1.1 — Primitivas compartilhadas [DONE]
 
 - **[T1.1] Kernel `LeakyReLU(0.01)` SIMD (AVX2/FMA).** [DONE]
   - Implementar `leaky_relu_slice` em `src/math/activations/` (in-place, `chunks_exact(8)`, *branchless* via máscara/blend). Adicionar a **referência escalar (oráculo de teste + tratamento de cauda/remainder)** em `src/math/common/scalar_ref/` — **não** é fallback de produção para CPU sem AVX2 (o `detect.rs` faz *fail-fast*); serve como oráculo de paridade apertada (`~1e-6`, via `proptest`), bisseção de bugs, cobertura de edge cases (`n % 8`, denormais) e invariante cross-ISA para o futuro AVX-512.
   - **Fonte de verdade:** `NAM/activations.h` (`LeakyReLU`) e nota de uso em `NAM/wavenet/a2_fast.cpp:49-51` (`LeakyReLU(0.01) em todas as camadas`).
   - **Critério de aceite:** teste de paridade `< 1e-6` vs referência escalar; `#[cfg(test)]` inline ou `_test.rs`. Heap-audit zero.
+  - **Nota de auditoria (Sprint 1.1):** O modelo A2 (`src/models/a2/activations.rs:112`) despacha LeakyReLU via `prelu_slice(data, &[negative_slope])` (mais genérico), e não via `leaky_relu_slice`. O kernel `leaky_relu_slice` está implementado, testado e registrado no dispatcher, mas é código morto na produção atual. A equivalência matemática é garantida pois `prelu_slice` com slope única executa a mesma operação.
 
 - **[T1.2] Conv1D dilatada para A2 (kernels 6 e 15) sobre `mirror_buf`.** [DONE]
   - Avaliar reuso de `src/models/wavenet/conv1d_dyn.rs` + `src/dsp/mirror_buf.rs`. A2 usa apenas `kernel_size ∈ {6,15}` e dilations fixas (`A2_DILATIONS`), com 1 canal de entrada na 1ª camada e `CH` canais nas demais. Garantir histórico via ring/mirror sem alloc.
   - **Fonte de verdade:** `a2_fast.cpp:417-690` (`_layer_forward_k`), `NAM/wavenet/detail.h` (`Layer`/`LayerArray`), `docs/wavenet_walkthrough.rst:47-214`.
   - **Critério de aceite:** convolução isolada bate com referência escalar em micro-teste; RT-safe.
+  - **Nota de auditoria (Sprint 1.1):** `A2Conv1d` reutiliza `Conv1dDyn` (stack-only, sem alloc no hot-path) e está validado por 7 testes de paridade. Faltam: (a) heap-audit test com `CountingAllocator` específico para o conv1d A2; (b) soak test com K=6/15. Ambos são endereçáveis no T1.13 (Sprint 1.4) — testes de soak/pipeline.
 
 - **[T1.3] *Head conv* A2 (`k=16`, bias, `head_scale`).** [DONE]
   - Implementar a convolução de cabeça: `Conv1D(bottleneck→1, K=16, bias)` lida de ring com *tail-mirror*, seguida de multiplicação por `head_scale`.
@@ -111,7 +113,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 1.2 — Modelo A2 (baseline correto)
 
-- **[T1.4] Struct do modelo `WaveNetA2<const CH: usize>` (CH=3 e CH=8).**
+- **[T1.4] Struct do modelo `WaveNetA2<const CH: usize>` (CH=3 e CH=8).** [DONE]
   - Criar `src/models/a2/model.rs`: 1 *layer-array* de 23 camadas + *rechannel* de entrada (`Conv1x1 input_size→CH`) + acumulador de *head* + *head conv* + `head_scale`. Processamento em blocos (consistente com `WAVENET_MAX_NUM_FRAMES`).
   - Implementar `NamModel` + `sealed::Sealed`; expor `process`, `prewarm`, `reset`, `set_max_buffer_size`, `receptive_field`, `channels`.
   - **Fonte de verdade:** `a2_fast.cpp` (classe `A2FastModel`), `detail.h` (`LayerArray::Process`), `docs/wavenet_walkthrough.rst:278-351`.

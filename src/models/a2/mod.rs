@@ -22,6 +22,7 @@ pub mod conv1d_fallback;
 pub mod film;
 pub mod gating;
 pub mod head;
+pub mod model;
 pub mod params;
 pub mod placeholder;
 
@@ -31,11 +32,39 @@ pub use conv1d::A2Conv1d;
 pub use film::{FiLMConfig, FiLMLayer};
 pub use gating::GatingMode;
 pub use head::{A2HeadConv, a2_head_block_scalar_ref, a2_head_single_frame_scalar_ref};
+pub use model::WaveNetA2;
 pub use params::{
     A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_LEAKY_SLOPE, A2_NUM_LAYERS,
     A2_VALID_CHANNELS, HeadParams, LayerArrayParamsA2, LayerParamsA2,
 };
 pub use placeholder::WavenetA2Placeholder;
+
+use crate::models::NamModel;
+use crate::models::sealed;
+
+impl<const CH: usize> sealed::Sealed for model::WaveNetA2<CH> {}
+
+impl<const CH: usize> NamModel for model::WaveNetA2<CH> {
+    fn process(&mut self, input: &[f32], output: &mut [f32]) {
+        self.process(input, output);
+    }
+
+    fn prewarm(&mut self, _num_samples: usize) {
+        self.prewarm();
+    }
+
+    fn prewarm_samples(&self) -> usize {
+        self.receptive_field_size
+    }
+
+    fn set_max_buffer_size(&mut self, max_buf: usize) {
+        self.set_max_buffer_size(max_buf);
+    }
+
+    fn reset(&mut self, _sample_rate: u32, max_buffer_size: usize) {
+        self.reset(_sample_rate, max_buffer_size);
+    }
+}
 
 #[cfg(test)]
 #[path = "tests.rs"]
