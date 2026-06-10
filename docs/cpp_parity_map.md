@@ -54,24 +54,23 @@ divergences, and the sprint/task that established each equivalence.
 | Layer states (delay buffers, receptive field tracking) | `models/wavenet/common.rs` — `WaveNetLayerState`                   | —                  |
 | BF16 layer state caching                               | `models/wavenet/common.rs` — `u16` mirrored buffer variant         | —                  |
 
-### 3.3 Dynamic WaveNet (fallback)
+### 3.3 Legacy Dynamic WaveNet (removed)
 
-> **Planned for removal** (see [TODO-sprints.md](/TODO-sprints.md), Sprint 1.5). The dynamic paths (`WaveNetDynModel`/`LstmDynModel`) load arbitrary, non-catalogued geometries. None of the four focus models (A2-Full/Lite, A1-Standard/Nano) nor the A2 `SlimmableContainer` depend on them. Once removed, non-catalogued `.nam` files will fail to load with a clear diagnostic error, and the NAMCore micro-model cross-validation goldens (`golden_namcore_*`) will be retired with them.
+> The dynamic paths (`WaveNetDynModel`/`LstmDynModel`) that loaded arbitrary, non-catalogued geometries have been removed. Non-catalogued `.nam` files now fail to load with a clear diagnostic error. The `Conv1dDyn` convolution kernel is retained as a low-level compute engine for the A2 architecture and static WaveNet test/stress kernels — it is not a model path.
 
-| C++ (`NeuralAmpModelerCore/`)         | Rust (`src/`)                                     | Parity established |
-| ------------------------------------- | ------------------------------------------------- | ------------------ |
-| Runtime-determined WaveNet dimensions | `models/wavenet/model_dyn.rs` — `WaveNetDynModel` | S5.T01             |
-| Dynamic Conv1D                        | `models/wavenet/conv1d_dyn.rs` — `Conv1dDyn`      | —                  |
+| C++ (`NeuralAmpModelerCore/`) | Rust (`src/`)                                | Parity established |
+| ----------------------------- | -------------------------------------------- | ------------------ |
+| Dynamic Conv1D                | `models/wavenet/conv1d_dyn.rs` — `Conv1dDyn` | —                  |
 
 ### 3.4 Topology → Concrete Type Mapping
 
-| C++ topology          | Rust construct                          | Static type              |
-| --------------------- | --------------------------------------- | ------------------------ |
-| WaveNet Standard (16) | `loader/dispatcher/wavenet/standard.rs` | `WaveNetModel<16, 3, 8>` |
-| WaveNet Lite (12)     | `loader/dispatcher/wavenet/lite.rs`     | `WaveNetModel<12, 3, 6>` |
-| WaveNet Feather (8)   | `loader/dispatcher/wavenet/feather.rs`  | `WaveNetModel<8, 3, 4>`  |
-| WaveNet Nano (4)      | `loader/dispatcher/wavenet/nano.rs`     | `WaveNetModel<4, 3, 2>`  |
-| Any other geometry    | `loader/dispatcher/wavenet/dynamic.rs`  | `WaveNetDynModel`        |
+| C++ topology          | Rust construct                                 | Static type              |
+| --------------------- | ---------------------------------------------- | ------------------------ |
+| WaveNet Standard (16) | `loader/dispatcher/wavenet/standard.rs`        | `WaveNetModel<16, 3, 8>` |
+| WaveNet Lite (12)     | `loader/dispatcher/wavenet/lite.rs`            | `WaveNetModel<12, 3, 6>` |
+| WaveNet Feather (8)   | `loader/dispatcher/wavenet/feather.rs`         | `WaveNetModel<8, 3, 4>`  |
+| WaveNet Nano (4)      | `loader/dispatcher/wavenet/nano.rs`            | `WaveNetModel<4, 3, 2>`  |
+| Any other geometry    | Error — non-catalogued geometries fail to load | —                        |
 
 ---
 
@@ -105,18 +104,18 @@ divergences, and the sprint/task that established each equivalence.
 
 ### 4.4 LSTM Configurations
 
-| Config    | Rust type                    | `src/models/lstm/mod.rs` alias |
-| --------- | ---------------------------- | ------------------------------ |
-| `1×8`     | `LstmModel1<8, 9, 32>`       | `Lstm1x8`                      |
-| `1×12`    | `LstmModel1<12, 13, 48>`     | `Lstm1x12`                     |
-| `1×16`    | `LstmModel1<16, 17, 64>`     | `Lstm1x16`                     |
-| `1×24`    | `LstmModel1<24, 25, 96>`     | `Lstm1x24`                     |
-| `1×40`    | `LstmModel1<40, 41, 160>`    | `Lstm1x40`                     |
-| `2×8`     | `LstmModel2<8, 9, 16, 32>`   | `Lstm2x8`                      |
-| `2×12`    | `LstmModel2<12, 13, 24, 48>` | `Lstm2x12`                     |
-| `2×16`    | `LstmModel2<16, 17, 32, 64>` | `Lstm2x16`                     |
-| `2×24`    | `LstmModel2<24, 25, 48, 96>` | `Lstm2x24`                     |
-| Any other | `LstmDynModel`               | `LstmDynamic`                  |
+| Config                         | Rust type                                      | `src/models/lstm/mod.rs` alias |
+| ------------------------------ | ---------------------------------------------- | ------------------------------ |
+| `1×8`                          | `LstmModel1<8, 9, 32>`                         | `Lstm1x8`                      |
+| `1×12`                         | `LstmModel1<12, 13, 48>`                       | `Lstm1x12`                     |
+| `1×16`                         | `LstmModel1<16, 17, 64>`                       | `Lstm1x16`                     |
+| `1×24`                         | `LstmModel1<24, 25, 96>`                       | `Lstm1x24`                     |
+| `1×40`                         | `LstmModel1<40, 41, 160>`                      | `Lstm1x40`                     |
+| `2×8`                          | `LstmModel2<8, 9, 16, 32>`                     | `Lstm2x8`                      |
+| `2×12`                         | `LstmModel2<12, 13, 24, 48>`                   | `Lstm2x12`                     |
+| `2×16`                         | `LstmModel2<16, 17, 32, 64>`                   | `Lstm2x16`                     |
+| `2×24`                         | `LstmModel2<24, 25, 48, 96>`                   | `Lstm2x24`                     |
+| Any other (num_layers, hidden) | Error — non-catalogued topologies fail to load | —                              |
 
 ---
 
@@ -217,27 +216,27 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 9. A1 Topology Table
 
-| C++ NAM topology    | Rust module / type                                                                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| WaveNet Standard 16 | `models::wavenet::WaveNetModel<16, 3, 8>`                                                                              |
-| WaveNet Lite 12     | `models::wavenet::WaveNetModel<12, 3, 6>`                                                                              |
-| WaveNet Feather 8   | `models::wavenet::WaveNetModel<8, 3, 4>`                                                                               |
-| WaveNet Nano 4      | `models::wavenet::WaveNetModel<4, 3, 2>`                                                                               |
-| WaveNet Dyn (any)   | `models::wavenet::WaveNetDynModel`                                                                                     |
-| LSTM 1×8            | `models::lstm::LstmModel1<8, 9, 32>`                                                                                   |
-| LSTM 1×12           | `models::lstm::LstmModel1<12, 13, 48>`                                                                                 |
-| LSTM 1×16           | `models::lstm::LstmModel1<16, 17, 64>`                                                                                 |
-| LSTM 1×24           | `models::lstm::LstmModel1<24, 25, 96>`                                                                                 |
-| LSTM 1×40           | `models::lstm::LstmModel1<40, 41, 160>`                                                                                |
-| LSTM 2×8            | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                                               |
-| LSTM 2×12           | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                                             |
-| LSTM 2×16           | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                                             |
-| LSTM 2×24           | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                                             |
-| LSTM Dyn (any)      | `models::lstm::LstmDynModel`                                                                                           |
-| A2-Full (8 ch)      | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
-| A2-Lite (3 ch)      | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
+| C++ NAM topology      | Rust module / type                                                                                                     |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| WaveNet Standard 16   | `models::wavenet::WaveNetModel<16, 3, 8>`                                                                              |
+| WaveNet Lite 12       | `models::wavenet::WaveNetModel<12, 3, 6>`                                                                              |
+| WaveNet Feather 8     | `models::wavenet::WaveNetModel<8, 3, 4>`                                                                               |
+| WaveNet Nano 4        | `models::wavenet::WaveNetModel<4, 3, 2>`                                                                               |
+| WaveNet Dyn (removed) | *(removed — Sprint 1.5)*                                                                                               |
+| LSTM 1×8              | `models::lstm::LstmModel1<8, 9, 32>`                                                                                   |
+| LSTM 1×12             | `models::lstm::LstmModel1<12, 13, 48>`                                                                                 |
+| LSTM 1×16             | `models::lstm::LstmModel1<16, 17, 64>`                                                                                 |
+| LSTM 1×24             | `models::lstm::LstmModel1<24, 25, 96>`                                                                                 |
+| LSTM 1×40             | `models::lstm::LstmModel1<40, 41, 160>`                                                                                |
+| LSTM 2×8              | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                                               |
+| LSTM 2×12             | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                                             |
+| LSTM 2×16             | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                                             |
+| LSTM 2×24             | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                                             |
+| LSTM Dyn (removed)    | *(removed — Sprint 1.5)*                                                                                               |
+| A2-Full (8 ch)        | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
+| A2-Lite (3 ch)        | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
 
-> Rows marked **Dyn** above (`WaveNetDynModel`/`LstmDynModel`) are planned for removal — see §3.3 and [TODO-sprints.md](/TODO-sprints.md) Sprint 1.5.
+> Rows marked **Dyn** above were removed in Sprint 1.5 — see §3.3 and [TODO-sprints.md](/TODO-sprints.md).
 
 ---
 

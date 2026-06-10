@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
-//! Common and dynamic components for WaveNet architectures.
+//! Runtime-dimensional convolution components for WaveNet architectures.
 //!
-//! Contains the fundamental structures (Conv1D, Dense, Layer) that operate with
-//! runtime-defined dimensions, serving as a foundation for the dynamic model
-//! and future A2 architecture stages.
+//! Contains the fundamental convolution structures that operate with
+//! runtime-defined dimensions, serving as a foundation for A2 architecture
+//! stages and static WaveNet test/stress kernels.
 
 use crate::math::common::{AlignedVec, PrefetchFn, SimdMath};
 

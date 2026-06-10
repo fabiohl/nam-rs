@@ -7,7 +7,7 @@ use super::traits::{ConvWeightsOutput, DenseWeightsOutput};
 use crate::math::common::{AlignedVec, quantize_weight};
 
 // =============================================================================
-// Unified weight reading (static + dynamic)
+// Unified weight reading for static WaveNet models
 // =============================================================================
 
 #[allow(clippy::too_many_arguments)]

@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicPtr, AtomicU8, AtomicU64, Ordering};
 /// Represents an item that should be safely disposed outside the audio thread.
 /// Dropping these items may involve heavy memory deallocations.
 pub enum GcItem {
-    /// A dynamic model (LSTM or WaveNet).
+    /// A model instance (LSTM or WaveNet).
     Model(Box<crate::models::StaticModel>),
     /// A resampler (boxed to ensure RT-safety on drop).
     Resampler(Box<crate::dsp::resampler::NamResampler>),

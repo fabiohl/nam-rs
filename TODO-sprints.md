@@ -167,14 +167,15 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Estender `tests/wavenet_prewarm_edge.rs`, heap-audit (`tests/resampler_heap_audit.rs` análogo p/ A2) e soak (`tests/pipeline_soak.rs`/`soak_test.rs`) cobrindo A2.
   - **Critério de aceite:** zero alloc no hot-path (CountingAllocator); estável em milhões de frames.
 
-### Sprint 1.5 — Remoção dos caminhos *dynamic* (corte de burden) ✂️
+### Sprint 1.5 — Remoção dos caminhos *dynamic* (corte de burden) ✂️ [DONE]
 
 > Executar **após** A2 e os 4 modelos-foco estarem validados (Sprints 1.1-1.4), garantindo que nenhum caminho de produção dependa do *fallback* dynamic.
 
 - **[T1.14] Remover WaveNet dynamic.** [DONE]
-  - Remover `src/models/wavenet/{model_dyn,layer_dyn,conv1d_dyn,conv1d_dyn_dual,dense_dyn}.rs` (e correlatos), a variante `DynamicModel::WavenetDyn` e `src/loader/dispatcher/wavenet/dynamic.rs` (`build_wavenet_dynamic`).
+  - Remover `src/models/wavenet/{model_dyn,layer_dyn,dense_dyn}.rs` (e correlatos), a variante `DynamicModel::WavenetDyn` e `src/loader/dispatcher/wavenet/dynamic.rs` (`build_wavenet_dynamic`).
   - Ajustar `dispatcher/wavenet/mod.rs:68` para retornar **erro de load** em geometria não-catalogada (sem panic, mensagem diagnóstica via `NamDiagnostic`).
   - **Critério de aceite:** `cargo build` limpo; modelos A1-Standard/Lite/Feather/Nano e A2-Full/Lite seguem carregando; `.nam` fora do catálogo falha com erro claro.
+  - **Nota:** `conv1d_dyn*.rs` foram intencionalmente retidos — são kernels de convolução *runtime-dimensioned* usados pela arquitetura A2 e por testes de stress estáticos, não como caminho de modelo dinâmico.
 
 - **[T1.15] Remover LSTM dynamic.** [DONE]
   - Remover `src/models/lstm/{model_dyn,layer_dyn}.rs` (e correlatos), a variante `DynamicModel::LstmDyn` e `src/loader/dispatcher/lstm/dynamic_builder.rs` (`build_lstm_dynamic`). Ajustar `lstm/dispatch.rs:52` para erro de load em `(num_layers, hidden)` não-catalogado.

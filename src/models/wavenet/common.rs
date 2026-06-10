@@ -13,7 +13,7 @@ pub const LAYER_ARRAY_BUFFER_PADDING: usize = 24;
 pub const MAX_KERNEL: usize = 16;
 
 /// Processing context to optimize parameter passing on the WaveNet hot-path.
-/// Unifies the needs of static (const generic) and dynamic models.
+/// Unifies the needs of static (const generic) models.
 pub struct WavenetProcessContext<'a> {
     /// Conditioning (sidechain) buffer.
     pub condition: &'a [f32],
