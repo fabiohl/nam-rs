@@ -180,7 +180,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Remover `src/models/lstm/{model_dyn,layer_dyn}.rs` (e correlatos), a variante `DynamicModel::LstmDyn` e `src/loader/dispatcher/lstm/dynamic_builder.rs` (`build_lstm_dynamic`). Ajustar `lstm/dispatch.rs:52` para erro de load em `(num_layers, hidden)` não-catalogado.
   - **Critério de aceite:** aliases LSTM estáticos (1×8..2×24) seguem funcionando; geometria não-catalogada falha com erro claro.
 
-- **[T1.16] Limpar fixtures/testes de cross-val dependentes do dynamic.**
+- **[T1.16] Limpar fixtures/testes de cross-val dependentes do dynamic.** [DONE]
   - Remover os modelos/goldens NAMCore micro (`tests/fixtures/models/{lstm,wavenet}.nam`, `golden_namcore_lstm_1x3.bin`, `golden_namcore_wn_micro.bin`) e os testes que os exercitam (`tests/dynamic_parity.rs` e casos correspondentes em `cpp_parity.rs`/`nam_infer_test.rs`). Atualizar `tests/fixtures/README.md` e o script `golden_gen_build.sh`.
   - **Critério de aceite:** suíte verde sem referências órfãs; `utils/tests-cargo.sh` e `utils/tests-long.sh` passam.
 

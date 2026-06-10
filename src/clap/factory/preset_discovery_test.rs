@@ -30,11 +30,14 @@ mod tests {
     fn test_metadata_extraction_from_nam_file() {
         let test_dir =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/models");
-        let lstm_path = test_dir.join("lstm.nam");
+        let model_path = test_dir.join("BossWN-standard.nam");
 
-        if lstm_path.exists() {
-            let meta = extract_model_metadata(&lstm_path);
-            assert!(meta.is_some(), "Should extract metadata from lstm.nam");
+        if model_path.exists() {
+            let meta = extract_model_metadata(&model_path);
+            assert!(
+                meta.is_some(),
+                "Should extract metadata from BossWN-standard.nam"
+            );
             let m = meta.unwrap();
             assert!(
                 m.name.is_some() || m.modeled_by.is_some(),
