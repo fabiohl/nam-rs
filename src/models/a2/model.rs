@@ -35,6 +35,7 @@
 //! is implemented as `#[ignore]` and will be promoted to standard CI once the C++ render
 //! tool produces stable A2 output.
 
+use super::conv1d_ch3::A2Conv1dCh3;
 use super::conv1d_ch8::A2Conv1dCh8;
 use super::head::A2HeadConv;
 use super::layer::A2Layer;
@@ -305,6 +306,27 @@ impl<const CH: usize> WaveNetA2<CH> {
                 let history = &self.layer_buffers[li][bs - lookback..bs + nf * ch];
                 let layer = &self.layers[li];
 
+                if let Some(ch3_conv) = &layer.ch3_conv {
+                    unsafe {
+                        super::conv1d_ch3::layer_forward_ch3_block(
+                            ch3_conv,
+                            &layer.mixin_w,
+                            &layer.l1x1_w,
+                            &layer.l1x1_b,
+                            history,
+                            max_lookback_cols,
+                            nf,
+                            &input[..nf],
+                            &mut self.head_accum,
+                            head_wp,
+                            &mut self.layer_in,
+                            is_first,
+                            is_last,
+                        );
+                    }
+                    continue;
+                }
+
                 if let Some(ch8_conv) = &layer.ch8_conv {
                     unsafe {
                         super::conv1d_ch8::layer_forward_ch8_block(
@@ -481,6 +503,15 @@ impl<const CH: usize> WaveNetA2<CH> {
                 prefetch_fn,
             );
 
+            // Build CH=3 col-major-per-tap f32 weights if applicable (ÉPICO 2 fix).
+            let ch3_conv = if CH == 3 {
+                Some(A2Conv1dCh3::new(
+                    conv_w_f32, CH, CH, ksize, dilation, conv_b_f32,
+                ))
+            } else {
+                None
+            };
+
             // Build CH=8 col-major-per-tap weights if applicable (T2.2/T2.4).
             let ch8_conv = if CH == 8 {
                 Some(A2Conv1dCh8::new(
@@ -516,10 +547,10 @@ impl<const CH: usize> WaveNetA2<CH> {
                 read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].l1x1_b"))?;
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
-            layers.push(if let Some(ch8c) = ch8_conv {
-                A2Layer::new_with_ch8(conv, ch8c, mixin_w, l1x1_w, l1x1_b)
-            } else {
-                A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b)
+            layers.push(match (ch3_conv, ch8_conv) {
+                (Some(ch3c), _) => A2Layer::new_with_ch3(conv, ch3c, mixin_w, l1x1_w, l1x1_b),
+                (_, Some(ch8c)) => A2Layer::new_with_ch8(conv, ch8c, mixin_w, l1x1_w, l1x1_b),
+                _ => A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b),
             });
         }
 

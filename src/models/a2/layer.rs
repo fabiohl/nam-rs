@@ -14,6 +14,7 @@
 //! - `docs/wavenet_walkthrough.rst:103-214`
 
 use super::conv1d::A2Conv1d;
+use super::conv1d_ch3::A2Conv1dCh3;
 use super::conv1d_ch8::A2Conv1dCh8;
 use super::params::A2_LEAKY_SLOPE;
 use crate::math::common::AlignedVec;
@@ -26,8 +27,10 @@ use crate::math::common::AlignedVec;
 /// When `ch8_conv` is `Some`, it holds f32 col-major-per-tap weights for the CH=8 optimized path (T2.2).
 /// When `None`, the standard `A2Conv1d` (u16 interleaved) is used (CH=3 path and fallback).
 pub struct A2Layer {
-    /// Dilated causal Conv1D (kernel ∈ {6, 15}). Used by CH=3 path and as u16 fallback.
+    /// Dilated causal Conv1D (kernel ∈ {6, 15}). Used as u16/f16 fallback when fast paths absent.
     pub conv: A2Conv1d,
+    /// CH=3 optimized weights (f32 col-major-per-tap). Only populated when CH=3.
+    pub ch3_conv: Option<A2Conv1dCh3>,
     /// CH=8 optimized weights (f32 col-major-per-tap). Only populated when CH=8.
     pub ch8_conv: Option<A2Conv1dCh8>,
     /// Input mixin weights (`CH` elements, f32).
@@ -52,6 +55,30 @@ impl A2Layer {
         debug_assert_eq!(l1x1_b.len(), ch);
         Self {
             conv,
+            ch3_conv: None,
+            ch8_conv: None,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+        }
+    }
+
+    /// Creates a CH=3 layer with f32-native col-major-per-tap weights (ÉPICO 2 fix).
+    pub fn new_with_ch3(
+        conv: A2Conv1d,
+        ch3_conv: A2Conv1dCh3,
+        mixin_w: AlignedVec<f32>,
+        l1x1_w: AlignedVec<f32>,
+        l1x1_b: AlignedVec<f32>,
+    ) -> Self {
+        let ch = conv.out_ch();
+        debug_assert_eq!(ch, 3);
+        debug_assert_eq!(mixin_w.len(), ch);
+        debug_assert_eq!(l1x1_w.len(), ch * ch);
+        debug_assert_eq!(l1x1_b.len(), ch);
+        Self {
+            conv,
+            ch3_conv: Some(ch3_conv),
             ch8_conv: None,
             mixin_w,
             l1x1_w,
@@ -74,6 +101,7 @@ impl A2Layer {
         debug_assert_eq!(l1x1_b.len(), ch);
         Self {
             conv,
+            ch3_conv: None,
             ch8_conv: Some(ch8_conv),
             mixin_w,
             l1x1_w,

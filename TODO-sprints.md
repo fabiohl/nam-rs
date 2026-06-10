@@ -193,7 +193,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ---
 
-## ÉPICO 2 — Otimização SIMD A2 (x86-64-v3) ⚡
+## ÉPICO 2 — Otimização SIMD A2 (x86-64-v3) ⚡ [DONE]
 
 > Objetivo: aplicar otimizações *on-the-fly* fiéis ao `a2_fast.cpp`, **protegidas pelos golden vectors** do Épico 1 (nenhuma quebra de correção).
 
