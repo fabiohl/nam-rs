@@ -199,8 +199,19 @@ impl Conv1dDyn {
         frame_idx: usize,
         mixin: Option<&[f32]>,
     ) {
-        unsafe {
-            self.process_single_frame_generic::<M, f32>(layer_buffer, out_frame, frame_idx, mixin);
+        if self.out_ch == 3 && self.in_ch == 3 {
+            unsafe {
+                self.process_single_ch3_unrolled(layer_buffer, out_frame, frame_idx, mixin);
+            }
+        } else {
+            unsafe {
+                self.process_single_frame_generic::<M, f32>(
+                    layer_buffer,
+                    out_frame,
+                    frame_idx,
+                    mixin,
+                );
+            }
         }
     }
 

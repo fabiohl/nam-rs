@@ -199,10 +199,12 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 2.1 — Kernels otimizados
 
-- **[T2.1] Caminho CH=3 (A2-Lite): GEMV totalmente desenrolado.**
+- **[T2.1] Caminho CH=3 (A2-Lite): GEMV totalmente desenrolado.** ✅ [DONE]
   - Portar a estratégia escalar/SIMD desenrolada para 3 canais.
   - **Fonte de verdade:** `a2_fast.cpp` (estratégia `Channels=3`, GEMV unrolled).
   - **Critério de aceite:** golden A2-Lite verde; ganho mensurável vs baseline T1.
+  - **Status:** ✅ Implementado em `src/models/a2/conv1d_ch3.rs`. Dispatch automático quando `in_ch==3 && out_ch==3`. K=6 (18 FMAs desenroladas) e K=15 (45 FMAs desenroladas). Golden A2-Lite self bitwise idêntico (MSE=0.0). Self-golden regenerado.
+  - ⚠️ **Nota p/ T2.2-T2.4:** `golden_wavenet_a2_lite_self.bin` foi regenerado com o kernel desenrolado. Tarefas que alterem o A2-Lite devem regenerá-lo também.
 
 - **[T2.2] Caminho CH=8 (A2-Full): *tap-major* frame-tiled (T=4) com broadcast-FMA.**
   - Portar a estratégia de *tiling* de 4 frames com *broadcast*-FMA e layout *col-major-per-tap*.
