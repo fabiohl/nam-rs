@@ -5,7 +5,7 @@ use crate::loader::nam_json::{
     NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape,
 };
 use crate::models::DynamicModel;
-use crate::models::a2::WavenetA2Placeholder;
+use crate::models::a2::{WaveNetA2, WavenetA2Placeholder};
 use anyhow::bail;
 use log::info;
 
@@ -46,9 +46,39 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
 
 /// Detects the WaveNet topology and branches to the correct const-generic builder.
 pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicModel>> {
+    // ── A2: first-class branch (detected by shape, not fallback) ──
+    if let Some(ch) = is_a2_shape(data) {
+        return match ch {
+            3 => {
+                let mut model = WaveNetA2::<3>::new();
+                model
+                    .set_weights(&data.weights)
+                    .map_err(|e| anyhow::anyhow!("A2-Lite weight load failed: {e}"))?;
+                info!(
+                    "[Dispatcher] WaveNet A2-Lite built — CH=3, layers=23, weights={}",
+                    data.weights.len()
+                );
+                Ok(Box::new(DynamicModel::WavenetA2Lite(Box::new(model))))
+            }
+            8 => {
+                let mut model = WaveNetA2::<8>::new();
+                model
+                    .set_weights(&data.weights)
+                    .map_err(|e| anyhow::anyhow!("A2-Full weight load failed: {e}"))?;
+                info!(
+                    "[Dispatcher] WaveNet A2-Full built — CH=8, layers=23, weights={}",
+                    data.weights.len()
+                );
+                Ok(Box::new(DynamicModel::WavenetA2Full(Box::new(model))))
+            }
+            _ => unreachable!("is_a2_shape only returns 3 or 8"),
+        };
+    }
+
+    // ── A1: static topology detection ──
     let topo_opt = get_wavenet_topology(data);
 
-    let res = match topo_opt {
+    match topo_opt {
         Some(NamWavenetTopology::Standard) => {
             let model = standard::build_wavenet_standard(data)?;
             Ok(Box::new(DynamicModel::WavenetStandard(Box::new(model))))
@@ -65,37 +95,27 @@ pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<DynamicMo
             let model = nano::build_wavenet_nano(data)?;
             Ok(Box::new(DynamicModel::WavenetNano(Box::new(model))))
         }
-        None => dynamic::build_wavenet_dynamic(data),
-    };
-
-    if res.is_err() && data.is_wavenet_a2() {
-        let (channels, shape_matched) = match is_a2_shape(data) {
-            Some(ch) => (ch, true),
-            None => (
-                data.config
+        None => {
+            // ── A2 heuristic fallback (SemVer / activation-based) ──
+            if data.is_wavenet_a2() {
+                let channels = data
+                    .config
                     .layers
                     .first()
                     .and_then(|l| l.channels)
                     .map(|c| c as u8)
-                    .unwrap_or(0),
-                false,
-            ),
-        };
-        if shape_matched {
-            info!(
-                "[Dispatcher] WaveNet A2 model detected (channels={}). Using temporary placeholder...",
-                channels
-            );
-        } else {
-            info!(
-                "[Dispatcher] WaveNet A2 model detected (SemVer heuristic, channels={}). Using temporary placeholder...",
-                channels
-            );
-        }
-        return Ok(Box::new(DynamicModel::WavenetA2(Box::new(
-            WavenetA2Placeholder::new(channels),
-        ))));
-    }
+                    .unwrap_or(0);
+                info!(
+                    "[Dispatcher] WaveNet A2 model detected (SemVer heuristic, channels={}). Using temporary placeholder...",
+                    channels
+                );
+                return Ok(Box::new(DynamicModel::WavenetA2(Box::new(
+                    WavenetA2Placeholder::new(channels),
+                ))));
+            }
 
-    res
+            // ── Dynamic fallback (pending Sprint 1.5 removal) ──
+            dynamic::build_wavenet_dynamic(data)
+        }
+    }
 }

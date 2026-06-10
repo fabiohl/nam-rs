@@ -111,7 +111,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `a2_fast.cpp:119-124` (`_head_w`/`_head_b`/`_head_scale`), `a2_fast.cpp:722-743` (`_head_forward`).
   - **Critério de aceite:** saída do head bate com referência em micro-teste.
 
-### Sprint 1.2 — Modelo A2 (baseline correto)
+### Sprint 1.2 — Modelo A2 (baseline correto) [DONE]
 
 - **[T1.4] Struct do modelo `WaveNetA2<const CH: usize>` (CH=3 e CH=8).** [DONE]
   - Criar `src/models/a2/model.rs`: 1 *layer-array* de 23 camadas + *rechannel* de entrada (`Conv1x1 input_size→CH`) + acumulador de *head* + *head conv* + `head_scale`. Processamento em blocos (consistente com `WAVENET_MAX_NUM_FRAMES`).
@@ -131,7 +131,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 1.3 — Loader, dispatch e aposentadoria do placeholder
 
-- **[T1.7] Dispatch A2 no loader.**
+- **[T1.7] Dispatch A2 no loader.** [DONE]
   - Em `src/loader/dispatcher/wavenet/mod.rs`, tornar a A2 um **branch de primeira classe** (não mais *fallback*-após-falha): detectar a forma via `is_a2_shape()` (`src/loader/nam_json/topology.rs:131`) **antes** do match de topologias A1 e construir `WaveNetA2<3>`/`WaveNetA2<8>`. Registrar novas variantes no enum `DynamicModel` (`src/models/mod.rs`) e no dispatch (`src/models/dynamic_model.rs`).
   - **Importante (pré-requisito da Sprint 1.5):** como o *fallback* dynamic será removido, o dispatch precisa decidir entre {A1 estático, A2 estático} de forma explícita; geometrias não reconhecidas retornam **erro de load claro**.
   - **Fonte de verdade:** `a2_fast.cpp:849-990` (`is_a2_shape`/`create_a2_fast_config`), `topology.rs:131-163`.
@@ -289,23 +289,6 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ---
 
-## ÉPICO 5 — Documentação e Fechamento 📚
-
-- **[T5.1] Atualizar documentação arquitetural** (acionar skill `documentador`):
-  - `docs/architecture.md`:  motor A2, container, cabsim.
-  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados, IR cabsim disponível.
-  - `docs/cpp_parity_map.md`: novo mapeamento A2 → C++.
-  - `tests/fixtures/README.md`: com os novos golden (A2 e IR) e instruções de regeneração.
-  - Skill `refatora-doc.md`
-
-- **[T5.2] Rodadas de melhorias**
-  - `revisor-auditor`
-  - `pesquisador-inovador.md`
-  - `refatora-rust.md`
-  - `refatora-doc.md`
-
----
-
 ## ÉPICO 6 (FUTURO) — `SlimmableWavenet` (channel slicing de rede única) 🔮
 
 > **Adiado por sequenciamento, não descartado.**
@@ -328,6 +311,27 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 - **[T6.4] Golden + parity.**
   - Gerar fixtures slimmable (`allowed_channels`) e validar cada ponto de operação contra o C++ (`cpp_parity`, `#[ignore]`).
   - **Critério de aceite:** golden verde em todos os níveis de canal; troca RT-safe (heap-audit zero) sob soak.
+
+---
+
+## ÉPICO 99 — Documentação e Fechamento 📚
+
+- **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`):
+  - `docs/architecture.md`:  motor A2, container, cabsim.
+  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados, IR cabsim disponível (Todos como "Beta").
+  - `docs/cpp_parity_map.md`: novo mapeamento A2 → C++.
+  - `tests/fixtures/README.md`: com os novos golden (A2 e IR) e instruções de regeneração.
+  - Skill `refatora-doc.md`
+
+- **[T99.2] Rodadas de correção**
+  - `revisor-auditor` Muito focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si esteja em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar' prontos para cumprir o seu papel de "seguro" ainda erro/degradação;
+  - `refatora-rust.md`
+  - `refatora-doc.md`
+
+- **[T99.3] Rodadas de burilamento**
+  - `pesquisador-inovador.md`
+  - `refatora-rust.md`
+  - `refatora-doc.md`
 
 ---
 
