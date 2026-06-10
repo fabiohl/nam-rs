@@ -206,20 +206,22 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Status:** ✅ Implementado em `src/models/a2/conv1d_ch3.rs`. Dispatch automático quando `in_ch==3 && out_ch==3`. K=6 (18 FMAs desenroladas) e K=15 (45 FMAs desenroladas). Golden A2-Lite self bitwise idêntico (MSE=0.0). Self-golden regenerado.
   - ⚠️ **Nota p/ T2.2-T2.4:** `golden_wavenet_a2_lite_self.bin` foi regenerado com o kernel desenrolado. Tarefas que alterem o A2-Lite devem regenerá-lo também.
 
-- **[T2.2] Caminho CH=8 (A2-Full): *tap-major* frame-tiled (T=4) com broadcast-FMA.**
+- **[T2.2] Caminho CH=8 (A2-Full): *tap-major* frame-tiled (T=4) com broadcast-FMA.** ✅ [DONE]
   - Portar a estratégia de *tiling* de 4 frames com *broadcast*-FMA e layout *col-major-per-tap*.
   - **Fonte de verdade:** `a2_fast.cpp` (estratégia `Channels=8`, T=4 tap-major).
   - **Critério de aceite:** golden A2-Full verde; ganho mensurável.
+  - **Status:** ✅ Implementado em `src/models/a2/conv1d_ch8.rs`. Layout col-major-per-tap (`A2Conv1dCh8`). Processamento em blocos com SIMD para conv, bias, mixin, LeakyReLU, head e l1x1. T=4 tiles com vfmadd231ps (broadcast-FMA). Golden A2-Full self regenerado e verde (MSE=0.0 entre runs). Testes de paridade AVX2 vs escalar para K=6, K=15, layer forward completo, edge cases (1 frame, T=4 tail). O peso também foi permutado na carga (T2.4).
 
 - **[T2.3] Ring `pow2` + *tail-mirror* para dilations e head.**
   - Consolidar buffers de histórico com máscara `pow2` e espelhamento de cauda (leitura *branchless*), reusando/estendendo `src/dsp/mirror_buf.rs`.
   - **Fonte de verdade:** `a2_fast.cpp:335-344,771-798` (ring pow2 + memmove rewind).
   - **Critério de aceite:** sem ramos no caminho de leitura; golden verde.
 
-- **[T2.4] Permutação de pesos para layout SIMD.**
+- **[T2.4] Permutação de pesos para layout SIMD.** ✅ [DONE — incluso em T2.2]
   - No `set_weights` (T1.6), permutar Conv1D de *row-major-per-tap* para *col-major-per-tap* (acesso amigável a SIMD), feito **uma vez** na carga.
   - **Fonte de verdade:** `a2_fast.cpp:196-282` (loader permutando layout).
   - **Critério de aceite:** golden verde; carga sem custo no hot-path.
+  - **Status:** ✅ Implementado junto com T2.2. `A2Conv1dCh8::new` faz a permutação na carga. Layout final: `w[k * 64 + in * 8 + out]` — 8 pesos de saída contíguos por `(tap, input)`.
 
 ### Sprint 2.2 — Validação de performance
 

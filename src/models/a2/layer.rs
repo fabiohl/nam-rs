@@ -14,6 +14,7 @@
 //! - `docs/wavenet_walkthrough.rst:103-214`
 
 use super::conv1d::A2Conv1d;
+use super::conv1d_ch8::A2Conv1dCh8;
 use super::params::A2_LEAKY_SLOPE;
 use crate::math::common::AlignedVec;
 
@@ -21,9 +22,14 @@ use crate::math::common::AlignedVec;
 ///
 /// Holds the weights for: dilated conv (via `A2Conv1d`), input mixin (`Conv1x1 condition→CH`, no bias),
 /// and layer1x1 (`Conv1x1 CH→CH`, with bias, col-major).
+///
+/// When `ch8_conv` is `Some`, it holds f32 col-major-per-tap weights for the CH=8 optimized path (T2.2).
+/// When `None`, the standard `A2Conv1d` (u16 interleaved) is used (CH=3 path and fallback).
 pub struct A2Layer {
-    /// Dilated causal Conv1D (kernel ∈ {6, 15}).
+    /// Dilated causal Conv1D (kernel ∈ {6, 15}). Used by CH=3 path and as u16 fallback.
     pub conv: A2Conv1d,
+    /// CH=8 optimized weights (f32 col-major-per-tap). Only populated when CH=8.
+    pub ch8_conv: Option<A2Conv1dCh8>,
     /// Input mixin weights (`CH` elements, f32).
     pub mixin_w: AlignedVec<f32>,
     /// Layer1x1 weights (`CH × CH`, col-major: `[bottleneck][out]`).
@@ -46,6 +52,29 @@ impl A2Layer {
         debug_assert_eq!(l1x1_b.len(), ch);
         Self {
             conv,
+            ch8_conv: None,
+            mixin_w,
+            l1x1_w,
+            l1x1_b,
+        }
+    }
+
+    /// Creates a layer with CH=8 optimized weights.
+    pub fn new_with_ch8(
+        conv: A2Conv1d,
+        ch8_conv: A2Conv1dCh8,
+        mixin_w: AlignedVec<f32>,
+        l1x1_w: AlignedVec<f32>,
+        l1x1_b: AlignedVec<f32>,
+    ) -> Self {
+        let ch = conv.out_ch();
+        debug_assert_eq!(ch, 8);
+        debug_assert_eq!(mixin_w.len(), ch);
+        debug_assert_eq!(l1x1_w.len(), ch * ch);
+        debug_assert_eq!(l1x1_b.len(), ch);
+        Self {
+            conv,
+            ch8_conv: Some(ch8_conv),
             mixin_w,
             l1x1_w,
             l1x1_b,

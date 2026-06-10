@@ -17,6 +17,7 @@
 pub mod activations;
 pub mod conv1d;
 pub mod conv1d_ch3;
+pub mod conv1d_ch8;
 pub mod conv1d_fallback;
 pub mod film;
 pub mod gating;

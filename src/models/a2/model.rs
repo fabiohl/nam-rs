@@ -35,6 +35,7 @@
 //! is implemented as `#[ignore]` and will be promoted to standard CI once the C++ render
 //! tool produces stable A2 output.
 
+use super::conv1d_ch8::A2Conv1dCh8;
 use super::head::A2HeadConv;
 use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
@@ -307,6 +308,29 @@ impl<const CH: usize> WaveNetA2<CH> {
                 let history = &self.layer_buffer[offset..offset + (wp + nf) * ch];
                 let layer = &self.layers[li];
 
+                if let Some(ch8_conv) = &layer.ch8_conv {
+                    // ── CH=8 optimized path: T=4 tiled tap-major with broadcast-FMA (T2.2) ──
+                    unsafe {
+                        super::conv1d_ch8::layer_forward_ch8_block(
+                            ch8_conv,
+                            &layer.mixin_w,
+                            &layer.l1x1_w,
+                            &layer.l1x1_b,
+                            history,
+                            wp, // frame_start = wp (first frame of this block after ring-write)
+                            nf,
+                            &input[..nf],
+                            &mut self.head_accum,
+                            head_wp,
+                            &mut self.layer_in,
+                            is_first,
+                            is_last,
+                        );
+                    }
+                    continue;
+                }
+
+                // ── Default path: frame-by-frame (CH=3 A2-Lite and fallback) ──
                 for (f, x) in input.iter().take(nf).enumerate() {
                     let head_col = head_wp + f;
                     let lin_slice = &mut self.layer_in[f * ch..(f + 1) * ch];
@@ -440,6 +464,7 @@ impl<const CH: usize> WaveNetA2<CH> {
             let conv_w_padded = num_blocks * 4 * CH * ksize;
 
             // 2a. Dilated conv weights: read CH×CH×K, store padded interleaved 4-wide (quantized u16).
+            // For CH=8 we also keep a f32 copy for the col-major-per-tap path (T2.2/T2.4).
             let conv_w_f32 = read_slice(
                 weights,
                 &mut pos,
@@ -447,6 +472,7 @@ impl<const CH: usize> WaveNetA2<CH> {
                 total,
                 &format!("layer[{i}].conv_w"),
             )?;
+            let conv_w_f32_owned: Vec<f32> = conv_w_f32.to_vec();
             let mut conv_w = AlignedVec::new(conv_w_padded, 0u16);
             transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, CH, CH, ksize, is_bf16);
 
@@ -463,7 +489,7 @@ impl<const CH: usize> WaveNetA2<CH> {
 
             let conv = super::conv1d::A2Conv1d::new(
                 conv_w,
-                conv_b,
+                conv_b.clone(),
                 true,
                 dilation,
                 CH,
@@ -471,6 +497,20 @@ impl<const CH: usize> WaveNetA2<CH> {
                 ksize,
                 prefetch_fn,
             );
+
+            // Build CH=8 col-major-per-tap weights if applicable (T2.2/T2.4).
+            let ch8_conv = if CH == 8 {
+                Some(A2Conv1dCh8::new(
+                    &conv_w_f32_owned,
+                    CH,
+                    CH,
+                    ksize,
+                    dilation,
+                    conv_b.clone(),
+                ))
+            } else {
+                None
+            };
 
             // 2c. Input mixin (no bias, f32).
             let mixin_w_f32 =
@@ -493,7 +533,11 @@ impl<const CH: usize> WaveNetA2<CH> {
                 read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].l1x1_b"))?;
             let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
 
-            layers.push(A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b));
+            layers.push(if let Some(ch8c) = ch8_conv {
+                A2Layer::new_with_ch8(conv, ch8c, mixin_w, l1x1_w, l1x1_b)
+            } else {
+                A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b)
+            });
         }
 
         // ── 3. Head rechannel: Conv1D(CH → 1, K=16, bias) ─────────────────
