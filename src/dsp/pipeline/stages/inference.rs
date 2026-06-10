@@ -36,10 +36,12 @@ fn configure_adaptive_model(
             if let Some(m) = model_l {
                 let layers = m.layer_count();
                 m.set_effective_layers(layers);
+                m.set_slimmable_size(adaptive.slimmable_size());
             }
             if let Some(m) = model_r {
                 let layers = m.layer_count();
                 m.set_effective_layers(layers);
+                m.set_slimmable_size(adaptive.slimmable_size());
             }
             false
         }
@@ -49,10 +51,16 @@ fn configure_adaptive_model(
                 let effective = adaptive.wavenet_effective_layers(layers);
                 m.set_effective_layers(effective);
             }
+            if let Some(m) = model_l {
+                m.set_slimmable_size(adaptive.slimmable_size());
+            }
             if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
                 let effective = adaptive.wavenet_effective_layers(layers);
                 m.set_effective_layers(effective);
+            }
+            if let Some(m) = model_r {
+                m.set_slimmable_size(adaptive.slimmable_size());
             }
             false
         }
@@ -66,10 +74,16 @@ fn configure_adaptive_model(
                 let effective = adaptive.wavenet_effective_layers(layers);
                 m.set_effective_layers(effective);
             }
+            if let Some(m) = model_l {
+                m.set_slimmable_size(adaptive.slimmable_size());
+            }
             if let Some(m) = model_r.as_mut().filter(|m| m.is_wavenet()) {
                 let layers = m.layer_count();
                 let effective = adaptive.wavenet_effective_layers(layers);
                 m.set_effective_layers(effective);
+            }
+            if let Some(m) = model_r {
+                m.set_slimmable_size(adaptive.slimmable_size());
             }
             false
         }

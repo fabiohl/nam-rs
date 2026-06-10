@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use super::slimmable::SlimmableModel;
 use super::{NamModel, StaticModel};
 use std::sync::Arc;
 
@@ -31,6 +32,16 @@ impl StaticModel {
             | Self::Lstm2x16(_)
             | Self::Lstm1x40(_)
             | Self::Lstm2x24(_) => {}
+        }
+    }
+
+    /// Sets the slimmable quality level for `SlimmableModel` variants.
+    ///
+    /// Only applies to `Container`. Other variants are a no-op.
+    #[inline(always)]
+    pub fn set_slimmable_size(&mut self, val: f32) {
+        if let Self::Container(c) = self {
+            c.set_slimmable_size(val);
         }
     }
 

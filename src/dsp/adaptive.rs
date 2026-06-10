@@ -343,6 +343,28 @@ impl AdaptiveCompute {
             AdaptiveState::Minimal => 0,                   // Passthrough
         }
     }
+
+    /// Slimmable quality mapping for `SlimmableContainer` submodel selection.
+    ///
+    /// Returns a value in `[0.0, 1.0]` to be passed to `SlimmableModel::set_slimmable_size()`:
+    /// - `Full` → `1.0` (highest-quality submodel — fallback, last in ordered list).
+    /// - `Reduced` → `0.25` (mid-quality submodel — typically A2-Lite for 2-model containers).
+    /// - `Minimal` → `0.0` (cheapest submodel — first in ordered list).
+    ///
+    /// For a typical 2-model container (Lite threshold 0.5, Full threshold 1.0):
+    /// - `1.0` selects the Full model (≥0.5, falls through to last).
+    /// - `0.25` selects the Lite model (<0.5, hits first threshold).
+    /// - `0.0` selects the Lite model (<0.5).
+    ///
+    /// The container's internal threshold logic (`val < max_value`) picks the first
+    /// submodel whose `max_value` is strictly greater than `val`.
+    pub fn slimmable_size(&self) -> f32 {
+        match self.state {
+            AdaptiveState::Full => 1.0,
+            AdaptiveState::Reduced => 0.25,
+            AdaptiveState::Minimal => 0.0,
+        }
+    }
 }
 
 #[cfg(test)]

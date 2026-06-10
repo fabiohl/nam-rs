@@ -251,7 +251,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 3.2 — Integração com a FSM adaptativa
 
-- **[T3.3] Ligar `set_slimmable_size` à FSM de pressão de CPU.**
+- **[T3.3] Ligar `set_slimmable_size` à FSM de pressão de CPU.** [DONE]
   - Mapear os estados de `src/dsp/adaptive.rs` (Full→Reduced→Minimal) para a seleção de submodelo (A2-Full ↔ A2-Lite), usando os limiares de P99/budget já monitorados pela telemetria (`src/dsp/telemetry.rs`).
   - **Critério de aceite:** sob carga simulada, o engine migra Full→Lite e retorna por histerese, sem realocar.
 
