@@ -7,7 +7,9 @@
 //! for example, a real amplifier or pedal distorts and colors a guitar sound.
 
 pub mod a2;
+pub mod container;
 pub mod lstm;
+pub mod slimmable;
 pub mod wavenet;
 
 mod static_model;
@@ -97,6 +99,8 @@ pub enum StaticModel {
     Lstm1x40(Box<lstm::Lstm1x40>),
     /// LSTM 2 Layers × 24 hidden units.
     Lstm2x24(Box<lstm::Lstm2x24>),
+    /// SlimmableContainer — bundle of submodels selected by quality threshold.
+    Container(Box<container::ContainerModel>),
 }
 
 impl sealed::Sealed for StaticModel {}

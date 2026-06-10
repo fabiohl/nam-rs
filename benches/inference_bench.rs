@@ -63,6 +63,7 @@ fn make_lstm_data(num_layers: usize, hidden_size: usize, total_weights: usize) -
             head_scale: None,
             num_layers: Some(num_layers),
             hidden_size: Some(hidden_size),
+            submodels: None,
         },
         // Weights initialized with a small value (0.01) to avoid premature saturation/infs
         // during repeated benchmark runs.

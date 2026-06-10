@@ -239,7 +239,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 3.1 — Container
 
-- **[T3.1] Trait `SlimmableModel` + parser `SlimmableContainer`.**
+- **[T3.1] Trait `SlimmableModel` + parser `SlimmableContainer`.** [DONE]
   - Criar `src/models/slimmable.rs` (`trait SlimmableModel { fn set_slimmable_size(&mut self, val: f32); }`) e parser `src/loader/dispatcher/container/` para a arquitetura `"SlimmableContainer"` (`config.submodels[] = {max_value, model}`), construindo cada submodelo via o dispatcher recursivo.
   - **Fonte de verdade:** `NAM/slimmable.h`, `NAM/container.h:18-64`, `NAM/container.cpp:149` (registro/parser).
   - **Critério de aceite:** `slimmable_container.nam` (exemplo) carrega; ordena submodelos por `max_value` ascendente; último cobre `>= 1.0`.

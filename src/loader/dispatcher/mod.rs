@@ -18,16 +18,19 @@ use anyhow::bail;
 
 /// Builds a `Box<StaticModel>` from the raw parsed data.
 ///
-/// Branches by architecture (`"WaveNet"` / `"LSTM"`) and delegates to the
+/// Branches by architecture (`"WaveNet"` / `"LSTM"` / `"SlimmableContainer"`) and delegates to the
 /// specialized builders with const generics.
 pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
     match data.architecture.as_str() {
         "WaveNet" => wavenet::build_wavenet(data),
         "LSTM" => lstm::build_lstm(data),
+        "SlimmableContainer" => container::build_container(data),
         other => bail!("Unsupported architecture: '{}'", other),
     }
 }
 
+/// SlimmableContainer model builder module
+pub mod container;
 /// LSTM model builder module
 pub mod lstm;
 /// WaveNet model builder module

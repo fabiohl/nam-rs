@@ -183,6 +183,8 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
                         8 => "A2-Full".to_string(),
                         _ => "A2-Custom".to_string(),
                     }
+                } else if architecture == "SlimmableContainer" {
+                    "Container".to_string()
                 } else {
                     "Custom".to_string()
                 }

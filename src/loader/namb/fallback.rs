@@ -57,5 +57,6 @@ pub fn make_standard_wavenet_config() -> NamConfig {
         head_scale: Some(0.02), // Final volume adjustment to ensure consistency.
         num_layers: None,
         hidden_size: None,
+        submodels: None,
     }
 }

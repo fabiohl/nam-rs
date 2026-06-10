@@ -18,9 +18,10 @@ impl StaticModel {
             Self::WavenetLite(m) => m.set_effective_layers(n),
             Self::WavenetFeather(m) => m.set_effective_layers(n),
             Self::WavenetNano(m) => m.set_effective_layers(n),
-            // LSTM and A2: no-op — reduction handled at pipeline level
+            // LSTM, A2, and Container: no-op — reduction handled at pipeline level
             Self::WavenetA2Full(_)
             | Self::WavenetA2Lite(_)
+            | Self::Container(_)
             | Self::Lstm1x8(_)
             | Self::Lstm1x12(_)
             | Self::Lstm1x16(_)
@@ -43,6 +44,7 @@ impl StaticModel {
             Self::WavenetFeather(m) => m.array1.layers.len(),
             Self::WavenetNano(m) => m.array1.layers.len(),
             Self::WavenetA2Full(_) | Self::WavenetA2Lite(_) => crate::models::a2::A2_NUM_LAYERS,
+            Self::Container(c) => c.active().layer_count(),
             Self::Lstm2x8(_) | Self::Lstm2x12(_) | Self::Lstm2x16(_) | Self::Lstm2x24(_) => 2,
             Self::Lstm1x8(_)
             | Self::Lstm1x12(_)
@@ -83,6 +85,12 @@ impl StaticModel {
         )
     }
 
+    /// Returns `true` if this is a SlimmableContainer model.
+    #[inline(always)]
+    pub fn is_container(&self) -> bool {
+        matches!(self, Self::Container(_))
+    }
+
     /// Returns the number of channels inside the model.
     pub fn channels(&self) -> usize {
         match self {
@@ -92,6 +100,7 @@ impl StaticModel {
             Self::WavenetNano(_) => 4,
             Self::WavenetA2Full(_) => 8,
             Self::WavenetA2Lite(_) => 3,
+            Self::Container(c) => c.active().channels(),
             Self::Lstm1x8(_) | Self::Lstm2x8(_) => 8,
             Self::Lstm1x12(_) | Self::Lstm2x12(_) => 12,
             Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
@@ -100,12 +109,12 @@ impl StaticModel {
         }
     }
 
-    /// Returns the receptive field size of the model (or 0 for LSTM).
+    /// Returns the receptive field size of the model (or 0 for LSTM/Container).
     pub fn receptive_field(&self) -> usize {
-        if self.is_lstm() {
-            0
-        } else {
-            self.prewarm_samples()
+        match self {
+            Self::Container(_) => 0,
+            _ if self.is_lstm() => 0,
+            _ => self.prewarm_samples(),
         }
     }
 }
@@ -120,6 +129,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.process(input, output),
             Self::WavenetA2Full(m) => m.process(input, output),
             Self::WavenetA2Lite(m) => m.process(input, output),
+            Self::Container(m) => m.process(input, output),
             Self::Lstm1x8(m) => m.process(input, output),
             Self::Lstm1x12(m) => m.process(input, output),
             Self::Lstm1x16(m) => m.process(input, output),
@@ -141,6 +151,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.prewarm(),
             Self::WavenetA2Full(m) => m.prewarm(),
             Self::WavenetA2Lite(m) => m.prewarm(),
+            Self::Container(m) => m.prewarm(num_samples),
             Self::Lstm1x8(m) => m.prewarm(num_samples),
             Self::Lstm1x12(m) => m.prewarm(num_samples),
             Self::Lstm1x16(m) => m.prewarm(num_samples),
@@ -161,6 +172,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetA2Full(m) => m.reset(sample_rate, max_buffer_size),
             Self::WavenetA2Lite(m) => m.reset(sample_rate, max_buffer_size),
+            Self::Container(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x8(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x12(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x16(m) => m.reset(sample_rate, max_buffer_size),
@@ -181,6 +193,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetA2Full(m) => m.set_max_buffer_size(max_buf),
             Self::WavenetA2Lite(m) => m.set_max_buffer_size(max_buf),
+            Self::Container(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x8(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x12(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x16(m) => m.set_max_buffer_size(max_buf),
@@ -201,6 +214,7 @@ impl NamModel for StaticModel {
             Self::WavenetNano(m) => m.prewarm_samples(),
             Self::WavenetA2Full(m) => m.prewarm_samples(),
             Self::WavenetA2Lite(m) => m.prewarm_samples(),
+            Self::Container(m) => m.prewarm_samples(),
             Self::Lstm1x8(m) => m.prewarm_samples(),
             Self::Lstm1x12(m) => m.prewarm_samples(),
             Self::Lstm1x16(m) => m.prewarm_samples(),

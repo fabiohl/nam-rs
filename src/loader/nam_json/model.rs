@@ -157,6 +157,10 @@ pub struct NamConfig {
     pub num_layers: Option<usize>,
     /// Hidden size of the LSTM cell
     pub hidden_size: Option<usize>,
+    /// Submodel entries for SlimmableContainer architecture.
+    /// Each entry is `{"max_value": f32, "model": { ... full inner .nam JSON ... }}`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submodels: Option<Vec<serde_json::Value>>,
 }
 
 /// Root mapping structure for `.nam` files.

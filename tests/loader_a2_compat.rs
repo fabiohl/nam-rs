@@ -92,6 +92,7 @@ fn make_unrecognized_a2_like_data(channels: usize) -> NamModelData {
             head_scale: Some(1.0),
             num_layers: None,
             hidden_size: None,
+            submodels: None,
         },
         weights: vec![],
         sample_rate: Some(48000.0),
