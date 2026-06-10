@@ -255,29 +255,6 @@ fn bench_sigmoid_slice_256(c: &mut Criterion) {
     });
 }
 
-/// Measures the performance of the 1x16 Dynamic LSTM.
-/// Useful for validating the engine in custom training scenarios with
-/// hidden state dimensions outside the standard 8, 16, or 32.
-fn bench_lstm_dynamic_1x16(c: &mut Criterion) {
-    use nam_rs::loader::dispatcher::build_lstm_dynamic;
-    let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("tests/fixtures/models/BossLSTM-1x16.nam");
-    if !path.exists() {
-        return;
-    }
-    let json_data = std::fs::read_to_string(&path).expect("Failed to read LSTM model");
-    let model_data = parse_nam_json(&json_data).expect("Failed in JSON parser");
-    let mut model = build_lstm_dynamic(&model_data, 1, 16).expect("Dynamic builder failed");
-    model.prewarm(2048);
-    let input = generate_sine_440hz(64);
-    let mut output = vec![0.0f32; 64];
-    c.bench_function("LSTM_Dynamic_1x16_64samp_48kHz", |b| {
-        b.iter(|| {
-            model.process(&input, &mut output);
-        });
-    });
-}
-
 /// Evaluates how WaveNet scales with different DSP buffer sizes.
 /// Larger buffers allow better cache utilization and prefetching,
 /// but increase the total latency perceived by the musician.
@@ -1093,7 +1070,6 @@ criterion_group!(
     bench_tanh_pade_nr2_256,
     bench_tanh_pade_div_256,
     bench_sigmoid_slice_256,
-    bench_lstm_dynamic_1x16,
     bench_dot_product_avx2_256,
     bench_dot_product_avx2_64,
     bench_resampler_44100_to_48000_256samp,

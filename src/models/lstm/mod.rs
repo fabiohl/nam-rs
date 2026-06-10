@@ -3,7 +3,7 @@
 
 //! LSTM Module — Recurrent Models for NAM Inference.
 //!
-//! Contains the static (Const Generics) and dynamic (fallback) implementations
+//! Contains the static (Const Generics) implementations
 //! of LSTM models, their layers, type aliases by performance profile,
 //! and integration with the `NamModel` trait for dispatch by the DSP host.
 //!
@@ -15,7 +15,6 @@
 //! ├── layer.rs      # LstmLayer + per-sample SIMD processing macros
 //! ├── model1.rs     # LstmModel1 + define_lstm1_process! macro
 //! ├── model2.rs     # LstmModel2 + define_lstm2_process_pipelined! macro
-//! ├── model_dyn.rs  # LstmDynLayer + LstmDynModel (dynamic fallback)
 //! ├── prewarm.rs    # LstmLike trait + lstm_prewarm_common
 //! └── tests.rs      # Unit and SIMD vs scalar parity tests
 //! ```
@@ -27,7 +26,6 @@ pub mod layer;
 pub mod layer_kernels;
 pub mod model1;
 pub mod model2;
-pub mod model_dyn;
 pub mod prewarm;
 
 // =============================================================================
@@ -35,7 +33,6 @@ pub mod prewarm;
 // =============================================================================
 
 pub use layer::LstmLayer;
-pub use model_dyn::{LstmDynLayer, LstmDynModel};
 pub use model1::LstmModel1;
 pub use model2::LstmModel2;
 
@@ -75,7 +72,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     for LstmModel2<H, H1_IH, H2_IH, H_H4>
 {
 }
-impl sealed::Sealed for LstmDynModel {}
 
 // =============================================================================
 // NamModel for LSTM — 1 Layer
@@ -125,29 +121,6 @@ impl<const H: usize, const H1_IH: usize, const H2_IH: usize, const H_H4: usize> 
     }
 
     /// Light reset for 2-layer LSTM: only zeros internal states without
-    /// reprocessing the full prewarm with silence.
-    fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
-        self.reset_states();
-    }
-}
-
-// =============================================================================
-// NamModel for Dynamic LSTM
-// =============================================================================
-
-impl NamModel for LstmDynModel {
-    /// Implementation for models where the hidden state size is defined at runtime.
-    fn process(&mut self, input: &[f32], output: &mut [f32]) {
-        self.process(input, output);
-    }
-
-    /// Dynamic prewarm already encapsulates the silence loop logic internally.
-    #[cold]
-    fn prewarm(&mut self, num_samples: usize) {
-        self.prewarm(num_samples);
-    }
-
-    /// Light reset for dynamic LSTM: only zeros internal states without
     /// reprocessing the full prewarm with silence.
     fn reset(&mut self, _sample_rate: u32, _max_buffer_size: usize) {
         self.reset_states();

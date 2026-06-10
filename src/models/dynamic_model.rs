@@ -29,8 +29,7 @@ impl DynamicModel {
             | Self::Lstm2x12(_)
             | Self::Lstm2x16(_)
             | Self::Lstm1x40(_)
-            | Self::Lstm2x24(_)
-            | Self::LstmDyn(_) => {}
+            | Self::Lstm2x24(_) => {}
         }
     }
 
@@ -44,11 +43,7 @@ impl DynamicModel {
             Self::WavenetFeather(m) => m.array1.layers.len(),
             Self::WavenetNano(m) => m.array1.layers.len(),
             Self::WavenetA2Full(_) | Self::WavenetA2Lite(_) => crate::models::a2::A2_NUM_LAYERS,
-            Self::Lstm2x8(_)
-            | Self::Lstm2x12(_)
-            | Self::Lstm2x16(_)
-            | Self::Lstm2x24(_)
-            | Self::LstmDyn(_) => 2,
+            Self::Lstm2x8(_) | Self::Lstm2x12(_) | Self::Lstm2x16(_) | Self::Lstm2x24(_) => 2,
             Self::Lstm1x8(_)
             | Self::Lstm1x12(_)
             | Self::Lstm1x16(_)
@@ -71,7 +66,6 @@ impl DynamicModel {
                 | Self::Lstm2x16(_)
                 | Self::Lstm1x40(_)
                 | Self::Lstm2x24(_)
-                | Self::LstmDyn(_)
         )
     }
 
@@ -103,7 +97,6 @@ impl DynamicModel {
             Self::Lstm1x16(_) | Self::Lstm2x16(_) => 16,
             Self::Lstm1x24(_) | Self::Lstm2x24(_) => 24,
             Self::Lstm1x40(_) => 40,
-            Self::LstmDyn(m) => m.layers.first().map(|l| l.hidden_size).unwrap_or(0),
         }
     }
 
@@ -136,7 +129,6 @@ impl NamModel for DynamicModel {
             Self::Lstm2x16(m) => m.process(input, output),
             Self::Lstm1x40(m) => m.process(input, output),
             Self::Lstm2x24(m) => m.process(input, output),
-            Self::LstmDyn(m) => m.process(input, output),
         }
     }
 
@@ -158,7 +150,6 @@ impl NamModel for DynamicModel {
             Self::Lstm2x16(m) => m.prewarm(num_samples),
             Self::Lstm1x40(m) => m.prewarm(num_samples),
             Self::Lstm2x24(m) => m.prewarm(num_samples),
-            Self::LstmDyn(m) => m.prewarm(num_samples),
         }
     }
 
@@ -179,7 +170,6 @@ impl NamModel for DynamicModel {
             Self::Lstm2x16(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm1x40(m) => m.reset(sample_rate, max_buffer_size),
             Self::Lstm2x24(m) => m.reset(sample_rate, max_buffer_size),
-            Self::LstmDyn(m) => m.reset(sample_rate, max_buffer_size),
         }
     }
 
@@ -200,7 +190,6 @@ impl NamModel for DynamicModel {
             Self::Lstm2x16(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm1x40(m) => m.set_max_buffer_size(max_buf),
             Self::Lstm2x24(m) => m.set_max_buffer_size(max_buf),
-            Self::LstmDyn(m) => m.set_max_buffer_size(max_buf),
         }
     }
 
@@ -221,7 +210,6 @@ impl NamModel for DynamicModel {
             Self::Lstm2x16(m) => m.prewarm_samples(),
             Self::Lstm1x40(m) => m.prewarm_samples(),
             Self::Lstm2x24(m) => m.prewarm_samples(),
-            Self::LstmDyn(m) => m.prewarm_samples(),
         }
     }
 }

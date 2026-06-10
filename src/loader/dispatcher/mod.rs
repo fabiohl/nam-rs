@@ -34,5 +34,4 @@ pub mod wavenet;
 /// WeightCursor — Deterministic sequential reading of flattened weights
 pub mod weight_cursor;
 
-pub use lstm::build_lstm_dynamic;
 pub(crate) use weight_cursor::WeightCursor;

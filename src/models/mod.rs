@@ -94,8 +94,6 @@ pub enum DynamicModel {
     Lstm1x40(Box<lstm::Lstm1x40>),
     /// LSTM 2 Layers × 24 hidden units.
     Lstm2x24(Box<lstm::Lstm2x24>),
-    /// LSTM Dynamic (used as fallback).
-    LstmDyn(Box<lstm::LstmDynModel>),
 }
 
 impl sealed::Sealed for DynamicModel {}
