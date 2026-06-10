@@ -17,7 +17,9 @@
 use super::head::A2HeadConv;
 use super::layer::A2Layer;
 use super::params::{A2_DILATIONS, A2_HEAD_KERNEL_SIZE, A2_KERNEL_SIZES, A2_NUM_LAYERS};
-use crate::math::common::AlignedVec;
+use crate::math::common::{
+    AlignedVec, InstructionSet, PrefetchFn, SimdMathConfig, quantize_weight,
+};
 use crate::models::wavenet::common::WAVENET_MAX_NUM_FRAMES;
 
 /// Computes the receptive field size for the A2 architecture.
@@ -361,6 +363,223 @@ impl<const CH: usize> WaveNetA2<CH> {
         self.set_max_buffer_size(max_buffer_size);
         self.prewarm();
     }
+
+    /// Loads weights from a flat f32 slice in the exact A2 stream order.
+    ///
+    /// ## Weight order (mirrors `a2_fast.cpp:196-282`)
+    ///
+    /// 1. `_rechannel`: weights `CH` f32 (quantized to u16) + bias `CH` f32
+    /// 2. Per layer 0..22:
+    ///    - `_conv`: weights `ceil(CH/4)*4*CH*K` f32 (quantized to u16) + bias `CH` f32
+    ///    - `_input_mixin`: weights `CH` f32 (no bias)
+    ///    - `_layer1x1`: weights `CH*CH` f32 (col-major) + bias `CH` f32
+    /// 3. `_head_rechannel`: conv k=16 weights `16*CH` f32 + head_bias `1` f32
+    /// 4. `head_scale`: last f32 in the stream
+    ///
+    /// ## Acceptance criteria (T1.6)
+    /// - Calls `verify_exhaustion()` — consumed count must equal `weights.len()`.
+    /// - Returns a clear error if the weight stream is shorter or longer than expected.
+    #[allow(clippy::too_many_lines)]
+    pub fn set_weights(&mut self, weights: &[f32]) -> Result<(), String> {
+        let total = weights.len();
+        let mut pos: usize = 0;
+        let is_bf16 = SimdMathConfig::get().instruction_set == InstructionSet::Avx512VnniBf16;
+
+        // ── 1. Rechannel: Conv1x1(1 → CH) ─────────────────────────────────
+        let rw_f32 = read_slice(weights, &mut pos, CH, total, "rechannel_w")?;
+        let mut rechannel_w = AlignedVec::new(CH, 0u16);
+        for (i, &v) in rw_f32.iter().enumerate() {
+            rechannel_w[i] = quantize_weight(v, is_bf16);
+        }
+        let rb = read_slice(weights, &mut pos, CH, total, "rechannel_b")?;
+        let mut rechannel_b = AlignedVec::new(CH, 0.0f32);
+        for (i, &v) in rb.iter().enumerate() {
+            rechannel_b[i] = v;
+        }
+
+        // ── 2. Per-layer weights ──────────────────────────────────────────
+        let num_blocks = CH.div_ceil(4);
+        let mut layers = Vec::with_capacity(A2_NUM_LAYERS);
+
+        for i in 0..A2_NUM_LAYERS {
+            let ksize = A2_KERNEL_SIZES[i];
+            let dilation = A2_DILATIONS[i];
+            let padded_total = num_blocks * 4 * CH * ksize;
+
+            // 2a. Dilated conv weights (quantized u16, interleaved 4-wide).
+            let conv_w_f32 = read_slice(
+                weights,
+                &mut pos,
+                padded_total,
+                total,
+                &format!("layer[{i}].conv_w"),
+            )?;
+            let mut conv_w = AlignedVec::new(padded_total, 0u16);
+            transpose_conv1d_interleaved_4wide(conv_w_f32, &mut conv_w, CH, CH, ksize, is_bf16);
+
+            // 2b. Conv bias.
+            let conv_b_f32 =
+                read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].conv_b"))?;
+            let conv_b = AlignedVec::from(conv_b_f32.to_vec());
+
+            let prefetch_fn: PrefetchFn = if dilation >= 128 {
+                crate::math::common::prefetch_strategy_2stage
+            } else {
+                crate::math::common::prefetch_strategy_simple
+            };
+
+            let conv = super::conv1d::A2Conv1d::new(
+                conv_w,
+                conv_b,
+                true,
+                dilation,
+                CH,
+                CH,
+                ksize,
+                prefetch_fn,
+            );
+
+            // 2c. Input mixin (no bias, f32).
+            let mixin_w_f32 =
+                read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].mixin_w"))?;
+            let mixin_w = AlignedVec::from(mixin_w_f32.to_vec());
+
+            // 2d. Layer1x1 weights (CH × CH, stored f32 col-major).
+            let l1x1_w_f32 = read_slice(
+                weights,
+                &mut pos,
+                CH * CH,
+                total,
+                &format!("layer[{i}].l1x1_w"),
+            )?;
+            let mut l1x1_w = AlignedVec::new(CH * CH, 0.0f32);
+            transpose_dense_f32(l1x1_w_f32, &mut l1x1_w, CH, CH);
+
+            // 2e. Layer1x1 bias.
+            let l1x1_b_f32 =
+                read_slice(weights, &mut pos, CH, total, &format!("layer[{i}].l1x1_b"))?;
+            let l1x1_b = AlignedVec::from(l1x1_b_f32.to_vec());
+
+            layers.push(A2Layer::new(conv, mixin_w, l1x1_w, l1x1_b));
+        }
+
+        // ── 3. Head rechannel: Conv1D(CH → 1, K=16, bias) ─────────────────
+        let head_w_f32 = read_slice(weights, &mut pos, A2_HEAD_KERNEL_SIZE * CH, total, "head_w")?;
+        let mut head_w = AlignedVec::new(A2_HEAD_KERNEL_SIZE * CH, 0.0f32);
+        transpose_head_w(head_w_f32, &mut head_w, CH, A2_HEAD_KERNEL_SIZE);
+
+        let head_b = {
+            let s = read_slice(weights, &mut pos, 1, total, "head_b")?;
+            s[0]
+        };
+
+        // ── 4. Head scale (last float) ─────────────────────────────────────
+        let head_scale = {
+            let s = read_slice(weights, &mut pos, 1, total, "head_scale")?;
+            s[0]
+        };
+
+        // ── 5. Exhaustion check ────────────────────────────────────────────
+        if pos != total {
+            return Err(format!(
+                "set_weights: stream has {} unconsumed f32 after loading all weights (consumed {}, total {})",
+                total - pos,
+                pos,
+                total
+            ));
+        }
+
+        // ── 6. Commit to self (all-or-nothing) ──────────────────────────────
+        self.rechannel_w = rechannel_w;
+        self.rechannel_b = rechannel_b;
+        self.layers = layers;
+        self.head_conv = Some(A2HeadConv::new(head_w, head_b, head_scale, CH));
+
+        Ok(())
+    }
+
+    /// Returns whether weights have been loaded via `set_weights`.
+    #[inline(always)]
+    pub fn has_weights(&self) -> bool {
+        !self.layers.is_empty()
+    }
+}
+
+// =============================================================================
+// Private helpers for set_weights
+// =============================================================================
+
+/// Reads a contiguous slice of `n` f32 values from `weights[pos..]`,
+/// advancing `pos`. Returns an error with the label if out of bounds.
+#[inline]
+fn read_slice<'a>(
+    weights: &'a [f32],
+    pos: &mut usize,
+    n: usize,
+    total: usize,
+    label: &str,
+) -> Result<&'a [f32], String> {
+    if *pos + n > total {
+        return Err(format!(
+            "set_weights: stream exhausted at position {} (need {} for \"{}\", total {})",
+            *pos, n, label, total
+        ));
+    }
+    let slice = &weights[*pos..*pos + n];
+    *pos += n;
+    Ok(slice)
+}
+
+/// Rearranges dense layer weights from row-major (NAM JSON) to col-major, keeping f32 precision.
+///
+/// Input:  `raw[out * in_size + in_c]` (row-major)
+/// Output: `weights[in_c * out_size + out_c]` (col-major)
+fn transpose_dense_f32(raw: &[f32], weights: &mut [f32], in_size: usize, out_size: usize) {
+    for out_c in 0..out_size {
+        for in_c in 0..in_size {
+            weights[in_c * out_size + out_c] = raw[out_c * in_size + in_c];
+        }
+    }
+}
+
+/// Rearranges conv1d weights into "Interleaved 4-Wide" format and quantizes to u16.
+///
+/// Groups output channels in blocks of 4 for SIMD processing.
+fn transpose_conv1d_interleaved_4wide(
+    raw: &[f32],
+    weights: &mut [u16],
+    in_ch: usize,
+    out_ch: usize,
+    kernel: usize,
+    is_bf16: bool,
+) {
+    let num_blocks = out_ch.div_ceil(4);
+    for b in 0..num_blocks {
+        for k in 0..kernel {
+            for in_c in 0..in_ch {
+                for lane in 0..4 {
+                    let out_c = b * 4 + lane;
+                    let target_idx = b * (kernel * in_ch * 4) + k * (in_ch * 4) + in_c * 4 + lane;
+                    if out_c < out_ch {
+                        let raw_idx = (out_c * in_ch + in_c) * kernel + k;
+                        weights[target_idx] = quantize_weight(raw[raw_idx], is_bf16);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Transposes head weights from [channel][tap] (NAM JSON format) to [tap][channel] (A2HeadConv format).
+///
+/// NAM JSON weight layout for Conv1D(1, CH, 16): `raw[channel * 16 + tap]`
+/// A2HeadConv expects: `head[tap * CH + channel]`
+fn transpose_head_w(raw: &[f32], head: &mut [f32], channels: usize, kernel: usize) {
+    for tap in 0..kernel {
+        for ch in 0..channels {
+            head[tap * channels + ch] = raw[ch * kernel + tap];
+        }
+    }
 }
 
 impl<const CH: usize> Default for WaveNetA2<CH> {
@@ -504,5 +723,166 @@ mod tests {
         let model8 = WaveNetA2::<8>::new();
         assert_eq!(model3.receptive_field_size, rf_const);
         assert_eq!(model8.receptive_field_size, rf_const);
+    }
+
+    // ── set_weights tests (T1.6) ───────────────────────────────────────
+
+    fn expected_weight_count(ch: usize) -> usize {
+        let num_blocks = ch.div_ceil(4);
+        let mut count = ch; // rechannel_w
+        count += ch; // rechannel_b
+        for &k in &A2_KERNEL_SIZES {
+            count += num_blocks * 4 * ch * k; // conv_w
+            count += ch; // conv_b
+            count += ch; // mixin_w
+            count += ch * ch; // l1x1_w
+            count += ch; // l1x1_b
+        }
+        count += A2_HEAD_KERNEL_SIZE * ch; // head_w
+        count += 1; // head_b
+        count += 1; // head_scale
+        count
+    }
+
+    fn make_test_weights(n: usize, seed: u32) -> Vec<f32> {
+        let mut v = Vec::with_capacity(n);
+        let mut state = seed;
+        for _ in 0..n {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            v.push(((state as f32) / (u32::MAX as f32)) * 0.5 - 0.25);
+        }
+        v
+    }
+
+    #[test]
+    fn test_set_weights_exact_count_ch3() {
+        let mut model = WaveNetA2::<3>::new();
+        let count = expected_weight_count(3);
+        assert_eq!(count, 2342); // sanity-check known count
+        let weights = make_test_weights(count, 42);
+        assert!(model.set_weights(&weights).is_ok());
+        assert!(model.has_weights());
+        assert_eq!(model.layers.len(), A2_NUM_LAYERS);
+        assert!(model.head_conv.is_some());
+    }
+
+    #[test]
+    fn test_set_weights_exact_count_ch8() {
+        let mut model = WaveNetA2::<8>::new();
+        let count = expected_weight_count(8);
+        assert_eq!(count, 12154); // sanity-check known count
+        let weights = make_test_weights(count, 77);
+        assert!(model.set_weights(&weights).is_ok());
+        assert!(model.has_weights());
+        assert_eq!(model.layers.len(), A2_NUM_LAYERS);
+        assert!(model.head_conv.is_some());
+    }
+
+    #[test]
+    fn test_set_weights_too_few_ch3() {
+        let mut model = WaveNetA2::<3>::new();
+        let count = expected_weight_count(3);
+        let weights = make_test_weights(count - 10, 42);
+        let err = model.set_weights(&weights);
+        assert!(err.is_err(), "expected error with too few weights");
+        let err_msg = err.unwrap_err();
+        assert!(
+            err_msg.contains("stream exhausted"),
+            "error should mention exhaustion, got: {err_msg}"
+        );
+        assert!(!model.has_weights());
+    }
+
+    #[test]
+    fn test_set_weights_too_many_ch3() {
+        let mut model = WaveNetA2::<3>::new();
+        let count = expected_weight_count(3);
+        let weights = make_test_weights(count + 5, 42);
+        let err = model.set_weights(&weights);
+        assert!(err.is_err(), "expected error with too many weights");
+        let err_msg = err.unwrap_err();
+        assert!(
+            err_msg.contains("unconsumed"),
+            "error should mention unconsumed, got: {err_msg}"
+        );
+    }
+
+    #[test]
+    fn test_set_weights_too_few_ch8() {
+        let mut model = WaveNetA2::<8>::new();
+        let count = expected_weight_count(8);
+        let weights = make_test_weights(count - 1, 99);
+        let err = model.set_weights(&weights);
+        assert!(err.is_err(), "expected error with too few weights");
+        let err_msg = err.unwrap_err();
+        assert!(
+            err_msg.contains("stream exhausted"),
+            "error should mention exhaustion"
+        );
+    }
+
+    #[test]
+    fn test_set_weights_too_many_ch8() {
+        let mut model = WaveNetA2::<8>::new();
+        let count = expected_weight_count(8);
+        let weights = make_test_weights(count + 1, 88);
+        let err = model.set_weights(&weights);
+        assert!(err.is_err(), "expected error with too many weights");
+        let err_msg = err.unwrap_err();
+        assert!(
+            err_msg.contains("unconsumed"),
+            "error should mention unconsumed"
+        );
+    }
+
+    #[test]
+    fn test_set_weights_has_weights_flag_ch3() {
+        let mut model = WaveNetA2::<3>::new();
+        assert!(!model.has_weights());
+        let count = expected_weight_count(3);
+        let weights = make_test_weights(count, 123);
+        model.set_weights(&weights).unwrap();
+        assert!(model.has_weights());
+    }
+
+    /// Smoke: load random weights, prewarm, process 1 frame — output should be non-zero
+    /// (random weights almost certainly produce non-zero output).
+    #[test]
+    fn test_set_weights_process_smoke_ch3() {
+        let mut model = WaveNetA2::<3>::new();
+        let count = expected_weight_count(3);
+        let weights = make_test_weights(count, 42);
+        model.set_weights(&weights).unwrap();
+        model.prewarm();
+
+        let input = vec![0.5f32; 16];
+        let mut output = vec![0.0f32; 16];
+        model.process(&input, &mut output);
+
+        // With random weights, output should be non-zero (statistical certainty).
+        let any_nonzero = output.iter().any(|&v| v.abs() > 1e-30);
+        assert!(
+            any_nonzero,
+            "process should produce non-zero output after weight loading"
+        );
+    }
+
+    #[test]
+    fn test_set_weights_process_smoke_ch8() {
+        let mut model = WaveNetA2::<8>::new();
+        let count = expected_weight_count(8);
+        let weights = make_test_weights(count, 77);
+        model.set_weights(&weights).unwrap();
+        model.prewarm();
+
+        let input = vec![0.5f32; 16];
+        let mut output = vec![0.0f32; 16];
+        model.process(&input, &mut output);
+
+        let any_nonzero = output.iter().any(|&v| v.abs() > 1e-30);
+        assert!(
+            any_nonzero,
+            "process should produce non-zero output after weight loading"
+        );
     }
 }

@@ -124,7 +124,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `a2_fast.cpp:514` (sequência conv→mixin→LeakyReLU→head →layer1x1 residual), `detail.h` (`Layer`), `docs/wavenet_walkthrough.rst:103-214`.
   - **Critério de aceite:** paridade camada-a-camada vs referência em micro-teste sintético.
 
-- **[T1.6] Carga de pesos A2 (ordem do stream).**
+- **[T1.6] Carga de pesos A2 (ordem do stream).** [DONE]
   - Implementar `set_weights` respeitando a ordem exata: `_rechannel` → (por camada: `_conv` → `_input_mixin` → `_layer1x1`) → `_head_rechannel` (conv k=16, bias) → **`head_scale` (último float do stream)**.
   - **Fonte de verdade:** `a2_fast.cpp:196-282` (documenta a ordem), `a2_fast.cpp:264-275` (head + `head_scale` trailing), `generate_weights_a2.py:18-90` (contagem de pesos por bloco).
   - **Critério de aceite:** contagem de pesos consumidos == `weights.len()` (asserção); erro claro (sem panic em runtime RT) se divergir.
