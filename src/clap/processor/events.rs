@@ -7,6 +7,7 @@
 use super::NamClapProcessor;
 use crate::clap::extensions::params::{
     PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
+    PARAM_SLIM_OVERRIDE,
 };
 use crate::clap::plugin::ClapParamPayload;
 use crate::common::spsc::GcItem;
@@ -53,6 +54,7 @@ impl<'a> NamClapProcessor<'a> {
                     PARAM_GATE_THRESH => self.set_gate_threshold(val),
                     PARAM_BYPASS => self.set_bypass(val),
                     PARAM_ADAPTIVE_COMPUTE => self.set_adaptive_compute(val),
+                    PARAM_SLIM_OVERRIDE => self.set_slim_override(val),
                     _ => {}
                 }
             } else if let Some(mod_event) = event.as_event::<ParamModEvent>() {
@@ -85,6 +87,7 @@ impl<'a> NamClapProcessor<'a> {
             self.sync_gate_thresh_from_gui();
             self.sync_bypass_from_gui();
             self.sync_adaptive_compute_from_gui();
+            self.sync_slim_override_from_gui();
         } // generation guard
 
         // Dynamic latency monitoring on the Audio Thread

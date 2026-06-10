@@ -88,6 +88,8 @@ pub struct UiToRt {
     pub param_bypass: AtomicU32,
     /// Latest Adaptive Compute mode parameter value (0=Off, 1=Conservative, 2=Aggressive).
     pub param_adaptive_compute: AtomicU32,
+    /// Latest Slim Override parameter value (0=Auto, 1=ForceFull, 2=ForceLite).
+    pub param_slim_override: AtomicU32,
     /// Gesture and modification flag bitmap per parameter (GUI -> Host/Processor).
     /// Layout: for each parameter (0=input_gain, 1=output_gain, 2=gate_thresh, 3=bypass):
     ///   bit (param_index * 3 + 0) = Changed (gui_*_changed)
@@ -122,11 +124,11 @@ pub struct ColdShared {
     pub buffer_size: AtomicU32,
     /// Dynamic accent color based on DAW track color (packed ARGB).
     pub track_accent_color: AtomicU32,
-    /// Parameter indication (mapping, automation, and override) for the 6 parameters.
+    /// Parameter indication (mapping, automation, and override) for the 7 parameters.
     /// Bit 0: Mapped, Bit 1: Automating, Bit 2: Override.
-    pub param_indication: [AtomicU8; 6],
+    pub param_indication: [AtomicU8; 7],
     /// Indicated/mapped parameter colors (packed ARGB).
-    pub param_indication_color: [AtomicU32; 6],
+    pub param_indication_color: [AtomicU32; 7],
     /// Model load counter (incremented on each successful model load).
     pub model_load_counter: AtomicU32,
     /// Loaded model name (path basename). Written by the main thread, read by the UI thread.
@@ -243,13 +245,13 @@ impl NamClapShared {
     pub fn write_gui_events(&self, output: &mut OutputEvents) {
         use crate::clap::extensions::params::{
             PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-            PARAM_OUTPUT_GAIN,
+            PARAM_OUTPUT_GAIN, PARAM_SLIM_OVERRIDE,
         };
         use clack_plugin::events::event_types::{
             ParamGestureBeginEvent, ParamGestureEndEvent, ParamValueEvent,
         };
 
-        let params: [(u32, u32, &AtomicU32); 5] = [
+        let params: [(u32, u32, &AtomicU32); 6] = [
             (
                 PARAM_INPUT_GAIN,
                 Self::param_index(PARAM_INPUT_GAIN) as u32,
@@ -274,6 +276,11 @@ impl NamClapShared {
                 PARAM_ADAPTIVE_COMPUTE,
                 Self::param_index(PARAM_ADAPTIVE_COMPUTE) as u32,
                 &self.ui_to_rt.param_adaptive_compute,
+            ),
+            (
+                PARAM_SLIM_OVERRIDE,
+                Self::param_index(PARAM_SLIM_OVERRIDE) as u32,
+                &self.ui_to_rt.param_slim_override,
             ),
         ];
 

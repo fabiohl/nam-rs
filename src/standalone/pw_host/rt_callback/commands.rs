@@ -5,6 +5,7 @@
 //! Processes commands from the command-line interface or control system (volume, model, noise gate).
 
 use crate::common::spsc::{GcItem, GcOverflowBuffer, ParamPayload, RtStatusFlags};
+use crate::dsp::adaptive::AdaptiveCompute;
 use crate::dsp::gate::GateParams;
 
 use std::sync::Arc;
@@ -30,6 +31,7 @@ pub fn receive_commands(
     threshold_open_sq: &mut f32,
     threshold_close_sq: &mut f32,
     lut: &crate::math::dsp::gain_lut::GainLUT,
+    adaptive: &mut AdaptiveCompute,
 ) -> bool {
     let mut param_changed = false;
 
@@ -116,6 +118,9 @@ pub fn receive_commands(
                 *threshold_open_sq = open_lin * open_lin;
                 *threshold_close_sq = close_lin * close_lin;
                 *gate_params = params;
+            }
+            ParamPayload::SlimOverride(ov) => {
+                adaptive.set_slim_override(ov);
             }
         }
     }

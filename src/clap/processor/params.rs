@@ -63,6 +63,16 @@ impl<'a> NamClapProcessor<'a> {
         self.adaptive_compute.set_mode(mode, &self.rt_status);
     }
 
+    pub(super) fn set_slim_override(&mut self, val: f32) {
+        let ov = crate::dsp::adaptive::SlimOverride::from_f32(val);
+        self.params.slim_override = ov;
+        self.shared
+            .ui_to_rt
+            .param_slim_override
+            .store(ov as u32, Ordering::Relaxed);
+        self.adaptive_compute.set_slim_override(ov);
+    }
+
     // ── Modulation helpers ────────────────────────────────────────
 
     pub(super) fn set_mod_input_gain(&mut self, amount: f32) {
@@ -90,6 +100,7 @@ impl<'a> NamClapProcessor<'a> {
 
     pub(super) fn apply_params_from_spsc(&mut self, new_params: RtPluginParams) {
         let adaptive_changed = self.params.adaptive_compute != new_params.adaptive_compute;
+        let slim_override_changed = self.params.slim_override != new_params.slim_override;
         self.params = new_params;
         self.smoother_in.set_target(
             self.gain_lut
@@ -102,6 +113,10 @@ impl<'a> NamClapProcessor<'a> {
         if adaptive_changed {
             self.adaptive_compute
                 .set_mode(self.params.adaptive_compute, &self.rt_status);
+        }
+        if slim_override_changed {
+            self.adaptive_compute
+                .set_slim_override(self.params.slim_override);
         }
     }
 
@@ -167,6 +182,19 @@ impl<'a> NamClapProcessor<'a> {
             self.params.adaptive_compute = shared_adaptive;
             self.adaptive_compute
                 .set_mode(shared_adaptive, &self.rt_status);
+        }
+    }
+
+    pub(super) fn sync_slim_override_from_gui(&mut self) {
+        let shared_override = crate::dsp::adaptive::SlimOverride::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_slim_override
+                .load(Ordering::Relaxed) as f32,
+        );
+        if shared_override != self.params.slim_override {
+            self.params.slim_override = shared_override;
+            self.adaptive_compute.set_slim_override(shared_override);
         }
     }
 }

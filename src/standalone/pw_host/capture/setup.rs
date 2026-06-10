@@ -114,6 +114,7 @@ pub fn setup_capture_stream<'c>(
                 &mut state.threshold_open_sq,
                 &mut state.threshold_close_sq,
                 lut,
+                &mut state.adaptive_compute,
             );
 
             let current_pw_rate = rt_callback::sync_rate(

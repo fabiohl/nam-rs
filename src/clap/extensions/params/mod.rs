@@ -18,6 +18,8 @@ pub const PARAM_BYPASS: u32 = 3;
 pub const PARAM_ACTIVE_MODEL: u32 = 4;
 /// Adaptive compute mode parameter ID.
 pub const PARAM_ADAPTIVE_COMPUTE: u32 = 5;
+/// Manual slim override parameter ID.
+pub const PARAM_SLIM_OVERRIDE: u32 = 6;
 
 /// Bypass atomic value: off.
 pub const BYPASS_OFF: u32 = 0;

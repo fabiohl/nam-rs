@@ -5,7 +5,7 @@
 
 use super::{
     PARAM_ACTIVE_MODEL, PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN,
-    PARAM_OUTPUT_GAIN, bypass_bool_to_u32, bypass_f32_to_bool,
+    PARAM_OUTPUT_GAIN, PARAM_SLIM_OVERRIDE, bypass_bool_to_u32, bypass_f32_to_bool,
 };
 use crate::clap::plugin::{ClapParamPayload, NamClapMainThread};
 use crate::common::params::RtPluginParams;
@@ -19,7 +19,7 @@ use std::ffi::CStr;
 
 impl PluginMainThreadParams for NamClapMainThread<'_> {
     fn count(&mut self) -> u32 {
-        6
+        7
     }
 
     fn get_info(&mut self, param_index: u32, info: &mut ParamInfoWriter) {
@@ -98,6 +98,18 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     default_value: 1.0,
                 });
             }
+            PARAM_SLIM_OVERRIDE => {
+                info.set(&ParamInfo {
+                    id: ClapId::new(PARAM_SLIM_OVERRIDE),
+                    flags: ParamInfoFlags::IS_AUTOMATABLE | ParamInfoFlags::IS_STEPPED,
+                    cookie: clack_plugin::utils::Cookie::empty(),
+                    name: b"Slim Override",
+                    module: b"",
+                    min_value: 0.0,
+                    max_value: 2.0,
+                    default_value: 0.0,
+                });
+            }
             _ => {}
         }
     }
@@ -140,6 +152,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                     .param_adaptive_compute
                     .load(std::sync::atomic::Ordering::Relaxed) as f64,
             ),
+            PARAM_SLIM_OVERRIDE => Some(
+                self.shared
+                    .ui_to_rt
+                    .param_slim_override
+                    .load(std::sync::atomic::Ordering::Relaxed) as f64,
+            ),
             _ => None,
         }
     }
@@ -179,6 +197,11 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 1 => writer.write_str("Conservative"),
                 2 => writer.write_str("Aggressive"),
                 _ => writer.write_str("Off"),
+            },
+            PARAM_SLIM_OVERRIDE => match value.round() as i32 {
+                1 => writer.write_str("Force Full"),
+                2 => writer.write_str("Force Lite"),
+                _ => writer.write_str("Auto"),
             },
             _ => Ok(()),
         }
@@ -225,6 +248,12 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                 "off" | "0" => Some(0.0),
                 "conservative" | "1" => Some(1.0),
                 "aggressive" | "2" => Some(2.0),
+                _ => text_str.parse::<f64>().ok(),
+            },
+            PARAM_SLIM_OVERRIDE => match text_str.to_lowercase().as_str() {
+                "auto" | "0" => Some(0.0),
+                "force full" | "full" | "1" => Some(1.0),
+                "force lite" | "lite" | "2" => Some(2.0),
                 _ => text_str.parse::<f64>().ok(),
             },
             _ => None,
@@ -280,6 +309,14 @@ impl PluginMainThreadParams for NamClapMainThread<'_> {
                         .ui_to_rt
                         .param_adaptive_compute
                         .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
+                }
+                PARAM_SLIM_OVERRIDE => {
+                    let ov = crate::dsp::adaptive::SlimOverride::from_f32(val);
+                    self.params.slim_override = ov;
+                    self.shared
+                        .ui_to_rt
+                        .param_slim_override
+                        .store(ov as u32, std::sync::atomic::Ordering::Relaxed);
                 }
                 _ => continue,
             }

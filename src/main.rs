@@ -138,6 +138,8 @@ fn main() -> anyhow::Result<()> {
         ));
     }
 
+    let _ = producer.push(ParamPayload::SlimOverride(args.slim_override));
+
     let tsc_anchor = minstant::Anchor::new();
 
     // Process-wide settings (THP disable + mlockall) before starting PipeWire.

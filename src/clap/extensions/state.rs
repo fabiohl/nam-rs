@@ -88,6 +88,12 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 .param_adaptive_compute
                 .load(std::sync::atomic::Ordering::Relaxed) as f32,
         );
+        self.params.slim_override = crate::dsp::adaptive::SlimOverride::from_f32(
+            self.shared
+                .ui_to_rt
+                .param_slim_override
+                .load(std::sync::atomic::Ordering::Relaxed) as f32,
+        );
 
         let envelope = StateEnvelope {
             version: CURRENT_STATE_VERSION,
@@ -130,6 +136,10 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
         );
         self.shared.ui_to_rt.param_adaptive_compute.store(
             self.params.adaptive_compute as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        self.shared.ui_to_rt.param_slim_override.store(
+            self.params.slim_override as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
         self.shared.bump_generation();

@@ -38,6 +38,7 @@ fn test_v1_round_trip() {
         model_search_paths: Vec::new(),
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
+        slim_override: Default::default(),
     };
 
     let envelope = StateEnvelope {
@@ -89,6 +90,7 @@ fn test_v1_round_trip_with_search_fields() {
         model_search_paths: search_paths.clone(),
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
+        slim_override: Default::default(),
     };
 
     let envelope = StateEnvelope {

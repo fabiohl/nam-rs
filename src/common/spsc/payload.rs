@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
+use crate::dsp::adaptive::SlimOverride;
+
 /// SPSC payload sent from the Host (CLI/UI) to the DSP Thread.
 /// Aligned to 128 bytes to mitigate False Sharing.
 #[repr(align(128))]
@@ -26,4 +28,6 @@ pub enum ParamPayload {
     },
     /// Injects the Silence/Mono Gate settings.
     GateConfig(crate::dsp::gate::GateParams),
+    /// Sets the manual slim override quality level.
+    SlimOverride(SlimOverride),
 }

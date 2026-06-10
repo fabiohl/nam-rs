@@ -20,7 +20,9 @@ fn configure_adaptive_model(
     model_r: &mut Option<Box<crate::models::StaticModel>>,
     adaptive: &AdaptiveCompute,
 ) -> bool {
-    if adaptive.mode() == crate::dsp::adaptive::AdaptiveComputeMode::Off {
+    if adaptive.mode() == crate::dsp::adaptive::AdaptiveComputeMode::Off
+        && adaptive.slim_override() == crate::dsp::adaptive::SlimOverride::Auto
+    {
         return false;
     }
 

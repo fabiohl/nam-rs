@@ -40,6 +40,30 @@ use crate::common::spsc::RtStatusFlags;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
 
+/// Manual slim override — forces a fixed quality level, bypassing the FSM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum SlimOverride {
+    /// FSM decides quality level automatically.
+    #[default]
+    Auto = 0,
+    /// Force full-quality processing regardless of CPU pressure.
+    ForceFull = 1,
+    /// Force lite (reduced) processing regardless of CPU pressure.
+    ForceLite = 2,
+}
+
+impl SlimOverride {
+    /// Creates a `SlimOverride` from a floating-point value.
+    pub fn from_f32(val: f32) -> Self {
+        match val.round() as i32 {
+            1 => Self::ForceFull,
+            2 => Self::ForceLite,
+            _ => Self::Auto,
+        }
+    }
+}
+
 /// Adaptive compute mode — user-facing parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[repr(u8)]
@@ -108,6 +132,8 @@ pub struct AdaptiveCompute {
     mode: AdaptiveComputeMode,
     /// Crossfade elapsed samples.
     crossfade_elapsed: usize,
+    /// Manual slim override (Auto = FSM decides).
+    slim_override: SlimOverride,
 }
 
 const DEGRADE_CONSECUTIVE: u32 = 3;
@@ -133,6 +159,7 @@ impl AdaptiveCompute {
             crossfade: CrossfadePhase::Idle,
             mode,
             crossfade_elapsed: 0,
+            slim_override: SlimOverride::Auto,
         }
     }
 
@@ -156,9 +183,24 @@ impl AdaptiveCompute {
         self.mode
     }
 
-    /// Returns the current degradation state of the FSM.
+    /// Sets the manual slim override, forcing a fixed quality level.
+    #[inline]
+    pub fn set_slim_override(&mut self, ov: SlimOverride) {
+        self.slim_override = ov;
+    }
+
+    /// Returns the current slim override.
+    pub fn slim_override(&self) -> SlimOverride {
+        self.slim_override
+    }
+
+    /// Returns the current degradation state of the FSM, respecting manual override.
     pub fn state(&self) -> AdaptiveState {
-        self.state
+        match self.slim_override {
+            SlimOverride::ForceFull => AdaptiveState::Full,
+            SlimOverride::ForceLite => AdaptiveState::Reduced,
+            SlimOverride::Auto => self.state,
+        }
     }
 
     /// Returns the crossfade gain (`crossfade_elapsed / total`).
@@ -213,7 +255,10 @@ impl AdaptiveCompute {
         sample_rate: u32,
         rt_status: &RtStatusFlags,
     ) {
-        if self.mode == AdaptiveComputeMode::Off || budget_us == 0 {
+        if self.mode == AdaptiveComputeMode::Off
+            || budget_us == 0
+            || self.slim_override != SlimOverride::Auto
+        {
             return;
         }
 
@@ -321,7 +366,7 @@ impl AdaptiveCompute {
 
     /// Fraction of WaveNet layers to skip: 0.0 (Full), 0.25 (Reduced), 0.50 (Minimal).
     pub fn wavenet_skip_fraction(&self) -> f32 {
-        match self.state {
+        match self.state() {
             AdaptiveState::Full => 0.0,
             AdaptiveState::Reduced => 0.25,
             AdaptiveState::Minimal => 0.50,
@@ -337,7 +382,7 @@ impl AdaptiveCompute {
 
     /// Effective LSTM layers: 2 (Full), 1 (Reduced), 0 = passthrough (Minimal).
     pub fn lstm_effective_layers(&self, total_layers: usize) -> usize {
-        match self.state {
+        match self.state() {
             AdaptiveState::Full => total_layers,
             AdaptiveState::Reduced => total_layers.min(1), // Keep at most 1
             AdaptiveState::Minimal => 0,                   // Passthrough
@@ -359,10 +404,14 @@ impl AdaptiveCompute {
     /// The container's internal threshold logic (`val < max_value`) picks the first
     /// submodel whose `max_value` is strictly greater than `val`.
     pub fn slimmable_size(&self) -> f32 {
-        match self.state {
-            AdaptiveState::Full => 1.0,
-            AdaptiveState::Reduced => 0.25,
-            AdaptiveState::Minimal => 0.0,
+        match self.slim_override {
+            SlimOverride::ForceFull => 1.0,
+            SlimOverride::ForceLite => 0.25,
+            SlimOverride::Auto => match self.state {
+                AdaptiveState::Full => 1.0,
+                AdaptiveState::Reduced => 0.25,
+                AdaptiveState::Minimal => 0.0,
+            },
         }
     }
 }

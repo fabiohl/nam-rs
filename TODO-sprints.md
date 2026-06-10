@@ -260,7 +260,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Reusar `src/dsp/smoother.rs`/lógica de *crossfade* da `adaptive.rs` para transição suave entre submodelos.
   - **Critério de aceite:** ausência de descontinuidade audível (teste de energia/continuidade no ponto de troca).
 
-- **[T3.5] Override manual (CLI + CLAP).**
+- **[T3.5] Override manual (CLI + CLAP).** [DONE]
   - Flag de CLI (`src/standalone/cli.rs`) e parâmetro CLAP para fixar/forçar nível (Auto/Full/Lite). Manual sobrepõe a FSM.
   - **Critério de aceite:** `--slim auto|full|lite` funciona; param CLAP exposto; documentado.
 

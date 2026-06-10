@@ -65,6 +65,7 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             self.params.gate_threshold_db = loaded_params.gate_threshold_db;
             self.params.bypass = loaded_params.bypass;
             self.params.adaptive_compute = loaded_params.adaptive_compute;
+            self.params.slim_override = loaded_params.slim_override;
 
             if let Some(ref basename) = loaded_params.model_basename {
                 let found = loaded_params
@@ -121,6 +122,10 @@ impl<'a> PluginStateContextImpl for NamClapMainThread<'a> {
             self.params.adaptive_compute as u32,
             std::sync::atomic::Ordering::Relaxed,
         );
+        self.shared.ui_to_rt.param_slim_override.store(
+            self.params.slim_override as u32,
+            std::sync::atomic::Ordering::Relaxed,
+        );
         self.shared.bump_generation();
 
         use crate::clap::plugin::ClapParamPayload;
@@ -158,6 +163,7 @@ mod tests {
             model_search_paths: vec![PathBuf::from("/tmp")],
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
+            slim_override: Default::default(),
         }
     }
 

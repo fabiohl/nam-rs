@@ -8,6 +8,7 @@
 
 use crate::math::constants::{GAIN_MAX_DB, GAIN_MIN_DB};
 
+use crate::dsp::adaptive::SlimOverride;
 use crate::standalone::colors::Colorize;
 use lexopt::prelude::*;
 
@@ -35,6 +36,9 @@ pub fn print_help() {
     );
     println!("      --diagnose          Print technical support block and exit");
     println!("      --diagnose-full     Print technical support block with raw paths and exit");
+    println!(
+        "      --slim auto|full|lite  Force quality level (overrides adaptive FSM) [default: auto]"
+    );
     println!("  -h, --help              Show this help message and exit");
 }
 
@@ -60,6 +64,8 @@ pub struct CliArgs {
     pub diagnose: bool,
     /// Immediate diagnostic flag with full (unredacted) paths.
     pub diagnose_full: bool,
+    /// Manual slim override quality level.
+    pub slim_override: SlimOverride,
 }
 
 /// Parses command-line arguments.
@@ -75,6 +81,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
     let mut buffer_size = 256;
     let mut diagnose = false;
     let mut diagnose_full = false;
+    let mut slim_override = SlimOverride::Auto;
     let mut has_args = false;
 
     while let Some(arg) = parser.next().unwrap_or_else(|e| exit_with_error(e)) {
@@ -89,6 +96,21 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
             }
             Long("diagnose-full") => {
                 diagnose_full = true;
+            }
+            Long("slim") => {
+                let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
+                let val_str = val
+                    .into_string()
+                    .unwrap_or_else(|_| exit_with_error("Invalid slim override value."));
+                slim_override = match val_str.to_lowercase().as_str() {
+                    "auto" => SlimOverride::Auto,
+                    "full" => SlimOverride::ForceFull,
+                    "lite" => SlimOverride::ForceLite,
+                    other => exit_with_error(format!(
+                        "Invalid slim override: '{}'. Expected 'auto', 'full', or 'lite'.",
+                        other
+                    )),
+                };
             }
             Short('m') | Long("model") => {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
@@ -174,6 +196,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
         buffer_size,
         diagnose,
         diagnose_full,
+        slim_override,
     }
 }
 

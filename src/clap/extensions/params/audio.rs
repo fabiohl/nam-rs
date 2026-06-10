@@ -5,7 +5,7 @@
 
 use super::{
     PARAM_ADAPTIVE_COMPUTE, PARAM_BYPASS, PARAM_GATE_THRESH, PARAM_INPUT_GAIN, PARAM_OUTPUT_GAIN,
-    bypass_bool_to_u32, bypass_f32_to_bool, bypass_u32_to_bool,
+    PARAM_SLIM_OVERRIDE, bypass_bool_to_u32, bypass_f32_to_bool, bypass_u32_to_bool,
 };
 use crate::clap::processor::NamClapProcessor;
 use clack_extensions::params::PluginAudioProcessorParams;
@@ -81,6 +81,14 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
                         .param_adaptive_compute
                         .store(mode as u32, std::sync::atomic::Ordering::Relaxed);
                 }
+                PARAM_SLIM_OVERRIDE => {
+                    let ov = crate::dsp::adaptive::SlimOverride::from_f32(val);
+                    self.params.slim_override = ov;
+                    self.shared
+                        .ui_to_rt
+                        .param_slim_override
+                        .store(ov as u32, std::sync::atomic::Ordering::Relaxed);
+                }
                 _ => continue,
             }
         }
@@ -141,6 +149,16 @@ impl PluginAudioProcessorParams for NamClapProcessor<'_> {
             );
             if shared_adaptive != self.params.adaptive_compute {
                 self.params.adaptive_compute = shared_adaptive;
+            }
+
+            let shared_slim_override = crate::dsp::adaptive::SlimOverride::from_f32(
+                self.shared
+                    .ui_to_rt
+                    .param_slim_override
+                    .load(std::sync::atomic::Ordering::Relaxed) as f32,
+            );
+            if shared_slim_override != self.params.slim_override {
+                self.params.slim_override = shared_slim_override;
             }
         }
     }

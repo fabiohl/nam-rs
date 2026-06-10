@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub use crate::dsp::adaptive::AdaptiveComputeMode;
+pub use crate::dsp::adaptive::SlimOverride;
 
 const GATE_THRESHOLD_DB_DEFAULT: f32 = -70.0;
 
@@ -47,6 +48,9 @@ pub struct NamPluginParams {
     /// Default: `Off` for standalone; `Conservative` for CLAP plugin.
     #[serde(default)]
     pub adaptive_compute: AdaptiveComputeMode,
+    /// Manual slim override quality level. Default: `Auto` (FSM decides).
+    #[serde(default)]
+    pub slim_override: SlimOverride,
 }
 
 fn default_gate_threshold_db() -> f32 {
@@ -64,6 +68,7 @@ impl Default for NamPluginParams {
             model_search_paths: Vec::new(),
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
+            slim_override: SlimOverride::Auto,
         }
     }
 }
@@ -82,6 +87,8 @@ pub struct RtPluginParams {
     pub bypass: bool,
     /// Adaptive compute mode.
     pub adaptive_compute: AdaptiveComputeMode,
+    /// Manual slim override quality level.
+    pub slim_override: SlimOverride,
 }
 
 impl RtPluginParams {
@@ -93,6 +100,7 @@ impl RtPluginParams {
             gate_threshold_db: params.gate_threshold_db,
             bypass: params.bypass,
             adaptive_compute: params.adaptive_compute,
+            slim_override: params.slim_override,
         }
     }
 }
@@ -105,6 +113,7 @@ impl Default for RtPluginParams {
             gate_threshold_db: GATE_THRESHOLD_DB_DEFAULT,
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
+            slim_override: SlimOverride::Auto,
         }
     }
 }
