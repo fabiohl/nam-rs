@@ -3,414 +3,456 @@ SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
 
-# 🗺️ TODO-sprints — Porte da Arquitetura "A2" para o NAM-rs
+# 🗺️ TODO-sprints — Rodadas de Correção v2.1 (Auditoria Geral)
 
-> Plano de execução ágil para trazer a nova **Arquitetura A2** (consagrada no `NeuralAmpModelerCore`) ao `nam-rs`, com porte fiel do C++, testes automatizados e
-> *golden vectors* como seguro anti-degradação. Alvo de performance: **x86-64-v3 (AVX2 + FMA)**. AVX-512 e ISAs avançadas ficam para um momento posterior.
+> Plano de execução resultante da auditoria completa do `revisor-auditor` (paridade C++, suíte de testes/benches,
+> bugs funcionais/segurança/RT-safety, código morto/layout, documentação). Objetivo da v2.1: **paridade 100% com as
+> features oficiais do NeuralAmpModelerCore**, suíte de testes/benches em **estágio "produção"** (seguro definitivo
+> anti-regressão) e código/documentação em estado exemplar.
 
-**Fonte de verdade (C++):** `tests/fixtures/NeuralAmpModelerCore/` (espelho oficial do projeto). Toda tarefa de porte cita o(s) arquivo(s) e faixa(s) de linha de referência.
+**Baseline verificada na auditoria (2026-06):** `utils/tests-cargo.sh` 100% verde (incl. `clap-validator`: 19 passed,
+0 failed) e `utils/lints.sh` limpo (check + clippy `-D warnings` em todas as matrizes de features). Todo épico abaixo
+deve **manter** essa baseline verde a cada tarefa concluída.
 
----
-
-## 0. Contexto e Decisões de Escopo (fechadas)
-
-A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, o modelo A2 de produção é um **bundle de dois WaveNets de forma fixa** que compartilham exatamente o mesmo esqueleto, variando apenas a contagem de canais:
-23 camadas, 1 *layer-array*, kernels `6/15`, dilations fixas, `LeakyReLU(0.01)`, *head conv*
-
-| Modelo          | Canais | Esqueleto                                                                                    | Referência C++                   |
-| --------------- | ------ | -------------------------------------------------------------------------------------------- | -------------------------------- |
-| **A2-Full**     | 8      | 23 camadas, 1 *layer-array*, kernels `6/15`, dilations fixas, `LeakyReLU(0.01)`, *head conv* | `NAM/wavenet/a2_fast.cpp`        |
-|                 |        | `k=16` com bias, `layer1x1` ativo, **sem** FiLM/gating/`condition_dsp`/`bottleneck≠channels` |  (`A2FastModel<8>`)              |
-| **A2-Lite**     | 3      | Idêntico ao Full, só muda canais                                                             | `A2FastModel<3>`                 |
-| **A1-Standard** | 16     | 2 *layer-arrays*, kernel 3 — **já implementado e validado**                                  | `src/models/wavenet/` (estático) |
-| **A1-Nano**     | 4      | 2 *layer-arrays*, kernel 3 — **já implementado e validado**                                  | `src/models/wavenet/` (estático) |
-
-**Decisões tomadas com o solicitante (ponto de decisão pré-plano):**
-
-1. **Motor A2 = somente o *fast-path* fixo A2-Full/Lite.** Porte fiel de `a2_fast.cpp`. FiLM, gating `GATED`/`BLENDED`, `condition_dsp`, `bottleneck≠channels`, *grouped conv*, `head1x1` e ativações por-camada ficam **fora** (só são exercidos pelo modelo de teste `wavenet_a2_max.nam`).
-2. **Slimmable = `SlimmableContainer` agora; `SlimmableWavenet` depois (sequenciamento, não descarte).** Ambos são arquiteturas **oficiais** do NAMCore (registradas, file version 0.7.0, com exemplos). Priorizamos o `SlimmableContainer` porque o A2 que a Tone3000 distribui **hoje** é, na prática, um *bundle de um nano + um standard* (confirmado por Mike Oliphant, autor do NeuralAudio/LV2: "the official A2 architecture looks to be a bundle of a nano and a standard model"), com o "quality scaling parameter" selecionando entre os dois. O `SlimmableWavenet` (fatiamento de canais de **rede única**, sem re-treino — tema do paper arXiv 2511.07470 e direção futura "uma captura que se escala sozinha") fica para o **Épico 6 (futuro)**, abaixo — planejado, não ignorado.
-3. **Troca Full↔Lite integrada à FSM adaptativa de CPU** (`src/dsp/adaptive.rs`): auto-degradação Full→Lite sob pressão, com *crossfade*, mais override manual.
-4. **IR Cabsim (.wav)** incluído como **épico separado pós-NAM** (convolução particionada FFT, ortogonal ao motor neural).
-5. **Redução de burden** aprovada: (a) remover aliases VNNI mortos (`Avx2VnniMath`, variantes `Avx2Vnni`/`Avx512Vnni`); (b) remover `src/math/activations/experimental/piecewise_tanh.rs` (só `test+research`); (c) **aposentar** `WavenetA2Placeholder` ao final do Épico 1; (d) **remover os caminhos *dynamic*** (`WaveNetDynModel`/`LstmDynModel`) e seus *fallbacks* de loader — ver Sprint 1.5. Os 4 modelos-foco + container A2 não dependem deles.
-
-### Fora de escopo (explícito)
-
-- FiLM, `GatingMode::Gated`/`Blended`, `condition_dsp`, `head1x1`, *grouped convolution*, ativações por-camada heterogêneas, `bottleneck≠channels`.
-- `SlimmableWavenet` (channel slicing de rede única) e `allowed_channels` — **adiado para o Épico 6 (futuro)**, não descartado. É formato oficial; só não é o que a distribuição A2 mainstream usa hoje.
-- Golden do `wavenet_a2_max.nam` e `wavenet_condition_dsp.nam` (modelos de teste).
-- AVX-512 / VNNI / BF16 dedicados à A2 (tratados em iteração futura de ISA).
-- Caminhos *dynamic* (`WaveNetDynModel`/`LstmDynModel`): **removidos** — Modelos `.nam` de geometria fora do catálogo estático passam a falhar no load com erro claro (sem rodar). Isso também retira os *goldens* de cross-validation dos micro-modelos NAMCore (`golden_namcore_*`), que exercitavam geometrias não-padrão pela via dynamic.
+**Histórico:** os Épicos 0–5 (fundação, motor A2, SIMD, SlimmableContainer, IR Cabsim I/II) foram concluídos e
+removidos deste arquivo — consultar o histórico git deste documento para o registro detalhado.
 
 ---
 
-## 1. Convenções Mandatórias (aplicáveis a todas as tarefas)
+## Convenções Mandatórias (aplicáveis a todas as tarefas)
 
-- **RT-Safety** (`.agents/rules/rust.md`): zero alloc/drop de heap na *audio thread*; sem `println!`/`format!`/locks; sem `unwrap()`/`expect()`; FTZ+DAZ; sinalização via `RtStatusFlags` (atômicos). Transferência de heap via SPSC GC.
-- **SIMD x86-64-v3**: `AlignedVec<T>` (64 B), `chunks_exact`, *branchless*; reaproveitar o `SimdMath` trait + macro `dispatch_simd!` (preferir dispatch estático ao v-table).
-- **Testes** (`.agents/rules/testing.md`): unidade inline se arquivo `< 300` linhas; senão `*_test.rs` irmão. Integração em `tests/`. Testes lentos/parity marcados `#[ignore]` (rodam em `utils/tests-long.sh`).
+- **RT-Safety** (`.agents/rules/rust.md`): zero alloc/drop de heap na *audio thread*; sem `println!`/`format!`/locks;
+  sem `unwrap()`/`expect()`; FTZ+DAZ; sinalização via `RtStatusFlags`; desalocação via SPSC GC.
+- **Testes** (`.agents/rules/testing.md`): unidade inline se arquivo `< 300` linhas; senão `*_test.rs` irmão.
+  Integração em `tests/`. Lentos/parity com `#[ignore]` (lane `utils/tests-long.sh`).
 - **Copyright** (`.agents/rules/copyright.md`): cabeçalho SPDX em todo arquivo novo/editado.
-- **Golden = seguro anti-degradação**: otimização *on-the-fly* só é aceita se todos os *golden vectors* permanecerem verdes dentro dos thresholds (ESR / MR-STFT / SNR adaptativo — ver `src/testing/perceptual.rs` e `tests/common/validation.rs`).
-- **Pirâmide de validação (papéis complementares, não redundantes):** (1) **Referência escalar** (`src/math/common/scalar_ref/`) = oráculo de paridade **apertada** (`~1e-6`, via `proptest`), localização/bisseção de bugs de kernel, edge cases (`n % 8`, denormais, alinhamento) e invariante cross-ISA — roda na lane rápida `cargo test`, sem C++. **Não é fallback de produção** (sem AVX2 o `detect.rs` faz *fail-fast*); na prática também atua como tratamento de cauda/remainder dentro dos kernels SIMD. (2) **Golden vs NAMCore** = verdade externa de **banda larga** (tolerância por FastMath, ADR-002), end-to-end, lane lenta (`#[ignore]`) — pega erro de *algoritmo/spec*. Um bug que cabe na banda larga do golden mas quebra a paridade apertada do escalar só é pego pela camada (1); um erro de spec compartilhado por escalar+SIMD só é pego pela camada (2).
-- **Lint final** (`.agents/rules/linting.md`): `utils/lints.sh` + `cargo check` por feature; acionar `documentador` em mudanças arquiteturais relevantes.
+- **Golden = seguro anti-degradação**: qualquer otimização só é aceita com todos os golden vectors verdes.
+- **Lint final** (`.agents/rules/linting.md`): `utils/lints.sh` + `utils/tests-cargo.sh` verdes ao fechar cada tarefa;
+  acionar `documentador` em mudanças arquiteturais relevantes.
 
-### Mapa de organização de arquivos (onde colocar)
+### ⚠️ Apêndice de verificação (falsos positivos já descartados — NÃO "corrigir")
 
-| Domínio                  | Localização proposta                                                    | Justificativa                                      |
-| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| Estruturas/inferência A2 | `src/models/a2/` (já existe; expandir)                                  | Mantém A2 coeso junto ao scaffolding atual         |
-| Kernels SIMD A2          | `src/math/wavenet/` (A2-specific) e `src/math/activations/` (LeakyReLU) | Toda matemática vetorizada vive em `src/math/`     |
-| Container slimmable      | `src/models/container.rs` + trait em `src/models/slimmable.rs`          | Wrapper de modelos é responsabilidade de `models/` |
-| Parser do container      | `src/loader/dispatcher/container/`                                      | Dispatch por arquitetura já vive no loader         |
-| IR Cabsim                | `src/dsp/cabsim/` (estágio) + kernel FFT em `src/dsp/cabsim/conv.rs`    | É estágio de DSP pós-inferência                    |
-| Fixtures/golden A2       | `tests/fixtures/` + `tests/fixtures/models/`                            | Segue convenção atual de golden                    |
+| Suspeita levantada                                                       | Veredito verificado                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "CRC32 do `.namb` usa direção de bits errada"                            | **Falso.** `src/loader/namb/header.rs:11` implementa o CRC-32 refletido padrão (polinômio `0xEDB88320`, idêntico a zlib/`crc32fast`). Apenas blindar com teste de vetor conhecido (T8.10).                                                                   |
+| "Deletar `tests/fixtures/NeuralAmpModelerPlugin` (164 MB de peso morto)" | **Falso.** Os espelhos C++ (`NeuralAmpModelerCore/`, `NeuralAmpModelerPlugin/`) e `build/namcore_render/` são **não-versionados** (`.gitignore:54-58`) e necessários para `tests/fixtures/golden_gen_build.sh` e `render_ir.cpp`. Apenas documentar (T10.8). |
+| "`build/` tem artefatos de build commitados"                             | **Falso.** `git ls-files build` = 0 arquivos; já ignorado.                                                                                                                                                                                                   |
+| "Referência `&NambHeader` a struct packed é UB"                          | **Impreciso.** `repr(C, packed)` tem alinhamento 1, logo o cast é válido. Migrar para `read_unaligned` é só higiene defensiva (T6.2).                                                                                                                        |
 
 ---
 
-## ÉPICO 0 — Fundação e Higiene 🧹 [DONE]
+## ÉPICO 6 — Correções de Bugs, Segurança e RT-Safety 🛡️
 
-> Objetivo: reduzir burden e preparar o terreno antes de adicionar A2. Entrega rápida, baixo risco, mantém a suíte 100% verde.
+> Objetivo: eliminar as violações reais encontradas pela auditoria. Prioridade máxima; tarefas pequenas e atômicas.
 
-### Sprint 0.1 — Limpeza e alinhamento [DONE]
+### Sprint 6.1 — Violações RT e robustez do GC
 
-- **[T0.1] Remover aliases VNNI mortos.** [DONE]
-  - Remover `Avx2VnniMath` (alias em `src/math/common/avx2_impl.rs:670`) e as variantes `Avx2Vnni`/`Avx512Vnni` de `src/math/common/dispatch/instruction_set.rs` e do v-table (`src/math/common/dispatch/config.rs`, `detect.rs`).
-  - **Critério de aceite:** `cargo build` em todas as features; matriz de detecção de ISA reduzida a `Avx2`, `Avx512`, `Avx512VnniBf16` (este último mantido para BF16 nativo). Nenhuma regressão de golden/bench.
-  - **Riscos:** garantir que nenhum *call-site* referencie os símbolos removidos.
+- **[T6.1] Remover `eprintln!` do hot-path RT (heap-audit).**
 
-- **[T0.2] Remover `experimental/piecewise_tanh`.** [DONE]
-  - Remover `src/math/activations/experimental/` (gated por `test+research`) e a feature `research` do `Cargo.toml:63` se não houver outro consumidor.
-  - **Critério de aceite:** `cargo check --all-features` limpo; sem referências órfãs; `utils/lints.sh` verde.
+  - Em `src/clap/processor/dsp/orchestrator.rs:148-157` (caminho `debug_assertions` + heap-audit), o `eprintln!`
+    executa I/O de stderr na thread de áudio — única violação RT real encontrada (regra "Zero Blocking I/O").
+  - Substituir por flag atômica (o `RT_STATUS_HEAP_ALLOC` já é setado ali); mover a impressão para o dreno do
+    main-thread (`src/clap/plugin/main_thread/logging.rs` segue o padrão).
+  - **Critério de aceite:** nenhum `println!/eprintln!/format!` alcançável a partir de `process()` em qualquer
+    combinação de features (verificar com `grep` + revisão); suíte heap-audit segue reportando a falha via flag.
 
-- **[T0.3] Consolidar o scaffolding A2 existente.** [DONE]
-  - Auditar `src/models/a2/{params,activations,film,gating}.rs`. `params.rs` já espelha `a2_fast.h` (constantes `A2_NUM_LAYERS=23`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_LEAKY_SLOPE`). Marcar como *fora de escopo agora* (sem remover) os structs de FiLM/gating/`head1x1`/`bottleneck` que não serão usados pelo fast-path, documentando com `//! NOTE: reservado p/ motor A2 geral (futuro)`.
-  - **Fonte de verdade:** `NAM/wavenet/a2_fast.h:30-43`.
-  - **Critério de aceite:** documentação inline coerente; nada removido que a suíte A2 (T1.x) vá precisar.
+- **[T6.2] Endurecer o parser `.namb` (entrada não-confiável).**
 
----
+  - `src/loader/namb/parse.rs:83-84`: validar `pesos_raw.len() % 4 == 0`; resíduo de 1–3 bytes deve retornar
+    `NambError::Truncated` (hoje é descartado em silêncio por `chunks_exact`).
+  - `src/loader/namb/parse.rs:25`: trocar `&*ptr.cast::<NambHeader>()` por `core::ptr::read_unaligned` para uma
+    cópia local (higiene defensiva; ver apêndice).
+  - Sentinela CRC v1 (`parse.rs:72-77`): documentar formalmente em `docs/namb-spec.md` que `crc32 == 0` em v1
+    significa "sem CRC" (arquivo legado), e que **v2+ exige** `FLAG_HAS_CRC32`; emitir o `log::warn!` existente
+    apenas uma vez por load.
+  - **Critério de aceite:** novos testes unitários de erro (resíduo, header truncado, flags inconsistentes) em
+    `src/loader/namb_test.rs`; proptest de parsers (`tests/proptest_parsers.rs`) segue verde.
 
-## ÉPICO 1 — Núcleo de Inferência A2 (A2-Full/Lite) 🧠 [DONE]
+- **[T6.3] GC SPSC: eliminar `panic!` e a janela de torn-read no overflow buffer.**
 
-> Objetivo: porte direto e **correto** do `a2_fast.cpp` (baseline, sem micro-opt agressiva), ancorado por *golden vectors*. Este épico entrega A2-Full e A2-Lite funcionais e validados.
+  - `src/common/spsc/gc.rs:63`: `from_raw_parts` com `type_id` desconhecido **não pode** dar `panic!` — retornar
+    `Option<GcItem>`; em `None`, vazar o ponteiro deliberadamente (leak controlado) e registrar via flag/log no
+    main-thread.
+  - `src/common/spsc/gc.rs:103-119` (`GcOverflowBuffer::push`): os dois `swap`s separados (`types[idx]` e
+    `slots[idx]`) permitem que o `drain` no main-thread observe um par `(type, ptr)` inconsistente → `Box::from_raw`
+    com tipo errado (UB). Empacotar tipo+ponteiro em **um único slot atômico** — ex.: `AtomicU64` com o tipo nos bits
+    altos (ponteiros x86-64 usam ≤ 48 bits) ou tagged pointer nos bits baixos (alinhamento ≥ 8 garante 3 bits livres).
+  - **Critério de aceite:** sem `panic!` alcançável no módulo; teste de unidade simulando slot corrompido; teste de
+    stress concorrente push/drain (pode usar threads reais, fora da lane RT) em `src/common/spsc/spsc_test.rs`;
+    zero alloc no `push` (heap-audit existente verde).
 
-### Sprint 1.1 — Primitivas compartilhadas [DONE]
+- **[T6.4] Limitar `submodels` no parser `.nam` (DoS).**
 
-- **[T1.1] Kernel `LeakyReLU(0.01)` SIMD (AVX2/FMA).** [DONE]
-  - Implementar `leaky_relu_slice` em `src/math/activations/` (in-place, `chunks_exact(8)`, *branchless* via máscara/blend). Adicionar a **referência escalar (oráculo de teste + tratamento de cauda/remainder)** em `src/math/common/scalar_ref/` — **não** é fallback de produção para CPU sem AVX2 (o `detect.rs` faz *fail-fast*); serve como oráculo de paridade apertada (`~1e-6`, via `proptest`), bisseção de bugs, cobertura de edge cases (`n % 8`, denormais) e invariante cross-ISA para o futuro AVX-512.
-  - **Fonte de verdade:** `NAM/activations.h` (`LeakyReLU`) e nota de uso em `NAM/wavenet/a2_fast.cpp:49-51` (`LeakyReLU(0.01) em todas as camadas`).
-  - **Critério de aceite:** teste de paridade `< 1e-6` vs referência escalar; `#[cfg(test)]` inline ou `_test.rs`. Heap-audit zero.
-  - **Nota de auditoria (Sprint 1.1):** O modelo A2 (`src/models/a2/activations.rs:112`) despacha LeakyReLU via `prelu_slice(data, &[negative_slope])` (mais genérico), e não via `leaky_relu_slice`. O kernel `leaky_relu_slice` está implementado, testado e registrado no dispatcher, mas é código morto na produção atual. A equivalência matemática é garantida pois `prelu_slice` com slope única executa a mesma operação.
+  - `src/loader/nam_json/model.rs:163`: `submodels: Option<Vec<serde_json::Value>>` sem limite de contagem nem de
+    profundidade permite JSON malicioso com dezenas de submodelos de 256 MiB cada (alocação multi-GiB).
+  - Impor: máx. **8 submodelos** por container e profundidade de aninhamento máx. **2** (containers não aninham no
+    formato oficial — validar contra `NAM/container.cpp` no espelho C++); erro diagnóstico claro via `NamDiagnostic`.
+  - **Critério de aceite:** testes de rejeição (9 submodelos; container dentro de container) em
+    `src/loader/nam_json_test.rs`; fixtures oficiais de container continuam carregando.
 
-- **[T1.2] Conv1D dilatada para A2 (kernels 6 e 15) sobre `mirror_buf`.** [DONE]
-  - Avaliar reuso de `src/models/wavenet/conv1d_dyn.rs` + `src/dsp/mirror_buf.rs`. A2 usa apenas `kernel_size ∈ {6,15}` e dilations fixas (`A2_DILATIONS`), com 1 canal de entrada na 1ª camada e `CH` canais nas demais. Garantir histórico via ring/mirror sem alloc.
-  - **Fonte de verdade:** `a2_fast.cpp:417-690` (`_layer_forward_k`), `NAM/wavenet/detail.h` (`Layer`/`LayerArray`), `docs/wavenet_walkthrough.rst:47-214`.
-  - **Critério de aceite:** convolução isolada bate com referência escalar em micro-teste; RT-safe.
-  - **Nota de auditoria (Sprint 1.1):** `A2Conv1d` reutiliza `Conv1dDyn` (stack-only, sem alloc no hot-path) e está validado por 7 testes de paridade. ~~Faltam: (a) heap-audit test com `CountingAllocator` específico para o conv1d A2; (b) soak test com K=6/15.~~ **[Concluído em T1.13]:** heap-audit A2 implementado em `tests/a2_heap_audit.rs` (zero alloc verificado nos block_sizes {1,16,32,48,64}); soak tests K=6/15 implementados em `tests/soak_test.rs` (`test_a2_{full,lite}_{silence,noise}_soak`).
+- **[T6.5] Guards de ponteiro e overflow em loaders.**
 
-- **[T1.3] *Head conv* A2 (`k=16`, bias, `head_scale`).** [DONE]
-  - Implementar a convolução de cabeça: `Conv1D(bottleneck→1, K=16, bias)` lida de ring com *tail-mirror*, seguida de multiplicação por `head_scale`.
-  - **Fonte de verdade:** `a2_fast.cpp:119-124` (`_head_w`/`_head_b`/`_head_scale`), `a2_fast.cpp:722-743` (`_head_forward`).
-  - **Critério de aceite:** saída do head bate com referência em micro-teste.
+  - `src/dsp/pipeline/bridge.rs:83,128,224`: trocar `debug_assert!(!ptr.is_null())` por `assert!` (construtores são
+    cold-path; em release um null passaria e causaria UB no primeiro `write_block`).
+  - `src/testing/wav.rs:105-117`: laço de varredura de chunks WAV com `pos += 8 + chunk_size` sem checagem — usar
+    `checked_add`/`saturating_add` e abortar com erro em overflow (chunk forjado com `chunk_size` próximo de
+    `u32::MAX` pode laçar para sempre). **Nota:** o loader de produção (`src/dsp/cabsim/loader.rs:235`) já está
+    protegido com `saturating_add` — não alterar; apenas espelhar o mesmo padrão no helper de teste.
+  - **Critério de aceite:** teste com WAV malicioso sintético (chunk_size gigante) retornando erro limpo; suíte verde.
 
-### Sprint 1.2 — Modelo A2 (baseline correto) [DONE]
+### Sprint 6.2 — Polimento RT (baixo risco, validar custo)
 
-- **[T1.4] Struct do modelo `WaveNetA2<const CH: usize>` (CH=3 e CH=8).** [DONE]
-  - Criar `src/models/a2/model.rs`: 1 *layer-array* de 23 camadas + *rechannel* de entrada (`Conv1x1 input_size→CH`) + acumulador de *head* + *head conv* + `head_scale`. Processamento em blocos (consistente com `WAVENET_MAX_NUM_FRAMES`).
-  - Implementar `NamModel` + `sealed::Sealed`; expor `process`, `prewarm`, `reset`, `set_max_buffer_size`, `receptive_field`, `channels`.
-  - **Fonte de verdade:** `a2_fast.cpp` (classe `A2FastModel`), `detail.h` (`LayerArray::Process`), `docs/wavenet_walkthrough.rst:278-351`.
-  - **Critério de aceite:** compila; `receptive_field` confere com soma de `(kernel-1)*dilation` + head; sem alloc no hot-path.
-
-- **[T1.5] Camada A2 (`A2Layer`).** [DONE]
-  - Sequência: dilated conv (T1.2) → soma com `input_mixin` (`Conv1x1 condition→CH`, sem bias) → `LeakyReLU` (T1.1) → acumula no *head* → `layer1x1` (`Conv1x1 CH→CH`, bias) → conexão residual `out = input + layer1x1_out`.
-  - **Fonte de verdade:** `a2_fast.cpp:514` (sequência conv→mixin→LeakyReLU→head →layer1x1 residual), `detail.h` (`Layer`), `docs/wavenet_walkthrough.rst:103-214`.
-  - **Critério de aceite:** paridade camada-a-camada vs referência em micro-teste sintético.
-
-- **[T1.6] Carga de pesos A2 (ordem do stream).** [DONE]
-  - Implementar `set_weights` respeitando a ordem exata: `_rechannel` → (por camada: `_conv` → `_input_mixin` → `_layer1x1`) → `_head_rechannel` (conv k=16, bias) → **`head_scale` (último float do stream)**.
-  - **Fonte de verdade:** `a2_fast.cpp:196-282` (documenta a ordem), `a2_fast.cpp:264-275` (head + `head_scale` trailing), `generate_weights_a2.py:18-90` (contagem de pesos por bloco).
-  - **Critério de aceite:** contagem de pesos consumidos == `weights.len()` (asserção); erro claro (sem panic em runtime RT) se divergir.
-
-### Sprint 1.3 — Loader, dispatch e aposentadoria do placeholder [DONE]
-
-- **[T1.7] Dispatch A2 no loader.** [DONE]
-  - Em `src/loader/dispatcher/wavenet/mod.rs`, tornar a A2 um **branch de primeira classe** (não mais *fallback*-após-falha): detectar a forma via `is_a2_shape()` (`src/loader/nam_json/topology.rs:131`) **antes** do match de topologias A1 e construir `WaveNetA2<3>`/`WaveNetA2<8>`. Registrar novas variantes no enum `DynamicModel` (`src/models/mod.rs`) e no dispatch (`src/models/dynamic_model.rs`).
-  - **Importante (pré-requisito da Sprint 1.5):** como o *fallback* dynamic será removido, o dispatch precisa decidir entre {A1 estático, A2 estático} de forma explícita; geometrias não reconhecidas retornam **erro de load claro**.
-  - **Fonte de verdade:** `a2_fast.cpp:849-990` (`is_a2_shape`/`create_a2_fast_config`), `topology.rs:131-163`.
-  - **Critério de aceite:** carregar um `.nam` A2-Full/Lite produz inferência real (não silêncio); `mock_a2.nam` ainda reconhecido.
-
-- **[T1.8] Metadados e par de modelos.** [DONE]
-  - Atualizar `src/loader/loaded_model_pair.rs` (topologia/`weights_layout`) e `src/loader/build.rs` (calibração de ganhos via `input_level_dbu`/`loudness`, prewarm ≥ 2048 amostras) para A2.
-  - **Critério de aceite:** `--model A2.nam` no standalone roda com telemetria; ganhos calibrados.
-  - **⚠️ Nota pós-auditoria da Sprint 1.3:** O dispatch A2 (`src/loader/dispatcher/wavenet/mod.rs:54-56,66-68`) ignora `data.weights_layout` — usa sempre `set_weights` com transposição interna. Baixo risco: `.nam` sempre usa layout `Original`. Caso `.namb` armazene A2 em `Interleaved4WaveNet`, haveria dupla-transposição. Adiar para quando `.namb` for suportado para A2.
-
-- **[T1.9] Aposentar `WavenetA2Placeholder`.** [DONE]
-  - Remover `src/models/a2/placeholder.rs`, a variante `WavenetA2` placeholder e o flag `RT_STATUS_A2_PLACEHOLDER`. Atualizar `tests/loader_a2_compat.rs` e `tests/a2_placeholder_interface.rs` para validar **inferência real**.
-  - **Critério de aceite:** suíte verde sem o placeholder; nenhum caminho emite silêncio para A2 válido.
-
-### Sprint 1.4 — Golden Tests A2 (seguro anti-degradação) 🧪 [DONE]
-
-- **[T1.10] Gerador de fixtures A2-Full/Lite.** [DONE]
-  - Adaptar/derivar de `generate_weights_a2.py` um gerador determinístico (seed fixa) que emita `wavenet_a2_full.nam` (CH=8) e `wavenet_a2_lite.nam` (CH=3) com o esqueleto fixo (23 camadas, kernels/dilations canônicos, `LeakyReLU`, `head_scale`). Salvar em `tests/fixtures/models/`.
-  - **Fonte de verdade:** `generate_weights_a2.py`, `a2_fast.h:30-43`.
-  - **Critério de aceite:** arquivos carregam tanto no C++ `render` quanto no loader Rust (T1.7).
-
-- **[T1.11] Estender `golden_gen_build.sh` para A2.** [DONE]
-  - Gerar `tests/fixtures/golden_wavenet_a2_full.bin` e `..._a2_lite.bin` (v1 e variantes v2 multi-SR) renderizando com o `render` do C++ (caminho genérico `WaveNet` = verdade; o `a2_fast` produz saída idêntica).
-  - **Fonte de verdade:** `tests/fixtures/golden_gen_build.sh`, `src/bin/wav_to_golden.rs`, `src/bin/gen_stress.rs`.
-  - **Critério de aceite:** novos `.golden.bin` no formato `[u32 N][f32×N in][f32×N out]`; documentado em `tests/fixtures/README.md`.
-
-- **[T1.12] Testes de inferência golden + cross-validation viva.** [DONE]
-  - Adicionar casos em `tests/nam_infer_test.rs` (rápidos, pré-commit) e em `tests/cpp_parity.rs` (`#[ignore]`, vivos) para A2-Full/Lite. Definir thresholds adaptativos de SNR/ESR/MR-STFT para A2 em `tests/common/validation.rs` e baselines em `src/testing/perceptual.rs`.
-  - **Critério de aceite:** golden verdes; ESR dentro do baseline; cross-val viva passa em `utils/tests-long.sh`.
-  - **Nota:** Golden vectors usam padrão self-golden (Rust gera referência na primeira execução) pois o `render` do C++ (caminho `a2_fast`) diverge com os fixtures A2 atuais. O `is_a2_shape` do C++ é ativado corretamente (formato de ativação corrigido para array de objetos), mas a saída do A2 fast path do NeuralAmpModelerCore não casa com a implementação Rust — **investigação pendente no lado C++** (possível diferença na inicialização do ring do head ou na posição do `head_scale` no stream de `_load_weights`). A implementação Rust é internamente self-consistente (MSE=0.0 entre runs independentes com mesma entrada). Esta situação está documentada em `src/models/a2/model.rs` (module-level docstring, seção "Cross-Validation and Golden Vectors"). Cross-validation viva (`cpp_parity.rs`) está implementada como `#[ignore]` e será promovida a CI padrão quando o render C++ estiver estável para A2.
-
-- **[T1.13] RT-Safety e edge tests A2.** [DONE]
-  - Estender `tests/wavenet_prewarm_edge.rs`, heap-audit (`tests/a2_heap_audit.rs`) e soak (`tests/soak_test.rs`) cobrindo A2.
-  - **Critério de aceite:** zero alloc no hot-path (CountingAllocator); estável em milhões de frames.
-  - **Nota de auditoria:** Heap-audit A2 implementado em `tests/a2_heap_audit.rs` (CH=3 e CH=8, block_sizes {1,16,32,48,64}, 1000 iterações). Soak tests A2 implementados em `tests/soak_test.rs` com 4 cenários `#[ignore]`: silence/noise × Full/Lite, 10M frames cada.
-
-### Sprint 1.5 — Remoção dos caminhos *dynamic* (corte de burden) ✂️ [DONE]
-
-> Executar **após** A2 e os 4 modelos-foco estarem validados (Sprints 1.1-1.4), garantindo que nenhum caminho de produção dependa do *fallback* dynamic.
-
-- **[T1.14] Remover WaveNet dynamic.** [DONE]
-  - Remover `src/models/wavenet/{model_dyn,layer_dyn,dense_dyn}.rs` (e correlatos), a variante `DynamicModel::WavenetDyn` e `src/loader/dispatcher/wavenet/dynamic.rs` (`build_wavenet_dynamic`).
-  - Ajustar `dispatcher/wavenet/mod.rs:68` para retornar **erro de load** em geometria não-catalogada (sem panic, mensagem diagnóstica via `NamDiagnostic`).
-  - **Critério de aceite:** `cargo build` limpo; modelos A1-Standard/Lite/Feather/Nano e A2-Full/Lite seguem carregando; `.nam` fora do catálogo falha com erro claro.
-  - **Nota:** `conv1d_dyn*.rs` foram intencionalmente retidos — são kernels de convolução *runtime-dimensioned* usados pela arquitetura A2 e por testes de stress estáticos, não como caminho de modelo dinâmico.
-
-- **[T1.15] Remover LSTM dynamic.** [DONE]
-  - Remover `src/models/lstm/{model_dyn,layer_dyn}.rs` (e correlatos), a variante `DynamicModel::LstmDyn` e `src/loader/dispatcher/lstm/dynamic_builder.rs` (`build_lstm_dynamic`). Ajustar `lstm/dispatch.rs:52` para erro de load em `(num_layers, hidden)` não-catalogado.
-  - **Critério de aceite:** aliases LSTM estáticos (1×8..2×24) seguem funcionando; geometria não-catalogada falha com erro claro.
-
-- **[T1.16] Limpar fixtures/testes de cross-val dependentes do dynamic.** [DONE]
-  - Remover os modelos/goldens NAMCore micro (`tests/fixtures/models/{lstm,wavenet}.nam`, `golden_namcore_lstm_1x3.bin`, `golden_namcore_wn_micro.bin`) e os testes que os exercitam (`tests/dynamic_parity.rs` e casos correspondentes em `cpp_parity.rs`/`nam_infer_test.rs`). Atualizar `tests/fixtures/README.md` e o script `golden_gen_build.sh`.
-  - **Critério de aceite:** suíte verde sem referências órfãs; `utils/tests-cargo.sh` e `utils/tests-long.sh` passam.
-
-- **[T1.17] Simplificar enum/dispatch e documentar.** [DONE]
-  - Renomear `DynamicModel` → `StaticModel` (e `dynamic_model.rs` → `static_model.rs`), atualizando todos os 22 arquivos `.rs` e 3 arquivos `.md`.
-  - Remover do README.md a seção "Dynamic Mode (Absolute Flexibility)".
-  - **Critério de aceite:** API coerente; documentação alinhada; sem *dead code*.
+- **[T6.6] Higiene de denormais e MXCSR.**
+  - `src/clap/processor/mod.rs:264`: re-aplicar `set_daz_ftz()` periodicamente (ex.: a cada 1024 blocos, com contador
+    barato) — hosts podem resetar o MXCSR após callbacks. Medir custo no bench de pipeline (deve ser ~0).
+  - `src/standalone/rt_setup/tsc.rs:80`: `SeqCst` → `Release` (caminho frio de calibração; conformidade com a regra
+    "sem SeqCst").
+  - `src/dsp/smoother.rs:69`: avaliar o guard `< 1e-15` — com FTZ/DAZ ativos ele é redundante; documentar a escolha
+    (kill de cauda audível vs. denormal real) no comentário, ou migrar para `is_subnormal()` se o intuito for só denormal.
+  - **Critério de aceite:** benches de inferência/pipeline sem regressão (>1%); lints verdes.
 
 ---
 
-## ÉPICO 2 — Otimização SIMD A2 (x86-64-v3) ⚡ [DONE]
+## ÉPICO 7 — Paridade 100% com Features Oficiais do NAMCore 🎯
 
-> Objetivo: aplicar otimizações *on-the-fly* fiéis ao `a2_fast.cpp`, **protegidas pelos golden vectors** do Épico 1 (nenhuma quebra de correção).
+> Objetivo: nenhum arquivo `.nam` **oficial** deve ser rejeitado ou produzir saída incorreta. Fonte de verdade:
+> espelho local `tests/fixtures/NeuralAmpModelerCore/` (regenerável via `tests/fixtures/golden_gen_build.sh`).
 
-### Sprint 2.1 — Kernels otimizados [DONE]
+### Sprint 7.1 — Arquiteturas oficiais ausentes
 
-- **[T2.1] Caminho CH=3 (A2-Lite): GEMV totalmente desenrolado.** ✅ [DONE]
-  - Portar a estratégia escalar/SIMD desenrolada para 3 canais.
-  - **Fonte de verdade:** `a2_fast.cpp` (estratégia `Channels=3`, GEMV unrolled).
-  - **Critério de aceite:** golden A2-Lite verde; ganho mensurável vs baseline T1.
-  - **Status:** ✅ Implementado em `src/models/a2/conv1d_ch3.rs`. Dispatch automático quando `in_ch==3 && out_ch==3`. K=6 (18 FMAs desenroladas) e K=15 (45 FMAs desenroladas). Golden A2-Lite self bitwise idêntico (MSE=0.0). Self-golden regenerado.
-  - ⚠️ **Nota p/ T2.2-T2.4:** `golden_wavenet_a2_lite_self.bin` foi regenerado com o kernel desenrolado. Tarefas que alterem o A2-Lite devem regenerá-lo também.
+- **[T7.1] Implementar arquitetura `Linear`.**
 
-- **[T2.2] Caminho CH=8 (A2-Full): *tap-major* frame-tiled (T=4) com broadcast-FMA.** ✅ [DONE]
-  - Portar a estratégia de *tiling* de 4 frames com *broadcast*-FMA e layout *col-major-per-tap*.
-  - **Fonte de verdade:** `a2_fast.cpp` (estratégia `Channels=8`, T=4 tap-major).
-  - **Critério de aceite:** golden A2-Full verde; ganho mensurável.
-  - **Status:** ✅ Implementado em `src/models/a2/conv1d_ch8.rs`. Layout col-major-per-tap (`A2Conv1dCh8`). Processamento em blocos com SIMD para conv, bias, mixin, LeakyReLU, head e l1x1. T=4 tiles com vfmadd231ps (broadcast-FMA). Golden A2-Full self regenerado e verde (MSE=0.0 entre runs). Testes de paridade AVX2 vs escalar para K=6, K=15, layer forward completo, edge cases (1 frame, T=4 tail). O peso também foi permutado na carga (T2.4).
+  - O C++ registra `"Linear"` no `ConfigParserRegistry` (`NAM/dsp.cpp:253-335`): FIR simples — `receptive_field`,
+    pesos `[receptive_field + bias]`, saída = produto interno do histórico + bias.
+  - Criar `src/models/linear.rs` (modelo pequeno, RT-safe, histórico via `MirroredBuffer`), parser em
+    `src/loader/dispatcher/` (novo branch), variante em `StaticModel` (`src/models/static_model.rs`).
+  - Reusar kernels de dot-product existentes (`src/math/gemm/dot.rs`); referência escalar para o oráculo.
+  - **Critério de aceite:** fixture `.nam` Linear determinística (gerada no estilo de `tests/fixtures/models/`),
+    golden cross-validation vs C++ via `golden_gen_build.sh` + caso em `tests/cpp_parity.rs`; heap-audit zero alloc;
+    prewarm = `receptive_field`.
 
-- **[T2.3] Ring `pow2` + *tail-mirror* para dilations e head.** ✅ [DONE]
-  - Consolidar buffers de histórico com máscara `pow2` e espelhamento de cauda (leitura *branchless*), reusando/estendendo `src/dsp/mirror_buf.rs`.
-  - **Fonte de verdade:** `a2_fast.cpp:335-344,771-798` (ring pow2 + memmove rewind).
-  - **Critério de aceite:** sem ramos no caminho de leitura; golden verde.
-  - **Status:** ✅ Per-layer `MirroredBuffer<f32>` substitui o arena plano `AlignedVec`. Cada buffer de camada usa mapeamento virtual 2× para acesso sem ramos (`buffer_start - lookback` sempre válido). O `copy_within` (memmove) no hot-path foi eliminado; a posição de escrita avança e retrocede subtraindo `ring_size` quando se aproxima do limite 2×. Head já usava anel pow2 com `& ring_mask` (leitura sem ramos); o memmove do head (preserva K-1 amostras da cauda) foi mantido para permitir escritas vetorizadas sem máscara. Golden A2-Lite e A2-Full self verde (MSE=0.0, bitwise idêntico). 319 testes lib + integração passam.
+- **[T7.2] Implementar arquitetura `ConvNet`.**
 
-- **[T2.4] Permutação de pesos para layout SIMD.** ✅ [DONE — incluso em T2.2]
-  - No `set_weights` (T1.6), permutar Conv1D de *row-major-per-tap* para *col-major-per-tap* (acesso amigável a SIMD), feito **uma vez** na carga.
-  - **Fonte de verdade:** `a2_fast.cpp:196-282` (loader permutando layout).
-  - **Critério de aceite:** golden verde; carga sem custo no hot-path.
-  - **Status:** ✅ Implementado junto com T2.2. `A2Conv1dCh8::new` faz a permutação na carga. Layout final: `w[k * 64 + in * 8 + out]` — 8 pesos de saída contíguos por `(tap, input)`.
+  - O C++ registra `"ConvNet"` (`NAM/convnet.cpp`, incl. `ConvNetBlock` com `BatchNorm` opcional, ativações
+    configuráveis, head 1x1; testes em `test_convnet.cpp`).
+  - Criar `src/models/convnet/` (blocos: conv dilatada + batchnorm "folded" na carga + ativação + head), parser
+    (campos `channels`, `dilations`, `batchnorm`, `activation`), variante `StaticModel`.
+  - **Decisão de design:** *foldar* o BatchNorm nos pesos da conv na carga (como inferência clássica) para manter o
+    hot-path enxuto — documentar a equivalência matemática.
+  - **Critério de aceite:** golden cross-validation vs C++ (fixture determinística + caso em `tests/cpp_parity.rs`);
+    paridade escalar vs SIMD; heap-audit; soak curto; `docs/cpp_parity_map.md` atualizado.
 
-### Sprint 2.2 — Validação de performance [DONE]
+### Sprint 7.2 — WaveNet oficial completo (lacunas e robustez de detecção)
 
-- **[T2.5] Benchmarks Criterion A2-Full/Lite.** [DONE]
-  - Adicionar casos em `benches/inference_bench.rs` (e `dot_4x_bench.rs` se aplicável).
-  - Medir µs/bloco a 48 kHz, buffers 64/128/256.
-  - **Critério de aceite:** relatório de ganho documentado em `docs/benchmarks.md`; **zero regressão** em modelos A1; golden 100% verde.
+- **[T7.3] Tratar `head` (post-stack) e `condition_size ≠ 1` do WaveNet: suportar ou rejeitar com erro claro.**
 
----
+  - Hoje: `condition_size` é ignorado (`src/models/wavenet/model.rs:76-86` usa o input como condition) e o campo
+    `head` do config não é processado — um `.nam` que use esses recursos carrega e **soa errado em silêncio**, o
+    pior modo de falha.
+  - Etapa 1 (obrigatória): no parser (`src/loader/nam_json/topology.rs`), detectar `condition_size != 1` ou
+    `head != null` e **falhar o load** com diagnóstico explícito ("recurso oficial ainda não suportado").
+  - Etapa 2 (avaliação): pesquisar prevalência real desses campos em modelos distribuídos (Tone3000/ToneHunt);
+    registrar decisão em `docs/cpp_parity_map.md` — implementar apenas se houver modelos reais em circulação.
+  - **Critério de aceite:** fixtures sintéticas com `head`/`condition_size=2` são rejeitadas com mensagem clara;
+    nenhum modelo do catálogo atual regrede; decisão documentada.
 
-## ÉPICO 3 — SlimmableContainer + Integração FSM Adaptativa 🔀
+- **[T7.4] Endurecer a heurística de detecção A2.**
 
-> Objetivo: carregar o **bundle oficial A2** (nano+standard) e trocar Full↔Lite em runtime, integrado à FSM de pressão de CPU já existente.
+  - `src/loader/nam_json/topology.rs:39-63`: `is_wavenet_a2()` por `version >= 0.6.0` é frágil (um WaveNet A1 com
+    version alta seria roteado para A2). Tornar `is_a2_shape()` (canais + dilations + kernels) o detector **primário**
+    e o critério de versão apenas desempate/telemetria.
+  - **Critério de aceite:** teste de tabela com matrizes (A1 com version 0.6+, A2 real, shapes ambíguos) garantindo
+    dispatch correto; goldens A1/A2 verdes.
 
-### Sprint 3.1 — Container
+- **[T7.5] Validar `sample_rate` esperado do modelo vs host.**
 
-- **[T3.1] Trait `SlimmableModel` + parser `SlimmableContainer`.** [DONE]
-  - Criar `src/models/slimmable.rs` (`trait SlimmableModel { fn set_slimmable_size(&mut self, val: f32); }`) e parser `src/loader/dispatcher/container/` para a arquitetura `"SlimmableContainer"` (`config.submodels[] = {max_value, model}`), construindo cada submodelo via o dispatcher recursivo.
-  - **Fonte de verdade:** `NAM/slimmable.h`, `NAM/container.h:18-64`, `NAM/container.cpp:149` (registro/parser).
-  - **Critério de aceite:** `slimmable_container.nam` (exemplo) carrega; ordena submodelos por `max_value` ascendente; último cobre `>= 1.0`.
+  - `src/loader/build.rs:141`: o `sample_rate` do modelo é lido mas nunca confrontado com a SR ativa. O resampler
+    interno cobre a conversão, mas a divergência deve ser ao menos **logada** (e exposta na telemetria/GUI metadata,
+    `src/clap/gui/ui/status_bar/metadata.rs`) para diagnóstico.
+  - **Critério de aceite:** log estruturado quando `model_sr != host_sr`; campo no `DiagnosticBundle`
+    (`src/common/diagnostics/`); teste cobrindo.
 
-- **[T3.2] `ContainerModel` (despacho por threshold).** [DONE]
-  - Criar `src/models/container.rs`: guarda N submodelos pré-construídos; `set_slimmable_size(val)` seleciona índice por threshold e chama `reset()` no submodelo ativo; `process()` despacha ao ativo. **Todos** os submodelos pré-alocados/prewarmed na carga (zero alloc no switch).
-  - **Fonte de verdade:** `NAM/container.cpp` (dispatch + seleção).
-  - **Critério de aceite:** RT-safe na troca; golden por submodelo (A2-Full e A2-Lite) reaproveitando fixtures do Épico 1.
+### Sprint 7.3 — Golden vectors: cobertura total do catálogo
 
-### Sprint 3.2 — Integração com a FSM adaptativa
+- **[T7.6] Golden + cross-validation para WaveNet **Lite** (12ch).**
 
-- **[T3.3] Ligar `set_slimmable_size` à FSM de pressão de CPU.** [DONE]
-  - Mapear os estados de `src/dsp/adaptive.rs` (Full→Reduced→Minimal) para a seleção de submodelo (A2-Full ↔ A2-Lite), usando os limiares de P99/budget já monitorados pela telemetria (`src/dsp/telemetry.rs`).
-  - **Critério de aceite:** sob carga simulada, o engine migra Full→Lite e retorna por histerese, sem realocar.
+  - Único A1 catalogado (`src/models/mod.rs:74`) **sem nenhum** golden nem cross-val viva. Estender
+    `golden_gen_build.sh`, gerar `golden_wavenet_lite.bin` (v1 + v2 multi-SR), adicionar casos em
+    `tests/nam_infer_test.rs` e `tests/cpp_parity.rs`.
+  - **Critério de aceite:** golden verde nas duas lanes; `tests/fixtures/README.md` atualizado.
 
-- **[T3.4] *Crossfade* sem cliques na troca.** [DONE]
-  - Implementado crossfade linear de 32 ms no `ContainerModel::process` com blend progressivo entre saídas dos submodelos ativo e pendente. Buffer scratch pré-alocado (zero alloc no hot-path). `configure_adaptive_model` atualizado para sempre chamar `set_slimmable_size` (defer só para `set_effective_layers`). Teste de continuidade confirma redução de 60% no step relativo vs troca abrupta.
-  - Reusar `src/dsp/smoother.rs`/lógica de *crossfade* da `adaptive.rs` para transição suave entre submodelos.
-  - **Critério de aceite:** ausência de descontinuidade audível (teste de energia/continuidade no ponto de troca).
+- **[T7.7] Golden para a família LSTM completa.**
 
-- **[T3.5] Override manual (CLI + CLAP).** [DONE]
-  - Flag de CLI (`src/standalone/cli.rs`) e parâmetro CLAP para fixar/forçar nível (Auto/Full/Lite). Manual sobrepõe a FSM.
-  - **Critério de aceite:** `--slim auto|full|lite` funciona; param CLAP exposto; documentado.
+  - Catalogados sem cobertura: 1×8, 1×12, 1×24, 1×40, 2×12, 2×16, 2×24; e 2×8 sem variante v2 multi-SR.
+  - Gerar fixtures determinísticas + goldens para todos; adicionar 2×8 à suíte v2 em `tests/cpp_parity.rs:464`.
+  - **Critério de aceite:** todo alias LSTM do catálogo tem ao menos golden v1 + um caso de cross-val viva; suíte
+    rápida continua < 1,5 min (goldens grandes ficam na lane longa).
 
-- **[T3.6] Telemetria e testes de transição.** [DONE]
-  - Sinalização de nível ativo via `RtStatusFlags` (atômico) já implementada em `transition_to()` (flags `DEGRADE_REDUCED`/`DEGRADE_MINIMAL`, contador `degrade_transitions_total`).
-  - Testes de FSM estilo proptest em `tests/adaptive_fsm_proptest.rs` (adversariais, valores de fronteira, jitter, invariantes de telemetria).
-  - Soak de transições em `tests/soak_test.rs`: `test_adaptive_fsm_endurance` (2M ciclos de jitter) e `test_adaptive_fsm_transition_cycles` (50k ciclos determinísticos Full→Reduced→Minimal→Full, 200k transições verificadas).
-  - **Critério de aceite:** transições determinísticas e estáveis sob soak.
+- **[T7.8] Resolver a divergência A2 Rust × C++ (aposentar o self-golden).**
 
----
+  - Pendência registrada na conclusão do épico A2: o render C++ (`a2_fast`) diverge dos fixtures A2 atuais e os
+    goldens A2 são *self-golden* (Rust valida Rust — não protege contra erro de spec). Investigar no lado C++
+    (hipóteses já anotadas: inicialização do ring do head; posição do `head_scale` no stream de `_load_weights`),
+    comparando camada-a-camada com instrumentação no espelho local.
+  - **Critério de aceite:** causa-raiz documentada em `docs/cpp_parity_map.md`; goldens A2 regenerados a partir do
+    C++ (cross-validation real) OU divergência provada como bug do C++ upstream (com issue aberta e justificativa);
+    `golden_wavenet_a2_*_self.bin` aposentados se a cross-val real passar a valer.
 
-## ÉPICO 4 — IR Cabsim (.wav convolution) 🔊 [DONE]
+- **[T7.9] Lane noturna para `#[ignore]` (cross-validation contínua).**
 
-> Objetivo: feature útil e **ortogonal à A2** — carregar um `.wav` de impulse response e convoluir (estágio pós-NAM). Convolução particionada FFT, RT-safe, reusando `rustfft` (já no `Cargo.toml`).
-> Nota do PO: Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
-
-### Sprint 4.1 — Loader de IR [DONE]
-
-- **[T4.1] Loader de `.wav` IR.** ✅ [DONE]
-  - Loader robusto em `src/dsp/cabsim/loader.rs` para WAV mono (PCM16/24/float32), com resample para a SR ativa (reusar `src/dsp/resampler.rs`) e normalização opcional. Carga/preparo **fora** da audio thread; transferência via SPSC (estilo *resampler swap* em `src/common/spsc/`).
-  - **Critério de aceite:** carrega os WAVs de exemplo em `tests/` (ex.: `amostra-guitarra-*_FAT_CAB.wav`); erros tratados sem panic.
-  - **Notas p/ T4.2:** `CaptureState.active_cabsim: Option<Box<CabSimIr>>` já populado via SPSC swap. `CabSimIr.samples` contém IR mono resampled (f32). Canal SPSC `cabsim_producer` disponível em `run.rs` (atualmente `_` prefix, sem CLI command). `GcItem::CabSimIr` já registrado no GC cascade.
-
-### Sprint 4.2 — Convolução particionada [DONE]
-
-- **[T4.2] Uniform-Partitioned Overlap-Save (FFT).** [DONE]
-  - Implementar convolução particionada em `src/dsp/cabsim/conv.rs` (partições de tamanho = buffer, overlap-save), pré-FFT do kernel na carga; FDL (*frequency delay line*) pré-alocada; **zero alloc** no hot-path.
-  - **Fonte de verdade conceitual:** literatura de UPOLS/partitioned convolution (não há referência no C++; é feature nova do nam-rs).
-  - **Critério de aceite:** paridade vs convolução direta (referência ingênua) `ESR < 1e-5` em IR curto; latência == tamanho da partição documentada.
-  - **Nota do PO:** Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
-
-- **[T4.3] Estágio opcional no pipeline.** ✅ [DONE]
-  - Integrar como estágio pós-inferência em `src/dsp/pipeline/` com *bypass* de custo zero quando nenhum IR está carregado. Flag de CLI/param CLAP.
-  - **Critério de aceite:** ativável/desativável em runtime sem clique; bypass não mede custo.
-
-- **[T4.4] Testes + bench IR.** [DONE]
-  - Golden de convolução (IR sintético determinístico), heap-audit e bench Criterion. `#[ignore]` para os pesados.
-  - **Critério de aceite:** golden verde; zero alloc; bench documentado.
-  - **Nota de auditoria (Sprint 4.2):** Implementação completa. 11 unit tests (paridade ESR < 1e-5 em short/medium/long IR, edge cases), 8 golden tests (6 rápidos + 2 `#[ignore]`), 4 heap-audit tests (zero alloc verificado), 8 benchmarks Criterion (ShortIR/MediumIR/LongIR/256samp/construction/construction_long/long_run). Suíte 100% verde.
+  - Hoje toda a paridade C++ só roda manualmente (`utils/tests-long.sh`). Criar alvo de automação (cron local,
+    systemd-timer ou job de CI quando houver) que execute a lane longa periodicamente e registre em `target/logs/`.
+  - **Critério de aceite:** script/unit documentado em `docs/functional-tests.md`; execução agendada comprovada.
 
 ---
 
-## ÉPICO 5 — IR Cabsim (.wav convolution) II 🔊 [DONE]
+## ÉPICO 8 — Suíte de Testes e Benches em Estágio "Produção" 🧪
 
-### Sprint 5.1 — Integração CLAP Cabsim + Robustez de Partição
+> Objetivo: depois deste épico, testes/benches não precisam mais ser editados — só consultados como seguro.
+> Remover peso morto, consolidar duplicações e fechar lacunas de cobertura.
 
-> O CLAP plugin é **release**. A infraestrutura de pipeline (Stage 3 em `capture.rs`, `DspPipelineContext.conv`) e o standalone (`--cab`) já estão funcionais; falta o wiring CLAP completo: parâmetro SPSC, GUI, state save/load, e adaptação de partição para buffer sizes variáveis do host.
+### Sprint 8.1 — Consolidação estrutural da suíte
 
-- **[T5.1] `ClapParamPayload::LoadCabIr` + SPSC wiring CLAP.** [DONE]
-  - Adicionar variante `LoadCabIr { engine: Option<Box<ConvEngine>> }` ao enum `ClapParamPayload` (`src/clap/plugin/shared.rs:17`). No `process_events` (`src/clap/processor/events.rs:31-42`), drenar o payload e fazer swap de `self.conv_engine` com GC cascade para o engine antigo (mesmo padrão de `cold_load_model` em `events.rs:139-157`).
-  - Adicionar campo `ir_path: Option<String>` ao `ColdShared` (`src/clap/plugin/shared.rs:106`) para rastreamento do caminho ativo.
-  - No main thread, implementar `cold_load_cabsim()`: carregar WAV via `CabSimIr::load()`, construir `ConvEngine::new()`, enviar via SPSC `param_tx.push(ClapParamPayload::LoadCabIr { .. })`.
-  - **Fonte de verdade:** Padrão existente de `ClapParamPayload::LoadModel` e `cold_load_model()` em `events.rs`.
-  - **Critério de aceite:** `conv_engine` recebe um `ConvEngine` válido via SPSC no RT thread; swap é RT-safe (zero alloc); engine antigo vai pro GC via `push_to_gc(GcItem::CabConvEngine(old))`.
+- **[T8.1] Quebrar `tests/nam_infer_test.rs` (2481 linhas) por responsabilidade.**
 
-- **[T5.2] State save/load do caminho IR no CLAP.** [DONE]
-  - Serializar `ir_path` no state blob (`src/clap/extensions/state.rs`). No `load`, reconstruir o `ConvEngine` (cold-path) e enviar via SPSC — mesmo padrão do model path (usar `cold.ui_pending_model` como referência de padrão, criar `cold.ui_pending_ir`).
-  - **Fonte de verdade:** `src/clap/extensions/state.rs` (padrão de save/load existente), `src/clap/plugin/shared.rs:139` (`ui_pending_model`).
-  - **Critério de aceite:** Salvar preset com IR, fechar/reabrir o plugin → IR recarregado automaticamente; preset sem IR → `conv_engine = None` (bypass); compatibilidade retroativa com presets sem campo IR.
+  - Dividir em: `golden_vectors.rs`, `self_consistency.rs`, `zero_alloc_infer.rs`, `container_slimmable.rs`,
+    `spsc_pipeline.rs` (nomes finais a critério do implementador, 1 preocupação por binário).
+  - **Critério de aceite:** mesmos testes, mesma contagem de asserções (diff de `cargo test -- --list` antes/depois);
+    `utils/tests-cargo.sh` verde e sem aumento perceptível de tempo.
 
-- **[T5.3] GUI — File browser para IR no CLAP.** [DONE]
-  - Adicionar controle de file browser para `.wav` na GUI egui (`src/clap/gui/ui/`), análogo ao model file browser existente em `zones/identity.rs`. Elementos: botão "Load IR" + display do nome do arquivo carregado + botão "Clear IR" (envia `None` via SPSC para bypass).
-  - Ao selecionar, disparar carga assíncrona no main thread (mesma estratégia de `ui_pending_model`/`ui_loading`/`ui_load_error`): gravar em `cold.ui_pending_ir`, sinalizar `ui_ir_loading`, processar em `on_main_thread()`, enviar `ConvEngine` via SPSC → RT.
-  - **Fonte de verdade:** `src/clap/gui/ui/zones/identity.rs` (model file browser), `src/clap/plugin/shared.rs:139-145` (pending/loading/error pattern).
-  - **Critério de aceite:** File browser funcional com filtro `.wav`; IR carregado aparece na GUI; "Clear" remove o IR (bypass); loading indicator; erro exibido em toast; sem cliques na transição (swap via SPSC + GC cascade).
+- **[T8.2] `CountingAllocator` compartilhado em `tests/common/`.**
 
-- **[T5.4] Partição adaptativa (buffer_size variável).** [DONE]
-  - Atualmente `ConvEngine` é construído com `partition_size = buffer_size` e o stage em `capture.rs:60-62` faz bypass silencioso se `n_pw != partition_size`. Corrigir para:
-    (a) No CLAP: reconstruir `ConvEngine` em `activate()` (`src/clap/processor/mod.rs`) quando o host informa `max_frames_count`, usando `partition_size = max_frames_count`. Armazenar o IR raw (samples `Vec<f32>`) no `ColdShared` para possibilitar reconstrução sem re-load do WAV.
-    (b) No standalone: reconstruir quando o buffer PipeWire muda (via SPSC swap `cabsim_producer` já existente em `src/main.rs:99,124`).
-    (c) Documentar que a latência do cabsim = `partition_size` samples e somar à latência reportada pelo plugin (`current_latency` em `events.rs:96`).
-  - **Fonte de verdade:** `src/dsp/pipeline/capture.rs:60-72` (guard atual), `src/clap/processor/mod.rs` (`activate`, `max_frames_count`).
-  - **Critério de aceite:** Cabsim funciona com qualquer buffer size reportado pelo host; sem bypass silencioso inesperado; latência do cabsim somada à latência total reportada ao host; testes com buffer sizes {32, 64, 128, 256, 512}.
+  - O boilerplate (~70 linhas) está copiado em `tests/nam_infer_test.rs:57`, `tests/resampler_heap_audit.rs:22`,
+    `tests/cabsim_heap_audit.rs:22`, `tests/a2_heap_audit.rs:22`. Extrair struct + guard para
+    `tests/common/alloc_audit.rs`; cada binário declara apenas seu `#[global_allocator]` apontando para o tipo comum.
+  - **Critério de aceite:** zero duplicação; todos os heap-audits verdes.
 
-### Sprint 5.2 — Documentação Cabsim 📚
+- **[T8.3] Fundir os 3 testes de loader A2.**
 
-> Documentar completamente a feature de IR cabsim em todos os documentos relevantes. Inclui decisões arquiteturais tomadas durante a auditoria do épico.
+  - `tests/a2_placeholder_interface.rs` + `tests/a2_fixture_validation.rs` + `tests/loader_a2_compat.rs` →
+    `tests/a2_loader.rs` único (remover redundâncias; o nome "placeholder" é histórico e enganoso).
+  - **Critério de aceite:** cobertura preservada; nomes de testes descritivos; ~1 binário a menos na suíte.
 
-- **[T5.5] Documentação arquitetural do cabsim.** [DONE]
-  - `docs/architecture.md`: Nova seção sobre o estágio de cabsim no pipeline DSP (UPOLS, FDL, zero-alloc, latência = partition_size). Incluir diagrama Mermaid do fluxo Inference → CabSim → Output. Corrigir referência "CLAP (Staging)" → "CLAP (Release)" (L6). Atualizar o diagrama de fluxo DSP bidirecional (§5, L187-201) para incluir o estágio de cabsim entre "Output Gain" e "DspBridge".
-  - `README.md`: Mencionar IR cabsim como feature disponível na seção de features/supported models.
-  - `docs/benchmarks.md`: Incluir resultados dos benchmarks de cabsim (ShortIR/MediumIR/LongIR @ 64samp, 256samp, construction, long_run — ver `benches/inference_bench.rs:1249-1370`).
-  - **Critério de aceite:** Documentação coerente, sem menções órfãs; leitores entendem como o cabsim funciona e sua posição no pipeline.
+- **[T8.4] Migrar testes inline de arquivos ≥ 300 linhas para `_test.rs`.**
 
-- **[T5.6] Documentação de fixtures e decisões de validação.** [DONE]
-  - `tests/fixtures/README.md`: Documentar os golden de cabsim — IR sintético determinístico via PCG PRNG com seed fixa, direct convolution O(N²) como referência, ESR < 1e-5 em cenários short (64), medium (512), long (8192) e stress (32768 amostras).
-  - `docs/cpp_parity_map.md`: Registrar que o cabsim é feature **nova do nam-rs** (sem equivalente no NeuralAmpModelerCore); a referência mais próxima é `AudioDSPTools/dsp/ImpulseResponse.h` no NeuralAmpModelerPlugin (submodule `AudioDSPTools` não inicializado no fixture — ver Sprint 4.5).
-  - **Decisões a documentar em `docs/`:**
-    - **Cross-validação C++ não realizada (justificada):** (a) feature nova/ortogonal ao NAM, não existe no NeuralAmpModelerCore; (b) submodule `AudioDSPTools` não inicializado no fixture; (c) validação via direct convolution (referência ingênua O(N²)) é matematicamente rigorosa — ESR < 1e-5 confirmado em cenários short, medium, long e stress. Sprint 4.5 planeja cross-validação futura.
-    - **Teste de pipeline end-to-end com cabsim considerado desnecessário:** Cada componente é testado individualmente — convolution unit tests (11), golden parity (8), heap-audit (4). O stage está integrado em `capture.rs` e verificado por code review; a interação com os demais stages (input, inference, output) não introduz acoplamento que justifique um teste adicional.
-  - **Critério de aceite:** Todas as decisões documentadas com justificativa; rastreabilidade completa em docs/.
+  - Violações da regra: `src/models/a2/model.rs`, `a2/layer.rs`, `a2/head.rs`, `src/dsp/adaptive.rs`,
+    `src/dsp/resampler.rs`, `src/dsp/gate.rs`, `src/dsp/cabsim/loader.rs`, `src/clap/plugin/shared.rs`.
+    Em 4 deles o `_test.rs` irmão **já existe** — apenas mover/fundir os blocos inline.
+  - **Critério de aceite:** nenhum arquivo ≥ 300 linhas com `#[cfg(test)] mod tests` inline; suíte verde.
 
-### Sprint 5.3 — Cross-Validação AudioDSPTools `ImpulseResponse` 🔬
+- **[T8.5] Resgatar `tests/pw_integration_test.rs` (órfão).**
 
-> Inicializar o submodule `AudioDSPTools` do `NeuralAmpModelerPlugin` e implementar cross-validação da engine UPOLS do nam-rs contra a implementação de referência `dsp::ImpulseResponse` do C++. O NeuralAmpModelerPlugin (`tests/fixtures/NeuralAmpModelerPlugin/NeuralAmpModeler/NeuralAmpModeler.h:3`) usa `#include "../AudioDSPTools/dsp/ImpulseResponse.h"` para convolução de IRs.
+  - Nenhum script executa este teste (exige daemon PipeWire). Marcar `#[ignore]` com comentário de pré-requisito e
+    adicionar fase opcional em `utils/tests-long.sh` (skip limpo se `pw-cli info` falhar).
+  - **Critério de aceite:** teste roda na lane longa quando o PipeWire está disponível; skip documentado quando não.
 
-- **[T5.7] Inicializar e analisar `AudioDSPTools` submodule.** [DONE]
-  - Inicializar o git submodule `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools` (atualmente diretório vazio).
-  - Analisar `AudioDSPTools/dsp/ImpulseResponse.h` e `ImpulseResponse.cpp`: identificar o algoritmo de convolução usado (provavelmente overlap-add ou overlap-save particionado), o tratamento de partição, formato de entrada (WAV loader embutido ou externo), e a normalização aplicada.
-  - Documentar as diferenças algorítmicas entre a implementação C++ e o UPOLS do nam-rs (ex: algoritmo base, tamanho de FFT, tratamento de cauda, normalização) em `docs/cpp_parity_map.md` (seção cabsim).
-  - **Critério de aceite:** Submodule inicializado e acessível; análise documentada; diferenças catalogadas com impacto esperado na tolerância de cross-val.
+- **[T8.6] Limpeza automática de `tests/fixtures/.temp_live/`.**
 
-- **[T5.8] Build do binário C++ de referência para IR.** [DONE]
-  - Estender `tests/fixtures/golden_gen_build.sh` ou criar um binário auxiliar (`tests/fixtures/render_ir.cpp`) que: (a) carregue um IR `.wav` via `dsp::ImpulseResponse`, (b) processe um sinal de entrada sintético determinístico (mesmas seeds dos golden tests em `tests/cabsim_golden.rs` — PCG PRNG seeds 42, 137, 31337, 999983), e (c) emita a saída como golden vector binário no formato `[u32 N][f32×N in][f32×N out]`.
-  - Gerar IRs sintéticos determinísticos no C++ usando a mesma fórmula: `sin(2π·freq·t) · exp(-decay·t) + noise_level·rng_signed` (parâmetros: freq=600/350/200/150 Hz, decay=12/6/2/1.5, noise_level=0.02).
-  - **Fonte de verdade:** `AudioDSPTools/dsp/ImpulseResponse.{h,cpp}`, `NeuralAmpModeler.cpp:676,685,800` (uso de `dsp::ImpulseResponse`).
-  - **Critério de aceite:** Binário C++ compila, gera saída determinística para IR + sinal de entrada dados; saída salva em `tests/fixtures/golden_cabsim_cpp_*.bin`; formato compatível com os golden tests do nam-rs.
+  - 41 MB de WAVs gerados acumulando sem teardown. Adicionar `rm -rf` do conteúdo no preâmbulo de
+    `utils/tests-long.sh` (que é quem o popula) e nota no `tests/fixtures/README.md`.
+  - **Critério de aceite:** diretório esvaziado a cada execução da lane longa; nada versionado por engano.
 
-- **[T5.9] Testes de cross-validação UPOLS vs C++ `ImpulseResponse`.** [DONE]
-  - Implementar testes `#[ignore]` em `tests/cabsim_cpp_parity.rs` que: (a) carregam os golden vectors gerados pelo C++ (T4.12), (b) processam o mesmo sinal com o UPOLS do nam-rs, e (c) comparam com thresholds adaptativos.
-  - Definir thresholds de ESR/SNR para a cross-validação (tolerância potencialmente maior que os golden internos, pois os algoritmos podem diferir — overlap-add vs overlap-save introduz diferenças de arredondamento na borda das partições).
-  - Adicionar os testes à suíte de `utils/tests-long.sh`.
-  - **Critério de aceite:** Cross-validação verde dentro dos thresholds definidos; diferenças documentadas; testes integrados em `utils/tests-long.sh`.
+- **[T8.7] Builders de modelos sintéticos compartilhados.**
 
-- **[T5.10] Teste Humanos:** Atualizar o `docs/functional-tests.md`. [DONE]
+  - `build_synth_a2`, `build_soak_wavenet`, `build_k5_large_rf_wavenet` duplicados entre `tests/soak_test.rs` e
+    `tests/wavenet_prewarm_edge.rs` → extrair para `tests/common/model_builders.rs`.
+  - Corrigir de passagem: `build_soak_wavenet()` usa só 8 dilations (subamostra o modelo de 10 — soak menos
+    representativo); alinhar com a topologia Standard real.
+  - **Critério de aceite:** uma única definição por builder; soak/edge verdes.
 
----
----
+### Sprint 8.2 — Lacunas de cobertura (fechamento do "seguro")
 
-## ÉPICO 99 — Documentação e Fechamento 📚
+- **[T8.8] Bench Criterion do gate FSM.**
 
-- **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`): Garantir atualização com o estado atual real do código. [11/06/2026 02:14]
-  - `docs/architecture.md`: motor A2, container, cabsim (IR convolution).
-  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados (ainda que em estágio Beta - deixar issoo registrado).
-  - `docs/cpp_parity_map.md`: novo mapeamento A2 → C++.
-  - `tests/fixtures/README.md`: com os novos golden A2 e instruções de regeneração.
-  - `docs/functional-tests.md`: Assegurar que estão a par de tudo o que foi implementado até aqui.
-  - Acionar skill `refatora-doc.md` ao final.
+  - O gate (`src/dsp/gate.rs`) está no hot-path e não tem bench. Adicionar caso em `benches/inference_bench.rs`
+    medindo `update()` + `multiplier()` por bloco (64/128/256 frames) e registrar baseline em `docs/benchmarks.md`.
+  - **Critério de aceite:** bench roda na lane padrão; números documentados.
 
-- **[T99.2] Rodadas de correção** (versão 2.1)
-  - `revisor-auditor` Extremamente focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação impecavelmente correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si continue em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar prontos para cumprir o seu papel de "seguro" contra erro/degradação. Então seja muito rigoroso em assegurar sua qualidade.
-  - `refatora-rust.md`
-  - `refatora-doc.md`
+- **[T8.9] Teste de corretude do resampler contra referência externa.**
 
-- **[T99.3] Rodadas de burilamento** (versão 2.2)
-  - `pesquisador-inovador.md`
-  - `refatora-rust.md`
-  - `refatora-doc.md`
-  - Leitura e revisão geral de todo o git do NAM-rs.
-  - Divulgar geral na comunidade.
+  - Hoje só há soak (NaN/drift) e heap-audit. Adicionar teste determinístico: chirp/multitom conhecido, razões
+    44.1↔48↔96 kHz, validando SNR ≥ 120 dB na banda passante contra referência pré-computada (vetor versionado
+    pequeno em `tests/fixtures/`, gerado por script documentado).
+  - **Critério de aceite:** regressão de qualidade do polyphase passa a ser detectada pela lane rápida.
+
+- **[T8.10] KAT (known-answer tests) do CRC32 e fuzz de truncamento `.namb`.**
+
+  - Adicionar em `src/loader/namb_test.rs`: `crc32_ieee(b"123456789") == 0xCBF43926` (vetor canônico) + casos de
+    arquivo truncado em todos os offsets de fronteira do header (proptest já cobre parte — completar bordas exatas).
+  - **Critério de aceite:** qualquer alteração futura no CRC quebra o KAT imediatamente.
+
+- **[T8.11] Teste de tolerância do FastMath tanh (PadeNR2).**
+
+  - Existe bench, mas não teste de corretude dedicado do caminho NR2 vs `f64::tanh` de referência no domínio
+    completo de áudio (±10). Tolerância conforme `docs/fastmath-approximations.md` (erro < ~1e-4 / −80 dB).
+  - **Critério de aceite:** sweep determinístico + proptest com teto de erro; documentos e teste coerentes.
+
+- **[T8.12] Testes de concorrência dedicados (fora do `--test-threads=1`).**
+
+  - A suíte inteira roda serializada, mascarando corridas em SPSC/param-swap. Criar binário dedicado
+    `tests/concurrency_stress.rs` com threads reais exercitando: SPSC GC push/drain, troca de modelo durante
+    `process`, troca de IR cabsim, smoothing de params main↔RT. Rodar na lane longa (pode usar `loom` apenas se o
+    custo compensar — decisão do implementador, documentada).
+  - **Critério de aceite:** corridas conhecidas (T6.3) cobertas por teste que falhava antes da correção e passa depois.
 
 ---
+
+## ÉPICO 9 — Refatoração Estrutural (refatora-rust) 🧹
+
+> Estrutura, não lógica. Regressões proibidas — goldens e benches são o juiz.
+
+### Sprint 9.1 — Higiene de build e features
+
+- **[T9.1] Gate do módulo `testing` fora dos binários release.**
+
+  - `src/lib.rs:46` exporta `pub mod testing` incondicionalmente (~930 linhas + `rustfft` em todo build, incl. o
+    plugin CLAP). Criar feature `testing`, gatear o módulo com `#[cfg(any(test, feature = "testing"))]` e habilitar
+    a feature nos consumidores: bins `gen_stress`/`wav_to_golden` (`required-features`), `tests/common/*`, dev-builds.
+  - **Atenção:** `src/dsp/cabsim/loader_test.rs` consome `testing::wav` — testes têm `cfg(test)`, ok.
+  - **Critério de aceite:** `cargo build --release --no-default-features --features clap-plugin` não compila
+    `src/testing/`; todas as lanes de teste/bins continuam verdes; tamanho do `.so` reduzido (registrar no PR).
+
+- **[T9.2] Tornar `clack-common` opcional.**
+
+  - `Cargo.toml:32`: todos os usos estão sob `#[cfg(feature = "clap-plugin")]`. Mudar para
+    `clack-common = { version = "0.1", optional = true }` e adicionar à lista da feature `clap-plugin`.
+  - **Critério de aceite:** `cargo check --no-default-features` e `--features standalone` não compilam `clack-common`
+    (verificar com `cargo tree`); lints verdes em toda a matriz.
+
+- **[T9.3] Auditar features `long_bench` e `pgo`.**
+
+  - Declaradas no `Cargo.toml` sem uso aparente em `src/`. Confirmar consumo em `benches/` e `utils/build-release.sh`;
+    remover se órfãs, ou documentar o consumidor num comentário do `Cargo.toml`.
+  - **Critério de aceite:** nenhuma feature declarada sem consumidor rastreável.
+
+- **[T9.4] Remover `#[allow(...)]` residuais.**
+
+  - `src/clap/extensions/state.rs:49` (`unused_mut`), `src/dsp/resampler.rs:384,407,430,452` (`unused_parens`),
+    `src/math/gemm/mod.rs:30` (`unused_imports` em `pub use gemv_bf16::*` — verificar consumidores reais e remover
+    o re-export ou o allow). Revisar os `#[allow(dead_code)]` de `src/dsp/pipeline/output_pw.rs:18-24` (se mortos
+    mesmo dentro de `standalone`, deletar).
+  - **Critério de aceite:** `utils/lints.sh` verde sem os allows; nenhum código morto remanescente apontado pelo clippy.
+
+### Sprint 9.2 — Layout físico e duplicações
+
+- **[T9.5] Micro-arrumações de módulos.**
+
+  - Eliminar `src/clap/processor/dsp/gate_flags.rs` (5 linhas, só re-export) — inlinar o `use` em
+    `clap/processor/dsp/mod.rs`.
+  - Mover `src/clap/heap_audit.rs` (12 linhas) para `src/clap/processor/heap_audit.rs` (escopo correto).
+  - Avaliar `src/dsp/pipeline/test_util.rs` (7 linhas) → fundir nos helpers de teste do pipeline.
+  - **Critério de aceite:** árvore sem arquivos-fantasma; imports atualizados; suíte verde.
+
+- **[T9.6] Dividir god-files (sem mudar lógica).**
+
+  - Prioridade: `src/clap/processor_test.rs` (2236 L — dividir por categoria: bypass/gain/params/state/preset),
+    `src/models/a2/model.rs` (989 L — extrair `set_weights`/carga p/ submódulo), `src/models/a2/layer.rs` (842 L),
+    `src/models/a2/conv1d_ch3.rs` (855 L — separar variantes SIMD/escalar), `src/models/wavenet/tests.rs` (813 L —
+    por variante), `src/dsp/pipeline/pipeline_test.rs` (762 L — por estágio).
+  - **Critério de aceite:** nenhum arquivo de produção > ~700 linhas sem justificativa documentada; goldens e benches
+    bit-idênticos (asserção de não-regressão).
+
+- **[T9.7] Investigar deduplicação RT-swap standalone × CLAP.**
+
+  - A lógica de troca (modelo/resampler/cabsim) em `src/standalone/pw_host/rt_callback/{resampler_swap,cabsim_swap,
+    commands}.rs` é estruturalmente paralela à de `src/clap/processor/events.rs`. **Tarefa de investigação**: propor
+    (ou descartar, com justificativa) um `SwapStrategy<T>` comum em `src/dsp/` — só implementar se reduzir ≥ 100
+    linhas sem custo RT.
+  - **Critério de aceite:** ADR curto em `docs/architecture.md` com a decisão; se implementado, heap-audits e soak verdes.
+
+- **[T9.8] Reduzir boilerplate de dispatch ISA.**
+
+  - `src/math/common/dispatch/detect.rs` constrói `DispatchTable` quase idêntico por ISA. Estender o macro de
+    `dispatch/mod.rs` para gerar a construção das tabelas (~80 linhas a menos). Sem alterar a semântica de detecção.
+  - **Critério de aceite:** paridade escalar×AVX2×AVX-512 verde; benches sem regressão.
+
+- **[T9.9] Decidir destino do `leaky_relu_slice` (morto em produção).**
+
+  - O modelo A2 despacha LeakyReLU via `prelu_slice` (`src/models/a2/activations.rs:112`); o kernel dedicado
+    `leaky_relu_slice` está implementado/testado mas nunca chamado em produção. Medir: se o kernel dedicado for
+    mensuravelmente mais rápido (bench A/B), usá-lo no A2; senão, removê-lo (e seus testes) para cortar burden.
+  - **Critério de aceite:** decisão por dados de bench, registrada; sem código morto remanescente.
+
 ---
 
-## ÉPICO 100 (FUTURO)
+## ÉPICO 10 — Documentação Exemplar (refatora-doc / documentador) 📚
 
-- Comparação completa de features com o NeuralAmpModelerCore e o NeuralAmpModelerPlugin para mais idéias de features a copiar.
-- FFT e outros features no hot path considerar internalizar o código e ultra otimizações.
-- Fender Studio Pro: pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
-- Novos ISAs e Arquiteturas (<https://gemini.google.com/app/71c4c68e27c64e10>): /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
+### Sprint 10.1 — Precisão e links
+
+- **[T10.1] Corrigir todos os links com barra inicial nos Markdown.**
+
+  - `docs/architecture.md` (~10 ocorrências: linhas 42, 106, 112, 273, 307, 426, 513, 517, 552, 581, 595),
+    `docs/cpp_parity_map.md:123,237`, `docs/clap_integration.md:95`. Padrão do projeto: links relativos funcionais
+    (ou esquema `file://` absoluto quando indicado) — nunca `/src/...` cru.
+  - **Critério de aceite:** verificação automatizada simples (script ou grep) de que todo alvo de link existe.
+
+- **[T10.2] Eliminar referências ao inexistente `docs/wavenet_walkthrough.rst`.**
+
+  - Ocorrências: `src/models/a2/model.rs:83` e `src/models/a2/layer.rs:14` (docs/*.md já estão limpos). Substituir
+    por referência ao trecho equivalente do espelho C++ ou remover.
+  - **Critério de aceite:** zero referências ao arquivo fantasma (`grep -r wavenet_walkthrough` vazio).
+
+- **[T10.3] Atualizar conteúdo defasado.**
+
+  - `docs/architecture.md` §8.3.2: o texto diz que a remoção do `Avx2VnniMath` está "planejada" — já foi concluída;
+    remover também a menção ao "Epic 8 (V-Table Unification)" (não existe mais).
+  - `README.md`: revisar fraseado sobre `--features standalone` (é a feature default — exemplos não devem sugerir
+    que a flag é necessária).
+  - `docs/benchmarks.md`: descrição do A2-Lite menciona pesos u16 interleaved — o kernel atual é o GEMV desenrolado
+    de `conv1d_ch3.rs`; atualizar texto e conferir se os números publicados correspondem ao kernel vigente.
+  - `docs/dependencies.md`: corrigir rationale do `rustfft` (também usado no cabsim e MR-STFT, não só no resampler).
+  - **Critério de aceite:** cada doc reflete o estado real do código (verificação por amostragem do revisor).
+
+### Sprint 10.2 — Política, consistência e comentários
+
+- **[T10.4] Remover referências a sprints/épicos/datas em código e testes.**
+
+  - `src/models/a2/mod.rs:13` ("Épico 1"), `src/models/slimmable.rs:16-17` ("Épico 3/6"),
+    `src/math/common/dispatch/config.rs:42` ("Debt date: 2026-05-12..."), `tests/a2_placeholder_interface.rs:10`
+    ("see Sprint 1.4" — arquivo será fundido em T8.3). Reescrever como comentários atemporais que expliquem o *porquê*.
+  - **Critério de aceite:** `grep -rniE '(sprint|épico|epic) [0-9]' src/ tests/` limpo (exceto histórico em docs/).
+
+- **[T10.5] Documentar a exceção de licença do `mushra.rs`.**
+
+  - `src/testing/mushra.rs` tem cabeçalho `SPDX: MIT` (porte de t3k-mushra) — única exceção ao padrão Apache-2.0.
+    Registrar a origem/justificativa no próprio cabeçalho do arquivo e no `NOTICE.txt`.
+  - **Critério de aceite:** exceção rastreável; auditoria de cabeçalhos 100% explicada.
+
+- **[T10.6] Alinhar `.agents/` (skills × workflows).**
+
+  - `pesquisador-inovador` e `revisor-auditor` existem só como **workflows** mas são referenciados como **skills**
+    (em `workflow-outro/SKILL.md:16` e docs). Padronizar: ou criar os diretórios de skill, ou corrigir as referências
+    para "workflow" — manter a distinção clara.
+  - **Critério de aceite:** toda referência cruzada em `.agents/` resolve para algo existente.
+
+- **[T10.7] Documentar os espelhos locais não-versionados.**
+
+  - `tests/fixtures/README.md`: explicar que `NeuralAmpModelerCore/` (143 MB), `NeuralAmpModelerPlugin/` (164 MB) e
+    `build/namcore_render/` são clones/artefatos **locais** (gitignored), criados sob demanda por
+    `golden_gen_build.sh`, e como regenerá-los do zero (incl. pin de commit do upstream para reprodutibilidade —
+    avaliar registrar o hash usado na última geração de goldens).
+  - **Critério de aceite:** um dev novo consegue regenerar todos os goldens só lendo o README; versão do upstream
+    usada fica registrada.
+
+- **[T10.8] Reforçar comentários inline em blocos longos.**
+
+  - Alvos com 50–200 linhas sem comentários estruturais: hot-path do resampler
+    (`src/dsp/resampler.rs:250-470`), helpers internos do `GcOverflowBuffer` (`src/common/spsc/gc.rs:70-220` —
+    crítico por manipular ponteiros), blocos de carga de pesos do A2 (`src/models/a2/model.rs:~200-450`).
+    Comentários `//` estratégicos (o quê/por quê em cada fase), sem poluir.
+  - **Critério de aceite:** nenhum bloco > ~50 linhas em código `unsafe`/hot-path sem ao menos um comentário
+    estrutural por fase lógica; `///` para itens públicos preservado (`#[warn(missing_docs)]` segue ativo).
+
+---
+
+---
+
+## ÉPICO 100 (FUTURO — fora do escopo v2.1)
+
+- **Rodadas de burilamento**: `pesquisador-inovador.md`; `refatora-rust.md`; `refatora-doc.md`
+- **Leitura e revisão geral** de todo o git do NAM-rs; **Divulgar geral** na comunidade.
+- **FFT** e outros features no **hot path** considerar internalizar o código e ultra otimizações.
+- **Fender Studio Pro:** pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
+- Novos **ISAs e Arquiteturas** (<https://gemini.google.com/app/71c4c68e27c64e10>): /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
   - Intel/AMD: Focar no AVX-512/AVX-10 (Especialmente: AVX512F, AVX512VL, AVX512_VNNI) em vez de AMX (muito focado em inferência e servidores); Eficiência Híbrida (AVX-10 / AVX-512 Light): Focado no uso de instruções AVX-512, mas restringindo o tamanho dos vetores a 256 bits.
   - ARM: focar na Linha de Base Unificada NEON de 128 bits (Rpi5 e Qualcomm, apesar da volatilidade má vontade desta última); A Linha Avançada é SVE2/VLA (basicamente NVIDIA RTX Spark).
-- `SlimmableWavenet` (channel slicing de rede única): É arquitetura **oficial** do NAMCore (registrada, file version 0.7.0) e direção declarada da NAM ("uma captura que se escala sozinha, sem versão *lite* separada"). Será priorizado quando modelos `.nam` com o campo `"slimmable"` (rede única) tornarem-se comuns na distribuição mainstream — hoje o A2 mainstream usa o `SlimmableContainer`.
