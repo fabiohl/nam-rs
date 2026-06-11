@@ -43,7 +43,7 @@ pub fn run_pipewire_host(
     resampler_consumer: Consumer<Box<NamResampler>>,
     mut resampler_producer: rtrb::Producer<Box<NamResampler>>,
     cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
-    _cabsim_producer: rtrb::Producer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
+    mut cabsim_producer: rtrb::Producer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
     mut gc_consumer: Consumer<GcItem>,
@@ -52,6 +52,7 @@ pub fn run_pipewire_host(
         buffer_size,
         tsc_anchor,
         sys,
+        ir_raw_samples,
     } = config;
 
     // =========================================================
@@ -85,6 +86,7 @@ pub fn run_pipewire_host(
             &core,
             bridge_ptr,
             buffer_size,
+            ir_raw_samples.clone(),
             &sys,
             target_cpu,
             consumer,
@@ -185,6 +187,36 @@ pub fn run_pipewire_host(
                     }
                 }
                 rt_status.clear_flag(crate::common::spsc::RT_STATUS_NEEDS_RESAMPLER_REBUILD);
+            }
+        }
+
+        if rt_status.check_flag(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD) {
+            let partition_size = rt_status
+                .requested_cabsim_partition_size
+                .load(Ordering::Relaxed) as usize;
+            if partition_size > 0 {
+                if let Some(ref samples) = ir_raw_samples {
+                    use crate::dsp::cabsim::conv::ConvEngine;
+                    let engine = ConvEngine::new(samples, partition_size);
+                    log::info!(
+                        "{} Cab-sim IR rebuilt: partition_size={} ({} partitions, FFT={})",
+                        "🔄".cyan(),
+                        partition_size,
+                        engine.num_partitions(),
+                        engine.fft_size(),
+                    );
+                    if cabsim_producer.push(Some(Box::new(engine))).is_err() {
+                        crate::common::diagnostics::NamDiagnostic::new(
+                            crate::common::diagnostics::NamErrorCode::ParamChannelFull,
+                            &sys,
+                        )
+                        .message("Cab-sim rebuild channel full. Rebuild discarded.")
+                        .hint("The audio engine is overloaded. If the problem persists, restart NAM-rs.")
+                        .param("partition_size", partition_size)
+                        .emit_warning();
+                    }
+                }
+                rt_status.clear_flag(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
             }
         }
 

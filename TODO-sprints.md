@@ -327,7 +327,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `src/clap/gui/ui/zones/identity.rs` (model file browser), `src/clap/plugin/shared.rs:139-145` (pending/loading/error pattern).
   - **Critério de aceite:** File browser funcional com filtro `.wav`; IR carregado aparece na GUI; "Clear" remove o IR (bypass); loading indicator; erro exibido em toast; sem cliques na transição (swap via SPSC + GC cascade).
 
-- **[T5.4] Partição adaptativa (buffer_size variável).**
+- **[T5.4] Partição adaptativa (buffer_size variável).** [DONE]
   - Atualmente `ConvEngine` é construído com `partition_size = buffer_size` e o stage em `capture.rs:60-62` faz bypass silencioso se `n_pw != partition_size`. Corrigir para:
     (a) No CLAP: reconstruir `ConvEngine` em `activate()` (`src/clap/processor/mod.rs`) quando o host informa `max_frames_count`, usando `partition_size = max_frames_count`. Armazenar o IR raw (samples `Vec<f32>`) no `ColdShared` para possibilitar reconstrução sem re-load do WAV.
     (b) No standalone: reconstruir quando o buffer PipeWire muda (via SPSC swap `cabsim_producer` já existente em `src/main.rs:99,124`).

@@ -78,6 +78,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             ui_ir_load_error: AtomicBool::new(false),
             ui_ir_load_error_msg: Mutex::new(String::new()),
             ui_clear_ir: AtomicBool::new(false),
+            ir_raw_samples: Mutex::new(None),
         },
     }
 }

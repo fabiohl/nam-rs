@@ -177,6 +177,11 @@ impl<'a> NamClapMainThread<'a> {
             *ir_guard = Some(path.to_string_lossy().to_string());
         }
 
+        // Store raw IR samples for adaptive partition rebuild without WAV reload
+        if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
+            *raw_guard = Some(cabsim.samples.clone());
+        }
+
         self.param_tx
             .push(ClapParamPayload::LoadCabIr {
                 engine: Some(Box::new(engine)),

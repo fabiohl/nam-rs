@@ -99,11 +99,42 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
         let smoother_in = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
         let smoother_out = ParamSmoother::new(1.0, audio_config.sample_rate as f32, 20.0);
 
+        // Rebuild ConvEngine from stored raw IR samples with the new partition size
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        let conv_engine = {
+            if let Ok(raw_guard) = shared.cold.ir_raw_samples.lock() {
+                if let Some(ref samples) = *raw_guard {
+                    let partition_size = audio_config.max_frames_count as usize;
+                    if partition_size > 0 {
+                        Some(Box::new(crate::dsp::cabsim::conv::ConvEngine::new(
+                            samples,
+                            partition_size,
+                        )))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+        #[cfg(not(any(feature = "standalone", feature = "clap-plugin", test)))]
+        let conv_engine = None;
+
         // 5. Report initial latency to shared state
-        shared.rt_to_ui.current_latency.store(
-            resampler.latency_samples(audio_config.sample_rate as u32),
-            Ordering::Relaxed,
-        );
+        let mut initial_latency = resampler.latency_samples(audio_config.sample_rate as u32);
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if let Some(ref conv) = conv_engine {
+                initial_latency += conv.latency_samples() as u32;
+            }
+        }
+        shared
+            .rt_to_ui
+            .current_latency
+            .store(initial_latency, Ordering::Relaxed);
         shared
             .cold
             .sample_rate
@@ -115,7 +146,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         Ok(Self {
             model_l: None,
-            conv_engine: None,
+            conv_engine,
             resampler,
             params: RtPluginParams::default(),
             buf_host_l,

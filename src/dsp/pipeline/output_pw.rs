@@ -34,6 +34,8 @@ pub struct PipewireHostConfig {
     pub tsc_anchor: Anchor,
     /// System snapshot for diagnostics.
     pub sys: SystemSnapshot,
+    /// Raw IR samples for adaptive partition rebuild (None if no IR loaded).
+    pub ir_raw_samples: Option<Vec<f32>>,
 }
 
 /// Playback DSP Pipeline (Bridge → Hardware).

@@ -37,6 +37,9 @@ pub const RT_STATUS_DEGRADE_REDUCED: u64 = 1 << 12;
 /// Soft-degrade: model running in Minimal mode
 /// (maximum reduction — passthrough for LSTM, half-WaveNet).
 pub const RT_STATUS_DEGRADE_MINIMAL: u64 = 1 << 13;
+/// Flag indicating that a cabsim rebuild is needed
+/// (partition_size no longer matches current buffer size).
+pub const RT_STATUS_NEEDS_CABSIM_REBUILD: u64 = 1 << 9;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -57,7 +60,7 @@ pub const RT_STATUS_DEGRADE_MINIMAL: u64 = 1 << 13;
 /// | 6 | `IS_FADING` | Gate transitioning (Fading In/Out) |
 /// | 7 | `MODEL_LOAD_FAILED` | Model load failure on RT thread |
 /// | 8 | `HEAP_ALLOC` | Heap allocation detected on RT thread |
-/// | 9 | ... | ... |
+/// | 9 | `NEEDS_CABSIM_REBUILD` | DSP thread requests cabsim engine rebuild |
 /// | 10 | `RESAMP_SWAP_PENDING` | RT callback paused awaiting resampler swap |
 /// | 11 | `HUGEPAGE_OK` | Huge-page allocation confirmed active |
 /// | 12 | `DEGRADE_REDUCED` | Soft-degrade active — Reduced mode |
@@ -118,6 +121,8 @@ pub struct RtStatusFlags {
     pub xruns: AtomicU32,
     /// Total count of GC items successfully drained.
     pub drains: AtomicU32,
+    /// Requested partition size for cabsim rebuild (set by RT thread).
+    pub requested_cabsim_partition_size: AtomicU32,
 }
 
 impl RtStatusFlags {
@@ -142,6 +147,7 @@ impl RtStatusFlags {
             flags_seen: AtomicU64::new(0),
             xruns: AtomicU32::new(0),
             drains: AtomicU32::new(0),
+            requested_cabsim_partition_size: AtomicU32::new(0),
         }
     }
 

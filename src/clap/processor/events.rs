@@ -100,7 +100,13 @@ impl<'a> NamClapProcessor<'a> {
         // Dynamic latency monitoring on the Audio Thread
         let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
         let host_rate = if host_rate == 0 { 48000 } else { host_rate };
-        let effective_latency = self.resampler.latency_samples(host_rate);
+        let mut effective_latency = self.resampler.latency_samples(host_rate);
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if let Some(ref conv) = self.conv_engine {
+                effective_latency += conv.latency_samples() as u32;
+            }
+        }
         if effective_latency != self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed) {
             self.shared
                 .rt_to_ui

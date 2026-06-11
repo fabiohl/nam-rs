@@ -68,6 +68,11 @@ pub fn capture_dsp_pipeline(
             } else {
                 bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.resamp_out_l[..n_pw]);
             }
+        } else {
+            bufs.model_out_l[..n_pw].copy_from_slice(&bufs.resamp_out_l[..n_pw]);
+            if !*ctx.process_mono {
+                bufs.model_out_r[..n_pw].copy_from_slice(&bufs.resamp_out_r[..n_pw]);
+            }
         }
     }
 

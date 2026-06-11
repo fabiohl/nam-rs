@@ -29,6 +29,7 @@ pub fn setup_capture_stream<'c>(
     core: &'c pw::core::Core,
     bridge_ptr: BridgeRef,
     buffer_size: u32,
+    ir_raw_samples: Option<Vec<f32>>,
     sys: &crate::common::diagnostics::SystemSnapshot,
     target_cpu: usize,
     mut consumer: Consumer<ParamPayload>,
@@ -61,6 +62,7 @@ pub fn setup_capture_stream<'c>(
     let capture_stream = pw::stream::StreamBox::new(core, "NAM-rs", capture_props)?;
 
     let mut state = CaptureState::init(sys);
+    state.ir_raw_samples = ir_raw_samples;
     let rate_for_param = state.shared_target_rate.clone();
     let rate_for_process = state.shared_target_rate.clone();
 
@@ -206,6 +208,22 @@ pub fn setup_capture_stream<'c>(
                             &rt_status_for_process,
                         );
                     }
+                }
+            }
+
+            // Detect cabsim partition mismatch and signal rebuild
+            if let Some(ref cabsim) = state.active_cabsim {
+                let n_samples =
+                    rt_status_for_process.last_n_samples.load(Ordering::Relaxed) as usize;
+                if n_samples > 0
+                    && cabsim.partition_size() != n_samples
+                    && state.ir_raw_samples.is_some()
+                {
+                    rt_status_for_process
+                        .set_flag(crate::common::spsc::RT_STATUS_NEEDS_CABSIM_REBUILD);
+                    rt_status_for_process
+                        .requested_cabsim_partition_size
+                        .store(n_samples as u32, Ordering::Relaxed);
                 }
             }
         })

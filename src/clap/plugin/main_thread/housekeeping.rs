@@ -131,6 +131,9 @@ impl<'a> NamClapMainThread<'a> {
                 if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {
                     *ir_guard = None;
                 }
+                if let Ok(mut raw_guard) = self.shared.cold.ir_raw_samples.lock() {
+                    *raw_guard = None;
+                }
             }
         }
 

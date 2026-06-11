@@ -128,6 +128,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 ui_ir_load_error: std::sync::atomic::AtomicBool::new(false),
                 ui_ir_load_error_msg: Mutex::new(String::new()),
                 ui_clear_ir: std::sync::atomic::AtomicBool::new(false),
+                ir_raw_samples: Mutex::new(None),
             },
         })
     }

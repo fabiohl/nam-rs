@@ -173,6 +173,8 @@ pub struct ColdShared {
     pub ui_ir_load_error_msg: Mutex<String>,
     /// Flag signaling that the IR should be cleared (bypass cabsim).
     pub ui_clear_ir: AtomicBool,
+    /// Raw IR samples stored for adaptive partition rebuild without WAV reload.
+    pub ir_raw_samples: Mutex<Option<Vec<f32>>>,
 }
 
 // ---------------------------------------------------------------------------

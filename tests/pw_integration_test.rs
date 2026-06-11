@@ -73,6 +73,7 @@ fn test_pipewire_integration() {
                 buffer_size: 0, // 0 = Use system default (PipeWire quantum)
                 sys,
                 tsc_anchor: anchor,
+                ir_raw_samples: None,
             },
             gc_cons,
         )

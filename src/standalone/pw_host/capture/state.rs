@@ -48,6 +48,7 @@ pub struct CaptureState {
     pub parking_lot: [Option<GcItem>; 16],
     pub frame_count: u32,
     pub thread_configured: bool,
+    pub ir_raw_samples: Option<Vec<f32>>,
 }
 
 impl CaptureState {
@@ -96,6 +97,7 @@ impl CaptureState {
             parking_lot: Default::default(),
             frame_count: 0,
             thread_configured: false,
+            ir_raw_samples: None,
         }
     }
 }

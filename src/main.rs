@@ -102,6 +102,7 @@ fn main() -> anyhow::Result<()> {
 
     // 6. LOAD THE CAB-SIM IR: If you said "use cabinet X",
     // this is where the computer opens that WAV file and builds the convolution engine.
+    let mut ir_raw_samples = None;
     if let Some(ref cab_path) = args.cab_path {
         let target_rate = nam_rs::diagnostics::ACTIVE_SAMPLE_RATE
             .load(Ordering::Relaxed)
@@ -121,6 +122,7 @@ fn main() -> anyhow::Result<()> {
                     engine.num_partitions(),
                     engine.fft_size(),
                 );
+                ir_raw_samples = Some(cabsim.samples);
                 let _ = cabsim_producer.push(Some(Box::new(engine)));
             }
             Err(e) => {
@@ -199,6 +201,7 @@ fn main() -> anyhow::Result<()> {
             buffer_size,
             tsc_anchor,
             sys,
+            ir_raw_samples,
         },
         gc_consumer,
     );
