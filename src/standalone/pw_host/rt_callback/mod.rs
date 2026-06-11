@@ -8,11 +8,13 @@
 //! - Zero I/O
 //! - Zero mutexes
 
+mod cabsim_swap;
 mod commands;
 mod process;
 mod rate_sync;
 mod resampler_swap;
 
+pub use cabsim_swap::drain_cabsims;
 pub use commands::receive_commands;
 pub use process::process_dsp_buffer;
 pub use rate_sync::sync_rate;

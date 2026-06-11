@@ -5,6 +5,8 @@
 //! before and after the neural engine in NAM-rs.
 
 pub mod adaptive;
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+pub mod cabsim;
 pub mod gate;
 pub mod gate_flags;
 pub mod mirror_buf;

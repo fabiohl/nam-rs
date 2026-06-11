@@ -11,6 +11,7 @@ use crate::common::diagnostics::{NamDiagnostic, NamErrorCode};
 use crate::common::params::AdaptiveComputeMode;
 use crate::common::spsc::GcItem;
 use crate::dsp::adaptive::AdaptiveCompute;
+use crate::dsp::cabsim::loader::CabSimIr;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::pipeline::MAX_RESAMP_BUF;
 use crate::dsp::resampler::NamResampler;
@@ -22,6 +23,7 @@ pub struct CaptureState {
     pub active_model_l: Option<Box<crate::models::StaticModel>>,
     pub active_model_r: Option<Box<crate::models::StaticModel>>,
     pub resampler: Box<NamResampler>,
+    pub active_cabsim: Option<Box<CabSimIr>>,
     pub current_nam_rate: u32,
     pub resamp_mid_l: [f32; MAX_RESAMP_BUF],
     pub resamp_out_l: [f32; MAX_RESAMP_BUF],
@@ -69,6 +71,7 @@ impl CaptureState {
             active_model_l: None,
             active_model_r: None,
             resampler: Box::new(resampler),
+            active_cabsim: None,
             current_nam_rate: 48_000,
             resamp_mid_l: [0.0f32; MAX_RESAMP_BUF],
             resamp_out_l: [0.0f32; MAX_RESAMP_BUF],

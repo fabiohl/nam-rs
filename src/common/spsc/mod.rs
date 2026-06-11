@@ -34,7 +34,7 @@ pub use status::*;
 pub const SPSC_CAPACITY: usize = 64;
 
 /// SPSC initialization result: parameter channels, model GC,
-/// RT-safe resampler channel, and atomic status flags.
+/// RT-safe resampler channel, cab-sim IR channel, and atomic status flags.
 pub struct SpscChannels {
     /// CLI→DSP parameter producer.
     pub param_producer: Producer<ParamPayload>,
@@ -50,6 +50,12 @@ pub struct SpscChannels {
     pub resampler_producer: Producer<Box<crate::dsp::resampler::NamResampler>>,
     /// Resampler consumer: RT callback drains to replace the active resampler.
     pub resampler_consumer: Consumer<Box<crate::dsp::resampler::NamResampler>>,
+    /// Cab-sim IR producer: main thread loads and sends to the RT callback.
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    pub cabsim_producer: Producer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
+    /// Cab-sim IR consumer: RT callback drains to replace the active IR.
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    pub cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
     /// Atomic status flags shared between RT and Main (zero I/O in callback).
     pub rt_status: Arc<RtStatusFlags>,
 }
@@ -68,6 +74,9 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
     let (gc_prod, gc_cons) = RingBuffer::new(capacity * 4); // Quadrupled capacity for safe garbage collection
     // Resampler channel: small capacity (only 1 in transit at a time, typically)
     let (rs_prod, rs_cons) = RingBuffer::new(4);
+    // Cab-sim IR channel: small capacity (only 1 in transit at a time)
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    let (cs_prod, cs_cons) = RingBuffer::new(4);
     let rt_status = Arc::new(RtStatusFlags::new());
     // The overflow buffer should be large enough to accommodate model swap spikes.
     // We use 64 as a base, or the requested capacity if higher.
@@ -81,6 +90,10 @@ pub fn setup_spsc(capacity: usize) -> SpscChannels {
         gc_overflow,
         resampler_producer: rs_prod,
         resampler_consumer: rs_cons,
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        cabsim_producer: cs_prod,
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        cabsim_consumer: cs_cons,
         rt_status,
     }
 }

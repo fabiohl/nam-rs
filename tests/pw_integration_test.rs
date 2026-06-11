@@ -41,6 +41,8 @@ fn test_pipewire_integration() {
     let (gc_prod, gc_cons) = RingBuffer::new(4);
     // res: Responses/Telemetry (DSP -> UI)
     let (res_prod, res_cons) = RingBuffer::new(2);
+    // cabsim: IR loader (Main -> DSP)
+    let (cs_prod, cs_cons) = RingBuffer::new(2);
 
     // Fallback buffer for GC overflow
     let gc_overflow = Arc::new(spsc::GcOverflowBuffer::new(64));
@@ -64,6 +66,8 @@ fn test_pipewire_integration() {
             gc_overflow_clone,
             res_cons,
             res_prod,
+            cs_cons,
+            cs_prod,
             rt_clone,
             nam_rs::standalone::pw_host::PipewireHostConfig {
                 buffer_size: 0, // 0 = Use system default (PipeWire quantum)

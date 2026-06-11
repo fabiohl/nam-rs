@@ -12,6 +12,9 @@ pub enum GcItem {
     Model(Box<crate::models::StaticModel>),
     /// A resampler (boxed to ensure RT-safety on drop).
     Resampler(Box<crate::dsp::resampler::NamResampler>),
+    /// A cab-sim impulse response (boxed to ensure RT-safety on drop).
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    CabSimIr(Box<crate::dsp::cabsim::loader::CabSimIr>),
     /// Test variant for integrity and stress validation.
     #[cfg(test)]
     Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
@@ -23,6 +26,8 @@ impl GcItem {
         match self {
             GcItem::Model(_) => 1,
             GcItem::Resampler(_) => 2,
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            GcItem::CabSimIr(_) => 3,
             #[cfg(test)]
             GcItem::Test(_) => 255,
         }
@@ -37,6 +42,10 @@ impl GcItem {
             1 => GcItem::Model(unsafe { Box::from_raw(ptr as *mut crate::models::StaticModel) }),
             2 => GcItem::Resampler(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::resampler::NamResampler)
+            }),
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            3 => GcItem::CabSimIr(unsafe {
+                Box::from_raw(ptr as *mut crate::dsp::cabsim::loader::CabSimIr)
             }),
             #[cfg(test)]
             255 => GcItem::Test(unsafe {
@@ -86,6 +95,8 @@ impl GcOverflowBuffer {
         let ptr = match item {
             GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            GcItem::CabSimIr(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             #[cfg(test)]
             GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
         };
@@ -126,6 +137,48 @@ impl GcOverflowBuffer {
 impl Default for GcOverflowBuffer {
     fn default() -> Self {
         Self::new(64)
+    }
+}
+
+/// RT-safe GC cascade: tries the SPSC channel, then a 16-slot parking lot,
+/// then the overflow buffer as a last resort.
+///
+/// # Parameters
+/// - `item`: The `GcItem` to dispose of outside the RT thread.
+/// - `gc_producer`: SPSC GC channel.
+/// - `parking_lot`: 16-slot fallback array shared across all drainers.
+/// - `gc_overflow`: Overflow ring buffer.
+/// - `rt_status`: Status flags (sets `RT_STATUS_GC_OVERFLOW` on overflow).
+#[inline(always)]
+pub fn gc_cascade(
+    mut item: Option<GcItem>,
+    gc_producer: &mut rtrb::Producer<GcItem>,
+    parking_lot: &mut [Option<GcItem>; 16],
+    gc_overflow: &GcOverflowBuffer,
+    rt_status: &super::RtStatusFlags,
+) {
+    if let Some(i) = item.take() {
+        if let Err(rtrb::PushError::Full(returned)) = gc_producer.push(i) {
+            item = Some(returned);
+        } else {
+            return;
+        }
+    }
+
+    if let Some(i) = item.take() {
+        let mut i_opt = Some(i);
+        for slot in parking_lot.iter_mut() {
+            if slot.is_none() {
+                *slot = i_opt.take();
+                return;
+            }
+        }
+        item = i_opt;
+    }
+
+    if let Some(i) = item.take() {
+        rt_status.set_flag(super::RT_STATUS_GC_OVERFLOW);
+        gc_overflow.push(i);
     }
 }
 

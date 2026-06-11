@@ -94,6 +94,8 @@ fn main() -> anyhow::Result<()> {
     let gc_overflow = channels.gc_overflow;
     let resampler_producer = channels.resampler_producer;
     let resampler_consumer = channels.resampler_consumer;
+    let cabsim_producer = channels.cabsim_producer;
+    let cabsim_consumer = channels.cabsim_consumer;
     let rt_status = channels.rt_status;
 
     // 6. LOAD THE SOUND: If you said "use amplifier X",
@@ -158,6 +160,8 @@ fn main() -> anyhow::Result<()> {
         gc_overflow,
         resampler_consumer,
         resampler_producer,
+        cabsim_consumer,
+        cabsim_producer,
         rt_status,
         pw_host::PipewireHostConfig {
             buffer_size,

@@ -42,6 +42,8 @@ pub fn run_pipewire_host(
     gc_overflow: Arc<GcOverflowBuffer>,
     resampler_consumer: Consumer<Box<NamResampler>>,
     mut resampler_producer: rtrb::Producer<Box<NamResampler>>,
+    cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
+    _cabsim_producer: rtrb::Producer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
     rt_status: Arc<RtStatusFlags>,
     config: PipewireHostConfig,
     mut gc_consumer: Consumer<GcItem>,
@@ -89,6 +91,7 @@ pub fn run_pipewire_host(
             gc_producer,
             gc_overflow.clone(),
             resampler_consumer,
+            cabsim_consumer,
             rt_status.clone(),
         )?;
         capture_stream = cs;
