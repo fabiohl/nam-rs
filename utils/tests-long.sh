@@ -91,7 +91,7 @@ run_phase \
 # --- Phase 3: Resampler Heap-Audit and C++ Parity ---
 run_phase \
     "Resampler, Cabsim & A2 Heap-Audit, C++ Parity" \
-    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture" \
+    "cargo test --release --features heap-audit --test resampler_heap_audit && cargo test --release --features heap-audit --test cabsim_heap_audit && cargo test --release --features heap-audit --test a2_heap_audit && cargo test --release --test cpp_parity -- --ignored --nocapture && cargo test --release --test cabsim_cpp_parity -- --ignored --nocapture" \
     "phase3-parity-audit.log"
 
 # --- Phase 4: CLAP Release Validation & Concurrency (Local helper function) ---

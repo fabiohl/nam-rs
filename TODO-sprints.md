@@ -369,7 +369,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `AudioDSPTools/dsp/ImpulseResponse.{h,cpp}`, `NeuralAmpModeler.cpp:676,685,800` (uso de `dsp::ImpulseResponse`).
   - **Critério de aceite:** Binário C++ compila, gera saída determinística para IR + sinal de entrada dados; saída salva em `tests/fixtures/golden_cabsim_cpp_*.bin`; formato compatível com os golden tests do nam-rs.
 
-- **[T5.9] Testes de cross-validação UPOLS vs C++ `ImpulseResponse`.**
+- **[T5.9] Testes de cross-validação UPOLS vs C++ `ImpulseResponse`.** [DONE]
   - Implementar testes `#[ignore]` em `tests/cabsim_cpp_parity.rs` que: (a) carregam os golden vectors gerados pelo C++ (T4.12), (b) processam o mesmo sinal com o UPOLS do nam-rs, e (c) comparam com thresholds adaptativos.
   - Definir thresholds de ESR/SNR para a cross-validação (tolerância potencialmente maior que os golden internos, pois os algoritmos podem diferir — overlap-add vs overlap-save introduz diferenças de arredondamento na borda das partições).
   - Adicionar os testes à suíte de `utils/tests-long.sh`.

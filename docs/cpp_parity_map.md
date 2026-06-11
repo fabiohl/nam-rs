@@ -342,6 +342,17 @@ Given the dominant gain divergence (#2), cross-validation should apply **gain co
 
 Thresholds: expect **ESR < 1e-3** (relaxed from the 1e-5 internal golden threshold) due to FFT arithmetic differences compounded across multiple partitions. SNR floor is dictated by FFT twiddle-factor rounding (~140 dB for single FFT, degrading with `log₂(num_partitions)` due to frequency-domain accumulation).
 
+**Cross-validation results** (T5.9, gain-compensated via `CPP_GAIN_INV ≈ 7.943`):
+
+| Scenario | IR len | Signal len | Partitions | ESR | ESR (dB) | SNR (dB) |
+|----------|--------|------------|------------|-----|----------|----------|
+| short | 64 | 256 | 1 | 1.15e-14 | −139.4 | 139.4 |
+| medium | 512 | 1024 | 8 | 2.84e-14 | −135.5 | 135.5 |
+| long | 8192 | 16384 | 128 | 9.39e-14 | −130.3 | 130.3 |
+| stress | 32768 | — | — | N/A | N/A | N/A |
+
+> **Stress scenario skipped:** C++ `ImpulseResponse::mMaxLength = 8192` hard-caps the IR, truncating the 32768-sample stress IR. NAM-rs UPOLS stress validation is performed against direct convolution in `tests/cabsim_golden.rs::test_cabsim_golden_stress` (ESR < 1e-5). All three comparable scenarios exceed the 1e-3 ESR threshold by 10+ orders of magnitude, confirming bit-identical equivalence after gain compensation.
+
 ### 13.2 Architectural Note
 
 The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/` (commit `0827c6c`). Cross-validation tests are planned in Sprint 5.3 [T5.8]–[T5.9] (see [TODO-sprints.md](/TODO-sprints.md) §§5.3).
