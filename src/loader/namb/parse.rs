@@ -22,7 +22,7 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
     }
 
     // 1. Reads the header
-    let header = unsafe { &*data.as_ptr().cast::<NambHeader>() };
+    let header = unsafe { core::ptr::read_unaligned(data.as_ptr().cast::<NambHeader>()) };
     header.validate()?;
 
     // 2. Reads the JSON metadata section (optional in .namb, but common)
@@ -77,6 +77,14 @@ pub fn parse_namb(data: &[u8]) -> Result<NamModelData> {
 
     // 4. Reads the binary weights
     let pesos_raw = &data[weights_offset..];
+    if !pesos_raw.len().is_multiple_of(4) {
+        let expected_len = weights_offset + pesos_raw.len() + (4 - pesos_raw.len() % 4);
+        return Err(NambError::Truncated {
+            got: data.len(),
+            need: expected_len,
+        }
+        .into());
+    }
     let float_count = pesos_raw.len() / 4;
     let mut weights = Vec::with_capacity(float_count);
 

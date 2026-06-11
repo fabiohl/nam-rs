@@ -159,4 +159,61 @@ mod tests {
             namb_err
         );
     }
+
+    #[test]
+    fn test_truncated_header() {
+        // File smaller than the minimum header (80 bytes) must be rejected.
+        for len in 0..80 {
+            let data = vec![0u8; len];
+            let err = parse_namb(&data).unwrap_err();
+            let namb_err = err
+                .downcast_ref::<NambError>()
+                .expect("Error should be NambError::Truncated");
+            assert!(
+                matches!(namb_err, NambError::Truncated { got: _, need: _ }),
+                "Expected Truncated, got: {:?}",
+                namb_err
+            );
+        }
+    }
+
+    #[test]
+    fn test_weight_residue_rejected() {
+        // Weights section with trailing 1-3 bytes must be rejected.
+        for residue in 1..=3 {
+            let header_size = std::mem::size_of::<NambHeader>();
+            let weights_bytes = residue + 4; // 1 complete f32 + residue
+            let mut data = vec![0u8; header_size + weights_bytes];
+            let header = unsafe { &mut *data.as_mut_ptr().cast::<NambHeader>() };
+
+            header.magic = 0x4E414D42;
+            header.version = 1;
+            header.weights_offset = header_size as u32;
+            header.crc32 = 0; // v1 sentinel: no CRC
+            // Fill version_str with something
+            header.version_str[0..5].copy_from_slice(b"1.0.0");
+
+            // Write one valid f32
+            let weight = 0.5f32;
+            data[header_size..header_size + 4].copy_from_slice(&weight.to_le_bytes());
+            // Trailing 1-3 bytes are left as zeros (residue)
+
+            let err = parse_namb(&data).unwrap_err();
+            let namb_err = err
+                .downcast_ref::<NambError>()
+                .expect("Error should be NambError::Truncated");
+            assert!(
+                matches!(namb_err, NambError::Truncated { got: _, need: _ }),
+                "Residue of {} byte(s) should be rejected as Truncated, got: {:?}",
+                residue,
+                namb_err
+            );
+        }
+    }
+
+    #[test]
+    fn test_crc32_kat() {
+        // Known-answer test: CRC32 IEEE 802.3 of "123456789" == 0xCBF43926
+        assert_eq!(crc32_ieee(b"123456789"), 0xCBF43926, "CRC32 KAT failed");
+    }
 }

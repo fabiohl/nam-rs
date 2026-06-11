@@ -56,7 +56,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** nenhum `println!/eprintln!/format!` alcançável a partir de `process()` em qualquer
     combinação de features (verificar com `grep` + revisão); suíte heap-audit segue reportando a falha via flag.
 
-- **[T6.2] Endurecer o parser `.namb` (entrada não-confiável).**
+- **[T6.2] Endurecer o parser `.namb` (entrada não-confiável).** [DONE]
 
   - `src/loader/namb/parse.rs:83-84`: validar `pesos_raw.len() % 4 == 0`; resíduo de 1–3 bytes deve retornar
     `NambError::Truncated` (hoje é descartado em silêncio por `chunks_exact`).

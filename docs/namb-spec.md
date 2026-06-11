@@ -194,7 +194,7 @@ The JSON is null-terminated; null bytes after the terminator are ignored. If the
 
 Contiguous array of little-endian `f32` starting from `weights_offset` to the end of the file. Each `f32` occupies 4 bytes. The number of floats is `(file_len - weights_offset) / 4`.
 
-Residual bytes that do not complete 4 bytes are **silently discarded** (do not constitute an error).
+Residual bytes that do not complete a 4-byte `f32` boundary (1–3 trailing bytes) are **rejected** with `NambError::Truncated { got, need }`, where `got` is the actual file size and `need` is the minimum size required to form a complete `f32`.
 
 The `f32` values are read via `f32::from_le_bytes()` in 4-byte chunks. There is no alignment or padding within the block — it is a pure contiguous stream.
 
