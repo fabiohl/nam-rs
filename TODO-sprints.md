@@ -47,7 +47,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 6.1 — Violações RT e robustez do GC
 
-- **[T6.1] Remover `eprintln!` do hot-path RT (heap-audit).**
+- **[T6.1] Remover `eprintln!` do hot-path RT (heap-audit).** [DONE]
 
   - Em `src/clap/processor/dsp/orchestrator.rs:148-157` (caminho `debug_assertions` + heap-audit), o `eprintln!`
     executa I/O de stderr na thread de áudio — única violação RT real encontrada (regra "Zero Blocking I/O").

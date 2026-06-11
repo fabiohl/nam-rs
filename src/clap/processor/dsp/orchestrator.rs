@@ -147,11 +147,6 @@ impl<'a> NamClapProcessor<'a> {
                 if allocs > 0 {
                     self.rt_status
                         .set_flag(crate::common::spsc::RT_STATUS_HEAP_ALLOC);
-                    #[cfg(debug_assertions)]
-                    eprintln!(
-                        "[NAM-rs Heap Audit] ERROR: {} heap allocation(s) detected in audio thread during process()!",
-                        allocs
-                    );
                     return Ok(ProcessStatus::Sleep);
                 }
             }
