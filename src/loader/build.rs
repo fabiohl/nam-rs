@@ -201,6 +201,17 @@ pub fn load_and_build_model(path: &Path, sys: &SystemSnapshot) -> anyhow::Result
             Some((layers, hidden)) => format!("{}x{}", layers, hidden),
             None => "Custom".to_string(),
         }
+    } else if architecture == "Linear" {
+        match nam_json::get_linear_topology(&model_data) {
+            Some((rf, has_bias)) => {
+                if has_bias {
+                    format!("RF{} (biased)", rf)
+                } else {
+                    format!("RF{}", rf)
+                }
+            }
+            None => "Custom".to_string(),
+        }
     } else {
         "Unknown".to_string()
     };

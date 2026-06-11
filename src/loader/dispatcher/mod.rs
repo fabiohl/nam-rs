@@ -25,12 +25,15 @@ pub fn build_model(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
         "WaveNet" => wavenet::build_wavenet(data),
         "LSTM" => lstm::build_lstm(data),
         "SlimmableContainer" => container::build_container(data),
+        "Linear" => linear::build_linear(data),
         other => bail!("Unsupported architecture: '{}'", other),
     }
 }
 
 /// SlimmableContainer model builder module
 pub mod container;
+/// Linear model builder module
+pub mod linear;
 /// LSTM model builder module
 pub mod lstm;
 /// WaveNet model builder module

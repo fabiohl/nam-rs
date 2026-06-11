@@ -18,7 +18,9 @@ pub use data::{
 pub use parse::parse_nam_json;
 #[cfg(test)]
 pub(crate) use topology::parse_semver;
-pub use topology::{NamWavenetTopology, get_lstm_topology, get_wavenet_topology, is_a2_shape};
+pub use topology::{
+    NamWavenetTopology, get_linear_topology, get_lstm_topology, get_wavenet_topology, is_a2_shape,
+};
 
 #[cfg(test)]
 #[path = "../nam_json_test.rs"]

@@ -128,7 +128,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - Reaproveitar funções de dot product existentes (`src/math/gemm/dot.rs`).
   - **Critério de aceite:** compilação limpa; testes unitários inline verificando a corretude da saída para vetores de pesos estáticos simples; sem alocações no hot-path.
 
-- **[T7.2] Parser, Carregador e Cross-validation da arquitetura `Linear`.**
+- **[T7.2] Parser, Carregador e Cross-validation da arquitetura `Linear`.** DONE
 
   - Implementar o parse no loader (`src/loader/nam_json/` e `src/loader/dispatcher/`).
   - Estender `tests/fixtures/golden_gen_build.sh` para gerar uma fixture `.nam` Linear determinística e seu respectivo binário golden.

@@ -342,6 +342,8 @@ fn arbitrary_nam_config() -> impl Strategy<Value = NamConfig> {
                 head_scale,
                 num_layers,
                 hidden_size,
+                receptive_field: None,
+                bias: None,
                 submodels: None,
             },
         )

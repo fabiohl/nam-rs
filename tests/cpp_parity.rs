@@ -483,3 +483,17 @@ fn live_cross_validation_v2_wavenet_a2_lite() {
         "Live WaveNet A2-Lite (v2)",
     );
 }
+
+// --- Linear ---
+
+#[test]
+#[ignore]
+fn live_cross_validation_linear() {
+    run_v1("linear_test.nam", "linear_test", "Live Linear RF=4");
+}
+
+#[test]
+#[ignore]
+fn live_cross_validation_v2_linear() {
+    run_v2_multi_sr("linear_test.nam", "linear_test", "Live Linear RF=4 (v2)");
+}

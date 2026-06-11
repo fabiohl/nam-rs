@@ -151,12 +151,16 @@ pub struct NamConfig {
     pub layers: Vec<NamLayerConfig>,
     /// A possible auxiliary string for the final head. If null in JSON, it may be absent.
     pub head: Option<std::option::Option<String>>,
-    /// Fine scale over the network summation.
+    /// Fine scale over the network summation (WaveNet only).
     pub head_scale: Option<f32>,
     /// Number of layers (for LSTMs in C++ it is the layer count, or explicit)
     pub num_layers: Option<usize>,
     /// Hidden size of the LSTM cell
     pub hidden_size: Option<usize>,
+    /// Receptive field size (Linear architecture only).
+    pub receptive_field: Option<usize>,
+    /// Whether a bias scalar is included (Linear architecture only).
+    pub bias: Option<bool>,
     /// Submodel entries for SlimmableContainer architecture.
     /// Each entry is `{"max_value": f32, "model": { ... full inner .nam JSON ... }}`.
     #[serde(

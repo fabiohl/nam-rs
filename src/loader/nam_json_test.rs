@@ -464,6 +464,8 @@ fn test_is_wavenet_a2_versions() {
             head_scale: None,
             num_layers: None,
             hidden_size: None,
+            receptive_field: None,
+            bias: None,
             submodels: None,
         },
         weights: vec![],

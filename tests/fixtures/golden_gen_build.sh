@@ -162,6 +162,7 @@ MODELS=(
     "BossLSTM-2x8.nam:golden_lstm_2x8:LSTM 2×8"
     "wavenet_a2_full.nam:golden_wavenet_a2_full:A2-Full (CH=8)"
     "wavenet_a2_lite.nam:golden_wavenet_a2_lite:A2-Lite (CH=3)"
+    "linear_test.nam:golden_linear_test:Linear RF=4"
 )
 
 TEMP_DIR="$FIXTURES_DIR/.temp_golden"

@@ -210,6 +210,11 @@ pub fn topology_thresholds(data: &nam_rs::loader::nam_json::NamModelData) -> (f6
             let mse = 10.0_f64.powf(-snr_db / 10.0) * 0.3;
             (mse.clamp(1e-4, 5e-2), snr_db)
         }
+        "Linear" => {
+            // Linear is a pure FIR filter — no quantization, no recurrence,
+            // bit-exact across languages. Tolerate only floating-point rounding.
+            (1e-10, 140.0)
+        }
         _ => (5e-2, 9.0),
     }
 }
