@@ -1,5 +1,4 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <!-- Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved. -->
 
 # C++ ↔ Rust Parity Map — NeuralAmpModelerCore × NAM-rs
@@ -119,9 +118,9 @@ divergences, and the sprint/task that established each equivalence.
 
 ---
 
-## 5. A2 Architecture (Placeholder → fixed fast-path port)
+## 5. A2 Architecture (Fixed fast-path port)
 
-> **Roadmap:** A2 inference is being ported as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](/TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope and exercised solely by the `wavenet_a2_max.nam` test model. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
+> **Status:** A2 inference is fully implemented (Beta) as the **fixed fast-path** (`NAM/wavenet/a2_fast.cpp`) for the production shapes **A2-Full** (8 ch) and **A2-Lite** (3 ch). See [TODO-sprints.md](/TODO-sprints.md) (Epics 1–2). The `GatingActivation`/`BlendingActivation`/`_FiLMParams` rows below map **forward-compat parser surface only** — the general A2 engine (FiLM/gating/`condition_dsp`/`bottleneck≠channels`) is out of scope. `SlimmableWavenet` (single-net channel slicing) is a separate, deferred epic.
 
 | C++ (`NeuralAmpModelerCore/`)                            | Rust (`src/`)                                                                                                     | Parity established |
 | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------ |
@@ -131,9 +130,8 @@ divergences, and the sprint/task that established each equivalence.
 | `GatingActivation` class *(parser surface, not wired)*   | `models/a2/gating.rs` — `GatingActivationConfig`                                                                  | S26.T01            |
 | `BlendingActivation` class *(parser surface, not wired)* | `models/a2/gating.rs` — `BlendingActivationConfig`                                                                | S26.T01            |
 | `_FiLMParams` struct *(parser surface, not wired)*       | `models/a2/film.rs` — `FiLMConfig`                                                                                | S26.T01            |
-| **A2-Full / A2-Lite inference (fixed fast-path)**        | `models/a2/` — port of `A2FastModel<8>` / `A2FastModel<3>` *(planned — TODO-sprints.md Epic 1)*                   | *(planned)*        |
-| A2 inference (current state)                             | `models/a2/mod.rs` — `WavenetA2Placeholder` (silent output; to be retired post-Epic 1)                            | —                  |
-| `NAM/container.{h,cpp}` — `SlimmableContainer`           | `models/container.rs` + `loader/dispatcher/container/` *(planned — TODO-sprints.md Epic 3)*                       | *(planned)*        |
+| **A2-Full / A2-Lite inference (fixed fast-path)**        | `models/a2/` — port of `A2FastModel<8>` / `A2FastModel<3>`                                                        | Epics 1, 2         |
+| `NAM/container.{h,cpp}` — `SlimmableContainer`           | `models/container.rs` + `loader/dispatcher/container/`                                                            | Epic 3             |
 
 ---
 
@@ -216,25 +214,25 @@ divergences, and the sprint/task that established each equivalence.
 
 ## 9. A1 Topology Table
 
-| C++ NAM topology      | Rust module / type                                                                                                     |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| WaveNet Standard 16   | `models::wavenet::WaveNetModel<16, 3, 8>`                                                                              |
-| WaveNet Lite 12       | `models::wavenet::WaveNetModel<12, 3, 6>`                                                                              |
-| WaveNet Feather 8     | `models::wavenet::WaveNetModel<8, 3, 4>`                                                                               |
-| WaveNet Nano 4        | `models::wavenet::WaveNetModel<4, 3, 2>`                                                                               |
-| WaveNet Dyn (removed) | *(removed — Sprint 1.5)*                                                                                               |
-| LSTM 1×8              | `models::lstm::LstmModel1<8, 9, 32>`                                                                                   |
-| LSTM 1×12             | `models::lstm::LstmModel1<12, 13, 48>`                                                                                 |
-| LSTM 1×16             | `models::lstm::LstmModel1<16, 17, 64>`                                                                                 |
-| LSTM 1×24             | `models::lstm::LstmModel1<24, 25, 96>`                                                                                 |
-| LSTM 1×40             | `models::lstm::LstmModel1<40, 41, 160>`                                                                                |
-| LSTM 2×8              | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                                               |
-| LSTM 2×12             | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                                             |
-| LSTM 2×16             | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                                             |
-| LSTM 2×24             | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                                             |
-| LSTM Dyn (removed)    | *(removed — Sprint 1.5)*                                                                                               |
-| A2-Full (8 ch)        | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
-| A2-Lite (3 ch)        | `models::a2::WavenetA2Placeholder` (placeholder — emits silence; fixed fast-path port planned, TODO-sprints.md Epic 1) |
+| C++ NAM topology      | Rust module / type                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| WaveNet Standard 16   | `models::wavenet::WaveNetModel<16, 3, 8>`                                                   |
+| WaveNet Lite 12       | `models::wavenet::WaveNetModel<12, 3, 6>`                                                   |
+| WaveNet Feather 8     | `models::wavenet::WaveNetModel<8, 3, 4>`                                                    |
+| WaveNet Nano 4        | `models::wavenet::WaveNetModel<4, 3, 2>`                                                    |
+| WaveNet Dyn (removed) | *(removed — Sprint 1.5)*                                                                    |
+| LSTM 1×8              | `models::lstm::LstmModel1<8, 9, 32>`                                                        |
+| LSTM 1×12             | `models::lstm::LstmModel1<12, 13, 48>`                                                      |
+| LSTM 1×16             | `models::lstm::LstmModel1<16, 17, 64>`                                                      |
+| LSTM 1×24             | `models::lstm::LstmModel1<24, 25, 96>`                                                      |
+| LSTM 1×40             | `models::lstm::LstmModel1<40, 41, 160>`                                                     |
+| LSTM 2×8              | `models::lstm::LstmModel2<8, 9, 16, 32>`                                                    |
+| LSTM 2×12             | `models::lstm::LstmModel2<12, 13, 24, 48>`                                                  |
+| LSTM 2×16             | `models::lstm::LstmModel2<16, 17, 32, 64>`                                                  |
+| LSTM 2×24             | `models::lstm::LstmModel2<24, 25, 48, 96>`                                                  |
+| LSTM Dyn (removed)    | *(removed — Sprint 1.5)*                                                                    |
+| A2-Full (8 ch)        | `models::a2::WaveNetA2<8>` (fixed fast-path, 8 channels, tap-major frame-tiled convolution) |
+| A2-Lite (3 ch)        | `models::a2::WaveNetA2<3>` (fixed fast-path, 3 channels, unrolled GEMV convolution)         |
 
 > Rows marked **Dyn** above were removed in Sprint 1.5 — see §3.3 and [TODO-sprints.md](/TODO-sprints.md).
 
@@ -251,7 +249,7 @@ divergences, and the sprint/task that established each equivalence.
 | **Static const-generic dispatch (no vtable)** | Static `match` on `StaticModel` enum avoids vtable overhead. C++ `GetDSP` returns a pointer to a virtual base class.                                                                        |
 | **Reset does NOT prewarm on load**            | `reset()` is a public API for explicit state clearing. Loader calls `prewarm()` separately to preserve LSTM initial states loaded from file (S4.T05). C++ `Reset` always calls `prewarm()`. |
 | **Prewarm hardcoded to 2048 samples**         | C++ `PrewarmSamples()` returns `receptive_field`. NAM-rs uses 2048 as a safe upper bound covering all models.                                                                               |
-| **`WavenetA2Placeholder` (silent output)**    | A2 inference is not yet implemented. The placeholder satisfies the interface contract without producing audio, while signaling A2 presence via `RtStatusFlags`.                             |
+| **`WavenetA2Placeholder` (silent output)**    | Retired and removed in Epic 1. Replaced by real `WaveNetA2` inference.                                                                                                                      |
 | **No `std::complex` / STL data structures**   | Everything uses idiomatic Rust (`AlignedVec<T>`, `AtomicU64`, `rtrb` SPSC).                                                                                                                 |
 | **TSC-based latency measurement**             | NAM-rs calibrates the CPU TSC for nanosecond-accurate RT cycle measurements — no C++ equivalent.                                                                                            |
 | **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
@@ -285,10 +283,10 @@ divergences, and the sprint/task that established each equivalence.
 
 The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` library (MIT-licensed utility used by `NeuralAmpModelerPlugin`):
 
-| C++ reference                                          | Rust (`src/`)                          | Parity status            |
-| ------------------------------------------------------ | -------------------------------------- | ------------------------ |
-| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain) | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed (S5.3/T5.7)** |
-| `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**         |
+| C++ reference                                                | Rust (`src/`)                         | Parity status            |
+| ------------------------------------------------------------ | ------------------------------------- | ------------------------ |
+| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed (S5.3/T5.7)** |
+| `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**          |
 
 ### 13.1 Algorithmic Analysis — `dsp::ImpulseResponse` (C++) vs UPOLS (NAM-rs)
 
@@ -296,45 +294,45 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 
 #### 13.1.1 C++ `dsp::ImpulseResponse` — Algorithm
 
-| Property | Detail |
-|----------|--------|
-| **Algorithm** | Direct time-domain convolution (O(N²)). Computes `<w, h[n:n+M]>` for each output sample `n`, where `w` is the time-reversed IR (`mWeight`) and `h` is the input history. |
-| **Core loop** | `this->mWeight.dot(input_history_segment)` — Eigen dot product (float). Result cast to `double`. |
-| **Partition** | None. Sliding window via `History` base class. `mHistoryRequired = irLength - 1`. |
-| **IR storage** | Time-**reversed** in `mWeight`: sample `j = irLength - 1 - i` stored at `mWeight[j]`, so the dot product `weight · history[i..i+M]` computes convolution. |
-| **Resampling** | Cubic interpolation (`ResampleCubic<float>`) when `mRawAudioSampleRate != mSampleRate`. |
-| **Gain / normalization** | Fixed gain formula: `gain = 10^(-18×0.05) × 48000 / mSampleRate` (~−0.9 dB × 48k/sr, ≈ 0.126 at 48 kHz). No peak normalization. |
-| **Max IR length** | Capped at 8192 samples (`mMaxLength`). |
-| **Precision** | Weights & history: `float`. Outputs: `DSP_SAMPLE` (= `double`). Dot product in float → cast to double. |
-| **Latency** | 0 samples (direct sample-by-sample convolution). |
-| **Channels** | Convolves mono; duplicates to all output channels. |
+| Property                 | Detail                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Algorithm**            | Direct time-domain convolution (O(N²)). Computes `<w, h[n:n+M]>` for each output sample `n`, where `w` is the time-reversed IR (`mWeight`) and `h` is the input history. |
+| **Core loop**            | `this->mWeight.dot(input_history_segment)` — Eigen dot product (float). Result cast to `double`.                                                                         |
+| **Partition**            | None. Sliding window via `History` base class. `mHistoryRequired = irLength - 1`.                                                                                        |
+| **IR storage**           | Time-**reversed** in `mWeight`: sample `j = irLength - 1 - i` stored at `mWeight[j]`, so the dot product `weight · history[i..i+M]` computes convolution.                |
+| **Resampling**           | Cubic interpolation (`ResampleCubic<float>`) when `mRawAudioSampleRate != mSampleRate`.                                                                                  |
+| **Gain / normalization** | Fixed gain formula: `gain = 10^(-18×0.05) × 48000 / mSampleRate` (~−0.9 dB × 48k/sr, ≈ 0.126 at 48 kHz). No peak normalization.                                          |
+| **Max IR length**        | Capped at 8192 samples (`mMaxLength`).                                                                                                                                   |
+| **Precision**            | Weights & history: `float`. Outputs: `DSP_SAMPLE` (= `double`). Dot product in float → cast to double.                                                                   |
+| **Latency**              | 0 samples (direct sample-by-sample convolution).                                                                                                                         |
+| **Channels**             | Convolves mono; duplicates to all output channels.                                                                                                                       |
 
 #### 13.1.2 NAM-rs `ConvEngine` (UPOLS) — Algorithm
 
-| Property | Detail |
-|----------|--------|
-| **Algorithm** | Uniform-Partitioned Overlap-Save (UPOLS, O(N log N)). Frequency-domain multiply-accumulate over `ceil(IR_len / partition_size)` partitions per block. |
-| **Core loop** | For each partition `p`: load FDL spectrum at lag `p`, complex MAC with pre-FFT'd kernel partition `p`, accumulate. IFFT on accumulator, extract overlap-save tail. |
-| **Partition** | Partition size = audio block size. `num_partitions = ir.len().div_ceil(block_size)`. Kernel partitions pre-FFT'd at construction (offline). |
-| **IR storage** | Samples placed at start of FFT buffer (`fft_buf[i] = Complex::new(sample, 0.0)`), zero-padded to FFT size. Causal — no reversal needed (overlap-save discards wrap-around). |
-| **Resampling** | Polyphase resampler (`NamResampler`) — higher quality than cubic; batch-offline operation outside RT thread. |
-| **Gain / normalization** | Optional peak normalization to 1.0 (`normalize_in_place`). No fixed gain reduction formula. IFFT scale = `1.0 / fft_size`. |
-| **Max IR length** | Unbounded (constrained by IR file size limit of 1 GiB; memory scales with `num_partitions × fft_size`). |
-| **Precision** | `f32` throughout (weights, spectra, FDL, accumulator, outputs). |
-| **Latency** | `partition_size` samples (one full audio block). |
-| **Channels** | Convolves mono; stereo duplication handled externally (`capture.rs`). |
+| Property                 | Detail                                                                                                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Algorithm**            | Uniform-Partitioned Overlap-Save (UPOLS, O(N log N)). Frequency-domain multiply-accumulate over `ceil(IR_len / partition_size)` partitions per block.                       |
+| **Core loop**            | For each partition `p`: load FDL spectrum at lag `p`, complex MAC with pre-FFT'd kernel partition `p`, accumulate. IFFT on accumulator, extract overlap-save tail.          |
+| **Partition**            | Partition size = audio block size. `num_partitions = ir.len().div_ceil(block_size)`. Kernel partitions pre-FFT'd at construction (offline).                                 |
+| **IR storage**           | Samples placed at start of FFT buffer (`fft_buf[i] = Complex::new(sample, 0.0)`), zero-padded to FFT size. Causal — no reversal needed (overlap-save discards wrap-around). |
+| **Resampling**           | Polyphase resampler (`NamResampler`) — higher quality than cubic; batch-offline operation outside RT thread.                                                                |
+| **Gain / normalization** | Optional peak normalization to 1.0 (`normalize_in_place`). No fixed gain reduction formula. IFFT scale = `1.0 / fft_size`.                                                  |
+| **Max IR length**        | Unbounded (constrained by IR file size limit of 1 GiB; memory scales with `num_partitions × fft_size`).                                                                     |
+| **Precision**            | `f32` throughout (weights, spectra, FDL, accumulator, outputs).                                                                                                             |
+| **Latency**              | `partition_size` samples (one full audio block).                                                                                                                            |
+| **Channels**             | Convolves mono; stereo duplication handled externally (`capture.rs`).                                                                                                       |
 
 #### 13.1.3 Algorithmic Differences — Impact on Cross-Validation Tolerances
 
-| # | Divergence | C++ | NAM-rs | Expected impact on ESR/SNR |
-|---|-----------|-----|--------|-----------------------------|
-| 1 | **Algorithm** | Direct O(N²) time-domain | UPOLS O(N log N) frequency-domain | **Primary divergence.** FFT → numerical noise from floating-point twiddle factors. Overlap-save discards the wrap-around half of the circular convolution — identical to direct convolution in exact arithmetic, but different in FP32. Partitions accumulate noise linearly with `num_partitions`. |
-| 2 | **Gain reduction** | Fixed: `10^(−0.9) × 48k/sr` (~0.126 at 48 kHz, −18 dB) | None (or peak-normalize to 1.0) | **Dominant amplitude mismatch.** C++ output is ~0.126× the Rust output (before peak normalization). Cross-validation must either (a) compensate gain before comparison, or (b) use normalized metrics (ESR is gain-insensitive; SNR and absolute-error metrics will show ~18 dB offset). |
-| 3 | **Precision** | Float weights + double output accumulator | Float throughout | Accumulation error differences: C++ accumulates dot product in float then casts to double (no benefit for accumulation itself), but the history buffer holds up to 8192 samples — the dot product sums up to 8192 terms in float, similar to UPOLS. The double output cast provides headroom but doesn't change the dot product result. **Impact: small** (a few ULPs). |
-| 4 | **Resampling** | Cubic interpolation | Polyphase (NamResampler) | Cubic is lower quality — introduces interpolation error not present in polyphase. If input/output rates match (no resampling), this divergence does **not** apply. For mismatched rates: **moderate impact** — cubic error manifests as IR shape differences that propagate through convolution. |
-| 5 | **Max IR length** | 8192 (hard cap, truncates) | Unbounded | If IR > 8192 samples: C++ truncates; NAM-rs does not. Cross-validation tests should use IRs ≤ 8192 samples to avoid this confound. |
-| 6 | **Latency** | 0 samples | `partition_size` samples | NAM-rs output is time-shifted by `partition_size` samples relative to C++. Cross-validation must align sequences (shift or trim) before comparison. |
-| 7 | **WAV loading** | `dsp::wav::Load()` — supports PCM16, float32 | `CabSimIr` — PCM16, PCM24, float32 + NaN/Inf validation + TOCTOU guard | Loading differences (e.g. quantization rounding when PCM → float) are negligible relative to the algorithmic differences above. |
+| #   | Divergence         | C++                                                    | NAM-rs                                                                 | Expected impact on ESR/SNR                                                                                                                                                                                                                                                                                                                                              |
+| --- | ------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Algorithm**      | Direct O(N²) time-domain                               | UPOLS O(N log N) frequency-domain                                      | **Primary divergence.** FFT → numerical noise from floating-point twiddle factors. Overlap-save discards the wrap-around half of the circular convolution — identical to direct convolution in exact arithmetic, but different in FP32. Partitions accumulate noise linearly with `num_partitions`.                                                                     |
+| 2   | **Gain reduction** | Fixed: `10^(−0.9) × 48k/sr` (~0.126 at 48 kHz, −18 dB) | None (or peak-normalize to 1.0)                                        | **Dominant amplitude mismatch.** C++ output is ~0.126× the Rust output (before peak normalization). Cross-validation must either (a) compensate gain before comparison, or (b) use normalized metrics (ESR is gain-insensitive; SNR and absolute-error metrics will show ~18 dB offset).                                                                                |
+| 3   | **Precision**      | Float weights + double output accumulator              | Float throughout                                                       | Accumulation error differences: C++ accumulates dot product in float then casts to double (no benefit for accumulation itself), but the history buffer holds up to 8192 samples — the dot product sums up to 8192 terms in float, similar to UPOLS. The double output cast provides headroom but doesn't change the dot product result. **Impact: small** (a few ULPs). |
+| 4   | **Resampling**     | Cubic interpolation                                    | Polyphase (NamResampler)                                               | Cubic is lower quality — introduces interpolation error not present in polyphase. If input/output rates match (no resampling), this divergence does **not** apply. For mismatched rates: **moderate impact** — cubic error manifests as IR shape differences that propagate through convolution.                                                                        |
+| 5   | **Max IR length**  | 8192 (hard cap, truncates)                             | Unbounded                                                              | If IR > 8192 samples: C++ truncates; NAM-rs does not. Cross-validation tests should use IRs ≤ 8192 samples to avoid this confound.                                                                                                                                                                                                                                      |
+| 6   | **Latency**        | 0 samples                                              | `partition_size` samples                                               | NAM-rs output is time-shifted by `partition_size` samples relative to C++. Cross-validation must align sequences (shift or trim) before comparison.                                                                                                                                                                                                                     |
+| 7   | **WAV loading**    | `dsp::wav::Load()` — supports PCM16, float32           | `CabSimIr` — PCM16, PCM24, float32 + NaN/Inf validation + TOCTOU guard | Loading differences (e.g. quantization rounding when PCM → float) are negligible relative to the algorithmic differences above.                                                                                                                                                                                                                                         |
 
 #### 13.1.4 Cross-Validation Strategy
 
@@ -344,31 +342,25 @@ Thresholds: expect **ESR < 1e-3** (relaxed from the 1e-5 internal golden thresho
 
 **Cross-validation results** (T5.9, gain-compensated via `CPP_GAIN_INV ≈ 7.943`):
 
-| Scenario | IR len | Signal len | Partitions | ESR | ESR (dB) | SNR (dB) |
-|----------|--------|------------|------------|-----|----------|----------|
-| short | 64 | 256 | 1 | 1.15e-14 | −139.4 | 139.4 |
-| medium | 512 | 1024 | 8 | 2.84e-14 | −135.5 | 135.5 |
-| long | 8192 | 16384 | 128 | 9.39e-14 | −130.3 | 130.3 |
-| stress | 32768 | — | — | N/A | N/A | N/A |
+| Scenario | IR len | Signal len | Partitions | ESR      | ESR (dB) | SNR (dB) |
+| -------- | ------ | ---------- | ---------- | -------- | -------- | -------- |
+| short    | 64     | 256        | 1          | 1.15e-14 | −139.4   | 139.4    |
+| medium   | 512    | 1024       | 8          | 2.84e-14 | −135.5   | 135.5    |
+| long     | 8192   | 16384      | 128        | 9.39e-14 | −130.3   | 130.3    |
+| stress   | 32768  | —          | —          | N/A      | N/A      | N/A      |
 
 > **Stress scenario skipped:** C++ `ImpulseResponse::mMaxLength = 8192` hard-caps the IR, truncating the 32768-sample stress IR. NAM-rs UPOLS stress validation is performed against direct convolution in `tests/cabsim_golden.rs::test_cabsim_golden_stress` (ESR < 1e-5). All three comparable scenarios exceed the 1e-3 ESR threshold by 10+ orders of magnitude, confirming bit-identical equivalence after gain compensation.
 
-### 13.2 Architectural Note
+### 13.2 Cross-Validation Performed (Sprint 5.3)
 
-The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/` (commit `0827c6c`). Cross-validation tests are planned in Sprint 5.3 [T5.8]–[T5.9] (see [TODO-sprints.md](/TODO-sprints.md) §§5.3).
+The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/`. Cross-validation tests are implemented as `#[ignore]` in `tests/cabsim_cpp_parity.rs` and run via `utils/tests-long.sh`.
 
-### Decision: C++ Cross-Validation Not Performed (Justified)
-
-> **Decision:** The IR Cabsim UPOLS engine has **not been cross-validated** against the C++ `dsp::ImpulseResponse` implementation from AudioDSPTools.
->
-> **Justification:**
->
-> 1. **Feature is new/orthogonal to NAM:** `NeuralAmpModelerCore` (the canonical C++ reference for model inference) does not include an impulse response convolution stage. Cabsim is a NAM-rs extension, not a port of an existing C++ component.
-> 2. **Algorithmic analysis complete:** The C++ `dsp::ImpulseResponse` uses direct time-domain convolution (O(N²)) with a fixed −18 dB gain reduction formula. NAM-rs uses UPOLS (O(N log N)) with optional peak normalization. The seven algorithmic divergences are catalogued in §13.1.3.
-> 3. **Mathematically-rigorous alternative:** Validation is anchored against **direct convolution** (naive O(N²) reference computed inline in `tests/cabsim_golden.rs`). This is a self-contained, mathematically exact oracle — it computes the convolution definition directly without algorithmic approximations. The UPOLS engine achieves **ESR < 1e-5** against this reference in all four scenarios: short (64), medium (512), long (8192), and stress (32768 samples).
-> 4. **Future cross-validation planned:** Sprint 5.3 tasks [T5.8]–[T5.9] will build a C++ reference binary (`tests/fixtures/render_ir.cpp`) using the same PCG PRNG seeds, and implement `#[ignore]` cross-validation tests in `tests/cabsim_cpp_parity.rs` with gain-compensated, latency-aligned comparisons. Expected tolerance: ESR < 1e-3 (see §13.1.4).
+- **Test validation:** Compares the UPOLS convolution engine against golden vectors generated by the C++ reference binary (`tests/fixtures/render_ir.cpp`).
+- **Alignment & compensation:** Compares are gain-compensated (`CPP_GAIN_INV ≈ 7.943`) and latency-aligned.
+- **Results:** Parity is verified with **ESR < 1e-13** in short, medium, and long scenarios, vastly exceeding the target threshold of 1e-3.
 
 ---
+
 ## 14. Related Sprints & Tasks
 
 | Sprint        | Topic                                                | Key C++ reference                               |
@@ -379,13 +371,14 @@ The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModeler
 | S13a (T01)    | Cross-validation suite vs NeuralAmpModelerCore       | `render` CLI, `ModelTest.cpp`                   |
 | S25 (T01–T08) | Hotpath SIMD recovery, buffer alignment              | `process_block_f32_native`, head rechannel      |
 | S26 (T01–T04) | Architectural adherence vs C++ reference             | `dsp.h`, `a2_fast.h`                            |
-| S28 (T01)     | Cross-validation v2 (pending)                        | `t3k-mushra` metrics, A2 baselines              |
+| S28 (T01)     | Cross-validation v2                                  | `t3k-mushra` metrics, A2 baselines              |
 
 ---
+
 ## 15. Version History
 
 | Date       | Change                                                                                                                                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-06-11 | [T5.7] Initialize AudioDSPTools submodule at commit `0827c6c`. Full algorithmic analysis of `dsp::ImpulseResponse` (direct O(N²) convolution, fixed gain, cubic resampling, 8192 cap, double output) vs NAM-rs UPOLS. Seven divergences catalogued in §13.1.3 with expected cross-validation impact. |
-| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                               |
+| 2026-06-11 | [T5.7-T5.9] Complete Cabsim C++ cross-validation (AudioDSPTools). Parity verified (ESR < 1e-13). Update A2 architecture mappings to show complete implementation (Beta) and remove references to `WavenetA2Placeholder`.                                                  |
+| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                              |
 | 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences. |

@@ -303,7 +303,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ---
 
-## ÉPICO 5 — IR Cabsim (.wav convolution) II 🔊
+## ÉPICO 5 — IR Cabsim (.wav convolution) II 🔊 [DONE]
 
 ### Sprint 5.1 — Integração CLAP Cabsim + Robustez de Partição
 
@@ -375,21 +375,20 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Adicionar os testes à suíte de `utils/tests-long.sh`.
   - **Critério de aceite:** Cross-validação verde dentro dos thresholds definidos; diferenças documentadas; testes integrados em `utils/tests-long.sh`.
 
-- **[T5.10] Teste Humanos:** Atualizar o `docs/functional-tests.md`.
+- **[T5.10] Teste Humanos:** Atualizar o `docs/functional-tests.md`. [DONE]
 
 ---
 ---
 
 ## ÉPICO 99 — Documentação e Fechamento 📚
 
-- **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`):
-  - `docs/architecture.md`: motor A2, container.
-  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados.
+- **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`): Garantir atualização com o estado atual real do código.
+  - `docs/architecture.md`: motor A2, container, cabsim (IR convolution).
+  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados (ainda que em estágio Beta - deixar issoo registrado).
   - `docs/cpp_parity_map.md`: novo mapeamento A2 → C++.
   - `tests/fixtures/README.md`: com os novos golden A2 e instruções de regeneração.
   - `docs/functional-tests.md`: Assegurar que estão a par de tudo o que foi implementado até aqui.
-  - Skill `refatora-doc.md`
-  - **Nota:** Documentação do cabsim (IR convolution) já coberta no Sprint 5.2 (T5.5/T5.6).
+  - Acionar skill `refatora-doc.md` ao final.
 
 - **[T99.2] Rodadas de correção** (versão 2.1)
   - `revisor-auditor` Extremamente focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação impecavelmente correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si continue em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar prontos para cumprir o seu papel de "seguro" contra erro/degradação. Então seja muito rigoroso em assegurar sua qualidade.

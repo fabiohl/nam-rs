@@ -262,6 +262,7 @@ IR `.wav` files (mono, PCM16/24/float32) are loaded and resampled to the active 
 ### CLAP Integration
 
 The CLAP plugin exposes IR loading via:
+
 - **GUI file browser** (Zone 1, filtered to `.wav`)
 - **State save/load** (`ir_path` serialized in the preset blob)
 - **SPSC `ClapParamPayload::LoadCabIr`** for RT-safe engine swap
@@ -318,13 +319,13 @@ Two validation layers capture **different classes of bug** and are deliberately 
 
 The IR Cabsim convolution stage (`src/dsp/cabsim/`) follows the **component-level testing** approach of the project's validation pyramid. Each aspect is validated independently, avoiding circular redundancies:
 
-| Layer                           | Location                    | Count | What it validates                                        |
-|:------------------------------- |:--------------------------- |:-----:|:------------------------------------------------------- |
-| **Convolution unit tests**      | `src/dsp/cabsim/conv_test.rs` | 11  | UPOLS engine: partition logic, FDL, tail handling, DC, noise |
-| **Golden parity**               | `tests/cabsim_golden.rs`     | 6    | UPOLS vs. direct convolution O(N²) reference — ESR < 1e-5 in short/medium/long/stress scenarios |
-| **Heap-audit**                  | `tests/cabsim_heap_audit.rs` | 4    | Zero heap allocation on the hot-path (RT-Safety)         |
-| **Bitwise determinism**         | `tests/cabsim_golden.rs`     | 1    | Same inputs → bit-identical outputs across two engines   |
-| **Passthrough**                 | `tests/cabsim_golden.rs`     | 1    | Empty IR → unity gain (output ≈ input)                   |
+| Layer                      | Location                      | Count | What it validates                                                                               |
+|:-------------------------- |:----------------------------- |:-----:|:----------------------------------------------------------------------------------------------- |
+| **Convolution unit tests** | `src/dsp/cabsim/conv_test.rs` | 11    | UPOLS engine: partition logic, FDL, tail handling, DC, noise                                    |
+| **Golden parity**          | `tests/cabsim_golden.rs`      | 6     | UPOLS vs. direct convolution O(N²) reference — ESR < 1e-5 in short/medium/long/stress scenarios |
+| **Heap-audit**             | `tests/cabsim_heap_audit.rs`  | 4     | Zero heap allocation on the hot-path (RT-Safety)                                                |
+| **Bitwise determinism**    | `tests/cabsim_golden.rs`      | 1     | Same inputs → bit-identical outputs across two engines                                          |
+| **Passthrough**            | `tests/cabsim_golden.rs`      | 1     | Empty IR → unity gain (output ≈ input)                                                          |
 
 #### Decision: End-to-End Pipeline Test with Cabsim Considered Unnecessary
 
@@ -337,24 +338,26 @@ The IR Cabsim convolution stage (`src/dsp/cabsim/`) follows the **component-leve
 > 3. **Integration verified by code review:** The stage's insertion point in `capture.rs` and its interaction with buffer sizing (`partition_size` vs. host `max_frames_count`) have been verified during architectural review and are documented in the pipeline flow diagram (§5.2).
 > 4. **Golden parity tests exercise realistic data paths:** The golden tests use synthetic IRs and mixed-sine signals at realistic lengths (up to 65536 samples), covering the same data paths the pipeline would exercise.
 
-## 7. A2 Architecture: Current State & Roadmap
+## 7. A2 Architecture: Current State (Beta)
 
-A2 is NAM's officially-released next-generation architecture (NeuralAmpModelerCore v0.5.2+). NAM-rs currently ships the **scaffolding and detection contract**; full A2 inference is the active porting effort planned in [TODO-sprints.md](/TODO-sprints.md).
+The A2 architecture is NAM's next-generation format (NeuralAmpModelerCore v0.5.2+). NAM-rs provides a complete, high-performance, real-time safe implementation of the fixed A2 fast-path (**A2-Full** with 8 channels and **A2-Lite** with 3 channels), matching the behavior of `NAM/wavenet/a2_fast.cpp`.
 
-### Current state (implemented)
+### Microarchitectural Optimizations
 
-- **Forward-Compatible Loader:** The dispatcher (`src/loader/dispatcher/wavenet/mod.rs`) identifies A2 models via version metadata or non-Tanh activations, redirecting them to a `WavenetA2Placeholder`.
-- **Placeholder with Detection Contract:** The `WavenetA2Placeholder` stores the detected number of channels (3 = nano, 8 = standard) and reports it via a warning log. Detection uses two independent pathways: `is_wavenet_a2()` (SemVer ≥ 0.6.0 or non-Tanh activations) and `is_a2_shape()` (architectural signature: 1 layer array, channels ∈ {3,8}, dilations identical to `a2_fast.h`). The placeholder emits silence but maintains the detection contract to prevent conflicts when real inference is integrated.
-- **Constants mirror the reference:** `src/models/a2/params.rs` mirrors `a2_fast.h` byte-for-byte (`A2_NUM_LAYERS`, `A2_KERNEL_SIZES`, `A2_DILATIONS`, `A2_LEAKY_SLOPE`).
+To run the deep 23-layer A2 network within real-time budgets under AVX2, the engine employs specialized kernels:
 
-### Scope & roadmap (decided — see [TODO-sprints.md](/TODO-sprints.md))
+- **Fully Unrolled GEMV (A2-Lite, CH=3):** Transposes and fully unrolls the matrix-vector multiplication for 3 channels. Convolutions for both $K=6$ (18 FMAs) and $K=15$ (45 FMAs) are hardcoded without loop overhead (`src/models/a2/conv1d_ch3.rs`), achieving peak throughput on low-channel counts.
+- **Tap-Major Frame-Tiled Convolution (A2-Full, CH=8):** Processes blocks using a $T=4$ frame-tiled broadcast-FMA strategy (`src/models/a2/conv1d_ch8.rs`). Weights are permutated once on load into a `col-major-per-tap` layout (`w[k * 64 + in * 8 + out]`), enabling contiguous 256-bit SIMD loads of 8 outputs and register reuse via `_mm256_broadcast_ss` of input frames.
+- **Branchless Pow2 Rings (`MirroredBuffer`):** Buffers of history for dilations use a virtual double-mapped ring topology. Read lookbacks are mapped branchless via a power-of-two bitwise mask (`& ring_mask`). The write cursor advances circularly, eliminating expensive `copy_within` (memmove) shifts inside the layer hot-path.
+- **Bypass of General A2 Overhead:** Features unused by production capturing (FiLM, heterogenous activations, dynamic gating/gated/blended modes, `condition_dsp`, `bottleneck ≠ channels`) are kept out of the hot-path, parsing them into stub surfaces to maintain backward compatibility while avoiding runtime overhead.
 
-The reference is now available under `tests/fixtures/NeuralAmpModelerCore/` (source of truth). The agreed scope, intentionally narrow for a fast, safe delivery:
+### Slimmable Container and FSM Integration
 
-- **A2 engine = fixed fast-path only.** Port of `NAM/wavenet/a2_fast.cpp` for the two production shapes: **A2-Full** (8 channels) and **A2-Lite** (3 channels) — a single 23-layer array, kernels 6/15, fixed dilations, `LeakyReLU(0.01)`, head conv `k=16`, `layer1x1` active. The general A2 engine (FiLM, GATED/BLENDED gating, `condition_dsp`, `bottleneck ≠ channels`, grouped conv, `head1x1`) is **out of scope** — it is exercised only by the `wavenet_a2_max.nam` test model, not by production models. The reserved structs for FiLM/Gating/Blending in `src/models/a2/` are kept as forward-compat parser surface, not wired into the fast-path.
-- **Slimmable delivery:** `SlimmableContainer` (bundle of an A2-Full + A2-Lite submodel — the official distribution format) is planned now; `SlimmableWavenet` (single-network channel slicing, arXiv 2511.07470) is an official format deferred to a later epic — both planned, neither discarded.
-- **Runtime Full↔Lite selection** integrates with the Adaptive Compute FSM (§5.1): auto Full→Lite under CPU pressure plus a manual override.
-- **Anti-degradation safety:** every porting step is anchored by A2-Full/Lite golden vectors generated from the C++ reference (the validation pyramid of §6).
+NAM-rs supports the official A2 distribution format, where models are bundled together inside a `SlimmableContainer` (defining a `"SlimmableContainer"` config with submodels):
+
+- **Pre-Allocated Submodels:** Both A2-Full (CH=8) and A2-Lite (CH=3) submodels are loaded, prewarmed, and held in memory. Swapping between them involves zero heap allocations.
+- **FSM-Driven Degradation:** The `AdaptiveCompute` FSM monitors block deadlines. Under high CPU load, it triggers a downgrade transition (**A2-Full → A2-Lite**), reducing the active channels from 8 to 3.
+- **Linear Crossfade:** To prevent audible switching transients (clicks), transitions perform a 32 ms linear crossfade blend between the outputs of the active and pending models, utilizing pre-allocated scratch buffers.
 
 ## 8. DAW Integration (CLAP Integration)
 
@@ -581,13 +584,13 @@ The graphical interface is decomposed from its original monolithic state into a 
 
 Typed error codes for structured diagnostics. Defined in `src/common/diagnostics/error_codes.rs`.
 
-| Range   | Category                   | Examples                                                  |
-|:------- |:-------------------------- |:--------------------------------------------------------- |
-| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1201` NAMB_CRC32_MISMATCH       |
-| `E2xxx` | PipeWire / Audio           | `E2100` PIPEWIRE_INIT_FAILED, `E2300` SCHED_FIFO_DENIED   |
-| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW           |
-| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND       |
-| `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*            |
+| Range   | Category                   | Examples                                                |
+|:------- |:-------------------------- |:------------------------------------------------------- |
+| `E1xxx` | Model loading (I/O, parse) | `E1100` FILE_NOT_FOUND, `E1201` NAMB_CRC32_MISMATCH     |
+| `E2xxx` | PipeWire / Audio           | `E2100` PIPEWIRE_INIT_FAILED, `E2300` SCHED_FIFO_DENIED |
+| `E3xxx` | SPSC / Communication       | `E3100` PARAM_CHANNEL_FULL, `E3101` GC_OVERFLOW         |
+| `E4xxx` | Runtime / CLI              | `E4100` INVALID_GAIN_VALUE, `E4101` UNKNOWN_COMMAND     |
+| `E5xxx` | System / Hardware          | *(reserved for future CPU/memory diagnostics)*          |
 
 Each emitted diagnostic includes version, architecture, and timestamp to enable automated triage via the `diagnostico` workflow (see [diagnostico.md](/.agents/workflows/diagnostico.md)).
 

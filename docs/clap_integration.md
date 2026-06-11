@@ -52,16 +52,16 @@ The `clap-plugin` feature will omit the entire `src/standalone/` module (PipeWir
 
 The integration uses the `clack-extensions` crate to implement the following extensions of the CLAP protocol:
 
-| Extension                      | File                                               | Purpose                                                                                                                 |
-|:------------------------------ |:-------------------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
-| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`               | Explicit declaration of mono input/output ports and support for in-place processing                                     |
-| `clap_plugin_params`           | `src/clap/extensions/params.rs`                    | Mapping and automation of parameters (`input_gain`, `output_gain`, `gate`, `bypass`) with gesture and `flush()` support |
-| `clap_plugin_state`            | `src/clap/extensions/state.rs`                     | Persistence of plugin state (parameters and model path) in the DAW project                                              |
-| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`                   | Dynamic reporting of latency induced by processing and resampling to the host                                           |
-| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`                | Support for host track color to dynamically adapt the GUI's accent color                                                |
-| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`           | Pre-configured control pages ("Main" and "Gate") for hardware controller and Device Panel integration                   |
-| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs`          | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
-| `clap_plugin_gui`              | `src/clap/extensions/gui.rs`                       | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
+| Extension                      | File                                      | Purpose                                                                                                                 |
+|:------------------------------ |:----------------------------------------- |:----------------------------------------------------------------------------------------------------------------------- |
+| `clap_plugin_audio_ports`      | `src/clap/extensions/audio_ports.rs`      | Explicit declaration of mono input/output ports and support for in-place processing                                     |
+| `clap_plugin_params`           | `src/clap/extensions/params.rs`           | Mapping and automation of parameters (`input_gain`, `output_gain`, `gate`, `bypass`) with gesture and `flush()` support |
+| `clap_plugin_state`            | `src/clap/extensions/state.rs`            | Persistence of plugin state (parameters and model path) in the DAW project                                              |
+| `clap_plugin_latency`          | `src/clap/extensions/latency.rs`          | Dynamic reporting of latency induced by processing and resampling to the host                                           |
+| `clap_plugin_track_info`       | `src/clap/extensions/track_info.rs`       | Support for host track color to dynamically adapt the GUI's accent color                                                |
+| `clap_plugin_remote_controls`  | `src/clap/extensions/remote_controls.rs`  | Pre-configured control pages ("Main" and "Gate") for hardware controller and Device Panel integration                   |
+| `clap_plugin_param_indication` | `src/clap/extensions/param_indication.rs` | Visual feedback in the GUI to indicate parameters that are mapped, automated, or under temporary override               |
+| `clap_plugin_gui`              | `src/clap/extensions/gui.rs`              | Native GUI based on `egui` v0.34 embedded via `baseview` and X11/XWayland backend (`CLAP_WINDOW_API_X11`)               |
 
 > [!NOTE]
 > **Adaptive VU Metering Contract:** While the core DSP processing (neural network inference and noise gate) is mono, the VU meter dynamically adapts to the host's track channel configuration.

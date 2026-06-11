@@ -146,7 +146,7 @@ Every 10 seconds, NAM-rs prints a performance report in the terminal to monitor 
 ## 🧠 Supported Models
 
 NAM-rs natively supports Neural Amp Modeler (.nam or .namb) files. Impulse Response (.wav) convolution (IR cabsim) is supported as an optional post-inference stage — load cabinet IRs via `--cab <path>` in standalone mode or via the GUI file browser in the CLAP plugin.
-Currently, the "A1 Architecture" of NAM is fully supported. The "A2 Architecture" is fully implemented with the fixed fast-path (**A2-Full** 8 ch / **A2-Lite** 3 ch), a `SlimmableContainer` for runtime Full↔Lite switching, and integrated into the Adaptive Compute FSM. See [TODO-sprints.md](TODO-sprints.md) and [docs/architecture.md §7](docs/architecture.md).
+Currently, the "A1 Architecture" of NAM is fully supported. The "A2 Architecture" is supported (currently in Beta stage) with the fixed fast-path (**A2-Full** 8 ch / **A2-Lite** 3 ch), a `SlimmableContainer` for runtime Full↔Lite switching, and integrated into the Adaptive Compute FSM.
 
 Two levels of parsing operations are provided:
 

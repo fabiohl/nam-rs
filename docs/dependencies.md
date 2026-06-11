@@ -18,10 +18,15 @@ sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-
 * **Base Tools and Build**:
 
   * `build-essential` and `cmake`: Essential compilers and build utilities for the C/C++ ecosystem, from which some Rust dependencies derive.
+
   * `pkg-config`: Required for `cargo` to locate header paths and shared library (`.so`) paths on the system.
+
   * `clang` and `libclang-dev`: Requisite for `rust-bindgen` to translate PipeWire C headers to Rust bindings at compile time.
+
   * `libssl-dev`, `git`, and `curl`: Required for utility tools, version control, and installing Rust ecosystem components.
+
   * `linux-tools-common`, `linux-tools-generic`, `linux-tools-$(uname -r)`: Provides `perf`, essential for low-level profiling, optimizing the DSP Hot Path, and gathering profile data for LLVM BOLT.
+
     > [!IMPORTANT]
     > **Unprivileged Profiling Configuration:**
     > BOLT requires unprivileged CPU cycle recording. To enable this, the system's `perf_event_paranoid` must be set to `1` or lower.
@@ -39,6 +44,7 @@ sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-
     > ```
 
   * `jq`: Command-line JSON processor, used to validate test output results in developer scripts.
+
   * `ripgrep` and `fd-find`: Fast search utilities (`rg` and `fd`/`fdfind`) used by developers and agentic AI assistants to navigate and search the codebase efficiently.
 
 * **Compiler-Grade Optimization (PGO + BOLT) (Optional)**:
