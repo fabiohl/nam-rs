@@ -72,6 +72,7 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             alive_fence: Arc::new(AtomicBool::new(true)),
             render_mode: AtomicU32::new(RENDER_MODE_REALTIME),
             gui_scale_factor: AtomicU32::new(0),
+            ir_path: Mutex::new(None),
         },
     }
 }

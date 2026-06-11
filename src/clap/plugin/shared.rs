@@ -26,6 +26,14 @@ pub enum ClapParamPayload {
         /// Polyphase sinc resampler
         new_resampler: Box<NamResampler>,
     },
+    /// Loading of a new cab-sim convolution engine via SPSC.
+    /// Follows the same pattern as `LoadModel`: the engine is constructed
+    /// outside the RT thread and swapped atomically in the audio thread.
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    LoadCabIr {
+        /// Pre-built convolution engine (None = bypass cabsim).
+        engine: Option<Box<crate::dsp::cabsim::conv::ConvEngine>>,
+    },
 }
 
 /// Model metadata for display in the GUI.
@@ -153,6 +161,8 @@ pub struct ColdShared {
     /// Current GUI scale factor (f32 bits). Written by `gui.set_scale` on the Main Thread,
     /// read by the window handler for HiDPI rendering before the first Resized event.
     pub gui_scale_factor: AtomicU32,
+    /// Active cab-sim IR file path (for state save/load and GUI display).
+    pub ir_path: Mutex<Option<String>>,
 }
 
 // ---------------------------------------------------------------------------

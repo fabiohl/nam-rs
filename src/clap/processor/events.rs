@@ -16,6 +16,9 @@ use clack_plugin::events::event_types::{ParamModEvent, ParamValueEvent};
 use clack_plugin::prelude::Events;
 use std::sync::atomic::Ordering;
 
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::conv::ConvEngine;
+
 impl<'a> NamClapProcessor<'a> {
     /// Processes all input events: GUI gestures → host, SPSC payloads,
     /// sample-accurate host events, GUI parameter sync and latency.
@@ -38,6 +41,10 @@ impl<'a> NamClapProcessor<'a> {
                     model_r,
                     new_resampler,
                 } => self.cold_load_model(model_l, model_r, new_resampler),
+                #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+                ClapParamPayload::LoadCabIr { engine } => {
+                    self.cold_load_cabsim(engine);
+                }
             }
         }
 
@@ -154,5 +161,13 @@ impl<'a> NamClapProcessor<'a> {
         }
         let old_resampler = std::mem::replace(&mut self.resampler, new_resampler);
         self.push_to_gc(GcItem::Resampler(old_resampler));
+    }
+
+    #[cold]
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    fn cold_load_cabsim(&mut self, engine: Option<Box<ConvEngine>>) {
+        if let Some(old_engine) = std::mem::replace(&mut self.conv_engine, engine) {
+            self.push_to_gc(GcItem::CabConvEngine(old_engine));
+        }
     }
 }

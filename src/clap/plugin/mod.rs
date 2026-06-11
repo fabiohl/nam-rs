@@ -122,6 +122,7 @@ impl DefaultPluginFactory for NamClapPlugin {
                 alive_fence: Arc::new(std::sync::atomic::AtomicBool::new(true)),
                 render_mode: AtomicU32::new(0),
                 gui_scale_factor: AtomicU32::new(0),
+                ir_path: Mutex::new(None),
             },
         })
     }

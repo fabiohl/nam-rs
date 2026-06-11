@@ -12,6 +12,12 @@ use clack_extensions::log::{HostLog, LogSeverity};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::loader::CabSimIr;
+
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::conv::ConvEngine;
+
 impl<'a> NamClapMainThread<'a> {
     /// Loads a new neural model from the specified path.
     ///
@@ -139,6 +145,49 @@ impl<'a> NamClapMainThread<'a> {
         {
             state_ext.mark_dirty(&self.host);
         }
+
+        Ok(())
+    }
+
+    /// Loads a new cab-sim impulse response from the specified path.
+    ///
+    /// This method performs I/O and memory allocations (WAV loading, resampling,
+    /// FFT plan construction), being safe to execute only on the main thread.
+    /// The constructed `ConvEngine` is sent to the RT thread via a lock-free
+    /// SPSC channel following the same pattern as `load_model`.
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    pub fn load_cabsim(&mut self, path: &Path) -> Result<(), Box<NamDiagnostic>> {
+        let host_rate = self.shared.cold.sample_rate.load(Ordering::Relaxed);
+        let host_rate = if host_rate == 0 { 48000 } else { host_rate };
+        let buffer_size = self.shared.cold.buffer_size.load(Ordering::Relaxed) as usize;
+        let partition_size = if buffer_size > 0 { buffer_size } else { 256 };
+
+        let cabsim = CabSimIr::load(path, host_rate, true).map_err(|e| {
+            Box::new(
+                NamDiagnostic::new(NamErrorCode::IrLoadFailed, &self.sys)
+                    .message(format!("Failed to load cab-sim IR: {:?}", path))
+                    .param("error", e.to_string()),
+            )
+        })?;
+
+        let engine = ConvEngine::new(&cabsim.samples, partition_size);
+
+        // Store ir_path for state save/load and GUI display
+        if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {
+            *ir_guard = Some(path.to_string_lossy().to_string());
+        }
+
+        self.param_tx
+            .push(ClapParamPayload::LoadCabIr {
+                engine: Some(Box::new(engine)),
+            })
+            .map_err(|_| {
+                Box::new(
+                    NamDiagnostic::new(NamErrorCode::ParamChannelFull, &self.sys)
+                        .message("The communication channel with the audio thread is full.")
+                        .hint("Please try loading the IR again in a few moments."),
+                )
+            })?;
 
         Ok(())
     }

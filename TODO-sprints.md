@@ -309,7 +309,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 > O CLAP plugin é **release**. A infraestrutura de pipeline (Stage 3 em `capture.rs`, `DspPipelineContext.conv`) e o standalone (`--cab`) já estão funcionais; falta o wiring CLAP completo: parâmetro SPSC, GUI, state save/load, e adaptação de partição para buffer sizes variáveis do host.
 
-- **[T5.1] `ClapParamPayload::LoadCabIr` + SPSC wiring CLAP.**
+- **[T5.1] `ClapParamPayload::LoadCabIr` + SPSC wiring CLAP.** [DONE]
   - Adicionar variante `LoadCabIr { engine: Option<Box<ConvEngine>> }` ao enum `ClapParamPayload` (`src/clap/plugin/shared.rs:17`). No `process_events` (`src/clap/processor/events.rs:31-42`), drenar o payload e fazer swap de `self.conv_engine` com GC cascade para o engine antigo (mesmo padrão de `cold_load_model` em `events.rs:139-157`).
   - Adicionar campo `ir_path: Option<String>` ao `ColdShared` (`src/clap/plugin/shared.rs:106`) para rastreamento do caminho ativo.
   - No main thread, implementar `cold_load_cabsim()`: carregar WAV via `CabSimIr::load()`, construir `ConvEngine::new()`, enviar via SPSC `param_tx.push(ClapParamPayload::LoadCabIr { .. })`.

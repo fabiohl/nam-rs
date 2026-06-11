@@ -86,6 +86,8 @@ pub enum NamErrorCode {
     UnknownCommand,
     /// Failed to configure the Ctrl-C handler.
     CtrlCHandlerFailed,
+    /// Failed to load a cab-sim impulse response (WAV file).
+    IrLoadFailed,
     /// Overflow detected in the Garbage Collection (GC) channel.
     GcOverflow,
 }
@@ -123,6 +125,7 @@ impl NamErrorCode {
             Self::InvalidGainValue => "E4100",
             Self::UnknownCommand => "E4101",
             Self::CtrlCHandlerFailed => "E4102",
+            Self::IrLoadFailed => "E4103",
         }
     }
 
@@ -158,6 +161,7 @@ impl NamErrorCode {
             Self::InvalidGainValue => "Invalid gain value",
             Self::UnknownCommand => "Unknown command",
             Self::CtrlCHandlerFailed => "Ctrl-C handler setup failed",
+            Self::IrLoadFailed => "Cab-sim IR load failed",
         }
     }
 
@@ -193,6 +197,7 @@ impl NamErrorCode {
             Self::InvalidGainValue => "INVALID_GAIN_VALUE",
             Self::UnknownCommand => "UNKNOWN_COMMAND",
             Self::CtrlCHandlerFailed => "CTRL_C_HANDLER_FAILED",
+            Self::IrLoadFailed => "IR_LOAD_FAILED",
         }
     }
 }
