@@ -68,7 +68,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** novos testes unitários de erro (resíduo, header truncado, flags inconsistentes) em
     `src/loader/namb_test.rs`; proptest de parsers (`tests/proptest_parsers.rs`) segue verde.
 
-- **[T6.3] GC SPSC: eliminar `panic!` e a janela de torn-read no overflow buffer.**
+- **[T6.3] GC SPSC: eliminar `panic!` e a janela de torn-read no overflow buffer.** [DONE]
 
   - `src/common/spsc/gc.rs:63`: `from_raw_parts` com `type_id` desconhecido **não pode** dar `panic!` — retornar
     `Option<GcItem>`; em `None`, vazar o ponteiro deliberadamente (leak controlado) e registrar via flag/log no

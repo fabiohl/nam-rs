@@ -90,6 +90,8 @@ pub enum NamErrorCode {
     IrLoadFailed,
     /// Overflow detected in the Garbage Collection (GC) channel.
     GcOverflow,
+    /// Corrupted GC overflow buffer slot (inconsistent type/pointer).
+    GcCorrupted,
 }
 
 impl NamErrorCode {
@@ -122,6 +124,7 @@ impl NamErrorCode {
             Self::DeadlineExceeded => "E2001",
             Self::ParamChannelFull => "E3100",
             Self::GcOverflow => "E3101",
+            Self::GcCorrupted => "E3102",
             Self::InvalidGainValue => "E4100",
             Self::UnknownCommand => "E4101",
             Self::CtrlCHandlerFailed => "E4102",
@@ -158,6 +161,7 @@ impl NamErrorCode {
             Self::DeadlineExceeded => "Processing deadline exceeded",
             Self::ParamChannelFull => "Parameter channel full",
             Self::GcOverflow => "Garbage collection overflow",
+            Self::GcCorrupted => "Garbage collection corruption",
             Self::InvalidGainValue => "Invalid gain value",
             Self::UnknownCommand => "Unknown command",
             Self::CtrlCHandlerFailed => "Ctrl-C handler setup failed",
@@ -194,6 +198,7 @@ impl NamErrorCode {
             Self::DeadlineExceeded => "DEADLINE_EXCEEDED",
             Self::ParamChannelFull => "PARAM_CHANNEL_FULL",
             Self::GcOverflow => "GC_OVERFLOW",
+            Self::GcCorrupted => "GC_CORRUPTED",
             Self::InvalidGainValue => "INVALID_GAIN_VALUE",
             Self::UnknownCommand => "UNKNOWN_COMMAND",
             Self::CtrlCHandlerFailed => "CTRL_C_HANDLER_FAILED",

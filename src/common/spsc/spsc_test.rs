@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use super::*;
+use std::sync::atomic::Ordering;
 
 /// Tests whether the RingBuffer can pass data between two "processing lines" (threads)
 /// concurrently without losing information or locking up.
@@ -71,6 +72,7 @@ fn test_gc_overflow_overwrite() {
     use std::sync::Arc;
     use std::sync::atomic::AtomicU32;
 
+    let rt_status = RtStatusFlags::new();
     let overflow = GcOverflowBuffer::new(64);
     let counter = Arc::new(AtomicU32::new(0));
 
@@ -85,7 +87,7 @@ fn test_gc_overflow_overwrite() {
     overflow.push(item_65);
 
     // 3. Validate that drain returns 64 items
-    let drained = overflow.drain();
+    let drained = overflow.drain(&rt_status);
     assert_eq!(drained.len(), 64);
 }
 
@@ -95,6 +97,7 @@ fn test_gc_stress_no_leak() {
     use std::sync::atomic::AtomicU32;
 
     let (mut gc_prod, mut gc_cons) = RingBuffer::<GcItem>::new(32);
+    let rt_status = RtStatusFlags::new();
     let overflow = GcOverflowBuffer::new(32);
     let counter = Arc::new(AtomicU32::new(0));
 
@@ -107,10 +110,138 @@ fn test_gc_stress_no_leak() {
         }
 
         // Drain periodically to avoid unbounded accumulation
-        super::drain_gc_channels(&mut gc_cons, &overflow);
+        super::drain_gc_channels(&mut gc_cons, &overflow, &rt_status);
     }
 
     // Validate that the final counter is correct after dropping everything
     drop(gc_cons);
-    for _ in overflow.drain() {}
+    for _ in overflow.drain(&rt_status) {}
+}
+
+/// Simulates a corrupted slot (packed value with unknown type_id + valid pointer)
+/// and verifies that drain leaks the pointer and sets the GC_CORRUPTED flag.
+#[test]
+fn test_gc_corrupted_slot_unknown_type() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU32;
+
+    let rt_status = RtStatusFlags::new();
+    let overflow = GcOverflowBuffer::new(4);
+    let counter = Arc::new(AtomicU32::new(0));
+
+    // Create a valid packed value to extract a real pointer from
+    let valid_item = GcItem::Test(Box::new(counter.clone()));
+    let valid_packed = valid_item.into_packed();
+    let ptr = (valid_packed & 0x00FF_FFFF_FFFF_FFFF) as *mut std::ffi::c_void;
+
+    // Push 3 valid items (slots 0, 1, 2 — write_idx reaches 2)
+    overflow.push(GcItem::Test(Box::new(counter.clone())));
+    overflow.push(GcItem::Test(Box::new(counter.clone())));
+    overflow.push(GcItem::Test(Box::new(counter.clone())));
+
+    // Manually inject a corrupted slot at position 3 (beyond write_idx):
+    // unknown type_id (99) with a valid pointer
+    overflow.slots[3].store((99u64 << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF), Ordering::Release);
+
+    assert!(!rt_status.check_flag(RT_STATUS_GC_CORRUPTED));
+
+    let drained = overflow.drain(&rt_status);
+
+    // 3 valid items; slot 3 should be leaked with corruption flag set
+    assert_eq!(drained.len(), 3);
+    drop(drained);
+
+    // The corrupted flag should be set
+    assert!(rt_status.check_flag(RT_STATUS_GC_CORRUPTED));
+
+    // Verify all slots are now empty
+    let drained_again = overflow.drain(&rt_status);
+    assert_eq!(drained_again.len(), 0);
+    drop(drained_again);
+}
+
+/// Simulates a slot with type_id=0 and non-null pointer (inconsistent).
+#[test]
+fn test_gc_corrupted_slot_null_type_non_null_ptr() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU32;
+
+    let rt_status = RtStatusFlags::new();
+    let overflow = GcOverflowBuffer::new(4);
+    let counter = Arc::new(AtomicU32::new(0));
+
+    // Create a valid packed value to extract a real pointer from
+    let valid_item = GcItem::Test(Box::new(counter.clone()));
+    let packed = valid_item.into_packed();
+    let ptr = (packed & 0x00FF_FFFF_FFFF_FFFF) as *mut std::ffi::c_void;
+
+    // Push 2 valid items (slots 0, 1)
+    overflow.push(GcItem::Test(Box::new(counter.clone())));
+    overflow.push(GcItem::Test(Box::new(counter.clone())));
+
+    // Manually inject inconsistent slot at position 2: type_id=0 with valid pointer
+    overflow.slots[2].store(ptr as u64 & 0x00FF_FFFF_FFFF_FFFF, Ordering::Release);
+
+    assert!(!rt_status.check_flag(RT_STATUS_GC_CORRUPTED));
+
+    let drained = overflow.drain(&rt_status);
+
+    // Only 2 valid items; slot 2 is leaked with corruption flag
+    assert_eq!(drained.len(), 2);
+    drop(drained);
+
+    assert!(rt_status.check_flag(RT_STATUS_GC_CORRUPTED));
+
+    let drained_again = overflow.drain(&rt_status);
+    assert_eq!(drained_again.len(), 0);
+    drop(drained_again);
+}
+
+/// Concurrent push/drain stress test with real threads.
+/// Exercises the race window between push overwrites and drain reads.
+#[test]
+fn test_gc_concurrent_push_drain() {
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    let rt_status = RtStatusFlags::new();
+    let overflow = Arc::new(GcOverflowBuffer::new(32));
+
+    let overflow_prod = Arc::clone(&overflow);
+    let done = Arc::new(AtomicBool::new(false));
+    let done_prod = Arc::clone(&done);
+
+    // Producer thread: rapid pushes into the overflow buffer
+    let producer = std::thread::spawn(move || {
+        let counter = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        while !done_prod.load(Ordering::Relaxed) {
+            let item = GcItem::Test(Box::new(counter.clone()));
+            overflow_prod.push(item);
+        }
+    });
+
+    // Consumer thread: drain repeatedly
+    let overflow_cons = Arc::clone(&overflow);
+    let done_cons = Arc::clone(&done);
+    let consumer = std::thread::spawn(move || {
+        let local_rt_status = RtStatusFlags::new();
+        for _ in 0..2000 {
+            let drained = overflow_cons.drain(&local_rt_status);
+            drop(drained);
+            std::thread::yield_now();
+        }
+        done_cons.store(true, Ordering::Relaxed);
+    });
+
+    producer.join().unwrap();
+    consumer.join().unwrap();
+
+    // Final drain — all items should be valid GcItem or empty
+    let final_drained = overflow.drain(&rt_status);
+    for item in final_drained {
+        match item {
+            GcItem::Test(_) => {} // expected
+            _ => panic!("Unexpected GcItem variant in concurrent test"),
+        }
+    }
 }

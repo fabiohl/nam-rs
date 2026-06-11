@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use rtrb::Consumer;
-use std::sync::atomic::{AtomicPtr, AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[allow(clippy::large_enum_variant)]
 /// Represents an item that should be safely disposed outside the audio thread.
@@ -40,38 +40,88 @@ impl GcItem {
 
     /// Reconstructs a GcItem from a raw pointer and a type ID.
     ///
+    /// Returns `None` if the type ID is unknown. In that case, the caller
+    /// must intentionally leak the pointer to avoid UB from `Box::from_raw`
+    /// with a mismatched type.
+    ///
     /// # Safety
-    /// The pointer must have been generated via `Box::into_raw` of an object of the corresponding type.
-    unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Self {
+    /// The pointer must have been generated via `Box::into_raw` of an object
+    /// of the corresponding type, validated by the caller against type_id.
+    unsafe fn from_raw_parts(ptr: *mut std::ffi::c_void, type_id: u8) -> Option<Self> {
         match type_id {
-            1 => GcItem::Model(unsafe { Box::from_raw(ptr as *mut crate::models::StaticModel) }),
-            2 => GcItem::Resampler(unsafe {
+            1 => Some(GcItem::Model(unsafe {
+                Box::from_raw(ptr as *mut crate::models::StaticModel)
+            })),
+            2 => Some(GcItem::Resampler(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::resampler::NamResampler)
-            }),
+            })),
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            3 => GcItem::CabSimIr(unsafe {
+            3 => Some(GcItem::CabSimIr(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::cabsim::loader::CabSimIr)
-            }),
+            })),
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            4 => GcItem::CabConvEngine(unsafe {
+            4 => Some(GcItem::CabConvEngine(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::cabsim::conv::ConvEngine)
-            }),
+            })),
             #[cfg(test)]
-            255 => GcItem::Test(unsafe {
+            255 => Some(GcItem::Test(unsafe {
                 Box::from_raw(ptr as *mut std::sync::Arc<std::sync::atomic::AtomicU32>)
-            }),
-            _ => panic!("GcItem: unknown type {}", type_id),
+            })),
+            _ => None,
         }
+    }
+
+    /// Converts this GcItem into a packed 64-bit representation for the
+    /// overflow buffer.
+    ///
+    /// Bits 0-55: user-space pointer (≤ 56 bits on all x86-64 Linux configs).
+    /// Bits 56-63: type ID.
+    pub(crate) fn into_packed(self) -> u64 {
+        let type_id = self.type_id();
+        let ptr = match self {
+            GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            GcItem::CabSimIr(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            GcItem::CabConvEngine(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            #[cfg(test)]
+            GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+        };
+        ((type_id as u64) << 56) | (ptr as u64 & 0x00FF_FFFF_FFFF_FFFF)
+    }
+
+    /// Reconstructs a GcItem from a packed 64-bit value.
+    ///
+    /// Returns `None` if the packed value is zero (empty slot) or the type
+    /// ID is unknown. On unknown type ID, the caller must leak the pointer.
+    ///
+    /// # Safety
+    /// The pointer embedded in `packed` must be valid for the type encoded in bits 56-63.
+    unsafe fn from_packed(packed: u64) -> Option<Self> {
+        if packed == 0 {
+            return None;
+        }
+        let type_id = ((packed >> 56) & 0xFF) as u8;
+        let ptr = (packed & 0x00FF_FFFF_FFFF_FFFF) as *mut std::ffi::c_void;
+        if type_id == 0 {
+            return None;
+        }
+        unsafe { Self::from_raw_parts(ptr, type_id) }
     }
 }
 
 /// Circular "final parking" buffer for GC items.
+///
+/// Each slot is a single `AtomicU64` packing type_id (bits 56-63) and
+/// pointer (bits 0-55) into one atomic word, eliminating the torn-read
+/// window that existed when type and pointer were swapped independently.
+///
 /// Used when the main SPSC channel and the thread's parking lot are both full.
 /// Ensures no object is dropped on the audio thread at the cost of a controlled leak
 /// or overwrite in extreme stress scenarios.
 pub struct GcOverflowBuffer {
-    slots: Box<[AtomicPtr<std::ffi::c_void>]>,
-    types: Box<[AtomicU8]>,
+    pub(crate) slots: Box<[AtomicU64]>,
     write_idx: AtomicU64,
 }
 
@@ -84,14 +134,11 @@ impl GcOverflowBuffer {
             "GcOverflowBuffer: capacity must be greater than 0 to avoid division by zero panic."
         );
         let mut slots = Vec::with_capacity(capacity);
-        let mut types = Vec::with_capacity(capacity);
         for _ in 0..capacity {
-            slots.push(AtomicPtr::new(std::ptr::null_mut()));
-            types.push(AtomicU8::new(0));
+            slots.push(AtomicU64::new(0));
         }
         Self {
             slots: slots.into_boxed_slice(),
-            types: types.into_boxed_slice(),
             write_idx: AtomicU64::new(0),
         }
     }
@@ -99,45 +146,37 @@ impl GcOverflowBuffer {
     /// Attempts to park an item in the overflow buffer without RT allocations.
     ///
     /// If the buffer is full, the oldest item is overwritten (leak).
+    /// Returns `true` if an overwrite (controlled leak) occurred.
     pub fn push(&self, item: GcItem) -> bool {
-        let type_id = item.type_id();
-        let ptr = match item {
-            GcItem::Model(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            GcItem::CabSimIr(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-            GcItem::CabConvEngine(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-            #[cfg(test)]
-            GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
-        };
+        let packed = item.into_packed();
 
         let len = self.slots.len() as u64;
         let idx = (self.write_idx.fetch_add(1, Ordering::Relaxed) % len) as usize;
 
-        // Swap the type first, then the pointer.
-        let old_type = self.types[idx].swap(type_id, Ordering::Release);
-        let old_ptr = self.slots[idx].swap(ptr, Ordering::Acquire);
+        let old = self.slots[idx].swap(packed, Ordering::AcqRel);
 
-        if !old_ptr.is_null() && old_type != 0 {
-            // OVERWRITE: Intentional leak to avoid Drop in RT.
-            // The user will be notified via the status flag.
-            true // An overwrite occurred
-        } else {
-            false
-        }
+        old != 0
     }
 
     /// Drains all accumulated items from the overflow buffer.
     /// Should be called periodically by the main thread (Cold Path).
-    pub fn drain(&self) -> Vec<GcItem> {
+    ///
+    /// On corrupted slots (unknown type_id), the pointer is intentionally leaked
+    /// and `RT_STATUS_GC_CORRUPTED` is set via the `rt_status` parameter.
+    /// Returns ownership of the drained items so the caller can drop them.
+    pub fn drain(&self, rt_status: &super::RtStatusFlags) -> Vec<GcItem> {
         let mut items = Vec::with_capacity(self.slots.len());
         for i in 0..self.slots.len() {
-            let ptr = self.slots[i].swap(std::ptr::null_mut(), Ordering::Release);
-            let type_id = self.types[i].swap(0, Ordering::Acquire);
-            if !ptr.is_null() && type_id != 0 {
-                unsafe {
-                    items.push(GcItem::from_raw_parts(ptr, type_id));
+            let packed = self.slots[i].swap(0, Ordering::AcqRel);
+            if packed == 0 {
+                continue;
+            }
+            unsafe {
+                match GcItem::from_packed(packed) {
+                    Some(item) => items.push(item),
+                    None => {
+                        rt_status.set_flag(super::RT_STATUS_GC_CORRUPTED);
+                    }
                 }
             }
         }
@@ -203,6 +242,7 @@ pub fn gc_cascade(
 pub fn drain_gc_channels(
     gc_consumer: &mut Consumer<GcItem>,
     gc_overflow: &GcOverflowBuffer,
+    rt_status: &super::RtStatusFlags,
 ) -> usize {
     let mut count = 0;
     // 1. Drain the main SPSC channel (Drop-Delegation)
@@ -212,7 +252,7 @@ pub fn drain_gc_channels(
     }
 
     // 2. Drain the overflow buffer (overwrite ring buffer)
-    for item in gc_overflow.drain() {
+    for item in gc_overflow.drain(rt_status) {
         drop(item);
         count += 1;
     }

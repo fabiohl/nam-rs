@@ -40,6 +40,9 @@ pub const RT_STATUS_DEGRADE_MINIMAL: u64 = 1 << 13;
 /// Flag indicating that a cabsim rebuild is needed
 /// (partition_size no longer matches current buffer size).
 pub const RT_STATUS_NEEDS_CABSIM_REBUILD: u64 = 1 << 9;
+/// Flag indicating that a corrupted/malformed GC item was detected
+/// (unknown type_id or inconsistent type+ptr in overflow buffer).
+pub const RT_STATUS_GC_CORRUPTED: u64 = 1 << 14;
 
 /// Atomic status flags for silent RT→Main communication.
 ///
@@ -65,6 +68,7 @@ pub const RT_STATUS_NEEDS_CABSIM_REBUILD: u64 = 1 << 9;
 /// | 11 | `HUGEPAGE_OK` | Huge-page allocation confirmed active |
 /// | 12 | `DEGRADE_REDUCED` | Soft-degrade active — Reduced mode |
 /// | 13 | `DEGRADE_MINIMAL` | Soft-degrade active — Minimal mode |
+/// | 14 | `GC_CORRUPTED` | GC overflow buffer corrupted (unknown type/ptr) |
 #[repr(align(128))]
 pub struct RtStatusFlags {
     /// Effective sample rate active on the DSP thread after resampler rebuild.

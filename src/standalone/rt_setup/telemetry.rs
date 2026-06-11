@@ -48,6 +48,17 @@ pub fn poll_rt_status(
             .emit_warning();
     }
 
+    if rt_status.check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_CORRUPTED) {
+        NamDiagnostic::new(NamErrorCode::GcCorrupted, sys)
+            .message("Garbage Collection overflow buffer corruption detected.")
+            .hint(
+                "A GC slot had inconsistent type/pointer data. The pointer was leaked \
+                   to avoid undefined behavior (Box::from_raw with wrong type). \
+                   This should never happen — report it.",
+            )
+            .emit();
+    }
+
     // 2. RATE CHANGE (Sample Rate):
     // Warns when the audio server (PipeWire) changes the sampling frequency
     // (e.g. changed from 44.100 to 48.000 beats per second).

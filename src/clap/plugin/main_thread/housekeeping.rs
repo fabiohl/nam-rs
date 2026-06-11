@@ -13,7 +13,7 @@ impl<'a> NamClapMainThread<'a> {
     /// GC drain, status flag mirroring, hugepage sync, pending model load, latency notification.
     pub(crate) fn housekeeping(&mut self) {
         // Drain obsolete models to free memory outside RT.
-        let drained = drain_gc_channels(&mut self.gc_rx, &self.shared.cold.gc_overflow);
+        let drained = drain_gc_channels(&mut self.gc_rx, &self.shared.cold.gc_overflow, &self.shared.cold.rt_status);
         self.shared
             .cold
             .rt_status

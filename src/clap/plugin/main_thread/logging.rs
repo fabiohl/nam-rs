@@ -41,6 +41,17 @@ impl<'a> NamClapMainThread<'a> {
                 .shared
                 .cold
                 .rt_status
+                .check_and_clear_flag(crate::common::spsc::RT_STATUS_GC_CORRUPTED)
+            {
+                let msg = CString::new("NAM-rs: GC overflow buffer corrupted! Forced leak to avoid UB.")
+                    .unwrap_or_default();
+                log.log(&shared, LogSeverity::Error, &msg);
+            }
+
+            if self
+                .shared
+                .cold
+                .rt_status
                 .check_and_clear_flag(crate::common::spsc::RT_STATUS_MODEL_LOAD_FAILED)
             {
                 let msg = CString::new("NAM-rs: Critical failure! No active model for processing.")
