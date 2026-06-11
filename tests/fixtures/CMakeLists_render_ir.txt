@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(render_ir VERSION 0.1.0)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+set(AUDIO_DSP_TOOLS_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/NeuralAmpModelerPlugin/AudioDSPTools")
+
+set(DSP_SOURCES
+    "${AUDIO_DSP_TOOLS_DIR}/dsp/dsp.cpp"
+    "${AUDIO_DSP_TOOLS_DIR}/dsp/ImpulseResponse.cpp"
+    "${AUDIO_DSP_TOOLS_DIR}/dsp/wav.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/render_ir.cpp")
+
+include_directories("${AUDIO_DSP_TOOLS_DIR}")
+include_directories("${AUDIO_DSP_TOOLS_DIR}/Dependencies/eigen")
+include_directories("${AUDIO_DSP_TOOLS_DIR}/Dependencies/nlohmann")
+
+target_compile_definitions(render_ir
+    PRIVATE "FIXTURES_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\"")
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(render_ir PRIVATE stdc++fs)
+endif()
+
+if(NOT MSVC)
+    target_compile_options(render_ir PRIVATE -Wall -Wextra -Wno-unused-parameter -O2)
+endif()

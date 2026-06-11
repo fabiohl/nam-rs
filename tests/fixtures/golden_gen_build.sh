@@ -19,6 +19,9 @@
 #   golden_lstm_1x16.bin, golden_lstm_2x8.bin
 #   golden_wavenet_a2_full.bin, golden_wavenet_a2_lite.bin
 #   (+ golden_*_v2_*k.bin for stress signal v2 multi-SR)
+#   golden_cabsim_cpp_short.bin, golden_cabsim_cpp_medium.bin,
+#   golden_cabsim_cpp_long.bin, golden_cabsim_cpp_stress.bin
+#   (C++ dsp::ImpulseResponse reference for cabsim cross-validation, Sprint 5.3)
 #
 # These files must be committed so that the Rust golden vector tests
 # run without C++ recompilation.
@@ -229,6 +232,54 @@ for SR in 44100 48000 88200 96000 192000; do
 done
 
 # =============================================================================
+# Build and run C++ IR reference (dsp::ImpulseResponse) → golden_cabsim_cpp_*.bin
+# =============================================================================
+echo ""
+echo "[5b/6] Building C++ IR reference (dsp::ImpulseResponse)..."
+
+AUDIO_DSP_TOOLS_DIR="$FIXTURES_DIR/NeuralAmpModelerPlugin/AudioDSPTools"
+IR_BIN="$FIXTURES_DIR/render_ir"
+
+# Ensure AudioDSPTools submodule dependencies are present
+if [ ! -f "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" ]; then
+    echo "  Initializing NeuralAmpModelerPlugin/AudioDSPTools submodules..."
+    (cd "$FIXTURES_DIR/NeuralAmpModelerPlugin" && git submodule update --init AudioDSPTools)
+    (cd "$AUDIO_DSP_TOOLS_DIR" && git submodule update --init Dependencies/eigen)
+fi
+
+if [ ! -d "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen/Eigen" ]; then
+    echo "  Initializing eigen submodule for AudioDSPTools..."
+    (cd "$AUDIO_DSP_TOOLS_DIR" && git submodule update --init Dependencies/eigen)
+fi
+
+if [ -f "$IR_BIN" ]; then
+    echo "  IR reference binary already exists: $IR_BIN"
+else
+    echo "  Compiling render_ir.cpp..."
+    "$CXX" -std=c++17 -O2 \
+        -I "$AUDIO_DSP_TOOLS_DIR" \
+        -I "$AUDIO_DSP_TOOLS_DIR/Dependencies/eigen" \
+        -I "$AUDIO_DSP_TOOLS_DIR/Dependencies/nlohmann" \
+        -D "FIXTURES_DIR=\"$FIXTURES_DIR\"" \
+        "$FIXTURES_DIR/render_ir.cpp" \
+        "$AUDIO_DSP_TOOLS_DIR/dsp/dsp.cpp" \
+        "$AUDIO_DSP_TOOLS_DIR/dsp/ImpulseResponse.cpp" \
+        "$AUDIO_DSP_TOOLS_DIR/dsp/wav.cpp" \
+        -o "$IR_BIN" \
+        -lstdc++fs \
+        2>&1
+
+    if [ ! -f "$IR_BIN" ]; then
+        echo "  ERROR: Failed to build render_ir binary."
+        echo "  Check that the g++ compiler and Eigen headers are available."
+        exit 1
+    fi
+fi
+
+echo "  Running render_ir to generate C++ IR golden vectors..."
+"$IR_BIN"
+
+# =============================================================================
 # Cleanup
 # =============================================================================
 echo ""
@@ -248,6 +299,10 @@ for SR in 44100 48000 88200 96000 192000; do
         GF="$FIXTURES_DIR/${golden_name}_v2_${SR}k.bin"
         [ -f "$GF" ] && echo "    ${golden_name}_v2_${SR}k.bin"
     done
+done
+for cpp_file in golden_cabsim_cpp_short.bin golden_cabsim_cpp_medium.bin \
+                 golden_cabsim_cpp_long.bin golden_cabsim_cpp_stress.bin; do
+    [ -f "$FIXTURES_DIR/$cpp_file" ] && echo "    $cpp_file"
 done
 echo ""
 echo "Commit these files so that the Rust golden vector tests work."

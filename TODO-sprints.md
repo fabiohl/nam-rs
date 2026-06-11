@@ -363,7 +363,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Documentar as diferenças algorítmicas entre a implementação C++ e o UPOLS do nam-rs (ex: algoritmo base, tamanho de FFT, tratamento de cauda, normalização) em `docs/cpp_parity_map.md` (seção cabsim).
   - **Critério de aceite:** Submodule inicializado e acessível; análise documentada; diferenças catalogadas com impacto esperado na tolerância de cross-val.
 
-- **[T5.8] Build do binário C++ de referência para IR.**
+- **[T5.8] Build do binário C++ de referência para IR.** [DONE]
   - Estender `tests/fixtures/golden_gen_build.sh` ou criar um binário auxiliar (`tests/fixtures/render_ir.cpp`) que: (a) carregue um IR `.wav` via `dsp::ImpulseResponse`, (b) processe um sinal de entrada sintético determinístico (mesmas seeds dos golden tests em `tests/cabsim_golden.rs` — PCG PRNG seeds 42, 137, 31337, 999983), e (c) emita a saída como golden vector binário no formato `[u32 N][f32×N in][f32×N out]`.
   - Gerar IRs sintéticos determinísticos no C++ usando a mesma fórmula: `sin(2π·freq·t) · exp(-decay·t) + noise_level·rng_signed` (parâmetros: freq=600/350/200/150 Hz, decay=12/6/2/1.5, noise_level=0.02).
   - **Fonte de verdade:** `AudioDSPTools/dsp/ImpulseResponse.{h,cpp}`, `NeuralAmpModeler.cpp:676,685,800` (uso de `dsp::ImpulseResponse`).
