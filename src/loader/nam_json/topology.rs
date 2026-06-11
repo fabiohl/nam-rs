@@ -38,25 +38,42 @@ pub(crate) fn parse_semver(version: &str) -> Option<(u16, u16, u16)> {
 impl NamModelData {
     /// Detects whether the model uses the WaveNet A2 architecture.
     ///
-    /// A model is considered A2 if the architecture is "WaveNet" and:
-    /// 1. The declared version is >= 0.6.0.
-    /// 2. It uses activation functions other than "Tanh".
+    /// A2 detection is layered:
+    /// 1. **Primary — shape-based:** `is_a2_shape()` checks channels, dilations,
+    ///    and single-layer structure. If shape matches, the model is A2.
+    /// 2. **Secondary — activation:** any non-Tanh activation implies A2 semantics.
+    /// 3. **Tertiary — version telemetry:** a SemVer >= 0.6.0 is logged as a
+    ///    warning when the shape is not recognised, but version alone is NOT
+    ///    sufficient to classify the model as A2. This prevents a WaveNet A1
+    ///    model with a high version string from being silently misrouted.
     pub fn is_wavenet_a2(&self) -> bool {
         if self.architecture != "WaveNet" {
             return false;
         }
 
-        if let Some(ref v) = self.version
-            && let Some(ver) = parse_semver(v)
-            && ver >= (0, 6, 0)
-        {
+        // Primary: shape-based detection (channels + dilations + kernel sizes)
+        if is_a2_shape(self).is_some() {
             return true;
         }
 
+        // Secondary: activation-based detection
         for layer in &self.config.layers {
             if layer.activation.as_deref().is_some_and(|a| a != "Tanh") {
                 return true;
             }
+        }
+
+        // Tertiary: version telemetry (warning only, does NOT classify)
+        if let Some(ref v) = self.version
+            && let Some(ver) = parse_semver(v)
+            && ver >= (0, 6, 0)
+        {
+            log::warn!(
+                "WaveNet model declares version {v} (>= 0.6.0), but its shape \
+                 does not match any known A2 topology. Treating as non-A2. \
+                 Channels/dilations may indicate an unsupported A2 variant \
+                 or an A1 model with an unusually high version string."
+            );
         }
 
         false

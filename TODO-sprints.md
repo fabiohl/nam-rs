@@ -154,13 +154,16 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** fixtures sintéticas com `head`/`condition_size=2` são rejeitadas com mensagem clara;
     nenhum modelo do catálogo atual regrede; decisão documentada.
 
-- **[T7.4] Endurecer a heurística de detecção A2.**
+- **[T7.4] ~Endurecer a heurística de detecção A2.~** ✅ [DONE]
 
   - `src/loader/nam_json/topology.rs:39-63`: `is_wavenet_a2()` por `version >= 0.6.0` é frágil (um WaveNet A1 com
     version alta seria roteado para A2). Tornar `is_a2_shape()` (canais + dilations + kernels) o detector **primário**
     e o critério de versão apenas desempate/telemetria.
   - **Critério de aceite:** teste de tabela com matrizes (A1 com version 0.6+, A2 real, shapes ambíguos) garantindo
     dispatch correto; goldens A1/A2 verdes.
+  - **Feito:** `is_wavenet_a2()` agora usa `is_a2_shape()` como detector primário, ativação não-Tanh como secundário,
+    e versão >= 0.6.0 apenas como telemetria (log::warn!). Teste de tabela `test_dispatch_table_a1_high_version_not_misrouted`
+    em `tests/a2_placeholder_interface.rs` cobre A1 c/ versão alta, A2 real e shapes ambíguos. Goldens A1/A2 verdes.
 
 - **[T7.5] Validar `sample_rate` esperado do modelo vs host.**
 

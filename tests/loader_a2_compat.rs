@@ -110,7 +110,7 @@ fn test_a2_unrecognized_shape_returns_clear_error() {
     let data = make_unrecognized_a2_like_data(5);
     assert!(
         data.is_wavenet_a2(),
-        "model should be detected as A2 via SemVer"
+        "model should be detected as A2 via activation (LeakyReLU, non-Tanh)"
     );
     let result = build_model(&data);
     assert!(

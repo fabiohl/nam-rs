@@ -455,6 +455,8 @@ fn test_parse_semver() {
 
 #[test]
 fn test_is_wavenet_a2_versions() {
+    use crate::models::a2::A2_DILATIONS;
+
     let mut model = NamModelData {
         version: None,
         architecture: "WaveNet".to_string(),
@@ -474,30 +476,21 @@ fn test_is_wavenet_a2_versions() {
         weights_layout: WeightsLayout::Original,
     };
 
-    // Without version, should return false if no custom activation
+    // Without version and no activation info — not A2
     assert!(!model.is_wavenet_a2());
 
-    // Version lower than 0.6.0
-    model.version = Some("0.5.4".to_string());
-    assert!(!model.is_wavenet_a2());
-
-    // Versions >= 0.6.0
+    // Version alone is NOT sufficient (telemetry only). Empty layers + high
+    // version does NOT imply A2 — shape is the primary detector.
     model.version = Some("0.6.0".to_string());
-    assert!(model.is_wavenet_a2());
+    assert!(!model.is_wavenet_a2());
 
     model.version = Some("0.9.1".to_string());
-    assert!(model.is_wavenet_a2());
-
-    model.version = Some("0.10".to_string());
-    assert!(model.is_wavenet_a2());
-
-    model.version = Some("1.0.0-rc1".to_string());
-    assert!(model.is_wavenet_a2());
+    assert!(!model.is_wavenet_a2());
 
     model.version = Some("2.0".to_string());
-    assert!(model.is_wavenet_a2());
+    assert!(!model.is_wavenet_a2());
 
-    // Alternative: Custom activation (even with version lower than 0.6.0)
+    // Non-Tanh activation is a secondary signal even without shape match
     model.version = Some("0.5.4".to_string());
     model.config.layers = vec![NamLayerConfig {
         input_size: None,
@@ -507,6 +500,35 @@ fn test_is_wavenet_a2_versions() {
         kernel_size: None,
         dilations: None,
         activation: Some("ReLU".to_string()),
+        gated: None,
+        head_bias: None,
+    }];
+    assert!(model.is_wavenet_a2());
+
+    // Primary shape-based detection: real A2 shape (CH=3)
+    model.version = Some("0.5.4".to_string());
+    model.config.layers = vec![NamLayerConfig {
+        input_size: Some(1),
+        condition_size: Some(1),
+        head_size: None,
+        channels: Some(3),
+        kernel_size: None,
+        dilations: Some(A2_DILATIONS.to_vec()),
+        activation: Some("LeakyReLU".to_string()),
+        gated: None,
+        head_bias: None,
+    }];
+    assert!(model.is_wavenet_a2());
+
+    // Real A2 shape (CH=8) — primary detector catches it
+    model.config.layers = vec![NamLayerConfig {
+        input_size: Some(1),
+        condition_size: Some(1),
+        head_size: None,
+        channels: Some(8),
+        kernel_size: None,
+        dilations: Some(A2_DILATIONS.to_vec()),
+        activation: Some("LeakyReLU".to_string()),
         gated: None,
         head_bias: None,
     }];
