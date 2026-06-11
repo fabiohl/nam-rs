@@ -339,7 +339,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 > Documentar completamente a feature de IR cabsim em todos os documentos relevantes. Inclui decisões arquiteturais tomadas durante a auditoria do épico.
 
-- **[T5.5] Documentação arquitetural do cabsim.**
+- **[T5.5] Documentação arquitetural do cabsim.** [DONE]
   - `docs/architecture.md`: Nova seção sobre o estágio de cabsim no pipeline DSP (UPOLS, FDL, zero-alloc, latência = partition_size). Incluir diagrama Mermaid do fluxo Inference → CabSim → Output. Corrigir referência "CLAP (Staging)" → "CLAP (Release)" (L6). Atualizar o diagrama de fluxo DSP bidirecional (§5, L187-201) para incluir o estágio de cabsim entre "Output Gain" e "DspBridge".
   - `README.md`: Mencionar IR cabsim como feature disponível na seção de features/supported models.
   - `docs/benchmarks.md`: Incluir resultados dos benchmarks de cabsim (ShortIR/MediumIR/LongIR @ 64samp, 256samp, construction, long_run — ver `benches/inference_bench.rs:1249-1370`).

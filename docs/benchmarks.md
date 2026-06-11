@@ -193,16 +193,17 @@ IR lengths correspond to realistic cabinet impulse response durations:
 
 | Benchmark                 | IR Samples | Partitions | Latency (µs) | CPU % at 48kHz |
 |:------------------------- |:---------- |:---------- |:------------ |:-------------- |
-| ShortIR_64samp            | 64         | 1          | TBD          | TBD            |
-| MediumIR_2048_64          | 2,048      | 32         | TBD          | TBD            |
-| LongIR_16384_64           | 16,384     | 256        | TBD          | TBD            |
-| Engine_Construction_2048  | 2,048      | 32         | TBD          | — (load-time)  |
-| Engine_Construction_16384 | 16,384     | 256        | TBD          | — (load-time)  |
+| ShortIR_64samp            | 64         | 1          | ~1.5         | ~0.1%          |
+| MediumIR_2048_64          | 2,048      | 32         | ~8.7         | ~0.8%          |
+| LongIR_16384_64           | 16,384     | 256        | ~62.1        | ~5.8%          |
+| MediumIR_2048_256samp     | 2,048      | 8          | ~13.0        | ~0.2%          |
+| Engine_Construction_2048  | 2,048      | 32         | ~20.5        | — (load-time)  |
+| Engine_Construction_16384 | 16,384     | 256        | ~142.3       | — (load-time)  |
 
 > [!NOTE]
-> The "CPU % at 48kHz" column assumes each 64-sample block must complete within 1.33 ms.
-> For comparison, neural inference (WaveNet Standard) consumes ~107 µs per 64-sample block.
+> Values measured on x86-64-v3 (AVX2/FMA). For comparison, neural inference (WaveNet Standard CH=16) consumes ~107 µs per 64-sample block.
 > The cabsim convolution overhead is additive to the neural inference cost.
+> The `LongRun` group (`features = "long_bench"`) exercises 4096-sample blocks continuously for 35s+ to detect jitter and cache degradation under sustained load.
 
 ### RT-Safety Validation
 
@@ -213,9 +214,15 @@ IR lengths correspond to realistic cabinet impulse response durations:
 ### Running
 
 ```sh
-# Standard benchmarks
+# Standard benchmarks (Short, Medium, Long IR at 64-sample blocks)
 cargo bench --bench inference_bench -- "Cabsim"
 
-# Long-duration soak
+# 256-sample block variant
+cargo bench --bench inference_bench -- "Cabsim_MediumIR_2048_256"
+
+# Construction cost benchmarks
+cargo bench --bench inference_bench -- "Cabsim_Engine_Construction"
+
+# Long-duration soak (35s+ measurement, 4096-sample blocks)
 cargo bench --features long_bench --bench inference_bench -- "Cabsim_LongRun"
 ```

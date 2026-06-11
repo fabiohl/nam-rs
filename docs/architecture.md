@@ -3,7 +3,7 @@
 
 # NAM-rs Architecture: Standalone Neural Inference Client
 
-The architecture of NAM-rs is designed for low-latency DSP processing and neural inference focused on audio equipment simulation (Neural Amp Modeler). Operating as a standalone PipeWire client (Stable) or as a CLAP plugin (Staging) on Linux, it utilizes idiomatic Rust with a focus on RT (Real-Time) safety.
+The architecture of NAM-rs is designed for low-latency DSP processing and neural inference focused on audio equipment simulation (Neural Amp Modeler). Operating as a standalone PipeWire client (Stable) or as a CLAP plugin (Release) on Linux, it utilizes idiomatic Rust with a focus on RT (Real-Time) safety.
 
 ## 1. PipeWire Topology (Standalone Mode): Dual-Stream (Capture + Playback)
 
@@ -198,6 +198,8 @@ PipeWire Input (Nk Hz)
     │
     ▼ Output Gain (SIMD) + Clipping
     │
+    ▼ IR Cabsim (UPOLS Convolution, Optional / Zero-Cost Bypass)
+    │
     ▼ DspBridge (Lock-Free Write) → Playback Stream (Read) → Hardware
 ```
 
@@ -213,6 +215,61 @@ To guarantee xrun-free operation in real-time audio threads under high CPU utili
 - **Linear Crossfade:** Integrates a 32 ms linear parameter crossfade between active layers to guarantee smooth, click-free structural transitions.
 - **Deterministic Offline Bounce:** During offline rendering/export (`RenderMode::Offline` in CLAP), the host DAW does not operate under real-time constraints. To guarantee deterministic, maximum-quality output, the render mode transition forces `AdaptiveCompute` to `Off` (which resets the FSM state to `Full`), clears all active degradation status flags (`RT_STATUS_DEGRADE_REDUCED`, `RT_STATUS_DEGRADE_MINIMAL`), and ignores all block deadline measurements.
 - **Planned — A2 slimmable degradation:** for A2 models delivered as a `SlimmableContainer`, this same FSM will drive the runtime **A2-Full → A2-Lite** switch (selecting the lighter submodel under CPU pressure) instead of layer-skipping, reusing the crossfade machinery. See §7 and [TODO-sprints.md](/TODO-sprints.md) (Epic 3).
+
+## 5.2 IR Cabsim — Impulse Response Convolution
+
+The cabsim stage performs real-time convolution of the neural model output with a speaker cabinet impulse response (IR), simulating the physical cabinet/speaker coloration that follows amplifier modeling.
+
+### Algorithm: Uniform-Partitioned Overlap-Save (UPOLS)
+
+The convolution engine (`src/dsp/cabsim/conv.rs`) implements UPOLS in the frequency domain, following Gardner's efficient convolution design:
+
+- **Partition size** equals the audio block size (typically 64–256 samples). The engine is reconstructed on buffer-size changes (`activate()` in CLAP, buffer swap in standalone).
+- **FFT size** is `2 × partition_size` (rounded up to next power of two).
+- **Kernel pre-FFT:** All IR partitions are transformed to the frequency domain once at construction time (outside the audio thread), so the hot-path only performs forward FFT of the input block and IFFT of the accumulated spectrum.
+- **FDL (Frequency Delay Line):** A pre-allocated circular buffer of complex spectra stores the history of input FFTs. Each block shifts the FDL and computes `Σ(H_k × X_{i-k})` across all partitions before inverse FFT.
+- **Latency** is exactly `partition_size` samples (one full audio block).
+
+### Zero-Allocation Hot-Path
+
+The `ConvEngine::process()` method performs zero heap allocations — all working buffers (input overlap, FFT scratch, FDL, accumulation buffer) are allocated once at construction. The bypass path (no IR loaded) is a single branch check with no measurable overhead.
+
+### Pipeline Integration
+
+The cabsim runs as an optional post-inference stage (Stage 3) in the DSP pipeline, positioned between inference and output processing:
+
+```mermaid
+graph TD
+    Input[/"Input (f32)"/] --> Gate["Gate FSM + Input Gain"]
+    Gate --> ResampUp["Resampler (Up: SR → 48kHz)"]
+    ResampUp --> Infer["Neural Inference (NamModel::process)"]
+    Infer --> ResampDown["Resampler (Down: 48kHz → SR)"]
+    ResampDown --> OutGain["Output Gain + Clipping"]
+    OutGain --> Ck{"Cabsim IR loaded?"}
+    Ck -->|"Yes"| CabSim["UPOLS Convolution\n(ConvEngine::process)"]
+    Ck -->|"No (bypass)"| Bridge["DspBridge Write"]
+    CabSim --> Bridge
+    Bridge --> Playback[/"Playback Stream → Hardware"/]
+
+    classDef bypass fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray:5 5;
+    class Ck bypass;
+```
+
+### IR Loading and Transfer
+
+IR `.wav` files (mono, PCM16/24/float32) are loaded and resampled to the active sample rate via `CabSimIr::load()` (`src/dsp/cabsim/loader.rs`). The prepared IR and pre-built `ConvEngine` are transferred to the audio thread via lock-free SPSC — the same pattern used for model loading (GC cascade for old engine disposal).
+
+### CLAP Integration
+
+The CLAP plugin exposes IR loading via:
+- **GUI file browser** (Zone 1, filtered to `.wav`)
+- **State save/load** (`ir_path` serialized in the preset blob)
+- **SPSC `ClapParamPayload::LoadCabIr`** for RT-safe engine swap
+- **`activate()` reconstruction** on `max_frames_count` changes, storing raw IR samples for fast rebuild without re-reading the file
+
+In standalone mode, the `--cab <path>` CLI flag triggers IR loading; the `cabsim_producer` SPSC channel handles runtime buffer-size changes.
+
+For full architectural decisions on validation and cross-reference, see [TODO-sprints.md](/TODO-sprints.md) (Épico 4).
 
 ## 6. Testing Strategy & Quality
 
