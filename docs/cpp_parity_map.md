@@ -279,7 +279,34 @@ divergences, and the sprint/task that established each equivalence.
 
 ---
 
-## 11. Related Sprints & Tasks
+## 13. IR Cabsim — New NAM-rs Feature (No C++ Equivalent)
+
+> **Status:** The IR Cabsim convolution stage (`src/dsp/cabsim/`) is a **feature native to NAM-rs** with no equivalent in the canonical C++ reference (`NeuralAmpModelerCore`). There is no `ImpulseResponse` or convolution-processing class in the `NAM/` or `NeuralAmpModelerCore/` source tree.
+
+The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` library (MIT-licensed utility used by `NeuralAmpModelerPlugin`):
+
+| C++ reference                                          | Rust (`src/`)                          | Parity status            |
+| ------------------------------------------------------ | -------------------------------------- | ------------------------ |
+| `AudioDSPTools/dsp/ImpulseResponse.h` (overlap-add?)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Not cross-validated** |
+| `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**         |
+
+### Architectural Note
+
+The `AudioDSPTools` submodule is present in `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/` as an **uninitialized (empty) directory** in the current fixture. Initialization and cross-validation are planned in Sprint 5.3 (see [TODO-sprints.md](/TODO-sprints.md) §§5.3, T5.7–T5.9).
+
+### Decision: C++ Cross-Validation Not Performed (Justified)
+
+> **Decision:** The IR Cabsim UPOLS engine has **not been cross-validated** against the C++ `dsp::ImpulseResponse` implementation from AudioDSPTools.
+>
+> **Justification:**
+>
+> 1. **Feature is new/orthogonal to NAM:** `NeuralAmpModelerCore` (the canonical C++ reference for model inference) does not include an impulse response convolution stage. Cabsim is a NAM-rs extension, not a port of an existing C++ component.
+> 2. **Submodule not initialized:** The `AudioDSPTools` submodule in `tests/fixtures/NeuralAmpModelerPlugin/` is currently an empty directory. Initialization and analysis are deferred to Sprint 5.3, which will build the C++ reference binary and implement cross-validation tests.
+> 3. **Mathematically-rigorous alternative:** Validation is anchored against **direct convolution** (naive O(N²) reference computed inline in `tests/cabsim_golden.rs`). This is a self-contained, mathematically exact oracle — it computes the convolution definition directly without algorithmic approximations. The UPOLS engine achieves **ESR < 1e-5** against this reference in all four scenarios: short (64), medium (512), long (8192), and stress (32768 samples).
+> 4. **Future cross-validation planned:** Sprint 5.3 will initialize `AudioDSPTools`, build a C++ reference binary (`tests/fixtures/render_ir.cpp`) using the same PCG PRNG seeds, and implement `#[ignore]` cross-validation tests in `tests/cabsim_cpp_parity.rs`. Differences between UPOLS and `dsp::ImpulseResponse` (expected due to algorithmic variations — overlap-save vs overlap-add, partition boundary handling, normalization) will be documented alongside calibrated tolerance thresholds.
+
+---
+## 14. Related Sprints & Tasks
 
 | Sprint        | Topic                                                | Key C++ reference                               |
 | ------------- | ---------------------------------------------------- | ----------------------------------------------- |
@@ -292,9 +319,9 @@ divergences, and the sprint/task that established each equivalence.
 | S28 (T01)     | Cross-validation v2 (pending)                        | `t3k-mushra` metrics, A2 baselines              |
 
 ---
-
-## 12. Version History
+## 15. Version History
 
 | Date       | Change                                                                                                                                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                               |
 | 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences. |

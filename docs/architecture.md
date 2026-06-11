@@ -314,6 +314,29 @@ Two validation layers capture **different classes of bug** and are deliberately 
 - **Criterion Benches:** `benches/inference_bench.rs` measures inference latency per model and SIMD architecture.
 - **Long Run Benchmarks:** `Long_Run_*` group in `benches/inference_bench.rs` activated via `long_bench` feature, with 4096-sample blocks and `measurement_time(30s)` to measure real throughput in continuous operation. Activated via `bash utils/tests-long.sh`.
 
+### IR Cabsim Testing Strategy
+
+The IR Cabsim convolution stage (`src/dsp/cabsim/`) follows the **component-level testing** approach of the project's validation pyramid. Each aspect is validated independently, avoiding circular redundancies:
+
+| Layer                           | Location                    | Count | What it validates                                        |
+|:------------------------------- |:--------------------------- |:-----:|:------------------------------------------------------- |
+| **Convolution unit tests**      | `src/dsp/cabsim/conv_test.rs` | 11  | UPOLS engine: partition logic, FDL, tail handling, DC, noise |
+| **Golden parity**               | `tests/cabsim_golden.rs`     | 6    | UPOLS vs. direct convolution O(N²) reference — ESR < 1e-5 in short/medium/long/stress scenarios |
+| **Heap-audit**                  | `tests/cabsim_heap_audit.rs` | 4    | Zero heap allocation on the hot-path (RT-Safety)         |
+| **Bitwise determinism**         | `tests/cabsim_golden.rs`     | 1    | Same inputs → bit-identical outputs across two engines   |
+| **Passthrough**                 | `tests/cabsim_golden.rs`     | 1    | Empty IR → unity gain (output ≈ input)                   |
+
+#### Decision: End-to-End Pipeline Test with Cabsim Considered Unnecessary
+
+> **Decision:** No dedicated end-to-end integration test is implemented for the cabsim stage interacting with the full DSP pipeline (input → inference → cabsim → output).
+>
+> **Justification:**
+>
+> 1. **Each component is individually validated:** The cabsim stage has 11 unit tests covering its internal convolution logic, 6 golden parity tests anchoring UPOLS against the mathematically-rigorous direct convolution reference, and 4 heap-audit tests ensuring RT-safety. These layers collectively cover correctness, numerical precision, and the zero-allocation contract.
+> 2. **Pipeline integration is structurally decoupled:** The cabsim stage (`capture.rs:60-72`) is a stateless pass-through block — it receives pre-allocated input/output buffers, applies convolution, and returns. It does not share mutable state with the inference, gate, or output stages, nor does it introduce cross-stage coupling that warrants integration-level testing.
+> 3. **Integration verified by code review:** The stage's insertion point in `capture.rs` and its interaction with buffer sizing (`partition_size` vs. host `max_frames_count`) have been verified during architectural review and are documented in the pipeline flow diagram (§5.2).
+> 4. **Golden parity tests exercise realistic data paths:** The golden tests use synthetic IRs and mixed-sine signals at realistic lengths (up to 65536 samples), covering the same data paths the pipeline would exercise.
+
 ## 7. A2 Architecture: Current State & Roadmap
 
 A2 is NAM's officially-released next-generation architecture (NeuralAmpModelerCore v0.5.2+). NAM-rs currently ships the **scaffolding and detection contract**; full A2 inference is the active porting effort planned in [TODO-sprints.md](/TODO-sprints.md).

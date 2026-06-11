@@ -196,3 +196,59 @@ Tests in `tests/nam_infer_test.rs` load the `.golden.bin` files and compare agai
 > - WaveNet Standard (20 layers): SNR ~10 dB
 >
 > If there were a structural error, SNR would not degrade linearly with depth.
+
+## Cabsim Golden Fixtures (Synthetic IRs)
+
+The IR Cabsim convolution engine (`src/dsp/cabsim/conv.rs`) is validated against **direct convolution** (naive O(N²) reference), which serves as the mathematically-rigorous golden baseline. No C++ golden files are required — the reference is computed inline from the same synthetic IR and input signal processed by the UPOLS engine.
+
+### Test Scenarios
+
+| Test                          | Seed     | IR len    | Signal len | Block | ESR threshold | Status   |
+| ----------------------------- | -------- | --------- | ---------- | ----- |:----------:| -------- |
+| `test_cabsim_golden_short`    | 42       | 64        | 256        | 64    | < 1e-5      | Active   |
+| `test_cabsim_golden_medium`   | 137      | 512       | 1024       | 64    | < 1e-5      | Active   |
+| `test_cabsim_golden_long`     | 31337    | 8192      | 16384      | 64    | < 1e-5      | `#[ignore]` |
+| `test_cabsim_golden_stress`   | 999983   | 32768     | 65536      | 256   | < 1e-5      | `#[ignore]` |
+| `test_cabsim_bitwise_determinism` | 777 | 128       | 512        | 64    | < 1e-10     | Active   |
+| `test_cabsim_passthrough_golden`  | 42  | empty     | 256        | 64    | < 1e-10     | Active   |
+
+### IR Generation
+
+All IRs are synthesized deterministically using a **PCG PRNG** (`SimplePcg`) with fixed seeds. The generation formula is:
+
+```text
+IR[n] = sin(2π · freq · t) · exp(−decay · t) + 0.02 · rng.next_f32_signed()
+```
+
+| Scenario | Seed         | freq (Hz) | decay | IR length |
+| -------- | ------------ | --------- | ----- | --------- |
+| Short    | 42           | 600       | 12.0  | 64        |
+| Medium   | 137          | 350       | 6.0   | 512       |
+| Long     | 31337        | 200       | 2.0   | 8192      |
+| Stress   | 999983       | 150       | 1.5   | 32768     |
+| Bitwise  | 777          | 440       | 8.0   | 128       |
+| Passthrough | 42        | —         | —     | 0 (empty IR) |
+
+### Input Signal
+
+The test signal is a deterministic mixed-sine + noise signal at 48 kHz:
+
+```text
+s[n] = 0.7·sin(2π·220·t) + 0.35·sin(2π·554.37·t) + 0.18·sin(2π·880·t) + 0.05·rng.next_f32_signed()
+```
+
+### Validation Approach
+
+Each test:
+1. Creates a `ConvEngine` with the synthetic IR and configured block size.
+2. Processes the input signal through the UPOLS (Uniform Partitioned Overlap-Save) engine.
+3. Computes the direct convolution reference (O(N²)) from the same IR and input.
+4. Compares UPOLS output against the reference using **ESR < 1e-5** (Error-to-Signal Ratio) and a per-scenario **max sample diff** threshold.
+
+The direct convolution reference eliminates the need for external golden vectors — it is a mathematically-rigorous, self-contained oracle.
+
+### Test File
+
+Source: `tests/cabsim_golden.rs` — 6 golden parity tests covering short, medium, long, stress, bitwise determinism, and empty-IR passthrough scenarios.
+
+> **Note:** Sprint 5.3 will add C++ cross-validation golden files (`golden_cabsim_cpp_*.bin`) generated from `AudioDSPTools/dsp/ImpulseResponse.h` (NeuralAmpModelerPlugin submodule), enabling external cross-reference against the C++ `dsp::ImpulseResponse` implementation.

@@ -345,7 +345,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - `docs/benchmarks.md`: Incluir resultados dos benchmarks de cabsim (ShortIR/MediumIR/LongIR @ 64samp, 256samp, construction, long_run — ver `benches/inference_bench.rs:1249-1370`).
   - **Critério de aceite:** Documentação coerente, sem menções órfãs; leitores entendem como o cabsim funciona e sua posição no pipeline.
 
-- **[T5.6] Documentação de fixtures e decisões de validação.**
+- **[T5.6] Documentação de fixtures e decisões de validação.** [DONE]
   - `tests/fixtures/README.md`: Documentar os golden de cabsim — IR sintético determinístico via PCG PRNG com seed fixa, direct convolution O(N²) como referência, ESR < 1e-5 em cenários short (64), medium (512), long (8192) e stress (32768 amostras).
   - `docs/cpp_parity_map.md`: Registrar que o cabsim é feature **nova do nam-rs** (sem equivalente no NeuralAmpModelerCore); a referência mais próxima é `AudioDSPTools/dsp/ImpulseResponse.h` no NeuralAmpModelerPlugin (submodule `AudioDSPTools` não inicializado no fixture — ver Sprint 4.5).
   - **Decisões a documentar em `docs/`:**
