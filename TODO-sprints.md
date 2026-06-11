@@ -272,7 +272,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ---
 
-## ÉPICO 4 — IR Cabsim (.wav convolution) 🔊
+## ÉPICO 4 — IR Cabsim (.wav convolution) 🔊 [DONE]
 
 > Objetivo: feature útil e **ortogonal à A2** — carregar um `.wav` de impulse response e convoluir (estágio pós-NAM). Convolução particionada FFT, RT-safe, reusando `rustfft` (já no `Cargo.toml`).
 > Nota do PO: Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
@@ -299,7 +299,83 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 - **[T4.4] Testes + bench IR.** [DONE]
   - Golden de convolução (IR sintético determinístico), heap-audit e bench Criterion. `#[ignore]` para os pesados.
   - **Critério de aceite:** golden verde; zero alloc; bench documentado.
-test(ir): add golden, heap-audit, and criterion benchmarks for IR cabsim convolution (T4.4)
+  - **Nota de auditoria (Sprint 4.2):** Implementação completa. 11 unit tests (paridade ESR < 1e-5 em short/medium/long IR, edge cases), 8 golden tests (6 rápidos + 2 `#[ignore]`), 4 heap-audit tests (zero alloc verificado), 8 benchmarks Criterion (ShortIR/MediumIR/LongIR/256samp/construction/construction_long/long_run). Suíte 100% verde.
+
+---
+
+## ÉPICO 5 — IR Cabsim (.wav convolution) II 🔊
+
+### Sprint 5.1 — Integração CLAP Cabsim + Robustez de Partição
+
+> O CLAP plugin é **release**. A infraestrutura de pipeline (Stage 3 em `capture.rs`, `DspPipelineContext.conv`) e o standalone (`--cab`) já estão funcionais; falta o wiring CLAP completo: parâmetro SPSC, GUI, state save/load, e adaptação de partição para buffer sizes variáveis do host.
+
+- **[T5.1] `ClapParamPayload::LoadCabIr` + SPSC wiring CLAP.**
+  - Adicionar variante `LoadCabIr { engine: Option<Box<ConvEngine>> }` ao enum `ClapParamPayload` (`src/clap/plugin/shared.rs:17`). No `process_events` (`src/clap/processor/events.rs:31-42`), drenar o payload e fazer swap de `self.conv_engine` com GC cascade para o engine antigo (mesmo padrão de `cold_load_model` em `events.rs:139-157`).
+  - Adicionar campo `ir_path: Option<String>` ao `ColdShared` (`src/clap/plugin/shared.rs:106`) para rastreamento do caminho ativo.
+  - No main thread, implementar `cold_load_cabsim()`: carregar WAV via `CabSimIr::load()`, construir `ConvEngine::new()`, enviar via SPSC `param_tx.push(ClapParamPayload::LoadCabIr { .. })`.
+  - **Fonte de verdade:** Padrão existente de `ClapParamPayload::LoadModel` e `cold_load_model()` em `events.rs`.
+  - **Critério de aceite:** `conv_engine` recebe um `ConvEngine` válido via SPSC no RT thread; swap é RT-safe (zero alloc); engine antigo vai pro GC via `push_to_gc(GcItem::CabConvEngine(old))`.
+
+- **[T5.2] State save/load do caminho IR no CLAP.**
+  - Serializar `ir_path` no state blob (`src/clap/extensions/state.rs`). No `load`, reconstruir o `ConvEngine` (cold-path) e enviar via SPSC — mesmo padrão do model path (usar `cold.ui_pending_model` como referência de padrão, criar `cold.ui_pending_ir`).
+  - **Fonte de verdade:** `src/clap/extensions/state.rs` (padrão de save/load existente), `src/clap/plugin/shared.rs:139` (`ui_pending_model`).
+  - **Critério de aceite:** Salvar preset com IR, fechar/reabrir o plugin → IR recarregado automaticamente; preset sem IR → `conv_engine = None` (bypass); compatibilidade retroativa com presets sem campo IR.
+
+- **[T5.3] GUI — File browser para IR no CLAP.**
+  - Adicionar controle de file browser para `.wav` na GUI egui (`src/clap/gui/ui/`), análogo ao model file browser existente em `zones/identity.rs`. Elementos: botão "Load IR" + display do nome do arquivo carregado + botão "Clear IR" (envia `None` via SPSC para bypass).
+  - Ao selecionar, disparar carga assíncrona no main thread (mesma estratégia de `ui_pending_model`/`ui_loading`/`ui_load_error`): gravar em `cold.ui_pending_ir`, sinalizar `ui_ir_loading`, processar em `on_main_thread()`, enviar `ConvEngine` via SPSC → RT.
+  - **Fonte de verdade:** `src/clap/gui/ui/zones/identity.rs` (model file browser), `src/clap/plugin/shared.rs:139-145` (pending/loading/error pattern).
+  - **Critério de aceite:** File browser funcional com filtro `.wav`; IR carregado aparece na GUI; "Clear" remove o IR (bypass); loading indicator; erro exibido em toast; sem cliques na transição (swap via SPSC + GC cascade).
+
+- **[T5.4] Partição adaptativa (buffer_size variável).**
+  - Atualmente `ConvEngine` é construído com `partition_size = buffer_size` e o stage em `capture.rs:60-62` faz bypass silencioso se `n_pw != partition_size`. Corrigir para:
+    (a) No CLAP: reconstruir `ConvEngine` em `activate()` (`src/clap/processor/mod.rs`) quando o host informa `max_frames_count`, usando `partition_size = max_frames_count`. Armazenar o IR raw (samples `Vec<f32>`) no `ColdShared` para possibilitar reconstrução sem re-load do WAV.
+    (b) No standalone: reconstruir quando o buffer PipeWire muda (via SPSC swap `cabsim_producer` já existente em `src/main.rs:99,124`).
+    (c) Documentar que a latência do cabsim = `partition_size` samples e somar à latência reportada pelo plugin (`current_latency` em `events.rs:96`).
+  - **Fonte de verdade:** `src/dsp/pipeline/capture.rs:60-72` (guard atual), `src/clap/processor/mod.rs` (`activate`, `max_frames_count`).
+  - **Critério de aceite:** Cabsim funciona com qualquer buffer size reportado pelo host; sem bypass silencioso inesperado; latência do cabsim somada à latência total reportada ao host; testes com buffer sizes {32, 64, 128, 256, 512}.
+
+### Sprint 5.2 — Documentação Cabsim 📚
+
+> Documentar completamente a feature de IR cabsim em todos os documentos relevantes. Inclui decisões arquiteturais tomadas durante a auditoria do épico.
+
+- **[T5.5] Documentação arquitetural do cabsim.**
+  - `docs/architecture.md`: Nova seção sobre o estágio de cabsim no pipeline DSP (UPOLS, FDL, zero-alloc, latência = partition_size). Incluir diagrama Mermaid do fluxo Inference → CabSim → Output. Corrigir referência "CLAP (Staging)" → "CLAP (Release)" (L6). Atualizar o diagrama de fluxo DSP bidirecional (§5, L187-201) para incluir o estágio de cabsim entre "Output Gain" e "DspBridge".
+  - `README.md`: Mencionar IR cabsim como feature disponível na seção de features/supported models.
+  - `docs/benchmarks.md`: Incluir resultados dos benchmarks de cabsim (ShortIR/MediumIR/LongIR @ 64samp, 256samp, construction, long_run — ver `benches/inference_bench.rs:1249-1370`).
+  - **Critério de aceite:** Documentação coerente, sem menções órfãs; leitores entendem como o cabsim funciona e sua posição no pipeline.
+
+- **[T5.6] Documentação de fixtures e decisões de validação.**
+  - `tests/fixtures/README.md`: Documentar os golden de cabsim — IR sintético determinístico via PCG PRNG com seed fixa, direct convolution O(N²) como referência, ESR < 1e-5 em cenários short (64), medium (512), long (8192) e stress (32768 amostras).
+  - `docs/cpp_parity_map.md`: Registrar que o cabsim é feature **nova do nam-rs** (sem equivalente no NeuralAmpModelerCore); a referência mais próxima é `AudioDSPTools/dsp/ImpulseResponse.h` no NeuralAmpModelerPlugin (submodule `AudioDSPTools` não inicializado no fixture — ver Sprint 4.5).
+  - **Decisões a documentar em `docs/`:**
+    - **Cross-validação C++ não realizada (justificada):** (a) feature nova/ortogonal ao NAM, não existe no NeuralAmpModelerCore; (b) submodule `AudioDSPTools` não inicializado no fixture; (c) validação via direct convolution (referência ingênua O(N²)) é matematicamente rigorosa — ESR < 1e-5 confirmado em cenários short, medium, long e stress. Sprint 4.5 planeja cross-validação futura.
+    - **Teste de pipeline end-to-end com cabsim considerado desnecessário:** Cada componente é testado individualmente — convolution unit tests (11), golden parity (8), heap-audit (4). O stage está integrado em `capture.rs` e verificado por code review; a interação com os demais stages (input, inference, output) não introduz acoplamento que justifique um teste adicional.
+  - **Critério de aceite:** Todas as decisões documentadas com justificativa; rastreabilidade completa em docs/.
+
+### Sprint 5.3 — Cross-Validação AudioDSPTools `ImpulseResponse` 🔬
+
+> Inicializar o submodule `AudioDSPTools` do `NeuralAmpModelerPlugin` e implementar cross-validação da engine UPOLS do nam-rs contra a implementação de referência `dsp::ImpulseResponse` do C++. O NeuralAmpModelerPlugin (`tests/fixtures/NeuralAmpModelerPlugin/NeuralAmpModeler/NeuralAmpModeler.h:3`) usa `#include "../AudioDSPTools/dsp/ImpulseResponse.h"` para convolução de IRs.
+
+- **[T5.7] Inicializar e analisar `AudioDSPTools` submodule.**
+  - Inicializar o git submodule `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools` (atualmente diretório vazio).
+  - Analisar `AudioDSPTools/dsp/ImpulseResponse.h` e `ImpulseResponse.cpp`: identificar o algoritmo de convolução usado (provavelmente overlap-add ou overlap-save particionado), o tratamento de partição, formato de entrada (WAV loader embutido ou externo), e a normalização aplicada.
+  - Documentar as diferenças algorítmicas entre a implementação C++ e o UPOLS do nam-rs (ex: algoritmo base, tamanho de FFT, tratamento de cauda, normalização) em `docs/cpp_parity_map.md` (seção cabsim).
+  - **Critério de aceite:** Submodule inicializado e acessível; análise documentada; diferenças catalogadas com impacto esperado na tolerância de cross-val.
+
+- **[T5.8] Build do binário C++ de referência para IR.**
+  - Estender `tests/fixtures/golden_gen_build.sh` ou criar um binário auxiliar (`tests/fixtures/render_ir.cpp`) que: (a) carregue um IR `.wav` via `dsp::ImpulseResponse`, (b) processe um sinal de entrada sintético determinístico (mesmas seeds dos golden tests em `tests/cabsim_golden.rs` — PCG PRNG seeds 42, 137, 31337, 999983), e (c) emita a saída como golden vector binário no formato `[u32 N][f32×N in][f32×N out]`.
+  - Gerar IRs sintéticos determinísticos no C++ usando a mesma fórmula: `sin(2π·freq·t) · exp(-decay·t) + noise_level·rng_signed` (parâmetros: freq=600/350/200/150 Hz, decay=12/6/2/1.5, noise_level=0.02).
+  - **Fonte de verdade:** `AudioDSPTools/dsp/ImpulseResponse.{h,cpp}`, `NeuralAmpModeler.cpp:676,685,800` (uso de `dsp::ImpulseResponse`).
+  - **Critério de aceite:** Binário C++ compila, gera saída determinística para IR + sinal de entrada dados; saída salva em `tests/fixtures/golden_cabsim_cpp_*.bin`; formato compatível com os golden tests do nam-rs.
+
+- **[T5.9] Testes de cross-validação UPOLS vs C++ `ImpulseResponse`.**
+  - Implementar testes `#[ignore]` em `tests/cabsim_cpp_parity.rs` que: (a) carregam os golden vectors gerados pelo C++ (T4.12), (b) processam o mesmo sinal com o UPOLS do nam-rs, e (c) comparam com thresholds adaptativos.
+  - Definir thresholds de ESR/SNR para a cross-validação (tolerância potencialmente maior que os golden internos, pois os algoritmos podem diferir — overlap-add vs overlap-save introduz diferenças de arredondamento na borda das partições).
+  - Adicionar os testes à suíte de `utils/tests-long.sh`.
+  - **Critério de aceite:** Cross-validação verde dentro dos thresholds definidos; diferenças documentadas; testes integrados em `utils/tests-long.sh`.
+
+- **[T5.10] Teste Humanos:** Atualizar o `docs/functional-tests.md`.
 
 ---
 ---
@@ -307,14 +383,16 @@ test(ir): add golden, heap-audit, and criterion benchmarks for IR cabsim convolu
 ## ÉPICO 99 — Documentação e Fechamento 📚
 
 - **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`):
-  - `docs/architecture.md`:  motor A2, container, cabsim.
-  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados, IR cabsim disponível (Todos como "Beta").
+  - `docs/architecture.md`: motor A2, container.
+  - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados.
   - `docs/cpp_parity_map.md`: novo mapeamento A2 → C++.
-  - `tests/fixtures/README.md`: com os novos golden (A2 e IR) e instruções de regeneração.
+  - `tests/fixtures/README.md`: com os novos golden A2 e instruções de regeneração.
+  - `docs/functional-tests.md`: Assegurar que estão a par de tudo o que foi implementado até aqui.
   - Skill `refatora-doc.md`
+  - **Nota:** Documentação do cabsim (IR convolution) já coberta no Sprint 5.2 (T5.5/T5.6).
 
 - **[T99.2] Rodadas de correção**
-  - `revisor-auditor` Muito focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação impecavelmente correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si esteja em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar prontos para cumprir o seu papel de "seguro" contra erro/degradação. Então seja muito rigoroso em assegurar sua qualidade.
+  - `revisor-auditor` Extremamente focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação impecavelmente correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si continue em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar prontos para cumprir o seu papel de "seguro" contra erro/degradação. Então seja muito rigoroso em assegurar sua qualidade.
   - `refatora-rust.md`
   - `refatora-doc.md`
 
