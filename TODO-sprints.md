@@ -277,14 +277,14 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 > Objetivo: feature útil e **ortogonal à A2** — carregar um `.wav` de impulse response e convoluir (estágio pós-NAM). Convolução particionada FFT, RT-safe, reusando `rustfft` (já no `Cargo.toml`).
 > Nota do PO: Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
 
-### Sprint 4.1 — Loader de IR
+### Sprint 4.1 — Loader de IR [DONE]
 
 - **[T4.1] Loader de `.wav` IR.** ✅ [DONE]
   - Loader robusto em `src/dsp/cabsim/loader.rs` para WAV mono (PCM16/24/float32), com resample para a SR ativa (reusar `src/dsp/resampler.rs`) e normalização opcional. Carga/preparo **fora** da audio thread; transferência via SPSC (estilo *resampler swap* em `src/common/spsc/`).
   - **Critério de aceite:** carrega os WAVs de exemplo em `tests/` (ex.: `amostra-guitarra-*_FAT_CAB.wav`); erros tratados sem panic.
   - **Notas p/ T4.2:** `CaptureState.active_cabsim: Option<Box<CabSimIr>>` já populado via SPSC swap. `CabSimIr.samples` contém IR mono resampled (f32). Canal SPSC `cabsim_producer` disponível em `run.rs` (atualmente `_` prefix, sem CLI command). `GcItem::CabSimIr` já registrado no GC cascade.
 
-### Sprint 4.2 — Convolução particionada
+### Sprint 4.2 — Convolução particionada [DONE]
 
 - **[T4.2] Uniform-Partitioned Overlap-Save (FFT).** [DONE]
   - Implementar convolução particionada em `src/dsp/cabsim/conv.rs` (partições de tamanho = buffer, overlap-save), pré-FFT do kernel na carga; FDL (*frequency delay line*) pré-alocada; **zero alloc** no hot-path.
@@ -391,53 +391,27 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - Skill `refatora-doc.md`
   - **Nota:** Documentação do cabsim (IR convolution) já coberta no Sprint 5.2 (T5.5/T5.6).
 
-- **[T99.2] Rodadas de correção**
+- **[T99.2] Rodadas de correção** (versão 2.1)
   - `revisor-auditor` Extremamente focado em comparar meticulosamente C++/Rust e assegurar 100% feature parity (apenas as oficiais) e implementação impecavelmente correta. Cobertura de testes (inclusive golden vectors) tem que estar em estágio "produção" - ainda que a implementação NAM-rs em si continue em burilamento. Daqui em diante, idealmente, nem se mexe mais em testes e benchs. Eles já devem estar prontos para cumprir o seu papel de "seguro" contra erro/degradação. Então seja muito rigoroso em assegurar sua qualidade.
   - `refatora-rust.md`
   - `refatora-doc.md`
 
-- **[T99.3] Rodadas de burilamento**
+- **[T99.3] Rodadas de burilamento** (versão 2.2)
   - `pesquisador-inovador.md`
   - `refatora-rust.md`
   - `refatora-doc.md`
+  - Leitura e revisão geral de todo o git do NAM-rs.
+  - Divulgar geral na comunidade.
 
 ---
-
-## ÉPICO 100 (FUTURO) — `SlimmableWavenet` (channel slicing de rede única) 🔮
-
-> **Adiado por sequenciamento, não descartado.**
-> É arquitetura **oficial** do NAMCore (registrada, file version 0.7.0) e direção declarada da NAM ("uma captura que se escala sozinha, sem versão *lite* separada").
-> Será priorizado quando modelos `.nam` com o campo `"slimmable"` (rede única) tornarem-se comuns na distribuição mainstream — hoje o A2 mainstream usa o `SlimmableContainer`.
-
-- **[T100.1] Parser `slimmable` por *layer-array*.**
-  - Ler o campo `"slimmable": {"method": "slice_channels_uniform", "kwargs": {"allowed_channels": [...]}}`.
-  - **Fonte de verdade:** `NAM/wavenet/slimmable.cpp` (`SlimmableWavenetConfig`),
-    `example_models/slimmable_wavenet.nam`.
-
-- **[T100.2] Extração de subconjunto de pesos por contagem de canais.**
-  - Portar `extract_conv1d`/`extract_conv1x1`/`compute_slim_bottleneck` (mapeamento ratio→canais, fatiamento das primeiras `slim_out×slim_in` linhas/colunas).
-  - **Fonte de verdade:** `NAM/wavenet/slimmable.cpp:21-90` (helpers de extração).
-
-- **[T100.3] *Staging* RT-safe de troca de modelo.**
-  - Reconstrução do WaveNet no *off-thread* e publicação via slot atômico (`Acquire`/`Release`), instalado antes do DSP — análogo ao `std::atomic<shared_ptr>` do C++, usando o padrão SPSC/GC do nam-rs (sem alloc/drop na audio thread).
-  - **Fonte de verdade:** `NAM/wavenet/slimmable.h:64-92` (staging atômico).
-
-- **[T100.4] Golden + parity.**
-  - Gerar fixtures slimmable (`allowed_channels`) e validar cada ponto de operação contra o C++ (`cpp_parity`, `#[ignore]`).
-  - **Critério de aceite:** golden verde em todos os níveis de canal; troca RT-safe (heap-audit zero) sob soak.
-
 ---
 
-## 📌 Notas de Rastreabilidade C++ → Rust
+## ÉPICO 100 (FUTURO)
 
-| Componente A2           | C++ (fonte de verdade)                        | Rust (destino)                          |
-| ----------------------- | --------------------------------------------- | --------------------------------------- |
-| Forma fixa / constantes | `NAM/wavenet/a2_fast.h:30-43`                 | `src/models/a2/params.rs` (já alinhado) |
-| Modelo fast-path        | `NAM/wavenet/a2_fast.cpp`                     | `src/models/a2/model.rs`                |
-| Camada + sequência      | `a2_fast.cpp:417-690`, `NAM/wavenet/detail.h` | `src/models/a2/layer.rs`                |
-| Head conv + scale       | `a2_fast.cpp:722-743`                         | `src/models/a2/head.rs`                 |
-| Ordem de pesos          | `a2_fast.cpp:196-282`                         | `set_weights` (T1.6/T2.4)               |
-| Detecção de forma       | `a2_fast.cpp:849-990`                         | `src/loader/nam_json/topology.rs`       |
-| LeakyReLU               | `NAM/activations.h`                           | `src/math/activations/`                 |
-| Container               | `NAM/container.{h,cpp}`, `NAM/slimmable.h`    | `src/models/{container,slimmable}.rs`   |
-| Walkthrough (didático)  | `docs/wavenet_walkthrough.rst`                | —                                       |
+- Comparação completa de features com o NeuralAmpModelerCore e o NeuralAmpModelerPlugin para mais idéias de features a copiar.
+- FFT e outros features no hot path considerar internalizar o código e ultra otimizações.
+- Fender Studio Pro: pesquisador-inovador.md Suporte a Wayland nativo e cidadão de primeira classe nesta DAW.
+- Novos ISAs e Arquiteturas (<https://gemini.google.com/app/71c4c68e27c64e10>): /pesquisador-inovador.md Atualizar para o estado atual do código e detalhar ao máximo.
+  - Intel/AMD: Focar no AVX-512/AVX-10 (Especialmente: AVX512F, AVX512VL, AVX512_VNNI) em vez de AMX (muito focado em inferência e servidores); Eficiência Híbrida (AVX-10 / AVX-512 Light): Focado no uso de instruções AVX-512, mas restringindo o tamanho dos vetores a 256 bits.
+  - ARM: focar na Linha de Base Unificada NEON de 128 bits (Rpi5 e Qualcomm, apesar da volatilidade má vontade desta última); A Linha Avançada é SVE2/VLA (basicamente NVIDIA RTX Spark).
+- `SlimmableWavenet` (channel slicing de rede única): É arquitetura **oficial** do NAMCore (registrada, file version 0.7.0) e direção declarada da NAM ("uma captura que se escala sozinha, sem versão *lite* separada"). Será priorizado quando modelos `.nam` com o campo `"slimmable"` (rede única) tornarem-se comuns na distribuição mainstream — hoje o A2 mainstream usa o `SlimmableContainer`.
