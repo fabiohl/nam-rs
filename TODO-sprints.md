@@ -316,7 +316,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** Padrão existente de `ClapParamPayload::LoadModel` e `cold_load_model()` em `events.rs`.
   - **Critério de aceite:** `conv_engine` recebe um `ConvEngine` válido via SPSC no RT thread; swap é RT-safe (zero alloc); engine antigo vai pro GC via `push_to_gc(GcItem::CabConvEngine(old))`.
 
-- **[T5.2] State save/load do caminho IR no CLAP.**
+- **[T5.2] State save/load do caminho IR no CLAP.** [DONE]
   - Serializar `ir_path` no state blob (`src/clap/extensions/state.rs`). No `load`, reconstruir o `ConvEngine` (cold-path) e enviar via SPSC — mesmo padrão do model path (usar `cold.ui_pending_model` como referência de padrão, criar `cold.ui_pending_ir`).
   - **Fonte de verdade:** `src/clap/extensions/state.rs` (padrão de save/load existente), `src/clap/plugin/shared.rs:139` (`ui_pending_model`).
   - **Critério de aceite:** Salvar preset com IR, fechar/reabrir o plugin → IR recarregado automaticamente; preset sem IR → `conv_engine = None` (bypass); compatibilidade retroativa com presets sem campo IR.

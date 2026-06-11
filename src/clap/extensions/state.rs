@@ -94,6 +94,12 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                 .param_slim_override
                 .load(std::sync::atomic::Ordering::Relaxed) as f32,
         );
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            if let Ok(ir_guard) = self.shared.cold.ir_path.lock() {
+                self.params.ir_path = ir_guard.as_ref().map(std::path::PathBuf::from);
+            }
+        }
 
         let envelope = StateEnvelope {
             version: CURRENT_STATE_VERSION,
@@ -154,59 +160,88 @@ impl<'a> PluginStateImpl for NamClapMainThread<'a> {
                         log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                     }
                 }
-                return Ok(());
-            }
-
-            // Fallback: absolute path does not exist, try portable lookup via basename
-            if let Some(ref basename) = self.params.model_basename {
-                let found = self
-                    .params
-                    .model_search_paths
-                    .clone()
-                    .into_iter()
-                    .find_map(|dir| {
-                        let candidate = dir.join(basename);
-                        if candidate.exists() {
-                            Some(candidate)
-                        } else {
-                            None
+            } else {
+                // Fallback: absolute path does not exist, try portable lookup via basename
+                if let Some(ref basename) = self.params.model_basename {
+                    let found =
+                        self.params
+                            .model_search_paths
+                            .clone()
+                            .into_iter()
+                            .find_map(|dir| {
+                                let candidate = dir.join(basename);
+                                if candidate.exists() {
+                                    Some(candidate)
+                                } else {
+                                    None
+                                }
+                            });
+                    if let Some(new_path) = found {
+                        if let Some(log) = self.host.get_extension::<HostLog>() {
+                            let msg = format!(
+                                "NAM-rs: Model not found at original path ({:?}), using portable fallback: {:?}",
+                                path, new_path
+                            );
+                            if let Ok(c_msg) = CString::new(msg) {
+                                log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
+                            }
                         }
-                    });
-                if let Some(new_path) = found {
-                    if let Some(log) = self.host.get_extension::<HostLog>() {
-                        let msg = format!(
-                            "NAM-rs: Model not found at original path ({:?}), using portable fallback: {:?}",
-                            path, new_path
-                        );
-                        if let Ok(c_msg) = CString::new(msg) {
-                            log.log(&self.host.shared(), LogSeverity::Info, &c_msg);
+                        if let Err(e) = self.load_model(&new_path)
+                            && let Some(log) = self.host.get_extension::<HostLog>()
+                        {
+                            let msg = format!(
+                                "NAM-rs: Failed to restore model via fallback ({:?}): {}",
+                                new_path, e
+                            );
+                            if let Ok(c_msg) = CString::new(msg) {
+                                log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                            }
                         }
-                    }
-                    if let Err(e) = self.load_model(&new_path)
-                        && let Some(log) = self.host.get_extension::<HostLog>()
-                    {
+                    } else if let Some(log) = self.host.get_extension::<HostLog>() {
                         let msg = format!(
-                            "NAM-rs: Failed to restore model via fallback ({:?}): {}",
-                            new_path, e
+                            "NAM-rs: Saved model not found at path: {:?} and basename {:?} not located in search paths",
+                            path, basename
                         );
                         if let Ok(c_msg) = CString::new(msg) {
                             log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                         }
                     }
                 } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                    let msg = format!(
-                        "NAM-rs: Saved model not found at path: {:?} and basename {:?} not located in search paths",
-                        path, basename
-                    );
+                    let msg = format!("NAM-rs: Saved model not found at path: {:?}", path);
                     if let Ok(c_msg) = CString::new(msg) {
                         log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
                     }
                 }
-            } else if let Some(log) = self.host.get_extension::<HostLog>() {
-                let msg = format!("NAM-rs: Saved model not found at path: {:?}", path);
-                if let Ok(c_msg) = CString::new(msg) {
-                    log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+            }
+        }
+
+        // Restore cab-sim IR if present in state.
+        // Follows the same SPSC pattern as model path load.
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            let ir_path_opt = self.params.ir_path.clone();
+            if let Some(ref ir_path) = ir_path_opt {
+                if ir_path.exists() {
+                    if let Err(e) = self.load_cabsim(ir_path)
+                        && let Some(log) = self.host.get_extension::<HostLog>()
+                    {
+                        let msg =
+                            format!("NAM-rs: Failed to restore saved IR ({:?}): {}", ir_path, e);
+                        if let Ok(c_msg) = CString::new(msg) {
+                            log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                        }
+                    }
+                } else if let Some(log) = self.host.get_extension::<HostLog>() {
+                    let msg = format!("NAM-rs: Saved IR not found at path: {:?}", ir_path);
+                    if let Ok(c_msg) = CString::new(msg) {
+                        log.log(&self.host.shared(), LogSeverity::Warning, &c_msg);
+                    }
                 }
+            } else {
+                // No IR in saved state: bypass cabsim by sending None engine.
+                let _ = self
+                    .param_tx
+                    .push(ClapParamPayload::LoadCabIr { engine: None });
             }
         }
 

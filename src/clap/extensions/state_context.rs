@@ -164,6 +164,7 @@ mod tests {
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
             slim_override: Default::default(),
+            ir_path: None,
         }
     }
 

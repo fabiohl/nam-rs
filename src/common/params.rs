@@ -51,6 +51,9 @@ pub struct NamPluginParams {
     /// Manual slim override quality level. Default: `Auto` (FSM decides).
     #[serde(default)]
     pub slim_override: SlimOverride,
+    /// Path to the loaded cab-sim impulse response (.wav).
+    #[serde(default)]
+    pub ir_path: Option<PathBuf>,
 }
 
 fn default_gate_threshold_db() -> f32 {
@@ -69,6 +72,7 @@ impl Default for NamPluginParams {
             bypass: false,
             adaptive_compute: AdaptiveComputeMode::Off,
             slim_override: SlimOverride::Auto,
+            ir_path: None,
         }
     }
 }
@@ -132,5 +136,6 @@ mod tests {
         assert_eq!(params.model_basename, None);
         assert!(params.model_search_paths.is_empty());
         assert!(!params.bypass);
+        assert_eq!(params.ir_path, None);
     }
 }

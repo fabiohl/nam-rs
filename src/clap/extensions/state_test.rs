@@ -13,6 +13,7 @@ fn test_v0_legacy_load() {
     assert!((params.gate_threshold_db - (-50.0)).abs() < f32::EPSILON);
     assert_eq!(params.model_path, None);
     assert!(!params.bypass);
+    assert_eq!(params.ir_path, None);
 }
 
 #[test]
@@ -25,6 +26,7 @@ fn test_v0_legacy_load_with_missing_fields() {
     assert_eq!(params.gate_threshold_db, -70.0);
     assert_eq!(params.model_path, None);
     assert!(!params.bypass);
+    assert_eq!(params.ir_path, None);
 }
 
 #[test]
@@ -39,6 +41,7 @@ fn test_v1_round_trip() {
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
+        ir_path: None,
     };
 
     let envelope = StateEnvelope {
@@ -65,6 +68,7 @@ fn test_v1_save_format() {
         parsed["params"].is_object(),
         "envelope should contain params"
     );
+    assert_eq!(parsed["params"]["ir_path"], serde_json::Value::Null);
 }
 
 #[test]
@@ -73,6 +77,7 @@ fn test_v0_legacy_load_new_fields_default() {
     let params = load_state(v0_json.as_bytes()).expect("v0 payload should load");
     assert_eq!(params.model_basename, None);
     assert!(params.model_search_paths.is_empty());
+    assert_eq!(params.ir_path, None);
 }
 
 #[test]
@@ -91,6 +96,7 @@ fn test_v1_round_trip_with_search_fields() {
         bypass: true,
         adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
         slim_override: Default::default(),
+        ir_path: None,
     };
 
     let envelope = StateEnvelope {
@@ -121,4 +127,47 @@ fn test_v1_search_fields_serialization_format() {
     let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
     assert_eq!(parsed["params"]["model_basename"], "tone.nam");
     assert_eq!(parsed["params"]["model_search_paths"][0], "/models");
+}
+
+#[test]
+fn test_v1_round_trip_with_ir_path() {
+    let original = NamPluginParams {
+        input_gain_db: 0.0,
+        output_gain_db: 0.0,
+        gate_threshold_db: -70.0,
+        model_path: None,
+        model_basename: None,
+        model_search_paths: Vec::new(),
+        bypass: false,
+        adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
+        slim_override: Default::default(),
+        ir_path: Some(PathBuf::from("/tmp/cab.wav")),
+    };
+
+    let envelope = StateEnvelope {
+        version: CURRENT_STATE_VERSION,
+        params: original.clone(),
+    };
+    let json = serde_json::to_vec(&envelope).unwrap();
+
+    let restored = load_state(&json).expect("v1 payload with ir_path should load");
+    assert_eq!(
+        restored, original,
+        "v1 round-trip with ir_path should be idempotent"
+    );
+}
+
+#[test]
+fn test_v1_ir_path_serialization_format() {
+    let params = NamPluginParams {
+        ir_path: Some(PathBuf::from("/path/to/cab.wav")),
+        ..Default::default()
+    };
+    let envelope = StateEnvelope {
+        version: CURRENT_STATE_VERSION,
+        params,
+    };
+    let json = serde_json::to_vec(&envelope).unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&json).unwrap();
+    assert_eq!(parsed["params"]["ir_path"], "/path/to/cab.wav");
 }

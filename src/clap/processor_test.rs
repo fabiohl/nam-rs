@@ -285,6 +285,7 @@ mod tests {
                     bypass: false,
                     adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
                     slim_override: Default::default(),
+                    ir_path: None,
                 };
                 let state_bytes = serde_json::to_vec(&params).unwrap();
                 let mut handle = plugin_instance.plugin_handle();
@@ -610,6 +611,7 @@ mod tests {
             bypass: false,
             adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
             slim_override: Default::default(),
+            ir_path: None,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();
         let mut handle = plugin_instance.plugin_handle();
@@ -1004,6 +1006,7 @@ mod tests {
             bypass: false,
             adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
             slim_override: Default::default(),
+            ir_path: None,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();
         let mut handle = plugin_instance.plugin_handle();
@@ -1617,6 +1620,7 @@ mod tests {
             bypass: false,
             adaptive_compute: crate::common::params::AdaptiveComputeMode::Conservative,
             slim_override: Default::default(),
+            ir_path: None,
         };
         let state_bytes = serde_json::to_vec(&params).unwrap();
         let mut handle = plugin_instance.plugin_handle();
@@ -1994,6 +1998,7 @@ mod tests {
                 bypass: false,
                 adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
                 slim_override: Default::default(),
+                ir_path: None,
             };
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
@@ -2055,6 +2060,7 @@ mod tests {
                 bypass: false,
                 adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
                 slim_override: Default::default(),
+                ir_path: None,
             };
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
@@ -2149,6 +2155,7 @@ mod tests {
                 bypass: false,
                 adaptive_compute: crate::common::params::AdaptiveComputeMode::Off,
                 slim_override: Default::default(),
+                ir_path: None,
             };
             let state_bytes = serde_json::to_vec(&params).unwrap();
             let mut handle = plugin_instance.plugin_handle();
