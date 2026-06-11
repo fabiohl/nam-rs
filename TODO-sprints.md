@@ -110,6 +110,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - `src/dsp/smoother.rs:69`: avaliar o guard `< 1e-15` — com FTZ/DAZ ativos ele é redundante; documentar a escolha
     (kill de cauda audível vs. denormal real) no comentário, ou migrar para `is_subnormal()` se o intuito for só denormal.
   - **Critério de aceite:** benches de inferência/pipeline sem regressão (>1%); lints verdes.
+  - Nota do PO: Verificar se já existe algum outro contador(es) existente(s) que possa ser reaproveitado com esta e outras atividades.
 
 ---
 
@@ -120,27 +121,19 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 7.1 — Arquiteturas oficiais ausentes
 
-- **[T7.1] Implementar arquitetura `Linear`.**
+- **[T7.1] Core DSP e Modelo da arquitetura `Linear`.**
 
-  - O C++ registra `"Linear"` no `ConfigParserRegistry` (`NAM/dsp.cpp:253-335`): FIR simples — `receptive_field`,
-    pesos `[receptive_field + bias]`, saída = produto interno do histórico + bias.
-  - Criar `src/models/linear.rs` (modelo pequeno, RT-safe, histórico via `MirroredBuffer`), parser em
-    `src/loader/dispatcher/` (novo branch), variante em `StaticModel` (`src/models/static_model.rs`).
-  - Reusar kernels de dot-product existentes (`src/math/gemm/dot.rs`); referência escalar para o oráculo.
-  - **Critério de aceite:** fixture `.nam` Linear determinística (gerada no estilo de `tests/fixtures/models/`),
-    golden cross-validation vs C++ via `golden_gen_build.sh` + caso em `tests/cpp_parity.rs`; heap-audit zero alloc;
-    prewarm = `receptive_field`.
+  - Criar o modelo em `src/models/linear.rs` (RT-safe, histórico com `MirroredBuffer`).
+  - Implementar o cálculo da inferência (dot product do histórico de amostras com os pesos + bias) e a variante correspondente no enum `StaticModel` (`src/models/static_model.rs`).
+  - Reaproveitar funções de dot product existentes (`src/math/gemm/dot.rs`).
+  - **Critério de aceite:** compilação limpa; testes unitários inline verificando a corretude da saída para vetores de pesos estáticos simples; sem alocações no hot-path.
 
-- **[T7.2] Implementar arquitetura `ConvNet`.**
+- **[T7.2] Parser, Carregador e Cross-validation da arquitetura `Linear`.**
 
-  - O C++ registra `"ConvNet"` (`NAM/convnet.cpp`, incl. `ConvNetBlock` com `BatchNorm` opcional, ativações
-    configuráveis, head 1x1; testes em `test_convnet.cpp`).
-  - Criar `src/models/convnet/` (blocos: conv dilatada + batchnorm "folded" na carga + ativação + head), parser
-    (campos `channels`, `dilations`, `batchnorm`, `activation`), variante `StaticModel`.
-  - **Decisão de design:** *foldar* o BatchNorm nos pesos da conv na carga (como inferência clássica) para manter o
-    hot-path enxuto — documentar a equivalência matemática.
-  - **Critério de aceite:** golden cross-validation vs C++ (fixture determinística + caso em `tests/cpp_parity.rs`);
-    paridade escalar vs SIMD; heap-audit; soak curto; `docs/cpp_parity_map.md` atualizado.
+  - Implementar o parse no loader (`src/loader/nam_json/` e `src/loader/dispatcher/`).
+  - Estender `tests/fixtures/golden_gen_build.sh` para gerar uma fixture `.nam` Linear determinística e seu respectivo binário golden.
+  - Criar o caso de teste em `tests/cpp_parity.rs` e validar a paridade de inferência Rust × C++ (cross-validation real), garantindo `heap-audit` com zero alloc.
+  - **Critério de aceite:** fixture carrega sem erros; cross-validation passa no `tests/cpp_parity.rs`; heap-audit verde.
 
 ### Sprint 7.2 — WaveNet oficial completo (lacunas e robustez de detecção)
 
@@ -198,12 +191,6 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     C++ (cross-validation real) OU divergência provada como bug do C++ upstream (com issue aberta e justificativa);
     `golden_wavenet_a2_*_self.bin` aposentados se a cross-val real passar a valer.
 
-- **[T7.9] Lane noturna para `#[ignore]` (cross-validation contínua).**
-
-  - Hoje toda a paridade C++ só roda manualmente (`utils/tests-long.sh`). Criar alvo de automação (cron local,
-    systemd-timer ou job de CI quando houver) que execute a lane longa periodicamente e registre em `target/logs/`.
-  - **Critério de aceite:** script/unit documentado em `docs/functional-tests.md`; execução agendada comprovada.
-
 ---
 
 ## ÉPICO 8 — Suíte de Testes e Benches em Estágio "Produção" 🧪
@@ -245,6 +232,8 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - Nenhum script executa este teste (exige daemon PipeWire). Marcar `#[ignore]` com comentário de pré-requisito e
     adicionar fase opcional em `utils/tests-long.sh` (skip limpo se `pw-cli info` falhar).
   - **Critério de aceite:** teste roda na lane longa quando o PipeWire está disponível; skip documentado quando não.
+  - Nota do PO: Geralmente os `utils/*.sh` vêm sendo rodados localmente na máquina desktop do dev - que tem pipewire.
+    Poderia haver um mecanismo pra determinar esse contexto e rodar este teste.!
 
 - **[T8.6] Limpeza automática de `tests/fixtures/.temp_live/`.**
 
@@ -280,6 +269,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - Adicionar em `src/loader/namb_test.rs`: `crc32_ieee(b"123456789") == 0xCBF43926` (vetor canônico) + casos de
     arquivo truncado em todos os offsets de fronteira do header (proptest já cobre parte — completar bordas exatas).
   - **Critério de aceite:** qualquer alteração futura no CRC quebra o KAT imediatamente.
+  - Nota do PO: Se isto envolver usar o rust nightly, cancelar.
 
 - **[T8.11] Teste de tolerância do FastMath tanh (PadeNR2).**
 
