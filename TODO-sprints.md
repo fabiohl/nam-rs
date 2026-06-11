@@ -102,7 +102,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 6.2 — Polimento RT (baixo risco, validar custo)
 
-- **[T6.6] Higiene de denormais e MXCSR.**
+- **[T6.6] Higiene de denormais e MXCSR.** [DONE]
   - `src/clap/processor/mod.rs:264`: re-aplicar `set_daz_ftz()` periodicamente (ex.: a cada 1024 blocos, com contador
     barato) — hosts podem resetar o MXCSR após callbacks. Medir custo no bench de pipeline (deve ser ~0).
   - `src/standalone/rt_setup/tsc.rs:80`: `SeqCst` → `Release` (caminho frio de calibração; conformidade com a regra

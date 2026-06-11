@@ -77,7 +77,7 @@ pub fn calibrate_tsc() {
     // We use the 1000 multiplier to store the result as an integer
     // while maintaining 3 decimal places of precision without floating point.
     if let Some(freq_x1000) = (elapsed_cycles * 1000).checked_div(elapsed_nanos) {
-        TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::SeqCst);
+        TSC_FREQ_GHZ_X1000.store(freq_x1000, Ordering::Release);
 
         log::info!(
             "{} High-Precision Clock (TSC) calibrated at {:.3} GHz",

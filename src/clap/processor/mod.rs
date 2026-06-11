@@ -265,6 +265,17 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
             }
         }
 
+        // Periodic DAZ/FTZ reapplication: hosts may reset MXCSR after callbacks
+        // (e.g. during GUI repaints or parameter flushes from another thread).
+        // Reassert DAZ+FTZ every 1024 blocks using the existing telemetry counter
+        // — the conditional is a single bit-test (1 cycle; cold branch).
+        // SAFETY: DAZ+FTZ are SSE2 control bits on x86-64 — unconditionally safe.
+        if self.cycles_since_telemetry & 0x3FF == 0 {
+            unsafe {
+                crate::math::common::set_daz_ftz();
+            }
+        }
+
         // Event drainage (SPSC + Host + GUI sync + Latency)
         self.process_events(events);
 

@@ -65,7 +65,19 @@ impl ParamSmoother {
                 self.current = self.target;
             } else {
                 self.current = next;
-                // Denormal guard (RT-Safety §2.1): flush to zero to avoid FPU slowdown.
+                // Fade-to-zero guard (RT-Safety §2.1).
+                //
+                // With DAZ/FTZ active in MXCSR (set at boot and periodically
+                // reaffirmed in the CLAP processor), actual f32 subnormals
+                // (abs < ~1.18e-38) are never created — FPU hardware flushes
+                // them to zero automatically.  Therefore this check is not
+                // about denormal protection (which DAZ/FTZ already provides).
+                //
+                // The threshold 1e-15 is ~17 orders of magnitude above the
+                // subnormal boundary.  It serves a *sonic* purpose: kill the
+                // inaudible tail of the smoother to prevent a theoretically
+                // infinite decay when values get so small they no longer
+                // produce any audible output (< -300 dBFS).
                 if self.current.abs() < 1e-15 {
                     self.current = 0.0;
                 }
