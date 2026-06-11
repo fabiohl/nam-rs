@@ -278,16 +278,18 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ### Sprint 4.1 — Loader de IR
 
-- **[T4.1] Loader de `.wav` IR.**
+- **[T4.1] Loader de `.wav` IR.** ✅ [DONE]
   - Loader robusto em `src/dsp/cabsim/loader.rs` para WAV mono (PCM16/24/float32), com resample para a SR ativa (reusar `src/dsp/resampler.rs`) e normalização opcional. Carga/preparo **fora** da audio thread; transferência via SPSC (estilo *resampler swap* em `src/common/spsc/`).
   - **Critério de aceite:** carrega os WAVs de exemplo em `tests/` (ex.: `amostra-guitarra-*_FAT_CAB.wav`); erros tratados sem panic.
+  - **Notas p/ T4.2:** `CaptureState.active_cabsim: Option<Box<CabSimIr>>` já populado via SPSC swap. `CabSimIr.samples` contém IR mono resampled (f32). Canal SPSC `cabsim_producer` disponível em `run.rs` (atualmente `_` prefix, sem CLI command). `GcItem::CabSimIr` já registrado no GC cascade.
 
 ### Sprint 4.2 — Convolução particionada
 
-- **[T4.2] Uniform-Partitioned Overlap-Save (FFT).**
+- **[T4.2] Uniform-Partitioned Overlap-Save (FFT).** [DONE]
   - Implementar convolução particionada em `src/dsp/cabsim/conv.rs` (partições de tamanho = buffer, overlap-save), pré-FFT do kernel na carga; FDL (*frequency delay line*) pré-alocada; **zero alloc** no hot-path.
   - **Fonte de verdade conceitual:** literatura de UPOLS/partitioned convolution (não há referência no C++; é feature nova do nam-rs).
   - **Critério de aceite:** paridade vs convolução direta (referência ingênua) `ESR < 1e-5` em IR curto; latência == tamanho da partição documentada.
+  - **Nota do PO:** Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
 
 - **[T4.3] Estágio opcional no pipeline.**
   - Integrar como estágio pós-inferência em `src/dsp/pipeline/` com *bypass* de custo zero quando nenhum IR está carregado. Flag de CLI/param CLAP.

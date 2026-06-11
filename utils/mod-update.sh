@@ -47,7 +47,7 @@ echo -e "\n${BLUE}${BOLD}[3/4] Atualizando versões resolvidas no Cargo.lock...$
 cargo update --verbose
 
 # 4. Sync upstream C++ fixtures
-echo -e "\n${BLUE}${BOLD}[4/4] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
+echo -e "\n${BLUE}${BOLD}[4.1/4] Sincronizando fixtures do NeuralAmpModelerCore...${NC}"
 FIXTURE_DIR="tests/fixtures/NeuralAmpModelerCore"
 if [ -d "$FIXTURE_DIR" ]; then
     echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."
@@ -58,6 +58,18 @@ else
     git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerCore.git "$FIXTURE_DIR"
     echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
 fi
+echo -e "\n${BLUE}${BOLD}[4.2/4] Sincronizando fixtures do NeuralAmpModelerPlugin...${NC}"
+FIXTURE_DIR="tests/fixtures/NeuralAmpModelerPlugin"
+if [ -d "$FIXTURE_DIR" ]; then
+    echo -e "  Fixtures encontradas em $FIXTURE_DIR. Atualizando..."
+    (cd "$FIXTURE_DIR" && git fetch --depth 1 && git reset --hard FETCH_HEAD && git clean -df)
+    echo -e "  ${GREEN}✓${NC} Fixtures sincronizadas."
+else
+    echo -e "  Fixtures não encontradas. Clonando pela primeira vez..."
+    git clone --depth 1 https://github.com/sdatkinson/NeuralAmpModelerPlugin.git "$FIXTURE_DIR"
+    echo -e "  ${GREEN}✓${NC} Fixtures clonadas com sucesso."
+fi
+
 
 echo -e "\n${GREEN}${BOLD}================================================================${NC}"
 echo -e "${GREEN}${BOLD}          Toda a cadeia de suprimentos foi atualizada!          ${NC}"

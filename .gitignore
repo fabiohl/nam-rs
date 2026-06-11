@@ -52,6 +52,7 @@ mutants.out.old/
 
 # NeuralAmpModelerCore — clone local para cross-validation (não commitar)
 /tests/fixtures/NeuralAmpModelerCore/
+/tests/fixtures/NeuralAmpModelerPlugin/
 
 # Build artifacts do render tool C++
 /build/namcore_render/

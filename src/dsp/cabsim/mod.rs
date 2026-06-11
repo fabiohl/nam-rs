@@ -7,4 +7,5 @@
 //! resamples them to the active sample rate, and delivers them
 //! to the DSP thread via lock-free SPSC transfer.
 
+pub mod conv;
 pub mod loader;
