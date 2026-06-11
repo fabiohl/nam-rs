@@ -73,6 +73,11 @@ pub(crate) fn make_test_shared() -> NamClapShared {
             render_mode: AtomicU32::new(RENDER_MODE_REALTIME),
             gui_scale_factor: AtomicU32::new(0),
             ir_path: Mutex::new(None),
+            ui_pending_ir: Mutex::new(None),
+            ui_ir_loading: AtomicBool::new(false),
+            ui_ir_load_error: AtomicBool::new(false),
+            ui_ir_load_error_msg: Mutex::new(String::new()),
+            ui_clear_ir: AtomicBool::new(false),
         },
     }
 }

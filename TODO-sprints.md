@@ -321,7 +321,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Fonte de verdade:** `src/clap/extensions/state.rs` (padrão de save/load existente), `src/clap/plugin/shared.rs:139` (`ui_pending_model`).
   - **Critério de aceite:** Salvar preset com IR, fechar/reabrir o plugin → IR recarregado automaticamente; preset sem IR → `conv_engine = None` (bypass); compatibilidade retroativa com presets sem campo IR.
 
-- **[T5.3] GUI — File browser para IR no CLAP.**
+- **[T5.3] GUI — File browser para IR no CLAP.** [DONE]
   - Adicionar controle de file browser para `.wav` na GUI egui (`src/clap/gui/ui/`), análogo ao model file browser existente em `zones/identity.rs`. Elementos: botão "Load IR" + display do nome do arquivo carregado + botão "Clear IR" (envia `None` via SPSC para bypass).
   - Ao selecionar, disparar carga assíncrona no main thread (mesma estratégia de `ui_pending_model`/`ui_loading`/`ui_load_error`): gravar em `cold.ui_pending_ir`, sinalizar `ui_ir_loading`, processar em `on_main_thread()`, enviar `ConvEngine` via SPSC → RT.
   - **Fonte de verdade:** `src/clap/gui/ui/zones/identity.rs` (model file browser), `src/clap/plugin/shared.rs:139-145` (pending/loading/error pattern).

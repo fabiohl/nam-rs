@@ -80,6 +80,60 @@ impl<'a> NamClapMainThread<'a> {
             }
         }
 
+        // Check if there is a pending IR sent by the UI
+        #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+        {
+            use crate::clap::plugin::ClapParamPayload;
+            let pending_ir = if let Ok(mut pending_guard) = self.shared.cold.ui_pending_ir.lock() {
+                pending_guard.take()
+            } else {
+                None
+            };
+            if let Some(path) = pending_ir {
+                let res = self.load_cabsim(&path);
+                self.shared
+                    .cold
+                    .ui_ir_loading
+                    .store(false, Ordering::Relaxed);
+                match res {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let err_msg = e.error_code().message();
+                        if let Ok(mut msg_guard) = self.shared.cold.ui_ir_load_error_msg.lock() {
+                            *msg_guard = err_msg.to_string();
+                        }
+                        self.shared
+                            .cold
+                            .ui_ir_load_error
+                            .store(true, Ordering::Relaxed);
+
+                        if let Some(log) = self.host.get_extension::<HostLog>() {
+                            let shared = self.host.shared();
+                            let err_str =
+                                format!("NAM-rs: Failed to load cab-sim IR from GUI: {:?}", e);
+                            let sanitized_err = err_str.replace('\0', " ");
+                            let msg = CString::new(sanitized_err).unwrap_or_else(|_| {
+                                CString::new(
+                                    "NAM-rs: Failed to load IR from GUI due to invalid characters",
+                                )
+                                .unwrap_or_default()
+                            });
+                            log.log(&shared, LogSeverity::Error, &msg);
+                        }
+                    }
+                }
+            }
+
+            if self.shared.cold.ui_clear_ir.swap(false, Ordering::Relaxed) {
+                let _ = self
+                    .param_tx
+                    .push(ClapParamPayload::LoadCabIr { engine: None });
+                if let Ok(mut ir_guard) = self.shared.cold.ir_path.lock() {
+                    *ir_guard = None;
+                }
+            }
+        }
+
         // Latency Monitoring: Notify the host if the value changed
         let current_latency = self.shared.rt_to_ui.current_latency.load(Ordering::Relaxed);
         if current_latency != self.last_reported_latency {

@@ -123,6 +123,11 @@ impl DefaultPluginFactory for NamClapPlugin {
                 render_mode: AtomicU32::new(0),
                 gui_scale_factor: AtomicU32::new(0),
                 ir_path: Mutex::new(None),
+                ui_pending_ir: Mutex::new(None),
+                ui_ir_loading: std::sync::atomic::AtomicBool::new(false),
+                ui_ir_load_error: std::sync::atomic::AtomicBool::new(false),
+                ui_ir_load_error_msg: Mutex::new(String::new()),
+                ui_clear_ir: std::sync::atomic::AtomicBool::new(false),
             },
         })
     }

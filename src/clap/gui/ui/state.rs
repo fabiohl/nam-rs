@@ -120,6 +120,8 @@ pub struct UiState {
     pub metadata_display: Vec<(String, String)>,
     /// Cached model name for display.
     pub model_display_name: String,
+    /// Cached IR file name for display.
+    pub ir_display_name: String,
     /// Memoized font size for the telemetry status bar (recomputed on content/width change).
     pub telem_cached_font_size: Option<f32>,
     /// Last available width used to compute telem_cached_font_size.
@@ -170,6 +172,7 @@ impl std::fmt::Debug for UiState {
             .field("error_expiration", &self.error_expiration)
             .field("cached_metadata", &self.cached_metadata)
             .field("model_display_name", &self.model_display_name)
+            .field("ir_display_name", &self.ir_display_name)
             .finish()
     }
 }
@@ -218,6 +221,7 @@ impl Default for UiState {
             cached_metadata: None,
             metadata_display: Vec::new(),
             model_display_name: String::new(),
+            ir_display_name: String::new(),
             telem_cached_font_size: None,
             telem_cached_width: 0.0,
             telem_last_font_instant: now,

@@ -74,9 +74,19 @@ pub fn draw_ui(
         }
     }
 
+    if shared.cold.ui_ir_load_error.swap(false, Ordering::Relaxed) {
+        state.error_expiration = Some(Instant::now() + Duration::from_secs(3));
+        if let Ok(msg_guard) = shared.cold.ui_ir_load_error_msg.lock() {
+            state.error_msg = msg_guard.clone();
+        } else {
+            state.error_msg = "IR load failed".to_string();
+        }
+    }
+
     let current_bypass = bypass_u32_to_bool(shared.ui_to_rt.param_bypass.load(Ordering::Relaxed));
     let accent_color = resolve_accent(shared);
     let mut load_btn_id = None;
+    let mut load_ir_btn_id = None;
     ui.spacing_mut().item_spacing = egui::vec2(4.0, 4.0);
 
     let available_w = ui.available_width();
@@ -92,7 +102,9 @@ pub fn draw_ui(
         }
 
         // ── Zone 1: Identity (left) ───────────────────────────
-        load_btn_id = draw_zone1_identity(ui, shared, host, state, accent_color);
+        let (model_btn, ir_btn) = draw_zone1_identity(ui, shared, host, state, accent_color);
+        load_btn_id = model_btn;
+        load_ir_btn_id = ir_btn;
 
         styled_vsep(ui);
 
@@ -138,7 +150,7 @@ pub fn draw_ui(
             });
     }
 
-    handle_focus_navigation(ui, load_btn_id);
+    handle_focus_navigation(ui, load_btn_id, load_ir_btn_id);
 
     ui.ctx().request_repaint_after(Duration::from_millis(30));
 }

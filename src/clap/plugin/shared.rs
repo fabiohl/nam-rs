@@ -163,6 +163,16 @@ pub struct ColdShared {
     pub gui_scale_factor: AtomicU32,
     /// Active cab-sim IR file path (for state save/load and GUI display).
     pub ir_path: Mutex<Option<String>>,
+    /// Pending IR path to be loaded by the Main Thread. Written by the UI thread.
+    pub ui_pending_ir: Mutex<Option<PathBuf>>,
+    /// Indicates whether the GUI is in the middle of an asynchronous IR load.
+    pub ui_ir_loading: AtomicBool,
+    /// Flag signaling that an IR loading error occurred.
+    pub ui_ir_load_error: AtomicBool,
+    /// Detailed error message for the GUI.
+    pub ui_ir_load_error_msg: Mutex<String>,
+    /// Flag signaling that the IR should be cleared (bypass cabsim).
+    pub ui_clear_ir: AtomicBool,
 }
 
 // ---------------------------------------------------------------------------
