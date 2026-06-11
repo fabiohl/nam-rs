@@ -35,7 +35,7 @@ pub fn setup_capture_stream<'c>(
     mut gc_producer: rtrb::Producer<GcItem>,
     gc_overflow: Arc<GcOverflowBuffer>,
     mut resampler_consumer: Consumer<Box<crate::dsp::resampler::NamResampler>>,
-    mut cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
+    mut cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     rt_status: Arc<RtStatusFlags>,
 ) -> anyhow::Result<(pw::stream::StreamBox<'c>, pw::stream::StreamListener<()>)> {
     let mut capture_props = properties! {
@@ -175,6 +175,7 @@ pub fn setup_capture_stream<'c>(
                     rt_status: &rt_status_for_process,
                     adaptive: &mut state.adaptive_compute,
                     bridge_writer: DspBridgeWriter::from_ref(bridge_ptr),
+                    conv: state.active_cabsim.as_mut().map(|e| e.as_mut()),
                 },
                 DspBuffers {
                     resamp_mid_l: &mut state.resamp_mid_l,

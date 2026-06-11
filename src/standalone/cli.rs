@@ -29,6 +29,8 @@ pub fn print_help() {
     println!("  nam-rs [OPTIONS]");
     println!("\n{}", "Options:".yellow().bold());
     println!("  -m, --model <FILE>      Path to the model (.nam or .namb). Supports ~, ../, etc.");
+    println!("  -c, --cab <FILE>        Path to the cab-sim IR (.wav). Supports ~, ../, etc.");
+    println!("  -i, --input-gain <DB>   Input gain in dB (e.g. -3.5, 12, 0) [default: 0]");
     println!("  -i, --input-gain <DB>   Input gain in dB (e.g. -3.5, 12, 0) [default: 0]");
     println!("  -o, --output-gain <DB>  Output gain in dB (e.g. 5.0, -10) [default: 0]");
     println!(
@@ -54,6 +56,8 @@ pub fn exit_with_error(msg: impl std::fmt::Display) -> ! {
 pub struct CliArgs {
     /// Path to the neural model file.
     pub model_path: Option<PathBuf>,
+    /// Path to the cab-sim impulse response (.wav) file.
+    pub cab_path: Option<PathBuf>,
     /// Input gain in dB.
     pub input_gain: f32,
     /// Output gain in dB.
@@ -76,6 +80,7 @@ pub fn parse_args() -> CliArgs {
 /// Helper parsing function that accepts any lexopt::Parser to facilitate testing.
 pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
     let mut model_path = None;
+    let mut cab_path = None;
     let mut input_gain = 0.0;
     let mut output_gain = 0.0;
     let mut buffer_size = 256;
@@ -129,6 +134,23 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
                     p_str
                 };
                 model_path = Some(PathBuf::from(expanded));
+            }
+            Short('c') | Long("cab") => {
+                let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
+                let p_str = val
+                    .into_string()
+                    .unwrap_or_else(|_| exit_with_error("Invalid cab IR path (UTF-8)."));
+
+                let expanded = if p_str.starts_with("~/") {
+                    if let Ok(home) = std::env::var("HOME") {
+                        p_str.replacen("~", &home, 1)
+                    } else {
+                        p_str
+                    }
+                } else {
+                    p_str
+                };
+                cab_path = Some(PathBuf::from(expanded));
             }
             Short('i') | Long("input-gain") => {
                 let val = parser.value().unwrap_or_else(|e| exit_with_error(e));
@@ -191,6 +213,7 @@ pub fn parse_args_from(mut parser: lexopt::Parser) -> CliArgs {
 
     CliArgs {
         model_path,
+        cab_path,
         input_gain,
         output_gain,
         buffer_size,

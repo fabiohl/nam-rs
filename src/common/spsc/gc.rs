@@ -15,6 +15,9 @@ pub enum GcItem {
     /// A cab-sim impulse response (boxed to ensure RT-safety on drop).
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
     CabSimIr(Box<crate::dsp::cabsim::loader::CabSimIr>),
+    /// A cab-sim convolution engine (boxed to ensure RT-safety on drop).
+    #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+    CabConvEngine(Box<crate::dsp::cabsim::conv::ConvEngine>),
     /// Test variant for integrity and stress validation.
     #[cfg(test)]
     Test(Box<std::sync::Arc<std::sync::atomic::AtomicU32>>),
@@ -28,6 +31,8 @@ impl GcItem {
             GcItem::Resampler(_) => 2,
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             GcItem::CabSimIr(_) => 3,
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            GcItem::CabConvEngine(_) => 4,
             #[cfg(test)]
             GcItem::Test(_) => 255,
         }
@@ -46,6 +51,10 @@ impl GcItem {
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             3 => GcItem::CabSimIr(unsafe {
                 Box::from_raw(ptr as *mut crate::dsp::cabsim::loader::CabSimIr)
+            }),
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            4 => GcItem::CabConvEngine(unsafe {
+                Box::from_raw(ptr as *mut crate::dsp::cabsim::conv::ConvEngine)
             }),
             #[cfg(test)]
             255 => GcItem::Test(unsafe {
@@ -97,6 +106,8 @@ impl GcOverflowBuffer {
             GcItem::Resampler(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
             GcItem::CabSimIr(b) => Box::into_raw(b) as *mut std::ffi::c_void,
+            #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+            GcItem::CabConvEngine(b) => Box::into_raw(b) as *mut std::ffi::c_void,
             #[cfg(test)]
             GcItem::Test(b) => Box::into_raw(b) as *mut std::ffi::c_void,
         };

@@ -8,6 +8,8 @@ use crate::common::spsc::RtStatusFlags;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::adaptive::AdaptiveCompute;
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
+use crate::dsp::cabsim::conv::ConvEngine;
+#[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
 use crate::dsp::resampler::NamResampler;
@@ -55,6 +57,8 @@ pub struct DspPipelineContext<'a> {
     pub adaptive: &'a mut AdaptiveCompute,
     /// Reference to the audio monitoring bridge (optional).
     pub bridge_writer: Option<DspBridgeWriter>,
+    /// Active cab-sim convolution engine (None = bypass, zero cost).
+    pub conv: Option<&'a mut ConvEngine>,
 }
 
 #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]

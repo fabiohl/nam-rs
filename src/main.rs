@@ -18,6 +18,8 @@
 //! - **ZERO ALLOCATIONS** in the Audio thread: The audio channel memory (`process()`) is always prepared 100% in advance. Audio never "requests more RAM" out of nowhere.
 
 use nam_rs::diagnostics::SystemSnapshot;
+use nam_rs::dsp::cabsim::conv::ConvEngine;
+use nam_rs::dsp::cabsim::loader::CabSimIr;
 use nam_rs::standalone::{cli, colors::Colorize, pw_host, rt_setup};
 use nam_rs::{loader, spsc, spsc::ParamPayload};
 
@@ -94,12 +96,42 @@ fn main() -> anyhow::Result<()> {
     let gc_overflow = channels.gc_overflow;
     let resampler_producer = channels.resampler_producer;
     let resampler_consumer = channels.resampler_consumer;
-    let cabsim_producer = channels.cabsim_producer;
+    let mut cabsim_producer = channels.cabsim_producer;
     let cabsim_consumer = channels.cabsim_consumer;
     let rt_status = channels.rt_status;
 
-    // 6. LOAD THE SOUND: If you said "use amplifier X",
-    // this is where the computer opens that file and prepares the math (Neural Networks).
+    // 6. LOAD THE CAB-SIM IR: If you said "use cabinet X",
+    // this is where the computer opens that WAV file and builds the convolution engine.
+    if let Some(ref cab_path) = args.cab_path {
+        let target_rate = nam_rs::diagnostics::ACTIVE_SAMPLE_RATE
+            .load(Ordering::Relaxed)
+            .max(48000);
+        let partition_size = if buffer_size > 0 {
+            buffer_size as usize
+        } else {
+            256
+        };
+        match CabSimIr::load(cab_path, target_rate, true) {
+            Ok(cabsim) => {
+                let engine = ConvEngine::new(&cabsim.samples, partition_size);
+                log::info!(
+                    "{} Cab-sim IR loaded: {} ({} partitions, FFT={})",
+                    "🎛️".cyan(),
+                    cab_path.display(),
+                    engine.num_partitions(),
+                    engine.fft_size(),
+                );
+                let _ = cabsim_producer.push(Some(Box::new(engine)));
+            }
+            Err(e) => {
+                log::warn!(
+                    "{} Cab-sim IR load failed: {} — continuing without cab-sim",
+                    "⚠️".yellow(),
+                    e
+                );
+            }
+        }
+    }
     if let Some(ref path) = model_path {
         log::info!("{} Loading model...", "📂".cyan());
         match loader::load_and_build_model(path, &sys) {

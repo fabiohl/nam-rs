@@ -2170,6 +2170,7 @@ fn test_zero_alloc_capture_pipeline() {
         rt_status: &rt_status,
         adaptive: &mut adaptive,
         bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+        conv: None,
     };
 
     let bufs = nam_rs::dsp::pipeline::DspBuffers {

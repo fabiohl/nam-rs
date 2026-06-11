@@ -54,7 +54,24 @@ pub fn capture_dsp_pipeline(
         bufs.model_out_r,
     );
 
-    // STAGE 3: FINAL ADJUSTMENT AND PROTECTION
+    // STAGE 3: CAB-SIM (OPTIONAL IR CONVOLUTION)
+    // Post-inference speaker/cabinet simulation via impulse response.
+    // When no IR is loaded (conv == None), this stage is a single branch — zero cost.
+    if let Some(ref mut conv) = ctx.conv {
+        let partition = conv.partition_size();
+        if n_pw == partition {
+            conv.process(&bufs.resamp_out_l[..n_pw], &mut bufs.model_out_l[..n_pw]);
+            bufs.resamp_out_l[..n_pw].copy_from_slice(&bufs.model_out_l[..n_pw]);
+            if !*ctx.process_mono {
+                conv.process(&bufs.resamp_out_r[..n_pw], &mut bufs.model_out_r[..n_pw]);
+                bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.model_out_r[..n_pw]);
+            } else {
+                bufs.resamp_out_r[..n_pw].copy_from_slice(&bufs.resamp_out_l[..n_pw]);
+            }
+        }
+    }
+
+    // STAGE 4: FINAL ADJUSTMENT AND PROTECTION
     // Controls output volume and ensures the sound does not "blow up" (distortion).
     apply_output_stage(
         bufs.resamp_out_l,
@@ -68,7 +85,7 @@ pub fn capture_dsp_pipeline(
         sample_rate,
     );
 
-    // STAGE 4: FINAL DELIVERY (THE BRIDGE)
+    // STAGE 5: FINAL DELIVERY (THE BRIDGE)
     // Sends the processed result to your speakers via the bridge.
     write_bridge(
         bufs.resamp_out_l,

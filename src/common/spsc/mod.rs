@@ -52,10 +52,10 @@ pub struct SpscChannels {
     pub resampler_consumer: Consumer<Box<crate::dsp::resampler::NamResampler>>,
     /// Cab-sim IR producer: main thread loads and sends to the RT callback.
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    pub cabsim_producer: Producer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
+    pub cabsim_producer: Producer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     /// Cab-sim IR consumer: RT callback drains to replace the active IR.
     #[cfg(any(feature = "standalone", feature = "clap-plugin", test))]
-    pub cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::loader::CabSimIr>>>,
+    pub cabsim_consumer: Consumer<Option<Box<crate::dsp::cabsim::conv::ConvEngine>>>,
     /// Atomic status flags shared between RT and Main (zero I/O in callback).
     pub rt_status: Arc<RtStatusFlags>,
 }

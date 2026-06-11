@@ -291,7 +291,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
   - **Critério de aceite:** paridade vs convolução direta (referência ingênua) `ESR < 1e-5` em IR curto; latência == tamanho da partição documentada.
   - **Nota do PO:** Se o "NeuralAmpModelerCore" espelhado em `tests/fixtures/NeuralAmpModelerCore` não possui uma implementação de convolução de IR, verifique se o plugin oficial "gateway" (espelhado em `tests/fixtures/NeuralAmpModelerPlugin`) possui esta implementação. Seria interessante realmente ter alguma implementação consagrada para comparação segura.
 
-- **[T4.3] Estágio opcional no pipeline.**
+- **[T4.3] Estágio opcional no pipeline.** ✅ [DONE]
   - Integrar como estágio pós-inferência em `src/dsp/pipeline/` com *bypass* de custo zero quando nenhum IR está carregado. Flag de CLI/param CLAP.
   - **Critério de aceite:** ativável/desativável em runtime sem clique; bypass não mede custo.
 

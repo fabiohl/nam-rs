@@ -75,6 +75,7 @@ impl<'a> NamClapProcessor<'a> {
                 rt_status: &self.rt_status,
                 adaptive: &mut self.adaptive_compute,
                 bridge_writer: None,
+                conv: self.conv_engine.as_mut().map(|e| e.as_mut()),
             };
 
             let gate_state = apply_input_stage(

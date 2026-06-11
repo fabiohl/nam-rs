@@ -115,6 +115,7 @@ impl<'a> PluginAudioProcessor<'a, NamClapShared, NamClapMainThread<'a>> for NamC
 
         Ok(Self {
             model_l: None,
+            conv_engine: None,
             resampler,
             params: RtPluginParams::default(),
             buf_host_l,

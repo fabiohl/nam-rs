@@ -7,6 +7,7 @@ use crate::clap::plugin::{ClapParamPayload, NamClapShared};
 use crate::common::params::RtPluginParams;
 use crate::common::spsc::{GcItem, GcOverflowBuffer, RtStatusFlags};
 use crate::dsp::adaptive::AdaptiveCompute;
+use crate::dsp::cabsim::conv::ConvEngine;
 use crate::dsp::gate::{DynamicHysteresis, GateParams};
 use crate::dsp::resampler::NamResampler;
 use crate::dsp::smoother::ParamSmoother;
@@ -24,6 +25,8 @@ use std::sync::Arc;
 pub struct NamClapProcessor<'a> {
     /// Active model for the left channel (None = bypass).
     pub(crate) model_l: Option<Box<StaticModel>>,
+    /// Active cab-sim convolution engine (None = bypass, zero cost).
+    pub(crate) conv_engine: Option<Box<ConvEngine>>,
     /// Polyphase sinc resampler (bypass when sample_rate == 48000).
     /// Held in Box for RT-safe disposal without allocation.
     pub(crate) resampler: Box<NamResampler>,

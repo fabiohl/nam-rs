@@ -134,6 +134,7 @@ mod block_tests {
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
                 },
+                conv: None,
             };
 
             let bufs = DspBuffers {

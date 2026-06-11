@@ -86,6 +86,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+            conv: None,
         };
 
         let bufs = DspBuffers {
@@ -289,6 +290,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+            conv: None,
         };
 
         let bufs = DspBuffers {
@@ -396,6 +398,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+            conv: None,
         };
 
         let bufs = DspBuffers {
@@ -485,6 +488,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+            conv: None,
         };
 
         let bufs = DspBuffers {
@@ -569,6 +573,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+            conv: None,
         };
 
         let bufs = DspBuffers {
@@ -601,6 +606,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: unsafe { Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge)) },
+            conv: None,
         };
 
         let bufs2 = DspBuffers {
@@ -656,6 +662,7 @@ mod tests {
             rt_status: &rt_status,
             adaptive: &mut adaptive,
             bridge_writer: None,
+            conv: None,
         };
 
         // 1. Run input stage (under mono mode, R shouldn't get dither)

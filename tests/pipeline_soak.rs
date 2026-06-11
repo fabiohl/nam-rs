@@ -161,6 +161,7 @@ mod tests {
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
                 },
+                conv: None,
             };
             let bufs = DspBuffers {
                 resamp_mid_l: &mut resamp_mid_l,
@@ -222,6 +223,7 @@ mod tests {
                 bridge_writer: unsafe {
                     Some(DspBridgeWriter::new(&mut *bridge as *mut DspBridge))
                 },
+                conv: None,
             };
 
             let bufs = DspBuffers {
