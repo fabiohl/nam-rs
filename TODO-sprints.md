@@ -90,7 +90,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
   - **Critério de aceite:** testes de rejeição (9 submodelos; container dentro de container) em
     `src/loader/nam_json_test.rs`; fixtures oficiais de container continuam carregando.
 
-- **[T6.5] Guards de ponteiro e overflow em loaders.**
+- **[T6.5] Guards de ponteiro e overflow em loaders.** [DONE]
 
   - `src/dsp/pipeline/bridge.rs:83,128,224`: trocar `debug_assert!(!ptr.is_null())` por `assert!` (construtores são
     cold-path; em release um null passaria e causaria UB no primeiro `write_block`).

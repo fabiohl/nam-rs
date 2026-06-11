@@ -113,7 +113,19 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
             pos += 8;
             break;
         }
-        pos += 8 + chunk_size as usize;
+        pos = pos
+            .checked_add(8usize.checked_add(chunk_size as usize).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("WAV chunk size overflow: {chunk_size}"),
+                )
+            })?)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("WAV position overflow at chunk size: {chunk_size}"),
+                )
+            })?;
     }
     if data_size == 0 {
         return Err(io::Error::new(
@@ -139,4 +151,65 @@ pub fn read_wav_f32(path: &Path) -> io::Result<(Vec<f32>, u32)> {
     }
 
     Ok((samples, sr))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io;
+
+    fn temp_wav_path(name: &str) -> std::path::PathBuf {
+        let mut dir = std::env::temp_dir();
+        dir.push("nam_wav_test");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.push(name);
+        dir
+    }
+
+    #[test]
+    fn read_wav_f32_valid() {
+        let path = temp_wav_path("test.wav");
+        let samples = vec![0.5f32; 128];
+        write_wav_f32(&path, &samples, 48000).expect("write");
+        let (read_samples, sr) = read_wav_f32(&path).expect("read");
+        assert_eq!(sr, 48000);
+        assert_eq!(read_samples.len(), 128);
+        for (&w, &r) in samples.iter().zip(read_samples.iter()) {
+            assert!((w - r).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn read_wav_f32_malicious_chunk_size() {
+        // Craft a WAV where a non-data chunk has chunk_size = u32::MAX,
+        // causing overflow or graceful error instead of infinite loop.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"RIFF");
+        buf.extend_from_slice(&0u32.to_le_bytes()); // filesize (placeholder)
+        buf.extend_from_slice(b"WAVE");
+        // fmt chunk (valid, minimal)
+        buf.extend_from_slice(b"fmt ");
+        buf.extend_from_slice(&16u32.to_le_bytes());
+        buf.extend_from_slice(&3u16.to_le_bytes()); // IEEE float
+        buf.extend_from_slice(&1u16.to_le_bytes()); // mono
+        buf.extend_from_slice(&48000u32.to_le_bytes()); // sr
+        buf.extend_from_slice(&(48000u32 * 4).to_le_bytes()); // byte_rate
+        buf.extend_from_slice(&4u16.to_le_bytes()); // block_align
+        buf.extend_from_slice(&32u16.to_le_bytes()); // bits_per_sample
+        // Malicious junk chunk with u32::MAX size (should not panic or loop forever)
+        buf.extend_from_slice(b"JUNK");
+        buf.extend_from_slice(&u32::MAX.to_le_bytes());
+        // No 'data' chunk — should fail with 'data' chunk not found
+        let path = temp_wav_path("malicious.wav");
+        std::fs::write(&path, &buf).expect("write");
+        let result = read_wav_f32(&path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        let msg = err.to_string();
+        assert!(
+            msg.contains("'data' chunk not found") || msg.contains("overflow"),
+            "unexpected error: {msg}"
+        );
+    }
 }

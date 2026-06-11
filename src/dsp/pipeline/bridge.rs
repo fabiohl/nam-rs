@@ -80,7 +80,7 @@ impl BridgeRef {
     /// The pointer must be valid and non-null.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
-        debug_assert!(!ptr.is_null());
+        assert!(!ptr.is_null());
         Self(ptr)
     }
 
@@ -125,7 +125,7 @@ impl DspBridgeWriter {
     /// The pointer must be valid and non-null.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
-        debug_assert!(!ptr.is_null());
+        assert!(!ptr.is_null());
         Self(unsafe { std::ptr::NonNull::new_unchecked(ptr) })
     }
 
@@ -221,7 +221,7 @@ impl DspBridgeReader {
     /// The pointer must be valid and non-null.
     #[inline(always)]
     pub unsafe fn new(ptr: *mut DspBridge) -> Self {
-        debug_assert!(!ptr.is_null());
+        assert!(!ptr.is_null());
         Self(unsafe { std::ptr::NonNull::new_unchecked(ptr) })
     }
 
