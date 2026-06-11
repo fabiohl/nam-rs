@@ -287,12 +287,64 @@ The closest C++ reference is `dsp::ImpulseResponse` in the `AudioDSPTools` libra
 
 | C++ reference                                          | Rust (`src/`)                          | Parity status            |
 | ------------------------------------------------------ | -------------------------------------- | ------------------------ |
-| `AudioDSPTools/dsp/ImpulseResponse.h` (overlap-add?)   | `dsp/cabsim/conv.rs` — UPOLS engine   | **Not cross-validated** |
+| `AudioDSPTools/dsp/ImpulseResponse.h` (direct time-domain) | `dsp/cabsim/conv.rs` — UPOLS engine   | **Analyzed (S5.3/T5.7)** |
 | `NeuralAmpModelerPlugin/NeuralAmpModeler.cpp:676` (IR usage) | `dsp/pipeline/capture.rs` — cab stage | **New feature**         |
 
-### Architectural Note
+### 13.1 Algorithmic Analysis — `dsp::ImpulseResponse` (C++) vs UPOLS (NAM-rs)
 
-The `AudioDSPTools` submodule is present in `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/` as an **uninitialized (empty) directory** in the current fixture. Initialization and cross-validation are planned in Sprint 5.3 (see [TODO-sprints.md](/TODO-sprints.md) §§5.3, T5.7–T5.9).
+> **Analysis completed:** Sprint 5.3, [T5.7] — submodule `AudioDSPTools` initialized at commit `0827c6c`.
+
+#### 13.1.1 C++ `dsp::ImpulseResponse` — Algorithm
+
+| Property | Detail |
+|----------|--------|
+| **Algorithm** | Direct time-domain convolution (O(N²)). Computes `<w, h[n:n+M]>` for each output sample `n`, where `w` is the time-reversed IR (`mWeight`) and `h` is the input history. |
+| **Core loop** | `this->mWeight.dot(input_history_segment)` — Eigen dot product (float). Result cast to `double`. |
+| **Partition** | None. Sliding window via `History` base class. `mHistoryRequired = irLength - 1`. |
+| **IR storage** | Time-**reversed** in `mWeight`: sample `j = irLength - 1 - i` stored at `mWeight[j]`, so the dot product `weight · history[i..i+M]` computes convolution. |
+| **Resampling** | Cubic interpolation (`ResampleCubic<float>`) when `mRawAudioSampleRate != mSampleRate`. |
+| **Gain / normalization** | Fixed gain formula: `gain = 10^(-18×0.05) × 48000 / mSampleRate` (~−0.9 dB × 48k/sr, ≈ 0.126 at 48 kHz). No peak normalization. |
+| **Max IR length** | Capped at 8192 samples (`mMaxLength`). |
+| **Precision** | Weights & history: `float`. Outputs: `DSP_SAMPLE` (= `double`). Dot product in float → cast to double. |
+| **Latency** | 0 samples (direct sample-by-sample convolution). |
+| **Channels** | Convolves mono; duplicates to all output channels. |
+
+#### 13.1.2 NAM-rs `ConvEngine` (UPOLS) — Algorithm
+
+| Property | Detail |
+|----------|--------|
+| **Algorithm** | Uniform-Partitioned Overlap-Save (UPOLS, O(N log N)). Frequency-domain multiply-accumulate over `ceil(IR_len / partition_size)` partitions per block. |
+| **Core loop** | For each partition `p`: load FDL spectrum at lag `p`, complex MAC with pre-FFT'd kernel partition `p`, accumulate. IFFT on accumulator, extract overlap-save tail. |
+| **Partition** | Partition size = audio block size. `num_partitions = ir.len().div_ceil(block_size)`. Kernel partitions pre-FFT'd at construction (offline). |
+| **IR storage** | Samples placed at start of FFT buffer (`fft_buf[i] = Complex::new(sample, 0.0)`), zero-padded to FFT size. Causal — no reversal needed (overlap-save discards wrap-around). |
+| **Resampling** | Polyphase resampler (`NamResampler`) — higher quality than cubic; batch-offline operation outside RT thread. |
+| **Gain / normalization** | Optional peak normalization to 1.0 (`normalize_in_place`). No fixed gain reduction formula. IFFT scale = `1.0 / fft_size`. |
+| **Max IR length** | Unbounded (constrained by IR file size limit of 1 GiB; memory scales with `num_partitions × fft_size`). |
+| **Precision** | `f32` throughout (weights, spectra, FDL, accumulator, outputs). |
+| **Latency** | `partition_size` samples (one full audio block). |
+| **Channels** | Convolves mono; stereo duplication handled externally (`capture.rs`). |
+
+#### 13.1.3 Algorithmic Differences — Impact on Cross-Validation Tolerances
+
+| # | Divergence | C++ | NAM-rs | Expected impact on ESR/SNR |
+|---|-----------|-----|--------|-----------------------------|
+| 1 | **Algorithm** | Direct O(N²) time-domain | UPOLS O(N log N) frequency-domain | **Primary divergence.** FFT → numerical noise from floating-point twiddle factors. Overlap-save discards the wrap-around half of the circular convolution — identical to direct convolution in exact arithmetic, but different in FP32. Partitions accumulate noise linearly with `num_partitions`. |
+| 2 | **Gain reduction** | Fixed: `10^(−0.9) × 48k/sr` (~0.126 at 48 kHz, −18 dB) | None (or peak-normalize to 1.0) | **Dominant amplitude mismatch.** C++ output is ~0.126× the Rust output (before peak normalization). Cross-validation must either (a) compensate gain before comparison, or (b) use normalized metrics (ESR is gain-insensitive; SNR and absolute-error metrics will show ~18 dB offset). |
+| 3 | **Precision** | Float weights + double output accumulator | Float throughout | Accumulation error differences: C++ accumulates dot product in float then casts to double (no benefit for accumulation itself), but the history buffer holds up to 8192 samples — the dot product sums up to 8192 terms in float, similar to UPOLS. The double output cast provides headroom but doesn't change the dot product result. **Impact: small** (a few ULPs). |
+| 4 | **Resampling** | Cubic interpolation | Polyphase (NamResampler) | Cubic is lower quality — introduces interpolation error not present in polyphase. If input/output rates match (no resampling), this divergence does **not** apply. For mismatched rates: **moderate impact** — cubic error manifests as IR shape differences that propagate through convolution. |
+| 5 | **Max IR length** | 8192 (hard cap, truncates) | Unbounded | If IR > 8192 samples: C++ truncates; NAM-rs does not. Cross-validation tests should use IRs ≤ 8192 samples to avoid this confound. |
+| 6 | **Latency** | 0 samples | `partition_size` samples | NAM-rs output is time-shifted by `partition_size` samples relative to C++. Cross-validation must align sequences (shift or trim) before comparison. |
+| 7 | **WAV loading** | `dsp::wav::Load()` — supports PCM16, float32 | `CabSimIr` — PCM16, PCM24, float32 + NaN/Inf validation + TOCTOU guard | Loading differences (e.g. quantization rounding when PCM → float) are negligible relative to the algorithmic differences above. |
+
+#### 13.1.4 Cross-Validation Strategy
+
+Given the dominant gain divergence (#2), cross-validation should apply **gain compensation** before comparison: multiply C++ output by `1 / gain = 10^(0.9) × mSampleRate / 48000` or normalize both outputs to the same peak RMS before computing ESR/SNR. ESR is naturally gain-insensitive (ratio metric), making it the preferred tolerance measure. SNR and absolute-error metrics should account for the gain offset.
+
+Thresholds: expect **ESR < 1e-3** (relaxed from the 1e-5 internal golden threshold) due to FFT arithmetic differences compounded across multiple partitions. SNR floor is dictated by FFT twiddle-factor rounding (~140 dB for single FFT, degrading with `log₂(num_partitions)` due to frequency-domain accumulation).
+
+### 13.2 Architectural Note
+
+The `AudioDSPTools` submodule is initialized at `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools/` (commit `0827c6c`). Cross-validation tests are planned in Sprint 5.3 [T5.8]–[T5.9] (see [TODO-sprints.md](/TODO-sprints.md) §§5.3).
 
 ### Decision: C++ Cross-Validation Not Performed (Justified)
 
@@ -301,9 +353,9 @@ The `AudioDSPTools` submodule is present in `tests/fixtures/NeuralAmpModelerPlug
 > **Justification:**
 >
 > 1. **Feature is new/orthogonal to NAM:** `NeuralAmpModelerCore` (the canonical C++ reference for model inference) does not include an impulse response convolution stage. Cabsim is a NAM-rs extension, not a port of an existing C++ component.
-> 2. **Submodule not initialized:** The `AudioDSPTools` submodule in `tests/fixtures/NeuralAmpModelerPlugin/` is currently an empty directory. Initialization and analysis are deferred to Sprint 5.3, which will build the C++ reference binary and implement cross-validation tests.
+> 2. **Algorithmic analysis complete:** The C++ `dsp::ImpulseResponse` uses direct time-domain convolution (O(N²)) with a fixed −18 dB gain reduction formula. NAM-rs uses UPOLS (O(N log N)) with optional peak normalization. The seven algorithmic divergences are catalogued in §13.1.3.
 > 3. **Mathematically-rigorous alternative:** Validation is anchored against **direct convolution** (naive O(N²) reference computed inline in `tests/cabsim_golden.rs`). This is a self-contained, mathematically exact oracle — it computes the convolution definition directly without algorithmic approximations. The UPOLS engine achieves **ESR < 1e-5** against this reference in all four scenarios: short (64), medium (512), long (8192), and stress (32768 samples).
-> 4. **Future cross-validation planned:** Sprint 5.3 will initialize `AudioDSPTools`, build a C++ reference binary (`tests/fixtures/render_ir.cpp`) using the same PCG PRNG seeds, and implement `#[ignore]` cross-validation tests in `tests/cabsim_cpp_parity.rs`. Differences between UPOLS and `dsp::ImpulseResponse` (expected due to algorithmic variations — overlap-save vs overlap-add, partition boundary handling, normalization) will be documented alongside calibrated tolerance thresholds.
+> 4. **Future cross-validation planned:** Sprint 5.3 tasks [T5.8]–[T5.9] will build a C++ reference binary (`tests/fixtures/render_ir.cpp`) using the same PCG PRNG seeds, and implement `#[ignore]` cross-validation tests in `tests/cabsim_cpp_parity.rs` with gain-compensated, latency-aligned comparisons. Expected tolerance: ESR < 1e-3 (see §13.1.4).
 
 ---
 ## 14. Related Sprints & Tasks
@@ -323,5 +375,6 @@ The `AudioDSPTools` submodule is present in `tests/fixtures/NeuralAmpModelerPlug
 
 | Date       | Change                                                                                                                                                                                                                                                                    |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-11 | [T5.7] Initialize AudioDSPTools submodule at commit `0827c6c`. Full algorithmic analysis of `dsp::ImpulseResponse` (direct O(N²) convolution, fixed gain, cubic resampling, 8192 cap, double output) vs NAM-rs UPOLS. Seven divergences catalogued in §13.1.3 with expected cross-validation impact. |
 | 2026-06-10 | [T5.6] Add §13 IR Cabsim section: documents cabsim as new NAM-rs feature with no C++ equivalent, decision to defer C++ cross-validation (AudioDSPTools submodule not initialized), and plan for Sprint 5.3 cross-validation.                                               |
 | 2026-06-03 | Initial creation. Maps all WaveNet (Standard/Lite/Feather/Nano/Dyn), LSTM (1×{8,12,16,24,40}, 2×{8,12,16,24}, Dyn), and A2 (placeholder) models. Covers S3, S4, S7, S13a, S25, S26 parity tasks. Documents 10 architectural divergences and 6 math/ecosystem divergences. |

@@ -357,7 +357,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 > Inicializar o submodule `AudioDSPTools` do `NeuralAmpModelerPlugin` e implementar cross-validação da engine UPOLS do nam-rs contra a implementação de referência `dsp::ImpulseResponse` do C++. O NeuralAmpModelerPlugin (`tests/fixtures/NeuralAmpModelerPlugin/NeuralAmpModeler/NeuralAmpModeler.h:3`) usa `#include "../AudioDSPTools/dsp/ImpulseResponse.h"` para convolução de IRs.
 
-- **[T5.7] Inicializar e analisar `AudioDSPTools` submodule.**
+- **[T5.7] Inicializar e analisar `AudioDSPTools` submodule.** [DONE]
   - Inicializar o git submodule `tests/fixtures/NeuralAmpModelerPlugin/AudioDSPTools` (atualmente diretório vazio).
   - Analisar `AudioDSPTools/dsp/ImpulseResponse.h` e `ImpulseResponse.cpp`: identificar o algoritmo de convolução usado (provavelmente overlap-add ou overlap-save particionado), o tratamento de partição, formato de entrada (WAV loader embutido ou externo), e a normalização aplicada.
   - Documentar as diferenças algorítmicas entre a implementação C++ e o UPOLS do nam-rs (ex: algoritmo base, tamanho de FFT, tratamento de cauda, normalização) em `docs/cpp_parity_map.md` (seção cabsim).
