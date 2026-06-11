@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 
 use crate::loader::nam_json::{
-    NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape,
+    NamModelData, NamWavenetTopology, get_wavenet_topology, is_a2_shape, validate_wavenet_features,
 };
 use crate::models::StaticModel;
 use crate::models::a2::WaveNetA2;
@@ -51,6 +51,11 @@ pub(crate) fn validate_layer_activations(data: &NamModelData) -> anyhow::Result<
 
 /// Detects the WaveNet topology and branches to the correct const-generic builder.
 pub(crate) fn build_wavenet(data: &NamModelData) -> anyhow::Result<Box<StaticModel>> {
+    // ── Feature validation: reject unsupported WaveNet features early ──
+    if let Err(e) = validate_wavenet_features(data) {
+        bail!("{e}");
+    }
+
     // ── A2: first-class branch (detected by shape, not fallback) ──
     if let Some(ch) = is_a2_shape(data) {
         return match ch {

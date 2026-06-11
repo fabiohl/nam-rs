@@ -254,6 +254,7 @@ divergences, and the sprint/task that established each equivalence.
 | **TSC-based latency measurement**             | NAM-rs calibrates the CPU TSC for nanosecond-accurate RT cycle measurements — no C++ equivalent.                                                                                            |
 | **CPU C-state lock (`/dev/cpu_dma_latency`)** | Linux-specific RT tuning — no equivalent in cross-platform C++ reference.                                                                                                                   |
 | **SCHED_FIFO + `mlockall`**                   | Linux RT scheduling — not applicable to C++ reference.                                                                                                                                      |
+| **`condition_size ≠ 1` or `head` (non-null) rejected** | Multi-condition WaveNet (`condition_size > 1`) and post-stack heads (`head` sub-object) are official NAMCore features not implemented in NAM-rs. Models using them are **rejected at load time** with a clear diagnostic (T7.3). All known A1 WaveNet models (Standard/Lite/Feather/Nano) use `condition_size=1` and `head=null`; these features are only needed for advanced architectures (A2 FiLM conditioning, custom post-stack heads). If real-world models requiring them are found in circulation (Tone3000/ToneHunt), they can be supported in a future sprint. |
 
 ### 10.2 Math
 

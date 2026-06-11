@@ -652,3 +652,139 @@ fn test_reject_empty_submodels() {
         "Empty submodels array is syntactically valid JSON"
     );
 }
+
+// =============================================================================
+// T7.3 — validate_wavenet_features: condition_size and head rejection
+// =============================================================================
+
+/// Fixture JSON with `head: null` and `condition_size: 1` (valid A1 WaveNet).
+fn make_valid_wavenet_json() -> NamModelData {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": "Tanh", "gated": false, "head_bias": false
+                },
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "activation": "Tanh", "gated": false, "head_bias": true
+                }
+            ],
+            "head": null,
+            "head_scale": 0.02
+        },
+        "weights": [0.0],
+        "metadata": {}
+    }"#;
+    parse_nam_json(json).expect("Valid fixture should parse")
+}
+
+#[test]
+fn test_validate_wavenet_features_accepts_normal_a1() {
+    let data = make_valid_wavenet_json();
+    assert!(
+        validate_wavenet_features(&data).is_ok(),
+        "Standard A1 WaveNet with condition_size=1 and head=null should pass validation"
+    );
+}
+
+#[test]
+fn test_validate_wavenet_features_rejects_condition_size_neq_1() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 2, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": "Tanh", "gated": false, "head_bias": false
+                },
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "activation": "Tanh", "gated": false, "head_bias": true
+                }
+            ],
+            "head": null,
+            "head_scale": 0.02
+        },
+        "weights": [0.0],
+        "metadata": {}
+    }"#;
+    let data = parse_nam_json(json).expect("Fixture should parse");
+    let err = validate_wavenet_features(&data).unwrap_err();
+    assert!(
+        err.contains("condition_size=2"),
+        "Error should mention condition_size=2, got: {err}"
+    );
+}
+
+#[test]
+fn test_validate_wavenet_features_rejects_non_null_head() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": "Tanh", "gated": false, "head_bias": false
+                },
+                {
+                    "input_size": 1, "condition_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "activation": "Tanh", "gated": false, "head_bias": true
+                }
+            ],
+            "head": "PostStackHead",
+            "head_scale": 0.02
+        },
+        "weights": [0.0],
+        "metadata": {}
+    }"#;
+    let data = parse_nam_json(json).expect("Fixture should parse");
+    let err = validate_wavenet_features(&data).unwrap_err();
+    assert!(
+        err.contains("head"),
+        "Error should mention 'head', got: {err}"
+    );
+}
+
+/// `condition_size` absent from JSON (None) is valid — implicitly 1.
+#[test]
+fn test_validate_wavenet_features_accepts_missing_condition_size() {
+    let json = r#"{
+        "version": "0.5.4",
+        "architecture": "WaveNet",
+        "config": {
+            "layers": [
+                {
+                    "input_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [1,2,4,8,16,32,64],
+                    "activation": "Tanh", "gated": false, "head_bias": false
+                },
+                {
+                    "input_size": 1, "head_size": 4,
+                    "channels": 4, "kernel_size": 3, "dilations": [128,256,512,1,2,4,8,16,32,64,128,256,512],
+                    "activation": "Tanh", "gated": false, "head_bias": true
+                }
+            ],
+            "head": null,
+            "head_scale": 0.02
+        },
+        "weights": [0.0],
+        "metadata": {}
+    }"#;
+    let data = parse_nam_json(json).expect("Fixture should parse");
+    assert!(
+        validate_wavenet_features(&data).is_ok(),
+        "WaveNet with omitted condition_size should pass validation (implicitly 1)"
+    );
+}

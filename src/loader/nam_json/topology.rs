@@ -170,3 +170,47 @@ pub fn is_a2_shape(data: &NamModelData) -> Option<u8> {
 
     Some(ch)
 }
+
+// =============================================================================
+// WaveNet feature validation — condition_size and head (post-stack)
+// =============================================================================
+
+/// Validates that WaveNet models use only supported feature combinations.
+///
+/// The current NAM-rs implementation hardcodes `COND=1` as a const generic and
+/// does not implement a post-stack head sub-object. Models that require
+/// `condition_size != 1` or a non-null `head` would load and produce incorrect
+/// output silently — the worst failure mode.
+///
+/// This validator **rejects** such models with a clear diagnostic, preventing
+/// silent misbehavior. If official models requiring these features are found in
+/// circulation (Tone3000/ToneHunt), they can be supported in a future sprint.
+pub fn validate_wavenet_features(data: &NamModelData) -> Result<(), String> {
+    // Check condition_size on all layers
+    for (i, layer) in data.config.layers.iter().enumerate() {
+        match layer.condition_size {
+            None | Some(1) => {}
+            Some(cs) => {
+                return Err(format!(
+                    "WaveNet layer {} has condition_size={}, but only condition_size=1 is \
+                     supported. Multi-condition WaveNet is an official NAMCore feature not \
+                     yet implemented in NAM-rs.",
+                    i, cs
+                ));
+            }
+        }
+    }
+
+    // Check head: must be absent (None) or null (Some(None))
+    if let Some(ref head) = data.config.head
+        && head.is_some()
+    {
+        return Err("WaveNet 'head' (post-stack sub-object) is not supported. \
+             Only head=null is accepted for A1 WaveNet topologies. \
+             Post-stack heads are an official NAMCore feature not yet \
+             implemented in NAM-rs."
+            .to_string());
+    }
+
+    Ok(())
+}

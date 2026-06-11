@@ -20,6 +20,7 @@ pub use parse::parse_nam_json;
 pub(crate) use topology::parse_semver;
 pub use topology::{
     NamWavenetTopology, get_linear_topology, get_lstm_topology, get_wavenet_topology, is_a2_shape,
+    validate_wavenet_features,
 };
 
 #[cfg(test)]

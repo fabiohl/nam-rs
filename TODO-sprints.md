@@ -137,7 +137,7 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
 
 ### Sprint 7.2 — WaveNet oficial completo (lacunas e robustez de detecção)
 
-- **[T7.3] Tratar `head` (post-stack) e `condition_size ≠ 1` do WaveNet: suportar ou rejeitar com erro claro.**
+- **[T7.3] Tratar `head` (post-stack) e `condition_size ≠ 1` do WaveNet: suportar ou rejeitar com erro claro.** [DONE]
 
   - Hoje: `condition_size` é ignorado (`src/models/wavenet/model.rs:76-86` usa o input como condition) e o campo
     `head` do config não é processado — um `.nam` que use esses recursos carrega e **soa errado em silêncio**, o
@@ -146,6 +146,11 @@ removidos deste arquivo — consultar o histórico git deste documento para o re
     `head != null` e **falhar o load** com diagnóstico explícito ("recurso oficial ainda não suportado").
   - Etapa 2 (avaliação): pesquisar prevalência real desses campos em modelos distribuídos (Tone3000/ToneHunt);
     registrar decisão em `docs/cpp_parity_map.md` — implementar apenas se houver modelos reais em circulação.
+  - **Decisão T7.3:** Rejeitar com erro claro. `condition_size > 1` requer FiLM/multi-condition (arquitetura A2
+    avançada, fora do catálogo A1). `head` (post-stack) é um sub-objeto não usado por nenhum WaveNet A1 oficial
+    (Standard/Lite/Feather/Nano). Ambos são features do NAMCore C++ não implementadas no NAM-rs. Validação em
+    `src/loader/nam_json/topology.rs:validate_wavenet_features()`, chamada em `src/loader/dispatcher/wavenet/mod.rs`.
+    Divergência documentada em `docs/cpp_parity_map.md` §10.1.
   - **Critério de aceite:** fixtures sintéticas com `head`/`condition_size=2` são rejeitadas com mensagem clara;
     nenhum modelo do catálogo atual regrede; decisão documentada.
 
