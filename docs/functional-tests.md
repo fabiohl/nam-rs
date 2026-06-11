@@ -267,6 +267,23 @@ Each section testable after touching the corresponding feature. Self-contained, 
 
 ---
 
+### 2R — Slimmable A2 Container & FSM Degradation
+
+> **Prerequisites:** A `.nam` model packaged as a `"SlimmableContainer"` (e.g. bundling A2-Full and A2-Lite submodels) available. The host DAW is open, and NAM-rs is inserted on a track with audio processing active.
+> **Adaptive behavior:** In "Auto" mode, quality switches dynamically between A2-Full and A2-Lite based on CPU headroom/block budget. In manual overrides ("Force Full" / "Force Lite"), the selection is static.
+
+- [ ] **2R.1** Load the slimmable container `.nam` model → loads successfully without errors.
+- [ ] **2R.2** Locate the `"Slim Override"` parameter (ID 6) in the host DAW's generic parameter panel.
+- [ ] **2R.3** Set `"Slim Override"` to `"Force Full"` → the A2-Full (8-channel) submodel is selected. Audio remains clean.
+- [ ] **2R.4** Set `"Slim Override"` to `"Force Lite"` → the submodel swaps to A2-Lite (3-channel) instantly.
+- [ ] **2R.5** Verify transition smoothness: Toggle between `"Force Full"` and `"Force Lite"` multiple times during playback → the transition is perfectly seamless and click-free (smoothed by a 32 ms crossfade).
+- [ ] **2R.6** Set `"Slim Override"` to `"Auto"` → the control returns to the Adaptive Compute FSM.
+- [ ] **2R.7** Simulate CPU pressure (e.g., lower buffer size, run high load) → if the FSM triggers degradation, the status bar displays corresponding degradation flags (`DEGRADE` status).
+- [ ] **2R.8** Save the DAW project with `"Slim Override"` set to `"Force Lite"` → close and reopen → parameter value is preserved at `"Force Lite"` and the A2-Lite submodel is active.
+- [ ] **2R.9** Render/offline bounce the track → the engine forces full quality, bypasses FSM degradation, and returns a clean render without any active degradation flags.
+
+---
+
 ## Block 3 — Stress & Pedantry
 
 Run **after** Blocks 1 and 2 pass. 128 sample buffer @ 48 kHz.

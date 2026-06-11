@@ -214,7 +214,7 @@ To guarantee xrun-free operation in real-time audio threads under high CPU utili
   - **Recovery:** Upgrades to the previous state only after 5 consecutive blocks remain safely below recovery thresholds (`0.35 * budget` for Conservative, `0.275 * budget` for Aggressive).
 - **Linear Crossfade:** Integrates a 32 ms linear parameter crossfade between active layers to guarantee smooth, click-free structural transitions.
 - **Deterministic Offline Bounce:** During offline rendering/export (`RenderMode::Offline` in CLAP), the host DAW does not operate under real-time constraints. To guarantee deterministic, maximum-quality output, the render mode transition forces `AdaptiveCompute` to `Off` (which resets the FSM state to `Full`), clears all active degradation status flags (`RT_STATUS_DEGRADE_REDUCED`, `RT_STATUS_DEGRADE_MINIMAL`), and ignores all block deadline measurements.
-- **Planned — A2 slimmable degradation:** for A2 models delivered as a `SlimmableContainer`, this same FSM will drive the runtime **A2-Full → A2-Lite** switch (selecting the lighter submodel under CPU pressure) instead of layer-skipping, reusing the crossfade machinery. See §7 and [TODO-sprints.md](/TODO-sprints.md) (Epic 3).
+- **A2 slimmable degradation:** For A2 models delivered as a `SlimmableContainer`, this same FSM drives the runtime **A2-Full → A2-Lite** switch (selecting the lighter submodel under CPU pressure) instead of layer-skipping, reusing the crossfade machinery. See §7.
 
 ## 5.2 IR Cabsim — Impulse Response Convolution
 

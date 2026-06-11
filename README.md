@@ -2,6 +2,7 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright (c) 2026 Fábio Henrique de Lima Silva (fhl.bsb@gmail.com) All rights reserved.
 -->
+
 # 🎸 NAM-rs 2.0.0
 
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg) ![Rust](https://img.shields.io/badge/Rust-orange.svg) ![Platform](https://img.shields.io/badge/Linux%20x86__64-lightgrey.svg) ![PipeWire](https://img.shields.io/badge/PipeWire-green.svg) ![CLAP](https://img.shields.io/badge/CLAP-gray.svg)
@@ -19,14 +20,14 @@ The standard NAM model is mono by definition. To respect traditional DAW workflo
 NAM-rs can be compiled in two main modes via *feature flags*:
 
 1. **Standalone (default):** Native Linux binary for PipeWire. Immediate musical use with low latency and direct integration via `qpwgraph`.
-
+   
    ```bash
    # Default build (standalone)
    cargo build --release --features standalone
    ```
 
 2. **CLAP Plugin:** `.so` library for use in DAWs (such as Bitwig Studio, Fender Studio Pro, etc.). Full GUI with knobs, VU meters, model loading (drag-and-drop is pending upstream `baseview` updates on Linux), telemetry, and 8 CLAP extensions.
-
+   
    ```bash
    # CLAP Plugin build
    cargo build --release --no-default-features --features clap-plugin --lib
@@ -59,7 +60,7 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
   `sudo apt install build-essential cmake g++ python3 pkg-config pipewire pipewire-bin pipewire-utils libpipewire-0.3-dev clang libclang-dev qpwgraph libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev git curl linux-tools-common linux-tools-generic linux-tools-$(uname -r) bolt-22 jq ripgrep fd-find`
 
 * Cargo utilities & Rustup components (required for QA & optimizations):
-
+  
   * `cargo install cargo-edit`
   * `cargo install --git https://github.com/free-audio/clap-validator.git`
   * `cargo install cargo-pgo`
@@ -67,32 +68,32 @@ NAM-rs adopts an opinionated architecture focused on four pillars:
   * `rustup component add llvm-tools-preview`
 
 * To ensure the engine runs flawlessly under realistic NAM models (especially "Lite" and "Standard"), it is crucial to grant advanced SCHED policies to the binary. Add your user to the system's `audio` group and edit your limits:
-
+  
   1. `sudo usermod -aG audio $USER`
-
+  
   2. Create or edit the limits file (e.g., `sudo nano /etc/security/limits.d/audio.conf`):
-
+     
      ```text
      @audio   -  rtprio     95
      @audio   -  memlock    unlimited
      ```
 
 * Create a *udev* rule to allow the `audio` group to lock CPU wake latency (C-states):
-
+  
   1. `sudo nano /etc/udev/rules.d/99-audio-dma-latency.rules`
-
+  
   2. Reload rules or reboot: `sudo udevadm control --reload-rules && sudo udevadm trigger`
-
+     
      ```text
      KERNEL=="cpu_dma_latency", GROUP="audio", MODE="0664"
      ```
 
 * Setting your CPU scaling governor (`intel_pstate` or `amd_pstate`) to **Performance** is also highly recommended:
-
+  
   * Modern desktops (such as GNOME on Ubuntu/Fedora or KDE Plasma) manage this natively via `power-profiles-daemon`.
-
+  
   * If you prefer `tlp`, you can edit `/etc/tlp.conf`:
-
+    
     ```text
     CPU_SCALING_GOVERNOR_ON_AC=performance
     CPU_SCALING_GOVERNOR_ON_BAT=powersave

@@ -382,7 +382,7 @@ A A2 foi **oficialmente lançada** (Core v0.5.2 / plugin v0.7.14). Na prática, 
 
 ## ÉPICO 99 — Documentação e Fechamento 📚
 
-- **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`): Garantir atualização com o estado atual real do código.
+- **[T99.1] Atualizar documentação arquitetural** (acionar skill `documentador`): Garantir atualização com o estado atual real do código. [11/06/2026 02:14]
   - `docs/architecture.md`: motor A2, container, cabsim (IR convolution).
   - `README.md`: seção "Supported Models" — A2-Full/Lite agora suportados (ainda que em estágio Beta - deixar issoo registrado).
   - `docs/cpp_parity_map.md`: novo mapeamento A2 → C++.
